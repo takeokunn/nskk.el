@@ -1,7 +1,7 @@
 #+STARTUP: content
 #+STARTUP: fold
 #+OPTIONS: toc:nil
-* NSKK
+* [EXPERIMENTAL] NSKK
 
 Nerima SKK(NSKK) is a version of SKK (Simple Kana to Kanji conversion program, an input method of Japanese) on GNU Emacs.
 
