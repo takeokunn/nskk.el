@@ -34,4 +34,4 @@
   :group 'nskk)
 
 (provide 'nskk)
-;;; ob-phpstan.el ends here
+;;; nskk.el ends here
