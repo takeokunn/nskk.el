@@ -1,605 +1,705 @@
-# NSKK Emacs Lisp実装マスターガイド：世界最高峰コーディング規約
+# Emacs Lisp 31 ベストプラクティス：世界最高峰NSKK実装のための究極ガイド
 
 ## エグゼクティブサマリー
 
-Emacs31最新機能とSpacemacs級高品質実装知見を統合した、世界最高峰SKK実装のための完全コーディング規約です。パフォーマンス、可読性、保守性の三位一体を極限まで追求し、外部依存ゼロでの圧倒的実装を実現します。
+本ドキュメントは、Emacs 31の最新機能を最大限活用し、外部依存ゼロで圧倒的パフォーマンスを実現するNSKK実装のための、包括的なEmacs Lispベストプラクティス集です。30年のEmacs Lisp進化の集大成と、最新のプログラミングパラダイムを融合した、世界最高水準のガイドラインを提供します。
 
-### 🎯 技術革新指標
+## 1. Emacs 31 革新的機能の完全活用
 
-```mermaid
-graph TB
-    subgraph "Emacs31最新機能活用"
-        A[Native Compilation<br/>バイトコード超越]
-        B[Advanced GC<br/>メモリ最適化]
-        C[Structured Concurrency<br/>並行処理]
-    end
+### 1.1 ネイティブコンパイル（Native Compilation）
 
-    subgraph "Spacemacs級品質基準"
-        D[use-package<br/>モジュール化]
-        E[Lazy Loading<br/>起動最適化]
-        F[Evil Integration<br/>操作効率化]
-    end
+```elisp
+;;; ネイティブコンパイル最適化の極致
 
-    subgraph "NSKK独自革新"
-        G[Macro-First<br/>ゼロオーバーヘッド]
-        H[TDD/PBT<br/>品質保証]
-        I[Zero Dependency<br/>完全独立]
-    end
+;; コンパイル速度レベル設定（最大最適化）
+(setq native-comp-speed 3
+      native-comp-debug 0
+      native-comp-verbose 0
+      native-comp-async-report-warnings-errors nil)
 
-    A --> G
-    B --> H
-    C --> I
-    D --> G
-    E --> H
-    F --> I
+;; 関数レベルの最適化ディレクティブ
+(defun nskk-critical-path-function (input)
+  "クリティカルパス関数の最適化例"
+  (declare (speed 3)           ; 速度優先
+           (safety 0)          ; 安全性チェック無効
+           (compilation-speed 0) ; コンパイル時間度外視
+           (debug 0))          ; デバッグ情報なし
+  ;; 最適化されたコード
+  )
+
+;; インライン化指示
+(defsubst nskk-hot-function (x)
+  "頻繁に呼ばれる関数は必ずインライン化"
+  (declare (side-effect-free t)  ; 副作用なし
+           (pure t))              ; 純粋関数
+  (* x x))
+
+;; ネイティブコンパイル専用最適化
+(when (native-comp-available-p)
+  (native-compile-async
+   (directory-files-recursively user-emacs-directory "\\.el$")
+   'recursively))
 ```
 
-### 📊 品質基準マトリックス
+### 1.2 Threads（真の並列処理）
 
-| 品質指標 | Emacs標準 | Spacemacs | NSKK目標 | 達成手法 |
-|---------|-----------|-----------|----------|----------|
-| **起動時間** | 1000ms | 500ms | <100ms | Native Comp + マクロ |
-| **応答時間** | 50ms | 20ms | <1ms | インライン + キャッシュ |
-| **メモリ効率** | 50MB | 30MB | <10MB | プール + 弱参照 |
-| **テスト網羅率** | 70% | 85% | >95% | TDD/PBT強制 |
-| **外部依存** | 20+ | 100+ | 0 | 純粋実装 |
-
-## 1. 基本原則：圧倒的コード品質の追求
-
-### 1.1 Emacs31 Native Compilation First
-
-**🚀 ネイティブコンパイレーション戦略**：
 ```elisp
-;; ネイティブコンパイル最適化の強制
-(eval-when-compile
-  (when (and (fboundp 'native-comp-available-p)
-             (native-comp-available-p))
-    (setq native-comp-deferred-compilation t
-          native-comp-jit-compilation t)))
+;;; Emacs 31 スレッド活用パターン
 
-;; ❌ 従来のバイトコンパイル依存
-(defun nskk-slow-config (key)
-  (plist-get nskk-config key))
+;; スレッドプール実装
+(defclass nskk-thread-pool ()
+  ((workers :initform nil
+            :type list
+            :documentation "ワーカースレッドリスト")
+   (queue :initform (make-mutex)
+          :type mutex
+          :documentation "作業キュー保護用mutex")
+   (tasks :initform nil
+          :type list
+          :documentation "タスクキュー")))
 
-;; ✅ ネイティブコンパイル最適化マクロ
-(defmacro nskk-config (key)
-  "ネイティブコンパイル対応設定取得"
-  (if (eval-when-compile (constantp key))
-      ;; コンパイル時定数の場合は直接展開
-      `(quote ,(plist-get (symbol-value 'nskk--config) (eval key)))
-    ;; 実行時評価が必要な場合
-    `(plist-get nskk--config ,key)))
+(cl-defmethod nskk-thread-pool-execute ((pool nskk-thread-pool) task)
+  "スレッドプールでタスク実行"
+  (let ((thread (make-thread
+                 (lambda ()
+                   (condition-case err
+                       (funcall task)
+                     (error
+                      (message "Thread error: %s" err))))
+                 "nskk-worker")))
+    (push thread (oref pool workers))))
+
+;; 並列辞書検索の実装
+(defun nskk-parallel-dictionary-search (query)
+  "複数辞書を並列検索"
+  (let ((results (make-hash-table :test 'equal))
+        (mutex (make-mutex))
+        (condition (make-condition-variable))
+        (completed 0)
+        (total (length nskk-dictionaries)))
+
+    (dolist (dict nskk-dictionaries)
+      (make-thread
+       (lambda ()
+         (let ((dict-results (nskk-search-single-dictionary dict query)))
+           (with-mutex mutex
+             (puthash dict dict-results results)
+             (cl-incf completed)
+             (when (= completed total)
+               (condition-notify condition)))))))
+
+    ;; 全スレッド完了待機
+    (with-mutex mutex
+      (while (< completed total)
+        (condition-wait condition mutex)))
+
+    results))
 ```
 
-**🔥 Spacemacs use-package パターンの進化版**：
+### 1.3 Transient（モダンUI構築）
+
 ```elisp
-;; Spacemacs: use-package based
-(use-package some-package
-  :defer t
-  :init (setq var value)
-  :config (setup-function))
+;;; Transient活用による直感的UI
 
-;; NSKK: マクロベース純粋実装
-(defmacro nskk-defmodule (name &rest specs)
-  "ゼロ依存モジュール定義"
-  (let ((init-forms '())
-        (config-forms '())
-        (autoload-forms '()))
-    (dolist (spec specs)
-      (pcase spec
-        (`(:init . ,forms) (setq init-forms forms))
-        (`(:config . ,forms) (setq config-forms forms))
-        (`(:autoload . ,symbols)
-         (dolist (sym symbols)
-           (push `(autoload ',sym ,(symbol-name name)) autoload-forms)))))
+(require 'transient)
 
+(transient-define-prefix nskk-main-menu ()
+  "NSKK メインメニュー"
+  ["変換モード"
+   [("r" "ローマ字" nskk-mode-romaji)
+    ("a" "AZIK" nskk-mode-azik)
+    ("t" "TUT-code" nskk-mode-tut)]
+   [("k" "かな" nskk-mode-kana)
+    ("h" "ハイブリッド" nskk-mode-hybrid)]]
+
+  ["辞書管理"
+   [("d" "辞書選択" nskk-select-dictionary)
+    ("u" "辞書更新" nskk-update-dictionary)
+    ("s" "サーバー設定" nskk-server-config)]]
+
+  ["学習・統計"
+   :if nskk-learning-enabled-p
+   [("l" "学習設定" nskk-learning-config)
+    ("v" "統計表示" nskk-show-statistics)
+    ("o" "最適化実行" nskk-optimize-for-user)]]
+
+  ["高度な設定"
+   [("c" "カスタマイズ" nskk-customize)
+    ("p" "プラグイン" nskk-plugin-manager)
+    ("?" "ヘルプ" nskk-help)]])
+
+;; コンテキスト依存メニュー
+(transient-define-prefix nskk-context-menu ()
+  "文脈依存メニュー"
+  :transient-suffix 'transient--do-stay
+  [:description
+   (lambda () (format "現在の入力: %s" nskk-current-input))
+   [("SPC" "次候補" nskk-next-candidate)
+    ("x" "前候補" nskk-previous-candidate)
+    ("RET" "確定" nskk-commit)
+    ("q" "キャンセル" nskk-quit)]])
+```
+
+### 1.4 JSONRPCサポート（外部連携）
+
+```elisp
+;;; JSONRPC活用（外部依存ゼロで実装）
+
+(require 'jsonrpc)
+
+;; 辞書サーバークライアント実装
+(defclass nskk-jsonrpc-client (jsonrpc-connection)
+  ((dictionary-cache :initform (make-hash-table :test 'equal))))
+
+(cl-defmethod nskk-jsonrpc-search ((client nskk-jsonrpc-client) query)
+  "JSONRPCによる辞書検索"
+  (jsonrpc-request client 'search
+                   :params `(:query ,query
+                            :limit 100
+                            :timeout 1000)))
+
+;; 非同期リクエスト
+(cl-defmethod nskk-jsonrpc-async-search ((client nskk-jsonrpc-client)
+                                          query callback)
+  "非同期JSONRPC検索"
+  (jsonrpc-async-request
+   client 'search
+   :params `(:query ,query)
+   :success-fn callback
+   :error-fn (lambda (err)
+               (message "JSONRPC error: %s" err))))
+```
+
+## 2. マクロ駆使による極限最適化
+
+### 2.1 コンパイル時最適化マクロ
+
+```elisp
+;;; 高度なマクロテクニック
+
+;; 変換ルールのコンパイル時展開
+(defmacro nskk-define-conversion-rule (input output &rest options)
+  "変換ルールをコンパイル時に最適化"
+  (let ((optimized-code
+         (nskk--optimize-conversion-code input output options)))
     `(progn
-       ,@autoload-forms
-       (eval-when-compile ,@init-forms)
-       (with-eval-after-load ',name ,@config-forms))))
+       ;; ルールを直接関数として定義
+       (defsubst ,(intern (format "nskk-rule-%s" input)) ()
+         ,optimized-code)
+       ;; ハッシュテーブルにも登録
+       (puthash ,input #',(intern (format "nskk-rule-%s" input))
+                nskk-conversion-table))))
+
+;; 使用例
+(nskk-define-conversion-rule "ka" "か" :priority high)
+;; → コンパイル時に最適化された関数が生成される
+
+;; パフォーマンスクリティカルなループ展開
+(defmacro nskk-unroll-loop (var from to &rest body)
+  "ループ展開マクロ"
+  (if (<= (- to from) 10)  ; 10回以下なら展開
+      `(progn
+         ,@(cl-loop for i from from below to
+                    collect `(let ((,var ,i)) ,@body)))
+    ;; 大きなループは通常のループ
+    `(cl-loop for ,var from ,from below ,to
+              do (progn ,@body))))
+
+;; バイトコンパイル時定数畳み込み
+(defmacro nskk-const-fold (&rest exprs)
+  "定数式をコンパイル時に評価"
+  (if (cl-every #'constantp exprs)
+      (eval `(progn ,@exprs))
+    `(progn ,@exprs)))
 ```
 
-### 1.2 ゼロ依存アーキテクチャ 2.0
+### 2.2 DSL（Domain Specific Language）構築
 
-**🎯 純粋実装による完全独立**：
 ```elisp
-;; ✅ Emacs31標準機能フル活用
-(eval-when-compile
-  (require 'subr-x)      ; 文字列操作拡張
-  (require 'cl-lib)      ; Common Lisp拡張
-  (require 'seq)         ; シーケンス操作
-  (require 'map)         ; マップ操作
-  (require 'pcase)       ; パターンマッチング
-  (require 'rx)          ; 正規表現DSL
-  (require 'let-alist)   ; 連想リスト操作
-  (require 'tabulated-list) ; 表形式UI
-  (require 'generator))  ; ジェネレータ
+;;; NSKKドメイン特化言語
 
-;; ✅ Spacemacs風ヘルパーマクロの自作実装
-(defmacro nskk-|> (initial-value &rest forms)
-  "Spacemacs threading macro の純粋実装"
-  (seq-reduce (lambda (acc form)
-                (if (listp form)
-                    `(,(car form) ,acc ,@(cdr form))
-                  `(,form ,acc)))
-              forms
-              initial-value))
-
-;; 使用例：
-;; (nskk-|> "hello world"
-;;          (split-string)
-;;          (mapcar #'upcase)
-;;          (string-join "-"))
-;; → "HELLO-WORLD"
-
-;; ❌ 外部パッケージ依存（厳格禁止）
-;; (require 'dash)      ; 📛 禁止
-;; (require 's)         ; 📛 禁止
-;; (require 'f)         ; 📛 禁止
-```
-
-### 1.3 マクロファースト設計の進化
-
-**🧠 インテリジェント・マクロ戦略**：
-```elisp
-;; ✅ 実行時ゼロコスト設定アクセス
-(defmacro nskk-defconfig (name value &optional docstring)
-  "コンパイル時設定値バインディング"
+(defmacro nskk-define-input-method (name &rest specs)
+  "入力メソッド定義DSL"
   `(progn
-     (defconst ,(intern (format "nskk--%s" name)) ,value ,docstring)
-     (defmacro ,(intern (format "nskk-%s" name)) ()
-       "高速設定値取得"
-       ,(intern (format "nskk--%s" name)))))
+     (defvar ,(intern (format "nskk-%s-table" name))
+       (make-hash-table :test 'equal))
 
-;; 使用例：
-(nskk-defconfig conversion-timeout 100 "変換タイムアウト(ms)")
-(nskk-defconfig max-candidates 10 "最大候補数")
+     ,@(mapcar
+        (lambda (spec)
+          (pcase spec
+            (`(rule ,from ,to)
+             `(puthash ,from ,to
+                       ,(intern (format "nskk-%s-table" name))))
+            (`(inherit ,parent)
+             `(nskk--inherit-rules
+               ',(intern (format "nskk-%s-table" name))
+               ',(intern (format "nskk-%s-table" parent))))
+            (`(modifier ,key ,func)
+             `(define-key ,(intern (format "nskk-%s-map" name))
+                          ,key ',func))))
+        specs)
 
-;; 実行時コスト：0（コンパイル時に値が展開済み）
-(when (> elapsed (nskk-conversion-timeout))
-  (nskk-warn "変換処理が遅延"))
+     (defun ,(intern (format "nskk-%s-convert" name)) (input)
+       (gethash input ,(intern (format "nskk-%s-table" name))))))
 
-;; ✅ 型安全マクロによる堅牢性確保
-(defmacro nskk-defun-typed (name args return-type &rest body)
-  "型検査付き関数定義"
-  (let ((arg-checks (mapcar (lambda (arg)
-                              (when (consp arg)
-                                `(unless (,(cadr arg) ,(car arg))
-                                   (error "Type error: %s must be %s"
-                                          ',(car arg) ',(cadr arg)))))
-                            args)))
-    `(defun ,name ,(mapcar (lambda (arg) (if (consp arg) (car arg) arg)) args)
-       ,@(remove nil arg-checks)
-       (let ((result (progn ,@body)))
-         (unless (,return-type result)
-           (error "Return type error: expected %s, got %s"
-                  ',return-type (type-of result)))
-         result))))
-
-;; 使用例：
-(nskk-defun-typed nskk--add-score ((score numberp) (bonus numberp)) numberp
-  "スコア加算（型安全）"
-  (+ score bonus))
+;; 使用例
+(nskk-define-input-method azik
+  (inherit romaji)
+  (rule "z " "　")
+  (rule "z." "。")
+  (rule "z," "、")
+  (modifier "C-j" nskk-azik-special))
 ```
 
-### 2. ゼロ依存アーキテクチャ
+## 3. 外部依存ゼロの実現戦略
 
-外部パッケージに依存しない実装パターン：
+### 3.1 Pure Emacs Lisp実装パターン
 
 ```elisp
-;; ✅ Emacs標準機能のみ使用
-(require 'subr-x)    ; 文字列操作拡張
-(require 'cl-lib)    ; Common Lisp拡張
-(require 'seq)       ; シーケンス操作
-(require 'map)       ; マップ操作
-(require 'pcase)     ; パターンマッチング
+;;; 外部ライブラリを使わない実装テクニック
 
-;; ❌ 外部パッケージ依存（禁止）
-;; (require 'dash)
-;; (require 's)
+;; 独自HTTPクライアント（url.elのみ使用）
+(defun nskk-http-request (url &optional callback)
+  "外部依存なしのHTTPリクエスト"
+  (let ((url-request-method "GET")
+        (url-request-extra-headers '(("User-Agent" . "NSKK/1.0"))))
+    (if callback
+        ;; 非同期リクエスト
+        (url-retrieve url
+                      (lambda (status)
+                        (goto-char (point-min))
+                        (re-search-forward "^$")
+                        (funcall callback
+                                 (buffer-substring (point) (point-max))))
+                      nil t)
+      ;; 同期リクエスト
+      (with-current-buffer (url-retrieve-synchronously url)
+        (goto-char (point-min))
+        (re-search-forward "^$")
+        (buffer-substring (point) (point-max))))))
+
+;; 独自JSON parser（json.elのみ使用）
+(defun nskk-json-parse (string)
+  "最適化されたJSONパーサー"
+  (condition-case err
+      (json-parse-string string
+                         :object-type 'hash-table
+                         :array-type 'vector
+                         :null-object nil
+                         :false-object nil)
+    (json-parse-error
+     (nskk--fallback-json-parse string))))
+
+;; 独自暗号化（GnuTLS不要）
+(defun nskk-simple-encrypt (text key)
+  "簡易XOR暗号化"
+  (let ((key-len (length key)))
+    (concat
+     (cl-loop for i from 0 below (length text)
+              for c = (aref text i)
+              for k = (aref key (mod i key-len))
+              collect (logxor c k)))))
 ```
 
-### 3. パフォーマンス最優先
-
-1ms以下応答を実現するための最適化手法：
+### 3.2 Emacs標準機能の最大活用
 
 ```elisp
-;; ✅ 事前計算とキャッシング
-(defvar nskk--conversion-cache (make-hash-table :test 'equal)
-  "変換結果キャッシュ")
+;;; 標準機能を極限まで活用
 
-(defmacro nskk-with-cache (key computation)
-  "キャッシュ付き計算"
-  `(or (gethash ,key nskk--conversion-cache)
-       (puthash ,key ,computation nskk--conversion-cache)))
+;; overlayによる高度な表示制御
+(defun nskk-create-candidate-overlay (start end candidates)
+  "候補表示オーバーレイ"
+  (let ((ov (make-overlay start end)))
+    (overlay-put ov 'category 'nskk-candidate)
+    (overlay-put ov 'display
+                 (propertize (car candidates)
+                            'face 'nskk-candidate-face))
+    (overlay-put ov 'after-string
+                 (propertize
+                  (format " [%s]" (mapconcat #'identity
+                                             (cdr candidates) "/"))
+                  'face 'nskk-annotation-face))
+    ov))
 
-;; ✅ インライン関数（頻繁呼び出し）
-(defsubst nskk--char-hiragana-p (char)
-  "ひらがな文字判定（インライン）"
-  (and (>= char #x3041) (<= char #x3096)))
+;; text-propertyによるメタデータ管理
+(defun nskk-annotate-text (text metadata)
+  "テキストプロパティでメタデータ付与"
+  (propertize text
+              'nskk-metadata metadata
+              'nskk-timestamp (current-time)
+              'nskk-confidence (plist-get metadata :confidence)
+              'help-echo (plist-get metadata :description)))
+
+;; advice活用による既存関数拡張
+(define-advice self-insert-command (:around (orig-fun &rest args) nskk-intercept)
+  "NSKKによる入力インターセプト"
+  (if nskk-mode
+      (nskk-handle-self-insert last-command-event)
+    (apply orig-fun args)))
 ```
 
-## コーディング規約
+## 4. パフォーマンス最適化テクニック
 
-### 1. 命名規則
+### 4.1 メモリ効率化
 
 ```elisp
-;; 公開関数・変数：nskk- プレフィックス
-(defun nskk-activate ()
-  "NSKK有効化")
+;;; メモリ使用量最小化戦略
 
-(defvar nskk-dictionary-path nil
-  "辞書ファイルパス")
+;; オブジェクトプール実装
+(defclass nskk-object-pool ()
+  ((pool :initform nil
+         :type list)
+   (factory :initarg :factory
+            :type function)
+   (reset :initarg :reset
+          :type function)
+   (max-size :initarg :max-size
+             :initform 100
+             :type integer)))
 
-;; 内部関数・変数：nskk-- プレフィックス
-(defun nskk--process-input (char)
-  "内部：文字処理")
+(cl-defmethod nskk-pool-acquire ((pool nskk-object-pool))
+  "プールからオブジェクト取得"
+  (if-let ((obj (pop (oref pool pool))))
+      (progn
+        (funcall (oref pool reset) obj)
+        obj)
+    (funcall (oref pool factory))))
 
-(defvar nskk--state nil
-  "内部：状態管理")
+(cl-defmethod nskk-pool-release ((pool nskk-object-pool) obj)
+  "プールにオブジェクト返却"
+  (when (< (length (oref pool pool)) (oref pool max-size))
+    (push obj (oref pool pool))))
 
-;; 定数：nskk- プレフィックス + 大文字
-(defconst nskk-VERSION "1.0.0"
-  "NSKKバージョン")
+;; 文字列インターン
+(defvar nskk-string-pool (make-hash-table :test 'equal))
 
-;; 一時変数：明確な意味を持つ名前
-(let ((conversion-result (nskk--convert-romaji input))
-      (candidate-count (length candidates)))
-  ...)
+(defun nskk-intern-string (string)
+  "文字列インターン化"
+  (or (gethash string nskk-string-pool)
+      (puthash string string nskk-string-pool)))
+
+;; 弱参照によるキャッシュ
+(defvar nskk-weak-cache (make-hash-table :test 'equal :weakness 'value))
 ```
 
-### 2. 関数設計原則
-
-#### 単一責任の原則
+### 4.2 CPU最適化
 
 ```elisp
-;; ✅ 単一責任：ローマ字変換のみ
-(defun nskk--convert-romaji (input)
-  "ローマ字をひらがなに変換"
-  (nskk--apply-rules input nskk--romaji-rules))
+;;; CPU効率最大化
 
-;; ✅ 単一責任：候補表示のみ
-(defun nskk--display-candidates (candidates)
-  "候補リストを表示"
-  (when candidates
-    (nskk--show-popup (nskk--format-candidates candidates))))
+;; ホットパス最適化
+(defsubst nskk-fast-member (item list)
+  "最適化されたmember関数"
+  (declare (pure t) (side-effect-free t))
+  (catch 'found
+    (while list
+      (when (eq item (car list))
+        (throw 'found list))
+      (setq list (cdr list)))
+    nil))
 
-;; ❌ 複数責任（避ける）
-(defun nskk-convert-and-display (input)  ; 変換と表示を混在
-  ...)
+;; ビット演算活用
+(defsubst nskk-fast-hash (string)
+  "高速ハッシュ関数"
+  (let ((hash 5381))
+    (cl-loop for char across string
+             do (setq hash (logxor (ash hash 5) hash char)))
+    (logand hash #x7FFFFFFF)))
+
+;; SIMD風並列処理
+(defun nskk-parallel-map (function list)
+  "並列map実装"
+  (let ((chunk-size (/ (length list) (num-processors))))
+    (apply #'append
+           (mapcar
+            (lambda (chunk)
+              (let ((thread-result nil))
+                (make-thread
+                 (lambda ()
+                   (setq thread-result
+                         (mapcar function chunk))))
+                thread-result))
+            (nskk--split-list list chunk-size)))))
 ```
 
-#### 純粋関数の優先
+## 5. コーディング規約とスタイルガイド
+
+### 5.1 命名規則
 
 ```elisp
-;; ✅ 純粋関数（同じ入力→同じ出力）
-(defun nskk--calculate-score (candidate frequency context)
-  "候補スコア計算（副作用なし）"
-  (+ (* frequency 0.7) (* context 0.3)))
+;;; NSKKプロジェクト命名規則
 
-;; ✅ 副作用の明確化
-(defun nskk--update-learning-data! (candidate)
-  "学習データ更新（破壊的変更）"
-  (cl-incf (nskk--get-frequency candidate)))
+;; パッケージプレフィックス
+;; nskk-     : 公開API
+;; nskk--    : 内部関数（private）
+;; nskk---   : 内部マクロ専用
+
+;; 変数命名
+(defvar nskk-public-variable nil
+  "公開変数：ユーザーが設定可能")
+
+(defvar nskk--private-variable nil
+  "内部変数：直接触らない")
+
+(defconst nskk-constant-value 42
+  "定数：変更不可")
+
+;; 関数命名パターン
+(defun nskk-verb-noun ()
+  "動詞-名詞パターン：アクションを表す"
+  )
+
+(defun nskk-noun-p (obj)
+  "述語：真偽値を返す関数は-p suffix"
+  )
+
+(defun nskk-noun->other-noun (input)
+  "変換関数：->記法"
+  )
+
+;; カスタム変数
+(defcustom nskk-enable-feature t
+  "機能有効化フラグ"
+  :type 'boolean
+  :group 'nskk
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (boundp 'nskk-mode)
+           (nskk--refresh-feature))))
 ```
 
-### 3. マクロ設計ガイドライン
-
-#### 高性能マクロパターン
+### 5.2 ドキュメント規約
 
 ```elisp
-;; ✅ コンパイル時最適化マクロ
-(defmacro nskk-benchmark (name &rest body)
-  "ベンチマーク測定マクロ"
-  (let ((start-time (make-symbol "start"))
-        (result (make-symbol "result")))
-    `(if nskk-debug-mode
-         (let ((,start-time (current-time)))
-           (let ((,result (progn ,@body)))
-             (message "NSKK [%s]: %.3fms"
-                     ,name
-                     (* 1000 (float-time (time-subtract (current-time) ,start-time))))
-             ,result))
-       (progn ,@body))))
+;;; ドキュメント記述標準
 
-;; ✅ 状態管理マクロ
-(defmacro nskk-with-state-protection (&rest body)
-  "状態変更の保護"
-  `(let ((nskk--state-backup (copy-sequence nskk--state)))
+(defun nskk-example-function (input &optional flag &rest args)
+  "一行要約：関数の目的を簡潔に記述。
+
+詳細説明：
+この関数は入力INPUTを処理し、結果を返します。
+FLAGが非nilの場合、特別な処理を行います。
+ARGSは追加のオプション引数です。
+
+引数：
+  INPUT -- 処理対象の文字列
+  FLAG  -- (optional) 処理モードフラグ
+  ARGS  -- (optional) 追加オプション
+
+戻り値：
+  処理結果の文字列、またはnil
+
+使用例：
+  (nskk-example-function \"test\")
+  => \"TEST\"
+
+関連：
+  `nskk-related-function', `nskk-another-function'"
+  (when flag
+    (setq input (upcase input)))
+  (apply #'concat input args))
+
+;; マクロのドキュメント
+(defmacro nskk-with-environment (env &rest body)
+  "環境ENV内でBODYを実行。
+
+\(fn ENV BODY...)
+
+このマクロは以下のように展開されます：
+
+  (nskk-with-environment ((var1 val1) (var2 val2))
+    body-forms...)
+
+=>
+  (let ((var1 val1)
+        (var2 val2))
+    body-forms...)"
+  (declare (indent 1) (debug (sexp body)))
+  `(let ,env ,@body))
+```
+
+## 6. エラーハンドリングとデバッグ
+
+### 6.1 堅牢なエラーハンドリング
+
+```elisp
+;;; エラーハンドリングパターン
+
+;; カスタムエラー定義
+(define-error 'nskk-error "NSKK Error" 'error)
+(define-error 'nskk-conversion-error "Conversion Error" 'nskk-error)
+(define-error 'nskk-dictionary-error "Dictionary Error" 'nskk-error)
+
+;; エラーハンドリングマクロ
+(defmacro nskk-with-error-handling (&rest body)
+  "エラーを適切に処理"
+  `(condition-case err
+       (progn ,@body)
+     (nskk-conversion-error
+      (nskk--handle-conversion-error err))
+     (nskk-dictionary-error
+      (nskk--handle-dictionary-error err))
+     (error
+      (nskk--handle-generic-error err))))
+
+;; リトライ機構
+(defmacro nskk-with-retry (max-attempts delay &rest body)
+  "リトライ機構付き実行"
+  (let ((attempt (gensym))
+        (result (gensym))
+        (err (gensym)))
+    `(let ((,attempt 0)
+           (,result nil))
+       (while (< ,attempt ,max-attempts)
+         (condition-case ,err
+             (progn
+               (setq ,result (progn ,@body))
+               (setq ,attempt ,max-attempts))
+           (error
+            (cl-incf ,attempt)
+            (when (< ,attempt ,max-attempts)
+              (sleep-for ,delay)
+              (message "Retry %d/%d: %s"
+                      ,attempt ,max-attempts
+                      (error-message-string ,err))))))
+       ,result)))
+```
+
+### 6.2 デバッグ支援
+
+```elisp
+;;; デバッグユーティリティ
+
+;; トレースマクロ
+(defmacro nskk-trace (expr)
+  "式の評価をトレース"
+  `(let ((result ,expr))
+     (message "TRACE: %s => %s" ',expr result)
+     result))
+
+;; プロファイリング
+(defmacro nskk-profile (name &rest body)
+  "実行時間計測"
+  `(let ((start-time (current-time)))
+     (prog1
+         (progn ,@body)
+       (message "Profile [%s]: %.3f ms"
+               ,name
+               (* 1000 (float-time
+                       (time-subtract (current-time)
+                                     start-time)))))))
+
+;; アサーション
+(defmacro nskk-assert (condition &optional message)
+  "開発時アサーション"
+  (when nskk-debug-mode
+    `(unless ,condition
+       (error "Assertion failed: %s"
+              ,(or message (format "%s" condition))))))
+```
+
+## 7. テスト駆動開発
+
+### 7.1 単体テストフレームワーク
+
+```elisp
+;;; ERTを活用した包括的テスト
+
+(require 'ert)
+
+;; テストヘルパー
+(defmacro nskk-deftest (name &rest body)
+  "NSKKテスト定義マクロ"
+  `(ert-deftest ,(intern (format "nskk-test-%s" name)) ()
+     (nskk-with-test-environment
+       ,@body)))
+
+(defmacro nskk-with-test-environment (&rest body)
+  "テスト環境セットアップ"
+  `(let ((nskk-test-mode t)
+         (nskk-dictionaries (nskk--create-test-dictionaries))
+         (nskk-cache (make-hash-table :test 'equal)))
      (unwind-protect
          (progn ,@body)
-       (unless (nskk--state-valid-p)
-         (setq nskk--state nskk--state-backup)))))
+       (nskk--cleanup-test-environment))))
+
+;; 実際のテスト例
+(nskk-deftest basic-conversion
+  "基本変換のテスト"
+  (should (equal (nskk-convert "aiueo") "あいうえお"))
+  (should (equal (nskk-convert "kanji") "かんじ"))
+  (should-not (nskk-convert "invalid")))
+
+;; プロパティベーステスト
+(defun nskk-generate-random-input ()
+  "ランダム入力生成"
+  (apply #'string
+         (cl-loop repeat (1+ (random 20))
+                  collect (+ ?a (random 26)))))
+
+(nskk-deftest property-based-conversion
+  "プロパティベース変換テスト"
+  (cl-loop repeat 100
+           for input = (nskk-generate-random-input)
+           do (should (stringp (nskk-convert input)))))
 ```
 
-#### マクロ衛生性
+## 8. 最適化チェックリスト
+
+### 8.1 パフォーマンスチェックリスト
 
 ```elisp
-;; ✅ gensymによる変数衝突回避
-(defmacro nskk-with-temp-buffer (buffer-name &rest body)
-  "一時バッファ内での実行"
-  (let ((buf (make-symbol "temp-buffer")))
-    `(let ((,buf (get-buffer-create ,buffer-name)))
-       (with-current-buffer ,buf
-         (unwind-protect
-             (progn ,@body)
-           (kill-buffer ,buf))))))
-```
+;;; パフォーマンス最適化確認項目
 
-### 4. データ構造設計
+;; ✅ ネイティブコンパイル有効化
+(cl-assert (native-comp-available-p))
 
-#### 高性能データ構造
+;; ✅ 適切なコンパイルフラグ
+(cl-assert (= native-comp-speed 3))
 
-```elisp
-;; ✅ トライ木構造（前方一致検索用）
-(defun nskk--make-trie ()
-  "トライ木ノード作成"
-  (list :children nil :value nil :terminal nil))
+;; ✅ ホットパス関数のインライン化
+(cl-assert (subrp (symbol-function 'nskk-hot-function)))
 
-(defun nskk--trie-insert (trie key value)
-  "トライ木挿入（破壊的でない）"
-  (if (null key)
-      (plist-put (copy-sequence trie) :value value)
-    (let* ((char (car key))
-           (children (plist-get trie :children))
-           (child (nskk--alist-get char children)))
-      (nskk--make-node
-       :children (nskk--alist-put char
-                                  (nskk--trie-insert child (cdr key) value)
-                                  children)
-       :value (plist-get trie :value)))))
+;; ✅ マクロの適切な使用
+(cl-assert (macrop 'nskk-define-conversion-rule))
 
-;; ✅ 候補構造体（性能重視）
-(cl-defstruct (nskk-candidate (:constructor nskk--make-candidate)
-                               (:copier nil))
-  text           ; 候補文字列
-  reading        ; 読み
-  score          ; スコア（学習ベース）
-  source         ; 辞書ソース
-  metadata)      ; メタデータ
-```
+;; ✅ キャッシュの実装
+(cl-assert (hash-table-p nskk-cache))
 
-#### メモリ効率最適化
+;; ✅ 文字列インターン
+(cl-assert (eq (nskk-intern-string "test")
+              (nskk-intern-string "test")))
 
-```elisp
 ;; ✅ オブジェクトプール
-(defvar nskk--candidate-pool nil
-  "候補オブジェクトプール")
+(cl-assert (nskk-object-pool-p nskk-candidate-pool))
 
-(defun nskk--get-candidate ()
-  "プールから候補オブジェクトを取得"
-  (or (pop nskk--candidate-pool)
-      (nskk--make-candidate)))
+;; ✅ 非同期処理
+(cl-assert (threadp (nskk-async-operation test)))
 
-(defun nskk--return-candidate (candidate)
-  "候補オブジェクトをプールに返却"
-  (when candidate
-    (setf (nskk-candidate-text candidate) nil
-          (nskk-candidate-reading candidate) nil
-          (nskk-candidate-score candidate) 0)
-    (push candidate nskk--candidate-pool)))
+;; ✅ メモリ効率
+(cl-assert (< (nskk-memory-usage) (* 20 1024 1024))) ; 20MB以下
+
+;; ✅ 応答時間
+(cl-assert (< (nskk-measure-response-time) 1.0)) ; 1ms以下
 ```
 
-### 5. エラーハンドリング戦略
+## 9. 結論：世界最高峰のEmacs Lisp実装へ
 
-#### グレースフルデグラデーション
+NSKKは、以下のベストプラクティスにより、Emacs Lispの可能性を極限まで引き出します：
 
-```elisp
-;; ✅ 段階的機能縮退
-(defun nskk--load-dictionary-safe (path)
-  "安全な辞書読み込み"
-  (condition-case err
-      (nskk--load-dictionary path)
-    (file-error
-     (nskk--warn "辞書ファイルが見つかりません: %s" path)
-     (nskk--use-fallback-dictionary))
-    (error
-     (nskk--warn "辞書読み込みエラー: %s" err)
-     nil)))
+### 技術的卓越性
+1. **Emacs 31最新機能の完全活用**
+2. **マクロによる極限最適化**
+3. **外部依存ゼロの純粋実装**
 
-;; ✅ エラー分類と適切な対応
-(defun nskk--handle-conversion-error (err input)
-  "変換エラーの分類・対応"
-  (pcase (car err)
-    ('dictionary-error
-     (nskk--fallback-romaji-only input))
-    ('memory-error
-     (nskk--emergency-gc)
-     (nskk--retry-with-reduced-cache input))
-    ('encoding-error
-     (nskk--normalize-input input)
-     (nskk--retry-conversion input))
-    (_
-     (nskk--log-unexpected-error err input)
-     input)))
-```
+### パフォーマンスの極致
+1. **ネイティブコンパイル最適化**
+2. **並列処理の活用**
+3. **メモリ効率の最大化**
 
-### 6. 非同期処理パターン
+### 品質保証
+1. **包括的テスト戦略**
+2. **堅牢なエラーハンドリング**
+3. **継続的パフォーマンス監視**
 
-#### Emacs標準での非同期実装
-
-```elisp
-;; ✅ タイマーベース非同期処理
-(defvar nskk--async-queue nil
-  "非同期タスクキュー")
-
-(defun nskk-async-execute (task &optional priority)
-  "非同期タスク実行"
-  (let ((item (list :task task :priority (or priority 0))))
-    (setq nskk--async-queue
-          (nskk--insert-by-priority item nskk--async-queue))
-    (unless (timerp nskk--async-timer)
-      (setq nskk--async-timer
-            (run-with-idle-timer 0.001 t #'nskk--process-async-queue)))))
-
-;; ✅ アイドル時処理
-(defun nskk--schedule-background-task (task)
-  "バックグラウンドタスクのスケジューリング"
-  (run-with-idle-timer 1.0 nil task))
-```
-
-### 7. パフォーマンス測定とプロファイリング
-
-#### 組み込みベンチマークシステム
-
-```elisp
-;; ✅ パフォーマンス測定フレームワーク
-(defvar nskk--performance-data (make-hash-table :test 'equal)
-  "パフォーマンスデータ")
-
-(defmacro nskk-measure-performance (name &rest body)
-  "パフォーマンス測定"
-  (let ((start (make-symbol "start"))
-        (result (make-symbol "result"))
-        (elapsed (make-symbol "elapsed")))
-    `(let* ((,start (current-time))
-            (,result (progn ,@body))
-            (,elapsed (float-time (time-subtract (current-time) ,start))))
-       (nskk--record-performance ,name ,elapsed)
-       ,result)))
-
-(defun nskk--record-performance (name elapsed)
-  "パフォーマンス記録"
-  (let ((data (gethash name nskk--performance-data)))
-    (puthash name
-             (if data
-                 (list :count (1+ (plist-get data :count))
-                       :total (+ elapsed (plist-get data :total))
-                       :avg (/ (+ elapsed (plist-get data :total))
-                              (1+ (plist-get data :count))))
-               (list :count 1 :total elapsed :avg elapsed))
-             nskk--performance-data)))
-```
-
-### 8. テスト可能設計
-
-#### 依存注入パターン
-
-```elisp
-;; ✅ テスト用の依存注入
-(defvar nskk--dictionary-provider #'nskk--load-system-dictionary
-  "辞書プロバイダー関数")
-
-(defun nskk--search-dictionary (key)
-  "辞書検索（テスト可能）"
-  (let ((dictionary (funcall nskk--dictionary-provider)))
-    (nskk--lookup dictionary key)))
-
-;; テスト時のモック
-(defun nskk--test-dictionary-provider ()
-  "テスト用辞書プロバイダー"
-  '(("test" . ("テスト"))))
-```
-
-#### インターフェース設計
-
-```elisp
-;; ✅ プロトコル定義
-(defun nskk--dictionary-provider-p (provider)
-  "辞書プロバイダーの検証"
-  (and (functionp provider)
-       (ignore-errors
-         (let ((result (funcall provider)))
-           (and (listp result)
-                (or (null result)
-                    (and (consp (car result))
-                         (stringp (caar result)))))))))
-```
-
-## パフォーマンス最適化技法
-
-### 1. コンパイル時最適化
-
-```elisp
-;; ✅ 定数畳み込み
-(defmacro nskk-define-conversion-rule (from to)
-  "変換ルール定義（コンパイル時計算）"
-  `(push (cons ,from ,to) nskk--conversion-rules))
-
-;; ✅ ループ展開
-(defmacro nskk-setup-basic-rules ()
-  "基本ルール設定（展開済み）"
-  `(progn
-     ,@(mapcar (lambda (rule)
-                 `(nskk-define-conversion-rule ,(car rule) ,(cdr rule)))
-               '(("a" . "あ") ("i" . "い") ("u" . "う") ("e" . "え") ("o" . "お")))))
-```
-
-### 2. 実行時最適化
-
-```elisp
-;; ✅ 遅延評価
-(defvar nskk--large-dictionary nil)
-
-(defun nskk--get-large-dictionary ()
-  "大容量辞書の遅延読み込み"
-  (or nskk--large-dictionary
-      (setq nskk--large-dictionary
-            (nskk--load-large-dictionary))))
-
-;; ✅ メモ化
-(defmacro nskk-defun-memoized (name args &rest body)
-  "メモ化関数定義"
-  (let ((cache (make-symbol "cache")))
-    `(let ((,cache (make-hash-table :test 'equal)))
-       (defun ,name ,args
-         (let ((key (list ,@args)))
-           (or (gethash key ,cache)
-               (puthash key (progn ,@body) ,cache)))))))
-```
-
-### 3. メモリ管理最適化
-
-```elisp
-;; ✅ 弱参照によるキャッシュ
-(defvar nskk--weak-cache (make-hash-table :test 'equal :weakness 'value)
-  "弱参照キャッシュ")
-
-;; ✅ ガベージコレクション制御
-(defun nskk--with-gc-optimization (func)
-  "GC最適化付き実行"
-  (let ((gc-cons-threshold most-positive-fixnum))
-    (unwind-protect
-        (funcall func)
-      (garbage-collect))))
-```
-
-## 実装チェックリスト
-
-### ✅ コード品質
-- [ ] 命名規則に準拠している
-- [ ] 単一責任の原則を守っている
-- [ ] 純粋関数を優先している
-- [ ] 適切なエラーハンドリングが実装されている
-- [ ] テスト可能な設計になっている
-
-### ✅ パフォーマンス
-- [ ] マクロによるコンパイル時最適化を活用している
-- [ ] 頻繁な処理にインライン関数を使用している
-- [ ] キャッシュ機能を実装している
-- [ ] メモリ効率が考慮されている
-- [ ] ベンチマーク測定が組み込まれている
-
-### ✅ 保守性
-- [ ] ドキュメント文字列が完備されている
-- [ ] 型情報が明記されている（可能な場合）
-- [ ] 関数の契約（前提条件・事後条件）が明確
-- [ ] ログ・デバッグ機能が適切に実装されている
-
-### ✅ 外部依存ゼロ
-- [ ] Emacs標準機能のみを使用している
-- [ ] 外部パッケージに依存していない
-- [ ] プラットフォーム固有の機能を避けている
-
-## 結論
-
-これらのベストプラクティスを遵守することで、NSKKは：
-
-1. **圧倒的パフォーマンス**: 1ms以下の応答時間
-2. **究極の保守性**: 可読性とテスト可能性
-3. **完全な独立性**: 外部依存ゼロ
-4. **無限の拡張性**: プラグイン対応アーキテクチャ
-
-を実現し、真に世界最高峰のSKK実装となります。
-
-コードレビュー時は、このガイドラインとの整合性を必ず確認し、一切の妥協なく品質を追求してください。
+**これらのベストプラクティスの結晶として、NSKKは世界最高峰の日本語入力システムを実現します。**
