@@ -2,13 +2,13 @@
 
 ## 概要
 
-NSKK（Next-generation Simple Kana-to-Kanji conversion program）のドキュメント体系へようこそ。このドキュメント群は[Diátaxis](https://diataxis.fr/)フレームワークに基づいて構成され、初心者から上級者まで、学習から実践まで、あらゆるニーズを網羅しています。
+NSKK（Next-generation Simple Kana-to-Kanji conversion program）のドキュメント体系へようこそ。このドキュメント群は[Diátaxis](https://diataxis.fr/)フレームワークに基づいて構成され、初心者から上級者まで、学習から実践まで、幅広いニーズに対応しています。
 
 ### 主要特徴
-- **包括性**: ddskk、skkeletonの全機能を網羅
-- **実践性**: 段階的学習からプロ級カスタマイズまで対応
-- **技術深度**: マクロ駆使から外部依存ゼロまでの技術解説
-- **品質保証**: TDD/PBTからベンチマークまで完備
+- **網羅性**: ddskk、skkeletonの機能を幅広く対応
+- **実践性**: 段階的学習から高度なカスタマイズまで対応
+- **技術深度**: マクロ活用から外部依存ゼロまでの技術解説
+- **品質保証**: TDD/PBTからベンチマークまでの仕組み
 - **視覚化**: mermaidダイアグラムによる理解促進
 
 ### ドキュメント品質指標
@@ -34,20 +34,20 @@ graph LR
 
 ```
 docs/
-├── DOCUMENTATION_MAP.md          # 完全ナビゲーションガイド
+├── DOCUMENTATION_MAP.md          # ナビゲーションガイド
 ├── README.md                     # このファイル
 ├── tutorial/                     # チュートリアル（学習指向）
-│   └── getting-started.md        # 初心者向け完全ガイド
+│   └── getting-started.md        # 初心者向けガイド
 ├── how-to/                       # ハウツーガイド（問題解決指向）
 │   ├── customize-input-behavior.md   # 入力動作カスタマイズ
 │   ├── advanced-customization.md    # 高度カスタマイゼーション
 │   └── contributing.md             # コントリビューションガイド
 ├── reference/                    # リファレンス（情報指向）
-│   └── api-reference.md            # API完全仕様
+│   └── api-reference.md            # API仕様
 └── explanation/                  # 解説（理解指向）
     ├── design-philosophy.md         # 設計哲学
     ├── comprehensive-architecture-overview.md  # 総合アーキテクチャ
-    ├── skk-comprehensive-feature-analysis.md   # SKK機能包括分析
+    ├── skk-comprehensive-feature-analysis.md   # SKK機能分析
     ├── zero-dependency-strategy.md   # 外部依存ゼロ戦略
     ├── emacs-lisp-best-practices.md # Emacs Lispベストプラクティス
     ├── performance-benchmarks.md     # パフォーマンス・ベンチマーク
@@ -62,7 +62,7 @@ docs/
 ```mermaid
 graph TD
     subgraph "学習指向 (Tutorial)"
-        T1[getting-started.md<br/>初心者向け完全ガイド]
+        T1[getting-started.md<br/>初心者向けガイド]
     end
 
     subgraph "問題解決指向 (How-to)"
@@ -72,7 +72,7 @@ graph TD
     end
 
     subgraph "情報指向 (Reference)"
-        R1[api-reference.md<br/>API完全仕様]
+        R1[api-reference.md<br/>API仕様]
     end
 
     subgraph "理解指向 (Explanation)"
@@ -114,7 +114,7 @@ graph TD
 ### Reference（リファレンス）
 - **目的**: 機能や設定の詳細な仕様情報
 - **対象**: 具体的な情報を探している経験豊富なユーザー
-- **内容**: API、設定オプション、関数の完全な仕様
+- **内容**: API、設定オプション、関数の仕様
 
 ### Explanation（解説）
 - **目的**: NSKKの設計思想や背景理論の理解
@@ -125,7 +125,7 @@ graph TD
 
 ### 🚀 初心者向け（NSKKを始める）
 
-**最適な学習パス**：
+**学習パス**：
 1. 📚 [**ドキュメントマップ**](DOCUMENTATION_MAP.md) - 全体像把握
 2. 🎓 [**初心者チュートリアル**](tutorial/getting-started.md) - ステップバイステップ学習
 3. 🎯 [**入力動作カスタマイズ**](how-to/customize-input-behavior.md) - 個人設定
@@ -136,7 +136,7 @@ graph TD
 **推奨順序**：
 1. 🏢 [**総合アーキテクチャ**](explanation/comprehensive-architecture-overview.md) - システム全体把握
 2. ⚙️ [**高度カスタマイゼーション**](how-to/advanced-customization.md) - 詳細設定
-3. 🔬 [**SKK機能包括分析**](explanation/skk-comprehensive-feature-analysis.md) - 利用可能全機能
+3. 🔬 [**SKK機能分析**](explanation/skk-comprehensive-feature-analysis.md) - 利用可能機能
 4. 🚀 [**パフォーマンス最適化**](explanation/performance-optimization.md) - 高速化テクニック
 5. 🔌 [**拡張可能アーキテクチャ**](explanation/extensible-architecture.md) - プラグイン開発
 
@@ -147,7 +147,7 @@ graph TD
 2. 💎 [**Emacs Lispベストプラクティス**](explanation/emacs-lisp-best-practices.md) - コーディング規約
 3. 🧪 [**TDD/PBT戦略**](explanation/tdd-pbt-strategy.md) - テスト手法
 4. ⌚ [**パフォーマンスベンチマーク**](explanation/performance-benchmarks.md) - 性能評価
-5. 🏰 [**マクロアーキテクチャ**](explanation/macro-architecture.md) - 高度実装技術
+5. 🏰 [**マクロアーキテクチャ**](explanation/macro-architecture.md) - 実装技術
 6. 🎯 [**外部依存ゼロ戦略**](explanation/zero-dependency-strategy.md) - 独立性維持
 
 ### 🏢 上級者・研究者向け（深層理解）
@@ -172,16 +172,16 @@ graph TD
 ### 品質保証項目
 - **明確性**: 各ドキュメントの目的と対象を明確に定義
 - **一貫性**: 統一されたスタイルと構造
-- **完全性**: 必要な情報の100%網羅
+- **完全性**: 必要な情報の網羅
 - **正確性**: 最新で正確な情報の提供
 - **使いやすさ**: 検索可能で構造化された情報
 - **実用性**: 実際の使用シナリオに基づくコンテンツ
 
 ### 特徴的な強み
-1. **包括性**: SKK機能からアーキテクチャまで完全網羅
-2. **実践性**: 段階的学習からプロ級カスタマイズまで対応
-3. **技術深度**: マクロ駆使から外部依存ゼロまでの技術解説
-4. **品質保証**: TDD/PBTからベンチマークまで完備
+1. **網羅性**: SKK機能からアーキテクチャまで幅広く対応
+2. **実践性**: 段階的学習からカスタマイズまで対応
+3. **技術深度**: マクロ活用から外部依存ゼロまでの技術解説
+4. **品質保証**: TDD/PBTからベンチマークまでの仕組み
 5. **視覚化**: mermaidダイアグラムによる理解促進
 
 ## 使用ガイドライン
@@ -189,7 +189,7 @@ graph TD
 ### 初回訪問者への推奨
 1. **まずは[DOCUMENTATION_MAP.md](DOCUMENTATION_MAP.md)を読んでください**
 2. あなたのレベルと目的に合ったパスを選択
-3. 各ドキュメントの前書きで最適な読み順を確認
+3. 各ドキュメントの前書きで読み順を確認
 
 ### クイックアクセス
 - **急いで問題解決したい** → [How-toガイド](how-to/)
@@ -201,4 +201,4 @@ graph TD
 
 **🚀 Welcome to the NSKK Documentation Universe!**
 
-NSKKの機能を、この包括的ドキュメント体系で最大限に活用してください。
+NSKKの機能を、このドキュメント体系で活用してください。

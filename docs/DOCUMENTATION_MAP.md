@@ -2,7 +2,7 @@
 
 ## 概要
 
-このドキュメントは、NSKKの包括的ドキュメント体系への完全なナビゲーションガイドです。[Diátaxisフレームワーク](https://diataxis.fr/)に基づいて体系化された全ドキュメントを、ユーザーの目的とレベルに応じて効率的に見つけることができます。
+このドキュメントは、NSKKのドキュメント体系へのナビゲーションガイドです。[Diátaxisフレームワーク](https://diataxis.fr/)に基づいて体系化されたドキュメントを、ユーザーの目的とレベルに応じて見つけることができます。
 
 ## Diátaxis分類による文書体系
 
@@ -14,24 +14,24 @@ graph TB
 
     subgraph "問題解決指向 (How-to)"
         H1[customize-input-behavior.md<br/>入力動作カスタマイズ]
-        H2[advanced-customization.md<br/>高度カスタマイゼーション]
+        H2[advanced-customization.md<br/>カスタマイゼーション]
         H3[contributing.md<br/>コントリビューションガイド]
     end
 
     subgraph "情報指向 (Reference)"
-        R1[api-reference.md<br/>API完全仕様]
+        R1[api-reference.md<br/>API仕様]
     end
 
     subgraph "理解指向 (Explanation)"
         E1[design-philosophy.md<br/>設計哲学]
         E2[comprehensive-architecture-overview.md<br/>総合アーキテクチャ]
-        E3[skk-comprehensive-feature-analysis.md<br/>SKK機能包括分析]
+        E3[skk-comprehensive-feature-analysis.md<br/>SKK機能分析]
         E4[zero-dependency-strategy.md<br/>外部依存ゼロ戦略]
         E5[emacs-lisp-best-practices.md<br/>Emacs Lispベストプラクティス]
         E6[performance-benchmarks.md<br/>パフォーマンス・ベンチマーク]
         E7[tdd-pbt-strategy.md<br/>TDD/PBT戦略]
         E8[macro-architecture.md<br/>マクロアーキテクチャ]
-        E9[performance-optimization.md<br/>パフォーマンス最適化]
+        E9[performance-optimization.md<br/>パフォーマンス調整]
         E10[extensible-architecture.md<br/>拡張可能アーキテクチャ]
     end
 
@@ -72,7 +72,7 @@ graph TB
    ↓ システム全体を把握
 2. ⚙️ [高度カスタマイゼーション](how-to/advanced-customization.md)
    ↓ 詳細設定をマスター
-3. 🔬 [SKK機能包括分析](explanation/skk-comprehensive-feature-analysis.md)
+3. 🔬 [SKK機能分析](explanation/skk-comprehensive-feature-analysis.md)
    ↓ 利用可能な全機能を理解
 4. 🚀 [パフォーマンス最適化](explanation/performance-optimization.md)
    ↓ 高速化テクニックを適用
@@ -101,13 +101,13 @@ graph TB
 
 ### 🏢 上級者・研究者向け（深層理解）
 
-**目標**: NSKKの技術的深層を完全理解し、改善を提案
+**目標**: NSKKの技術的深層を理解し、改善を提案
 
 ```
 すべてのExplanationドキュメントを読破:
 1. [設計哲学](explanation/design-philosophy.md)
 2. [総合アーキテクチャ概観](explanation/comprehensive-architecture-overview.md)
-3. [SKK機能包括分析](explanation/skk-comprehensive-feature-analysis.md)
+3. [SKK機能分析](explanation/skk-comprehensive-feature-analysis.md)
 4. [外部依存ゼロ戦略](explanation/zero-dependency-strategy.md)
 5. [Emacs Lispベストプラクティス](explanation/emacs-lisp-best-practices.md)
 6. [パフォーマンス・ベンチマーク](explanation/performance-benchmarks.md)
@@ -163,10 +163,10 @@ graph TB
 
 ### 🎯 特徴的な強み
 
-1. **包括性**: SKK機能からアーキテクチャまで完全網羅
-2. **実践性**: 段階的学習からプロ級カスタマイズまで対応
-3. **技術深度**: マクロ駆使から外部依存ゼロまでの技術解説
-4. **品質保証**: TDD/PBTからベンチマークまで完備
+1. **網羅性**: SKK機能からアーキテクチャまで幅広く対応
+2. **実践性**: 段階的学習から高度なカスタマイズまで対応
+3. **技術深度**: マクロ活用から外部依存ゼロまでの技術解説
+4. **品質保証**: TDD/PBTからベンチマークまでの仕組み
 5. **視覚化**: mermaidダイアグラムによる理解促進
 
 ## 学習パス推奨
@@ -216,7 +216,7 @@ flowchart TD
 ### 📈 習熟度別目標設定
 
 #### レベル1: 基本ユーザー (10時間)
-- ✅ 基本操作の完全習得
+- ✅ 基本操作の習得
 - ✅ 設定ファイルのカスタマイズ
 - ✅ 日常利用での快適性確保
 
@@ -257,21 +257,21 @@ flowchart TD
 
 NSKKドキュメント体系は、以下を実現しています：
 
-### ✅ 完全性
-- SKK機能からアーキテクチャまで100%網羅
-- 初心者から上級者まで全レベル対応
-- 学習・実践・参照・理解の全目的をサポート
+### ✅ 網羅性
+- SKK機能からアーキテクチャまで幅広く対応
+- 初心者から上級者まで各レベルに対応
+- 学習・実践・参照・理解の目的をサポート
 
 ### ✅ 実用性
 - 段階的学習パスの提供
 - 目的別クイックアクセス
 - 実践的な例とテンプレート
 
-### ✅ 技術的優秀性
-- 最新ベストプラクティスの反映
-- 高水準の技術実装
+### ✅ 技術的品質
+- ベストプラクティスの反映
+- 技術実装の説明
 - 継続的品質改善体制
 
-このドキュメントマップを活用して、あなたの目的と現在のレベルに最適な学習・実践パスを見つけ、NSKKの真の力を最大限に引き出してください。
+このドキュメントマップを活用して、あなたの目的と現在のレベルに適した学習・実践パスを見つけ、NSKKの機能を活用してください。
 
 **🚀 Welcome to the NSKK Documentation Universe!**

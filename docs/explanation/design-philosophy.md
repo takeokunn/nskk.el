@@ -2,17 +2,17 @@
 
 ## 設計理念
 
-NSKKは高性能なSKK実装を実現するために、ddskkとskkeletonの精華を結集し、以下の核心的な設計理念に基づいて開発されています。
+NSKKはSKK実装を実現するために、ddskkとskkeletonの要素を参考にし、以下の設計理念に基づいて開発されています。
 
 ### ddskk/skkeletonからの学び
 
-**ddskkの良い要素**：
+**ddskkの要素**：
 - 30年以上の成熟した機能
 - Emacsネイティブな最適化
 - 包括的な入力方式サポート
 - 豊富なカスタマイゼーション
 
-**skkeletonの優れた要素**：
+**skkeletonの要素**：
 - TypeScript品質のモジュラー設計
 - 非同期処理による応答性
 - 現代的なプラグインアーキテクチャ
@@ -21,8 +21,8 @@ NSKKは高性能なSKK実装を実現するために、ddskkとskkeletonの精�
 **NSKKの統合戦略**：
 ```mermaid
 graph LR
-    DDSKK[成熟した機能] --> NSKK[高性能<br/>SKK実装]
-    SKEL[革新的設計] --> NSKK
+    DDSKK[成熟した機能] --> NSKK[SKK実装]
+    SKEL[設計] --> NSKK
     ZERO[ゼロ依存] --> NSKK
     MACRO[マクロ最適化] --> NSKK
 ```
@@ -52,7 +52,7 @@ graph TD
 
 **速度は品質の一部である**
 
-入力メソッドにおいて、反応速度は直接的にユーザー体験を左右します。NSKKはddskkの2倍、skkeleton相当の高速化を目標としています：
+入力メソッドにおいて、反応速度は直接的にユーザー体験を左右します。NSKKはddskkを上回る速度を目標としています：
 
 **具体的パフォーマンス目標**：
 - **ローマ字変換**: < 0.1ms（ddskk: ~0.5ms）
