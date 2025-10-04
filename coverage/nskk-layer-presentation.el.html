@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Coverage: nskk-layer-presentation.el</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Monaco', 'Courier New', monospace; background: #f5f5f5; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; }
+    .header h1 { font-size: 24px; margin-bottom: 10px; }
+    .header .stats { font-size: 14px; opacity: 0.9; }
+    .header a { color: white; text-decoration: underline; }
+    .container { max-width: 1400px; margin: 20px auto; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; font-family: 'Monaco', 'Courier New', monospace; font-size: 13px; }
+    td.line-number { background: #f0f0f0; color: #666; padding: 2px 10px; text-align: right; border-right: 2px solid #ddd; user-select: none; width: 60px; }
+    td.line-content { padding: 2px 10px; white-space: pre; }
+    tr.covered { background: #e8f5e9; }
+    tr.uncovered { background: #ffebee; }
+    tr.onevalue { background: #fff3e0; }
+    tr.noreturn { background: #f3e5f5; }
+    tr:hover { opacity: 0.9; }
+    .legend { padding: 15px 30px; background: #fafafa; border-top: 1px solid #e0e0e0; font-size: 12px; }
+    .legend-item { display: inline-block; margin-right: 20px; }
+    .legend-color { display: inline-block; width: 20px; height: 12px; margin-right: 5px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div class='header'>
+    <h1>nskk-layer-presentation.el</h1>
+    <div class='stats'>
+      Coverage: 48.13% (167/347 forms) •
+      <a href='index.html'>← Back to Index</a>
+    </div>
+  </div>
+  <div class='container'>
+    <table>
+<tr class=''><td class='line-number'>1</td><td class='line-content'>;;; nskk-layer-presentation.el --- Presentation Layer for NSKK -*- lexical-binding: t; -*-</td></tr>
+<tr class=''><td class='line-number'>2</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>3</td><td class='line-content'>;; Copyright (C) 2025 NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>4</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>5</td><td class='line-content'>;; Author: NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>6</td><td class='line-content'>;; Keywords: japanese, input method, skk, architecture</td></tr>
+<tr class=''><td class='line-number'>7</td><td class='line-content'>;; Version: 0.1.0</td></tr>
+<tr class=''><td class='line-number'>8</td><td class='line-content'>;; Package-Requires: ((emacs &amp;quot;31.0&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>9</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>10</td><td class='line-content'>;; This file is part of NSKK.</td></tr>
+<tr class=''><td class='line-number'>11</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>12</td><td class='line-content'>;; NSKK is free software: you can redistribute it and/or modify</td></tr>
+<tr class=''><td class='line-number'>13</td><td class='line-content'>;; it under the terms of the GNU General Public License as published by</td></tr>
+<tr class=''><td class='line-number'>14</td><td class='line-content'>;; the Free Software Foundation, either version 3 of the License, or</td></tr>
+<tr class=''><td class='line-number'>15</td><td class='line-content'>;; (at your option) any later version.</td></tr>
+<tr class=''><td class='line-number'>16</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>17</td><td class='line-content'>;; NSKK is distributed in the hope that it will be useful,</td></tr>
+<tr class=''><td class='line-number'>18</td><td class='line-content'>;; but WITHOUT ANY WARRANTY; without even the implied warranty of</td></tr>
+<tr class=''><td class='line-number'>19</td><td class='line-content'>;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</td></tr>
+<tr class=''><td class='line-number'>20</td><td class='line-content'>;; GNU General Public License for more details.</td></tr>
+<tr class=''><td class='line-number'>21</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>22</td><td class='line-content'>;; You should have received a copy of the GNU General Public License</td></tr>
+<tr class=''><td class='line-number'>23</td><td class='line-content'>;; along with NSKK.  If not, see &amp;lt;https://www.gnu.org/licenses/&amp;gt;.</td></tr>
+<tr class=''><td class='line-number'>24</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>25</td><td class='line-content'>;;; Commentary:</td></tr>
+<tr class=''><td class='line-number'>26</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>27</td><td class='line-content'>;; Presentation Layer - 7層アーキテクチャの最上位層</td></tr>
+<tr class=''><td class='line-number'>28</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>29</td><td class='line-content'>;; 責務:</td></tr>
+<tr class=''><td class='line-number'>30</td><td class='line-content'>;; - UIコンポーネントの統合</td></tr>
+<tr class=''><td class='line-number'>31</td><td class='line-content'>;; - イベントハンドリング</td></tr>
+<tr class=''><td class='line-number'>32</td><td class='line-content'>;; - ユーザー入力の受付</td></tr>
+<tr class=''><td class='line-number'>33</td><td class='line-content'>;; - 視覚的フィードバック</td></tr>
+<tr class=''><td class='line-number'>34</td><td class='line-content'>;; - キーバインディング管理</td></tr>
+<tr class=''><td class='line-number'>35</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>36</td><td class='line-content'>;; レイヤー依存:</td></tr>
+<tr class=''><td class='line-number'>37</td><td class='line-content'>;; - Extension Layer (イベント配信)</td></tr>
+<tr class=''><td class='line-number'>38</td><td class='line-content'>;; - Application Layer (ビジネスロジック呼び出し)</td></tr>
+<tr class=''><td class='line-number'>39</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>40</td><td class='line-content'>;; 主要コンポーネント:</td></tr>
+<tr class=''><td class='line-number'>41</td><td class='line-content'>;; - キーマップ統合</td></tr>
+<tr class=''><td class='line-number'>42</td><td class='line-content'>;; - 候補ウィンドウ制御</td></tr>
+<tr class=''><td class='line-number'>43</td><td class='line-content'>;; - ミニバッファUI</td></tr>
+<tr class=''><td class='line-number'>44</td><td class='line-content'>;; - モードライン表示</td></tr>
+<tr class=''><td class='line-number'>45</td><td class='line-content'>;; - インライン表示</td></tr>
+<tr class=''><td class='line-number'>46</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>47</td><td class='line-content'>;; 使用例:</td></tr>
+<tr class=''><td class='line-number'>48</td><td class='line-content'>;; (nskk-presentation-initialize)</td></tr>
+<tr class=''><td class='line-number'>49</td><td class='line-content'>;; (nskk-presentation-handle-key-event ?a)</td></tr>
+<tr class=''><td class='line-number'>50</td><td class='line-content'>;; (nskk-presentation-show-candidates candidates)</td></tr>
+<tr class=''><td class='line-number'>51</td><td class='line-content'>;; (nskk-presentation-update-mode-line &amp;quot;あ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>52</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>53</td><td class='line-content'>;;; Code:</td></tr>
+<tr class=''><td class='line-number'>54</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>55</td><td class='line-content'>(require 'cl-lib)</td></tr>
+<tr class=''><td class='line-number'>56</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>57</td><td class='line-content'>;;; カスタマイズ可能変数</td></tr>
+<tr class=''><td class='line-number'>58</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>59</td><td class='line-content'>(defgroup nskk-presentation nil</td></tr>
+<tr class=''><td class='line-number'>60</td><td class='line-content'>  &amp;quot;Presentation layer settings for NSKK.&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>61</td><td class='line-content'>  :group 'nskk</td></tr>
+<tr class=''><td class='line-number'>62</td><td class='line-content'>  :prefix &amp;quot;nskk-presentation-&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>63</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>64</td><td class='line-content'>(defcustom nskk-presentation-inline-candidates-max 5</td></tr>
+<tr class=''><td class='line-number'>65</td><td class='line-content'>  &amp;quot;インライン候補表示の最大数。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>66</td><td class='line-content'>  :type 'integer</td></tr>
+<tr class=''><td class='line-number'>67</td><td class='line-content'>  :group 'nskk-presentation)</td></tr>
+<tr class=''><td class='line-number'>68</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>69</td><td class='line-content'>(defcustom nskk-presentation-candidate-window-position 'cursor</td></tr>
+<tr class=''><td class='line-number'>70</td><td class='line-content'>  &amp;quot;候補ウィンドウの表示位置。</td></tr>
+<tr class=''><td class='line-number'>71</td><td class='line-content'>'cursor - カーソル位置</td></tr>
+<tr class=''><td class='line-number'>72</td><td class='line-content'>'bottom - 画面下部</td></tr>
+<tr class=''><td class='line-number'>73</td><td class='line-content'>'top    - 画面上部&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>74</td><td class='line-content'>  :type '(choice (const :tag &amp;quot;カーソル位置&amp;quot; cursor)</td></tr>
+<tr class=''><td class='line-number'>75</td><td class='line-content'>                 (const :tag &amp;quot;画面下部&amp;quot; bottom)</td></tr>
+<tr class=''><td class='line-number'>76</td><td class='line-content'>                 (const :tag &amp;quot;画面上部&amp;quot; top))</td></tr>
+<tr class=''><td class='line-number'>77</td><td class='line-content'>  :group 'nskk-presentation)</td></tr>
+<tr class=''><td class='line-number'>78</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>79</td><td class='line-content'>(defcustom nskk-presentation-enable-mode-line t</td></tr>
+<tr class=''><td class='line-number'>80</td><td class='line-content'>  &amp;quot;モードライン表示を有効にするか。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>81</td><td class='line-content'>  :type 'boolean</td></tr>
+<tr class=''><td class='line-number'>82</td><td class='line-content'>  :group 'nskk-presentation)</td></tr>
+<tr class=''><td class='line-number'>83</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>84</td><td class='line-content'>;;; 内部変数</td></tr>
+<tr class=''><td class='line-number'>85</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>86</td><td class='line-content'>(defvar nskk-presentation--current-overlay nil</td></tr>
+<tr class=''><td class='line-number'>87</td><td class='line-content'>  &amp;quot;現在アクティブなオーバーレイ。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>88</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>89</td><td class='line-content'>(defvar nskk-presentation--candidate-buffer nil</td></tr>
+<tr class=''><td class='line-number'>90</td><td class='line-content'>  &amp;quot;候補表示用バッファ。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>91</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>92</td><td class='line-content'>(defvar nskk-presentation--event-handlers (make-hash-table :test 'eq)</td></tr>
+<tr class=''><td class='line-number'>93</td><td class='line-content'>  &amp;quot;イベントタイプとハンドラーのマッピング。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>94</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>95</td><td class='line-content'>;;; UIコンポーネント統合</td></tr>
+<tr class=''><td class='line-number'>96</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>97</td><td class='line-content'>(defun nskk-presentation-initialize ()</td></tr>
+<tr class=''><td class='line-number'>98</td><td class='line-content'>  &amp;quot;Presentation Layerを初期化する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>99</td><td class='line-content'>  (nskk-presentation--setup-event-handlers)</td></tr>
+<tr class='covered'><td class='line-number'>100</td><td class='line-content'>  (nskk-presentation--initialize-candidate-buffer)</td></tr>
+<tr class='covered'><td class='line-number'>101</td><td class='line-content'>  (nskk-presentation--setup-overlays)</td></tr>
+<tr class='covered'><td class='line-number'>102</td><td class='line-content'>  (when nskk-presentation-enable-mode-line</td></tr>
+<tr class='covered'><td class='line-number'>103</td><td class='line-content'>    (nskk-presentation--initialize-mode-line)))</td></tr>
+<tr class=''><td class='line-number'>104</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>105</td><td class='line-content'>(defun nskk-presentation-shutdown ()</td></tr>
+<tr class=''><td class='line-number'>106</td><td class='line-content'>  &amp;quot;Presentation Layerをシャットダウンする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>107</td><td class='line-content'>  (nskk-presentation--cleanup-overlays)</td></tr>
+<tr class='covered'><td class='line-number'>108</td><td class='line-content'>  (nskk-presentation--cleanup-candidate-buffer)</td></tr>
+<tr class='covered'><td class='line-number'>109</td><td class='line-content'>  (nskk-presentation--cleanup-event-handlers))</td></tr>
+<tr class=''><td class='line-number'>110</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>111</td><td class='line-content'>;;; イベントハンドリング</td></tr>
+<tr class=''><td class='line-number'>112</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>113</td><td class='line-content'>(defun nskk-presentation--setup-event-handlers ()</td></tr>
+<tr class=''><td class='line-number'>114</td><td class='line-content'>  &amp;quot;イベントハンドラーをセットアップする。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>115</td><td class='line-content'>  ;; キー入力イベント</td></tr>
+<tr class='covered'><td class='line-number'>116</td><td class='line-content'>  (puthash :key-pressed #'nskk-presentation--on-key-pressed</td></tr>
+<tr class='uncovered'><td class='line-number'>117</td><td class='line-content'>           nskk-presentation--event-handlers)</td></tr>
+<tr class=''><td class='line-number'>118</td><td class='line-content'>  ;; 候補選択イベント</td></tr>
+<tr class='covered'><td class='line-number'>119</td><td class='line-content'>  (puthash :candidate-selected #'nskk-presentation--on-candidate-selected</td></tr>
+<tr class='uncovered'><td class='line-number'>120</td><td class='line-content'>           nskk-presentation--event-handlers)</td></tr>
+<tr class=''><td class='line-number'>121</td><td class='line-content'>  ;; モード変更イベント</td></tr>
+<tr class='covered'><td class='line-number'>122</td><td class='line-content'>  (puthash :mode-changed #'nskk-presentation--on-mode-changed</td></tr>
+<tr class='uncovered'><td class='line-number'>123</td><td class='line-content'>           nskk-presentation--event-handlers)</td></tr>
+<tr class=''><td class='line-number'>124</td><td class='line-content'>  ;; 変換確定イベント</td></tr>
+<tr class='covered'><td class='line-number'>125</td><td class='line-content'>  (puthash :conversion-committed #'nskk-presentation--on-conversion-committed</td></tr>
+<tr class='uncovered'><td class='line-number'>126</td><td class='line-content'>           nskk-presentation--event-handlers))</td></tr>
+<tr class=''><td class='line-number'>127</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>128</td><td class='line-content'>(defun nskk-presentation--cleanup-event-handlers ()</td></tr>
+<tr class=''><td class='line-number'>129</td><td class='line-content'>  &amp;quot;イベントハンドラーをクリーンアップする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>130</td><td class='line-content'>  (clrhash nskk-presentation--event-handlers))</td></tr>
+<tr class=''><td class='line-number'>131</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>132</td><td class='line-content'>(defun nskk-presentation-handle-event (event-type &amp;rest data)</td></tr>
+<tr class=''><td class='line-number'>133</td><td class='line-content'>  &amp;quot;イベントを処理する。</td></tr>
+<tr class=''><td class='line-number'>134</td><td class='line-content'>EVENT-TYPEはイベントタイプ、DATAは追加データ。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>135</td><td class='line-content'>  (let ((handler (gethash event-type nskk-presentation--event-handlers)))</td></tr>
+<tr class='covered'><td class='line-number'>136</td><td class='line-content'>    (when handler</td></tr>
+<tr class='covered'><td class='line-number'>137</td><td class='line-content'>      (apply handler data))))</td></tr>
+<tr class=''><td class='line-number'>138</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>139</td><td class='line-content'>;;; キー入力ハンドリング</td></tr>
+<tr class=''><td class='line-number'>140</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>141</td><td class='line-content'>(defun nskk-presentation--on-key-pressed (key)</td></tr>
+<tr class=''><td class='line-number'>142</td><td class='line-content'>  &amp;quot;キー入力イベントを処理する。</td></tr>
+<tr class=''><td class='line-number'>143</td><td class='line-content'>KEYは入力されたキー。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>144</td><td class='line-content'>  ;; Application Layerに処理を委譲</td></tr>
+<tr class='covered'><td class='line-number'>145</td><td class='line-content'>  (nskk-presentation--delegate-to-application :process-key key))</td></tr>
+<tr class=''><td class='line-number'>146</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>147</td><td class='line-content'>(defun nskk-presentation-handle-key-event (key)</td></tr>
+<tr class=''><td class='line-number'>148</td><td class='line-content'>  &amp;quot;キーイベントを処理する。</td></tr>
+<tr class=''><td class='line-number'>149</td><td class='line-content'>KEYは入力されたキー文字またはイベント。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>150</td><td class='line-content'>  (interactive)</td></tr>
+<tr class='covered'><td class='line-number'>151</td><td class='line-content'>  (nskk-presentation-handle-event :key-pressed key))</td></tr>
+<tr class=''><td class='line-number'>152</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>153</td><td class='line-content'>;;; 候補表示</td></tr>
+<tr class=''><td class='line-number'>154</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>155</td><td class='line-content'>(defun nskk-presentation--initialize-candidate-buffer ()</td></tr>
+<tr class=''><td class='line-number'>156</td><td class='line-content'>  &amp;quot;候補表示用バッファを初期化する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>157</td><td class='line-content'>  (unless (buffer-live-p nskk-presentation--candidate-buffer)</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>    (setq nskk-presentation--candidate-buffer</td></tr>
+<tr class='covered'><td class='line-number'>159</td><td class='line-content'>          (get-buffer-create &amp;quot; *NSKK Candidates*&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>160</td><td class='line-content'>    (with-current-buffer nskk-presentation--candidate-buffer</td></tr>
+<tr class='onevalue'><td class='line-number'>161</td><td class='line-content'>      (setq buffer-read-only t)</td></tr>
+<tr class='onevalue'><td class='line-number'>162</td><td class='line-content'>      (buffer-disable-undo))))</td></tr>
+<tr class=''><td class='line-number'>163</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>164</td><td class='line-content'>(defun nskk-presentation--cleanup-candidate-buffer ()</td></tr>
+<tr class=''><td class='line-number'>165</td><td class='line-content'>  &amp;quot;候補表示用バッファをクリーンアップする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>166</td><td class='line-content'>  (when (buffer-live-p nskk-presentation--candidate-buffer)</td></tr>
+<tr class='covered'><td class='line-number'>167</td><td class='line-content'>    (kill-buffer nskk-presentation--candidate-buffer)</td></tr>
+<tr class='onevalue'><td class='line-number'>168</td><td class='line-content'>    (setq nskk-presentation--candidate-buffer nil)))</td></tr>
+<tr class=''><td class='line-number'>169</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>170</td><td class='line-content'>(defun nskk-presentation-show-candidates (candidates &amp;optional index)</td></tr>
+<tr class=''><td class='line-number'>171</td><td class='line-content'>  &amp;quot;候補リストを表示する。</td></tr>
+<tr class=''><td class='line-number'>172</td><td class='line-content'>CANDIDATESは候補のリスト、INDEXは現在選択中のインデックス。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>173</td><td class='line-content'>  (if (null candidates)</td></tr>
+<tr class='covered'><td class='line-number'>174</td><td class='line-content'>      (nskk-presentation-hide-candidates)</td></tr>
+<tr class='covered'><td class='line-number'>175</td><td class='line-content'>    (let ((display-candidates (if (&amp;gt; (length candidates)</td></tr>
+<tr class='uncovered'><td class='line-number'>176</td><td class='line-content'>                                     nskk-presentation-inline-candidates-max)</td></tr>
+<tr class='covered'><td class='line-number'>177</td><td class='line-content'>                                  (seq-take candidates</td></tr>
+<tr class='uncovered'><td class='line-number'>178</td><td class='line-content'>                                            nskk-presentation-inline-candidates-max)</td></tr>
+<tr class='uncovered'><td class='line-number'>179</td><td class='line-content'>                                candidates)))</td></tr>
+<tr class='covered'><td class='line-number'>180</td><td class='line-content'>      (pcase nskk-presentation-candidate-window-position</td></tr>
+<tr class='covered'><td class='line-number'>181</td><td class='line-content'>        ('cursor (nskk-presentation--show-inline-candidates display-candidates index))</td></tr>
+<tr class='covered'><td class='line-number'>182</td><td class='line-content'>        ('bottom (nskk-presentation--show-bottom-candidates display-candidates index))</td></tr>
+<tr class='covered'><td class='line-number'>183</td><td class='line-content'>        ('top (nskk-presentation--show-top-candidates display-candidates index))))))</td></tr>
+<tr class=''><td class='line-number'>184</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>185</td><td class='line-content'>(defun nskk-presentation-hide-candidates ()</td></tr>
+<tr class=''><td class='line-number'>186</td><td class='line-content'>  &amp;quot;候補表示を非表示にする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>187</td><td class='line-content'>  (nskk-presentation--cleanup-overlays))</td></tr>
+<tr class=''><td class='line-number'>188</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>189</td><td class='line-content'>(defun nskk-presentation--show-inline-candidates (candidates index)</td></tr>
+<tr class=''><td class='line-number'>190</td><td class='line-content'>  &amp;quot;カーソル位置に候補をインライン表示する。</td></tr>
+<tr class=''><td class='line-number'>191</td><td class='line-content'>CANDIDATESは候補リスト、INDEXは選択インデックス。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>192</td><td class='line-content'>  (nskk-presentation--cleanup-overlays)</td></tr>
+<tr class='covered'><td class='line-number'>193</td><td class='line-content'>  (let* ((pos (point))</td></tr>
+<tr class='covered'><td class='line-number'>194</td><td class='line-content'>         (overlay (make-overlay pos pos)))</td></tr>
+<tr class='covered'><td class='line-number'>195</td><td class='line-content'>    (setq nskk-presentation--current-overlay overlay)</td></tr>
+<tr class='covered'><td class='line-number'>196</td><td class='line-content'>    (overlay-put overlay 'after-string</td></tr>
+<tr class='covered'><td class='line-number'>197</td><td class='line-content'>                 (nskk-presentation--format-inline-candidates candidates index))</td></tr>
+<tr class='onevalue'><td class='line-number'>198</td><td class='line-content'>    (overlay-put overlay 'nskk-presentation t)))</td></tr>
+<tr class=''><td class='line-number'>199</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>200</td><td class='line-content'>(defun nskk-presentation--show-bottom-candidates (candidates index)</td></tr>
+<tr class=''><td class='line-number'>201</td><td class='line-content'>  &amp;quot;画面下部に候補を表示する。</td></tr>
+<tr class=''><td class='line-number'>202</td><td class='line-content'>CANDIDATESは候補リスト、INDEXは選択インデックス。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>203</td><td class='line-content'>  (when (buffer-live-p nskk-presentation--candidate-buffer)</td></tr>
+<tr class='covered'><td class='line-number'>204</td><td class='line-content'>    (with-current-buffer nskk-presentation--candidate-buffer</td></tr>
+<tr class='covered'><td class='line-number'>205</td><td class='line-content'>      (let ((inhibit-read-only t))</td></tr>
+<tr class='covered'><td class='line-number'>206</td><td class='line-content'>        (erase-buffer)</td></tr>
+<tr class='onevalue'><td class='line-number'>207</td><td class='line-content'>        (insert (nskk-presentation--format-list-candidates candidates index)))</td></tr>
+<tr class='covered'><td class='line-number'>208</td><td class='line-content'>      (display-buffer nskk-presentation--candidate-buffer</td></tr>
+<tr class='uncovered'><td class='line-number'>209</td><td class='line-content'>                      '((display-buffer-at-bottom))))))</td></tr>
+<tr class=''><td class='line-number'>210</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>211</td><td class='line-content'>(defun nskk-presentation--show-top-candidates (candidates index)</td></tr>
+<tr class=''><td class='line-number'>212</td><td class='line-content'>  &amp;quot;画面上部に候補を表示する。</td></tr>
+<tr class=''><td class='line-number'>213</td><td class='line-content'>CANDIDATESは候補リスト、INDEXは選択インデックス。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>214</td><td class='line-content'>  (when (buffer-live-p nskk-presentation--candidate-buffer)</td></tr>
+<tr class='covered'><td class='line-number'>215</td><td class='line-content'>    (with-current-buffer nskk-presentation--candidate-buffer</td></tr>
+<tr class='covered'><td class='line-number'>216</td><td class='line-content'>      (let ((inhibit-read-only t))</td></tr>
+<tr class='covered'><td class='line-number'>217</td><td class='line-content'>        (erase-buffer)</td></tr>
+<tr class='onevalue'><td class='line-number'>218</td><td class='line-content'>        (insert (nskk-presentation--format-list-candidates candidates index)))</td></tr>
+<tr class='covered'><td class='line-number'>219</td><td class='line-content'>      (display-buffer nskk-presentation--candidate-buffer</td></tr>
+<tr class='uncovered'><td class='line-number'>220</td><td class='line-content'>                      '((display-buffer-at-top))))))</td></tr>
+<tr class=''><td class='line-number'>221</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>222</td><td class='line-content'>(defun nskk-presentation--format-inline-candidates (candidates index)</td></tr>
+<tr class=''><td class='line-number'>223</td><td class='line-content'>  &amp;quot;インライン表示用に候補をフォーマットする。</td></tr>
+<tr class=''><td class='line-number'>224</td><td class='line-content'>CANDIDATESは候補リスト、INDEXは選択インデックス。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>225</td><td class='line-content'>  (let ((formatted</td></tr>
+<tr class='covered'><td class='line-number'>226</td><td class='line-content'>         (mapconcat</td></tr>
+<tr class=''><td class='line-number'>227</td><td class='line-content'>          (lambda (i)</td></tr>
+<tr class='covered'><td class='line-number'>228</td><td class='line-content'>            (let ((cand (nth i candidates)))</td></tr>
+<tr class='covered'><td class='line-number'>229</td><td class='line-content'>              (if (= i (or index 0))</td></tr>
+<tr class='covered'><td class='line-number'>230</td><td class='line-content'>                  (propertize (format &amp;quot;[%s]&amp;quot; cand) 'face 'highlight)</td></tr>
+<tr class='covered'><td class='line-number'>231</td><td class='line-content'>                (format &amp;quot; %s &amp;quot; cand))))</td></tr>
+<tr class='covered'><td class='line-number'>232</td><td class='line-content'>          (number-sequence 0 (1- (length candidates)))</td></tr>
+<tr class='uncovered'><td class='line-number'>233</td><td class='line-content'>          &amp;quot; | &amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>234</td><td class='line-content'>    (propertize (format &amp;quot; {%s}&amp;quot; formatted)</td></tr>
+<tr class='uncovered'><td class='line-number'>235</td><td class='line-content'>                'face 'shadow)))</td></tr>
+<tr class=''><td class='line-number'>236</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>237</td><td class='line-content'>(defun nskk-presentation--format-list-candidates (candidates index)</td></tr>
+<tr class=''><td class='line-number'>238</td><td class='line-content'>  &amp;quot;リスト表示用に候補をフォーマットする。</td></tr>
+<tr class=''><td class='line-number'>239</td><td class='line-content'>CANDIDATESは候補リスト、INDEXは選択インデックス。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>240</td><td class='line-content'>  (mapconcat</td></tr>
+<tr class=''><td class='line-number'>241</td><td class='line-content'>   (lambda (i)</td></tr>
+<tr class='covered'><td class='line-number'>242</td><td class='line-content'>     (let ((cand (nth i candidates)))</td></tr>
+<tr class='covered'><td class='line-number'>243</td><td class='line-content'>       (format &amp;quot;%s %d. %s&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>244</td><td class='line-content'>               (if (= i (or index 0)) &amp;quot;&amp;gt;&amp;quot; &amp;quot; &amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>245</td><td class='line-content'>               (1+ i)</td></tr>
+<tr class='uncovered'><td class='line-number'>246</td><td class='line-content'>               cand)))</td></tr>
+<tr class='covered'><td class='line-number'>247</td><td class='line-content'>   (number-sequence 0 (1- (length candidates)))</td></tr>
+<tr class='uncovered'><td class='line-number'>248</td><td class='line-content'>   &amp;quot;\n&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>249</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>250</td><td class='line-content'>;;; 候補選択イベント</td></tr>
+<tr class=''><td class='line-number'>251</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>252</td><td class='line-content'>(defun nskk-presentation--on-candidate-selected (candidate)</td></tr>
+<tr class=''><td class='line-number'>253</td><td class='line-content'>  &amp;quot;候補選択イベントを処理する。</td></tr>
+<tr class=''><td class='line-number'>254</td><td class='line-content'>CANDIDATEは選択された候補。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>255</td><td class='line-content'>  (nskk-presentation-hide-candidates)</td></tr>
+<tr class=''><td class='line-number'>256</td><td class='line-content'>  ;; Application Layerに通知</td></tr>
+<tr class='covered'><td class='line-number'>257</td><td class='line-content'>  (nskk-presentation--delegate-to-application :commit-candidate candidate))</td></tr>
+<tr class=''><td class='line-number'>258</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>259</td><td class='line-content'>;;; モードライン</td></tr>
+<tr class=''><td class='line-number'>260</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>261</td><td class='line-content'>(defun nskk-presentation--initialize-mode-line ()</td></tr>
+<tr class=''><td class='line-number'>262</td><td class='line-content'>  &amp;quot;モードライン表示を初期化する。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>263</td><td class='line-content'>  ;; モードライン初期化ロジック</td></tr>
+<tr class='covered'><td class='line-number'>264</td><td class='line-content'>  (add-to-list 'mode-line-format</td></tr>
+<tr class=''><td class='line-number'>265</td><td class='line-content'>               '(:eval (nskk-presentation--mode-line-string))</td></tr>
+<tr class='uncovered'><td class='line-number'>266</td><td class='line-content'>               t))</td></tr>
+<tr class=''><td class='line-number'>267</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>268</td><td class='line-content'>(defun nskk-presentation--mode-line-string ()</td></tr>
+<tr class=''><td class='line-number'>269</td><td class='line-content'>  &amp;quot;モードライン表示用の文字列を生成する。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>270</td><td class='line-content'>  ;; Application Layerから現在のモードを取得</td></tr>
+<tr class='covered'><td class='line-number'>271</td><td class='line-content'>  (let ((mode (nskk-presentation--get-from-application :current-mode)))</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>    (pcase mode</td></tr>
+<tr class=''><td class='line-number'>273</td><td class='line-content'>      ('hiragana &amp;quot;[あ]&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>274</td><td class='line-content'>      ('katakana &amp;quot;[ア]&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>275</td><td class='line-content'>      ('latin &amp;quot;[A]&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>276</td><td class='line-content'>      ('zenkaku-latin &amp;quot;[Ａ]&amp;quot;)</td></tr>
+<tr class='uncovered'><td class='line-number'>277</td><td class='line-content'>      (_ &amp;quot;[--]&amp;quot;))))</td></tr>
+<tr class=''><td class='line-number'>278</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>279</td><td class='line-content'>(defun nskk-presentation-update-mode-line (mode-indicator)</td></tr>
+<tr class=''><td class='line-number'>280</td><td class='line-content'>  &amp;quot;モードライン表示を更新する。</td></tr>
+<tr class=''><td class='line-number'>281</td><td class='line-content'>MODE-INDICATORは表示するモード表示文字列。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>282</td><td class='line-content'>  (when nskk-presentation-enable-mode-line</td></tr>
+<tr class='covered'><td class='line-number'>283</td><td class='line-content'>    (force-mode-line-update)))</td></tr>
+<tr class=''><td class='line-number'>284</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>285</td><td class='line-content'>;;; モード変更イベント</td></tr>
+<tr class=''><td class='line-number'>286</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>287</td><td class='line-content'>(defun nskk-presentation--on-mode-changed (old-mode new-mode)</td></tr>
+<tr class=''><td class='line-number'>288</td><td class='line-content'>  &amp;quot;モード変更イベントを処理する。</td></tr>
+<tr class=''><td class='line-number'>289</td><td class='line-content'>OLD-MODEは変更前のモード、NEW-MODEは変更後のモード。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>290</td><td class='line-content'>  (nskk-presentation-update-mode-line new-mode)</td></tr>
+<tr class=''><td class='line-number'>291</td><td class='line-content'>  ;; UIをリフレッシュ</td></tr>
+<tr class='covered'><td class='line-number'>292</td><td class='line-content'>  (nskk-presentation--refresh-ui))</td></tr>
+<tr class=''><td class='line-number'>293</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>294</td><td class='line-content'>;;; 変換確定イベント</td></tr>
+<tr class=''><td class='line-number'>295</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>296</td><td class='line-content'>(defun nskk-presentation--on-conversion-committed (text)</td></tr>
+<tr class=''><td class='line-number'>297</td><td class='line-content'>  &amp;quot;変換確定イベントを処理する。</td></tr>
+<tr class=''><td class='line-number'>298</td><td class='line-content'>TEXTは確定されたテキスト。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>299</td><td class='line-content'>  (nskk-presentation-hide-candidates)</td></tr>
+<tr class=''><td class='line-number'>300</td><td class='line-content'>  ;; オーバーレイをクリーンアップ</td></tr>
+<tr class='covered'><td class='line-number'>301</td><td class='line-content'>  (nskk-presentation--cleanup-overlays))</td></tr>
+<tr class=''><td class='line-number'>302</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>303</td><td class='line-content'>;;; オーバーレイ管理</td></tr>
+<tr class=''><td class='line-number'>304</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>305</td><td class='line-content'>(defun nskk-presentation--setup-overlays ()</td></tr>
+<tr class=''><td class='line-number'>306</td><td class='line-content'>  &amp;quot;オーバーレイをセットアップする。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>307</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>308</td><td class='line-content'>(defun nskk-presentation--cleanup-overlays ()</td></tr>
+<tr class=''><td class='line-number'>309</td><td class='line-content'>  &amp;quot;オーバーレイをクリーンアップする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>310</td><td class='line-content'>  (when nskk-presentation--current-overlay</td></tr>
+<tr class='covered'><td class='line-number'>311</td><td class='line-content'>    (delete-overlay nskk-presentation--current-overlay)</td></tr>
+<tr class='onevalue'><td class='line-number'>312</td><td class='line-content'>    (setq nskk-presentation--current-overlay nil)))</td></tr>
+<tr class=''><td class='line-number'>313</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>314</td><td class='line-content'>;;; UI更新</td></tr>
+<tr class=''><td class='line-number'>315</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>316</td><td class='line-content'>(defun nskk-presentation--refresh-ui ()</td></tr>
+<tr class=''><td class='line-number'>317</td><td class='line-content'>  &amp;quot;UI全体をリフレッシュする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>318</td><td class='line-content'>  (force-mode-line-update)</td></tr>
+<tr class=''><td class='line-number'>319</td><td class='line-content'>  ;; その他のUI要素も更新</td></tr>
+<tr class=''><td class='line-number'>320</td><td class='line-content'>  )</td></tr>
+<tr class=''><td class='line-number'>321</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>322</td><td class='line-content'>;;; Application Layerとの通信</td></tr>
+<tr class=''><td class='line-number'>323</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>324</td><td class='line-content'>(defun nskk-presentation--delegate-to-application (action &amp;rest args)</td></tr>
+<tr class=''><td class='line-number'>325</td><td class='line-content'>  &amp;quot;Application Layerに処理を委譲する。</td></tr>
+<tr class=''><td class='line-number'>326</td><td class='line-content'>ACTIONは実行するアクション、ARGSは引数。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>327</td><td class='line-content'>  ;; Extension Layer経由でApplication Layerに委譲</td></tr>
+<tr class=''><td class='line-number'>328</td><td class='line-content'>  ;; 実装は統合時に完成</td></tr>
+<tr class='covered'><td class='line-number'>329</td><td class='line-content'>  (message &amp;quot;Delegating to application: %s with %S&amp;quot; action args))</td></tr>
+<tr class=''><td class='line-number'>330</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>331</td><td class='line-content'>(defun nskk-presentation--get-from-application (query)</td></tr>
+<tr class=''><td class='line-number'>332</td><td class='line-content'>  &amp;quot;Application Layerから情報を取得する。</td></tr>
+<tr class=''><td class='line-number'>333</td><td class='line-content'>QUERYは取得する情報のタイプ。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>334</td><td class='line-content'>  ;; Extension Layer経由で取得</td></tr>
+<tr class=''><td class='line-number'>335</td><td class='line-content'>  ;; 実装は統合時に完成</td></tr>
+<tr class=''><td class='line-number'>336</td><td class='line-content'>  'hiragana)</td></tr>
+<tr class=''><td class='line-number'>337</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>338</td><td class='line-content'>;;; デバッグ・ロギング</td></tr>
+<tr class=''><td class='line-number'>339</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>340</td><td class='line-content'>(defvar nskk-presentation--debug-enabled nil</td></tr>
+<tr class=''><td class='line-number'>341</td><td class='line-content'>  &amp;quot;デバッグモードが有効かどうか。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>342</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>343</td><td class='line-content'>(defun nskk-presentation-enable-debug ()</td></tr>
+<tr class=''><td class='line-number'>344</td><td class='line-content'>  &amp;quot;デバッグモードを有効にする。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>345</td><td class='line-content'>  (interactive)</td></tr>
+<tr class='onevalue'><td class='line-number'>346</td><td class='line-content'>  (setq nskk-presentation--debug-enabled t)</td></tr>
+<tr class='onevalue'><td class='line-number'>347</td><td class='line-content'>  (message &amp;quot;NSKK Presentation Layer: Debug mode enabled&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>348</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>349</td><td class='line-content'>(defun nskk-presentation-disable-debug ()</td></tr>
+<tr class=''><td class='line-number'>350</td><td class='line-content'>  &amp;quot;デバッグモードを無効にする。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>351</td><td class='line-content'>  (interactive)</td></tr>
+<tr class='onevalue'><td class='line-number'>352</td><td class='line-content'>  (setq nskk-presentation--debug-enabled nil)</td></tr>
+<tr class='onevalue'><td class='line-number'>353</td><td class='line-content'>  (message &amp;quot;NSKK Presentation Layer: Debug mode disabled&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>354</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>355</td><td class='line-content'>(defun nskk-presentation--log (format-string &amp;rest args)</td></tr>
+<tr class=''><td class='line-number'>356</td><td class='line-content'>  &amp;quot;デバッグログを出力する。</td></tr>
+<tr class=''><td class='line-number'>357</td><td class='line-content'>FORMAT-STRINGはフォーマット文字列、ARGSは引数。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>358</td><td class='line-content'>  (when nskk-presentation--debug-enabled</td></tr>
+<tr class='covered'><td class='line-number'>359</td><td class='line-content'>    (apply #'message (concat &amp;quot;[NSKK-Presentation] &amp;quot; format-string) args)))</td></tr>
+<tr class=''><td class='line-number'>360</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>361</td><td class='line-content'>;;; ヘルスチェック</td></tr>
+<tr class=''><td class='line-number'>362</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>363</td><td class='line-content'>(defun nskk-presentation-health-check ()</td></tr>
+<tr class=''><td class='line-number'>364</td><td class='line-content'>  &amp;quot;Presentation Layerのヘルスチェックを実行する。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>365</td><td class='line-content'>  (interactive)</td></tr>
+<tr class='covered'><td class='line-number'>366</td><td class='line-content'>  (let ((issues '()))</td></tr>
+<tr class=''><td class='line-number'>367</td><td class='line-content'>    ;; バッファ状態チェック</td></tr>
+<tr class='covered'><td class='line-number'>368</td><td class='line-content'>    (unless (buffer-live-p nskk-presentation--candidate-buffer)</td></tr>
+<tr class='covered'><td class='line-number'>369</td><td class='line-content'>      (push &amp;quot;Candidate buffer is not initialized&amp;quot; issues))</td></tr>
+<tr class=''><td class='line-number'>370</td><td class='line-content'>    ;; イベントハンドラーチェック</td></tr>
+<tr class='covered'><td class='line-number'>371</td><td class='line-content'>    (when (zerop (hash-table-count nskk-presentation--event-handlers))</td></tr>
+<tr class='covered'><td class='line-number'>372</td><td class='line-content'>      (push &amp;quot;No event handlers registered&amp;quot; issues))</td></tr>
+<tr class=''><td class='line-number'>373</td><td class='line-content'>    ;; 結果表示</td></tr>
+<tr class='covered'><td class='line-number'>374</td><td class='line-content'>    (if issues</td></tr>
+<tr class='covered'><td class='line-number'>375</td><td class='line-content'>        (message &amp;quot;Presentation Layer issues: %s&amp;quot; (string-join issues &amp;quot;, &amp;quot;))</td></tr>
+<tr class='onevalue'><td class='line-number'>376</td><td class='line-content'>      (message &amp;quot;Presentation Layer: All systems operational&amp;quot;))))</td></tr>
+<tr class=''><td class='line-number'>377</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>378</td><td class='line-content'>(provide 'nskk-layer-presentation)</td></tr>
+<tr class=''><td class='line-number'>379</td><td class='line-content'>;;; nskk-layer-presentation.el ends here</td></tr>
+
+    </table>
+  </div>
+  <div class='legend'>
+    <div class='legend-item'><span class='legend-color' style='background: #e8f5e9;'></span>Covered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #ffebee;'></span>Uncovered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #fff3e0;'></span>1-Value</div>
+    <div class='legend-item'><span class='legend-color' style='background: #f3e5f5;'></span>No-Return</div>
+  </div>
+</body>
+</html>

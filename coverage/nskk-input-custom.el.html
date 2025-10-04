@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Coverage: nskk-input-custom.el</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Monaco', 'Courier New', monospace; background: #f5f5f5; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; }
+    .header h1 { font-size: 24px; margin-bottom: 10px; }
+    .header .stats { font-size: 14px; opacity: 0.9; }
+    .header a { color: white; text-decoration: underline; }
+    .container { max-width: 1400px; margin: 20px auto; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; font-family: 'Monaco', 'Courier New', monospace; font-size: 13px; }
+    td.line-number { background: #f0f0f0; color: #666; padding: 2px 10px; text-align: right; border-right: 2px solid #ddd; user-select: none; width: 60px; }
+    td.line-content { padding: 2px 10px; white-space: pre; }
+    tr.covered { background: #e8f5e9; }
+    tr.uncovered { background: #ffebee; }
+    tr.onevalue { background: #fff3e0; }
+    tr.noreturn { background: #f3e5f5; }
+    tr:hover { opacity: 0.9; }
+    .legend { padding: 15px 30px; background: #fafafa; border-top: 1px solid #e0e0e0; font-size: 12px; }
+    .legend-item { display: inline-block; margin-right: 20px; }
+    .legend-color { display: inline-block; width: 20px; height: 12px; margin-right: 5px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div class='header'>
+    <h1>nskk-input-custom.el</h1>
+    <div class='stats'>
+      Coverage: 68.15% (229/336 forms) •
+      <a href='index.html'>← Back to Index</a>
+    </div>
+  </div>
+  <div class='container'>
+    <table>
+<tr class=''><td class='line-number'>1</td><td class='line-content'>;;; nskk-input-custom.el --- Custom input method framework for NSKK -*- lexical-binding: t; -*-</td></tr>
+<tr class=''><td class='line-number'>2</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>3</td><td class='line-content'>;; Copyright (C) 2024 NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>4</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>5</td><td class='line-content'>;; Author: NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>6</td><td class='line-content'>;; Keywords: japanese, input method, skk, custom</td></tr>
+<tr class=''><td class='line-number'>7</td><td class='line-content'>;; Version: 0.1.0</td></tr>
+<tr class=''><td class='line-number'>8</td><td class='line-content'>;; Package-Requires: ((emacs &amp;quot;31.0&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>9</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>10</td><td class='line-content'>;; This file is part of NSKK.</td></tr>
+<tr class=''><td class='line-number'>11</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>12</td><td class='line-content'>;;; Commentary:</td></tr>
+<tr class=''><td class='line-number'>13</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>14</td><td class='line-content'>;; カスタム入力方式フレームワークの実装。</td></tr>
+<tr class=''><td class='line-number'>15</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>16</td><td class='line-content'>;; ユーザーが独自の入力方式を定義・登録できるフレームワーク。</td></tr>
+<tr class=''><td class='line-number'>17</td><td class='line-content'>;; 既存の入力方式をベースにカスタマイズしたり、</td></tr>
+<tr class=''><td class='line-number'>18</td><td class='line-content'>;; 完全に新しい入力方式を作成することが可能。</td></tr>
+<tr class=''><td class='line-number'>19</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>20</td><td class='line-content'>;; 主な機能:</td></tr>
+<tr class=''><td class='line-number'>21</td><td class='line-content'>;; - カスタム変換テーブルの定義</td></tr>
+<tr class=''><td class='line-number'>22</td><td class='line-content'>;; - 既存入力方式のカスタマイズ</td></tr>
+<tr class=''><td class='line-number'>23</td><td class='line-content'>;; - 複数のカスタム入力方式の管理</td></tr>
+<tr class=''><td class='line-number'>24</td><td class='line-content'>;; - 入力方式のインポート/エクスポート</td></tr>
+<tr class=''><td class='line-number'>25</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>26</td><td class='line-content'>;; 使用例:</td></tr>
+<tr class=''><td class='line-number'>27</td><td class='line-content'>;; (require 'nskk-input-custom)</td></tr>
+<tr class=''><td class='line-number'>28</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>29</td><td class='line-content'>;; ;; カスタム入力方式の定義</td></tr>
+<tr class=''><td class='line-number'>30</td><td class='line-content'>;; (nskk-input-custom-define</td></tr>
+<tr class=''><td class='line-number'>31</td><td class='line-content'>;;  'my-custom</td></tr>
+<tr class=''><td class='line-number'>32</td><td class='line-content'>;;  '((&amp;quot;dh&amp;quot; . &amp;quot;で&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>33</td><td class='line-content'>;;    (&amp;quot;kk&amp;quot; . &amp;quot;っか&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>34</td><td class='line-content'>;;  :base 'azik</td></tr>
+<tr class=''><td class='line-number'>35</td><td class='line-content'>;;  :description &amp;quot;My custom AZIK extension&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>36</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>37</td><td class='line-content'>;; ;; カスタム入力方式の使用</td></tr>
+<tr class=''><td class='line-number'>38</td><td class='line-content'>;; (nskk-register-input-method 'my-custom)</td></tr>
+<tr class=''><td class='line-number'>39</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>40</td><td class='line-content'>;;; Code:</td></tr>
+<tr class=''><td class='line-number'>41</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>42</td><td class='line-content'>(require 'cl-lib)</td></tr>
+<tr class=''><td class='line-number'>43</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>44</td><td class='line-content'>;;; カスタム入力方式の定義</td></tr>
+<tr class=''><td class='line-number'>45</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>46</td><td class='line-content'>(cl-defstruct (nskk-input-custom-method</td></tr>
+<tr class=''><td class='line-number'>47</td><td class='line-content'>               (:constructor nskk-input-custom-method-create)</td></tr>
+<tr class=''><td class='line-number'>48</td><td class='line-content'>               (:copier nil))</td></tr>
+<tr class=''><td class='line-number'>49</td><td class='line-content'>  &amp;quot;カスタム入力方式の構造体。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>50</td><td class='line-content'>  name                ; 入力方式の名前（シンボル）</td></tr>
+<tr class=''><td class='line-number'>51</td><td class='line-content'>  table               ; 変換テーブル（連想リスト）</td></tr>
+<tr class=''><td class='line-number'>52</td><td class='line-content'>  base                ; ベースとなる入力方式（シンボル、オプション）</td></tr>
+<tr class=''><td class='line-number'>53</td><td class='line-content'>  description         ; 説明文字列</td></tr>
+<tr class=''><td class='line-number'>54</td><td class='line-content'>  hash-table          ; 高速検索用ハッシュテーブル</td></tr>
+<tr class=''><td class='line-number'>55</td><td class='line-content'>  priority)           ; 優先度（数値、大きいほど優先）</td></tr>
+<tr class=''><td class='line-number'>56</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>57</td><td class='line-content'>;;; グローバル変数</td></tr>
+<tr class=''><td class='line-number'>58</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>59</td><td class='line-content'>(defvar nskk-input-custom-methods nil</td></tr>
+<tr class=''><td class='line-number'>60</td><td class='line-content'>  &amp;quot;登録されているカスタム入力方式のリスト。</td></tr>
+<tr class=''><td class='line-number'>61</td><td class='line-content'>各要素は `nskk-input-custom-method' 構造体。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>62</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>63</td><td class='line-content'>;;; カスタム入力方式の定義</td></tr>
+<tr class=''><td class='line-number'>64</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>65</td><td class='line-content'>(defun nskk-input-custom-define (name table &amp;rest options)</td></tr>
+<tr class=''><td class='line-number'>66</td><td class='line-content'>  &amp;quot;カスタム入力方式を定義する。</td></tr>
+<tr class=''><td class='line-number'>67</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>68</td><td class='line-content'>NAME は入力方式の名前（シンボル）。</td></tr>
+<tr class=''><td class='line-number'>69</td><td class='line-content'>TABLE は変換テーブル（連想リスト）。</td></tr>
+<tr class=''><td class='line-number'>70</td><td class='line-content'>OPTIONS はキーワード引数:</td></tr>
+<tr class=''><td class='line-number'>71</td><td class='line-content'>  :base SYMBOL        - ベースとなる入力方式</td></tr>
+<tr class=''><td class='line-number'>72</td><td class='line-content'>  :description STRING - 説明文字列</td></tr>
+<tr class=''><td class='line-number'>73</td><td class='line-content'>  :priority NUMBER    - 優先度（デフォルト: 100）</td></tr>
+<tr class=''><td class='line-number'>74</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>75</td><td class='line-content'>使用例:</td></tr>
+<tr class=''><td class='line-number'>76</td><td class='line-content'>  (nskk-input-custom-define</td></tr>
+<tr class=''><td class='line-number'>77</td><td class='line-content'>   'my-azik</td></tr>
+<tr class=''><td class='line-number'>78</td><td class='line-content'>   '((\&amp;quot;dh\&amp;quot; . \&amp;quot;で\&amp;quot;) (\&amp;quot;kk\&amp;quot; . \&amp;quot;っか\&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>79</td><td class='line-content'>   :base 'azik</td></tr>
+<tr class=''><td class='line-number'>80</td><td class='line-content'>   :description \&amp;quot;My AZIK extension\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>81</td><td class='line-content'>   :priority 150)&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>82</td><td class='line-content'>  (let* ((base (plist-get options :base))</td></tr>
+<tr class='covered'><td class='line-number'>83</td><td class='line-content'>         (description (plist-get options :description))</td></tr>
+<tr class='covered'><td class='line-number'>84</td><td class='line-content'>         (priority (or (plist-get options :priority) 100))</td></tr>
+<tr class='covered'><td class='line-number'>85</td><td class='line-content'>         (method (nskk-input-custom-method-create</td></tr>
+<tr class='covered'><td class='line-number'>86</td><td class='line-content'>                  :name name</td></tr>
+<tr class='covered'><td class='line-number'>87</td><td class='line-content'>                  :table table</td></tr>
+<tr class='covered'><td class='line-number'>88</td><td class='line-content'>                  :base base</td></tr>
+<tr class='covered'><td class='line-number'>89</td><td class='line-content'>                  :description description</td></tr>
+<tr class='covered'><td class='line-number'>90</td><td class='line-content'>                  :priority priority)))</td></tr>
+<tr class=''><td class='line-number'>91</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>92</td><td class='line-content'>    ;; ハッシュテーブルの初期化</td></tr>
+<tr class='covered'><td class='line-number'>93</td><td class='line-content'>    (nskk-input-custom--init-hash-table method)</td></tr>
+<tr class=''><td class='line-number'>94</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>95</td><td class='line-content'>    ;; 既存の定義を削除</td></tr>
+<tr class='covered'><td class='line-number'>96</td><td class='line-content'>    (setq nskk-input-custom-methods</td></tr>
+<tr class='covered'><td class='line-number'>97</td><td class='line-content'>          (cl-remove-if (lambda (m)</td></tr>
+<tr class='covered'><td class='line-number'>98</td><td class='line-content'>                          (eq (nskk-input-custom-method-name m) name))</td></tr>
+<tr class='covered'><td class='line-number'>99</td><td class='line-content'>                        nskk-input-custom-methods))</td></tr>
+<tr class=''><td class='line-number'>100</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>101</td><td class='line-content'>    ;; 新しい定義を追加</td></tr>
+<tr class='covered'><td class='line-number'>102</td><td class='line-content'>    (push method nskk-input-custom-methods)</td></tr>
+<tr class=''><td class='line-number'>103</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>104</td><td class='line-content'>    ;; 優先度順にソート</td></tr>
+<tr class='covered'><td class='line-number'>105</td><td class='line-content'>    (setq nskk-input-custom-methods</td></tr>
+<tr class='covered'><td class='line-number'>106</td><td class='line-content'>          (cl-sort nskk-input-custom-methods #'&amp;gt;</td></tr>
+<tr class='covered'><td class='line-number'>107</td><td class='line-content'>                   :key #'nskk-input-custom-method-priority))</td></tr>
+<tr class=''><td class='line-number'>108</td><td class='line-content'></td></tr>
+<tr class='covered'><td class='line-number'>109</td><td class='line-content'>    method))</td></tr>
+<tr class=''><td class='line-number'>110</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>111</td><td class='line-content'>;;; ハッシュテーブル管理</td></tr>
+<tr class=''><td class='line-number'>112</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>113</td><td class='line-content'>(defun nskk-input-custom--init-hash-table (method)</td></tr>
+<tr class=''><td class='line-number'>114</td><td class='line-content'>  &amp;quot;METHODのハッシュテーブルを初期化する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>115</td><td class='line-content'>  (let ((hash-table (make-hash-table :test 'equal</td></tr>
+<tr class='covered'><td class='line-number'>116</td><td class='line-content'>                                     :size (max 100 (* 2 (length (nskk-input-custom-method-table method)))))))</td></tr>
+<tr class=''><td class='line-number'>117</td><td class='line-content'>    ;; ベース入力方式がある場合、その変換テーブルを含める</td></tr>
+<tr class='covered'><td class='line-number'>118</td><td class='line-content'>    (when (nskk-input-custom-method-base method)</td></tr>
+<tr class='covered'><td class='line-number'>119</td><td class='line-content'>      (let ((base-table (nskk-input-custom--get-base-table</td></tr>
+<tr class='covered'><td class='line-number'>120</td><td class='line-content'>                         (nskk-input-custom-method-base method))))</td></tr>
+<tr class='covered'><td class='line-number'>121</td><td class='line-content'>        (dolist (entry base-table)</td></tr>
+<tr class='covered'><td class='line-number'>122</td><td class='line-content'>          (puthash (car entry) (cdr entry) hash-table))))</td></tr>
+<tr class=''><td class='line-number'>123</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>124</td><td class='line-content'>    ;; カスタムテーブルを追加（上書き）</td></tr>
+<tr class='covered'><td class='line-number'>125</td><td class='line-content'>    (dolist (entry (nskk-input-custom-method-table method))</td></tr>
+<tr class='covered'><td class='line-number'>126</td><td class='line-content'>      (puthash (car entry) (cdr entry) hash-table))</td></tr>
+<tr class=''><td class='line-number'>127</td><td class='line-content'></td></tr>
+<tr class='covered'><td class='line-number'>128</td><td class='line-content'>    (setf (nskk-input-custom-method-hash-table method) hash-table)))</td></tr>
+<tr class=''><td class='line-number'>129</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>130</td><td class='line-content'>(defun nskk-input-custom--get-base-table (base-name)</td></tr>
+<tr class=''><td class='line-number'>131</td><td class='line-content'>  &amp;quot;BASE-NAMEの変換テーブルを取得する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>132</td><td class='line-content'>  (cond</td></tr>
+<tr class='covered'><td class='line-number'>133</td><td class='line-content'>   ((eq base-name 'azik)</td></tr>
+<tr class='covered'><td class='line-number'>134</td><td class='line-content'>    (require 'nskk-input-azik)</td></tr>
+<tr class=''><td class='line-number'>135</td><td class='line-content'>    nskk-input-azik-table)</td></tr>
+<tr class='covered'><td class='line-number'>136</td><td class='line-content'>   ((eq base-name 'act)</td></tr>
+<tr class='covered'><td class='line-number'>137</td><td class='line-content'>    (require 'nskk-input-act)</td></tr>
+<tr class='uncovered'><td class='line-number'>138</td><td class='line-content'>    nskk-input-act-table)</td></tr>
+<tr class='covered'><td class='line-number'>139</td><td class='line-content'>   ((eq base-name 'tutcode)</td></tr>
+<tr class='covered'><td class='line-number'>140</td><td class='line-content'>    (require 'nskk-input-tutcode)</td></tr>
+<tr class='uncovered'><td class='line-number'>141</td><td class='line-content'>    nskk-input-tutcode-table)</td></tr>
+<tr class='covered'><td class='line-number'>142</td><td class='line-content'>   ((eq base-name 'qwerty)</td></tr>
+<tr class='covered'><td class='line-number'>143</td><td class='line-content'>    (require 'nskk-romaji-tables)</td></tr>
+<tr class='uncovered'><td class='line-number'>144</td><td class='line-content'>    nskk-romaji-table)</td></tr>
+<tr class=''><td class='line-number'>145</td><td class='line-content'>   (t</td></tr>
+<tr class='covered'><td class='line-number'>146</td><td class='line-content'>    (warn &amp;quot;Unknown base input method: %s&amp;quot; base-name)</td></tr>
+<tr class=''><td class='line-number'>147</td><td class='line-content'>    nil)))</td></tr>
+<tr class=''><td class='line-number'>148</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>149</td><td class='line-content'>;;; 検索関数</td></tr>
+<tr class=''><td class='line-number'>150</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>151</td><td class='line-content'>(defun nskk-input-custom-lookup (name key)</td></tr>
+<tr class=''><td class='line-number'>152</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式でKEYを変換する。</td></tr>
+<tr class=''><td class='line-number'>153</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>154</td><td class='line-content'>使用例:</td></tr>
+<tr class=''><td class='line-number'>155</td><td class='line-content'>  (nskk-input-custom-lookup 'my-custom \&amp;quot;dh\&amp;quot;)  ;; =&amp;gt; \&amp;quot;で\&amp;quot;&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>156</td><td class='line-content'>  (let ((method (nskk-input-custom-get-method name)))</td></tr>
+<tr class='covered'><td class='line-number'>157</td><td class='line-content'>    (when method</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>      (gethash key (nskk-input-custom-method-hash-table method)))))</td></tr>
+<tr class=''><td class='line-number'>159</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>160</td><td class='line-content'>(defun nskk-input-custom-get-method (name)</td></tr>
+<tr class=''><td class='line-number'>161</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式を取得する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>162</td><td class='line-content'>  (cl-find name nskk-input-custom-methods</td></tr>
+<tr class='covered'><td class='line-number'>163</td><td class='line-content'>           :key #'nskk-input-custom-method-name))</td></tr>
+<tr class=''><td class='line-number'>164</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>165</td><td class='line-content'>(defun nskk-input-custom-get-candidates (name prefix)</td></tr>
+<tr class=''><td class='line-number'>166</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式でPREFIXで始まる候補を取得する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>167</td><td class='line-content'>  (let ((method (nskk-input-custom-get-method name)))</td></tr>
+<tr class='covered'><td class='line-number'>168</td><td class='line-content'>    (when method</td></tr>
+<tr class='covered'><td class='line-number'>169</td><td class='line-content'>      (let ((candidates nil)</td></tr>
+<tr class='covered'><td class='line-number'>170</td><td class='line-content'>            (hash-table (nskk-input-custom-method-hash-table method)))</td></tr>
+<tr class='covered'><td class='line-number'>171</td><td class='line-content'>        (maphash (lambda (key _value)</td></tr>
+<tr class='covered'><td class='line-number'>172</td><td class='line-content'>                   (when (string-prefix-p prefix key)</td></tr>
+<tr class='covered'><td class='line-number'>173</td><td class='line-content'>                     (push key candidates)))</td></tr>
+<tr class='uncovered'><td class='line-number'>174</td><td class='line-content'>                 hash-table)</td></tr>
+<tr class='covered'><td class='line-number'>175</td><td class='line-content'>        (nreverse candidates)))))</td></tr>
+<tr class=''><td class='line-number'>176</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>177</td><td class='line-content'>;;; 入力方式の管理</td></tr>
+<tr class=''><td class='line-number'>178</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>179</td><td class='line-content'>(defun nskk-input-custom-list-methods ()</td></tr>
+<tr class=''><td class='line-number'>180</td><td class='line-content'>  &amp;quot;登録されている全カスタム入力方式のリストを返す。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>181</td><td class='line-content'>  (mapcar #'nskk-input-custom-method-name nskk-input-custom-methods))</td></tr>
+<tr class=''><td class='line-number'>182</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>183</td><td class='line-content'>(defun nskk-input-custom-remove-method (name)</td></tr>
+<tr class=''><td class='line-number'>184</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式を削除する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>185</td><td class='line-content'>  (setq nskk-input-custom-methods</td></tr>
+<tr class='covered'><td class='line-number'>186</td><td class='line-content'>        (cl-remove-if (lambda (m)</td></tr>
+<tr class='covered'><td class='line-number'>187</td><td class='line-content'>                        (eq (nskk-input-custom-method-name m) name))</td></tr>
+<tr class='covered'><td class='line-number'>188</td><td class='line-content'>                      nskk-input-custom-methods)))</td></tr>
+<tr class=''><td class='line-number'>189</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>190</td><td class='line-content'>(defun nskk-input-custom-describe-method (name)</td></tr>
+<tr class=''><td class='line-number'>191</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式の情報を表示する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>192</td><td class='line-content'>  (interactive (list (intern (completing-read &amp;quot;Input method: &amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>193</td><td class='line-content'>                                               (nskk-input-custom-list-methods)))))</td></tr>
+<tr class='covered'><td class='line-number'>194</td><td class='line-content'>  (let ((method (nskk-input-custom-get-method name)))</td></tr>
+<tr class='covered'><td class='line-number'>195</td><td class='line-content'>    (if method</td></tr>
+<tr class='covered'><td class='line-number'>196</td><td class='line-content'>        (message &amp;quot;Name: %s\nBase: %s\nEntries: %d\nPriority: %d\nDescription: %s&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>197</td><td class='line-content'>                 (nskk-input-custom-method-name method)</td></tr>
+<tr class='covered'><td class='line-number'>198</td><td class='line-content'>                 (or (nskk-input-custom-method-base method) &amp;quot;none&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>199</td><td class='line-content'>                 (hash-table-count (nskk-input-custom-method-hash-table method))</td></tr>
+<tr class='covered'><td class='line-number'>200</td><td class='line-content'>                 (nskk-input-custom-method-priority method)</td></tr>
+<tr class='covered'><td class='line-number'>201</td><td class='line-content'>                 (or (nskk-input-custom-method-description method) &amp;quot;&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>202</td><td class='line-content'>      (message &amp;quot;No such custom input method: %s&amp;quot; name))))</td></tr>
+<tr class=''><td class='line-number'>203</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>204</td><td class='line-content'>;;; インポート/エクスポート</td></tr>
+<tr class=''><td class='line-number'>205</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>206</td><td class='line-content'>(defun nskk-input-custom-export-method (name file)</td></tr>
+<tr class=''><td class='line-number'>207</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式をFILEにエクスポートする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>208</td><td class='line-content'>  (interactive (list (intern (completing-read &amp;quot;Input method: &amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>209</td><td class='line-content'>                                               (nskk-input-custom-list-methods)))</td></tr>
+<tr class='covered'><td class='line-number'>210</td><td class='line-content'>                     (read-file-name &amp;quot;Export to: &amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>211</td><td class='line-content'>  (let ((method (nskk-input-custom-get-method name)))</td></tr>
+<tr class='covered'><td class='line-number'>212</td><td class='line-content'>    (if method</td></tr>
+<tr class='covered'><td class='line-number'>213</td><td class='line-content'>        (with-temp-file file</td></tr>
+<tr class='covered'><td class='line-number'>214</td><td class='line-content'>          (prin1 `(nskk-input-custom-define</td></tr>
+<tr class='covered'><td class='line-number'>215</td><td class='line-content'>                   ',(nskk-input-custom-method-name method)</td></tr>
+<tr class='covered'><td class='line-number'>216</td><td class='line-content'>                   ',(nskk-input-custom-method-table method)</td></tr>
+<tr class='covered'><td class='line-number'>217</td><td class='line-content'>                   :base ',(nskk-input-custom-method-base method)</td></tr>
+<tr class='covered'><td class='line-number'>218</td><td class='line-content'>                   :description ,(nskk-input-custom-method-description method)</td></tr>
+<tr class='covered'><td class='line-number'>219</td><td class='line-content'>                   :priority ,(nskk-input-custom-method-priority method))</td></tr>
+<tr class='covered'><td class='line-number'>220</td><td class='line-content'>                 (current-buffer))</td></tr>
+<tr class='covered'><td class='line-number'>221</td><td class='line-content'>          (message &amp;quot;Exported to %s&amp;quot; file))</td></tr>
+<tr class='onevalue'><td class='line-number'>222</td><td class='line-content'>      (error &amp;quot;No such custom input method: %s&amp;quot; name))))</td></tr>
+<tr class=''><td class='line-number'>223</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>224</td><td class='line-content'>(defun nskk-input-custom-import-method (file)</td></tr>
+<tr class=''><td class='line-number'>225</td><td class='line-content'>  &amp;quot;FILEからカスタム入力方式をインポートする。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>226</td><td class='line-content'>  (interactive &amp;quot;fImport from: &amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>227</td><td class='line-content'>  (load-file file)</td></tr>
+<tr class='covered'><td class='line-number'>228</td><td class='line-content'>  (message &amp;quot;Imported from %s&amp;quot; file))</td></tr>
+<tr class=''><td class='line-number'>229</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>230</td><td class='line-content'>;;; 統計情報</td></tr>
+<tr class=''><td class='line-number'>231</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>232</td><td class='line-content'>(defun nskk-input-custom-stats (name)</td></tr>
+<tr class=''><td class='line-number'>233</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式の統計情報を返す。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>234</td><td class='line-content'>  (let ((method (nskk-input-custom-get-method name)))</td></tr>
+<tr class='covered'><td class='line-number'>235</td><td class='line-content'>    (when method</td></tr>
+<tr class='covered'><td class='line-number'>236</td><td class='line-content'>      (list :name name</td></tr>
+<tr class='covered'><td class='line-number'>237</td><td class='line-content'>            :total (hash-table-count (nskk-input-custom-method-hash-table method))</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>            :custom-entries (length (nskk-input-custom-method-table method))</td></tr>
+<tr class='covered'><td class='line-number'>239</td><td class='line-content'>            :base (nskk-input-custom-method-base method)</td></tr>
+<tr class='covered'><td class='line-number'>240</td><td class='line-content'>            :priority (nskk-input-custom-method-priority method)))))</td></tr>
+<tr class=''><td class='line-number'>241</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>242</td><td class='line-content'>;;; パフォーマンス最適化</td></tr>
+<tr class=''><td class='line-number'>243</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>244</td><td class='line-content'>(defsubst nskk-input-custom-lookup-fast (name key)</td></tr>
+<tr class=''><td class='line-number'>245</td><td class='line-content'>  &amp;quot;NAMEのカスタム入力方式でKEYを高速変換する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>246</td><td class='line-content'>  (let ((method (nskk-input-custom-get-method name)))</td></tr>
+<tr class='covered'><td class='line-number'>247</td><td class='line-content'>    (when method</td></tr>
+<tr class='covered'><td class='line-number'>248</td><td class='line-content'>      (gethash key (nskk-input-custom-method-hash-table method)))))</td></tr>
+<tr class=''><td class='line-number'>249</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>250</td><td class='line-content'>(provide 'nskk-input-custom)</td></tr>
+<tr class=''><td class='line-number'>251</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>252</td><td class='line-content'>;;; nskk-input-custom.el ends here</td></tr>
+
+    </table>
+  </div>
+  <div class='legend'>
+    <div class='legend-item'><span class='legend-color' style='background: #e8f5e9;'></span>Covered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #ffebee;'></span>Uncovered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #fff3e0;'></span>1-Value</div>
+    <div class='legend-item'><span class='legend-color' style='background: #f3e5f5;'></span>No-Return</div>
+  </div>
+</body>
+</html>

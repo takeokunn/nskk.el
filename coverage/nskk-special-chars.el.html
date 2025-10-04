@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Coverage: nskk-special-chars.el</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Monaco', 'Courier New', monospace; background: #f5f5f5; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; }
+    .header h1 { font-size: 24px; margin-bottom: 10px; }
+    .header .stats { font-size: 14px; opacity: 0.9; }
+    .header a { color: white; text-decoration: underline; }
+    .container { max-width: 1400px; margin: 20px auto; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; font-family: 'Monaco', 'Courier New', monospace; font-size: 13px; }
+    td.line-number { background: #f0f0f0; color: #666; padding: 2px 10px; text-align: right; border-right: 2px solid #ddd; user-select: none; width: 60px; }
+    td.line-content { padding: 2px 10px; white-space: pre; }
+    tr.covered { background: #e8f5e9; }
+    tr.uncovered { background: #ffebee; }
+    tr.onevalue { background: #fff3e0; }
+    tr.noreturn { background: #f3e5f5; }
+    tr:hover { opacity: 0.9; }
+    .legend { padding: 15px 30px; background: #fafafa; border-top: 1px solid #e0e0e0; font-size: 12px; }
+    .legend-item { display: inline-block; margin-right: 20px; }
+    .legend-color { display: inline-block; width: 20px; height: 12px; margin-right: 5px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div class='header'>
+    <h1>nskk-special-chars.el</h1>
+    <div class='stats'>
+      Coverage: 97.45% (382/392 forms) •
+      <a href='index.html'>← Back to Index</a>
+    </div>
+  </div>
+  <div class='container'>
+    <table>
+<tr class=''><td class='line-number'>1</td><td class='line-content'>;;; nskk-special-chars.el --- Special character handling for NSKK -*- lexical-binding: t; -*-</td></tr>
+<tr class=''><td class='line-number'>2</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>3</td><td class='line-content'>;; Copyright (C) 2024 NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>4</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>5</td><td class='line-content'>;; Author: NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>6</td><td class='line-content'>;; Keywords: japanese, input method, skk</td></tr>
+<tr class=''><td class='line-number'>7</td><td class='line-content'>;; Version: 0.1.0</td></tr>
+<tr class=''><td class='line-number'>8</td><td class='line-content'>;; Package-Requires: ((emacs &amp;quot;31.0&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>9</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>10</td><td class='line-content'>;; This file is part of NSKK.</td></tr>
+<tr class=''><td class='line-number'>11</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>12</td><td class='line-content'>;; NSKK is free software: you can redistribute it and/or modify</td></tr>
+<tr class=''><td class='line-number'>13</td><td class='line-content'>;; it under the terms of the GNU General Public License as published by</td></tr>
+<tr class=''><td class='line-number'>14</td><td class='line-content'>;; the Free Software Foundation, either version 3 of the License, or</td></tr>
+<tr class=''><td class='line-number'>15</td><td class='line-content'>;; (at your option) any later version.</td></tr>
+<tr class=''><td class='line-number'>16</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>17</td><td class='line-content'>;; NSKK is distributed in the hope that it will be useful,</td></tr>
+<tr class=''><td class='line-number'>18</td><td class='line-content'>;; but WITHOUT ANY WARRANTY; without even the implied warranty of</td></tr>
+<tr class=''><td class='line-number'>19</td><td class='line-content'>;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</td></tr>
+<tr class=''><td class='line-number'>20</td><td class='line-content'>;; GNU General Public License for more details.</td></tr>
+<tr class=''><td class='line-number'>21</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>22</td><td class='line-content'>;; You should have received a copy of the GNU General Public License</td></tr>
+<tr class=''><td class='line-number'>23</td><td class='line-content'>;; along with NSKK.  If not, see &amp;lt;https://www.gnu.org/licenses/&amp;gt;.</td></tr>
+<tr class=''><td class='line-number'>24</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>25</td><td class='line-content'>;;; Commentary:</td></tr>
+<tr class=''><td class='line-number'>26</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>27</td><td class='line-content'>;; このファイルはNSKKの特殊文字処理を実装します。</td></tr>
+<tr class=''><td class='line-number'>28</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>29</td><td class='line-content'>;; 主な機能:</td></tr>
+<tr class=''><td class='line-number'>30</td><td class='line-content'>;; 1. 大文字入力の処理（見出し語入力モードへの遷移）</td></tr>
+<tr class=''><td class='line-number'>31</td><td class='line-content'>;; 2. ひらがな→カタカナ変換</td></tr>
+<tr class=''><td class='line-number'>32</td><td class='line-content'>;; 3. 特殊な入力パターンの処理</td></tr>
+<tr class=''><td class='line-number'>33</td><td class='line-content'>;; 4. エッジケースのハンドリング</td></tr>
+<tr class=''><td class='line-number'>34</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>35</td><td class='line-content'>;; 使用例:</td></tr>
+<tr class=''><td class='line-number'>36</td><td class='line-content'>;; (nskk-hiragana-to-katakana &amp;quot;あいうえお&amp;quot;)  ;; =&amp;gt; &amp;quot;アイウエオ&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>37</td><td class='line-content'>;; (nskk-is-uppercase-input &amp;quot;K&amp;quot;)              ;; =&amp;gt; t</td></tr>
+<tr class=''><td class='line-number'>38</td><td class='line-content'>;; (nskk-process-special-input &amp;quot;Q&amp;quot;)           ;; =&amp;gt; special handling</td></tr>
+<tr class=''><td class='line-number'>39</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>40</td><td class='line-content'>;;; Code:</td></tr>
+<tr class=''><td class='line-number'>41</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>42</td><td class='line-content'>(require 'cl-lib)</td></tr>
+<tr class=''><td class='line-number'>43</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>44</td><td class='line-content'>;;; カスタマイズ可能変数</td></tr>
+<tr class=''><td class='line-number'>45</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>46</td><td class='line-content'>(defgroup nskk-special-chars nil</td></tr>
+<tr class=''><td class='line-number'>47</td><td class='line-content'>  &amp;quot;NSKK special character handling settings.&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>48</td><td class='line-content'>  :group 'nskk</td></tr>
+<tr class=''><td class='line-number'>49</td><td class='line-content'>  :prefix &amp;quot;nskk-special-chars-&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>50</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>51</td><td class='line-content'>(defcustom nskk-special-chars-katakana-mode-key &amp;quot;q&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>52</td><td class='line-content'>  &amp;quot;カタカナモードに切り替えるキー。</td></tr>
+<tr class=''><td class='line-number'>53</td><td class='line-content'>デフォルトは 'q'。このキーが押されると次の変換結果を</td></tr>
+<tr class=''><td class='line-number'>54</td><td class='line-content'>カタカナに変換する。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>55</td><td class='line-content'>  :type 'string</td></tr>
+<tr class=''><td class='line-number'>56</td><td class='line-content'>  :group 'nskk-special-chars)</td></tr>
+<tr class=''><td class='line-number'>57</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>58</td><td class='line-content'>(defcustom nskk-special-chars-jisx0201-kana-mode-key &amp;quot;Q&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>59</td><td class='line-content'>  &amp;quot;半角カタカナモードに切り替えるキー。</td></tr>
+<tr class=''><td class='line-number'>60</td><td class='line-content'>デフォルトは 'Q'。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>61</td><td class='line-content'>  :type 'string</td></tr>
+<tr class=''><td class='line-number'>62</td><td class='line-content'>  :group 'nskk-special-chars)</td></tr>
+<tr class=''><td class='line-number'>63</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>64</td><td class='line-content'>;;; ひらがな↔カタカナ変換</td></tr>
+<tr class=''><td class='line-number'>65</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>66</td><td class='line-content'>(defconst nskk-special-chars--hiragana-katakana-offset 96</td></tr>
+<tr class=''><td class='line-number'>67</td><td class='line-content'>  &amp;quot;ひらがなとカタカナのUnicodeコードポイントのオフセット。</td></tr>
+<tr class=''><td class='line-number'>68</td><td class='line-content'>ひらがな「あ」(U+3042) とカタカナ「ア」(U+30A2) の差分。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>69</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>70</td><td class='line-content'>(defun nskk-hiragana-to-katakana (str)</td></tr>
+<tr class=''><td class='line-number'>71</td><td class='line-content'>  &amp;quot;ひらがな文字列 STR をカタカナに変換する。</td></tr>
+<tr class=''><td class='line-number'>72</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>73</td><td class='line-content'>ひらがな以外の文字はそのまま返される。</td></tr>
+<tr class=''><td class='line-number'>74</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>75</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>76</td><td class='line-content'>  (nskk-hiragana-to-katakana \&amp;quot;あいうえお\&amp;quot;)  ;; =&amp;gt; \&amp;quot;アイウエオ\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>77</td><td class='line-content'>  (nskk-hiragana-to-katakana \&amp;quot;こんにちは\&amp;quot;)  ;; =&amp;gt; \&amp;quot;コンニチハ\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>78</td><td class='line-content'>  (nskk-hiragana-to-katakana \&amp;quot;aBc\&amp;quot;)         ;; =&amp;gt; \&amp;quot;aBc\&amp;quot; (変換なし)&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>79</td><td class='line-content'>  (let ((result &amp;quot;&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>80</td><td class='line-content'>    (dotimes (i (length str))</td></tr>
+<tr class='covered'><td class='line-number'>81</td><td class='line-content'>      (let ((char (aref str i)))</td></tr>
+<tr class='covered'><td class='line-number'>82</td><td class='line-content'>        (if (and (&amp;gt;= char ?ぁ) (&amp;lt;= char ?ん))</td></tr>
+<tr class=''><td class='line-number'>83</td><td class='line-content'>            ;; ひらがなの場合、カタカナに変換</td></tr>
+<tr class='covered'><td class='line-number'>84</td><td class='line-content'>            (setq result (concat result</td></tr>
+<tr class='covered'><td class='line-number'>85</td><td class='line-content'>                                (char-to-string</td></tr>
+<tr class='covered'><td class='line-number'>86</td><td class='line-content'>                                 (+ char nskk-special-chars--hiragana-katakana-offset))))</td></tr>
+<tr class=''><td class='line-number'>87</td><td class='line-content'>          ;; それ以外はそのまま</td></tr>
+<tr class='covered'><td class='line-number'>88</td><td class='line-content'>          (setq result (concat result (char-to-string char))))))</td></tr>
+<tr class='covered'><td class='line-number'>89</td><td class='line-content'>    result))</td></tr>
+<tr class=''><td class='line-number'>90</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>91</td><td class='line-content'>(defun nskk-katakana-to-hiragana (str)</td></tr>
+<tr class=''><td class='line-number'>92</td><td class='line-content'>  &amp;quot;カタカナ文字列 STR をひらがなに変換する。</td></tr>
+<tr class=''><td class='line-number'>93</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>94</td><td class='line-content'>カタカナ以外の文字はそのまま返される。</td></tr>
+<tr class=''><td class='line-number'>95</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>96</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>97</td><td class='line-content'>  (nskk-katakana-to-hiragana \&amp;quot;アイウエオ\&amp;quot;)  ;; =&amp;gt; \&amp;quot;あいうえお\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>98</td><td class='line-content'>  (nskk-katakana-to-hiragana \&amp;quot;コンニチハ\&amp;quot;)  ;; =&amp;gt; \&amp;quot;こんにちは\&amp;quot;&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>99</td><td class='line-content'>  (let ((result &amp;quot;&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>100</td><td class='line-content'>    (dotimes (i (length str))</td></tr>
+<tr class='covered'><td class='line-number'>101</td><td class='line-content'>      (let ((char (aref str i)))</td></tr>
+<tr class='covered'><td class='line-number'>102</td><td class='line-content'>        (if (and (&amp;gt;= char ?ァ) (&amp;lt;= char ?ン))</td></tr>
+<tr class=''><td class='line-number'>103</td><td class='line-content'>            ;; カタカナの場合、ひらがなに変換</td></tr>
+<tr class='covered'><td class='line-number'>104</td><td class='line-content'>            (setq result (concat result</td></tr>
+<tr class='covered'><td class='line-number'>105</td><td class='line-content'>                                (char-to-string</td></tr>
+<tr class='covered'><td class='line-number'>106</td><td class='line-content'>                                 (- char nskk-special-chars--hiragana-katakana-offset))))</td></tr>
+<tr class=''><td class='line-number'>107</td><td class='line-content'>          ;; それ以外はそのまま</td></tr>
+<tr class='covered'><td class='line-number'>108</td><td class='line-content'>          (setq result (concat result (char-to-string char))))))</td></tr>
+<tr class='covered'><td class='line-number'>109</td><td class='line-content'>    result))</td></tr>
+<tr class=''><td class='line-number'>110</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>111</td><td class='line-content'>;;; 大文字入力処理</td></tr>
+<tr class=''><td class='line-number'>112</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>113</td><td class='line-content'>(defsubst nskk-is-uppercase-char (char)</td></tr>
+<tr class=''><td class='line-number'>114</td><td class='line-content'>  &amp;quot;CHAR が大文字のアルファベットかどうかを判定する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>115</td><td class='line-content'>  (and char (&amp;gt;= char ?A) (&amp;lt;= char ?Z)))</td></tr>
+<tr class=''><td class='line-number'>116</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>117</td><td class='line-content'>(defun nskk-is-uppercase-input (input)</td></tr>
+<tr class=''><td class='line-number'>118</td><td class='line-content'>  &amp;quot;INPUT の最初の文字が大文字かどうかを判定する。</td></tr>
+<tr class=''><td class='line-number'>119</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>120</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>121</td><td class='line-content'>  (nskk-is-uppercase-input \&amp;quot;K\&amp;quot;)   ;; =&amp;gt; t</td></tr>
+<tr class=''><td class='line-number'>122</td><td class='line-content'>  (nskk-is-uppercase-input \&amp;quot;k\&amp;quot;)   ;; =&amp;gt; nil</td></tr>
+<tr class=''><td class='line-number'>123</td><td class='line-content'>  (nskk-is-uppercase-input \&amp;quot;Ka\&amp;quot;)  ;; =&amp;gt; t&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>124</td><td class='line-content'>  (and (not (string-empty-p input))</td></tr>
+<tr class='covered'><td class='line-number'>125</td><td class='line-content'>       (nskk-is-uppercase-char (aref input 0))))</td></tr>
+<tr class=''><td class='line-number'>126</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>127</td><td class='line-content'>(defun nskk-lowercase-input (input)</td></tr>
+<tr class=''><td class='line-number'>128</td><td class='line-content'>  &amp;quot;INPUT を小文字に変換する。</td></tr>
+<tr class=''><td class='line-number'>129</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>130</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>131</td><td class='line-content'>  (nskk-lowercase-input \&amp;quot;HELLO\&amp;quot;)  ;; =&amp;gt; \&amp;quot;hello\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>132</td><td class='line-content'>  (nskk-lowercase-input \&amp;quot;World\&amp;quot;)  ;; =&amp;gt; \&amp;quot;world\&amp;quot;&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>133</td><td class='line-content'>  (downcase input))</td></tr>
+<tr class=''><td class='line-number'>134</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>135</td><td class='line-content'>(defun nskk-capitalize-string (str)</td></tr>
+<tr class=''><td class='line-number'>136</td><td class='line-content'>  &amp;quot;STR の最初の文字を大文字に変換する。</td></tr>
+<tr class=''><td class='line-number'>137</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>138</td><td class='line-content'>日本語文字列の場合は何もしない。</td></tr>
+<tr class=''><td class='line-number'>139</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>140</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>141</td><td class='line-content'>  (nskk-capitalize-string \&amp;quot;hello\&amp;quot;)      ;; =&amp;gt; \&amp;quot;Hello\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>142</td><td class='line-content'>  (nskk-capitalize-string \&amp;quot;こんにちは\&amp;quot;)  ;; =&amp;gt; \&amp;quot;こんにちは\&amp;quot;&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>143</td><td class='line-content'>  (if (string-empty-p str)</td></tr>
+<tr class=''><td class='line-number'>144</td><td class='line-content'>      str</td></tr>
+<tr class='covered'><td class='line-number'>145</td><td class='line-content'>    (let ((first-char (aref str 0)))</td></tr>
+<tr class='covered'><td class='line-number'>146</td><td class='line-content'>      (if (and (&amp;gt;= first-char ?a) (&amp;lt;= first-char ?z))</td></tr>
+<tr class='covered'><td class='line-number'>147</td><td class='line-content'>          (concat (upcase (substring str 0 1))</td></tr>
+<tr class='covered'><td class='line-number'>148</td><td class='line-content'>                  (substring str 1))</td></tr>
+<tr class='covered'><td class='line-number'>149</td><td class='line-content'>        str))))</td></tr>
+<tr class=''><td class='line-number'>150</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>151</td><td class='line-content'>;;; 特殊入力モード判定</td></tr>
+<tr class=''><td class='line-number'>152</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>153</td><td class='line-content'>(defun nskk-is-katakana-mode-key (input)</td></tr>
+<tr class=''><td class='line-number'>154</td><td class='line-content'>  &amp;quot;INPUT がカタカナモードキーかどうかを判定する。</td></tr>
+<tr class=''><td class='line-number'>155</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>156</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>157</td><td class='line-content'>  (nskk-is-katakana-mode-key \&amp;quot;q\&amp;quot;)  ;; =&amp;gt; t (デフォルト設定の場合)&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>  (string= input nskk-special-chars-katakana-mode-key))</td></tr>
+<tr class=''><td class='line-number'>159</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>160</td><td class='line-content'>(defun nskk-is-jisx0201-kana-mode-key (input)</td></tr>
+<tr class=''><td class='line-number'>161</td><td class='line-content'>  &amp;quot;INPUT が半角カタカナモードキーかどうかを判定する。</td></tr>
+<tr class=''><td class='line-number'>162</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>163</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>164</td><td class='line-content'>  (nskk-is-jisx0201-kana-mode-key \&amp;quot;Q\&amp;quot;)  ;; =&amp;gt; t (デフォルト設定の場合)&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>165</td><td class='line-content'>  (string= input nskk-special-chars-jisx0201-kana-mode-key))</td></tr>
+<tr class=''><td class='line-number'>166</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>167</td><td class='line-content'>;;; 半角カタカナ変換（JIS X 0201）</td></tr>
+<tr class=''><td class='line-number'>168</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>169</td><td class='line-content'>(defconst nskk-special-chars--halfwidth-katakana-map</td></tr>
+<tr class=''><td class='line-number'>170</td><td class='line-content'>  '((&amp;quot;ア&amp;quot; . &amp;quot;ｱ&amp;quot;) (&amp;quot;イ&amp;quot; . &amp;quot;ｲ&amp;quot;) (&amp;quot;ウ&amp;quot; . &amp;quot;ｳ&amp;quot;) (&amp;quot;エ&amp;quot; . &amp;quot;ｴ&amp;quot;) (&amp;quot;オ&amp;quot; . &amp;quot;ｵ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>171</td><td class='line-content'>    (&amp;quot;カ&amp;quot; . &amp;quot;ｶ&amp;quot;) (&amp;quot;キ&amp;quot; . &amp;quot;ｷ&amp;quot;) (&amp;quot;ク&amp;quot; . &amp;quot;ｸ&amp;quot;) (&amp;quot;ケ&amp;quot; . &amp;quot;ｹ&amp;quot;) (&amp;quot;コ&amp;quot; . &amp;quot;ｺ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>172</td><td class='line-content'>    (&amp;quot;サ&amp;quot; . &amp;quot;ｻ&amp;quot;) (&amp;quot;シ&amp;quot; . &amp;quot;ｼ&amp;quot;) (&amp;quot;ス&amp;quot; . &amp;quot;ｽ&amp;quot;) (&amp;quot;セ&amp;quot; . &amp;quot;ｾ&amp;quot;) (&amp;quot;ソ&amp;quot; . &amp;quot;ｿ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>173</td><td class='line-content'>    (&amp;quot;タ&amp;quot; . &amp;quot;ﾀ&amp;quot;) (&amp;quot;チ&amp;quot; . &amp;quot;ﾁ&amp;quot;) (&amp;quot;ツ&amp;quot; . &amp;quot;ﾂ&amp;quot;) (&amp;quot;テ&amp;quot; . &amp;quot;ﾃ&amp;quot;) (&amp;quot;ト&amp;quot; . &amp;quot;ﾄ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>174</td><td class='line-content'>    (&amp;quot;ナ&amp;quot; . &amp;quot;ﾅ&amp;quot;) (&amp;quot;ニ&amp;quot; . &amp;quot;ﾆ&amp;quot;) (&amp;quot;ヌ&amp;quot; . &amp;quot;ﾇ&amp;quot;) (&amp;quot;ネ&amp;quot; . &amp;quot;ﾈ&amp;quot;) (&amp;quot;ノ&amp;quot; . &amp;quot;ﾉ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>175</td><td class='line-content'>    (&amp;quot;ハ&amp;quot; . &amp;quot;ﾊ&amp;quot;) (&amp;quot;ヒ&amp;quot; . &amp;quot;ﾋ&amp;quot;) (&amp;quot;フ&amp;quot; . &amp;quot;ﾌ&amp;quot;) (&amp;quot;ヘ&amp;quot; . &amp;quot;ﾍ&amp;quot;) (&amp;quot;ホ&amp;quot; . &amp;quot;ﾎ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>176</td><td class='line-content'>    (&amp;quot;マ&amp;quot; . &amp;quot;ﾏ&amp;quot;) (&amp;quot;ミ&amp;quot; . &amp;quot;ﾐ&amp;quot;) (&amp;quot;ム&amp;quot; . &amp;quot;ﾑ&amp;quot;) (&amp;quot;メ&amp;quot; . &amp;quot;ﾒ&amp;quot;) (&amp;quot;モ&amp;quot; . &amp;quot;ﾓ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>177</td><td class='line-content'>    (&amp;quot;ヤ&amp;quot; . &amp;quot;ﾔ&amp;quot;) (&amp;quot;ユ&amp;quot; . &amp;quot;ﾕ&amp;quot;) (&amp;quot;ヨ&amp;quot; . &amp;quot;ﾖ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>178</td><td class='line-content'>    (&amp;quot;ラ&amp;quot; . &amp;quot;ﾗ&amp;quot;) (&amp;quot;リ&amp;quot; . &amp;quot;ﾘ&amp;quot;) (&amp;quot;ル&amp;quot; . &amp;quot;ﾙ&amp;quot;) (&amp;quot;レ&amp;quot; . &amp;quot;ﾚ&amp;quot;) (&amp;quot;ロ&amp;quot; . &amp;quot;ﾛ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>179</td><td class='line-content'>    (&amp;quot;ワ&amp;quot; . &amp;quot;ﾜ&amp;quot;) (&amp;quot;ヲ&amp;quot; . &amp;quot;ｦ&amp;quot;) (&amp;quot;ン&amp;quot; . &amp;quot;ﾝ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>180</td><td class='line-content'>    (&amp;quot;ガ&amp;quot; . &amp;quot;ｶﾞ&amp;quot;) (&amp;quot;ギ&amp;quot; . &amp;quot;ｷﾞ&amp;quot;) (&amp;quot;グ&amp;quot; . &amp;quot;ｸﾞ&amp;quot;) (&amp;quot;ゲ&amp;quot; . &amp;quot;ｹﾞ&amp;quot;) (&amp;quot;ゴ&amp;quot; . &amp;quot;ｺﾞ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>181</td><td class='line-content'>    (&amp;quot;ザ&amp;quot; . &amp;quot;ｻﾞ&amp;quot;) (&amp;quot;ジ&amp;quot; . &amp;quot;ｼﾞ&amp;quot;) (&amp;quot;ズ&amp;quot; . &amp;quot;ｽﾞ&amp;quot;) (&amp;quot;ゼ&amp;quot; . &amp;quot;ｾﾞ&amp;quot;) (&amp;quot;ゾ&amp;quot; . &amp;quot;ｿﾞ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>182</td><td class='line-content'>    (&amp;quot;ダ&amp;quot; . &amp;quot;ﾀﾞ&amp;quot;) (&amp;quot;ヂ&amp;quot; . &amp;quot;ﾁﾞ&amp;quot;) (&amp;quot;ヅ&amp;quot; . &amp;quot;ﾂﾞ&amp;quot;) (&amp;quot;デ&amp;quot; . &amp;quot;ﾃﾞ&amp;quot;) (&amp;quot;ド&amp;quot; . &amp;quot;ﾄﾞ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>183</td><td class='line-content'>    (&amp;quot;バ&amp;quot; . &amp;quot;ﾊﾞ&amp;quot;) (&amp;quot;ビ&amp;quot; . &amp;quot;ﾋﾞ&amp;quot;) (&amp;quot;ブ&amp;quot; . &amp;quot;ﾌﾞ&amp;quot;) (&amp;quot;ベ&amp;quot; . &amp;quot;ﾍﾞ&amp;quot;) (&amp;quot;ボ&amp;quot; . &amp;quot;ﾎﾞ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>184</td><td class='line-content'>    (&amp;quot;パ&amp;quot; . &amp;quot;ﾊﾟ&amp;quot;) (&amp;quot;ピ&amp;quot; . &amp;quot;ﾋﾟ&amp;quot;) (&amp;quot;プ&amp;quot; . &amp;quot;ﾌﾟ&amp;quot;) (&amp;quot;ペ&amp;quot; . &amp;quot;ﾍﾟ&amp;quot;) (&amp;quot;ポ&amp;quot; . &amp;quot;ﾎﾟ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>185</td><td class='line-content'>    (&amp;quot;ァ&amp;quot; . &amp;quot;ｧ&amp;quot;) (&amp;quot;ィ&amp;quot; . &amp;quot;ｨ&amp;quot;) (&amp;quot;ゥ&amp;quot; . &amp;quot;ｩ&amp;quot;) (&amp;quot;ェ&amp;quot; . &amp;quot;ｪ&amp;quot;) (&amp;quot;ォ&amp;quot; . &amp;quot;ｫ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>186</td><td class='line-content'>    (&amp;quot;ャ&amp;quot; . &amp;quot;ｬ&amp;quot;) (&amp;quot;ュ&amp;quot; . &amp;quot;ｭ&amp;quot;) (&amp;quot;ョ&amp;quot; . &amp;quot;ｮ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>187</td><td class='line-content'>    (&amp;quot;ッ&amp;quot; . &amp;quot;ｯ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>188</td><td class='line-content'>    (&amp;quot;ー&amp;quot; . &amp;quot;ｰ&amp;quot;) (&amp;quot;、&amp;quot; . &amp;quot;､&amp;quot;) (&amp;quot;。&amp;quot; . &amp;quot;｡&amp;quot;) (&amp;quot;「&amp;quot; . &amp;quot;｢&amp;quot;) (&amp;quot;」&amp;quot; . &amp;quot;｣&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>189</td><td class='line-content'>    (&amp;quot;・&amp;quot; . &amp;quot;･&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>190</td><td class='line-content'>  &amp;quot;全角カタカナから半角カタカナへの変換マップ。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>191</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>192</td><td class='line-content'>(defun nskk-katakana-to-halfwidth (str)</td></tr>
+<tr class=''><td class='line-number'>193</td><td class='line-content'>  &amp;quot;全角カタカナ文字列 STR を半角カタカナ（JIS X 0201）に変換する。</td></tr>
+<tr class=''><td class='line-number'>194</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>195</td><td class='line-content'>濁音・半濁音は2文字（基底文字+濁点/半濁点）に分解される。</td></tr>
+<tr class=''><td class='line-number'>196</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>197</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>198</td><td class='line-content'>  (nskk-katakana-to-halfwidth \&amp;quot;アイウエオ\&amp;quot;)  ;; =&amp;gt; \&amp;quot;ｱｲｳｴｵ\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>199</td><td class='line-content'>  (nskk-katakana-to-halfwidth \&amp;quot;ガギグ\&amp;quot;)      ;; =&amp;gt; \&amp;quot;ｶﾞｷﾞｸﾞ\&amp;quot;&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>200</td><td class='line-content'>  (let ((result &amp;quot;&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>201</td><td class='line-content'>    (dotimes (i (length str))</td></tr>
+<tr class='covered'><td class='line-number'>202</td><td class='line-content'>      (let* ((char (char-to-string (aref str i)))</td></tr>
+<tr class='covered'><td class='line-number'>203</td><td class='line-content'>             (halfwidth (cdr (assoc char nskk-special-chars--halfwidth-katakana-map))))</td></tr>
+<tr class='covered'><td class='line-number'>204</td><td class='line-content'>        (if halfwidth</td></tr>
+<tr class='covered'><td class='line-number'>205</td><td class='line-content'>            (setq result (concat result halfwidth))</td></tr>
+<tr class=''><td class='line-number'>206</td><td class='line-content'>          ;; マップにない文字はそのまま</td></tr>
+<tr class='covered'><td class='line-number'>207</td><td class='line-content'>          (setq result (concat result char)))))</td></tr>
+<tr class='covered'><td class='line-number'>208</td><td class='line-content'>    result))</td></tr>
+<tr class=''><td class='line-number'>209</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>210</td><td class='line-content'>;;; エッジケース処理</td></tr>
+<tr class=''><td class='line-number'>211</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>212</td><td class='line-content'>(defun nskk-process-repeating-input (input)</td></tr>
+<tr class=''><td class='line-number'>213</td><td class='line-content'>  &amp;quot;繰り返し入力パターンを処理する。</td></tr>
+<tr class=''><td class='line-number'>214</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>215</td><td class='line-content'>例えば、同じ文字の連続入力などの特殊なケースを扱う。</td></tr>
+<tr class=''><td class='line-number'>216</td><td class='line-content'>現在は促音処理が主な対象だが、将来的に拡張可能。</td></tr>
+<tr class=''><td class='line-number'>217</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>218</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>219</td><td class='line-content'>  (nskk-process-repeating-input \&amp;quot;kkk\&amp;quot;)  ;; 促音の連続など&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>220</td><td class='line-content'>  ;; 現状は nskk-converter.el で処理されているため、</td></tr>
+<tr class=''><td class='line-number'>221</td><td class='line-content'>  ;; ここでは追加の処理は不要</td></tr>
+<tr class=''><td class='line-number'>222</td><td class='line-content'>  ;; 将来的な拡張用のプレースホルダー</td></tr>
+<tr class='uncovered'><td class='line-number'>223</td><td class='line-content'>  input)</td></tr>
+<tr class=''><td class='line-number'>224</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>225</td><td class='line-content'>(defun nskk-normalize-input (input)</td></tr>
+<tr class=''><td class='line-number'>226</td><td class='line-content'>  &amp;quot;INPUT を正規化する。</td></tr>
+<tr class=''><td class='line-number'>227</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>228</td><td class='line-content'>全角英数字を半角に変換するなどの前処理を行う。</td></tr>
+<tr class=''><td class='line-number'>229</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>230</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>231</td><td class='line-content'>  (nskk-normalize-input \&amp;quot;ＡＢＣ\&amp;quot;)  ;; =&amp;gt; \&amp;quot;ABC\&amp;quot;&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>232</td><td class='line-content'>  ;; 全角英数字を半角に変換</td></tr>
+<tr class='covered'><td class='line-number'>233</td><td class='line-content'>  (let ((result &amp;quot;&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>234</td><td class='line-content'>    (dotimes (i (length input))</td></tr>
+<tr class='covered'><td class='line-number'>235</td><td class='line-content'>      (let ((char (aref input i)))</td></tr>
+<tr class='covered'><td class='line-number'>236</td><td class='line-content'>        (cond</td></tr>
+<tr class=''><td class='line-number'>237</td><td class='line-content'>         ;; 全角英字 (A-Z)</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>         ((and (&amp;gt;= char ?Ａ) (&amp;lt;= char ?Ｚ))</td></tr>
+<tr class='covered'><td class='line-number'>239</td><td class='line-content'>          (setq result (concat result (char-to-string (- char (- ?Ａ ?A))))))</td></tr>
+<tr class=''><td class='line-number'>240</td><td class='line-content'>         ;; 全角英字 (a-z)</td></tr>
+<tr class='covered'><td class='line-number'>241</td><td class='line-content'>         ((and (&amp;gt;= char ?ａ) (&amp;lt;= char ?ｚ))</td></tr>
+<tr class='covered'><td class='line-number'>242</td><td class='line-content'>          (setq result (concat result (char-to-string (- char (- ?ａ ?a))))))</td></tr>
+<tr class=''><td class='line-number'>243</td><td class='line-content'>         ;; 全角数字 (0-9)</td></tr>
+<tr class='covered'><td class='line-number'>244</td><td class='line-content'>         ((and (&amp;gt;= char ?０) (&amp;lt;= char ?９))</td></tr>
+<tr class='covered'><td class='line-number'>245</td><td class='line-content'>          (setq result (concat result (char-to-string (- char (- ?０ ?0))))))</td></tr>
+<tr class=''><td class='line-number'>246</td><td class='line-content'>         ;; その他はそのまま</td></tr>
+<tr class=''><td class='line-number'>247</td><td class='line-content'>         (t</td></tr>
+<tr class='covered'><td class='line-number'>248</td><td class='line-content'>          (setq result (concat result (char-to-string char)))))))</td></tr>
+<tr class='covered'><td class='line-number'>249</td><td class='line-content'>    result))</td></tr>
+<tr class=''><td class='line-number'>250</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>251</td><td class='line-content'>;;; 文字種判定ユーティリティ</td></tr>
+<tr class=''><td class='line-number'>252</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>253</td><td class='line-content'>(defsubst nskk-is-hiragana-char (char)</td></tr>
+<tr class=''><td class='line-number'>254</td><td class='line-content'>  &amp;quot;CHAR がひらがなかどうかを判定する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>255</td><td class='line-content'>  (and char (&amp;gt;= char ?ぁ) (&amp;lt;= char ?ん)))</td></tr>
+<tr class=''><td class='line-number'>256</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>257</td><td class='line-content'>(defsubst nskk-is-katakana-char (char)</td></tr>
+<tr class=''><td class='line-number'>258</td><td class='line-content'>  &amp;quot;CHAR がカタカナかどうかを判定する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>259</td><td class='line-content'>  (and char (&amp;gt;= char ?ァ) (&amp;lt;= char ?ン)))</td></tr>
+<tr class=''><td class='line-number'>260</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>261</td><td class='line-content'>(defsubst nskk-is-japanese-char (char)</td></tr>
+<tr class=''><td class='line-number'>262</td><td class='line-content'>  &amp;quot;CHAR が日本語文字（ひらがな・カタカナ・漢字）かどうかを判定する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>263</td><td class='line-content'>  (or (nskk-is-hiragana-char char)</td></tr>
+<tr class='covered'><td class='line-number'>264</td><td class='line-content'>      (nskk-is-katakana-char char)</td></tr>
+<tr class=''><td class='line-number'>265</td><td class='line-content'>      ;; 漢字の範囲（簡易判定）</td></tr>
+<tr class='covered'><td class='line-number'>266</td><td class='line-content'>      (and char (&amp;gt;= char ?一) (&amp;lt;= char ?龿))))</td></tr>
+<tr class=''><td class='line-number'>267</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>268</td><td class='line-content'>(defun nskk-string-type (str)</td></tr>
+<tr class=''><td class='line-number'>269</td><td class='line-content'>  &amp;quot;STR の文字種を判定する。</td></tr>
+<tr class=''><td class='line-number'>270</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>271</td><td class='line-content'>返り値:</td></tr>
+<tr class=''><td class='line-number'>272</td><td class='line-content'>  - `hiragana'  : すべてひらがな</td></tr>
+<tr class=''><td class='line-number'>273</td><td class='line-content'>  - `katakana'  : すべてカタカナ</td></tr>
+<tr class=''><td class='line-number'>274</td><td class='line-content'>  - `kanji'     : 漢字を含む</td></tr>
+<tr class=''><td class='line-number'>275</td><td class='line-content'>  - `ascii'     : すべてASCII</td></tr>
+<tr class=''><td class='line-number'>276</td><td class='line-content'>  - `mixed'     : 混在</td></tr>
+<tr class=''><td class='line-number'>277</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>278</td><td class='line-content'>例:</td></tr>
+<tr class=''><td class='line-number'>279</td><td class='line-content'>  (nskk-string-type \&amp;quot;あいうえお\&amp;quot;)  ;; =&amp;gt; hiragana</td></tr>
+<tr class=''><td class='line-number'>280</td><td class='line-content'>  (nskk-string-type \&amp;quot;アイウエオ\&amp;quot;)  ;; =&amp;gt; katakana</td></tr>
+<tr class=''><td class='line-number'>281</td><td class='line-content'>  (nskk-string-type \&amp;quot;漢字\&amp;quot;)       ;; =&amp;gt; kanji</td></tr>
+<tr class=''><td class='line-number'>282</td><td class='line-content'>  (nskk-string-type \&amp;quot;abc\&amp;quot;)        ;; =&amp;gt; ascii</td></tr>
+<tr class=''><td class='line-number'>283</td><td class='line-content'>  (nskk-string-type \&amp;quot;あaい\&amp;quot;)      ;; =&amp;gt; mixed&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>284</td><td class='line-content'>  (if (string-empty-p str)</td></tr>
+<tr class=''><td class='line-number'>285</td><td class='line-content'>      'empty</td></tr>
+<tr class='covered'><td class='line-number'>286</td><td class='line-content'>    (let ((has-hiragana nil)</td></tr>
+<tr class=''><td class='line-number'>287</td><td class='line-content'>          (has-katakana nil)</td></tr>
+<tr class=''><td class='line-number'>288</td><td class='line-content'>          (has-kanji nil)</td></tr>
+<tr class=''><td class='line-number'>289</td><td class='line-content'>          (has-ascii nil))</td></tr>
+<tr class='covered'><td class='line-number'>290</td><td class='line-content'>      (dotimes (i (length str))</td></tr>
+<tr class='covered'><td class='line-number'>291</td><td class='line-content'>        (let ((char (aref str i)))</td></tr>
+<tr class='covered'><td class='line-number'>292</td><td class='line-content'>          (cond</td></tr>
+<tr class='covered'><td class='line-number'>293</td><td class='line-content'>           ((nskk-is-hiragana-char char) (setq has-hiragana t))</td></tr>
+<tr class='covered'><td class='line-number'>294</td><td class='line-content'>           ((nskk-is-katakana-char char) (setq has-katakana t))</td></tr>
+<tr class='covered'><td class='line-number'>295</td><td class='line-content'>           ((and (&amp;gt;= char ?一) (&amp;lt;= char ?龿)) (setq has-kanji t))</td></tr>
+<tr class='covered'><td class='line-number'>296</td><td class='line-content'>           ((&amp;lt; char 128) (setq has-ascii t)))))</td></tr>
+<tr class='covered'><td class='line-number'>297</td><td class='line-content'>      (cond</td></tr>
+<tr class='covered'><td class='line-number'>298</td><td class='line-content'>       (has-kanji 'kanji)</td></tr>
+<tr class='covered'><td class='line-number'>299</td><td class='line-content'>       ((and has-hiragana (not has-katakana) (not has-ascii)) 'hiragana)</td></tr>
+<tr class='covered'><td class='line-number'>300</td><td class='line-content'>       ((and has-katakana (not has-hiragana) (not has-ascii)) 'katakana)</td></tr>
+<tr class='covered'><td class='line-number'>301</td><td class='line-content'>       ((and has-ascii (not has-hiragana) (not has-katakana) (not has-kanji)) 'ascii)</td></tr>
+<tr class='covered'><td class='line-number'>302</td><td class='line-content'>       (t 'mixed)))))</td></tr>
+<tr class=''><td class='line-number'>303</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>304</td><td class='line-content'>;;; 統計情報</td></tr>
+<tr class=''><td class='line-number'>305</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>306</td><td class='line-content'>(defun nskk-special-chars-stats ()</td></tr>
+<tr class=''><td class='line-number'>307</td><td class='line-content'>  &amp;quot;特殊文字処理の統計情報を返す。</td></tr>
+<tr class=''><td class='line-number'>308</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>309</td><td class='line-content'>返り値は以下の要素を含むplist:</td></tr>
+<tr class=''><td class='line-number'>310</td><td class='line-content'>  :halfwidth-map-size  - 半角カタカナマップのエントリ数</td></tr>
+<tr class=''><td class='line-number'>311</td><td class='line-content'>  :katakana-mode-key   - カタカナモードキー</td></tr>
+<tr class=''><td class='line-number'>312</td><td class='line-content'>  :jisx0201-mode-key   - 半角カタカナモードキー&amp;quot;</td></tr>
+<tr class='onevalue'><td class='line-number'>313</td><td class='line-content'>  (list :halfwidth-map-size (length nskk-special-chars--halfwidth-katakana-map)</td></tr>
+<tr class=''><td class='line-number'>314</td><td class='line-content'>        :katakana-mode-key nskk-special-chars-katakana-mode-key</td></tr>
+<tr class=''><td class='line-number'>315</td><td class='line-content'>        :jisx0201-mode-key nskk-special-chars-jisx0201-kana-mode-key))</td></tr>
+<tr class=''><td class='line-number'>316</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>317</td><td class='line-content'>(provide 'nskk-special-chars)</td></tr>
+<tr class=''><td class='line-number'>318</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>319</td><td class='line-content'>;;; nskk-special-chars.el ends here</td></tr>
+
+    </table>
+  </div>
+  <div class='legend'>
+    <div class='legend-item'><span class='legend-color' style='background: #e8f5e9;'></span>Covered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #ffebee;'></span>Uncovered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #fff3e0;'></span>1-Value</div>
+    <div class='legend-item'><span class='legend-color' style='background: #f3e5f5;'></span>No-Return</div>
+  </div>
+</body>
+</html>

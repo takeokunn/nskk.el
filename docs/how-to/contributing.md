@@ -37,16 +37,21 @@ mindmap
 
 ### 開発環境セットアップ
 
-1. **必要な環境**：
+1. **Emacs 31開発環境**：
    ```bash
-   # Emacs 27.1以降（推奨：29.1以降）
+   # Emacs 31以降（ネイティブコンパイル必須）
    emacs --version
+   # GNU Emacs 31.0.50 or later
+
+   # ネイティブコンパイル確認
+   emacs --batch --eval '(message "%s" (native-comp-available-p))'
 
    # Git（最新版推奨）
    git --version
 
    # 開発用ツール
    make --version
+   gcc --version  # ネイティブコンパイル用
    ```
 
 2. **リポジトリのクローン**：
@@ -58,41 +63,63 @@ mindmap
    git checkout -b feature/your-feature-name
    ```
 
-3. **開発環境初期化**：
+3. **Emacs 31開発環境初期化**：
    ```bash
-   # 依存関係チェック
-   make check-deps
+   # 依存関係チェック（Emacs 31特有の機能含む）
+   make check-deps-emacs31
 
-   # 開発用設定適用
-   make dev-setup
+   # 開発用設定適用（ネイティブコンパイル含む）
+   make dev-setup-emacs31
 
-   # 全テスト実行（初期確認）
-   make test-all
+   # ネイティブコンパイル
+   make native-compile
+
+   # 並列テスト実行（Emacs 31スレッド活用）
+   make test-all-parallel JOBS=$(nproc)
+
+   # パフォーマンスベンチマーク
+   make benchmark-native
    ```
 
 ### 開発者設定
 
 ```elisp
-;; 開発者向けNSKK設定（~/.emacs.d/init.el）
+;; Emacs 31開発者向けNSKK設定（~/.emacs.d/init.el）
 (when (file-directory-p "~/path/to/nskk.el")
   (add-to-list 'load-path "~/path/to/nskk.el")
   (require 'nskk)
 
-  ;; 開発モード有効化
-  (setq nskk-debug-mode t
-        nskk-performance-monitoring t
-        nskk-log-level 'debug)
+  ;; Emacs 31 setoptを使用した開発モード設定
+  (setopt nskk-debug-mode t                      ; デバッグモード
+          nskk-performance-monitoring t           ; パフォーマンス監視
+          nskk-log-level 'debug                  ; ログレベル
+          nskk-native-compile-dev t              ; ネイティブコンパイルデバッグ
+          nskk-thread-debug t                    ; スレッドデバッグ
+          nskk-profiling-enabled t)              ; プロファイリング
 
-  ;; 自動リロード設定
+  ;; Emacs 31自動リロード設定（ホットリロード対応）
   (global-auto-revert-mode 1)
-  (setq auto-revert-interval 1))
+  (setopt auto-revert-interval 0.5              ; 高速リロード
+          auto-revert-check-vc-info t           ; VC情報更新
+          auto-revert-avoid-polling t)          ; inotify使用
+
+  ;; 開発用ネイティブコンパイル最適化
+  (when (native-comp-available-p)
+    (native-compile-async "~/path/to/nskk.el" 'recursively)))
 ```
 
 ## コーディング規約
 
-### 基本原則
+### Emacs 31コーディング原則
 
-NSKKのコーディング規約は[Emacs Lispベストプラクティス](./explanation/emacs-lisp-best-practices.md)に基づきます：
+NSKKのコーディング規約は[Emacs 31ベストプラクティス](./explanation/emacs-lisp-best-practices.md)に基づきます：
+
+**必須要件：**
+- 全ての`setq`を`setopt`に置換
+- `keymap-set`/`keymap-global-set`の使用
+- ネイティブコンパイル最適化
+- スレッドセーフな実装
+- Transient UIの活用
 
 #### 1. 命名規則
 

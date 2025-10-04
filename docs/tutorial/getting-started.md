@@ -30,43 +30,68 @@
    emacs --batch -f batch-byte-compile *.el
    ```
 
-2. **高性能設定でのロード**：
+2. **Emacs 31高性能設定でのロード**：
    ```elisp
-   ;; パフォーマンス最適化設定
-   (setq gc-cons-threshold 100000000)  ; GC圧迫を防止
+   ;; Emacs 31最新パフォーマンス最適化設定
+   (setopt gc-cons-threshold 134217728       ; GC圧迫を防止（128MB）
+           gc-cons-percentage 1.0            ; GC実行条件緩和
+           read-process-output-max 1048576   ; プロセス出力バッファ拡張
+           native-comp-speed 3               ; ネイティブコンパイル最大速度
+           native-comp-jit-compilation t     ; JITコンパイル有効
+           native-comp-deferred-compilation t) ; 遅延コンパイル有効
+
    (add-to-list 'load-path "/path/to/nskk.el")
 
-   ;; マクロ駆使による高速初期化
+   ;; Emacs 31マクロシステムとスレッドプールによる高速初期化
    (require 'nskk)
-   (nskk-optimized-setup)  ; 最適化済みセットアップ
+   (nskk-emacs31-optimized-setup)     ; Emacs 31専用セットアップ
 
-   ;; メモリプール事前確保
-   (nskk-initialize-memory-pools)
+   ;; 並列メモリプール事前確保
+   (nskk-parallel-initialize-memory-pools)
+
+   ;; ネイティブコンパイル事前ウォームアップ
+   (when (native-comp-available-p)
+     (nskk-native-warmup-critical-functions))
    ```
 
 3. **設定の即座反映**：
    ```elisp
-   ;; 再起動不要の動的読み込み
+   ;; Emacs 31高速動的リロード（ホットスワップ対応）
    M-x eval-buffer
-   ;; または高速リロード
-   M-x nskk-hot-reload
+   ;; またはEmacs 31専用ホットリロード（状態保持）
+   M-x nskk-emacs31-hot-reload
+   ;; JITコンパイル済み関数の即座更新
+   M-x nskk-jit-recompile-all-functions
    ```
 
 ### パッケージマネージャー経由（推奨）
 
 ```elisp
-;; straight.el使用時
+;; straight.el + Emacs 31ネイティブコンパイル統合
 (straight-use-package
  '(nskk :type git :host github :repo "takeokunn/nskk.el"
-        :build (:not compile)))
+        :build (:native-compile t    ; ネイティブコンパイル強制
+                :optimization-level 3
+                :profile speed
+                :pre-build nskk-prepare-native-compilation)))
 
-;; use-package統合
+;; use-package + Emacs 31最適化統合
 (use-package nskk
-  :straight (nskk :type git :host github :repo "takeokunn/nskk.el")
+  :straight (nskk :type git :host github :repo "takeokunn/nskk.el"
+                  :build (:native-compile t :optimization-level 3))
   :init
-  (setq nskk-performance-mode t)  ; 高性能モード
+  ;; Emacs 31 setoptによるモダン設定
+  (setopt nskk-performance-mode 'emacs31-turbo  ; Emacs 31専用高性能モード
+          nskk-enable-threading t               ; スレッド並列処理有効
+          nskk-use-native-json t                ; ネイティブJSON処理
+          nskk-concurrent-dictionary-loading t  ; 辞書並列読み込み
+          nskk-jit-compilation-strategy 'aggressive) ; 積極的JITコンパイル
   :config
-  (nskk-comprehensive-setup))  ; 総合設定
+  (nskk-emacs31-comprehensive-setup)    ; Emacs 31総合最適化設定
+
+  ;; 非同期初期化でUIブロックを回避
+  (nskk-async-initialize-with-progress-callback
+   (lambda (progress) (message "NSKK initialization: %d%%" (* progress 100)))))
 ```
 
 ## ステップ2: 辞書システムセットアップ

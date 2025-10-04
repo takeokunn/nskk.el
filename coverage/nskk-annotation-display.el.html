@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Coverage: nskk-annotation-display.el</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Monaco', 'Courier New', monospace; background: #f5f5f5; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; }
+    .header h1 { font-size: 24px; margin-bottom: 10px; }
+    .header .stats { font-size: 14px; opacity: 0.9; }
+    .header a { color: white; text-decoration: underline; }
+    .container { max-width: 1400px; margin: 20px auto; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; font-family: 'Monaco', 'Courier New', monospace; font-size: 13px; }
+    td.line-number { background: #f0f0f0; color: #666; padding: 2px 10px; text-align: right; border-right: 2px solid #ddd; user-select: none; width: 60px; }
+    td.line-content { padding: 2px 10px; white-space: pre; }
+    tr.covered { background: #e8f5e9; }
+    tr.uncovered { background: #ffebee; }
+    tr.onevalue { background: #fff3e0; }
+    tr.noreturn { background: #f3e5f5; }
+    tr:hover { opacity: 0.9; }
+    .legend { padding: 15px 30px; background: #fafafa; border-top: 1px solid #e0e0e0; font-size: 12px; }
+    .legend-item { display: inline-block; margin-right: 20px; }
+    .legend-color { display: inline-block; width: 20px; height: 12px; margin-right: 5px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div class='header'>
+    <h1>nskk-annotation-display.el</h1>
+    <div class='stats'>
+      Coverage: 73.03% (325/445 forms) •
+      <a href='index.html'>← Back to Index</a>
+    </div>
+  </div>
+  <div class='container'>
+    <table>
+<tr class=''><td class='line-number'>1</td><td class='line-content'>;;; nskk-annotation-display.el --- Annotation display system for NSKK -*- lexical-binding: t; -*-</td></tr>
+<tr class=''><td class='line-number'>2</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>3</td><td class='line-content'>;; Copyright (C) 2024 NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>4</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>5</td><td class='line-content'>;; Author: NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>6</td><td class='line-content'>;; Keywords: japanese, input method, skk, annotation</td></tr>
+<tr class=''><td class='line-number'>7</td><td class='line-content'>;; Version: 0.1.0</td></tr>
+<tr class=''><td class='line-number'>8</td><td class='line-content'>;; Package-Requires: ((emacs &amp;quot;31.0&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>9</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>10</td><td class='line-content'>;; This file is part of NSKK.</td></tr>
+<tr class=''><td class='line-number'>11</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>12</td><td class='line-content'>;; NSKK is free software: you can redistribute it and/or modify</td></tr>
+<tr class=''><td class='line-number'>13</td><td class='line-content'>;; it under the terms of the GNU General Public License as published by</td></tr>
+<tr class=''><td class='line-number'>14</td><td class='line-content'>;; the Free Software Foundation, either version 3 of the License, or</td></tr>
+<tr class=''><td class='line-number'>15</td><td class='line-content'>;; (at your option) any later version.</td></tr>
+<tr class=''><td class='line-number'>16</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>17</td><td class='line-content'>;; NSKK is distributed in the hope that it will be useful,</td></tr>
+<tr class=''><td class='line-number'>18</td><td class='line-content'>;; but WITHOUT ANY WARRANTY; without even the implied warranty of</td></tr>
+<tr class=''><td class='line-number'>19</td><td class='line-content'>;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</td></tr>
+<tr class=''><td class='line-number'>20</td><td class='line-content'>;; GNU General Public License for more details.</td></tr>
+<tr class=''><td class='line-number'>21</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>22</td><td class='line-content'>;; You should have received a copy of the GNU General Public License</td></tr>
+<tr class=''><td class='line-number'>23</td><td class='line-content'>;; along with NSKK.  If not, see &amp;lt;https://www.gnu.org/licenses/&amp;gt;.</td></tr>
+<tr class=''><td class='line-number'>24</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>25</td><td class='line-content'>;;; Commentary:</td></tr>
+<tr class=''><td class='line-number'>26</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>27</td><td class='line-content'>;; このファイルはSKK注釈の表示システムを実装します。</td></tr>
+<tr class=''><td class='line-number'>28</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>29</td><td class='line-content'>;; 特徴:</td></tr>
+<tr class=''><td class='line-number'>30</td><td class='line-content'>;; - ポップアップ表示（tooltip）</td></tr>
+<tr class=''><td class='line-number'>31</td><td class='line-content'>;; - インライン表示（候補横）</td></tr>
+<tr class=''><td class='line-number'>32</td><td class='line-content'>;; - エコーエリア表示</td></tr>
+<tr class=''><td class='line-number'>33</td><td class='line-content'>;; - オーバーレイ表示</td></tr>
+<tr class=''><td class='line-number'>34</td><td class='line-content'>;; - 画像・音声対応準備</td></tr>
+<tr class=''><td class='line-number'>35</td><td class='line-content'>;; - カスタマイズ可能な表示スタイル</td></tr>
+<tr class=''><td class='line-number'>36</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>37</td><td class='line-content'>;; 表示方式:</td></tr>
+<tr class=''><td class='line-number'>38</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>39</td><td class='line-content'>;;   1. tooltip方式（デフォルト）:</td></tr>
+<tr class=''><td class='line-number'>40</td><td class='line-content'>;;      マウスポインタ付近にツールチップ表示</td></tr>
+<tr class=''><td class='line-number'>41</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>42</td><td class='line-content'>;;   2. inline方式:</td></tr>
+<tr class=''><td class='line-number'>43</td><td class='line-content'>;;      候補文字列の直後に注釈を表示</td></tr>
+<tr class=''><td class='line-number'>44</td><td class='line-content'>;;      例: 「愛 (love)」</td></tr>
+<tr class=''><td class='line-number'>45</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>46</td><td class='line-content'>;;   3. echo-area方式:</td></tr>
+<tr class=''><td class='line-number'>47</td><td class='line-content'>;;      エコーエリアに注釈を表示</td></tr>
+<tr class=''><td class='line-number'>48</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>49</td><td class='line-content'>;;   4. overlay方式:</td></tr>
+<tr class=''><td class='line-number'>50</td><td class='line-content'>;;      バッファ内の候補上にオーバーレイ表示</td></tr>
+<tr class=''><td class='line-number'>51</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>52</td><td class='line-content'>;;   5. popup方式:</td></tr>
+<tr class=''><td class='line-number'>53</td><td class='line-content'>;;      専用ウィンドウでポップアップ表示</td></tr>
+<tr class=''><td class='line-number'>54</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>55</td><td class='line-content'>;; 使用例:</td></tr>
+<tr class=''><td class='line-number'>56</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>57</td><td class='line-content'>;;   (require 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>58</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>59</td><td class='line-content'>;;   ;; 注釈を表示</td></tr>
+<tr class=''><td class='line-number'>60</td><td class='line-content'>;;   (nskk-show-annotation annotation)</td></tr>
+<tr class=''><td class='line-number'>61</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>62</td><td class='line-content'>;;   ;; 表示スタイルを変更</td></tr>
+<tr class=''><td class='line-number'>63</td><td class='line-content'>;;   (setq nskk-annotation-display-style 'inline)</td></tr>
+<tr class=''><td class='line-number'>64</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>65</td><td class='line-content'>;;   ;; 注釈を非表示</td></tr>
+<tr class=''><td class='line-number'>66</td><td class='line-content'>;;   (nskk-hide-annotation)</td></tr>
+<tr class=''><td class='line-number'>67</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>68</td><td class='line-content'>;;; Code:</td></tr>
+<tr class=''><td class='line-number'>69</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>70</td><td class='line-content'>(require 'cl-lib)</td></tr>
+<tr class=''><td class='line-number'>71</td><td class='line-content'>(require 'nskk-annotation-parser)</td></tr>
+<tr class=''><td class='line-number'>72</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>73</td><td class='line-content'>;;; カスタマイズ変数</td></tr>
+<tr class=''><td class='line-number'>74</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>75</td><td class='line-content'>(defgroup nskk-annotation-display nil</td></tr>
+<tr class=''><td class='line-number'>76</td><td class='line-content'>  &amp;quot;NSKK annotation display settings.&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>77</td><td class='line-content'>  :group 'nskk</td></tr>
+<tr class=''><td class='line-number'>78</td><td class='line-content'>  :prefix &amp;quot;nskk-annotation-display-&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>79</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>80</td><td class='line-content'>(defcustom nskk-annotation-display-style 'tooltip</td></tr>
+<tr class=''><td class='line-number'>81</td><td class='line-content'>  &amp;quot;注釈の表示スタイル。</td></tr>
+<tr class=''><td class='line-number'>82</td><td class='line-content'>- 'tooltip: ツールチップ表示（デフォルト）</td></tr>
+<tr class=''><td class='line-number'>83</td><td class='line-content'>- 'inline: インライン表示</td></tr>
+<tr class=''><td class='line-number'>84</td><td class='line-content'>- 'echo-area: エコーエリア表示</td></tr>
+<tr class=''><td class='line-number'>85</td><td class='line-content'>- 'overlay: オーバーレイ表示</td></tr>
+<tr class=''><td class='line-number'>86</td><td class='line-content'>- 'popup: ポップアップウィンドウ表示</td></tr>
+<tr class=''><td class='line-number'>87</td><td class='line-content'>- 'none: 表示しない&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>88</td><td class='line-content'>  :type '(choice (const :tag &amp;quot;Tooltip&amp;quot; tooltip)</td></tr>
+<tr class=''><td class='line-number'>89</td><td class='line-content'>                 (const :tag &amp;quot;Inline&amp;quot; inline)</td></tr>
+<tr class=''><td class='line-number'>90</td><td class='line-content'>                 (const :tag &amp;quot;Echo area&amp;quot; echo-area)</td></tr>
+<tr class=''><td class='line-number'>91</td><td class='line-content'>                 (const :tag &amp;quot;Overlay&amp;quot; overlay)</td></tr>
+<tr class=''><td class='line-number'>92</td><td class='line-content'>                 (const :tag &amp;quot;Popup window&amp;quot; popup)</td></tr>
+<tr class=''><td class='line-number'>93</td><td class='line-content'>                 (const :tag &amp;quot;None&amp;quot; none))</td></tr>
+<tr class=''><td class='line-number'>94</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>95</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>96</td><td class='line-content'>(defcustom nskk-annotation-display-delay 0.5</td></tr>
+<tr class=''><td class='line-number'>97</td><td class='line-content'>  &amp;quot;注釈を表示するまでの遅延時間（秒）。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>98</td><td class='line-content'>  :type 'number</td></tr>
+<tr class=''><td class='line-number'>99</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>100</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>101</td><td class='line-content'>(defcustom nskk-annotation-display-duration 5.0</td></tr>
+<tr class=''><td class='line-number'>102</td><td class='line-content'>  &amp;quot;注釈の表示時間（秒）。</td></tr>
+<tr class=''><td class='line-number'>103</td><td class='line-content'>nil の場合は手動で消すまで表示し続ける。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>104</td><td class='line-content'>  :type '(choice number (const :tag &amp;quot;Unlimited&amp;quot; nil))</td></tr>
+<tr class=''><td class='line-number'>105</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>106</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>107</td><td class='line-content'>(defcustom nskk-annotation-display-max-width 80</td></tr>
+<tr class=''><td class='line-number'>108</td><td class='line-content'>  &amp;quot;注釈表示の最大幅（文字数）。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>109</td><td class='line-content'>  :type 'integer</td></tr>
+<tr class=''><td class='line-number'>110</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>111</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>112</td><td class='line-content'>(defcustom nskk-annotation-display-max-height 10</td></tr>
+<tr class=''><td class='line-number'>113</td><td class='line-content'>  &amp;quot;注釈表示の最大高さ（行数）。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>114</td><td class='line-content'>  :type 'integer</td></tr>
+<tr class=''><td class='line-number'>115</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>116</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>117</td><td class='line-content'>(defcustom nskk-annotation-display-inline-format &amp;quot; (%s)&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>118</td><td class='line-content'>  &amp;quot;インライン表示時のフォーマット文字列。</td></tr>
+<tr class=''><td class='line-number'>119</td><td class='line-content'>%s が注釈文字列に置き換えられる。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>120</td><td class='line-content'>  :type 'string</td></tr>
+<tr class=''><td class='line-number'>121</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>122</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>123</td><td class='line-content'>(defcustom nskk-annotation-display-face 'tooltip</td></tr>
+<tr class=''><td class='line-number'>124</td><td class='line-content'>  &amp;quot;注釈表示に使用するface。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>125</td><td class='line-content'>  :type 'face</td></tr>
+<tr class=''><td class='line-number'>126</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>127</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>128</td><td class='line-content'>(defcustom nskk-annotation-display-enable-images t</td></tr>
+<tr class=''><td class='line-number'>129</td><td class='line-content'>  &amp;quot;非nilの場合、画像注釈の表示を有効にする。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>130</td><td class='line-content'>  :type 'boolean</td></tr>
+<tr class=''><td class='line-number'>131</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>132</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>133</td><td class='line-content'>(defcustom nskk-annotation-display-image-max-width 400</td></tr>
+<tr class=''><td class='line-number'>134</td><td class='line-content'>  &amp;quot;画像表示の最大幅（ピクセル）。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>135</td><td class='line-content'>  :type 'integer</td></tr>
+<tr class=''><td class='line-number'>136</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>137</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>138</td><td class='line-content'>(defcustom nskk-annotation-display-image-max-height 300</td></tr>
+<tr class=''><td class='line-number'>139</td><td class='line-content'>  &amp;quot;画像表示の最大高さ（ピクセル）。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>140</td><td class='line-content'>  :type 'integer</td></tr>
+<tr class=''><td class='line-number'>141</td><td class='line-content'>  :group 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>142</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>143</td><td class='line-content'>;;; 内部変数</td></tr>
+<tr class=''><td class='line-number'>144</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>145</td><td class='line-content'>(defvar-local nskk-annotation-display--overlay nil</td></tr>
+<tr class=''><td class='line-number'>146</td><td class='line-content'>  &amp;quot;現在表示中の注釈オーバーレイ。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>147</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>148</td><td class='line-content'>(defvar-local nskk-annotation-display--timer nil</td></tr>
+<tr class=''><td class='line-number'>149</td><td class='line-content'>  &amp;quot;注釈表示タイマー。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>150</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>151</td><td class='line-content'>(defvar-local nskk-annotation-display--hide-timer nil</td></tr>
+<tr class=''><td class='line-number'>152</td><td class='line-content'>  &amp;quot;注釈自動非表示タイマー。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>153</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>154</td><td class='line-content'>(defvar-local nskk-annotation-display--current-annotation nil</td></tr>
+<tr class=''><td class='line-number'>155</td><td class='line-content'>  &amp;quot;現在表示中の注釈。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>156</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>157</td><td class='line-content'>;;; 注釈表示メイン</td></tr>
+<tr class=''><td class='line-number'>158</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>159</td><td class='line-content'>;;;###autoload</td></tr>
+<tr class=''><td class='line-number'>160</td><td class='line-content'>(defun nskk-show-annotation (annotation &amp;optional position)</td></tr>
+<tr class=''><td class='line-number'>161</td><td class='line-content'>  &amp;quot;ANNOTATION を表示する。</td></tr>
+<tr class=''><td class='line-number'>162</td><td class='line-content'>POSITION が指定された場合、その位置に表示する（デフォルト: ポイント位置）。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>163</td><td class='line-content'>  (when (and annotation</td></tr>
+<tr class='covered'><td class='line-number'>164</td><td class='line-content'>             (not (eq nskk-annotation-display-style 'none)))</td></tr>
+<tr class=''><td class='line-number'>165</td><td class='line-content'>    ;; 既存の注釈を非表示</td></tr>
+<tr class='covered'><td class='line-number'>166</td><td class='line-content'>    (nskk-hide-annotation)</td></tr>
+<tr class=''><td class='line-number'>167</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>168</td><td class='line-content'>    ;; 表示遅延がある場合はタイマーを設定</td></tr>
+<tr class='covered'><td class='line-number'>169</td><td class='line-content'>    (if (and nskk-annotation-display-delay</td></tr>
+<tr class='covered'><td class='line-number'>170</td><td class='line-content'>             (&amp;gt; nskk-annotation-display-delay 0))</td></tr>
+<tr class='covered'><td class='line-number'>171</td><td class='line-content'>        (setq nskk-annotation-display--timer</td></tr>
+<tr class='covered'><td class='line-number'>172</td><td class='line-content'>              (run-with-timer</td></tr>
+<tr class='uncovered'><td class='line-number'>173</td><td class='line-content'>               nskk-annotation-display-delay nil</td></tr>
+<tr class='covered'><td class='line-number'>174</td><td class='line-content'>               #'nskk-annotation-display--show-internal</td></tr>
+<tr class='uncovered'><td class='line-number'>175</td><td class='line-content'>               annotation position))</td></tr>
+<tr class=''><td class='line-number'>176</td><td class='line-content'>      ;; 遅延なしで即座に表示</td></tr>
+<tr class='covered'><td class='line-number'>177</td><td class='line-content'>      (nskk-annotation-display--show-internal annotation position))))</td></tr>
+<tr class=''><td class='line-number'>178</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>179</td><td class='line-content'>(defun nskk-annotation-display--show-internal (annotation position)</td></tr>
+<tr class=''><td class='line-number'>180</td><td class='line-content'>  &amp;quot;ANNOTATION を実際に表示する内部関数。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>181</td><td class='line-content'>  (setq nskk-annotation-display--current-annotation annotation)</td></tr>
+<tr class=''><td class='line-number'>182</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>183</td><td class='line-content'>  ;; 表示スタイルに応じて表示</td></tr>
+<tr class='covered'><td class='line-number'>184</td><td class='line-content'>  (pcase nskk-annotation-display-style</td></tr>
+<tr class=''><td class='line-number'>185</td><td class='line-content'>    ('tooltip</td></tr>
+<tr class='covered'><td class='line-number'>186</td><td class='line-content'>     (nskk-annotation-display--show-tooltip annotation position))</td></tr>
+<tr class=''><td class='line-number'>187</td><td class='line-content'>    ('inline</td></tr>
+<tr class='covered'><td class='line-number'>188</td><td class='line-content'>     (nskk-annotation-display--show-inline annotation position))</td></tr>
+<tr class=''><td class='line-number'>189</td><td class='line-content'>    ('echo-area</td></tr>
+<tr class='covered'><td class='line-number'>190</td><td class='line-content'>     (nskk-annotation-display--show-echo-area annotation))</td></tr>
+<tr class=''><td class='line-number'>191</td><td class='line-content'>    ('overlay</td></tr>
+<tr class='covered'><td class='line-number'>192</td><td class='line-content'>     (nskk-annotation-display--show-overlay annotation position))</td></tr>
+<tr class=''><td class='line-number'>193</td><td class='line-content'>    ('popup</td></tr>
+<tr class='covered'><td class='line-number'>194</td><td class='line-content'>     (nskk-annotation-display--show-popup annotation position)))</td></tr>
+<tr class=''><td class='line-number'>195</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>196</td><td class='line-content'>  ;; 自動非表示タイマーを設定</td></tr>
+<tr class='covered'><td class='line-number'>197</td><td class='line-content'>  (when nskk-annotation-display-duration</td></tr>
+<tr class='covered'><td class='line-number'>198</td><td class='line-content'>    (setq nskk-annotation-display--hide-timer</td></tr>
+<tr class='covered'><td class='line-number'>199</td><td class='line-content'>          (run-with-timer nskk-annotation-display-duration nil</td></tr>
+<tr class='covered'><td class='line-number'>200</td><td class='line-content'>                         #'nskk-hide-annotation))))</td></tr>
+<tr class=''><td class='line-number'>201</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>202</td><td class='line-content'>;;;###autoload</td></tr>
+<tr class=''><td class='line-number'>203</td><td class='line-content'>(defun nskk-hide-annotation ()</td></tr>
+<tr class=''><td class='line-number'>204</td><td class='line-content'>  &amp;quot;表示中の注釈を非表示にする。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>205</td><td class='line-content'>  (interactive)</td></tr>
+<tr class=''><td class='line-number'>206</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>207</td><td class='line-content'>  ;; タイマーをキャンセル</td></tr>
+<tr class='covered'><td class='line-number'>208</td><td class='line-content'>  (when nskk-annotation-display--timer</td></tr>
+<tr class='covered'><td class='line-number'>209</td><td class='line-content'>    (cancel-timer nskk-annotation-display--timer)</td></tr>
+<tr class='covered'><td class='line-number'>210</td><td class='line-content'>    (setq nskk-annotation-display--timer nil))</td></tr>
+<tr class=''><td class='line-number'>211</td><td class='line-content'></td></tr>
+<tr class='covered'><td class='line-number'>212</td><td class='line-content'>  (when nskk-annotation-display--hide-timer</td></tr>
+<tr class='covered'><td class='line-number'>213</td><td class='line-content'>    (cancel-timer nskk-annotation-display--hide-timer)</td></tr>
+<tr class='covered'><td class='line-number'>214</td><td class='line-content'>    (setq nskk-annotation-display--hide-timer nil))</td></tr>
+<tr class=''><td class='line-number'>215</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>216</td><td class='line-content'>  ;; オーバーレイを削除</td></tr>
+<tr class='covered'><td class='line-number'>217</td><td class='line-content'>  (when nskk-annotation-display--overlay</td></tr>
+<tr class='covered'><td class='line-number'>218</td><td class='line-content'>    (delete-overlay nskk-annotation-display--overlay)</td></tr>
+<tr class='covered'><td class='line-number'>219</td><td class='line-content'>    (setq nskk-annotation-display--overlay nil))</td></tr>
+<tr class=''><td class='line-number'>220</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>221</td><td class='line-content'>  ;; 状態をクリア</td></tr>
+<tr class='covered'><td class='line-number'>222</td><td class='line-content'>  (setq nskk-annotation-display--current-annotation nil))</td></tr>
+<tr class=''><td class='line-number'>223</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>224</td><td class='line-content'>;;; 表示スタイル別実装</td></tr>
+<tr class=''><td class='line-number'>225</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>226</td><td class='line-content'>(defun nskk-annotation-display--show-tooltip (annotation position)</td></tr>
+<tr class=''><td class='line-number'>227</td><td class='line-content'>  &amp;quot;ANNOTATION をツールチップで表示する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>228</td><td class='line-content'>  (let* ((text (nskk-annotation-display--format-text annotation))</td></tr>
+<tr class='covered'><td class='line-number'>229</td><td class='line-content'>         (pos (or position (point))))</td></tr>
+<tr class='covered'><td class='line-number'>230</td><td class='line-content'>    (when text</td></tr>
+<tr class='covered'><td class='line-number'>231</td><td class='line-content'>      (tooltip-show text))))</td></tr>
+<tr class=''><td class='line-number'>232</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>233</td><td class='line-content'>(defun nskk-annotation-display--show-inline (annotation position)</td></tr>
+<tr class=''><td class='line-number'>234</td><td class='line-content'>  &amp;quot;ANNOTATION をインライン表示する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>235</td><td class='line-content'>  (let* ((text (nskk-annotation-display--format-text annotation))</td></tr>
+<tr class='covered'><td class='line-number'>236</td><td class='line-content'>         (pos (or position (point)))</td></tr>
+<tr class='covered'><td class='line-number'>237</td><td class='line-content'>         (formatted (format nskk-annotation-display-inline-format text)))</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>    (when (and text (not (string-empty-p text)))</td></tr>
+<tr class='covered'><td class='line-number'>239</td><td class='line-content'>      (setq nskk-annotation-display--overlay</td></tr>
+<tr class='covered'><td class='line-number'>240</td><td class='line-content'>            (make-overlay pos pos))</td></tr>
+<tr class='covered'><td class='line-number'>241</td><td class='line-content'>      (overlay-put nskk-annotation-display--overlay</td></tr>
+<tr class=''><td class='line-number'>242</td><td class='line-content'>                   'after-string</td></tr>
+<tr class='covered'><td class='line-number'>243</td><td class='line-content'>                   (propertize formatted 'face nskk-annotation-display-face)))))</td></tr>
+<tr class=''><td class='line-number'>244</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>245</td><td class='line-content'>(defun nskk-annotation-display--show-echo-area (annotation)</td></tr>
+<tr class=''><td class='line-number'>246</td><td class='line-content'>  &amp;quot;ANNOTATION をエコーエリアに表示する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>247</td><td class='line-content'>  (let ((text (nskk-annotation-display--format-text annotation)))</td></tr>
+<tr class='covered'><td class='line-number'>248</td><td class='line-content'>    (when text</td></tr>
+<tr class='covered'><td class='line-number'>249</td><td class='line-content'>      (message &amp;quot;%s&amp;quot; text))))</td></tr>
+<tr class=''><td class='line-number'>250</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>251</td><td class='line-content'>(defun nskk-annotation-display--show-overlay (annotation position)</td></tr>
+<tr class=''><td class='line-number'>252</td><td class='line-content'>  &amp;quot;ANNOTATION をオーバーレイで表示する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>253</td><td class='line-content'>  (let* ((text (nskk-annotation-display--format-text annotation))</td></tr>
+<tr class='covered'><td class='line-number'>254</td><td class='line-content'>         (pos (or position (point)))</td></tr>
+<tr class='covered'><td class='line-number'>255</td><td class='line-content'>         (end-pos (min (+ pos 1) (point-max))))</td></tr>
+<tr class='covered'><td class='line-number'>256</td><td class='line-content'>    (when text</td></tr>
+<tr class='covered'><td class='line-number'>257</td><td class='line-content'>      (setq nskk-annotation-display--overlay</td></tr>
+<tr class='covered'><td class='line-number'>258</td><td class='line-content'>            (make-overlay pos end-pos))</td></tr>
+<tr class='covered'><td class='line-number'>259</td><td class='line-content'>      (overlay-put nskk-annotation-display--overlay</td></tr>
+<tr class=''><td class='line-number'>260</td><td class='line-content'>                   'before-string</td></tr>
+<tr class='covered'><td class='line-number'>261</td><td class='line-content'>                   (concat (propertize text 'face nskk-annotation-display-face) &amp;quot;\n&amp;quot;)))))</td></tr>
+<tr class=''><td class='line-number'>262</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>263</td><td class='line-content'>(defun nskk-annotation-display--show-popup (annotation position)</td></tr>
+<tr class=''><td class='line-number'>264</td><td class='line-content'>  &amp;quot;ANNOTATION をポップアップウィンドウで表示する。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>265</td><td class='line-content'>  ;; ポップアップウィンドウの実装は将来的に追加</td></tr>
+<tr class=''><td class='line-number'>266</td><td class='line-content'>  ;; 現時点ではツールチップにフォールバック</td></tr>
+<tr class='covered'><td class='line-number'>267</td><td class='line-content'>  (nskk-annotation-display--show-tooltip annotation position))</td></tr>
+<tr class=''><td class='line-number'>268</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>269</td><td class='line-content'>;;; テキスト整形</td></tr>
+<tr class=''><td class='line-number'>270</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>271</td><td class='line-content'>(defun nskk-annotation-display--format-text (annotation)</td></tr>
+<tr class=''><td class='line-number'>272</td><td class='line-content'>  &amp;quot;ANNOTATION を表示用テキストに整形する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>273</td><td class='line-content'>  (when annotation</td></tr>
+<tr class='covered'><td class='line-number'>274</td><td class='line-content'>    (let ((text (nskk-annotation-parser-get-description annotation)))</td></tr>
+<tr class=''><td class='line-number'>275</td><td class='line-content'>      ;; 画像注釈の場合は画像を含める（オプション）</td></tr>
+<tr class='covered'><td class='line-number'>276</td><td class='line-content'>      (when (and nskk-annotation-display-enable-images</td></tr>
+<tr class='covered'><td class='line-number'>277</td><td class='line-content'>                 (nskk-annotation-parser-has-media-p annotation)</td></tr>
+<tr class='covered'><td class='line-number'>278</td><td class='line-content'>                 (eq (nskk-annotation-media-type annotation) 'image))</td></tr>
+<tr class='covered'><td class='line-number'>279</td><td class='line-content'>        (let ((image-text (nskk-annotation-display--format-image annotation)))</td></tr>
+<tr class='covered'><td class='line-number'>280</td><td class='line-content'>          (when image-text</td></tr>
+<tr class='covered'><td class='line-number'>281</td><td class='line-content'>            (setq text (concat text &amp;quot;\n&amp;quot; image-text)))))</td></tr>
+<tr class=''><td class='line-number'>282</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>283</td><td class='line-content'>      ;; 最大幅で折り返し</td></tr>
+<tr class='covered'><td class='line-number'>284</td><td class='line-content'>      (setq text (nskk-annotation-display--wrap-text text</td></tr>
+<tr class='covered'><td class='line-number'>285</td><td class='line-content'>                                                     nskk-annotation-display-max-width))</td></tr>
+<tr class=''><td class='line-number'>286</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>287</td><td class='line-content'>      ;; 最大高さで切り詰め</td></tr>
+<tr class='covered'><td class='line-number'>288</td><td class='line-content'>      (let ((lines (split-string text &amp;quot;\n&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>289</td><td class='line-content'>        (when (&amp;gt; (length lines) nskk-annotation-display-max-height)</td></tr>
+<tr class='covered'><td class='line-number'>290</td><td class='line-content'>          (setq lines (seq-take lines nskk-annotation-display-max-height))</td></tr>
+<tr class='covered'><td class='line-number'>291</td><td class='line-content'>          (setq text (string-join lines &amp;quot;\n&amp;quot;))))</td></tr>
+<tr class=''><td class='line-number'>292</td><td class='line-content'></td></tr>
+<tr class='covered'><td class='line-number'>293</td><td class='line-content'>      text)))</td></tr>
+<tr class=''><td class='line-number'>294</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>295</td><td class='line-content'>(defun nskk-annotation-display--wrap-text (text max-width)</td></tr>
+<tr class=''><td class='line-number'>296</td><td class='line-content'>  &amp;quot;TEXT を MAX-WIDTH で折り返す。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>297</td><td class='line-content'>  (if (&amp;lt;= (length text) max-width)</td></tr>
+<tr class='covered'><td class='line-number'>298</td><td class='line-content'>      text</td></tr>
+<tr class='covered'><td class='line-number'>299</td><td class='line-content'>    (let ((lines nil)</td></tr>
+<tr class=''><td class='line-number'>300</td><td class='line-content'>          (current-line &amp;quot;&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>301</td><td class='line-content'>          (words (split-string text)))</td></tr>
+<tr class='covered'><td class='line-number'>302</td><td class='line-content'>      (dolist (word words)</td></tr>
+<tr class='covered'><td class='line-number'>303</td><td class='line-content'>        (if (&amp;gt; (+ (length current-line) (length word) 1) max-width)</td></tr>
+<tr class='covered'><td class='line-number'>304</td><td class='line-content'>            (progn</td></tr>
+<tr class='covered'><td class='line-number'>305</td><td class='line-content'>              (push current-line lines)</td></tr>
+<tr class='covered'><td class='line-number'>306</td><td class='line-content'>              (setq current-line word))</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>          (setq current-line</td></tr>
+<tr class='covered'><td class='line-number'>308</td><td class='line-content'>                (if (string-empty-p current-line)</td></tr>
+<tr class='uncovered'><td class='line-number'>309</td><td class='line-content'>                    word</td></tr>
+<tr class='onevalue'><td class='line-number'>310</td><td class='line-content'>                  (concat current-line &amp;quot; &amp;quot; word)))))</td></tr>
+<tr class='covered'><td class='line-number'>311</td><td class='line-content'>      (when (not (string-empty-p current-line))</td></tr>
+<tr class='covered'><td class='line-number'>312</td><td class='line-content'>        (push current-line lines))</td></tr>
+<tr class='covered'><td class='line-number'>313</td><td class='line-content'>      (string-join (nreverse lines) &amp;quot;\n&amp;quot;))))</td></tr>
+<tr class=''><td class='line-number'>314</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>315</td><td class='line-content'>(defun nskk-annotation-display--format-image (annotation)</td></tr>
+<tr class=''><td class='line-number'>316</td><td class='line-content'>  &amp;quot;ANNOTATION から画像を表示用にフォーマットする。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>317</td><td class='line-content'>  (when-let ((path (nskk-annotation-parser-get-media-path annotation)))</td></tr>
+<tr class='covered'><td class='line-number'>318</td><td class='line-content'>    (condition-case err</td></tr>
+<tr class='covered'><td class='line-number'>319</td><td class='line-content'>        (when (and (file-exists-p path)</td></tr>
+<tr class='covered'><td class='line-number'>320</td><td class='line-content'>                   (image-type-available-p (image-type-from-file-name path)))</td></tr>
+<tr class=''><td class='line-number'>321</td><td class='line-content'>          ;; 画像を読み込んでサイズ調整</td></tr>
+<tr class='covered'><td class='line-number'>322</td><td class='line-content'>          (let* ((image (create-image path nil nil</td></tr>
+<tr class='uncovered'><td class='line-number'>323</td><td class='line-content'>                                     :max-width nskk-annotation-display-image-max-width</td></tr>
+<tr class='uncovered'><td class='line-number'>324</td><td class='line-content'>                                     :max-height nskk-annotation-display-image-max-height))</td></tr>
+<tr class='covered'><td class='line-number'>325</td><td class='line-content'>                 (image-string (propertize &amp;quot; &amp;quot; 'display image)))</td></tr>
+<tr class='uncovered'><td class='line-number'>326</td><td class='line-content'>            image-string))</td></tr>
+<tr class=''><td class='line-number'>327</td><td class='line-content'>      (error</td></tr>
+<tr class='covered'><td class='line-number'>328</td><td class='line-content'>       (format &amp;quot;[Image error: %s]&amp;quot; (error-message-string err))))))</td></tr>
+<tr class=''><td class='line-number'>329</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>330</td><td class='line-content'>;;; 候補との統合</td></tr>
+<tr class=''><td class='line-number'>331</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>332</td><td class='line-content'>;;;###autoload</td></tr>
+<tr class=''><td class='line-number'>333</td><td class='line-content'>(defun nskk-annotation-display-with-candidate (candidate annotation)</td></tr>
+<tr class=''><td class='line-number'>334</td><td class='line-content'>  &amp;quot;CANDIDATE と ANNOTATION を組み合わせて表示用文字列を生成する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>335</td><td class='line-content'>  (if (and annotation</td></tr>
+<tr class='covered'><td class='line-number'>336</td><td class='line-content'>           (eq nskk-annotation-display-style 'inline))</td></tr>
+<tr class='covered'><td class='line-number'>337</td><td class='line-content'>      (let ((ann-text (nskk-annotation-display--format-text annotation)))</td></tr>
+<tr class='covered'><td class='line-number'>338</td><td class='line-content'>        (concat candidate</td></tr>
+<tr class='covered'><td class='line-number'>339</td><td class='line-content'>                (when (and ann-text (not (string-empty-p ann-text)))</td></tr>
+<tr class='covered'><td class='line-number'>340</td><td class='line-content'>                  (format nskk-annotation-display-inline-format ann-text))))</td></tr>
+<tr class='covered'><td class='line-number'>341</td><td class='line-content'>    candidate))</td></tr>
+<tr class=''><td class='line-number'>342</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>343</td><td class='line-content'>;;;###autoload</td></tr>
+<tr class=''><td class='line-number'>344</td><td class='line-content'>(defun nskk-annotation-display-candidates-with-annotations (candidates)</td></tr>
+<tr class=''><td class='line-number'>345</td><td class='line-content'>  &amp;quot;CANDIDATES（(word . annotation)のリスト）を表示用文字列のリストに変換する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>346</td><td class='line-content'>  (mapcar (lambda (cand)</td></tr>
+<tr class='covered'><td class='line-number'>347</td><td class='line-content'>            (nskk-annotation-display-with-candidate</td></tr>
+<tr class='covered'><td class='line-number'>348</td><td class='line-content'>             (car cand)</td></tr>
+<tr class='covered'><td class='line-number'>349</td><td class='line-content'>             (when (cdr cand)</td></tr>
+<tr class='covered'><td class='line-number'>350</td><td class='line-content'>               (nskk-parse-annotation (cdr cand)))))</td></tr>
+<tr class=''><td class='line-number'>351</td><td class='line-content'>          candidates))</td></tr>
+<tr class=''><td class='line-number'>352</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>353</td><td class='line-content'>;;; ユーティリティ関数</td></tr>
+<tr class=''><td class='line-number'>354</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>355</td><td class='line-content'>(defun nskk-annotation-display-current-p ()</td></tr>
+<tr class=''><td class='line-number'>356</td><td class='line-content'>  &amp;quot;現在注釈が表示されているかどうかを判定する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>357</td><td class='line-content'>  (and nskk-annotation-display--current-annotation t))</td></tr>
+<tr class=''><td class='line-number'>358</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>359</td><td class='line-content'>(defun nskk-annotation-display-get-current ()</td></tr>
+<tr class=''><td class='line-number'>360</td><td class='line-content'>  &amp;quot;現在表示中の注釈を取得する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>361</td><td class='line-content'>  nskk-annotation-display--current-annotation)</td></tr>
+<tr class=''><td class='line-number'>362</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>363</td><td class='line-content'>(defun nskk-annotation-display-toggle-style ()</td></tr>
+<tr class=''><td class='line-number'>364</td><td class='line-content'>  &amp;quot;注釈表示スタイルを切り替える。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>365</td><td class='line-content'>  (interactive)</td></tr>
+<tr class='covered'><td class='line-number'>366</td><td class='line-content'>  (setq nskk-annotation-display-style</td></tr>
+<tr class='covered'><td class='line-number'>367</td><td class='line-content'>        (pcase nskk-annotation-display-style</td></tr>
+<tr class=''><td class='line-number'>368</td><td class='line-content'>          ('tooltip 'inline)</td></tr>
+<tr class=''><td class='line-number'>369</td><td class='line-content'>          ('inline 'echo-area)</td></tr>
+<tr class=''><td class='line-number'>370</td><td class='line-content'>          ('echo-area 'overlay)</td></tr>
+<tr class=''><td class='line-number'>371</td><td class='line-content'>          ('overlay 'popup)</td></tr>
+<tr class=''><td class='line-number'>372</td><td class='line-content'>          ('popup 'none)</td></tr>
+<tr class=''><td class='line-number'>373</td><td class='line-content'>          ('none 'tooltip)</td></tr>
+<tr class=''><td class='line-number'>374</td><td class='line-content'>          (_ 'tooltip)))</td></tr>
+<tr class='covered'><td class='line-number'>375</td><td class='line-content'>  (message &amp;quot;Annotation display style: %s&amp;quot; nskk-annotation-display-style))</td></tr>
+<tr class=''><td class='line-number'>376</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>377</td><td class='line-content'>;;; クリーンアップ</td></tr>
+<tr class=''><td class='line-number'>378</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>379</td><td class='line-content'>(defun nskk-annotation-display-cleanup ()</td></tr>
+<tr class=''><td class='line-number'>380</td><td class='line-content'>  &amp;quot;注釈表示に関連するリソースをクリーンアップする。&amp;quot;</td></tr>
+<tr class='onevalue'><td class='line-number'>381</td><td class='line-content'>  (nskk-hide-annotation))</td></tr>
+<tr class=''><td class='line-number'>382</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>383</td><td class='line-content'>;;; デバッグ・統計</td></tr>
+<tr class=''><td class='line-number'>384</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>385</td><td class='line-content'>(defun nskk-annotation-display-describe ()</td></tr>
+<tr class=''><td class='line-number'>386</td><td class='line-content'>  &amp;quot;現在の注釈表示状態を表示する。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>387</td><td class='line-content'>  (interactive)</td></tr>
+<tr class='covered'><td class='line-number'>388</td><td class='line-content'>  (message &amp;quot;NSKK Annotation Display:</td></tr>
+<tr class=''><td class='line-number'>389</td><td class='line-content'>  Style: %s</td></tr>
+<tr class=''><td class='line-number'>390</td><td class='line-content'>  Delay: %s sec</td></tr>
+<tr class=''><td class='line-number'>391</td><td class='line-content'>  Duration: %s sec</td></tr>
+<tr class=''><td class='line-number'>392</td><td class='line-content'>  Current annotation: %s</td></tr>
+<tr class=''><td class='line-number'>393</td><td class='line-content'>  Displaying: %s&amp;quot;</td></tr>
+<tr class='uncovered'><td class='line-number'>394</td><td class='line-content'>           nskk-annotation-display-style</td></tr>
+<tr class='uncovered'><td class='line-number'>395</td><td class='line-content'>           nskk-annotation-display-delay</td></tr>
+<tr class='covered'><td class='line-number'>396</td><td class='line-content'>           (or nskk-annotation-display-duration &amp;quot;unlimited&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>397</td><td class='line-content'>           (if nskk-annotation-display--current-annotation</td></tr>
+<tr class='covered'><td class='line-number'>398</td><td class='line-content'>               (nskk-annotation-text nskk-annotation-display--current-annotation)</td></tr>
+<tr class='uncovered'><td class='line-number'>399</td><td class='line-content'>             &amp;quot;none&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>400</td><td class='line-content'>           (if (nskk-annotation-display-current-p) &amp;quot;yes&amp;quot; &amp;quot;no&amp;quot;)))</td></tr>
+<tr class=''><td class='line-number'>401</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>402</td><td class='line-content'>(provide 'nskk-annotation-display)</td></tr>
+<tr class=''><td class='line-number'>403</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>404</td><td class='line-content'>;;; nskk-annotation-display.el ends here</td></tr>
+
+    </table>
+  </div>
+  <div class='legend'>
+    <div class='legend-item'><span class='legend-color' style='background: #e8f5e9;'></span>Covered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #ffebee;'></span>Uncovered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #fff3e0;'></span>1-Value</div>
+    <div class='legend-item'><span class='legend-color' style='background: #f3e5f5;'></span>No-Return</div>
+  </div>
+</body>
+</html>

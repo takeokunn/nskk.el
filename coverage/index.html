@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>NSKK Code Coverage Report</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    h1 { color: #2c3e50; margin-bottom: 10px; }
+    .subtitle { color: #7f8c8d; margin-bottom: 30px; }
+    .summary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 6px; margin-bottom: 30px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+    .summary-item { }
+    .summary-label { font-size: 14px; opacity: 0.9; margin-bottom: 5px; }
+    .summary-value { font-size: 36px; font-weight: bold; }
+    .summary-subvalue { font-size: 14px; opacity: 0.9; margin-top: 5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th { background: #34495e; color: white; padding: 12px; text-align: left; font-weight: 600; }
+    td { padding: 12px; border-bottom: 1px solid #ecf0f1; }
+    tr:hover { background: #f8f9fa; }
+    tr.high { background: rgba(46, 204, 113, 0.1); }
+    tr.medium { background: rgba(241, 196, 15, 0.1); }
+    tr.low { background: rgba(231, 76, 60, 0.1); }
+    .coverage-bar { width: 100%; height: 24px; background: #ecf0f1; border-radius: 12px; overflow: hidden; }
+    .coverage-bar-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); transition: width 0.3s; }
+    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ecf0f1; color: #7f8c8d; text-align: center; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class='container'>
+    <h1>NSKK Code Coverage Report</h1>
+    <div class='subtitle'>Generated at 2025-10-05 02:27:49</div>
+    <div class='summary'>
+      <div class='summary-grid'>
+        <div class='summary-item'>
+          <div class='summary-label'>Total Coverage</div>
+          <div class='summary-value'>75.83%</div>
+          <div class='summary-subvalue'>OK Coverage: 60.16%</div>
+        </div>
+        <div class='summary-item'>
+          <div class='summary-label'>Forms Covered</div>
+          <div class='summary-value'>33933 / 44746</div>
+        </div>
+        <div class='summary-item'>
+          <div class='summary-label'>Files Analyzed</div>
+          <div class='summary-value'>92</div>
+        </div>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Coverage</th>
+          <th>Forms</th>
+          <th>Progress</th>
+        </tr>
+      </thead>
+      <tbody>
+<tr class='high'>
+  <td><a href='nskk-verb-conjugation.el.html'>nskk-verb-conjugation.el</a></td>
+  <td>90.91%</td>
+  <td>350/385</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 90.91%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-trie.el.html'>nskk-trie.el</a></td>
+  <td>98.29%</td>
+  <td>633/644</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 98.29%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-transient-plugins.el.html'>nskk-transient-plugins.el</a></td>
+  <td>47.80%</td>
+  <td>326/682</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 47.80%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-transient-debug.el.html'>nskk-transient-debug.el</a></td>
+  <td>54.73%</td>
+  <td>359/656</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 54.73%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-transient-config.el.html'>nskk-transient-config.el</a></td>
+  <td>48.24%</td>
+  <td>137/284</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 48.24%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-thread-pool.el.html'>nskk-thread-pool.el</a></td>
+  <td>92.53%</td>
+  <td>347/375</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 92.53%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-sync-protocol.el.html'>nskk-sync-protocol.el</a></td>
+  <td>57.54%</td>
+  <td>351/610</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 57.54%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-sync-primitives.el.html'>nskk-sync-primitives.el</a></td>
+  <td>99.22%</td>
+  <td>382/385</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 99.22%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-sync-diff.el.html'>nskk-sync-diff.el</a></td>
+  <td>64.64%</td>
+  <td>510/789</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 64.64%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-sync-crypto.el.html'>nskk-sync-crypto.el</a></td>
+  <td>49.91%</td>
+  <td>273/547</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 49.91%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-sync-conflict.el.html'>nskk-sync-conflict.el</a></td>
+  <td>72.41%</td>
+  <td>462/638</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 72.41%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-state.el.html'>nskk-state.el</a></td>
+  <td>91.35%</td>
+  <td>475/520</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 91.35%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-special-chars.el.html'>nskk-special-chars.el</a></td>
+  <td>97.45%</td>
+  <td>382/392</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 97.45%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-server-protocol.el.html'>nskk-server-protocol.el</a></td>
+  <td>94.46%</td>
+  <td>290/307</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 94.46%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-server-error.el.html'>nskk-server-error.el</a></td>
+  <td>71.58%</td>
+  <td>340/475</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 71.58%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-server-async.el.html'>nskk-server-async.el</a></td>
+  <td>45.71%</td>
+  <td>240/525</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 45.71%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-search.el.html'>nskk-search.el</a></td>
+  <td>95.40%</td>
+  <td>519/544</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 95.40%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-romaji-tables.el.html'>nskk-romaji-tables.el</a></td>
+  <td>100.00%</td>
+  <td>111/111</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 100.00%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-progress.el.html'>nskk-progress.el</a></td>
+  <td>90.59%</td>
+  <td>337/372</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 90.59%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-profiler.el.html'>nskk-profiler.el</a></td>
+  <td>45.31%</td>
+  <td>256/565</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 45.31%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-phase4.el.html'>nskk-phase4.el</a></td>
+  <td>81.08%</td>
+  <td>300/370</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 81.08%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-phase3.el.html'>nskk-phase3.el</a></td>
+  <td>77.16%</td>
+  <td>250/324</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 77.16%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-parallel-search.el.html'>nskk-parallel-search.el</a></td>
+  <td>69.98%</td>
+  <td>415/593</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 69.98%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-optimize.el.html'>nskk-optimize.el</a></td>
+  <td>77.41%</td>
+  <td>394/509</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 77.41%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-native-compile.el.html'>nskk-native-compile.el</a></td>
+  <td>71.61%</td>
+  <td>285/398</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 71.61%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-multi-cache.el.html'>nskk-multi-cache.el</a></td>
+  <td>77.09%</td>
+  <td>646/838</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 77.09%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-modeline.el.html'>nskk-modeline.el</a></td>
+  <td>91.50%</td>
+  <td>323/353</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 91.50%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-mode-switch.el.html'>nskk-mode-switch.el</a></td>
+  <td>87.40%</td>
+  <td>319/365</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 87.40%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-minibuffer.el.html'>nskk-minibuffer.el</a></td>
+  <td>97.95%</td>
+  <td>525/536</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 97.95%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-memory-optimize.el.html'>nskk-memory-optimize.el</a></td>
+  <td>77.39%</td>
+  <td>421/544</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 77.39%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-macro-optimize.el.html'>nskk-macro-optimize.el</a></td>
+  <td>79.86%</td>
+  <td>115/144</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 79.86%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-learning-persist.el.html'>nskk-learning-persist.el</a></td>
+  <td>88.14%</td>
+  <td>706/801</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 88.14%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-learning-frequency.el.html'>nskk-learning-frequency.el</a></td>
+  <td>84.68%</td>
+  <td>376/444</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 84.68%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-learning-context.el.html'>nskk-learning-context.el</a></td>
+  <td>81.57%</td>
+  <td>518/635</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 81.57%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-layer-qa.el.html'>nskk-layer-qa.el</a></td>
+  <td>44.17%</td>
+  <td>246/557</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 44.17%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-layer-presentation.el.html'>nskk-layer-presentation.el</a></td>
+  <td>48.13%</td>
+  <td>167/347</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 48.13%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-layer-infrastructure.el.html'>nskk-layer-infrastructure.el</a></td>
+  <td>47.37%</td>
+  <td>153/323</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 47.37%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-layer-extension.el.html'>nskk-layer-extension.el</a></td>
+  <td>39.13%</td>
+  <td>162/414</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 39.13%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-layer-data.el.html'>nskk-layer-data.el</a></td>
+  <td>48.20%</td>
+  <td>201/417</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 48.20%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-layer-core.el.html'>nskk-layer-core.el</a></td>
+  <td>45.96%</td>
+  <td>148/322</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 45.96%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-layer-application.el.html'>nskk-layer-application.el</a></td>
+  <td>44.31%</td>
+  <td>152/343</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 44.31%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-keymap.el.html'>nskk-keymap.el</a></td>
+  <td>84.67%</td>
+  <td>348/411</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 84.67%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-tutcode.el.html'>nskk-input-tutcode.el</a></td>
+  <td>82.05%</td>
+  <td>64/78</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 82.05%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-switcher.el.html'>nskk-input-switcher.el</a></td>
+  <td>80.76%</td>
+  <td>235/291</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 80.76%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-qwerty.el.html'>nskk-input-qwerty.el</a></td>
+  <td>75.00%</td>
+  <td>21/28</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 75.00%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-nicola.el.html'>nskk-input-nicola.el</a></td>
+  <td>78.87%</td>
+  <td>112/142</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 78.87%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-input-loader.el.html'>nskk-input-loader.el</a></td>
+  <td>67.61%</td>
+  <td>240/355</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 67.61%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-kana.el.html'>nskk-input-kana.el</a></td>
+  <td>75.86%</td>
+  <td>44/58</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 75.86%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-input-hybrid.el.html'>nskk-input-hybrid.el</a></td>
+  <td>59.52%</td>
+  <td>175/294</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 59.52%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-dvorak.el.html'>nskk-input-dvorak.el</a></td>
+  <td>87.27%</td>
+  <td>96/110</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 87.27%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-input-custom.el.html'>nskk-input-custom.el</a></td>
+  <td>68.15%</td>
+  <td>229/336</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 68.15%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-colemak.el.html'>nskk-input-colemak.el</a></td>
+  <td>87.27%</td>
+  <td>96/110</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 87.27%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-input-azik.el.html'>nskk-input-azik.el</a></td>
+  <td>95.31%</td>
+  <td>61/64</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 95.31%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-input-act.el.html'>nskk-input-act.el</a></td>
+  <td>78.12%</td>
+  <td>50/64</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 78.12%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-index.el.html'>nskk-index.el</a></td>
+  <td>93.45%</td>
+  <td>699/748</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 93.45%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-history.el.html'>nskk-history.el</a></td>
+  <td>80.00%</td>
+  <td>420/525</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 80.00%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-events.el.html'>nskk-events.el</a></td>
+  <td>94.15%</td>
+  <td>402/427</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 94.15%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-dict-struct.el.html'>nskk-dict-struct.el</a></td>
+  <td>97.25%</td>
+  <td>706/726</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 97.25%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-dict-parser.el.html'>nskk-dict-parser.el</a></td>
+  <td>83.06%</td>
+  <td>554/667</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 83.06%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-dict-io.el.html'>nskk-dict-io.el</a></td>
+  <td>94.00%</td>
+  <td>705/750</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 94.00%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-dict-errors.el.html'>nskk-dict-errors.el</a></td>
+  <td>81.07%</td>
+  <td>561/692</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 81.07%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-custom-annotation.el.html'>nskk-custom-annotation.el</a></td>
+  <td>86.29%</td>
+  <td>447/518</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 86.29%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-converter.el.html'>nskk-converter.el</a></td>
+  <td>96.53%</td>
+  <td>362/375</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 96.53%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-conjugation-tables.el.html'>nskk-conjugation-tables.el</a></td>
+  <td>73.10%</td>
+  <td>288/394</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 73.10%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-complex-conjugation.el.html'>nskk-complex-conjugation.el</a></td>
+  <td>85.20%</td>
+  <td>236/277</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 85.20%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-completion-ui.el.html'>nskk-completion-ui.el</a></td>
+  <td>44.51%</td>
+  <td>162/364</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 44.51%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-completion-prefix.el.html'>nskk-completion-prefix.el</a></td>
+  <td>54.50%</td>
+  <td>230/422</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 54.50%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-completion-predictive.el.html'>nskk-completion-predictive.el</a></td>
+  <td>64.82%</td>
+  <td>387/597</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 64.82%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-completion-fuzzy.el.html'>nskk-completion-fuzzy.el</a></td>
+  <td>57.81%</td>
+  <td>418/723</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 57.81%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-completion-frequency.el.html'>nskk-completion-frequency.el</a></td>
+  <td>61.58%</td>
+  <td>327/531</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 61.58%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-completion-engine.el.html'>nskk-completion-engine.el</a></td>
+  <td>46.47%</td>
+  <td>224/482</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 46.47%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-completion-context.el.html'>nskk-completion-context.el</a></td>
+  <td>68.11%</td>
+  <td>457/671</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 68.11%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-candidate-window.el.html'>nskk-candidate-window.el</a></td>
+  <td>98.48%</td>
+  <td>649/659</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 98.48%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-cache.el.html'>nskk-cache.el</a></td>
+  <td>94.42%</td>
+  <td>762/807</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 94.42%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-buffer.el.html'>nskk-buffer.el</a></td>
+  <td>94.71%</td>
+  <td>519/548</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 94.71%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-bottleneck-detector.el.html'>nskk-bottleneck-detector.el</a></td>
+  <td>47.27%</td>
+  <td>346/732</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 47.27%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-background.el.html'>nskk-background.el</a></td>
+  <td>76.97%</td>
+  <td>498/647</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 76.97%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-auto-tune.el.html'>nskk-auto-tune.el</a></td>
+  <td>46.36%</td>
+  <td>363/783</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 46.36%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-async-learning.el.html'>nskk-async-learning.el</a></td>
+  <td>98.79%</td>
+  <td>409/414</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 98.79%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-async-candidates.el.html'>nskk-async-candidates.el</a></td>
+  <td>87.29%</td>
+  <td>316/362</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 87.29%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-architecture.el.html'>nskk-architecture.el</a></td>
+  <td>46.28%</td>
+  <td>249/538</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 46.28%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-annotation-parser.el.html'>nskk-annotation-parser.el</a></td>
+  <td>90.75%</td>
+  <td>422/465</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 90.75%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-annotation-display.el.html'>nskk-annotation-display.el</a></td>
+  <td>73.03%</td>
+  <td>325/445</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 73.03%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-analytics-report.el.html'>nskk-analytics-report.el</a></td>
+  <td>88.44%</td>
+  <td>589/666</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 88.44%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-analytics-pattern.el.html'>nskk-analytics-pattern.el</a></td>
+  <td>90.33%</td>
+  <td>682/755</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 90.33%;'></div></div></td>
+</tr>
+<tr class='low'>
+  <td><a href='nskk-analytics-optimize.el.html'>nskk-analytics-optimize.el</a></td>
+  <td>65.63%</td>
+  <td>422/643</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 65.63%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-analytics-dashboard.el.html'>nskk-analytics-dashboard.el</a></td>
+  <td>77.47%</td>
+  <td>337/435</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 77.47%;'></div></div></td>
+</tr>
+<tr class='high'>
+  <td><a href='nskk-ai-pattern.el.html'>nskk-ai-pattern.el</a></td>
+  <td>95.62%</td>
+  <td>982/1027</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 95.62%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-ai-learning.el.html'>nskk-ai-learning.el</a></td>
+  <td>83.49%</td>
+  <td>637/763</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 83.49%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-ai-context.el.html'>nskk-ai-context.el</a></td>
+  <td>89.58%</td>
+  <td>1178/1315</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 89.58%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-ai-candidates.el.html'>nskk-ai-candidates.el</a></td>
+  <td>87.31%</td>
+  <td>764/875</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 87.31%;'></div></div></td>
+</tr>
+<tr class='medium'>
+  <td><a href='nskk-adjective-conjugation.el.html'>nskk-adjective-conjugation.el</a></td>
+  <td>88.98%</td>
+  <td>226/254</td>
+  <td><div class='coverage-bar'><div class='coverage-bar-fill' style='width: 88.98%;'></div></div></td>
+</tr>
+
+      </tbody>
+    </table>
+    <div class='footer'>
+      NSKK Coverage Tool • Threshold: 95.00%
+    </div>
+  </div>
+</body>
+</html>

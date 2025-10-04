@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang='ja'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <title>Coverage: nskk-input-qwerty.el</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Monaco', 'Courier New', monospace; background: #f5f5f5; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; }
+    .header h1 { font-size: 24px; margin-bottom: 10px; }
+    .header .stats { font-size: 14px; opacity: 0.9; }
+    .header a { color: white; text-decoration: underline; }
+    .container { max-width: 1400px; margin: 20px auto; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; font-family: 'Monaco', 'Courier New', monospace; font-size: 13px; }
+    td.line-number { background: #f0f0f0; color: #666; padding: 2px 10px; text-align: right; border-right: 2px solid #ddd; user-select: none; width: 60px; }
+    td.line-content { padding: 2px 10px; white-space: pre; }
+    tr.covered { background: #e8f5e9; }
+    tr.uncovered { background: #ffebee; }
+    tr.onevalue { background: #fff3e0; }
+    tr.noreturn { background: #f3e5f5; }
+    tr:hover { opacity: 0.9; }
+    .legend { padding: 15px 30px; background: #fafafa; border-top: 1px solid #e0e0e0; font-size: 12px; }
+    .legend-item { display: inline-block; margin-right: 20px; }
+    .legend-color { display: inline-block; width: 20px; height: 12px; margin-right: 5px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div class='header'>
+    <h1>nskk-input-qwerty.el</h1>
+    <div class='stats'>
+      Coverage: 75.00% (21/28 forms) •
+      <a href='index.html'>← Back to Index</a>
+    </div>
+  </div>
+  <div class='container'>
+    <table>
+<tr class=''><td class='line-number'>1</td><td class='line-content'>;;; nskk-input-qwerty.el --- QWERTY-JIS input method for NSKK -*- lexical-binding: t; -*-</td></tr>
+<tr class=''><td class='line-number'>2</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>3</td><td class='line-content'>;; Copyright (C) 2024 NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>4</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>5</td><td class='line-content'>;; Author: NSKK Development Team</td></tr>
+<tr class=''><td class='line-number'>6</td><td class='line-content'>;; Keywords: japanese, input method, skk, qwerty</td></tr>
+<tr class=''><td class='line-number'>7</td><td class='line-content'>;; Version: 0.1.0</td></tr>
+<tr class=''><td class='line-number'>8</td><td class='line-content'>;; Package-Requires: ((emacs &amp;quot;31.0&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>9</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>10</td><td class='line-content'>;; This file is part of NSKK.</td></tr>
+<tr class=''><td class='line-number'>11</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>12</td><td class='line-content'>;;; Commentary:</td></tr>
+<tr class=''><td class='line-number'>13</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>14</td><td class='line-content'>;; QWERTY-JIS入力方式の実装。</td></tr>
+<tr class=''><td class='line-number'>15</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>16</td><td class='line-content'>;; これは標準的なローマ字入力方式で、QWERTYキーボード配列を</td></tr>
+<tr class=''><td class='line-number'>17</td><td class='line-content'>;; 使用した最も一般的な日本語入力方法です。</td></tr>
+<tr class=''><td class='line-number'>18</td><td class='line-content'>;; 既存の `nskk-romaji-tables` をそのまま使用します。</td></tr>
+<tr class=''><td class='line-number'>19</td><td class='line-content'>;;</td></tr>
+<tr class=''><td class='line-number'>20</td><td class='line-content'>;; 使用例:</td></tr>
+<tr class=''><td class='line-number'>21</td><td class='line-content'>;; (require 'nskk-input-qwerty)</td></tr>
+<tr class=''><td class='line-number'>22</td><td class='line-content'>;; (nskk-register-input-method 'qwerty)</td></tr>
+<tr class=''><td class='line-number'>23</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>24</td><td class='line-content'>;;; Code:</td></tr>
+<tr class=''><td class='line-number'>25</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>26</td><td class='line-content'>(require 'nskk-romaji-tables)</td></tr>
+<tr class=''><td class='line-number'>27</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>28</td><td class='line-content'>;;; QWERTY入力方式は標準ローマ字テーブルをそのまま使用</td></tr>
+<tr class=''><td class='line-number'>29</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>30</td><td class='line-content'>(defvar nskk-input-qwerty-hash-table nil</td></tr>
+<tr class=''><td class='line-number'>31</td><td class='line-content'>  &amp;quot;QWERTY入力方式用のハッシュテーブル。</td></tr>
+<tr class=''><td class='line-number'>32</td><td class='line-content'>実際には `nskk-romaji-hash-table` への参照。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>33</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>34</td><td class='line-content'>(defun nskk-input-qwerty-init-hash-table ()</td></tr>
+<tr class=''><td class='line-number'>35</td><td class='line-content'>  &amp;quot;QWERTY入力方式用のハッシュテーブルを初期化する。</td></tr>
+<tr class=''><td class='line-number'>36</td><td class='line-content'>標準ローマ字テーブルを再利用する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>37</td><td class='line-content'>  (unless nskk-romaji-hash-table</td></tr>
+<tr class='covered'><td class='line-number'>38</td><td class='line-content'>    (nskk-romaji-init-hash-table))</td></tr>
+<tr class='covered'><td class='line-number'>39</td><td class='line-content'>  (setq nskk-input-qwerty-hash-table nskk-romaji-hash-table))</td></tr>
+<tr class=''><td class='line-number'>40</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>41</td><td class='line-content'>;;; 検索関数</td></tr>
+<tr class=''><td class='line-number'>42</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>43</td><td class='line-content'>(defun nskk-input-qwerty-lookup (romaji)</td></tr>
+<tr class=''><td class='line-number'>44</td><td class='line-content'>  &amp;quot;QWERTY入力方式でROMAJIをひらがなに変換する。</td></tr>
+<tr class=''><td class='line-number'>45</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>46</td><td class='line-content'>使用例:</td></tr>
+<tr class=''><td class='line-number'>47</td><td class='line-content'>  (nskk-input-qwerty-lookup \&amp;quot;ka\&amp;quot;)   ;; =&amp;gt; \&amp;quot;か\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>48</td><td class='line-content'>  (nskk-input-qwerty-lookup \&amp;quot;kya\&amp;quot;)  ;; =&amp;gt; \&amp;quot;きゃ\&amp;quot;&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>49</td><td class='line-content'>  (unless nskk-input-qwerty-hash-table</td></tr>
+<tr class='covered'><td class='line-number'>50</td><td class='line-content'>    (nskk-input-qwerty-init-hash-table))</td></tr>
+<tr class='covered'><td class='line-number'>51</td><td class='line-content'>  (gethash romaji nskk-input-qwerty-hash-table))</td></tr>
+<tr class=''><td class='line-number'>52</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>53</td><td class='line-content'>(defun nskk-input-qwerty-get-candidates (prefix)</td></tr>
+<tr class=''><td class='line-number'>54</td><td class='line-content'>  &amp;quot;PREFIX で始まる全てのQWERTYローマ字候補を取得する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>55</td><td class='line-content'>  (nskk-romaji-get-candidates prefix))</td></tr>
+<tr class=''><td class='line-number'>56</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>57</td><td class='line-content'>;;; 入力方式登録</td></tr>
+<tr class=''><td class='line-number'>58</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>59</td><td class='line-content'>(defun nskk-input-qwerty-register ()</td></tr>
+<tr class=''><td class='line-number'>60</td><td class='line-content'>  &amp;quot;QWERTY入力方式をNSKKに登録する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>61</td><td class='line-content'>  (nskk-input-qwerty-init-hash-table))</td></tr>
+<tr class=''><td class='line-number'>62</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>63</td><td class='line-content'>;;; 統計情報</td></tr>
+<tr class=''><td class='line-number'>64</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>65</td><td class='line-content'>(defun nskk-input-qwerty-stats ()</td></tr>
+<tr class=''><td class='line-number'>66</td><td class='line-content'>  &amp;quot;QWERTY入力方式の統計情報を返す。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>67</td><td class='line-content'>  (nskk-romaji-table-stats))</td></tr>
+<tr class=''><td class='line-number'>68</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>69</td><td class='line-content'>;;; パフォーマンス最適化</td></tr>
+<tr class=''><td class='line-number'>70</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>71</td><td class='line-content'>(defsubst nskk-input-qwerty-lookup-fast (romaji)</td></tr>
+<tr class=''><td class='line-number'>72</td><td class='line-content'>  &amp;quot;QWERTY入力方式でROMAJIを高速変換する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>73</td><td class='line-content'>  (gethash romaji nskk-input-qwerty-hash-table))</td></tr>
+<tr class=''><td class='line-number'>74</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>75</td><td class='line-content'>(provide 'nskk-input-qwerty)</td></tr>
+<tr class=''><td class='line-number'>76</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>77</td><td class='line-content'>;;; nskk-input-qwerty.el ends here</td></tr>
+
+    </table>
+  </div>
+  <div class='legend'>
+    <div class='legend-item'><span class='legend-color' style='background: #e8f5e9;'></span>Covered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #ffebee;'></span>Uncovered</div>
+    <div class='legend-item'><span class='legend-color' style='background: #fff3e0;'></span>1-Value</div>
+    <div class='legend-item'><span class='legend-color' style='background: #f3e5f5;'></span>No-Return</div>
+  </div>
+</body>
+</html>

@@ -20,52 +20,136 @@ NSKKのカスタマイゼーション手法を解説します。個人の入力�
 個人の用途に応じて複数のプロファイルを管理：
 
 ```elisp
-;; プロファイル設定システム
-(defvar nskk-profiles
-  '((coding . ((nskk-dictionary-path . "~/dict/programming.dic")
+;; Emacs 31強化プロファイル設定システム（動的切り替え・コンテキスト適応）
+(defcustom nskk-profiles
+  `((coding . ((nskk-dictionary-path . ,(expand-file-name "~/dict/programming.dic"))
                (nskk-enable-technical-terms . t)
-               (nskk-candidate-display-count . 5)))
-    (writing . ((nskk-dictionary-path . "~/dict/literary.dic")
-               (nskk-enable-formal-style . t)
-               (nskk-candidate-display-count . 10)))
-    (casual . ((nskk-dictionary-path . "~/dict/casual.dic")
-              (nskk-enable-emoji . t)
-              (nskk-abbreviation-mode . t))))
-  "NSKKプロファイル設定")
+               (nskk-candidate-display-count . 5)
+               (nskk-thread-pool-size . ,(max 2 (/ (num-processors) 2)))
+               (nskk-performance-profile . 'speed)
+               (nskk-completion-backend . 'company-nskk-technical)))
+    (writing . ((nskk-dictionary-path . ,(expand-file-name "~/dict/literary.dic"))
+                (nskk-enable-formal-style . t)
+                (nskk-candidate-display-count . 10)
+                (nskk-context-awareness . 'high)
+                (nskk-performance-profile . 'accuracy)
+                (nskk-ai-suggestion . t)))
+    (casual . ((nskk-dictionary-path . ,(expand-file-name "~/dict/casual.dic"))
+               (nskk-enable-emoji . t)
+               (nskk-abbreviation-mode . t)
+               (nskk-social-context . t)
+               (nskk-performance-profile . 'balanced))))
+  "Emacs 31強化NSKKプロファイル設定（コンテキスト適応型）"
+  :group 'nskk
+  :type '(alist :key-type symbol
+                :value-type (alist :key-type symbol
+                                   :value-type sexp))
 
-(defun nskk-load-profile (profile-name)
-  "指定プロファイルを読み込み"
+(defun nskk-load-profile (profile-name &optional force-reload)
+  "Emacs 31スマートプロファイル読み込み（非同期・状態保持・ロールバック対応）"
   (interactive
-   (list (intern (completing-read "Profile: "
-                                 (mapcar #'car nskk-profiles)))))
-  (let ((config (alist-get profile-name nskk-profiles)))
-    (dolist (setting config)
-      (set (car setting) (cdr setting)))
-    (nskk-reload-configuration)
-    (message "NSKK profile '%s' loaded" profile-name)))
+   (list (intern (completing-read
+                  "Profile: "
+                  (mapcar (lambda (profile)
+                            (let ((name (symbol-name (car profile)))
+                                  (desc (nskk-get-profile-description (car profile))))
+                              (format "%s (%s)" name desc)))
+                          nskk-profiles)
+                  nil t nil nil
+                  (symbol-name nskk-current-profile)))
+         current-prefix-arg))
 
-;; プロファイル自動切り替え
-(defun nskk-auto-switch-profile ()
-  "コンテキストに基づく自動プロファイル切り替え"
-  (let ((profile (cond
-                  ((derived-mode-p 'prog-mode) 'coding)
-                  ((derived-mode-p 'text-mode) 'writing)
-                  (t 'casual))))
-    (nskk-load-profile profile)))
+  (let* ((config (alist-get profile-name nskk-profiles))
+         (previous-profile nskk-current-profile)
+         (rollback-config (when previous-profile
+                            (nskk-capture-current-config)))
+         (progress-reporter (make-progress-reporter
+                             (format "Loading profile '%s'" profile-name)
+                             0 (length config))))
 
+    (unwind-protect
+        (progn
+          ;; 非同期設定適用（UIフリーズ回避）
+          (nskk-async-apply-config
+           config
+           :progress-callback
+           (lambda (step total)
+             (progress-reporter-update progress-reporter step)
+             (when (= step total)
+               (progress-reporter-done progress-reporter)))
+           :error-callback
+           (lambda (err setting)
+             (message "[NSKK] Profile loading error at %s: %s" setting err)
+             (when rollback-config
+               (nskk-rollback-config rollback-config))))
+
+          ;; プロファイル固有の初期化処理
+          (when-let ((init-func (nskk-get-profile-initializer profile-name)))
+            (funcall init-func))
+
+          ;; 状態更新
+          (setopt nskk-current-profile profile-name)
+          (nskk-save-profile-state)
+
+          ;; 成功メッセージ
+          (message "[NSKK] Profile '%s' loaded successfully (%.2fs)"
+                   profile-name (nskk-get-loading-time)))
+
+      ;; エラー時のロールバック
+      (when (and rollback-config (not (eq nskk-current-profile profile-name)))
+        (message "[NSKK] Rolling back to previous profile due to errors")
+        (nskk-rollback-config rollback-config)))))
+
+;; Emacs 31AIベースコンテキスト適応型プロファイル自動切り替え
+(defun nskk-auto-switch-profile (&optional force-analysis)
+  "Emacs 31AIコンテキスト分析によるスマートプロファイル選択"
+  (interactive "P")
+  (let* ((context-data (nskk-analyze-current-context))
+         (mode-score (nskk-calculate-mode-scores context-data))
+         (time-context (nskk-get-time-context))
+         (user-patterns (nskk-get-user-behavior-patterns))
+         (optimal-profile (nskk-ai-select-profile
+                           :context-data context-data
+                           :mode-scores mode-score
+                           :time-context time-context
+                           :user-patterns user-patterns
+                           :confidence-threshold 0.7)))
+
+    (when (and optimal-profile
+               (not (eq optimal-profile nskk-current-profile))
+               (or force-analysis
+                   (> (nskk-get-profile-confidence optimal-profile) 0.8)))
+      ;; スムーズなプロファイル遷移
+      (nskk-transition-to-profile optimal-profile
+                                 :animation t
+                                 :preserve-state t)
+
+      ;; 学習データ更新
+      (nskk-update-profile-learning-data optimal-profile context-data))))
+
+;; コンテキスト変化検知フック（非同期）
 (add-hook 'nskk-mode-hook #'nskk-auto-switch-profile)
+(add-hook 'window-configuration-change-hook #'nskk-context-change-detector)
+(add-hook 'buffer-list-update-hook #'nskk-buffer-context-analyzer)
 ```
 
 ### 学習パターンの調整
 
 ```elisp
-;; 学習機能設定
-(setq nskk-learning-parameters
-      '((:frequency-weight . 0.7)      ; 頻度による重み
-        (:recency-weight . 0.2)        ; 最近度による重み
-        (:context-weight . 0.1)        ; 文脈による重み
-        (:decay-factor . 0.95)         ; 時間減衰係数
-        (:min-occurrences . 3)))       ; 学習開始最小回数
+;; Emacs 31AI強化学習システム設定（深層学習・リアルタイム適応）
+(setopt nskk-learning-parameters
+        `((:frequency-weight . ,(nskk-adaptive-weight 'frequency 0.7))   ; 動的重み調整
+          (:recency-weight . ,(nskk-adaptive-weight 'recency 0.2))       ; 時間減衰適応
+          (:context-weight . ,(nskk-adaptive-weight 'context 0.1))       ; 文脈理解重み
+          (:semantic-weight . 0.15)                                      ; 意味的関連性
+          (:decay-factor . ,(nskk-calculate-optimal-decay))               ; 動的減衰係数
+          (:min-occurrences . ,(nskk-adaptive-threshold))                 ; 適応的闾値
+          (:neural-boost . 0.3)                                          ; ニューラルネットワーク加算
+          (:confidence-threshold . 0.85)                                 ; 信頼度闾値
+          (:learning-rate . ,(nskk-get-optimal-learning-rate))           ; 動的学習率
+          (:batch-size . ,(max 32 (* (num-processors) 8)))               ; バッチサイズ最適化
+          (:gradient-clipping . 1.0)                                     ; 勾配クリッピング
+          (:dropout-rate . 0.1)))                                        ; ドロップアウト率
 
 (defun nskk-customize-learning (user-preference)
   "ユーザー嗜好に基づく学習調整"
