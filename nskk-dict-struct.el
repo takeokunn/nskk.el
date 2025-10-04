@@ -97,8 +97,7 @@
 
 ;; 辞書エントリ構造
 (cl-defstruct (nskk-dict-entry
-               (:constructor (nskk-dict-entry--create
-                               (&key midashi candidates frequency last-used okuri-type metadata)))
+               (:constructor nskk-dict-entry--raw-create)
                (:copier nil))
   "SKK辞書エントリの最適化された構造。
 
@@ -115,6 +114,18 @@
   (last-used nil :type (or null number))
   (okuri-type nil :type (or null symbol))
   (metadata nil :type list))
+
+(defun nskk-dict-entry--create (&rest args)
+  "キーワード引数対応の辞書エントリコンストラクタ。"
+  (if (and args (keywordp (car args)))
+      (let ((midashi (plist-get args :midashi))
+            (candidates (plist-get args :candidates))
+            (frequency (or (plist-get args :frequency) 0))
+            (last-used (plist-get args :last-used))
+            (okuri-type (plist-get args :okuri-type))
+            (metadata (plist-get args :metadata)))
+        (nskk-dict-entry--raw-create midashi candidates frequency last-used okuri-type metadata))
+    (apply #'nskk-dict-entry--raw-create args)))
 
 ;; 前方一致インデックス
 (cl-defstruct (nskk-dict-prefix-index
