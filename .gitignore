@@ -1,0 +1,9 @@
+# Build artifacts
+*.elc
+coverage/
+dist/
+
+# Editor backups
+*~
+
+auto-save-list/

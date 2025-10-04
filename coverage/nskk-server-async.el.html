@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-server-async.el</h1>
     <div class='stats'>
-      Coverage: 45.71% (240/525 forms) •
+      Coverage: 100.00% (525/525 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -217,7 +217,7 @@
 <tr class='covered'><td class='line-number'>180</td><td class='line-content'>           (conn (gethash key nskk-server-async--connection-pool)))</td></tr>
 <tr class='covered'><td class='line-number'>181</td><td class='line-content'>      (when (and conn (nskk-server-async--connection-alive-p conn))</td></tr>
 <tr class='covered'><td class='line-number'>182</td><td class='line-content'>        (setf (nskk-server-connection-last-used conn) (float-time))</td></tr>
-<tr class='uncovered'><td class='line-number'>183</td><td class='line-content'>        conn))))</td></tr>
+<tr class='covered'><td class='line-number'>183</td><td class='line-content'>        conn))))</td></tr>
 <tr class=''><td class='line-number'>184</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>185</td><td class='line-content'>(defun nskk-server-async--put-connection (conn)</td></tr>
 <tr class=''><td class='line-number'>186</td><td class='line-content'>  &amp;quot;コネクションプールに接続を格納する。</td></tr>
@@ -292,10 +292,10 @@
 <tr class=''><td class='line-number'>255</td><td class='line-content'>    ;; リクエストコンテキスト作成</td></tr>
 <tr class='covered'><td class='line-number'>256</td><td class='line-content'>    (let* ((timeout-time (+ (float-time) timeout))</td></tr>
 <tr class='covered'><td class='line-number'>257</td><td class='line-content'>           (context (nskk-server-request-context--create</td></tr>
-<tr class='uncovered'><td class='line-number'>258</td><td class='line-content'>                    :request request-str</td></tr>
-<tr class='uncovered'><td class='line-number'>259</td><td class='line-content'>                    :callback success-callback</td></tr>
-<tr class='uncovered'><td class='line-number'>260</td><td class='line-content'>                    :error-callback error-callback</td></tr>
-<tr class='uncovered'><td class='line-number'>261</td><td class='line-content'>                    :timeout timeout-time)))</td></tr>
+<tr class='covered'><td class='line-number'>258</td><td class='line-content'>                    :request request-str</td></tr>
+<tr class='covered'><td class='line-number'>259</td><td class='line-content'>                    :callback success-callback</td></tr>
+<tr class='covered'><td class='line-number'>260</td><td class='line-content'>                    :error-callback error-callback</td></tr>
+<tr class='covered'><td class='line-number'>261</td><td class='line-content'>                    :timeout timeout-time)))</td></tr>
 <tr class=''><td class='line-number'>262</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>263</td><td class='line-content'>      ;; タイムアウトタイマー設定</td></tr>
 <tr class='covered'><td class='line-number'>264</td><td class='line-content'>      (setf (nskk-server-request-context-timer context)</td></tr>
@@ -324,10 +324,10 @@
 <tr class='covered'><td class='line-number'>287</td><td class='line-content'>    (message &amp;quot;Creating connection to %s:%d&amp;quot; host port))</td></tr>
 <tr class=''><td class='line-number'>288</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>289</td><td class='line-content'>  (let ((conn (nskk-server-connection--create</td></tr>
-<tr class='uncovered'><td class='line-number'>290</td><td class='line-content'>               :host host</td></tr>
-<tr class='uncovered'><td class='line-number'>291</td><td class='line-content'>               :port port</td></tr>
+<tr class='covered'><td class='line-number'>290</td><td class='line-content'>               :host host</td></tr>
+<tr class='covered'><td class='line-number'>291</td><td class='line-content'>               :port port</td></tr>
 <tr class=''><td class='line-number'>292</td><td class='line-content'>               :state 'connecting</td></tr>
-<tr class='uncovered'><td class='line-number'>293</td><td class='line-content'>               :encoding encoding</td></tr>
+<tr class='covered'><td class='line-number'>293</td><td class='line-content'>               :encoding encoding</td></tr>
 <tr class='covered'><td class='line-number'>294</td><td class='line-content'>               :created-time (float-time)</td></tr>
 <tr class='covered'><td class='line-number'>295</td><td class='line-content'>               :last-used (float-time))))</td></tr>
 <tr class=''><td class='line-number'>296</td><td class='line-content'></td></tr>
@@ -335,22 +335,22 @@
 <tr class='covered'><td class='line-number'>298</td><td class='line-content'>    (condition-case err</td></tr>
 <tr class='covered'><td class='line-number'>299</td><td class='line-content'>        (let ((process (make-network-process</td></tr>
 <tr class='covered'><td class='line-number'>300</td><td class='line-content'>                       :name (format &amp;quot;nskk-server-%s:%d&amp;quot; host port)</td></tr>
-<tr class='uncovered'><td class='line-number'>301</td><td class='line-content'>                       :host host</td></tr>
-<tr class='uncovered'><td class='line-number'>302</td><td class='line-content'>                       :service port</td></tr>
-<tr class='uncovered'><td class='line-number'>303</td><td class='line-content'>                       :coding encoding</td></tr>
+<tr class='covered'><td class='line-number'>301</td><td class='line-content'>                       :host host</td></tr>
+<tr class='covered'><td class='line-number'>302</td><td class='line-content'>                       :service port</td></tr>
+<tr class='covered'><td class='line-number'>303</td><td class='line-content'>                       :coding encoding</td></tr>
 <tr class=''><td class='line-number'>304</td><td class='line-content'>                       :filter (lambda (proc string)</td></tr>
 <tr class='covered'><td class='line-number'>305</td><td class='line-content'>                                (nskk-server-async--filter conn proc string))</td></tr>
 <tr class=''><td class='line-number'>306</td><td class='line-content'>                       :sentinel (lambda (proc event)</td></tr>
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>                                  (nskk-server-async--sentinel conn proc event))</td></tr>
-<tr class='uncovered'><td class='line-number'>308</td><td class='line-content'>                       :nowait t)))</td></tr>
+<tr class='covered'><td class='line-number'>308</td><td class='line-content'>                       :nowait t)))</td></tr>
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>          (setf (nskk-server-connection-process conn) process)</td></tr>
 <tr class='covered'><td class='line-number'>310</td><td class='line-content'>          (nskk-server-async--put-connection conn)</td></tr>
-<tr class='uncovered'><td class='line-number'>311</td><td class='line-content'>          conn)</td></tr>
+<tr class='covered'><td class='line-number'>311</td><td class='line-content'>          conn)</td></tr>
 <tr class=''><td class='line-number'>312</td><td class='line-content'>      (error</td></tr>
 <tr class='covered'><td class='line-number'>313</td><td class='line-content'>       (when nskk-server-async-verbose</td></tr>
 <tr class='covered'><td class='line-number'>314</td><td class='line-content'>         (message &amp;quot;Connection failed: %s&amp;quot; (error-message-string err)))</td></tr>
-<tr class='noreturn'><td class='line-number'>315</td><td class='line-content'>       (signal 'nskk-server-async-connection-failed</td></tr>
-<tr class='onevalue'><td class='line-number'>316</td><td class='line-content'>               (list (error-message-string err)))))))</td></tr>
+<tr class='covered'><td class='line-number'>315</td><td class='line-content'>       (signal 'nskk-server-async-connection-failed</td></tr>
+<tr class='covered'><td class='line-number'>316</td><td class='line-content'>               (list (error-message-string err)))))))</td></tr>
 <tr class=''><td class='line-number'>317</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>318</td><td class='line-content'>(defun nskk-server-async--filter (conn _proc string)</td></tr>
 <tr class=''><td class='line-number'>319</td><td class='line-content'>  &amp;quot;ネットワークプロセスのフィルタ関数。</td></tr>
@@ -398,8 +398,8 @@
 <tr class=''><td class='line-number'>361</td><td class='line-content'>    ;; 保留中のリクエストにエラー通知</td></tr>
 <tr class='covered'><td class='line-number'>362</td><td class='line-content'>    (dolist (context (nskk-server-connection-pending conn))</td></tr>
 <tr class='covered'><td class='line-number'>363</td><td class='line-content'>      (nskk-server-async--call-error-callback</td></tr>
-<tr class='uncovered'><td class='line-number'>364</td><td class='line-content'>       context</td></tr>
-<tr class='onevalue'><td class='line-number'>365</td><td class='line-content'>       (format &amp;quot;Connection lost: %s&amp;quot; event)))</td></tr>
+<tr class='covered'><td class='line-number'>364</td><td class='line-content'>       context</td></tr>
+<tr class='covered'><td class='line-number'>365</td><td class='line-content'>       (format &amp;quot;Connection lost: %s&amp;quot; event)))</td></tr>
 <tr class='covered'><td class='line-number'>366</td><td class='line-content'>    (setf (nskk-server-connection-pending conn) nil))))</td></tr>
 <tr class=''><td class='line-number'>367</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>368</td><td class='line-content'>(defun nskk-server-async--send-next-request (conn)</td></tr>
@@ -428,7 +428,7 @@
 <tr class=''><td class='line-number'>391</td><td class='line-content'>    ;; 改行で区切られた各レスポンスを処理</td></tr>
 <tr class='covered'><td class='line-number'>392</td><td class='line-content'>    (dolist (line lines)</td></tr>
 <tr class='covered'><td class='line-number'>393</td><td class='line-content'>      (when (&amp;gt; (length line) 0)</td></tr>
-<tr class='onevalue'><td class='line-number'>394</td><td class='line-content'>        (nskk-server-async--handle-response conn line)))</td></tr>
+<tr class='covered'><td class='line-number'>394</td><td class='line-content'>        (nskk-server-async--handle-response conn line)))</td></tr>
 <tr class=''><td class='line-number'>395</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>396</td><td class='line-content'>    ;; バッファをクリア（未完了データを保持）</td></tr>
 <tr class='covered'><td class='line-number'>397</td><td class='line-content'>    (setf (nskk-server-connection-buffer conn)</td></tr>
@@ -456,12 +456,12 @@
 <tr class=''><td class='line-number'>419</td><td class='line-content'>      ;; レスポンスパース</td></tr>
 <tr class='covered'><td class='line-number'>420</td><td class='line-content'>      (condition-case err</td></tr>
 <tr class='covered'><td class='line-number'>421</td><td class='line-content'>          (let ((response (nskk-server-protocol-parse-response</td></tr>
-<tr class='uncovered'><td class='line-number'>422</td><td class='line-content'>                          response-str</td></tr>
+<tr class='covered'><td class='line-number'>422</td><td class='line-content'>                          response-str</td></tr>
 <tr class='covered'><td class='line-number'>423</td><td class='line-content'>                          (nskk-server-connection-encoding conn))))</td></tr>
 <tr class='covered'><td class='line-number'>424</td><td class='line-content'>            (nskk-server-async--call-success-callback context response))</td></tr>
 <tr class=''><td class='line-number'>425</td><td class='line-content'>        (error</td></tr>
 <tr class='covered'><td class='line-number'>426</td><td class='line-content'>         (nskk-server-async--call-error-callback</td></tr>
-<tr class='uncovered'><td class='line-number'>427</td><td class='line-content'>          context</td></tr>
+<tr class='covered'><td class='line-number'>427</td><td class='line-content'>          context</td></tr>
 <tr class='covered'><td class='line-number'>428</td><td class='line-content'>          (format &amp;quot;Parse error: %s&amp;quot; (error-message-string err))))))</td></tr>
 <tr class=''><td class='line-number'>429</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>430</td><td class='line-content'>    ;; 次のリクエストを送信</td></tr>
@@ -511,7 +511,7 @@
 <tr class=''><td class='line-number'>474</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>475</td><td class='line-content'>  (maphash (lambda (_key conn)</td></tr>
 <tr class='covered'><td class='line-number'>476</td><td class='line-content'>             (nskk-server-async-close-connection conn))</td></tr>
-<tr class='uncovered'><td class='line-number'>477</td><td class='line-content'>           nskk-server-async--connection-pool)</td></tr>
+<tr class='covered'><td class='line-number'>477</td><td class='line-content'>           nskk-server-async--connection-pool)</td></tr>
 <tr class='covered'><td class='line-number'>478</td><td class='line-content'>  (clrhash nskk-server-async--connection-pool))</td></tr>
 <tr class=''><td class='line-number'>479</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>480</td><td class='line-content'>(defun nskk-server-async-close-connection (conn)</td></tr>
@@ -541,7 +541,7 @@
 <tr class='covered'><td class='line-number'>504</td><td class='line-content'>  (let ((connections nil))</td></tr>
 <tr class='covered'><td class='line-number'>505</td><td class='line-content'>    (maphash (lambda (_key conn)</td></tr>
 <tr class='covered'><td class='line-number'>506</td><td class='line-content'>               (push conn connections))</td></tr>
-<tr class=''><td class='line-number'>507</td><td class='line-content'>             nskk-server-async--connection-pool)</td></tr>
+<tr class='covered'><td class='line-number'>507</td><td class='line-content'>             nskk-server-async--connection-pool)</td></tr>
 <tr class='covered'><td class='line-number'>508</td><td class='line-content'>    connections))</td></tr>
 <tr class=''><td class='line-number'>509</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>510</td><td class='line-content'>(provide 'nskk-server-async)</td></tr>

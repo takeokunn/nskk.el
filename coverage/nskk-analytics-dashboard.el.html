@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-analytics-dashboard.el</h1>
     <div class='stats'>
-      Coverage: 77.47% (337/435 forms) •
+      Coverage: 100.00% (435/435 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -172,14 +172,14 @@
 <tr class='covered'><td class='line-number'>135</td><td class='line-content'>    (setq nskk-analytics-dashboard--live-metrics metrics)</td></tr>
 <tr class=''><td class='line-number'>136</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>137</td><td class='line-content'>    (concat</td></tr>
-<tr class='onevalue'><td class='line-number'>138</td><td class='line-content'>     (propertize &amp;quot;═══ NSKK Analytics Dashboard ═══\n&amp;quot; 'face 'bold)</td></tr>
+<tr class='covered'><td class='line-number'>138</td><td class='line-content'>     (propertize &amp;quot;═══ NSKK Analytics Dashboard ═══\n&amp;quot; 'face 'bold)</td></tr>
 <tr class='covered'><td class='line-number'>139</td><td class='line-content'>     (format &amp;quot;\n%s\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>140</td><td class='line-content'>             (propertize &amp;quot;Real-time Metrics&amp;quot; 'face 'underline))</td></tr>
+<tr class='covered'><td class='line-number'>140</td><td class='line-content'>             (propertize &amp;quot;Real-time Metrics&amp;quot; 'face 'underline))</td></tr>
 <tr class='covered'><td class='line-number'>141</td><td class='line-content'>     (format &amp;quot;  Conversions: %s | Keystrokes: %s | Accuracy: %s | Speed: %s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>142</td><td class='line-content'>             (propertize (format &amp;quot;%d&amp;quot; (nskk-analytics-metrics-conversions metrics))</td></tr>
-<tr class=''><td class='line-number'>143</td><td class='line-content'>                         'face 'success)</td></tr>
+<tr class='covered'><td class='line-number'>143</td><td class='line-content'>                         'face 'success)</td></tr>
 <tr class='covered'><td class='line-number'>144</td><td class='line-content'>             (propertize (format &amp;quot;%d&amp;quot; (nskk-analytics-metrics-keystrokes metrics))</td></tr>
-<tr class=''><td class='line-number'>145</td><td class='line-content'>                         'face 'success)</td></tr>
+<tr class='covered'><td class='line-number'>145</td><td class='line-content'>                         'face 'success)</td></tr>
 <tr class='covered'><td class='line-number'>146</td><td class='line-content'>             (propertize (format &amp;quot;%.1f%%&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>147</td><td class='line-content'>                                 (* (nskk-analytics-metrics-accuracy metrics) 100))</td></tr>
 <tr class='covered'><td class='line-number'>148</td><td class='line-content'>                         'face (if (&amp;gt; (nskk-analytics-metrics-accuracy metrics) 0.9)</td></tr>
@@ -190,11 +190,11 @@
 <tr class=''><td class='line-number'>153</td><td class='line-content'>                                   'success</td></tr>
 <tr class='covered'><td class='line-number'>154</td><td class='line-content'>                                 'warning)))</td></tr>
 <tr class='covered'><td class='line-number'>155</td><td class='line-content'>     (format &amp;quot;\n%s\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>156</td><td class='line-content'>             (propertize &amp;quot;Quick Stats&amp;quot; 'face 'underline))</td></tr>
+<tr class='covered'><td class='line-number'>156</td><td class='line-content'>             (propertize &amp;quot;Quick Stats&amp;quot; 'face 'underline))</td></tr>
 <tr class='covered'><td class='line-number'>157</td><td class='line-content'>     (format &amp;quot;  Usage Intensity: %s events/day | Efficiency Score: %s/100\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>158</td><td class='line-content'>             (propertize (format &amp;quot;%.1f&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>159</td><td class='line-content'>                                 (or (alist-get 'usage-intensity patterns) 0.0))</td></tr>
-<tr class=''><td class='line-number'>160</td><td class='line-content'>                         'face 'info)</td></tr>
+<tr class='covered'><td class='line-number'>160</td><td class='line-content'>                         'face 'info)</td></tr>
 <tr class='covered'><td class='line-number'>161</td><td class='line-content'>             (propertize (format &amp;quot;%d&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>162</td><td class='line-content'>                                 (or (alist-get 'efficiency-score patterns) 0))</td></tr>
 <tr class='covered'><td class='line-number'>163</td><td class='line-content'>                         'face (let ((score (or (alist-get 'efficiency-score patterns) 0)))</td></tr>
@@ -204,9 +204,9 @@
 <tr class='covered'><td class='line-number'>167</td><td class='line-content'>                                  (t 'error)))))</td></tr>
 <tr class='covered'><td class='line-number'>168</td><td class='line-content'>     (format &amp;quot;\nView: %s | Last Update: %s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>169</td><td class='line-content'>             (propertize (symbol-name nskk-analytics-dashboard--current-view)</td></tr>
-<tr class=''><td class='line-number'>170</td><td class='line-content'>                         'face 'italic)</td></tr>
+<tr class='covered'><td class='line-number'>170</td><td class='line-content'>                         'face 'italic)</td></tr>
 <tr class='covered'><td class='line-number'>171</td><td class='line-content'>             (format-time-string &amp;quot;%H:%M:%S&amp;quot;))</td></tr>
-<tr class='onevalue'><td class='line-number'>172</td><td class='line-content'>     (propertize &amp;quot;────────────────────────────────────────\n&amp;quot; 'face 'shadow))))</td></tr>
+<tr class='covered'><td class='line-number'>172</td><td class='line-content'>     (propertize &amp;quot;────────────────────────────────────────\n&amp;quot; 'face 'shadow))))</td></tr>
 <tr class=''><td class='line-number'>173</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>174</td><td class='line-content'>;;; メトリクス表示</td></tr>
 <tr class=''><td class='line-number'>175</td><td class='line-content'></td></tr>
@@ -216,7 +216,7 @@
 <tr class='covered'><td class='line-number'>179</td><td class='line-content'>  (let ((metrics (nskk-analytics-collect-metrics)))</td></tr>
 <tr class='covered'><td class='line-number'>180</td><td class='line-content'>    (with-current-buffer (get-buffer-create &amp;quot;*NSKK Metrics*&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>181</td><td class='line-content'>      (erase-buffer)</td></tr>
-<tr class='onevalue'><td class='line-number'>182</td><td class='line-content'>      (insert (nskk-analytics-dashboard--format-metrics metrics))</td></tr>
+<tr class='covered'><td class='line-number'>182</td><td class='line-content'>      (insert (nskk-analytics-dashboard--format-metrics metrics))</td></tr>
 <tr class='covered'><td class='line-number'>183</td><td class='line-content'>      (goto-char (point-min))</td></tr>
 <tr class='covered'><td class='line-number'>184</td><td class='line-content'>      (display-buffer (current-buffer)))))</td></tr>
 <tr class=''><td class='line-number'>185</td><td class='line-content'></td></tr>
@@ -258,7 +258,7 @@
 <tr class='covered'><td class='line-number'>221</td><td class='line-content'>  (let ((trends (nskk-analytics-analyze-trends)))</td></tr>
 <tr class='covered'><td class='line-number'>222</td><td class='line-content'>    (with-current-buffer (get-buffer-create &amp;quot;*NSKK Trends*&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>223</td><td class='line-content'>      (erase-buffer)</td></tr>
-<tr class='onevalue'><td class='line-number'>224</td><td class='line-content'>      (insert (nskk-analytics-dashboard--format-trends trends))</td></tr>
+<tr class='covered'><td class='line-number'>224</td><td class='line-content'>      (insert (nskk-analytics-dashboard--format-trends trends))</td></tr>
 <tr class='covered'><td class='line-number'>225</td><td class='line-content'>      (goto-char (point-min))</td></tr>
 <tr class='covered'><td class='line-number'>226</td><td class='line-content'>      (display-buffer (current-buffer)))))</td></tr>
 <tr class=''><td class='line-number'>227</td><td class='line-content'></td></tr>
@@ -304,15 +304,15 @@
 <tr class='covered'><td class='line-number'>267</td><td class='line-content'>         (param (intern (completing-read &amp;quot;Parameter to test: &amp;quot;</td></tr>
 <tr class=''><td class='line-number'>268</td><td class='line-content'>                                         '(&amp;quot;nskk-cache-size&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>269</td><td class='line-content'>                                           &amp;quot;nskk-thread-pool-size&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>270</td><td class='line-content'>                                           &amp;quot;nskk-completion-limit&amp;quot;))))</td></tr>
+<tr class='covered'><td class='line-number'>270</td><td class='line-content'>                                           &amp;quot;nskk-completion-limit&amp;quot;))))</td></tr>
 <tr class='covered'><td class='line-number'>271</td><td class='line-content'>         (value-a (read-number (format &amp;quot;%s value A: &amp;quot; param)))</td></tr>
 <tr class='covered'><td class='line-number'>272</td><td class='line-content'>         (value-b (read-number (format &amp;quot;%s value B: &amp;quot; param)))</td></tr>
 <tr class='covered'><td class='line-number'>273</td><td class='line-content'>         (duration (read-number &amp;quot;Duration (seconds): &amp;quot; 3600)))</td></tr>
 <tr class='covered'><td class='line-number'>274</td><td class='line-content'>    (nskk-analytics-run-ab-test</td></tr>
-<tr class='uncovered'><td class='line-number'>275</td><td class='line-content'>     name</td></tr>
+<tr class='covered'><td class='line-number'>275</td><td class='line-content'>     name</td></tr>
 <tr class='covered'><td class='line-number'>276</td><td class='line-content'>     `((,param . ,value-a))</td></tr>
 <tr class='covered'><td class='line-number'>277</td><td class='line-content'>     `((,param . ,value-b))</td></tr>
-<tr class='uncovered'><td class='line-number'>278</td><td class='line-content'>     duration)))</td></tr>
+<tr class='covered'><td class='line-number'>278</td><td class='line-content'>     duration)))</td></tr>
 <tr class=''><td class='line-number'>279</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>280</td><td class='line-content'>;;; ビュー管理</td></tr>
 <tr class=''><td class='line-number'>281</td><td class='line-content'></td></tr>
@@ -344,23 +344,23 @@
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>  (if nskk-analytics-dashboard--refresh-timer</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>      (progn</td></tr>
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>        (cancel-timer nskk-analytics-dashboard--refresh-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>310</td><td class='line-content'>        (setq nskk-analytics-dashboard--refresh-timer nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>311</td><td class='line-content'>        (message &amp;quot;Auto-refresh disabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>310</td><td class='line-content'>        (setq nskk-analytics-dashboard--refresh-timer nil)</td></tr>
+<tr class='covered'><td class='line-number'>311</td><td class='line-content'>        (message &amp;quot;Auto-refresh disabled&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>    (when (&amp;gt; nskk-analytics-dashboard-refresh-interval 0)</td></tr>
 <tr class='covered'><td class='line-number'>313</td><td class='line-content'>      (setq nskk-analytics-dashboard--refresh-timer</td></tr>
 <tr class='covered'><td class='line-number'>314</td><td class='line-content'>            (run-at-time nskk-analytics-dashboard-refresh-interval</td></tr>
-<tr class='uncovered'><td class='line-number'>315</td><td class='line-content'>                         nskk-analytics-dashboard-refresh-interval</td></tr>
+<tr class='covered'><td class='line-number'>315</td><td class='line-content'>                         nskk-analytics-dashboard-refresh-interval</td></tr>
 <tr class='covered'><td class='line-number'>316</td><td class='line-content'>                         #'nskk-analytics-dashboard-refresh))</td></tr>
 <tr class='covered'><td class='line-number'>317</td><td class='line-content'>      (message &amp;quot;Auto-refresh enabled (interval: %ds)&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>318</td><td class='line-content'>               nskk-analytics-dashboard-refresh-interval))))</td></tr>
+<tr class='covered'><td class='line-number'>318</td><td class='line-content'>               nskk-analytics-dashboard-refresh-interval))))</td></tr>
 <tr class=''><td class='line-number'>319</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>320</td><td class='line-content'>(defun nskk-analytics-dashboard-refresh ()</td></tr>
 <tr class=''><td class='line-number'>321</td><td class='line-content'>  &amp;quot;ダッシュボードを更新する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>322</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>323</td><td class='line-content'>  (setq nskk-analytics-dashboard--live-metrics nil)</td></tr>
+<tr class='covered'><td class='line-number'>323</td><td class='line-content'>  (setq nskk-analytics-dashboard--live-metrics nil)</td></tr>
 <tr class=''><td class='line-number'>324</td><td class='line-content'>  ;; Transientが開いている場合は再描画</td></tr>
 <tr class='covered'><td class='line-number'>325</td><td class='line-content'>  (when (and (boundp 'transient-current-command)</td></tr>
-<tr class='uncovered'><td class='line-number'>326</td><td class='line-content'>             transient-current-command)</td></tr>
+<tr class='covered'><td class='line-number'>326</td><td class='line-content'>             transient-current-command)</td></tr>
 <tr class='covered'><td class='line-number'>327</td><td class='line-content'>    (transient-setup 'nskk-analytics-dashboard)))</td></tr>
 <tr class=''><td class='line-number'>328</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>329</td><td class='line-content'>;;; ヘルパー関数</td></tr>
@@ -395,8 +395,8 @@
 <tr class=''><td class='line-number'>358</td><td class='line-content'>                        0</td></tr>
 <tr class='covered'><td class='line-number'>359</td><td class='line-content'>                      (min 7 (floor (* 8 (/ (- val min-val) (float range))))))))</td></tr>
 <tr class='covered'><td class='line-number'>360</td><td class='line-content'>         (nth index chars)))</td></tr>
-<tr class=''><td class='line-number'>361</td><td class='line-content'>     data</td></tr>
-<tr class=''><td class='line-number'>362</td><td class='line-content'>     &amp;quot;&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>361</td><td class='line-content'>     data</td></tr>
+<tr class='covered'><td class='line-number'>362</td><td class='line-content'>     &amp;quot;&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>363</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>364</td><td class='line-content'>;;; 統計ウィジェット</td></tr>
 <tr class=''><td class='line-number'>365</td><td class='line-content'></td></tr>

@@ -30,7 +30,7 @@
 ;; - nskk-dict-struct、nskk-trie、nskk-cacheを統合
 ;; - 効率的なインデックス構築アルゴリズム
 ;; - 複数辞書の統合インデックス
-;; - Phase 3の並列化に向けた準備
+;; - ランタイム統合の並列化に向けた準備
 ;;
 ;; 特徴:
 ;; 1. **統合レイヤー**: 既存モジュールを橋渡し
@@ -120,7 +120,7 @@
   cache-misses   - キャッシュミス数
   optimized      - 最適化済みフラグ
   parallel-ready - 並列化準備完了フラグ
-  partitions     - パーティション情報（Phase 3用）
+  partitions     - パーティション情報（ランタイム統合用）
   partition-strategy - パーティション戦略"
   (dict-struct nil :type (or null nskk-dict-index))
   (cache nil :type (or null nskk-cache-lru nskk-cache-lfu))
@@ -139,7 +139,7 @@
 (cl-defstruct (nskk-index-partition
                (:constructor nskk-index-partition--create)
                (:copier nil))
-  "パーティション情報（Phase 3並列化用）。
+  "パーティション情報（ランタイム統合並列化用）。
 
 スロット:
   id          - パーティションID
@@ -587,11 +587,11 @@
 
   index)
 
-;;; 並列化準備（Phase 3用）
+;;; 並列化準備（ランタイム統合用）
 
 ;;;###autoload
 (defun nskk-index-partition (index num-partitions)
-  "インデックスをパーティションに分割する（Phase 3並列化用）。
+  "インデックスをパーティションに分割する（ランタイム統合並列化用）。
 
 引数:
   INDEX          - nskk-index構造体
@@ -605,7 +605,7 @@
 戻り値:
   INDEX（パーティション設定後）
 
-注意: Phase 3での完全実装を想定した準備実装"
+注意: ランタイム統合での完全実装を想定した準備実装"
   (unless (nskk-index-dict-struct index)
     (error "Index not built yet"))
 
@@ -619,7 +619,7 @@
        (dotimes (i num-partitions)
          (push (nskk-index-partition--create
                 :id i
-                :dict-struct nil  ; Phase 3で実装
+                :dict-struct nil  ; ランタイム統合で実装
                 :range nil)
                partitions)))
       ('range
@@ -627,7 +627,7 @@
        (dotimes (i num-partitions)
          (push (nskk-index-partition--create
                 :id i
-                :dict-struct nil  ; Phase 3で実装
+                :dict-struct nil  ; ランタイム統合で実装
                 :range (list (* i (/ 100 num-partitions))
                            (* (1+ i) (/ 100 num-partitions))))
                partitions))))
@@ -640,7 +640,7 @@
 
 ;;;###autoload
 (defun nskk-index-build-parallel-ready (index dict-struct)
-  "並列化対応のインデックス構築（Phase 3用準備実装）。
+  "並列化対応のインデックス構築（ランタイム統合用準備実装）。
 
 引数:
   INDEX       - nskk-index構造体
@@ -653,7 +653,7 @@
 戻り値:
   INDEX（構築後）
 
-注意: Phase 3で実際の並列処理を実装予定"
+注意: ランタイム統合で実際の並列処理を実装予定"
   (nskk-index-build index dict-struct)
   (setf (nskk-index-parallel-ready index) t)
   index)

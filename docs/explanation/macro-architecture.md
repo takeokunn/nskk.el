@@ -53,12 +53,12 @@ graph TD
   "最適化可能性の分析"
   `(nskk--identify-optimizations ,parsed))
 
-;; Phase 3: 変換計画
+;; ランタイム統合: 変換計画
 (defmacro nskk-transform-phase (optimized)
   "変換戦略の決定"
   `(nskk--plan-transformation ,optimized))
 
-;; Phase 4: コード生成
+;; 拡張統合: コード生成
 (defmacro nskk-generate-phase (plan)
   "最適化されたコード生成"
   `(nskk--generate-optimized-code ,plan))

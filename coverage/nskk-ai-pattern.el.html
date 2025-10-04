@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-ai-pattern.el</h1>
     <div class='stats'>
-      Coverage: 95.62% (982/1027 forms) •
+      Coverage: 100.00% (1027/1027 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -327,7 +327,7 @@
 <tr class=''><td class='line-number'>290</td><td class='line-content'>     (lambda (pattern count)</td></tr>
 <tr class='covered'><td class='line-number'>291</td><td class='line-content'>       (when (&amp;gt;= count threshold)</td></tr>
 <tr class='covered'><td class='line-number'>292</td><td class='line-content'>         (push (cons pattern count) patterns)))</td></tr>
-<tr class=''><td class='line-number'>293</td><td class='line-content'>     nskk-ai-pattern-user-patterns)</td></tr>
+<tr class='covered'><td class='line-number'>293</td><td class='line-content'>     nskk-ai-pattern-user-patterns)</td></tr>
 <tr class=''><td class='line-number'>294</td><td class='line-content'>    ;; カウント順にソート</td></tr>
 <tr class='covered'><td class='line-number'>295</td><td class='line-content'>    (sort patterns (lambda (a b) (&amp;gt; (cdr a) (cdr b))))))</td></tr>
 <tr class=''><td class='line-number'>296</td><td class='line-content'></td></tr>
@@ -340,10 +340,10 @@
 <tr class=''><td class='line-number'>303</td><td class='line-content'>    ;; 履歴から類似パターンを検索</td></tr>
 <tr class='covered'><td class='line-number'>304</td><td class='line-content'>    (dolist (entry nskk-ai-pattern-history)</td></tr>
 <tr class='covered'><td class='line-number'>305</td><td class='line-content'>      (let ((distance (nskk-ai-pattern--euclidean-distance</td></tr>
-<tr class=''><td class='line-number'>306</td><td class='line-content'>                      target-features</td></tr>
+<tr class='covered'><td class='line-number'>306</td><td class='line-content'>                      target-features</td></tr>
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>                      (nskk-ai-pattern-entry-features entry))))</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>        (when (&amp;lt; distance 2.0)  ; 閾値</td></tr>
-<tr class='onevalue'><td class='line-number'>309</td><td class='line-content'>          (push (cons entry distance) similar-patterns))))</td></tr>
+<tr class='covered'><td class='line-number'>309</td><td class='line-content'>          (push (cons entry distance) similar-patterns))))</td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'>    ;; 距離順にソート</td></tr>
 <tr class='covered'><td class='line-number'>311</td><td class='line-content'>    (mapcar #'car</td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>            (sort similar-patterns (lambda (a b) (&amp;lt; (cdr a) (cdr b)))))))</td></tr>
@@ -391,7 +391,7 @@
 <tr class='covered'><td class='line-number'>354</td><td class='line-content'>                :sum sum</td></tr>
 <tr class='covered'><td class='line-number'>355</td><td class='line-content'>                :mean mean</td></tr>
 <tr class='covered'><td class='line-number'>356</td><td class='line-content'>                :recent-activity (seq-take values 10)))</td></tr>
-<tr class='onevalue'><td class='line-number'>357</td><td class='line-content'>      (list :count 0 :sum 0 :mean 0.0 :recent-activity nil))))</td></tr>
+<tr class='covered'><td class='line-number'>357</td><td class='line-content'>      (list :count 0 :sum 0 :mean 0.0 :recent-activity nil))))</td></tr>
 <tr class=''><td class='line-number'>358</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>359</td><td class='line-content'>;;; クラスタリング（k-means）</td></tr>
 <tr class=''><td class='line-number'>360</td><td class='line-content'></td></tr>

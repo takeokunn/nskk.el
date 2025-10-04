@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-layer-extension.el</h1>
     <div class='stats'>
-      Coverage: 39.13% (162/414 forms) •
+      Coverage: 100.00% (414/414 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -133,7 +133,7 @@
 <tr class='covered'><td class='line-number'>96</td><td class='line-content'>    (unless hooks</td></tr>
 <tr class='covered'><td class='line-number'>97</td><td class='line-content'>      (setq hooks (if local</td></tr>
 <tr class='covered'><td class='line-number'>98</td><td class='line-content'>                      (make-local-variable (make-symbol &amp;quot;nskk-extension-hook&amp;quot;))</td></tr>
-<tr class='uncovered'><td class='line-number'>99</td><td class='line-content'>                    nil))</td></tr>
+<tr class='covered'><td class='line-number'>99</td><td class='line-content'>                    nil))</td></tr>
 <tr class='covered'><td class='line-number'>100</td><td class='line-content'>      (puthash hook-point hooks nskk-extension--hooks))</td></tr>
 <tr class='covered'><td class='line-number'>101</td><td class='line-content'>    (add-hook hooks function append local)</td></tr>
 <tr class='covered'><td class='line-number'>102</td><td class='line-content'>    (puthash hook-point hooks nskk-extension--hooks)))</td></tr>
@@ -155,7 +155,7 @@
 <tr class='covered'><td class='line-number'>118</td><td class='line-content'>        (condition-case err</td></tr>
 <tr class='covered'><td class='line-number'>119</td><td class='line-content'>            (apply hook args)</td></tr>
 <tr class=''><td class='line-number'>120</td><td class='line-content'>          (error</td></tr>
-<tr class='onevalue'><td class='line-number'>121</td><td class='line-content'>           (nskk-extension--log &amp;quot;Hook error at %s: %s&amp;quot; hook-point err)))))))</td></tr>
+<tr class='covered'><td class='line-number'>121</td><td class='line-content'>           (nskk-extension--log &amp;quot;Hook error at %s: %s&amp;quot; hook-point err)))))))</td></tr>
 <tr class=''><td class='line-number'>122</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>123</td><td class='line-content'>(defun nskk-extension-clear-hooks (hook-point)</td></tr>
 <tr class=''><td class='line-number'>124</td><td class='line-content'>  &amp;quot;フックポイントのすべてのハンドラーをクリアする。</td></tr>
@@ -170,14 +170,14 @@
 <tr class='covered'><td class='line-number'>133</td><td class='line-content'>  (let ((listeners (gethash event-type nskk-extension--event-bus)))</td></tr>
 <tr class='covered'><td class='line-number'>134</td><td class='line-content'>    (unless (memq listener listeners)</td></tr>
 <tr class='covered'><td class='line-number'>135</td><td class='line-content'>      (puthash event-type (cons listener listeners)</td></tr>
-<tr class='uncovered'><td class='line-number'>136</td><td class='line-content'>               nskk-extension--event-bus))))</td></tr>
+<tr class='covered'><td class='line-number'>136</td><td class='line-content'>               nskk-extension--event-bus))))</td></tr>
 <tr class=''><td class='line-number'>137</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>138</td><td class='line-content'>(defun nskk-extension-unsubscribe (event-type listener)</td></tr>
 <tr class=''><td class='line-number'>139</td><td class='line-content'>  &amp;quot;イベントタイプからリスナーを登録解除する。</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'>EVENT-TYPEはイベントタイプ、LISTENERはリスナー関数。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>141</td><td class='line-content'>  (let ((listeners (gethash event-type nskk-extension--event-bus)))</td></tr>
 <tr class='covered'><td class='line-number'>142</td><td class='line-content'>    (puthash event-type (delq listener listeners)</td></tr>
-<tr class='uncovered'><td class='line-number'>143</td><td class='line-content'>             nskk-extension--event-bus)))</td></tr>
+<tr class='covered'><td class='line-number'>143</td><td class='line-content'>             nskk-extension--event-bus)))</td></tr>
 <tr class=''><td class='line-number'>144</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>145</td><td class='line-content'>(defun nskk-extension-emit-event (event-type &amp;rest data)</td></tr>
 <tr class=''><td class='line-number'>146</td><td class='line-content'>  &amp;quot;イベントを発行する。</td></tr>
@@ -192,21 +192,21 @@
 <tr class='covered'><td class='line-number'>155</td><td class='line-content'>          (apply listener data)</td></tr>
 <tr class=''><td class='line-number'>156</td><td class='line-content'>        (error</td></tr>
 <tr class='covered'><td class='line-number'>157</td><td class='line-content'>         (nskk-extension--log &amp;quot;Event listener error for %s: %s&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>158</td><td class='line-content'>                              event-type err))))))</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>                              event-type err))))))</td></tr>
 <tr class=''><td class='line-number'>159</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>160</td><td class='line-content'>(defun nskk-extension--record-event (event-type data)</td></tr>
 <tr class=''><td class='line-number'>161</td><td class='line-content'>  &amp;quot;イベントを履歴に記録する。</td></tr>
 <tr class=''><td class='line-number'>162</td><td class='line-content'>EVENT-TYPEはイベントタイプ、DATAはイベントデータ。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>163</td><td class='line-content'>  (let ((event (list :type event-type</td></tr>
-<tr class='uncovered'><td class='line-number'>164</td><td class='line-content'>                     :data data</td></tr>
+<tr class='covered'><td class='line-number'>164</td><td class='line-content'>                     :data data</td></tr>
 <tr class='covered'><td class='line-number'>165</td><td class='line-content'>                     :timestamp (float-time))))</td></tr>
 <tr class='covered'><td class='line-number'>166</td><td class='line-content'>    (push event nskk-extension--event-history)</td></tr>
 <tr class=''><td class='line-number'>167</td><td class='line-content'>    ;; 履歴サイズを制限</td></tr>
 <tr class='covered'><td class='line-number'>168</td><td class='line-content'>    (when (&amp;gt; (length nskk-extension--event-history)</td></tr>
-<tr class='uncovered'><td class='line-number'>169</td><td class='line-content'>             nskk-extension-max-event-history)</td></tr>
+<tr class='covered'><td class='line-number'>169</td><td class='line-content'>             nskk-extension-max-event-history)</td></tr>
 <tr class='covered'><td class='line-number'>170</td><td class='line-content'>      (setq nskk-extension--event-history</td></tr>
 <tr class='covered'><td class='line-number'>171</td><td class='line-content'>            (seq-take nskk-extension--event-history</td></tr>
-<tr class='uncovered'><td class='line-number'>172</td><td class='line-content'>                      nskk-extension-max-event-history)))))</td></tr>
+<tr class='covered'><td class='line-number'>172</td><td class='line-content'>                      nskk-extension-max-event-history)))))</td></tr>
 <tr class=''><td class='line-number'>173</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>174</td><td class='line-content'>(defun nskk-extension-get-event-history (&amp;optional event-type)</td></tr>
 <tr class=''><td class='line-number'>175</td><td class='line-content'>  &amp;quot;イベント履歴を取得する。</td></tr>
@@ -214,13 +214,13 @@
 <tr class='covered'><td class='line-number'>177</td><td class='line-content'>  (if event-type</td></tr>
 <tr class='covered'><td class='line-number'>178</td><td class='line-content'>      (seq-filter (lambda (event)</td></tr>
 <tr class='covered'><td class='line-number'>179</td><td class='line-content'>                    (eq (plist-get event :type) event-type))</td></tr>
-<tr class='uncovered'><td class='line-number'>180</td><td class='line-content'>                  nskk-extension--event-history)</td></tr>
-<tr class='uncovered'><td class='line-number'>181</td><td class='line-content'>    nskk-extension--event-history))</td></tr>
+<tr class='covered'><td class='line-number'>180</td><td class='line-content'>                  nskk-extension--event-history)</td></tr>
+<tr class='covered'><td class='line-number'>181</td><td class='line-content'>    nskk-extension--event-history))</td></tr>
 <tr class=''><td class='line-number'>182</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>183</td><td class='line-content'>(defun nskk-extension-clear-event-history ()</td></tr>
 <tr class=''><td class='line-number'>184</td><td class='line-content'>  &amp;quot;イベント履歴をクリアする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>185</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>186</td><td class='line-content'>  (setq nskk-extension--event-history nil))</td></tr>
+<tr class='covered'><td class='line-number'>186</td><td class='line-content'>  (setq nskk-extension--event-history nil))</td></tr>
 <tr class=''><td class='line-number'>187</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>188</td><td class='line-content'>;;; メッセージディスパッチャー</td></tr>
 <tr class=''><td class='line-number'>189</td><td class='line-content'></td></tr>
@@ -242,10 +242,10 @@
 <tr class='covered'><td class='line-number'>205</td><td class='line-content'>            (apply handler action args)</td></tr>
 <tr class=''><td class='line-number'>206</td><td class='line-content'>          (error</td></tr>
 <tr class='covered'><td class='line-number'>207</td><td class='line-content'>           (nskk-extension--log &amp;quot;Message handler error %s-&amp;gt;%s: %s&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>208</td><td class='line-content'>                                from-layer to-layer err)</td></tr>
-<tr class='uncovered'><td class='line-number'>209</td><td class='line-content'>           nil))</td></tr>
+<tr class='covered'><td class='line-number'>208</td><td class='line-content'>                                from-layer to-layer err)</td></tr>
+<tr class='covered'><td class='line-number'>209</td><td class='line-content'>           nil))</td></tr>
 <tr class='covered'><td class='line-number'>210</td><td class='line-content'>      (nskk-extension--log &amp;quot;No route from %s to %s&amp;quot; from-layer to-layer)</td></tr>
-<tr class='uncovered'><td class='line-number'>211</td><td class='line-content'>      nil)))</td></tr>
+<tr class='covered'><td class='line-number'>211</td><td class='line-content'>      nil)))</td></tr>
 <tr class=''><td class='line-number'>212</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>213</td><td class='line-content'>(defun nskk-extension-broadcast-message (from-layer action &amp;rest args)</td></tr>
 <tr class=''><td class='line-number'>214</td><td class='line-content'>  &amp;quot;すべてのレイヤーにメッセージをブロードキャストする。</td></tr>
@@ -258,10 +258,10 @@
 <tr class='covered'><td class='line-number'>221</td><td class='line-content'>                           (apply handler action args)</td></tr>
 <tr class=''><td class='line-number'>222</td><td class='line-content'>                         (error</td></tr>
 <tr class='covered'><td class='line-number'>223</td><td class='line-content'>                          (nskk-extension--log &amp;quot;Broadcast error: %s&amp;quot; err)</td></tr>
-<tr class='uncovered'><td class='line-number'>224</td><td class='line-content'>                          nil))))</td></tr>
+<tr class='covered'><td class='line-number'>224</td><td class='line-content'>                          nil))))</td></tr>
 <tr class='covered'><td class='line-number'>225</td><td class='line-content'>           (push (cons (cdr key) result) results))))</td></tr>
-<tr class='uncovered'><td class='line-number'>226</td><td class='line-content'>     nskk-extension--message-routes)</td></tr>
-<tr class='uncovered'><td class='line-number'>227</td><td class='line-content'>    results))</td></tr>
+<tr class='covered'><td class='line-number'>226</td><td class='line-content'>     nskk-extension--message-routes)</td></tr>
+<tr class='covered'><td class='line-number'>227</td><td class='line-content'>    results))</td></tr>
 <tr class=''><td class='line-number'>228</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>229</td><td class='line-content'>;;; 拡張ポイント</td></tr>
 <tr class=''><td class='line-number'>230</td><td class='line-content'></td></tr>
@@ -282,16 +282,16 @@
 <tr class='covered'><td class='line-number'>245</td><td class='line-content'>  (let ((points nil))</td></tr>
 <tr class='covered'><td class='line-number'>246</td><td class='line-content'>    (maphash (lambda (name metadata)</td></tr>
 <tr class='covered'><td class='line-number'>247</td><td class='line-content'>               (push (cons name metadata) points))</td></tr>
-<tr class='uncovered'><td class='line-number'>248</td><td class='line-content'>             nskk-extension--extension-points)</td></tr>
+<tr class='covered'><td class='line-number'>248</td><td class='line-content'>             nskk-extension--extension-points)</td></tr>
 <tr class='covered'><td class='line-number'>249</td><td class='line-content'>    (if points</td></tr>
 <tr class='covered'><td class='line-number'>250</td><td class='line-content'>        (message &amp;quot;Extension points: %s&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>251</td><td class='line-content'>                 (mapconcat (lambda (p)</td></tr>
 <tr class='covered'><td class='line-number'>252</td><td class='line-content'>                              (format &amp;quot;%s: %s&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>253</td><td class='line-content'>                                      (car p)</td></tr>
 <tr class='covered'><td class='line-number'>254</td><td class='line-content'>                                      (plist-get (cdr p) :description)))</td></tr>
-<tr class='uncovered'><td class='line-number'>255</td><td class='line-content'>                            points</td></tr>
-<tr class='uncovered'><td class='line-number'>256</td><td class='line-content'>                            &amp;quot;\n&amp;quot;))</td></tr>
-<tr class='onevalue'><td class='line-number'>257</td><td class='line-content'>      (message &amp;quot;No extension points registered&amp;quot;))))</td></tr>
+<tr class='covered'><td class='line-number'>255</td><td class='line-content'>                            points</td></tr>
+<tr class='covered'><td class='line-number'>256</td><td class='line-content'>                            &amp;quot;\n&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>257</td><td class='line-content'>      (message &amp;quot;No extension points registered&amp;quot;))))</td></tr>
 <tr class=''><td class='line-number'>258</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>259</td><td class='line-content'>;;; 初期化・シャットダウン</td></tr>
 <tr class=''><td class='line-number'>260</td><td class='line-content'></td></tr>
@@ -306,7 +306,7 @@
 <tr class='covered'><td class='line-number'>269</td><td class='line-content'>  (clrhash nskk-extension--event-bus)</td></tr>
 <tr class='covered'><td class='line-number'>270</td><td class='line-content'>  (clrhash nskk-extension--message-routes)</td></tr>
 <tr class='covered'><td class='line-number'>271</td><td class='line-content'>  (clrhash nskk-extension--extension-points)</td></tr>
-<tr class='onevalue'><td class='line-number'>272</td><td class='line-content'>  (setq nskk-extension--event-history nil)</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>  (setq nskk-extension--event-history nil)</td></tr>
 <tr class='covered'><td class='line-number'>273</td><td class='line-content'>  (nskk-extension--log &amp;quot;Extension Layer shutdown&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>274</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>275</td><td class='line-content'>;;; 標準拡張ポイント定義</td></tr>
@@ -318,65 +318,65 @@
 <tr class=''><td class='line-number'>281</td><td class='line-content'>   :before-conversion</td></tr>
 <tr class=''><td class='line-number'>282</td><td class='line-content'>   '(:description &amp;quot;変換開始前に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>283</td><td class='line-content'>     :args (input)</td></tr>
-<tr class='uncovered'><td class='line-number'>284</td><td class='line-content'>     :return modified-input))</td></tr>
+<tr class='covered'><td class='line-number'>284</td><td class='line-content'>     :return modified-input))</td></tr>
 <tr class=''><td class='line-number'>285</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>286</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>287</td><td class='line-content'>   :after-conversion</td></tr>
 <tr class=''><td class='line-number'>288</td><td class='line-content'>   '(:description &amp;quot;変換完了後に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>289</td><td class='line-content'>     :args (result)</td></tr>
-<tr class='uncovered'><td class='line-number'>290</td><td class='line-content'>     :return modified-result))</td></tr>
+<tr class='covered'><td class='line-number'>290</td><td class='line-content'>     :return modified-result))</td></tr>
 <tr class=''><td class='line-number'>291</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>292</td><td class='line-content'>  ;; 候補選択関連</td></tr>
 <tr class='covered'><td class='line-number'>293</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>294</td><td class='line-content'>   :before-candidate-selection</td></tr>
 <tr class=''><td class='line-number'>295</td><td class='line-content'>   '(:description &amp;quot;候補選択前に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>296</td><td class='line-content'>     :args (candidates)</td></tr>
-<tr class='uncovered'><td class='line-number'>297</td><td class='line-content'>     :return modified-candidates))</td></tr>
+<tr class='covered'><td class='line-number'>297</td><td class='line-content'>     :return modified-candidates))</td></tr>
 <tr class=''><td class='line-number'>298</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>299</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>300</td><td class='line-content'>   :after-candidate-selection</td></tr>
 <tr class=''><td class='line-number'>301</td><td class='line-content'>   '(:description &amp;quot;候補選択後に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>302</td><td class='line-content'>     :args (selected-candidate)</td></tr>
-<tr class='uncovered'><td class='line-number'>303</td><td class='line-content'>     :return modified-candidate))</td></tr>
+<tr class='covered'><td class='line-number'>303</td><td class='line-content'>     :return modified-candidate))</td></tr>
 <tr class=''><td class='line-number'>304</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>305</td><td class='line-content'>  ;; モード変更関連</td></tr>
 <tr class='covered'><td class='line-number'>306</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>307</td><td class='line-content'>   :before-mode-change</td></tr>
 <tr class=''><td class='line-number'>308</td><td class='line-content'>   '(:description &amp;quot;モード変更前に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>309</td><td class='line-content'>     :args (old-mode new-mode)</td></tr>
-<tr class='uncovered'><td class='line-number'>310</td><td class='line-content'>     :return allowed))</td></tr>
+<tr class='covered'><td class='line-number'>310</td><td class='line-content'>     :return allowed))</td></tr>
 <tr class=''><td class='line-number'>311</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'>   :after-mode-change</td></tr>
 <tr class=''><td class='line-number'>314</td><td class='line-content'>   '(:description &amp;quot;モード変更後に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>315</td><td class='line-content'>     :args (old-mode new-mode)</td></tr>
-<tr class='uncovered'><td class='line-number'>316</td><td class='line-content'>     :return nil))</td></tr>
+<tr class='covered'><td class='line-number'>316</td><td class='line-content'>     :return nil))</td></tr>
 <tr class=''><td class='line-number'>317</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>318</td><td class='line-content'>  ;; 辞書アクセス関連</td></tr>
 <tr class='covered'><td class='line-number'>319</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>320</td><td class='line-content'>   :before-dictionary-lookup</td></tr>
 <tr class=''><td class='line-number'>321</td><td class='line-content'>   '(:description &amp;quot;辞書検索前に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>322</td><td class='line-content'>     :args (query)</td></tr>
-<tr class='uncovered'><td class='line-number'>323</td><td class='line-content'>     :return modified-query))</td></tr>
+<tr class='covered'><td class='line-number'>323</td><td class='line-content'>     :return modified-query))</td></tr>
 <tr class=''><td class='line-number'>324</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>325</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>326</td><td class='line-content'>   :after-dictionary-lookup</td></tr>
 <tr class=''><td class='line-number'>327</td><td class='line-content'>   '(:description &amp;quot;辞書検索後に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>328</td><td class='line-content'>     :args (query results)</td></tr>
-<tr class='uncovered'><td class='line-number'>329</td><td class='line-content'>     :return modified-results))</td></tr>
+<tr class='covered'><td class='line-number'>329</td><td class='line-content'>     :return modified-results))</td></tr>
 <tr class=''><td class='line-number'>330</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'>  ;; 学習関連</td></tr>
 <tr class='covered'><td class='line-number'>332</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>333</td><td class='line-content'>   :before-learning</td></tr>
 <tr class=''><td class='line-number'>334</td><td class='line-content'>   '(:description &amp;quot;学習実行前に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>335</td><td class='line-content'>     :args (entry)</td></tr>
-<tr class='uncovered'><td class='line-number'>336</td><td class='line-content'>     :return modified-entry))</td></tr>
+<tr class='covered'><td class='line-number'>336</td><td class='line-content'>     :return modified-entry))</td></tr>
 <tr class=''><td class='line-number'>337</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>338</td><td class='line-content'>  (nskk-extension-register-extension-point</td></tr>
 <tr class=''><td class='line-number'>339</td><td class='line-content'>   :after-learning</td></tr>
 <tr class=''><td class='line-number'>340</td><td class='line-content'>   '(:description &amp;quot;学習実行後に実行&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>341</td><td class='line-content'>     :args (entry)</td></tr>
-<tr class='uncovered'><td class='line-number'>342</td><td class='line-content'>     :return nil)))</td></tr>
+<tr class='covered'><td class='line-number'>342</td><td class='line-content'>     :return nil)))</td></tr>
 <tr class=''><td class='line-number'>343</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>344</td><td class='line-content'>;;; ヘルパー関数</td></tr>
 <tr class=''><td class='line-number'>345</td><td class='line-content'></td></tr>
@@ -400,14 +400,14 @@
 <tr class=''><td class='line-number'>363</td><td class='line-content'>(defun nskk-extension-enable-debug ()</td></tr>
 <tr class=''><td class='line-number'>364</td><td class='line-content'>  &amp;quot;デバッグモードを有効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>365</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>366</td><td class='line-content'>  (setq nskk-extension--debug-enabled t)</td></tr>
-<tr class='onevalue'><td class='line-number'>367</td><td class='line-content'>  (message &amp;quot;NSKK Extension Layer: Debug mode enabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>366</td><td class='line-content'>  (setq nskk-extension--debug-enabled t)</td></tr>
+<tr class='covered'><td class='line-number'>367</td><td class='line-content'>  (message &amp;quot;NSKK Extension Layer: Debug mode enabled&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>368</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>369</td><td class='line-content'>(defun nskk-extension-disable-debug ()</td></tr>
 <tr class=''><td class='line-number'>370</td><td class='line-content'>  &amp;quot;デバッグモードを無効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>371</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>372</td><td class='line-content'>  (setq nskk-extension--debug-enabled nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>373</td><td class='line-content'>  (message &amp;quot;NSKK Extension Layer: Debug mode disabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>372</td><td class='line-content'>  (setq nskk-extension--debug-enabled nil)</td></tr>
+<tr class='covered'><td class='line-number'>373</td><td class='line-content'>  (message &amp;quot;NSKK Extension Layer: Debug mode disabled&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>374</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>375</td><td class='line-content'>(defun nskk-extension--log (format-string &amp;rest args)</td></tr>
 <tr class=''><td class='line-number'>376</td><td class='line-content'>  &amp;quot;デバッグログを出力する。</td></tr>
@@ -425,7 +425,7 @@
 <tr class='covered'><td class='line-number'>388</td><td class='line-content'>        (route-count (hash-table-count nskk-extension--message-routes))</td></tr>
 <tr class='covered'><td class='line-number'>389</td><td class='line-content'>        (ext-point-count (hash-table-count nskk-extension--extension-points)))</td></tr>
 <tr class='covered'><td class='line-number'>390</td><td class='line-content'>    (message &amp;quot;Extension Layer Status:\n  Hooks: %d\n  Events: %d\n  Routes: %d\n  Extension Points: %d\n  Event History: %d&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>391</td><td class='line-content'>             hook-count event-count route-count ext-point-count</td></tr>
+<tr class='covered'><td class='line-number'>391</td><td class='line-content'>             hook-count event-count route-count ext-point-count</td></tr>
 <tr class='covered'><td class='line-number'>392</td><td class='line-content'>             (length nskk-extension--event-history))))</td></tr>
 <tr class=''><td class='line-number'>393</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>394</td><td class='line-content'>;;; 統計情報</td></tr>

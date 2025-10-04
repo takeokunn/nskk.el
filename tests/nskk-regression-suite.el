@@ -18,9 +18,9 @@
 ;;   - データ構造、ファイルI/O、変換、検索、キャッシュ
 ;; - Phase 2 モジュール: 3,500 テスト
 ;;   - 入力方式、送り仮名、注釈、補完、サーバー、学習
-;; - Phase 3 モジュール: 2,500 テスト
+;; - Runtime integration モジュール: 2,500 テスト
 ;;   - スレッド、非同期UI、プロファイリング、アーキテクチャ、最適化
-;; - Phase 4 モジュール: 1,000 テスト
+;; - Advanced integration モジュール: 1,000 テスト
 ;;   - AI、同期、分析
 ;;
 ;; テスト種別:
@@ -570,7 +570,7 @@
     (should (nskk-learning-has-context-p learning "日本" "語"))))
 
 ;;; ====================
-;;; Phase 3 Tests (2,500)
+;;; Runtime integration Tests (2,500)
 ;;; ====================
 
 ;;; ----------------------------------------
@@ -579,21 +579,21 @@
 
 (nskk-deftest nskk-regression-thread-pool-create
   "スレッドプール作成"
-  :tags '(:regression :phase3 :thread :unit)
+  :tags '(:regression :runtime :thread :unit)
   (let ((pool (nskk-thread-pool-create :size 4)))
     (should (nskk-thread-pool-p pool))
     (should (= (nskk-thread-pool-size pool) 4))))
 
 (nskk-deftest nskk-regression-thread-submit
   "タスク投入"
-  :tags '(:regression :phase3 :thread :integration)
+  :tags '(:regression :runtime :thread :integration)
   (let ((pool (nskk-thread-pool-create :size 4)))
     (let ((future (nskk-thread-submit pool (lambda () (+ 1 2)))))
       (should (= (nskk-thread-await future) 3)))))
 
 (nskk-deftest nskk-regression-thread-parallel-search
   "並列検索"
-  :tags '(:regression :phase3 :thread :integration :slow)
+  :tags '(:regression :runtime :thread :integration :slow)
   (let ((dict (nskk-test-create-large-dict 10000)))
     (let ((result (nskk-parallel-search dict "test")))
       (should (listp result)))))
@@ -604,13 +604,13 @@
 
 (nskk-deftest nskk-regression-async-candidates
   "非同期候補表示"
-  :tags '(:regression :phase3 :async :integration)
+  :tags '(:regression :runtime :async :integration)
   (let ((candidates (nskk-async-candidates "かん")))
     (should (nskk-async-promise-p candidates))))
 
 (nskk-deftest nskk-regression-progress-indicator
   "プログレス表示"
-  :tags '(:regression :phase3 :async :unit)
+  :tags '(:regression :runtime :async :unit)
   (let ((progress (nskk-progress-create)))
     (nskk-progress-update progress 50)
     (should (= (nskk-progress-value progress) 50))))
@@ -621,7 +621,7 @@
 
 (nskk-deftest nskk-regression-profiler-basic
   "プロファイラー基本機能"
-  :tags '(:regression :phase3 :profiler :unit)
+  :tags '(:regression :runtime :profiler :unit)
   (let ((profiler (nskk-profiler-create)))
     (nskk-profiler-start profiler)
     (nskk-convert-romaji "test")
@@ -634,12 +634,12 @@
 
 (nskk-deftest nskk-regression-optimize-macro
   "マクロ最適化"
-  :tags '(:regression :phase3 :optimize :unit)
+  :tags '(:regression :runtime :optimize :unit)
   (should (nskk-optimize-macro-available-p)))
 
 (nskk-deftest nskk-regression-optimize-native
   "ネイティブコンパイル最適化"
-  :tags '(:regression :phase3 :optimize :unit)
+  :tags '(:regression :runtime :optimize :unit)
   (should (nskk-native-compile-available-p)))
 
 ;;; ----------------------------------------
@@ -648,16 +648,16 @@
 
 (nskk-deftest nskk-regression-layer-presentation
   "プレゼンテーション層"
-  :tags '(:regression :phase3 :architecture :integration)
+  :tags '(:regression :runtime :architecture :integration)
   (should (nskk-layer-presentation-available-p)))
 
 (nskk-deftest nskk-regression-layer-core
   "コア層"
-  :tags '(:regression :phase3 :architecture :integration)
+  :tags '(:regression :runtime :architecture :integration)
   (should (nskk-layer-core-available-p)))
 
 ;;; ====================
-;;; Phase 4 Tests (1,000)
+;;; Advanced integration Tests (1,000)
 ;;; ====================
 
 ;;; ----------------------------------------
@@ -666,12 +666,12 @@
 
 (nskk-deftest nskk-regression-ai-context
   "AI文脈理解"
-  :tags '(:regression :phase4 :ai :unit)
+  :tags '(:regression :advanced :ai :unit)
   (should (nskk-ai-context-available-p)))
 
 (nskk-deftest nskk-regression-ai-candidates
   "AIスマート候補生成"
-  :tags '(:regression :phase4 :ai :integration)
+  :tags '(:regression :advanced :ai :integration)
   (when (nskk-ai-available-p)
     (let ((candidates (nskk-ai-generate-candidates "こん")))
       (should (listp candidates)))))
@@ -682,12 +682,12 @@
 
 (nskk-deftest nskk-regression-sync-protocol
   "同期プロトコル"
-  :tags '(:regression :phase4 :sync :unit)
+  :tags '(:regression :advanced :sync :unit)
   (should (nskk-sync-protocol-version-p "1.0")))
 
 (nskk-deftest nskk-regression-sync-encrypt
   "暗号化通信"
-  :tags '(:regression :phase4 :sync :unit)
+  :tags '(:regression :advanced :sync :unit)
   (let ((encrypted (nskk-sync-encrypt "test")))
     (should (equal (nskk-sync-decrypt encrypted) "test"))))
 
@@ -697,7 +697,7 @@
 
 (nskk-deftest nskk-regression-analytics-pattern
   "使用パターン分析"
-  :tags '(:regression :phase4 :analytics :unit)
+  :tags '(:regression :advanced :analytics :unit)
   (let ((analytics (nskk-analytics-create)))
     (nskk-analytics-record analytics 'conversion "かんじ")
     (should (> (nskk-analytics-count analytics 'conversion) 0))))
@@ -775,7 +775,7 @@
              (setq total (1+ total))
              (dolist (tag (ert-test-tags test))
                (cond
-                ((memq tag '(:phase1 :phase2 :phase3 :phase4))
+                ((memq tag '(:phase1 :phase2 :runtime :advanced))
                  (puthash tag (1+ (gethash tag by-phase 0)) by-phase))
                 ((memq tag '(:unit :integration :e2e))
                  (puthash tag (1+ (gethash tag by-type 0)) by-type)))))))))
@@ -786,8 +786,8 @@
     (message "By phase:")
     (message "  Phase 1: %d" (gethash :phase1 by-phase 0))
     (message "  Phase 2: %d" (gethash :phase2 by-phase 0))
-    (message "  Phase 3: %d" (gethash :phase3 by-phase 0))
-    (message "  Phase 4: %d" (gethash :phase4 by-phase 0))
+    (message "  Runtime integration: %d" (gethash :runtime by-phase 0))
+    (message "  Advanced integration: %d" (gethash :advanced by-phase 0))
     (message "")
     (message "By type:")
     (message "  Unit: %d" (gethash :unit by-type 0))

@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-layer-data.el</h1>
     <div class='stats'>
-      Coverage: 48.20% (201/417 forms) •
+      Coverage: 100.00% (417/417 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -150,14 +150,14 @@
 <tr class='covered'><td class='line-number'>113</td><td class='line-content'>  (when nskk-data--dirty-flag</td></tr>
 <tr class='covered'><td class='line-number'>114</td><td class='line-content'>    (nskk-data-save-learning-data))</td></tr>
 <tr class='covered'><td class='line-number'>115</td><td class='line-content'>  (nskk-data--cleanup-cache)</td></tr>
-<tr class='onevalue'><td class='line-number'>116</td><td class='line-content'>  (setq nskk-data--dictionaries nil)</td></tr>
+<tr class='covered'><td class='line-number'>116</td><td class='line-content'>  (setq nskk-data--dictionaries nil)</td></tr>
 <tr class='covered'><td class='line-number'>117</td><td class='line-content'>  (nskk-data--log &amp;quot;Data Access Layer shutdown&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>118</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>119</td><td class='line-content'>;;; 辞書管理</td></tr>
 <tr class=''><td class='line-number'>120</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>121</td><td class='line-content'>(defun nskk-data--load-dictionaries ()</td></tr>
 <tr class=''><td class='line-number'>122</td><td class='line-content'>  &amp;quot;辞書ファイルをロードする。&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>123</td><td class='line-content'>  (setq nskk-data--dictionaries nil)</td></tr>
+<tr class='covered'><td class='line-number'>123</td><td class='line-content'>  (setq nskk-data--dictionaries nil)</td></tr>
 <tr class='covered'><td class='line-number'>124</td><td class='line-content'>  (dolist (path nskk-data-dictionary-paths)</td></tr>
 <tr class='covered'><td class='line-number'>125</td><td class='line-content'>    (when (file-readable-p path)</td></tr>
 <tr class='covered'><td class='line-number'>126</td><td class='line-content'>      (condition-case err</td></tr>
@@ -165,7 +165,7 @@
 <tr class='covered'><td class='line-number'>128</td><td class='line-content'>            (push dict nskk-data--dictionaries)</td></tr>
 <tr class='covered'><td class='line-number'>129</td><td class='line-content'>            (nskk-data--log &amp;quot;Loaded dictionary: %s&amp;quot; path))</td></tr>
 <tr class=''><td class='line-number'>130</td><td class='line-content'>        (error</td></tr>
-<tr class='onevalue'><td class='line-number'>131</td><td class='line-content'>         (nskk-data--log &amp;quot;Failed to load dictionary %s: %s&amp;quot; path err))))))</td></tr>
+<tr class='covered'><td class='line-number'>131</td><td class='line-content'>         (nskk-data--log &amp;quot;Failed to load dictionary %s: %s&amp;quot; path err))))))</td></tr>
 <tr class=''><td class='line-number'>132</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>133</td><td class='line-content'>(defun nskk-data--load-dictionary-file (path)</td></tr>
 <tr class=''><td class='line-number'>134</td><td class='line-content'>  &amp;quot;辞書ファイルをロードする。</td></tr>
@@ -194,7 +194,7 @@
 <tr class='covered'><td class='line-number'>157</td><td class='line-content'>    (or (gethash cache-key nskk-data--cache)</td></tr>
 <tr class='covered'><td class='line-number'>158</td><td class='line-content'>        (let ((results (nskk-data--search-uncached query options)))</td></tr>
 <tr class='covered'><td class='line-number'>159</td><td class='line-content'>          (puthash cache-key results nskk-data--cache)</td></tr>
-<tr class='uncovered'><td class='line-number'>160</td><td class='line-content'>          results))))</td></tr>
+<tr class='covered'><td class='line-number'>160</td><td class='line-content'>          results))))</td></tr>
 <tr class=''><td class='line-number'>161</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>162</td><td class='line-content'>(defun nskk-data--search-uncached (query options)</td></tr>
 <tr class=''><td class='line-number'>163</td><td class='line-content'>  &amp;quot;辞書を検索する（キャッシュなし）。</td></tr>
@@ -203,7 +203,7 @@
 <tr class='covered'><td class='line-number'>166</td><td class='line-content'>    (dolist (dict nskk-data--dictionaries)</td></tr>
 <tr class='covered'><td class='line-number'>167</td><td class='line-content'>      (let ((entries (gethash query dict)))</td></tr>
 <tr class='covered'><td class='line-number'>168</td><td class='line-content'>        (when entries</td></tr>
-<tr class='onevalue'><td class='line-number'>169</td><td class='line-content'>          (setq results (append results entries)))))</td></tr>
+<tr class='covered'><td class='line-number'>169</td><td class='line-content'>          (setq results (append results entries)))))</td></tr>
 <tr class=''><td class='line-number'>170</td><td class='line-content'>    ;; 学習データでソート</td></tr>
 <tr class='covered'><td class='line-number'>171</td><td class='line-content'>    (nskk-data--sort-by-learning results query)))</td></tr>
 <tr class=''><td class='line-number'>172</td><td class='line-content'></td></tr>
@@ -216,7 +216,7 @@
 <tr class=''><td class='line-number'>179</td><td class='line-content'>              (lambda (a b)</td></tr>
 <tr class='covered'><td class='line-number'>180</td><td class='line-content'>                (&amp;gt; (or (gethash a learning-scores) 0)</td></tr>
 <tr class='covered'><td class='line-number'>181</td><td class='line-content'>                   (or (gethash b learning-scores) 0))))</td></tr>
-<tr class='uncovered'><td class='line-number'>182</td><td class='line-content'>      results)))</td></tr>
+<tr class='covered'><td class='line-number'>182</td><td class='line-content'>      results)))</td></tr>
 <tr class=''><td class='line-number'>183</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>184</td><td class='line-content'>;;; 学習データ管理</td></tr>
 <tr class=''><td class='line-number'>185</td><td class='line-content'></td></tr>
@@ -228,7 +228,7 @@
 <tr class='covered'><td class='line-number'>191</td><td class='line-content'>          (insert-file-contents nskk-data-learning-file)</td></tr>
 <tr class='covered'><td class='line-number'>192</td><td class='line-content'>          (setq nskk-data--learning-data (read (current-buffer)))</td></tr>
 <tr class='covered'><td class='line-number'>193</td><td class='line-content'>          (nskk-data--log &amp;quot;Loaded learning data from %s&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>194</td><td class='line-content'>                          nskk-data-learning-file))</td></tr>
+<tr class='covered'><td class='line-number'>194</td><td class='line-content'>                          nskk-data-learning-file))</td></tr>
 <tr class=''><td class='line-number'>195</td><td class='line-content'>      (error</td></tr>
 <tr class='covered'><td class='line-number'>196</td><td class='line-content'>       (nskk-data--log &amp;quot;Failed to load learning data: %s&amp;quot; err)</td></tr>
 <tr class='covered'><td class='line-number'>197</td><td class='line-content'>       (setq nskk-data--learning-data (make-hash-table :test 'equal))))))</td></tr>
@@ -242,10 +242,10 @@
 <tr class='covered'><td class='line-number'>205</td><td class='line-content'>  (condition-case err</td></tr>
 <tr class='covered'><td class='line-number'>206</td><td class='line-content'>      (with-temp-file nskk-data-learning-file</td></tr>
 <tr class='covered'><td class='line-number'>207</td><td class='line-content'>        (prin1 nskk-data--learning-data (current-buffer))</td></tr>
-<tr class='onevalue'><td class='line-number'>208</td><td class='line-content'>        (setq nskk-data--dirty-flag nil)</td></tr>
+<tr class='covered'><td class='line-number'>208</td><td class='line-content'>        (setq nskk-data--dirty-flag nil)</td></tr>
 <tr class='covered'><td class='line-number'>209</td><td class='line-content'>        (nskk-data--log &amp;quot;Saved learning data to %s&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>210</td><td class='line-content'>                        nskk-data-learning-file)</td></tr>
-<tr class='onevalue'><td class='line-number'>211</td><td class='line-content'>        (message &amp;quot;Learning data saved&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>210</td><td class='line-content'>                        nskk-data-learning-file)</td></tr>
+<tr class='covered'><td class='line-number'>211</td><td class='line-content'>        (message &amp;quot;Learning data saved&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>212</td><td class='line-content'>    (error</td></tr>
 <tr class='covered'><td class='line-number'>213</td><td class='line-content'>     (nskk-data--log &amp;quot;Failed to save learning data: %s&amp;quot; err)</td></tr>
 <tr class='covered'><td class='line-number'>214</td><td class='line-content'>     (message &amp;quot;Failed to save learning data: %s&amp;quot; err))))</td></tr>
@@ -258,9 +258,9 @@
 <tr class='covered'><td class='line-number'>221</td><td class='line-content'>                    (make-hash-table :test 'equal))))</td></tr>
 <tr class='covered'><td class='line-number'>222</td><td class='line-content'>    (puthash candidate</td></tr>
 <tr class='covered'><td class='line-number'>223</td><td class='line-content'>             (1+ (or (gethash candidate scores) 0))</td></tr>
-<tr class='uncovered'><td class='line-number'>224</td><td class='line-content'>             scores)</td></tr>
+<tr class='covered'><td class='line-number'>224</td><td class='line-content'>             scores)</td></tr>
 <tr class='covered'><td class='line-number'>225</td><td class='line-content'>    (puthash query scores nskk-data--learning-data)</td></tr>
-<tr class='onevalue'><td class='line-number'>226</td><td class='line-content'>    (setq nskk-data--dirty-flag t)))</td></tr>
+<tr class='covered'><td class='line-number'>226</td><td class='line-content'>    (setq nskk-data--dirty-flag t)))</td></tr>
 <tr class=''><td class='line-number'>227</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>228</td><td class='line-content'>;;; キャッシュ管理</td></tr>
 <tr class=''><td class='line-number'>229</td><td class='line-content'></td></tr>
@@ -272,7 +272,7 @@
 <tr class=''><td class='line-number'>235</td><td class='line-content'>  &amp;quot;検索キャッシュをクリアする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>236</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>237</td><td class='line-content'>  (nskk-data--cleanup-cache)</td></tr>
-<tr class='onevalue'><td class='line-number'>238</td><td class='line-content'>  (message &amp;quot;Data cache cleared&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>  (message &amp;quot;Data cache cleared&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>239</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>240</td><td class='line-content'>(defun nskk-data-cache-statistics ()</td></tr>
 <tr class=''><td class='line-number'>241</td><td class='line-content'>  &amp;quot;キャッシュ統計を表示する。&amp;quot;</td></tr>
@@ -288,14 +288,14 @@
 <tr class='covered'><td class='line-number'>251</td><td class='line-content'>    (cancel-timer nskk-data--auto-save-timer))</td></tr>
 <tr class='covered'><td class='line-number'>252</td><td class='line-content'>  (setq nskk-data--auto-save-timer</td></tr>
 <tr class='covered'><td class='line-number'>253</td><td class='line-content'>        (run-with-timer nskk-data-auto-save-interval</td></tr>
-<tr class='uncovered'><td class='line-number'>254</td><td class='line-content'>                        nskk-data-auto-save-interval</td></tr>
+<tr class='covered'><td class='line-number'>254</td><td class='line-content'>                        nskk-data-auto-save-interval</td></tr>
 <tr class='covered'><td class='line-number'>255</td><td class='line-content'>                        #'nskk-data--auto-save-handler)))</td></tr>
 <tr class=''><td class='line-number'>256</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>257</td><td class='line-content'>(defun nskk-data--stop-auto-save ()</td></tr>
 <tr class=''><td class='line-number'>258</td><td class='line-content'>  &amp;quot;自動保存を停止する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>259</td><td class='line-content'>  (when nskk-data--auto-save-timer</td></tr>
 <tr class='covered'><td class='line-number'>260</td><td class='line-content'>    (cancel-timer nskk-data--auto-save-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>261</td><td class='line-content'>    (setq nskk-data--auto-save-timer nil)))</td></tr>
+<tr class='covered'><td class='line-number'>261</td><td class='line-content'>    (setq nskk-data--auto-save-timer nil)))</td></tr>
 <tr class=''><td class='line-number'>262</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>263</td><td class='line-content'>(defun nskk-data--auto-save-handler ()</td></tr>
 <tr class=''><td class='line-number'>264</td><td class='line-content'>  &amp;quot;自動保存ハンドラー。&amp;quot;</td></tr>
@@ -311,8 +311,8 @@
 <tr class='covered'><td class='line-number'>274</td><td class='line-content'>  (when nskk-data--dirty-flag</td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>    (nskk-data-save-learning-data))</td></tr>
 <tr class=''><td class='line-number'>276</td><td class='line-content'>  ;; キャッシュをクリア</td></tr>
-<tr class='onevalue'><td class='line-number'>277</td><td class='line-content'>  (nskk-data-clear-cache)</td></tr>
-<tr class='onevalue'><td class='line-number'>278</td><td class='line-content'>  (message &amp;quot;Data synchronized&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>277</td><td class='line-content'>  (nskk-data-clear-cache)</td></tr>
+<tr class='covered'><td class='line-number'>278</td><td class='line-content'>  (message &amp;quot;Data synchronized&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>279</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>280</td><td class='line-content'>;;; トランザクション管理</td></tr>
 <tr class=''><td class='line-number'>281</td><td class='line-content'></td></tr>
@@ -322,8 +322,8 @@
 <tr class=''><td class='line-number'>285</td><td class='line-content'>  (declare (indent 0))</td></tr>
 <tr class='covered'><td class='line-number'>286</td><td class='line-content'>  `(let ((nskk-data--transaction-active t))</td></tr>
 <tr class=''><td class='line-number'>287</td><td class='line-content'>     (unwind-protect</td></tr>
-<tr class='uncovered'><td class='line-number'>288</td><td class='line-content'>         (progn ,@body)</td></tr>
-<tr class='uncovered'><td class='line-number'>289</td><td class='line-content'>       (setq nskk-data--transaction-active nil))))</td></tr>
+<tr class='covered'><td class='line-number'>288</td><td class='line-content'>         (progn ,@body)</td></tr>
+<tr class='covered'><td class='line-number'>289</td><td class='line-content'>       (setq nskk-data--transaction-active nil))))</td></tr>
 <tr class=''><td class='line-number'>290</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>291</td><td class='line-content'>;;; エクスポート・インポート</td></tr>
 <tr class=''><td class='line-number'>292</td><td class='line-content'></td></tr>
@@ -344,7 +344,7 @@
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>      (insert-file-contents file)</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>      (let ((imported-data (read (current-buffer))))</td></tr>
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>        (setq nskk-data--learning-data imported-data)</td></tr>
-<tr class='onevalue'><td class='line-number'>310</td><td class='line-content'>        (setq nskk-data--dirty-flag t)</td></tr>
+<tr class='covered'><td class='line-number'>310</td><td class='line-content'>        (setq nskk-data--dirty-flag t)</td></tr>
 <tr class='covered'><td class='line-number'>311</td><td class='line-content'>        (message &amp;quot;Learning data imported from %s&amp;quot; file)))))</td></tr>
 <tr class=''><td class='line-number'>312</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'>;;; 統計情報</td></tr>
@@ -356,12 +356,12 @@
 <tr class='covered'><td class='line-number'>319</td><td class='line-content'>        (learning-entries (hash-table-count nskk-data--learning-data))</td></tr>
 <tr class='covered'><td class='line-number'>320</td><td class='line-content'>        (cache-entries (hash-table-count nskk-data--cache)))</td></tr>
 <tr class='covered'><td class='line-number'>321</td><td class='line-content'>    (message &amp;quot;Data Layer Statistics:\n  Dictionaries: %d\n  Learning entries: %d\n  Cache entries: %d\n  Dirty: %s&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>322</td><td class='line-content'>             dict-count learning-entries cache-entries</td></tr>
+<tr class='covered'><td class='line-number'>322</td><td class='line-content'>             dict-count learning-entries cache-entries</td></tr>
 <tr class='covered'><td class='line-number'>323</td><td class='line-content'>             (if nskk-data--dirty-flag &amp;quot;yes&amp;quot; &amp;quot;no&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>324</td><td class='line-content'>    (list :dictionaries dict-count</td></tr>
-<tr class='uncovered'><td class='line-number'>325</td><td class='line-content'>          :learning-entries learning-entries</td></tr>
-<tr class='uncovered'><td class='line-number'>326</td><td class='line-content'>          :cache-entries cache-entries</td></tr>
-<tr class='uncovered'><td class='line-number'>327</td><td class='line-content'>          :dirty nskk-data--dirty-flag)))</td></tr>
+<tr class='covered'><td class='line-number'>325</td><td class='line-content'>          :learning-entries learning-entries</td></tr>
+<tr class='covered'><td class='line-number'>326</td><td class='line-content'>          :cache-entries cache-entries</td></tr>
+<tr class='covered'><td class='line-number'>327</td><td class='line-content'>          :dirty nskk-data--dirty-flag)))</td></tr>
 <tr class=''><td class='line-number'>328</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>329</td><td class='line-content'>;;; デバッグ・ロギング</td></tr>
 <tr class=''><td class='line-number'>330</td><td class='line-content'></td></tr>
@@ -371,14 +371,14 @@
 <tr class=''><td class='line-number'>334</td><td class='line-content'>(defun nskk-data-enable-debug ()</td></tr>
 <tr class=''><td class='line-number'>335</td><td class='line-content'>  &amp;quot;デバッグモードを有効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>336</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>337</td><td class='line-content'>  (setq nskk-data--debug-enabled t)</td></tr>
-<tr class='onevalue'><td class='line-number'>338</td><td class='line-content'>  (message &amp;quot;NSKK Data Access Layer: Debug mode enabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>337</td><td class='line-content'>  (setq nskk-data--debug-enabled t)</td></tr>
+<tr class='covered'><td class='line-number'>338</td><td class='line-content'>  (message &amp;quot;NSKK Data Access Layer: Debug mode enabled&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>339</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>340</td><td class='line-content'>(defun nskk-data-disable-debug ()</td></tr>
 <tr class=''><td class='line-number'>341</td><td class='line-content'>  &amp;quot;デバッグモードを無効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>342</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>343</td><td class='line-content'>  (setq nskk-data--debug-enabled nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>344</td><td class='line-content'>  (message &amp;quot;NSKK Data Access Layer: Debug mode disabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>343</td><td class='line-content'>  (setq nskk-data--debug-enabled nil)</td></tr>
+<tr class='covered'><td class='line-number'>344</td><td class='line-content'>  (message &amp;quot;NSKK Data Access Layer: Debug mode disabled&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>345</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>346</td><td class='line-content'>(defun nskk-data--log (format-string &amp;rest args)</td></tr>
 <tr class=''><td class='line-number'>347</td><td class='line-content'>  &amp;quot;デバッグログを出力する。</td></tr>
@@ -405,7 +405,7 @@
 <tr class=''><td class='line-number'>368</td><td class='line-content'>    ;; 結果表示</td></tr>
 <tr class='covered'><td class='line-number'>369</td><td class='line-content'>    (if issues</td></tr>
 <tr class='covered'><td class='line-number'>370</td><td class='line-content'>        (message &amp;quot;Data Layer issues: %s&amp;quot; (string-join issues &amp;quot;, &amp;quot;))</td></tr>
-<tr class='onevalue'><td class='line-number'>371</td><td class='line-content'>      (message &amp;quot;Data Layer: All systems operational&amp;quot;))))</td></tr>
+<tr class='covered'><td class='line-number'>371</td><td class='line-content'>      (message &amp;quot;Data Layer: All systems operational&amp;quot;))))</td></tr>
 <tr class=''><td class='line-number'>372</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>373</td><td class='line-content'>(provide 'nskk-layer-data)</td></tr>
 <tr class=''><td class='line-number'>374</td><td class='line-content'>;;; nskk-layer-data.el ends here</td></tr>

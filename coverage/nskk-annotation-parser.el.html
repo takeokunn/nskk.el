@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-annotation-parser.el</h1>
     <div class='stats'>
-      Coverage: 90.75% (422/465 forms) •
+      Coverage: 100.00% (465/465 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -222,28 +222,28 @@
 <tr class=''><td class='line-number'>185</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>186</td><td class='line-content'>     ;; 音声</td></tr>
 <tr class='covered'><td class='line-number'>187</td><td class='line-content'>     ((string-prefix-p &amp;quot;snd:&amp;quot; text)</td></tr>
-<tr class='onevalue'><td class='line-number'>188</td><td class='line-content'>      (setq media-type 'sound)</td></tr>
+<tr class='covered'><td class='line-number'>188</td><td class='line-content'>      (setq media-type 'sound)</td></tr>
 <tr class='covered'><td class='line-number'>189</td><td class='line-content'>      (setq path (substring text 4)))</td></tr>
 <tr class=''><td class='line-number'>190</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>191</td><td class='line-content'>     ;; 動画</td></tr>
 <tr class='covered'><td class='line-number'>192</td><td class='line-content'>     ((string-prefix-p &amp;quot;video:&amp;quot; text)</td></tr>
-<tr class='onevalue'><td class='line-number'>193</td><td class='line-content'>      (setq media-type 'video)</td></tr>
+<tr class='covered'><td class='line-number'>193</td><td class='line-content'>      (setq media-type 'video)</td></tr>
 <tr class='covered'><td class='line-number'>194</td><td class='line-content'>      (setq path (substring text 6)))</td></tr>
 <tr class=''><td class='line-number'>195</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>196</td><td class='line-content'>     ;; ファイル</td></tr>
 <tr class='covered'><td class='line-number'>197</td><td class='line-content'>     ((string-prefix-p &amp;quot;file:&amp;quot; text)</td></tr>
-<tr class='onevalue'><td class='line-number'>198</td><td class='line-content'>      (setq media-type 'file)</td></tr>
+<tr class='covered'><td class='line-number'>198</td><td class='line-content'>      (setq media-type 'file)</td></tr>
 <tr class='covered'><td class='line-number'>199</td><td class='line-content'>      (setq path (substring text 5)))</td></tr>
 <tr class=''><td class='line-number'>200</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>201</td><td class='line-content'>     ;; URL</td></tr>
 <tr class='covered'><td class='line-number'>202</td><td class='line-content'>     ((or (string-prefix-p &amp;quot;http:&amp;quot; text)</td></tr>
 <tr class='covered'><td class='line-number'>203</td><td class='line-content'>          (string-prefix-p &amp;quot;https:&amp;quot; text))</td></tr>
-<tr class='onevalue'><td class='line-number'>204</td><td class='line-content'>      (setq media-type 'url)</td></tr>
+<tr class='covered'><td class='line-number'>204</td><td class='line-content'>      (setq media-type 'url)</td></tr>
 <tr class='covered'><td class='line-number'>205</td><td class='line-content'>      (setq path text))</td></tr>
 <tr class=''><td class='line-number'>206</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>207</td><td class='line-content'>     ;; その他（デフォルト）</td></tr>
 <tr class=''><td class='line-number'>208</td><td class='line-content'>     (t</td></tr>
-<tr class='onevalue'><td class='line-number'>209</td><td class='line-content'>      (setq media-type 'unknown)</td></tr>
+<tr class='covered'><td class='line-number'>209</td><td class='line-content'>      (setq media-type 'unknown)</td></tr>
 <tr class='covered'><td class='line-number'>210</td><td class='line-content'>      (setq path text)))</td></tr>
 <tr class=''><td class='line-number'>211</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>212</td><td class='line-content'>    (nskk-annotation--create</td></tr>
@@ -288,7 +288,7 @@
 <tr class='covered'><td class='line-number'>251</td><td class='line-content'>    (nskk-annotation--create</td></tr>
 <tr class='covered'><td class='line-number'>252</td><td class='line-content'>     :text text</td></tr>
 <tr class=''><td class='line-number'>253</td><td class='line-content'>     :type 'structured</td></tr>
-<tr class=''><td class='line-number'>254</td><td class='line-content'>     :data data</td></tr>
+<tr class='covered'><td class='line-number'>254</td><td class='line-content'>     :data data</td></tr>
 <tr class='covered'><td class='line-number'>255</td><td class='line-content'>     :description (or description text))))</td></tr>
 <tr class=''><td class='line-number'>256</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>257</td><td class='line-content'>(defun nskk-annotation-parser--parse-json (text)</td></tr>
@@ -298,7 +298,7 @@
 <tr class=''><td class='line-number'>261</td><td class='line-content'>            (json-array-type 'list)</td></tr>
 <tr class=''><td class='line-number'>262</td><td class='line-content'>            (json-key-type 'string))</td></tr>
 <tr class='covered'><td class='line-number'>263</td><td class='line-content'>        (json-read-from-string text))</td></tr>
-<tr class=''><td class='line-number'>264</td><td class='line-content'>    (error nil)))</td></tr>
+<tr class='covered'><td class='line-number'>264</td><td class='line-content'>    (error nil)))</td></tr>
 <tr class=''><td class='line-number'>265</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>266</td><td class='line-content'>(defun nskk-annotation-parser--parse-plist (text)</td></tr>
 <tr class=''><td class='line-number'>267</td><td class='line-content'>  &amp;quot;TEXT をplist形式としてパースする（簡易実装）。&amp;quot;</td></tr>
@@ -310,9 +310,9 @@
 <tr class='covered'><td class='line-number'>273</td><td class='line-content'>          (let ((key (pop pairs))</td></tr>
 <tr class='covered'><td class='line-number'>274</td><td class='line-content'>                (val (pop pairs)))</td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>            (when (and key val)</td></tr>
-<tr class='onevalue'><td class='line-number'>276</td><td class='line-content'>              (push (cons key val) result))))</td></tr>
+<tr class='covered'><td class='line-number'>276</td><td class='line-content'>              (push (cons key val) result))))</td></tr>
 <tr class='covered'><td class='line-number'>277</td><td class='line-content'>        (nreverse result))</td></tr>
-<tr class=''><td class='line-number'>278</td><td class='line-content'>    (error nil)))</td></tr>
+<tr class='covered'><td class='line-number'>278</td><td class='line-content'>    (error nil)))</td></tr>
 <tr class=''><td class='line-number'>279</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>280</td><td class='line-content'>(defun nskk-annotation-parser--format-structured (data)</td></tr>
 <tr class=''><td class='line-number'>281</td><td class='line-content'>  &amp;quot;構造化データ DATA を読みやすい文字列に整形する。&amp;quot;</td></tr>
@@ -323,7 +323,7 @@
 <tr class='covered'><td class='line-number'>286</td><td class='line-content'>                 (format &amp;quot;%s: %s&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>287</td><td class='line-content'>                         (if (stringp (car pair)) (car pair) (format &amp;quot;%s&amp;quot; (car pair)))</td></tr>
 <tr class='covered'><td class='line-number'>288</td><td class='line-content'>                         (if (stringp (cdr pair)) (cdr pair) (format &amp;quot;%s&amp;quot; (cdr pair)))))</td></tr>
-<tr class=''><td class='line-number'>289</td><td class='line-content'>               data &amp;quot;, &amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>289</td><td class='line-content'>               data &amp;quot;, &amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>290</td><td class='line-content'>   (t (format &amp;quot;%s&amp;quot; data))))</td></tr>
 <tr class=''><td class='line-number'>291</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>292</td><td class='line-content'>;;; 複合注釈パーサー</td></tr>
@@ -389,7 +389,7 @@
 <tr class=''><td class='line-number'>352</td><td class='line-content'>  &amp;quot;ANNOTATION を文字列形式に変換する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>353</td><td class='line-content'>  (if annotation</td></tr>
 <tr class='covered'><td class='line-number'>354</td><td class='line-content'>      (nskk-annotation-text annotation)</td></tr>
-<tr class=''><td class='line-number'>355</td><td class='line-content'>    &amp;quot;&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>355</td><td class='line-content'>    &amp;quot;&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>356</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>357</td><td class='line-content'>;;; デバッグ・統計機能</td></tr>
 <tr class=''><td class='line-number'>358</td><td class='line-content'></td></tr>
@@ -424,7 +424,7 @@
 <tr class='covered'><td class='line-number'>387</td><td class='line-content'>        ('simple (cl-incf simple))</td></tr>
 <tr class='covered'><td class='line-number'>388</td><td class='line-content'>        ('multimedia (cl-incf multimedia))</td></tr>
 <tr class='covered'><td class='line-number'>389</td><td class='line-content'>        ('structured (cl-incf structured))</td></tr>
-<tr class='onevalue'><td class='line-number'>390</td><td class='line-content'>        ('compound (cl-incf compound))))</td></tr>
+<tr class='covered'><td class='line-number'>390</td><td class='line-content'>        ('compound (cl-incf compound))))</td></tr>
 <tr class='covered'><td class='line-number'>391</td><td class='line-content'>    (list :total total</td></tr>
 <tr class='covered'><td class='line-number'>392</td><td class='line-content'>          :simple simple</td></tr>
 <tr class='covered'><td class='line-number'>393</td><td class='line-content'>          :multimedia multimedia</td></tr>

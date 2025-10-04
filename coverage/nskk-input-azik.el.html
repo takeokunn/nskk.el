@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-input-azik.el</h1>
     <div class='stats'>
-      Coverage: 95.31% (61/64 forms) •
+      Coverage: 100.00% (64/64 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -217,9 +217,9 @@
 <tr class=''><td class='line-number'>180</td><td class='line-content'>  (nskk-input-azik-get-candidates \&amp;quot;k\&amp;quot;)   ;; =&amp;gt; (\&amp;quot;ka\&amp;quot; \&amp;quot;ki\&amp;quot; \&amp;quot;kj\&amp;quot; ...)</td></tr>
 <tr class=''><td class='line-number'>181</td><td class='line-content'>  (nskk-input-azik-get-candidates \&amp;quot;kj\&amp;quot;)  ;; =&amp;gt; (\&amp;quot;kj\&amp;quot;)&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>182</td><td class='line-content'>  (let ((candidates nil))</td></tr>
-<tr class='onevalue'><td class='line-number'>183</td><td class='line-content'>    (dolist (entry nskk-input-azik-table)</td></tr>
+<tr class='covered'><td class='line-number'>183</td><td class='line-content'>    (dolist (entry nskk-input-azik-table)</td></tr>
 <tr class='covered'><td class='line-number'>184</td><td class='line-content'>      (when (string-prefix-p prefix (car entry))</td></tr>
-<tr class='onevalue'><td class='line-number'>185</td><td class='line-content'>        (push (car entry) candidates)))</td></tr>
+<tr class='covered'><td class='line-number'>185</td><td class='line-content'>        (push (car entry) candidates)))</td></tr>
 <tr class='covered'><td class='line-number'>186</td><td class='line-content'>    (nreverse candidates)))</td></tr>
 <tr class=''><td class='line-number'>187</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>188</td><td class='line-content'>;;; 入力方式登録</td></tr>
@@ -238,8 +238,8 @@
 <tr class=''><td class='line-number'>201</td><td class='line-content'>  :total          - 総エントリ数</td></tr>
 <tr class=''><td class='line-number'>202</td><td class='line-content'>  :azik-extension - AZIK拡張エントリ数</td></tr>
 <tr class=''><td class='line-number'>203</td><td class='line-content'>  :base-romaji    - 標準ローマ字エントリ数&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>204</td><td class='line-content'>  (list :total (length nskk-input-azik-table)</td></tr>
-<tr class='onevalue'><td class='line-number'>205</td><td class='line-content'>        :azik-extension (length nskk-input-azik-extension-table)</td></tr>
+<tr class='covered'><td class='line-number'>204</td><td class='line-content'>  (list :total (length nskk-input-azik-table)</td></tr>
+<tr class='covered'><td class='line-number'>205</td><td class='line-content'>        :azik-extension (length nskk-input-azik-extension-table)</td></tr>
 <tr class='covered'><td class='line-number'>206</td><td class='line-content'>        :base-romaji (length nskk-romaji-table)))</td></tr>
 <tr class=''><td class='line-number'>207</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>208</td><td class='line-content'>;;; パフォーマンス最適化</td></tr>

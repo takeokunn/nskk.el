@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-server-error.el</h1>
     <div class='stats'>
-      Coverage: 71.58% (340/475 forms) •
+      Coverage: 100.00% (475/475 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -193,7 +193,7 @@
 <tr class='covered'><td class='line-number'>156</td><td class='line-content'>                 :timestamp (float-time)</td></tr>
 <tr class='covered'><td class='line-number'>157</td><td class='line-content'>                 :error-type error-type</td></tr>
 <tr class='covered'><td class='line-number'>158</td><td class='line-content'>                 :message message</td></tr>
-<tr class=''><td class='line-number'>159</td><td class='line-content'>                 :host host</td></tr>
+<tr class='covered'><td class='line-number'>159</td><td class='line-content'>                 :host host</td></tr>
 <tr class='covered'><td class='line-number'>160</td><td class='line-content'>                 :port port</td></tr>
 <tr class='covered'><td class='line-number'>161</td><td class='line-content'>                 :request request)))</td></tr>
 <tr class='covered'><td class='line-number'>162</td><td class='line-content'>      (push entry nskk-server-error--log-entries)</td></tr>
@@ -345,17 +345,17 @@
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>    (cl-labels ((retry ()</td></tr>
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>                  (funcall request-fn</td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'>                          ;; 成功コールバック</td></tr>
-<tr class='uncovered'><td class='line-number'>311</td><td class='line-content'>                          success-callback</td></tr>
+<tr class='covered'><td class='line-number'>311</td><td class='line-content'>                          success-callback</td></tr>
 <tr class=''><td class='line-number'>312</td><td class='line-content'>                          ;; エラーコールバック（リトライ付き）</td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'>                          (lambda (error-msg)</td></tr>
 <tr class='covered'><td class='line-number'>314</td><td class='line-content'>                            (if (&amp;lt; retry-count max-retries)</td></tr>
 <tr class='covered'><td class='line-number'>315</td><td class='line-content'>                                (let ((delay (* nskk-server-error-retry-delay</td></tr>
 <tr class='covered'><td class='line-number'>316</td><td class='line-content'>                                              (expt nskk-server-error-retry-backoff</td></tr>
-<tr class='uncovered'><td class='line-number'>317</td><td class='line-content'>                                                   retry-count))))</td></tr>
+<tr class='covered'><td class='line-number'>317</td><td class='line-content'>                                                   retry-count))))</td></tr>
 <tr class='covered'><td class='line-number'>318</td><td class='line-content'>                                  (cl-incf retry-count)</td></tr>
 <tr class='covered'><td class='line-number'>319</td><td class='line-content'>                                  (when nskk-server-error-verbose</td></tr>
 <tr class='covered'><td class='line-number'>320</td><td class='line-content'>                                    (message &amp;quot;Retrying (%d/%d) after %.2fs: %s&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>321</td><td class='line-content'>                                            retry-count max-retries delay error-msg))</td></tr>
+<tr class='covered'><td class='line-number'>321</td><td class='line-content'>                                            retry-count max-retries delay error-msg))</td></tr>
 <tr class='covered'><td class='line-number'>322</td><td class='line-content'>                                  (run-at-time delay nil #'retry))</td></tr>
 <tr class=''><td class='line-number'>323</td><td class='line-content'>                              ;; 最大リトライ回数到達</td></tr>
 <tr class='covered'><td class='line-number'>324</td><td class='line-content'>                              (when nskk-server-error-verbose</td></tr>
@@ -389,7 +389,7 @@
 <tr class='covered'><td class='line-number'>352</td><td class='line-content'>    (when nskk-server-error-verbose</td></tr>
 <tr class='covered'><td class='line-number'>353</td><td class='line-content'>      (message &amp;quot;Circuit breaker open, using fallback: %s:%d&amp;quot; host port))</td></tr>
 <tr class='covered'><td class='line-number'>354</td><td class='line-content'>    (nskk-server-error--fallback-to-local-dict</td></tr>
-<tr class='uncovered'><td class='line-number'>355</td><td class='line-content'>     key okuri-type success-callback error-callback local-dict-index)</td></tr>
+<tr class='covered'><td class='line-number'>355</td><td class='line-content'>     key okuri-type success-callback error-callback local-dict-index)</td></tr>
 <tr class='covered'><td class='line-number'>356</td><td class='line-content'>    (cl-return-from nskk-server-error-with-fallback))</td></tr>
 <tr class=''><td class='line-number'>357</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>358</td><td class='line-content'>  ;; サーバー検索（リトライ付き）</td></tr>
@@ -409,7 +409,7 @@
 <tr class='covered'><td class='line-number'>372</td><td class='line-content'>           (when nskk-server-error-verbose</td></tr>
 <tr class='covered'><td class='line-number'>373</td><td class='line-content'>             (message &amp;quot;Falling back to local dict: %s&amp;quot; error-msg))</td></tr>
 <tr class='covered'><td class='line-number'>374</td><td class='line-content'>           (nskk-server-error--fallback-to-local-dict</td></tr>
-<tr class='uncovered'><td class='line-number'>375</td><td class='line-content'>            key okuri-type success-callback error-callback local-dict-index))</td></tr>
+<tr class='covered'><td class='line-number'>375</td><td class='line-content'>            key okuri-type success-callback error-callback local-dict-index))</td></tr>
 <tr class='covered'><td class='line-number'>376</td><td class='line-content'>       (funcall error-callback error-msg)))))</td></tr>
 <tr class=''><td class='line-number'>377</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>378</td><td class='line-content'>(defun nskk-server-error--fallback-to-local-dict (key okuri-type</td></tr>
@@ -489,7 +489,7 @@
 <tr class='covered'><td class='line-number'>452</td><td class='line-content'>    (unless stats</td></tr>
 <tr class='covered'><td class='line-number'>453</td><td class='line-content'>      (setq stats (nskk-server-error-statistics--create))</td></tr>
 <tr class='covered'><td class='line-number'>454</td><td class='line-content'>      (puthash key stats nskk-server-error--statistics))</td></tr>
-<tr class=''><td class='line-number'>455</td><td class='line-content'>    stats))</td></tr>
+<tr class='covered'><td class='line-number'>455</td><td class='line-content'>    stats))</td></tr>
 <tr class=''><td class='line-number'>456</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>457</td><td class='line-content'>(defun nskk-server-error--record-error-statistics (host port error-type)</td></tr>
 <tr class=''><td class='line-number'>458</td><td class='line-content'>  &amp;quot;エラー統計を記録する。</td></tr>
@@ -523,7 +523,7 @@
 <tr class='covered'><td class='line-number'>486</td><td class='line-content'>          :error-rate (if (&amp;gt; (nskk-server-error-statistics-total-requests stats) 0)</td></tr>
 <tr class='covered'><td class='line-number'>487</td><td class='line-content'>                         (/ (float (nskk-server-error-statistics-total-errors stats))</td></tr>
 <tr class='covered'><td class='line-number'>488</td><td class='line-content'>                            (nskk-server-error-statistics-total-requests stats))</td></tr>
-<tr class='uncovered'><td class='line-number'>489</td><td class='line-content'>                       0.0)</td></tr>
+<tr class='covered'><td class='line-number'>489</td><td class='line-content'>                       0.0)</td></tr>
 <tr class='covered'><td class='line-number'>490</td><td class='line-content'>          :last-error-time (nskk-server-error-statistics-last-error-time stats))))</td></tr>
 <tr class=''><td class='line-number'>491</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>492</td><td class='line-content'>(provide 'nskk-server-error)</td></tr>

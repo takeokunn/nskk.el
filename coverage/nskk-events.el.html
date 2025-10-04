@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-events.el</h1>
     <div class='stats'>
-      Coverage: 94.15% (402/427 forms) •
+      Coverage: 100.00% (427/427 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -189,7 +189,7 @@
 <tr class='covered'><td class='line-number'>152</td><td class='line-content'>    (error &amp;quot;Listener must be a function: %s&amp;quot; listener))</td></tr>
 <tr class=''><td class='line-number'>153</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>154</td><td class='line-content'>  (let ((table (if global</td></tr>
-<tr class=''><td class='line-number'>155</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
+<tr class='covered'><td class='line-number'>155</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
 <tr class=''><td class='line-number'>156</td><td class='line-content'>                 ;; バッファローカル変数を確実に初期化</td></tr>
 <tr class='covered'><td class='line-number'>157</td><td class='line-content'>                 (progn</td></tr>
 <tr class='covered'><td class='line-number'>158</td><td class='line-content'>                   (unless (hash-table-p nskk-events--listeners)</td></tr>
@@ -213,7 +213,7 @@
 <tr class='covered'><td class='line-number'>176</td><td class='line-content'>    (error &amp;quot;Unknown event type: %s&amp;quot; event-type))</td></tr>
 <tr class=''><td class='line-number'>177</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>178</td><td class='line-content'>  (let ((table (if global</td></tr>
-<tr class='uncovered'><td class='line-number'>179</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
+<tr class='covered'><td class='line-number'>179</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
 <tr class='covered'><td class='line-number'>180</td><td class='line-content'>                 (when (hash-table-p nskk-events--listeners)</td></tr>
 <tr class='covered'><td class='line-number'>181</td><td class='line-content'>                   nskk-events--listeners))))</td></tr>
 <tr class='covered'><td class='line-number'>182</td><td class='line-content'>    (when table</td></tr>
@@ -221,7 +221,7 @@
 <tr class='covered'><td class='line-number'>184</td><td class='line-content'>        (when (memq listener listeners)</td></tr>
 <tr class='covered'><td class='line-number'>185</td><td class='line-content'>          (puthash event-type</td></tr>
 <tr class='covered'><td class='line-number'>186</td><td class='line-content'>                   (delq listener listeners)</td></tr>
-<tr class=''><td class='line-number'>187</td><td class='line-content'>                   table)</td></tr>
+<tr class='covered'><td class='line-number'>187</td><td class='line-content'>                   table)</td></tr>
 <tr class='covered'><td class='line-number'>188</td><td class='line-content'>          t)))))</td></tr>
 <tr class=''><td class='line-number'>189</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>190</td><td class='line-content'>(defun nskk-events-clear-listeners (&amp;optional event-type global)</td></tr>
@@ -233,7 +233,7 @@
 <tr class=''><td class='line-number'>196</td><td class='line-content'>GLOBAL が非nilの場合、グローバルリスナーをクリア。</td></tr>
 <tr class=''><td class='line-number'>197</td><td class='line-content'>nilの場合、現在のバッファのローカルリスナーをクリア。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>198</td><td class='line-content'>  (let ((table (if global</td></tr>
-<tr class=''><td class='line-number'>199</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
+<tr class='covered'><td class='line-number'>199</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
 <tr class='covered'><td class='line-number'>200</td><td class='line-content'>                 (when (hash-table-p nskk-events--listeners)</td></tr>
 <tr class='covered'><td class='line-number'>201</td><td class='line-content'>                   nskk-events--listeners))))</td></tr>
 <tr class='covered'><td class='line-number'>202</td><td class='line-content'>    (when table</td></tr>
@@ -269,8 +269,8 @@
 <tr class=''><td class='line-number'>232</td><td class='line-content'>  ;; 再帰的なイベント発行を検出</td></tr>
 <tr class='covered'><td class='line-number'>233</td><td class='line-content'>  (when nskk-events--emitting</td></tr>
 <tr class='covered'><td class='line-number'>234</td><td class='line-content'>    (nskk-events--log event-type</td></tr>
-<tr class='onevalue'><td class='line-number'>235</td><td class='line-content'>                      (append data (list :recursive t))</td></tr>
-<tr class='uncovered'><td class='line-number'>236</td><td class='line-content'>                      'warning)</td></tr>
+<tr class='covered'><td class='line-number'>235</td><td class='line-content'>                      (append data (list :recursive t))</td></tr>
+<tr class='covered'><td class='line-number'>236</td><td class='line-content'>                      'warning)</td></tr>
 <tr class='covered'><td class='line-number'>237</td><td class='line-content'>    (when nskk-events-enable-logging</td></tr>
 <tr class='covered'><td class='line-number'>238</td><td class='line-content'>      (message &amp;quot;Warning: Recursive event emission detected for %s&amp;quot; event-type)))</td></tr>
 <tr class=''><td class='line-number'>239</td><td class='line-content'></td></tr>
@@ -305,8 +305,8 @@
 <tr class=''><td class='line-number'>268</td><td class='line-content'>LISTENER: エラーが発生したリスナー関数</td></tr>
 <tr class=''><td class='line-number'>269</td><td class='line-content'>ERROR-DATA: エラーデータ&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>270</td><td class='line-content'>  (let ((error-info (list :event-type event-type</td></tr>
-<tr class=''><td class='line-number'>271</td><td class='line-content'>                         :listener listener</td></tr>
-<tr class=''><td class='line-number'>272</td><td class='line-content'>                         :error error-data)))</td></tr>
+<tr class='covered'><td class='line-number'>271</td><td class='line-content'>                         :listener listener</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>                         :error error-data)))</td></tr>
 <tr class='covered'><td class='line-number'>273</td><td class='line-content'>    (nskk-events--log :error error-info 'error)</td></tr>
 <tr class=''><td class='line-number'>274</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>    (if nskk-events-error-handler</td></tr>
@@ -379,7 +379,7 @@
 <tr class=''><td class='line-number'>342</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>343</td><td class='line-content'>(define-derived-mode nskk-events-log-mode special-mode &amp;quot;NSKK-Events-Log&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>344</td><td class='line-content'>  &amp;quot;NSKKイベントログ表示用のメジャーモード。&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>345</td><td class='line-content'>  (setq buffer-read-only t))</td></tr>
+<tr class='covered'><td class='line-number'>345</td><td class='line-content'>  (setq buffer-read-only t))</td></tr>
 <tr class=''><td class='line-number'>346</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>347</td><td class='line-content'>;;; 統計情報</td></tr>
 <tr class=''><td class='line-number'>348</td><td class='line-content'></td></tr>
@@ -399,7 +399,7 @@
 <tr class='covered'><td class='line-number'>362</td><td class='line-content'>              nskk-events--listeners))</td></tr>
 <tr class='covered'><td class='line-number'>363</td><td class='line-content'>    (maphash (lambda (_type listeners)</td></tr>
 <tr class='covered'><td class='line-number'>364</td><td class='line-content'>              (setq global-count (+ global-count (length listeners))))</td></tr>
-<tr class=''><td class='line-number'>365</td><td class='line-content'>            nskk-events--global-listeners)</td></tr>
+<tr class='covered'><td class='line-number'>365</td><td class='line-content'>            nskk-events--global-listeners)</td></tr>
 <tr class=''><td class='line-number'>366</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>367</td><td class='line-content'>    (list :local-listeners-count local-count</td></tr>
 <tr class='covered'><td class='line-number'>368</td><td class='line-content'>          :global-listeners-count global-count</td></tr>
@@ -416,7 +416,7 @@
 <tr class=''><td class='line-number'>379</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>380</td><td class='line-content'>戻り値: リスナーが存在する場合t、存在しない場合nil&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>381</td><td class='line-content'>  (let ((table (if global</td></tr>
-<tr class=''><td class='line-number'>382</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
+<tr class='covered'><td class='line-number'>382</td><td class='line-content'>                   nskk-events--global-listeners</td></tr>
 <tr class='covered'><td class='line-number'>383</td><td class='line-content'>                 (when (hash-table-p nskk-events--listeners)</td></tr>
 <tr class='covered'><td class='line-number'>384</td><td class='line-content'>                   nskk-events--listeners))))</td></tr>
 <tr class='covered'><td class='line-number'>385</td><td class='line-content'>    (when table</td></tr>

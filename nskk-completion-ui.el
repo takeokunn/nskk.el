@@ -164,25 +164,25 @@
 
 処理:
   指定された表示方法で補完候補を表示"
-  (unless candidates
-    (nskk-completion-ui-hide)
-    (return))
+  (if (null candidates)
+      (progn
+        (nskk-completion-ui-hide)
+        nil)
+    (let ((display-method (or method nskk-completion-ui-display-method)))
+      (setq nskk-completion-ui--current-candidates candidates)
+      (setq nskk-completion-ui--current-index 0)
 
-  (let ((display-method (or method nskk-completion-ui-display-method)))
-    (setq nskk-completion-ui--current-candidates candidates)
-    (setq nskk-completion-ui--current-index 0)
-
-    (pcase display-method
-      ('inline
-       (nskk-completion-ui--show-inline candidates))
-      ('popup
-       (nskk-completion-ui--show-popup candidates))
-      ('minibuffer
-       (nskk-completion-ui--show-minibuffer candidates))
-      ('tooltip
-       (nskk-completion-ui--show-tooltip candidates))
-      (_
-       (nskk-completion-ui--show-inline candidates)))))
+      (pcase display-method
+        ('inline
+         (nskk-completion-ui--show-inline candidates))
+        ('popup
+         (nskk-completion-ui--show-popup candidates))
+        ('minibuffer
+         (nskk-completion-ui--show-minibuffer candidates))
+        ('tooltip
+         (nskk-completion-ui--show-tooltip candidates))
+        (_
+         (nskk-completion-ui--show-inline candidates))))))
 
 ;;;###autoload
 (defun nskk-completion-ui-hide ()
@@ -411,7 +411,21 @@
 (defun nskk-completion-ui--update-display ()
   "表示を更新する（内部関数）。"
   (when nskk-completion-ui--current-candidates
-    (nskk-completion-ui-show nskk-completion-ui--current-candidates)))
+    (let ((saved-index nskk-completion-ui--current-index)
+          (candidates nskk-completion-ui--current-candidates)
+          (display-method nskk-completion-ui-display-method))
+      (pcase display-method
+        ('inline
+         (nskk-completion-ui--show-inline candidates))
+        ('popup
+         (nskk-completion-ui--show-popup candidates))
+        ('minibuffer
+         (nskk-completion-ui--show-minibuffer candidates))
+        ('tooltip
+         (nskk-completion-ui--show-tooltip candidates))
+        (_
+         (nskk-completion-ui--show-inline candidates)))
+      (setq nskk-completion-ui--current-index saved-index))))
 
 ;;; キーマップ
 

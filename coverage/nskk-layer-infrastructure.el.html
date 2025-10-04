@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-layer-infrastructure.el</h1>
     <div class='stats'>
-      Coverage: 47.37% (153/323 forms) •
+      Coverage: 100.00% (323/323 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -157,11 +157,11 @@
 <tr class='covered'><td class='line-number'>120</td><td class='line-content'>  (setq nskk-infrastructure--thread-pool</td></tr>
 <tr class='covered'><td class='line-number'>121</td><td class='line-content'>        (make-list nskk-infrastructure-thread-pool-size nil))</td></tr>
 <tr class='covered'><td class='line-number'>122</td><td class='line-content'>  (nskk-infrastructure--log &amp;quot;Thread pool initialized with %d threads&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>123</td><td class='line-content'>                            nskk-infrastructure-thread-pool-size))</td></tr>
+<tr class='covered'><td class='line-number'>123</td><td class='line-content'>                            nskk-infrastructure-thread-pool-size))</td></tr>
 <tr class=''><td class='line-number'>124</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>125</td><td class='line-content'>(defun nskk-infrastructure--cleanup-thread-pool ()</td></tr>
 <tr class=''><td class='line-number'>126</td><td class='line-content'>  &amp;quot;スレッドプールをクリーンアップする。&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>127</td><td class='line-content'>  (setq nskk-infrastructure--thread-pool nil))</td></tr>
+<tr class='covered'><td class='line-number'>127</td><td class='line-content'>  (setq nskk-infrastructure--thread-pool nil))</td></tr>
 <tr class=''><td class='line-number'>128</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>129</td><td class='line-content'>(defun nskk-infrastructure-submit-task (task &amp;optional callback)</td></tr>
 <tr class=''><td class='line-number'>130</td><td class='line-content'>  &amp;quot;タスクをスレッドプールに投入する。</td></tr>
@@ -183,19 +183,19 @@
 <tr class=''><td class='line-number'>146</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>147</td><td class='line-content'>(defun nskk-infrastructure--initialize-memory-management ()</td></tr>
 <tr class=''><td class='line-number'>148</td><td class='line-content'>  &amp;quot;メモリ管理を初期化する。&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>149</td><td class='line-content'>  (setq nskk-infrastructure--memory-usage 0)</td></tr>
+<tr class='covered'><td class='line-number'>149</td><td class='line-content'>  (setq nskk-infrastructure--memory-usage 0)</td></tr>
 <tr class='covered'><td class='line-number'>150</td><td class='line-content'>  (nskk-infrastructure--log &amp;quot;Memory management initialized&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>151</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>152</td><td class='line-content'>(defun nskk-infrastructure--cleanup-memory ()</td></tr>
 <tr class=''><td class='line-number'>153</td><td class='line-content'>  &amp;quot;メモリをクリーンアップする。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>154</td><td class='line-content'>  (garbage-collect)</td></tr>
-<tr class='onevalue'><td class='line-number'>155</td><td class='line-content'>  (setq nskk-infrastructure--memory-usage 0))</td></tr>
+<tr class='covered'><td class='line-number'>155</td><td class='line-content'>  (setq nskk-infrastructure--memory-usage 0))</td></tr>
 <tr class=''><td class='line-number'>156</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>157</td><td class='line-content'>(defun nskk-infrastructure-allocate-memory (size)</td></tr>
 <tr class=''><td class='line-number'>158</td><td class='line-content'>  &amp;quot;メモリを確保する。</td></tr>
 <tr class=''><td class='line-number'>159</td><td class='line-content'>SIZEは確保するサイズ（バイト）。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>160</td><td class='line-content'>  (when (&amp;gt; (+ nskk-infrastructure--memory-usage size)</td></tr>
-<tr class='uncovered'><td class='line-number'>161</td><td class='line-content'>           nskk-infrastructure-memory-limit)</td></tr>
+<tr class='covered'><td class='line-number'>161</td><td class='line-content'>           nskk-infrastructure-memory-limit)</td></tr>
 <tr class='covered'><td class='line-number'>162</td><td class='line-content'>    (nskk-infrastructure--log &amp;quot;Memory limit exceeded, triggering GC&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>163</td><td class='line-content'>    (garbage-collect))</td></tr>
 <tr class='covered'><td class='line-number'>164</td><td class='line-content'>  (setq nskk-infrastructure--memory-usage</td></tr>
@@ -209,7 +209,7 @@
 <tr class=''><td class='line-number'>172</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>173</td><td class='line-content'>(defun nskk-infrastructure-get-memory-usage ()</td></tr>
 <tr class=''><td class='line-number'>174</td><td class='line-content'>  &amp;quot;現在のメモリ使用量を取得する。&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>175</td><td class='line-content'>  nskk-infrastructure--memory-usage)</td></tr>
+<tr class='covered'><td class='line-number'>175</td><td class='line-content'>  nskk-infrastructure--memory-usage)</td></tr>
 <tr class=''><td class='line-number'>176</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>177</td><td class='line-content'>;;; ファイルI/O</td></tr>
 <tr class=''><td class='line-number'>178</td><td class='line-content'></td></tr>
@@ -228,7 +228,7 @@
 <tr class='covered'><td class='line-number'>191</td><td class='line-content'>    (unless (file-directory-p dir)</td></tr>
 <tr class='covered'><td class='line-number'>192</td><td class='line-content'>      (make-directory dir t)))</td></tr>
 <tr class='covered'><td class='line-number'>193</td><td class='line-content'>  (with-temp-file path</td></tr>
-<tr class='onevalue'><td class='line-number'>194</td><td class='line-content'>    (insert content)))</td></tr>
+<tr class='covered'><td class='line-number'>194</td><td class='line-content'>    (insert content)))</td></tr>
 <tr class=''><td class='line-number'>195</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>196</td><td class='line-content'>(defun nskk-infrastructure-read-file-async (path callback)</td></tr>
 <tr class=''><td class='line-number'>197</td><td class='line-content'>  &amp;quot;ファイルを非同期読み込みする。</td></tr>
@@ -244,7 +244,7 @@
 <tr class=''><td class='line-number'>207</td><td class='line-content'>CALLBACKは完了時のコールバック。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>208</td><td class='line-content'>  (nskk-infrastructure-run-async</td></tr>
 <tr class=''><td class='line-number'>209</td><td class='line-content'>   (lambda ()</td></tr>
-<tr class='onevalue'><td class='line-number'>210</td><td class='line-content'>     (nskk-infrastructure-write-file path content)</td></tr>
+<tr class='covered'><td class='line-number'>210</td><td class='line-content'>     (nskk-infrastructure-write-file path content)</td></tr>
 <tr class='covered'><td class='line-number'>211</td><td class='line-content'>     (when callback</td></tr>
 <tr class='covered'><td class='line-number'>212</td><td class='line-content'>       (funcall callback)))))</td></tr>
 <tr class=''><td class='line-number'>213</td><td class='line-content'></td></tr>
@@ -254,8 +254,8 @@
 <tr class=''><td class='line-number'>217</td><td class='line-content'>  &amp;quot;すべてのタイマーをクリーンアップする。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>218</td><td class='line-content'>  (dolist (timer nskk-infrastructure--timers)</td></tr>
 <tr class='covered'><td class='line-number'>219</td><td class='line-content'>    (when (timerp timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>220</td><td class='line-content'>      (cancel-timer timer)))</td></tr>
-<tr class='onevalue'><td class='line-number'>221</td><td class='line-content'>  (setq nskk-infrastructure--timers nil))</td></tr>
+<tr class='covered'><td class='line-number'>220</td><td class='line-content'>      (cancel-timer timer)))</td></tr>
+<tr class='covered'><td class='line-number'>221</td><td class='line-content'>  (setq nskk-infrastructure--timers nil))</td></tr>
 <tr class=''><td class='line-number'>222</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>223</td><td class='line-content'>(defun nskk-infrastructure-schedule-timer (secs repeat function &amp;rest args)</td></tr>
 <tr class=''><td class='line-number'>224</td><td class='line-content'>  &amp;quot;タイマーをスケジュールする。</td></tr>
@@ -263,7 +263,7 @@
 <tr class=''><td class='line-number'>226</td><td class='line-content'>FUNCTIONは実行する関数、ARGSは引数。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>227</td><td class='line-content'>  (let ((timer (apply #'run-with-timer secs repeat function args)))</td></tr>
 <tr class='covered'><td class='line-number'>228</td><td class='line-content'>    (push timer nskk-infrastructure--timers)</td></tr>
-<tr class='uncovered'><td class='line-number'>229</td><td class='line-content'>    timer))</td></tr>
+<tr class='covered'><td class='line-number'>229</td><td class='line-content'>    timer))</td></tr>
 <tr class=''><td class='line-number'>230</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>231</td><td class='line-content'>(defun nskk-infrastructure-cancel-timer (timer)</td></tr>
 <tr class=''><td class='line-number'>232</td><td class='line-content'>  &amp;quot;タイマーをキャンセルする。</td></tr>
@@ -284,7 +284,7 @@
 <tr class=''><td class='line-number'>247</td><td class='line-content'>  &amp;quot;リソース監視を停止する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>248</td><td class='line-content'>  (when nskk-infrastructure--resource-monitor-timer</td></tr>
 <tr class='covered'><td class='line-number'>249</td><td class='line-content'>    (cancel-timer nskk-infrastructure--resource-monitor-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>250</td><td class='line-content'>    (setq nskk-infrastructure--resource-monitor-timer nil)))</td></tr>
+<tr class='covered'><td class='line-number'>250</td><td class='line-content'>    (setq nskk-infrastructure--resource-monitor-timer nil)))</td></tr>
 <tr class=''><td class='line-number'>251</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>252</td><td class='line-content'>(defun nskk-infrastructure--monitor-resources ()</td></tr>
 <tr class=''><td class='line-number'>253</td><td class='line-content'>  &amp;quot;リソースを監視する。&amp;quot;</td></tr>
@@ -292,8 +292,8 @@
 <tr class='covered'><td class='line-number'>255</td><td class='line-content'>  (when (&amp;gt; nskk-infrastructure--memory-usage</td></tr>
 <tr class='covered'><td class='line-number'>256</td><td class='line-content'>           (* 0.9 nskk-infrastructure-memory-limit))</td></tr>
 <tr class='covered'><td class='line-number'>257</td><td class='line-content'>    (nskk-infrastructure--log &amp;quot;Memory usage high: %d/%d bytes&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>258</td><td class='line-content'>                              nskk-infrastructure--memory-usage</td></tr>
-<tr class='uncovered'><td class='line-number'>259</td><td class='line-content'>                              nskk-infrastructure-memory-limit)</td></tr>
+<tr class='covered'><td class='line-number'>258</td><td class='line-content'>                              nskk-infrastructure--memory-usage</td></tr>
+<tr class='covered'><td class='line-number'>259</td><td class='line-content'>                              nskk-infrastructure-memory-limit)</td></tr>
 <tr class='covered'><td class='line-number'>260</td><td class='line-content'>    (garbage-collect))</td></tr>
 <tr class=''><td class='line-number'>261</td><td class='line-content'>  ;; 統計更新</td></tr>
 <tr class='covered'><td class='line-number'>262</td><td class='line-content'>  (nskk-infrastructure--update-statistics))</td></tr>
@@ -312,9 +312,9 @@
 <tr class=''><td class='line-number'>275</td><td class='line-content'>  &amp;quot;統計情報を更新する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>276</td><td class='line-content'>  (puthash :uptime (- (float-time)</td></tr>
 <tr class='covered'><td class='line-number'>277</td><td class='line-content'>                      (gethash :start-time nskk-infrastructure--statistics))</td></tr>
-<tr class='uncovered'><td class='line-number'>278</td><td class='line-content'>           nskk-infrastructure--statistics)</td></tr>
+<tr class='covered'><td class='line-number'>278</td><td class='line-content'>           nskk-infrastructure--statistics)</td></tr>
 <tr class='covered'><td class='line-number'>279</td><td class='line-content'>  (puthash :memory-usage nskk-infrastructure--memory-usage</td></tr>
-<tr class='uncovered'><td class='line-number'>280</td><td class='line-content'>           nskk-infrastructure--statistics))</td></tr>
+<tr class='covered'><td class='line-number'>280</td><td class='line-content'>           nskk-infrastructure--statistics))</td></tr>
 <tr class=''><td class='line-number'>281</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>282</td><td class='line-content'>(defun nskk-infrastructure-get-statistics ()</td></tr>
 <tr class=''><td class='line-number'>283</td><td class='line-content'>  &amp;quot;統計情報を取得する。&amp;quot;</td></tr>
@@ -325,12 +325,12 @@
 <tr class='covered'><td class='line-number'>288</td><td class='line-content'>        (tasks-submitted (gethash :tasks-submitted nskk-infrastructure--statistics))</td></tr>
 <tr class='covered'><td class='line-number'>289</td><td class='line-content'>        (tasks-completed (gethash :tasks-completed nskk-infrastructure--statistics)))</td></tr>
 <tr class='covered'><td class='line-number'>290</td><td class='line-content'>    (message &amp;quot;Infrastructure Statistics:\n  Uptime: %.1f seconds\n  Memory: %d bytes\n  Tasks: %d/%d (submitted/completed)\n  Timers: %d&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>291</td><td class='line-content'>             uptime memory tasks-submitted tasks-completed</td></tr>
+<tr class='covered'><td class='line-number'>291</td><td class='line-content'>             uptime memory tasks-submitted tasks-completed</td></tr>
 <tr class='covered'><td class='line-number'>292</td><td class='line-content'>             (length nskk-infrastructure--timers))</td></tr>
 <tr class='covered'><td class='line-number'>293</td><td class='line-content'>    (list :uptime uptime</td></tr>
-<tr class='uncovered'><td class='line-number'>294</td><td class='line-content'>          :memory memory</td></tr>
-<tr class='uncovered'><td class='line-number'>295</td><td class='line-content'>          :tasks-submitted tasks-submitted</td></tr>
-<tr class='uncovered'><td class='line-number'>296</td><td class='line-content'>          :tasks-completed tasks-completed</td></tr>
+<tr class='covered'><td class='line-number'>294</td><td class='line-content'>          :memory memory</td></tr>
+<tr class='covered'><td class='line-number'>295</td><td class='line-content'>          :tasks-submitted tasks-submitted</td></tr>
+<tr class='covered'><td class='line-number'>296</td><td class='line-content'>          :tasks-completed tasks-completed</td></tr>
 <tr class='covered'><td class='line-number'>297</td><td class='line-content'>          :active-timers (length nskk-infrastructure--timers))))</td></tr>
 <tr class=''><td class='line-number'>298</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>299</td><td class='line-content'>;;; デバッグ・ロギング</td></tr>
@@ -341,14 +341,14 @@
 <tr class=''><td class='line-number'>304</td><td class='line-content'>(defun nskk-infrastructure-enable-debug ()</td></tr>
 <tr class=''><td class='line-number'>305</td><td class='line-content'>  &amp;quot;デバッグモードを有効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>306</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>307</td><td class='line-content'>  (setq nskk-infrastructure--debug-enabled t)</td></tr>
-<tr class='onevalue'><td class='line-number'>308</td><td class='line-content'>  (message &amp;quot;NSKK Infrastructure Layer: Debug mode enabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>  (setq nskk-infrastructure--debug-enabled t)</td></tr>
+<tr class='covered'><td class='line-number'>308</td><td class='line-content'>  (message &amp;quot;NSKK Infrastructure Layer: Debug mode enabled&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>309</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'>(defun nskk-infrastructure-disable-debug ()</td></tr>
 <tr class=''><td class='line-number'>311</td><td class='line-content'>  &amp;quot;デバッグモードを無効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>312</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>313</td><td class='line-content'>  (setq nskk-infrastructure--debug-enabled nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>314</td><td class='line-content'>  (message &amp;quot;NSKK Infrastructure Layer: Debug mode disabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>313</td><td class='line-content'>  (setq nskk-infrastructure--debug-enabled nil)</td></tr>
+<tr class='covered'><td class='line-number'>314</td><td class='line-content'>  (message &amp;quot;NSKK Infrastructure Layer: Debug mode disabled&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>315</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>316</td><td class='line-content'>(defun nskk-infrastructure--log (format-string &amp;rest args)</td></tr>
 <tr class=''><td class='line-number'>317</td><td class='line-content'>  &amp;quot;デバッグログを出力する。</td></tr>
@@ -364,7 +364,7 @@
 <tr class='covered'><td class='line-number'>327</td><td class='line-content'>  (let ((issues '()))</td></tr>
 <tr class=''><td class='line-number'>328</td><td class='line-content'>    ;; メモリチェック</td></tr>
 <tr class='covered'><td class='line-number'>329</td><td class='line-content'>    (when (&amp;gt; nskk-infrastructure--memory-usage</td></tr>
-<tr class='uncovered'><td class='line-number'>330</td><td class='line-content'>             nskk-infrastructure-memory-limit)</td></tr>
+<tr class='covered'><td class='line-number'>330</td><td class='line-content'>             nskk-infrastructure-memory-limit)</td></tr>
 <tr class='covered'><td class='line-number'>331</td><td class='line-content'>      (push &amp;quot;Memory limit exceeded&amp;quot; issues))</td></tr>
 <tr class=''><td class='line-number'>332</td><td class='line-content'>    ;; スレッドプールチェック</td></tr>
 <tr class='covered'><td class='line-number'>333</td><td class='line-content'>    (unless nskk-infrastructure--thread-pool</td></tr>
@@ -372,7 +372,7 @@
 <tr class=''><td class='line-number'>335</td><td class='line-content'>    ;; 結果表示</td></tr>
 <tr class='covered'><td class='line-number'>336</td><td class='line-content'>    (if issues</td></tr>
 <tr class='covered'><td class='line-number'>337</td><td class='line-content'>        (message &amp;quot;Infrastructure Layer issues: %s&amp;quot; (string-join issues &amp;quot;, &amp;quot;))</td></tr>
-<tr class='onevalue'><td class='line-number'>338</td><td class='line-content'>      (message &amp;quot;Infrastructure Layer: All systems operational&amp;quot;))))</td></tr>
+<tr class='covered'><td class='line-number'>338</td><td class='line-content'>      (message &amp;quot;Infrastructure Layer: All systems operational&amp;quot;))))</td></tr>
 <tr class=''><td class='line-number'>339</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>340</td><td class='line-content'>(provide 'nskk-layer-infrastructure)</td></tr>
 <tr class=''><td class='line-number'>341</td><td class='line-content'>;;; nskk-layer-infrastructure.el ends here</td></tr>

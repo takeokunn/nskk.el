@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-sync-protocol.el</h1>
     <div class='stats'>
-      Coverage: 57.54% (351/610 forms) •
+      Coverage: 100.00% (610/610 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -162,7 +162,7 @@
 <tr class=''><td class='line-number'>125</td><td class='line-content'>  client-id   - クライアントID</td></tr>
 <tr class=''><td class='line-number'>126</td><td class='line-content'>  payload     - メッセージペイロード</td></tr>
 <tr class=''><td class='line-number'>127</td><td class='line-content'>  signature   - HMAC署名&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>128</td><td class='line-content'>  (version nskk-sync-protocol-version :type string)</td></tr>
+<tr class='covered'><td class='line-number'>128</td><td class='line-content'>  (version nskk-sync-protocol-version :type string)</td></tr>
 <tr class=''><td class='line-number'>129</td><td class='line-content'>  (type nil :type symbol)</td></tr>
 <tr class=''><td class='line-number'>130</td><td class='line-content'>  (timestamp nil :type integer)</td></tr>
 <tr class=''><td class='line-number'>131</td><td class='line-content'>  (session-id nil :type string)</td></tr>
@@ -221,12 +221,12 @@
 <tr class='covered'><td class='line-number'>184</td><td class='line-content'>      (error &amp;quot;Server URL is required&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>185</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>186</td><td class='line-content'>    (nskk-sync-session--create</td></tr>
-<tr class=''><td class='line-number'>187</td><td class='line-content'>     :id session-id</td></tr>
-<tr class=''><td class='line-number'>188</td><td class='line-content'>     :client-id client-id</td></tr>
-<tr class=''><td class='line-number'>189</td><td class='line-content'>     :server-url server-url</td></tr>
+<tr class='covered'><td class='line-number'>187</td><td class='line-content'>     :id session-id</td></tr>
+<tr class='covered'><td class='line-number'>188</td><td class='line-content'>     :client-id client-id</td></tr>
+<tr class='covered'><td class='line-number'>189</td><td class='line-content'>     :server-url server-url</td></tr>
 <tr class=''><td class='line-number'>190</td><td class='line-content'>     :state 'disconnected</td></tr>
-<tr class=''><td class='line-number'>191</td><td class='line-content'>     :callbacks callbacks</td></tr>
-<tr class=''><td class='line-number'>192</td><td class='line-content'>     :message-queue nil)))</td></tr>
+<tr class='covered'><td class='line-number'>191</td><td class='line-content'>     :callbacks callbacks</td></tr>
+<tr class='covered'><td class='line-number'>192</td><td class='line-content'>     :message-queue nil)))</td></tr>
 <tr class=''><td class='line-number'>193</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>194</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>195</td><td class='line-content'>(defun nskk-sync-connect (session)</td></tr>
@@ -253,12 +253,12 @@
 <tr class=''><td class='line-number'>216</td><td class='line-content'>        ;; 接続成功コールバック</td></tr>
 <tr class='covered'><td class='line-number'>217</td><td class='line-content'>        (nskk-sync--invoke-callback session 'on-connect)</td></tr>
 <tr class=''><td class='line-number'>218</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>219</td><td class='line-content'>        session)</td></tr>
+<tr class='covered'><td class='line-number'>219</td><td class='line-content'>        session)</td></tr>
 <tr class=''><td class='line-number'>220</td><td class='line-content'>    (error</td></tr>
 <tr class='covered'><td class='line-number'>221</td><td class='line-content'>     (setf (nskk-sync-session-state session) 'error)</td></tr>
 <tr class='covered'><td class='line-number'>222</td><td class='line-content'>     (nskk-sync--invoke-callback session 'on-error err)</td></tr>
 <tr class='covered'><td class='line-number'>223</td><td class='line-content'>     (nskk-sync--maybe-reconnect session)</td></tr>
-<tr class='onevalue'><td class='line-number'>224</td><td class='line-content'>     (signal (car err) (cdr err)))))</td></tr>
+<tr class='covered'><td class='line-number'>224</td><td class='line-content'>     (signal (car err) (cdr err)))))</td></tr>
 <tr class=''><td class='line-number'>225</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>226</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>227</td><td class='line-content'>(defun nskk-sync-disconnect (session)</td></tr>
@@ -274,7 +274,7 @@
 <tr class='covered'><td class='line-number'>237</td><td class='line-content'>  (setf (nskk-sync-session-state session) 'disconnected)</td></tr>
 <tr class='covered'><td class='line-number'>238</td><td class='line-content'>  (nskk-sync--invoke-callback session 'on-disconnect)</td></tr>
 <tr class=''><td class='line-number'>239</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>240</td><td class='line-content'>  session)</td></tr>
+<tr class='covered'><td class='line-number'>240</td><td class='line-content'>  session)</td></tr>
 <tr class=''><td class='line-number'>241</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>242</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>243</td><td class='line-content'>(defun nskk-sync-send-message (session type payload)</td></tr>
@@ -285,23 +285,23 @@
 <tr class=''><td class='line-number'>248</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>249</td><td class='line-content'>戻り値: 送信成功時はt、失敗時はnil&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>250</td><td class='line-content'>  (let ((message (nskk-sync-message--create</td></tr>
-<tr class='uncovered'><td class='line-number'>251</td><td class='line-content'>                  :type type</td></tr>
+<tr class='covered'><td class='line-number'>251</td><td class='line-content'>                  :type type</td></tr>
 <tr class='covered'><td class='line-number'>252</td><td class='line-content'>                  :timestamp (nskk-sync--current-timestamp)</td></tr>
 <tr class='covered'><td class='line-number'>253</td><td class='line-content'>                  :session-id (nskk-sync-session-id session)</td></tr>
 <tr class='covered'><td class='line-number'>254</td><td class='line-content'>                  :client-id (nskk-sync-session-client-id session)</td></tr>
-<tr class='uncovered'><td class='line-number'>255</td><td class='line-content'>                  :payload payload)))</td></tr>
+<tr class='covered'><td class='line-number'>255</td><td class='line-content'>                  :payload payload)))</td></tr>
 <tr class=''><td class='line-number'>256</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>257</td><td class='line-content'>    ;; サイズチェック</td></tr>
 <tr class='covered'><td class='line-number'>258</td><td class='line-content'>    (let ((json-data (nskk-sync--message-to-json message)))</td></tr>
 <tr class='covered'><td class='line-number'>259</td><td class='line-content'>      (when (&amp;gt; (length json-data) nskk-sync-protocol-max-message-size)</td></tr>
-<tr class='noreturn'><td class='line-number'>260</td><td class='line-content'>        (error &amp;quot;Message size exceeds maximum: %d &amp;gt; %d&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>261</td><td class='line-content'>               (length json-data) nskk-sync-protocol-max-message-size)))</td></tr>
+<tr class='covered'><td class='line-number'>260</td><td class='line-content'>        (error &amp;quot;Message size exceeds maximum: %d &amp;gt; %d&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>261</td><td class='line-content'>               (length json-data) nskk-sync-protocol-max-message-size)))</td></tr>
 <tr class=''><td class='line-number'>262</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>263</td><td class='line-content'>    (if (eq (nskk-sync-session-state session) 'connected)</td></tr>
 <tr class='covered'><td class='line-number'>264</td><td class='line-content'>        (nskk-sync--send-message-internal session message)</td></tr>
 <tr class=''><td class='line-number'>265</td><td class='line-content'>      ;; 未接続の場合はキューに追加</td></tr>
 <tr class='covered'><td class='line-number'>266</td><td class='line-content'>      (push message (nskk-sync-session-message-queue session))</td></tr>
-<tr class='uncovered'><td class='line-number'>267</td><td class='line-content'>      nil)))</td></tr>
+<tr class='covered'><td class='line-number'>267</td><td class='line-content'>      nil)))</td></tr>
 <tr class=''><td class='line-number'>268</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>269</td><td class='line-content'>;;; プロトコル実装</td></tr>
 <tr class=''><td class='line-number'>270</td><td class='line-content'></td></tr>
@@ -323,12 +323,12 @@
 <tr class='covered'><td class='line-number'>286</td><td class='line-content'>    (nskk-sync--establish-http2 url session))</td></tr>
 <tr class=''><td class='line-number'>287</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>288</td><td class='line-content'>   (t</td></tr>
-<tr class='onevalue'><td class='line-number'>289</td><td class='line-content'>    (error &amp;quot;Unsupported protocol: %s&amp;quot; url))))</td></tr>
+<tr class='covered'><td class='line-number'>289</td><td class='line-content'>    (error &amp;quot;Unsupported protocol: %s&amp;quot; url))))</td></tr>
 <tr class=''><td class='line-number'>290</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>291</td><td class='line-content'>(defun nskk-sync--establish-websocket (url session)</td></tr>
 <tr class=''><td class='line-number'>292</td><td class='line-content'>  &amp;quot;WebSocket接続を確立する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>293</td><td class='line-content'>  (if (not (fboundp 'websocket-open))</td></tr>
-<tr class='onevalue'><td class='line-number'>294</td><td class='line-content'>      (error &amp;quot;WebSocket support not available&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>294</td><td class='line-content'>      (error &amp;quot;WebSocket support not available&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>295</td><td class='line-content'>    ;; websocket.elを使用した実装</td></tr>
 <tr class=''><td class='line-number'>296</td><td class='line-content'>    ;; 実際の実装ではwebsocket.elのAPIを使用</td></tr>
 <tr class='covered'><td class='line-number'>297</td><td class='line-content'>    (let ((ws-url url))</td></tr>
@@ -348,10 +348,10 @@
 <tr class=''><td class='line-number'>311</td><td class='line-content'>     ;; WebSocket接続のクローズ</td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>     (when (fboundp 'websocket-close)</td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'>       ;; 実際のwebsocket closeロジック</td></tr>
-<tr class=''><td class='line-number'>314</td><td class='line-content'>       nil))</td></tr>
+<tr class='covered'><td class='line-number'>314</td><td class='line-content'>       nil))</td></tr>
 <tr class=''><td class='line-number'>315</td><td class='line-content'>    ('http2</td></tr>
 <tr class=''><td class='line-number'>316</td><td class='line-content'>     ;; HTTP/2接続のクローズ</td></tr>
-<tr class='uncovered'><td class='line-number'>317</td><td class='line-content'>     nil)))</td></tr>
+<tr class='covered'><td class='line-number'>317</td><td class='line-content'>     nil)))</td></tr>
 <tr class=''><td class='line-number'>318</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>319</td><td class='line-content'>(defun nskk-sync--send-message-internal (session message)</td></tr>
 <tr class=''><td class='line-number'>320</td><td class='line-content'>  &amp;quot;MESSAGE を実際に送信する。&amp;quot;</td></tr>
@@ -364,17 +364,17 @@
 <tr class=''><td class='line-number'>327</td><td class='line-content'>      ('http2</td></tr>
 <tr class='covered'><td class='line-number'>328</td><td class='line-content'>       (nskk-sync--send-via-http2 connection json-data))</td></tr>
 <tr class=''><td class='line-number'>329</td><td class='line-content'>      (_</td></tr>
-<tr class='onevalue'><td class='line-number'>330</td><td class='line-content'>       (error &amp;quot;Invalid connection type&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>330</td><td class='line-content'>       (error &amp;quot;Invalid connection type&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>332</td><td class='line-content'>    ;; 送信成功コールバック</td></tr>
 <tr class='covered'><td class='line-number'>333</td><td class='line-content'>    (nskk-sync--invoke-callback session 'on-message-sent message)</td></tr>
-<tr class='onevalue'><td class='line-number'>334</td><td class='line-content'>    t))</td></tr>
+<tr class='covered'><td class='line-number'>334</td><td class='line-content'>    t))</td></tr>
 <tr class=''><td class='line-number'>335</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>336</td><td class='line-content'>(defun nskk-sync--send-via-websocket (connection data)</td></tr>
 <tr class=''><td class='line-number'>337</td><td class='line-content'>  &amp;quot;WebSocket経由でDATAを送信する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>338</td><td class='line-content'>  (when (fboundp 'websocket-send-text)</td></tr>
 <tr class=''><td class='line-number'>339</td><td class='line-content'>    ;; 実際のwebsocket send実装</td></tr>
-<tr class=''><td class='line-number'>340</td><td class='line-content'>    nil))</td></tr>
+<tr class='covered'><td class='line-number'>340</td><td class='line-content'>    nil))</td></tr>
 <tr class=''><td class='line-number'>341</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>342</td><td class='line-content'>(defun nskk-sync--send-via-http2 (connection data)</td></tr>
 <tr class=''><td class='line-number'>343</td><td class='line-content'>  &amp;quot;HTTP/2経由でDATAを送信する。&amp;quot;</td></tr>
@@ -382,12 +382,12 @@
 <tr class='covered'><td class='line-number'>345</td><td class='line-content'>    (let ((url-request-method &amp;quot;POST&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>346</td><td class='line-content'>          (url-request-extra-headers</td></tr>
 <tr class=''><td class='line-number'>347</td><td class='line-content'>           '((&amp;quot;Content-Type&amp;quot; . &amp;quot;application/json&amp;quot;)))</td></tr>
-<tr class='uncovered'><td class='line-number'>348</td><td class='line-content'>          (url-request-data data))</td></tr>
+<tr class='covered'><td class='line-number'>348</td><td class='line-content'>          (url-request-data data))</td></tr>
 <tr class='covered'><td class='line-number'>349</td><td class='line-content'>      (url-retrieve url</td></tr>
 <tr class=''><td class='line-number'>350</td><td class='line-content'>                    (lambda (status)</td></tr>
 <tr class=''><td class='line-number'>351</td><td class='line-content'>                      ;; レスポンス処理</td></tr>
 <tr class=''><td class='line-number'>352</td><td class='line-content'>                      nil)</td></tr>
-<tr class='uncovered'><td class='line-number'>353</td><td class='line-content'>                    nil t))))</td></tr>
+<tr class='covered'><td class='line-number'>353</td><td class='line-content'>                    nil t))))</td></tr>
 <tr class=''><td class='line-number'>354</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>355</td><td class='line-content'>;;; メッセージ処理</td></tr>
 <tr class=''><td class='line-number'>356</td><td class='line-content'></td></tr>
@@ -417,13 +417,13 @@
 <tr class='covered'><td class='line-number'>380</td><td class='line-content'>         (signature (gethash &amp;quot;signature&amp;quot; data)))</td></tr>
 <tr class=''><td class='line-number'>381</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>382</td><td class='line-content'>    (nskk-sync-message--create</td></tr>
-<tr class='uncovered'><td class='line-number'>383</td><td class='line-content'>     :version version</td></tr>
-<tr class='uncovered'><td class='line-number'>384</td><td class='line-content'>     :type type</td></tr>
-<tr class='uncovered'><td class='line-number'>385</td><td class='line-content'>     :timestamp timestamp</td></tr>
-<tr class='uncovered'><td class='line-number'>386</td><td class='line-content'>     :session-id session-id</td></tr>
-<tr class='uncovered'><td class='line-number'>387</td><td class='line-content'>     :client-id client-id</td></tr>
-<tr class='uncovered'><td class='line-number'>388</td><td class='line-content'>     :payload payload</td></tr>
-<tr class='uncovered'><td class='line-number'>389</td><td class='line-content'>     :signature signature)))</td></tr>
+<tr class='covered'><td class='line-number'>383</td><td class='line-content'>     :version version</td></tr>
+<tr class='covered'><td class='line-number'>384</td><td class='line-content'>     :type type</td></tr>
+<tr class='covered'><td class='line-number'>385</td><td class='line-content'>     :timestamp timestamp</td></tr>
+<tr class='covered'><td class='line-number'>386</td><td class='line-content'>     :session-id session-id</td></tr>
+<tr class='covered'><td class='line-number'>387</td><td class='line-content'>     :client-id client-id</td></tr>
+<tr class='covered'><td class='line-number'>388</td><td class='line-content'>     :payload payload</td></tr>
+<tr class='covered'><td class='line-number'>389</td><td class='line-content'>     :signature signature)))</td></tr>
 <tr class=''><td class='line-number'>390</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>391</td><td class='line-content'>(defun nskk-sync--plist-to-hash (plist)</td></tr>
 <tr class=''><td class='line-number'>392</td><td class='line-content'>  &amp;quot;PLIST をハッシュテーブルに変換する。&amp;quot;</td></tr>
@@ -438,7 +438,7 @@
 <tr class='covered'><td class='line-number'>401</td><td class='line-content'>    (maphash (lambda (key value)</td></tr>
 <tr class='covered'><td class='line-number'>402</td><td class='line-content'>               (push (intern (concat &amp;quot;:&amp;quot; key)) plist)</td></tr>
 <tr class='covered'><td class='line-number'>403</td><td class='line-content'>               (push value plist))</td></tr>
-<tr class=''><td class='line-number'>404</td><td class='line-content'>             hash)</td></tr>
+<tr class='covered'><td class='line-number'>404</td><td class='line-content'>             hash)</td></tr>
 <tr class='covered'><td class='line-number'>405</td><td class='line-content'>    (nreverse plist)))</td></tr>
 <tr class=''><td class='line-number'>406</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>407</td><td class='line-content'>;;; メッセージキュー</td></tr>
@@ -448,18 +448,18 @@
 <tr class='covered'><td class='line-number'>411</td><td class='line-content'>  (let ((queue (nskk-sync-session-message-queue session)))</td></tr>
 <tr class='covered'><td class='line-number'>412</td><td class='line-content'>    (setf (nskk-sync-session-message-queue session) nil)</td></tr>
 <tr class='covered'><td class='line-number'>413</td><td class='line-content'>    (dolist (message (nreverse queue))</td></tr>
-<tr class='onevalue'><td class='line-number'>414</td><td class='line-content'>      (nskk-sync--send-message-internal session message))))</td></tr>
+<tr class='covered'><td class='line-number'>414</td><td class='line-content'>      (nskk-sync--send-message-internal session message))))</td></tr>
 <tr class=''><td class='line-number'>415</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>416</td><td class='line-content'>;;; 再接続</td></tr>
 <tr class=''><td class='line-number'>417</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>418</td><td class='line-content'>(defun nskk-sync--maybe-reconnect (session)</td></tr>
 <tr class=''><td class='line-number'>419</td><td class='line-content'>  &amp;quot;必要に応じて SESSION を再接続する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>420</td><td class='line-content'>  (when (&amp;lt; (nskk-sync-session-reconnect-count session)</td></tr>
-<tr class='uncovered'><td class='line-number'>421</td><td class='line-content'>           nskk-sync-protocol-reconnect-attempts)</td></tr>
+<tr class='covered'><td class='line-number'>421</td><td class='line-content'>           nskk-sync-protocol-reconnect-attempts)</td></tr>
 <tr class='covered'><td class='line-number'>422</td><td class='line-content'>    (cl-incf (nskk-sync-session-reconnect-count session))</td></tr>
 <tr class=''><td class='line-number'>423</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>424</td><td class='line-content'>    (run-with-timer</td></tr>
-<tr class='uncovered'><td class='line-number'>425</td><td class='line-content'>     nskk-sync-protocol-reconnect-delay</td></tr>
+<tr class='covered'><td class='line-number'>425</td><td class='line-content'>     nskk-sync-protocol-reconnect-delay</td></tr>
 <tr class=''><td class='line-number'>426</td><td class='line-content'>     nil</td></tr>
 <tr class=''><td class='line-number'>427</td><td class='line-content'>     (lambda ()</td></tr>
 <tr class='covered'><td class='line-number'>428</td><td class='line-content'>       (condition-case err</td></tr>
@@ -477,8 +477,8 @@
 <tr class=''><td class='line-number'>440</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>441</td><td class='line-content'>  (setf (nskk-sync-session-ping-timer session)</td></tr>
 <tr class='covered'><td class='line-number'>442</td><td class='line-content'>        (run-with-timer</td></tr>
-<tr class='uncovered'><td class='line-number'>443</td><td class='line-content'>         nskk-sync-protocol-ping-interval</td></tr>
-<tr class='uncovered'><td class='line-number'>444</td><td class='line-content'>         nskk-sync-protocol-ping-interval</td></tr>
+<tr class='covered'><td class='line-number'>443</td><td class='line-content'>         nskk-sync-protocol-ping-interval</td></tr>
+<tr class='covered'><td class='line-number'>444</td><td class='line-content'>         nskk-sync-protocol-ping-interval</td></tr>
 <tr class=''><td class='line-number'>445</td><td class='line-content'>         (lambda ()</td></tr>
 <tr class='covered'><td class='line-number'>446</td><td class='line-content'>           (when (eq (nskk-sync-session-state session) 'connected)</td></tr>
 <tr class='covered'><td class='line-number'>447</td><td class='line-content'>             (nskk-sync-send-message session 'ping nil))))))</td></tr>
@@ -516,8 +516,8 @@
 <tr class=''><td class='line-number'>479</td><td class='line-content'>戻り値: 合意されたバージョン、または不一致の場合はnil&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>480</td><td class='line-content'>  (let ((client-version nskk-sync-protocol-version))</td></tr>
 <tr class='covered'><td class='line-number'>481</td><td class='line-content'>    (if (nskk-sync--version-compatible-p client-version server-version)</td></tr>
-<tr class='uncovered'><td class='line-number'>482</td><td class='line-content'>        client-version</td></tr>
-<tr class='uncovered'><td class='line-number'>483</td><td class='line-content'>      nil)))</td></tr>
+<tr class='covered'><td class='line-number'>482</td><td class='line-content'>        client-version</td></tr>
+<tr class='covered'><td class='line-number'>483</td><td class='line-content'>      nil)))</td></tr>
 <tr class=''><td class='line-number'>484</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>485</td><td class='line-content'>(defun nskk-sync--version-compatible-p (v1 v2)</td></tr>
 <tr class=''><td class='line-number'>486</td><td class='line-content'>  &amp;quot;2つのバージョンが互換性があるか判定する。</td></tr>
@@ -547,7 +547,7 @@
 <tr class='covered'><td class='line-number'>510</td><td class='line-content'>           (if (&amp;gt; (nskk-sync-session-last-sync session) 0)</td></tr>
 <tr class='covered'><td class='line-number'>511</td><td class='line-content'>               (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>512</td><td class='line-content'>                                  (seconds-to-time (nskk-sync-session-last-sync session)))</td></tr>
-<tr class='uncovered'><td class='line-number'>513</td><td class='line-content'>             &amp;quot;Never&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>513</td><td class='line-content'>             &amp;quot;Never&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>514</td><td class='line-content'>           (length (nskk-sync-session-message-queue session))</td></tr>
 <tr class='covered'><td class='line-number'>515</td><td class='line-content'>           (nskk-sync-session-reconnect-count session)))</td></tr>
 <tr class=''><td class='line-number'>516</td><td class='line-content'></td></tr>

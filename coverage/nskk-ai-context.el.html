@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-ai-context.el</h1>
     <div class='stats'>
-      Coverage: 89.58% (1178/1315 forms) •
+      Coverage: 100.00% (1315/1315 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -346,7 +346,7 @@
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>  (let* ((model nskk-ai-context-tfidf-model)</td></tr>
 <tr class='covered'><td class='line-number'>310</td><td class='line-content'>         (cached (gethash word (nskk-ai-tfidf-model-idf-cache model))))</td></tr>
 <tr class='covered'><td class='line-number'>311</td><td class='line-content'>    (if cached</td></tr>
-<tr class='uncovered'><td class='line-number'>312</td><td class='line-content'>        cached</td></tr>
+<tr class='covered'><td class='line-number'>312</td><td class='line-content'>        cached</td></tr>
 <tr class='covered'><td class='line-number'>313</td><td class='line-content'>      (let* ((df (gethash word (nskk-ai-tfidf-model-doc-freq model) 0))</td></tr>
 <tr class='covered'><td class='line-number'>314</td><td class='line-content'>             (n (max 1 (nskk-ai-tfidf-model-num-docs model)))</td></tr>
 <tr class='covered'><td class='line-number'>315</td><td class='line-content'>             (idf (if (&amp;gt; df 0)</td></tr>
@@ -471,7 +471,7 @@
 <tr class=''><td class='line-number'>434</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>435</td><td class='line-content'>    (if (&amp;gt; weight-count 0)</td></tr>
 <tr class='covered'><td class='line-number'>436</td><td class='line-content'>        (/ score weight-count)</td></tr>
-<tr class='uncovered'><td class='line-number'>437</td><td class='line-content'>      0.0)))</td></tr>
+<tr class='covered'><td class='line-number'>437</td><td class='line-content'>      0.0)))</td></tr>
 <tr class=''><td class='line-number'>438</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>439</td><td class='line-content'>(defun nskk-ai-context--calc-ngram-score (word context-words)</td></tr>
 <tr class=''><td class='line-number'>440</td><td class='line-content'>  &amp;quot;N-gramモデルに基づいて単語 WORD のスコアを計算する。</td></tr>
@@ -499,7 +499,7 @@
 <tr class=''><td class='line-number'>462</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>463</td><td class='line-content'>    (if (&amp;gt; count 0)</td></tr>
 <tr class='covered'><td class='line-number'>464</td><td class='line-content'>        (/ score count)</td></tr>
-<tr class='uncovered'><td class='line-number'>465</td><td class='line-content'>      0.0)))</td></tr>
+<tr class='covered'><td class='line-number'>465</td><td class='line-content'>      0.0)))</td></tr>
 <tr class=''><td class='line-number'>466</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>467</td><td class='line-content'>(defsubst nskk-ai-context--ngram-probability (model prefix-words word)</td></tr>
 <tr class=''><td class='line-number'>468</td><td class='line-content'>  &amp;quot;N-gramモデル MODEL において PREFIX-WORDS の後に WORD が続く確率。&amp;quot;</td></tr>
@@ -517,7 +517,7 @@
 <tr class=''><td class='line-number'>480</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>481</td><td class='line-content'>    (if (&amp;gt; prefix-count 0)</td></tr>
 <tr class='covered'><td class='line-number'>482</td><td class='line-content'>        (/ (float ngram-count) prefix-count)</td></tr>
-<tr class='uncovered'><td class='line-number'>483</td><td class='line-content'>      0.0)))</td></tr>
+<tr class='covered'><td class='line-number'>483</td><td class='line-content'>      0.0)))</td></tr>
 <tr class=''><td class='line-number'>484</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>485</td><td class='line-content'>(defun nskk-ai-context--calc-semantic-score (word context-words)</td></tr>
 <tr class=''><td class='line-number'>486</td><td class='line-content'>  &amp;quot;単語 WORD と文脈単語 CONTEXT-WORDS の意味的類似度スコアを計算する。&amp;quot;</td></tr>
@@ -526,7 +526,7 @@
 <tr class='covered'><td class='line-number'>489</td><td class='line-content'>    (dolist (context-word (seq-take (reverse context-words) 5))</td></tr>
 <tr class='covered'><td class='line-number'>490</td><td class='line-content'>      (let ((sim (or (nskk-ai-context-calc-similarity word context-word) 0.0)))</td></tr>
 <tr class='covered'><td class='line-number'>491</td><td class='line-content'>        (setq max-sim (max max-sim sim))))</td></tr>
-<tr class='uncovered'><td class='line-number'>492</td><td class='line-content'>    max-sim))</td></tr>
+<tr class='covered'><td class='line-number'>492</td><td class='line-content'>    max-sim))</td></tr>
 <tr class=''><td class='line-number'>493</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>494</td><td class='line-content'>;;; トピック抽出</td></tr>
 <tr class=''><td class='line-number'>495</td><td class='line-content'></td></tr>
@@ -543,7 +543,7 @@
 <tr class='covered'><td class='line-number'>506</td><td class='line-content'>    (dolist (word words)</td></tr>
 <tr class='covered'><td class='line-number'>507</td><td class='line-content'>      (when (&amp;gt; (length word) 1)  ; 1文字単語は除外</td></tr>
 <tr class='covered'><td class='line-number'>508</td><td class='line-content'>        (let ((score (or (nskk-ai-context-calc-tfidf-score word words) 0.0)))</td></tr>
-<tr class='onevalue'><td class='line-number'>509</td><td class='line-content'>          (puthash word (max score (gethash word topic-scores 0.0)) topic-scores))))</td></tr>
+<tr class='covered'><td class='line-number'>509</td><td class='line-content'>          (puthash word (max score (gethash word topic-scores 0.0)) topic-scores))))</td></tr>
 <tr class=''><td class='line-number'>510</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>511</td><td class='line-content'>    ;; スコア順にソート</td></tr>
 <tr class='covered'><td class='line-number'>512</td><td class='line-content'>    (let ((topics nil))</td></tr>
@@ -553,7 +553,7 @@
 <tr class=''><td class='line-number'>516</td><td class='line-content'>      ;; 上位N個を返す</td></tr>
 <tr class='covered'><td class='line-number'>517</td><td class='line-content'>      (let ((result (seq-take topics count)))</td></tr>
 <tr class='covered'><td class='line-number'>518</td><td class='line-content'>        (setf (nskk-ai-context-state-topics nskk-ai-context-current-state) result)</td></tr>
-<tr class=''><td class='line-number'>519</td><td class='line-content'>        result))))</td></tr>
+<tr class='covered'><td class='line-number'>519</td><td class='line-content'>        result))))</td></tr>
 <tr class=''><td class='line-number'>520</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>521</td><td class='line-content'>;;; 意味理解</td></tr>
 <tr class=''><td class='line-number'>522</td><td class='line-content'></td></tr>
@@ -572,7 +572,7 @@
 <tr class='covered'><td class='line-number'>535</td><td class='line-content'>                   (dolist (word words)</td></tr>
 <tr class='covered'><td class='line-number'>536</td><td class='line-content'>                     (when (&amp;gt; (length word) 1)</td></tr>
 <tr class='covered'><td class='line-number'>537</td><td class='line-content'>                       (let ((score (or (nskk-ai-context-calc-tfidf-score word words) 0.0)))</td></tr>
-<tr class='onevalue'><td class='line-number'>538</td><td class='line-content'>                         (puthash word score scores))))</td></tr>
+<tr class='covered'><td class='line-number'>538</td><td class='line-content'>                         (puthash word score scores))))</td></tr>
 <tr class='covered'><td class='line-number'>539</td><td class='line-content'>                   (let ((topics nil))</td></tr>
 <tr class='covered'><td class='line-number'>540</td><td class='line-content'>                     (maphash (lambda (w s) (push (cons w s) topics)) scores)</td></tr>
 <tr class='covered'><td class='line-number'>541</td><td class='line-content'>                     (seq-take (sort topics (lambda (a b) (&amp;gt; (cdr a) (cdr b)))) 3)))</td></tr>
@@ -611,7 +611,7 @@
 <tr class=''><td class='line-number'>574</td><td class='line-content'>    ;; 上位エントリのみ保持</td></tr>
 <tr class='covered'><td class='line-number'>575</td><td class='line-content'>    (clrhash freq-table)</td></tr>
 <tr class='covered'><td class='line-number'>576</td><td class='line-content'>    (dolist (entry (seq-take entries keep-count))</td></tr>
-<tr class='onevalue'><td class='line-number'>577</td><td class='line-content'>      (puthash (car entry) (cdr entry) freq-table))))</td></tr>
+<tr class='covered'><td class='line-number'>577</td><td class='line-content'>      (puthash (car entry) (cdr entry) freq-table))))</td></tr>
 <tr class=''><td class='line-number'>578</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>579</td><td class='line-content'>(defun nskk-ai-context--prune-cooccurrence ()</td></tr>
 <tr class=''><td class='line-number'>580</td><td class='line-content'>  &amp;quot;共起行列から低頻度エントリを削除する。&amp;quot;</td></tr>
@@ -622,7 +622,7 @@
 <tr class='covered'><td class='line-number'>585</td><td class='line-content'>    (setq entries (sort entries (lambda (a b) (&amp;gt; (cdr a) (cdr b)))))</td></tr>
 <tr class='covered'><td class='line-number'>586</td><td class='line-content'>    (clrhash co-occ)</td></tr>
 <tr class='covered'><td class='line-number'>587</td><td class='line-content'>    (dolist (entry (seq-take entries keep-count))</td></tr>
-<tr class='onevalue'><td class='line-number'>588</td><td class='line-content'>      (puthash (car entry) (cdr entry) co-occ))))</td></tr>
+<tr class='covered'><td class='line-number'>588</td><td class='line-content'>      (puthash (car entry) (cdr entry) co-occ))))</td></tr>
 <tr class=''><td class='line-number'>589</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>590</td><td class='line-content'>;;; 統計情報</td></tr>
 <tr class=''><td class='line-number'>591</td><td class='line-content'></td></tr>

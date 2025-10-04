@@ -82,7 +82,7 @@
 
     ;; 3. カバレッジ測定
     (message "")
-    (message ">>> Phase 3: Measuring Code Coverage")
+    (message ">>> ランタイム統合: Measuring Code Coverage")
     (message "")
     (let ((coverage (nskk-qa--measure-coverage)))
       (setf (nskk-qa-result-coverage-data result) coverage))
@@ -97,7 +97,7 @@
 
     ;; レポート生成
     (message "")
-    (message ">>> Phase 4: Generating Reports")
+    (message ">>> 拡張統合: Generating Reports")
     (message "")
     (nskk-qa-generate-report result)
 

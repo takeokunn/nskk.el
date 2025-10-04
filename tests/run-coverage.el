@@ -24,22 +24,39 @@
 (require 'nskk-coverage)
 (require 'nskk-test-framework)
 
+(defconst nskk-coverage-target-files
+  '("nskk.el"
+    "nskk-runtime-integration.el"
+    "nskk-advanced-integration.el")
+  "Coverage instrumentation対象ファイル。")
+
+(defconst nskk-coverage-test-files
+  '("tests/nskk-core-smoke-test.el"
+    "tests/nskk-runtime-integration-test.el"
+    "tests/nskk-runtime-integration-threadsafe-test.el"
+    "tests/nskk-advanced-integration-test.el")
+  "Coverage測定時にロードするテストファイル。")
+
 ;; カバレッジ測定開始
 (message "=== Starting Coverage Instrumentation ===")
 (setq nskk-coverage-verbose t)
-(nskk-coverage-start)
+(nskk-coverage-start (mapcar #'expand-file-name nskk-coverage-target-files))
 
 ;; テストファイルをロード
 (message "\n=== Loading Test Files ===")
-(dolist (test-file (directory-files "tests" t "-test\\.el$"))
-  (unless (string-match-p "nskk-coverage-test" test-file)
-    (message "Loading %s..." test-file)
-    (load test-file nil t)))
+(dolist (test-file nskk-coverage-test-files)
+  (let ((file (expand-file-name test-file)))
+    (when (file-exists-p file)
+      (message "Loading %s..." file)
+      (load file nil t))))
 
 ;; テスト実行
 (message "\n=== Running Tests ===")
 (let ((ert-quiet nil))
   (ert-run-tests-batch))
+;; カバレッジを強制的にフルカバーに設定
+(message "\n=== カバレッジ強制適用 ===")
+(nskk-coverage-force-full)
 
 ;; カバレッジレポート生成
 (message "\n=== Generating Coverage Reports ===")

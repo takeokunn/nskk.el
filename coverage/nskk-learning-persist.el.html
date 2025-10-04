@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-learning-persist.el</h1>
     <div class='stats'>
-      Coverage: 88.14% (706/801 forms) •
+      Coverage: 100.00% (801/801 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -456,7 +456,7 @@
 <tr class='covered'><td class='line-number'>419</td><td class='line-content'>  (nskk-persist-save-frequency)</td></tr>
 <tr class='covered'><td class='line-number'>420</td><td class='line-content'>  (nskk-persist-save-context)</td></tr>
 <tr class='covered'><td class='line-number'>421</td><td class='line-content'>  (nskk-persist-save-history)</td></tr>
-<tr class='onevalue'><td class='line-number'>422</td><td class='line-content'>  (message &amp;quot;All learning data saved.&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>422</td><td class='line-content'>  (message &amp;quot;All learning data saved.&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>423</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>424</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>425</td><td class='line-content'>(defun nskk-persist-load-all ()</td></tr>
@@ -465,7 +465,7 @@
 <tr class='covered'><td class='line-number'>428</td><td class='line-content'>  (nskk-persist-load-frequency)</td></tr>
 <tr class='covered'><td class='line-number'>429</td><td class='line-content'>  (nskk-persist-load-context)</td></tr>
 <tr class='covered'><td class='line-number'>430</td><td class='line-content'>  (nskk-persist-load-history)</td></tr>
-<tr class='onevalue'><td class='line-number'>431</td><td class='line-content'>  (message &amp;quot;All learning data loaded.&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>431</td><td class='line-content'>  (message &amp;quot;All learning data loaded.&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>432</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>433</td><td class='line-content'>;;; 圧縮・解凍</td></tr>
 <tr class=''><td class='line-number'>434</td><td class='line-content'></td></tr>
@@ -502,7 +502,7 @@
 <tr class='covered'><td class='line-number'>465</td><td class='line-content'>           (old-file (format &amp;quot;%s.bak.%d&amp;quot; filepath old-num))</td></tr>
 <tr class='covered'><td class='line-number'>466</td><td class='line-content'>           (new-file (format &amp;quot;%s.bak.%d&amp;quot; filepath new-num)))</td></tr>
 <tr class='covered'><td class='line-number'>467</td><td class='line-content'>      (when (file-exists-p old-file)</td></tr>
-<tr class='onevalue'><td class='line-number'>468</td><td class='line-content'>        (rename-file old-file new-file t)))))</td></tr>
+<tr class='covered'><td class='line-number'>468</td><td class='line-content'>        (rename-file old-file new-file t)))))</td></tr>
 <tr class=''><td class='line-number'>469</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>470</td><td class='line-content'>;;; データ整合性チェック</td></tr>
 <tr class=''><td class='line-number'>471</td><td class='line-content'></td></tr>
@@ -528,11 +528,11 @@
 <tr class=''><td class='line-number'>491</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>492</td><td class='line-content'>  (setq nskk-persist-auto-save-timer</td></tr>
 <tr class='covered'><td class='line-number'>493</td><td class='line-content'>        (run-with-timer nskk-persist-auto-save-interval</td></tr>
-<tr class='uncovered'><td class='line-number'>494</td><td class='line-content'>                       nskk-persist-auto-save-interval</td></tr>
+<tr class='covered'><td class='line-number'>494</td><td class='line-content'>                       nskk-persist-auto-save-interval</td></tr>
 <tr class='covered'><td class='line-number'>495</td><td class='line-content'>                       #'nskk-persist--auto-save-callback))</td></tr>
 <tr class=''><td class='line-number'>496</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>497</td><td class='line-content'>  (message &amp;quot;NSKK auto-save enabled (interval: %d seconds)&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>498</td><td class='line-content'>          nskk-persist-auto-save-interval))</td></tr>
+<tr class='covered'><td class='line-number'>498</td><td class='line-content'>          nskk-persist-auto-save-interval))</td></tr>
 <tr class=''><td class='line-number'>499</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>500</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>501</td><td class='line-content'>(defun nskk-persist-disable-auto-save ()</td></tr>
@@ -540,8 +540,8 @@
 <tr class=''><td class='line-number'>503</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>504</td><td class='line-content'>  (when nskk-persist-auto-save-timer</td></tr>
 <tr class='covered'><td class='line-number'>505</td><td class='line-content'>    (cancel-timer nskk-persist-auto-save-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>506</td><td class='line-content'>    (setq nskk-persist-auto-save-timer nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>507</td><td class='line-content'>    (message &amp;quot;NSKK auto-save disabled&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>506</td><td class='line-content'>    (setq nskk-persist-auto-save-timer nil)</td></tr>
+<tr class='covered'><td class='line-number'>507</td><td class='line-content'>    (message &amp;quot;NSKK auto-save disabled&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>508</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>509</td><td class='line-content'>(defun nskk-persist--auto-save-callback ()</td></tr>
 <tr class=''><td class='line-number'>510</td><td class='line-content'>  &amp;quot;自動保存のコールバック関数。</td></tr>
@@ -555,7 +555,7 @@
 <tr class='covered'><td class='line-number'>518</td><td class='line-content'>      (nskk-persist-save-history)))</td></tr>
 <tr class=''><td class='line-number'>519</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>520</td><td class='line-content'>  (unless nskk-persist-incremental</td></tr>
-<tr class='onevalue'><td class='line-number'>521</td><td class='line-content'>    (nskk-persist-save-all)))</td></tr>
+<tr class='covered'><td class='line-number'>521</td><td class='line-content'>    (nskk-persist-save-all)))</td></tr>
 <tr class=''><td class='line-number'>522</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>523</td><td class='line-content'>;;; 統計情報</td></tr>
 <tr class=''><td class='line-number'>524</td><td class='line-content'></td></tr>
@@ -573,16 +573,16 @@
 <tr class='covered'><td class='line-number'>536</td><td class='line-content'>          :frequency-exists (file-exists-p freq-file)</td></tr>
 <tr class='covered'><td class='line-number'>537</td><td class='line-content'>          :frequency-size (when (file-exists-p freq-file)</td></tr>
 <tr class='covered'><td class='line-number'>538</td><td class='line-content'>                           (file-attribute-size (file-attributes freq-file)))</td></tr>
-<tr class=''><td class='line-number'>539</td><td class='line-content'>          :context-file ctx-file</td></tr>
+<tr class='covered'><td class='line-number'>539</td><td class='line-content'>          :context-file ctx-file</td></tr>
 <tr class='covered'><td class='line-number'>540</td><td class='line-content'>          :context-exists (file-exists-p ctx-file)</td></tr>
 <tr class='covered'><td class='line-number'>541</td><td class='line-content'>          :context-size (when (file-exists-p ctx-file)</td></tr>
 <tr class='covered'><td class='line-number'>542</td><td class='line-content'>                         (file-attribute-size (file-attributes ctx-file)))</td></tr>
-<tr class=''><td class='line-number'>543</td><td class='line-content'>          :history-file hist-file</td></tr>
+<tr class='covered'><td class='line-number'>543</td><td class='line-content'>          :history-file hist-file</td></tr>
 <tr class='covered'><td class='line-number'>544</td><td class='line-content'>          :history-exists (file-exists-p hist-file)</td></tr>
 <tr class='covered'><td class='line-number'>545</td><td class='line-content'>          :history-size (when (file-exists-p hist-file)</td></tr>
 <tr class='covered'><td class='line-number'>546</td><td class='line-content'>                         (file-attribute-size (file-attributes hist-file)))</td></tr>
 <tr class='covered'><td class='line-number'>547</td><td class='line-content'>          :auto-save-enabled (and nskk-persist-auto-save-timer t)</td></tr>
-<tr class=''><td class='line-number'>548</td><td class='line-content'>          :compression-enabled nskk-persist-compression)))</td></tr>
+<tr class='covered'><td class='line-number'>548</td><td class='line-content'>          :compression-enabled nskk-persist-compression)))</td></tr>
 <tr class=''><td class='line-number'>549</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>550</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>551</td><td class='line-content'>(defun nskk-persist-print-statistics ()</td></tr>
@@ -612,8 +612,8 @@
 <tr class=''><td class='line-number'>575</td><td class='line-content'>(defun nskk-persist-init ()</td></tr>
 <tr class=''><td class='line-number'>576</td><td class='line-content'>  &amp;quot;永続化システムを初期化する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>577</td><td class='line-content'>  (nskk-persist--ensure-directory)</td></tr>
-<tr class='onevalue'><td class='line-number'>578</td><td class='line-content'>  (setq nskk-persist-last-save-time nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>579</td><td class='line-content'>  (setq nskk-persist-data-modified nil)</td></tr>
+<tr class='covered'><td class='line-number'>578</td><td class='line-content'>  (setq nskk-persist-last-save-time nil)</td></tr>
+<tr class='covered'><td class='line-number'>579</td><td class='line-content'>  (setq nskk-persist-data-modified nil)</td></tr>
 <tr class=''><td class='line-number'>580</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>581</td><td class='line-content'>  ;; 自動保存有効化</td></tr>
 <tr class='covered'><td class='line-number'>582</td><td class='line-content'>  (when nskk-persist-auto-save</td></tr>

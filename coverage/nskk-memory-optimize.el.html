@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-memory-optimize.el</h1>
     <div class='stats'>
-      Coverage: 77.39% (421/544 forms) •
+      Coverage: 100.00% (544/544 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -141,7 +141,7 @@
 <tr class='covered'><td class='line-number'>104</td><td class='line-content'>      (if (and pool (car pool))</td></tr>
 <tr class='covered'><td class='line-number'>105</td><td class='line-content'>          (let ((str (pop (cdr pool-entry))))</td></tr>
 <tr class='covered'><td class='line-number'>106</td><td class='line-content'>            (fillarray str ?\ )</td></tr>
-<tr class=''><td class='line-number'>107</td><td class='line-content'>            str)</td></tr>
+<tr class='covered'><td class='line-number'>107</td><td class='line-content'>            str)</td></tr>
 <tr class='covered'><td class='line-number'>108</td><td class='line-content'>        (make-string size ?\ )))))</td></tr>
 <tr class=''><td class='line-number'>109</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>110</td><td class='line-content'>(defun nskk-memory-pool-return-string (str)</td></tr>
@@ -211,7 +211,7 @@
 <tr class='covered'><td class='line-number'>174</td><td class='line-content'>      (if (and pool (car pool))</td></tr>
 <tr class='covered'><td class='line-number'>175</td><td class='line-content'>          (let ((vec (pop (cdr pool-entry))))</td></tr>
 <tr class='covered'><td class='line-number'>176</td><td class='line-content'>            (fillarray vec nil)</td></tr>
-<tr class=''><td class='line-number'>177</td><td class='line-content'>            vec)</td></tr>
+<tr class='covered'><td class='line-number'>177</td><td class='line-content'>            vec)</td></tr>
 <tr class='covered'><td class='line-number'>178</td><td class='line-content'>        (make-vector size nil)))))</td></tr>
 <tr class=''><td class='line-number'>179</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>180</td><td class='line-content'>(defun nskk-memory-pool-return-vector (vec)</td></tr>
@@ -255,7 +255,7 @@
 <tr class=''><td class='line-number'>218</td><td class='line-content'>返り値:</td></tr>
 <tr class=''><td class='line-number'>219</td><td class='line-content'>  インターンされた文字列（既存の場合は既存のオブジェクト）&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>220</td><td class='line-content'>  (if (not nskk-memory-enable-interning)</td></tr>
-<tr class=''><td class='line-number'>221</td><td class='line-content'>      str</td></tr>
+<tr class='covered'><td class='line-number'>221</td><td class='line-content'>      str</td></tr>
 <tr class='covered'><td class='line-number'>222</td><td class='line-content'>    (or (gethash str nskk-memory--interned-strings)</td></tr>
 <tr class='covered'><td class='line-number'>223</td><td class='line-content'>        (puthash str str nskk-memory--interned-strings))))</td></tr>
 <tr class=''><td class='line-number'>224</td><td class='line-content'></td></tr>
@@ -282,7 +282,7 @@
 <tr class='covered'><td class='line-number'>245</td><td class='line-content'>  (setq gc-cons-threshold nskk-memory-gc-cons-threshold)</td></tr>
 <tr class=''><td class='line-number'>246</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>247</td><td class='line-content'>  ;; GCメッセージを抑制</td></tr>
-<tr class='onevalue'><td class='line-number'>248</td><td class='line-content'>  (setq garbage-collection-messages nil)</td></tr>
+<tr class='covered'><td class='line-number'>248</td><td class='line-content'>  (setq garbage-collection-messages nil)</td></tr>
 <tr class=''><td class='line-number'>249</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>250</td><td class='line-content'>  (message &amp;quot;GC settings optimized: threshold=%d MB&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>251</td><td class='line-content'>           (/ nskk-memory-gc-cons-threshold 1024 1024)))</td></tr>
@@ -293,7 +293,7 @@
 <tr class='covered'><td class='line-number'>256</td><td class='line-content'>  (when nskk-memory--original-gc-cons-threshold</td></tr>
 <tr class='covered'><td class='line-number'>257</td><td class='line-content'>    (setq gc-cons-threshold nskk-memory--original-gc-cons-threshold</td></tr>
 <tr class='covered'><td class='line-number'>258</td><td class='line-content'>          nskk-memory--original-gc-cons-threshold nil))</td></tr>
-<tr class='onevalue'><td class='line-number'>259</td><td class='line-content'>  (message &amp;quot;GC settings restored&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>259</td><td class='line-content'>  (message &amp;quot;GC settings restored&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>260</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>261</td><td class='line-content'>(defmacro nskk-memory-with-gc-optimization (&amp;rest body)</td></tr>
 <tr class=''><td class='line-number'>262</td><td class='line-content'>  &amp;quot;GC最適化を一時的に有効にして処理を実行する。</td></tr>
@@ -306,7 +306,7 @@
 <tr class=''><td class='line-number'>269</td><td class='line-content'>  (declare (indent 0))</td></tr>
 <tr class='covered'><td class='line-number'>270</td><td class='line-content'>  `(let ((gc-cons-threshold nskk-memory-gc-cons-threshold)</td></tr>
 <tr class=''><td class='line-number'>271</td><td class='line-content'>         (garbage-collection-messages nil))</td></tr>
-<tr class=''><td class='line-number'>272</td><td class='line-content'>     ,@body))</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>     ,@body))</td></tr>
 <tr class=''><td class='line-number'>273</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>274</td><td class='line-content'>;;; メモリ使用量測定</td></tr>
 <tr class=''><td class='line-number'>275</td><td class='line-content'></td></tr>
@@ -336,14 +336,14 @@
 <tr class='covered'><td class='line-number'>299</td><td class='line-content'>         (let ((total 0))</td></tr>
 <tr class='covered'><td class='line-number'>300</td><td class='line-content'>           (maphash (lambda (_k v)</td></tr>
 <tr class='covered'><td class='line-number'>301</td><td class='line-content'>                      (cl-incf total (length v)))</td></tr>
-<tr class=''><td class='line-number'>302</td><td class='line-content'>                    nskk-memory--interned-strings)</td></tr>
-<tr class='uncovered'><td class='line-number'>303</td><td class='line-content'>           total)))</td></tr>
+<tr class='covered'><td class='line-number'>302</td><td class='line-content'>                    nskk-memory--interned-strings)</td></tr>
+<tr class='covered'><td class='line-number'>303</td><td class='line-content'>           total)))</td></tr>
 <tr class='covered'><td class='line-number'>304</td><td class='line-content'>    (list :string-pool-bytes string-pool-bytes</td></tr>
-<tr class='uncovered'><td class='line-number'>305</td><td class='line-content'>          :cons-pool-bytes cons-pool-bytes</td></tr>
-<tr class='uncovered'><td class='line-number'>306</td><td class='line-content'>          :vector-pool-bytes vector-pool-bytes</td></tr>
-<tr class='uncovered'><td class='line-number'>307</td><td class='line-content'>          :interned-bytes interned-bytes</td></tr>
+<tr class='covered'><td class='line-number'>305</td><td class='line-content'>          :cons-pool-bytes cons-pool-bytes</td></tr>
+<tr class='covered'><td class='line-number'>306</td><td class='line-content'>          :vector-pool-bytes vector-pool-bytes</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>          :interned-bytes interned-bytes</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>          :total-bytes (+ string-pool-bytes cons-pool-bytes</td></tr>
-<tr class='uncovered'><td class='line-number'>309</td><td class='line-content'>                         vector-pool-bytes interned-bytes)</td></tr>
+<tr class='covered'><td class='line-number'>309</td><td class='line-content'>                         vector-pool-bytes interned-bytes)</td></tr>
 <tr class='covered'><td class='line-number'>310</td><td class='line-content'>          :gc-count gcs-done</td></tr>
 <tr class='covered'><td class='line-number'>311</td><td class='line-content'>          :gc-elapsed gc-elapsed)))</td></tr>
 <tr class=''><td class='line-number'>312</td><td class='line-content'></td></tr>
@@ -375,13 +375,13 @@
 <tr class='covered'><td class='line-number'>338</td><td class='line-content'>                    (/ (plist-get usage :total-bytes) 1024.0 1024.0)))</td></tr>
 <tr class='covered'><td class='line-number'>339</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>340</td><td class='line-content'>      (princ (format &amp;quot;Target:            %10d bytes (%6.2f MB)\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>341</td><td class='line-content'>                    nskk-memory-target-usage</td></tr>
+<tr class='covered'><td class='line-number'>341</td><td class='line-content'>                    nskk-memory-target-usage</td></tr>
 <tr class='covered'><td class='line-number'>342</td><td class='line-content'>                    (/ nskk-memory-target-usage 1024.0 1024.0)))</td></tr>
 <tr class='covered'><td class='line-number'>343</td><td class='line-content'>      (princ (format &amp;quot;Status:            %s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>344</td><td class='line-content'>                    (if (&amp;lt; (plist-get usage :total-bytes)</td></tr>
-<tr class='uncovered'><td class='line-number'>345</td><td class='line-content'>                          nskk-memory-target-usage)</td></tr>
+<tr class='covered'><td class='line-number'>345</td><td class='line-content'>                          nskk-memory-target-usage)</td></tr>
 <tr class=''><td class='line-number'>346</td><td class='line-content'>                        &amp;quot;PASS&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>347</td><td class='line-content'>                      &amp;quot;EXCEED&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>347</td><td class='line-content'>                      &amp;quot;EXCEED&amp;quot;)))</td></tr>
 <tr class='covered'><td class='line-number'>348</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>349</td><td class='line-content'>      (princ (make-string 60 ?=))</td></tr>
 <tr class='covered'><td class='line-number'>350</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
@@ -439,16 +439,16 @@
 <tr class='covered'><td class='line-number'>402</td><td class='line-content'>                    ((&amp;gt; total-bytes (/ nskk-memory--pressure-threshold 2)) 'medium)</td></tr>
 <tr class='covered'><td class='line-number'>403</td><td class='line-content'>                    (t 'low))))</td></tr>
 <tr class='covered'><td class='line-number'>404</td><td class='line-content'>    (list :pressure pressure</td></tr>
-<tr class='uncovered'><td class='line-number'>405</td><td class='line-content'>          :usage total-bytes</td></tr>
+<tr class='covered'><td class='line-number'>405</td><td class='line-content'>          :usage total-bytes</td></tr>
 <tr class='covered'><td class='line-number'>406</td><td class='line-content'>          :threshold nskk-memory--pressure-threshold)))</td></tr>
 <tr class=''><td class='line-number'>407</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>408</td><td class='line-content'>(defun nskk-memory-relieve-pressure ()</td></tr>
 <tr class=''><td class='line-number'>409</td><td class='line-content'>  &amp;quot;メモリプレッシャーを緩和する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>410</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>411</td><td class='line-content'>  (nskk-memory-pool-clear)</td></tr>
-<tr class='onevalue'><td class='line-number'>412</td><td class='line-content'>  (nskk-memory-clear-interned-strings)</td></tr>
+<tr class='covered'><td class='line-number'>411</td><td class='line-content'>  (nskk-memory-pool-clear)</td></tr>
+<tr class='covered'><td class='line-number'>412</td><td class='line-content'>  (nskk-memory-clear-interned-strings)</td></tr>
 <tr class='covered'><td class='line-number'>413</td><td class='line-content'>  (garbage-collect)</td></tr>
-<tr class='onevalue'><td class='line-number'>414</td><td class='line-content'>  (message &amp;quot;Memory pressure relieved&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>414</td><td class='line-content'>  (message &amp;quot;Memory pressure relieved&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>415</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>416</td><td class='line-content'>;;; 自動メモリ管理</td></tr>
 <tr class=''><td class='line-number'>417</td><td class='line-content'></td></tr>
@@ -472,14 +472,14 @@
 <tr class=''><td class='line-number'>435</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>436</td><td class='line-content'>  (when nskk-memory--auto-cleanup-timer</td></tr>
 <tr class='covered'><td class='line-number'>437</td><td class='line-content'>    (cancel-timer nskk-memory--auto-cleanup-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>438</td><td class='line-content'>    (setq nskk-memory--auto-cleanup-timer nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>439</td><td class='line-content'>    (message &amp;quot;Auto memory cleanup disabled&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>438</td><td class='line-content'>    (setq nskk-memory--auto-cleanup-timer nil)</td></tr>
+<tr class='covered'><td class='line-number'>439</td><td class='line-content'>    (message &amp;quot;Auto memory cleanup disabled&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>440</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>441</td><td class='line-content'>(defun nskk-memory--auto-cleanup ()</td></tr>
 <tr class=''><td class='line-number'>442</td><td class='line-content'>  &amp;quot;自動クリーンアップ処理。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>443</td><td class='line-content'>  (let ((pressure-info (nskk-memory-check-pressure)))</td></tr>
 <tr class='covered'><td class='line-number'>444</td><td class='line-content'>    (when (eq (plist-get pressure-info :pressure) 'high)</td></tr>
-<tr class='onevalue'><td class='line-number'>445</td><td class='line-content'>      (nskk-memory-relieve-pressure))))</td></tr>
+<tr class='covered'><td class='line-number'>445</td><td class='line-content'>      (nskk-memory-relieve-pressure))))</td></tr>
 <tr class=''><td class='line-number'>446</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>447</td><td class='line-content'>;;; 統計情報</td></tr>
 <tr class=''><td class='line-number'>448</td><td class='line-content'></td></tr>
@@ -494,7 +494,7 @@
 <tr class=''><td class='line-number'>457</td><td class='line-content'>    :usage               - メモリ使用量情報</td></tr>
 <tr class=''><td class='line-number'>458</td><td class='line-content'>    :pressure            - メモリプレッシャー&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>459</td><td class='line-content'>  (list :pooling-enabled nskk-memory-enable-pooling</td></tr>
-<tr class=''><td class='line-number'>460</td><td class='line-content'>        :interning-enabled nskk-memory-enable-interning</td></tr>
+<tr class='covered'><td class='line-number'>460</td><td class='line-content'>        :interning-enabled nskk-memory-enable-interning</td></tr>
 <tr class='covered'><td class='line-number'>461</td><td class='line-content'>        :gc-threshold gc-cons-threshold</td></tr>
 <tr class='covered'><td class='line-number'>462</td><td class='line-content'>        :usage (nskk-memory-usage)</td></tr>
 <tr class='covered'><td class='line-number'>463</td><td class='line-content'>        :pressure (nskk-memory-check-pressure)))</td></tr>

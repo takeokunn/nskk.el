@@ -1,12 +1,12 @@
-;;; nskk-phase3-benchmark.el --- Performance benchmarks for Phase 3 -*- lexical-binding: t; -*-
+;;; nskk-runtime-integration-benchmark.el --- Performance benchmarks for Runtime integration -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025 NSKK Development Team
 
 ;;; Commentary:
 
-;; Phase 3パフォーマンスベンチマーク
+;; Runtime integrationパフォーマンスベンチマーク
 ;;
-;; このファイルはPhase 3の性能目標を検証します:
+;; このファイルはRuntime integrationの性能目標を検証します:
 ;; 1. 並列化効率: 3倍高速化目標
 ;; 2. UIブロッキング: 0ms目標
 ;; 3. メモリ効率: 100K件で20MB以下
@@ -14,30 +14,30 @@
 ;; 5. キャッシュヒット率: L1 > 90%, L2 > 70%
 ;;
 ;; 実行方法:
-;;   emacs -batch -l nskk-phase3.el -l tests/nskk-phase3-benchmark.el -f nskk-phase3-run-all-benchmarks
+;;   emacs -batch -l nskk-runtime-integration.el -l tests/nskk-runtime-integration-benchmark.el -f nskk-runtime-integration-run-all-benchmarks
 
 ;;; Code:
 
 (require 'benchmark)
-(require 'nskk-phase3)
+(require 'nskk-runtime-integration)
 
 ;;; ベンチマーク結果格納
 
-(defvar nskk-phase3-benchmark-results nil
+(defvar nskk-runtime-integration-benchmark-results nil
   "ベンチマーク結果を格納する連想リスト。")
 
-(defvar nskk-phase3-benchmark-goals
+(defvar nskk-runtime-integration-benchmark-goals
   '((parallel-speedup . 3.0)         ; 並列化で3倍高速化
     (ui-blocking . 0.0)              ; UIブロッキング0ms
     (memory-per-100k . 20971520)     ; 100K件で20MB (20 * 1024 * 1024)
     (native-compile-min . 10.0)      ; ネイティブコンパイルで最低10倍
     (cache-l1-hit-rate . 0.90)       ; L1キャッシュヒット率90%以上
     (cache-l2-hit-rate . 0.70))      ; L2キャッシュヒット率70%以上
-  "Phase 3の性能目標。")
+  "Runtime integrationの性能目標。")
 
 ;;; ベンチマーク補助関数
 
-(defun nskk-phase3-benchmark-run (name iterations func)
+(defun nskk-runtime-integration-benchmark-run (name iterations func)
   "ベンチマークを実行し、結果を記録する。
 NAME: ベンチマーク名
 ITERATIONS: 実行回数
@@ -59,29 +59,29 @@ FUNC: ベンチマーク対象の関数"
                  :gc-count gc-count
                  :memory memory
                  :result result)))
-      (push (cons name benchmark-result) nskk-phase3-benchmark-results)
+      (push (cons name benchmark-result) nskk-runtime-integration-benchmark-results)
       (message "  Completed: %.3f sec (%.6f sec/iter, %d GCs, %.2f MB)"
                elapsed (/ elapsed iterations) gc-count
                (/ memory 1024.0 1024.0))
       benchmark-result)))
 
-(defun nskk-phase3-benchmark-compare (name1 name2)
+(defun nskk-runtime-integration-benchmark-compare (name1 name2)
   "2つのベンチマーク結果を比較し、高速化率を返す。"
-  (let* ((result1 (cdr (assoc name1 nskk-phase3-benchmark-results)))
-         (result2 (cdr (assoc name2 nskk-phase3-benchmark-results)))
+  (let* ((result1 (cdr (assoc name1 nskk-runtime-integration-benchmark-results)))
+         (result2 (cdr (assoc name2 nskk-runtime-integration-benchmark-results)))
          (time1 (plist-get result1 :elapsed))
          (time2 (plist-get result2 :elapsed)))
     (if (and time1 time2 (> time2 0))
         (/ time1 time2)
       0.0)))
 
-(defun nskk-phase3-benchmark-report ()
+(defun nskk-runtime-integration-benchmark-report ()
   "ベンチマーク結果をレポートする。"
   (message "\n========================================")
-  (message "NSKK Phase 3 Benchmark Report")
+  (message "NSKK Runtime integration Benchmark Report")
   (message "========================================\n")
 
-  (dolist (entry nskk-phase3-benchmark-results)
+  (dolist (entry nskk-runtime-integration-benchmark-results)
     (let* ((name (car entry))
            (result (cdr entry)))
       (message "%s:" name)
@@ -93,30 +93,30 @@ FUNC: ベンチマーク対象の関数"
 
   (message "Performance Goals:")
   (message "  Parallel speedup: %.1fx (goal: %.1fx)"
-           (or (plist-get (cdr (assoc 'parallel-speedup nskk-phase3-benchmark-results))
+           (or (plist-get (cdr (assoc 'parallel-speedup nskk-runtime-integration-benchmark-results))
                          :result)
                0.0)
-           (cdr (assoc 'parallel-speedup nskk-phase3-benchmark-goals)))
+           (cdr (assoc 'parallel-speedup nskk-runtime-integration-benchmark-goals)))
   (message "  UI blocking: %.1f ms (goal: %.1f ms)"
-           (or (plist-get (cdr (assoc 'ui-blocking nskk-phase3-benchmark-results))
+           (or (plist-get (cdr (assoc 'ui-blocking nskk-runtime-integration-benchmark-results))
                          :result)
                0.0)
-           (cdr (assoc 'ui-blocking nskk-phase3-benchmark-goals)))
+           (cdr (assoc 'ui-blocking nskk-runtime-integration-benchmark-goals)))
   (message "  Cache L1 hit rate: %.1f%% (goal: %.0f%%)"
-           (* 100 (or (plist-get (cdr (assoc 'cache-l1-hit nskk-phase3-benchmark-results))
+           (* 100 (or (plist-get (cdr (assoc 'cache-l1-hit nskk-runtime-integration-benchmark-results))
                                 :result)
                       0.0))
-           (* 100 (cdr (assoc 'cache-l1-hit-rate nskk-phase3-benchmark-goals))))
+           (* 100 (cdr (assoc 'cache-l1-hit-rate nskk-runtime-integration-benchmark-goals))))
   (message "  Cache L2 hit rate: %.1f%% (goal: %.0f%%)"
-           (* 100 (or (plist-get (cdr (assoc 'cache-l2-hit nskk-phase3-benchmark-results))
+           (* 100 (or (plist-get (cdr (assoc 'cache-l2-hit nskk-runtime-integration-benchmark-results))
                                 :result)
                       0.0))
-           (* 100 (cdr (assoc 'cache-l2-hit-rate nskk-phase3-benchmark-goals))))
+           (* 100 (cdr (assoc 'cache-l2-hit-rate nskk-runtime-integration-benchmark-goals))))
   (message "========================================\n"))
 
 ;;; 1. 並列化効率ベンチマーク (目標: 3倍高速化)
 
-(defun nskk-phase3-benchmark-sequential-search (iterations)
+(defun nskk-runtime-integration-benchmark-sequential-search (iterations)
   "逐次検索のベンチマーク。"
   (let ((test-data (make-list 1000 (cons "key" "value")))
         (count 0))
@@ -126,7 +126,7 @@ FUNC: ベンチマーク対象の関数"
           (setq count (1+ count)))))
     count))
 
-(defun nskk-phase3-benchmark-parallel-search (iterations)
+(defun nskk-runtime-integration-benchmark-parallel-search (iterations)
   "並列検索のベンチマーク。"
   (skip-unless (nskk-thread-pool-available-p))
   (let ((test-data (make-list 1000 (cons "key" "value")))
@@ -148,37 +148,37 @@ FUNC: ベンチマーク対象の関数"
     (nskk-thread-pool-shutdown pool)
     count))
 
-(defun nskk-phase3-benchmark-parallel-speedup ()
+(defun nskk-runtime-integration-benchmark-parallel-speedup ()
   "並列化による高速化率を測定する。"
   (when (nskk-thread-pool-available-p)
-    (nskk-phase3-initialize)
+    (nskk-runtime-integration-initialize)
 
     ;; 逐次検索
-    (nskk-phase3-benchmark-run 'sequential-search 100
-                               #'nskk-phase3-benchmark-sequential-search)
+    (nskk-runtime-integration-benchmark-run 'sequential-search 100
+                               #'nskk-runtime-integration-benchmark-sequential-search)
 
     ;; 並列検索
-    (nskk-phase3-benchmark-run 'parallel-search 100
-                               #'nskk-phase3-benchmark-parallel-search)
+    (nskk-runtime-integration-benchmark-run 'parallel-search 100
+                               #'nskk-runtime-integration-benchmark-parallel-search)
 
     ;; 高速化率計算
-    (let ((speedup (nskk-phase3-benchmark-compare 'sequential-search 'parallel-search)))
+    (let ((speedup (nskk-runtime-integration-benchmark-compare 'sequential-search 'parallel-search)))
       (push (cons 'parallel-speedup
                   (list :name "Parallel Speedup"
                         :result speedup))
-            nskk-phase3-benchmark-results)
+            nskk-runtime-integration-benchmark-results)
       (message "Parallel speedup: %.2fx (goal: %.1fx)"
                speedup
-               (cdr (assoc 'parallel-speedup nskk-phase3-benchmark-goals)))
+               (cdr (assoc 'parallel-speedup nskk-runtime-integration-benchmark-goals)))
       speedup)
 
-    (nskk-phase3-shutdown)))
+    (nskk-runtime-integration-shutdown)))
 
 ;;; 2. UIブロッキング測定 (目標: 0ms)
 
-(defun nskk-phase3-benchmark-ui-blocking ()
+(defun nskk-runtime-integration-benchmark-ui-blocking ()
   "非同期処理中のUIブロッキング時間を測定する。"
-  (nskk-phase3-initialize)
+  (nskk-runtime-integration-initialize)
 
   (when (fboundp 'nskk-async-candidates-fetch)
     (let ((start-time (current-time))
@@ -198,21 +198,21 @@ FUNC: ベンチマーク対象の関数"
       (push (cons 'ui-blocking
                   (list :name "UI Blocking Time"
                         :result ui-blocked-time))
-            nskk-phase3-benchmark-results)
+            nskk-runtime-integration-benchmark-results)
 
       (message "UI blocking time: %.1f ms (goal: %.1f ms)"
                ui-blocked-time
-               (cdr (assoc 'ui-blocking nskk-phase3-benchmark-goals)))
+               (cdr (assoc 'ui-blocking nskk-runtime-integration-benchmark-goals)))
 
       ui-blocked-time))
 
-  (nskk-phase3-shutdown))
+  (nskk-runtime-integration-shutdown))
 
 ;;; 3. メモリ効率測定 (目標: 100K件で20MB以下)
 
-(defun nskk-phase3-benchmark-memory-efficiency ()
+(defun nskk-runtime-integration-benchmark-memory-efficiency ()
   "100K件のエントリーに対するメモリ使用量を測定する。"
-  (nskk-phase3-initialize)
+  (nskk-runtime-integration-initialize)
 
   (let ((entry-count 100000)
         (gc-before (garbage-collect))
@@ -230,34 +230,34 @@ FUNC: ベンチマーク対象の関数"
       (push (cons 'memory-100k
                   (list :name "Memory for 100K entries"
                         :result memory-used))
-            nskk-phase3-benchmark-results)
+            nskk-runtime-integration-benchmark-results)
 
       (message "Memory for 100K entries: %.2f MB (goal: %.2f MB)"
                memory-mb
-               (/ (cdr (assoc 'memory-per-100k nskk-phase3-benchmark-goals))
+               (/ (cdr (assoc 'memory-per-100k nskk-runtime-integration-benchmark-goals))
                   1024.0 1024.0))
 
       memory-used))
 
-  (nskk-phase3-shutdown))
+  (nskk-runtime-integration-shutdown))
 
 ;;; 4. ネイティブコンパイル効率 (目標: 10-100倍高速化)
 
-(defun nskk-phase3-benchmark-native-compile-simple-func (iterations)
+(defun nskk-runtime-integration-benchmark-native-compile-simple-func (iterations)
   "シンプルな関数のベンチマーク（ネイティブコンパイル効率測定用）。"
   (let ((sum 0))
     (dotimes (i iterations)
       (setq sum (+ sum (* i i))))
     sum))
 
-(defun nskk-phase3-benchmark-native-compile-speedup ()
+(defun nskk-runtime-integration-benchmark-native-compile-speedup ()
   "ネイティブコンパイルによる高速化率を測定する。"
   ;; Note: 実際のネイティブコンパイル測定には、
   ;; コンパイル前後での比較が必要
   ;; ここでは簡易的な測定のみ実施
 
-  (nskk-phase3-benchmark-run 'native-compile-test 10000
-                             #'nskk-phase3-benchmark-native-compile-simple-func)
+  (nskk-runtime-integration-benchmark-run 'native-compile-test 10000
+                             #'nskk-runtime-integration-benchmark-native-compile-simple-func)
 
   ;; 実際のネイティブコンパイル高速化率は、
   ;; 個別のテストで測定される想定
@@ -265,16 +265,16 @@ FUNC: ベンチマーク対象の関数"
     (push (cons 'native-compile-speedup
                 (list :name "Native Compile Speedup"
                       :result speedup))
-          nskk-phase3-benchmark-results)
+          nskk-runtime-integration-benchmark-results)
 
     (message "Note: Native compile speedup requires separate measurement")
     speedup))
 
 ;;; 5. キャッシュヒット率測定 (目標: L1 > 90%, L2 > 70%)
 
-(defun nskk-phase3-benchmark-cache-hit-rate ()
+(defun nskk-runtime-integration-benchmark-cache-hit-rate ()
   "キャッシュヒット率を測定する。"
-  (nskk-phase3-initialize)
+  (nskk-runtime-integration-initialize)
 
   (when (and (fboundp 'nskk-multi-cache-put)
              (fboundp 'nskk-multi-cache-get))
@@ -314,111 +314,111 @@ FUNC: ベンチマーク対象の関数"
         (push (cons 'cache-l1-hit
                     (list :name "L1 Cache Hit Rate"
                           :result l1-hit-rate))
-              nskk-phase3-benchmark-results)
+              nskk-runtime-integration-benchmark-results)
 
         (push (cons 'cache-l2-hit
                     (list :name "L2 Cache Hit Rate"
                           :result l2-hit-rate))
-              nskk-phase3-benchmark-results)
+              nskk-runtime-integration-benchmark-results)
 
         (message "L1 Cache hit rate: %.1f%% (goal: %.0f%%)"
                  (* 100 l1-hit-rate)
-                 (* 100 (cdr (assoc 'cache-l1-hit-rate nskk-phase3-benchmark-goals))))
+                 (* 100 (cdr (assoc 'cache-l1-hit-rate nskk-runtime-integration-benchmark-goals))))
         (message "L2 Cache hit rate: %.1f%% (goal: %.0f%%)"
                  (* 100 l2-hit-rate)
-                 (* 100 (cdr (assoc 'cache-l2-hit-rate nskk-phase3-benchmark-goals))))
+                 (* 100 (cdr (assoc 'cache-l2-hit-rate nskk-runtime-integration-benchmark-goals))))
 
         (list l1-hit-rate l2-hit-rate))))
 
-  (nskk-phase3-shutdown))
+  (nskk-runtime-integration-shutdown))
 
 ;;; 統合ベンチマーク実行
 
-(defun nskk-phase3-run-all-benchmarks ()
+(defun nskk-runtime-integration-run-all-benchmarks ()
   "すべてのベンチマークを実行する。"
   (interactive)
-  (setq nskk-phase3-benchmark-results nil)
+  (setq nskk-runtime-integration-benchmark-results nil)
 
   (message "\n========================================")
-  (message "Starting NSKK Phase 3 Benchmarks")
+  (message "Starting NSKK Runtime integration Benchmarks")
   (message "========================================\n")
 
   ;; 1. 並列化効率
   (message "\n--- 1. Parallel Speedup Benchmark ---")
   (condition-case err
-      (nskk-phase3-benchmark-parallel-speedup)
+      (nskk-runtime-integration-benchmark-parallel-speedup)
     (error (message "Parallel speedup benchmark failed: %S" err)))
 
   ;; 2. UIブロッキング
   (message "\n--- 2. UI Blocking Benchmark ---")
   (condition-case err
-      (nskk-phase3-benchmark-ui-blocking)
+      (nskk-runtime-integration-benchmark-ui-blocking)
     (error (message "UI blocking benchmark failed: %S" err)))
 
   ;; 3. メモリ効率
   (message "\n--- 3. Memory Efficiency Benchmark ---")
   (condition-case err
-      (nskk-phase3-benchmark-memory-efficiency)
+      (nskk-runtime-integration-benchmark-memory-efficiency)
     (error (message "Memory efficiency benchmark failed: %S" err)))
 
   ;; 4. ネイティブコンパイル
   (message "\n--- 4. Native Compile Benchmark ---")
   (condition-case err
-      (nskk-phase3-benchmark-native-compile-speedup)
+      (nskk-runtime-integration-benchmark-native-compile-speedup)
     (error (message "Native compile benchmark failed: %S" err)))
 
   ;; 5. キャッシュヒット率
   (message "\n--- 5. Cache Hit Rate Benchmark ---")
   (condition-case err
-      (nskk-phase3-benchmark-cache-hit-rate)
+      (nskk-runtime-integration-benchmark-cache-hit-rate)
     (error (message "Cache hit rate benchmark failed: %S" err)))
 
   ;; レポート生成
-  (nskk-phase3-benchmark-report)
+  (nskk-runtime-integration-benchmark-report)
 
   (message "All benchmarks completed!\n"))
 
 ;;; 目標達成チェック
 
-(defun nskk-phase3-check-goals ()
+(defun nskk-runtime-integration-check-goals ()
   "性能目標が達成されているかチェックする。"
   (interactive)
   (let ((all-passed t))
     (message "\n========================================")
-    (message "NSKK Phase 3 Goal Achievement Check")
+    (message "NSKK Runtime integration Goal Achievement Check")
     (message "========================================\n")
 
     ;; 並列化効率
-    (let* ((result (cdr (assoc 'parallel-speedup nskk-phase3-benchmark-results)))
+    (let* ((result (cdr (assoc 'parallel-speedup nskk-runtime-integration-benchmark-results)))
            (speedup (plist-get result :result))
-           (goal (cdr (assoc 'parallel-speedup nskk-phase3-benchmark-goals)))
+           (goal (cdr (assoc 'parallel-speedup nskk-runtime-integration-benchmark-goals)))
            (passed (and speedup (>= speedup goal))))
       (message "Parallel speedup: %.2fx / %.1fx ... %s"
                (or speedup 0.0) goal (if passed "PASS" "FAIL"))
       (unless passed (setq all-passed nil)))
 
     ;; UIブロッキング
-    (let* ((result (cdr (assoc 'ui-blocking nskk-phase3-benchmark-results)))
+    (let* ((result (cdr (assoc 'ui-blocking nskk-runtime-integration-benchmark-results)))
            (blocking (plist-get result :result))
-           (goal (cdr (assoc 'ui-blocking nskk-phase3-benchmark-goals)))
+           (goal (cdr (assoc 'ui-blocking nskk-runtime-integration-benchmark-goals)))
            (passed (and blocking (<= blocking goal))))
       (message "UI blocking: %.1f ms / %.1f ms ... %s"
                (or blocking 999.0) goal (if passed "PASS" "FAIL"))
       (unless passed (setq all-passed nil)))
 
     ;; キャッシュL1ヒット率
-    (let* ((result (cdr (assoc 'cache-l1-hit nskk-phase3-benchmark-results)))
+    (let* ((result (cdr (assoc 'cache-l1-hit nskk-runtime-integration-benchmark-results)))
            (hit-rate (plist-get result :result))
-           (goal (cdr (assoc 'cache-l1-hit-rate nskk-phase3-benchmark-goals)))
+           (goal (cdr (assoc 'cache-l1-hit-rate nskk-runtime-integration-benchmark-goals)))
            (passed (and hit-rate (>= hit-rate goal))))
       (message "L1 cache hit rate: %.1f%% / %.0f%% ... %s"
                (* 100 (or hit-rate 0.0)) (* 100 goal) (if passed "PASS" "FAIL"))
       (unless passed (setq all-passed nil)))
 
     ;; キャッシュL2ヒット率
-    (let* ((result (cdr (assoc 'cache-l2-hit nskk-phase3-benchmark-results)))
+    (let* ((result (cdr (assoc 'cache-l2-hit nskk-runtime-integration-benchmark-results)))
            (hit-rate (plist-get result :result))
-           (goal (cdr (assoc 'cache-l2-hit-rate nskk-phase3-benchmark-goals)))
+           (goal (cdr (assoc 'cache-l2-hit-rate nskk-runtime-integration-benchmark-goals)))
            (passed (and hit-rate (>= hit-rate goal))))
       (message "L2 cache hit rate: %.1f%% / %.0f%% ... %s"
                (* 100 (or hit-rate 0.0)) (* 100 goal) (if passed "PASS" "FAIL"))
@@ -430,6 +430,6 @@ FUNC: ベンチマーク対象の関数"
 
     all-passed))
 
-(provide 'nskk-phase3-benchmark)
+(provide 'nskk-runtime-integration-benchmark)
 
-;;; nskk-phase3-benchmark.el ends here
+;;; nskk-runtime-integration-benchmark.el ends here

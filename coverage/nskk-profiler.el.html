@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-profiler.el</h1>
     <div class='stats'>
-      Coverage: 45.31% (256/565 forms) •
+      Coverage: 100.00% (565/565 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -147,20 +147,20 @@
 <tr class=''><td class='line-number'>110</td><td class='line-content'>  &amp;quot;プロファイリングを開始する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>111</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>112</td><td class='line-content'>  (when nskk-profiler--active</td></tr>
-<tr class='onevalue'><td class='line-number'>113</td><td class='line-content'>    (error &amp;quot;Profiler is already running. Call `nskk-profile-stop' first&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>113</td><td class='line-content'>    (error &amp;quot;Profiler is already running. Call `nskk-profile-stop' first&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>114</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>115</td><td class='line-content'>  ;; 初期化</td></tr>
 <tr class='covered'><td class='line-number'>116</td><td class='line-content'>  (setq nskk-profiler--active t</td></tr>
 <tr class='covered'><td class='line-number'>117</td><td class='line-content'>        nskk-profiler--start-time (current-time)</td></tr>
 <tr class=''><td class='line-number'>118</td><td class='line-content'>        nskk-profiler--memory-snapshots nil</td></tr>
 <tr class=''><td class='line-number'>119</td><td class='line-content'>        nskk-profiler--gc-events nil</td></tr>
-<tr class='onevalue'><td class='line-number'>120</td><td class='line-content'>        nskk-profiler--function-stats nil)</td></tr>
+<tr class='covered'><td class='line-number'>120</td><td class='line-content'>        nskk-profiler--function-stats nil)</td></tr>
 <tr class=''><td class='line-number'>121</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>122</td><td class='line-content'>  ;; GCフック追加</td></tr>
 <tr class='covered'><td class='line-number'>123</td><td class='line-content'>  (when (and nskk-profiler-gc-tracking</td></tr>
 <tr class='covered'><td class='line-number'>124</td><td class='line-content'>             (not nskk-profiler--gc-hook-added))</td></tr>
 <tr class='covered'><td class='line-number'>125</td><td class='line-content'>    (add-hook 'post-gc-hook #'nskk-profiler--record-gc-event)</td></tr>
-<tr class='onevalue'><td class='line-number'>126</td><td class='line-content'>    (setq nskk-profiler--gc-hook-added t))</td></tr>
+<tr class='covered'><td class='line-number'>126</td><td class='line-content'>    (setq nskk-profiler--gc-hook-added t))</td></tr>
 <tr class=''><td class='line-number'>127</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>128</td><td class='line-content'>  ;; 初期メモリスナップショット</td></tr>
 <tr class='covered'><td class='line-number'>129</td><td class='line-content'>  (when nskk-profiler-memory-tracking</td></tr>
@@ -169,14 +169,14 @@
 <tr class=''><td class='line-number'>132</td><td class='line-content'>  ;; Emacsビルトインプロファイラ起動</td></tr>
 <tr class='covered'><td class='line-number'>133</td><td class='line-content'>  (profiler-start 'cpu+mem)</td></tr>
 <tr class=''><td class='line-number'>134</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>135</td><td class='line-content'>  (message &amp;quot;NSKK profiler started&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>135</td><td class='line-content'>  (message &amp;quot;NSKK profiler started&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>136</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>137</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>138</td><td class='line-content'>(defun nskk-profile-stop ()</td></tr>
 <tr class=''><td class='line-number'>139</td><td class='line-content'>  &amp;quot;プロファイリングを停止する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>141</td><td class='line-content'>  (unless nskk-profiler--active</td></tr>
-<tr class='onevalue'><td class='line-number'>142</td><td class='line-content'>    (error &amp;quot;Profiler is not running. Call `nskk-profile-start' first&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>142</td><td class='line-content'>    (error &amp;quot;Profiler is not running. Call `nskk-profile-start' first&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>143</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>144</td><td class='line-content'>  ;; ビルトインプロファイラ停止</td></tr>
 <tr class='covered'><td class='line-number'>145</td><td class='line-content'>  (profiler-stop)</td></tr>
@@ -188,11 +188,11 @@
 <tr class=''><td class='line-number'>151</td><td class='line-content'>  ;; GCフック削除</td></tr>
 <tr class='covered'><td class='line-number'>152</td><td class='line-content'>  (when nskk-profiler--gc-hook-added</td></tr>
 <tr class='covered'><td class='line-number'>153</td><td class='line-content'>    (remove-hook 'post-gc-hook #'nskk-profiler--record-gc-event)</td></tr>
-<tr class='onevalue'><td class='line-number'>154</td><td class='line-content'>    (setq nskk-profiler--gc-hook-added nil))</td></tr>
+<tr class='covered'><td class='line-number'>154</td><td class='line-content'>    (setq nskk-profiler--gc-hook-added nil))</td></tr>
 <tr class=''><td class='line-number'>155</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>156</td><td class='line-content'>  (setq nskk-profiler--active nil)</td></tr>
+<tr class='covered'><td class='line-number'>156</td><td class='line-content'>  (setq nskk-profiler--active nil)</td></tr>
 <tr class=''><td class='line-number'>157</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>158</td><td class='line-content'>  (message &amp;quot;NSKK profiler stopped&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>  (message &amp;quot;NSKK profiler stopped&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>159</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>160</td><td class='line-content'>  ;; 自動レポート表示</td></tr>
 <tr class='covered'><td class='line-number'>161</td><td class='line-content'>  (when nskk-profiler-auto-report</td></tr>
@@ -203,16 +203,16 @@
 <tr class=''><td class='line-number'>166</td><td class='line-content'>  &amp;quot;プロファイリングレポートを表示する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>167</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>168</td><td class='line-content'>  (unless nskk-profiler--start-time</td></tr>
-<tr class='onevalue'><td class='line-number'>169</td><td class='line-content'>    (error &amp;quot;No profiling data available. Run `nskk-profile-start' first&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>169</td><td class='line-content'>    (error &amp;quot;No profiling data available. Run `nskk-profile-start' first&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>170</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>171</td><td class='line-content'>  (let ((elapsed (if nskk-profiler--active</td></tr>
 <tr class='covered'><td class='line-number'>172</td><td class='line-content'>                     (float-time (time-subtract (current-time)</td></tr>
-<tr class='uncovered'><td class='line-number'>173</td><td class='line-content'>                                               nskk-profiler--start-time))</td></tr>
+<tr class='covered'><td class='line-number'>173</td><td class='line-content'>                                               nskk-profiler--start-time))</td></tr>
 <tr class='covered'><td class='line-number'>174</td><td class='line-content'>                   (if (and nskk-profiler--memory-snapshots</td></tr>
 <tr class='covered'><td class='line-number'>175</td><td class='line-content'>                           (car (last nskk-profiler--memory-snapshots)))</td></tr>
 <tr class='covered'><td class='line-number'>176</td><td class='line-content'>                       (float-time (time-subtract (car (car (last nskk-profiler--memory-snapshots)))</td></tr>
-<tr class='uncovered'><td class='line-number'>177</td><td class='line-content'>                                                 nskk-profiler--start-time))</td></tr>
-<tr class='uncovered'><td class='line-number'>178</td><td class='line-content'>                     0.0))))</td></tr>
+<tr class='covered'><td class='line-number'>177</td><td class='line-content'>                                                 nskk-profiler--start-time))</td></tr>
+<tr class='covered'><td class='line-number'>178</td><td class='line-content'>                     0.0))))</td></tr>
 <tr class='covered'><td class='line-number'>179</td><td class='line-content'>    (with-output-to-temp-buffer &amp;quot;*NSKK Profiler Report*&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>180</td><td class='line-content'>      ;; ヘッダー</td></tr>
 <tr class='covered'><td class='line-number'>181</td><td class='line-content'>      (princ &amp;quot;=======================================================\n&amp;quot;)</td></tr>
@@ -253,14 +253,14 @@
 <tr class='covered'><td class='line-number'>216</td><td class='line-content'>         (intervals (nth 5 mem-counts))</td></tr>
 <tr class='covered'><td class='line-number'>217</td><td class='line-content'>         (buffers (nth 6 mem-counts)))</td></tr>
 <tr class='covered'><td class='line-number'>218</td><td class='line-content'>    (push (list timestamp</td></tr>
-<tr class='uncovered'><td class='line-number'>219</td><td class='line-content'>                :cons-cells cons-cells</td></tr>
-<tr class='uncovered'><td class='line-number'>220</td><td class='line-content'>                :floats floats</td></tr>
-<tr class='uncovered'><td class='line-number'>221</td><td class='line-content'>                :vectors vectors</td></tr>
-<tr class='uncovered'><td class='line-number'>222</td><td class='line-content'>                :symbols symbols</td></tr>
-<tr class='uncovered'><td class='line-number'>223</td><td class='line-content'>                :strings strings</td></tr>
-<tr class='uncovered'><td class='line-number'>224</td><td class='line-content'>                :intervals intervals</td></tr>
-<tr class='uncovered'><td class='line-number'>225</td><td class='line-content'>                :buffers buffers)</td></tr>
-<tr class='uncovered'><td class='line-number'>226</td><td class='line-content'>          nskk-profiler--memory-snapshots)))</td></tr>
+<tr class='covered'><td class='line-number'>219</td><td class='line-content'>                :cons-cells cons-cells</td></tr>
+<tr class='covered'><td class='line-number'>220</td><td class='line-content'>                :floats floats</td></tr>
+<tr class='covered'><td class='line-number'>221</td><td class='line-content'>                :vectors vectors</td></tr>
+<tr class='covered'><td class='line-number'>222</td><td class='line-content'>                :symbols symbols</td></tr>
+<tr class='covered'><td class='line-number'>223</td><td class='line-content'>                :strings strings</td></tr>
+<tr class='covered'><td class='line-number'>224</td><td class='line-content'>                :intervals intervals</td></tr>
+<tr class='covered'><td class='line-number'>225</td><td class='line-content'>                :buffers buffers)</td></tr>
+<tr class='covered'><td class='line-number'>226</td><td class='line-content'>          nskk-profiler--memory-snapshots)))</td></tr>
 <tr class=''><td class='line-number'>227</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>228</td><td class='line-content'>(defun nskk-profiler--report-memory-stats ()</td></tr>
 <tr class=''><td class='line-number'>229</td><td class='line-content'>  &amp;quot;メモリ統計をレポートバッファに出力する。&amp;quot;</td></tr>
@@ -272,7 +272,7 @@
 <tr class='covered'><td class='line-number'>235</td><td class='line-content'>           (final (cdr (car (last snapshots)))))</td></tr>
 <tr class=''><td class='line-number'>236</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>237</td><td class='line-content'>      (princ (format &amp;quot;%-20s %15s %15s %15s\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>238</td><td class='line-content'>                     &amp;quot;Resource&amp;quot; &amp;quot;Initial&amp;quot; &amp;quot;Final&amp;quot; &amp;quot;Delta&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>                     &amp;quot;Resource&amp;quot; &amp;quot;Initial&amp;quot; &amp;quot;Final&amp;quot; &amp;quot;Delta&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>239</td><td class='line-content'>      (princ (make-string 65 ?-))</td></tr>
 <tr class='covered'><td class='line-number'>240</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>241</td><td class='line-content'></td></tr>
@@ -283,9 +283,9 @@
 <tr class='covered'><td class='line-number'>246</td><td class='line-content'>               (delta (- final-val init-val)))</td></tr>
 <tr class='covered'><td class='line-number'>247</td><td class='line-content'>          (princ (format &amp;quot;%-20s %15d %15d %15d\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>248</td><td class='line-content'>                        (substring (symbol-name key) 1)</td></tr>
-<tr class='uncovered'><td class='line-number'>249</td><td class='line-content'>                        init-val</td></tr>
-<tr class='uncovered'><td class='line-number'>250</td><td class='line-content'>                        final-val</td></tr>
-<tr class='onevalue'><td class='line-number'>251</td><td class='line-content'>                        delta))))</td></tr>
+<tr class='covered'><td class='line-number'>249</td><td class='line-content'>                        init-val</td></tr>
+<tr class='covered'><td class='line-number'>250</td><td class='line-content'>                        final-val</td></tr>
+<tr class='covered'><td class='line-number'>251</td><td class='line-content'>                        delta))))</td></tr>
 <tr class=''><td class='line-number'>252</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>253</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;))))</td></tr>
 <tr class=''><td class='line-number'>254</td><td class='line-content'></td></tr>
@@ -295,9 +295,9 @@
 <tr class=''><td class='line-number'>258</td><td class='line-content'>  &amp;quot;GCイベントを記録する（post-gc-hookから呼ばれる）。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>259</td><td class='line-content'>  (when nskk-profiler--active</td></tr>
 <tr class='covered'><td class='line-number'>260</td><td class='line-content'>    (push (list (current-time)</td></tr>
-<tr class='uncovered'><td class='line-number'>261</td><td class='line-content'>                :gc-elapsed gc-elapsed</td></tr>
-<tr class='uncovered'><td class='line-number'>262</td><td class='line-content'>                :gcs-done gcs-done)</td></tr>
-<tr class='uncovered'><td class='line-number'>263</td><td class='line-content'>          nskk-profiler--gc-events)))</td></tr>
+<tr class='covered'><td class='line-number'>261</td><td class='line-content'>                :gc-elapsed gc-elapsed</td></tr>
+<tr class='covered'><td class='line-number'>262</td><td class='line-content'>                :gcs-done gcs-done)</td></tr>
+<tr class='covered'><td class='line-number'>263</td><td class='line-content'>          nskk-profiler--gc-events)))</td></tr>
 <tr class=''><td class='line-number'>264</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>265</td><td class='line-content'>(defun nskk-profiler--report-gc-stats ()</td></tr>
 <tr class=''><td class='line-number'>266</td><td class='line-content'>  &amp;quot;GC統計をレポートバッファに出力する。&amp;quot;</td></tr>
@@ -337,13 +337,13 @@
 <tr class='covered'><td class='line-number'>300</td><td class='line-content'>        (result (make-symbol &amp;quot;result&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>301</td><td class='line-content'>        (elapsed (make-symbol &amp;quot;elapsed&amp;quot;)))</td></tr>
 <tr class='covered'><td class='line-number'>302</td><td class='line-content'>    `(if nskk-profiler--active</td></tr>
-<tr class='uncovered'><td class='line-number'>303</td><td class='line-content'>         (let* ((,start-time (current-time))</td></tr>
-<tr class='uncovered'><td class='line-number'>304</td><td class='line-content'>                (,result (progn ,@body))</td></tr>
-<tr class='uncovered'><td class='line-number'>305</td><td class='line-content'>                (,end-time (current-time))</td></tr>
-<tr class='uncovered'><td class='line-number'>306</td><td class='line-content'>                (,elapsed (float-time (time-subtract ,end-time ,start-time))))</td></tr>
-<tr class='uncovered'><td class='line-number'>307</td><td class='line-content'>           (nskk-profiler--record-function-stats ,func-name ,elapsed)</td></tr>
-<tr class='uncovered'><td class='line-number'>308</td><td class='line-content'>           ,result)</td></tr>
-<tr class='uncovered'><td class='line-number'>309</td><td class='line-content'>       (progn ,@body))))</td></tr>
+<tr class='covered'><td class='line-number'>303</td><td class='line-content'>         (let* ((,start-time (current-time))</td></tr>
+<tr class='covered'><td class='line-number'>304</td><td class='line-content'>                (,result (progn ,@body))</td></tr>
+<tr class='covered'><td class='line-number'>305</td><td class='line-content'>                (,end-time (current-time))</td></tr>
+<tr class='covered'><td class='line-number'>306</td><td class='line-content'>                (,elapsed (float-time (time-subtract ,end-time ,start-time))))</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>           (nskk-profiler--record-function-stats ,func-name ,elapsed)</td></tr>
+<tr class='covered'><td class='line-number'>308</td><td class='line-content'>           ,result)</td></tr>
+<tr class='covered'><td class='line-number'>309</td><td class='line-content'>       (progn ,@body))))</td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>311</td><td class='line-content'>(defun nskk-profiler--record-function-stats (func-name elapsed-time)</td></tr>
 <tr class=''><td class='line-number'>312</td><td class='line-content'>  &amp;quot;関数統計を記録する。</td></tr>
@@ -362,7 +362,7 @@
 <tr class=''><td class='line-number'>325</td><td class='line-content'>  &amp;quot;関数統計をレポートバッファに出力する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>326</td><td class='line-content'>  (princ &amp;quot;--- Function Statistics ---\n\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>327</td><td class='line-content'>  (princ (format &amp;quot;%-30s %10s %15s %15s %15s %15s\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>328</td><td class='line-content'>                 &amp;quot;Function&amp;quot; &amp;quot;Calls&amp;quot; &amp;quot;Total(s)&amp;quot; &amp;quot;Avg(s)&amp;quot; &amp;quot;Min(s)&amp;quot; &amp;quot;Max(s)&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>328</td><td class='line-content'>                 &amp;quot;Function&amp;quot; &amp;quot;Calls&amp;quot; &amp;quot;Total(s)&amp;quot; &amp;quot;Avg(s)&amp;quot; &amp;quot;Min(s)&amp;quot; &amp;quot;Max(s)&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>329</td><td class='line-content'>  (princ (make-string 100 ?-))</td></tr>
 <tr class='covered'><td class='line-number'>330</td><td class='line-content'>  (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'></td></tr>
@@ -375,7 +375,7 @@
 <tr class='covered'><td class='line-number'>338</td><td class='line-content'>           (max-time (nth 4 entry))</td></tr>
 <tr class='covered'><td class='line-number'>339</td><td class='line-content'>           (avg (/ total count)))</td></tr>
 <tr class='covered'><td class='line-number'>340</td><td class='line-content'>      (princ (format &amp;quot;%-30s %10d %15.6f %15.6f %15.6f %15.6f\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>341</td><td class='line-content'>                    name count total avg min-time max-time))))</td></tr>
+<tr class='covered'><td class='line-number'>341</td><td class='line-content'>                    name count total avg min-time max-time))))</td></tr>
 <tr class='covered'><td class='line-number'>342</td><td class='line-content'>  (princ &amp;quot;\n&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>343</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>344</td><td class='line-content'>;;; スレッドプロファイリング</td></tr>
@@ -391,11 +391,11 @@
 <tr class='covered'><td class='line-number'>354</td><td class='line-content'>    (list :main-thread (eq current main-thread)</td></tr>
 <tr class='covered'><td class='line-number'>355</td><td class='line-content'>          :thread-count (if (fboundp 'all-threads)</td></tr>
 <tr class='covered'><td class='line-number'>356</td><td class='line-content'>                           (length (all-threads))</td></tr>
-<tr class='uncovered'><td class='line-number'>357</td><td class='line-content'>                         1)</td></tr>
+<tr class='covered'><td class='line-number'>357</td><td class='line-content'>                         1)</td></tr>
 <tr class='covered'><td class='line-number'>358</td><td class='line-content'>          :current-thread (cond</td></tr>
 <tr class='covered'><td class='line-number'>359</td><td class='line-content'>                          ((not current) nil)</td></tr>
 <tr class='covered'><td class='line-number'>360</td><td class='line-content'>                          ((fboundp 'thread-name) (thread-name current))</td></tr>
-<tr class='uncovered'><td class='line-number'>361</td><td class='line-content'>                          (t &amp;quot;main&amp;quot;)))))</td></tr>
+<tr class='covered'><td class='line-number'>361</td><td class='line-content'>                          (t &amp;quot;main&amp;quot;)))))</td></tr>
 <tr class=''><td class='line-number'>362</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>363</td><td class='line-content'>;;; ユーティリティ</td></tr>
 <tr class=''><td class='line-number'>364</td><td class='line-content'></td></tr>
@@ -408,9 +408,9 @@
 <tr class='covered'><td class='line-number'>371</td><td class='line-content'>  (setq nskk-profiler--start-time nil</td></tr>
 <tr class=''><td class='line-number'>372</td><td class='line-content'>        nskk-profiler--memory-snapshots nil</td></tr>
 <tr class=''><td class='line-number'>373</td><td class='line-content'>        nskk-profiler--gc-events nil</td></tr>
-<tr class='onevalue'><td class='line-number'>374</td><td class='line-content'>        nskk-profiler--function-stats nil)</td></tr>
+<tr class='covered'><td class='line-number'>374</td><td class='line-content'>        nskk-profiler--function-stats nil)</td></tr>
 <tr class=''><td class='line-number'>375</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>376</td><td class='line-content'>  (message &amp;quot;NSKK profiler reset&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>376</td><td class='line-content'>  (message &amp;quot;NSKK profiler reset&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>377</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>378</td><td class='line-content'>(defun nskk-profiler-status ()</td></tr>
 <tr class=''><td class='line-number'>379</td><td class='line-content'>  &amp;quot;プロファイラーの状態を返す。</td></tr>
@@ -423,11 +423,11 @@
 <tr class=''><td class='line-number'>386</td><td class='line-content'>  :gc-events       - GCイベント数</td></tr>
 <tr class=''><td class='line-number'>387</td><td class='line-content'>  :function-stats  - 関数統計エントリ数&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>388</td><td class='line-content'>  (list :active nskk-profiler--active</td></tr>
-<tr class='uncovered'><td class='line-number'>389</td><td class='line-content'>        :start-time nskk-profiler--start-time</td></tr>
+<tr class='covered'><td class='line-number'>389</td><td class='line-content'>        :start-time nskk-profiler--start-time</td></tr>
 <tr class='covered'><td class='line-number'>390</td><td class='line-content'>        :elapsed (if nskk-profiler--start-time</td></tr>
 <tr class='covered'><td class='line-number'>391</td><td class='line-content'>                    (float-time (time-subtract (current-time)</td></tr>
-<tr class='uncovered'><td class='line-number'>392</td><td class='line-content'>                                              nskk-profiler--start-time))</td></tr>
-<tr class='uncovered'><td class='line-number'>393</td><td class='line-content'>                  0.0)</td></tr>
+<tr class='covered'><td class='line-number'>392</td><td class='line-content'>                                              nskk-profiler--start-time))</td></tr>
+<tr class='covered'><td class='line-number'>393</td><td class='line-content'>                  0.0)</td></tr>
 <tr class='covered'><td class='line-number'>394</td><td class='line-content'>        :memory-snapshots (length nskk-profiler--memory-snapshots)</td></tr>
 <tr class='covered'><td class='line-number'>395</td><td class='line-content'>        :gc-events (length nskk-profiler--gc-events)</td></tr>
 <tr class='covered'><td class='line-number'>396</td><td class='line-content'>        :function-stats (length nskk-profiler--function-stats)))</td></tr>
@@ -452,15 +452,15 @@
 <tr class='covered'><td class='line-number'>415</td><td class='line-content'>        (run-with-timer 0 nskk-profiler-monitor-interval</td></tr>
 <tr class='covered'><td class='line-number'>416</td><td class='line-content'>                       #'nskk-profiler--monitor-tick))</td></tr>
 <tr class=''><td class='line-number'>417</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>418</td><td class='line-content'>  (message &amp;quot;NSKK profiler monitor started&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>418</td><td class='line-content'>  (message &amp;quot;NSKK profiler monitor started&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>419</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>420</td><td class='line-content'>(defun nskk-profiler-stop-monitor ()</td></tr>
 <tr class=''><td class='line-number'>421</td><td class='line-content'>  &amp;quot;リアルタイム監視を停止する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>422</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>423</td><td class='line-content'>  (when nskk-profiler--monitor-timer</td></tr>
 <tr class='covered'><td class='line-number'>424</td><td class='line-content'>    (cancel-timer nskk-profiler--monitor-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>425</td><td class='line-content'>    (setq nskk-profiler--monitor-timer nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>426</td><td class='line-content'>    (message &amp;quot;NSKK profiler monitor stopped&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>425</td><td class='line-content'>    (setq nskk-profiler--monitor-timer nil)</td></tr>
+<tr class='covered'><td class='line-number'>426</td><td class='line-content'>    (message &amp;quot;NSKK profiler monitor stopped&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>427</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>428</td><td class='line-content'>(defun nskk-profiler--monitor-tick ()</td></tr>
 <tr class=''><td class='line-number'>429</td><td class='line-content'>  &amp;quot;監視タイマーのティック処理。&amp;quot;</td></tr>
@@ -470,7 +470,7 @@
 <tr class='covered'><td class='line-number'>433</td><td class='line-content'>      (nskk-profiler--take-memory-snapshot))</td></tr>
 <tr class=''><td class='line-number'>434</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>435</td><td class='line-content'>    ;; 必要に応じて追加の監視処理</td></tr>
-<tr class=''><td class='line-number'>436</td><td class='line-content'>    ))</td></tr>
+<tr class='covered'><td class='line-number'>436</td><td class='line-content'>    ))</td></tr>
 <tr class=''><td class='line-number'>437</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>438</td><td class='line-content'>(provide 'nskk-profiler)</td></tr>
 <tr class=''><td class='line-number'>439</td><td class='line-content'></td></tr>

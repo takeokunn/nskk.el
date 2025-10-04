@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-auto-tune.el</h1>
     <div class='stats'>
-      Coverage: 46.36% (363/783 forms) •
+      Coverage: 100.00% (783/783 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -175,10 +175,10 @@
 <tr class=''><td class='line-number'>138</td><td class='line-content'>  ;; タイマー設定</td></tr>
 <tr class='covered'><td class='line-number'>139</td><td class='line-content'>  (setq nskk-auto-tune--timer</td></tr>
 <tr class='covered'><td class='line-number'>140</td><td class='line-content'>        (run-with-timer nskk-auto-tune-interval</td></tr>
-<tr class='uncovered'><td class='line-number'>141</td><td class='line-content'>                       nskk-auto-tune-interval</td></tr>
+<tr class='covered'><td class='line-number'>141</td><td class='line-content'>                       nskk-auto-tune-interval</td></tr>
 <tr class='covered'><td class='line-number'>142</td><td class='line-content'>                       #'nskk-auto-tune-run))</td></tr>
 <tr class=''><td class='line-number'>143</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>144</td><td class='line-content'>  (setq nskk-auto-tune-enabled t)</td></tr>
+<tr class='covered'><td class='line-number'>144</td><td class='line-content'>  (setq nskk-auto-tune-enabled t)</td></tr>
 <tr class=''><td class='line-number'>145</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>146</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning enabled (interval: %.0fs)&amp;quot; nskk-auto-tune-interval))</td></tr>
 <tr class=''><td class='line-number'>147</td><td class='line-content'></td></tr>
@@ -188,17 +188,17 @@
 <tr class=''><td class='line-number'>151</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>152</td><td class='line-content'>  (when nskk-auto-tune--timer</td></tr>
 <tr class='covered'><td class='line-number'>153</td><td class='line-content'>    (cancel-timer nskk-auto-tune--timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>154</td><td class='line-content'>    (setq nskk-auto-tune--timer nil))</td></tr>
+<tr class='covered'><td class='line-number'>154</td><td class='line-content'>    (setq nskk-auto-tune--timer nil))</td></tr>
 <tr class=''><td class='line-number'>155</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>156</td><td class='line-content'>  (setq nskk-auto-tune-enabled nil)</td></tr>
+<tr class='covered'><td class='line-number'>156</td><td class='line-content'>  (setq nskk-auto-tune-enabled nil)</td></tr>
 <tr class=''><td class='line-number'>157</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>158</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning disabled&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning disabled&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>159</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>160</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>161</td><td class='line-content'>(defun nskk-auto-tune-run ()</td></tr>
 <tr class=''><td class='line-number'>162</td><td class='line-content'>  &amp;quot;チューニングを1回実行する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>163</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>164</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning: Starting tuning cycle...&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>164</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning: Starting tuning cycle...&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>165</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>166</td><td class='line-content'>  ;; プロファイリング実行</td></tr>
 <tr class='covered'><td class='line-number'>167</td><td class='line-content'>  (let ((performance-metrics (nskk-auto-tune--measure-performance)))</td></tr>
@@ -209,9 +209,9 @@
 <tr class=''><td class='line-number'>172</td><td class='line-content'>      ;; 履歴に記録</td></tr>
 <tr class='covered'><td class='line-number'>173</td><td class='line-content'>      (push (list (current-time)</td></tr>
 <tr class='covered'><td class='line-number'>174</td><td class='line-content'>                  :params (copy-sequence nskk-auto-tune--current-params)</td></tr>
-<tr class='uncovered'><td class='line-number'>175</td><td class='line-content'>                  :metrics performance-metrics</td></tr>
-<tr class='uncovered'><td class='line-number'>176</td><td class='line-content'>                  :score score)</td></tr>
-<tr class='uncovered'><td class='line-number'>177</td><td class='line-content'>            nskk-auto-tune--history)</td></tr>
+<tr class='covered'><td class='line-number'>175</td><td class='line-content'>                  :metrics performance-metrics</td></tr>
+<tr class='covered'><td class='line-number'>176</td><td class='line-content'>                  :score score)</td></tr>
+<tr class='covered'><td class='line-number'>177</td><td class='line-content'>            nskk-auto-tune--history)</td></tr>
 <tr class=''><td class='line-number'>178</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>179</td><td class='line-content'>      ;; 最高スコア更新チェック</td></tr>
 <tr class='covered'><td class='line-number'>180</td><td class='line-content'>      (when (or (null nskk-auto-tune--best-score)</td></tr>
@@ -235,12 +235,12 @@
 <tr class=''><td class='line-number'>198</td><td class='line-content'>  &amp;quot;パラメータを初期化する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>199</td><td class='line-content'>  (setq nskk-auto-tune--current-params</td></tr>
 <tr class='covered'><td class='line-number'>200</td><td class='line-content'>        (list :cache-size (if (boundp 'nskk-cache-default-capacity)</td></tr>
-<tr class='uncovered'><td class='line-number'>201</td><td class='line-content'>                             nskk-cache-default-capacity</td></tr>
-<tr class='uncovered'><td class='line-number'>202</td><td class='line-content'>                           1000)</td></tr>
-<tr class='uncovered'><td class='line-number'>203</td><td class='line-content'>              :gc-cons-threshold gc-cons-threshold</td></tr>
+<tr class='covered'><td class='line-number'>201</td><td class='line-content'>                             nskk-cache-default-capacity</td></tr>
+<tr class='covered'><td class='line-number'>202</td><td class='line-content'>                           1000)</td></tr>
+<tr class='covered'><td class='line-number'>203</td><td class='line-content'>              :gc-cons-threshold gc-cons-threshold</td></tr>
 <tr class='covered'><td class='line-number'>204</td><td class='line-content'>              :profiler-sampling-interval (if (boundp 'nskk-profiler-sampling-interval)</td></tr>
-<tr class='uncovered'><td class='line-number'>205</td><td class='line-content'>                                             nskk-profiler-sampling-interval</td></tr>
-<tr class='uncovered'><td class='line-number'>206</td><td class='line-content'>                                           1000000))))</td></tr>
+<tr class='covered'><td class='line-number'>205</td><td class='line-content'>                                             nskk-profiler-sampling-interval</td></tr>
+<tr class='covered'><td class='line-number'>206</td><td class='line-content'>                                           1000000))))</td></tr>
 <tr class=''><td class='line-number'>207</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>208</td><td class='line-content'>(defun nskk-auto-tune--adjust-parameters (metrics score)</td></tr>
 <tr class=''><td class='line-number'>209</td><td class='line-content'>  &amp;quot;パフォーマンスメトリクスに基づいてパラメータを調整する。</td></tr>
@@ -253,7 +253,7 @@
 <tr class='covered'><td class='line-number'>216</td><td class='line-content'>    (when (&amp;gt; (plist-get metrics :gc-frequency) 5.0)</td></tr>
 <tr class='covered'><td class='line-number'>217</td><td class='line-content'>      (let* ((current-gc-threshold (plist-get new-params :gc-cons-threshold))</td></tr>
 <tr class='covered'><td class='line-number'>218</td><td class='line-content'>             (new-gc-threshold (min (* current-gc-threshold 2)</td></tr>
-<tr class='uncovered'><td class='line-number'>219</td><td class='line-content'>                                   nskk-auto-tune-gc-cons-threshold-max)))</td></tr>
+<tr class='covered'><td class='line-number'>219</td><td class='line-content'>                                   nskk-auto-tune-gc-cons-threshold-max)))</td></tr>
 <tr class='covered'><td class='line-number'>220</td><td class='line-content'>        (plist-put new-params :gc-cons-threshold new-gc-threshold)</td></tr>
 <tr class='covered'><td class='line-number'>221</td><td class='line-content'>        (message &amp;quot;NSKK auto-tuning: Increasing gc-cons-threshold to %d&amp;quot; new-gc-threshold)))</td></tr>
 <tr class=''><td class='line-number'>222</td><td class='line-content'></td></tr>
@@ -261,7 +261,7 @@
 <tr class='covered'><td class='line-number'>224</td><td class='line-content'>    (when (&amp;lt; (plist-get metrics :gc-frequency) 0.1)</td></tr>
 <tr class='covered'><td class='line-number'>225</td><td class='line-content'>      (let* ((current-gc-threshold (plist-get new-params :gc-cons-threshold))</td></tr>
 <tr class='covered'><td class='line-number'>226</td><td class='line-content'>             (new-gc-threshold (max (/ current-gc-threshold 2)</td></tr>
-<tr class='uncovered'><td class='line-number'>227</td><td class='line-content'>                                   nskk-auto-tune-gc-cons-threshold-min)))</td></tr>
+<tr class='covered'><td class='line-number'>227</td><td class='line-content'>                                   nskk-auto-tune-gc-cons-threshold-min)))</td></tr>
 <tr class='covered'><td class='line-number'>228</td><td class='line-content'>        (plist-put new-params :gc-cons-threshold new-gc-threshold)</td></tr>
 <tr class='covered'><td class='line-number'>229</td><td class='line-content'>        (message &amp;quot;NSKK auto-tuning: Decreasing gc-cons-threshold to %d&amp;quot; new-gc-threshold)))</td></tr>
 <tr class=''><td class='line-number'>230</td><td class='line-content'></td></tr>
@@ -270,7 +270,7 @@
 <tr class='covered'><td class='line-number'>233</td><td class='line-content'>               (&amp;lt; (plist-get metrics :cache-hit-rate) 0.7))</td></tr>
 <tr class='covered'><td class='line-number'>234</td><td class='line-content'>      (let* ((current-cache-size (plist-get new-params :cache-size))</td></tr>
 <tr class='covered'><td class='line-number'>235</td><td class='line-content'>             (new-cache-size (min (floor (* current-cache-size 1.5))</td></tr>
-<tr class='uncovered'><td class='line-number'>236</td><td class='line-content'>                                 nskk-auto-tune-cache-size-max)))</td></tr>
+<tr class='covered'><td class='line-number'>236</td><td class='line-content'>                                 nskk-auto-tune-cache-size-max)))</td></tr>
 <tr class='covered'><td class='line-number'>237</td><td class='line-content'>        (plist-put new-params :cache-size new-cache-size)</td></tr>
 <tr class='covered'><td class='line-number'>238</td><td class='line-content'>        (message &amp;quot;NSKK auto-tuning: Increasing cache size to %d&amp;quot; new-cache-size)))</td></tr>
 <tr class=''><td class='line-number'>239</td><td class='line-content'></td></tr>
@@ -323,7 +323,7 @@
 <tr class='covered'><td class='line-number'>286</td><td class='line-content'>          (let ((start-time (current-time)))</td></tr>
 <tr class='covered'><td class='line-number'>287</td><td class='line-content'>            (ignore-errors (nskk-convert-romaji &amp;quot;konnnichiha&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>288</td><td class='line-content'>            (setq total-time (+ total-time</td></tr>
-<tr class='onevalue'><td class='line-number'>289</td><td class='line-content'>                               (float-time (time-subtract (current-time) start-time))))))</td></tr>
+<tr class='covered'><td class='line-number'>289</td><td class='line-content'>                               (float-time (time-subtract (current-time) start-time))))))</td></tr>
 <tr class='covered'><td class='line-number'>290</td><td class='line-content'>        (setq metrics (plist-put metrics :avg-conversion-time (/ total-time iterations)))))</td></tr>
 <tr class=''><td class='line-number'>291</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>292</td><td class='line-content'>    ;; GC統計</td></tr>
@@ -341,7 +341,7 @@
 <tr class=''><td class='line-number'>304</td><td class='line-content'>      ;; ここでは簡易的にデフォルト値を返す</td></tr>
 <tr class='covered'><td class='line-number'>305</td><td class='line-content'>      (setq metrics (plist-put metrics :cache-hit-rate 0.5)))</td></tr>
 <tr class=''><td class='line-number'>306</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>307</td><td class='line-content'>    metrics))</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>    metrics))</td></tr>
 <tr class=''><td class='line-number'>308</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>309</td><td class='line-content'>(defun nskk-auto-tune--calculate-score (metrics)</td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'>  &amp;quot;パフォーマンスメトリクスからスコアを計算する。</td></tr>
@@ -367,7 +367,7 @@
 <tr class='covered'><td class='line-number'>330</td><td class='line-content'>    (when (plist-get metrics :cache-hit-rate)</td></tr>
 <tr class='covered'><td class='line-number'>331</td><td class='line-content'>      (setq score (+ score (* -5.0 (plist-get metrics :cache-hit-rate)))))</td></tr>
 <tr class=''><td class='line-number'>332</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>333</td><td class='line-content'>    score))</td></tr>
+<tr class='covered'><td class='line-number'>333</td><td class='line-content'>    score))</td></tr>
 <tr class=''><td class='line-number'>334</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>335</td><td class='line-content'>;;; 学習ベースチューニング</td></tr>
 <tr class=''><td class='line-number'>336</td><td class='line-content'></td></tr>
@@ -391,7 +391,7 @@
 <tr class=''><td class='line-number'>354</td><td class='line-content'>返り値: 調整後のパラメータ&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>355</td><td class='line-content'>  (if (&amp;lt; (length nskk-auto-tune--learning-data) 10)</td></tr>
 <tr class=''><td class='line-number'>356</td><td class='line-content'>      ;; データ不足の場合は現在のパラメータをそのまま返す</td></tr>
-<tr class='uncovered'><td class='line-number'>357</td><td class='line-content'>      params</td></tr>
+<tr class='covered'><td class='line-number'>357</td><td class='line-content'>      params</td></tr>
 <tr class=''><td class='line-number'>358</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>359</td><td class='line-content'>    ;; 良好なスコアを持つパラメータの平均を計算</td></tr>
 <tr class='covered'><td class='line-number'>360</td><td class='line-content'>    (let* ((sorted-data (sort (copy-sequence nskk-auto-tune--learning-data)</td></tr>
@@ -406,7 +406,7 @@
 <tr class='covered'><td class='line-number'>369</td><td class='line-content'>      (dolist (entry top-10-percent)</td></tr>
 <tr class='covered'><td class='line-number'>370</td><td class='line-content'>        (let ((p (car entry)))</td></tr>
 <tr class='covered'><td class='line-number'>371</td><td class='line-content'>          (setq avg-cache-size (+ avg-cache-size (plist-get p :cache-size)))</td></tr>
-<tr class='onevalue'><td class='line-number'>372</td><td class='line-content'>          (setq avg-gc-threshold (+ avg-gc-threshold (plist-get p :gc-cons-threshold)))))</td></tr>
+<tr class='covered'><td class='line-number'>372</td><td class='line-content'>          (setq avg-gc-threshold (+ avg-gc-threshold (plist-get p :gc-cons-threshold)))))</td></tr>
 <tr class=''><td class='line-number'>373</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>374</td><td class='line-content'>      (setq avg-cache-size (/ avg-cache-size count))</td></tr>
 <tr class='covered'><td class='line-number'>375</td><td class='line-content'>      (setq avg-gc-threshold (/ avg-gc-threshold count))</td></tr>
@@ -420,7 +420,7 @@
 <tr class='covered'><td class='line-number'>383</td><td class='line-content'>        (plist-put new-params :gc-cons-threshold</td></tr>
 <tr class='covered'><td class='line-number'>384</td><td class='line-content'>                   (floor (+ (* learning-weight avg-gc-threshold)</td></tr>
 <tr class='covered'><td class='line-number'>385</td><td class='line-content'>                            (* (- 1.0 learning-weight) (plist-get params :gc-cons-threshold)))))</td></tr>
-<tr class='uncovered'><td class='line-number'>386</td><td class='line-content'>        new-params))))</td></tr>
+<tr class='covered'><td class='line-number'>386</td><td class='line-content'>        new-params))))</td></tr>
 <tr class=''><td class='line-number'>387</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>388</td><td class='line-content'>;;; A/Bテスト</td></tr>
 <tr class=''><td class='line-number'>389</td><td class='line-content'></td></tr>
@@ -436,15 +436,15 @@
 <tr class=''><td class='line-number'>399</td><td class='line-content'>CONFIGS: テストする設定のリスト</td></tr>
 <tr class=''><td class='line-number'>400</td><td class='line-content'>各設定はplist形式: (:name \&amp;quot;Config A\&amp;quot; :cache-size 1000 ...)&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>401</td><td class='line-content'>  (setq nskk-auto-tune--ab-test-configs configs</td></tr>
-<tr class='onevalue'><td class='line-number'>402</td><td class='line-content'>        nskk-auto-tune--ab-test-results nil))</td></tr>
+<tr class='covered'><td class='line-number'>402</td><td class='line-content'>        nskk-auto-tune--ab-test-results nil))</td></tr>
 <tr class=''><td class='line-number'>403</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>404</td><td class='line-content'>(defun nskk-auto-tune-ab-test-run ()</td></tr>
 <tr class=''><td class='line-number'>405</td><td class='line-content'>  &amp;quot;A/Bテストを実行する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>406</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>407</td><td class='line-content'>  (unless nskk-auto-tune--ab-test-configs</td></tr>
-<tr class='onevalue'><td class='line-number'>408</td><td class='line-content'>    (error &amp;quot;No A/B test configs set. Use `nskk-auto-tune-ab-test-setup' first&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>408</td><td class='line-content'>    (error &amp;quot;No A/B test configs set. Use `nskk-auto-tune-ab-test-setup' first&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>409</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>410</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning: Starting A/B test...&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>410</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning: Starting A/B test...&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>411</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>412</td><td class='line-content'>  (dolist (config nskk-auto-tune--ab-test-configs)</td></tr>
 <tr class='covered'><td class='line-number'>413</td><td class='line-content'>    (let ((name (plist-get config :name)))</td></tr>
@@ -457,10 +457,10 @@
 <tr class='covered'><td class='line-number'>420</td><td class='line-content'>      (let ((metrics (nskk-auto-tune--measure-performance)))</td></tr>
 <tr class='covered'><td class='line-number'>421</td><td class='line-content'>        (let ((score (nskk-auto-tune--calculate-score metrics)))</td></tr>
 <tr class='covered'><td class='line-number'>422</td><td class='line-content'>          (push (list :name name</td></tr>
-<tr class='uncovered'><td class='line-number'>423</td><td class='line-content'>                     :config config</td></tr>
-<tr class='uncovered'><td class='line-number'>424</td><td class='line-content'>                     :metrics metrics</td></tr>
-<tr class='uncovered'><td class='line-number'>425</td><td class='line-content'>                     :score score)</td></tr>
-<tr class='onevalue'><td class='line-number'>426</td><td class='line-content'>                nskk-auto-tune--ab-test-results)))))</td></tr>
+<tr class='covered'><td class='line-number'>423</td><td class='line-content'>                     :config config</td></tr>
+<tr class='covered'><td class='line-number'>424</td><td class='line-content'>                     :metrics metrics</td></tr>
+<tr class='covered'><td class='line-number'>425</td><td class='line-content'>                     :score score)</td></tr>
+<tr class='covered'><td class='line-number'>426</td><td class='line-content'>                nskk-auto-tune--ab-test-results)))))</td></tr>
 <tr class=''><td class='line-number'>427</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>428</td><td class='line-content'>  ;; 結果をソート（スコアが小さい順）</td></tr>
 <tr class='covered'><td class='line-number'>429</td><td class='line-content'>  (setq nskk-auto-tune--ab-test-results</td></tr>
@@ -468,14 +468,14 @@
 <tr class='covered'><td class='line-number'>431</td><td class='line-content'>              (lambda (a b) (&amp;lt; (plist-get a :score)</td></tr>
 <tr class='covered'><td class='line-number'>432</td><td class='line-content'>                             (plist-get b :score)))))</td></tr>
 <tr class=''><td class='line-number'>433</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>434</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning: A/B test completed&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>434</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning: A/B test completed&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>435</td><td class='line-content'>  (nskk-auto-tune-ab-test-report))</td></tr>
 <tr class=''><td class='line-number'>436</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>437</td><td class='line-content'>(defun nskk-auto-tune-ab-test-report ()</td></tr>
 <tr class=''><td class='line-number'>438</td><td class='line-content'>  &amp;quot;A/Bテストの結果レポートを表示する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>439</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>440</td><td class='line-content'>  (unless nskk-auto-tune--ab-test-results</td></tr>
-<tr class='onevalue'><td class='line-number'>441</td><td class='line-content'>    (error &amp;quot;No A/B test results available&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>441</td><td class='line-content'>    (error &amp;quot;No A/B test results available&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>442</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>443</td><td class='line-content'>  (with-output-to-temp-buffer &amp;quot;*NSKK A/B Test Report*&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>444</td><td class='line-content'>    (princ &amp;quot;=======================================================\n&amp;quot;)</td></tr>
@@ -483,7 +483,7 @@
 <tr class='covered'><td class='line-number'>446</td><td class='line-content'>    (princ &amp;quot;=======================================================\n\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>447</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>448</td><td class='line-content'>    (princ (format &amp;quot;%-20s %15s %15s %15s\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>449</td><td class='line-content'>                   &amp;quot;Config&amp;quot; &amp;quot;Score&amp;quot; &amp;quot;Avg Time(s)&amp;quot; &amp;quot;GC Freq&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>449</td><td class='line-content'>                   &amp;quot;Config&amp;quot; &amp;quot;Score&amp;quot; &amp;quot;Avg Time(s)&amp;quot; &amp;quot;GC Freq&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>450</td><td class='line-content'>    (princ (make-string 65 ?-))</td></tr>
 <tr class='covered'><td class='line-number'>451</td><td class='line-content'>    (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>452</td><td class='line-content'></td></tr>
@@ -492,10 +492,10 @@
 <tr class='covered'><td class='line-number'>455</td><td class='line-content'>            (score (plist-get result :score))</td></tr>
 <tr class='covered'><td class='line-number'>456</td><td class='line-content'>            (metrics (plist-get result :metrics)))</td></tr>
 <tr class='covered'><td class='line-number'>457</td><td class='line-content'>        (princ (format &amp;quot;%-20s %15.3f %15.6f %15.2f\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>458</td><td class='line-content'>                      name</td></tr>
-<tr class='uncovered'><td class='line-number'>459</td><td class='line-content'>                      score</td></tr>
+<tr class='covered'><td class='line-number'>458</td><td class='line-content'>                      name</td></tr>
+<tr class='covered'><td class='line-number'>459</td><td class='line-content'>                      score</td></tr>
 <tr class='covered'><td class='line-number'>460</td><td class='line-content'>                      (or (plist-get metrics :avg-conversion-time) 0.0)</td></tr>
-<tr class='onevalue'><td class='line-number'>461</td><td class='line-content'>                      (or (plist-get metrics :gc-frequency) 0.0)))))</td></tr>
+<tr class='covered'><td class='line-number'>461</td><td class='line-content'>                      (or (plist-get metrics :gc-frequency) 0.0)))))</td></tr>
 <tr class=''><td class='line-number'>462</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>463</td><td class='line-content'>    (princ &amp;quot;\n=======================================================\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>464</td><td class='line-content'>    (princ (format &amp;quot;Winner: %s (score: %.3f)\n&amp;quot;</td></tr>
@@ -549,21 +549,21 @@
 <tr class=''><td class='line-number'>512</td><td class='line-content'>  &amp;quot;自動チューニングの状態をリセットする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>513</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>514</td><td class='line-content'>  (when nskk-auto-tune-enabled</td></tr>
-<tr class='onevalue'><td class='line-number'>515</td><td class='line-content'>    (nskk-auto-tune-disable))</td></tr>
+<tr class='covered'><td class='line-number'>515</td><td class='line-content'>    (nskk-auto-tune-disable))</td></tr>
 <tr class=''><td class='line-number'>516</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>517</td><td class='line-content'>  (setq nskk-auto-tune--history nil</td></tr>
 <tr class=''><td class='line-number'>518</td><td class='line-content'>        nskk-auto-tune--current-params nil</td></tr>
 <tr class=''><td class='line-number'>519</td><td class='line-content'>        nskk-auto-tune--best-params nil</td></tr>
 <tr class=''><td class='line-number'>520</td><td class='line-content'>        nskk-auto-tune--best-score nil</td></tr>
-<tr class='onevalue'><td class='line-number'>521</td><td class='line-content'>        nskk-auto-tune--learning-data nil)</td></tr>
+<tr class='covered'><td class='line-number'>521</td><td class='line-content'>        nskk-auto-tune--learning-data nil)</td></tr>
 <tr class=''><td class='line-number'>522</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>523</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning reset&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>523</td><td class='line-content'>  (message &amp;quot;NSKK auto-tuning reset&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>524</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>525</td><td class='line-content'>(defun nskk-auto-tune-apply-best ()</td></tr>
 <tr class=''><td class='line-number'>526</td><td class='line-content'>  &amp;quot;最良のパラメータを適用する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>527</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>528</td><td class='line-content'>  (unless nskk-auto-tune--best-params</td></tr>
-<tr class='onevalue'><td class='line-number'>529</td><td class='line-content'>    (error &amp;quot;No best parameters available&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>529</td><td class='line-content'>    (error &amp;quot;No best parameters available&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>530</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>531</td><td class='line-content'>  (nskk-auto-tune--apply-parameters nskk-auto-tune--best-params)</td></tr>
 <tr class='covered'><td class='line-number'>532</td><td class='line-content'>  (setq nskk-auto-tune--current-params nskk-auto-tune--best-params)</td></tr>

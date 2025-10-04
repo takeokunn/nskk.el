@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-transient-debug.el</h1>
     <div class='stats'>
-      Coverage: 54.73% (359/656 forms) •
+      Coverage: 100.00% (656/656 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -155,23 +155,23 @@
 <tr class=''><td class='line-number'>118</td><td class='line-content'>  &amp;quot;プロファイリングを開始する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>119</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>120</td><td class='line-content'>  (when nskk-debug--profiler-running</td></tr>
-<tr class='onevalue'><td class='line-number'>121</td><td class='line-content'>    (error &amp;quot;プロファイラーは既に実行中です&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>121</td><td class='line-content'>    (error &amp;quot;プロファイラーは既に実行中です&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>122</td><td class='line-content'>  (setq nskk-debug--profiler-running t</td></tr>
 <tr class='covered'><td class='line-number'>123</td><td class='line-content'>        nskk-debug--profiler-start-time (current-time)</td></tr>
 <tr class='covered'><td class='line-number'>124</td><td class='line-content'>        nskk-debug--function-call-counts (make-hash-table :test 'eq)</td></tr>
 <tr class='covered'><td class='line-number'>125</td><td class='line-content'>        nskk-debug--function-total-times (make-hash-table :test 'eq))</td></tr>
 <tr class='covered'><td class='line-number'>126</td><td class='line-content'>  (profiler-start 'cpu+mem)</td></tr>
-<tr class='onevalue'><td class='line-number'>127</td><td class='line-content'>  (message &amp;quot;プロファイリングを開始しました&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>127</td><td class='line-content'>  (message &amp;quot;プロファイリングを開始しました&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>128</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>129</td><td class='line-content'>(defun nskk-debug-profile-stop ()</td></tr>
 <tr class=''><td class='line-number'>130</td><td class='line-content'>  &amp;quot;プロファイリングを停止する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>131</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>132</td><td class='line-content'>  (unless nskk-debug--profiler-running</td></tr>
-<tr class='onevalue'><td class='line-number'>133</td><td class='line-content'>    (error &amp;quot;プロファイラーは実行されていません&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>133</td><td class='line-content'>    (error &amp;quot;プロファイラーは実行されていません&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>134</td><td class='line-content'>  (profiler-stop)</td></tr>
 <tr class='covered'><td class='line-number'>135</td><td class='line-content'>  (setq nskk-debug--profiler-running nil</td></tr>
 <tr class='covered'><td class='line-number'>136</td><td class='line-content'>        nskk-debug--profiler-data (profiler-report))</td></tr>
-<tr class='onevalue'><td class='line-number'>137</td><td class='line-content'>  (message &amp;quot;プロファイリングを停止しました&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>137</td><td class='line-content'>  (message &amp;quot;プロファイリングを停止しました&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>138</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>139</td><td class='line-content'>(defun nskk-debug-profile-report ()</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'>  &amp;quot;プロファイルレポートを表示する。&amp;quot;</td></tr>
@@ -180,20 +180,20 @@
 <tr class='covered'><td class='line-number'>143</td><td class='line-content'>      (progn</td></tr>
 <tr class='covered'><td class='line-number'>144</td><td class='line-content'>        (profiler-report)</td></tr>
 <tr class='covered'><td class='line-number'>145</td><td class='line-content'>        (nskk-debug--show-custom-profile-report))</td></tr>
-<tr class='onevalue'><td class='line-number'>146</td><td class='line-content'>    (message &amp;quot;プロファイルデータがありません。先にプロファイリングを実行してください&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>146</td><td class='line-content'>    (message &amp;quot;プロファイルデータがありません。先にプロファイリングを実行してください&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>147</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>148</td><td class='line-content'>(defun nskk-debug--show-custom-profile-report ()</td></tr>
 <tr class=''><td class='line-number'>149</td><td class='line-content'>  &amp;quot;カスタムプロファイルレポートを表示する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>150</td><td class='line-content'>  (let ((buffer (get-buffer-create nskk-debug-profile-buffer-name)))</td></tr>
 <tr class='covered'><td class='line-number'>151</td><td class='line-content'>    (with-current-buffer buffer</td></tr>
 <tr class='covered'><td class='line-number'>152</td><td class='line-content'>      (erase-buffer)</td></tr>
-<tr class='onevalue'><td class='line-number'>153</td><td class='line-content'>      (insert &amp;quot;=== NSKK プロファイルレポート ===\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>153</td><td class='line-content'>      (insert &amp;quot;=== NSKK プロファイルレポート ===\n\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>154</td><td class='line-content'>      (insert (format &amp;quot;実行時間: %.3f 秒\n\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>155</td><td class='line-content'>                      (float-time (time-subtract (current-time)</td></tr>
-<tr class='onevalue'><td class='line-number'>156</td><td class='line-content'>                                                 nskk-debug--profiler-start-time))))</td></tr>
-<tr class='onevalue'><td class='line-number'>157</td><td class='line-content'>      (insert &amp;quot;=== 関数呼び出し統計 ===\n\n&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>158</td><td class='line-content'>      (insert (format &amp;quot;%-40s %10s %15s\n&amp;quot; &amp;quot;関数名&amp;quot; &amp;quot;呼び出し回数&amp;quot; &amp;quot;総実行時間(ms)&amp;quot;))</td></tr>
-<tr class='onevalue'><td class='line-number'>159</td><td class='line-content'>      (insert (make-string 70 ?-) &amp;quot;\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>156</td><td class='line-content'>                                                 nskk-debug--profiler-start-time))))</td></tr>
+<tr class='covered'><td class='line-number'>157</td><td class='line-content'>      (insert &amp;quot;=== 関数呼び出し統計 ===\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>      (insert (format &amp;quot;%-40s %10s %15s\n&amp;quot; &amp;quot;関数名&amp;quot; &amp;quot;呼び出し回数&amp;quot; &amp;quot;総実行時間(ms)&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>159</td><td class='line-content'>      (insert (make-string 70 ?-) &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>160</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>161</td><td class='line-content'>      ;; 統計データを表示</td></tr>
 <tr class='covered'><td class='line-number'>162</td><td class='line-content'>      (let ((stats '()))</td></tr>
@@ -201,7 +201,7 @@
 <tr class=''><td class='line-number'>164</td><td class='line-content'>         (lambda (func count)</td></tr>
 <tr class='covered'><td class='line-number'>165</td><td class='line-content'>           (let ((total-time (gethash func nskk-debug--function-total-times 0)))</td></tr>
 <tr class='covered'><td class='line-number'>166</td><td class='line-content'>             (push (list func count total-time) stats)))</td></tr>
-<tr class='uncovered'><td class='line-number'>167</td><td class='line-content'>         nskk-debug--function-call-counts)</td></tr>
+<tr class='covered'><td class='line-number'>167</td><td class='line-content'>         nskk-debug--function-call-counts)</td></tr>
 <tr class=''><td class='line-number'>168</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>169</td><td class='line-content'>        ;; 実行時間でソート</td></tr>
 <tr class='covered'><td class='line-number'>170</td><td class='line-content'>        (setq stats (sort stats (lambda (a b) (&amp;gt; (nth 2 a) (nth 2 b)))))</td></tr>
@@ -211,7 +211,7 @@
 <tr class='covered'><td class='line-number'>174</td><td class='line-content'>          (insert (format &amp;quot;%-40s %10d %15.3f\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>175</td><td class='line-content'>                          (nth 0 stat)</td></tr>
 <tr class='covered'><td class='line-number'>176</td><td class='line-content'>                          (nth 1 stat)</td></tr>
-<tr class='onevalue'><td class='line-number'>177</td><td class='line-content'>                          (* (nth 2 stat) 1000)))))</td></tr>
+<tr class='covered'><td class='line-number'>177</td><td class='line-content'>                          (* (nth 2 stat) 1000)))))</td></tr>
 <tr class=''><td class='line-number'>178</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>179</td><td class='line-content'>      (goto-char (point-min))</td></tr>
 <tr class='covered'><td class='line-number'>180</td><td class='line-content'>      (special-mode))</td></tr>
@@ -223,7 +223,7 @@
 <tr class='covered'><td class='line-number'>186</td><td class='line-content'>  (setq nskk-debug--profiler-data nil</td></tr>
 <tr class='covered'><td class='line-number'>187</td><td class='line-content'>        nskk-debug--function-call-counts (make-hash-table :test 'eq)</td></tr>
 <tr class='covered'><td class='line-number'>188</td><td class='line-content'>        nskk-debug--function-total-times (make-hash-table :test 'eq))</td></tr>
-<tr class='onevalue'><td class='line-number'>189</td><td class='line-content'>  (message &amp;quot;プロファイルデータをリセットしました&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>189</td><td class='line-content'>  (message &amp;quot;プロファイルデータをリセットしました&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>190</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>191</td><td class='line-content'>;;; ログビューアー</td></tr>
 <tr class=''><td class='line-number'>192</td><td class='line-content'></td></tr>
@@ -236,7 +236,7 @@
 <tr class=''><td class='line-number'>199</td><td class='line-content'>(defun nskk-debug-log (level message &amp;rest args)</td></tr>
 <tr class=''><td class='line-number'>200</td><td class='line-content'>  &amp;quot;LEVEL と MESSAGE でログを記録する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>201</td><td class='line-content'>  (let ((entry (list :time (current-time)</td></tr>
-<tr class='uncovered'><td class='line-number'>202</td><td class='line-content'>                     :level level</td></tr>
+<tr class='covered'><td class='line-number'>202</td><td class='line-content'>                     :level level</td></tr>
 <tr class='covered'><td class='line-number'>203</td><td class='line-content'>                     :message (apply #'format message args))))</td></tr>
 <tr class='covered'><td class='line-number'>204</td><td class='line-content'>    (push entry nskk-debug--log-entries)</td></tr>
 <tr class=''><td class='line-number'>205</td><td class='line-content'>    ;; エントリ数制限</td></tr>
@@ -250,9 +250,9 @@
 <tr class='covered'><td class='line-number'>213</td><td class='line-content'>  (let ((buffer (get-buffer-create nskk-debug-log-buffer-name)))</td></tr>
 <tr class='covered'><td class='line-number'>214</td><td class='line-content'>    (with-current-buffer buffer</td></tr>
 <tr class='covered'><td class='line-number'>215</td><td class='line-content'>      (erase-buffer)</td></tr>
-<tr class='onevalue'><td class='line-number'>216</td><td class='line-content'>      (insert &amp;quot;=== NSKK デバッグログ ===\n\n&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>217</td><td class='line-content'>      (insert (format &amp;quot;フィルター: %s\n&amp;quot; nskk-debug--log-level-filter))</td></tr>
-<tr class='onevalue'><td class='line-number'>218</td><td class='line-content'>      (insert (make-string 80 ?-) &amp;quot;\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>216</td><td class='line-content'>      (insert &amp;quot;=== NSKK デバッグログ ===\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>217</td><td class='line-content'>      (insert (format &amp;quot;フィルター: %s\n&amp;quot; nskk-debug--log-level-filter))</td></tr>
+<tr class='covered'><td class='line-number'>218</td><td class='line-content'>      (insert (make-string 80 ?-) &amp;quot;\n\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>219</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>220</td><td class='line-content'>      (dolist (entry (reverse nskk-debug--log-entries))</td></tr>
 <tr class='covered'><td class='line-number'>221</td><td class='line-content'>        (when (or (eq nskk-debug--log-level-filter 'all)</td></tr>
@@ -261,7 +261,7 @@
 <tr class='covered'><td class='line-number'>224</td><td class='line-content'>                          (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>225</td><td class='line-content'>                                              (plist-get entry :time))</td></tr>
 <tr class='covered'><td class='line-number'>226</td><td class='line-content'>                          (upcase (symbol-name (plist-get entry :level)))</td></tr>
-<tr class='onevalue'><td class='line-number'>227</td><td class='line-content'>                          (plist-get entry :message)))))</td></tr>
+<tr class='covered'><td class='line-number'>227</td><td class='line-content'>                          (plist-get entry :message)))))</td></tr>
 <tr class=''><td class='line-number'>228</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>229</td><td class='line-content'>      (goto-char (point-max))</td></tr>
 <tr class='covered'><td class='line-number'>230</td><td class='line-content'>      (special-mode))</td></tr>
@@ -271,8 +271,8 @@
 <tr class=''><td class='line-number'>234</td><td class='line-content'>  &amp;quot;ログをクリアする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>235</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>236</td><td class='line-content'>  (when (y-or-n-p &amp;quot;ログをクリアしますか? &amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>237</td><td class='line-content'>    (setq nskk-debug--log-entries '())</td></tr>
-<tr class='onevalue'><td class='line-number'>238</td><td class='line-content'>    (message &amp;quot;ログをクリアしました&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>237</td><td class='line-content'>    (setq nskk-debug--log-entries '())</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>    (message &amp;quot;ログをクリアしました&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>239</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>240</td><td class='line-content'>(defun nskk-debug-logs-filter (level)</td></tr>
 <tr class=''><td class='line-number'>241</td><td class='line-content'>  &amp;quot;ログフィルターをLEVELに設定する。&amp;quot;</td></tr>
@@ -280,7 +280,7 @@
 <tr class='covered'><td class='line-number'>243</td><td class='line-content'>   (list (intern (completing-read</td></tr>
 <tr class=''><td class='line-number'>244</td><td class='line-content'>                  &amp;quot;ログレベル: &amp;quot;</td></tr>
 <tr class=''><td class='line-number'>245</td><td class='line-content'>                  '(&amp;quot;all&amp;quot; &amp;quot;debug&amp;quot; &amp;quot;info&amp;quot; &amp;quot;warning&amp;quot; &amp;quot;error&amp;quot;)</td></tr>
-<tr class='uncovered'><td class='line-number'>246</td><td class='line-content'>                  nil t))))</td></tr>
+<tr class='covered'><td class='line-number'>246</td><td class='line-content'>                  nil t))))</td></tr>
 <tr class='covered'><td class='line-number'>247</td><td class='line-content'>  (setq nskk-debug--log-level-filter level)</td></tr>
 <tr class='covered'><td class='line-number'>248</td><td class='line-content'>  (nskk-debug-logs))</td></tr>
 <tr class=''><td class='line-number'>249</td><td class='line-content'></td></tr>
@@ -295,10 +295,10 @@
 <tr class='covered'><td class='line-number'>258</td><td class='line-content'>  (let ((buffer (get-buffer-create nskk-debug-threads-buffer-name)))</td></tr>
 <tr class='covered'><td class='line-number'>259</td><td class='line-content'>    (with-current-buffer buffer</td></tr>
 <tr class='covered'><td class='line-number'>260</td><td class='line-content'>      (erase-buffer)</td></tr>
-<tr class='onevalue'><td class='line-number'>261</td><td class='line-content'>      (insert &amp;quot;=== NSKK スレッド状態 ===\n\n&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>262</td><td class='line-content'>      (insert (format &amp;quot;総スレッド数: %d\n\n&amp;quot; (nskk-debug--get-thread-count)))</td></tr>
-<tr class='onevalue'><td class='line-number'>263</td><td class='line-content'>      (insert (format &amp;quot;%-20s %-15s %-40s\n&amp;quot; &amp;quot;スレッドID&amp;quot; &amp;quot;状態&amp;quot; &amp;quot;タスク&amp;quot;))</td></tr>
-<tr class='onevalue'><td class='line-number'>264</td><td class='line-content'>      (insert (make-string 80 ?-) &amp;quot;\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>261</td><td class='line-content'>      (insert &amp;quot;=== NSKK スレッド状態 ===\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>262</td><td class='line-content'>      (insert (format &amp;quot;総スレッド数: %d\n\n&amp;quot; (nskk-debug--get-thread-count)))</td></tr>
+<tr class='covered'><td class='line-number'>263</td><td class='line-content'>      (insert (format &amp;quot;%-20s %-15s %-40s\n&amp;quot; &amp;quot;スレッドID&amp;quot; &amp;quot;状態&amp;quot; &amp;quot;タスク&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>264</td><td class='line-content'>      (insert (make-string 80 ?-) &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>265</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>266</td><td class='line-content'>      ;; Emacs 31のスレッド情報を取得して表示</td></tr>
 <tr class='covered'><td class='line-number'>267</td><td class='line-content'>      (if (fboundp 'thread-list)</td></tr>
@@ -306,8 +306,8 @@
 <tr class='covered'><td class='line-number'>269</td><td class='line-content'>            (insert (format &amp;quot;%-20s %-15s %-40s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>270</td><td class='line-content'>                            (or (thread-name thread) &amp;quot;unnamed&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>271</td><td class='line-content'>                            (if (thread-live-p thread) &amp;quot;running&amp;quot; &amp;quot;stopped&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>272</td><td class='line-content'>                            &amp;quot;N/A&amp;quot;)))</td></tr>
-<tr class='onevalue'><td class='line-number'>273</td><td class='line-content'>        (insert &amp;quot;スレッド情報は利用できません（Emacs 31が必要）\n&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>                            &amp;quot;N/A&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>273</td><td class='line-content'>        (insert &amp;quot;スレッド情報は利用できません（Emacs 31が必要）\n&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>274</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>      (goto-char (point-min))</td></tr>
 <tr class='covered'><td class='line-number'>276</td><td class='line-content'>      (special-mode))</td></tr>
@@ -317,7 +317,7 @@
 <tr class=''><td class='line-number'>280</td><td class='line-content'>  &amp;quot;現在のスレッド数を取得する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>281</td><td class='line-content'>  (if (fboundp 'thread-list)</td></tr>
 <tr class='covered'><td class='line-number'>282</td><td class='line-content'>      (length (thread-list))</td></tr>
-<tr class='uncovered'><td class='line-number'>283</td><td class='line-content'>    0))</td></tr>
+<tr class='covered'><td class='line-number'>283</td><td class='line-content'>    0))</td></tr>
 <tr class=''><td class='line-number'>284</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>285</td><td class='line-content'>;;; メトリクスダッシュボード</td></tr>
 <tr class=''><td class='line-number'>286</td><td class='line-content'></td></tr>
@@ -334,44 +334,44 @@
 <tr class='covered'><td class='line-number'>297</td><td class='line-content'>  (let ((buffer (get-buffer-create nskk-debug-metrics-buffer-name)))</td></tr>
 <tr class='covered'><td class='line-number'>298</td><td class='line-content'>    (with-current-buffer buffer</td></tr>
 <tr class='covered'><td class='line-number'>299</td><td class='line-content'>      (erase-buffer)</td></tr>
-<tr class='onevalue'><td class='line-number'>300</td><td class='line-content'>      (insert &amp;quot;=== NSKK メトリクスダッシュボード ===\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>300</td><td class='line-content'>      (insert &amp;quot;=== NSKK メトリクスダッシュボード ===\n\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>301</td><td class='line-content'>      (insert (format &amp;quot;更新時刻: %s\n\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>302</td><td class='line-content'>                      (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot; (current-time))))</td></tr>
+<tr class='covered'><td class='line-number'>302</td><td class='line-content'>                      (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot; (current-time))))</td></tr>
 <tr class=''><td class='line-number'>303</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>304</td><td class='line-content'>      ;; パフォーマンスメトリクス</td></tr>
-<tr class='onevalue'><td class='line-number'>305</td><td class='line-content'>      (insert &amp;quot;=== パフォーマンス ===\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>305</td><td class='line-content'>      (insert &amp;quot;=== パフォーマンス ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>306</td><td class='line-content'>      (insert (format &amp;quot;  変換平均時間: %.3f ms\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>307</td><td class='line-content'>                      (nskk-debug--get-metric 'conversion-time 0)))</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>                      (nskk-debug--get-metric 'conversion-time 0)))</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>      (insert (format &amp;quot;  検索平均時間: %.3f ms\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>309</td><td class='line-content'>                      (nskk-debug--get-metric 'search-time 0)))</td></tr>
+<tr class='covered'><td class='line-number'>309</td><td class='line-content'>                      (nskk-debug--get-metric 'search-time 0)))</td></tr>
 <tr class='covered'><td class='line-number'>310</td><td class='line-content'>      (insert (format &amp;quot;  キー入力応答: %.3f ms\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>311</td><td class='line-content'>                      (nskk-debug--get-metric 'key-response 0)))</td></tr>
-<tr class='onevalue'><td class='line-number'>312</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>311</td><td class='line-content'>                      (nskk-debug--get-metric 'key-response 0)))</td></tr>
+<tr class='covered'><td class='line-number'>312</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>314</td><td class='line-content'>      ;; メモリメトリクス</td></tr>
-<tr class='onevalue'><td class='line-number'>315</td><td class='line-content'>      (insert &amp;quot;=== メモリ使用量 ===\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>315</td><td class='line-content'>      (insert &amp;quot;=== メモリ使用量 ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>316</td><td class='line-content'>      (insert (format &amp;quot;  総メモリ: %.2f MB\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>317</td><td class='line-content'>                      (/ (nskk-debug--get-metric 'total-memory 0) 1048576.0)))</td></tr>
+<tr class='covered'><td class='line-number'>317</td><td class='line-content'>                      (/ (nskk-debug--get-metric 'total-memory 0) 1048576.0)))</td></tr>
 <tr class='covered'><td class='line-number'>318</td><td class='line-content'>      (insert (format &amp;quot;  辞書キャッシュ: %.2f MB\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>319</td><td class='line-content'>                      (/ (nskk-debug--get-metric 'cache-memory 0) 1048576.0)))</td></tr>
+<tr class='covered'><td class='line-number'>319</td><td class='line-content'>                      (/ (nskk-debug--get-metric 'cache-memory 0) 1048576.0)))</td></tr>
 <tr class='covered'><td class='line-number'>320</td><td class='line-content'>      (insert (format &amp;quot;  GC実行回数: %d\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>321</td><td class='line-content'>                      (nskk-debug--get-metric 'gc-count 0)))</td></tr>
-<tr class='onevalue'><td class='line-number'>322</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>321</td><td class='line-content'>                      (nskk-debug--get-metric 'gc-count 0)))</td></tr>
+<tr class='covered'><td class='line-number'>322</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>323</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>324</td><td class='line-content'>      ;; 統計情報</td></tr>
-<tr class='onevalue'><td class='line-number'>325</td><td class='line-content'>      (insert &amp;quot;=== 統計 ===\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>325</td><td class='line-content'>      (insert &amp;quot;=== 統計 ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>326</td><td class='line-content'>      (insert (format &amp;quot;  総変換回数: %d\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>327</td><td class='line-content'>                      (nskk-debug--get-metric 'conversion-count 0)))</td></tr>
+<tr class='covered'><td class='line-number'>327</td><td class='line-content'>                      (nskk-debug--get-metric 'conversion-count 0)))</td></tr>
 <tr class='covered'><td class='line-number'>328</td><td class='line-content'>      (insert (format &amp;quot;  総検索回数: %d\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>329</td><td class='line-content'>                      (nskk-debug--get-metric 'search-count 0)))</td></tr>
+<tr class='covered'><td class='line-number'>329</td><td class='line-content'>                      (nskk-debug--get-metric 'search-count 0)))</td></tr>
 <tr class='covered'><td class='line-number'>330</td><td class='line-content'>      (insert (format &amp;quot;  キャッシュヒット率: %.1f%%\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>331</td><td class='line-content'>                      (* (nskk-debug--get-metric 'cache-hit-rate 0) 100)))</td></tr>
-<tr class='onevalue'><td class='line-number'>332</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>331</td><td class='line-content'>                      (* (nskk-debug--get-metric 'cache-hit-rate 0) 100)))</td></tr>
+<tr class='covered'><td class='line-number'>332</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>333</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>334</td><td class='line-content'>      ;; スレッド情報</td></tr>
-<tr class='onevalue'><td class='line-number'>335</td><td class='line-content'>      (insert &amp;quot;=== スレッド ===\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>335</td><td class='line-content'>      (insert &amp;quot;=== スレッド ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>336</td><td class='line-content'>      (insert (format &amp;quot;  アクティブスレッド数: %d\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>337</td><td class='line-content'>                      (nskk-debug--get-thread-count)))</td></tr>
+<tr class='covered'><td class='line-number'>337</td><td class='line-content'>                      (nskk-debug--get-thread-count)))</td></tr>
 <tr class=''><td class='line-number'>338</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>339</td><td class='line-content'>      (goto-char (point-min))</td></tr>
 <tr class='covered'><td class='line-number'>340</td><td class='line-content'>      (special-mode))</td></tr>
@@ -400,13 +400,13 @@
 <tr class='covered'><td class='line-number'>363</td><td class='line-content'>  (if nskk-debug--metrics-timer</td></tr>
 <tr class='covered'><td class='line-number'>364</td><td class='line-content'>      (progn</td></tr>
 <tr class='covered'><td class='line-number'>365</td><td class='line-content'>        (cancel-timer nskk-debug--metrics-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>366</td><td class='line-content'>        (setq nskk-debug--metrics-timer nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>367</td><td class='line-content'>        (message &amp;quot;自動リフレッシュを無効化しました&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>366</td><td class='line-content'>        (setq nskk-debug--metrics-timer nil)</td></tr>
+<tr class='covered'><td class='line-number'>367</td><td class='line-content'>        (message &amp;quot;自動リフレッシュを無効化しました&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>368</td><td class='line-content'>    (setq nskk-debug--metrics-timer</td></tr>
 <tr class='covered'><td class='line-number'>369</td><td class='line-content'>          (run-at-time t nskk-debug-auto-refresh-interval</td></tr>
 <tr class='covered'><td class='line-number'>370</td><td class='line-content'>                       #'nskk-debug-metrics))</td></tr>
 <tr class='covered'><td class='line-number'>371</td><td class='line-content'>    (message &amp;quot;自動リフレッシュを有効化しました（%s秒間隔）&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>372</td><td class='line-content'>             nskk-debug-auto-refresh-interval)))</td></tr>
+<tr class='covered'><td class='line-number'>372</td><td class='line-content'>             nskk-debug-auto-refresh-interval)))</td></tr>
 <tr class=''><td class='line-number'>373</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>374</td><td class='line-content'>;;; Transientメニュー定義</td></tr>
 <tr class=''><td class='line-number'>375</td><td class='line-content'></td></tr>
@@ -441,34 +441,34 @@
 <tr class='covered'><td class='line-number'>404</td><td class='line-content'>  (let* ((timestamp (format-time-string &amp;quot;%Y%m%d-%H%M%S&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>405</td><td class='line-content'>         (filename (expand-file-name</td></tr>
 <tr class='covered'><td class='line-number'>406</td><td class='line-content'>                    (format &amp;quot;nskk-debug-report-%s.txt&amp;quot; timestamp)</td></tr>
-<tr class='uncovered'><td class='line-number'>407</td><td class='line-content'>                    user-emacs-directory)))</td></tr>
+<tr class='covered'><td class='line-number'>407</td><td class='line-content'>                    user-emacs-directory)))</td></tr>
 <tr class='covered'><td class='line-number'>408</td><td class='line-content'>    (with-temp-file filename</td></tr>
-<tr class='onevalue'><td class='line-number'>409</td><td class='line-content'>      (insert &amp;quot;=== NSKK デバッグレポート ===\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>409</td><td class='line-content'>      (insert &amp;quot;=== NSKK デバッグレポート ===\n\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>410</td><td class='line-content'>      (insert (format &amp;quot;生成日時: %s\n\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>411</td><td class='line-content'>                      (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot; (current-time))))</td></tr>
+<tr class='covered'><td class='line-number'>411</td><td class='line-content'>                      (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot; (current-time))))</td></tr>
 <tr class=''><td class='line-number'>412</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>413</td><td class='line-content'>      ;; プロファイル情報</td></tr>
-<tr class='onevalue'><td class='line-number'>414</td><td class='line-content'>      (insert &amp;quot;=== プロファイル情報 ===\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>414</td><td class='line-content'>      (insert &amp;quot;=== プロファイル情報 ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>415</td><td class='line-content'>      (insert (format &amp;quot;プロファイラー状態: %s\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>416</td><td class='line-content'>                      (if nskk-debug--profiler-running &amp;quot;実行中&amp;quot; &amp;quot;停止&amp;quot;)))</td></tr>
-<tr class='onevalue'><td class='line-number'>417</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>416</td><td class='line-content'>                      (if nskk-debug--profiler-running &amp;quot;実行中&amp;quot; &amp;quot;停止&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>417</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>418</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>419</td><td class='line-content'>      ;; メトリクス情報</td></tr>
-<tr class='onevalue'><td class='line-number'>420</td><td class='line-content'>      (insert &amp;quot;=== メトリクス ===\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>420</td><td class='line-content'>      (insert &amp;quot;=== メトリクス ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>421</td><td class='line-content'>      (maphash</td></tr>
 <tr class=''><td class='line-number'>422</td><td class='line-content'>       (lambda (key value)</td></tr>
-<tr class='onevalue'><td class='line-number'>423</td><td class='line-content'>         (insert (format &amp;quot;%s: %s\n&amp;quot; key value)))</td></tr>
-<tr class='uncovered'><td class='line-number'>424</td><td class='line-content'>       nskk-debug--metrics)</td></tr>
-<tr class='onevalue'><td class='line-number'>425</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>423</td><td class='line-content'>         (insert (format &amp;quot;%s: %s\n&amp;quot; key value)))</td></tr>
+<tr class='covered'><td class='line-number'>424</td><td class='line-content'>       nskk-debug--metrics)</td></tr>
+<tr class='covered'><td class='line-number'>425</td><td class='line-content'>      (insert &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>426</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>427</td><td class='line-content'>      ;; ログ情報</td></tr>
-<tr class='onevalue'><td class='line-number'>428</td><td class='line-content'>      (insert &amp;quot;=== ログ（最新100件） ===\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>428</td><td class='line-content'>      (insert &amp;quot;=== ログ（最新100件） ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>429</td><td class='line-content'>      (dolist (entry (seq-take (reverse nskk-debug--log-entries) 100))</td></tr>
 <tr class='covered'><td class='line-number'>430</td><td class='line-content'>        (insert (format &amp;quot;[%s] [%s] %s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>431</td><td class='line-content'>                        (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>432</td><td class='line-content'>                                            (plist-get entry :time))</td></tr>
 <tr class='covered'><td class='line-number'>433</td><td class='line-content'>                        (upcase (symbol-name (plist-get entry :level)))</td></tr>
-<tr class='onevalue'><td class='line-number'>434</td><td class='line-content'>                        (plist-get entry :message)))))</td></tr>
+<tr class='covered'><td class='line-number'>434</td><td class='line-content'>                        (plist-get entry :message)))))</td></tr>
 <tr class=''><td class='line-number'>435</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>436</td><td class='line-content'>    (message &amp;quot;デバッグレポートを %s に出力しました&amp;quot; filename)))</td></tr>
 <tr class=''><td class='line-number'>437</td><td class='line-content'></td></tr>
@@ -477,14 +477,14 @@
 <tr class=''><td class='line-number'>440</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>441</td><td class='line-content'>  (let ((snapshot (list</td></tr>
 <tr class='covered'><td class='line-number'>442</td><td class='line-content'>                   :time (current-time)</td></tr>
-<tr class='uncovered'><td class='line-number'>443</td><td class='line-content'>                   :profiler-running nskk-debug--profiler-running</td></tr>
+<tr class='covered'><td class='line-number'>443</td><td class='line-content'>                   :profiler-running nskk-debug--profiler-running</td></tr>
 <tr class='covered'><td class='line-number'>444</td><td class='line-content'>                   :thread-count (nskk-debug--get-thread-count)</td></tr>
 <tr class='covered'><td class='line-number'>445</td><td class='line-content'>                   :metrics (copy-hash-table nskk-debug--metrics)</td></tr>
 <tr class='covered'><td class='line-number'>446</td><td class='line-content'>                   :log-count (length nskk-debug--log-entries))))</td></tr>
 <tr class='covered'><td class='line-number'>447</td><td class='line-content'>    (message &amp;quot;スナップショット取得: スレッド=%d, ログ=%d件&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>448</td><td class='line-content'>             (plist-get snapshot :thread-count)</td></tr>
 <tr class='covered'><td class='line-number'>449</td><td class='line-content'>             (plist-get snapshot :log-count))</td></tr>
-<tr class='uncovered'><td class='line-number'>450</td><td class='line-content'>    snapshot))</td></tr>
+<tr class='covered'><td class='line-number'>450</td><td class='line-content'>    snapshot))</td></tr>
 <tr class=''><td class='line-number'>451</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>452</td><td class='line-content'>;;; ユーティリティ</td></tr>
 <tr class=''><td class='line-number'>453</td><td class='line-content'></td></tr>

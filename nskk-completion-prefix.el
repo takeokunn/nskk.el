@@ -178,19 +178,19 @@
 
     ;; 完全一致を先にチェック
     (when include-exact
-      (dolist (trie-pair tries)
-        (let* ((trie (car trie-pair))
-               (type (cdr trie-pair))
-               (lookup-result (nskk-trie-lookup trie prefix)))
-          (when (cdr lookup-result)
-            (setq exact-match
-                  (nskk-completion-prefix-result--create
-                   :midashi prefix
-                   :entry (car lookup-result)
-                   :score (nskk-dict-entry-frequency (car lookup-result))
-                   :match-type 'exact))
-            ;; 最初の完全一致のみ
-            (return)))))
+      (cl-block nil
+        (dolist (trie-pair tries)
+          (let* ((trie (car trie-pair))
+                 (lookup-result (nskk-trie-lookup trie prefix)))
+            (when (cdr lookup-result)
+              (setq exact-match
+                    (nskk-completion-prefix-result--create
+                     :midashi prefix
+                     :entry (car lookup-result)
+                     :score (nskk-dict-entry-frequency (car lookup-result))
+                     :match-type 'exact))
+              ;; 最初の完全一致のみ
+              (cl-return))))))
 
     ;; 前方一致検索
     (dolist (trie-pair tries)

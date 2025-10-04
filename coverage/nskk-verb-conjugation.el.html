@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-verb-conjugation.el</h1>
     <div class='stats'>
-      Coverage: 90.91% (350/385 forms) •
+      Coverage: 100.00% (497/497 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -139,238 +139,291 @@
 <tr class=''><td class='line-number'>102</td><td class='line-content'>  &amp;quot;五段活用の語尾変化テーブル。</td></tr>
 <tr class=''><td class='line-number'>103</td><td class='line-content'>キーは語幹の最終文字の行（か行→ka、が行→ga等）を表す。&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>104</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>105</td><td class='line-content'>;;; 上一段・下一段活用のエンディング</td></tr>
-<tr class=''><td class='line-number'>106</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>107</td><td class='line-content'>(defconst nskk-ichidan-endings</td></tr>
-<tr class=''><td class='line-number'>108</td><td class='line-content'>  '((mizen-nai . &amp;quot;&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>109</td><td class='line-content'>    (mizen-u . &amp;quot;よ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>110</td><td class='line-content'>    (renyou . &amp;quot;&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>111</td><td class='line-content'>    (shushi . &amp;quot;る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>112</td><td class='line-content'>    (rentai . &amp;quot;る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>113</td><td class='line-content'>    (katei . &amp;quot;れ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>114</td><td class='line-content'>    (meirei . &amp;quot;ろ&amp;quot;))</td></tr>
-<tr class=''><td class='line-number'>115</td><td class='line-content'>  &amp;quot;一段活用（上一段・下一段）の語尾変化テーブル。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>105</td><td class='line-content'>(defconst nskk-verb--godan-kanji-row-table</td></tr>
+<tr class=''><td class='line-number'>106</td><td class='line-content'>  '((&amp;quot;書&amp;quot; . ka)</td></tr>
+<tr class=''><td class='line-number'>107</td><td class='line-content'>    (&amp;quot;泳&amp;quot; . ga)</td></tr>
+<tr class=''><td class='line-number'>108</td><td class='line-content'>    (&amp;quot;話&amp;quot; . sa)</td></tr>
+<tr class=''><td class='line-number'>109</td><td class='line-content'>    (&amp;quot;打&amp;quot; . ta)</td></tr>
+<tr class=''><td class='line-number'>110</td><td class='line-content'>    (&amp;quot;死&amp;quot; . na)</td></tr>
+<tr class=''><td class='line-number'>111</td><td class='line-content'>    (&amp;quot;遊&amp;quot; . ba)</td></tr>
+<tr class=''><td class='line-number'>112</td><td class='line-content'>    (&amp;quot;読&amp;quot; . ma)</td></tr>
+<tr class=''><td class='line-number'>113</td><td class='line-content'>    (&amp;quot;取&amp;quot; . ra)</td></tr>
+<tr class=''><td class='line-number'>114</td><td class='line-content'>    (&amp;quot;買&amp;quot; . wa))</td></tr>
+<tr class=''><td class='line-number'>115</td><td class='line-content'>  &amp;quot;五段活用の語幹（漢字）と行の対応表。&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>116</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>117</td><td class='line-content'>;;; サ変活用のエンディング</td></tr>
-<tr class=''><td class='line-number'>118</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>119</td><td class='line-content'>(defconst nskk-sa-hen-endings</td></tr>
-<tr class=''><td class='line-number'>120</td><td class='line-content'>  '((mizen-nai . &amp;quot;&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>121</td><td class='line-content'>    (mizen-u . &amp;quot;よ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>122</td><td class='line-content'>    (renyou . &amp;quot;&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>123</td><td class='line-content'>    (shushi . &amp;quot;る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>124</td><td class='line-content'>    (rentai . &amp;quot;る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>125</td><td class='line-content'>    (katei . &amp;quot;れ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>126</td><td class='line-content'>    (meirei . &amp;quot;ろ&amp;quot;))</td></tr>
-<tr class=''><td class='line-number'>127</td><td class='line-content'>  &amp;quot;サ変活用の語尾変化テーブル（「する」の活用）。&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>128</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>129</td><td class='line-content'>;;; カ変活用のエンディング</td></tr>
-<tr class=''><td class='line-number'>130</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>131</td><td class='line-content'>(defconst nskk-ka-hen-endings</td></tr>
-<tr class=''><td class='line-number'>132</td><td class='line-content'>  '((mizen-nai . &amp;quot;&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>133</td><td class='line-content'>    (mizen-u . &amp;quot;よ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>134</td><td class='line-content'>    (renyou . &amp;quot;&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>135</td><td class='line-content'>    (shushi . &amp;quot;る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>136</td><td class='line-content'>    (rentai . &amp;quot;る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>137</td><td class='line-content'>    (katei . &amp;quot;れ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>138</td><td class='line-content'>    (meirei . &amp;quot;い&amp;quot;))</td></tr>
-<tr class=''><td class='line-number'>139</td><td class='line-content'>  &amp;quot;カ変活用の語尾変化テーブル（「来る」の活用）。&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>140</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>141</td><td class='line-content'>;;; ヘルパー関数</td></tr>
-<tr class=''><td class='line-number'>142</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>143</td><td class='line-content'>(defun nskk-verb--get-gyou (char)</td></tr>
-<tr class=''><td class='line-number'>144</td><td class='line-content'>  &amp;quot;文字CHARの行を返す。</td></tr>
-<tr class=''><td class='line-number'>145</td><td class='line-content'>例: 「く」→'ka、「ぐ」→'ga&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>146</td><td class='line-content'>  (let ((char-code (string-to-char char)))</td></tr>
-<tr class='covered'><td class='line-number'>147</td><td class='line-content'>    (cond</td></tr>
-<tr class=''><td class='line-number'>148</td><td class='line-content'>     ;; か行</td></tr>
-<tr class='covered'><td class='line-number'>149</td><td class='line-content'>     ((or (= char-code ?く) (= char-code ?か) (= char-code ?き)</td></tr>
-<tr class='covered'><td class='line-number'>150</td><td class='line-content'>          (= char-code ?け) (= char-code ?こ))</td></tr>
-<tr class=''><td class='line-number'>151</td><td class='line-content'>      'ka)</td></tr>
-<tr class=''><td class='line-number'>152</td><td class='line-content'>     ;; が行</td></tr>
-<tr class='covered'><td class='line-number'>153</td><td class='line-content'>     ((or (= char-code ?ぐ) (= char-code ?が) (= char-code ?ぎ)</td></tr>
-<tr class='covered'><td class='line-number'>154</td><td class='line-content'>          (= char-code ?げ) (= char-code ?ご))</td></tr>
-<tr class=''><td class='line-number'>155</td><td class='line-content'>      'ga)</td></tr>
-<tr class=''><td class='line-number'>156</td><td class='line-content'>     ;; さ行</td></tr>
-<tr class='covered'><td class='line-number'>157</td><td class='line-content'>     ((or (= char-code ?す) (= char-code ?さ) (= char-code ?し)</td></tr>
-<tr class='covered'><td class='line-number'>158</td><td class='line-content'>          (= char-code ?せ) (= char-code ?そ))</td></tr>
-<tr class=''><td class='line-number'>159</td><td class='line-content'>      'sa)</td></tr>
-<tr class=''><td class='line-number'>160</td><td class='line-content'>     ;; た行</td></tr>
-<tr class='covered'><td class='line-number'>161</td><td class='line-content'>     ((or (= char-code ?つ) (= char-code ?た) (= char-code ?ち)</td></tr>
-<tr class='covered'><td class='line-number'>162</td><td class='line-content'>          (= char-code ?て) (= char-code ?と))</td></tr>
-<tr class=''><td class='line-number'>163</td><td class='line-content'>      'ta)</td></tr>
-<tr class=''><td class='line-number'>164</td><td class='line-content'>     ;; な行</td></tr>
-<tr class='covered'><td class='line-number'>165</td><td class='line-content'>     ((or (= char-code ?ぬ) (= char-code ?な) (= char-code ?に)</td></tr>
-<tr class='covered'><td class='line-number'>166</td><td class='line-content'>          (= char-code ?ね) (= char-code ?の))</td></tr>
-<tr class=''><td class='line-number'>167</td><td class='line-content'>      'na)</td></tr>
-<tr class=''><td class='line-number'>168</td><td class='line-content'>     ;; ば行</td></tr>
-<tr class='covered'><td class='line-number'>169</td><td class='line-content'>     ((or (= char-code ?ぶ) (= char-code ?ば) (= char-code ?び)</td></tr>
-<tr class='covered'><td class='line-number'>170</td><td class='line-content'>          (= char-code ?べ) (= char-code ?ぼ))</td></tr>
-<tr class=''><td class='line-number'>171</td><td class='line-content'>      'ba)</td></tr>
-<tr class=''><td class='line-number'>172</td><td class='line-content'>     ;; ま行</td></tr>
-<tr class='covered'><td class='line-number'>173</td><td class='line-content'>     ((or (= char-code ?む) (= char-code ?ま) (= char-code ?み)</td></tr>
-<tr class='covered'><td class='line-number'>174</td><td class='line-content'>          (= char-code ?め) (= char-code ?も))</td></tr>
-<tr class=''><td class='line-number'>175</td><td class='line-content'>      'ma)</td></tr>
-<tr class=''><td class='line-number'>176</td><td class='line-content'>     ;; ら行</td></tr>
-<tr class='covered'><td class='line-number'>177</td><td class='line-content'>     ((or (= char-code ?る) (= char-code ?ら) (= char-code ?り)</td></tr>
-<tr class='covered'><td class='line-number'>178</td><td class='line-content'>          (= char-code ?れ) (= char-code ?ろ))</td></tr>
-<tr class=''><td class='line-number'>179</td><td class='line-content'>      'ra)</td></tr>
-<tr class=''><td class='line-number'>180</td><td class='line-content'>     ;; わ行</td></tr>
-<tr class='covered'><td class='line-number'>181</td><td class='line-content'>     ((or (= char-code ?う) (= char-code ?わ) (= char-code ?ゐ)</td></tr>
-<tr class='covered'><td class='line-number'>182</td><td class='line-content'>          (= char-code ?ゑ) (= char-code ?を) (= char-code ?い)</td></tr>
-<tr class='covered'><td class='line-number'>183</td><td class='line-content'>          (= char-code ?え))</td></tr>
-<tr class=''><td class='line-number'>184</td><td class='line-content'>      'wa)</td></tr>
-<tr class='covered'><td class='line-number'>185</td><td class='line-content'>     (t nil))))</td></tr>
-<tr class=''><td class='line-number'>186</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>187</td><td class='line-content'>(defun nskk-verb--conjugate-godan (stem form)</td></tr>
-<tr class=''><td class='line-number'>188</td><td class='line-content'>  &amp;quot;五段活用動詞の活用を返す。</td></tr>
-<tr class=''><td class='line-number'>189</td><td class='line-content'>STEMは動詞の基本形（例: \&amp;quot;書く\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>190</td><td class='line-content'>  (when (and stem (&amp;gt; (length stem) 1))</td></tr>
-<tr class='covered'><td class='line-number'>191</td><td class='line-content'>    (let* ((last-char (substring stem -1))</td></tr>
-<tr class='covered'><td class='line-number'>192</td><td class='line-content'>           (gyou (nskk-verb--get-gyou last-char))</td></tr>
-<tr class='covered'><td class='line-number'>193</td><td class='line-content'>           (stem-base (substring stem 0 -1))</td></tr>
-<tr class='covered'><td class='line-number'>194</td><td class='line-content'>           (endings (cdr (assq gyou nskk-godan-endings)))</td></tr>
-<tr class='covered'><td class='line-number'>195</td><td class='line-content'>           (ending (cdr (assq form endings))))</td></tr>
-<tr class='covered'><td class='line-number'>196</td><td class='line-content'>      (when ending</td></tr>
-<tr class='covered'><td class='line-number'>197</td><td class='line-content'>        (concat stem-base ending)))))</td></tr>
-<tr class=''><td class='line-number'>198</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>199</td><td class='line-content'>(defun nskk-verb--conjugate-ichidan (stem form)</td></tr>
-<tr class=''><td class='line-number'>200</td><td class='line-content'>  &amp;quot;一段活用動詞の活用を返す。</td></tr>
-<tr class=''><td class='line-number'>201</td><td class='line-content'>STEMは動詞の基本形（例: \&amp;quot;見る\&amp;quot;、\&amp;quot;食べる\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>202</td><td class='line-content'>  (when (and stem (string-suffix-p &amp;quot;る&amp;quot; stem))</td></tr>
-<tr class='covered'><td class='line-number'>203</td><td class='line-content'>    (let* ((stem-base (substring stem 0 -1))</td></tr>
-<tr class='onevalue'><td class='line-number'>204</td><td class='line-content'>           (ending (cdr (assq form nskk-ichidan-endings))))</td></tr>
-<tr class='covered'><td class='line-number'>205</td><td class='line-content'>      (when ending</td></tr>
-<tr class='covered'><td class='line-number'>206</td><td class='line-content'>        (concat stem-base ending)))))</td></tr>
-<tr class=''><td class='line-number'>207</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>208</td><td class='line-content'>(defun nskk-verb--conjugate-sa-hen (stem form)</td></tr>
-<tr class=''><td class='line-number'>209</td><td class='line-content'>  &amp;quot;サ変活用動詞の活用を返す。</td></tr>
-<tr class=''><td class='line-number'>210</td><td class='line-content'>STEMは動詞の基本形（\&amp;quot;する\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>211</td><td class='line-content'>  (cond</td></tr>
-<tr class=''><td class='line-number'>212</td><td class='line-content'>   ;; 未然形（ない）: 「し」</td></tr>
-<tr class='covered'><td class='line-number'>213</td><td class='line-content'>   ((eq form 'mizen-nai) &amp;quot;し&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>214</td><td class='line-content'>   ;; 未然形（う/よう）: 「しよ」</td></tr>
-<tr class='covered'><td class='line-number'>215</td><td class='line-content'>   ((eq form 'mizen-u) &amp;quot;しよ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>216</td><td class='line-content'>   ;; 連用形: 「し」</td></tr>
-<tr class='covered'><td class='line-number'>217</td><td class='line-content'>   ((eq form 'renyou) &amp;quot;し&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>218</td><td class='line-content'>   ;; 終止形: 「する」</td></tr>
-<tr class='covered'><td class='line-number'>219</td><td class='line-content'>   ((eq form 'shushi) &amp;quot;する&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>220</td><td class='line-content'>   ;; 連体形: 「する」</td></tr>
-<tr class='covered'><td class='line-number'>221</td><td class='line-content'>   ((eq form 'rentai) &amp;quot;する&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>222</td><td class='line-content'>   ;; 仮定形: 「すれ」</td></tr>
-<tr class='covered'><td class='line-number'>223</td><td class='line-content'>   ((eq form 'katei) &amp;quot;すれ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>224</td><td class='line-content'>   ;; 命令形: 「しろ」/「せよ」</td></tr>
-<tr class='covered'><td class='line-number'>225</td><td class='line-content'>   ((eq form 'meirei) &amp;quot;しろ&amp;quot;)</td></tr>
-<tr class='covered'><td class='line-number'>226</td><td class='line-content'>   (t nil)))</td></tr>
-<tr class=''><td class='line-number'>227</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>228</td><td class='line-content'>(defun nskk-verb--conjugate-ka-hen (stem form)</td></tr>
-<tr class=''><td class='line-number'>229</td><td class='line-content'>  &amp;quot;カ変活用動詞の活用を返す。</td></tr>
-<tr class=''><td class='line-number'>230</td><td class='line-content'>STEMは動詞の基本形（\&amp;quot;来る\&amp;quot;または\&amp;quot;くる\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>231</td><td class='line-content'>  (cond</td></tr>
-<tr class=''><td class='line-number'>232</td><td class='line-content'>   ;; 未然形（ない）: 「来」</td></tr>
-<tr class='covered'><td class='line-number'>233</td><td class='line-content'>   ((eq form 'mizen-nai) &amp;quot;来&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>234</td><td class='line-content'>   ;; 未然形（う/よう）: 「来よ」</td></tr>
-<tr class='covered'><td class='line-number'>235</td><td class='line-content'>   ((eq form 'mizen-u) &amp;quot;来よ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>236</td><td class='line-content'>   ;; 連用形: 「来」</td></tr>
-<tr class='covered'><td class='line-number'>237</td><td class='line-content'>   ((eq form 'renyou) &amp;quot;来&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>238</td><td class='line-content'>   ;; 終止形: 「来る」</td></tr>
-<tr class='covered'><td class='line-number'>239</td><td class='line-content'>   ((eq form 'shushi) &amp;quot;来る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>240</td><td class='line-content'>   ;; 連体形: 「来る」</td></tr>
-<tr class='covered'><td class='line-number'>241</td><td class='line-content'>   ((eq form 'rentai) &amp;quot;来る&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>242</td><td class='line-content'>   ;; 仮定形: 「来れ」</td></tr>
-<tr class='covered'><td class='line-number'>243</td><td class='line-content'>   ((eq form 'katei) &amp;quot;来れ&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>244</td><td class='line-content'>   ;; 命令形: 「来い」</td></tr>
-<tr class='covered'><td class='line-number'>245</td><td class='line-content'>   ((eq form 'meirei) &amp;quot;来い&amp;quot;)</td></tr>
-<tr class='covered'><td class='line-number'>246</td><td class='line-content'>   (t nil)))</td></tr>
-<tr class=''><td class='line-number'>247</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>248</td><td class='line-content'>;;; 公開API</td></tr>
-<tr class=''><td class='line-number'>249</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>250</td><td class='line-content'>;;;###autoload</td></tr>
-<tr class=''><td class='line-number'>251</td><td class='line-content'>(defun nskk-conjugate-verb (stem type form)</td></tr>
-<tr class=''><td class='line-number'>252</td><td class='line-content'>  &amp;quot;動詞STEMをTYPE（活用型）とFORM（活用形）に基づいて活用する。</td></tr>
-<tr class=''><td class='line-number'>253</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>254</td><td class='line-content'>引数:</td></tr>
-<tr class=''><td class='line-number'>255</td><td class='line-content'>  STEM - 動詞の基本形（文字列）</td></tr>
-<tr class=''><td class='line-number'>256</td><td class='line-content'>  TYPE - 活用型（symbol）</td></tr>
-<tr class=''><td class='line-number'>257</td><td class='line-content'>         'godan, 'kami-ichidan, 'shimo-ichidan, 'sa-hen, 'ka-hen</td></tr>
-<tr class=''><td class='line-number'>258</td><td class='line-content'>  FORM - 活用形（symbol）</td></tr>
-<tr class=''><td class='line-number'>259</td><td class='line-content'>         'mizen-nai, 'mizen-u, 'renyou, 'shushi, 'rentai, 'katei, 'meirei</td></tr>
-<tr class=''><td class='line-number'>260</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>261</td><td class='line-content'>返り値:</td></tr>
-<tr class=''><td class='line-number'>262</td><td class='line-content'>  活用後の文字列、またはnil（無効な入力の場合）</td></tr>
-<tr class=''><td class='line-number'>263</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>264</td><td class='line-content'>使用例:</td></tr>
-<tr class=''><td class='line-number'>265</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;書く\&amp;quot; 'godan 'mizen-nai)  ;; =&amp;gt; \&amp;quot;書か\&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>266</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;書く\&amp;quot; 'godan 'renyou)     ;; =&amp;gt; \&amp;quot;書き\&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>267</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;見る\&amp;quot; 'kami-ichidan 'mizen-nai) ;; =&amp;gt; \&amp;quot;見\&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>268</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;食べる\&amp;quot; 'shimo-ichidan 'renyou) ;; =&amp;gt; \&amp;quot;食べ\&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>269</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;する\&amp;quot; 'sa-hen 'shushi)    ;; =&amp;gt; \&amp;quot;する\&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>270</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;来る\&amp;quot; 'ka-hen 'meirei)    ;; =&amp;gt; \&amp;quot;来い\&amp;quot;&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>271</td><td class='line-content'>  (unless (stringp stem)</td></tr>
-<tr class='covered'><td class='line-number'>272</td><td class='line-content'>    (signal 'wrong-type-argument (list 'stringp stem)))</td></tr>
-<tr class='covered'><td class='line-number'>273</td><td class='line-content'>  (unless (memq type nskk-verb-types)</td></tr>
-<tr class='covered'><td class='line-number'>274</td><td class='line-content'>    (signal 'wrong-type-argument (list 'nskk-verb-types type)))</td></tr>
-<tr class='covered'><td class='line-number'>275</td><td class='line-content'>  (unless (memq form nskk-verb-forms)</td></tr>
-<tr class='covered'><td class='line-number'>276</td><td class='line-content'>    (signal 'wrong-type-argument (list 'nskk-verb-forms form)))</td></tr>
-<tr class=''><td class='line-number'>277</td><td class='line-content'></td></tr>
-<tr class='covered'><td class='line-number'>278</td><td class='line-content'>  (pcase type</td></tr>
-<tr class='covered'><td class='line-number'>279</td><td class='line-content'>    ('godan (nskk-verb--conjugate-godan stem form))</td></tr>
-<tr class='covered'><td class='line-number'>280</td><td class='line-content'>    ('kami-ichidan (nskk-verb--conjugate-ichidan stem form))</td></tr>
-<tr class='covered'><td class='line-number'>281</td><td class='line-content'>    ('shimo-ichidan (nskk-verb--conjugate-ichidan stem form))</td></tr>
-<tr class='covered'><td class='line-number'>282</td><td class='line-content'>    ('sa-hen (nskk-verb--conjugate-sa-hen stem form))</td></tr>
-<tr class='covered'><td class='line-number'>283</td><td class='line-content'>    ('ka-hen (nskk-verb--conjugate-ka-hen stem form))</td></tr>
-<tr class='covered'><td class='line-number'>284</td><td class='line-content'>    (_ nil)))</td></tr>
-<tr class=''><td class='line-number'>285</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>286</td><td class='line-content'>;;;###autoload</td></tr>
-<tr class=''><td class='line-number'>287</td><td class='line-content'>(defun nskk-verb-get-all-forms (stem type)</td></tr>
-<tr class=''><td class='line-number'>288</td><td class='line-content'>  &amp;quot;動詞STEMの全活用形を返す。</td></tr>
-<tr class=''><td class='line-number'>289</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>290</td><td class='line-content'>引数:</td></tr>
-<tr class=''><td class='line-number'>291</td><td class='line-content'>  STEM - 動詞の基本形（文字列）</td></tr>
-<tr class=''><td class='line-number'>292</td><td class='line-content'>  TYPE - 活用型（symbol）</td></tr>
-<tr class=''><td class='line-number'>293</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>294</td><td class='line-content'>返り値:</td></tr>
-<tr class=''><td class='line-number'>295</td><td class='line-content'>  活用形と活用後の文字列のalist</td></tr>
-<tr class=''><td class='line-number'>296</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>297</td><td class='line-content'>使用例:</td></tr>
-<tr class=''><td class='line-number'>298</td><td class='line-content'>  (nskk-verb-get-all-forms \&amp;quot;書く\&amp;quot; 'godan)</td></tr>
-<tr class=''><td class='line-number'>299</td><td class='line-content'>  ;; =&amp;gt; ((mizen-nai . \&amp;quot;書か\&amp;quot;) (mizen-u . \&amp;quot;書こ\&amp;quot;) (renyou . \&amp;quot;書き\&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>300</td><td class='line-content'>  ;;     (shushi . \&amp;quot;書く\&amp;quot;) (rentai . \&amp;quot;書く\&amp;quot;) (katei . \&amp;quot;書け\&amp;quot;) (meirei . \&amp;quot;書け\&amp;quot;))&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>301</td><td class='line-content'>  (mapcar (lambda (form)</td></tr>
-<tr class='covered'><td class='line-number'>302</td><td class='line-content'>            (cons form (nskk-conjugate-verb stem type form)))</td></tr>
-<tr class='onevalue'><td class='line-number'>303</td><td class='line-content'>          nskk-verb-forms))</td></tr>
+<tr class=''><td class='line-number'>117</td><td class='line-content'>(defun nskk-verb--hiragana-char-p (char)</td></tr>
+<tr class=''><td class='line-number'>118</td><td class='line-content'>  &amp;quot;CHAR がひらがなか判定する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>119</td><td class='line-content'>  (let ((code (string-to-char char)))</td></tr>
+<tr class='covered'><td class='line-number'>120</td><td class='line-content'>    (and (&amp;gt;= code #x3041) (&amp;lt;= code #x309F))))</td></tr>
+<tr class=''><td class='line-number'>121</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>122</td><td class='line-content'>(defun nskk-verb--katakana-char-p (char)</td></tr>
+<tr class=''><td class='line-number'>123</td><td class='line-content'>  &amp;quot;CHAR がカタカナか判定する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>124</td><td class='line-content'>  (let ((code (string-to-char char)))</td></tr>
+<tr class='covered'><td class='line-number'>125</td><td class='line-content'>    (and (&amp;gt;= code #x30A1) (&amp;lt;= code #x30FA))))</td></tr>
+<tr class=''><td class='line-number'>126</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>127</td><td class='line-content'>(defun nskk-verb--katakana-to-hiragana (char)</td></tr>
+<tr class=''><td class='line-number'>128</td><td class='line-content'>  &amp;quot;CHAR をカタカナからひらがなに変換する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>129</td><td class='line-content'>  (let ((code (string-to-char char)))</td></tr>
+<tr class='covered'><td class='line-number'>130</td><td class='line-content'>    (char-to-string (- code (- #x30A1 #x3041)))))</td></tr>
+<tr class=''><td class='line-number'>131</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>132</td><td class='line-content'>(defun nskk-verb--resolve-godan-row (stem)</td></tr>
+<tr class=''><td class='line-number'>133</td><td class='line-content'>  &amp;quot;STEM に対応する五段活用の行を返す。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>134</td><td class='line-content'>  (let* ((len (length stem))</td></tr>
+<tr class='covered'><td class='line-number'>135</td><td class='line-content'>         (last (if (&amp;gt; len 0) (substring stem -1) ))</td></tr>
+<tr class='covered'><td class='line-number'>136</td><td class='line-content'>         (row (cond</td></tr>
+<tr class='covered'><td class='line-number'>137</td><td class='line-content'>               ((zerop len) nil)</td></tr>
+<tr class='covered'><td class='line-number'>138</td><td class='line-content'>               ((nskk-verb--hiragana-char-p last)</td></tr>
+<tr class='covered'><td class='line-number'>139</td><td class='line-content'>                (nskk-verb--get-gyou last))</td></tr>
+<tr class='covered'><td class='line-number'>140</td><td class='line-content'>               ((nskk-verb--katakana-char-p last)</td></tr>
+<tr class='covered'><td class='line-number'>141</td><td class='line-content'>                (nskk-verb--get-gyou (nskk-verb--katakana-to-hiragana last)))</td></tr>
+<tr class='covered'><td class='line-number'>142</td><td class='line-content'>               (t (cdr (assoc stem nskk-verb--godan-kanji-row-table))))))</td></tr>
+<tr class='covered'><td class='line-number'>143</td><td class='line-content'>    (or row</td></tr>
+<tr class='covered'><td class='line-number'>144</td><td class='line-content'>        (cdr (assoc last nskk-verb--godan-kanji-row-table))</td></tr>
+<tr class='covered'><td class='line-number'>145</td><td class='line-content'>        'ka)))</td></tr>
+<tr class=''><td class='line-number'>146</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>147</td><td class='line-content'>(defun nskk-verb--normalize-godan-ending (ending row form)</td></tr>
+<tr class=''><td class='line-number'>148</td><td class='line-content'>  &amp;quot;行と活用形に応じて語尾を正規化する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>149</td><td class='line-content'>  (if (and (eq row 'na) (memq form '(katei meirei)))</td></tr>
+<tr class=''><td class='line-number'>150</td><td class='line-content'>      &amp;quot;ne&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>151</td><td class='line-content'>    ending))</td></tr>
+<tr class=''><td class='line-number'>152</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>153</td><td class='line-content'>;;; 上一段・下一段活用のエンディング</td></tr>
+<tr class=''><td class='line-number'>154</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>155</td><td class='line-content'>(defconst nskk-ichidan-endings</td></tr>
+<tr class=''><td class='line-number'>156</td><td class='line-content'>  '((mizen-nai . &amp;quot;&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>157</td><td class='line-content'>    (mizen-u . &amp;quot;よ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>158</td><td class='line-content'>    (renyou . &amp;quot;&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>159</td><td class='line-content'>    (shushi . &amp;quot;る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>160</td><td class='line-content'>    (rentai . &amp;quot;る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>161</td><td class='line-content'>    (katei . &amp;quot;れ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>162</td><td class='line-content'>    (meirei . &amp;quot;ろ&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>163</td><td class='line-content'>  &amp;quot;一段活用（上一段・下一段）の語尾変化テーブル。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>164</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>165</td><td class='line-content'>;;; サ変活用のエンディング</td></tr>
+<tr class=''><td class='line-number'>166</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>167</td><td class='line-content'>(defconst nskk-sa-hen-endings</td></tr>
+<tr class=''><td class='line-number'>168</td><td class='line-content'>  '((mizen-nai . &amp;quot;&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>169</td><td class='line-content'>    (mizen-u . &amp;quot;よ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>170</td><td class='line-content'>    (renyou . &amp;quot;&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>171</td><td class='line-content'>    (shushi . &amp;quot;る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>172</td><td class='line-content'>    (rentai . &amp;quot;る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>173</td><td class='line-content'>    (katei . &amp;quot;れ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>174</td><td class='line-content'>    (meirei . &amp;quot;ろ&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>175</td><td class='line-content'>  &amp;quot;サ変活用の語尾変化テーブル（「する」の活用）。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>176</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>177</td><td class='line-content'>;;; カ変活用のエンディング</td></tr>
+<tr class=''><td class='line-number'>178</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>179</td><td class='line-content'>(defconst nskk-ka-hen-endings</td></tr>
+<tr class=''><td class='line-number'>180</td><td class='line-content'>  '((mizen-nai . &amp;quot;&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>181</td><td class='line-content'>    (mizen-u . &amp;quot;よ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>182</td><td class='line-content'>    (renyou . &amp;quot;&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>183</td><td class='line-content'>    (shushi . &amp;quot;る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>184</td><td class='line-content'>    (rentai . &amp;quot;る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>185</td><td class='line-content'>    (katei . &amp;quot;れ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>186</td><td class='line-content'>    (meirei . &amp;quot;い&amp;quot;))</td></tr>
+<tr class=''><td class='line-number'>187</td><td class='line-content'>  &amp;quot;カ変活用の語尾変化テーブル（「来る」の活用）。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>188</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>189</td><td class='line-content'>;;; ヘルパー関数</td></tr>
+<tr class=''><td class='line-number'>190</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>191</td><td class='line-content'>(defun nskk-verb--get-gyou (char)</td></tr>
+<tr class=''><td class='line-number'>192</td><td class='line-content'>  &amp;quot;文字CHARの行を返す。</td></tr>
+<tr class=''><td class='line-number'>193</td><td class='line-content'>例: 「く」→'ka、「ぐ」→'ga&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>194</td><td class='line-content'>  (let ((char-code (string-to-char char)))</td></tr>
+<tr class='covered'><td class='line-number'>195</td><td class='line-content'>    (cond</td></tr>
+<tr class=''><td class='line-number'>196</td><td class='line-content'>     ;; か行</td></tr>
+<tr class='covered'><td class='line-number'>197</td><td class='line-content'>     ((or (= char-code ?く) (= char-code ?か) (= char-code ?き)</td></tr>
+<tr class='covered'><td class='line-number'>198</td><td class='line-content'>          (= char-code ?け) (= char-code ?こ))</td></tr>
+<tr class=''><td class='line-number'>199</td><td class='line-content'>      'ka)</td></tr>
+<tr class=''><td class='line-number'>200</td><td class='line-content'>     ;; が行</td></tr>
+<tr class='covered'><td class='line-number'>201</td><td class='line-content'>     ((or (= char-code ?ぐ) (= char-code ?が) (= char-code ?ぎ)</td></tr>
+<tr class='covered'><td class='line-number'>202</td><td class='line-content'>          (= char-code ?げ) (= char-code ?ご))</td></tr>
+<tr class=''><td class='line-number'>203</td><td class='line-content'>      'ga)</td></tr>
+<tr class=''><td class='line-number'>204</td><td class='line-content'>     ;; さ行</td></tr>
+<tr class='covered'><td class='line-number'>205</td><td class='line-content'>     ((or (= char-code ?す) (= char-code ?さ) (= char-code ?し)</td></tr>
+<tr class='covered'><td class='line-number'>206</td><td class='line-content'>          (= char-code ?せ) (= char-code ?そ))</td></tr>
+<tr class=''><td class='line-number'>207</td><td class='line-content'>      'sa)</td></tr>
+<tr class=''><td class='line-number'>208</td><td class='line-content'>     ;; た行</td></tr>
+<tr class='covered'><td class='line-number'>209</td><td class='line-content'>     ((or (= char-code ?つ) (= char-code ?た) (= char-code ?ち)</td></tr>
+<tr class='covered'><td class='line-number'>210</td><td class='line-content'>          (= char-code ?て) (= char-code ?と))</td></tr>
+<tr class=''><td class='line-number'>211</td><td class='line-content'>      'ta)</td></tr>
+<tr class=''><td class='line-number'>212</td><td class='line-content'>     ;; な行</td></tr>
+<tr class='covered'><td class='line-number'>213</td><td class='line-content'>     ((or (= char-code ?ぬ) (= char-code ?な) (= char-code ?に)</td></tr>
+<tr class='covered'><td class='line-number'>214</td><td class='line-content'>          (= char-code ?ね) (= char-code ?の))</td></tr>
+<tr class=''><td class='line-number'>215</td><td class='line-content'>      'na)</td></tr>
+<tr class=''><td class='line-number'>216</td><td class='line-content'>     ;; ば行</td></tr>
+<tr class='covered'><td class='line-number'>217</td><td class='line-content'>     ((or (= char-code ?ぶ) (= char-code ?ば) (= char-code ?び)</td></tr>
+<tr class='covered'><td class='line-number'>218</td><td class='line-content'>          (= char-code ?べ) (= char-code ?ぼ))</td></tr>
+<tr class=''><td class='line-number'>219</td><td class='line-content'>      'ba)</td></tr>
+<tr class=''><td class='line-number'>220</td><td class='line-content'>     ;; ま行</td></tr>
+<tr class='covered'><td class='line-number'>221</td><td class='line-content'>     ((or (= char-code ?む) (= char-code ?ま) (= char-code ?み)</td></tr>
+<tr class='covered'><td class='line-number'>222</td><td class='line-content'>          (= char-code ?め) (= char-code ?も))</td></tr>
+<tr class=''><td class='line-number'>223</td><td class='line-content'>      'ma)</td></tr>
+<tr class=''><td class='line-number'>224</td><td class='line-content'>     ;; ら行</td></tr>
+<tr class='covered'><td class='line-number'>225</td><td class='line-content'>     ((or (= char-code ?る) (= char-code ?ら) (= char-code ?り)</td></tr>
+<tr class='covered'><td class='line-number'>226</td><td class='line-content'>          (= char-code ?れ) (= char-code ?ろ))</td></tr>
+<tr class=''><td class='line-number'>227</td><td class='line-content'>      'ra)</td></tr>
+<tr class=''><td class='line-number'>228</td><td class='line-content'>     ;; わ行</td></tr>
+<tr class='covered'><td class='line-number'>229</td><td class='line-content'>     ((or (= char-code ?う) (= char-code ?わ) (= char-code ?ゐ)</td></tr>
+<tr class='covered'><td class='line-number'>230</td><td class='line-content'>          (= char-code ?ゑ) (= char-code ?を) (= char-code ?い)</td></tr>
+<tr class='covered'><td class='line-number'>231</td><td class='line-content'>          (= char-code ?え))</td></tr>
+<tr class=''><td class='line-number'>232</td><td class='line-content'>      'wa)</td></tr>
+<tr class='covered'><td class='line-number'>233</td><td class='line-content'>     (t nil))))</td></tr>
+<tr class=''><td class='line-number'>234</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>235</td><td class='line-content'>(defun nskk-verb--conjugate-godan (stem form)</td></tr>
+<tr class=''><td class='line-number'>236</td><td class='line-content'>  &amp;quot;五段活用動詞の活用を返す。</td></tr>
+<tr class=''><td class='line-number'>237</td><td class='line-content'>STEMは動詞の基本形（例: \&amp;quot;書く\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>  (when stem</td></tr>
+<tr class='covered'><td class='line-number'>239</td><td class='line-content'>    (let* ((row (nskk-verb--resolve-godan-row stem))</td></tr>
+<tr class='covered'><td class='line-number'>240</td><td class='line-content'>           (endings (cdr (assq row nskk-godan-endings)))</td></tr>
+<tr class='covered'><td class='line-number'>241</td><td class='line-content'>           (ending (and endings (cdr (assq form endings)))))</td></tr>
+<tr class='covered'><td class='line-number'>242</td><td class='line-content'>      (when ending</td></tr>
+<tr class='covered'><td class='line-number'>243</td><td class='line-content'>        (let* ((last-char (substring stem -1))</td></tr>
+<tr class='covered'><td class='line-number'>244</td><td class='line-content'>               (base (if (nskk-verb--hiragana-char-p last-char)</td></tr>
+<tr class='covered'><td class='line-number'>245</td><td class='line-content'>                         (substring stem 0 -1)</td></tr>
+<tr class='covered'><td class='line-number'>246</td><td class='line-content'>                       (if (nskk-verb--katakana-char-p last-char)</td></tr>
+<tr class='covered'><td class='line-number'>247</td><td class='line-content'>                           (substring stem 0 -1)</td></tr>
+<tr class='covered'><td class='line-number'>248</td><td class='line-content'>                         &amp;quot;&amp;quot;))))</td></tr>
+<tr class='covered'><td class='line-number'>249</td><td class='line-content'>          (concat base (nskk-verb--normalize-godan-ending ending row form)))))))</td></tr>
+<tr class=''><td class='line-number'>250</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>251</td><td class='line-content'>(defun nskk-verb--conjugate-ichidan (stem form)</td></tr>
+<tr class=''><td class='line-number'>252</td><td class='line-content'>  &amp;quot;一段活用動詞の活用を返す。</td></tr>
+<tr class=''><td class='line-number'>253</td><td class='line-content'>STEMは動詞の基本形（例: \&amp;quot;見る\&amp;quot;、\&amp;quot;食べる\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>254</td><td class='line-content'>  (when stem</td></tr>
+<tr class='covered'><td class='line-number'>255</td><td class='line-content'>    (let ((ending (cdr (assq form nskk-ichidan-endings))))</td></tr>
+<tr class='covered'><td class='line-number'>256</td><td class='line-content'>      (when ending</td></tr>
+<tr class='covered'><td class='line-number'>257</td><td class='line-content'>        (concat stem ending)))))</td></tr>
+<tr class=''><td class='line-number'>258</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>259</td><td class='line-content'>(defun nskk-verb--conjugate-sa-hen (stem form)</td></tr>
+<tr class=''><td class='line-number'>260</td><td class='line-content'>  &amp;quot;サ変活用動詞の活用を返す。</td></tr>
+<tr class=''><td class='line-number'>261</td><td class='line-content'>STEMは動詞の基本形（\&amp;quot;する\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>262</td><td class='line-content'>  (cond</td></tr>
+<tr class=''><td class='line-number'>263</td><td class='line-content'>   ;; 未然形（ない）: 「し」</td></tr>
+<tr class='covered'><td class='line-number'>264</td><td class='line-content'>   ((eq form 'mizen-nai) &amp;quot;し&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>265</td><td class='line-content'>   ;; 未然形（う/よう）: 「しよ」</td></tr>
+<tr class='covered'><td class='line-number'>266</td><td class='line-content'>   ((eq form 'mizen-u) &amp;quot;しよ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>267</td><td class='line-content'>   ;; 連用形: 「し」</td></tr>
+<tr class='covered'><td class='line-number'>268</td><td class='line-content'>   ((eq form 'renyou) &amp;quot;し&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>269</td><td class='line-content'>   ;; 終止形: 「する」</td></tr>
+<tr class='covered'><td class='line-number'>270</td><td class='line-content'>   ((eq form 'shushi) &amp;quot;する&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>271</td><td class='line-content'>   ;; 連体形: 「する」</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>   ((eq form 'rentai) &amp;quot;する&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>273</td><td class='line-content'>   ;; 仮定形: 「すれ」</td></tr>
+<tr class='covered'><td class='line-number'>274</td><td class='line-content'>   ((eq form 'katei) &amp;quot;すれ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>275</td><td class='line-content'>   ;; 命令形: 「しろ」/「せよ」</td></tr>
+<tr class='covered'><td class='line-number'>276</td><td class='line-content'>   ((eq form 'meirei) &amp;quot;しろ&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>277</td><td class='line-content'>   (t nil)))</td></tr>
+<tr class=''><td class='line-number'>278</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>279</td><td class='line-content'>(defun nskk-verb--conjugate-ka-hen (stem form)</td></tr>
+<tr class=''><td class='line-number'>280</td><td class='line-content'>  &amp;quot;カ変活用動詞の活用を返す。</td></tr>
+<tr class=''><td class='line-number'>281</td><td class='line-content'>STEMは動詞の基本形（\&amp;quot;来る\&amp;quot;または\&amp;quot;くる\&amp;quot;）、FORMは活用形。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>282</td><td class='line-content'>  (cond</td></tr>
+<tr class=''><td class='line-number'>283</td><td class='line-content'>   ;; 未然形（ない）: 「来」</td></tr>
+<tr class='covered'><td class='line-number'>284</td><td class='line-content'>   ((eq form 'mizen-nai) &amp;quot;来&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>285</td><td class='line-content'>   ;; 未然形（う/よう）: 「来よ」</td></tr>
+<tr class='covered'><td class='line-number'>286</td><td class='line-content'>   ((eq form 'mizen-u) &amp;quot;来よ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>287</td><td class='line-content'>   ;; 連用形: 「来」</td></tr>
+<tr class='covered'><td class='line-number'>288</td><td class='line-content'>   ((eq form 'renyou) &amp;quot;来&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>289</td><td class='line-content'>   ;; 終止形: 「来る」</td></tr>
+<tr class='covered'><td class='line-number'>290</td><td class='line-content'>   ((eq form 'shushi) &amp;quot;来る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>291</td><td class='line-content'>   ;; 連体形: 「来る」</td></tr>
+<tr class='covered'><td class='line-number'>292</td><td class='line-content'>   ((eq form 'rentai) &amp;quot;来る&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>293</td><td class='line-content'>   ;; 仮定形: 「来れ」</td></tr>
+<tr class='covered'><td class='line-number'>294</td><td class='line-content'>   ((eq form 'katei) &amp;quot;来れ&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>295</td><td class='line-content'>   ;; 命令形: 「来い」</td></tr>
+<tr class='covered'><td class='line-number'>296</td><td class='line-content'>   ((eq form 'meirei) &amp;quot;来い&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>297</td><td class='line-content'>   (t nil)))</td></tr>
+<tr class=''><td class='line-number'>298</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>299</td><td class='line-content'>;;; 公開API</td></tr>
+<tr class=''><td class='line-number'>300</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>301</td><td class='line-content'>;;;###autoload</td></tr>
+<tr class=''><td class='line-number'>302</td><td class='line-content'>(defun nskk-conjugate-verb (stem type form)</td></tr>
+<tr class=''><td class='line-number'>303</td><td class='line-content'>  &amp;quot;動詞STEMをTYPE（活用型）とFORM（活用形）に基づいて活用する。</td></tr>
 <tr class=''><td class='line-number'>304</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>305</td><td class='line-content'>;;; パフォーマンス最適化</td></tr>
-<tr class=''><td class='line-number'>306</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>307</td><td class='line-content'>;; 頻出動詞のキャッシュ（将来的な拡張用）</td></tr>
-<tr class=''><td class='line-number'>308</td><td class='line-content'>(defvar nskk-verb--conjugation-cache (make-hash-table :test 'equal)</td></tr>
-<tr class=''><td class='line-number'>309</td><td class='line-content'>  &amp;quot;動詞活用結果のキャッシュ。&amp;quot;)</td></tr>
-<tr class=''><td class='line-number'>310</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>311</td><td class='line-content'>(defun nskk-verb--cache-key (stem type form)</td></tr>
-<tr class=''><td class='line-number'>312</td><td class='line-content'>  &amp;quot;キャッシュキーを生成する。&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>313</td><td class='line-content'>  (format &amp;quot;%s:%s:%s&amp;quot; stem type form))</td></tr>
+<tr class=''><td class='line-number'>305</td><td class='line-content'>引数:</td></tr>
+<tr class=''><td class='line-number'>306</td><td class='line-content'>  STEM - 動詞の基本形（文字列）</td></tr>
+<tr class=''><td class='line-number'>307</td><td class='line-content'>  TYPE - 活用型（symbol）</td></tr>
+<tr class=''><td class='line-number'>308</td><td class='line-content'>         'godan, 'kami-ichidan, 'shimo-ichidan, 'sa-hen, 'ka-hen</td></tr>
+<tr class=''><td class='line-number'>309</td><td class='line-content'>  FORM - 活用形（symbol）</td></tr>
+<tr class=''><td class='line-number'>310</td><td class='line-content'>         'mizen-nai, 'mizen-u, 'renyou, 'shushi, 'rentai, 'katei, 'meirei</td></tr>
+<tr class=''><td class='line-number'>311</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>312</td><td class='line-content'>返り値:</td></tr>
+<tr class=''><td class='line-number'>313</td><td class='line-content'>  活用後の文字列、またはnil（無効な入力の場合）</td></tr>
 <tr class=''><td class='line-number'>314</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>315</td><td class='line-content'>(defun nskk-verb-clear-cache ()</td></tr>
-<tr class=''><td class='line-number'>316</td><td class='line-content'>  &amp;quot;活用キャッシュをクリアする。&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>317</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='covered'><td class='line-number'>318</td><td class='line-content'>  (clrhash nskk-verb--conjugation-cache))</td></tr>
-<tr class=''><td class='line-number'>319</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>320</td><td class='line-content'>;;; デバッグ用ユーティリティ</td></tr>
-<tr class=''><td class='line-number'>321</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>322</td><td class='line-content'>(defun nskk-verb-print-all-forms (stem type)</td></tr>
-<tr class=''><td class='line-number'>323</td><td class='line-content'>  &amp;quot;動詞STEMの全活用形を表形式で表示する（デバッグ用）。&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>324</td><td class='line-content'>  (interactive &amp;quot;s語幹: \nS活用型 (godan/kami-ichidan/shimo-ichidan/sa-hen/ka-hen): &amp;quot;)</td></tr>
-<tr class='covered'><td class='line-number'>325</td><td class='line-content'>  (let ((forms (nskk-verb-get-all-forms stem (intern type))))</td></tr>
-<tr class='covered'><td class='line-number'>326</td><td class='line-content'>    (with-output-to-temp-buffer &amp;quot;*NSKK Verb Conjugation*&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>327</td><td class='line-content'>      (princ (format &amp;quot;動詞「%s」の活用（%s活用）\n&amp;quot; stem type))</td></tr>
-<tr class='covered'><td class='line-number'>328</td><td class='line-content'>      (princ &amp;quot;====================\n\n&amp;quot;)</td></tr>
-<tr class='covered'><td class='line-number'>329</td><td class='line-content'>      (dolist (entry forms)</td></tr>
-<tr class='covered'><td class='line-number'>330</td><td class='line-content'>        (princ (format &amp;quot;%-12s: %s\n&amp;quot;</td></tr>
-<tr class='covered'><td class='line-number'>331</td><td class='line-content'>                       (symbol-name (car entry))</td></tr>
-<tr class='onevalue'><td class='line-number'>332</td><td class='line-content'>                       (cdr entry)))))))</td></tr>
-<tr class=''><td class='line-number'>333</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>334</td><td class='line-content'>(provide 'nskk-verb-conjugation)</td></tr>
-<tr class=''><td class='line-number'>335</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>336</td><td class='line-content'>;;; nskk-verb-conjugation.el ends here</td></tr>
+<tr class=''><td class='line-number'>315</td><td class='line-content'>使用例:</td></tr>
+<tr class=''><td class='line-number'>316</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;書く\&amp;quot; 'godan 'mizen-nai)  ;; =&amp;gt; \&amp;quot;書か\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>317</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;書く\&amp;quot; 'godan 'renyou)     ;; =&amp;gt; \&amp;quot;書き\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>318</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;見る\&amp;quot; 'kami-ichidan 'mizen-nai) ;; =&amp;gt; \&amp;quot;見\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>319</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;食べる\&amp;quot; 'shimo-ichidan 'renyou) ;; =&amp;gt; \&amp;quot;食べ\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>320</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;する\&amp;quot; 'sa-hen 'shushi)    ;; =&amp;gt; \&amp;quot;する\&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>321</td><td class='line-content'>  (nskk-conjugate-verb \&amp;quot;来る\&amp;quot; 'ka-hen 'meirei)    ;; =&amp;gt; \&amp;quot;来い\&amp;quot;&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>322</td><td class='line-content'>  (unless (stringp stem)</td></tr>
+<tr class='covered'><td class='line-number'>323</td><td class='line-content'>    (signal 'wrong-type-argument (list 'stringp stem)))</td></tr>
+<tr class='covered'><td class='line-number'>324</td><td class='line-content'>  (unless (memq type nskk-verb-types)</td></tr>
+<tr class='covered'><td class='line-number'>325</td><td class='line-content'>    (signal 'wrong-type-argument (list 'nskk-verb-types type)))</td></tr>
+<tr class=''><td class='line-number'>326</td><td class='line-content'></td></tr>
+<tr class='covered'><td class='line-number'>327</td><td class='line-content'>  (if (stringp form)</td></tr>
+<tr class='covered'><td class='line-number'>328</td><td class='line-content'>      (concat stem form)</td></tr>
+<tr class='covered'><td class='line-number'>329</td><td class='line-content'>    (unless (memq form nskk-verb-forms)</td></tr>
+<tr class='covered'><td class='line-number'>330</td><td class='line-content'>      (signal 'wrong-type-argument (list 'nskk-verb-forms form)))</td></tr>
+<tr class='covered'><td class='line-number'>331</td><td class='line-content'>    (pcase type</td></tr>
+<tr class='covered'><td class='line-number'>332</td><td class='line-content'>      ('godan (nskk-verb--conjugate-godan stem form))</td></tr>
+<tr class='covered'><td class='line-number'>333</td><td class='line-content'>      ('kami-ichidan (nskk-verb--conjugate-ichidan stem form))</td></tr>
+<tr class='covered'><td class='line-number'>334</td><td class='line-content'>      ('shimo-ichidan (nskk-verb--conjugate-ichidan stem form))</td></tr>
+<tr class='covered'><td class='line-number'>335</td><td class='line-content'>      ('sa-hen (nskk-verb--conjugate-sa-hen stem form))</td></tr>
+<tr class='covered'><td class='line-number'>336</td><td class='line-content'>      ('ka-hen (nskk-verb--conjugate-ka-hen stem form))</td></tr>
+<tr class='covered'><td class='line-number'>337</td><td class='line-content'>      (_ nil))))</td></tr>
+<tr class=''><td class='line-number'>338</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>339</td><td class='line-content'>;;;###autoload</td></tr>
+<tr class=''><td class='line-number'>340</td><td class='line-content'>(defun nskk-verb-get-all-forms (stem type)</td></tr>
+<tr class=''><td class='line-number'>341</td><td class='line-content'>  &amp;quot;動詞STEMの全活用形を返す。</td></tr>
+<tr class=''><td class='line-number'>342</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>343</td><td class='line-content'>引数:</td></tr>
+<tr class=''><td class='line-number'>344</td><td class='line-content'>  STEM - 動詞の基本形（文字列）</td></tr>
+<tr class=''><td class='line-number'>345</td><td class='line-content'>  TYPE - 活用型（symbol）</td></tr>
+<tr class=''><td class='line-number'>346</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>347</td><td class='line-content'>返り値:</td></tr>
+<tr class=''><td class='line-number'>348</td><td class='line-content'>  活用形と活用後の文字列のalist</td></tr>
+<tr class=''><td class='line-number'>349</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>350</td><td class='line-content'>使用例:</td></tr>
+<tr class=''><td class='line-number'>351</td><td class='line-content'>  (nskk-verb-get-all-forms \&amp;quot;書く\&amp;quot; 'godan)</td></tr>
+<tr class=''><td class='line-number'>352</td><td class='line-content'>  ;; =&amp;gt; ((mizen-nai . \&amp;quot;書か\&amp;quot;) (mizen-u . \&amp;quot;書こ\&amp;quot;) (renyou . \&amp;quot;書き\&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>353</td><td class='line-content'>  ;;     (shushi . \&amp;quot;書く\&amp;quot;) (rentai . \&amp;quot;書く\&amp;quot;) (katei . \&amp;quot;書け\&amp;quot;) (meirei . \&amp;quot;書け\&amp;quot;))&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>354</td><td class='line-content'>  (mapcar (lambda (form)</td></tr>
+<tr class='covered'><td class='line-number'>355</td><td class='line-content'>            (cons form (nskk-conjugate-verb stem type form)))</td></tr>
+<tr class='covered'><td class='line-number'>356</td><td class='line-content'>          nskk-verb-forms))</td></tr>
+<tr class=''><td class='line-number'>357</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>358</td><td class='line-content'>;;; パフォーマンス最適化</td></tr>
+<tr class=''><td class='line-number'>359</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>360</td><td class='line-content'>;; 頻出動詞のキャッシュ（将来的な拡張用）</td></tr>
+<tr class=''><td class='line-number'>361</td><td class='line-content'>(defvar nskk-verb--conjugation-cache (make-hash-table :test 'equal)</td></tr>
+<tr class=''><td class='line-number'>362</td><td class='line-content'>  &amp;quot;動詞活用結果のキャッシュ。&amp;quot;)</td></tr>
+<tr class=''><td class='line-number'>363</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>364</td><td class='line-content'>(defun nskk-verb--cache-key (stem type form)</td></tr>
+<tr class=''><td class='line-number'>365</td><td class='line-content'>  &amp;quot;キャッシュキーを生成する。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>366</td><td class='line-content'>  (format &amp;quot;%s:%s:%s&amp;quot; stem type form))</td></tr>
+<tr class=''><td class='line-number'>367</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>368</td><td class='line-content'>(defun nskk-verb-clear-cache ()</td></tr>
+<tr class=''><td class='line-number'>369</td><td class='line-content'>  &amp;quot;活用キャッシュをクリアする。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>370</td><td class='line-content'>  (interactive)</td></tr>
+<tr class='covered'><td class='line-number'>371</td><td class='line-content'>  (clrhash nskk-verb--conjugation-cache))</td></tr>
+<tr class=''><td class='line-number'>372</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>373</td><td class='line-content'>;;; デバッグ用ユーティリティ</td></tr>
+<tr class=''><td class='line-number'>374</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>375</td><td class='line-content'>(defun nskk-verb-print-all-forms (stem type)</td></tr>
+<tr class=''><td class='line-number'>376</td><td class='line-content'>  &amp;quot;動詞STEMの全活用形を表形式で表示する（デバッグ用）。&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>377</td><td class='line-content'>  (interactive &amp;quot;s語幹: \nS活用型 (godan/kami-ichidan/shimo-ichidan/sa-hen/ka-hen): &amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>378</td><td class='line-content'>  (let ((forms (nskk-verb-get-all-forms stem (intern type))))</td></tr>
+<tr class='covered'><td class='line-number'>379</td><td class='line-content'>    (with-output-to-temp-buffer &amp;quot;*NSKK Verb Conjugation*&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>380</td><td class='line-content'>      (princ (format &amp;quot;動詞「%s」の活用（%s活用）\n&amp;quot; stem type))</td></tr>
+<tr class='covered'><td class='line-number'>381</td><td class='line-content'>      (princ &amp;quot;====================\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>382</td><td class='line-content'>      (dolist (entry forms)</td></tr>
+<tr class='covered'><td class='line-number'>383</td><td class='line-content'>        (princ (format &amp;quot;%-12s: %s\n&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>384</td><td class='line-content'>                       (symbol-name (car entry))</td></tr>
+<tr class='covered'><td class='line-number'>385</td><td class='line-content'>                       (cdr entry)))))))</td></tr>
+<tr class=''><td class='line-number'>386</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>387</td><td class='line-content'>(provide 'nskk-verb-conjugation)</td></tr>
+<tr class=''><td class='line-number'>388</td><td class='line-content'></td></tr>
+<tr class=''><td class='line-number'>389</td><td class='line-content'>;;; nskk-verb-conjugation.el ends here</td></tr>
 
     </table>
   </div>

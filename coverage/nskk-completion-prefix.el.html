@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-completion-prefix.el</h1>
     <div class='stats'>
-      Coverage: 54.50% (230/422 forms) •
+      Coverage: 100.00% (421/421 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -173,7 +173,7 @@
 <tr class='covered'><td class='line-number'>136</td><td class='line-content'>         (sort-method (or (plist-get args :sort) nskk-completion-prefix-sort-method))</td></tr>
 <tr class='covered'><td class='line-number'>137</td><td class='line-content'>         (include-exact (if (plist-member args :exact)</td></tr>
 <tr class='covered'><td class='line-number'>138</td><td class='line-content'>                           (plist-get args :exact)</td></tr>
-<tr class=''><td class='line-number'>139</td><td class='line-content'>                         t))</td></tr>
+<tr class='covered'><td class='line-number'>139</td><td class='line-content'>                         t))</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'>         (results nil))</td></tr>
 <tr class=''><td class='line-number'>141</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>142</td><td class='line-content'>    ;; トライ木から前方一致検索</td></tr>
@@ -187,7 +187,7 @@
 <tr class='covered'><td class='line-number'>150</td><td class='line-content'>    (when (and limit (&amp;gt; (length results) limit))</td></tr>
 <tr class='covered'><td class='line-number'>151</td><td class='line-content'>      (setq results (seq-take results limit)))</td></tr>
 <tr class=''><td class='line-number'>152</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>153</td><td class='line-content'>    results))</td></tr>
+<tr class='covered'><td class='line-number'>153</td><td class='line-content'>    results))</td></tr>
 <tr class=''><td class='line-number'>154</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>155</td><td class='line-content'>(defun nskk-completion-prefix--search-tries (index prefix limit okuri-type include-exact)</td></tr>
 <tr class=''><td class='line-number'>156</td><td class='line-content'>  &amp;quot;トライ木から前方一致検索を実行する（内部関数）。</td></tr>
@@ -215,19 +215,19 @@
 <tr class=''><td class='line-number'>178</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>179</td><td class='line-content'>    ;; 完全一致を先にチェック</td></tr>
 <tr class='covered'><td class='line-number'>180</td><td class='line-content'>    (when include-exact</td></tr>
-<tr class='covered'><td class='line-number'>181</td><td class='line-content'>      (dolist (trie-pair tries)</td></tr>
-<tr class='covered'><td class='line-number'>182</td><td class='line-content'>        (let* ((trie (car trie-pair))</td></tr>
-<tr class='covered'><td class='line-number'>183</td><td class='line-content'>               (type (cdr trie-pair))</td></tr>
-<tr class='covered'><td class='line-number'>184</td><td class='line-content'>               (lookup-result (nskk-trie-lookup trie prefix)))</td></tr>
-<tr class='covered'><td class='line-number'>185</td><td class='line-content'>          (when (cdr lookup-result)</td></tr>
-<tr class='covered'><td class='line-number'>186</td><td class='line-content'>            (setq exact-match</td></tr>
-<tr class='covered'><td class='line-number'>187</td><td class='line-content'>                  (nskk-completion-prefix-result--create</td></tr>
-<tr class=''><td class='line-number'>188</td><td class='line-content'>                   :midashi prefix</td></tr>
-<tr class='covered'><td class='line-number'>189</td><td class='line-content'>                   :entry (car lookup-result)</td></tr>
-<tr class='covered'><td class='line-number'>190</td><td class='line-content'>                   :score (nskk-dict-entry-frequency (car lookup-result))</td></tr>
-<tr class=''><td class='line-number'>191</td><td class='line-content'>                   :match-type 'exact))</td></tr>
-<tr class=''><td class='line-number'>192</td><td class='line-content'>            ;; 最初の完全一致のみ</td></tr>
-<tr class='onevalue'><td class='line-number'>193</td><td class='line-content'>            (return)))))</td></tr>
+<tr class='covered'><td class='line-number'>181</td><td class='line-content'>      (cl-block nil</td></tr>
+<tr class='covered'><td class='line-number'>182</td><td class='line-content'>        (dolist (trie-pair tries)</td></tr>
+<tr class='covered'><td class='line-number'>183</td><td class='line-content'>          (let* ((trie (car trie-pair))</td></tr>
+<tr class='covered'><td class='line-number'>184</td><td class='line-content'>                 (lookup-result (nskk-trie-lookup trie prefix)))</td></tr>
+<tr class='covered'><td class='line-number'>185</td><td class='line-content'>            (when (cdr lookup-result)</td></tr>
+<tr class='covered'><td class='line-number'>186</td><td class='line-content'>              (setq exact-match</td></tr>
+<tr class='covered'><td class='line-number'>187</td><td class='line-content'>                    (nskk-completion-prefix-result--create</td></tr>
+<tr class='covered'><td class='line-number'>188</td><td class='line-content'>                     :midashi prefix</td></tr>
+<tr class='covered'><td class='line-number'>189</td><td class='line-content'>                     :entry (car lookup-result)</td></tr>
+<tr class='covered'><td class='line-number'>190</td><td class='line-content'>                     :score (nskk-dict-entry-frequency (car lookup-result))</td></tr>
+<tr class='covered'><td class='line-number'>191</td><td class='line-content'>                     :match-type 'exact))</td></tr>
+<tr class=''><td class='line-number'>192</td><td class='line-content'>              ;; 最初の完全一致のみ</td></tr>
+<tr class='covered'><td class='line-number'>193</td><td class='line-content'>              (cl-return))))))</td></tr>
 <tr class=''><td class='line-number'>194</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>195</td><td class='line-content'>    ;; 前方一致検索</td></tr>
 <tr class='covered'><td class='line-number'>196</td><td class='line-content'>    (dolist (trie-pair tries)</td></tr>
@@ -240,11 +240,11 @@
 <tr class=''><td class='line-number'>203</td><td class='line-content'>                ;; 完全一致は除外（既に追加済み）</td></tr>
 <tr class='covered'><td class='line-number'>204</td><td class='line-content'>                (unless (and include-exact (equal midashi prefix))</td></tr>
 <tr class='covered'><td class='line-number'>205</td><td class='line-content'>                  (push (nskk-completion-prefix-result--create</td></tr>
-<tr class='uncovered'><td class='line-number'>206</td><td class='line-content'>                         :midashi midashi</td></tr>
-<tr class='uncovered'><td class='line-number'>207</td><td class='line-content'>                         :entry entry</td></tr>
+<tr class='covered'><td class='line-number'>206</td><td class='line-content'>                         :midashi midashi</td></tr>
+<tr class='covered'><td class='line-number'>207</td><td class='line-content'>                         :entry entry</td></tr>
 <tr class='covered'><td class='line-number'>208</td><td class='line-content'>                         :score (nskk-dict-entry-frequency entry)</td></tr>
-<tr class='uncovered'><td class='line-number'>209</td><td class='line-content'>                         :match-type 'prefix)</td></tr>
-<tr class='onevalue'><td class='line-number'>210</td><td class='line-content'>                        results))))))))</td></tr>
+<tr class='covered'><td class='line-number'>209</td><td class='line-content'>                         :match-type 'prefix)</td></tr>
+<tr class='covered'><td class='line-number'>210</td><td class='line-content'>                        results))))))))</td></tr>
 <tr class=''><td class='line-number'>211</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>212</td><td class='line-content'>    ;; 完全一致を先頭に追加</td></tr>
 <tr class='covered'><td class='line-number'>213</td><td class='line-content'>    (when exact-match</td></tr>
@@ -267,7 +267,7 @@
 <tr class='covered'><td class='line-number'>230</td><td class='line-content'>      (let ((midashi (nskk-completion-prefix-result-midashi result)))</td></tr>
 <tr class='covered'><td class='line-number'>231</td><td class='line-content'>        (unless (gethash midashi seen)</td></tr>
 <tr class='covered'><td class='line-number'>232</td><td class='line-content'>          (puthash midashi t seen)</td></tr>
-<tr class='onevalue'><td class='line-number'>233</td><td class='line-content'>          (push result unique))))</td></tr>
+<tr class='covered'><td class='line-number'>233</td><td class='line-content'>          (push result unique))))</td></tr>
 <tr class='covered'><td class='line-number'>234</td><td class='line-content'>    (nreverse unique)))</td></tr>
 <tr class=''><td class='line-number'>235</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>236</td><td class='line-content'>;;; ソート機能</td></tr>
@@ -289,9 +289,9 @@
 <tr class=''><td class='line-number'>252</td><td class='line-content'>    ('kana</td></tr>
 <tr class='covered'><td class='line-number'>253</td><td class='line-content'>     (nskk-completion-prefix--sort-by-kana results))</td></tr>
 <tr class=''><td class='line-number'>254</td><td class='line-content'>    ('none</td></tr>
-<tr class='uncovered'><td class='line-number'>255</td><td class='line-content'>     results)</td></tr>
+<tr class='covered'><td class='line-number'>255</td><td class='line-content'>     results)</td></tr>
 <tr class=''><td class='line-number'>256</td><td class='line-content'>    (_</td></tr>
-<tr class='uncovered'><td class='line-number'>257</td><td class='line-content'>     results)))</td></tr>
+<tr class='covered'><td class='line-number'>257</td><td class='line-content'>     results)))</td></tr>
 <tr class=''><td class='line-number'>258</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>259</td><td class='line-content'>(defun nskk-completion-prefix--sort-by-frequency (results)</td></tr>
 <tr class=''><td class='line-number'>260</td><td class='line-content'>  &amp;quot;補完結果を使用頻度でソートする。</td></tr>
@@ -371,13 +371,13 @@
 <tr class=''><td class='line-number'>334</td><td class='line-content'>用途:</td></tr>
 <tr class=''><td class='line-number'>335</td><td class='line-content'>  ユーザーがタイプするたびに補完候補を更新する場合に使用&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>336</td><td class='line-content'>  (unless (listp prefix-list)</td></tr>
-<tr class='onevalue'><td class='line-number'>337</td><td class='line-content'>    (error &amp;quot;Prefix-list must be a list: %s&amp;quot; prefix-list))</td></tr>
+<tr class='covered'><td class='line-number'>337</td><td class='line-content'>    (error &amp;quot;Prefix-list must be a list: %s&amp;quot; prefix-list))</td></tr>
 <tr class=''><td class='line-number'>338</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>339</td><td class='line-content'>  (let ((results nil))</td></tr>
 <tr class='covered'><td class='line-number'>340</td><td class='line-content'>    (dolist (prefix prefix-list)</td></tr>
 <tr class='covered'><td class='line-number'>341</td><td class='line-content'>      (let ((completions (apply #'nskk-completion-prefix-search</td></tr>
-<tr class='uncovered'><td class='line-number'>342</td><td class='line-content'>                               index prefix args)))</td></tr>
-<tr class='onevalue'><td class='line-number'>343</td><td class='line-content'>        (push (cons prefix completions) results)))</td></tr>
+<tr class='covered'><td class='line-number'>342</td><td class='line-content'>                               index prefix args)))</td></tr>
+<tr class='covered'><td class='line-number'>343</td><td class='line-content'>        (push (cons prefix completions) results)))</td></tr>
 <tr class='covered'><td class='line-number'>344</td><td class='line-content'>    (nreverse results)))</td></tr>
 <tr class=''><td class='line-number'>345</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>346</td><td class='line-content'>;;; ユーティリティ関数</td></tr>
@@ -396,7 +396,7 @@
 <tr class=''><td class='line-number'>359</td><td class='line-content'>  候補数（整数）&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>360</td><td class='line-content'>  (let* ((okuri-type (plist-get args :okuri-type))</td></tr>
 <tr class='covered'><td class='line-number'>361</td><td class='line-content'>         (results (apply #'nskk-completion-prefix-search</td></tr>
-<tr class='uncovered'><td class='line-number'>362</td><td class='line-content'>                        index prefix :limit nil args)))</td></tr>
+<tr class='covered'><td class='line-number'>362</td><td class='line-content'>                        index prefix :limit nil args)))</td></tr>
 <tr class='covered'><td class='line-number'>363</td><td class='line-content'>    (length results)))</td></tr>
 <tr class=''><td class='line-number'>364</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>365</td><td class='line-content'>(defun nskk-completion-prefix-to-simple-list (results)</td></tr>
@@ -410,7 +410,7 @@
 <tr class='covered'><td class='line-number'>373</td><td class='line-content'>  (mapcar (lambda (result)</td></tr>
 <tr class='covered'><td class='line-number'>374</td><td class='line-content'>           (cons (nskk-completion-prefix-result-midashi result)</td></tr>
 <tr class='covered'><td class='line-number'>375</td><td class='line-content'>                 (nskk-completion-prefix-result-entry result)))</td></tr>
-<tr class='uncovered'><td class='line-number'>376</td><td class='line-content'>          results))</td></tr>
+<tr class='covered'><td class='line-number'>376</td><td class='line-content'>          results))</td></tr>
 <tr class=''><td class='line-number'>377</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>378</td><td class='line-content'>(defun nskk-completion-prefix-to-string-list (results)</td></tr>
 <tr class=''><td class='line-number'>379</td><td class='line-content'>  &amp;quot;補完結果を文字列リストに変換する。</td></tr>
@@ -438,7 +438,7 @@
 <tr class='covered'><td class='line-number'>401</td><td class='line-content'>         (elapsed-time (- (float-time) start-time)))</td></tr>
 <tr class='covered'><td class='line-number'>402</td><td class='line-content'>    (list :prefix prefix</td></tr>
 <tr class='covered'><td class='line-number'>403</td><td class='line-content'>          :result-count (length results)</td></tr>
-<tr class='uncovered'><td class='line-number'>404</td><td class='line-content'>          :elapsed-time elapsed-time</td></tr>
+<tr class='covered'><td class='line-number'>404</td><td class='line-content'>          :elapsed-time elapsed-time</td></tr>
 <tr class='covered'><td class='line-number'>405</td><td class='line-content'>          :results (nskk-completion-prefix-to-string-list results))))</td></tr>
 <tr class=''><td class='line-number'>406</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>407</td><td class='line-content'>(provide 'nskk-completion-prefix)</td></tr>

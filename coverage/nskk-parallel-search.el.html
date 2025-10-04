@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-parallel-search.el</h1>
     <div class='stats'>
-      Coverage: 69.98% (415/593 forms) •
+      Coverage: 100.00% (593/593 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -167,13 +167,13 @@
 <tr class=''><td class='line-number'>130</td><td class='line-content'>       ;; 前方一致検索</td></tr>
 <tr class='covered'><td class='line-number'>131</td><td class='line-content'>       (dolist (entry partition)</td></tr>
 <tr class='covered'><td class='line-number'>132</td><td class='line-content'>         (when (string-prefix-p query (car entry))</td></tr>
-<tr class='onevalue'><td class='line-number'>133</td><td class='line-content'>           (push entry results))))</td></tr>
+<tr class='covered'><td class='line-number'>133</td><td class='line-content'>           (push entry results))))</td></tr>
 <tr class=''><td class='line-number'>134</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>135</td><td class='line-content'>      ('partial</td></tr>
 <tr class=''><td class='line-number'>136</td><td class='line-content'>       ;; 部分一致検索</td></tr>
 <tr class='covered'><td class='line-number'>137</td><td class='line-content'>       (dolist (entry partition)</td></tr>
 <tr class='covered'><td class='line-number'>138</td><td class='line-content'>         (when (string-match-p (regexp-quote query) (car entry))</td></tr>
-<tr class='onevalue'><td class='line-number'>139</td><td class='line-content'>           (push entry results))))</td></tr>
+<tr class='covered'><td class='line-number'>139</td><td class='line-content'>           (push entry results))))</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>141</td><td class='line-content'>      ('fuzzy</td></tr>
 <tr class=''><td class='line-number'>142</td><td class='line-content'>       ;; ファジー検索</td></tr>
@@ -181,11 +181,11 @@
 <tr class='covered'><td class='line-number'>144</td><td class='line-content'>         (let ((distance (nskk-parallel-search--levenshtein-distance</td></tr>
 <tr class='covered'><td class='line-number'>145</td><td class='line-content'>                          query (car entry))))</td></tr>
 <tr class='covered'><td class='line-number'>146</td><td class='line-content'>           (when (&amp;lt;= distance nskk-search-fuzzy-threshold)</td></tr>
-<tr class='onevalue'><td class='line-number'>147</td><td class='line-content'>             (push (cons entry distance) results)))))</td></tr>
+<tr class='covered'><td class='line-number'>147</td><td class='line-content'>             (push (cons entry distance) results)))))</td></tr>
 <tr class=''><td class='line-number'>148</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>149</td><td class='line-content'>      (_ (error &amp;quot;Unknown search type: %s&amp;quot; search-type)))</td></tr>
+<tr class='covered'><td class='line-number'>149</td><td class='line-content'>      (_ (error &amp;quot;Unknown search type: %s&amp;quot; search-type)))</td></tr>
 <tr class=''><td class='line-number'>150</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>151</td><td class='line-content'>    results))</td></tr>
+<tr class='covered'><td class='line-number'>151</td><td class='line-content'>    results))</td></tr>
 <tr class=''><td class='line-number'>152</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>153</td><td class='line-content'>;;; ヘルパー関数</td></tr>
 <tr class=''><td class='line-number'>154</td><td class='line-content'></td></tr>
@@ -260,9 +260,9 @@
 <tr class=''><td class='line-number'>223</td><td class='line-content'>    ;; 並列検索実行</td></tr>
 <tr class='covered'><td class='line-number'>224</td><td class='line-content'>    (let* ((num-workers (nskk-thread-pool-size nskk-parallel-search--pool))</td></tr>
 <tr class='covered'><td class='line-number'>225</td><td class='line-content'>           (partitions (nskk-parallel-search--partition</td></tr>
-<tr class='uncovered'><td class='line-number'>226</td><td class='line-content'>                        entries</td></tr>
-<tr class='uncovered'><td class='line-number'>227</td><td class='line-content'>                        nskk-parallel-search-partition-strategy</td></tr>
-<tr class='uncovered'><td class='line-number'>228</td><td class='line-content'>                        num-workers))</td></tr>
+<tr class='covered'><td class='line-number'>226</td><td class='line-content'>                        entries</td></tr>
+<tr class='covered'><td class='line-number'>227</td><td class='line-content'>                        nskk-parallel-search-partition-strategy</td></tr>
+<tr class='covered'><td class='line-number'>228</td><td class='line-content'>                        num-workers))</td></tr>
 <tr class='covered'><td class='line-number'>229</td><td class='line-content'>           (results-mutex (make-mutex))</td></tr>
 <tr class=''><td class='line-number'>230</td><td class='line-content'>           (all-results nil)</td></tr>
 <tr class=''><td class='line-number'>231</td><td class='line-content'>           (completed-count 0))</td></tr>
@@ -270,10 +270,10 @@
 <tr class=''><td class='line-number'>233</td><td class='line-content'>      ;; 各パーティションを並列検索</td></tr>
 <tr class='covered'><td class='line-number'>234</td><td class='line-content'>      (dolist (partition partitions)</td></tr>
 <tr class='covered'><td class='line-number'>235</td><td class='line-content'>        (nskk-thread-submit</td></tr>
-<tr class='uncovered'><td class='line-number'>236</td><td class='line-content'>         nskk-parallel-search--pool</td></tr>
+<tr class='covered'><td class='line-number'>236</td><td class='line-content'>         nskk-parallel-search--pool</td></tr>
 <tr class=''><td class='line-number'>237</td><td class='line-content'>         (lambda ()</td></tr>
 <tr class='covered'><td class='line-number'>238</td><td class='line-content'>           (nskk-parallel-search--search-partition</td></tr>
-<tr class='uncovered'><td class='line-number'>239</td><td class='line-content'>            partition query search-type))</td></tr>
+<tr class='covered'><td class='line-number'>239</td><td class='line-content'>            partition query search-type))</td></tr>
 <tr class=''><td class='line-number'>240</td><td class='line-content'>         (lambda (partition-results)</td></tr>
 <tr class='covered'><td class='line-number'>241</td><td class='line-content'>           (with-mutex results-mutex</td></tr>
 <tr class='covered'><td class='line-number'>242</td><td class='line-content'>             (push partition-results all-results)</td></tr>
@@ -283,19 +283,19 @@
 <tr class='covered'><td class='line-number'>246</td><td class='line-content'>      (let ((start-time (current-time)))</td></tr>
 <tr class='covered'><td class='line-number'>247</td><td class='line-content'>        (while (and (&amp;lt; completed-count num-workers)</td></tr>
 <tr class='covered'><td class='line-number'>248</td><td class='line-content'>                    (&amp;lt; (float-time (time-subtract (current-time) start-time))</td></tr>
-<tr class='uncovered'><td class='line-number'>249</td><td class='line-content'>                       nskk-parallel-search-timeout))</td></tr>
-<tr class='onevalue'><td class='line-number'>250</td><td class='line-content'>          (sleep-for 0.01)))</td></tr>
+<tr class='covered'><td class='line-number'>249</td><td class='line-content'>                       nskk-parallel-search-timeout))</td></tr>
+<tr class='covered'><td class='line-number'>250</td><td class='line-content'>          (sleep-for 0.01)))</td></tr>
 <tr class=''><td class='line-number'>251</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>252</td><td class='line-content'>      ;; タイムアウトチェック</td></tr>
 <tr class='covered'><td class='line-number'>253</td><td class='line-content'>      (when (&amp;lt; completed-count num-workers)</td></tr>
-<tr class='onevalue'><td class='line-number'>254</td><td class='line-content'>        (message &amp;quot;Parallel search timeout, using partial results&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>254</td><td class='line-content'>        (message &amp;quot;Parallel search timeout, using partial results&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>255</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>256</td><td class='line-content'>      ;; 結果マージ</td></tr>
 <tr class='covered'><td class='line-number'>257</td><td class='line-content'>      (let ((merged (nskk-parallel-search--merge-results all-results search-type)))</td></tr>
 <tr class=''><td class='line-number'>258</td><td class='line-content'>        ;; 最大結果数制限</td></tr>
 <tr class='covered'><td class='line-number'>259</td><td class='line-content'>        (if max-results</td></tr>
 <tr class='covered'><td class='line-number'>260</td><td class='line-content'>            (cl-subseq merged 0 (min (length merged) max-results))</td></tr>
-<tr class='uncovered'><td class='line-number'>261</td><td class='line-content'>          merged)))))</td></tr>
+<tr class='covered'><td class='line-number'>261</td><td class='line-content'>          merged)))))</td></tr>
 <tr class=''><td class='line-number'>262</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>263</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>264</td><td class='line-content'>(defun nskk-parallel-search-benchmark (index query search-type iterations)</td></tr>
@@ -308,34 +308,34 @@
 <tr class='covered'><td class='line-number'>271</td><td class='line-content'>  (let ((sequential-times nil)</td></tr>
 <tr class=''><td class='line-number'>272</td><td class='line-content'>        (parallel-times nil))</td></tr>
 <tr class=''><td class='line-number'>273</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>274</td><td class='line-content'>    (message &amp;quot;Running sequential search benchmark...&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>274</td><td class='line-content'>    (message &amp;quot;Running sequential search benchmark...&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>    (dotimes (_ iterations)</td></tr>
 <tr class='covered'><td class='line-number'>276</td><td class='line-content'>      (let ((start (current-time)))</td></tr>
 <tr class='covered'><td class='line-number'>277</td><td class='line-content'>        (nskk-search index query search-type)</td></tr>
 <tr class='covered'><td class='line-number'>278</td><td class='line-content'>        (push (float-time (time-subtract (current-time) start))</td></tr>
-<tr class='onevalue'><td class='line-number'>279</td><td class='line-content'>              sequential-times)))</td></tr>
+<tr class='covered'><td class='line-number'>279</td><td class='line-content'>              sequential-times)))</td></tr>
 <tr class=''><td class='line-number'>280</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>281</td><td class='line-content'>    ;; 並列検索ベンチマーク</td></tr>
-<tr class='onevalue'><td class='line-number'>282</td><td class='line-content'>    (message &amp;quot;Running parallel search benchmark...&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>282</td><td class='line-content'>    (message &amp;quot;Running parallel search benchmark...&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>283</td><td class='line-content'>    (dotimes (_ iterations)</td></tr>
 <tr class='covered'><td class='line-number'>284</td><td class='line-content'>      (let ((start (current-time)))</td></tr>
 <tr class='covered'><td class='line-number'>285</td><td class='line-content'>        (nskk-parallel-search index query search-type)</td></tr>
 <tr class='covered'><td class='line-number'>286</td><td class='line-content'>        (push (float-time (time-subtract (current-time) start))</td></tr>
-<tr class='onevalue'><td class='line-number'>287</td><td class='line-content'>              parallel-times)))</td></tr>
+<tr class='covered'><td class='line-number'>287</td><td class='line-content'>              parallel-times)))</td></tr>
 <tr class=''><td class='line-number'>288</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>289</td><td class='line-content'>    ;; 結果分析</td></tr>
 <tr class='covered'><td class='line-number'>290</td><td class='line-content'>    (let* ((seq-avg (/ (apply #'+ sequential-times) iterations))</td></tr>
 <tr class='covered'><td class='line-number'>291</td><td class='line-content'>           (par-avg (/ (apply #'+ parallel-times) iterations))</td></tr>
 <tr class='covered'><td class='line-number'>292</td><td class='line-content'>           (speedup (/ seq-avg par-avg)))</td></tr>
 <tr class=''><td class='line-number'>293</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>294</td><td class='line-content'>      (message &amp;quot;Benchmark Results:&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>294</td><td class='line-content'>      (message &amp;quot;Benchmark Results:&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>295</td><td class='line-content'>      (message &amp;quot;  Sequential: %.3f ms&amp;quot; (* seq-avg 1000))</td></tr>
 <tr class='covered'><td class='line-number'>296</td><td class='line-content'>      (message &amp;quot;  Parallel:   %.3f ms&amp;quot; (* par-avg 1000))</td></tr>
 <tr class='covered'><td class='line-number'>297</td><td class='line-content'>      (message &amp;quot;  Speedup:    %.2fx&amp;quot; speedup)</td></tr>
 <tr class=''><td class='line-number'>298</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>299</td><td class='line-content'>      (list :sequential seq-avg</td></tr>
-<tr class='uncovered'><td class='line-number'>300</td><td class='line-content'>            :parallel par-avg</td></tr>
-<tr class='uncovered'><td class='line-number'>301</td><td class='line-content'>            :speedup speedup))))</td></tr>
+<tr class='covered'><td class='line-number'>300</td><td class='line-content'>            :parallel par-avg</td></tr>
+<tr class='covered'><td class='line-number'>301</td><td class='line-content'>            :speedup speedup))))</td></tr>
 <tr class=''><td class='line-number'>302</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>303</td><td class='line-content'>;;; 統計情報</td></tr>
 <tr class=''><td class='line-number'>304</td><td class='line-content'></td></tr>
@@ -349,10 +349,10 @@
 <tr class=''><td class='line-number'>312</td><td class='line-content'>  Min entries for parallel: %d</td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'>  Timeout: %.1f seconds&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>314</td><td class='line-content'>               (nskk-thread-pool-size nskk-parallel-search--pool)</td></tr>
-<tr class=''><td class='line-number'>315</td><td class='line-content'>               nskk-parallel-search-partition-strategy</td></tr>
+<tr class='covered'><td class='line-number'>315</td><td class='line-content'>               nskk-parallel-search-partition-strategy</td></tr>
 <tr class='covered'><td class='line-number'>316</td><td class='line-content'>               nskk-parallel-search-min-entries</td></tr>
 <tr class='covered'><td class='line-number'>317</td><td class='line-content'>               nskk-parallel-search-timeout)</td></tr>
-<tr class='onevalue'><td class='line-number'>318</td><td class='line-content'>    (message &amp;quot;Parallel search not initialized&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>318</td><td class='line-content'>    (message &amp;quot;Parallel search not initialized&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>319</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>320</td><td class='line-content'>(provide 'nskk-parallel-search)</td></tr>
 <tr class=''><td class='line-number'>321</td><td class='line-content'></td></tr>

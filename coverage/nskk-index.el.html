@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-index.el</h1>
     <div class='stats'>
-      Coverage: 93.45% (699/748 forms) •
+      Coverage: 100.00% (748/748 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -67,7 +67,7 @@
 <tr class=''><td class='line-number'>30</td><td class='line-content'>;; - nskk-dict-struct、nskk-trie、nskk-cacheを統合</td></tr>
 <tr class=''><td class='line-number'>31</td><td class='line-content'>;; - 効率的なインデックス構築アルゴリズム</td></tr>
 <tr class=''><td class='line-number'>32</td><td class='line-content'>;; - 複数辞書の統合インデックス</td></tr>
-<tr class=''><td class='line-number'>33</td><td class='line-content'>;; - Phase 3の並列化に向けた準備</td></tr>
+<tr class=''><td class='line-number'>33</td><td class='line-content'>;; - ランタイム統合の並列化に向けた準備</td></tr>
 <tr class=''><td class='line-number'>34</td><td class='line-content'>;;</td></tr>
 <tr class=''><td class='line-number'>35</td><td class='line-content'>;; 特徴:</td></tr>
 <tr class=''><td class='line-number'>36</td><td class='line-content'>;; 1. **統合レイヤー**: 既存モジュールを橋渡し</td></tr>
@@ -157,7 +157,7 @@
 <tr class=''><td class='line-number'>120</td><td class='line-content'>  cache-misses   - キャッシュミス数</td></tr>
 <tr class=''><td class='line-number'>121</td><td class='line-content'>  optimized      - 最適化済みフラグ</td></tr>
 <tr class=''><td class='line-number'>122</td><td class='line-content'>  parallel-ready - 並列化準備完了フラグ</td></tr>
-<tr class=''><td class='line-number'>123</td><td class='line-content'>  partitions     - パーティション情報（Phase 3用）</td></tr>
+<tr class=''><td class='line-number'>123</td><td class='line-content'>  partitions     - パーティション情報（ランタイム統合用）</td></tr>
 <tr class=''><td class='line-number'>124</td><td class='line-content'>  partition-strategy - パーティション戦略&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>125</td><td class='line-content'>  (dict-struct nil :type (or null nskk-dict-index))</td></tr>
 <tr class=''><td class='line-number'>126</td><td class='line-content'>  (cache nil :type (or null nskk-cache-lru nskk-cache-lfu))</td></tr>
@@ -176,7 +176,7 @@
 <tr class=''><td class='line-number'>139</td><td class='line-content'>(cl-defstruct (nskk-index-partition</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'>               (:constructor nskk-index-partition--create)</td></tr>
 <tr class=''><td class='line-number'>141</td><td class='line-content'>               (:copier nil))</td></tr>
-<tr class=''><td class='line-number'>142</td><td class='line-content'>  &amp;quot;パーティション情報（Phase 3並列化用）。</td></tr>
+<tr class=''><td class='line-number'>142</td><td class='line-content'>  &amp;quot;パーティション情報（ランタイム統合並列化用）。</td></tr>
 <tr class=''><td class='line-number'>143</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>144</td><td class='line-content'>スロット:</td></tr>
 <tr class=''><td class='line-number'>145</td><td class='line-content'>  id          - パーティションID</td></tr>
@@ -211,7 +211,7 @@
 <tr class='covered'><td class='line-number'>174</td><td class='line-content'>    (nskk-index--create-internal</td></tr>
 <tr class=''><td class='line-number'>175</td><td class='line-content'>     :dict-struct nil</td></tr>
 <tr class='covered'><td class='line-number'>176</td><td class='line-content'>     :cache cache</td></tr>
-<tr class=''><td class='line-number'>177</td><td class='line-content'>     :metadata options</td></tr>
+<tr class='covered'><td class='line-number'>177</td><td class='line-content'>     :metadata options</td></tr>
 <tr class=''><td class='line-number'>178</td><td class='line-content'>     :version &amp;quot;1.0&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>179</td><td class='line-content'>     :partition-strategy partition-strategy)))</td></tr>
 <tr class=''><td class='line-number'>180</td><td class='line-content'></td></tr>
@@ -305,7 +305,7 @@
 <tr class='covered'><td class='line-number'>268</td><td class='line-content'>    (cl-incf (nskk-index-cache-misses index1)</td></tr>
 <tr class='covered'><td class='line-number'>269</td><td class='line-content'>             (nskk-index-cache-misses index2))</td></tr>
 <tr class=''><td class='line-number'>270</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>271</td><td class='line-content'>    index1))</td></tr>
+<tr class='covered'><td class='line-number'>271</td><td class='line-content'>    index1))</td></tr>
 <tr class=''><td class='line-number'>272</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>273</td><td class='line-content'>;;; 検索インターフェース</td></tr>
 <tr class=''><td class='line-number'>274</td><td class='line-content'></td></tr>
@@ -343,7 +343,7 @@
 <tr class=''><td class='line-number'>306</td><td class='line-content'>        ;; キャッシュヒット</td></tr>
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>        (progn</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>          (cl-incf (nskk-index-cache-hits index))</td></tr>
-<tr class=''><td class='line-number'>309</td><td class='line-content'>          cached-result)</td></tr>
+<tr class='covered'><td class='line-number'>309</td><td class='line-content'>          cached-result)</td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'>      ;; キャッシュミス：実際に検索</td></tr>
 <tr class='covered'><td class='line-number'>311</td><td class='line-content'>      (cl-incf (nskk-index-cache-misses index))</td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>      (let ((result (nskk-search (nskk-index-dict-struct index)</td></tr>
@@ -521,7 +521,7 @@
 <tr class='covered'><td class='line-number'>484</td><td class='line-content'>    (setf (nskk-index-build-time index)</td></tr>
 <tr class='covered'><td class='line-number'>485</td><td class='line-content'>          (- (float-time) start-time)))</td></tr>
 <tr class=''><td class='line-number'>486</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>487</td><td class='line-content'>  index)</td></tr>
+<tr class='covered'><td class='line-number'>487</td><td class='line-content'>  index)</td></tr>
 <tr class=''><td class='line-number'>488</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>489</td><td class='line-content'>;;; 統計・最適化</td></tr>
 <tr class=''><td class='line-number'>490</td><td class='line-content'></td></tr>
@@ -598,7 +598,7 @@
 <tr class=''><td class='line-number'>561</td><td class='line-content'>      ;; 最適化フラグを設定</td></tr>
 <tr class='covered'><td class='line-number'>562</td><td class='line-content'>      (setf (nskk-index-optimized index) t)))</td></tr>
 <tr class=''><td class='line-number'>563</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>564</td><td class='line-content'>  index)</td></tr>
+<tr class='covered'><td class='line-number'>564</td><td class='line-content'>  index)</td></tr>
 <tr class=''><td class='line-number'>565</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>566</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>567</td><td class='line-content'>(defun nskk-index-compact (index)</td></tr>
@@ -622,13 +622,13 @@
 <tr class=''><td class='line-number'>585</td><td class='line-content'>  ;; ガベージコレクション実行</td></tr>
 <tr class='covered'><td class='line-number'>586</td><td class='line-content'>  (garbage-collect)</td></tr>
 <tr class=''><td class='line-number'>587</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>588</td><td class='line-content'>  index)</td></tr>
+<tr class='covered'><td class='line-number'>588</td><td class='line-content'>  index)</td></tr>
 <tr class=''><td class='line-number'>589</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>590</td><td class='line-content'>;;; 並列化準備（Phase 3用）</td></tr>
+<tr class=''><td class='line-number'>590</td><td class='line-content'>;;; 並列化準備（ランタイム統合用）</td></tr>
 <tr class=''><td class='line-number'>591</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>592</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>593</td><td class='line-content'>(defun nskk-index-partition (index num-partitions)</td></tr>
-<tr class=''><td class='line-number'>594</td><td class='line-content'>  &amp;quot;インデックスをパーティションに分割する（Phase 3並列化用）。</td></tr>
+<tr class=''><td class='line-number'>594</td><td class='line-content'>  &amp;quot;インデックスをパーティションに分割する（ランタイム統合並列化用）。</td></tr>
 <tr class=''><td class='line-number'>595</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>596</td><td class='line-content'>引数:</td></tr>
 <tr class=''><td class='line-number'>597</td><td class='line-content'>  INDEX          - nskk-index構造体</td></tr>
@@ -642,7 +642,7 @@
 <tr class=''><td class='line-number'>605</td><td class='line-content'>戻り値:</td></tr>
 <tr class=''><td class='line-number'>606</td><td class='line-content'>  INDEX（パーティション設定後）</td></tr>
 <tr class=''><td class='line-number'>607</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>608</td><td class='line-content'>注意: Phase 3での完全実装を想定した準備実装&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>608</td><td class='line-content'>注意: ランタイム統合での完全実装を想定した準備実装&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>609</td><td class='line-content'>  (unless (nskk-index-dict-struct index)</td></tr>
 <tr class='covered'><td class='line-number'>610</td><td class='line-content'>    (error &amp;quot;Index not built yet&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>611</td><td class='line-content'></td></tr>
@@ -656,18 +656,18 @@
 <tr class='covered'><td class='line-number'>619</td><td class='line-content'>       (dotimes (i num-partitions)</td></tr>
 <tr class='covered'><td class='line-number'>620</td><td class='line-content'>         (push (nskk-index-partition--create</td></tr>
 <tr class='covered'><td class='line-number'>621</td><td class='line-content'>                :id i</td></tr>
-<tr class=''><td class='line-number'>622</td><td class='line-content'>                :dict-struct nil  ; Phase 3で実装</td></tr>
+<tr class=''><td class='line-number'>622</td><td class='line-content'>                :dict-struct nil  ; ランタイム統合で実装</td></tr>
 <tr class='covered'><td class='line-number'>623</td><td class='line-content'>                :range nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>624</td><td class='line-content'>               partitions)))</td></tr>
+<tr class='covered'><td class='line-number'>624</td><td class='line-content'>               partitions)))</td></tr>
 <tr class=''><td class='line-number'>625</td><td class='line-content'>      ('range</td></tr>
 <tr class=''><td class='line-number'>626</td><td class='line-content'>       ;; 範囲ベース分割（準備実装）</td></tr>
 <tr class='covered'><td class='line-number'>627</td><td class='line-content'>       (dotimes (i num-partitions)</td></tr>
 <tr class='covered'><td class='line-number'>628</td><td class='line-content'>         (push (nskk-index-partition--create</td></tr>
 <tr class='covered'><td class='line-number'>629</td><td class='line-content'>                :id i</td></tr>
-<tr class=''><td class='line-number'>630</td><td class='line-content'>                :dict-struct nil  ; Phase 3で実装</td></tr>
+<tr class=''><td class='line-number'>630</td><td class='line-content'>                :dict-struct nil  ; ランタイム統合で実装</td></tr>
 <tr class='covered'><td class='line-number'>631</td><td class='line-content'>                :range (list (* i (/ 100 num-partitions))</td></tr>
 <tr class='covered'><td class='line-number'>632</td><td class='line-content'>                           (* (1+ i) (/ 100 num-partitions))))</td></tr>
-<tr class='onevalue'><td class='line-number'>633</td><td class='line-content'>               partitions))))</td></tr>
+<tr class='covered'><td class='line-number'>633</td><td class='line-content'>               partitions))))</td></tr>
 <tr class=''><td class='line-number'>634</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>635</td><td class='line-content'>    ;; パーティション情報を保存</td></tr>
 <tr class='covered'><td class='line-number'>636</td><td class='line-content'>    (setf (nskk-index-partitions index) (nreverse partitions))</td></tr>
@@ -677,7 +677,7 @@
 <tr class=''><td class='line-number'>640</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>641</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>642</td><td class='line-content'>(defun nskk-index-build-parallel-ready (index dict-struct)</td></tr>
-<tr class=''><td class='line-number'>643</td><td class='line-content'>  &amp;quot;並列化対応のインデックス構築（Phase 3用準備実装）。</td></tr>
+<tr class=''><td class='line-number'>643</td><td class='line-content'>  &amp;quot;並列化対応のインデックス構築（ランタイム統合用準備実装）。</td></tr>
 <tr class=''><td class='line-number'>644</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>645</td><td class='line-content'>引数:</td></tr>
 <tr class=''><td class='line-number'>646</td><td class='line-content'>  INDEX       - nskk-index構造体</td></tr>
@@ -690,10 +690,10 @@
 <tr class=''><td class='line-number'>653</td><td class='line-content'>戻り値:</td></tr>
 <tr class=''><td class='line-number'>654</td><td class='line-content'>  INDEX（構築後）</td></tr>
 <tr class=''><td class='line-number'>655</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>656</td><td class='line-content'>注意: Phase 3で実際の並列処理を実装予定&amp;quot;</td></tr>
+<tr class=''><td class='line-number'>656</td><td class='line-content'>注意: ランタイム統合で実際の並列処理を実装予定&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>657</td><td class='line-content'>  (nskk-index-build index dict-struct)</td></tr>
 <tr class='covered'><td class='line-number'>658</td><td class='line-content'>  (setf (nskk-index-parallel-ready index) t)</td></tr>
-<tr class=''><td class='line-number'>659</td><td class='line-content'>  index)</td></tr>
+<tr class='covered'><td class='line-number'>659</td><td class='line-content'>  index)</td></tr>
 <tr class=''><td class='line-number'>660</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>661</td><td class='line-content'>;;; デバッグ・ユーティリティ</td></tr>
 <tr class=''><td class='line-number'>662</td><td class='line-content'></td></tr>
@@ -753,7 +753,7 @@
 <tr class=''><td class='line-number'>716</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>717</td><td class='line-content'>    (if errors</td></tr>
 <tr class='covered'><td class='line-number'>718</td><td class='line-content'>        (nreverse errors)</td></tr>
-<tr class=''><td class='line-number'>719</td><td class='line-content'>      t)))</td></tr>
+<tr class='covered'><td class='line-number'>719</td><td class='line-content'>      t)))</td></tr>
 <tr class=''><td class='line-number'>720</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>721</td><td class='line-content'>(provide 'nskk-index)</td></tr>
 <tr class=''><td class='line-number'>722</td><td class='line-content'></td></tr>

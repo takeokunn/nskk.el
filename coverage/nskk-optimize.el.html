@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-optimize.el</h1>
     <div class='stats'>
-      Coverage: 77.41% (394/509 forms) •
+      Coverage: 100.00% (509/509 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -118,10 +118,10 @@
 <tr class='covered'><td class='line-number'>81</td><td class='line-content'>        (end-time (make-symbol &amp;quot;end-time&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>82</td><td class='line-content'>        (result (make-symbol &amp;quot;result&amp;quot;)))</td></tr>
 <tr class='covered'><td class='line-number'>83</td><td class='line-content'>    `(let ((,start-time (current-time))</td></tr>
-<tr class=''><td class='line-number'>84</td><td class='line-content'>           (,result (progn ,@body))</td></tr>
-<tr class=''><td class='line-number'>85</td><td class='line-content'>           (,end-time (current-time)))</td></tr>
-<tr class=''><td class='line-number'>86</td><td class='line-content'>       (cons (* (float-time (time-subtract ,end-time ,start-time)) 1000000.0)</td></tr>
-<tr class=''><td class='line-number'>87</td><td class='line-content'>             ,result))))</td></tr>
+<tr class='covered'><td class='line-number'>84</td><td class='line-content'>           (,result (progn ,@body))</td></tr>
+<tr class='covered'><td class='line-number'>85</td><td class='line-content'>           (,end-time (current-time)))</td></tr>
+<tr class='covered'><td class='line-number'>86</td><td class='line-content'>       (cons (* (float-time (time-subtract ,end-time ,start-time)) 1000000.0)</td></tr>
+<tr class='covered'><td class='line-number'>87</td><td class='line-content'>             ,result))))</td></tr>
 <tr class=''><td class='line-number'>88</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>89</td><td class='line-content'>(defmacro nskk-with-profiling (name &amp;rest body)</td></tr>
 <tr class=''><td class='line-number'>90</td><td class='line-content'>  &amp;quot;BODY の実行をプロファイリングし、NAME として記録する。</td></tr>
@@ -170,10 +170,10 @@
 <tr class=''><td class='line-number'>133</td><td class='line-content'>  &amp;quot;プロファイリングデータを表示する。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>134</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>135</td><td class='line-content'>  (if (null nskk-optimize--profile-data)</td></tr>
-<tr class='onevalue'><td class='line-number'>136</td><td class='line-content'>      (message &amp;quot;No profiling data available&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>136</td><td class='line-content'>      (message &amp;quot;No profiling data available&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>137</td><td class='line-content'>    (with-output-to-temp-buffer &amp;quot;*NSKK Profile*&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>138</td><td class='line-content'>      (princ (format &amp;quot;%-30s %10s %15s %15s %15s %15s\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>139</td><td class='line-content'>                     &amp;quot;Name&amp;quot; &amp;quot;Count&amp;quot; &amp;quot;Total(μs)&amp;quot; &amp;quot;Avg(μs)&amp;quot; &amp;quot;Min(μs)&amp;quot; &amp;quot;Max(μs)&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>139</td><td class='line-content'>                     &amp;quot;Name&amp;quot; &amp;quot;Count&amp;quot; &amp;quot;Total(μs)&amp;quot; &amp;quot;Avg(μs)&amp;quot; &amp;quot;Min(μs)&amp;quot; &amp;quot;Max(μs)&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>140</td><td class='line-content'>      (princ (make-string 110 ?-))</td></tr>
 <tr class='covered'><td class='line-number'>141</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>142</td><td class='line-content'>      (dolist (entry (sort (copy-sequence nskk-optimize--profile-data)</td></tr>
@@ -185,7 +185,7 @@
 <tr class='covered'><td class='line-number'>148</td><td class='line-content'>               (max-time (nth 4 entry))</td></tr>
 <tr class='covered'><td class='line-number'>149</td><td class='line-content'>               (avg (/ total count)))</td></tr>
 <tr class='covered'><td class='line-number'>150</td><td class='line-content'>          (princ (format &amp;quot;%-30s %10d %15.2f %15.2f %15.2f %15.2f\n&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>151</td><td class='line-content'>                        name count total avg min-time max-time)))))))</td></tr>
+<tr class='covered'><td class='line-number'>151</td><td class='line-content'>                        name count total avg min-time max-time)))))))</td></tr>
 <tr class=''><td class='line-number'>152</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>153</td><td class='line-content'>;;; ベンチマーク関数</td></tr>
 <tr class=''><td class='line-number'>154</td><td class='line-content'></td></tr>
@@ -226,7 +226,7 @@
 <tr class='covered'><td class='line-number'>189</td><td class='line-content'>  (garbage-collect)</td></tr>
 <tr class='covered'><td class='line-number'>190</td><td class='line-content'>  (let ((start-time (current-time)))</td></tr>
 <tr class='covered'><td class='line-number'>191</td><td class='line-content'>    (dotimes (_ iterations)</td></tr>
-<tr class='onevalue'><td class='line-number'>192</td><td class='line-content'>      (nskk-hiragana-to-katakana input))</td></tr>
+<tr class='covered'><td class='line-number'>192</td><td class='line-content'>      (nskk-hiragana-to-katakana input))</td></tr>
 <tr class='covered'><td class='line-number'>193</td><td class='line-content'>    (let* ((end-time (current-time))</td></tr>
 <tr class='covered'><td class='line-number'>194</td><td class='line-content'>           (elapsed (float-time (time-subtract end-time start-time)))</td></tr>
 <tr class='covered'><td class='line-number'>195</td><td class='line-content'>           (avg-us (* (/ elapsed iterations) 1000000.0))</td></tr>
@@ -235,7 +235,7 @@
 <tr class='covered'><td class='line-number'>198</td><td class='line-content'>            :avg-time avg-us</td></tr>
 <tr class='covered'><td class='line-number'>199</td><td class='line-content'>            :iterations iterations</td></tr>
 <tr class='covered'><td class='line-number'>200</td><td class='line-content'>            :throughput throughput</td></tr>
-<tr class=''><td class='line-number'>201</td><td class='line-content'>            :input input))))</td></tr>
+<tr class='covered'><td class='line-number'>201</td><td class='line-content'>            :input input))))</td></tr>
 <tr class=''><td class='line-number'>202</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>203</td><td class='line-content'>(defun nskk-benchmark-suite ()</td></tr>
 <tr class=''><td class='line-number'>204</td><td class='line-content'>  &amp;quot;包括的なベンチマークスイートを実行する。</td></tr>
@@ -258,7 +258,7 @@
 <tr class=''><td class='line-number'>221</td><td class='line-content'>           (&amp;quot;arigatou&amp;quot; &amp;quot;ありがとう&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>222</td><td class='line-content'>           ;; 長い入力</td></tr>
 <tr class=''><td class='line-number'>223</td><td class='line-content'>           (&amp;quot;kyouhagakkoude benkyoushimasu&amp;quot; &amp;quot;今日は学校で勉強します&amp;quot;)))</td></tr>
-<tr class='uncovered'><td class='line-number'>224</td><td class='line-content'>        (iterations nskk-optimize-benchmark-iterations))</td></tr>
+<tr class='covered'><td class='line-number'>224</td><td class='line-content'>        (iterations nskk-optimize-benchmark-iterations))</td></tr>
 <tr class=''><td class='line-number'>225</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>226</td><td class='line-content'>    (with-output-to-temp-buffer &amp;quot;*NSKK Benchmark*&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>227</td><td class='line-content'>      (princ (format &amp;quot;NSKK Benchmark Suite (iterations: %d)\n&amp;quot; iterations))</td></tr>
@@ -268,7 +268,7 @@
 <tr class=''><td class='line-number'>231</td><td class='line-content'>      ;; ローマ字変換ベンチマーク</td></tr>
 <tr class='covered'><td class='line-number'>232</td><td class='line-content'>      (princ &amp;quot;=== Romaji Conversion ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>233</td><td class='line-content'>      (princ (format &amp;quot;%-30s %15s %15s %15s\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>234</td><td class='line-content'>                     &amp;quot;Input&amp;quot; &amp;quot;Avg Time(μs)&amp;quot; &amp;quot;Throughput&amp;quot; &amp;quot;Result&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>234</td><td class='line-content'>                     &amp;quot;Input&amp;quot; &amp;quot;Avg Time(μs)&amp;quot; &amp;quot;Throughput&amp;quot; &amp;quot;Result&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>235</td><td class='line-content'>      (princ (make-string 80 ?-))</td></tr>
 <tr class='covered'><td class='line-number'>236</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>237</td><td class='line-content'></td></tr>
@@ -280,14 +280,14 @@
 <tr class='covered'><td class='line-number'>243</td><td class='line-content'>                        (format &amp;quot;%s (%s)&amp;quot; input desc)</td></tr>
 <tr class='covered'><td class='line-number'>244</td><td class='line-content'>                        (plist-get result :avg-time)</td></tr>
 <tr class='covered'><td class='line-number'>245</td><td class='line-content'>                        (plist-get result :throughput)</td></tr>
-<tr class='onevalue'><td class='line-number'>246</td><td class='line-content'>                        &amp;quot;OK&amp;quot;))))</td></tr>
+<tr class='covered'><td class='line-number'>246</td><td class='line-content'>                        &amp;quot;OK&amp;quot;))))</td></tr>
 <tr class=''><td class='line-number'>247</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>248</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>249</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>250</td><td class='line-content'>      ;; ひらがな→カタカナ変換ベンチマーク</td></tr>
 <tr class='covered'><td class='line-number'>251</td><td class='line-content'>      (princ &amp;quot;=== Hiragana to Katakana ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>252</td><td class='line-content'>      (princ (format &amp;quot;%-30s %15s %15s\n&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>253</td><td class='line-content'>                     &amp;quot;Input&amp;quot; &amp;quot;Avg Time(μs)&amp;quot; &amp;quot;Throughput&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>253</td><td class='line-content'>                     &amp;quot;Input&amp;quot; &amp;quot;Avg Time(μs)&amp;quot; &amp;quot;Throughput&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>254</td><td class='line-content'>      (princ (make-string 80 ?-))</td></tr>
 <tr class='covered'><td class='line-number'>255</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>256</td><td class='line-content'></td></tr>
@@ -302,7 +302,7 @@
 <tr class='covered'><td class='line-number'>265</td><td class='line-content'>            (princ (format &amp;quot;%-30s %15.2f %15.0f\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>266</td><td class='line-content'>                          (format &amp;quot;%s (%s)&amp;quot; input desc)</td></tr>
 <tr class='covered'><td class='line-number'>267</td><td class='line-content'>                          (plist-get result :avg-time)</td></tr>
-<tr class='onevalue'><td class='line-number'>268</td><td class='line-content'>                          (plist-get result :throughput))))))</td></tr>
+<tr class='covered'><td class='line-number'>268</td><td class='line-content'>                          (plist-get result :throughput))))))</td></tr>
 <tr class=''><td class='line-number'>269</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>270</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>271</td><td class='line-content'>      (princ (make-string 80 ?=))</td></tr>
@@ -310,10 +310,10 @@
 <tr class='covered'><td class='line-number'>273</td><td class='line-content'>      (princ (format &amp;quot;Target: &amp;lt; 100μs per conversion\n&amp;quot;))</td></tr>
 <tr class='covered'><td class='line-number'>274</td><td class='line-content'>      (princ (format &amp;quot;Status: %s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>                    (if (&amp;lt; (plist-get (nskk-benchmark-romaji-conversion &amp;quot;ka&amp;quot; 1000)</td></tr>
-<tr class='uncovered'><td class='line-number'>276</td><td class='line-content'>                                     :avg-time)</td></tr>
-<tr class='uncovered'><td class='line-number'>277</td><td class='line-content'>                          100.0)</td></tr>
+<tr class='covered'><td class='line-number'>276</td><td class='line-content'>                                     :avg-time)</td></tr>
+<tr class='covered'><td class='line-number'>277</td><td class='line-content'>                          100.0)</td></tr>
 <tr class=''><td class='line-number'>278</td><td class='line-content'>                        &amp;quot;PASS&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>279</td><td class='line-content'>                      &amp;quot;FAIL&amp;quot;))))))</td></tr>
+<tr class='covered'><td class='line-number'>279</td><td class='line-content'>                      &amp;quot;FAIL&amp;quot;))))))</td></tr>
 <tr class=''><td class='line-number'>280</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>281</td><td class='line-content'>;;; メモリプロファイリング</td></tr>
 <tr class=''><td class='line-number'>282</td><td class='line-content'></td></tr>
@@ -373,9 +373,9 @@
 <tr class=''><td class='line-number'>336</td><td class='line-content'>  (declare (indent 2) (debug (symbolp form body)))</td></tr>
 <tr class='covered'><td class='line-number'>337</td><td class='line-content'>  `(let ((,var 0)</td></tr>
 <tr class='covered'><td class='line-number'>338</td><td class='line-content'>         (limit ,limit))</td></tr>
-<tr class=''><td class='line-number'>339</td><td class='line-content'>     (while (&amp;lt; ,var limit)</td></tr>
-<tr class=''><td class='line-number'>340</td><td class='line-content'>       ,@body</td></tr>
-<tr class=''><td class='line-number'>341</td><td class='line-content'>       (setq ,var (1+ ,var)))))</td></tr>
+<tr class='covered'><td class='line-number'>339</td><td class='line-content'>     (while (&amp;lt; ,var limit)</td></tr>
+<tr class='covered'><td class='line-number'>340</td><td class='line-content'>       ,@body</td></tr>
+<tr class='covered'><td class='line-number'>341</td><td class='line-content'>       (setq ,var (1+ ,var)))))</td></tr>
 <tr class=''><td class='line-number'>342</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>343</td><td class='line-content'>(defmacro nskk-optimize-string-concat (str1 str2)</td></tr>
 <tr class=''><td class='line-number'>344</td><td class='line-content'>  &amp;quot;文字列連結の最適化版。</td></tr>
@@ -424,7 +424,7 @@
 <tr class='covered'><td class='line-number'>387</td><td class='line-content'>                       :regression regression)))</td></tr>
 <tr class='covered'><td class='line-number'>388</td><td class='line-content'>      (when (called-interactively-p 'any)</td></tr>
 <tr class='covered'><td class='line-number'>389</td><td class='line-content'>        (message &amp;quot;Baseline: %.2fμs, Current: %.2fμs, Ratio: %.2f%s&amp;quot;</td></tr>
-<tr class='uncovered'><td class='line-number'>390</td><td class='line-content'>                baseline-time current-time ratio</td></tr>
+<tr class='covered'><td class='line-number'>390</td><td class='line-content'>                baseline-time current-time ratio</td></tr>
 <tr class='covered'><td class='line-number'>391</td><td class='line-content'>                (if regression &amp;quot; [REGRESSION DETECTED]&amp;quot; &amp;quot;&amp;quot;)))</td></tr>
 <tr class='covered'><td class='line-number'>392</td><td class='line-content'>      result)))</td></tr>
 <tr class=''><td class='line-number'>393</td><td class='line-content'></td></tr>

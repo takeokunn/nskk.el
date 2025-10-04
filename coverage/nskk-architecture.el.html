@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-architecture.el</h1>
     <div class='stats'>
-      Coverage: 46.28% (249/538 forms) •
+      Coverage: 100.00% (538/538 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -150,7 +150,7 @@
 <tr class=''><td class='line-number'>113</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>114</td><td class='line-content'>    ;; レイヤーを下から順に初期化</td></tr>
 <tr class='covered'><td class='line-number'>115</td><td class='line-content'>    (dolist (layer nskk-architecture--layers)</td></tr>
-<tr class='onevalue'><td class='line-number'>116</td><td class='line-content'>      (nskk-architecture--initialize-layer layer))</td></tr>
+<tr class='covered'><td class='line-number'>116</td><td class='line-content'>      (nskk-architecture--initialize-layer layer))</td></tr>
 <tr class=''><td class='line-number'>117</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>118</td><td class='line-content'>    ;; レイヤー間通信をセットアップ</td></tr>
 <tr class='covered'><td class='line-number'>119</td><td class='line-content'>    (nskk-architecture--setup-layer-communication)</td></tr>
@@ -158,9 +158,9 @@
 <tr class=''><td class='line-number'>121</td><td class='line-content'>    ;; イベントフローをセットアップ</td></tr>
 <tr class='covered'><td class='line-number'>122</td><td class='line-content'>    (nskk-architecture--setup-event-flow)</td></tr>
 <tr class=''><td class='line-number'>123</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>124</td><td class='line-content'>    (setq nskk-architecture--initialized t)</td></tr>
+<tr class='covered'><td class='line-number'>124</td><td class='line-content'>    (setq nskk-architecture--initialized t)</td></tr>
 <tr class='covered'><td class='line-number'>125</td><td class='line-content'>    (nskk-architecture--log &amp;quot;7-layer architecture initialized successfully&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>126</td><td class='line-content'>    (message &amp;quot;NSKK 7-layer architecture initialized&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>126</td><td class='line-content'>    (message &amp;quot;NSKK 7-layer architecture initialized&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>127</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>128</td><td class='line-content'>(defun nskk-architecture-shutdown ()</td></tr>
 <tr class=''><td class='line-number'>129</td><td class='line-content'>  &amp;quot;7層アーキテクチャをシャットダウンする。&amp;quot;</td></tr>
@@ -170,14 +170,14 @@
 <tr class=''><td class='line-number'>133</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>134</td><td class='line-content'>    ;; レイヤーを上から順にシャットダウン</td></tr>
 <tr class='covered'><td class='line-number'>135</td><td class='line-content'>    (dolist (layer (reverse nskk-architecture--layers))</td></tr>
-<tr class='onevalue'><td class='line-number'>136</td><td class='line-content'>      (nskk-architecture--shutdown-layer layer))</td></tr>
+<tr class='covered'><td class='line-number'>136</td><td class='line-content'>      (nskk-architecture--shutdown-layer layer))</td></tr>
 <tr class=''><td class='line-number'>137</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>138</td><td class='line-content'>    ;; 通信ログをクリア</td></tr>
-<tr class='onevalue'><td class='line-number'>139</td><td class='line-content'>    (setq nskk-architecture--communication-log nil)</td></tr>
+<tr class='covered'><td class='line-number'>139</td><td class='line-content'>    (setq nskk-architecture--communication-log nil)</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>141</td><td class='line-content'>    (setq nskk-architecture--initialized nil)</td></tr>
+<tr class='covered'><td class='line-number'>141</td><td class='line-content'>    (setq nskk-architecture--initialized nil)</td></tr>
 <tr class='covered'><td class='line-number'>142</td><td class='line-content'>    (nskk-architecture--log &amp;quot;7-layer architecture shutdown complete&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>143</td><td class='line-content'>    (message &amp;quot;NSKK 7-layer architecture shutdown&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>143</td><td class='line-content'>    (message &amp;quot;NSKK 7-layer architecture shutdown&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>144</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>145</td><td class='line-content'>;;; レイヤー初期化</td></tr>
 <tr class=''><td class='line-number'>146</td><td class='line-content'></td></tr>
@@ -200,7 +200,7 @@
 <tr class=''><td class='line-number'>163</td><td class='line-content'>    (error</td></tr>
 <tr class='covered'><td class='line-number'>164</td><td class='line-content'>     (nskk-architecture--log &amp;quot;Failed to initialize layer %s: %s&amp;quot; layer err)</td></tr>
 <tr class='covered'><td class='line-number'>165</td><td class='line-content'>     (puthash layer :error nskk-architecture--layer-status)</td></tr>
-<tr class='onevalue'><td class='line-number'>166</td><td class='line-content'>     (error &amp;quot;Layer initialization failed: %s&amp;quot; layer))))</td></tr>
+<tr class='covered'><td class='line-number'>166</td><td class='line-content'>     (error &amp;quot;Layer initialization failed: %s&amp;quot; layer))))</td></tr>
 <tr class=''><td class='line-number'>167</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>168</td><td class='line-content'>(defun nskk-architecture--shutdown-layer (layer)</td></tr>
 <tr class=''><td class='line-number'>169</td><td class='line-content'>  &amp;quot;レイヤーをシャットダウンする。</td></tr>
@@ -341,10 +341,10 @@
 <tr class=''><td class='line-number'>304</td><td class='line-content'>ACTIONはアクション、ARGSは引数。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>305</td><td class='line-content'>  (when nskk-architecture-enable-tracing</td></tr>
 <tr class='covered'><td class='line-number'>306</td><td class='line-content'>    (let ((trace (list :timestamp (float-time)</td></tr>
-<tr class='uncovered'><td class='line-number'>307</td><td class='line-content'>                       :from from</td></tr>
-<tr class='uncovered'><td class='line-number'>308</td><td class='line-content'>                       :to to</td></tr>
-<tr class='uncovered'><td class='line-number'>309</td><td class='line-content'>                       :action action</td></tr>
-<tr class='uncovered'><td class='line-number'>310</td><td class='line-content'>                       :args args)))</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>                       :from from</td></tr>
+<tr class='covered'><td class='line-number'>308</td><td class='line-content'>                       :to to</td></tr>
+<tr class='covered'><td class='line-number'>309</td><td class='line-content'>                       :action action</td></tr>
+<tr class='covered'><td class='line-number'>310</td><td class='line-content'>                       :args args)))</td></tr>
 <tr class='covered'><td class='line-number'>311</td><td class='line-content'>      (push trace nskk-architecture--communication-log)</td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>      (nskk-architecture--log &amp;quot;Communication: %s -&amp;gt; %s : %s&amp;quot; from to action))))</td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'></td></tr>
@@ -360,14 +360,14 @@
 <tr class='covered'><td class='line-number'>323</td><td class='line-content'>                         (plist-get entry :timestamp)</td></tr>
 <tr class='covered'><td class='line-number'>324</td><td class='line-content'>                         (plist-get entry :from)</td></tr>
 <tr class='covered'><td class='line-number'>325</td><td class='line-content'>                         (plist-get entry :to)</td></tr>
-<tr class='onevalue'><td class='line-number'>326</td><td class='line-content'>                         (plist-get entry :action)))))</td></tr>
-<tr class='onevalue'><td class='line-number'>327</td><td class='line-content'>    (message &amp;quot;Communication log is empty&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>326</td><td class='line-content'>                         (plist-get entry :action)))))</td></tr>
+<tr class='covered'><td class='line-number'>327</td><td class='line-content'>    (message &amp;quot;Communication log is empty&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>328</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>329</td><td class='line-content'>(defun nskk-architecture-clear-communication-log ()</td></tr>
 <tr class=''><td class='line-number'>330</td><td class='line-content'>  &amp;quot;通信ログをクリアする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>332</td><td class='line-content'>  (setq nskk-architecture--communication-log nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>333</td><td class='line-content'>  (message &amp;quot;Communication log cleared&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>332</td><td class='line-content'>  (setq nskk-architecture--communication-log nil)</td></tr>
+<tr class='covered'><td class='line-number'>333</td><td class='line-content'>  (message &amp;quot;Communication log cleared&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>334</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>335</td><td class='line-content'>;;; ヘルスチェック</td></tr>
 <tr class=''><td class='line-number'>336</td><td class='line-content'></td></tr>
@@ -386,12 +386,12 @@
 <tr class='covered'><td class='line-number'>349</td><td class='line-content'>      (let ((status (gethash layer nskk-architecture--layer-status)))</td></tr>
 <tr class='covered'><td class='line-number'>350</td><td class='line-content'>        (unless (eq status :initialized)</td></tr>
 <tr class='covered'><td class='line-number'>351</td><td class='line-content'>          (push (format &amp;quot;Layer %s not initialized (status: %s)&amp;quot; layer status)</td></tr>
-<tr class='onevalue'><td class='line-number'>352</td><td class='line-content'>                issues))))</td></tr>
+<tr class='covered'><td class='line-number'>352</td><td class='line-content'>                issues))))</td></tr>
 <tr class=''><td class='line-number'>353</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>354</td><td class='line-content'>    ;; 結果表示</td></tr>
 <tr class='covered'><td class='line-number'>355</td><td class='line-content'>    (if issues</td></tr>
 <tr class='covered'><td class='line-number'>356</td><td class='line-content'>        (message &amp;quot;Architecture issues:\n%s&amp;quot; (string-join issues &amp;quot;\n&amp;quot;))</td></tr>
-<tr class='onevalue'><td class='line-number'>357</td><td class='line-content'>      (message &amp;quot;Architecture: All systems operational&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>357</td><td class='line-content'>      (message &amp;quot;Architecture: All systems operational&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>358</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>359</td><td class='line-content'>    (not issues)))</td></tr>
 <tr class=''><td class='line-number'>360</td><td class='line-content'></td></tr>
@@ -436,8 +436,8 @@
 <tr class='covered'><td class='line-number'>399</td><td class='line-content'>      (let ((status (gethash layer nskk-architecture--layer-status)))</td></tr>
 <tr class='covered'><td class='line-number'>400</td><td class='line-content'>        (princ (format &amp;quot;[%s] %s: %s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>401</td><td class='line-content'>                       (if (eq status :initialized) &amp;quot;✓&amp;quot; &amp;quot;✗&amp;quot;)</td></tr>
-<tr class='uncovered'><td class='line-number'>402</td><td class='line-content'>                       layer</td></tr>
-<tr class='onevalue'><td class='line-number'>403</td><td class='line-content'>                       (or status &amp;quot;not initialized&amp;quot;)))))))</td></tr>
+<tr class='covered'><td class='line-number'>402</td><td class='line-content'>                       layer</td></tr>
+<tr class='covered'><td class='line-number'>403</td><td class='line-content'>                       (or status &amp;quot;not initialized&amp;quot;)))))))</td></tr>
 <tr class=''><td class='line-number'>404</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>405</td><td class='line-content'>;;; 統計情報</td></tr>
 <tr class=''><td class='line-number'>406</td><td class='line-content'></td></tr>
@@ -451,7 +451,7 @@
 <tr class='covered'><td class='line-number'>414</td><td class='line-content'>    (puthash 'application (nskk-application-get-statistics) stats)</td></tr>
 <tr class='covered'><td class='line-number'>415</td><td class='line-content'>    (puthash 'extension (nskk-extension-get-statistics) stats)</td></tr>
 <tr class='covered'><td class='line-number'>416</td><td class='line-content'>    (puthash 'qa (nskk-qa-get-metrics) stats)</td></tr>
-<tr class='uncovered'><td class='line-number'>417</td><td class='line-content'>    stats))</td></tr>
+<tr class='covered'><td class='line-number'>417</td><td class='line-content'>    stats))</td></tr>
 <tr class=''><td class='line-number'>418</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>419</td><td class='line-content'>;;; デバッグ・ロギング</td></tr>
 <tr class=''><td class='line-number'>420</td><td class='line-content'></td></tr>
@@ -461,7 +461,7 @@
 <tr class=''><td class='line-number'>424</td><td class='line-content'>(defun nskk-architecture-enable-debug ()</td></tr>
 <tr class=''><td class='line-number'>425</td><td class='line-content'>  &amp;quot;デバッグモードを有効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>426</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>427</td><td class='line-content'>  (setq nskk-architecture--debug-enabled t)</td></tr>
+<tr class='covered'><td class='line-number'>427</td><td class='line-content'>  (setq nskk-architecture--debug-enabled t)</td></tr>
 <tr class=''><td class='line-number'>428</td><td class='line-content'>  ;; 各レイヤーのデバッグも有効化</td></tr>
 <tr class='covered'><td class='line-number'>429</td><td class='line-content'>  (nskk-infrastructure-enable-debug)</td></tr>
 <tr class='covered'><td class='line-number'>430</td><td class='line-content'>  (nskk-data-enable-debug)</td></tr>
@@ -470,12 +470,12 @@
 <tr class='covered'><td class='line-number'>433</td><td class='line-content'>  (nskk-extension-enable-debug)</td></tr>
 <tr class='covered'><td class='line-number'>434</td><td class='line-content'>  (nskk-presentation-enable-debug)</td></tr>
 <tr class='covered'><td class='line-number'>435</td><td class='line-content'>  (nskk-qa-enable-debug)</td></tr>
-<tr class='onevalue'><td class='line-number'>436</td><td class='line-content'>  (message &amp;quot;NSKK Architecture: Debug mode enabled for all layers&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>436</td><td class='line-content'>  (message &amp;quot;NSKK Architecture: Debug mode enabled for all layers&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>437</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>438</td><td class='line-content'>(defun nskk-architecture-disable-debug ()</td></tr>
 <tr class=''><td class='line-number'>439</td><td class='line-content'>  &amp;quot;デバッグモードを無効にする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>440</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>441</td><td class='line-content'>  (setq nskk-architecture--debug-enabled nil)</td></tr>
+<tr class='covered'><td class='line-number'>441</td><td class='line-content'>  (setq nskk-architecture--debug-enabled nil)</td></tr>
 <tr class=''><td class='line-number'>442</td><td class='line-content'>  ;; 各レイヤーのデバッグも無効化</td></tr>
 <tr class='covered'><td class='line-number'>443</td><td class='line-content'>  (nskk-infrastructure-disable-debug)</td></tr>
 <tr class='covered'><td class='line-number'>444</td><td class='line-content'>  (nskk-data-disable-debug)</td></tr>
@@ -484,7 +484,7 @@
 <tr class='covered'><td class='line-number'>447</td><td class='line-content'>  (nskk-extension-disable-debug)</td></tr>
 <tr class='covered'><td class='line-number'>448</td><td class='line-content'>  (nskk-presentation-disable-debug)</td></tr>
 <tr class='covered'><td class='line-number'>449</td><td class='line-content'>  (nskk-qa-disable-debug)</td></tr>
-<tr class='onevalue'><td class='line-number'>450</td><td class='line-content'>  (message &amp;quot;NSKK Architecture: Debug mode disabled for all layers&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>450</td><td class='line-content'>  (message &amp;quot;NSKK Architecture: Debug mode disabled for all layers&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>451</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>452</td><td class='line-content'>(defun nskk-architecture--log (format-string &amp;rest args)</td></tr>
 <tr class=''><td class='line-number'>453</td><td class='line-content'>  &amp;quot;デバッグログを出力する。</td></tr>

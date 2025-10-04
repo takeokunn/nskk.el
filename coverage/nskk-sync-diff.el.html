@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-sync-diff.el</h1>
     <div class='stats'>
-      Coverage: 64.64% (510/789 forms) •
+      Coverage: 100.00% (789/789 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -254,21 +254,21 @@
 <tr class=''><td class='line-number'>217</td><td class='line-content'>戻り値: 更新された辞書&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>218</td><td class='line-content'>  ;; 削除</td></tr>
 <tr class='covered'><td class='line-number'>219</td><td class='line-content'>  (dolist (entry (nskk-sync-diff-deleted diff))</td></tr>
-<tr class='onevalue'><td class='line-number'>220</td><td class='line-content'>    (nskk-dict-remove-entry dict (nskk-sync-diff-entry-midashi entry)))</td></tr>
+<tr class='covered'><td class='line-number'>220</td><td class='line-content'>    (nskk-dict-remove-entry dict (nskk-sync-diff-entry-midashi entry)))</td></tr>
 <tr class=''><td class='line-number'>221</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>222</td><td class='line-content'>  ;; 追加</td></tr>
 <tr class='covered'><td class='line-number'>223</td><td class='line-content'>  (dolist (entry (nskk-sync-diff-added diff))</td></tr>
 <tr class='covered'><td class='line-number'>224</td><td class='line-content'>    (nskk-dict-add-entry dict</td></tr>
 <tr class='covered'><td class='line-number'>225</td><td class='line-content'>                        (nskk-sync-diff-entry-midashi entry)</td></tr>
-<tr class='onevalue'><td class='line-number'>226</td><td class='line-content'>                        (nskk-sync-diff-entry-new-value entry)))</td></tr>
+<tr class='covered'><td class='line-number'>226</td><td class='line-content'>                        (nskk-sync-diff-entry-new-value entry)))</td></tr>
 <tr class=''><td class='line-number'>227</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>228</td><td class='line-content'>  ;; 変更</td></tr>
 <tr class='covered'><td class='line-number'>229</td><td class='line-content'>  (dolist (entry (nskk-sync-diff-modified diff))</td></tr>
 <tr class='covered'><td class='line-number'>230</td><td class='line-content'>    (nskk-dict-update-entry dict</td></tr>
 <tr class='covered'><td class='line-number'>231</td><td class='line-content'>                           (nskk-sync-diff-entry-midashi entry)</td></tr>
-<tr class='onevalue'><td class='line-number'>232</td><td class='line-content'>                           (nskk-sync-diff-entry-new-value entry)))</td></tr>
+<tr class='covered'><td class='line-number'>232</td><td class='line-content'>                           (nskk-sync-diff-entry-new-value entry)))</td></tr>
 <tr class=''><td class='line-number'>233</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>234</td><td class='line-content'>  dict)</td></tr>
+<tr class='covered'><td class='line-number'>234</td><td class='line-content'>  dict)</td></tr>
 <tr class=''><td class='line-number'>235</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>236</td><td class='line-content'>;;; Myers差分アルゴリズム</td></tr>
 <tr class=''><td class='line-number'>237</td><td class='line-content'></td></tr>
@@ -300,13 +300,13 @@
 <tr class='covered'><td class='line-number'>263</td><td class='line-content'>                          (while (and (&amp;lt; x n) (&amp;lt; y m)</td></tr>
 <tr class='covered'><td class='line-number'>264</td><td class='line-content'>                                     (equal (nth x seq-a) (nth y seq-b)))</td></tr>
 <tr class='covered'><td class='line-number'>265</td><td class='line-content'>                            (cl-incf x)</td></tr>
-<tr class='onevalue'><td class='line-number'>266</td><td class='line-content'>                            (cl-incf y))</td></tr>
+<tr class='covered'><td class='line-number'>266</td><td class='line-content'>                            (cl-incf y))</td></tr>
 <tr class=''><td class='line-number'>267</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>268</td><td class='line-content'>                          (aset v (+ k max-d) x)</td></tr>
 <tr class=''><td class='line-number'>269</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>270</td><td class='line-content'>                          ;; ゴール到達</td></tr>
 <tr class='covered'><td class='line-number'>271</td><td class='line-content'>                          (when (and (&amp;gt;= x n) (&amp;gt;= y m))</td></tr>
-<tr class='onevalue'><td class='line-number'>272</td><td class='line-content'>                            (throw 'found d))))))</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>                            (throw 'found d))))))</td></tr>
 <tr class=''><td class='line-number'>273</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>274</td><td class='line-content'>    ;; バックトラック（簡略版）</td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>    (nskk-sync-diff--myers-backtrack seq-a seq-b)))</td></tr>
@@ -341,7 +341,7 @@
 <tr class='covered'><td class='line-number'>304</td><td class='line-content'>        (push (list 'delete (nth i seq-a)) result)</td></tr>
 <tr class='covered'><td class='line-number'>305</td><td class='line-content'>        (push (list 'add (nth j seq-b)) result)</td></tr>
 <tr class='covered'><td class='line-number'>306</td><td class='line-content'>        (cl-incf i)</td></tr>
-<tr class='onevalue'><td class='line-number'>307</td><td class='line-content'>        (cl-incf j))))</td></tr>
+<tr class='covered'><td class='line-number'>307</td><td class='line-content'>        (cl-incf j))))</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>    (nreverse result)))</td></tr>
 <tr class=''><td class='line-number'>309</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'>;;; 圧縮</td></tr>
@@ -362,9 +362,9 @@
 <tr class='covered'><td class='line-number'>325</td><td class='line-content'>         (checksum (secure-hash nskk-sync-diff-hash-algorithm compressed)))</td></tr>
 <tr class=''><td class='line-number'>326</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>327</td><td class='line-content'>    (nskk-sync-diff-compressed--create</td></tr>
-<tr class=''><td class='line-number'>328</td><td class='line-content'>     :data compressed</td></tr>
+<tr class='covered'><td class='line-number'>328</td><td class='line-content'>     :data compressed</td></tr>
 <tr class='covered'><td class='line-number'>329</td><td class='line-content'>     :original-size original-size</td></tr>
-<tr class='uncovered'><td class='line-number'>330</td><td class='line-content'>     :compressed-size compressed-size</td></tr>
+<tr class='covered'><td class='line-number'>330</td><td class='line-content'>     :compressed-size compressed-size</td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'>     :algorithm 'zlib</td></tr>
 <tr class='covered'><td class='line-number'>332</td><td class='line-content'>     :checksum checksum)))</td></tr>
 <tr class=''><td class='line-number'>333</td><td class='line-content'></td></tr>
@@ -381,7 +381,7 @@
 <tr class=''><td class='line-number'>344</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>345</td><td class='line-content'>    ;; チェックサム検証</td></tr>
 <tr class='covered'><td class='line-number'>346</td><td class='line-content'>    (unless (string= checksum calculated-checksum)</td></tr>
-<tr class='noreturn'><td class='line-number'>347</td><td class='line-content'>      (error &amp;quot;Checksum mismatch: expected %s, got %s&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>347</td><td class='line-content'>      (error &amp;quot;Checksum mismatch: expected %s, got %s&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>348</td><td class='line-content'>             checksum calculated-checksum))</td></tr>
 <tr class=''><td class='line-number'>349</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>350</td><td class='line-content'>    (let ((decompressed (nskk-sync-diff--decompress-data data)))</td></tr>
@@ -392,7 +392,7 @@
 <tr class='covered'><td class='line-number'>355</td><td class='line-content'>  (if (fboundp 'zlib-compress-region)</td></tr>
 <tr class=''><td class='line-number'>356</td><td class='line-content'>      ;; Emacs 31のzlib-compress-region使用</td></tr>
 <tr class='covered'><td class='line-number'>357</td><td class='line-content'>      (with-temp-buffer</td></tr>
-<tr class='onevalue'><td class='line-number'>358</td><td class='line-content'>        (insert data)</td></tr>
+<tr class='covered'><td class='line-number'>358</td><td class='line-content'>        (insert data)</td></tr>
 <tr class='covered'><td class='line-number'>359</td><td class='line-content'>        (zlib-compress-region (point-min) (point-max) level)</td></tr>
 <tr class='covered'><td class='line-number'>360</td><td class='line-content'>        (buffer-string))</td></tr>
 <tr class=''><td class='line-number'>361</td><td class='line-content'>    ;; 外部gzipコマンド使用</td></tr>
@@ -443,11 +443,11 @@
 <tr class='covered'><td class='line-number'>406</td><td class='line-content'>        (progn</td></tr>
 <tr class='covered'><td class='line-number'>407</td><td class='line-content'>          (with-temp-file temp-input</td></tr>
 <tr class='covered'><td class='line-number'>408</td><td class='line-content'>            (set-buffer-multibyte nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>409</td><td class='line-content'>            (insert data))</td></tr>
+<tr class='covered'><td class='line-number'>409</td><td class='line-content'>            (insert data))</td></tr>
 <tr class=''><td class='line-number'>410</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>411</td><td class='line-content'>          (call-process &amp;quot;gunzip&amp;quot; nil nil nil</td></tr>
-<tr class='uncovered'><td class='line-number'>412</td><td class='line-content'>                       &amp;quot;-c&amp;quot; temp-input</td></tr>
-<tr class='uncovered'><td class='line-number'>413</td><td class='line-content'>                       &amp;quot;-o&amp;quot; temp-output)</td></tr>
+<tr class='covered'><td class='line-number'>412</td><td class='line-content'>                       &amp;quot;-c&amp;quot; temp-input</td></tr>
+<tr class='covered'><td class='line-number'>413</td><td class='line-content'>                       &amp;quot;-o&amp;quot; temp-output)</td></tr>
 <tr class=''><td class='line-number'>414</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>415</td><td class='line-content'>          (with-temp-buffer</td></tr>
 <tr class='covered'><td class='line-number'>416</td><td class='line-content'>            (insert-file-contents temp-output)</td></tr>
@@ -483,10 +483,10 @@
 <tr class='covered'><td class='line-number'>446</td><td class='line-content'>         (metadata (plist-get data :metadata)))</td></tr>
 <tr class=''><td class='line-number'>447</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>448</td><td class='line-content'>    (nskk-sync-diff--create</td></tr>
-<tr class='uncovered'><td class='line-number'>449</td><td class='line-content'>     :added added</td></tr>
-<tr class='uncovered'><td class='line-number'>450</td><td class='line-content'>     :modified modified</td></tr>
-<tr class='uncovered'><td class='line-number'>451</td><td class='line-content'>     :deleted deleted</td></tr>
-<tr class='uncovered'><td class='line-number'>452</td><td class='line-content'>     :metadata metadata)))</td></tr>
+<tr class='covered'><td class='line-number'>449</td><td class='line-content'>     :added added</td></tr>
+<tr class='covered'><td class='line-number'>450</td><td class='line-content'>     :modified modified</td></tr>
+<tr class='covered'><td class='line-number'>451</td><td class='line-content'>     :deleted deleted</td></tr>
+<tr class='covered'><td class='line-number'>452</td><td class='line-content'>     :metadata metadata)))</td></tr>
 <tr class=''><td class='line-number'>453</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>454</td><td class='line-content'>(defun nskk-sync-diff--entry-to-plist (entry)</td></tr>
 <tr class=''><td class='line-number'>455</td><td class='line-content'>  &amp;quot;エントリをplistに変換する。&amp;quot;</td></tr>

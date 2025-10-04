@@ -31,7 +31,7 @@
 ;; - 注釈の追加・編集・削除
 ;; - 注釈辞書の保存・読み込み
 ;; - 注釈テンプレート
-;; - AI生成注釈準備（Phase 4連携用フック）
+;; - AI生成注釈準備（拡張統合連携用フック）
 ;; - 注釈変換フック
 ;;
 ;; 使用例:
@@ -112,7 +112,7 @@
 (defvar nskk-custom-annotation-generate-hooks nil
   "注釈を自動生成するためのフック。
 各フック関数は (midashi candidate) を引数に取り、注釈文字列を返す。
-Phase 4でAI統合時に使用予定。")
+拡張統合でAI統合時に使用予定。")
 
 (defvar nskk-custom-annotation-before-add-hook nil
   "注釈を追加する前に呼ばれるフック。
@@ -235,7 +235,7 @@ Phase 4でAI統合時に使用予定。")
                      nskk-custom-annotation-templates
                      "\n")))
 
-;;; AI生成注釈（Phase 4準備）
+;;; AI生成注釈（拡張統合準備）
 
 ;;;###autoload
 (defun nskk-custom-annotation-generate (midashi candidate)

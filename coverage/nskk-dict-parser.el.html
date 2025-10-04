@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-dict-parser.el</h1>
     <div class='stats'>
-      Coverage: 83.06% (554/667 forms) •
+      Coverage: 100.00% (712/712 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -160,26 +160,26 @@
 <tr class=''><td class='line-number'>123</td><td class='line-content'>  (candidates nil :type list))</td></tr>
 <tr class=''><td class='line-number'>124</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>125</td><td class='line-content'>(cl-defstruct (nskk-parse-error</td></tr>
-<tr class=''><td class='line-number'>126</td><td class='line-content'>               (:constructor nskk-parse-error--create)</td></tr>
-<tr class=''><td class='line-number'>127</td><td class='line-content'>               (:copier nil))</td></tr>
-<tr class=''><td class='line-number'>128</td><td class='line-content'>  &amp;quot;パースエラー情報。</td></tr>
+<tr class='covered'><td class='line-number'>126</td><td class='line-content'>               (:constructor nskk-parse-error--create)</td></tr>
+<tr class='covered'><td class='line-number'>127</td><td class='line-content'>               (:copier nil))</td></tr>
+<tr class='covered'><td class='line-number'>128</td><td class='line-content'>  &amp;quot;パースエラー情報。</td></tr>
 <tr class=''><td class='line-number'>129</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>130</td><td class='line-content'>スロット:</td></tr>
-<tr class=''><td class='line-number'>131</td><td class='line-content'>  line-number - 行番号</td></tr>
-<tr class=''><td class='line-number'>132</td><td class='line-content'>  line        - 行内容</td></tr>
-<tr class=''><td class='line-number'>133</td><td class='line-content'>  message     - エラーメッセージ</td></tr>
-<tr class=''><td class='line-number'>134</td><td class='line-content'>  severity    - エラーの重要度（'warning, 'error, 'fatal）&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>135</td><td class='line-content'>  (line-number nil :type (or null integer))</td></tr>
-<tr class=''><td class='line-number'>136</td><td class='line-content'>  (line nil :type (or null string))</td></tr>
-<tr class=''><td class='line-number'>137</td><td class='line-content'>  (message nil :type string)</td></tr>
-<tr class=''><td class='line-number'>138</td><td class='line-content'>  (severity 'error :type symbol))</td></tr>
+<tr class='covered'><td class='line-number'>130</td><td class='line-content'>スロット:</td></tr>
+<tr class='covered'><td class='line-number'>131</td><td class='line-content'>  line-number - 行番号</td></tr>
+<tr class='covered'><td class='line-number'>132</td><td class='line-content'>  line        - 行内容</td></tr>
+<tr class='covered'><td class='line-number'>133</td><td class='line-content'>  message     - エラーメッセージ</td></tr>
+<tr class='covered'><td class='line-number'>134</td><td class='line-content'>  severity    - エラーの重要度（'warning, 'error, 'fatal）&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>135</td><td class='line-content'>  (line-number nil :type (or null integer))</td></tr>
+<tr class='covered'><td class='line-number'>136</td><td class='line-content'>  (line nil :type (or null string))</td></tr>
+<tr class='covered'><td class='line-number'>137</td><td class='line-content'>  (message nil :type string)</td></tr>
+<tr class='covered'><td class='line-number'>138</td><td class='line-content'>  (severity 'error :type symbol))</td></tr>
 <tr class=''><td class='line-number'>139</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>140</td><td class='line-content'>;;; エンコーディング検出</td></tr>
+<tr class='covered'><td class='line-number'>140</td><td class='line-content'>;;; エンコーディング検出</td></tr>
 <tr class=''><td class='line-number'>141</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>142</td><td class='line-content'>(defun nskk-dict-parser-detect-encoding (file-path)</td></tr>
-<tr class=''><td class='line-number'>143</td><td class='line-content'>  &amp;quot;FILE-PATH のエンコーディングを検出する。</td></tr>
-<tr class=''><td class='line-number'>144</td><td class='line-content'>UTF-8またはEUC-JPを返す。&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>145</td><td class='line-content'>  ;; ステップ1: coding宣言をチェック</td></tr>
+<tr class='covered'><td class='line-number'>142</td><td class='line-content'>(defun nskk-dict-parser-detect-encoding (file-path)</td></tr>
+<tr class='covered'><td class='line-number'>143</td><td class='line-content'>  &amp;quot;FILE-PATH のエンコーディングを検出する。</td></tr>
+<tr class='covered'><td class='line-number'>144</td><td class='line-content'>UTF-8またはEUC-JPを返す。&amp;quot;</td></tr>
+<tr class='covered'><td class='line-number'>145</td><td class='line-content'>  ;; ステップ1: coding宣言をチェック</td></tr>
 <tr class='covered'><td class='line-number'>146</td><td class='line-content'>  (let ((coding-from-header (nskk-dict-parser--detect-from-header file-path)))</td></tr>
 <tr class='covered'><td class='line-number'>147</td><td class='line-content'>    (if coding-from-header</td></tr>
 <tr class='covered'><td class='line-number'>148</td><td class='line-content'>        coding-from-header</td></tr>
@@ -225,12 +225,12 @@
 <tr class='covered'><td class='line-number'>188</td><td class='line-content'>                      (let ((next-byte (char-after (+ (point) 1))))</td></tr>
 <tr class='covered'><td class='line-number'>189</td><td class='line-content'>                        (and (&amp;gt;= next-byte #xA1) (&amp;lt;= next-byte #xFE))))</td></tr>
 <tr class='covered'><td class='line-number'>190</td><td class='line-content'>              (setq eucjp-score (+ eucjp-score 10)))))</td></tr>
-<tr class='onevalue'><td class='line-number'>191</td><td class='line-content'>          (forward-char 1)))</td></tr>
+<tr class='covered'><td class='line-number'>191</td><td class='line-content'>          (forward-char 1)))</td></tr>
 <tr class=''><td class='line-number'>192</td><td class='line-content'>      ;; スコアに基づく判定</td></tr>
 <tr class='covered'><td class='line-number'>193</td><td class='line-content'>      (cond</td></tr>
 <tr class='covered'><td class='line-number'>194</td><td class='line-content'>       ((&amp;gt; utf8-score eucjp-score) 'utf-8)</td></tr>
 <tr class='covered'><td class='line-number'>195</td><td class='line-content'>       ((&amp;gt; eucjp-score utf8-score) 'euc-jp)</td></tr>
-<tr class=''><td class='line-number'>196</td><td class='line-content'>       (t 'utf-8)))))  ; デフォルトはUTF-8</td></tr>
+<tr class='covered'><td class='line-number'>196</td><td class='line-content'>       (t 'utf-8)))))  ; デフォルトはUTF-8</td></tr>
 <tr class=''><td class='line-number'>197</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>198</td><td class='line-content'>(defun nskk-dict-parser--valid-utf8-continuation-p (pos)</td></tr>
 <tr class=''><td class='line-number'>199</td><td class='line-content'>  &amp;quot;POSの位置がUTF-8継続バイトか判定する。&amp;quot;</td></tr>
@@ -293,7 +293,7 @@
 <tr class='covered'><td class='line-number'>256</td><td class='line-content'>                       (push entry (nskk-dict-okuri-nasi dict)))</td></tr>
 <tr class=''><td class='line-number'>257</td><td class='line-content'>                      ('header</td></tr>
 <tr class='covered'><td class='line-number'>258</td><td class='line-content'>                       (nskk-dict-parser--log-error</td></tr>
-<tr class='uncovered'><td class='line-number'>259</td><td class='line-content'>                        dict line-number line</td></tr>
+<tr class='covered'><td class='line-number'>259</td><td class='line-content'>                        dict line-number line</td></tr>
 <tr class=''><td class='line-number'>260</td><td class='line-content'>                        &amp;quot;Unexpected entry in header section&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>261</td><td class='line-content'>                        'warning))))))</td></tr>
 <tr class=''><td class='line-number'>262</td><td class='line-content'>              (error</td></tr>
@@ -340,7 +340,7 @@
 <tr class=''><td class='line-number'>303</td><td class='line-content'>戻り値: ((word . annotation) ...) のリスト&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>304</td><td class='line-content'>  (unless (and (string-prefix-p &amp;quot;/&amp;quot; candidate-part)</td></tr>
 <tr class='covered'><td class='line-number'>305</td><td class='line-content'>              (string-suffix-p &amp;quot;/&amp;quot; candidate-part))</td></tr>
-<tr class='noreturn'><td class='line-number'>306</td><td class='line-content'>    (signal 'nskk-dict-parse-invalid-format</td></tr>
+<tr class='covered'><td class='line-number'>306</td><td class='line-content'>    (signal 'nskk-dict-parse-invalid-format</td></tr>
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>           (list (format &amp;quot;Candidate list must be enclosed in slashes: %s&amp;quot; candidate-part))))</td></tr>
 <tr class=''><td class='line-number'>308</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>309</td><td class='line-content'>  ;; 先頭と末尾の&amp;quot;/&amp;quot;を除去</td></tr>
@@ -377,7 +377,7 @@
 <tr class='covered'><td class='line-number'>340</td><td class='line-content'>      (when (string-empty-p (car cand))</td></tr>
 <tr class='covered'><td class='line-number'>341</td><td class='line-content'>        (push &amp;quot;Empty candidate word&amp;quot; errors)))</td></tr>
 <tr class=''><td class='line-number'>342</td><td class='line-content'></td></tr>
-<tr class=''><td class='line-number'>343</td><td class='line-content'>    errors))</td></tr>
+<tr class='covered'><td class='line-number'>343</td><td class='line-content'>    errors))</td></tr>
 <tr class=''><td class='line-number'>344</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>345</td><td class='line-content'>(defun nskk-dict-parser-validate-okuri-ari-entry (entry)</td></tr>
 <tr class=''><td class='line-number'>346</td><td class='line-content'>  &amp;quot;送り仮名ありエントリ ENTRY の妥当性を検証する。&amp;quot;</td></tr>
@@ -400,9 +400,9 @@
 <tr class=''><td class='line-number'>363</td><td class='line-content'>  &amp;quot;エラーを記録する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>364</td><td class='line-content'>  (let ((error-obj (nskk-parse-error--create</td></tr>
 <tr class='covered'><td class='line-number'>365</td><td class='line-content'>                   :line-number line-number</td></tr>
-<tr class=''><td class='line-number'>366</td><td class='line-content'>                   :line line</td></tr>
-<tr class=''><td class='line-number'>367</td><td class='line-content'>                   :message message</td></tr>
-<tr class=''><td class='line-number'>368</td><td class='line-content'>                   :severity severity)))</td></tr>
+<tr class='covered'><td class='line-number'>366</td><td class='line-content'>                   :line line</td></tr>
+<tr class='covered'><td class='line-number'>367</td><td class='line-content'>                   :message message</td></tr>
+<tr class='covered'><td class='line-number'>368</td><td class='line-content'>                   :severity severity)))</td></tr>
 <tr class='covered'><td class='line-number'>369</td><td class='line-content'>    (push error-obj (nskk-dict-errors dict))</td></tr>
 <tr class='covered'><td class='line-number'>370</td><td class='line-content'>    (when nskk-dict-parser-verbose</td></tr>
 <tr class='covered'><td class='line-number'>371</td><td class='line-content'>      (message &amp;quot;[%s] Line %d: %s&amp;quot; severity line-number message))))</td></tr>
@@ -411,13 +411,13 @@
 <tr class=''><td class='line-number'>374</td><td class='line-content'>  &amp;quot;エラーを処理戦略に従って処理する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>375</td><td class='line-content'>  (pcase nskk-dict-parser-error-strategy</td></tr>
 <tr class=''><td class='line-number'>376</td><td class='line-content'>    ('strict</td></tr>
-<tr class='noreturn'><td class='line-number'>377</td><td class='line-content'>     (signal 'nskk-dict-parse-error</td></tr>
+<tr class='covered'><td class='line-number'>377</td><td class='line-content'>     (signal 'nskk-dict-parse-error</td></tr>
 <tr class='covered'><td class='line-number'>378</td><td class='line-content'>            (list (format &amp;quot;Parse error at line %d: %s (Line: %s)&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>379</td><td class='line-content'>                         line-number message line))))</td></tr>
 <tr class=''><td class='line-number'>380</td><td class='line-content'>    ('lenient</td></tr>
 <tr class='covered'><td class='line-number'>381</td><td class='line-content'>     (nskk-dict-parser--log-error dict line-number line message 'error))</td></tr>
 <tr class=''><td class='line-number'>382</td><td class='line-content'>    ('ignore</td></tr>
-<tr class=''><td class='line-number'>383</td><td class='line-content'>     nil)))</td></tr>
+<tr class='covered'><td class='line-number'>383</td><td class='line-content'>     nil)))</td></tr>
 <tr class=''><td class='line-number'>384</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>385</td><td class='line-content'>;;; ユーティリティ関数</td></tr>
 <tr class=''><td class='line-number'>386</td><td class='line-content'></td></tr>

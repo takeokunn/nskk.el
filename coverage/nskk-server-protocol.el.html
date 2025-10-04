@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-server-protocol.el</h1>
     <div class='stats'>
-      Coverage: 94.46% (290/307 forms) •
+      Coverage: 100.00% (307/307 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -223,14 +223,14 @@
 <tr class=''><td class='line-number'>186</td><td class='line-content'>  (nskk-server-protocol-make-request \&amp;quot;かんじ\&amp;quot; 'okuri-nasi)</td></tr>
 <tr class=''><td class='line-number'>187</td><td class='line-content'>  =&amp;gt; \&amp;quot;1かんじ \&amp;quot;&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>188</td><td class='line-content'>  (unless (and (stringp key) (&amp;gt; (length key) 0))</td></tr>
-<tr class='noreturn'><td class='line-number'>189</td><td class='line-content'>    (signal 'nskk-server-protocol-invalid-request</td></tr>
+<tr class='covered'><td class='line-number'>189</td><td class='line-content'>    (signal 'nskk-server-protocol-invalid-request</td></tr>
 <tr class='covered'><td class='line-number'>190</td><td class='line-content'>            (list &amp;quot;Key must be a non-empty string&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>191</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>192</td><td class='line-content'>  (let* ((encoding (or encoding nskk-server-protocol-encoding))</td></tr>
 <tr class='covered'><td class='line-number'>193</td><td class='line-content'>         (command (pcase okuri-type</td></tr>
 <tr class='covered'><td class='line-number'>194</td><td class='line-content'>                   ('okuri-nasi nskk-server-protocol-command-search-okuri-nasi)</td></tr>
-<tr class='onevalue'><td class='line-number'>195</td><td class='line-content'>                   ('okuri-ari nskk-server-protocol-command-search-okuri-ari)</td></tr>
-<tr class='noreturn'><td class='line-number'>196</td><td class='line-content'>                   (_ (signal 'nskk-server-protocol-invalid-request</td></tr>
+<tr class='covered'><td class='line-number'>195</td><td class='line-content'>                   ('okuri-ari nskk-server-protocol-command-search-okuri-ari)</td></tr>
+<tr class='covered'><td class='line-number'>196</td><td class='line-content'>                   (_ (signal 'nskk-server-protocol-invalid-request</td></tr>
 <tr class='covered'><td class='line-number'>197</td><td class='line-content'>                             (list (format &amp;quot;Invalid okuri-type: %s&amp;quot; okuri-type))))))</td></tr>
 <tr class='covered'><td class='line-number'>198</td><td class='line-content'>         (request (nskk-server-request--create</td></tr>
 <tr class='covered'><td class='line-number'>199</td><td class='line-content'>                  :command command</td></tr>
@@ -264,7 +264,7 @@
 <tr class=''><td class='line-number'>227</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>228</td><td class='line-content'>戻り値:</td></tr>
 <tr class=''><td class='line-number'>229</td><td class='line-content'>  リクエスト文字列&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>230</td><td class='line-content'>  (string nskk-server-protocol-command-version))</td></tr>
+<tr class='covered'><td class='line-number'>230</td><td class='line-content'>  (string nskk-server-protocol-command-version))</td></tr>
 <tr class=''><td class='line-number'>231</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>232</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>233</td><td class='line-content'>(defun nskk-server-protocol-make-host-request ()</td></tr>
@@ -272,7 +272,7 @@
 <tr class=''><td class='line-number'>235</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>236</td><td class='line-content'>戻り値:</td></tr>
 <tr class=''><td class='line-number'>237</td><td class='line-content'>  リクエスト文字列&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>238</td><td class='line-content'>  (string nskk-server-protocol-command-host))</td></tr>
+<tr class='covered'><td class='line-number'>238</td><td class='line-content'>  (string nskk-server-protocol-command-host))</td></tr>
 <tr class=''><td class='line-number'>239</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>240</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>241</td><td class='line-content'>(defun nskk-server-protocol-make-server-info-request ()</td></tr>
@@ -280,7 +280,7 @@
 <tr class=''><td class='line-number'>243</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>244</td><td class='line-content'>戻り値:</td></tr>
 <tr class=''><td class='line-number'>245</td><td class='line-content'>  リクエスト文字列&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>246</td><td class='line-content'>  (string nskk-server-protocol-command-server-info))</td></tr>
+<tr class='covered'><td class='line-number'>246</td><td class='line-content'>  (string nskk-server-protocol-command-server-info))</td></tr>
 <tr class=''><td class='line-number'>247</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>248</td><td class='line-content'>;;; レスポンスパース</td></tr>
 <tr class=''><td class='line-number'>249</td><td class='line-content'></td></tr>
@@ -300,7 +300,7 @@
 <tr class=''><td class='line-number'>263</td><td class='line-content'>  - '4' : 見つからない</td></tr>
 <tr class=''><td class='line-number'>264</td><td class='line-content'>  - '&amp;lt;info-text&amp;gt;' : サーバー情報&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>265</td><td class='line-content'>  (unless (and (stringp response-str) (&amp;gt; (length response-str) 0))</td></tr>
-<tr class='noreturn'><td class='line-number'>266</td><td class='line-content'>    (signal 'nskk-server-protocol-invalid-response</td></tr>
+<tr class='covered'><td class='line-number'>266</td><td class='line-content'>    (signal 'nskk-server-protocol-invalid-response</td></tr>
 <tr class='covered'><td class='line-number'>267</td><td class='line-content'>            (list &amp;quot;Response must be a non-empty string&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>268</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>269</td><td class='line-content'>  (let* ((encoding (or encoding nskk-server-protocol-encoding))</td></tr>
@@ -342,7 +342,7 @@
 <tr class=''><td class='line-number'>305</td><td class='line-content'>形式:</td></tr>
 <tr class=''><td class='line-number'>306</td><td class='line-content'>  1/候補1/候補2;注釈2/.../&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>  (unless (string-prefix-p &amp;quot;1/&amp;quot; response-str)</td></tr>
-<tr class='noreturn'><td class='line-number'>308</td><td class='line-content'>    (signal 'nskk-server-protocol-parse-error</td></tr>
+<tr class='covered'><td class='line-number'>308</td><td class='line-content'>    (signal 'nskk-server-protocol-parse-error</td></tr>
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>            (list (format &amp;quot;Invalid response format: %s&amp;quot; response-str))))</td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>311</td><td class='line-content'>  ;; &amp;quot;1/&amp;quot; を除去して候補部分を取得</td></tr>
@@ -459,13 +459,13 @@
 <tr class='covered'><td class='line-number'>422</td><td class='line-content'>                             (format &amp;quot;%s;%s&amp;quot; (car cand) (cdr cand))</td></tr>
 <tr class='covered'><td class='line-number'>423</td><td class='line-content'>                           (car cand)))</td></tr>
 <tr class='covered'><td class='line-number'>424</td><td class='line-content'>                       (nskk-server-response-candidates response)</td></tr>
-<tr class=''><td class='line-number'>425</td><td class='line-content'>                       &amp;quot;, &amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>425</td><td class='line-content'>                       &amp;quot;, &amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>426</td><td class='line-content'>    ('not-found</td></tr>
 <tr class=''><td class='line-number'>427</td><td class='line-content'>     &amp;quot;Not found&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>428</td><td class='line-content'>    ('info</td></tr>
 <tr class='covered'><td class='line-number'>429</td><td class='line-content'>     (format &amp;quot;Server info: %s&amp;quot; (nskk-server-response-info response)))</td></tr>
 <tr class=''><td class='line-number'>430</td><td class='line-content'>    (_</td></tr>
-<tr class=''><td class='line-number'>431</td><td class='line-content'>     &amp;quot;Unknown status&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>431</td><td class='line-content'>     &amp;quot;Unknown status&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>432</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>433</td><td class='line-content'>(provide 'nskk-server-protocol)</td></tr>
 <tr class=''><td class='line-number'>434</td><td class='line-content'></td></tr>

@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-analytics-report.el</h1>
     <div class='stats'>
-      Coverage: 88.44% (589/666 forms) •
+      Coverage: 100.00% (666/666 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -164,7 +164,7 @@
 <tr class=''><td class='line-number'>127</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>128</td><td class='line-content'>    ;; HTML書き込み</td></tr>
 <tr class='covered'><td class='line-number'>129</td><td class='line-content'>    (with-temp-file output</td></tr>
-<tr class='onevalue'><td class='line-number'>130</td><td class='line-content'>      (insert html))</td></tr>
+<tr class='covered'><td class='line-number'>130</td><td class='line-content'>      (insert html))</td></tr>
 <tr class=''><td class='line-number'>131</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>132</td><td class='line-content'>    (setq nskk-analytics-report--last-report report-data)</td></tr>
 <tr class=''><td class='line-number'>133</td><td class='line-content'></td></tr>
@@ -175,7 +175,7 @@
 <tr class='covered'><td class='line-number'>138</td><td class='line-content'>               (called-interactively-p 'interactive))</td></tr>
 <tr class='covered'><td class='line-number'>139</td><td class='line-content'>      (browse-url-of-file output))</td></tr>
 <tr class=''><td class='line-number'>140</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>141</td><td class='line-content'>    output))</td></tr>
+<tr class='covered'><td class='line-number'>141</td><td class='line-content'>    output))</td></tr>
 <tr class=''><td class='line-number'>142</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>143</td><td class='line-content'>(defun nskk-analytics-report--collect-data ()</td></tr>
 <tr class=''><td class='line-number'>144</td><td class='line-content'>  &amp;quot;レポートデータを収集する。&amp;quot;</td></tr>
@@ -188,11 +188,11 @@
 <tr class=''><td class='line-number'>151</td><td class='line-content'>     :title &amp;quot;NSKK Analytics Report&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>152</td><td class='line-content'>     :period `(:start ,(nskk-analytics-report--get-period-start)</td></tr>
 <tr class='covered'><td class='line-number'>153</td><td class='line-content'>               :end ,(current-time))</td></tr>
-<tr class=''><td class='line-number'>154</td><td class='line-content'>     :metrics metrics</td></tr>
+<tr class='covered'><td class='line-number'>154</td><td class='line-content'>     :metrics metrics</td></tr>
 <tr class='covered'><td class='line-number'>155</td><td class='line-content'>     :charts (when nskk-analytics-report-include-graphs</td></tr>
 <tr class='covered'><td class='line-number'>156</td><td class='line-content'>               (nskk-analytics-report--generate-charts metrics patterns))</td></tr>
 <tr class='covered'><td class='line-number'>157</td><td class='line-content'>     :insights (nskk-analytics-report--generate-insights</td></tr>
-<tr class=''><td class='line-number'>158</td><td class='line-content'>                metrics patterns trends optimizations))))</td></tr>
+<tr class='covered'><td class='line-number'>158</td><td class='line-content'>                metrics patterns trends optimizations))))</td></tr>
 <tr class=''><td class='line-number'>159</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>160</td><td class='line-content'>(defun nskk-analytics-report--get-period-start ()</td></tr>
 <tr class=''><td class='line-number'>161</td><td class='line-content'>  &amp;quot;レポート対象期間の開始時刻を取得する。&amp;quot;</td></tr>
@@ -358,12 +358,12 @@
 <tr class='covered'><td class='line-number'>321</td><td class='line-content'>                       (car item)</td></tr>
 <tr class='covered'><td class='line-number'>322</td><td class='line-content'>                       (cdr item)))</td></tr>
 <tr class='covered'><td class='line-number'>323</td><td class='line-content'>             (cl-subseq top-conv 0 (min 10 (length top-conv)))</td></tr>
-<tr class=''><td class='line-number'>324</td><td class='line-content'>             &amp;quot;&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>324</td><td class='line-content'>             &amp;quot;&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>325</td><td class='line-content'>            &amp;quot;</td></tr>
 <tr class=''><td class='line-number'>326</td><td class='line-content'>                &amp;lt;/tbody&amp;gt;</td></tr>
 <tr class=''><td class='line-number'>327</td><td class='line-content'>            &amp;lt;/table&amp;gt;</td></tr>
 <tr class=''><td class='line-number'>328</td><td class='line-content'>        &amp;lt;/section&amp;gt;</td></tr>
-<tr class=''><td class='line-number'>329</td><td class='line-content'>&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>329</td><td class='line-content'>&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>330</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'>(defun nskk-analytics-report--html-trends (report)</td></tr>
 <tr class=''><td class='line-number'>332</td><td class='line-content'>  &amp;quot;トレンドセクションを生成する。</td></tr>
@@ -399,11 +399,11 @@
 <tr class='covered'><td class='line-number'>362</td><td class='line-content'>            (mapconcat</td></tr>
 <tr class=''><td class='line-number'>363</td><td class='line-content'>             (lambda (insight)</td></tr>
 <tr class='covered'><td class='line-number'>364</td><td class='line-content'>               (format &amp;quot;            &amp;lt;div class=\&amp;quot;insight\&amp;quot;&amp;gt;%s&amp;lt;/div&amp;gt;\n&amp;quot; insight))</td></tr>
-<tr class=''><td class='line-number'>365</td><td class='line-content'>             insights</td></tr>
-<tr class=''><td class='line-number'>366</td><td class='line-content'>             &amp;quot;&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>365</td><td class='line-content'>             insights</td></tr>
+<tr class='covered'><td class='line-number'>366</td><td class='line-content'>             &amp;quot;&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>367</td><td class='line-content'>            &amp;quot;</td></tr>
 <tr class=''><td class='line-number'>368</td><td class='line-content'>        &amp;lt;/section&amp;gt;</td></tr>
-<tr class=''><td class='line-number'>369</td><td class='line-content'>&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>369</td><td class='line-content'>&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>370</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>371</td><td class='line-content'>(defun nskk-analytics-report--html-charts (report)</td></tr>
 <tr class=''><td class='line-number'>372</td><td class='line-content'>  &amp;quot;チャートセクションを生成する。</td></tr>
@@ -418,11 +418,11 @@
 <tr class='covered'><td class='line-number'>381</td><td class='line-content'>            (mapconcat</td></tr>
 <tr class=''><td class='line-number'>382</td><td class='line-content'>             (lambda (chart)</td></tr>
 <tr class='covered'><td class='line-number'>383</td><td class='line-content'>               (format &amp;quot;            &amp;lt;div class=\&amp;quot;chart\&amp;quot;&amp;gt;%s&amp;lt;/div&amp;gt;\n&amp;quot; chart))</td></tr>
-<tr class=''><td class='line-number'>384</td><td class='line-content'>             charts</td></tr>
-<tr class=''><td class='line-number'>385</td><td class='line-content'>             &amp;quot;&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>384</td><td class='line-content'>             charts</td></tr>
+<tr class='covered'><td class='line-number'>385</td><td class='line-content'>             &amp;quot;&amp;quot;)</td></tr>
 <tr class=''><td class='line-number'>386</td><td class='line-content'>            &amp;quot;</td></tr>
 <tr class=''><td class='line-number'>387</td><td class='line-content'>        &amp;lt;/section&amp;gt;</td></tr>
-<tr class=''><td class='line-number'>388</td><td class='line-content'>&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>388</td><td class='line-content'>&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>389</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>390</td><td class='line-content'>(defun nskk-analytics-report--html-footer ()</td></tr>
 <tr class=''><td class='line-number'>391</td><td class='line-content'>  &amp;quot;HTMLフッターを生成する。</td></tr>
@@ -482,8 +482,8 @@
 <tr class='covered'><td class='line-number'>445</td><td class='line-content'>                                   x (- height bar-height) (- bar-width 2) bar-height)</td></tr>
 <tr class='covered'><td class='line-number'>446</td><td class='line-content'>                           (format &amp;quot;  &amp;lt;text x=\&amp;quot;%d\&amp;quot; y=\&amp;quot;%d\&amp;quot; font-size=\&amp;quot;10\&amp;quot; text-anchor=\&amp;quot;middle\&amp;quot;&amp;gt;%d&amp;lt;/text&amp;gt;\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>447</td><td class='line-content'>                                   (+ x (/ bar-width 2)) (- height 5) i)))</td></tr>
-<tr class='onevalue'><td class='line-number'>448</td><td class='line-content'>             (setq x (+ x bar-width))))</td></tr>
-<tr class=''><td class='line-number'>449</td><td class='line-content'>         result)</td></tr>
+<tr class='covered'><td class='line-number'>448</td><td class='line-content'>             (setq x (+ x bar-width))))</td></tr>
+<tr class='covered'><td class='line-number'>449</td><td class='line-content'>         result)</td></tr>
 <tr class='covered'><td class='line-number'>450</td><td class='line-content'>       &amp;quot;&amp;lt;/svg&amp;gt;&amp;quot;))))</td></tr>
 <tr class=''><td class='line-number'>451</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>452</td><td class='line-content'>(defun nskk-analytics-report--generate-pie-chart (title data)</td></tr>
@@ -500,7 +500,7 @@
 <tr class='covered'><td class='line-number'>463</td><td class='line-content'>    (concat</td></tr>
 <tr class=''><td class='line-number'>464</td><td class='line-content'>     &amp;quot;&amp;lt;svg width=\&amp;quot;400\&amp;quot; height=\&amp;quot;400\&amp;quot; xmlns=\&amp;quot;http://www.w3.org/2000/svg\&amp;quot;&amp;gt;\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>465</td><td class='line-content'>     (format &amp;quot;  &amp;lt;text x=\&amp;quot;200\&amp;quot; y=\&amp;quot;30\&amp;quot; font-size=\&amp;quot;16\&amp;quot; font-weight=\&amp;quot;bold\&amp;quot; text-anchor=\&amp;quot;middle\&amp;quot;&amp;gt;%s&amp;lt;/text&amp;gt;\n&amp;quot;</td></tr>
-<tr class=''><td class='line-number'>466</td><td class='line-content'>             title)</td></tr>
+<tr class='covered'><td class='line-number'>466</td><td class='line-content'>             title)</td></tr>
 <tr class='covered'><td class='line-number'>467</td><td class='line-content'>     (mapconcat</td></tr>
 <tr class=''><td class='line-number'>468</td><td class='line-content'>      (lambda (item)</td></tr>
 <tr class='covered'><td class='line-number'>469</td><td class='line-content'>        (let* ((value (cdr item))</td></tr>
@@ -588,8 +588,8 @@
 <tr class='covered'><td class='line-number'>551</td><td class='line-content'>        (progn</td></tr>
 <tr class='covered'><td class='line-number'>552</td><td class='line-content'>          (call-process &amp;quot;wkhtmltopdf&amp;quot; nil nil nil html pdf)</td></tr>
 <tr class='covered'><td class='line-number'>553</td><td class='line-content'>          (message &amp;quot;PDF exported: %s&amp;quot; pdf)</td></tr>
-<tr class='uncovered'><td class='line-number'>554</td><td class='line-content'>          pdf)</td></tr>
-<tr class='onevalue'><td class='line-number'>555</td><td class='line-content'>      (error &amp;quot;wkhtmltopdf not found. Please install it to export PDF&amp;quot;))))</td></tr>
+<tr class='covered'><td class='line-number'>554</td><td class='line-content'>          pdf)</td></tr>
+<tr class='covered'><td class='line-number'>555</td><td class='line-content'>      (error &amp;quot;wkhtmltopdf not found. Please install it to export PDF&amp;quot;))))</td></tr>
 <tr class=''><td class='line-number'>556</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>557</td><td class='line-content'>;;; 定期レポート</td></tr>
 <tr class=''><td class='line-number'>558</td><td class='line-content'></td></tr>
@@ -603,11 +603,11 @@
 <tr class='covered'><td class='line-number'>566</td><td class='line-content'>  (when nskk-analytics-report--scheduled-timer</td></tr>
 <tr class='covered'><td class='line-number'>567</td><td class='line-content'>    (cancel-timer nskk-analytics-report--scheduled-timer))</td></tr>
 <tr class=''><td class='line-number'>568</td><td class='line-content'></td></tr>
-<tr class='onevalue'><td class='line-number'>569</td><td class='line-content'>  (let ((seconds-until-next (* 24 60 60)))  ;; 24時間後</td></tr>
+<tr class='covered'><td class='line-number'>569</td><td class='line-content'>  (let ((seconds-until-next (* 24 60 60)))  ;; 24時間後</td></tr>
 <tr class='covered'><td class='line-number'>570</td><td class='line-content'>    (setq nskk-analytics-report--scheduled-timer</td></tr>
 <tr class='covered'><td class='line-number'>571</td><td class='line-content'>          (run-at-time seconds-until-next seconds-until-next</td></tr>
 <tr class='covered'><td class='line-number'>572</td><td class='line-content'>                       #'nskk-analytics-generate-html-report))</td></tr>
-<tr class='onevalue'><td class='line-number'>573</td><td class='line-content'>    (message &amp;quot;Scheduled daily report generation&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>573</td><td class='line-content'>    (message &amp;quot;Scheduled daily report generation&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>574</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>575</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>576</td><td class='line-content'>(defun nskk-analytics-cancel-scheduled-report ()</td></tr>
@@ -615,8 +615,8 @@
 <tr class=''><td class='line-number'>578</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>579</td><td class='line-content'>  (when nskk-analytics-report--scheduled-timer</td></tr>
 <tr class='covered'><td class='line-number'>580</td><td class='line-content'>    (cancel-timer nskk-analytics-report--scheduled-timer)</td></tr>
-<tr class='onevalue'><td class='line-number'>581</td><td class='line-content'>    (setq nskk-analytics-report--scheduled-timer nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>582</td><td class='line-content'>    (message &amp;quot;Cancelled scheduled report generation&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>581</td><td class='line-content'>    (setq nskk-analytics-report--scheduled-timer nil)</td></tr>
+<tr class='covered'><td class='line-number'>582</td><td class='line-content'>    (message &amp;quot;Cancelled scheduled report generation&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>583</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>584</td><td class='line-content'>;;; ヘルパー関数</td></tr>
 <tr class=''><td class='line-number'>585</td><td class='line-content'></td></tr>
@@ -628,8 +628,8 @@
 <tr class='covered'><td class='line-number'>591</td><td class='line-content'>  (expand-file-name</td></tr>
 <tr class='covered'><td class='line-number'>592</td><td class='line-content'>   (format &amp;quot;nskk-report-%s.%s&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>593</td><td class='line-content'>           (format-time-string &amp;quot;%Y%m%d-%H%M%S&amp;quot;)</td></tr>
-<tr class='uncovered'><td class='line-number'>594</td><td class='line-content'>           extension)</td></tr>
-<tr class='uncovered'><td class='line-number'>595</td><td class='line-content'>   nskk-analytics-report-directory))</td></tr>
+<tr class='covered'><td class='line-number'>594</td><td class='line-content'>           extension)</td></tr>
+<tr class='covered'><td class='line-number'>595</td><td class='line-content'>   nskk-analytics-report-directory))</td></tr>
 <tr class=''><td class='line-number'>596</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>597</td><td class='line-content'>(provide 'nskk-analytics-report)</td></tr>
 <tr class=''><td class='line-number'>598</td><td class='line-content'></td></tr>

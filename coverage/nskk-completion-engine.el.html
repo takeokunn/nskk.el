@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-completion-engine.el</h1>
     <div class='stats'>
-      Coverage: 46.47% (224/482 forms) •
+      Coverage: 100.00% (482/482 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -218,28 +218,28 @@
 <tr class='covered'><td class='line-number'>181</td><td class='line-content'>      (let ((algo-results (nskk-completion-engine--run-algorithm</td></tr>
 <tr class='covered'><td class='line-number'>182</td><td class='line-content'>                          algo index query</td></tr>
 <tr class='covered'><td class='line-number'>183</td><td class='line-content'>                          :context context</td></tr>
-<tr class=''><td class='line-number'>184</td><td class='line-content'>                          :okuri-type okuri-type</td></tr>
+<tr class='covered'><td class='line-number'>184</td><td class='line-content'>                          :okuri-type okuri-type</td></tr>
 <tr class='covered'><td class='line-number'>185</td><td class='line-content'>                          :context-model context-model</td></tr>
 <tr class='covered'><td class='line-number'>186</td><td class='line-content'>                          :pred-model pred-model)))</td></tr>
 <tr class=''><td class='line-number'>187</td><td class='line-content'>        ;; 結果を統合</td></tr>
 <tr class='covered'><td class='line-number'>188</td><td class='line-content'>        (nskk-completion-engine--merge-results</td></tr>
-<tr class='onevalue'><td class='line-number'>189</td><td class='line-content'>         all-results algo algo-results weights)))</td></tr>
+<tr class='covered'><td class='line-number'>189</td><td class='line-content'>         all-results algo algo-results weights)))</td></tr>
 <tr class=''><td class='line-number'>190</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>191</td><td class='line-content'>    ;; スコアを集約してソート</td></tr>
 <tr class='covered'><td class='line-number'>192</td><td class='line-content'>    (let ((final-results (nskk-completion-engine--aggregate-scores</td></tr>
-<tr class='uncovered'><td class='line-number'>193</td><td class='line-content'>                         all-results weights score-method)))</td></tr>
+<tr class='covered'><td class='line-number'>193</td><td class='line-content'>                         all-results weights score-method)))</td></tr>
 <tr class=''><td class='line-number'>194</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>195</td><td class='line-content'>      ;; ランクを設定</td></tr>
 <tr class='covered'><td class='line-number'>196</td><td class='line-content'>      (let ((rank 1))</td></tr>
 <tr class='covered'><td class='line-number'>197</td><td class='line-content'>        (dolist (result final-results)</td></tr>
 <tr class='covered'><td class='line-number'>198</td><td class='line-content'>          (setf (nskk-completion-engine-result-rank result) rank)</td></tr>
-<tr class='onevalue'><td class='line-number'>199</td><td class='line-content'>          (setq rank (1+ rank))))</td></tr>
+<tr class='covered'><td class='line-number'>199</td><td class='line-content'>          (setq rank (1+ rank))))</td></tr>
 <tr class=''><td class='line-number'>200</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>201</td><td class='line-content'>      ;; limit適用</td></tr>
 <tr class='covered'><td class='line-number'>202</td><td class='line-content'>      (when (and limit (&amp;gt; (length final-results) limit))</td></tr>
 <tr class='covered'><td class='line-number'>203</td><td class='line-content'>        (setq final-results (seq-take final-results limit)))</td></tr>
 <tr class=''><td class='line-number'>204</td><td class='line-content'></td></tr>
-<tr class='uncovered'><td class='line-number'>205</td><td class='line-content'>      final-results)))</td></tr>
+<tr class='covered'><td class='line-number'>205</td><td class='line-content'>      final-results)))</td></tr>
 <tr class=''><td class='line-number'>206</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>207</td><td class='line-content'>;;; アルゴリズム実行</td></tr>
 <tr class=''><td class='line-number'>208</td><td class='line-content'></td></tr>
@@ -268,67 +268,67 @@
 <tr class=''><td class='line-number'>231</td><td class='line-content'>      ('prefix</td></tr>
 <tr class='covered'><td class='line-number'>232</td><td class='line-content'>       (let ((results (nskk-completion-prefix-search</td></tr>
 <tr class='covered'><td class='line-number'>233</td><td class='line-content'>                      index query</td></tr>
-<tr class=''><td class='line-number'>234</td><td class='line-content'>                      :okuri-type okuri-type</td></tr>
-<tr class='uncovered'><td class='line-number'>235</td><td class='line-content'>                      :limit nil)))</td></tr>
+<tr class='covered'><td class='line-number'>234</td><td class='line-content'>                      :okuri-type okuri-type</td></tr>
+<tr class='covered'><td class='line-number'>235</td><td class='line-content'>                      :limit nil)))</td></tr>
 <tr class='covered'><td class='line-number'>236</td><td class='line-content'>         (mapcar (lambda (r)</td></tr>
 <tr class='covered'><td class='line-number'>237</td><td class='line-content'>                  (cons (nskk-completion-prefix-result-midashi r)</td></tr>
 <tr class=''><td class='line-number'>238</td><td class='line-content'>                        ;; スコアを正規化（0.0-1.0）</td></tr>
 <tr class='covered'><td class='line-number'>239</td><td class='line-content'>                        (/ (float (nskk-completion-prefix-result-score r))</td></tr>
 <tr class='covered'><td class='line-number'>240</td><td class='line-content'>                           (+ (nskk-completion-prefix-result-score r) 10.0))))</td></tr>
-<tr class='uncovered'><td class='line-number'>241</td><td class='line-content'>                results)))</td></tr>
+<tr class='covered'><td class='line-number'>241</td><td class='line-content'>                results)))</td></tr>
 <tr class=''><td class='line-number'>242</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>243</td><td class='line-content'>      ('fuzzy</td></tr>
 <tr class='covered'><td class='line-number'>244</td><td class='line-content'>       (let ((results (nskk-completion-fuzzy-search</td></tr>
-<tr class='uncovered'><td class='line-number'>245</td><td class='line-content'>                      index query</td></tr>
-<tr class='uncovered'><td class='line-number'>246</td><td class='line-content'>                      :okuri-type okuri-type</td></tr>
-<tr class='uncovered'><td class='line-number'>247</td><td class='line-content'>                      :limit nil)))</td></tr>
+<tr class='covered'><td class='line-number'>245</td><td class='line-content'>                      index query</td></tr>
+<tr class='covered'><td class='line-number'>246</td><td class='line-content'>                      :okuri-type okuri-type</td></tr>
+<tr class='covered'><td class='line-number'>247</td><td class='line-content'>                      :limit nil)))</td></tr>
 <tr class='covered'><td class='line-number'>248</td><td class='line-content'>         (mapcar (lambda (r)</td></tr>
 <tr class='covered'><td class='line-number'>249</td><td class='line-content'>                  (cons (nskk-completion-fuzzy-result-midashi r)</td></tr>
 <tr class=''><td class='line-number'>250</td><td class='line-content'>                        ;; 距離を類似度に変換（距離が小さいほど高スコア）</td></tr>
 <tr class='covered'><td class='line-number'>251</td><td class='line-content'>                        (/ 1.0 (+ (nskk-completion-fuzzy-result-distance r) 1.0))))</td></tr>
-<tr class='uncovered'><td class='line-number'>252</td><td class='line-content'>                results)))</td></tr>
+<tr class='covered'><td class='line-number'>252</td><td class='line-content'>                results)))</td></tr>
 <tr class=''><td class='line-number'>253</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>254</td><td class='line-content'>      ('frequency</td></tr>
 <tr class='covered'><td class='line-number'>255</td><td class='line-content'>       (let ((results (nskk-completion-frequency-search</td></tr>
-<tr class='uncovered'><td class='line-number'>256</td><td class='line-content'>                      index query</td></tr>
-<tr class='uncovered'><td class='line-number'>257</td><td class='line-content'>                      :okuri-type okuri-type</td></tr>
-<tr class='uncovered'><td class='line-number'>258</td><td class='line-content'>                      :limit nil)))</td></tr>
+<tr class='covered'><td class='line-number'>256</td><td class='line-content'>                      index query</td></tr>
+<tr class='covered'><td class='line-number'>257</td><td class='line-content'>                      :okuri-type okuri-type</td></tr>
+<tr class='covered'><td class='line-number'>258</td><td class='line-content'>                      :limit nil)))</td></tr>
 <tr class='covered'><td class='line-number'>259</td><td class='line-content'>         (mapcar (lambda (r)</td></tr>
 <tr class='covered'><td class='line-number'>260</td><td class='line-content'>                  (cons (nskk-completion-frequency-result-midashi r)</td></tr>
 <tr class=''><td class='line-number'>261</td><td class='line-content'>                        ;; 調整後頻度を正規化</td></tr>
 <tr class='covered'><td class='line-number'>262</td><td class='line-content'>                        (min 1.0 (/ (nskk-completion-frequency-result-adjusted-freq r)</td></tr>
-<tr class='uncovered'><td class='line-number'>263</td><td class='line-content'>                                   100.0))))</td></tr>
-<tr class='uncovered'><td class='line-number'>264</td><td class='line-content'>                results)))</td></tr>
+<tr class='covered'><td class='line-number'>263</td><td class='line-content'>                                   100.0))))</td></tr>
+<tr class='covered'><td class='line-number'>264</td><td class='line-content'>                results)))</td></tr>
 <tr class=''><td class='line-number'>265</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>266</td><td class='line-content'>      ('context</td></tr>
 <tr class='covered'><td class='line-number'>267</td><td class='line-content'>       (if context-model</td></tr>
 <tr class='covered'><td class='line-number'>268</td><td class='line-content'>           (let ((results (nskk-completion-context-search</td></tr>
-<tr class='uncovered'><td class='line-number'>269</td><td class='line-content'>                          index query</td></tr>
-<tr class='uncovered'><td class='line-number'>270</td><td class='line-content'>                          :context context</td></tr>
-<tr class='uncovered'><td class='line-number'>271</td><td class='line-content'>                          :model context-model</td></tr>
-<tr class='uncovered'><td class='line-number'>272</td><td class='line-content'>                          :okuri-type okuri-type</td></tr>
-<tr class='uncovered'><td class='line-number'>273</td><td class='line-content'>                          :limit nil)))</td></tr>
+<tr class='covered'><td class='line-number'>269</td><td class='line-content'>                          index query</td></tr>
+<tr class='covered'><td class='line-number'>270</td><td class='line-content'>                          :context context</td></tr>
+<tr class='covered'><td class='line-number'>271</td><td class='line-content'>                          :model context-model</td></tr>
+<tr class='covered'><td class='line-number'>272</td><td class='line-content'>                          :okuri-type okuri-type</td></tr>
+<tr class='covered'><td class='line-number'>273</td><td class='line-content'>                          :limit nil)))</td></tr>
 <tr class='covered'><td class='line-number'>274</td><td class='line-content'>             (mapcar (lambda (r)</td></tr>
 <tr class='covered'><td class='line-number'>275</td><td class='line-content'>                      (cons (nskk-completion-context-result-midashi r)</td></tr>
 <tr class='covered'><td class='line-number'>276</td><td class='line-content'>                            (nskk-completion-context-result-context-score r)))</td></tr>
-<tr class='uncovered'><td class='line-number'>277</td><td class='line-content'>                    results))</td></tr>
-<tr class='uncovered'><td class='line-number'>278</td><td class='line-content'>         nil))</td></tr>
+<tr class='covered'><td class='line-number'>277</td><td class='line-content'>                    results))</td></tr>
+<tr class='covered'><td class='line-number'>278</td><td class='line-content'>         nil))</td></tr>
 <tr class=''><td class='line-number'>279</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>280</td><td class='line-content'>      ('predictive</td></tr>
 <tr class='covered'><td class='line-number'>281</td><td class='line-content'>       (if (and pred-model context)</td></tr>
 <tr class='covered'><td class='line-number'>282</td><td class='line-content'>           (let ((results (nskk-completion-predictive-search</td></tr>
-<tr class='uncovered'><td class='line-number'>283</td><td class='line-content'>                          index pred-model</td></tr>
-<tr class='uncovered'><td class='line-number'>284</td><td class='line-content'>                          :context context</td></tr>
-<tr class='uncovered'><td class='line-number'>285</td><td class='line-content'>                          :okuri-type okuri-type</td></tr>
-<tr class='uncovered'><td class='line-number'>286</td><td class='line-content'>                          :limit nil)))</td></tr>
+<tr class='covered'><td class='line-number'>283</td><td class='line-content'>                          index pred-model</td></tr>
+<tr class='covered'><td class='line-number'>284</td><td class='line-content'>                          :context context</td></tr>
+<tr class='covered'><td class='line-number'>285</td><td class='line-content'>                          :okuri-type okuri-type</td></tr>
+<tr class='covered'><td class='line-number'>286</td><td class='line-content'>                          :limit nil)))</td></tr>
 <tr class='covered'><td class='line-number'>287</td><td class='line-content'>             (mapcar (lambda (r)</td></tr>
 <tr class='covered'><td class='line-number'>288</td><td class='line-content'>                      (cons (nskk-completion-predictive-result-midashi r)</td></tr>
 <tr class='covered'><td class='line-number'>289</td><td class='line-content'>                            (nskk-completion-predictive-result-probability r)))</td></tr>
-<tr class='uncovered'><td class='line-number'>290</td><td class='line-content'>                    results))</td></tr>
-<tr class='uncovered'><td class='line-number'>291</td><td class='line-content'>         nil))</td></tr>
+<tr class='covered'><td class='line-number'>290</td><td class='line-content'>                    results))</td></tr>
+<tr class='covered'><td class='line-number'>291</td><td class='line-content'>         nil))</td></tr>
 <tr class=''><td class='line-number'>292</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>293</td><td class='line-content'>      (_</td></tr>
-<tr class='uncovered'><td class='line-number'>294</td><td class='line-content'>       nil))))</td></tr>
+<tr class='covered'><td class='line-number'>294</td><td class='line-content'>       nil))))</td></tr>
 <tr class=''><td class='line-number'>295</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>296</td><td class='line-content'>;;; 結果統合</td></tr>
 <tr class=''><td class='line-number'>297</td><td class='line-content'></td></tr>
@@ -348,11 +348,11 @@
 <tr class=''><td class='line-number'>311</td><td class='line-content'>          ;; 既存のエントリに追加</td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>          (puthash midashi</td></tr>
 <tr class='covered'><td class='line-number'>313</td><td class='line-content'>                  (cons (cons algo score) current)</td></tr>
-<tr class='uncovered'><td class='line-number'>314</td><td class='line-content'>                  all-results)</td></tr>
+<tr class='covered'><td class='line-number'>314</td><td class='line-content'>                  all-results)</td></tr>
 <tr class=''><td class='line-number'>315</td><td class='line-content'>        ;; 新規エントリ</td></tr>
 <tr class='covered'><td class='line-number'>316</td><td class='line-content'>        (puthash midashi</td></tr>
 <tr class='covered'><td class='line-number'>317</td><td class='line-content'>                (list (cons algo score))</td></tr>
-<tr class='onevalue'><td class='line-number'>318</td><td class='line-content'>                all-results)))))</td></tr>
+<tr class='covered'><td class='line-number'>318</td><td class='line-content'>                all-results)))))</td></tr>
 <tr class=''><td class='line-number'>319</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>320</td><td class='line-content'>;;; スコア集約</td></tr>
 <tr class=''><td class='line-number'>321</td><td class='line-content'></td></tr>
@@ -370,14 +370,14 @@
 <tr class='covered'><td class='line-number'>333</td><td class='line-content'>    (maphash</td></tr>
 <tr class=''><td class='line-number'>334</td><td class='line-content'>     (lambda (midashi algo-scores)</td></tr>
 <tr class='covered'><td class='line-number'>335</td><td class='line-content'>       (let ((total-score (nskk-completion-engine--calculate-total-score</td></tr>
-<tr class='uncovered'><td class='line-number'>336</td><td class='line-content'>                          algo-scores weights score-method)))</td></tr>
+<tr class='covered'><td class='line-number'>336</td><td class='line-content'>                          algo-scores weights score-method)))</td></tr>
 <tr class='covered'><td class='line-number'>337</td><td class='line-content'>         (push (nskk-completion-engine-result--create</td></tr>
-<tr class='uncovered'><td class='line-number'>338</td><td class='line-content'>                :midashi midashi</td></tr>
+<tr class='covered'><td class='line-number'>338</td><td class='line-content'>                :midashi midashi</td></tr>
 <tr class=''><td class='line-number'>339</td><td class='line-content'>                :entry nil  ; エントリは後で取得</td></tr>
-<tr class='uncovered'><td class='line-number'>340</td><td class='line-content'>                :total-score total-score</td></tr>
-<tr class='uncovered'><td class='line-number'>341</td><td class='line-content'>                :algorithm-scores algo-scores)</td></tr>
-<tr class='uncovered'><td class='line-number'>342</td><td class='line-content'>               results)))</td></tr>
-<tr class='uncovered'><td class='line-number'>343</td><td class='line-content'>     all-results)</td></tr>
+<tr class='covered'><td class='line-number'>340</td><td class='line-content'>                :total-score total-score</td></tr>
+<tr class='covered'><td class='line-number'>341</td><td class='line-content'>                :algorithm-scores algo-scores)</td></tr>
+<tr class='covered'><td class='line-number'>342</td><td class='line-content'>               results)))</td></tr>
+<tr class='covered'><td class='line-number'>343</td><td class='line-content'>     all-results)</td></tr>
 <tr class=''><td class='line-number'>344</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>345</td><td class='line-content'>    ;; スコアでソート</td></tr>
 <tr class='covered'><td class='line-number'>346</td><td class='line-content'>    (sort results</td></tr>
@@ -405,10 +405,10 @@
 <tr class='covered'><td class='line-number'>368</td><td class='line-content'>                (score (cdr pair))</td></tr>
 <tr class='covered'><td class='line-number'>369</td><td class='line-content'>                (weight (or (cdr (assq algo weights)) 0.0)))</td></tr>
 <tr class='covered'><td class='line-number'>370</td><td class='line-content'>           (setq total (+ total (* score weight)))</td></tr>
-<tr class='onevalue'><td class='line-number'>371</td><td class='line-content'>           (setq total-weight (+ total-weight weight))))</td></tr>
+<tr class='covered'><td class='line-number'>371</td><td class='line-content'>           (setq total-weight (+ total-weight weight))))</td></tr>
 <tr class='covered'><td class='line-number'>372</td><td class='line-content'>       (if (&amp;gt; total-weight 0)</td></tr>
 <tr class='covered'><td class='line-number'>373</td><td class='line-content'>           (/ total total-weight)</td></tr>
-<tr class='uncovered'><td class='line-number'>374</td><td class='line-content'>         0.0)))</td></tr>
+<tr class='covered'><td class='line-number'>374</td><td class='line-content'>         0.0)))</td></tr>
 <tr class=''><td class='line-number'>375</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>376</td><td class='line-content'>    ('max</td></tr>
 <tr class=''><td class='line-number'>377</td><td class='line-content'>     ;; 最大スコア</td></tr>
@@ -416,15 +416,15 @@
 <tr class='covered'><td class='line-number'>379</td><td class='line-content'>       (dolist (pair algo-scores)</td></tr>
 <tr class='covered'><td class='line-number'>380</td><td class='line-content'>         (let ((score (cdr pair)))</td></tr>
 <tr class='covered'><td class='line-number'>381</td><td class='line-content'>           (when (&amp;gt; score max-score)</td></tr>
-<tr class='onevalue'><td class='line-number'>382</td><td class='line-content'>             (setq max-score score))))</td></tr>
-<tr class='uncovered'><td class='line-number'>383</td><td class='line-content'>       max-score))</td></tr>
+<tr class='covered'><td class='line-number'>382</td><td class='line-content'>             (setq max-score score))))</td></tr>
+<tr class='covered'><td class='line-number'>383</td><td class='line-content'>       max-score))</td></tr>
 <tr class=''><td class='line-number'>384</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>385</td><td class='line-content'>    ('voting</td></tr>
 <tr class=''><td class='line-number'>386</td><td class='line-content'>     ;; 投票方式（アルゴリズム数に基づく）</td></tr>
 <tr class='covered'><td class='line-number'>387</td><td class='line-content'>     (/ (float (length algo-scores)) (length weights)))</td></tr>
 <tr class=''><td class='line-number'>388</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>389</td><td class='line-content'>    (_</td></tr>
-<tr class='uncovered'><td class='line-number'>390</td><td class='line-content'>     0.0)))</td></tr>
+<tr class='covered'><td class='line-number'>390</td><td class='line-content'>     0.0)))</td></tr>
 <tr class=''><td class='line-number'>391</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>392</td><td class='line-content'>;;; 辞書エントリの取得</td></tr>
 <tr class=''><td class='line-number'>393</td><td class='line-content'></td></tr>
@@ -442,8 +442,8 @@
 <tr class='covered'><td class='line-number'>405</td><td class='line-content'>  (dolist (result results)</td></tr>
 <tr class='covered'><td class='line-number'>406</td><td class='line-content'>    (let* ((midashi (nskk-completion-engine-result-midashi result))</td></tr>
 <tr class='covered'><td class='line-number'>407</td><td class='line-content'>           (entry (nskk-dict-struct-lookup index midashi okuri-type)))</td></tr>
-<tr class='onevalue'><td class='line-number'>408</td><td class='line-content'>      (setf (nskk-completion-engine-result-entry result) entry)))</td></tr>
-<tr class='uncovered'><td class='line-number'>409</td><td class='line-content'>  results)</td></tr>
+<tr class='covered'><td class='line-number'>408</td><td class='line-content'>      (setf (nskk-completion-engine-result-entry result) entry)))</td></tr>
+<tr class='covered'><td class='line-number'>409</td><td class='line-content'>  results)</td></tr>
 <tr class=''><td class='line-number'>410</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>411</td><td class='line-content'>;;; ユーティリティ関数</td></tr>
 <tr class=''><td class='line-number'>412</td><td class='line-content'></td></tr>
@@ -458,7 +458,7 @@
 <tr class='covered'><td class='line-number'>421</td><td class='line-content'>  (mapcar (lambda (result)</td></tr>
 <tr class='covered'><td class='line-number'>422</td><td class='line-content'>           (cons (nskk-completion-engine-result-midashi result)</td></tr>
 <tr class='covered'><td class='line-number'>423</td><td class='line-content'>                 (nskk-completion-engine-result-entry result)))</td></tr>
-<tr class='uncovered'><td class='line-number'>424</td><td class='line-content'>          results))</td></tr>
+<tr class='covered'><td class='line-number'>424</td><td class='line-content'>          results))</td></tr>
 <tr class=''><td class='line-number'>425</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>426</td><td class='line-content'>(defun nskk-completion-engine-to-string-list (results)</td></tr>
 <tr class=''><td class='line-number'>427</td><td class='line-content'>  &amp;quot;統合補完結果を文字列リストに変換する。</td></tr>
@@ -481,8 +481,8 @@
 <tr class=''><td class='line-number'>444</td><td class='line-content'>  フィルタ後のリスト&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>445</td><td class='line-content'>  (seq-filter (lambda (result)</td></tr>
 <tr class='covered'><td class='line-number'>446</td><td class='line-content'>               (&amp;gt;= (nskk-completion-engine-result-total-score result)</td></tr>
-<tr class='uncovered'><td class='line-number'>447</td><td class='line-content'>                   min-score))</td></tr>
-<tr class='uncovered'><td class='line-number'>448</td><td class='line-content'>              results))</td></tr>
+<tr class='covered'><td class='line-number'>447</td><td class='line-content'>                   min-score))</td></tr>
+<tr class='covered'><td class='line-number'>448</td><td class='line-content'>              results))</td></tr>
 <tr class=''><td class='line-number'>449</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>450</td><td class='line-content'>;;; デバッグ用関数</td></tr>
 <tr class=''><td class='line-number'>451</td><td class='line-content'></td></tr>
@@ -503,9 +503,9 @@
 <tr class='covered'><td class='line-number'>466</td><td class='line-content'>         (elapsed-time (- (float-time) start-time)))</td></tr>
 <tr class='covered'><td class='line-number'>467</td><td class='line-content'>    (list :query query</td></tr>
 <tr class='covered'><td class='line-number'>468</td><td class='line-content'>          :result-count (length results)</td></tr>
-<tr class='uncovered'><td class='line-number'>469</td><td class='line-content'>          :elapsed-time elapsed-time</td></tr>
-<tr class='uncovered'><td class='line-number'>470</td><td class='line-content'>          :algorithms nskk-completion-engine-algorithms</td></tr>
-<tr class='uncovered'><td class='line-number'>471</td><td class='line-content'>          :score-method nskk-completion-engine-score-method</td></tr>
+<tr class='covered'><td class='line-number'>469</td><td class='line-content'>          :elapsed-time elapsed-time</td></tr>
+<tr class='covered'><td class='line-number'>470</td><td class='line-content'>          :algorithms nskk-completion-engine-algorithms</td></tr>
+<tr class='covered'><td class='line-number'>471</td><td class='line-content'>          :score-method nskk-completion-engine-score-method</td></tr>
 <tr class='covered'><td class='line-number'>472</td><td class='line-content'>          :top-results (mapcar (lambda (r)</td></tr>
 <tr class='covered'><td class='line-number'>473</td><td class='line-content'>                                (list :midashi (nskk-completion-engine-result-midashi r)</td></tr>
 <tr class='covered'><td class='line-number'>474</td><td class='line-content'>                                      :score (nskk-completion-engine-result-total-score r)</td></tr>

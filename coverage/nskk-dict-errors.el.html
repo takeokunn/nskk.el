@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-dict-errors.el</h1>
     <div class='stats'>
-      Coverage: 81.07% (561/692 forms) •
+      Coverage: 100.00% (692/692 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -344,20 +344,20 @@
 <tr class='covered'><td class='line-number'>307</td><td class='line-content'>  (let ((buffer (get-buffer-create nskk-dict-errors--log-buffer)))</td></tr>
 <tr class='covered'><td class='line-number'>308</td><td class='line-content'>    (with-current-buffer buffer</td></tr>
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>      (erase-buffer)</td></tr>
-<tr class='onevalue'><td class='line-number'>310</td><td class='line-content'>      (insert &amp;quot;NSKK Error Log\n&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>311</td><td class='line-content'>      (insert &amp;quot;==============\n\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>310</td><td class='line-content'>      (insert &amp;quot;NSKK Error Log\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>311</td><td class='line-content'>      (insert &amp;quot;==============\n\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>312</td><td class='line-content'>      (if (null nskk-dict-errors--log-entries)</td></tr>
-<tr class='onevalue'><td class='line-number'>313</td><td class='line-content'>          (insert &amp;quot;No errors logged.\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>313</td><td class='line-content'>          (insert &amp;quot;No errors logged.\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>314</td><td class='line-content'>        (dolist (entry (reverse nskk-dict-errors--log-entries))</td></tr>
 <tr class='covered'><td class='line-number'>315</td><td class='line-content'>          (insert (format &amp;quot;[%s] [%s] %s: %s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>316</td><td class='line-content'>                        (format-time-string &amp;quot;%Y-%m-%d %H:%M:%S&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>317</td><td class='line-content'>                                          (seconds-to-time (plist-get entry :timestamp)))</td></tr>
 <tr class='covered'><td class='line-number'>318</td><td class='line-content'>                        (upcase (symbol-name (plist-get entry :severity)))</td></tr>
 <tr class='covered'><td class='line-number'>319</td><td class='line-content'>                        (plist-get entry :type)</td></tr>
-<tr class='onevalue'><td class='line-number'>320</td><td class='line-content'>                        (plist-get entry :message)))</td></tr>
+<tr class='covered'><td class='line-number'>320</td><td class='line-content'>                        (plist-get entry :message)))</td></tr>
 <tr class='covered'><td class='line-number'>321</td><td class='line-content'>          (when (plist-get entry :data)</td></tr>
-<tr class='onevalue'><td class='line-number'>322</td><td class='line-content'>            (insert (format &amp;quot;  Data: %S\n&amp;quot; (plist-get entry :data))))</td></tr>
-<tr class='onevalue'><td class='line-number'>323</td><td class='line-content'>          (insert &amp;quot;\n&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>322</td><td class='line-content'>            (insert (format &amp;quot;  Data: %S\n&amp;quot; (plist-get entry :data))))</td></tr>
+<tr class='covered'><td class='line-number'>323</td><td class='line-content'>          (insert &amp;quot;\n&amp;quot;)))</td></tr>
 <tr class='covered'><td class='line-number'>324</td><td class='line-content'>      (goto-char (point-min))</td></tr>
 <tr class='covered'><td class='line-number'>325</td><td class='line-content'>      (special-mode))</td></tr>
 <tr class='covered'><td class='line-number'>326</td><td class='line-content'>    (display-buffer buffer)))</td></tr>
@@ -366,13 +366,13 @@
 <tr class=''><td class='line-number'>329</td><td class='line-content'>(defun nskk-dict-errors-clear-log ()</td></tr>
 <tr class=''><td class='line-number'>330</td><td class='line-content'>  &amp;quot;エラーログをクリアする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'>  (interactive)</td></tr>
-<tr class='onevalue'><td class='line-number'>332</td><td class='line-content'>  (setq nskk-dict-errors--log-entries nil)</td></tr>
+<tr class='covered'><td class='line-number'>332</td><td class='line-content'>  (setq nskk-dict-errors--log-entries nil)</td></tr>
 <tr class='covered'><td class='line-number'>333</td><td class='line-content'>  (when (get-buffer nskk-dict-errors--log-buffer)</td></tr>
 <tr class='covered'><td class='line-number'>334</td><td class='line-content'>    (kill-buffer nskk-dict-errors--log-buffer))</td></tr>
 <tr class='covered'><td class='line-number'>335</td><td class='line-content'>  (when (and nskk-dict-errors-log-file</td></tr>
 <tr class='covered'><td class='line-number'>336</td><td class='line-content'>            (file-exists-p nskk-dict-errors-log-file))</td></tr>
 <tr class='covered'><td class='line-number'>337</td><td class='line-content'>    (delete-file nskk-dict-errors-log-file))</td></tr>
-<tr class='onevalue'><td class='line-number'>338</td><td class='line-content'>  (message &amp;quot;Error log cleared&amp;quot;))</td></tr>
+<tr class='covered'><td class='line-number'>338</td><td class='line-content'>  (message &amp;quot;Error log cleared&amp;quot;))</td></tr>
 <tr class=''><td class='line-number'>339</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>340</td><td class='line-content'>;;; エラーヘルパー関数</td></tr>
 <tr class=''><td class='line-number'>341</td><td class='line-content'></td></tr>
@@ -633,11 +633,11 @@
 <tr class=''><td class='line-number'>596</td><td class='line-content'>               (error</td></tr>
 <tr class=''><td class='line-number'>597</td><td class='line-content'>                ;; 再読み込みも失敗 → フォールバック</td></tr>
 <tr class='covered'><td class='line-number'>598</td><td class='line-content'>                (nskk-dict-errors-log 'warning 'auto-recovery</td></tr>
-<tr class=''><td class='line-number'>599</td><td class='line-content'>                                     &amp;quot;Backup recovery failed, using fallback&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>599</td><td class='line-content'>                                     &amp;quot;Backup recovery failed, using fallback&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>600</td><td class='line-content'>                (cons 'success (nskk-dict-errors-create-fallback-index))))</td></tr>
 <tr class=''><td class='line-number'>601</td><td class='line-content'>           ;; バックアップなし → フォールバック</td></tr>
 <tr class='covered'><td class='line-number'>602</td><td class='line-content'>           (nskk-dict-errors-log 'warning 'auto-recovery</td></tr>
-<tr class=''><td class='line-number'>603</td><td class='line-content'>                                &amp;quot;No backup available, using fallback&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>603</td><td class='line-content'>                                &amp;quot;No backup available, using fallback&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>604</td><td class='line-content'>           (cons 'success (nskk-dict-errors-create-fallback-index)))))</td></tr>
 <tr class=''><td class='line-number'>605</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>606</td><td class='line-content'>      ;; チェックサム不一致 → バックアップから復旧</td></tr>
@@ -650,10 +650,10 @@
 <tr class='covered'><td class='line-number'>613</td><td class='line-content'>                   (cons 'success (nskk-load-dictionary dict-path t)))</td></tr>
 <tr class=''><td class='line-number'>614</td><td class='line-content'>               (error</td></tr>
 <tr class='covered'><td class='line-number'>615</td><td class='line-content'>                (nskk-dict-errors-log 'warning 'auto-recovery</td></tr>
-<tr class=''><td class='line-number'>616</td><td class='line-content'>                                     &amp;quot;Recovery failed, using fallback&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>616</td><td class='line-content'>                                     &amp;quot;Recovery failed, using fallback&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>617</td><td class='line-content'>                (cons 'success (nskk-dict-errors-create-fallback-index))))</td></tr>
 <tr class='covered'><td class='line-number'>618</td><td class='line-content'>           (nskk-dict-errors-log 'warning 'auto-recovery</td></tr>
-<tr class=''><td class='line-number'>619</td><td class='line-content'>                                &amp;quot;No backup available, using fallback&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>619</td><td class='line-content'>                                &amp;quot;No backup available, using fallback&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>620</td><td class='line-content'>           (cons 'success (nskk-dict-errors-create-fallback-index)))))</td></tr>
 <tr class=''><td class='line-number'>621</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>622</td><td class='line-content'>      ;; エンコーディングエラー → 別エンコーディングで再試行</td></tr>
@@ -662,7 +662,7 @@
 <tr class='covered'><td class='line-number'>625</td><td class='line-content'>         (cl-loop for encoding in encodings</td></tr>
 <tr class='covered'><td class='line-number'>626</td><td class='line-content'>                 for result = (nskk-dict-errors--retry-with-encoding dict-path encoding)</td></tr>
 <tr class='covered'><td class='line-number'>627</td><td class='line-content'>                 when (eq (car result) 'success)</td></tr>
-<tr class='uncovered'><td class='line-number'>628</td><td class='line-content'>                 return result</td></tr>
+<tr class='covered'><td class='line-number'>628</td><td class='line-content'>                 return result</td></tr>
 <tr class='covered'><td class='line-number'>629</td><td class='line-content'>                 finally return (cons 'success (nskk-dict-errors-create-fallback-index)))))</td></tr>
 <tr class=''><td class='line-number'>630</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>631</td><td class='line-content'>      ;; その他 → フォールバック辞書</td></tr>
@@ -710,7 +710,7 @@
 <tr class=''><td class='line-number'>673</td><td class='line-content'>    (error</td></tr>
 <tr class='covered'><td class='line-number'>674</td><td class='line-content'>     (nskk-dict-errors-log 'error 'general-error</td></tr>
 <tr class='covered'><td class='line-number'>675</td><td class='line-content'>                          (error-message-string err)</td></tr>
-<tr class='uncovered'><td class='line-number'>676</td><td class='line-content'>                          err)</td></tr>
+<tr class='covered'><td class='line-number'>676</td><td class='line-content'>                          err)</td></tr>
 <tr class='covered'><td class='line-number'>677</td><td class='line-content'>     (if nskk-dict-errors-auto-recovery</td></tr>
 <tr class='covered'><td class='line-number'>678</td><td class='line-content'>         (progn</td></tr>
 <tr class='covered'><td class='line-number'>679</td><td class='line-content'>           (message &amp;quot;辞書読み込みエラー: %s\nフォールバック辞書を使用します。&amp;quot;</td></tr>

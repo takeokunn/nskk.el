@@ -30,7 +30,7 @@
 ;;   - サーバー連携
 ;;   - 学習機能
 ;;
-;; Phase 3: skkeleton統合 (v0.7-v0.9)
+;; ランタイム統合: skkeleton統合 (v0.7-v0.9)
 ;;   - 並列処理 (thread-pool)
 ;;   - 非同期UI
 ;;   - プロファイリング
@@ -39,7 +39,7 @@
 ;;   - Transient UI
 ;;   - 最適化 (native-compile)
 ;;
-;; Phase 4: イノベーション (v1.0)
+;; 拡張統合: イノベーション (v1.0)
 ;;   - AI統合 (コンテキスト理解、パターン認識、90%+精度)
 ;;   - 同期システム (AES-256-GCM、OWASP準拠)
 ;;   - 分析・最適化 (A/Bテスト、GDPR準拠)
@@ -118,16 +118,16 @@
 (require 'nskk-layer-application)
 
 ;; Track S: Transient UI
-;; Emacs 31 Transient統合UI（Phase 3）
+;; Emacs 31 Transient統合UI（ランタイム統合）
 (require 'nskk-transient-config)
 (require 'nskk-transient-plugins)
 (require 'nskk-transient-debug)
 
-;; Phase 3: skkeleton Integration
-(require 'nskk-phase3)
+;; ランタイム統合: skkeleton Integration
+(require 'nskk-runtime-integration)
 
-;; Phase 4: Innovation Features (v1.0)
-(require 'nskk-phase4)
+;; 拡張統合: Innovation Features (v1.0)
+(require 'nskk-advanced-integration)
 
 ;;; Customization
 
@@ -501,13 +501,13 @@
                    nskk-layer-core
                    nskk-layer-data
                    nskk-layer-application
-                   ;; Phase 3
-                   nskk-phase3
+                   ;; ランタイム統合
+                   nskk-runtime-integration
                    nskk-transient-config
                    nskk-transient-plugins
                    nskk-transient-debug
-                   ;; Phase 4
-                   nskk-phase4
+                   ;; 拡張統合
+                   nskk-advanced-integration
                    nskk-ai-context
                    nskk-ai-pattern
                    nskk-ai-candidates
@@ -562,7 +562,7 @@
                    ("nskk-candidate-window" . "候補ウィンドウ")
                    ("nskk-minibuffer" . "ミニバッファUI")
                    ("nskk-modeline" . "モードライン表示")
-                   ;; Track S: Transient UI (Phase 3)
+                   ;; Track S: Transient UI (ランタイム統合)
                    ("nskk-transient-config" . "設定メニュー")
                    ("nskk-transient-plugins" . "拡張管理UI")
                    ("nskk-transient-debug" . "デバッグUI"))))
@@ -616,13 +616,13 @@
   (when (fboundp 'nskk-setup)
     (nskk-setup))
 
-  ;; Phase 3初期化
-  (when (fboundp 'nskk-phase3-initialize)
-    (nskk-phase3-initialize))
+  ;; ランタイム統合初期化
+  (when (fboundp 'nskk-runtime-integration-initialize)
+    (nskk-runtime-integration-initialize))
 
-  ;; Phase 4初期化
-  (when (fboundp 'nskk-phase4-initialize)
-    (nskk-phase4-initialize))
+  ;; 拡張統合初期化
+  (when (fboundp 'nskk-advanced-integration-initialize)
+    (nskk-advanced-integration-initialize))
 
   ;; 初期化完了
   (message "NSKK v%s initialized successfully!" nskk-version))
@@ -632,13 +632,13 @@
   (interactive)
   (message "Shutting down NSKK v%s..." nskk-version)
 
-  ;; Phase 4シャットダウン (逆順)
-  (when (fboundp 'nskk-phase4-shutdown)
-    (nskk-phase4-shutdown))
+  ;; 拡張統合シャットダウン (逆順)
+  (when (fboundp 'nskk-advanced-integration-shutdown)
+    (nskk-advanced-integration-shutdown))
 
-  ;; Phase 3シャットダウン
-  (when (fboundp 'nskk-phase3-shutdown)
-    (nskk-phase3-shutdown))
+  ;; ランタイム統合シャットダウン
+  (when (fboundp 'nskk-runtime-integration-shutdown)
+    (nskk-runtime-integration-shutdown))
 
   (message "NSKK v%s shut down successfully" nskk-version))
 

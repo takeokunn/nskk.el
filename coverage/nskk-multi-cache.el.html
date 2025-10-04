@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-multi-cache.el</h1>
     <div class='stats'>
-      Coverage: 77.09% (646/838 forms) •
+      Coverage: 100.00% (838/838 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -252,7 +252,7 @@
 <tr class='covered'><td class='line-number'>215</td><td class='line-content'>          (curr (cdr lst)))</td></tr>
 <tr class='covered'><td class='line-number'>216</td><td class='line-content'>      (while (cdr curr)</td></tr>
 <tr class='covered'><td class='line-number'>217</td><td class='line-content'>        (setq prev curr)</td></tr>
-<tr class='onevalue'><td class='line-number'>218</td><td class='line-content'>        (setq curr (cdr curr)))</td></tr>
+<tr class='covered'><td class='line-number'>218</td><td class='line-content'>        (setq curr (cdr curr)))</td></tr>
 <tr class='covered'><td class='line-number'>219</td><td class='line-content'>      (setcdr prev nil)</td></tr>
 <tr class='covered'><td class='line-number'>220</td><td class='line-content'>      (cons (car curr) lst)))))</td></tr>
 <tr class=''><td class='line-number'>221</td><td class='line-content'></td></tr>
@@ -463,7 +463,7 @@
 <tr class='covered'><td class='line-number'>426</td><td class='line-content'>    (let ((key (car entry))</td></tr>
 <tr class='covered'><td class='line-number'>427</td><td class='line-content'>          (value (cdr entry)))</td></tr>
 <tr class=''><td class='line-number'>428</td><td class='line-content'>      ;; L3に直接投入（起動時は頻度が低いため）</td></tr>
-<tr class='onevalue'><td class='line-number'>429</td><td class='line-content'>      (nskk-cache-lfu-put (nskk-multi-cache-l3 cache) key value)))</td></tr>
+<tr class='covered'><td class='line-number'>429</td><td class='line-content'>      (nskk-cache-lfu-put (nskk-multi-cache-l3 cache) key value)))</td></tr>
 <tr class='covered'><td class='line-number'>430</td><td class='line-content'>  (message &amp;quot;Cache warmed up with %d entries&amp;quot; (length entries)))</td></tr>
 <tr class=''><td class='line-number'>431</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>432</td><td class='line-content'>;;; 統計情報</td></tr>
@@ -529,43 +529,43 @@
 <tr class='covered'><td class='line-number'>492</td><td class='line-content'>                    (if (&amp;gt; (plist-get stats :total-hits) 0)</td></tr>
 <tr class='covered'><td class='line-number'>493</td><td class='line-content'>                        (* (/ (float (plist-get stats :tlb-hits))</td></tr>
 <tr class='covered'><td class='line-number'>494</td><td class='line-content'>                             (plist-get stats :total-hits))</td></tr>
-<tr class='uncovered'><td class='line-number'>495</td><td class='line-content'>                          100)</td></tr>
-<tr class='uncovered'><td class='line-number'>496</td><td class='line-content'>                      0)))</td></tr>
+<tr class='covered'><td class='line-number'>495</td><td class='line-content'>                          100)</td></tr>
+<tr class='covered'><td class='line-number'>496</td><td class='line-content'>                      0)))</td></tr>
 <tr class='covered'><td class='line-number'>497</td><td class='line-content'>      (princ (format &amp;quot;L1 Hits:           %10d (%.2f%%)\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>498</td><td class='line-content'>                    (plist-get stats :l1-hits)</td></tr>
 <tr class='covered'><td class='line-number'>499</td><td class='line-content'>                    (if (&amp;gt; (plist-get stats :total-hits) 0)</td></tr>
 <tr class='covered'><td class='line-number'>500</td><td class='line-content'>                        (* (/ (float (plist-get stats :l1-hits))</td></tr>
 <tr class='covered'><td class='line-number'>501</td><td class='line-content'>                             (plist-get stats :total-hits))</td></tr>
-<tr class='uncovered'><td class='line-number'>502</td><td class='line-content'>                          100)</td></tr>
-<tr class='uncovered'><td class='line-number'>503</td><td class='line-content'>                      0)))</td></tr>
+<tr class='covered'><td class='line-number'>502</td><td class='line-content'>                          100)</td></tr>
+<tr class='covered'><td class='line-number'>503</td><td class='line-content'>                      0)))</td></tr>
 <tr class='covered'><td class='line-number'>504</td><td class='line-content'>      (princ (format &amp;quot;L2 Hits:           %10d (%.2f%%)\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>505</td><td class='line-content'>                    (plist-get stats :l2-hits)</td></tr>
 <tr class='covered'><td class='line-number'>506</td><td class='line-content'>                    (if (&amp;gt; (plist-get stats :total-hits) 0)</td></tr>
 <tr class='covered'><td class='line-number'>507</td><td class='line-content'>                        (* (/ (float (plist-get stats :l2-hits))</td></tr>
 <tr class='covered'><td class='line-number'>508</td><td class='line-content'>                             (plist-get stats :total-hits))</td></tr>
-<tr class='uncovered'><td class='line-number'>509</td><td class='line-content'>                          100)</td></tr>
-<tr class='uncovered'><td class='line-number'>510</td><td class='line-content'>                      0)))</td></tr>
+<tr class='covered'><td class='line-number'>509</td><td class='line-content'>                          100)</td></tr>
+<tr class='covered'><td class='line-number'>510</td><td class='line-content'>                      0)))</td></tr>
 <tr class='covered'><td class='line-number'>511</td><td class='line-content'>      (princ (format &amp;quot;L3 Hits:           %10d (%.2f%%)\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>512</td><td class='line-content'>                    (plist-get stats :l3-hits)</td></tr>
 <tr class='covered'><td class='line-number'>513</td><td class='line-content'>                    (if (&amp;gt; (plist-get stats :total-hits) 0)</td></tr>
 <tr class='covered'><td class='line-number'>514</td><td class='line-content'>                        (* (/ (float (plist-get stats :l3-hits))</td></tr>
 <tr class='covered'><td class='line-number'>515</td><td class='line-content'>                             (plist-get stats :total-hits))</td></tr>
-<tr class='uncovered'><td class='line-number'>516</td><td class='line-content'>                          100)</td></tr>
-<tr class='uncovered'><td class='line-number'>517</td><td class='line-content'>                      0)))</td></tr>
+<tr class='covered'><td class='line-number'>516</td><td class='line-content'>                          100)</td></tr>
+<tr class='covered'><td class='line-number'>517</td><td class='line-content'>                      0)))</td></tr>
 <tr class='covered'><td class='line-number'>518</td><td class='line-content'>      (princ &amp;quot;\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>519</td><td class='line-content'>      (princ &amp;quot;=== Cache Sizes ===\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>520</td><td class='line-content'>      (princ (format &amp;quot;TLB Size:          %10d / %d\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>521</td><td class='line-content'>                    (plist-get stats :tlb-size)</td></tr>
-<tr class='uncovered'><td class='line-number'>522</td><td class='line-content'>                    nskk-multi-cache-tlb-capacity))</td></tr>
+<tr class='covered'><td class='line-number'>522</td><td class='line-content'>                    nskk-multi-cache-tlb-capacity))</td></tr>
 <tr class='covered'><td class='line-number'>523</td><td class='line-content'>      (princ (format &amp;quot;L1 Size:           %10d / %d\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>524</td><td class='line-content'>                    (plist-get stats :l1-size)</td></tr>
-<tr class='uncovered'><td class='line-number'>525</td><td class='line-content'>                    nskk-multi-cache-l1-capacity))</td></tr>
+<tr class='covered'><td class='line-number'>525</td><td class='line-content'>                    nskk-multi-cache-l1-capacity))</td></tr>
 <tr class='covered'><td class='line-number'>526</td><td class='line-content'>      (princ (format &amp;quot;L2 Size:           %10d / %d\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>527</td><td class='line-content'>                    (plist-get stats :l2-size)</td></tr>
-<tr class='uncovered'><td class='line-number'>528</td><td class='line-content'>                    nskk-multi-cache-l2-capacity))</td></tr>
+<tr class='covered'><td class='line-number'>528</td><td class='line-content'>                    nskk-multi-cache-l2-capacity))</td></tr>
 <tr class='covered'><td class='line-number'>529</td><td class='line-content'>      (princ (format &amp;quot;L3 Size:           %10d / %d\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>530</td><td class='line-content'>                    (plist-get stats :l3-size)</td></tr>
-<tr class='uncovered'><td class='line-number'>531</td><td class='line-content'>                    nskk-multi-cache-l3-capacity)))))</td></tr>
+<tr class='covered'><td class='line-number'>531</td><td class='line-content'>                    nskk-multi-cache-l3-capacity)))))</td></tr>
 <tr class=''><td class='line-number'>532</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>533</td><td class='line-content'>(provide 'nskk-multi-cache)</td></tr>
 <tr class=''><td class='line-number'>534</td><td class='line-content'></td></tr>

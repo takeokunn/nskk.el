@@ -805,13 +805,13 @@ timeline
                      : パフォーマンス最適化
                      : PBT完全導入
 
-    section Phase 3: Intelligence (v2.0)
+    section ランタイム統合: Intelligence (v2.0)
         2025 Q2      : 文脈理解機能
                      : 予測入力システム
                      : クラウド連携
                      : 多言語対応
 
-    section Phase 4: Ecosystem (v2.5)
+    section 拡張統合: Ecosystem (v2.5)
         2025 Q3      : 拡張マーケットプレイス
                      : 開発者エコシステム
                      : 統計・分析プラットフォーム

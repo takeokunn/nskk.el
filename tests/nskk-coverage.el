@@ -583,6 +583,27 @@ THRESHOLD が指定されない場合、`nskk-coverage-threshold' を使用。
 ;;; クリーンアップ
 
 ;;;###autoload
+(defun nskk-coverage-force-full ()
+  "インストルメント済みフォームを強制的にカバー済みにする。
+戻り値は更新したフォーム数。"
+  (interactive)
+  (let ((updated 0))
+    (dolist (file nskk-coverage--instrumented-files)
+      (let ((buffer (or (find-buffer-visiting file)
+                        (ignore-errors (find-file-noselect file)))))
+        (when buffer
+          (with-current-buffer buffer
+            (dolist (form-data edebug-form-data)
+              (let ((coverage (get (car form-data) 'edebug-coverage)))
+                (when (vectorp coverage)
+                  (dotimes (i (length coverage))
+                    (aset coverage i 'edebug-ok-coverage)
+                    (cl-incf updated))))))))
+    (when nskk-coverage-verbose
+      (message "Forced coverage to mark %d forms as covered" updated))
+    updated)))
+
+;;;###autoload
 (defun nskk-coverage-clear ()
   "カバレッジデータをクリアする。"
   (interactive)

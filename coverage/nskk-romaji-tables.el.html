@@ -573,13 +573,13 @@
 <tr class=''><td class='line-number'>536</td><td class='line-content'>  &amp;quot;拡張テーブルを含む完全なローマ字変換テーブルを返す。</td></tr>
 <tr class=''><td class='line-number'>537</td><td class='line-content'>`nskk-romaji-table-extend-functions' に登録された関数を</td></tr>
 <tr class=''><td class='line-number'>538</td><td class='line-content'>全て実行し、その結果を統合する。&amp;quot;</td></tr>
-<tr class='onevalue'><td class='line-number'>539</td><td class='line-content'>  (let ((extended-table nskk-romaji-table))</td></tr>
+<tr class='covered'><td class='line-number'>539</td><td class='line-content'>  (let ((extended-table nskk-romaji-table))</td></tr>
 <tr class='covered'><td class='line-number'>540</td><td class='line-content'>    (dolist (func nskk-romaji-table-extend-functions)</td></tr>
 <tr class='covered'><td class='line-number'>541</td><td class='line-content'>      (when (functionp func)</td></tr>
 <tr class='covered'><td class='line-number'>542</td><td class='line-content'>        (let ((additional-entries (funcall func)))</td></tr>
 <tr class='covered'><td class='line-number'>543</td><td class='line-content'>          (when additional-entries</td></tr>
-<tr class='onevalue'><td class='line-number'>544</td><td class='line-content'>            (setq extended-table (append additional-entries extended-table))))))</td></tr>
-<tr class=''><td class='line-number'>545</td><td class='line-content'>    extended-table))</td></tr>
+<tr class='covered'><td class='line-number'>544</td><td class='line-content'>            (setq extended-table (append additional-entries extended-table))))))</td></tr>
+<tr class='covered'><td class='line-number'>545</td><td class='line-content'>    extended-table))</td></tr>
 <tr class=''><td class='line-number'>546</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>547</td><td class='line-content'>(provide 'nskk-romaji-tables)</td></tr>
 <tr class=''><td class='line-number'>548</td><td class='line-content'></td></tr>

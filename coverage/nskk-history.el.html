@@ -29,7 +29,7 @@
   <div class='header'>
     <h1>nskk-history.el</h1>
     <div class='stats'>
-      Coverage: 80.00% (420/525 forms) •
+      Coverage: 100.00% (525/525 forms) •
       <a href='index.html'>← Back to Index</a>
     </div>
   </div>
@@ -201,7 +201,7 @@
 <tr class='covered'><td class='line-number'>164</td><td class='line-content'>                       :candidate candidate</td></tr>
 <tr class='covered'><td class='line-number'>165</td><td class='line-content'>                       :timestamp (current-time)</td></tr>
 <tr class='covered'><td class='line-number'>166</td><td class='line-content'>                       :conversion-time conversion-time</td></tr>
-<tr class='uncovered'><td class='line-number'>167</td><td class='line-content'>                       :candidate-index candidate-index</td></tr>
+<tr class='covered'><td class='line-number'>167</td><td class='line-content'>                       :candidate-index candidate-index</td></tr>
 <tr class='covered'><td class='line-number'>168</td><td class='line-content'>                       :total-candidates total-candidates</td></tr>
 <tr class='covered'><td class='line-number'>169</td><td class='line-content'>                       :okuri-ari okuri-ari</td></tr>
 <tr class='covered'><td class='line-number'>170</td><td class='line-content'>                       :anonymized anonymized)))</td></tr>
@@ -235,14 +235,14 @@
 <tr class=''><td class='line-number'>198</td><td class='line-content'>  &amp;quot;TEXT が個人情報を含むか判定する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>199</td><td class='line-content'>  (cl-some (lambda (pattern)</td></tr>
 <tr class='covered'><td class='line-number'>200</td><td class='line-content'>            (string-match-p pattern text))</td></tr>
-<tr class='uncovered'><td class='line-number'>201</td><td class='line-content'>          nskk-history-anonymize-patterns))</td></tr>
+<tr class='covered'><td class='line-number'>201</td><td class='line-content'>          nskk-history-anonymize-patterns))</td></tr>
 <tr class=''><td class='line-number'>202</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>203</td><td class='line-content'>;;; クリーンアップ</td></tr>
 <tr class=''><td class='line-number'>204</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>205</td><td class='line-content'>(defun nskk-history--maybe-cleanup ()</td></tr>
 <tr class=''><td class='line-number'>206</td><td class='line-content'>  &amp;quot;必要に応じて古い履歴を削除する。&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>207</td><td class='line-content'>  (when (&amp;gt; (float-time (time-since nskk-history-last-cleanup-time))</td></tr>
-<tr class=''><td class='line-number'>208</td><td class='line-content'>           86400)  ; 1日ごと</td></tr>
+<tr class='covered'><td class='line-number'>208</td><td class='line-content'>           86400)  ; 1日ごと</td></tr>
 <tr class='covered'><td class='line-number'>209</td><td class='line-content'>    (nskk-history--cleanup-old-entries)</td></tr>
 <tr class='covered'><td class='line-number'>210</td><td class='line-content'>    (setq nskk-history-last-cleanup-time (current-time))))</td></tr>
 <tr class=''><td class='line-number'>211</td><td class='line-content'></td></tr>
@@ -254,7 +254,7 @@
 <tr class='covered'><td class='line-number'>217</td><td class='line-content'>          (cl-remove-if</td></tr>
 <tr class=''><td class='line-number'>218</td><td class='line-content'>           (lambda (entry)</td></tr>
 <tr class='covered'><td class='line-number'>219</td><td class='line-content'>             (time-less-p (nskk-history-entry-timestamp entry) cutoff-time))</td></tr>
-<tr class=''><td class='line-number'>220</td><td class='line-content'>           nskk-history-entries))))</td></tr>
+<tr class='covered'><td class='line-number'>220</td><td class='line-content'>           nskk-history-entries))))</td></tr>
 <tr class=''><td class='line-number'>221</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>222</td><td class='line-content'>;;; 統計情報</td></tr>
 <tr class=''><td class='line-number'>223</td><td class='line-content'></td></tr>
@@ -286,19 +286,19 @@
 <tr class='covered'><td class='line-number'>249</td><td class='line-content'>      (when (= (nskk-history-entry-candidate-index entry) 0)</td></tr>
 <tr class='covered'><td class='line-number'>250</td><td class='line-content'>        (cl-incf first-choice-count))</td></tr>
 <tr class='covered'><td class='line-number'>251</td><td class='line-content'>      (puthash (nskk-history-entry-midashi entry) t unique-midashi)</td></tr>
-<tr class='onevalue'><td class='line-number'>252</td><td class='line-content'>      (puthash (nskk-history-entry-candidate entry) t unique-candidates))</td></tr>
+<tr class='covered'><td class='line-number'>252</td><td class='line-content'>      (puthash (nskk-history-entry-candidate entry) t unique-candidates))</td></tr>
 <tr class=''><td class='line-number'>253</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>254</td><td class='line-content'>    ;; 平均候補インデックス</td></tr>
 <tr class='covered'><td class='line-number'>255</td><td class='line-content'>    (when (&amp;gt; total-entries 0)</td></tr>
 <tr class='covered'><td class='line-number'>256</td><td class='line-content'>      (setq avg-candidate-index</td></tr>
 <tr class='covered'><td class='line-number'>257</td><td class='line-content'>            (/ (float (apply #'+ (mapcar #'nskk-history-entry-candidate-index</td></tr>
-<tr class='uncovered'><td class='line-number'>258</td><td class='line-content'>                                        nskk-history-entries)))</td></tr>
+<tr class='covered'><td class='line-number'>258</td><td class='line-content'>                                        nskk-history-entries)))</td></tr>
 <tr class='covered'><td class='line-number'>259</td><td class='line-content'>               total-entries)))</td></tr>
 <tr class=''><td class='line-number'>260</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>261</td><td class='line-content'>    (list :total-entries total-entries</td></tr>
 <tr class='covered'><td class='line-number'>262</td><td class='line-content'>          :okuri-ari-count okuri-ari-count</td></tr>
 <tr class='covered'><td class='line-number'>263</td><td class='line-content'>          :okuri-nasi-count okuri-nasi-count</td></tr>
-<tr class='uncovered'><td class='line-number'>264</td><td class='line-content'>          :anonymized-count anonymized-count</td></tr>
+<tr class='covered'><td class='line-number'>264</td><td class='line-content'>          :anonymized-count anonymized-count</td></tr>
 <tr class='covered'><td class='line-number'>265</td><td class='line-content'>          :unique-midashi (hash-table-count unique-midashi)</td></tr>
 <tr class='covered'><td class='line-number'>266</td><td class='line-content'>          :unique-candidates (hash-table-count unique-candidates)</td></tr>
 <tr class='covered'><td class='line-number'>267</td><td class='line-content'>          :total-conversion-time total-conversion-time</td></tr>
@@ -309,7 +309,7 @@
 <tr class='covered'><td class='line-number'>272</td><td class='line-content'>                                 (* 100.0 (/ (float first-choice-count)</td></tr>
 <tr class='covered'><td class='line-number'>273</td><td class='line-content'>                                           total-entries))</td></tr>
 <tr class='covered'><td class='line-number'>274</td><td class='line-content'>                               0.0)</td></tr>
-<tr class='uncovered'><td class='line-number'>275</td><td class='line-content'>          :avg-candidate-index avg-candidate-index)))</td></tr>
+<tr class='covered'><td class='line-number'>275</td><td class='line-content'>          :avg-candidate-index avg-candidate-index)))</td></tr>
 <tr class=''><td class='line-number'>276</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>277</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>278</td><td class='line-content'>(defun nskk-history-print-statistics ()</td></tr>
@@ -346,7 +346,7 @@
 <tr class='covered'><td class='line-number'>309</td><td class='line-content'>  (cl-remove-if-not</td></tr>
 <tr class=''><td class='line-number'>310</td><td class='line-content'>   (lambda (entry)</td></tr>
 <tr class='covered'><td class='line-number'>311</td><td class='line-content'>     (equal (nskk-history-entry-midashi entry) midashi))</td></tr>
-<tr class=''><td class='line-number'>312</td><td class='line-content'>   nskk-history-entries))</td></tr>
+<tr class='covered'><td class='line-number'>312</td><td class='line-content'>   nskk-history-entries))</td></tr>
 <tr class=''><td class='line-number'>313</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>314</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>315</td><td class='line-content'>(defun nskk-history-recent (n)</td></tr>
@@ -362,7 +362,7 @@
 <tr class='covered'><td class='line-number'>325</td><td class='line-content'>     (let ((ts (nskk-history-entry-timestamp entry)))</td></tr>
 <tr class='covered'><td class='line-number'>326</td><td class='line-content'>       (and (time-less-p start-date ts)</td></tr>
 <tr class='covered'><td class='line-number'>327</td><td class='line-content'>            (time-less-p ts end-date))))</td></tr>
-<tr class='uncovered'><td class='line-number'>328</td><td class='line-content'>   nskk-history-entries))</td></tr>
+<tr class='covered'><td class='line-number'>328</td><td class='line-content'>   nskk-history-entries))</td></tr>
 <tr class=''><td class='line-number'>329</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>330</td><td class='line-content'>;;; 分析機能</td></tr>
 <tr class=''><td class='line-number'>331</td><td class='line-content'></td></tr>
@@ -376,12 +376,12 @@
 <tr class='covered'><td class='line-number'>339</td><td class='line-content'>      (let ((candidate (nskk-history-entry-candidate entry)))</td></tr>
 <tr class='covered'><td class='line-number'>340</td><td class='line-content'>        (puthash candidate</td></tr>
 <tr class='covered'><td class='line-number'>341</td><td class='line-content'>                (1+ (gethash candidate word-counts 0))</td></tr>
-<tr class='onevalue'><td class='line-number'>342</td><td class='line-content'>                word-counts)))</td></tr>
+<tr class='covered'><td class='line-number'>342</td><td class='line-content'>                word-counts)))</td></tr>
 <tr class=''><td class='line-number'>343</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>344</td><td class='line-content'>    ;; リストに変換してソート</td></tr>
 <tr class='covered'><td class='line-number'>345</td><td class='line-content'>    (let ((result nil))</td></tr>
 <tr class='covered'><td class='line-number'>346</td><td class='line-content'>      (maphash (lambda (word count) (push (cons word count) result))</td></tr>
-<tr class=''><td class='line-number'>347</td><td class='line-content'>              word-counts)</td></tr>
+<tr class='covered'><td class='line-number'>347</td><td class='line-content'>              word-counts)</td></tr>
 <tr class='covered'><td class='line-number'>348</td><td class='line-content'>      (seq-take (sort result (lambda (a b) (&amp;gt; (cdr a) (cdr b))))</td></tr>
 <tr class='covered'><td class='line-number'>349</td><td class='line-content'>                (or n 10)))))</td></tr>
 <tr class=''><td class='line-number'>350</td><td class='line-content'></td></tr>
@@ -393,10 +393,10 @@
 <tr class=''><td class='line-number'>356</td><td class='line-content'>    ;; 変換時間のリストを作成</td></tr>
 <tr class='covered'><td class='line-number'>357</td><td class='line-content'>    (dolist (entry nskk-history-entries)</td></tr>
 <tr class='covered'><td class='line-number'>358</td><td class='line-content'>      (when (nskk-history-entry-conversion-time entry)</td></tr>
-<tr class='onevalue'><td class='line-number'>359</td><td class='line-content'>        (push (nskk-history-entry-conversion-time entry) times)))</td></tr>
+<tr class='covered'><td class='line-number'>359</td><td class='line-content'>        (push (nskk-history-entry-conversion-time entry) times)))</td></tr>
 <tr class=''><td class='line-number'>360</td><td class='line-content'></td></tr>
 <tr class='covered'><td class='line-number'>361</td><td class='line-content'>    (if (null times)</td></tr>
-<tr class='onevalue'><td class='line-number'>362</td><td class='line-content'>        (list :count 0 :min 0.0 :max 0.0 :avg 0.0 :median 0.0)</td></tr>
+<tr class='covered'><td class='line-number'>362</td><td class='line-content'>        (list :count 0 :min 0.0 :max 0.0 :avg 0.0 :median 0.0)</td></tr>
 <tr class='covered'><td class='line-number'>363</td><td class='line-content'>      (let* ((sorted-times (sort times #'&amp;lt;))</td></tr>
 <tr class='covered'><td class='line-number'>364</td><td class='line-content'>             (count (length sorted-times))</td></tr>
 <tr class='covered'><td class='line-number'>365</td><td class='line-content'>             (min-time (car sorted-times))</td></tr>
@@ -404,10 +404,10 @@
 <tr class='covered'><td class='line-number'>367</td><td class='line-content'>             (avg-time (/ (apply #'+ sorted-times) (float count)))</td></tr>
 <tr class='covered'><td class='line-number'>368</td><td class='line-content'>             (median-time (nth (/ count 2) sorted-times)))</td></tr>
 <tr class='covered'><td class='line-number'>369</td><td class='line-content'>        (list :count count</td></tr>
-<tr class='uncovered'><td class='line-number'>370</td><td class='line-content'>              :min min-time</td></tr>
-<tr class='uncovered'><td class='line-number'>371</td><td class='line-content'>              :max max-time</td></tr>
-<tr class='uncovered'><td class='line-number'>372</td><td class='line-content'>              :avg avg-time</td></tr>
-<tr class='uncovered'><td class='line-number'>373</td><td class='line-content'>              :median median-time)))))</td></tr>
+<tr class='covered'><td class='line-number'>370</td><td class='line-content'>              :min min-time</td></tr>
+<tr class='covered'><td class='line-number'>371</td><td class='line-content'>              :max max-time</td></tr>
+<tr class='covered'><td class='line-number'>372</td><td class='line-content'>              :avg avg-time</td></tr>
+<tr class='covered'><td class='line-number'>373</td><td class='line-content'>              :median median-time)))))</td></tr>
 <tr class=''><td class='line-number'>374</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>375</td><td class='line-content'>;;; クリーンアップ</td></tr>
 <tr class=''><td class='line-number'>376</td><td class='line-content'></td></tr>
@@ -416,8 +416,8 @@
 <tr class=''><td class='line-number'>379</td><td class='line-content'>  &amp;quot;全ての履歴をクリアする。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>380</td><td class='line-content'>  (interactive)</td></tr>
 <tr class='covered'><td class='line-number'>381</td><td class='line-content'>  (when (yes-or-no-p &amp;quot;Clear all history entries? &amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>382</td><td class='line-content'>    (setq nskk-history-entries nil)</td></tr>
-<tr class='onevalue'><td class='line-number'>383</td><td class='line-content'>    (message &amp;quot;History cleared.&amp;quot;)))</td></tr>
+<tr class='covered'><td class='line-number'>382</td><td class='line-content'>    (setq nskk-history-entries nil)</td></tr>
+<tr class='covered'><td class='line-number'>383</td><td class='line-content'>    (message &amp;quot;History cleared.&amp;quot;)))</td></tr>
 <tr class=''><td class='line-number'>384</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>385</td><td class='line-content'>;;;###autoload</td></tr>
 <tr class=''><td class='line-number'>386</td><td class='line-content'>(defun nskk-history-export (file-path)</td></tr>
@@ -425,7 +425,7 @@
 <tr class=''><td class='line-number'>388</td><td class='line-content'>CSV形式で出力。&amp;quot;</td></tr>
 <tr class=''><td class='line-number'>389</td><td class='line-content'>  (interactive &amp;quot;FExport history to: &amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>390</td><td class='line-content'>  (with-temp-file file-path</td></tr>
-<tr class='onevalue'><td class='line-number'>391</td><td class='line-content'>    (insert &amp;quot;Midashi,Candidate,Timestamp,ConversionTime,CandidateIndex,TotalCandidates,OkuriAri,Anonymized\n&amp;quot;)</td></tr>
+<tr class='covered'><td class='line-number'>391</td><td class='line-content'>    (insert &amp;quot;Midashi,Candidate,Timestamp,ConversionTime,CandidateIndex,TotalCandidates,OkuriAri,Anonymized\n&amp;quot;)</td></tr>
 <tr class='covered'><td class='line-number'>392</td><td class='line-content'>    (dolist (entry nskk-history-entries)</td></tr>
 <tr class='covered'><td class='line-number'>393</td><td class='line-content'>      (insert (format &amp;quot;%s,%s,%s,%.6f,%d,%d,%s,%s\n&amp;quot;</td></tr>
 <tr class='covered'><td class='line-number'>394</td><td class='line-content'>                     (nskk-history-entry-midashi entry)</td></tr>
@@ -436,7 +436,7 @@
 <tr class='covered'><td class='line-number'>399</td><td class='line-content'>                     (nskk-history-entry-candidate-index entry)</td></tr>
 <tr class='covered'><td class='line-number'>400</td><td class='line-content'>                     (nskk-history-entry-total-candidates entry)</td></tr>
 <tr class='covered'><td class='line-number'>401</td><td class='line-content'>                     (if (nskk-history-entry-okuri-ari entry) &amp;quot;true&amp;quot; &amp;quot;false&amp;quot;)</td></tr>
-<tr class='onevalue'><td class='line-number'>402</td><td class='line-content'>                     (if (nskk-history-entry-anonymized entry) &amp;quot;true&amp;quot; &amp;quot;false&amp;quot;)))))</td></tr>
+<tr class='covered'><td class='line-number'>402</td><td class='line-content'>                     (if (nskk-history-entry-anonymized entry) &amp;quot;true&amp;quot; &amp;quot;false&amp;quot;)))))</td></tr>
 <tr class='covered'><td class='line-number'>403</td><td class='line-content'>  (message &amp;quot;History exported to %s&amp;quot; file-path))</td></tr>
 <tr class=''><td class='line-number'>404</td><td class='line-content'></td></tr>
 <tr class=''><td class='line-number'>405</td><td class='line-content'>(provide 'nskk-history)</td></tr>

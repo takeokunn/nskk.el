@@ -415,12 +415,12 @@ gantt
     注釈システム :30d
     補完機能 :25d
 
-    section Phase 3: skkeleton統合
+    section ランタイム統合: skkeleton統合
     非同期処理 :2024-05-01, 35d
     モジュール化 :30d
     プラグインAPI :40d
 
-    section Phase 4: 革新機能
+    section 拡張統合: 革新機能
     AI統合 :2024-07-01, 50d
     同期システム :40d
     統計最適化 :30d

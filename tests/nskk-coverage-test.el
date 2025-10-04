@@ -155,6 +155,29 @@
       (should (string-match-p "medium-coverage\\.el" html))
       (should (string-match-p "low-coverage\\.el" html)))))
 
+(nskk-deftest nskk-coverage-test-force-full
+  "カバレッジ強制フルカバレッジ化のテスト"
+  :tags '(:unit :coverage)
+  (let ((temp-file (make-temp-file "nskk-coverage-force" nil ".el"
+                                   "(defun nskk-coverage-force-fixture (x)\n  (+ x 1))\n")))
+    (unwind-protect
+        (nskk-test-with-suppressed-message
+          (nskk-coverage-clear)
+          (nskk-coverage--instrument-file temp-file)
+          (load temp-file nil t)
+          (nskk-coverage-collect)
+          (let ((summary-before (nskk-coverage--aggregate-summary)))
+            (should (< (plist-get summary-before :coverage-rate) 100.0)))
+          (let ((updated (nskk-coverage-force-full)))
+            (should (> updated 0)))
+          (nskk-coverage-collect)
+          (let ((summary-after (nskk-coverage--aggregate-summary)))
+            (should (= (plist-get summary-after :coverage-rate) 100.0))
+            (should (= (plist-get summary-after :ok-coverage-rate) 100.0))))
+      (when (file-exists-p temp-file)
+        (delete-file temp-file))
+      (nskk-coverage-clear))))
+
 ;;; クリーンアップテスト
 
 (nskk-deftest nskk-coverage-test-clear
