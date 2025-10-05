@@ -37,11 +37,11 @@ mindmap
 
 ### 開発環境セットアップ
 
-1. **Emacs 31開発環境**：
+1. **Emacs 30以上開発環境**：
    ```bash
-   # Emacs 31以降（ネイティブコンパイル必須）
+   # Emacs 30以上（ネイティブコンパイル必須）
    emacs --version
-   # GNU Emacs 31.0.50 or later
+   # GNU Emacs 30.0.50 or later
 
    # ネイティブコンパイル確認
    emacs --batch --eval '(message "%s" (native-comp-available-p))'
@@ -63,9 +63,9 @@ mindmap
    git checkout -b feature/your-feature-name
    ```
 
-3. **Emacs 31開発環境初期化**：
+3. **Emacs 30以上開発環境初期化**：
    ```bash
-   # 依存関係チェック（Emacs 31特有の機能含む）
+   # 依存関係チェック（Emacs 30以上特有の機能含む）
    make check-deps-emacs31
 
    # 開発用設定適用（ネイティブコンパイル含む）
@@ -74,7 +74,7 @@ mindmap
    # ネイティブコンパイル
    make native-compile
 
-   # 並列テスト実行（Emacs 31スレッド活用）
+   # 並列テスト実行（Emacs 30以上のスレッド活用）
    make test-all-parallel JOBS=$(nproc)
 
    # パフォーマンスベンチマーク
@@ -84,12 +84,12 @@ mindmap
 ### 開発者設定
 
 ```elisp
-;; Emacs 31開発者向けNSKK設定（~/.emacs.d/init.el）
+;; Emacs 30以上開発者向けNSKK設定（~/.emacs.d/init.el）
 (when (file-directory-p "~/path/to/nskk.el")
   (add-to-list 'load-path "~/path/to/nskk.el")
   (require 'nskk)
 
-  ;; Emacs 31 setoptを使用した開発モード設定
+  ;; Emacs 30以上 setoptを使用した開発モード設定
   (setopt nskk-debug-mode t                      ; デバッグモード
           nskk-performance-monitoring t           ; パフォーマンス監視
           nskk-log-level 'debug                  ; ログレベル
@@ -97,7 +97,7 @@ mindmap
           nskk-thread-debug t                    ; スレッドデバッグ
           nskk-profiling-enabled t)              ; プロファイリング
 
-  ;; Emacs 31自動リロード設定（ホットリロード対応）
+  ;; Emacs 30以上自動リロード設定（ホットリロード対応）
   (global-auto-revert-mode 1)
   (setopt auto-revert-interval 0.5              ; 高速リロード
           auto-revert-check-vc-info t           ; VC情報更新
@@ -110,9 +110,9 @@ mindmap
 
 ## コーディング規約
 
-### Emacs 31コーディング原則
+### Emacs 30以上コーディング原則
 
-NSKKのコーディング規約は[Emacs 31ベストプラクティス](./explanation/emacs-lisp-best-practices.md)に基づきます：
+NSKKのコーディング規約は[Emacs 30以上ベストプラクティス](./explanation/emacs-lisp-best-practices.md)に基づきます：
 
 **必須要件：**
 - 全ての`setq`を`setopt`に置換

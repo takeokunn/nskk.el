@@ -507,6 +507,352 @@
           (message "1000 log entries time: %.3f ms" (* elapsed 1000))))
     (nskk-dict-errors-test--teardown)))
 
+;;; 追加カバレッジテスト
+
+(ert-deftest nskk-dict-errors-test-log-file-write-error ()
+  "ログファイル書き込みエラーのハンドリングをテストする。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((nskk-dict-errors-enable-logging t)
+            (nskk-dict-errors-log-file "/invalid/path/cannot/write.log"))
+        ;; ログ書き込みエラーが発生してもログ記録自体は成功するはず
+        (nskk-dict-errors-log 'error 'test-error "Test message")
+        ;; メモリには記録されている
+        (should (= (length nskk-dict-errors--log-entries) 1)))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-notify-popup-method ()
+  "popup通知メソッドのテスト。"
+  (let ((nskk-dict-errors-notification-method 'popup)
+        (error-info (nskk-dict-errors-create
+                     'nskk-dict-io-file-not-found
+                     "Test error"
+                     '("/test/path"))))
+    ;; popup未実装のため、messageとして処理される
+    (nskk-dict-errors-notify error-info)
+    ;; エラーが発生しないことを確認
+    (should t)))
+
+(ert-deftest nskk-dict-errors-test-notify-silent-method ()
+  "silent通知メソッドのテスト。"
+  (let ((nskk-dict-errors-notification-method 'silent)
+        (error-info (nskk-dict-errors-create
+                     'nskk-dict-io-file-not-found
+                     "Test error"
+                     '("/test/path"))))
+    ;; silentの場合、何も通知されない
+    (nskk-dict-errors-notify error-info)
+    ;; エラーが発生しないことを確認
+    (should t)))
+
+(ert-deftest nskk-dict-errors-test-notify-message-method ()
+  "message通知メソッドのテスト。"
+  (let ((nskk-dict-errors-notification-method 'message)
+        (error-info (nskk-dict-errors-create
+                     'nskk-dict-io-file-not-found
+                     "Test error"
+                     '("/test/path"))))
+    ;; messageが呼ばれることを確認
+    (nskk-dict-errors-notify error-info)
+    (should t)))
+
+(ert-deftest nskk-dict-errors-test-custom-fallback-load-error ()
+  "カスタムフォールバック辞書読み込みエラーのテスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let* ((invalid-dict-path (expand-file-name "invalid-fallback.dict"
+                                                  nskk-dict-errors-test--temp-dir))
+             (nskk-dict-errors-fallback-dict-path invalid-dict-path))
+        ;; 不正な辞書ファイルを作成
+        (with-temp-file invalid-dict-path
+          (insert "invalid content"))
+
+        ;; カスタム辞書の読み込みに失敗し、組み込み辞書にフォールバック
+        (let ((index (nskk-dict-errors-create-fallback-index)))
+          (should (nskk-dict-index-p index))
+          (should nskk-dict-errors--fallback-active)
+          ;; 組み込み辞書が使われていることを確認
+          (should (> (hash-table-count (nskk-dict-index-okuri-nasi-table index)) 0))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-load-general-error ()
+  "一般エラー(非NSKKエラー)のハンドリングをテストする。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((nskk-dict-errors-auto-recovery t))
+        ;; nskk-load-dictionaryを一時的に書き換えて一般エラーを発生させる
+        (cl-letf (((symbol-function 'nskk-load-dictionary)
+                   (lambda (_path) (error "General error"))))
+          (let ((index (nskk-dict-errors-load-with-recovery "/test/path")))
+            ;; 一般エラーでもフォールバックが使われる
+            (should (nskk-dict-index-p index))
+            (should (nskk-dict-errors-is-fallback-active-p)))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-general-error-without-recovery ()
+  "自動リカバリー無効時の一般エラーをテストする。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((nskk-dict-errors-auto-recovery nil))
+        ;; nskk-load-dictionaryを一時的に書き換えて一般エラーを発生させる
+        (cl-letf (((symbol-function 'nskk-load-dictionary)
+                   (lambda (_path) (error "General error"))))
+          (should-error
+           (nskk-dict-errors-load-with-recovery "/test/path")
+           :type 'error)))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-encoding-error-recovery ()
+  "エンコーディングエラーのリカバリーをテストする。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((dict-path (expand-file-name "test.dict"
+                                        nskk-dict-errors-test--temp-dir))
+            (nskk-dict-errors-auto-recovery t))
+        ;; UTF-8辞書を作成
+        (nskk-dict-errors-test--create-sample-dict dict-path)
+
+        ;; エンコーディングエラーから自動リカバリー
+        (let ((result (nskk-dict-errors-auto-recover
+                      'nskk-dict-parse-encoding-error
+                      dict-path)))
+          (should (eq (car result) 'success))
+          (should (nskk-dict-index-p (cdr result)))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-checksum-mismatch-recovery ()
+  "チェックサム不一致のリカバリーをテストする。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let* ((dict-path (expand-file-name "test.dict"
+                                         nskk-dict-errors-test--temp-dir))
+             (nskk-dict-io-backup-dir (expand-file-name "backups"
+                                                        nskk-dict-errors-test--temp-dir))
+             (nskk-dict-io-backup-enabled t)
+             (nskk-dict-errors-auto-recovery t))
+
+        ;; 正常な辞書でバックアップ作成
+        (nskk-dict-errors-test--create-sample-dict dict-path)
+        (nskk-backup-dictionary dict-path)
+
+        ;; 辞書を破損
+        (with-temp-file dict-path
+          (insert "corrupted"))
+
+        ;; チェックサム不一致から自動リカバリー
+        (let ((result (nskk-dict-errors-auto-recover
+                      'nskk-dict-io-checksum-mismatch
+                      dict-path)))
+          (should (eq (car result) 'success))
+          (should (nskk-dict-index-p (cdr result)))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-unknown-error-recovery ()
+  "未知のエラー型のリカバリーをテストする。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((nskk-dict-errors-auto-recovery t))
+        ;; 未知のエラー型
+        (let ((result (nskk-dict-errors-auto-recover
+                      'unknown-error-type
+                      "/test/path")))
+          (should (eq (car result) 'success))
+          (should (nskk-dict-index-p (cdr result)))
+          (should (nskk-dict-errors-is-fallback-active-p))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-log-file-creation ()
+  "ログファイル作成のテスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let* ((log-file-path (expand-file-name "test-error.log"
+                                             nskk-dict-errors-test--temp-dir))
+             (nskk-dict-errors-enable-logging t)
+             (nskk-dict-errors-log-file log-file-path))
+
+        ;; ログを記録
+        (nskk-dict-errors-log 'error 'test-error "Test message")
+
+        ;; ログファイルが作成されたことを確認
+        (should (file-exists-p log-file-path))
+
+        ;; ファイル内容を確認
+        (with-temp-buffer
+          (insert-file-contents log-file-path)
+          (should (string-match-p "test-error" (buffer-string)))
+          (should (string-match-p "Test message" (buffer-string)))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-log-dir-creation ()
+  "ログディレクトリ自動作成のテスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let* ((log-dir (expand-file-name "log-subdir" nskk-dict-errors-test--temp-dir))
+             (log-file-path (expand-file-name "error.log" log-dir))
+             (nskk-dict-errors-enable-logging t)
+             (nskk-dict-errors-log-file log-file-path))
+
+        ;; ログディレクトリが存在しない状態でログ記録
+        (should-not (file-directory-p log-dir))
+        (nskk-dict-errors-log 'error 'test-error "Test message")
+
+        ;; ログディレクトリが自動作成されたことを確認
+        (should (file-directory-p log-dir))
+        (should (file-exists-p log-file-path)))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-show-log-empty ()
+  "空のログ表示のテスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (progn
+        ;; ログをクリア
+        (setq nskk-dict-errors--log-entries nil)
+
+        ;; ログ表示
+        (nskk-dict-errors-show-log)
+
+        ;; バッファが作成されていることを確認
+        (should (get-buffer "*NSKK Error Log*"))
+
+        ;; バッファ内容を確認
+        (with-current-buffer "*NSKK Error Log*"
+          (should (string-match-p "No errors logged" (buffer-string)))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-show-log-with-entries ()
+  "エントリありログ表示のテスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((nskk-dict-errors-enable-logging t))
+        ;; ログエントリを追加
+        (nskk-dict-errors-log 'error 'test-error "Test message" '(data))
+
+        ;; ログ表示
+        (nskk-dict-errors-show-log)
+
+        ;; バッファ内容を確認
+        (with-current-buffer "*NSKK Error Log*"
+          (should (string-match-p "test-error" (buffer-string)))
+          (should (string-match-p "Test message" (buffer-string)))
+          (should (string-match-p "Data:" (buffer-string)))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-clear-log-with-file ()
+  "ログファイル削除を含むクリアのテスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let* ((log-file-path (expand-file-name "test-error.log"
+                                             nskk-dict-errors-test--temp-dir))
+             (nskk-dict-errors-enable-logging t)
+             (nskk-dict-errors-log-file log-file-path))
+
+        ;; ログを記録してファイル作成
+        (nskk-dict-errors-log 'error 'test-error "Test message")
+        (should (file-exists-p log-file-path))
+
+        ;; ログをクリア
+        (nskk-dict-errors-clear-log)
+
+        ;; ログファイルが削除されたことを確認
+        (should-not (file-exists-p log-file-path))
+        (should (= (length nskk-dict-errors--log-entries) 0)))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-format-message-all-types ()
+  "全エラー型のメッセージフォーマットをテストする。"
+  ;; 各エラー型をテスト
+  (dolist (error-type '(nskk-dict-io-file-not-found
+                       nskk-dict-io-permission-denied
+                       nskk-dict-io-checksum-mismatch
+                       nskk-dict-io-backup-failed
+                       nskk-dict-parse-invalid-format
+                       nskk-dict-parse-encoding-error
+                       nskk-dict-struct-invalid-entry))
+    (let* ((error-info (nskk-dict-errors-create
+                       error-type
+                       "Test error"
+                       '("/test/path")))
+           (msg (nskk-dict-errors-format-user-message error-info)))
+      (should (stringp msg))
+      (should (> (length msg) 0)))))
+
+(ert-deftest nskk-dict-errors-test-format-message-unknown-type ()
+  "未知のエラー型のメッセージフォーマットをテストする。"
+  (let* ((error-info (nskk-dict-errors-create
+                     'unknown-error-type
+                     "Unknown error message"
+                     '("/test/path")))
+         (msg (nskk-dict-errors-format-user-message error-info)))
+    (should (stringp msg))
+    (should (string-match-p "Unknown error message" msg))))
+
+(ert-deftest nskk-dict-errors-test-backup-recovery-sorting ()
+  "バックアップファイルのソートと最新選択をテストする。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let* ((dict-path (expand-file-name "test.dict"
+                                         nskk-dict-errors-test--temp-dir))
+             (nskk-dict-io-backup-dir (expand-file-name "backups"
+                                                        nskk-dict-errors-test--temp-dir))
+             (nskk-dict-io-backup-enabled t))
+
+        ;; 辞書ファイルを作成
+        (nskk-dict-errors-test--create-sample-dict dict-path)
+
+        ;; 複数のバックアップを異なる時刻に作成
+        (nskk-backup-dictionary dict-path)
+        (sleep-for 0.1)
+        (nskk-backup-dictionary dict-path)
+        (sleep-for 0.1)
+        (nskk-backup-dictionary dict-path)
+
+        ;; 辞書を破損
+        (with-temp-file dict-path
+          (insert "corrupted"))
+
+        ;; リカバリー実行（最新のバックアップが使われるはず）
+        (let ((result (nskk-dict-errors--recover-from-backup dict-path)))
+          (should (eq (car result) 'success))
+
+          ;; 復旧されたファイルを確認
+          (with-temp-buffer
+            (insert-file-contents dict-path)
+            (should (string-match-p "okuri-nasi entries" (buffer-string))))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-log-with-data ()
+  "追加データ付きログのテスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((nskk-dict-errors-enable-logging t))
+        ;; データ付きログ記録
+        (nskk-dict-errors-log 'warning 'test-warning "Warning message" '(data1 data2 data3))
+
+        ;; ログエントリを確認
+        (let ((entry (car nskk-dict-errors--log-entries)))
+          (should (equal (plist-get entry :data) '(data1 data2 data3)))))
+    (nskk-dict-errors-test--teardown)))
+
+(ert-deftest nskk-dict-errors-test-parse-error-auto-recover ()
+  "パースエラーの自動リカバリー完全テスト。"
+  (nskk-dict-errors-test--setup)
+  (unwind-protect
+      (let ((nskk-dict-errors-auto-recovery t)
+            (dict-path (expand-file-name "test.dict"
+                                        nskk-dict-errors-test--temp-dir)))
+        ;; 不正な辞書を作成
+        (nskk-dict-errors-test--create-invalid-dict dict-path)
+
+        ;; パースエラーから自動リカバリー（バックアップなし、フォールバックへ）
+        (let ((result (nskk-dict-errors-auto-recover
+                      'nskk-dict-parse-invalid-format
+                      dict-path)))
+          (should (eq (car result) 'success))
+          (should (nskk-dict-index-p (cdr result)))
+          (should (nskk-dict-errors-is-fallback-active-p))))
+    (nskk-dict-errors-test--teardown)))
+
 (provide 'nskk-dict-errors-test)
 
 ;;; nskk-dict-errors-test.el ends here

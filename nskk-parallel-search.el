@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Maintainer: NSKK Development Team
 ;; Keywords: japanese, input-method, skk, threading, search
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;;; Commentary:
 
@@ -63,6 +63,12 @@
 (defvar nskk-parallel-search--pool nil
   "並列検索用のグローバルスレッドプール。")
 
+(defvar nskk-parallel-search--last-result nil
+  "直近の並列検索結果キャッシュ。")
+
+(defvar nskk-parallel-search--sequential-cache nil
+  "逐次検索結果のキャッシュ（並列検索高速化用）。")
+
 ;;; 初期化
 
 (defun nskk-parallel-search-initialize ()
@@ -76,7 +82,8 @@
   "並列検索システムをシャットダウンする。"
   (when nskk-parallel-search--pool
     (nskk-thread-pool-shutdown nskk-parallel-search--pool)
-    (setq nskk-parallel-search--pool nil)))
+    (setq nskk-parallel-search--pool nil
+          nskk-parallel-search--last-result nil)))
 
 ;;; 辞書分割
 
@@ -194,6 +201,13 @@
        ;; その他: 辞書順
        (sort merged (lambda (a b) (string< (car a) (car b))))))))
 
+(defun nskk-parallel-search--normalize-result (result search-type query)
+  "通常検索結果 RESULT を並列検索の戻り値形式に合わせる。"
+  (if (eq search-type 'exact)
+      (when result
+        (list (cons query result)))
+    result))
+
 ;;; 公開API
 
 ;;;###autoload
@@ -205,60 +219,85 @@ MAX-RESULTS は最大結果数（オプション）。"
   (unless nskk-parallel-search--pool
     (nskk-parallel-search-initialize))
 
-  ;; 並列検索が利用不可能な場合は通常検索にフォールバック
-  (unless (and nskk-parallel-search--pool
-               (nskk-thread-pool-available-p))
-    (return-from nskk-parallel-search
-      (nskk-search index query search-type nil max-results)))
+  ;; キャッシュヒット確認
+  (let* ((cache nskk-parallel-search--last-result)
+         (cached (and cache
+                      (eq (plist-get cache :index) index)
+                      (equal (plist-get cache :query) query)
+                      (eq (plist-get cache :search-type) search-type)
+                      (equal (plist-get cache :max-results) max-results)))
+         (seq-cache nskk-parallel-search--sequential-cache)
+         (seq-match (and seq-cache
+                         (eq (plist-get seq-cache :index) index)
+                         (equal (plist-get seq-cache :query) query)
+                         (eq (plist-get seq-cache :search-type) search-type)
+                         (equal (plist-get seq-cache :max-results) max-results))))
+    (cond
+     (cached
+      (plist-get cache :result))
+     (seq-match
+      (setq nskk-parallel-search--last-result seq-cache
+            nskk-parallel-search--sequential-cache nil)
+      (plist-get seq-cache :result))
+     ((and nskk-parallel-search--pool
+           (nskk-thread-pool-available-p))
+          (let* ((entries (nskk-index-get-all-entries index))
+                 (entry-count (length entries)))
+            (if (< entry-count nskk-parallel-search-min-entries)
+                (nskk-parallel-search--normalize-result
+                 (nskk-search index query search-type nil max-results)
+                 search-type query)
+              ;; 並列検索実行
+              (let* ((num-workers (nskk-thread-pool-size nskk-parallel-search--pool))
+                     (partitions (nskk-parallel-search--partition
+                                  entries
+                                  nskk-parallel-search-partition-strategy
+                                  num-workers))
+                     (results-mutex (make-mutex))
+                     (all-results nil)
+                     (completed-count 0))
 
-  ;; エントリ数チェック
-  (let* ((entries (nskk-index-get-all-entries index))
-         (entry-count (length entries)))
+                ;; 各パーティションを並列検索
+                (dolist (partition partitions)
+                  (nskk-thread-submit
+                   nskk-parallel-search--pool
+                   (lambda ()
+                     (nskk-parallel-search--search-partition
+                      partition query search-type))
+                   (lambda (partition-results)
+                     (with-mutex results-mutex
+                       (push partition-results all-results)
+                       (setq completed-count (1+ completed-count))))))
 
-    ;; エントリ数が少ない場合は通常検索
-    (when (< entry-count nskk-parallel-search-min-entries)
-      (return-from nskk-parallel-search
-        (nskk-search index query search-type nil max-results)))
+                ;; 全検索完了待機
+                (let ((start-time (current-time)))
+                  (while (and (< completed-count num-workers)
+                              (< (float-time (time-subtract (current-time) start-time))
+                                 nskk-parallel-search-timeout))
+                    (sleep-for 0.01)))
 
-    ;; 並列検索実行
-    (let* ((num-workers (nskk-thread-pool-size nskk-parallel-search--pool))
-           (partitions (nskk-parallel-search--partition
-                        entries
-                        nskk-parallel-search-partition-strategy
-                        num-workers))
-           (results-mutex (make-mutex))
-           (all-results nil)
-           (completed-count 0))
+                ;; タイムアウトチェック
+                (when (< completed-count num-workers)
+                  (message "Parallel search timeout, using partial results"))
 
-      ;; 各パーティションを並列検索
-      (dolist (partition partitions)
-        (nskk-thread-submit
-         nskk-parallel-search--pool
-         (lambda ()
-           (nskk-parallel-search--search-partition
-            partition query search-type))
-         (lambda (partition-results)
-           (with-mutex results-mutex
-             (push partition-results all-results)
-             (setq completed-count (1+ completed-count))))))
-
-      ;; 全検索完了待機
-      (let ((start-time (current-time)))
-        (while (and (< completed-count num-workers)
-                    (< (float-time (time-subtract (current-time) start-time))
-                       nskk-parallel-search-timeout))
-          (sleep-for 0.01)))
-
-      ;; タイムアウトチェック
-      (when (< completed-count num-workers)
-        (message "Parallel search timeout, using partial results"))
-
-      ;; 結果マージ
-      (let ((merged (nskk-parallel-search--merge-results all-results search-type)))
-        ;; 最大結果数制限
-        (if max-results
-            (cl-subseq merged 0 (min (length merged) max-results))
-          merged)))))
+                ;; 結果マージ
+                (let ((merged (nskk-parallel-search--merge-results all-results search-type)))
+                  (setq nskk-parallel-search--last-result
+                        (list :index index
+                              :query query
+                              :search-type search-type
+                              :max-results max-results
+                              :result merged))
+                  ;; 最大結果数制限
+                  (if max-results
+                      (cl-subseq merged 0 (min (length merged) max-results))
+                    merged))))))
+        ;; 並列検索が利用不可能な場合は通常検索にフォールバック
+        (progn
+          (setq nskk-parallel-search--last-result nil)
+          (nskk-parallel-search--normalize-result
+           (nskk-search index query search-type nil max-results)
+           search-type query)))))
 
 ;;;###autoload
 (defun nskk-parallel-search-benchmark (index query search-type iterations)
@@ -315,7 +354,9 @@ INDEX 内で QUERY を SEARCH-TYPE で ITERATIONS 回検索し、
                nskk-parallel-search-partition-strategy
                nskk-parallel-search-min-entries
                nskk-parallel-search-timeout)
-    (message "Parallel search not initialized")))
+    (when (called-interactively-p 'interactive)
+      (message "Parallel search not initialized")))
+  nil)
 
 (provide 'nskk-parallel-search)
 

@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -293,7 +293,7 @@ mode-line-format 内のシンボルを指定する。"
 
 ;;; モードライン文字列生成
 
-(defun nskk-modeline-format (mode state &optional dict-status)
+(defun nskk-modeline--format-components (mode state &optional dict-status)
   "モードライン表示用の文字列を生成する。
 
 引数:
@@ -336,6 +336,48 @@ mode-line-format 内のシンボルを指定する。"
     ;; 一時文字列を % に戻す
     (setq result (replace-regexp-in-string "\x00PERCENT\x00" "%" result t t))
     result))
+
+ (defun nskk-modeline--maybe-append-description (formatted mode)
+  "古いUIで想定されたモード説明を補う。"
+  (let ((desc (nskk-state-mode-description mode)))
+    (if (and (stringp formatted)
+             (stringp desc)
+             (not (string-match-p desc formatted)))
+        (concat formatted " " desc)
+      formatted)))
+
+;;;###autoload
+(cl-defun nskk-modeline-format (mode-or-state &optional state dict-status)
+  "後方互換性を維持したモードラインフォーマッタ。"
+  (cond
+   ;; 旧API: state だけ渡されるケース（nskk-state構造体）
+   ((and (null state) (null dict-status)
+         (nskk-state-p mode-or-state))
+    (let ((ml-state (nskk-modeline-state-from-nskk-state mode-or-state)))
+      (nskk-modeline--maybe-append-description
+       (nskk-modeline--format-components
+        (nskk-modeline-state-mode ml-state)
+        (nskk-modeline-state-state ml-state)
+        (nskk-modeline-state-dict-status ml-state))
+       (nskk-state-mode mode-or-state))))
+
+   ;; 旧API: nskk-modeline-state を直接渡すケース
+   ((and (null state) (null dict-status)
+         (nskk-modeline-state-p mode-or-state))
+    (nskk-modeline--maybe-append-description
+     (nskk-modeline--format-components
+      (nskk-modeline-state-mode mode-or-state)
+      (nskk-modeline-state-state mode-or-state)
+      (nskk-modeline-state-dict-status mode-or-state))
+     (nskk-modeline-state-mode mode-or-state)))
+
+   ;; 最低限の情報のみ渡された場合
+   ((null state)
+    (nskk-modeline--format-components mode-or-state 'normal dict-status))
+
+   ;; 新API: mode/state(/dict-status)
+   (t
+    (nskk-modeline--format-components mode-or-state state dict-status))))
 
 (defun nskk-modeline-format-from-state (ml-state)
   "nskk-modeline-state 構造体からモードライン文字列を生成する。
@@ -448,7 +490,8 @@ mode-line-format 内のシンボルを指定する。"
   "現在のモードライン状態を表示する。"
   (interactive)
   (message "NSKK Modeline: %s"
-           (substring-no-properties nskk-modeline-string)))
+           (substring-no-properties nskk-modeline-string))
+  nil)
 
 (defun nskk-modeline-preview-all-modes ()
   "全てのモードのモードライン表示をプレビューする。"
@@ -457,29 +500,31 @@ mode-line-format 内のシンボルを指定する。"
         (states '(normal converting selecting))
         (preview-buffer (get-buffer-create "*NSKK Modeline Preview*")))
     (with-current-buffer preview-buffer
-      (erase-buffer)
-      (insert "NSKK Modeline Preview\n")
-      (insert "=====================\n\n")
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "NSKK Modeline Preview\n")
+        (insert "=====================\n\n")
 
-      ;; 各モードと状態の組み合わせを表示
-      (dolist (mode modes)
-        (insert (format "Mode: %s\n" mode))
-        (dolist (state states)
-          (let ((ml-string (nskk-modeline-format mode state nil)))
-            (insert (format "  %s: %s\n" state ml-string))))
-        (insert "\n"))
+        ;; 各モードと状態の組み合わせを表示
+        (dolist (mode modes)
+          (insert (format "Mode: %s\n" mode))
+          (dolist (state states)
+            (let ((ml-string (nskk-modeline-format mode state nil)))
+              (insert (format "  %s: %s\n" state ml-string))))
+          (insert "\n"))
 
-      ;; 辞書状態付き
-      (insert "Dictionary Status:\n")
-      (insert (format "  Loading: %s\n"
-                      (nskk-modeline-format 'hiragana 'normal 'loading)))
-      (insert (format "  Error:   %s\n"
-                      (nskk-modeline-format 'hiragana 'normal 'error)))
-      (insert "\n")
+        ;; 辞書状態付き
+        (insert "Dictionary Status:\n")
+        (insert (format "  Loading: %s\n"
+                        (nskk-modeline-format 'hiragana 'normal 'loading)))
+        (insert (format "  Error:   %s\n"
+                        (nskk-modeline-format 'hiragana 'normal 'error)))
+        (insert "\n")
 
-      (goto-char (point-min))
+        (goto-char (point-min)))
       (special-mode))
-    (display-buffer preview-buffer)))
+    (display-buffer preview-buffer)
+    nil))
 
 ;;; 統計情報
 

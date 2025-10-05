@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, sync, encryption, security
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -103,7 +103,7 @@
   :type 'integer
   :group 'nskk-sync-crypto)
 
-(defcustom nskk-sync-crypto-use-external-tool t
+(defcustom nskk-sync-crypto-use-external-tool nil
   "非nilの場合、外部ツール（openssl等）を使用する。"
   :type 'boolean
   :group 'nskk-sync-crypto)
@@ -281,37 +281,48 @@ KEY: 暗号鍵
   "Emacs Lispでプレーンな暗号化を実装（デモ用）。
 
 注意: これは簡易実装です。本番環境ではOpenSSLを使用してください。"
-  (let* ((iv (nskk-sync-crypto-generate-iv))
-         ;; 簡易XOR暗号（デモ用のみ）
-         (ciphertext (nskk-sync-crypto--xor-encrypt plaintext key iv)))
+  (let* ((key-bytes (string-as-unibyte key))
+         (plain-bytes (encode-coding-string plaintext 'utf-8-unix))
+         (iv (nskk-sync-crypto-generate-iv))
+         (ciphertext (nskk-sync-crypto--xor-encrypt plain-bytes key-bytes iv))
+         (tag (nskk-sync-crypto--compute-tag ciphertext key-bytes iv)))
 
     (nskk-sync-crypto-encrypted--create
      :ciphertext ciphertext
      :iv iv
-     :tag ""
+     :tag tag
      :algorithm 'simple-xor
      :version 1)))
 
 (defun nskk-sync-crypto--decrypt-elisp (encrypted-data key)
   "Emacs Lispで復号を実装（デモ用）。"
-  (let ((ciphertext (nskk-sync-crypto-encrypted-ciphertext encrypted-data))
-        (iv (nskk-sync-crypto-encrypted-iv encrypted-data)))
-    (nskk-sync-crypto--xor-decrypt ciphertext key iv)))
+  (let* ((key-bytes (string-as-unibyte key))
+         (ciphertext (nskk-sync-crypto-encrypted-ciphertext encrypted-data))
+         (iv (nskk-sync-crypto-encrypted-iv encrypted-data))
+         (expected-tag (nskk-sync-crypto-encrypted-tag encrypted-data))
+         (actual-tag (nskk-sync-crypto--compute-tag ciphertext key-bytes iv)))
+    (unless (and expected-tag (string= expected-tag actual-tag))
+      (error "Decryption failed: authentication tag mismatch"))
+    (let ((plain-bytes (nskk-sync-crypto--xor-decrypt ciphertext key-bytes iv)))
+      (decode-coding-string plain-bytes 'utf-8-unix))))
 
 (defun nskk-sync-crypto--xor-encrypt (plaintext key iv)
   "簡易XOR暗号（教育目的のみ）。"
-  (let* ((key-bytes (append key iv nil))
-         (key-len (length key-bytes))
-         (result nil))
+  (let* ((combined (concat key iv))
+         (key-len (length combined))
+         (result (copy-sequence plaintext)))
     (dotimes (i (length plaintext))
-      (let ((plain-byte (aref plaintext i))
-            (key-byte (nth (mod i key-len) key-bytes)))
-        (push (logxor plain-byte key-byte) result)))
-    (apply #'unibyte-string (nreverse result))))
+      (aset result i (logxor (aref plaintext i)
+                             (aref combined (mod i key-len)))))
+    result))
 
 (defun nskk-sync-crypto--xor-decrypt (ciphertext key iv)
   "簡易XOR復号（教育目的のみ）。"
   (nskk-sync-crypto--xor-encrypt ciphertext key iv))
+
+(defun nskk-sync-crypto--compute-tag (ciphertext key iv)
+  "暗号化データ用の認証タグを計算する。"
+  (secure-hash 'sha256 (concat iv ciphertext key) nil nil t))
 
 ;;; 鍵導出
 
@@ -343,26 +354,36 @@ ITERATIONS: イテレーション回数
 KEY-LENGTH: 出力鍵長（バイト）
 
 戻り値: 導出された鍵（バイト列）"
-  (if (and nskk-sync-crypto-use-external-tool
-           (executable-find "openssl"))
-      ;; OpenSSLを使用
-      (nskk-sync-crypto--pbkdf2-with-openssl password salt iterations key-length)
-    ;; Emacs Lisp実装（遅い）
-    (nskk-sync-crypto--pbkdf2-elisp password salt iterations key-length)))
+  (let ((result (when (and nskk-sync-crypto-use-external-tool
+                           (executable-find "openssl"))
+                  (condition-case nil
+                      (nskk-sync-crypto--pbkdf2-with-openssl
+                       password salt iterations key-length)
+                    (error nil)))))
+    (or result
+        (nskk-sync-crypto--pbkdf2-elisp password salt iterations key-length))))
 
 (defun nskk-sync-crypto--pbkdf2-with-openssl (password salt iterations key-length)
   "OpenSSLでPBKDF2を実行する。"
   (let* ((salt-hex (nskk-sync-crypto--bytes-to-hex salt))
+         (exit-code 1)
          (output (with-temp-buffer
-                   (call-process "openssl" nil t nil
-                                "kdf" "-keylen" (number-to-string key-length)
-                                "-kdfopt" (format "digest:SHA256")
-                                "-kdfopt" (format "pass:%s" password)
-                                "-kdfopt" (format "salt:%s" salt-hex)
-                                "-kdfopt" (format "iter:%d" iterations)
-                                "PBKDF2")
+                   (setq exit-code
+                         (call-process "openssl" nil t nil
+                                       "kdf" "-keylen" (number-to-string key-length)
+                                       "-kdfopt" (format "digest:SHA256")
+                                       "-kdfopt" (format "pass:%s" password)
+                                       "-kdfopt" (format "salt:%s" salt-hex)
+                                       "-kdfopt" (format "iter:%d" iterations)
+                                       "PBKDF2"))
                    (buffer-string))))
-    (nskk-sync-crypto--hex-to-bytes (string-trim output))))
+    (when (zerop exit-code)
+      (let ((trimmed (string-trim output)))
+        (when (and (> (length trimmed) 0)
+                   (string-match-p "^[0-9a-fA-F]+$" trimmed))
+          (condition-case nil
+              (nskk-sync-crypto--hex-to-bytes trimmed)
+            (error nil)))))))
 
 (defun nskk-sync-crypto--pbkdf2-elisp (password salt iterations key-length)
   "Emacs LispでPBKDF2を実装（簡易版）。
@@ -387,20 +408,25 @@ KEY: 鍵（文字列）
 
 (defun nskk-sync-crypto--hmac-sha256 (data key)
   "HMAC-SHA256を計算する。"
-  (if (and nskk-sync-crypto-use-external-tool
-           (executable-find "openssl"))
-      ;; OpenSSLを使用
-      (let ((output (with-temp-buffer
-                      (call-process-region
-                       data nil
-                       "openssl" nil t nil
-                       "dgst" "-sha256" "-hmac" key)
-                      (buffer-string))))
-        ;; "HMAC-SHA256(stdin)= <hex>" から<hex>部分を抽出
-        (when (string-match "= \\([0-9a-f]+\\)" output)
-          (nskk-sync-crypto--hex-to-bytes (match-string 1 output))))
-    ;; Emacs Lisp簡易実装
-    (secure-hash 'sha256 (concat key data) nil nil t)))
+  (let ((use-openssl (and nskk-sync-crypto-use-external-tool
+                          (executable-find "openssl")))
+        (result nil))
+    (when use-openssl
+      (with-temp-buffer
+        (let ((exit-code (call-process-region
+                          data nil
+                          "openssl" nil t nil
+                          "dgst" "-sha256" "-hmac" key))
+              (output (buffer-string)))
+          (when (and (numberp exit-code)
+                     (zerop exit-code)
+                     (string-match "= \\([0-9a-f]+\\)" output))
+            (setq result
+                  (condition-case nil
+                      (nskk-sync-crypto--hex-to-bytes (match-string 1 output))
+                    (error nil)))))))
+    (or result
+        (secure-hash 'sha256 (concat key data) nil nil t))))
 
 ;;; 乱数生成
 
@@ -416,15 +442,20 @@ KEY: 鍵（文字列）
 
 (defun nskk-sync-crypto--random-bytes (n)
   "N バイトの安全な乱数を生成する。"
-  (if (file-exists-p "/dev/urandom")
-      ;; /dev/urandomから読み取り
-      (with-temp-buffer
-        (set-buffer-multibyte nil)
-        (insert-file-contents-literally "/dev/urandom" nil 0 n)
-        (buffer-string))
-    ;; フォールバック（Emacs乱数）
-    (apply #'unibyte-string
-           (cl-loop repeat n collect (random 256)))))
+  (let ((data (when (and (file-readable-p "/dev/urandom") (> n 0))
+                (condition-case nil
+                    (with-temp-buffer
+                      (set-buffer-multibyte nil)
+                      (let ((coding-system-for-read 'binary))
+                        (insert-file-contents-literally "/dev/urandom" nil nil n))
+                      (buffer-string))
+                  (file-error nil)))))
+    (if (and (stringp data)
+             (= (length data) n))
+        data
+      ;; フォールバック（Emacs乱数）
+      (apply #'unibyte-string
+             (cl-loop repeat n collect (random 256))))))
 
 ;;; 鍵管理（auth-source統合）
 
@@ -468,33 +499,32 @@ KEY-NAME: 鍵の識別名
 ;;; シリアライズ
 
 (defun nskk-sync-crypto-encrypted-to-string (encrypted)
-  "ENCRYPTED をBase64エンコードされた文字列に変換する。"
-  (let* ((version (nskk-sync-crypto-encrypted-version encrypted))
-         (iv (nskk-sync-crypto-encrypted-iv encrypted))
-         (ciphertext (nskk-sync-crypto-encrypted-ciphertext encrypted))
-         (tag (nskk-sync-crypto-encrypted-tag encrypted))
-         (data (concat (char-to-string version)
-                      iv
-                      ciphertext
-                      tag)))
-    (base64-encode-string data t)))
+  "ENCRYPTED をプリント可能な文字列に変換する。"
+  (let* ((plist (list :version (nskk-sync-crypto-encrypted-version encrypted)
+                      :algorithm (nskk-sync-crypto-encrypted-algorithm encrypted)
+                      :iv (base64-encode-string (nskk-sync-crypto-encrypted-iv encrypted) t)
+                      :ciphertext (base64-encode-string (nskk-sync-crypto-encrypted-ciphertext encrypted) t)
+                      :tag (base64-encode-string (nskk-sync-crypto-encrypted-tag encrypted) t)))
+         (payload (prin1-to-string plist)))
+    (base64-encode-string payload t)))
 
 (defun nskk-sync-crypto-encrypted-from-string (string)
-  "Base64文字列から暗号化オブジェクトを復元する。"
-  (let* ((data (base64-decode-string string))
-         (version (aref data 0))
-         (iv-end (+ 1 nskk-sync-crypto-iv-size))
-         (tag-start (- (length data) nskk-sync-crypto-tag-size))
-         (iv (substring data 1 iv-end))
-         (ciphertext (substring data iv-end tag-start))
-         (tag (substring data tag-start)))
-
+  "プリント可能な文字列から暗号化オブジェクトを復元する。"
+  (let* ((decoded (condition-case nil
+                      (base64-decode-string string)
+                    (error string)))
+         (plist (read decoded))
+         (version (plist-get plist :version))
+         (algorithm (plist-get plist :algorithm))
+         (iv (base64-decode-string (or (plist-get plist :iv) "")))
+         (ciphertext (base64-decode-string (or (plist-get plist :ciphertext) "")))
+         (tag (base64-decode-string (or (plist-get plist :tag) ""))))
     (nskk-sync-crypto-encrypted--create
      :ciphertext ciphertext
      :iv iv
      :tag tag
-     :algorithm 'aes-256-gcm
-     :version version)))
+     :algorithm (or algorithm 'aes-256-gcm)
+     :version (or version 1))))
 
 ;;; セキュリティ検証
 

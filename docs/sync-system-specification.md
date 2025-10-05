@@ -377,7 +377,7 @@ emacs -batch -l ert -l tests/nskk-sync-test.el \
 
 ### Dependencies
 
-- Emacs 31.0+
+- Emacs 30+
 - OpenSSL (recommended for crypto)
 - gzip/gunzip (for compression)
 - websocket.el (optional, for WebSocket support)

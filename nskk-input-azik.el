@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, azik
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -155,7 +155,10 @@ AZIK拡張ルールと標準ローマ字ルールを統合したもの。")
   (setq nskk-input-azik-hash-table
         (make-hash-table :test 'equal :size 600))
   (dolist (entry nskk-input-azik-table)
-    (puthash (car entry) (cdr entry) nskk-input-azik-hash-table)))
+    (let ((key (car entry))
+          (value (cdr entry)))
+      (unless (gethash key nskk-input-azik-hash-table)
+        (puthash key value nskk-input-azik-hash-table)))))
 
 ;;; 検索関数
 

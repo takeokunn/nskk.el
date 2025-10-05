@@ -299,6 +299,93 @@
       ;; 長い入力は短い入力より時間がかかるはず
       (should (>= long-time short-time)))))
 
+;;; show-profile追加テスト
+
+(ert-deftest nskk-optimize-test-show-profile-with-data ()
+  "プロファイルデータ表示のテスト。"
+  (let ((nskk-optimize-enable-profiling t))
+    (nskk-optimize-reset-profile)
+    ;; データを追加
+    (nskk-with-profiling "test-show"
+      (+ 1 1))
+    ;; show-profileを実行（バッファ作成の確認）
+    (nskk-optimize-show-profile)
+    (should (get-buffer "*NSKK Profile*"))
+    ;; バッファをクリーンアップ
+    (when (get-buffer "*NSKK Profile*")
+      (kill-buffer "*NSKK Profile*"))))
+
+(ert-deftest nskk-optimize-test-show-profile-empty ()
+  "空のプロファイルデータ表示テスト。"
+  (nskk-optimize-reset-profile)
+  ;; 空の場合はメッセージを返す
+  (let ((result (nskk-optimize-show-profile)))
+    (should (stringp result))))
+
+;;; benchmark-suite追加テスト
+
+(ert-deftest nskk-optimize-test-benchmark-suite-execution ()
+  "ベンチマークスイートの実行テスト。"
+  (let ((nskk-optimize-benchmark-iterations 10))
+    ;; スイート実行
+    (nskk-benchmark-suite)
+    ;; バッファが作成されることを確認
+    (should (get-buffer "*NSKK Benchmark*"))
+    ;; バッファをクリーンアップ
+    (when (get-buffer "*NSKK Benchmark*")
+      (kill-buffer "*NSKK Benchmark*"))))
+
+;;; 回帰検出の詳細テスト
+
+(ert-deftest nskk-optimize-test-regression-detection ()
+  "パフォーマンス回帰検出のテスト。"
+  (nskk-optimize-set-baseline)
+  (let ((result (nskk-optimize-check-regression)))
+    ;; 回帰フラグの確認
+    (should (booleanp (plist-get result :regression)))
+    ;; 比率の妥当性確認
+    (let ((ratio (plist-get result :ratio)))
+      (should (> ratio 0))
+      (should (< ratio 10.0)))))
+
+(ert-deftest nskk-optimize-test-regression-interactive ()
+  "インタラクティブモードでの回帰チェックテスト。"
+  (nskk-optimize-set-baseline)
+  ;; called-interactively-pをシミュレート
+  (cl-letf (((symbol-function 'called-interactively-p)
+             (lambda (_) t)))
+    (let ((result (nskk-optimize-check-regression)))
+      (should (plist-member result :regression)))))
+
+;;; プロファイルデータの詳細テスト
+
+(ert-deftest nskk-optimize-test-profile-min-max ()
+  "プロファイルデータのmin/max記録テスト。"
+  (let ((nskk-optimize-enable-profiling t))
+    (nskk-optimize-reset-profile)
+    ;; 複数回実行して min/max を記録
+    (dotimes (_ 10)
+      (nskk-with-profiling "minmax-test"
+        (sleep-for 0.001)))
+    (let ((entry (assoc "minmax-test" nskk-optimize--profile-data)))
+      (should entry)
+      (let ((min-time (nth 3 entry))
+            (max-time (nth 4 entry)))
+        (should (> min-time 0))
+        (should (>= max-time min-time))))))
+
+;;; メモリ測定の境界値テスト
+
+(ert-deftest nskk-optimize-test-memory-delta-minimal ()
+  "最小限のメモリ変化テスト。"
+  (let ((result (nskk-measure-memory-delta (lambda () nil))))
+    (should (plist-member result :delta))
+    (let ((delta (plist-get result :delta)))
+      ;; deltaの各項目が数値であることを確認
+      (should (numberp (plist-get delta :cons-cells)))
+      (should (numberp (plist-get delta :floats)))
+      (should (numberp (plist-get delta :strings))))))
+
 (provide 'nskk-optimize-test)
 
 ;;; nskk-optimize-test.el ends here

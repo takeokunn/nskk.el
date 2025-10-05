@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, dictionary
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -321,6 +321,11 @@ UTF-8またはEUC-JPを返す。"
         (push (cons raw-cand nil) candidates)))
 
     (nreverse candidates)))
+
+;;;###autoload
+(defun nskk-dict-parse-line (line)
+  "`nskk-parse-entry' の互換エイリアス。"
+  (nskk-parse-entry line))
 
 ;;; エントリ検証
 

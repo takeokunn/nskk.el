@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -111,6 +111,13 @@
   "MODE に対応するモード別フックシンボルを返す。"
   (intern (format "nskk-mode-switch-to-%s-hook" mode)))
 
+(defun nskk-mode-switch--normalize-mode (mode)
+  "MODE のエイリアスを正規化する。"
+  (pcase mode
+    ((or 'ascii 'english 'latin) 'latin)
+    ((or 'hiragana 'katakana 'zenkaku-latin 'abbrev 'conversion) mode)
+    (_ mode)))
+
 (defun nskk-mode-switch--update-modeline ()
   "モードラインを更新する。"
   (when nskk-mode-switch-update-modeline
@@ -128,64 +135,61 @@
 
 ;;; コア関数
 
-(defun nskk-mode-switch (to-mode &optional force no-hooks)
-  "現在のNSKK状態を TO-MODE に切り替える。
+(defun nskk-mode-switch (state-or-mode &optional to-mode force no-hooks)
+  "現在のNSKK状態を指定モードに切り替える。
 
-引数:
-  TO-MODE  - 切り替え先のモード（`nskk-state-modes' のいずれか）
-  FORCE    - 非nilの場合、遷移可能性チェックをスキップ
-  NO-HOOKS - 非nilの場合、フックの実行をスキップ
+STATE-OR-MODE に `nskk-state' 構造体を渡した場合、その状態を対象に
+切り替えを行う。モードシンボルを直接渡した場合はグローバル状態
+`nskk-current-state' を対象とする。"
+  (let* ((explicit-state (nskk-state-p state-or-mode))
+         (state (if explicit-state
+                    state-or-mode
+                  nskk-current-state))
+         (mode (if explicit-state
+                   to-mode
+                 state-or-mode))
+         (force-flag (if explicit-state force to-mode))
+         (no-hooks-flag (if explicit-state no-hooks force))
+         (mode (nskk-mode-switch--normalize-mode mode)))
 
-返り値:
-  切り替えに成功した場合は t、失敗した場合は nil
+    (unless state
+      (nskk-state-init)
+      (setq state nskk-current-state))
 
-副作用:
-  - `nskk-current-state' のモードを変更
-  - 未確定入力のクリア（設定による）
-  - フックの実行
-  - モードライン更新
-  - メッセージ表示"
-  (unless nskk-current-state
-    (nskk-state-init))
+    ;; グローバル状態と同期させる
+    (unless (eq state nskk-current-state)
+      (setq nskk-current-state state))
 
-  ;; 再帰的な切り替えを防止
-  (when nskk-mode-switch--in-progress
-    (error "Mode switch already in progress"))
+    ;; 再帰的な切り替えを防止
+    (when nskk-mode-switch--in-progress
+      (error "Mode switch already in progress"))
 
-  (let ((from-mode (nskk-state-mode nskk-current-state))
-        (nskk-mode-switch--in-progress t))
+    (let ((from-mode (nskk-state-mode state))
+          (nskk-mode-switch--in-progress t))
+      (unwind-protect
+          (progn
+            (if (eq from-mode mode)
+                t
+              (unless no-hooks-flag
+                (run-hook-with-args 'nskk-mode-switch-before-hook
+                                    from-mode mode))
 
-    (unwind-protect
-        (progn
-          ;; 同じモードへの切り替えはスキップ
-          (if (eq from-mode to-mode)
-              t
-            ;; before フック実行
-            (unless no-hooks
-              (run-hook-with-args 'nskk-mode-switch-before-hook
-                                  from-mode to-mode))
-
-            ;; 状態遷移を実行
-            (if (nskk-state-transition nskk-current-state to-mode force)
-                (progn
-                  ;; 入力バッファクリア
-                  (nskk-mode-switch--clear-input-if-needed nskk-current-state)
-
-                  ;; after フック実行
-                  (unless no-hooks
-                    (run-hook-with-args 'nskk-mode-switch-after-hook
-                                        from-mode to-mode)
-                    ;; モード別フック実行
-                    (run-hooks (nskk-mode-switch--get-mode-hook to-mode)))
-
-                  ;; UI更新
-                  (nskk-mode-switch--update-modeline)
-                  (nskk-mode-switch--show-message to-mode)
-                  t)
-              nil)))
-
-      ;; cleanup
-      (setq nskk-mode-switch--in-progress nil))))
+              (if (nskk-state-transition state mode force-flag)
+                  (progn
+                    (nskk-mode-switch--clear-input-if-needed state)
+                    (unless no-hooks-flag
+                      (run-hook-with-args 'nskk-mode-switch-after-hook
+                                          from-mode mode)
+                      (run-hooks (nskk-mode-switch--get-mode-hook mode)))
+                    (nskk-mode-switch--update-modeline)
+                    (nskk-mode-switch--show-message mode)
+                    (when (fboundp 'nskk-events-emit)
+                      (nskk-events-emit :mode-switched
+                                        :from from-mode
+                                        :to mode))
+                    t)
+                nil)))
+        (setq nskk-mode-switch--in-progress nil)))))
 
 ;;; インタラクティブコマンド
 

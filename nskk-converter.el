@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -162,8 +162,10 @@
 
      ;; n単独の場合
      ((= (length input) 1)
-      (when (eq nskk-converter-n-processing-mode 'aggressive)
-        (cons "ん" "")))
+      (pcase nskk-converter-n-processing-mode
+        ('aggressive
+         (cons "ん" ""))
+        (_ nil)))
 
      (t nil))))
 
@@ -205,6 +207,17 @@
   (let ((candidates (nskk-romaji-get-candidates input)))
     (and candidates t)))
 
+(defun nskk-converter--finalize-result (result)
+  "必要に応じて RESULT の未確定 n を確定させる。"
+  (if (and (eq nskk-converter-n-processing-mode 'smart)
+           (string= (nskk-converter-result-pending result) "n")
+           (not (string-empty-p (nskk-converter-result-converted result))))
+      (nskk-converter-result-create
+       :converted (concat (nskk-converter-result-converted result) "ん")
+       :pending ""
+       :consumed (1+ (nskk-converter-result-consumed result)))
+    result))
+
 ;;; 公開API
 
 (cl-defstruct (nskk-converter-result
@@ -223,85 +236,72 @@
 (defun nskk-convert-romaji (input)
   "INPUT をローマ字→かなに変換する。
 
-返り値は `nskk-converter-result' 構造体:
-  - converted: 確定した変換結果
-  - pending: 未確定の入力
-  - consumed: 消費した文字数
+`nskk-converter-result' 構造体を返し、
+converted/pending/consumed の各スロットに結果を格納する。
 
-変換ルール:
-1. 促音処理（kka → っか）
-2. 撥音処理（nn → ん、n+子音 → ん+子音）
+変換処理の概略:
+1. 促音処理
+2. 撥音処理
 3. 最長一致変換
-4. プレフィックスマッチング（未確定判定）
+4. プレフィックスマッチングによる未確定判定"
+  (let ((result
+         (if (string-empty-p input)
+             (nskk-converter-result-create :converted ""
+                                           :pending ""
+                                           :consumed 0)
 
-例:
-  (nskk-convert-romaji \"kya\")
-  ;; => #s(nskk-converter-result \"きゃ\" \"\" 3)
+           ;; 促音処理を試行
+           (if-let ((sokuon-result (nskk-converter--process-sokuon input)))
+               (let* ((sokuon-kana (car sokuon-result))
+                      (rest-input (cdr sokuon-result))
+                      ;; 残りを再帰的に変換
+                      (rest-result (nskk-convert-romaji rest-input)))
+                 (nskk-converter-result-create
+                  :converted (concat sokuon-kana
+                                     (nskk-converter-result-converted rest-result))
+                  :pending (nskk-converter-result-pending rest-result)
+                  :consumed (+ 1 (nskk-converter-result-consumed rest-result))))
 
-  (nskk-convert-romaji \"k\")
-  ;; => #s(nskk-converter-result \"\" \"k\" 0)
+             ;; 撥音処理を試行
+             (if-let ((n-result (nskk-converter--process-n input)))
+                 (let* ((n-kana (car n-result))
+                        (rest-input (cdr n-result))
+                        (rest-result (nskk-convert-romaji rest-input)))
+                   (nskk-converter-result-create
+                    :converted (concat n-kana
+                                       (nskk-converter-result-converted rest-result))
+                    :pending (nskk-converter-result-pending rest-result)
+                    :consumed (+ (- (length input) (length rest-input))
+                                (nskk-converter-result-consumed rest-result))))
 
-  (nskk-convert-romaji \"kka\")
-  ;; => #s(nskk-converter-result \"っか\" \"\" 3)
+               ;; 最長一致変換を試行
+               (if-let ((match-result (nskk-converter--longest-match input)))
+                   (let* ((kana (car match-result))
+                          (rest-input (cdr match-result))
+                          (consumed-len (- (length input) (length rest-input)))
+                          (rest-result (nskk-convert-romaji rest-input)))
+                     (nskk-converter-result-create
+                      :converted (concat kana
+                                         (nskk-converter-result-converted rest-result))
+                      :pending (nskk-converter-result-pending rest-result)
+                      :consumed (+ consumed-len
+                                  (nskk-converter-result-consumed rest-result))))
 
-  (nskk-convert-romaji \"nn\")
-  ;; => #s(nskk-converter-result \"ん\" \"\" 2)"
-  (if (string-empty-p input)
-      (nskk-converter-result-create :converted ""
-                                    :pending ""
-                                    :consumed 0)
+                 ;; プレフィックスマッチがあれば未確定として保持
+                 (if (nskk-converter--has-prefix-match input)
+                     (nskk-converter-result-create
+                      :converted ""
+                      :pending input
+                      :consumed 0)
 
-    ;; 促音処理を試行
-    (if-let ((sokuon-result (nskk-converter--process-sokuon input)))
-        (let* ((sokuon-kana (car sokuon-result))
-               (rest-input (cdr sokuon-result))
-               ;; 残りを再帰的に変換
-               (rest-result (nskk-convert-romaji rest-input)))
-          (nskk-converter-result-create
-           :converted (concat sokuon-kana
-                             (nskk-converter-result-converted rest-result))
-           :pending (nskk-converter-result-pending rest-result)
-           :consumed (+ 1 (nskk-converter-result-consumed rest-result))))
-
-      ;; 撥音処理を試行
-      (if-let ((n-result (nskk-converter--process-n input)))
-          (let* ((n-kana (car n-result))
-                 (rest-input (cdr n-result))
-                 (rest-result (nskk-convert-romaji rest-input)))
-            (nskk-converter-result-create
-             :converted (concat n-kana
-                               (nskk-converter-result-converted rest-result))
-             :pending (nskk-converter-result-pending rest-result)
-             :consumed (+ (- (length input) (length rest-input))
-                         (nskk-converter-result-consumed rest-result))))
-
-        ;; 最長一致変換を試行
-        (if-let ((match-result (nskk-converter--longest-match input)))
-            (let* ((kana (car match-result))
-                   (rest-input (cdr match-result))
-                   (consumed-len (- (length input) (length rest-input)))
-                   (rest-result (nskk-convert-romaji rest-input)))
-              (nskk-converter-result-create
-               :converted (concat kana
-                                 (nskk-converter-result-converted rest-result))
-               :pending (nskk-converter-result-pending rest-result)
-               :consumed (+ consumed-len
-                           (nskk-converter-result-consumed rest-result))))
-
-          ;; プレフィックスマッチがあれば未確定として保持
-          (if (nskk-converter--has-prefix-match input)
-              (nskk-converter-result-create
-               :converted ""
-               :pending input
-               :consumed 0)
-
-            ;; どのパターンにもマッチしない → 最初の1文字をそのまま出力
-            (let ((rest-result (nskk-convert-romaji (substring input 1))))
-              (nskk-converter-result-create
-               :converted (concat (substring input 0 1)
-                                 (nskk-converter-result-converted rest-result))
-               :pending (nskk-converter-result-pending rest-result)
-               :consumed (1+ (nskk-converter-result-consumed rest-result))))))))))
+                   ;; どのパターンにもマッチしない → 最初の1文字をそのまま出力
+                   (let ((rest-result (nskk-convert-romaji (substring input 1))))
+                     (nskk-converter-result-create
+                      :converted (concat (substring input 0 1)
+                                         (nskk-converter-result-converted rest-result))
+                      :pending (nskk-converter-result-pending rest-result)
+                      :consumed (1+ (nskk-converter-result-consumed rest-result)))))))))))
+    (nskk-converter--finalize-result result)))
 
 (defun nskk-convert-romaji-simple (input)
   "INPUT をローマ字→かなに変換し、確定部分のみを返す。

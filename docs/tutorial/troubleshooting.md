@@ -98,7 +98,7 @@ emacs --batch -f batch-byte-compile *.el
 
 **症状**:
 ```
-Package 'nskk' requires Emacs 31.0, but you have 29.1
+Package 'nskk' requires Emacs 30.0, but you have 29.1
 ```
 
 **解決策**:
@@ -106,7 +106,7 @@ Package 'nskk' requires Emacs 31.0, but you have 29.1
 **オプション1**: Emacsをアップグレード
 ```bash
 # macOS (Homebrew)
-brew install emacs-plus@31 --HEAD
+brew install emacs-plus@30 --HEAD
 
 # Linux (ソースからビルド)
 git clone https://git.savannah.gnu.org/git/emacs.git
@@ -699,7 +699,7 @@ NSKK Comprehensive Diagnostics
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✓ NSKK Version: 1.0.0
-✓ Emacs Version: 31.0.50
+✓ Emacs Version: 30.0.50
 ✓ Platform: darwin (macOS)
 
 Configuration:
@@ -794,7 +794,7 @@ A: はい、SKK形式の辞書は互換性があります。
 
 ### Q2: Windows環境で使えますか？
 
-A: Emacs 31が動作すればWindows上でも使用できます。
+A: Emacs 30以上が動作すればWindows上でも使用できます。
 
 ```elisp
 ;; Windows用パス設定

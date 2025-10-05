@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, performance
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -121,7 +121,20 @@ plist形式: (:cache-size N :gc-cons-threshold M ...)")
 
 (defvar nskk-auto-tune--learning-data nil
   "学習データ。
-形式: ((params . score) ...)")
+形式: ((:params plist :score number :timestamp number) ...)")
+
+(defun nskk-auto-tune--clamp-value (value min max)
+  "VALUEをMIN以上MAX以下に収めて返す。VALUEがnilのときはnilのまま返す。"
+  (when value
+    (min max (max min value))))
+
+(defun nskk-auto-tune--ensure-current-params ()
+  "現在のチューニングパラメータを返す。未設定の場合は初期化する。"
+  (unless (and nskk-auto-tune--current-params
+               (plist-get nskk-auto-tune--current-params :cache-size)
+               (plist-get nskk-auto-tune--current-params :gc-cons-threshold))
+    (nskk-auto-tune--initialize-params))
+  nskk-auto-tune--current-params)
 
 ;;; 自動チューニング制御
 
@@ -162,85 +175,125 @@ plist形式: (:cache-size N :gc-cons-threshold M ...)")
   "チューニングを1回実行する。"
   (interactive)
   (message "NSKK auto-tuning: Starting tuning cycle...")
-
-  ;; プロファイリング実行
-  (let ((performance-metrics (nskk-auto-tune--measure-performance)))
-
-    ;; スコア計算
-    (let ((score (nskk-auto-tune--calculate-score performance-metrics)))
-
-      ;; 履歴に記録
-      (push (list (current-time)
-                  :params (copy-sequence nskk-auto-tune--current-params)
-                  :metrics performance-metrics
-                  :score score)
-            nskk-auto-tune--history)
-
-      ;; 最高スコア更新チェック
-      (when (or (null nskk-auto-tune--best-score)
-                (< score nskk-auto-tune--best-score))
-        (setq nskk-auto-tune--best-score score
-              nskk-auto-tune--best-params (copy-sequence nskk-auto-tune--current-params))
-        (message "NSKK auto-tuning: New best score: %.3f" score))
-
-      ;; 学習データ更新
-      (when nskk-auto-tune-learning-enabled
-        (nskk-auto-tune--update-learning-data nskk-auto-tune--current-params score))
-
-      ;; 次回のパラメータ決定
-      (nskk-auto-tune--adjust-parameters performance-metrics score)
-
-      (message "NSKK auto-tuning: Cycle completed (score: %.3f)" score))))
+  (let* ((current-params (copy-sequence (nskk-auto-tune--ensure-current-params)))
+         (performance-metrics (nskk-auto-tune--measure-performance))
+         (score (nskk-auto-tune--calculate-score performance-metrics)))
+    (push (list (current-time)
+                :params current-params
+                :metrics performance-metrics
+                :score score)
+          nskk-auto-tune--history)
+    (when (or (null nskk-auto-tune--best-score)
+              (> score nskk-auto-tune--best-score))
+      (setq nskk-auto-tune--best-score score
+            nskk-auto-tune--best-params (copy-sequence current-params))
+      (message "NSKK auto-tuning: New best score: %.3f" score))
+    (when nskk-auto-tune-learning-enabled
+      (nskk-auto-tune--update-learning-data current-params score))
+    (setq nskk-auto-tune--current-params
+          (nskk-auto-tune--adjust-parameters performance-metrics score))
+    (message "NSKK auto-tuning: Cycle completed (score: %.3f)" score)
+    nskk-auto-tune--current-params))
 
 ;;; パラメータ初期化と調整
 
 (defun nskk-auto-tune--initialize-params ()
   "パラメータを初期化する。"
-  (setq nskk-auto-tune--current-params
-        (list :cache-size (if (boundp 'nskk-cache-default-capacity)
-                             nskk-cache-default-capacity
-                           1000)
-              :gc-cons-threshold gc-cons-threshold
-              :profiler-sampling-interval (if (boundp 'nskk-profiler-sampling-interval)
-                                             nskk-profiler-sampling-interval
-                                           1000000))))
+  (let* ((raw-cache (if (boundp 'nskk-cache-default-capacity)
+                        nskk-cache-default-capacity
+                      1000))
+         (cache-size (or (nskk-auto-tune--clamp-value raw-cache
+                                                     nskk-auto-tune-cache-size-min
+                                                     nskk-auto-tune-cache-size-max)
+                         nskk-auto-tune-cache-size-min))
+         (raw-gc (or gc-cons-threshold nskk-auto-tune-gc-cons-threshold-min))
+         (gc-threshold (or (nskk-auto-tune--clamp-value raw-gc
+                                                        nskk-auto-tune-gc-cons-threshold-min
+                                                        nskk-auto-tune-gc-cons-threshold-max)
+                           nskk-auto-tune-gc-cons-threshold-min))
+         (thread-pool-size (let ((candidate (cond
+                                             ((and (boundp 'nskk-thread-pool-default-size)
+                                                   (numberp (symbol-value 'nskk-thread-pool-default-size)))
+                                              (symbol-value 'nskk-thread-pool-default-size))
+                                             ((and (boundp 'nskk-infrastructure-thread-pool-size)
+                                                   (numberp (symbol-value 'nskk-infrastructure-thread-pool-size)))
+                                              (symbol-value 'nskk-infrastructure-thread-pool-size))
+                                             ((and (boundp 'nskk-thread-pool-size)
+                                                   (numberp (symbol-value 'nskk-thread-pool-size)))
+                                              (symbol-value 'nskk-thread-pool-size))
+                                             ((fboundp 'num-processors) (num-processors))
+                                             (t 4))))
+                               (max 2 (min (truncate candidate) 16))))
+         (sampling (if (boundp 'nskk-profiler-sampling-interval)
+                       nskk-profiler-sampling-interval
+                     1000000)))
+    (setq nskk-auto-tune--current-params
+          (list :cache-size (truncate cache-size)
+                :gc-cons-threshold (truncate gc-threshold)
+                :thread-pool-size thread-pool-size
+                :profiler-sampling-interval sampling))))
 
 (defun nskk-auto-tune--adjust-parameters (metrics score)
   "パフォーマンスメトリクスに基づいてパラメータを調整する。
 
 METRICS: パフォーマンスメトリクス
 SCORE: 現在のスコア"
-  (let ((new-params (copy-sequence nskk-auto-tune--current-params)))
-
+  (let* ((current (copy-sequence (nskk-auto-tune--ensure-current-params)))
+         (new-params (copy-sequence current))
+         (gc-metric (or (plist-get metrics :gc-frequency)
+                        (plist-get metrics :gc-count)))
+         (hit-rate (plist-get metrics :cache-hit-rate)))
     ;; GC頻度が高い場合、gc-cons-thresholdを増やす
-    (when (> (plist-get metrics :gc-frequency) 5.0)
-      (let* ((current-gc-threshold (plist-get new-params :gc-cons-threshold))
-             (new-gc-threshold (min (* current-gc-threshold 2)
-                                   nskk-auto-tune-gc-cons-threshold-max)))
-        (plist-put new-params :gc-cons-threshold new-gc-threshold)
-        (message "NSKK auto-tuning: Increasing gc-cons-threshold to %d" new-gc-threshold)))
-
+    (when (and gc-metric (> gc-metric 5.0))
+      (let* ((current-gc (or (plist-get new-params :gc-cons-threshold)
+                             nskk-auto-tune-gc-cons-threshold-min))
+             (candidate (* 2 current-gc))
+             (new-gc (nskk-auto-tune--clamp-value candidate
+                                                  nskk-auto-tune-gc-cons-threshold-min
+                                                  nskk-auto-tune-gc-cons-threshold-max)))
+        (when (and new-gc (> (truncate new-gc) current-gc))
+          (setq new-params (plist-put new-params :gc-cons-threshold (truncate new-gc)))
+          (message "NSKK auto-tuning: Increasing gc-cons-threshold to %d"
+                   (plist-get new-params :gc-cons-threshold)))))
     ;; GC頻度が低すぎる場合、gc-cons-thresholdを減らす
-    (when (< (plist-get metrics :gc-frequency) 0.1)
-      (let* ((current-gc-threshold (plist-get new-params :gc-cons-threshold))
-             (new-gc-threshold (max (/ current-gc-threshold 2)
-                                   nskk-auto-tune-gc-cons-threshold-min)))
-        (plist-put new-params :gc-cons-threshold new-gc-threshold)
-        (message "NSKK auto-tuning: Decreasing gc-cons-threshold to %d" new-gc-threshold)))
-
+    (when (and gc-metric (< gc-metric 0.1))
+      (let* ((current-gc (or (plist-get new-params :gc-cons-threshold)
+                             nskk-auto-tune-gc-cons-threshold-min))
+             (candidate (ceiling (/ (float current-gc) 2.0)))
+             (new-gc (nskk-auto-tune--clamp-value candidate
+                                                  nskk-auto-tune-gc-cons-threshold-min
+                                                  nskk-auto-tune-gc-cons-threshold-max)))
+        (when (and new-gc (< (truncate new-gc) current-gc))
+          (setq new-params (plist-put new-params :gc-cons-threshold
+                                     (max nskk-auto-tune-gc-cons-threshold-min (truncate new-gc))))
+          (message "NSKK auto-tuning: Decreasing gc-cons-threshold to %d"
+                   (plist-get new-params :gc-cons-threshold)))))
     ;; キャッシュヒット率が低い場合、キャッシュサイズを増やす
-    (when (and (plist-get metrics :cache-hit-rate)
-               (< (plist-get metrics :cache-hit-rate) 0.7))
-      (let* ((current-cache-size (plist-get new-params :cache-size))
-             (new-cache-size (min (floor (* current-cache-size 1.5))
-                                 nskk-auto-tune-cache-size-max)))
-        (plist-put new-params :cache-size new-cache-size)
-        (message "NSKK auto-tuning: Increasing cache size to %d" new-cache-size)))
-
+    (when (and hit-rate (< hit-rate 0.7))
+      (let* ((current-cache (or (plist-get new-params :cache-size)
+                                nskk-auto-tune-cache-size-min))
+             (candidate (ceiling (* current-cache 1.5)))
+             (new-cache (nskk-auto-tune--clamp-value candidate
+                                                     nskk-auto-tune-cache-size-min
+                                                     nskk-auto-tune-cache-size-max)))
+        (when (and new-cache (> (truncate new-cache) current-cache))
+          (setq new-params (plist-put new-params :cache-size (truncate new-cache)))
+          (message "NSKK auto-tuning: Increasing cache size to %d"
+                   (plist-get new-params :cache-size)))))
     ;; 学習ベースの調整
     (when nskk-auto-tune-learning-enabled
       (setq new-params (nskk-auto-tune--apply-learning new-params score)))
-
+    ;; 範囲内に収める
+    (let ((normalized-cache (nskk-auto-tune--clamp-value (plist-get new-params :cache-size)
+                                                         nskk-auto-tune-cache-size-min
+                                                         nskk-auto-tune-cache-size-max))
+          (normalized-gc (nskk-auto-tune--clamp-value (plist-get new-params :gc-cons-threshold)
+                                                      nskk-auto-tune-gc-cons-threshold-min
+                                                      nskk-auto-tune-gc-cons-threshold-max)))
+      (when normalized-cache
+        (setq new-params (plist-put new-params :cache-size (truncate normalized-cache))))
+      (when normalized-gc
+        (setq new-params (plist-put new-params :gc-cons-threshold (truncate normalized-gc)))))
     ;; パラメータ適用
     (nskk-auto-tune--apply-parameters new-params)
     (setq nskk-auto-tune--current-params new-params)))
@@ -272,64 +325,63 @@ PARAMS: 適用するパラメータのplist"
   "現在のパフォーマンスを測定する。
 
 返り値: plist
-  :avg-conversion-time - 平均変換時間（秒）
-  :gc-frequency        - GC頻度（回/秒）
-  :memory-usage        - メモリ使用量（cons cells）
-  :cache-hit-rate      - キャッシュヒット率"
-  (let ((metrics nil))
-
+  :search-time        - 平均変換時間（秒）
+  :gc-frequency       - GC頻度（回/秒）
+  :gc-count           - GC回数
+  :memory-usage       - メモリ使用量（cons cells）
+  :cache-hit-rate     - キャッシュヒット率"
+  (let ((metrics nil)
+        (iterations 20))
     ;; 変換時間測定（nskk-converterが存在する場合）
-    (when (fboundp 'nskk-convert-romaji)
-      (let ((total-time 0.0)
-            (iterations 100))
-        (dotimes (_ iterations)
-          (let ((start-time (current-time)))
-            (ignore-errors (nskk-convert-romaji "konnnichiha"))
-            (setq total-time (+ total-time
-                               (float-time (time-subtract (current-time) start-time))))))
-        (setq metrics (plist-put metrics :avg-conversion-time (/ total-time iterations)))))
-
+    (if (fboundp 'nskk-convert-romaji)
+        (let ((total-time 0.0))
+          (dotimes (_ iterations)
+            (let ((start-time (current-time)))
+              (ignore-errors (nskk-convert-romaji "konnnichiha"))
+              (setq total-time (+ total-time
+                                  (float-time (time-subtract (current-time) start-time))))))
+          (let ((avg (/ total-time iterations)))
+            (setq metrics (plist-put metrics :search-time avg))
+            (setq metrics (plist-put metrics :avg-conversion-time avg))))
+      (setq metrics (plist-put metrics :search-time 0.01))
+      (setq metrics (plist-put metrics :avg-conversion-time 0.01)))
     ;; GC統計
-    (setq metrics (plist-put metrics :gc-frequency
-                            (/ (float gcs-done)
-                              (max 1.0 (float-time (time-since before-init-time))))))
-
+    (let* ((gc-count gcs-done)
+           (elapsed (max 1.0 (float-time (time-since before-init-time)))))
+      (setq metrics (plist-put metrics :gc-count gc-count))
+      (setq metrics (plist-put metrics :gc-frequency (/ gc-count elapsed))))
     ;; メモリ使用量
     (let ((mem-counts (memory-use-counts)))
       (setq metrics (plist-put metrics :memory-usage (nth 0 mem-counts))))
-
-    ;; キャッシュヒット率（キャッシュが存在する場合）
-    (when (boundp 'nskk-cache-default-capacity)
-      ;; 実際のキャッシュインスタンスがあれば、その統計を取得
-      ;; ここでは簡易的にデフォルト値を返す
-      (setq metrics (plist-put metrics :cache-hit-rate 0.5)))
-
+    ;; キャッシュヒット率
+    (let ((hit-rate 0.5))
+      (when (boundp 'nskk-cache-hit-rate)
+        (setq hit-rate (float (symbol-value 'nskk-cache-hit-rate))))
+      (setq metrics (plist-put metrics :cache-hit-rate (max 0.0 (min 1.0 hit-rate)))))
     metrics))
 
 (defun nskk-auto-tune--calculate-score (metrics)
   "パフォーマンスメトリクスからスコアを計算する。
 
 METRICS: パフォーマンスメトリクス
-返り値: スコア（小さいほど良い）"
-  (let ((score 0.0))
-
-    ;; 変換時間（重み: 10.0）
-    (when (plist-get metrics :avg-conversion-time)
-      (setq score (+ score (* 10.0 (plist-get metrics :avg-conversion-time)))))
-
-    ;; GC頻度（重み: 1.0、理想は1-2回/秒）
-    (when (plist-get metrics :gc-frequency)
-      (let ((gc-freq (plist-get metrics :gc-frequency)))
-        (setq score (+ score (* 1.0 (abs (- gc-freq 1.5)))))))
-
-    ;; メモリ使用量（重み: 0.000001、100万cons cellsで1.0）
-    (when (plist-get metrics :memory-usage)
-      (setq score (+ score (* 0.000001 (plist-get metrics :memory-usage)))))
-
-    ;; キャッシュヒット率（重み: -5.0、高いほど良い）
-    (when (plist-get metrics :cache-hit-rate)
-      (setq score (+ score (* -5.0 (plist-get metrics :cache-hit-rate)))))
-
+返り値: スコア（大きいほど良い）"
+  (let* ((search-time (or (plist-get metrics :search-time)
+                          (plist-get metrics :avg-conversion-time)
+                          0.0))
+         (gc-metric (or (plist-get metrics :gc-frequency)
+                        (plist-get metrics :gc-count)
+                        0.0))
+         (memory-usage (or (plist-get metrics :memory-usage) 0))
+         (hit-rate (or (plist-get metrics :cache-hit-rate) 0.0))
+         (score 0.0))
+    ;; 変換時間: 速いほど高スコア
+    (setq score (+ score (max 0.0 (- 1.0 (* 10.0 search-time)))))
+    ;; GC頻度: 1〜2付近が理想
+    (setq score (+ score (max 0.0 (- 2.0 (abs (- gc-metric 1.5))))))
+    ;; メモリ使用量: 少ないほど高スコア
+    (setq score (+ score (max 0.0 (- 2.0 (* 0.0000005 memory-usage)))))
+    ;; キャッシュヒット率: 高いほど高スコア
+    (setq score (+ score (* 5.0 (max 0.0 (min 1.0 hit-rate)))))
     score))
 
 ;;; 学習ベースチューニング
@@ -339,12 +391,15 @@ METRICS: パフォーマンスメトリクス
 
 PARAMS: パラメータ
 SCORE: スコア"
-  (push (cons (copy-sequence params) score) nskk-auto-tune--learning-data)
-
-  ;; 履歴サイズ制限（最新100件のみ保持）
-  (when (> (length nskk-auto-tune--learning-data) 100)
-    (setq nskk-auto-tune--learning-data
-          (cl-subseq nskk-auto-tune--learning-data 0 100))))
+  (when params
+    (let ((entry (list :params (copy-sequence params)
+                       :score (float score)
+                       :timestamp (float-time))))
+      (push entry nskk-auto-tune--learning-data)
+      ;; 履歴サイズ制限（最新100件のみ保持）
+      (when (> (length nskk-auto-tune--learning-data) 100)
+        (setq nskk-auto-tune--learning-data
+              (cl-subseq nskk-auto-tune--learning-data 0 100))))))
 
 (defun nskk-auto-tune--apply-learning (params current-score)
   "学習データに基づいてパラメータを調整する。
@@ -352,38 +407,41 @@ SCORE: スコア"
 PARAMS: 現在のパラメータ
 CURRENT-SCORE: 現在のスコア
 返り値: 調整後のパラメータ"
+  (ignore current-score)
   (if (< (length nskk-auto-tune--learning-data) 10)
-      ;; データ不足の場合は現在のパラメータをそのまま返す
       params
-
-    ;; 良好なスコアを持つパラメータの平均を計算
     (let* ((sorted-data (sort (copy-sequence nskk-auto-tune--learning-data)
-                             (lambda (a b) (< (cdr a) (cdr b)))))
-           (top-10-percent (cl-subseq sorted-data 0
-                                     (max 1 (/ (length sorted-data) 10))))
-           (avg-cache-size 0)
-           (avg-gc-threshold 0)
-           (count (length top-10-percent)))
-
-      ;; 平均計算
-      (dolist (entry top-10-percent)
-        (let ((p (car entry)))
-          (setq avg-cache-size (+ avg-cache-size (plist-get p :cache-size)))
-          (setq avg-gc-threshold (+ avg-gc-threshold (plist-get p :gc-cons-threshold)))))
-
-      (setq avg-cache-size (/ avg-cache-size count))
-      (setq avg-gc-threshold (/ avg-gc-threshold count))
-
-      ;; 現在の値と学習した平均値を加重平均
-      (let ((new-params (copy-sequence params))
-            (learning-weight (if nskk-auto-tune-aggressive 0.7 0.3)))
-        (plist-put new-params :cache-size
-                   (floor (+ (* learning-weight avg-cache-size)
-                            (* (- 1.0 learning-weight) (plist-get params :cache-size)))))
-        (plist-put new-params :gc-cons-threshold
-                   (floor (+ (* learning-weight avg-gc-threshold)
-                            (* (- 1.0 learning-weight) (plist-get params :gc-cons-threshold)))))
-        new-params))))
+                              (lambda (a b)
+                                (> (plist-get a :score)
+                                   (plist-get b :score)))))
+           (limit (max 1 (ceiling (* (length sorted-data) 0.1))))
+           (top-entries (cl-subseq sorted-data 0 limit))
+           (sum-cache 0.0)
+           (sum-gc 0.0)
+           (count 0))
+      (dolist (entry top-entries)
+        (let* ((p (plist-get entry :params))
+               (cache (plist-get p :cache-size))
+               (gc (plist-get p :gc-cons-threshold)))
+          (when (and cache gc)
+            (setq sum-cache (+ sum-cache cache))
+            (setq sum-gc (+ sum-gc gc))
+            (setq count (1+ count)))))
+      (if (zerop count)
+          params
+        (let* ((avg-cache (/ sum-cache count))
+               (avg-gc (/ sum-gc count))
+               (learning-weight (if nskk-auto-tune-aggressive 0.7 0.3))
+               (base-cache (or (plist-get params :cache-size) avg-cache))
+               (base-gc (or (plist-get params :gc-cons-threshold) avg-gc))
+               (new-params (copy-sequence params)))
+          (setq new-params (plist-put new-params :cache-size
+                                      (truncate (+ (* learning-weight avg-cache)
+                                                   (* (- 1.0 learning-weight) base-cache)))))
+          (setq new-params (plist-put new-params :gc-cons-threshold
+                                      (truncate (+ (* learning-weight avg-gc)
+                                                   (* (- 1.0 learning-weight) base-gc)))))
+          new-params)))))
 
 ;;; A/Bテスト
 
@@ -493,7 +551,7 @@ CONFIGS: テストする設定のリスト
 
     ;; 最良のパラメータ
     (when nskk-auto-tune--best-params
-      (princ "--- Best Parameters (Score: %.3f) ---\n\n" nskk-auto-tune--best-score)
+      (princ (format "--- Best Parameters (Score: %.3f) ---\n\n" nskk-auto-tune--best-score))
       (princ (format "Cache Size: %d\n"
                      (plist-get nskk-auto-tune--best-params :cache-size)))
       (princ (format "GC Cons Threshold: %d\n\n"
@@ -518,7 +576,9 @@ CONFIGS: テストする設定のリスト
         nskk-auto-tune--current-params nil
         nskk-auto-tune--best-params nil
         nskk-auto-tune--best-score nil
-        nskk-auto-tune--learning-data nil)
+        nskk-auto-tune--learning-data nil
+        nskk-auto-tune--ab-test-configs nil
+        nskk-auto-tune--ab-test-results nil)
 
   (message "NSKK auto-tuning reset"))
 
@@ -526,12 +586,19 @@ CONFIGS: テストする設定のリスト
   "最良のパラメータを適用する。"
   (interactive)
   (unless nskk-auto-tune--best-params
+    (when nskk-auto-tune--learning-data
+      (let* ((best (car (sort (copy-sequence nskk-auto-tune--learning-data)
+                              (lambda (a b)
+                                (> (plist-get a :score)
+                                   (plist-get b :score)))))))
+        (when best
+          (setq nskk-auto-tune--best-params (copy-sequence (plist-get best :params)))
+          (setq nskk-auto-tune--best-score (plist-get best :score))))))
+  (unless nskk-auto-tune--best-params
     (error "No best parameters available"))
-
   (nskk-auto-tune--apply-parameters nskk-auto-tune--best-params)
-  (setq nskk-auto-tune--current-params nskk-auto-tune--best-params)
-
-  (message "Applied best parameters (score: %.3f)" nskk-auto-tune--best-score))
+  (setq nskk-auto-tune--current-params (copy-sequence nskk-auto-tune--best-params))
+  (message "Applied best parameters (score: %.3f)" (or nskk-auto-tune--best-score 0.0)))
 
 (provide 'nskk-auto-tune)
 

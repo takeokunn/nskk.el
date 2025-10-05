@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, analytics, dashboard
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0") (transient "0.5.0"))
+;; Package-Requires: ((emacs "30.0") (transient "0.5.0"))
 
 ;; This file is part of NSKK.
 

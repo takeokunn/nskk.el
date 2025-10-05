@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Maintainer: NSKK Development Team
 ;; Keywords: japanese, input-method, skk, learning, async
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;;; Commentary:
 
@@ -27,6 +27,7 @@
 
 (require 'cl-lib)
 (require 'nskk-thread-pool)
+(require 'nskk-learning-persist)
 
 ;;; カスタマイズ変数
 
@@ -261,8 +262,13 @@ CONTEXT は文脈情報（オプション）。"
   "学習データを自動保存する。"
   (when nskk-async-learning--state
     (message "Auto-saving learning data...")
-    ;; TODO: 実際の保存処理は nskk-learning-persist.el で実装される
-    (message "Learning data auto-saved")))
+    (condition-case err
+        (progn
+          (nskk-persist-save-all)
+          (message "Learning data auto-saved"))
+      (error
+       (message "Failed to auto-save learning data: %s"
+                (error-message-string err))))))
 
 ;;;###autoload
 (defun nskk-async-learning-save ()
@@ -295,8 +301,11 @@ CONTEXT は文脈情報（オプション）。"
   Batch interval: %.1f seconds"
                  queue-size freq-count ctx-count
                  nskk-async-learning-batch-size
-                 nskk-async-learning-batch-interval))
-    (message "Async learning not initialized")))
+                 nskk-async-learning-batch-interval)
+        nil)
+    (progn
+      (message "Async learning not initialized")
+      nil)))
 
 ;;; テスト用ヘルパー
 

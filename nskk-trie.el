@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, dictionary, trie
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -201,6 +201,11 @@
     (if (and node (nskk-trie-node-is-end node))
         (cons (nskk-trie-node-value node) t)
       (cons nil nil))))
+
+;;;###autoload
+(defun nskk-trie-lookup-values (trie key)
+  "`nskk-trie-lookup' の簡易ラッパー。見つかった場合は値のみを返す。"
+  (car (nskk-trie-lookup trie key)))
 
 ;;;###autoload
 (defun nskk-trie-has-key-p (trie key)

@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, performance
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -113,6 +113,9 @@
   "検出されたGC問題のリスト。
 各要素: (issue-type description severity)")
 
+(defvar nskk-bottleneck--alerts nil
+  "直近のボトルネックアラートを保持するリスト。")
+
 ;;; ボトルネック検出制御
 
 ;;;###autoload
@@ -179,7 +182,6 @@
   "関数レベルのボトルネックを分析する。"
   (setq nskk-bottleneck--hotpaths nil
         nskk-bottleneck--slow-functions nil)
-
   (dolist (entry nskk-profiler--function-stats)
     (let* ((name (car entry))
            (count (nth 1 entry))
@@ -187,7 +189,6 @@
            (min-time (nth 3 entry))
            (max-time (nth 4 entry))
            (avg (/ total count)))
-
       ;; ホットパス検出（呼び出し回数が多い）
       (when (>= count nskk-bottleneck-call-count-threshold)
         (push (list name
@@ -195,7 +196,6 @@
                     :total-time total
                     :avg-time avg)
               nskk-bottleneck--hotpaths))
-
       ;; 遅延関数検出（平均実行時間が長い）
       (when (>= avg nskk-bottleneck-latency-threshold)
         (push (list name
@@ -203,110 +203,123 @@
                     :avg-time avg
                     :call-count count)
               nskk-bottleneck--slow-functions))))
-
   ;; ソート
   (setq nskk-bottleneck--hotpaths
         (sort nskk-bottleneck--hotpaths
               (lambda (a b) (> (plist-get (cdr a) :call-count)
-                             (plist-get (cdr b) :call-count)))))
-
+                               (plist-get (cdr b) :call-count)))))
   (setq nskk-bottleneck--slow-functions
         (sort nskk-bottleneck--slow-functions
               (lambda (a b) (> (plist-get (cdr a) :avg-time)
-                             (plist-get (cdr b) :avg-time))))))
+                               (plist-get (cdr b) :avg-time)))))
+  (list :hot-functions nskk-bottleneck--hotpaths
+        :slow-functions nskk-bottleneck--slow-functions))
 
 (defun nskk-bottleneck--analyze-memory ()
   "メモリ使用量を分析してボトルネックを検出する。"
   (setq nskk-bottleneck--memory-issues nil)
-
-  (when (>= (length nskk-profiler--memory-snapshots) 2)
-    (let* ((snapshots (reverse nskk-profiler--memory-snapshots))
-           (initial (cdr (car snapshots)))
-           (final (cdr (car (last snapshots))))
-           (cons-delta (- (or (plist-get final :cons-cells) 0)
-                         (or (plist-get initial :cons-cells) 0))))
-
-      ;; Cons cells増加チェック
-      (when (>= cons-delta nskk-bottleneck-memory-delta-threshold)
-        (push (list :excessive-cons-allocation
-                    :description (format "Excessive cons cell allocation: %d cells"
-                                       cons-delta)
-                    :severity 'high)
-              nskk-bottleneck--memory-issues))
-
-      ;; その他のメモリ問題チェック
-      (dolist (key '(:floats :vectors :strings))
-        (let* ((delta (- (or (plist-get final key) 0)
-                        (or (plist-get initial key) 0)))
-               (threshold (* nskk-bottleneck-memory-delta-threshold 0.1)))
-          (when (>= delta threshold)
-            (push (list (intern (format "excessive-%s-allocation" (substring (symbol-name key) 1)))
-                        :description (format "High %s allocation: %d"
-                                           (substring (symbol-name key) 1)
-                                           delta)
-                        :severity 'medium)
-                  nskk-bottleneck--memory-issues)))))))
+  (let ((memory-delta 0))
+    (when (>= (length nskk-profiler--memory-snapshots) 2)
+      (let* ((snapshots (reverse nskk-profiler--memory-snapshots))
+             (initial (cdr (car snapshots)))
+             (final (cdr (car (last snapshots))))
+             (cons-delta (- (or (plist-get final :cons-cells) 0)
+                            (or (plist-get initial :cons-cells) 0))))
+        (setq memory-delta cons-delta)
+        ;; Cons cells増加チェック
+        (when (>= cons-delta nskk-bottleneck-memory-delta-threshold)
+          (push (list :excessive-cons-allocation
+                      :description (format "Excessive cons cell allocation: %d cells" cons-delta)
+                      :severity 'high)
+                nskk-bottleneck--memory-issues))
+        ;; その他のメモリ問題チェック
+        (dolist (key '(:floats :vectors :strings))
+          (let* ((delta (- (or (plist-get final key) 0)
+                             (or (plist-get initial key) 0)))
+                 (threshold (* nskk-bottleneck-memory-delta-threshold 0.1)))
+            (when (>= delta threshold)
+              (push (list (intern (format "excessive-%s-allocation" (substring (symbol-name key) 1)))
+                          :description (format "High %s allocation: %d"
+                                               (substring (symbol-name key) 1)
+                                               delta)
+                          :severity 'medium)
+                    nskk-bottleneck--memory-issues))))))
+    (list :memory-delta memory-delta
+          :issues nskk-bottleneck--memory-issues)))
 
 (defun nskk-bottleneck--analyze-gc ()
   "GCパフォーマンスを分析してボトルネックを検出する。"
   (setq nskk-bottleneck--gc-issues nil)
-
-  (when (> (length nskk-profiler--gc-events) 0)
-    (let* ((elapsed (if nskk-bottleneck--start-time
-                       (float-time (time-subtract (current-time)
-                                                 nskk-bottleneck--start-time))
-                     1.0))
-           (gc-count (length nskk-profiler--gc-events))
-           (gc-frequency (/ gc-count elapsed)))
-
-      ;; GC頻度チェック
-      (when (>= gc-frequency nskk-bottleneck-gc-frequency-threshold)
-        (push (list :high-gc-frequency
-                    :description (format "High GC frequency: %.2f GCs/sec" gc-frequency)
-                    :severity 'high)
-              nskk-bottleneck--gc-issues))
-
-      ;; GC時間チェック
-      (when (> gc-count 0)
-        (let* ((events (reverse nskk-profiler--gc-events))
-               (first-gc (plist-get (cadr (car events)) :gc-elapsed))
-               (last-gc (plist-get (cadr (car (last events))) :gc-elapsed))
-               (gc-time-delta (- last-gc first-gc))
-               (gc-ratio (/ gc-time-delta elapsed)))
-          (when (>= gc-ratio 0.1) ; GC時間が全体の10%以上
-            (push (list :excessive-gc-time
-                        :description (format "Excessive GC time: %.2f%% of total"
-                                           (* gc-ratio 100))
-                        :severity 'high)
-                  nskk-bottleneck--gc-issues)))))))
-
-;;; アラート生成
+  (let ((gc-count 0)
+        (gc-frequency 0.0))
+    (when (> (length nskk-profiler--gc-events) 0)
+      (let* ((elapsed (if nskk-bottleneck--start-time
+                          (float-time (time-subtract (current-time)
+                                                     nskk-bottleneck--start-time))
+                        1.0))
+             (events (reverse nskk-profiler--gc-events)))
+        (setq gc-count (length events))
+        (setq gc-frequency (/ gc-count elapsed))
+        ;; GC頻度チェック
+        (when (>= gc-frequency nskk-bottleneck-gc-frequency-threshold)
+          (push (list :high-gc-frequency
+                      :description (format "High GC frequency: %.2f GCs/sec" gc-frequency)
+                      :severity 'high)
+                nskk-bottleneck--gc-issues))
+        ;; GC時間チェック
+        (when (> gc-count 0)
+          (let* ((first-gc (plist-get (cdr (car events)) :gc-elapsed))
+                 (last-gc (plist-get (cdr (car (last events))) :gc-elapsed))
+                 (gc-time-delta (- last-gc first-gc))
+                 (gc-ratio (/ gc-time-delta elapsed)))
+            (when (>= gc-ratio 0.1)
+              (push (list :excessive-gc-time
+                          :description (format "Excessive GC time: %.2f%% of total"
+                                               (* gc-ratio 100))
+                          :severity 'high)
+                    nskk-bottleneck--gc-issues))))))
+    (list :gc-count gc-count
+          :gc-frequency gc-frequency
+          :issues nskk-bottleneck--gc-issues)))
 
 (defun nskk-bottleneck--generate-alerts ()
   "検出されたボトルネックに対してアラートを生成する。"
-  (let ((total-issues (+ (length nskk-bottleneck--hotpaths)
-                        (length nskk-bottleneck--slow-functions)
-                        (length nskk-bottleneck--memory-issues)
-                        (length nskk-bottleneck--gc-issues))))
+  (let ((alerts nil)
+        (total-issues (+ (length nskk-bottleneck--hotpaths)
+                         (length nskk-bottleneck--slow-functions)
+                         (length nskk-bottleneck--memory-issues)
+                         (length nskk-bottleneck--gc-issues))))
+    (setq nskk-bottleneck--alerts nil)
     (when (> total-issues 0)
       (message "⚠ NSKK Bottleneck Alert: %d issue(s) detected" total-issues)
-
-      ;; 重要度の高い問題を個別に通知
+      ;; メモリアラート
       (dolist (issue nskk-bottleneck--memory-issues)
-        (when (eq (plist-get (cdr issue) :severity) 'high)
-          (message "  • Memory: %s" (plist-get (cdr issue) :description))))
-
+        (let ((severity (plist-get (cdr issue) :severity))
+              (desc (plist-get (cdr issue) :description)))
+          (when (eq severity 'high)
+            (message "  • Memory: %s" desc)
+            (push (list :type 'memory :severity severity :description desc)
+                  alerts))))
+      ;; GCアラート
       (dolist (issue nskk-bottleneck--gc-issues)
-        (when (eq (plist-get (cdr issue) :severity) 'high)
-          (message "  • GC: %s" (plist-get (cdr issue) :description))))
-
-      (when (> (length nskk-bottleneck--slow-functions) 0)
-        (let ((slowest (car nskk-bottleneck--slow-functions)))
-          (message "  • Slowest function: %s (%.3fs avg)"
-                   (car slowest)
-                   (plist-get (cdr slowest) :avg-time)))))))
-
-;;; レポート生成
+        (let ((severity (plist-get (cdr issue) :severity))
+              (desc (plist-get (cdr issue) :description)))
+          (when (eq severity 'high)
+            (message "  • GC: %s" desc)
+            (push (list :type 'gc :severity severity :description desc)
+                  alerts))))
+      ;; 遅い関数アラート
+      (when nskk-bottleneck--slow-functions
+        (let* ((slowest (car nskk-bottleneck--slow-functions))
+               (fn (car slowest))
+               (avg (plist-get (cdr slowest) :avg-time))
+               (max (plist-get (cdr slowest) :max-time)))
+          (message "  • Slowest function: %s (%.3fs avg)" fn avg)
+          (push (list :type 'latency :function fn :avg-time avg :max-time max)
+                alerts))))
+    (let ((result (nreverse alerts)))
+      (setq nskk-bottleneck--alerts result)
+      result)))
 
 (defun nskk-bottleneck-report ()
   "ボトルネック検出レポートを表示する。"
@@ -384,46 +397,39 @@
 
     ;; 推奨事項
     (princ "--- Recommendations ---\n\n")
-    (nskk-bottleneck--generate-recommendations)
+    (let ((recs (nskk-bottleneck--generate-recommendations)))
+      (if recs
+          (dolist (rec recs)
+            (princ (format "%s\n" rec)))
+        (princ "No specific recommendations. Performance looks good!\n")))
 
     (princ "\n=======================================================\n")))
 
 (defun nskk-bottleneck--generate-recommendations ()
   "ボトルネックに対する推奨事項を生成する。"
   (let ((recommendations nil))
-
     ;; ホットパス最適化
     (when nskk-bottleneck--hotpaths
       (push "• Optimize hot paths: Consider caching or memoization for frequently called functions"
             recommendations))
-
     ;; 遅延関数最適化
     (when nskk-bottleneck--slow-functions
       (push "• Reduce latency: Profile slow functions with `profiler-report' for detailed analysis"
             recommendations))
-
     ;; メモリ最適化
     (when nskk-bottleneck--memory-issues
       (push "• Reduce memory allocation: Consider using `cl-loop' instead of `mapcar' for large datasets"
             recommendations)
       (push "• Increase gc-cons-threshold temporarily during heavy operations"
             recommendations))
-
     ;; GC最適化
     (when nskk-bottleneck--gc-issues
       (push "• Reduce GC pressure: Minimize temporary object creation"
             recommendations)
       (push "• Consider using object pooling for frequently allocated objects"
             recommendations))
+    (nreverse recommendations)))
 
-    (if recommendations
-        (dolist (rec (reverse recommendations))
-          (princ (format "%s\n" rec)))
-      (princ "No specific recommendations. Performance looks good!\n"))))
-
-;;; インタラクティブダッシュボード（簡易版）
-
-;;;###autoload
 (defun nskk-bottleneck-dashboard ()
   "ボトルネック検出のダッシュボードを表示する。
 Transient UI版は別途nskk-bottleneck-dashboard.elで提供。"
@@ -449,7 +455,8 @@ Transient UI版は別途nskk-bottleneck-dashboard.elで提供。"
         nskk-bottleneck--hotpaths nil
         nskk-bottleneck--slow-functions nil
         nskk-bottleneck--memory-issues nil
-        nskk-bottleneck--gc-issues nil)
+        nskk-bottleneck--gc-issues nil
+        nskk-bottleneck--alerts nil)
 
   ;; プロファイラーもリセット
   (nskk-profiler-reset)

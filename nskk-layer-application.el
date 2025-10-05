@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, architecture
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -373,10 +373,31 @@ HANKAKUは半角文字列。"
 (defun nskk-application--delegate-to-core (action &rest args)
   "Core Engine Layerに処理を委譲する。
 ACTIONは実行するアクション、ARGSは引数。"
-  ;; Extension Layer経由でCore Layerに委譲
-  ;; 実装は統合時に完成
   (nskk-application--log "Delegating to core: %s with %S" action args)
-  nil)
+  (condition-case err
+      (pcase action
+        (:convert-romaji
+         (require 'nskk-converter)
+         (when-let* ((input (car args))
+                     (result (nskk-convert-romaji input)))
+           (nskk-converter-result-converted result)))
+
+        (:hiragana-to-katakana
+         (require 'nskk-special-chars)
+         (when-let ((hiragana (car args)))
+           (nskk-hiragana-to-katakana hiragana)))
+
+        (:hankaku-to-zenkaku
+         (require 'nskk-layer-core)
+         (when-let ((hankaku (car args)))
+           (nskk-core-hankaku-to-zenkaku hankaku)))
+
+        (_
+         (nskk-application--log "Unknown core action: %s" action)
+         nil))
+    (error
+     (nskk-application--log "Core delegation error for %s: %s" action err)
+     nil)))
 
 (defun nskk-application--delegate-to-data (action &rest args)
   "Data Access Layerに処理を委譲する。

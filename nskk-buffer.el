@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -41,6 +41,51 @@
 
 (require 'cl-lib)
 (require 'nskk-state)
+
+;;; バッファインスタンス管理
+
+(cl-defstruct (nskk-buffer-instance
+               (:constructor nskk-buffer--instance-create))
+  "NSKKの仮想バッファを表す構造体。"
+  (buffer nil :type buffer :read-only t))
+
+(defun nskk-buffer-p (object)
+  "OBJECT が有効なNSKKバッファインスタンスか判定する。"
+  (and (nskk-buffer-instance-p object)
+       (buffer-live-p (nskk-buffer-instance-buffer object))))
+
+(defmacro nskk-buffer--with-instance (instance &rest body)
+  "INSTANCE で示されるバッファをカレントにして BODY を評価する。"
+  (declare (indent 1))
+  `(let ((ctx ,instance))
+     (unless (nskk-buffer-p ctx)
+       (signal 'wrong-type-argument (list 'nskk-buffer-p ctx)))
+     (let ((buffer (nskk-buffer-instance-buffer ctx)))
+       (with-current-buffer buffer
+         (nskk-state-init)
+         ,@body))))
+
+;;;###autoload
+(defun nskk-buffer-create ()
+  "NSKK入力用の一時バッファを生成して返す。"
+  (let ((buffer (generate-new-buffer " *nskk-buffer*")))
+    (with-current-buffer buffer
+      (nskk-state-init)
+      (setq-local nskk-buffer--overlay nil)
+      (setq-local nskk-buffer--undo-stack nil)
+      (setq-local nskk-buffer--redo-stack nil)
+      (setq-local nskk-buffer--in-undo-redo nil)
+      (goto-char (point-max)))
+    (nskk-buffer--instance-create :buffer buffer)))
+
+(defun nskk-buffer-contents (buffer-instance)
+  "BUFFER-INSTANCE の内容を文字列で返す。"
+  (nskk-buffer--with-instance buffer-instance
+    (buffer-substring-no-properties (point-min) (point-max))))
+
+(defun nskk-buffer-content (buffer-instance)
+  "`nskk-buffer-contents' のエイリアス。"
+  (nskk-buffer-contents buffer-instance))
 
 ;;; カスタマイズ変数
 
@@ -143,16 +188,8 @@
 
 ;;; バッファ挿入・削除
 
-(defun nskk-buffer-insert (string)
-  "STRING を現在位置に挿入する。
-
-引数:
-  STRING - 挿入する文字列
-
-副作用:
-  - バッファへの文字列挿入
-  - マーカー位置の更新
-  - アンドゥ履歴への記録"
+(defun nskk-buffer--insert-current (string)
+  "カレントバッファに STRING を挿入する内部関数。"
   (unless nskk-current-state
     (nskk-state-init))
 
@@ -176,6 +213,16 @@
 
     ;; 履歴保存
     (nskk-buffer--save-history 'insert string)))
+
+(defun nskk-buffer-insert (arg &optional string)
+  "NSKKバッファに文字列を挿入する。
+
+ARG が文字列の場合はカレントバッファに挿入する。ARG が
+`nskk-buffer-instance' の場合は STRING を指定してそのバッファに挿入する。"
+  (if string
+      (nskk-buffer--with-instance arg
+        (nskk-buffer--insert-current string))
+    (nskk-buffer--insert-current arg)))
 
 (defun nskk-buffer-delete-region (start end)
   "START から END までの領域を削除する。
@@ -246,16 +293,8 @@
 
 ;;; バッファクリア
 
-(defun nskk-buffer-clear ()
-  "未確定入力を全てクリアする。
-
-副作用:
-  - バッファから未確定テキストを削除
-  - マーカーのクリア
-  - オーバーレイの削除
-  - 状態のクリア"
-  (interactive)
-
+(defun nskk-buffer--clear-current ()
+  "カレントバッファの未確定入力をクリアする内部関数。"
   (when (and nskk-current-state
              (nskk-state-marker-start nskk-current-state)
              (nskk-state-marker-end nskk-current-state))
@@ -275,6 +314,16 @@
 
       ;; 履歴保存
       (nskk-buffer--save-history 'clear nil))))
+
+(defun nskk-buffer-clear (&optional buffer-instance)
+  "未確定入力を全てクリアする。
+
+BUFFER-INSTANCE を指定すると、そのNSKKバッファに対して処理を行う。"
+  (interactive)
+  (if buffer-instance
+      (nskk-buffer--with-instance buffer-instance
+        (nskk-buffer--clear-current))
+    (nskk-buffer--clear-current)))
 
 ;;; 確定処理
 

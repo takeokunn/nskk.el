@@ -2,7 +2,7 @@
 
 ## はじめに
 
-NSKKは、Emacs 31の最新機能を活用した次世代SKK（Simple Kana to Kanji conversion program）実装です。このチュートリアルでは、NSKKの基本的な使い方を学び、効率的な日本語入力を習得できます。
+NSKKは、Emacs 30以上の最新機能を活用した次世代SKK（Simple Kana to Kanji conversion program）実装です。このチュートリアルでは、NSKKの基本的な使い方を学び、効率的な日本語入力を習得できます。
 
 ### このチュートリアルで学べること
 
@@ -20,7 +20,7 @@ NSKKは、Emacs 31の最新機能を活用した次世代SKK（Simple Kana to Ka
 
 ### 必須要件
 
-- **Emacs 31.0以上**: NSKKはEmacs 31の新機能を活用しています
+- **Emacs 30以上**: NSKKはEmacs 30以上の新機能を活用しています
 - **UTF-8環境**: 日本語処理に必須です
 - **基本的なEmacsの知識**: ファイルの開閉、バッファ操作など
 
@@ -35,7 +35,7 @@ M-x emacs-version
 以下のような出力が表示されればOKです：
 
 ```
-GNU Emacs 31.0.50 (build 1, x86_64-apple-darwin24.1.0, NS appkit-2487.20 Version 15.1 (Build 24B83))
+GNU Emacs 30.0.50 (build 1, x86_64-apple-darwin24.1.0, NS appkit-2487.20 Version 15.1 (Build 24B83))
 ```
 
 ## インストール

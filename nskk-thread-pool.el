@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Maintainer: NSKK Development Team
 ;; Keywords: japanese, input-method, skk, threading
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;;; Commentary:
 

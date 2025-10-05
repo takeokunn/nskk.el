@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, analytics, pattern
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -337,50 +337,80 @@ METRICS-HISTORY: メトリクス履歴のリスト
                       (nskk-analytics-pattern--build-metrics-history)))
          (trends nil))
 
-    (when (>= (length history) 2)
-      ;; 変換数のトレンド
-      (let ((conversion-trend (nskk-analytics-pattern--calculate-trend
-                               history
-                               #'nskk-analytics-metrics-conversions)))
-        (push `(conversions . ,conversion-trend) trends))
+    (if (>= (length history) 2)
+        (progn
+          ;; 変換数のトレンド
+          (let ((conversion-trend (nskk-analytics-pattern--calculate-trend
+                                   history
+                                   #'nskk-analytics-metrics-conversions)))
+            (push `(conversions . ,conversion-trend) trends))
 
-      ;; 精度のトレンド
-      (let ((accuracy-trend (nskk-analytics-pattern--calculate-trend
-                             history
-                             #'nskk-analytics-metrics-accuracy)))
-        (push `(accuracy . ,accuracy-trend) trends))
+          ;; 精度のトレンド
+          (let ((accuracy-trend (nskk-analytics-pattern--calculate-trend
+                                 history
+                                 #'nskk-analytics-metrics-accuracy)))
+            (push `(accuracy . ,accuracy-trend) trends))
 
-      ;; 速度のトレンド
-      (let ((speed-trend (nskk-analytics-pattern--calculate-trend
-                          history
-                          #'nskk-analytics-metrics-speed)))
-        (push `(speed . ,speed-trend) trends)))
+          ;; 速度のトレンド
+          (let ((speed-trend (nskk-analytics-pattern--calculate-trend
+                              history
+                              #'nskk-analytics-metrics-speed)))
+            (push `(speed . ,speed-trend) trends))
 
-    (setq nskk-analytics-pattern--trends (nreverse trends))
+          (setq nskk-analytics-pattern--trends (nreverse trends)))
+      ;; データが不足している場合は安定トレンドとして扱う
+      (let ((stable-trends '((conversions . stable)
+                             (accuracy . stable)
+                             (speed . stable))))
+        (setq trends stable-trends)
+        (setq nskk-analytics-pattern--trends stable-trends)))
 
     (when (called-interactively-p 'interactive)
       (message "Trends analyzed: %d metrics tracked" (length trends)))
 
     nskk-analytics-pattern--trends))
 
-(defun nskk-analytics-pattern--build-metrics-history ()
-  "イベントから日次メトリクス履歴を構築する。"
-  (let ((daily-metrics (make-hash-table :test 'equal)))
-    ;; 日付ごとにイベントをグループ化
-    (dolist (event nskk-analytics-pattern--events)
-      (let* ((time (seconds-to-time (nskk-analytics-event-timestamp event)))
-             (date (format-time-string "%Y-%m-%d" time)))
-        (push event (gethash date daily-metrics))))
+(defcustom nskk-analytics-pattern-trend-interval 3600
+  "トレンド分析で集計する時間間隔（秒）。"
+  :type 'integer
+  :group 'nskk-analytics-pattern)
 
-    ;; 各日のメトリクスを計算
+(defun nskk-analytics-pattern--bucket-start-time (bucket-index)
+  "BUCKET-INDEX に対応する開始時刻(Timeオブジェクト)を返す。"
+  (seconds-to-time (* bucket-index nskk-analytics-pattern-trend-interval)))
+
+(defun nskk-analytics-pattern--build-metrics-history ()
+  "イベントから集計間隔ごとのメトリクス履歴を構築する。"
+  (let ((buckets (make-hash-table :test 'equal)))
+    ;; 時間バケットにイベントを割り当て
+    (dolist (event nskk-analytics-pattern--events)
+      (let* ((timestamp (nskk-analytics-event-timestamp event))
+             (bucket (floor timestamp nskk-analytics-pattern-trend-interval)))
+        (push event (gethash bucket buckets))))
+
+    ;; 各バケットからメトリクスを作成
     (let ((history nil))
-      (maphash (lambda (date events)
-                 (let ((metrics (nskk-analytics-metrics-create
-                                 :conversions (cl-count 'conversion events
-                                                        :key #'nskk-analytics-event-type)
-                                 :timestamp (date-to-time date))))
-                   (push metrics history)))
-               daily-metrics)
+      (maphash
+       (lambda (bucket events)
+         (let* ((conversions (cl-count 'conversion events :key #'nskk-analytics-event-type))
+                (errors (cl-count 'error events :key #'nskk-analytics-event-type))
+                (successful (max 0 (- conversions errors)))
+                (accuracy (if (> conversions 0)
+                              (/ successful (float conversions))
+                            1.0))
+                (total-duration (cl-loop for ev in events
+                                         when (eq (nskk-analytics-event-type ev) 'conversion)
+                                         sum (nskk-analytics-event-duration ev)))
+                (avg-speed (if (> conversions 0)
+                               (/ total-duration conversions)
+                             0.0))
+                (metrics (nskk-analytics-metrics-create
+                          :conversions conversions
+                          :accuracy accuracy
+                          :speed avg-speed
+                          :timestamp (nskk-analytics-pattern--bucket-start-time bucket))))
+           (push metrics history)))
+       buckets)
       (cl-sort history #'time-less-p
                :key #'nskk-analytics-metrics-timestamp))))
 

@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, conjugation
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -74,10 +74,39 @@
 
 ;;; ヘルパー関数
 
+(defun nskk-complex--han-code-p (code)
+  "コードポイント CODE が漢字領域か判定する。"
+  (or (and (>= code #x3400) (<= code #x4DBF))    ; CJK拡張A
+      (and (>= code #x4E00) (<= code #x9FFF))    ; CJK統合漢字
+      (and (>= code #xF900) (<= code #xFAFF))    ; CJK互換漢字
+      (and (>= code #x20000) (<= code #x2A6DF))  ; CJK拡張B
+      (and (>= code #x2A700) (<= code #x2B73F))  ; CJK拡張C
+      (and (>= code #x2B740) (<= code #x2B81F))  ; CJK拡張D
+      (and (>= code #x2B820) (<= code #x2CEAF))  ; CJK拡張E-F
+      (and (>= code #x2F800) (<= code #x2FA1F)))) ; CJK互換補助
+
+(defun nskk-complex--stem-han-p (stem)
+  "STEM の末尾が漢字かどうかを返す。"
+  (when (and stem (> (length stem) 0))
+    (let ((code (aref stem (1- (length stem)))))
+      (nskk-complex--han-code-p code))))
+
+(defun nskk-complex--ensure-stem-prefix (stem form)
+  "FORM に語幹 STEM の漢字を含める。
+STEM が漢字で終わり、FORM が STEM で開始しない場合は PREFIX する。"
+  (cond
+   ((null form) nil)
+   ((and (nskk-complex--stem-han-p stem)
+         (not (string-prefix-p stem form)))
+    (concat stem form))
+   (t form)))
+
 (defun nskk-complex--get-mizen-form (stem type)
   "動詞の未然形を取得する。
 STEMは語幹、TYPEは活用型。"
-  (nskk-conjugate-verb stem type 'mizen-nai))
+  (nskk-complex--ensure-stem-prefix
+   stem
+   (nskk-conjugate-verb stem type 'mizen-nai)))
 
 ;;; 使役形の処理
 
@@ -132,9 +161,10 @@ STEMは語幹、TYPEは活用型。"
 (defun nskk-complex--potential-godan (stem)
   "五段活用の可能形を返す。
 例: 書く→書ける"
-  (let ((katei (nskk-conjugate-verb stem 'godan 'katei)))
+  (let ((katei (nskk-complex--ensure-stem-prefix
+                stem
+                (nskk-conjugate-verb stem 'godan 'katei))))
     (when katei
-      ;; 「け」→「け」（そのまま）
       katei)))
 
 (defun nskk-complex--potential-ichidan (stem)
@@ -210,7 +240,9 @@ STEMは語幹、TYPEは活用型。"
   "謙譲形を返す。
 例: 書く→お書きし、見る→お見し
 これは「お〜する」の形式の語幹部分を返す。"
-  (let ((renyou (nskk-conjugate-verb stem verb-type 'renyou)))
+  (let ((renyou (nskk-complex--ensure-stem-prefix
+                 stem
+                 (nskk-conjugate-verb stem verb-type 'renyou))))
     (when renyou
       (concat "お" renyou "し"))))
 

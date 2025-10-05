@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, history
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -209,14 +209,20 @@ ENTRY は plist 形式: (:midashi :candidate :candidate-index :total-candidates 
     (nskk-history--cleanup-old-entries)
     (setq nskk-history-last-cleanup-time (current-time))))
 
+(defconst nskk-history--cleanup-grace-seconds 1.0
+  "クリーンアップ時に最新エントリを保持するための猶予秒数。")
+
 (defun nskk-history--cleanup-old-entries ()
   "保持期間を過ぎた履歴エントリを削除する。"
-  (let ((cutoff-time (time-subtract (current-time)
-                                    (days-to-time nskk-history-retention-days))))
+  (let* ((cutoff-time (time-subtract (current-time)
+                                     (days-to-time nskk-history-retention-days)))
+         (cutoff-float (float-time cutoff-time)))
     (setq nskk-history-entries
           (cl-remove-if
            (lambda (entry)
-             (time-less-p (nskk-history-entry-timestamp entry) cutoff-time))
+             (< (+ (float-time (nskk-history-entry-timestamp entry))
+                   nskk-history--cleanup-grace-seconds)
+                cutoff-float))
            nskk-history-entries))))
 
 ;;; 統計情報
@@ -323,8 +329,8 @@ ENTRY は plist 形式: (:midashi :candidate :candidate-index :total-candidates 
   (cl-remove-if-not
    (lambda (entry)
      (let ((ts (nskk-history-entry-timestamp entry)))
-       (and (time-less-p start-date ts)
-            (time-less-p ts end-date))))
+       (and (not (time-less-p ts start-date))
+            (not (time-less-p end-date ts)))))
    nskk-history-entries))
 
 ;;; 分析機能
@@ -369,7 +375,7 @@ ENTRY は plist 形式: (:midashi :candidate :candidate-index :total-candidates 
         (list :count count
               :min min-time
               :max max-time
-              :avg avg-time
+              :avg (/ (float (round (* avg-time 1000))) 1000.0)
               :median median-time)))))
 
 ;;; クリーンアップ

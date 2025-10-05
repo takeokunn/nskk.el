@@ -1,26 +1,26 @@
-# NSKK総合アーキテクチャ概観（Emacs 31完全対応）
+# NSKK総合アーキテクチャ概観（Emacs 30以上完全対応）
 
 ## エグゼクティブサマリー
 
-NSKKは、既存のすべてのSKK実装（ddskk、skkeleton等）の機能を網羅しつつ、Emacs 31の革新的機能を結集した次世代日本語入力システムです。外部依存ゼロ、ネイティブスレッド並列処理、setopt最適化、Transient UI統合により、従来比3倍以上の高速性を実現したモダンアーキテクチャです。
+NSKKは、既存のすべてのSKK実装（ddskk、skkeleton等）の機能を網羅しつつ、Emacs 30以上の革新的機能を結集した次世代日本語入力システムです。外部依存ゼロ、ネイティブスレッド並列処理、setopt最適化、Transient UI統合により、従来比3倍以上の高速性を実現したモダンアーキテクチャです。
 
 ## 1. 技術的基盤原則
 
-### 1.1 ゼロ依存原則（Zero-Dependency Principle - Emacs 31強化）
+### 1.1 ゼロ依存原則（Zero-Dependency Principle - Emacs 30以上強化）
 ```elisp
 ;; NSKKは一切の外部パッケージに依存しない
-;; Emacs 31の最新機能のみで完全動作
+;; Emacs 30以上の最新機能のみで完全動作
 (defconst nskk-external-dependencies nil
   "外部依存リスト：常に空であることを保証")
 
-;; Emacs 31機能の活用
+;; Emacs 30以上の機能の活用
 (eval-when-compile
   (require 'thread)      ; ネイティブスレッド
   (require 'transient)   ; Transient UI
   (native-compile-async-skip-p nil))  ; ネイティブコンパイル強制
 ```
 
-**Emacs 31実現技術**：
+**Emacs 30以上実現技術**：
 - ネイティブスレッド並列処理による真の並行実行
 - setoptによる最適化されたカスタマイズ変数管理
 - Transient UI統合による現代的ユーザーインターフェース
@@ -29,8 +29,8 @@ NSKKは、既存のすべてのSKK実装（ddskk、skkeleton等）の機能を�
 
 ### 1.2 極限パフォーマンス原則（Ultimate Performance Principle）
 
-**Emacs 31パフォーマンス目標値**：
-| 操作 | Emacs 31目標 | 実測値 | ddskk比 | 改善技術 |
+**Emacs 30以上パフォーマンス目標値**：
+| 操作 | Emacs 30以上目標 | 実測値 | ddskk比 | 改善技術 |
 |------|-------------|--------|---------|----------|
 | キー入力処理 | < 0.05ms | 0.04ms | 5倍高速 | defsubst+ネイティブコンパイル |
 | 辞書検索（10万語） | < 0.2ms | 0.15ms | 6倍高速 | 並列検索+オブジェクト最適化 |
@@ -39,19 +39,19 @@ NSKKは、既存のすべてのSKK実装（ddskk、skkeleton等）の機能を�
 | 起動時間 | < 20ms | 12ms | 7倍高速 | 遅延初期化+並列ロード |
 | メモリ使用量 | < 5MB | 3.2MB | 2.5倍節約 | 構造体最適化+GC最適化 |
 
-### 1.3 無限拡張性原則（Infinite Extensibility - Emacs 31アップグレード）
+### 1.3 無限拡張性原則（Infinite Extensibility - Emacs 30以上アップグレード）
 
 ```elisp
-;; Emacs 31対応プラグインアーキテクチャ
+;; Emacs 30以上対応プラグインアーキテクチャ
 (defmacro nskk-define-extension (name &rest args)
-  "拡張定義マクロ：Emacs 31ネイティブコンパイル最適化"
+  "拡張定義マクロ：Emacs 30以上のネイティブコンパイル最適化"
   (declare (indent 1))
   `(progn
      ;; ネイティブコンパイルヒント
      (declare (speed 3) (safety 1))
      ,@(nskk--generate-extension-code name args)))
 
-;; Emacs 31 Transient UI統合拡張システム
+;; Emacs 30以上 Transient UI統合拡張システム
 (transient-define-prefix nskk-extension-manager ()
   "NSKK拡張管理メニュー"
   [["拡張管理"
@@ -117,7 +117,7 @@ graph LR
         SKEL_STATE[状態管理]
     end
 
-    subgraph "NSKK Emacs 31 Enhancement"
+    subgraph "NSKK Emacs 30以上 Enhancement"
         NSKK_THREAD[Native Threads<br/>真の並列処理<br/>mutex+condition]
         NSKK_NAMESPACE[Module Namespace<br/>スレッドセーフ分離]
         NSKK_HOOK[Hook System<br/>200+拡張点<br/>非同期対応]
@@ -134,7 +134,7 @@ graph LR
 
 ### 2.3 独自革新機能
 
-**NSKK Emacs 31限定機能**：
+**NSKK Emacs 30以上限定機能**：
 1. **スレッド並列AIアシスト**: 文脈理解を別スレッドで実行
 2. **Transientマルチモーダル**: 統一UIで音声・ジェスチャー制御
 3. **アトミック同期**: mutex保護されたマルチデバイス辞書同期
@@ -145,18 +145,18 @@ graph LR
 
 ## 3. レイヤードアーキテクチャ詳細設計
 
-### 3.1 Emacs 31マスターアーキテクチャダイアグラム
+### 3.1 Emacs 30以上のマスターアーキテクチャダイアグラム
 
 ```mermaid
 graph TB
-    subgraph "Layer 1: Emacs 31 Presentation Layer"
+    subgraph "Layer 1: Emacs 30以上 Presentation Layer"
         UI_INPUT[入力処理<br/>0.04ms応答<br/>defsubst+ネイティブコンパイル]
         UI_DISPLAY[表示制御<br/>120fps描画<br/>非同期レンダリング]
         UI_FEEDBACK[フィードバック<br/>触覚/視覚/聴覚<br/>スレッド対応]
         UI_TRANSIENT[Transient UI<br/>全統合メニュー<br/>setopt連携]
     end
 
-    subgraph "Layer 2: Emacs 31 Extension Layer"
+    subgraph "Layer 2: Emacs 30以上 Extension Layer"
         EXT_MANAGER[拡張マネージャー<br/>mutex保護動的ロード<br/>スレッドセーフ]
         EXT_HOOKS[フックシステム<br/>300+拡張点<br/>並列コールバック]
         EXT_EVENTS[イベントバス<br/>ネイティブスレッド配信<br/>アトミックキュー]
@@ -164,7 +164,7 @@ graph TB
         EXT_SANDBOX[サンドボックス<br/>スレッド分離安全実行<br/>condition-variable同期]
     end
 
-    subgraph "Layer 3: Emacs 31 Application Layer"
+    subgraph "Layer 3: Emacs 30以上 Application Layer"
         APP_CONTROLLER[変換コントローラー<br/>スレッドセーフ状態機械<br/>CAS操作対応]
         APP_LEARNER[学習エンジン<br/>並列ニューラルネット<br/>GPU加速対応]
         APP_PREDICTOR[予測エンジン<br/>マルチスレッドマルコフ連鎖<br/>メモリプール最適化]
@@ -172,7 +172,7 @@ graph TB
         APP_SYNCHRONIZER[同期エンジン<br/>アトミック分散システム<br/>condition-variable同期]
     end
 
-    subgraph "Layer 4: Emacs 31 Core Engine"
+    subgraph "Layer 4: Emacs 30以上 Core Engine"
         CORE_ROMAJI[ローマ字エンジン<br/>defsubst FSM実装<br/>ネイティブコンパイル最適化]
         CORE_CONVERTER[変換エンジン<br/>並列トライ木検索<br/>スレッドプール対応]
         CORE_DICTIONARY[辞書エンジン<br/>B+木並列索引<br/>RCUロックフリー読み込み]
@@ -188,7 +188,7 @@ graph TB
         DATA_COMPRESS[圧縮エンジン<br/>zstd/lz4]
     end
 
-    subgraph "Layer 6: Emacs 31 Infrastructure"
+    subgraph "Layer 6: Emacs 30以上 Infrastructure"
         INFRA_THREAD[ネイティブスレッドプール<br/>真の並列実行<br/>CPUコア数自動調整]
         INFRA_MEMORY[メモリ管理<br/>世代別GC最適化<br/>memory-limit監視]
         INFRA_PROFILE[ネイティブプロファイラー<br/>ゼロオーバーヘッド監視<br/>リアルタイムチューニング]
@@ -303,7 +303,7 @@ sequenceDiagram
          result))))
 ```
 
-### 4.2 並列処理アーキテクチャ（Emacs 31 Threads活用）
+### 4.2 並列処理アーキテクチャ（Emacs 30以上 Threads活用）
 
 ```elisp
 ;; スレッドプール実装
@@ -444,7 +444,7 @@ graph TD
     GC3 --> MEM3
 ```
 
-### 5.3 JITコンパイル最適化（Emacs 31 native-comp）
+### 5.3 JITコンパイル最適化（Emacs 30以上 native-comp）
 
 ```elisp
 ;; ネイティブコンパイル最適化ディレクティブ

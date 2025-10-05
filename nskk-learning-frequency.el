@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, learning
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -149,21 +149,23 @@
           (nskk-frequency--update-score entry))
 
       ;; 新規エントリを作成
-      (let ((new-entry (nskk-frequency-entry--create
-                        :midashi midashi
-                        :candidate candidate
-                        :count 1
-                        :last-used (current-time)
-                        :created (current-time))))
-        (nskk-frequency--update-score new-entry)
-        (puthash key new-entry nskk-frequency-table)))
+      (setq entry (nskk-frequency-entry--create
+                   :midashi midashi
+                   :candidate candidate
+                   :count 1
+                   :last-used (current-time)
+                   :created (current-time)))
+      (nskk-frequency--update-score entry)
+      (puthash key entry nskk-frequency-table))
 
     ;; 定期的な減衰処理
     (when nskk-frequency-decay-enabled
       (nskk-frequency--maybe-decay))
 
     ;; エントリ数制限チェック
-    (nskk-frequency--check-max-entries)))
+    (nskk-frequency--check-max-entries)
+
+    entry))
 
 ;;;###autoload
 (defun nskk-get-frequency-score (midashi candidate)
@@ -216,12 +218,17 @@ CANDIDATES は文字列のリスト。
 
 ;;; 頻度減衰
 
+(defconst nskk-frequency--decay-min-interval 1.0
+  "頻度減衰を実行する際に要求される最小経過秒数。")
+
 (defun nskk-frequency--maybe-decay ()
   "必要に応じて頻度減衰を実行する。"
-  (when (> (float-time (time-since nskk-frequency-last-decay-time))
-           nskk-frequency-decay-interval)
-    (nskk-frequency--apply-decay)
-    (setq nskk-frequency-last-decay-time (current-time))))
+  (let* ((elapsed (float-time (time-since nskk-frequency-last-decay-time)))
+         (threshold (max nskk-frequency-decay-interval
+                          nskk-frequency--decay-min-interval)))
+    (when (> elapsed threshold)
+      (nskk-frequency--apply-decay)
+      (setq nskk-frequency-last-decay-time (current-time)))))
 
 (defun nskk-frequency--apply-decay ()
   "全エントリに頻度減衰を適用する。"

@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, integration, ai, sync, analytics
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -314,7 +314,9 @@
   (if (and (nskk-advanced-integration-analytics-enabled-p)
            (fboundp 'nskk-analytics-dashboard-show))
       (nskk-analytics-dashboard-show)
-    (message "NSKK Advanced: analytics dashboard is unavailable")))
+    (progn
+      (message "NSKK Advanced: analytics dashboard is unavailable")
+      nil)))
 
 (defun nskk-advanced-integration-generate-report ()
   "分析レポートを生成する。"
@@ -322,7 +324,9 @@
   (if (and (nskk-advanced-integration-analytics-enabled-p)
            (fboundp 'nskk-analytics-report-generate))
       (call-interactively 'nskk-analytics-report-generate)
-    (message "NSKK Advanced: analytics report is unavailable")))
+    (progn
+      (message "NSKK Advanced: analytics report is unavailable")
+      nil)))
 
 (defun nskk-advanced-integration-sync-now ()
   "同期を即時実行する。"
@@ -330,47 +334,9 @@
   (if (and (nskk-advanced-integration-sync-enabled-p)
            (fboundp 'nskk-sync-protocol-sync))
       (nskk-sync-protocol-sync)
-    (message "NSKK Advanced: sync is unavailable")))
-
-;;; Compatibility aliases (Phase4)
-
-(define-obsolete-function-alias 'nskk-phase4-initialize
-  'nskk-advanced-integration-initialize "1.0.0")
-(define-obsolete-function-alias 'nskk-phase4-shutdown
-  'nskk-advanced-integration-shutdown "1.0.0")
-(define-obsolete-function-alias 'nskk-phase4-status
-  'nskk-advanced-integration-status "1.0.0")
-(define-obsolete-function-alias 'nskk-phase4-health-check
-  'nskk-advanced-integration-health-check "1.0.0")
-(define-obsolete-function-alias 'nskk-phase4-integration-test-ready-p
-  'nskk-advanced-integration-integration-test-ready-p "1.0.0")
-(define-obsolete-function-alias 'nskk-phase4-show-dashboard
-  'nskk-advanced-integration-show-dashboard "1.0.0")
-(define-obsolete-function-alias 'nskk-phase4-generate-report
-  'nskk-advanced-integration-generate-report "1.0.0")
-(define-obsolete-function-alias 'nskk-phase4-sync-now
-  'nskk-advanced-integration-sync-now "1.0.0")
-
-(define-obsolete-variable-alias 'nskk-phase4-enable-ai
-  'nskk-advanced-integration-enable-ai "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4-enable-sync
-  'nskk-advanced-integration-enable-sync "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4-enable-analytics
-  'nskk-advanced-integration-enable-analytics "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4-ai-context-window-size
-  'nskk-advanced-integration-ai-context-window-size "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4-sync-server-url
-  'nskk-advanced-integration-sync-server-url "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4-analytics-report-interval
-  'nskk-advanced-integration-analytics-report-interval "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4--initialized
-  'nskk-advanced-integration--initialized "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4--ai-enabled
-  'nskk-advanced-integration--ai-enabled "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4--sync-enabled
-  'nskk-advanced-integration--sync-enabled "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase4--analytics-enabled
-  'nskk-advanced-integration--analytics-enabled "1.0.0")
+    (progn
+      (message "NSKK Advanced: sync is unavailable")
+      nil)))
 
 (provide 'nskk-advanced-integration)
 

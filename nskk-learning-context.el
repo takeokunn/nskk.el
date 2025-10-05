@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, learning, context
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -391,7 +391,8 @@ MIN-COUNT 回以上出現したパターンのみを返す。
              (plist-get stats :total-trigrams)
              (plist-get stats :history-length)
              (plist-get stats :bigram-enabled)
-             (plist-get stats :trigram-enabled))))
+             (plist-get stats :trigram-enabled))
+    nil))
 
 ;;; クリーンアップ
 

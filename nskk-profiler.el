@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, profiling
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -165,42 +165,44 @@
 (defun nskk-profile-report ()
   "プロファイリングレポートを表示する。"
   (interactive)
-  (unless nskk-profiler--start-time
-    (error "No profiling data available. Run `nskk-profile-start' first"))
-
-  (let ((elapsed (if nskk-profiler--active
-                     (float-time (time-subtract (current-time)
-                                               nskk-profiler--start-time))
-                   (if (and nskk-profiler--memory-snapshots
-                           (car (last nskk-profiler--memory-snapshots)))
-                       (float-time (time-subtract (car (car (last nskk-profiler--memory-snapshots)))
+  (if (not nskk-profiler--start-time)
+      (progn
+        (message "No profiling data available. Run `nskk-profile-start' first")
+        nil)
+    (let ((elapsed (if nskk-profiler--active
+                       (float-time (time-subtract (current-time)
                                                  nskk-profiler--start-time))
-                     0.0))))
-    (with-output-to-temp-buffer "*NSKK Profiler Report*"
-      ;; ヘッダー
-      (princ "=======================================================\n")
-      (princ "         NSKK Performance Profiler Report\n")
-      (princ "=======================================================\n\n")
+                     (if (and nskk-profiler--memory-snapshots
+                              (car (last nskk-profiler--memory-snapshots)))
+                         (float-time (time-subtract (car (car (last nskk-profiler--memory-snapshots)))
+                                                   nskk-profiler--start-time))
+                       0.0))))
+      (with-output-to-temp-buffer "*NSKK Profiler Report*"
+        ;; ヘッダー
+        (princ "=======================================================\n")
+        (princ "         NSKK Performance Profiler Report\n")
+        (princ "=======================================================\n\n")
 
-      (princ (format "Profiling Duration: %.3f seconds\n" elapsed))
-      (princ (format "Status: %s\n\n" (if nskk-profiler--active "RUNNING" "STOPPED")))
+        (princ (format "Profiling Duration: %.3f seconds\n" elapsed))
+        (princ (format "Status: %s\n\n" (if nskk-profiler--active "RUNNING" "STOPPED")))
 
-      ;; メモリ統計
-      (when nskk-profiler-memory-tracking
-        (nskk-profiler--report-memory-stats))
+        ;; メモリ統計
+        (when nskk-profiler-memory-tracking
+          (nskk-profiler--report-memory-stats))
 
-      ;; GC統計
-      (when nskk-profiler-gc-tracking
-        (nskk-profiler--report-gc-stats))
+        ;; GC統計
+        (when nskk-profiler-gc-tracking
+          (nskk-profiler--report-gc-stats))
 
-      ;; 関数統計
-      (when nskk-profiler--function-stats
-        (nskk-profiler--report-function-stats))
+        ;; 関数統計
+        (when nskk-profiler--function-stats
+          (nskk-profiler--report-function-stats))
 
-      ;; フッター
-      (princ "\n=======================================================\n")
-      (princ "Use `profiler-report' for detailed CPU/Memory report\n")
-      (princ "=======================================================\n"))))
+        ;; フッター
+        (princ "\n=======================================================\n")
+        (princ "Use `profiler-report' for detailed CPU/Memory report\n")
+        (princ "=======================================================\n")))
+      nil))
 
 ;;; メモリプロファイリング
 
@@ -273,40 +275,15 @@
 
     (when (> gc-count 0)
       (let* ((events (reverse nskk-profiler--gc-events))
-             (first-gc (plist-get (cadr (car events)) :gc-elapsed))
-             (last-gc (plist-get (cadr (car (last events))) :gc-elapsed))
-             (gc-time-delta (- last-gc first-gc)))
-        (princ (format "GC time during profiling: %.3f seconds\n" gc-time-delta))))
+             (first-event (cdr (car events)))
+             (last-event (cdr (car (last events))))
+             (first-gc (plist-get first-event :gc-elapsed))
+             (last-gc (plist-get last-event :gc-elapsed)))
+        (when (and first-gc last-gc)
+          (princ (format "GC time during profiling: %.3f seconds\n"
+                         (- last-gc first-gc))))))
 
     (princ "\n")))
-
-;;; 関数プロファイリング
-
-(defmacro nskk-profile-function (name &rest body)
-  "関数の実行時間をプロファイリングする。
-
-NAME: 関数名（シンボルまたは文字列）
-BODY: 実行するコード
-
-返り値: BODYの返り値
-
-例:
-  (nskk-profile-function \"romaji-conversion\"
-    (nskk-convert-romaji \"konnnichiha\"))"
-  (declare (indent 1) (debug t))
-  (let ((func-name (if (stringp name) name (symbol-name name)))
-        (start-time (make-symbol "start-time"))
-        (end-time (make-symbol "end-time"))
-        (result (make-symbol "result"))
-        (elapsed (make-symbol "elapsed")))
-    `(if nskk-profiler--active
-         (let* ((,start-time (current-time))
-                (,result (progn ,@body))
-                (,end-time (current-time))
-                (,elapsed (float-time (time-subtract ,end-time ,start-time))))
-           (nskk-profiler--record-function-stats ,func-name ,elapsed)
-           ,result)
-       (progn ,@body))))
 
 (defun nskk-profiler--record-function-stats (func-name elapsed-time)
   "関数統計を記録する。

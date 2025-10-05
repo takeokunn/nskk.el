@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, conjugation
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -107,10 +107,12 @@
     ("泳" . ga)
     ("話" . sa)
     ("打" . ta)
+    ("立" . ta)
     ("死" . na)
     ("遊" . ba)
     ("読" . ma)
     ("取" . ra)
+    ("走" . ra)
     ("買" . wa))
   "五段活用の語幹（漢字）と行の対応表。")
 

@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, testing, coverage
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -580,6 +580,10 @@ THRESHOLD が指定されない場合、`nskk-coverage-threshold' を使用。
             file-rows
             nskk-coverage-threshold)))
 
+(defun nskk-coverage--html-template ()
+  "カバレッジインデックスHTMLのテンプレート文字列を返す。"
+  (nskk-coverage--html-index-template))
+
 ;;; クリーンアップ
 
 ;;;###autoload
@@ -589,19 +593,18 @@ THRESHOLD が指定されない場合、`nskk-coverage-threshold' を使用。
   (interactive)
   (let ((updated 0))
     (dolist (file nskk-coverage--instrumented-files)
-      (let ((buffer (or (find-buffer-visiting file)
-                        (ignore-errors (find-file-noselect file)))))
-        (when buffer
-          (with-current-buffer buffer
-            (dolist (form-data edebug-form-data)
-              (let ((coverage (get (car form-data) 'edebug-coverage)))
-                (when (vectorp coverage)
-                  (dotimes (i (length coverage))
-                    (aset coverage i 'edebug-ok-coverage)
-                    (cl-incf updated))))))))
+      (when-let ((buffer (or (find-buffer-visiting file)
+                             (ignore-errors (find-file-noselect file)))))
+        (with-current-buffer buffer
+          (dolist (form-data edebug-form-data)
+            (let ((coverage (get (car form-data) 'edebug-coverage)))
+              (when (vectorp coverage)
+                (dotimes (i (length coverage))
+                  (aset coverage i 'edebug-ok-coverage)
+                  (cl-incf updated))))))))
     (when nskk-coverage-verbose
       (message "Forced coverage to mark %d forms as covered" updated))
-    updated)))
+    updated))
 
 ;;;###autoload
 (defun nskk-coverage-clear ()

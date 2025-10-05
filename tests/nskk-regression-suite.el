@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, testing, regression
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;;; Commentary:
 
@@ -34,6 +34,14 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-test-fixtures)
+
+(defmacro nskk-regression--should-convert (input expected)
+  "`nskk-convert-romaji' の確定文字列が EXPECTED と一致することを確認する。"
+  `(let* ((res (nskk-convert-romaji ,input))
+          (converted (nskk-converter-result-converted res))
+          (pending (nskk-converter-result-pending res)))
+     (should (equal converted ,expected))
+     (should (string= pending ""))))
 
 ;;; ====================
 ;;; Phase 1 Tests (3,000)
@@ -92,67 +100,66 @@
      `(nskk-deftest ,(intern (format "nskk-regression-romaji-%s" input))
         ,(format "ローマ字変換: %s -> %s" input expected)
         :tags '(:regression :phase1 :romaji :unit)
-        (should (equal (nskk-convert-romaji ,input) ,expected))))))
+        (nskk-regression--should-convert ,input ,expected)))))
 
 ;; 複合テスト (150)
 (nskk-deftest nskk-regression-romaji-compound-1
   "複合ローマ字変換: かんじ"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "kanzi") "かんじ")))
+  (nskk-regression--should-convert "kanzi" "かんじ"))
 
 (nskk-deftest nskk-regression-romaji-compound-2
   "複合ローマ字変換: にほんご"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "nihongo") "にほんご")))
+  (nskk-regression--should-convert "nihongo" "にほんご"))
 
 (nskk-deftest nskk-regression-romaji-long-text
   "長文ローマ字変換"
   :tags '(:regression :phase1 :romaji :integration)
-  (should (equal (nskk-convert-romaji "konnichiha")
-                 "こんにちは")))
+  (nskk-regression--should-convert "konnichiha" "こんにちは"))
 
 ;; 特殊ケース (100)
 (nskk-deftest nskk-regression-romaji-n-handling
   "撥音処理: n"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "kan") "かん")))
+  (nskk-regression--should-convert "kan" "かん"))
 
 (nskk-deftest nskk-regression-romaji-sokuon
   "促音処理: っ"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "katta") "かった")))
+  (nskk-regression--should-convert "katta" "かった"))
 
 (nskk-deftest nskk-regression-romaji-long-vowel
   "長音処理: ー"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "ko-hi-") "こーひー")))
+  (nskk-regression--should-convert "ko-hi-" "こーひー"))
 
 ;; エッジケース (100)
 (nskk-deftest nskk-regression-romaji-empty
   "空文字列処理"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "") "")))
+  (nskk-regression--should-convert "" ""))
 
 (nskk-deftest nskk-regression-romaji-single-char
   "単一文字処理"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "a") "あ")))
+  (nskk-regression--should-convert "a" "あ"))
 
 (nskk-deftest nskk-regression-romaji-unknown
   "未定義文字処理"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "xyz") "xyz")))
+  (nskk-regression--should-convert "xyz" "xyz"))
 
 ;; ASCII変換 (50)
 (nskk-deftest nskk-regression-romaji-ascii-numbers
   "ASCII数字処理"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "123") "123")))
+  (nskk-regression--should-convert "123" "123"))
 
 (nskk-deftest nskk-regression-romaji-ascii-symbols
   "ASCII記号処理"
   :tags '(:regression :phase1 :romaji :unit)
-  (should (equal (nskk-convert-romaji "!@#") "!@#")))
+  (nskk-regression--should-convert "!@#" "!@#"))
 
 ;;; ----------------------------------------
 ;;; 2. 辞書パーサー (400 tests)
@@ -245,7 +252,7 @@
   :tags '(:regression :phase1 :trie :unit)
   (let ((trie (nskk-trie-create)))
     (nskk-trie-insert trie "test" '("テスト"))
-    (should (equal (nskk-trie-lookup trie "test") '("テスト")))))
+    (should (equal (nskk-trie-lookup-values trie "test") '("テスト")))))
 
 (nskk-deftest nskk-regression-trie-lookup-not-found
   "未登録キー検索"
@@ -292,7 +299,7 @@
     (dotimes (i 10000)
       (nskk-trie-insert trie (format "key%05d" i) (list (format "value%d" i))))
     (should (= (nskk-trie-size trie) 10000))
-    (should (equal (nskk-trie-lookup trie "key00500") '("value500")))))
+    (should (equal (nskk-trie-lookup-values trie "key00500") '("value500")))))
 
 ;;; ----------------------------------------
 ;;; 4. キャッシュ機構 (500 tests)

@@ -1,17 +1,17 @@
-;;; nskk.el --- Next-generation SKK for Emacs 31 -*- lexical-binding: t; -*-
+;;; nskk.el --- Next-generation SKK for Emacs 30+ -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025 NSKK Development Team
 
 ;; Author: NSKK Development Team
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 ;; Keywords: japanese, input-method, skk
 ;; URL: https://github.com/takeokunn/nskk.el
 
 ;;; Commentary:
 
-;; NSKK (Next-generation SKK) は、Emacs 31の革新的機能を活用した
+;; NSKK (Next-generation SKK) は、Emacs 30以上の革新的機能を活用した
 ;; 次世代日本語入力システムです。
 ;;
 ;; === v1.0 - 完全リリース ===
@@ -65,15 +65,9 @@
 (require 'cl-lib)
 (require 'subr-x)
 
-;; Emacs 31.0以上が推奨（開発中は30.1以上で動作）
-(when (version< emacs-version "30.1")
-  (error "NSKK requires Emacs 30.1 or later"))
+(when (version< emacs-version "30.0")
+  (error "NSKK requires Emacs 30.0 or later"))
 
-(when (and (version< emacs-version "31.0")
-           (not noninteractive))
-  (display-warning 'nskk
-                   "NSKK is designed for Emacs 31.0+. Some features may not work correctly."
-                   :warning))
 
 ;;; Module Loading
 
@@ -89,6 +83,7 @@
 (require 'nskk-state)
 (require 'nskk-mode-switch)
 (require 'nskk-buffer)
+(require 'nskk-input-commands)
 (require 'nskk-events)
 
 ;; Track D: Dictionary Core
@@ -216,8 +211,11 @@
 (defconst nskk--default-romaji-rules nskk-romaji-table
   "NSKK標準のローマ字変換ルール。")
 
-(defvar nskk--conversion-rules (copy-tree nskk--default-romaji-rules)
-  "現在有効なローマ字変換ルールのリスト。")
+(defvar nskk--conversion-rules
+  (let ()
+    (nskk-romaji-init-hash-table)
+    (copy-hash-table nskk-romaji-hash-table))
+  "現在有効なローマ字変換ルールのハッシュテーブル。")
 
 (defvar-local nskk--state-plist nil
   "構造体では保持しない追加状態を格納するplist。")
@@ -328,27 +326,29 @@
   "KEYで辞書を検索し、候補のリストを返す。"
   (unless (stringp key)
     (signal 'nskk-invalid-input (list key)))
-  (let ((index (nskk--load-dictionary)))
-    (when index
-      (run-hook-with-args 'nskk-before-conversion-hook key)
-      (let ((results
-             (pcase (or search-type 'exact)
-               ('exact
-                (when-let ((entry (nskk-search index key 'exact)))
-                  (mapcar #'nskk-dict-candidate-word
-                          (nskk-dict-entry-candidates entry))))
-               ('prefix
-                (mapcar #'car
-                        (nskk-search index key 'prefix nil nskk-candidate-display-count)))
-               ('partial
-                (mapcar #'car
-                        (nskk-search index key 'partial nil nskk-candidate-display-count)))
-               ('fuzzy
-                (mapcar #'car
-                        (nskk-search index key 'fuzzy nil nskk-candidate-display-count)))
-               (_ (signal 'nskk-invalid-input (list search-type))))))
-        (run-hook-with-args 'nskk-after-conversion-hook results)
-        results))))
+  (let ((search-type (or search-type 'exact)))
+    (unless (memq search-type '(exact prefix partial fuzzy))
+      (signal 'nskk-invalid-input (list search-type)))
+    (run-hook-with-args 'nskk-before-conversion-hook key)
+    (let* ((index (nskk--load-dictionary))
+           (results (when index
+                      (pcase search-type
+                        ('exact
+                         (when-let ((entry (nskk-search index key 'exact)))
+                           (mapcar #'nskk-dict-candidate-word
+                                   (nskk-dict-entry-candidates entry))))
+                        ('prefix
+                         (mapcar #'car
+                                 (nskk-search index key 'prefix nil nskk-candidate-display-count)))
+                        ('partial
+                         (mapcar #'car
+                                 (nskk-search index key 'partial nil nskk-candidate-display-count)))
+                        ('fuzzy
+                         (mapcar #'car
+                                 (nskk-search index key 'fuzzy nil nskk-candidate-display-count)))
+                        (_ (signal 'nskk-invalid-input (list search-type)))))))
+      (run-hook-with-args 'nskk-after-conversion-hook results)
+      results)))
 
 ;;; Conversion Helpers
 
@@ -371,7 +371,8 @@
 
 (defun nskk--process-character (char)
   "CHARを処理して結果を返す。"
-  (unless (characterp char)
+  (unless (and (characterp char)
+               (<= char #xFFFF))
     (signal 'nskk-invalid-input (list char)))
   (run-hook-with-args 'nskk-before-input-hook char)
   (let ((result (nskk--benchmark "process-character"
@@ -403,6 +404,8 @@
   (nskk--reset-state)
   (nskk--maybe-load-dictionary)
   (nskk-initialize)
+  (set-input-method "nskk")
+  (run-hook-with-args 'nskk-mode-change-hook '(inactive . active))
   t)
 
 ;;;###autoload
@@ -414,6 +417,7 @@
   (nskk-shutdown)
   (nskk-state-cleanup)
   (setq nskk--state-plist nil)
+  (run-hook-with-args 'nskk-mode-change-hook '(active . inactive))
   nil)
 
 ;;;###autoload
@@ -452,7 +456,8 @@
   "NSKKの初期セットアップを実行する。"
   (interactive)
   (nskk--benchmark "setup"
-    (setq nskk--conversion-rules (copy-tree nskk--default-romaji-rules))
+    (nskk-romaji-init-hash-table)
+    (setq nskk--conversion-rules (copy-hash-table nskk-romaji-hash-table))
     (when (fboundp 'nskk-setup-keybindings)
       (nskk-setup-keybindings)))
   (message "NSKK setup complete")
@@ -461,16 +466,13 @@
 
 ;;; Version Information
 
-(defconst nskk-version "1.0.0"
+(defconst nskk-version "0.1.0"
   "NSKKのバージョン番号。")
-
-(defconst nskk-phase "v1.0 - Complete Release"
-  "現在のNSKKフェーズ。")
 
 (defun nskk-version ()
   "NSKKのバージョン情報を表示する。"
   (interactive)
-  (message "NSKK v%s (%s)" nskk-version nskk-phase))
+  (message "NSKK v%s" nskk-version))
 
 ;;; Health Check
 
@@ -587,7 +589,8 @@
   (interactive)
   (if nskk--load-time
       (message "NSKK loaded in %.3f ms" (* 1000 nskk--load-time))
-    (message "NSKK load time not available")))
+    (message "NSKK load time not available"))
+  nil)
 
 ;;; Integration Test Support
 
@@ -606,7 +609,7 @@
   "NSKKを初期化する。"
   (interactive)
   ;; バージョン情報表示
-  (message "Initializing NSKK v%s (%s)..." nskk-version nskk-phase)
+  (message "Initializing NSKK v%s..." nskk-version)
 
   ;; ヘルスチェック
   (unless (nskk-health-check)
@@ -625,7 +628,8 @@
     (nskk-advanced-integration-initialize))
 
   ;; 初期化完了
-  (message "NSKK v%s initialized successfully!" nskk-version))
+  (message "NSKK v%s initialized successfully!" nskk-version)
+  nil)
 
 (defun nskk-shutdown ()
   "NSKKをシャットダウンする。"
@@ -640,7 +644,16 @@
   (when (fboundp 'nskk-runtime-integration-shutdown)
     (nskk-runtime-integration-shutdown))
 
-  (message "NSKK v%s shut down successfully" nskk-version))
+  (message "NSKK v%s shut down successfully" nskk-version)
+  nil)
+
+;;;###autoload
+(register-input-method
+ "nskk"
+ "Japanese"
+ 'nskk-input-method
+ "NSKK"
+ "Next-generation SKK input method")
 
 ;;;###autoload
 (define-minor-mode nskk-mode

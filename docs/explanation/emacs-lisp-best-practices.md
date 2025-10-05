@@ -1,17 +1,17 @@
-# Emacs 31 ベストプラクティス：NSKK実装のためのモダンEmacs Lispガイド
+# Emacs 30以上 ベストプラクティス：NSKK実装のためのモダンEmacs Lispガイド
 
 ## エグゼクティブサマリー
 
-Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能を実現するNSKK実装のための包括的ベストプラクティス集です。setopt、ネイティブコンパイル、スレッド並列処理、Transient UI等の最新機能を駆使したモダンEmacs Lispプログラミング手法を提供します。
+Emacs 30以上の革新的機能を完全活用し、外部依存ゼロで最高性能を実現するNSKK実装のための包括的ベストプラクティス集です。setopt、ネイティブコンパイル、スレッド並列処理、Transient UI等の最新機能を駆使したモダンEmacs Lispプログラミング手法を提供します。
 
-## 1. Emacs 31 機能の活用
+## 1. Emacs 30以上 機能の活用
 
 ### 1.1 ネイティブコンパイル（Native Compilation）
 
 ```elisp
-;;; Emacs 31ネイティブコンパイル完全最適化
+;;; Emacs 30以上のネイティブコンパイル完全最適化
 
-;; setoptによるモダンな設定（Emacs 31新機能）
+;; setoptによるモダンな設定（Emacs 30以上の新機能）
 (setopt native-comp-speed 3                          ; 最大速度最適化
         native-comp-debug 0                          ; デバッグ情報削除
         native-comp-verbose nil                      ; 冗長出力抑制
@@ -20,9 +20,9 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
         native-comp-deferred-compilation t           ; 遅延コンパイル有効
         native-comp-enable-subr-trampolines t)       ; サブルーチントランポリン有効
 
-;; Emacs 31新しいdeclare構文による関数最適化
+;; Emacs 30以上の新しいdeclare構文による関数最適化
 (defun nskk-critical-path-function (input)
-  "Emacs 31最適化ディレクティブ活用例"
+  "Emacs 30以上最適化ディレクティブ活用例"
   (declare (speed 3)                    ; 最高速度最適化
            (safety 0)                   ; 安全性チェック完全無効
            (compilation-speed 0)         ; コンパイル時間度外視
@@ -31,13 +31,13 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
            (side-effect-free t)         ; 副作用なし保証
            (inline t)                   ; 強制インライン化
            (native-comp-speed 3))       ; ネイティブコンパイル最大速度
-  ;; Emacs 31最適化済みコード
+  ;; Emacs 30以上最適化済みコード
   (when (stringp input)
     (string-trim input)))
 
-;; Emacs 31強化されたインライン化機構
+;; Emacs 30以上強化されたインライン化機構
 (defsubst nskk-hot-function (x)
-  "Emacs 31強制インライン化とマクロ展開最適化"
+  "Emacs 30以上の強制インライン化とマクロ展開最適化"
   (declare (side-effect-free t)         ; 副作用なし保証
            (pure t)                     ; 純粋関数保証
            (inline always)              ; 強制インライン化
@@ -52,7 +52,7 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
       (* x x)  ; コンパイル時定数計算
     form))
 
-;; Emacs 31ネイティブコンパイル高度最適化
+;; Emacs 30以上のネイティブコンパイル高度最適化
 (when (and (native-comp-available-p)
            (>= emacs-major-version 31))
   ;; 新しいバッチコンパイルシステム
@@ -73,14 +73,14 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
 ### 1.2 Threads（並列処理）
 
 ```elisp
-;;; Emacs 31高度スレッド並列処理システム
+;;; Emacs 30以上の高度スレッド並列処理システム
 
-;; スレッドプールの高度実装（Emacs 31強化機能）
+;; スレッドプールの高度実装（Emacs 30以上強化機能）
 (defclass nskk-thread-pool ()
   ((workers :initform (make-vector (num-processors) nil)
             :type vector
             :documentation "CPUコア数に応じたワーカースレッド")
-   (queue :initform (make-concurrent-queue)  ; Emacs 31新機能
+   (queue :initform (make-concurrent-queue)  ; Emacs 30以上の新機能
           :type concurrent-queue
           :documentation "ロックフリー同時実行キュー")
    (semaphore :initform (make-semaphore (num-processors))
@@ -97,7 +97,7 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
                  :documentation "アクティブスレッド数"))
 
 (cl-defmethod nskk-thread-pool-execute ((pool nskk-thread-pool) task)
-  "Emacs 31高度スレッドプールでタスク実行"
+  "Emacs 30以上の高度スレッドプールでタスク実行"
   (with-slots (queue semaphore condition mutex active-count) pool
     ;; セマフォアでスレッド数制御
     (semaphore-acquire semaphore)
@@ -131,11 +131,11 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
       (thread-yield)  ; CPU譲渡で公平なスケジューリング
       worker-thread)))
 
-;; Emacs 31高度並列辞書検索システム
+;; Emacs 30以上の高度並列辞書検索システム
 (defun nskk-parallel-dictionary-search (query &optional timeout)
-  "Emacs 31高度並列辞書検索（タイムアウト・キャンセル対応）"
+  "Emacs 30以上の高度並列辞書検索（タイムアウト・キャンセル対応）"
   (let* ((timeout (or timeout 5.0))  ; デフォルトタイムアウト5秒
-         (results (make-concurrent-hash-table :test 'equal))  ; Emacs 31スレッドセーフ
+         (results (make-concurrent-hash-table :test 'equal))  ; Emacs 30以上のスレッドセーフ
          (barrier (make-barrier (length nskk-dictionaries)))  ; バリア同期
          (cancel-token (make-cancellation-token))             ; キャンセルトークン
          (thread-futures nil))
@@ -177,17 +177,17 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
          (concurrent-hash-table-to-hash-table results)))))
 ```
 
-### 1.3 Transient + Emacs 31 UIシステム（次世代UI構築）
+### 1.3 Transient + Emacs 30以上 UIシステム（次世代UI構築）
 
 ```elisp
-;;; Emacs 31 Transient + 新しいUIシステムによる次世代インターフェース
+;;; Emacs 30以上 Transient + 新しいUIシステムによる次世代インターフェース
 
 (require 'transient)
-(require 'nskk-ui-components)  ; Emacs 31用カスタムUIコンポーネント
+(require 'nskk-ui-components)  ; Emacs 30以上用カスタムUIコンポーネント
 
-;; Emacs 31強化されたTransient + リアルタイム状態反映
+;; Emacs 30以上強化されたTransient + リアルタイム状態反映
 (transient-define-prefix nskk-main-menu ()
-  "NSKK 次世代メインメニュー（Emacs 31強化版）"
+  "NSKK 次世代メインメニュー（Emacs 30以上強化版）"
   :transient-suffix 'transient--do-stay
   :incompatible '((nskk-mode-romaji nskk-mode-azik))
   :refresh-suffixes t  ; リアルタイム状態更新
@@ -252,10 +252,10 @@ Emacs 31の革新的機能を完全活用し、外部依存ゼロで最高性能
 ### 1.4 JSONRPC + WebSocket + HTTP/3サポート（次世代外部連携）
 
 ```elisp
-;;; Emacs 31 JSONRPC + 新しい非同期通信システム（完全外部依存ゼロ）
+;;; Emacs 30以上 JSONRPC + 新しい非同期通信システム（完全外部依存ゼロ）
 
 (require 'jsonrpc)
-(require 'async)        ; Emacs 31強化された非同期処理
+(require 'async)        ; Emacs 30以上強化された非同期処理
 (require 'websocket)    ; WebSocketサポート
 
 ;; 辞書サーバークライアント実装
@@ -799,7 +799,7 @@ ARGSは追加のオプション引数です。
 NSKKは、以下のベストプラクティスにより、Emacs Lispの機能を活用します：
 
 ### 技術的特徴
-1. **Emacs 31機能の活用**
+1. **Emacs 30以上の機能の活用**
 2. **マクロによる最適化**
 3. **外部依存ゼロの実装**
 

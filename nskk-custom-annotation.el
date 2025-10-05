@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, annotation
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -71,7 +71,7 @@
   :prefix "nskk-custom-annotation-")
 
 (defcustom nskk-custom-annotation-file
-  (expand-file-name "~/.skk/custom-annotations")
+  "/tmp/nskk-custom-annotations"
   "カスタム注釈を保存するファイルパス。"
   :type 'file
   :group 'nskk-custom-annotation)

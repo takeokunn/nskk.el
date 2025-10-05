@@ -37,12 +37,14 @@
 
 戻り値:
   nskk-dict構造体"
-  (let ((okuri-ari nil)
-        (okuri-nasi nil))
+  (let* ((okuri-ari nil)
+         (okuri-nasi nil)
+         (okuri-ari-count (if (>= size 10)
+                              (max 1 (/ size 10))
+                            0))
+         (okuri-nasi-count (max 0 (- size okuri-ari-count))))
     ;; 送り仮名なしエントリ生成
-    ;; パーサー形式：nskk-dict-entry--createは:midashiと:candidatesのみ受け取る
-    ;; :candidatesは(word . annotation)のリスト
-    (dotimes (i size)
+    (dotimes (i okuri-nasi-count)
       (let* ((midashi (format "てすと%d" i))
              (candidates (list (cons (format "テスト%d" i) nil)))
              (entry (nskk-dict-entry--create
@@ -51,7 +53,7 @@
         (push entry okuri-nasi)))
 
     ;; 送り仮名ありエントリ生成（少数）
-    (dotimes (i (max 1 (/ size 10)))
+    (dotimes (i okuri-ari-count)
       (let* ((midashi (format "あるk%d" i))
              (candidates (list (cons (format "歩%d" i) nil)))
              (entry (nskk-dict-entry--create

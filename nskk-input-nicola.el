@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, nicola, oyayubi
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -62,7 +62,6 @@
     (";" . "ん")
 
     ;; 下段
-    ("z" . "．")
     ("x" . "ひ")
     ("c" . "す")
     ("v" . "ふ")
@@ -230,6 +229,81 @@ SHIFT-STATEは 'left, 'right, または nil。"
   "NICOLA入力方式をNSKKに登録する。"
   (nskk-input-nicola-init-hash-tables))
 
+;;; 同時打鍵判定機能
+
+(defcustom nskk-input-nicola-simultaneous-window 0.1
+  "同時打鍵判定ウィンドウ(秒)。
+親指シフトキーと通常キーの同時打鍵を判定する時間間隔。
+デフォルトは100ms。"
+  :type 'float
+  :group 'nskk)
+
+(defvar nskk-input-nicola--last-key-time nil
+  "最後のキー入力時刻。
+`float-time' 形式のタイムスタンプ。")
+
+(defvar nskk-input-nicola--last-key nil
+  "最後に入力されたキー。
+同時打鍵判定に使用される。")
+
+(defvar nskk-input-nicola--pending-shift nil
+  "保留中のシフト状態。
+'left, 'right, または nil。")
+
+(defun nskk-input-nicola-process (key &optional shift-state)
+  "KEYを処理する。
+SHIFT-STATEは 'left, 'right, または nil（無シフト）。
+
+同時打鍵判定:
+- 前回のキー入力から `nskk-input-nicola-simultaneous-window' 秒以内の場合、
+  同時打鍵として処理される。
+- それ以外の場合、通常の打鍵として処理される。
+
+返り値:
+- 変換されたかな文字列
+- nil（変換不可能な場合）
+
+使用例:
+  (nskk-input-nicola-process \"k\")           ;; => \"き\"
+  (nskk-input-nicola-process \"k\" 'left)    ;; => \"れ\"
+  (nskk-input-nicola-process \"k\" 'right)   ;; => \"ぎ\""
+  (let ((current-time (float-time)))
+    ;; 同時打鍵判定
+    (if (and nskk-input-nicola--last-key-time
+             (< (- current-time nskk-input-nicola--last-key-time)
+                nskk-input-nicola-simultaneous-window))
+        ;; 同時打鍵処理
+        (prog1
+            (nskk-input-nicola--simultaneous-key key shift-state)
+          ;; 同時打鍵後は状態をリセット
+          (setq nskk-input-nicola--last-key-time nil
+                nskk-input-nicola--last-key nil
+                nskk-input-nicola--pending-shift nil))
+      ;; 通常打鍵処理
+      (prog1
+          (nskk-input-nicola--normal-key key shift-state)
+        ;; 次の同時打鍵判定のために状態を保存
+        (setq nskk-input-nicola--last-key-time current-time
+              nskk-input-nicola--last-key key
+              nskk-input-nicola--pending-shift shift-state)))))
+
+(defun nskk-input-nicola--simultaneous-key (key shift-state)
+  "同時打鍵されたKEYを処理する。
+SHIFT-STATEまたは `nskk-input-nicola--pending-shift' に基づいて変換する。"
+  (let ((actual-shift (or shift-state nskk-input-nicola--pending-shift)))
+    (nskk-input-nicola-lookup key actual-shift)))
+
+(defun nskk-input-nicola--normal-key (key shift-state)
+  "通常打鍵されたKEYを処理する。"
+  (nskk-input-nicola-lookup key shift-state))
+
+(defun nskk-input-nicola-reset-state ()
+  "NICOLA入力の状態をリセットする。
+同時打鍵判定のための内部状態をクリアする。"
+  (setq nskk-input-nicola--last-key-time nil
+        nskk-input-nicola--last-key nil
+        nskk-input-nicola--pending-shift nil))
+
 ;;; 統計情報
 
 (defun nskk-input-nicola-stats ()
@@ -237,7 +311,8 @@ SHIFT-STATEは 'left, 'right, または nil。"
   (list :total (length nskk-input-nicola-table)
         :base (length nskk-input-nicola-base-table)
         :left-shift (length nskk-input-nicola-left-shift-table)
-        :right-shift (length nskk-input-nicola-right-shift-table)))
+        :right-shift (length nskk-input-nicola-right-shift-table)
+        :simultaneous-window nskk-input-nicola-simultaneous-window))
 
 ;;; パフォーマンス最適化
 

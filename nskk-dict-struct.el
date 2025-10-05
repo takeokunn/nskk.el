@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, dictionary
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -60,6 +60,7 @@
 
 (require 'cl-lib)
 (require 'nskk-trie)
+(require 'nskk-dict-parser)
 
 ;;; カスタマイズ変数
 
@@ -138,6 +139,13 @@
             (metadata (plist-get args :metadata)))
         `(nskk-dict-entry--raw-create ,midashi ,candidates ,frequency ,last-used ,okuri-type ,metadata))
     `(nskk-dict-entry--raw-create ,@args)))
+
+;; Note: nskk-dict struct is now defined in nskk-dict-parser.el
+;; and is imported via (require 'nskk-dict-parser) above.
+
+(defun nskk-dict-entry-midasi (entry)
+  "後方互換用のエイリアス。"
+  (nskk-dict-entry-midashi entry))
 
 ;; 前方一致インデックス
 (cl-defstruct (nskk-dict-prefix-index

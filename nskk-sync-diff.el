@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, sync, diff
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -374,82 +374,70 @@ COMPRESSED: `nskk-sync-diff-compressed' オブジェクト
     (nskk-sync-diff--decompress-with-gunzip data)))
 
 (defun nskk-sync-diff--compress-with-gzip (data level)
-  "gzipコマンドでデータを圧縮する。"
-  (let ((temp-input (make-temp-file "nskk-compress-input"))
-        (temp-output (make-temp-file "nskk-compress-output")))
-    (unwind-protect
-        (progn
-          (with-temp-file temp-input
-            (set-buffer-multibyte nil)
-            (insert data))
-
-          (call-process "gzip" nil nil nil
-                       (format "-%d" level)
-                       "-c" temp-input
-                       "-o" temp-output)
-
-          (with-temp-buffer
-            (set-buffer-multibyte nil)
-            (insert-file-contents-literally temp-output)
-            (buffer-string)))
-
-      (when (file-exists-p temp-input)
-        (delete-file temp-input))
-      (when (file-exists-p temp-output)
-        (delete-file temp-output)))))
+  "gzipコマンドでデータを圧縮する。
+DATA: 圧縮するバイト列
+LEVEL: 圧縮レベル (1-9)
+戻り値: 圧縮されたバイト列"
+  (if (executable-find "gzip")
+      (let ((temp-input (make-temp-file "nskk-compress-input"))
+            (temp-output (make-temp-file "nskk-compress-output")))
+        (unwind-protect
+            (progn
+              ;; 入力データを一時ファイルに書き込み
+              (with-temp-file temp-input
+                (set-buffer-multibyte nil)
+                (insert data))
+              ;; gzipで圧縮（-c で標準出力、リダイレクトでファイルへ）
+              (with-temp-buffer
+                (set-buffer-multibyte nil)
+                (let ((exit-code (call-process "gzip" temp-input
+                                               (list :file temp-output) nil
+                                               (format "-%d" level)
+                                               "-c")))
+                  (if (and (integerp exit-code) (zerop exit-code))
+                      ;; 成功: 圧縮データを読み込んで返す
+                      (progn
+                        (insert-file-contents-literally temp-output)
+                        (buffer-string))
+                    ;; 失敗: エラーをシグナル
+                    (error "gzip compression failed with exit code %s" exit-code)))))
+          ;; クリーンアップ
+          (when (file-exists-p temp-input) (delete-file temp-input))
+          (when (file-exists-p temp-output) (delete-file temp-output))))
+    (error "gzip command not found")))
 
 (defun nskk-sync-diff--decompress-with-gunzip (data)
-  "gunzipコマンドでデータを展開する。"
-  (let ((temp-input (make-temp-file "nskk-decompress-input"))
-        (temp-output (make-temp-file "nskk-decompress-output")))
-    (unwind-protect
-        (progn
-          (with-temp-file temp-input
-            (set-buffer-multibyte nil)
-            (insert data))
+  "gunzipコマンドでデータを展開する。
+DATA: gzip圧縮されたバイト列
+戻り値: 展開されたバイト列"
+  (if (executable-find "gunzip")
+      (let ((temp-input (make-temp-file "nskk-decompress-input"))
+            (temp-output (make-temp-file "nskk-decompress-output")))
+        (unwind-protect
+            (progn
+              ;; 圧縮データを一時ファイルに書き込み
+              (with-temp-file temp-input
+                (set-buffer-multibyte nil)
+                (insert data))
+              ;; gunzipで展開（-c で標準出力、リダイレクトでファイルへ）
+              (with-temp-buffer
+                (set-buffer-multibyte nil)
+                (let ((exit-code (call-process "gunzip" temp-input
+                                               (list :file temp-output) nil
+                                               "-c")))
+                  (if (and (integerp exit-code) (zerop exit-code))
+                      ;; 成功: 展開データを読み込んで返す
+                      (progn
+                        (insert-file-contents-literally temp-output)
+                        (buffer-string))
+                    ;; 失敗: エラーをシグナル
+                    (error "gunzip decompression failed with exit code %s" exit-code)))))
+          ;; クリーンアップ
+          (when (file-exists-p temp-input) (delete-file temp-input))
+          (when (file-exists-p temp-output) (delete-file temp-output))))
+    (error "gunzip command not found")))
 
-          (call-process "gunzip" nil nil nil
-                       "-c" temp-input
-                       "-o" temp-output)
 
-          (with-temp-buffer
-            (insert-file-contents temp-output)
-            (buffer-string)))
-
-      (when (file-exists-p temp-input)
-        (delete-file temp-input))
-      (when (file-exists-p temp-output)
-        (delete-file temp-output)))))
-
-;;; シリアライズ
-
-(defun nskk-sync-diff--serialize (diff)
-  "DIFF をJSON文字列にシリアライズする。"
-  (json-encode
-   (list :added (mapcar #'nskk-sync-diff--entry-to-plist
-                        (nskk-sync-diff-added diff))
-         :modified (mapcar #'nskk-sync-diff--entry-to-plist
-                          (nskk-sync-diff-modified diff))
-         :deleted (mapcar #'nskk-sync-diff--entry-to-plist
-                         (nskk-sync-diff-deleted diff))
-         :metadata (nskk-sync-diff-metadata diff))))
-
-(defun nskk-sync-diff--deserialize (json-string)
-  "JSON文字列を差分オブジェクトにデシリアライズする。"
-  (let* ((data (json-read-from-string json-string))
-         (added (mapcar #'nskk-sync-diff--plist-to-entry
-                       (plist-get data :added)))
-         (modified (mapcar #'nskk-sync-diff--plist-to-entry
-                          (plist-get data :modified)))
-         (deleted (mapcar #'nskk-sync-diff--plist-to-entry
-                         (plist-get data :deleted)))
-         (metadata (plist-get data :metadata)))
-
-    (nskk-sync-diff--create
-     :added added
-     :modified modified
-     :deleted deleted
-     :metadata metadata)))
 
 (defun nskk-sync-diff--entry-to-plist (entry)
   "エントリをplistに変換する。"
@@ -465,6 +453,31 @@ COMPRESSED: `nskk-sync-diff-compressed' オブジェクト
    :old-value (plist-get plist :old-value)
    :new-value (plist-get plist :new-value)
    :timestamp (plist-get plist :timestamp)))
+
+(defun nskk-sync-diff--serialize (diff)
+  "DIFFをシリアライズしてUTF-8のバイト列として返す。"
+  (let* ((payload (list :added (mapcar #'nskk-sync-diff--entry-to-plist
+                                       (nskk-sync-diff-added diff))
+                        :modified (mapcar #'nskk-sync-diff--entry-to-plist
+                                          (nskk-sync-diff-modified diff))
+                        :deleted (mapcar #'nskk-sync-diff--entry-to-plist
+                                         (nskk-sync-diff-deleted diff))
+                        :metadata (nskk-sync-diff-metadata diff)))
+         (printed (prin1-to-string payload)))
+    (encode-coding-string printed 'utf-8-unix)))
+
+(defun nskk-sync-diff--deserialize (data)
+  "シリアライズされた差分 DATA を復元する。"
+  (let* ((decoded (decode-coding-string data 'utf-8-unix))
+         (plist (read decoded)))
+    (nskk-sync-diff--create
+     :added (mapcar #'nskk-sync-diff--plist-to-entry
+                    (plist-get plist :added))
+     :modified (mapcar #'nskk-sync-diff--plist-to-entry
+                       (plist-get plist :modified))
+     :deleted (mapcar #'nskk-sync-diff--plist-to-entry
+                      (plist-get plist :deleted))
+     :metadata (plist-get plist :metadata))))
 
 ;;; ユーティリティ
 

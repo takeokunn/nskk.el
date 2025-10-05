@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, dictionary, index
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -178,8 +178,40 @@
      :version "1.0"
      :partition-strategy partition-strategy)))
 
-;;;###autoload
-(defun nskk-index-build (index dict-struct)
+(defun nskk-index--create-empty-dict ()
+  "空の `nskk-dict-index' 構造体を生成する。"
+  (nskk-dict-index--create
+   :okuri-ari-table (make-hash-table :test 'equal :size 128)
+   :okuri-nasi-table (make-hash-table :test 'equal :size 1024)
+   :trie-ari (nskk-trie-create)
+   :trie-nasi (nskk-trie-create)
+   :prefix-index-ari (nskk-dict-prefix-index--create
+                      :char-map (make-hash-table :test 'equal :size 128)
+                      :depth nskk-dict-struct-prefix-index-depth)
+   :prefix-index-nasi (nskk-dict-prefix-index--create
+                       :char-map (make-hash-table :test 'equal :size 1024)
+                       :depth nskk-dict-struct-prefix-index-depth)
+   :metadata (nskk-dict-metadata--create)
+   :statistics nil))
+
+(defun nskk-index--dict-from-trie (trie)
+  "TRIE から簡易的な `nskk-dict-index' を生成する後方互換ヘルパー。"
+  (let ((dict (nskk-index--create-empty-dict)))
+    (dolist (key (nskk-trie-keys trie))
+      (let* ((values (or (nskk-trie-lookup-values trie key) '()))
+             (entry (nskk-dict-entry-create key values 'okuri-nasi)))
+        (puthash key entry (nskk-dict-index-okuri-nasi-table dict))
+        (when (nskk-dict-index-trie-nasi dict)
+          (nskk-trie-insert (nskk-dict-index-trie-nasi dict) key entry))))
+    dict))
+
+(defun nskk-index--ensure-dict-struct (index)
+  "INDEX に辞書構造がなければ空の構造を割り当てる。"
+  (or (nskk-index-dict-struct index)
+      (setf (nskk-index-dict-struct index)
+            (nskk-index--create-empty-dict))))
+
+(defun nskk-index--build-core (index dict-struct)
   "辞書構造からインデックスを構築する。
 
 引数:
@@ -206,6 +238,39 @@
           (- (float-time) start-time))
 
     index))
+
+;;;###autoload
+(cl-defun nskk-index-build (index-or-source &optional dict-struct)
+  "後方互換性を考慮したインデックス構築エントリポイント。"
+  (cond
+   ;; 新しいAPI: (index dict-struct)
+   (dict-struct
+    (nskk-index--build-core index-or-source dict-struct))
+
+   ;; 既存インデックスを再構築
+   ((nskk-index-p index-or-source)
+    (nskk-index--build-core index-or-source
+                            (nskk-index--ensure-dict-struct index-or-source)))
+
+   ;; 辞書構造から新規インデックスを構築
+   ((nskk-dict-index-p index-or-source)
+    (let ((index (nskk-index-create)))
+      (nskk-index--build-core index index-or-source)))
+
+   ;; トライ木から簡易辞書構造を生成（後方互換）
+   ((nskk-trie-p index-or-source)
+    (let ((index (nskk-index-create))
+          (dict (nskk-index--dict-from-trie index-or-source)))
+      (nskk-index--build-core index dict)))
+
+   ;; ファイルパスが渡された場合
+   ((and (stringp index-or-source)
+         (file-exists-p index-or-source))
+    (let ((index (nskk-index-create)))
+      (nskk-index-build-from-file index index-or-source)))
+
+   (t
+    (error "Unsupported argument for nskk-index-build: %S" index-or-source))))
 
 ;;;###autoload
 (defun nskk-index-build-from-file (index file)
@@ -272,6 +337,27 @@
 
 ;;; 検索インターフェース
 
+(defun nskk-index-get-all-entries (index &optional okuri-type)
+  "INDEX 内のエントリを (MIDASHI . ENTRY) 形式で返す。"
+  (let* ((dict (nskk-index-dict-struct index))
+         (collect (when dict
+                    (lambda (table)
+                      (let (acc)
+                        (maphash (lambda (key entry)
+                                   (push (cons key entry) acc))
+                                 table)
+                        acc)))))
+    (unless dict
+      (error "Index not built yet"))
+    (cond
+     ((eq okuri-type 'okuri-ari)
+      (funcall collect (nskk-dict-index-okuri-ari-table dict)))
+     ((eq okuri-type 'okuri-nasi)
+      (funcall collect (nskk-dict-index-okuri-nasi-table dict)))
+     (t
+      (nconc (funcall collect (nskk-dict-index-okuri-nasi-table dict))
+             (funcall collect (nskk-dict-index-okuri-ari-table dict)))))))
+
 ;;;###autoload
 (defun nskk-index-search (index query &optional search-type limit)
   "インデックスから検索する（キャッシュ統合）。
@@ -319,6 +405,16 @@
           (nskk-cache-put cache cache-key result))
         result))))
 
+;;;###autoload
+(defun nskk-index-prefix-search (index prefix &optional limit)
+  "旧API互換のプレフィックス検索。"
+  (let ((entries (nskk-index-search index prefix 'prefix limit)))
+    (mapcar (lambda (item)
+              (if (consp item)
+                  (car item)
+                item))
+            entries)))
+
 (defun nskk-index--make-cache-key (query search-type limit)
   "キャッシュキーを生成する（内部関数）。
 
@@ -345,6 +441,25 @@
   (nskk-index-search index key 'exact nil))
 
 ;;; 更新インターフェース
+
+;;;###autoload
+(defun nskk-index-insert (index entry-or-midashi &optional candidates okuri-type)
+  "INDEX にエントリを挿入する。
+
+ENTRY-OR-MIDASHI が `nskk-dict-entry' の場合はそのまま挿入する。
+文字列の場合は CANDIDATES を候補リストとして新しいエントリを生成する。"
+  (nskk-index--ensure-dict-struct index)
+  (let* ((entry (cond
+                 ((nskk-dict-entry-p entry-or-midashi)
+                  entry-or-midashi)
+                 ((stringp entry-or-midashi)
+                  (unless candidates
+                    (error "Candidates are required when MIDASHI is a string"))
+                  (nskk-dict-entry-create entry-or-midashi candidates okuri-type))
+                 (t
+                  (error "Invalid entry: %S" entry-or-midashi)))))
+    (nskk-index-update index entry)
+    entry))
 
 ;;;###autoload
 (defun nskk-index-update (index entry)

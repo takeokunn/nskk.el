@@ -252,6 +252,27 @@
 
   (nskk-async-learning-shutdown))
 
+;;; 保存処理統合テスト
+
+(ert-deftest nskk-async-learning-test-auto-save-integration ()
+  "自動保存処理の統合テスト。"
+  (skip-unless (nskk-thread-pool-available-p))
+  (let ((nskk-persist-directory (make-temp-file "nskk-test-dir-" t)))
+    (unwind-protect
+        (progn
+          (nskk-async-learning-initialize)
+          ;; 保存処理が正常に実行されることを確認（エラーが出ないこと）
+          (nskk-async-learning--auto-save)
+          ;; ファイルが作成されることを確認（圧縮版も考慮）
+          (let ((freq-file (expand-file-name "frequency.el" nskk-persist-directory))
+                (freq-file-gz (expand-file-name "frequency.el.gz" nskk-persist-directory)))
+            (should (or (file-exists-p freq-file)
+                        (file-exists-p freq-file-gz))))
+          (nskk-async-learning-shutdown))
+      ;; クリーンアップ
+      (when (file-directory-p nskk-persist-directory)
+        (delete-directory nskk-persist-directory t)))))
+
 (provide 'nskk-async-learning-test)
 
 ;;; nskk-async-learning-test.el ends here

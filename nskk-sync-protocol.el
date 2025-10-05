@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, sync, protocol
 ;; Version: 1.0.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -370,7 +370,10 @@ WebSocketが利用可能な場合はWebSocket、
 
 (defun nskk-sync--json-to-message (json-string)
   "JSON文字列をメッセージオブジェクトに変換する。"
-  (let* ((data (json-read-from-string json-string))
+  (let* ((json-object-type 'hash-table)
+         (json-array-type 'list)
+         (json-key-type 'string)
+         (data (json-read-from-string json-string))
          (version (gethash "version" data))
          (type (intern (gethash "type" data)))
          (timestamp (gethash "timestamp" data))

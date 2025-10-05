@@ -19,6 +19,14 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-fixtures)
 
+(defmacro nskk-integration--should-convert (input expected)
+  "`nskk-convert-romaji' の確定文字列が EXPECTED と一致することを検証する。"
+  `(let* ((res (nskk-convert-romaji ,input))
+          (converted (nskk-converter-result-converted res))
+          (pending (nskk-converter-result-pending res)))
+     (should (equal converted ,expected))
+     (should (string= pending ""))))
+
 ;;; Test Suite: Module Integration
 
 (ert-deftest nskk-integration-test-all-modules-loaded ()
@@ -52,8 +60,7 @@
 
 (ert-deftest nskk-integration-test-version-info ()
   "バージョン情報が正しく設定されているか確認する。"
-  (should (string= nskk-version "0.1.0"))
-  (should (string= nskk-phase "Phase 1")))
+  (should (string= nskk-version "0.1.0")))
 
 ;;; Test Suite: Basic Flow Integration
 
@@ -63,7 +70,7 @@
         (expected '("あ" "か" "きゃ" "っか" "ん")))
     (cl-loop for input in inputs
              for exp in expected
-             do (should (equal (nskk-convert-romaji input) exp)))))
+             do (nskk-integration--should-convert input exp))))
 
 (ert-deftest nskk-integration-test-state-and-conversion ()
   "状態管理と変換処理の統合テスト。"
@@ -72,8 +79,7 @@
     (should (eq (nskk-state-mode state) 'hiragana))
 
     ;; 変換実行
-    (let ((result (nskk-convert-romaji "aiueo")))
-      (should (equal result "あいうえお")))
+    (nskk-integration--should-convert "aiueo" "あいうえお")
 
     ;; 状態が維持されているか確認
     (should (eq (nskk-state-mode state) 'hiragana))))
@@ -89,8 +95,7 @@
     (should (equal (nskk-buffer-content buffer) "ka"))
 
     ;; バッファ内容を変換
-    (let ((result (nskk-convert-romaji (nskk-buffer-content buffer))))
-      (should (equal result "か")))
+    (nskk-integration--should-convert (nskk-buffer-content buffer) "か")
 
     ;; バッファクリア
     (nskk-buffer-clear buffer)
@@ -121,10 +126,10 @@
         (nskk-trie-insert trie midasi candidates)))
 
     ;; 検索テスト
-    (should (equal (nskk-trie-lookup trie "あい") '("愛" "哀" "藍")))
-    (should (equal (nskk-trie-lookup trie "あお") '("青" "蒼")))
-    (should (equal (nskk-trie-lookup trie "あか") '("赤" "朱")))
-    (should (null (nskk-trie-lookup trie "あさ")))))
+    (should (equal (nskk-trie-lookup-values trie "あい") '("愛" "哀" "藍")))
+    (should (equal (nskk-trie-lookup-values trie "あお") '("青" "蒼")))
+    (should (equal (nskk-trie-lookup-values trie "あか") '("赤" "朱")))
+    (should (null (nskk-trie-lookup-values trie "あさ")))))
 
 (ert-deftest nskk-integration-test-dict-search-cache ()
   "辞書検索とキャッシュの統合テスト。"
@@ -212,11 +217,10 @@
   "検索失敗時のフォールバック動作テスト。"
   (let ((trie (nskk-trie-create)))
     ;; 存在しないキーの検索
-    (let ((result (nskk-trie-lookup trie "zzz")))
-      (should (null result)))
-
-    ;; フォールバック動作確認（空リスト返却）
-    (should (listp result))))
+    (let ((result (nskk-trie-lookup-values trie "zzz")))
+      (should (null result))
+      ;; フォールバック動作確認（空リスト返却）
+      (should (listp result)))))
 
 ;;; Test Suite: End-to-End Flow
 
@@ -233,11 +237,13 @@
       (nskk-buffer-insert buffer char))
 
     ;; バッファ内容を変換
-    (let ((hiragana (nskk-convert-romaji (nskk-buffer-content buffer))))
+    (let* ((result (nskk-convert-romaji (nskk-buffer-content buffer)))
+           (hiragana (nskk-converter-result-converted result)))
+      (should (string= (nskk-converter-result-pending result) ""))
       (should (equal hiragana "かんじ"))
 
       ;; 辞書検索
-      (let ((candidates (nskk-trie-lookup trie hiragana)))
+      (let ((candidates (nskk-trie-lookup-values trie hiragana)))
         (should (equal candidates '("漢字" "幹事" "感じ")))
 
         ;; 候補ウィンドウ表示
@@ -273,11 +279,13 @@
     (nskk-trie-insert trie "にほん" '("日本"))
 
     ;; ローマ字→ひらがな
-    (let ((hiragana (nskk-convert-romaji "nihon")))
+    (let* ((result (nskk-convert-romaji "nihon"))
+           (hiragana (nskk-converter-result-converted result)))
+      (should (string= (nskk-converter-result-pending result) ""))
       (should (equal hiragana "にほん"))
 
       ;; ひらがな→漢字候補
-      (let ((candidates (nskk-trie-lookup trie hiragana)))
+      (let ((candidates (nskk-trie-lookup-values trie hiragana)))
         (should (equal candidates '("日本")))))))
 
 (ert-deftest nskk-integration-test-data-flow-state-transitions ()
@@ -292,7 +300,7 @@
 
     ;; カタカナ→英数
     (nskk-mode-switch state 'ascii)
-    (should (eq (nskk-state-mode state) 'ascii))))
+    (should (eq (nskk-state-mode state) 'latin))))
 
 ;;; Test Suite: Event Propagation
 

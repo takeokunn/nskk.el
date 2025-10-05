@@ -298,6 +298,218 @@
   :tags '(:unit :dict-parser)
   (should-error (nskk-parse-dictionary "/nonexistent/file.txt")))
 
+;;; エラー戦略テスト（ignore）
+
+(nskk-deftest nskk-dict-parser-test-error-ignore-mode
+  "無視モードでのエラーハンドリング"
+  :tags '(:unit :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-dict-"))
+        (nskk-dict-parser-error-strategy 'ignore))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; -*- coding: utf-8 -*-\n")
+            (insert ";; okuri-nasi entries.\n")
+            (insert "かんじ /漢字/幹事/\n")
+            (insert "不正な行\n")  ; 不正なエントリ
+            (insert "あい /愛/哀/\n"))
+          (let ((dict (nskk-parse-dictionary temp-file)))
+            ;; 無視モードでは不正な行を完全にスキップ
+            (should (= (length (nskk-dict-okuri-nasi dict)) 2))
+            ;; エラーは記録されない
+            (should (= (length (nskk-dict-errors dict)) 0))))
+      (delete-file temp-file))))
+
+;;; 候補数超過テスト
+
+(nskk-deftest nskk-dict-parser-test-too-many-candidates
+  "候補数上限を超えるエントリ"
+  :tags '(:unit :dict-parser)
+  (let ((nskk-dict-parser-max-candidates 3)
+        (candidates-str (concat "/"
+                               (mapconcat #'number-to-string
+                                        (number-sequence 1 10)
+                                        "/")
+                               "/")))
+    ;; 警告は出るが、パース自体は成功する
+    (let ((entry (nskk-parse-entry (concat "test " candidates-str))))
+      (should (nskk-dict-entry-p entry))
+      (should (= (length (nskk-dict-entry-candidates entry)) 10)))))
+
+;;; エンコーディング検出の境界ケース
+
+(nskk-deftest nskk-dict-parser-test-detect-encoding-no-header
+  "ヘッダーなしファイルのエンコーディング検出"
+  :tags '(:unit :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; okuri-nasi entries.\n")
+            (insert "かんじ /漢字/\n"))
+          ;; ヘッダーなしの場合、バイトパターン解析に依存
+          (let ((encoding (nskk-dict-parser-detect-encoding temp-file)))
+            (should (memq encoding '(utf-8 euc-jp)))))
+      (delete-file temp-file))))
+
+(nskk-deftest nskk-dict-parser-test-detect-encoding-default
+  "エンコーディング判定不能時のデフォルト"
+  :tags '(:unit :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; ASCII only\n")
+            (insert "test /test/\n"))
+          ;; ASCIIのみの場合、デフォルトでUTF-8
+          (should (eq (nskk-dict-parser-detect-encoding temp-file) 'utf-8)))
+      (delete-file temp-file))))
+
+;;; バリデーションエラーケース
+
+(nskk-deftest nskk-dict-parser-test-validate-empty-midashi
+  "空の見出し語の検証"
+  :tags '(:unit :dict-parser)
+  (let* ((entry (nskk-dict-entry--create :midashi ""
+                                         :candidates '(("漢字" . nil))))
+         (errors (nskk-dict-parser-validate-entry entry)))
+    (should (member "Empty midashi" errors))))
+
+(nskk-deftest nskk-dict-parser-test-validate-no-candidates
+  "候補なしエントリの検証"
+  :tags '(:unit :dict-parser)
+  (let* ((entry (nskk-dict-entry--create :midashi "かんじ"
+                                         :candidates nil))
+         (errors (nskk-dict-parser-validate-entry entry)))
+    (should (member "No candidates" errors))))
+
+(nskk-deftest nskk-dict-parser-test-validate-empty-candidate-word
+  "空の候補語の検証"
+  :tags '(:unit :dict-parser)
+  (let* ((entry (nskk-dict-entry--create :midashi "かんじ"
+                                         :candidates '(("" . nil) ("漢字" . nil))))
+         (errors (nskk-dict-parser-validate-entry entry)))
+    (should (member "Empty candidate word" errors))))
+
+;;; UTF-8継続バイト検証テスト
+
+(nskk-deftest nskk-dict-parser-test-utf8-continuation-byte
+  "UTF-8継続バイトの判定"
+  :tags '(:unit :dict-parser)
+  (with-temp-buffer
+    (set-buffer-multibyte nil)
+    (insert-byte #x80 1)  ; 継続バイト開始
+    (insert-byte #xBF 1)  ; 継続バイト終了
+    (insert-byte #x7F 1)  ; 継続バイトでない
+    (insert-byte #xC0 1)  ; 継続バイトでない
+    (goto-char (point-min))
+    (should (nskk-dict-parser--valid-utf8-continuation-p 1))
+    (should (nskk-dict-parser--valid-utf8-continuation-p 2))
+    (should-not (nskk-dict-parser--valid-utf8-continuation-p 3))
+    (should-not (nskk-dict-parser--valid-utf8-continuation-p 4))))
+
+;;; ヘッダーセクションの不正エントリテスト
+
+(nskk-deftest nskk-dict-parser-test-entry-in-header-section
+  "ヘッダーセクション内のエントリ（警告）"
+  :tags '(:integration :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-dict-"))
+        (nskk-dict-parser-error-strategy 'lenient))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; -*- coding: utf-8 -*-\n")
+            (insert "かんじ /漢字/幹事/\n")  ; ヘッダーセクション内のエントリ
+            (insert ";; okuri-nasi entries.\n")
+            (insert "あい /愛/哀/\n"))
+          (let ((dict (nskk-parse-dictionary temp-file)))
+            ;; ヘッダー内エントリは警告が記録される
+            (should (> (length (nskk-dict-errors dict)) 0))
+            ;; okuri-nasiエントリは正常にパース
+            (should (= (length (nskk-dict-okuri-nasi dict)) 1))))
+      (delete-file temp-file))))
+
+;;; 複雑なエンコーディングシナリオ
+
+(nskk-deftest nskk-dict-parser-test-mixed-encoding-markers
+  "複数のエンコーディング指定がある場合"
+  :tags '(:unit :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; -*- coding: utf-8 -*-\n")
+            (insert ";; -*- coding: euc-jp -*-\n")  ; 2つ目は無視される
+            (insert "かんじ /漢字/\n"))
+          ;; 最初のcoding宣言が使われる
+          (should (eq (nskk-dict-parser-detect-encoding temp-file) 'utf-8)))
+      (delete-file temp-file))))
+
+;;; エラーハンドリングの境界ケース
+
+(nskk-deftest nskk-dict-parser-test-parse-error-recovery
+  "パースエラー後の継続処理"
+  :tags '(:integration :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-dict-"))
+        (nskk-dict-parser-error-strategy 'lenient))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; -*- coding: utf-8 -*-\n")
+            (insert ";; okuri-nasi entries.\n")
+            (insert "かんじ /漢字/幹事/\n")
+            (insert "エラー1\n")  ; エラー
+            (insert "あい /愛/哀/\n")
+            (insert "エラー2\n")  ; エラー
+            (insert "こころ /心/\n"))
+          (let ((dict (nskk-parse-dictionary temp-file)))
+            ;; 正常なエントリのみパース
+            (should (= (length (nskk-dict-okuri-nasi dict)) 3))
+            ;; 2つのエラーが記録
+            (should (= (length (nskk-dict-errors dict)) 2))))
+      (delete-file temp-file))))
+
+;;; 統計情報の境界ケース
+
+(nskk-deftest nskk-dict-parser-test-statistics-empty-dict
+  "空の辞書の統計情報"
+  :tags '(:unit :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-dict-")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; -*- coding: utf-8 -*-\n")
+            (insert ";; okuri-ari entries.\n")
+            (insert ";; okuri-nasi entries.\n"))
+          (let* ((dict (nskk-parse-dictionary temp-file))
+                 (stats (nskk-dict-parser-statistics dict)))
+            (should (= (plist-get stats :okuri-ari-entries) 0))
+            (should (= (plist-get stats :okuri-nasi-entries) 0))
+            (should (= (plist-get stats :total-entries) 0))))
+      (delete-file temp-file))))
+
+;;; コメント行のバリエーション
+
+(nskk-deftest nskk-dict-parser-test-comment-variations
+  "様々なコメント行の処理"
+  :tags '(:integration :dict-parser)
+  (let ((temp-file (make-temp-file "nskk-test-dict-")))
+    (unwind-protect
+        (progn
+          (with-temp-file temp-file
+            (insert ";; -*- coding: utf-8 -*-\n")
+            (insert ";;コメント（スペースなし）\n")
+            (insert ";;  スペース多い\n")
+            (insert ";;\n")  ; 空コメント
+            (insert ";; okuri-nasi entries.\n")
+            (insert "かんじ /漢字/\n"))
+          (let ((dict (nskk-parse-dictionary temp-file)))
+            (should (nskk-dict-p dict))
+            (should (= (length (nskk-dict-okuri-nasi dict)) 1))
+            ;; ヘッダーコメントがすべて記録される
+            (should (>= (length (nskk-dict-header dict)) 4))))
+      (delete-file temp-file))))
+
 (provide 'nskk-dict-parser-test)
 
 ;;; nskk-dict-parser-test.el ends here

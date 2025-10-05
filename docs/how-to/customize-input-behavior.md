@@ -16,7 +16,7 @@ NSKKの入力動作を自分好みにカスタマイズする具体的な方法�
 デフォルトの`C-x C-j`を別のキーに変更する場合：
 
 ```elisp
-;; Emacs 31 keymap-global-setを使用したモダンなキーバインド設定
+;; Emacs 30以上 keymap-global-setを使用したモダンなキーバインド設定
 
 ;; 例1: C-\に変更（より短いキー操作）
 (keymap-global-set "C-\\" #'nskk-toggle)
@@ -27,7 +27,7 @@ NSKKの入力動作を自分好みにカスタマイズする具体的な方法�
 ;; 例3: Alt+スペースに変更（他のIMEと統一）
 (keymap-global-set "M-SPC" #'nskk-toggle)
 
-;; Emacs 31新機能：コンテキスト依存キーバインド
+;; Emacs 30以上の新機能：コンテキスト依存キーバインド
 (keymap-global-set "C-x j"
                    (lambda ()
                      (interactive)
@@ -44,13 +44,13 @@ NSKKの入力動作を自分好みにカスタマイズする具体的な方法�
 特定のモードでのみ有効なキーバインドを設定：
 
 ```elisp
-;; Emacs 31 モード固有のkeymap-set使用
+;; Emacs 30以上 モード固有のkeymap-set使用
 
 ;; テキストモードでのみ有効（define-keymap使用）
 (add-hook 'text-mode-hook
           (lambda ()
             (keymap-local-set "C-j" #'nskk-toggle)
-            ;; Emacs 31新機能：一時的キーマップ
+            ;; Emacs 30以上の新機能：一時的キーマップ
             (keymap-local-set "C-c C-j" #'nskk-smart-complete)))
 
 ;; Orgモードでの高度カスタマイズ
@@ -73,7 +73,7 @@ NSKKの入力動作を自分好みにカスタマイズする具体的な方法�
 個人的な入力パターンに合わせてルールを追加：
 
 ```elisp
-;; Emacs 31 setoptを使用したカスタムルール設定
+;; Emacs 30以上 setoptを使用したカスタムルール設定
 (setopt nskk-custom-romaji-rules
         '(;; 省略形のルール（AI学習対応）
           ("kk" . "っか" :priority high :learn t)    ; 素早い入力用
@@ -93,7 +93,7 @@ NSKKの入力動作を自分好みにカスタマイズする具体的な方法�
         ("!?" . "!?")      ; 感嘆疑問符
         ))
 
-;; Emacs 31方式でカスタムルールを非同期適用
+;; Emacs 30以上の方式でカスタムルールを非同期適用
 (with-eval-after-load 'nskk
   ;; スレッドセーフなルールマージ
   (nskk-merge-rules-async
@@ -113,7 +113,7 @@ NSKKの入力動作を自分好みにカスタマイズする具体的な方法�
 コーディング時に便利なルールを追加：
 
 ```elisp
-;; Emacs 31 プログラミング用の高度ルール設定
+;; Emacs 30以上 プログラミング用の高度ルール設定
 (setopt nskk-programming-rules
       '(;; 一般的なプログラミング用語
         ("def" . "てふ")     ; define

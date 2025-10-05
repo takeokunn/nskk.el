@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, integration
 ;; Version: 0.9.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -156,103 +156,103 @@
 (defun nskk-runtime-integration-initialize ()
   "ランタイム統合の全モジュールを初期化する。"
   (interactive)
-  (when nskk-runtime-integration-initialized
-    (message "NSKK Runtime already initialized")
-    (cl-return-from nskk-runtime-integration-initialize))
+  (cl-block nskk-runtime-integration-initialize
+    (when nskk-runtime-integration-initialized
+      (message "NSKK Runtime already initialized")
+      (cl-return-from nskk-runtime-integration-initialize))
 
-  (message "NSKK Runtime: Initializing...")
+    (message "NSKK Runtime: Initializing...")
 
-  ;; 1. Infrastructure Layer (Threading & Optimization)
-  (when nskk-runtime-integration-enable-threading
-    (message "NSKK Runtime: Initializing threading system...")
-    (when (nskk-thread-pool-available-p)
-      (setq nskk-runtime-integration-thread-pool (nskk-thread-pool-create))
-      (message "NSKK Runtime: Thread pool created with %d workers"
-               (nskk-thread-pool-size nskk-runtime-integration-thread-pool))))
+    ;; 1. Infrastructure Layer (Threading & Optimization)
+    (when nskk-runtime-integration-enable-threading
+      (message "NSKK Runtime: Initializing threading system...")
+      (when (nskk-thread-pool-available-p)
+        (setq nskk-runtime-integration-thread-pool (nskk-thread-pool-create))
+        (message "NSKK Runtime: Thread pool created with %d workers"
+                 (nskk-thread-pool-size nskk-runtime-integration-thread-pool))))
 
-  (when nskk-runtime-integration-enable-optimization
-    (message "NSKK Runtime: Initializing optimization system...")
-    ;; メモリ最適化設定
-    (when (fboundp 'nskk-memory-optimize-enable)
-      (nskk-memory-optimize-enable))
-    ;; マルチレベルキャッシュ初期化
-    (when (fboundp 'nskk-multi-cache-initialize)
-      (nskk-multi-cache-initialize))
-    ;; ネイティブコンパイル設定
-    (when (fboundp 'nskk-native-compile-setup)
-      (nskk-native-compile-setup)))
+    (when nskk-runtime-integration-enable-optimization
+      (message "NSKK Runtime: Initializing optimization system...")
+      ;; メモリ最適化設定
+      (when (fboundp 'nskk-memory-optimize-enable)
+        (nskk-memory-optimize-enable))
+      ;; マルチレベルキャッシュ初期化
+      (when (fboundp 'nskk-multi-cache-initialize)
+        (nskk-multi-cache-initialize))
+      ;; ネイティブコンパイル設定
+      (when (fboundp 'nskk-native-compile-setup)
+        (nskk-native-compile-setup)))
 
-  ;; 2. Core Engine Layer (Profiling)
-  (when nskk-runtime-integration-enable-profiling
-    (message "NSKK Runtime: Initializing profiling system...")
-    (setq nskk-runtime-integration-profiling-active nil))
+    ;; 2. Core Engine Layer (Profiling)
+    (when nskk-runtime-integration-enable-profiling
+      (message "NSKK Runtime: Initializing profiling system...")
+      (setq nskk-runtime-integration-profiling-active nil))
 
-  ;; 3. Application Layer (Async UI)
-  (when nskk-runtime-integration-enable-async-ui
-    (message "NSKK Runtime: Initializing async UI system...")
-    ;; プログレス表示初期化
-    (when (fboundp 'nskk-progress-initialize)
-      (nskk-progress-initialize))
-    ;; バックグラウンド処理初期化
-    (when (fboundp 'nskk-background-initialize)
-      (nskk-background-initialize)))
+    ;; 3. Application Layer (Async UI)
+    (when nskk-runtime-integration-enable-async-ui
+      (message "NSKK Runtime: Initializing async UI system...")
+      ;; プログレス表示初期化
+      (when (fboundp 'nskk-progress-initialize)
+        (nskk-progress-initialize))
+      ;; バックグラウンド処理初期化
+      (when (fboundp 'nskk-background-initialize)
+        (nskk-background-initialize)))
 
-  ;; 4. Presentation Layer (Transient UI)
-  (message "NSKK Runtime: Initializing transient UI...")
-  ;; Transient UIは必要に応じて起動されるため、ここでは何もしない
+    ;; 4. Presentation Layer (Transient UI)
+    (message "NSKK Runtime: Initializing transient UI...")
+    ;; Transient UIは必要に応じて起動されるため、ここでは何もしない
 
-  ;; 5. Extension Layer (Architecture)
-  (message "NSKK Runtime: Initializing architecture layer...")
-  (when (fboundp 'nskk-architecture-validate)
-    (nskk-architecture-validate))
+    ;; 5. Extension Layer (Architecture)
+    (message "NSKK Runtime: Initializing architecture layer...")
+    (when (fboundp 'nskk-architecture-validate)
+      (nskk-architecture-validate))
 
-  ;; 6. Plugin Layer (optional)
-  (when nskk-runtime-integration-plugin-system-available
-    (message "NSKK Runtime: Initializing plugin system...")
-    (when (fboundp 'nskk-plugin-system-initialize)
-      (nskk-plugin-system-initialize)))
+    ;; 6. Plugin Layer (optional)
+    (when nskk-runtime-integration-plugin-system-available
+      (message "NSKK Runtime: Initializing plugin system...")
+      (when (fboundp 'nskk-plugin-system-initialize)
+        (nskk-plugin-system-initialize)))
 
-  ;; 7. Auto-tuning (最後に実行)
-  (when nskk-runtime-integration-enable-auto-tune
-    (message "NSKK Runtime: Running auto-tune...")
-    (when (fboundp 'nskk-auto-tune-run)
-      (nskk-auto-tune-run)))
+    ;; 7. Auto-tuning (最後に実行)
+    (when nskk-runtime-integration-enable-auto-tune
+      (message "NSKK Runtime: Running auto-tune...")
+      (when (fboundp 'nskk-auto-tune-run)
+        (nskk-auto-tune-run)))
 
-  (setq nskk-runtime-integration-initialized t)
-  (message "NSKK Runtime: Initialization complete"))
+    (setq nskk-runtime-integration-initialized t)
+    (message "NSKK Runtime: Initialization complete")))
 
 (defun nskk-runtime-integration-shutdown ()
   "ランタイム統合の全モジュールをシャットダウンする。"
   (interactive)
-  (unless nskk-runtime-integration-initialized
-    (message "NSKK Runtime not initialized")
-    (cl-return-from nskk-runtime-integration-shutdown))
+  (cl-block nskk-runtime-integration-shutdown
+    (unless nskk-runtime-integration-initialized
+      (message "NSKK Runtime not initialized")
+      (cl-return-from nskk-runtime-integration-shutdown))
 
-  (message "NSKK Runtime: Shutting down...")
+    (message "NSKK Runtime: Shutting down...")
 
-  ;; プロファイリング停止
-  (when nskk-runtime-integration-profiling-active
-    (nskk-profile-stop))
+    ;; プロファイリング停止
+    (when nskk-runtime-integration-profiling-active
+      (nskk-profile-stop))
 
-  ;; スレッドプールシャットダウン
-  (when (and nskk-runtime-integration-thread-pool
-             (nskk-thread-pool-p nskk-runtime-integration-thread-pool))
-    (nskk-thread-pool-shutdown nskk-runtime-integration-thread-pool)
-    (setq nskk-runtime-integration-thread-pool nil))
+    ;; スレッドプールシャットダウン
+    (when (and nskk-runtime-integration-thread-pool
+               (nskk-thread-pool-p nskk-runtime-integration-thread-pool))
+      (nskk-thread-pool-shutdown nskk-runtime-integration-thread-pool)
+      (setq nskk-runtime-integration-thread-pool nil))
 
-  ;; バックグラウンド処理停止
-  (when (fboundp 'nskk-background-shutdown)
-    (nskk-background-shutdown))
+    ;; バックグラウンド処理停止
+    (when (fboundp 'nskk-background-shutdown)
+      (nskk-background-shutdown))
 
-  ;; プラグインシステムシャットダウン
-  (when (and nskk-runtime-integration-plugin-system-available
-             (fboundp 'nskk-plugin-system-shutdown))
-    (nskk-plugin-system-shutdown))
+    ;; プラグインシステムシャットダウン
+    (when (and nskk-runtime-integration-plugin-system-available
+               (fboundp 'nskk-plugin-system-shutdown))
+      (nskk-plugin-system-shutdown))
 
-  (setq nskk-runtime-integration-initialized nil)
-  (message "NSKK Runtime: Shutdown complete"))
-
-;;; 統合ユーティリティ関数
+    (setq nskk-runtime-integration-initialized nil)
+    (message "NSKK Runtime: Shutdown complete")))
 
 (defun nskk-runtime-integration-status ()
   "ランタイム統合の現在の状態を表示する。"
@@ -361,43 +361,6 @@
           nil)
       (message "NSKK Runtime verification PASSED")
       t)))
-
-;;; 自動初期化
-
-;; ランタイム統合は明示的な初期化が必要なため、自動初期化は行わない
-;; ユーザーは (nskk-runtime-integration-initialize) を呼び出す必要がある
-
-;;; 互換レイヤー
-
-(define-obsolete-function-alias 'nskk-phase3-initialize
-  'nskk-runtime-integration-initialize "1.0.0")
-(define-obsolete-function-alias 'nskk-phase3-shutdown
-  'nskk-runtime-integration-shutdown "1.0.0")
-(define-obsolete-function-alias 'nskk-phase3-status
-  'nskk-runtime-integration-status "1.0.0")
-(define-obsolete-function-alias 'nskk-phase3-benchmark
-  'nskk-runtime-integration-benchmark "1.0.0")
-(define-obsolete-function-alias 'nskk-phase3-verify
-  'nskk-runtime-integration-verify "1.0.0")
-
-(define-obsolete-variable-alias 'nskk-phase3-initialized
-  'nskk-runtime-integration-initialized "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-thread-pool
-  'nskk-runtime-integration-thread-pool "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-profiling-active
-  'nskk-runtime-integration-profiling-active "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-enable-threading
-  'nskk-runtime-integration-enable-threading "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-enable-async-ui
-  'nskk-runtime-integration-enable-async-ui "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-enable-profiling
-  'nskk-runtime-integration-enable-profiling "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-enable-auto-tune
-  'nskk-runtime-integration-enable-auto-tune "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-enable-optimization
-  'nskk-runtime-integration-enable-optimization "1.0.0")
-(define-obsolete-variable-alias 'nskk-phase3-plugin-system-available
-  'nskk-runtime-integration-plugin-system-available "1.0.0")
 
 (provide 'nskk-runtime-integration)
 

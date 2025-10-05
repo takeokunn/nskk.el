@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, testing
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -112,25 +112,34 @@ NAME: テスト名（シンボル）
 DESCRIPTION: テストの説明（文字列）
 BODY: テスト本体
 
-BODYの先頭で :tags キーワードを指定可能:
+BODYの先頭で :tags と :expected-result キーワードを指定可能:
   :tags '(:unit :fast)
+  :expected-result :failed
 
 使用例:
   (nskk-deftest my-test
     \"My test description\"
     :tags '(:unit)
+    :expected-result :failed
     (should (equal 1 1)))"
   (declare (indent 2) (debug (symbolp stringp &rest form)))
   (let ((tags nil)
+        (expected-result nil)
         (test-body body))
     ;; :tags キーワードを抽出
-    (when (eq (car body) :tags)
-      (setq tags (cadr body))
-      (setq test-body (cddr body)))
+    (when (eq (car test-body) :tags)
+      (setq tags (cadr test-body))
+      (setq test-body (cddr test-body)))
+
+    ;; :expected-result キーワードを抽出
+    (when (eq (car test-body) :expected-result)
+      (setq expected-result (cadr test-body))
+      (setq test-body (cddr test-body)))
 
     `(ert-deftest ,name ()
        ,description
        ,@(when tags `(:tags ,tags))
+       ,@(when expected-result `(:expected-result ,expected-result))
        (let ((nskk-test--current-test ',name)
              (start-time (current-time)))
          (unwind-protect

@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -337,6 +337,50 @@ OVERLAY: 削除するoverlay"
     (delete-overlay overlay)))
 
 ;;; 公開API
+
+;;;###autoload
+(defun nskk-candidate-window-create (candidates &optional page-size)
+  "候補リストから新しい候補ウィンドウ構造を生成する。
+
+CANDIDATES: 候補リスト（文字列またはplist）
+PAGE-SIZE: 1ページあたりの表示件数（省略時は `nskk-candidate-page-size'）。"
+  (let* ((normalized (mapcar #'nskk-candidate-window--normalize-candidate candidates))
+         (size (or page-size nskk-candidate-page-size)))
+    (nskk-candidate-window--create
+     :candidates normalized
+     :selected-index 0
+     :page-size size
+     :current-page 0
+     :position nil)))
+
+;;;###autoload
+(defun nskk-candidate-window-select (window index)
+  "WINDOW 内で INDEX の候補を選択する。"
+  (unless (nskk-candidate-window-p window)
+    (error "Not a candidate window: %S" window))
+  (let* ((candidates (nskk-candidate-window-candidates window))
+         (count (length candidates))
+         (clamped (if (> count 0)
+                      (max 0 (min index (1- count)))
+                    0))
+         (page-size (nskk-candidate-window-page-size window))
+         (page (if (and (> page-size 0) (> count 0))
+                   (/ clamped page-size)
+                 0)))
+    (setf (nskk-candidate-window-selected-index window) clamped)
+    (setf (nskk-candidate-window-current-page window) page)
+    window))
+
+;;;###autoload
+(defun nskk-candidate-window-current (window)
+  "WINDOW で現在選択中の候補の表示テキストを返す。"
+  (unless (nskk-candidate-window-p window)
+    (error "Not a candidate window: %S" window))
+  (let* ((index (nskk-candidate-window-selected-index window))
+         (candidates (nskk-candidate-window-candidates window))
+         (candidate (nth index candidates)))
+    (when candidate
+      (nskk-candidate-window--get-text candidate))))
 
 ;;;###autoload
 (defun nskk-show-candidates (candidates &optional position)

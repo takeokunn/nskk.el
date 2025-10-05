@@ -20,7 +20,7 @@ NSKKのカスタマイゼーション手法を解説します。個人の入力�
 個人の用途に応じて複数のプロファイルを管理：
 
 ```elisp
-;; Emacs 31強化プロファイル設定システム（動的切り替え・コンテキスト適応）
+;; Emacs 30以上強化プロファイル設定システム（動的切り替え・コンテキスト適応）
 (defcustom nskk-profiles
   `((coding . ((nskk-dictionary-path . ,(expand-file-name "~/dict/programming.dic"))
                (nskk-enable-technical-terms . t)
@@ -39,14 +39,14 @@ NSKKのカスタマイゼーション手法を解説します。個人の入力�
                (nskk-abbreviation-mode . t)
                (nskk-social-context . t)
                (nskk-performance-profile . 'balanced))))
-  "Emacs 31強化NSKKプロファイル設定（コンテキスト適応型）"
+  "Emacs 30以上強化NSKKプロファイル設定（コンテキスト適応型）"
   :group 'nskk
   :type '(alist :key-type symbol
                 :value-type (alist :key-type symbol
                                    :value-type sexp))
 
 (defun nskk-load-profile (profile-name &optional force-reload)
-  "Emacs 31スマートプロファイル読み込み（非同期・状態保持・ロールバック対応）"
+  "Emacs 30以上のスマートプロファイル読み込み（非同期・状態保持・ロールバック対応）"
   (interactive
    (list (intern (completing-read
                   "Profile: "
@@ -100,9 +100,9 @@ NSKKのカスタマイゼーション手法を解説します。個人の入力�
         (message "[NSKK] Rolling back to previous profile due to errors")
         (nskk-rollback-config rollback-config)))))
 
-;; Emacs 31AIベースコンテキスト適応型プロファイル自動切り替え
+;; Emacs 30以上のAIベースコンテキスト適応型プロファイル自動切り替え
 (defun nskk-auto-switch-profile (&optional force-analysis)
-  "Emacs 31AIコンテキスト分析によるスマートプロファイル選択"
+  "Emacs 30以上のAIコンテキスト分析によるスマートプロファイル選択"
   (interactive "P")
   (let* ((context-data (nskk-analyze-current-context))
          (mode-score (nskk-calculate-mode-scores context-data))
@@ -136,7 +136,7 @@ NSKKのカスタマイゼーション手法を解説します。個人の入力�
 ### 学習パターンの調整
 
 ```elisp
-;; Emacs 31AI強化学習システム設定（深層学習・リアルタイム適応）
+;; Emacs 30以上のAI強化学習システム設定（深層学習・リアルタイム適応）
 (setopt nskk-learning-parameters
         `((:frequency-weight . ,(nskk-adaptive-weight 'frequency 0.7))   ; 動的重み調整
           (:recency-weight . ,(nskk-adaptive-weight 'recency 0.2))       ; 時間減衰適応

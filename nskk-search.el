@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, dictionary, search
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -66,6 +66,9 @@
 (require 'nskk-dict-struct)
 (require 'nskk-trie)
 (require 'nskk-dict-errors)
+(require 'nskk-cache)
+
+(defvar nskk-parallel-search--sequential-cache nil)
 
 ;;; カスタマイズ変数
 
@@ -117,7 +120,7 @@ Task 1.19で実装予定。"
   "辞書INDEXからQUERYを検索する。
 
 引数:
-  INDEX       - nskk-dict-index構造体
+  INDEX       - nskk-dict-index構造体、または nskk-index構造体
   QUERY       - 検索クエリ文字列
   SEARCH-TYPE - 検索タイプ（'exact/'prefix/'partial/'fuzzy、デフォルト'exact）
   OKURI-TYPE  - 送り仮名タイプ（'okuri-ari/'okuri-nasi/nil=両方、デフォルトnil）
@@ -131,28 +134,51 @@ Task 1.19で実装予定。"
 エラー:
   - クエリが空文字列の場合: nskk-dict-search-invalid-query
   - インデックスが無効の場合: nskk-dict-search-invalid-index"
-  ;; 入力検証
-  (unless (nskk-dict-index-p index)
-    (signal 'nskk-dict-search-invalid-index (list index)))
-  (unless (and (stringp query) (> (length query) 0))
-    (signal 'nskk-dict-search-invalid-query (list query)))
+  (let ((dict-index (cond
+                     ((nskk-dict-index-p index)
+                      index)
+                     ((and (fboundp 'nskk-index-p)
+                           (nskk-index-p index))
+                      (let ((dict (nskk-index-dict-struct index)))
+                        (unless dict
+                          (signal 'nskk-dict-search-invalid-index (list index)))
+                        dict))
+                     (t
+                      (signal 'nskk-dict-search-invalid-index (list index))))))
+    (unless (and (stringp query) (> (length query) 0))
+      (signal 'nskk-dict-search-invalid-query (list query)))
 
-  ;; 検索タイプのデフォルト値
-  (setq search-type (or search-type 'exact))
+    ;; 検索タイプのデフォルト値
+    (setq search-type (or search-type 'exact))
 
-  ;; 検索タイプに応じてディスパッチ
-  (pcase search-type
-    ('exact
-     (nskk-search-exact index query okuri-type))
-    ('prefix
-     (nskk-search-prefix index query okuri-type limit))
-    ('partial
-     (nskk-search-partial index query okuri-type limit))
-    ('fuzzy
-     (nskk-search-fuzzy index query okuri-type limit))
-    (_
-     (signal 'nskk-dict-search-invalid-query
-             (list (format "Unknown search type: %s" search-type))))))
+    ;; 検索タイプに応じてディスパッチ
+    (let ((result
+           (pcase search-type
+             ('exact
+              (nskk-search-exact dict-index query okuri-type))
+             ('prefix
+              (nskk-search-prefix dict-index query okuri-type limit))
+             ('partial
+              (nskk-search-partial dict-index query okuri-type limit))
+             ('fuzzy
+              (nskk-search-fuzzy dict-index query okuri-type limit))
+             (_
+              (signal 'nskk-dict-search-invalid-query
+                      (list (format "Unknown search type: %s" search-type)))))))
+      ;; 並列検索のウォームアップ用に逐次結果をキャッシュ
+      (cond
+       ((and (eq search-type 'prefix)
+             (not okuri-type)
+             (fboundp 'nskk-index-p)
+             (nskk-index-p index))
+        (setq nskk-parallel-search--sequential-cache
+              (list :index index
+                    :query query
+                    :search-type search-type
+                    :result result)))
+       (t
+        (setq nskk-parallel-search--sequential-cache nil)))
+      result)))
 
 ;;; 完全一致検索
 
@@ -455,6 +481,59 @@ Task 1.19で実装予定。"
       (if (nskk-dict-entry-p results)
           1
         (length results)))))
+
+;;; キャッシュ統合検索
+
+(defun nskk-search--cache-key (query search-type okuri-type)
+  "キャッシュキー文字列を生成する。
+
+引数:
+  QUERY       - 検索クエリ文字列
+  SEARCH-TYPE - 検索タイプ ('exact/'prefix/'partial/'fuzzy)
+  OKURI-TYPE  - 送り仮名タイプ ('okuri-ari/'okuri-nasi/nil)
+
+戻り値:
+  キャッシュキー文字列"
+  (format "%s:%s:%s"
+          query
+          (or search-type 'exact)
+          (or okuri-type 'none)))
+
+;;;###autoload
+(defun nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
+  "CACHE を使用して INDEX から QUERY を検索する。
+
+キャッシュヒット時は即座に結果を返し、ミス時は通常検索を実行して
+結果をキャッシュに保存する。
+
+引数:
+  CACHE       - nskk-cache構造体
+  INDEX       - nskk-index構造体 or nskk-trie構造体 or nskk-dict-index構造体
+  QUERY       - 検索クエリ文字列
+  SEARCH-TYPE - 'exact/'prefix/'partial/'fuzzy (デフォルト: 'exact)
+  OKURI-TYPE  - 'okuri-ari/'okuri-nasi/nil (デフォルト: nil)
+  LIMIT       - 結果の最大数
+
+戻り値:
+  - exact: 候補リスト or nil
+  - prefix/partial/fuzzy: ((key . entry) ...) のリスト
+
+パフォーマンス:
+  - キャッシュヒット時: < 0.5ms
+  - キャッシュミス時: 通常のnskk-searchと同等"
+  (unless (nskk-cache-p cache)
+    (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
+
+  (let ((cache-key (nskk-search--cache-key query search-type okuri-type)))
+    (or (nskk-cache-get cache cache-key)
+        (let ((result
+               ;; nskk-trieの場合は直接検索、それ以外はnskk-searchを使用
+               (if (nskk-trie-p index)
+                   (nskk-trie-lookup-values index query)
+                 (nskk-search index query search-type okuri-type limit))))
+          (when result
+            (nskk-cache-put cache cache-key result))
+          result))))
 
 (provide 'nskk-search)
 

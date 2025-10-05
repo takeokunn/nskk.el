@@ -396,6 +396,150 @@
       (nskk-modeline-update)
       (should (string-match-p "あ" (substring-no-properties nskk-modeline-string))))))
 
+;;; 追加のエッジケーステスト
+
+(ert-deftest nskk-modeline-test-nskk-state-format ()
+  "nskk-state構造体を直接渡すテスト"
+  (let ((nskk-state (nskk-state-create :mode 'katakana)))
+    (let ((result (nskk-modeline-format nskk-state)))
+      (should (stringp result))
+      (should (string-match-p "ア" (substring-no-properties result))))))
+
+(ert-deftest nskk-modeline-test-modeline-state-format ()
+  "nskk-modeline-state構造体を直接渡すテスト"
+  (let ((ml-state (nskk-modeline-state-create :mode 'hiragana :state 'converting)))
+    (let ((result (nskk-modeline-format ml-state)))
+      (should (stringp result)))))
+
+(ert-deftest nskk-modeline-test-minimal-params ()
+  "最小限のパラメータでのフォーマットテスト"
+  (let ((result (nskk-modeline-format 'latin)))
+    (should (stringp result))))
+
+(ert-deftest nskk-modeline-test-format-from-state ()
+  "nskk-modeline-format-from-state 関数のテスト"
+  (let ((ml-state (nskk-modeline-state-create :mode 'katakana :state 'selecting)))
+    (let ((result (nskk-modeline-format-from-state ml-state)))
+      (should (stringp result)))))
+
+;;; プレビュー機能テスト
+
+(ert-deftest nskk-modeline-test-preview-all-modes-execution ()
+  "プレビュー機能の実行テスト"
+  ;; エラーなく実行できることを確認
+  (should-not (nskk-modeline-preview-all-modes))
+  ;; バッファが作成されることを確認
+  (should (get-buffer "*NSKK Modeline Preview*"))
+  ;; 後片付け
+  (kill-buffer "*NSKK Modeline Preview*"))
+
+;;; describe-current テスト
+
+(ert-deftest nskk-modeline-test-describe-current ()
+  "describe-current 関数のテスト"
+  (with-temp-buffer
+    (let ((nskk-modeline-string "[test]"))
+      (should-not (nskk-modeline-describe-current)))))
+
+;;; インストール/アンインストールの詳細テスト
+
+(ert-deftest nskk-modeline-test-install-idempotent ()
+  "インストールの冪等性テスト"
+  (with-temp-buffer
+    (let ((mode-line-format (default-value 'mode-line-format)))
+      (nskk-modeline-install)
+      (let ((count1 (cl-count 'nskk-modeline-string mode-line-format)))
+        (nskk-modeline-install)
+        (let ((count2 (cl-count 'nskk-modeline-string mode-line-format)))
+          ;; 2回インストールしても1つだけ存在するはず
+          (should (= count1 count2))))
+      (nskk-modeline-uninstall))))
+
+(ert-deftest nskk-modeline-test-install-without-position ()
+  "positionが見つからない場合のインストールテスト"
+  (with-temp-buffer
+    (let ((mode-line-format '(mode-line-front-space))
+          (nskk-modeline-position 'non-existent-position))
+      (nskk-modeline-install)
+      ;; 末尾に追加されるはず
+      (should (memq 'nskk-modeline-string mode-line-format))
+      (nskk-modeline-uninstall))))
+
+;;; 辞書状態の組み合わせテスト
+
+(ert-deftest nskk-modeline-test-all-dict-status ()
+  "全ての辞書状態のテスト"
+  (let ((nskk-modeline-format "[%m%d]")
+        (nskk-modeline-use-color nil)
+        (nskk-modeline-show-dict-status t))
+    (dolist (dict-status '(nil loading error))
+      (with-temp-buffer
+        (nskk-modeline-update 'hiragana 'normal dict-status)
+        (should (> (length nskk-modeline-string) 0))))))
+
+;;; フォーマット展開の詳細テスト
+
+(ert-deftest nskk-modeline-test-expand-format-all-placeholders ()
+  "全てのプレースホルダーを含むフォーマット展開"
+  (let ((nskk-modeline-show-dict-status t)
+        (nskk-modeline-show-state-indicator t))
+    (let ((result (nskk-modeline-expand-format "[%m%s%d%%]" 'hiragana 'converting 'loading)))
+      (should (string-match-p "あ" result))
+      (should (string-match-p "▽" result))
+      (should (string-match-p "読" result))
+      (should (string-match-p "%" result)))))
+
+(ert-deftest nskk-modeline-test-expand-format-no-placeholders ()
+  "プレースホルダーなしのフォーマット展開"
+  (let ((result (nskk-modeline-expand-format "NSKK" 'hiragana 'normal nil)))
+    (should (equal result "NSKK"))))
+
+;;; 状態判定の詳細テスト
+
+(ert-deftest nskk-modeline-test-state-from-nskk-state-all-cases ()
+  "全ての状態判定パターンのテスト"
+  ;; normal状態
+  (let* ((state1 (nskk-state-create :mode 'hiragana))
+         (ml-state1 (nskk-modeline-state-from-nskk-state state1)))
+    (should (eq (nskk-modeline-state-state ml-state1) 'normal)))
+
+  ;; converting状態
+  (let* ((state2 (nskk-state-create :mode 'katakana :conversion-buffer "test"))
+         (ml-state2 (nskk-modeline-state-from-nskk-state state2)))
+    (should (eq (nskk-modeline-state-state ml-state2) 'converting)))
+
+  ;; selecting状態
+  (let* ((state3 (nskk-state-create :mode 'conversion))
+         (ml-state3 (progn
+                      (nskk-state-set-candidates state3 '("a" "b"))
+                      (nskk-modeline-state-from-nskk-state state3))))
+    (should (eq (nskk-modeline-state-state ml-state3) 'selecting))))
+
+;;; 色無効時の詳細テスト
+
+(ert-deftest nskk-modeline-test-no-color-all-components ()
+  "色無効時の全コンポーネントテスト"
+  (let ((nskk-modeline-use-color nil)
+        (nskk-modeline-show-state-indicator t)
+        (nskk-modeline-show-dict-status t))
+    (let ((result (nskk-modeline-format 'hiragana 'converting 'loading)))
+      (should (stringp result))
+      ;; テキストプロパティがないことを確認
+      (should (equal result (substring-no-properties result))))))
+
+;;; nskk-modeline-state-copy テスト
+
+(ert-deftest nskk-modeline-test-state-copy ()
+  "状態のコピーテスト"
+  (let* ((original (nskk-modeline-state-create :mode 'katakana :state 'converting))
+         (copied (nskk-modeline-state-copy original)))
+    (should (nskk-modeline-state-p copied))
+    (should (eq (nskk-modeline-state-mode copied) 'katakana))
+    (should (eq (nskk-modeline-state-state copied) 'converting))
+    ;; オリジナルを変更してもコピーは影響を受けない
+    (setf (nskk-modeline-state-mode original) 'hiragana)
+    (should (eq (nskk-modeline-state-mode copied) 'katakana))))
+
 (provide 'nskk-modeline-test)
 
 ;;; nskk-modeline-test.el ends here

@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -97,6 +97,16 @@ nilの場合、エラーメッセージを表示するのみ。
     :error)
   "NSKKで使用可能な全てのイベントタイプ。")
 
+(defun nskk-events--normalize-type (event-type)
+  "EVENT-TYPE を内部表現のキーワードに正規化する。"
+  (let ((normalized (pcase event-type
+                      ('mode-changed :mode-switched)
+                      ((pred keywordp) event-type)
+                      ((pred symbolp)
+                       (intern (concat ":" (symbol-name event-type))))
+                      (_ event-type))))
+    normalized))
+
 ;;; 内部変数
 
 (defvar-local nskk-events--listeners (make-hash-table :test 'eq)
@@ -146,6 +156,7 @@ LISTENER は (lambda (event) ...) 形式の関数で、
 EVENT は `nskk-event' 構造体。
 
 戻り値: t（成功）、nil（失敗）"
+  (setq event-type (nskk-events--normalize-type event-type))
   (unless (memq event-type nskk-events-types)
     (error "Unknown event type: %s" event-type))
   (unless (functionp listener)
@@ -172,6 +183,7 @@ GLOBAL が非nilの場合、グローバルリスナーから削除。
 nilの場合、現在のバッファのローカルリスナーから削除。
 
 戻り値: t（削除成功）、nil（リスナーが見つからない）"
+  (setq event-type (nskk-events--normalize-type event-type))
   (unless (memq event-type nskk-events-types)
     (error "Unknown event type: %s" event-type))
 
@@ -195,6 +207,8 @@ nilの場合、全てのリスナーをクリア。
 
 GLOBAL が非nilの場合、グローバルリスナーをクリア。
 nilの場合、現在のバッファのローカルリスナーをクリア。"
+  (when event-type
+    (setq event-type (nskk-events--normalize-type event-type)))
   (let ((table (if global
                    nskk-events--global-listeners
                  (when (hash-table-p nskk-events--listeners)
@@ -204,12 +218,26 @@ nilの場合、現在のバッファのローカルリスナーをクリア。"
           (puthash event-type nil table)
         (clrhash table)))))
 
+;;; 後方互換エイリアス
+;;;###autoload
+(defun nskk-events-add-handler (event-type handler &optional global)
+  (nskk-events-add-listener event-type handler global))
+
+;;;###autoload
+(defun nskk-events-remove-handler (event-type handler &optional global)
+  (nskk-events-remove-listener event-type handler global))
+
+;;;###autoload
+(defun nskk-events-clear-handlers (&optional event-type global)
+  (nskk-events-clear-listeners event-type global))
+
 (defun nskk-events-get-listeners (event-type &optional include-global)
   "EVENT-TYPE のリスナーリストを取得する。
 
 INCLUDE-GLOBAL が非nilの場合、グローバルリスナーも含める。
 
 戻り値: リスナー関数のリスト"
+  (setq event-type (nskk-events--normalize-type event-type))
   (let ((local-listeners
          (when (hash-table-p nskk-events--listeners)
            (gethash event-type nskk-events--listeners)))
@@ -226,6 +254,7 @@ DATA はイベントデータで、plist形式で指定する。
 例: (nskk-events-emit :mode-switched :from 'hiragana :to 'katakana)
 
 戻り値: 実行されたリスナー数"
+  (setq event-type (nskk-events--normalize-type event-type))
   (unless (memq event-type nskk-events-types)
     (error "Unknown event type: %s" event-type))
 

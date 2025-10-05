@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, cache
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -450,17 +450,31 @@
 ;;; 統合インターフェース
 
 ;;;###autoload
-(defun nskk-cache-create (&optional type capacity)
+(defun nskk-cache-create (&rest args)
   "キャッシュを作成する。
 
 引数:
-  TYPE     - キャッシュタイプ（'lru または 'lfu、省略時はnskk-cache-default-type）
-  CAPACITY - 最大容量（省略時はnskk-cache-default-capacity）
+  - TYPE と CAPACITY を順に渡す旧API形式
+  - キーワード引数 :type と :size/:capacity を渡す新API形式
 
 戻り値:
   キャッシュ構造体（nskk-cache-lru または nskk-cache-lfu）"
-  (let ((cache-type (or type nskk-cache-default-type))
-        (cache-capacity (or capacity nskk-cache-default-capacity)))
+  (let ((cache-type nskk-cache-default-type)
+        (cache-capacity nskk-cache-default-capacity))
+    (cond
+     ((null args))
+     ((keywordp (car args))
+      (let ((plist args))
+        (when (plist-member plist :type)
+          (setq cache-type (plist-get plist :type)))
+        (when (plist-member plist :capacity)
+          (setq cache-capacity (plist-get plist :capacity)))
+        (when (plist-member plist :size)
+          (setq cache-capacity (plist-get plist :size)))))
+     (t
+      (setq cache-type (car args))
+      (when (> (length args) 1)
+        (setq cache-capacity (nth 1 args)))))
     (pcase cache-type
       ('lru (nskk-cache-lru-create cache-capacity))
       ('lfu (nskk-cache-lfu-create cache-capacity))
@@ -585,6 +599,39 @@
           :hits hits
           :misses misses
           :hit-rate hit-rate)))
+
+;;;###autoload
+(defun nskk-cache-hit-rate (cache)
+  "キャッシュのヒット率を返す後方互換API。"
+  (plist-get (nskk-cache-stats cache) :hit-rate))
+
+;;;###autoload
+(defun nskk-cache-p (cache)
+  "CACHEがキャッシュ構造体かどうかを判定する。
+
+引数:
+  CACHE - 判定対象のオブジェクト
+
+戻り値:
+  キャッシュ構造体の場合はt、それ以外はnil"
+  (or (nskk-cache-lru-p cache)
+      (nskk-cache-lfu-p cache)))
+
+;;;###autoload
+(defun nskk-cache-size (cache)
+  "CACHEの現在のエントリ数を取得する。
+
+引数:
+  CACHE - キャッシュ
+
+戻り値:
+  現在のエントリ数（整数）"
+  (cond
+   ((nskk-cache-lru-p cache)
+    (nskk-cache-lru-size cache))
+   ((nskk-cache-lfu-p cache)
+    (nskk-cache-lfu-size cache))
+   (t (error "Invalid cache type"))))
 
 (provide 'nskk-cache)
 

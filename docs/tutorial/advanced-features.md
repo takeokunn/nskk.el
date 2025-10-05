@@ -18,7 +18,7 @@
 ## 前提知識
 
 - [basic-usage.md](basic-usage.md)を完了していること
-- Emacs 31.0以降を使用
+- Emacs 30以上を使用
 - NSKKの基本操作に習熟
 
 ## 第1章：AI補完システム
@@ -546,7 +546,7 @@ Git情報の挿入：
 
 ;; Author: Your Name <your.email@example.com>
 ;; Version: 1.0.0
-;; Package-Requires: ((nskk "1.0.0") (emacs "31.0"))
+;; Package-Requires: ((nskk "1.0.0") (emacs "30.0"))
 ;; Keywords: japanese, input method, plugin
 
 ;;; Commentary:
@@ -607,7 +607,7 @@ nskk-candidate-hide-hook       ; 候補非表示時
 
 ### 5.1 スレッドプールの活用
 
-Emacs 31のネイティブスレッドを活用した並列処理：
+Emacs 30以上のネイティブスレッドを活用した並列処理：
 
 ```elisp
 ;; スレッドプールの有効化
@@ -848,7 +848,7 @@ Running comprehensive diagnostics...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✓ NSKK Version: 1.0.0
-✓ Emacs Version: 31.0.50
+✓ Emacs Version: 30.0.50
 ✓ Threading: Enabled (8 workers)
 
 Performance Tests:

@@ -24,7 +24,7 @@
 ;;
 ;; 注意:
 ;; - パスは環境に合わせて変更してください
-;; - Emacs 31の機能を使用する設定も含まれています
+;; - Emacs 30以上の機能を使用する設定も含まれています
 
 ;;; Code:
 
@@ -147,14 +147,14 @@
 ;;   (nskk-setup-keybindings))
 
 ;;; ========================================
-;;; 5. Emacs 31専用最適化設定
+;;; 5. Emacs 30以上での最適化設定
 ;;; ========================================
 
-;; Emacs 31以降でのみ使用できる高度な設定です。
+;; Emacs 30以上でのみ使用できる高度な設定です。
 ;; ネイティブコンパイルとスレッド並列処理を活用します。
 
-;; ;; Emacs 31バージョンチェック
-;; (when (>= emacs-major-version 31)
+;; ;; Emacs 30以上でのバージョンチェック
+;; (when (>= emacs-major-version 30)
 ;;   ;; ネイティブコンパイル設定
 ;;   (setopt native-comp-speed 3                    ; 最大速度
 ;;           native-comp-jit-compilation t          ; JITコンパイル
@@ -168,7 +168,7 @@
 ;;   (add-to-list 'load-path "/path/to/nskk.el")
 ;;   (require 'nskk)
 
-;;   ;; Emacs 31専用機能の有効化
+;;   ;; Emacs 30以上対応機能の有効化
 ;;   (setopt nskk-enable-threading t                ; スレッド並列処理
 ;;           nskk-use-native-json t                 ; ネイティブJSON
 ;;           nskk-concurrent-dictionary-loading t)  ; 辞書並列読み込み

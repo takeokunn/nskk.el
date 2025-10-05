@@ -220,6 +220,176 @@
   ;; 必須フィールドがない場合
   (should-error (nskk-record-history '(:midashi "test"))))
 
+;;; 追加テスト: カバレッジ向上
+
+(nskk-deftest nskk-history-candidate-index-test
+  "candidate-indexパラメータのテスト"
+  :tags '(:unit)
+
+  (setq nskk-history-entries nil)
+
+  ;; candidate-indexを明示的に指定
+  (nskk-record-history '(:midashi "かんじ"
+                        :candidate "漢字"
+                        :candidate-index 2
+                        :total-candidates 5))
+
+  (let ((entry (car nskk-history-entries)))
+    (should (= (nskk-history-entry-candidate-index entry) 2))
+    (should (= (nskk-history-entry-total-candidates entry) 5))))
+
+(nskk-deftest nskk-history-personal-info-detection-test
+  "個人情報検出のエッジケーステスト"
+  :tags '(:unit)
+
+  ;; 個人情報を含まない通常のテキスト
+  (should-not (nskk-history--contains-personal-info-p "普通のテキスト"))
+
+  ;; 電話番号を含む
+  (should (nskk-history--contains-personal-info-p "090-1234-5678"))
+
+  ;; メールアドレスを含む
+  (should (nskk-history--contains-personal-info-p "test@example.com"))
+
+  ;; 日付を含む
+  (should (nskk-history--contains-personal-info-p "2024/01/15")))
+
+(nskk-deftest nskk-history-statistics-anonymized-count-test
+  "匿名化カウントの統計テスト"
+  :tags '(:unit)
+
+  (let ((nskk-history-anonymize t))
+    (setq nskk-history-entries nil)
+
+    ;; 匿名化されるエントリ
+    (nskk-record-history '(:midashi "でんわ" :candidate "090-1234-5678"))
+    ;; 通常のエントリ
+    (nskk-record-history '(:midashi "かんじ" :candidate "漢字"))
+
+    (let ((stats (nskk-history-statistics)))
+      (should (= (plist-get stats :anonymized-count) 1)))))
+
+(nskk-deftest nskk-history-statistics-avg-candidate-index-test
+  "平均候補インデックスの統計テスト"
+  :tags '(:unit)
+
+  (setq nskk-history-entries nil)
+
+  ;; 異なるcandidate-indexのエントリを追加
+  (nskk-record-history '(:midashi "test1" :candidate "候補" :candidate-index 0))
+  (nskk-record-history '(:midashi "test2" :candidate "候補" :candidate-index 2))
+  (nskk-record-history '(:midashi "test3" :candidate "候補" :candidate-index 4))
+
+  (let ((stats (nskk-history-statistics)))
+    ;; 平均は (0+2+4)/3 = 2.0
+    (should (= (plist-get stats :avg-candidate-index) 2.0))))
+
+(nskk-deftest nskk-history-by-date-end-boundary-test
+  "日付フィルタリングの終了境界テスト"
+  :tags '(:unit)
+
+  (setq nskk-history-entries nil)
+
+  ;; 現在時刻の前後にエントリを作成
+  (let ((now (current-time))
+        (past (time-subtract (current-time) (days-to-time 5)))
+        (future (time-add (current-time) (days-to-time 5))))
+
+    ;; 過去のエントリ
+    (let ((old-entry (nskk-history-entry--create
+                      :midashi "old"
+                      :candidate "古い"
+                      :timestamp past)))
+      (push old-entry nskk-history-entries))
+
+    ;; 現在のエントリ
+    (nskk-record-history '(:midashi "current" :candidate "現在"))
+
+    ;; 過去から現在までのフィルタ（end-dateの境界確認）
+    (let ((results (nskk-history-by-date past now)))
+      ;; pastより後でnowより前のエントリが取得されることを確認
+      (should (> (length results) 0)))))
+
+(nskk-deftest nskk-history-conversion-time-analysis-values-test
+  "変換時間分析の各値のテスト"
+  :tags '(:unit)
+
+  (setq nskk-history-entries nil)
+
+  ;; 異なる変換時間のエントリを追加
+  (nskk-record-history '(:midashi "test1" :candidate "候補" :conversion-time 0.001))
+  (nskk-record-history '(:midashi "test2" :candidate "候補" :conversion-time 0.005))
+  (nskk-record-history '(:midashi "test3" :candidate "候補" :conversion-time 0.003))
+
+  (let ((analysis (nskk-history-conversion-time-analysis)))
+    (should (= (plist-get analysis :count) 3))
+    (should (= (plist-get analysis :min) 0.001))
+    (should (= (plist-get analysis :max) 0.005))
+    (should (= (plist-get analysis :avg) 0.003))
+    (should (= (plist-get analysis :median) 0.003))))
+
+(nskk-deftest nskk-history-conversion-time-analysis-empty-test
+  "変換時間が記録されていない場合の分析テスト"
+  :tags '(:unit)
+
+  (setq nskk-history-entries nil)
+
+  ;; 変換時間なしのエントリ
+  (nskk-record-history '(:midashi "test" :candidate "候補"))
+
+  (let ((analysis (nskk-history-conversion-time-analysis)))
+    (should (= (plist-get analysis :count) 0))
+    (should (= (plist-get analysis :min) 0.0))
+    (should (= (plist-get analysis :max) 0.0))
+    (should (= (plist-get analysis :avg) 0.0))
+    (should (= (plist-get analysis :median) 0.0))))
+
+(nskk-deftest nskk-history-export-anonymized-flag-test
+  "エクスポート時の匿名化フラグテスト"
+  :tags '(:unit)
+
+  (let ((nskk-history-anonymize t)
+        (temp-file (make-temp-file "nskk-history-export-test")))
+    (setq nskk-history-entries nil)
+
+    ;; 匿名化されるエントリ
+    (nskk-record-history '(:midashi "でんわ" :candidate "090-1234-5678"))
+
+    ;; 通常のエントリ
+    (nskk-record-history '(:midashi "かんじ" :candidate "漢字"))
+
+    (nskk-history-export temp-file)
+
+    ;; エクスポートされたファイルを確認
+    (with-temp-buffer
+      (insert-file-contents temp-file)
+      (let ((content (buffer-string)))
+        ;; 匿名化フラグ"true"が含まれることを確認
+        (should (string-match-p "true" content))
+        ;; 匿名化フラグ"false"が含まれることを確認
+        (should (string-match-p "false" content))))
+
+    (delete-file temp-file)))
+
+(nskk-deftest nskk-history-statistics-print-test
+  "統計情報表示のテスト"
+  :tags '(:unit)
+
+  (setq nskk-history-entries nil)
+
+  ;; テストデータ作成
+  (nskk-record-history '(:midashi "test1" :candidate "候補1" :candidate-index 0))
+  (nskk-record-history '(:midashi "test2" :candidate "候補2" :candidate-index 2))
+
+  ;; message関数の出力をキャプチャ
+  (let ((message-output nil))
+    (cl-letf (((symbol-function 'message)
+               (lambda (format-string &rest args)
+                 (setq message-output (apply #'format format-string args)))))
+      (nskk-history-print-statistics)
+      ;; avg-candidate-indexが出力に含まれることを確認
+      (should (string-match-p "Average Candidate Index" message-output)))))
+
 (provide 'nskk-history-test)
 
 ;;; nskk-history-test.el ends here

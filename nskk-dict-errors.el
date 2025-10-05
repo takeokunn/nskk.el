@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, dictionary, errors
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -306,22 +306,23 @@ nilの場合、最小限の組み込み辞書を使用。"
   (interactive)
   (let ((buffer (get-buffer-create nskk-dict-errors--log-buffer)))
     (with-current-buffer buffer
-      (erase-buffer)
-      (insert "NSKK Error Log\n")
-      (insert "==============\n\n")
-      (if (null nskk-dict-errors--log-entries)
-          (insert "No errors logged.\n")
-        (dolist (entry (reverse nskk-dict-errors--log-entries))
-          (insert (format "[%s] [%s] %s: %s\n"
-                        (format-time-string "%Y-%m-%d %H:%M:%S"
-                                          (seconds-to-time (plist-get entry :timestamp)))
-                        (upcase (symbol-name (plist-get entry :severity)))
-                        (plist-get entry :type)
-                        (plist-get entry :message)))
-          (when (plist-get entry :data)
-            (insert (format "  Data: %S\n" (plist-get entry :data))))
-          (insert "\n")))
-      (goto-char (point-min))
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "NSKK Error Log\n")
+        (insert "==============\n\n")
+        (if (null nskk-dict-errors--log-entries)
+            (insert "No errors logged.\n")
+          (dolist (entry (reverse nskk-dict-errors--log-entries))
+            (insert (format "[%s] [%s] %s: %s\n"
+                            (format-time-string "%Y-%m-%d %H:%M:%S"
+                                                (seconds-to-time (plist-get entry :timestamp)))
+                            (upcase (symbol-name (plist-get entry :severity)))
+                            (plist-get entry :type)
+                            (plist-get entry :message)))
+            (when (plist-get entry :data)
+              (insert (format "  Data: %S\n" (plist-get entry :data))))
+            (insert "\n")))
+        (goto-char (point-min)))
       (special-mode))
     (display-buffer buffer)))
 
@@ -436,11 +437,18 @@ nilの場合、最小限の組み込み辞書を使用。"
             (nskk-dict-errors-log 'info 'fallback-dict
                                  (format "Loading custom fallback: %s"
                                         nskk-dict-errors-fallback-dict-path))
-            (nskk-load-dictionary nskk-dict-errors-fallback-dict-path))
+            (let ((index (nskk-load-dictionary nskk-dict-errors-fallback-dict-path)))
+              (if (and (nskk-dict-index-p index)
+                      (> (hash-table-count (nskk-dict-index-okuri-nasi-table index)) 0))
+                  index
+                (progn
+                  (nskk-dict-errors-log 'warning 'fallback-dict
+                                       "Custom fallback dictionary is empty or invalid; using built-in")
+                  (nskk-dict-errors--create-builtin-index)))))
         (error
          (nskk-dict-errors-log 'warning 'fallback-dict
-                              (format "Failed to load custom fallback, using built-in: %s"
-                                     (error-message-string err)))
+                               (format "Failed to load custom fallback, using built-in: %s"
+                                       (error-message-string err)))
          (nskk-dict-errors--create-builtin-index)))
     ;; 組み込み辞書を使用
     (nskk-dict-errors--create-builtin-index)))
@@ -465,10 +473,14 @@ nilの場合、最小限の組み込み辞書を使用。"
                                    :annotation nil
                                    :score 0))
                                 words))
-             ;; エントリを作成（全スロットを明示的に指定）
+             ;; エントリを作成（キーワード引数で全スロットを明示的に指定）
              (entry (nskk-dict-entry--create
                     :midashi midashi
-                    :candidates candidates)))
+                    :candidates candidates
+                    :frequency 0
+                    :last-used nil
+                    :okuri-type 'okuri-nasi
+                    :metadata nil)))
         ;; インデックスに追加
         (puthash midashi entry
                 (nskk-dict-index-okuri-nasi-table index))))

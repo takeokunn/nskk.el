@@ -2,7 +2,7 @@
 
 ## 概要
 
-Emacs 31のTransient UIを活用したNSKKの設定・管理・デバッグUIを実装しました。
+Emacs 30以上のTransient UIを活用したNSKKの設定・管理・デバッグUIを実装しました。
 3つのタスク全てが完了し、階層的で直感的なUIを提供します。
 
 ## 実装タスク
@@ -178,7 +178,7 @@ NSKK プラグイン管理
 
 3. **スレッド状態表示**
    - `nskk-debug-threads` - スレッド状態表示
-   - Emacs 31のthread-list統合
+   - Emacs 30以上のthread-list統合
    - スレッドID、状態、タスク情報を表示
 
 4. **メトリクスダッシュボード**
@@ -431,7 +431,7 @@ nskk-state-transition                         234             12.345
    - カスタムリーダー関数実装
 
 2. **setopt統合** ✅
-   - Emacs 31の`setopt`を使用した安全な設定変更
+   - Emacs 30以上の`setopt`を使用した安全な設定変更
    - 型チェックとバリデーション
    - エラーハンドリング
 
@@ -513,7 +513,7 @@ nskk-state-transition                         234             12.345
    - メトリクスダッシュボード
 
 4. ✅ **Transient統合確認**
-   - Emacs 31のTransient UI使用
+   - Emacs 30以上のTransient UI使用
    - 全メニューが正常動作
 
 5. ✅ **ユーザビリティテスト**
@@ -597,4 +597,4 @@ Track S: Transient UIの全3タスクを完了しました。
 - Transient UI統合確認済み
 - ユーザビリティテスト合格
 
-NSKKは、Emacs 31の最新機能を活用した、使いやすく強力な設定・管理・デバッグUIを獲得しました。
+NSKKは、Emacs 30以上の最新機能を活用した、使いやすく強力な設定・管理・デバッグUIを獲得しました。

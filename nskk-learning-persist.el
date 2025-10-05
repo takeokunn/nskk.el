@@ -5,7 +5,7 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, learning, persistence
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "31.0"))
+;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -236,7 +236,7 @@
 
           (error
            (message "Failed to load frequency data: %s" (error-message-string err))
-           nil))
+           (signal (car err) (cdr err))))
 
       (message "Frequency data file not found: %s" filepath))))
 
