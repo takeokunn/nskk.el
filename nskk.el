@@ -72,6 +72,9 @@
 (require 'cl-lib)
 (require 'subr-x)
 
+(defvar deactivate-current-input-method-function nil
+  "現在アクティブな入力メソッドを無効化するための関数。")
+
 (when (version< emacs-version "30.0")
   (error "NSKK requires Emacs 30.0 or later"))
 
@@ -907,11 +910,21 @@
   (message "NSKK v%s shut down successfully" nskk-version)
   nil)
 
+(defun nskk--activate-input-method (_input-method &optional _interactive)
+  "NSKK用の入力メソッドを初期化する。"
+  (setq deactivate-current-input-method-function #'nskk--deactivate-input-method)
+  (setq input-method-function #'nskk-input-method)
+  t)
+
+(defun nskk--deactivate-input-method ()
+  "NSKK入力メソッドのクリーンアップを行う。"
+  nil)
+
 ;;;###autoload
 (register-input-method
  "nskk"
  "Japanese"
- 'nskk-input-method
+ #'nskk--activate-input-method
  "NSKK"
  "Next-generation SKK input method")
 

@@ -52,6 +52,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'nskk-thread-pool)
 
 ;;; カスタマイズ可能変数
 
@@ -116,25 +117,55 @@
 
 (defun nskk-infrastructure--initialize-thread-pool ()
   "スレッドプールを初期化する。"
-  ;; Emacs 31のネイティブスレッド対応
-  (setq nskk-infrastructure--thread-pool
-        (make-list nskk-infrastructure-thread-pool-size nil))
-  (nskk-infrastructure--log "Thread pool initialized with %d threads"
-                            nskk-infrastructure-thread-pool-size))
+  (when (and (nskk-thread-pool-available-p)
+             (> nskk-infrastructure-thread-pool-size 0))
+    (setq nskk-infrastructure--thread-pool
+          (nskk-thread-pool-create nskk-infrastructure-thread-pool-size))
+    (nskk-infrastructure--log "Thread pool initialized with %d workers"
+                              nskk-infrastructure-thread-pool-size))
+  (unless nskk-infrastructure--thread-pool
+    (nskk-infrastructure--log "Thread pool unavailable; falling back to synchronous execution")))
 
 (defun nskk-infrastructure--cleanup-thread-pool ()
   "スレッドプールをクリーンアップする。"
-  (setq nskk-infrastructure--thread-pool nil))
+  (when nskk-infrastructure--thread-pool
+    (nskk-thread-pool-shutdown nskk-infrastructure--thread-pool t)
+    (setq nskk-infrastructure--thread-pool nil)))
 
-(defun nskk-infrastructure-submit-task (task &optional callback)
+(defun nskk-infrastructure-submit-task (task &optional callback error-handler)
   "タスクをスレッドプールに投入する。
-TASKは実行する関数、CALLBACKは完了時のコールバック。"
-  ;; 非同期タスク実行
-  ;; Emacs 31のネイティブスレッド機能を使用
-  (nskk-infrastructure--log "Submitting task to thread pool")
-  ;; 実装は統合時に完成
-  (when callback
-    (funcall callback)))
+TASKは引数なしで呼び出される関数。
+CALLBACKはタスク完了時に結果を受け取る関数。
+ERROR-HANDLERは例外発生時に呼び出される関数。"
+  (unless (functionp task)
+    (user-error "TASK must be a function"))
+  (nskk-infrastructure--record-task-submitted)
+  (let ((pool nskk-infrastructure--thread-pool))
+    (if pool
+        (nskk-thread-submit
+         pool
+         task
+         (lambda (result)
+           (nskk-infrastructure--record-task-completion)
+           (when callback
+             (funcall callback result)))
+         (lambda (err)
+           (nskk-infrastructure--record-task-completion)
+           (nskk-infrastructure--log "Task error: %S" err)
+           (when error-handler
+             (funcall error-handler err))))
+      (nskk-infrastructure--log "Running task inline (no thread pool)")
+      (condition-case err
+          (let ((result (funcall task)))
+            (nskk-infrastructure--record-task-completion)
+            (when callback
+              (funcall callback result))
+            result)
+        (error
+         (nskk-infrastructure--record-task-completion)
+         (nskk-infrastructure--log "Task error: %S" err)
+         (when error-handler
+           (funcall error-handler err)))))))
 
 (defun nskk-infrastructure-run-async (function &rest args)
   "関数を非同期実行する。
@@ -179,10 +210,12 @@ SIZEは解放するサイズ（バイト）。"
 (defun nskk-infrastructure-read-file (path)
   "ファイルを読み込む。
 PATHはファイルパス。"
-  (when (file-readable-p path)
-    (with-temp-buffer
-      (insert-file-contents path)
-      (buffer-string))))
+  (unless (file-readable-p path)
+    (signal 'file-error (list "File not readable" path)))
+  (with-temp-buffer
+    (insert-file-contents path)
+    (nskk-infrastructure--inc-stat :files-read 1)
+    (buffer-string)))
 
 (defun nskk-infrastructure-write-file (path content)
   "ファイルに書き込む。
@@ -191,25 +224,30 @@ PATHはファイルパス、CONTENTは書き込む内容。"
     (unless (file-directory-p dir)
       (make-directory dir t)))
   (with-temp-file path
-    (insert content)))
+    (insert content))
+  (nskk-infrastructure--inc-stat :files-written 1))
 
-(defun nskk-infrastructure-read-file-async (path callback)
+(defun nskk-infrastructure-read-file-async (path callback &optional error-handler)
   "ファイルを非同期読み込みする。
-PATHはファイルパス、CALLBACKは完了時のコールバック。"
-  (nskk-infrastructure-run-async
-   (lambda ()
-     (let ((content (nskk-infrastructure-read-file path)))
-       (funcall callback content)))))
+PATHはファイルパス、CALLBACKは完了時のコールバック。
+ERROR-HANDLERはエラー時のハンドラー。"
+  (nskk-infrastructure-submit-task
+   (lambda () (nskk-infrastructure-read-file path))
+   callback
+   error-handler))
 
-(defun nskk-infrastructure-write-file-async (path content callback)
+(defun nskk-infrastructure-write-file-async (path content callback &optional error-handler)
   "ファイルに非同期書き込みする。
 PATHはファイルパス、CONTENTは書き込む内容、
 CALLBACKは完了時のコールバック。"
-  (nskk-infrastructure-run-async
+  (nskk-infrastructure-submit-task
    (lambda ()
      (nskk-infrastructure-write-file path content)
-     (when callback
-       (funcall callback)))))
+     t)
+   (when callback
+     (lambda (_result)
+       (funcall callback)))
+   error-handler))
 
 ;;; タイマー管理
 
@@ -278,6 +316,20 @@ TIMERはタイマーオブジェクト。"
            nskk-infrastructure--statistics)
   (puthash :memory-usage nskk-infrastructure--memory-usage
            nskk-infrastructure--statistics))
+
+(defun nskk-infrastructure--inc-stat (key delta)
+  "統計情報KEYをDELTAだけ増加させる。"
+  (puthash key (+ (or (gethash key nskk-infrastructure--statistics) 0)
+                  delta)
+           nskk-infrastructure--statistics))
+
+(defun nskk-infrastructure--record-task-submitted ()
+  "タスク投入数を更新する。"
+  (nskk-infrastructure--inc-stat :tasks-submitted 1))
+
+(defun nskk-infrastructure--record-task-completion ()
+  "タスク完了数を更新する。"
+  (nskk-infrastructure--inc-stat :tasks-completed 1))
 
 (defun nskk-infrastructure-get-statistics ()
   "統計情報を取得する。"

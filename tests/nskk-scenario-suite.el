@@ -24,6 +24,13 @@
 (require 'nskk-scenario-hiragana)
 (require 'nskk-scenario-katakana)
 (require 'nskk-scenario-kanji)
+(require 'nskk-scenario-okurigana)
+(require 'nskk-scenario-advanced)
+(require 'nskk-scenario-performance)
+(require 'nskk-scenario-learning)
+(require 'nskk-scenario-completion)
+(require 'nskk-scenario-mode)
+(require 'nskk-scenario-annotation)
 
 ;;; 実行コマンド
 

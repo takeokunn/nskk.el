@@ -135,6 +135,45 @@
               :type list
               :documentation "拡張プロパティ（plist）"))
 
+;;; Setterの定義
+;; cl-defstructは自動的にsetterを生成しないため、gv-define-setterで明示的に定義する
+
+(gv-define-setter nskk-state-mode (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'mode ,state) ,value))
+
+(gv-define-setter nskk-state-submode (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'submode ,state) ,value))
+
+(gv-define-setter nskk-state-input-buffer (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'input-buffer ,state) ,value))
+
+(gv-define-setter nskk-state-conversion-buffer (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'conversion-buffer ,state) ,value))
+
+(gv-define-setter nskk-state-candidates (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'candidates ,state) ,value))
+
+(gv-define-setter nskk-state-candidate-index (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'candidate-index ,state) ,value))
+
+(gv-define-setter nskk-state-okuri-char (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'okuri-char ,state) ,value))
+
+(gv-define-setter nskk-state-marker-start (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'marker-start ,state) ,value))
+
+(gv-define-setter nskk-state-marker-end (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'marker-end ,state) ,value))
+
+(gv-define-setter nskk-state-previous-mode (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'previous-mode ,state) ,value))
+
+(gv-define-setter nskk-state-timestamp (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'timestamp ,state) ,value))
+
+(gv-define-setter nskk-state-properties (value state)
+  `(setf (cl-struct-slot-value 'nskk-state 'properties ,state) ,value))
+
 ;;; 状態生成関数
 
 (defun nskk-state-create (&rest args)

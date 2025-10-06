@@ -22,7 +22,7 @@ E2E_TESTS = \
 	tests/nskk-e2e-basic-test.el \
 	tests/nskk-e2e-mode-control-test.el
 
-.PHONY: all test test-unit test-integration test-e2e test-scenarios test-scenarios-all test-scenarios-basic test-scenarios-beginner list-scenarios coverage clean help
+.PHONY: all test test-unit test-integration test-e2e test-e2e-setter test-scenarios test-scenarios-all test-scenarios-basic test-scenarios-beginner list-scenarios coverage clean help
 
 all: test
 
@@ -48,34 +48,39 @@ test-e2e:
 		$(foreach test,$(E2E_TESTS),-l $(test)) \
 		-f ert-run-tests-batch-and-exit
 
+## E2E Setterテスト実行
+test-e2e-setter:
+	@echo "=== Running E2E Setter Test ==="
+	$(BATCH) -l run-e2e-test.el
+
 ## シナリオテスト実行
 test-scenarios: test-scenarios-all
 
 ## 全シナリオテスト実行
 test-scenarios-all:
 	@echo "=== Running All Scenario Tests ==="
-	$(BATCH) -L tests/scenarios/basic \
+	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
 		-l tests/nskk-scenario-suite.el \
 		-f nskk-scenario-run-all-batch
 
 ## 基本シナリオのみ実行
 test-scenarios-basic:
 	@echo "=== Running Basic Scenario Tests ==="
-	$(BATCH) -L tests/scenarios/basic \
+	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
 		-l tests/nskk-scenario-suite.el \
 		-f nskk-scenario-run-basic-batch
 
 ## 初心者向けシナリオのみ実行
 test-scenarios-beginner:
 	@echo "=== Running Beginner Scenario Tests ==="
-	$(BATCH) -L tests/scenarios/basic \
+	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
 		-l tests/nskk-scenario-suite.el \
 		--eval "(ert-run-tests-batch-and-exit '(tag :beginner))"
 
 ## シナリオリスト表示
 list-scenarios:
 	@echo "=== NSKK Scenario Tests ==="
-	$(BATCH) -L tests/scenarios/basic \
+	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
 		-l tests/nskk-scenario-suite.el \
 		--eval "(nskk-scenario-list-all)" \
 		--eval "(with-current-buffer \"*NSKK Scenarios*\" (princ (buffer-string)))"
@@ -114,6 +119,7 @@ help:
 	@echo "  make test                  - Run all tests (auto-detect all *-test.el)"
 	@echo "  make test-integration      - Run integration tests only"
 	@echo "  make test-e2e              - Run E2E tests only"
+	@echo "  make test-e2e-setter       - Run E2E setter test"
 	@echo "  make test-scenarios        - Run all scenario tests"
 	@echo "  make test-scenarios-basic  - Run basic scenario tests"
 	@echo "  make test-scenarios-beginner - Run beginner scenario tests"
@@ -124,4 +130,3 @@ help:
 	@echo "Utilities:"
 	@echo "  make clean                 - Remove coverage data and compiled files"
 	@echo "  make help                  - Show this help message"
-

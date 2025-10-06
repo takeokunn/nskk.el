@@ -7,3 +7,7 @@ dist/
 *~
 
 auto-save-list/
+
+# Test artifacts
+cli-test.log
+scenario.log

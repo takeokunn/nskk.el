@@ -71,8 +71,13 @@
 
 ;;; 内部変数
 
-(defvar nskk-extension--hooks (make-hash-table :test 'eq)
-  "フックポイントとハンドラーリストのマッピング。")
+(defvar nskk-extension--global-hooks (make-hash-table :test 'eq)
+  "グローバルフックポイントとハンドラーリストのマッピング。")
+
+(defvar nskk-extension--hooks nskk-extension--global-hooks
+  "現在のバッファで使用するフックテーブル。
+バッファローカルフックを登録する場合は `setq-local' によって
+個別のハッシュテーブルが割り当てられる。")
 
 (defvar nskk-extension--event-bus (make-hash-table :test 'eq)
   "イベントバス: イベントタイプとリスナーのマッピング。")
@@ -91,39 +96,69 @@
 (defun nskk-extension-add-hook (hook-point function &optional append local)
   "フックポイントにハンドラーを追加する。
 HOOK-POINTはフックポイント名、FUNCTIONはハンドラー関数。
-APPENDが非nilなら末尾に追加、LOCALが非nilならバッファローカル。"
-  (let ((hooks (gethash hook-point nskk-extension--hooks)))
-    (unless hooks
-      (setq hooks (if local
-                      (make-local-variable (make-symbol "nskk-extension-hook"))
-                    nil))
-      (puthash hook-point hooks nskk-extension--hooks))
-    (add-hook hooks function append local)
-    (puthash hook-point hooks nskk-extension--hooks)))
+APPENDが非nilなら末尾に追加、LOCALが非nilならバッファローカル。
+LOCAL指定時は現在のバッファにのみ登録される。"
+  (unless (functionp function)
+    (user-error "FUNCTION must be a function"))
+  (if local
+      (with-current-buffer (current-buffer)
+        (unless (local-variable-p 'nskk-extension--hooks)
+          (setq-local nskk-extension--hooks (make-hash-table :test 'eq)))
+        (let* ((local-table nskk-extension--hooks)
+               (handlers (gethash hook-point local-table)))
+          (puthash hook-point (nskk-extension--normalize-hook-list handlers function append)
+                   local-table)))
+    (let ((handlers (gethash hook-point nskk-extension--global-hooks)))
+      (puthash hook-point (nskk-extension--normalize-hook-list handlers function append)
+               nskk-extension--global-hooks))))
 
 (defun nskk-extension-remove-hook (hook-point function &optional local)
   "フックポイントからハンドラーを削除する。
 HOOK-POINTはフックポイント名、FUNCTIONはハンドラー関数。
 LOCALが非nilならバッファローカルから削除。"
-  (let ((hooks (gethash hook-point nskk-extension--hooks)))
-    (when hooks
-      (remove-hook hooks function local))))
+  (if local
+      (when (local-variable-p 'nskk-extension--hooks)
+        (let ((handlers (gethash hook-point nskk-extension--hooks)))
+          (when handlers
+            (puthash hook-point (delq function (copy-sequence handlers))
+                     nskk-extension--hooks))))
+    (let ((handlers (gethash hook-point nskk-extension--global-hooks)))
+      (when handlers
+        (puthash hook-point (delq function (copy-sequence handlers))
+                 nskk-extension--global-hooks)))))
 
 (defun nskk-extension-run-hook (hook-point &rest args)
   "フックポイントのハンドラーを実行する。
 HOOK-POINTはフックポイント名、ARGSはハンドラーに渡す引数。"
-  (let ((hooks (gethash hook-point nskk-extension--hooks)))
-    (when hooks
-      (dolist (hook hooks)
-        (condition-case err
-            (apply hook args)
-          (error
-           (nskk-extension--log "Hook error at %s: %s" hook-point err)))))))
+  (let* ((global-table nskk-extension--global-hooks)
+         (local-table (when (and (local-variable-p 'nskk-extension--hooks)
+                                 (hash-table-p nskk-extension--hooks))
+                        nskk-extension--hooks)))
+    (when (hash-table-p global-table)
+      (nskk-extension--run-handlers (gethash hook-point global-table) args hook-point))
+    (when (hash-table-p local-table)
+      (nskk-extension--run-handlers (gethash hook-point local-table) args hook-point))))
 
 (defun nskk-extension-clear-hooks (hook-point)
   "フックポイントのすべてのハンドラーをクリアする。
 HOOK-POINTはフックポイント名。"
-  (puthash hook-point nil nskk-extension--hooks))
+  (puthash hook-point nil nskk-extension--global-hooks))
+
+(defun nskk-extension--normalize-hook-list (handlers function append)
+  "HANDLERS に FUNCTION を追加したリストを返す。
+APPEND が非nilの場合は末尾に追加する。"
+  (let ((filtered (delq function (copy-sequence handlers))))
+    (if append
+        (nconc filtered (list function))
+      (cons function filtered))))
+
+(defun nskk-extension--run-handlers (handlers args hook-point)
+  "HANDLERS を ARGS で順に実行する。"
+  (dolist (hook handlers)
+    (condition-case err
+        (apply hook args)
+      (error
+       (nskk-extension--log "Hook error at %s: %s" hook-point err)))))
 
 ;;; イベントバス
 

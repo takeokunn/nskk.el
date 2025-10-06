@@ -52,6 +52,14 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
+(require 'nskk-converter)
+(require 'nskk-romaji-tables)
+(require 'nskk-special-chars)
+
+(declare-function nskk-data-search "nskk-layer-data" (query &optional options))
+(declare-function nskk-data-lookup "nskk-layer-data" (query))
+(declare-function nskk-data-prefix-search "nskk-layer-data" (prefix))
 
 ;;; カスタマイズ可能変数
 
@@ -79,7 +87,13 @@
   "ローマ字変換テーブル。")
 
 (defvar nskk-core--dictionary-engine nil
-  "辞書検索エンジン。")
+  "辞書検索エンジンのディスパッチテーブル。")
+
+(defconst nskk-core--fullwidth-offset (- #xFF01 #x21)
+  "ASCII(0x21-0x7E) と対応する全角文字とのオフセット。")
+
+(defconst nskk-core--fullwidth-space #x3000
+  "全角スペースのコードポイント。")
 
 (defvar nskk-core--initialized nil
   "初期化済みフラグ。")
@@ -105,15 +119,13 @@
 
 (defun nskk-core--initialize-romaji-table ()
   "ローマ字変換テーブルを初期化する。"
-  ;; 既存のnskk-romaji-tablesを利用
-  (setq nskk-core--romaji-table
-        (nskk-core--build-romaji-table)))
+  (setq nskk-core--romaji-table (nskk-core--build-romaji-table)))
 
 (defun nskk-core--initialize-dictionary-engine ()
   "辞書検索エンジンを初期化する。"
-  ;; 既存のnskk-search等を統合
   (setq nskk-core--dictionary-engine
-        (nskk-core--create-dictionary-engine)))
+        (or nskk-core--dictionary-engine
+            (nskk-core--create-dictionary-engine))))
 
 (defun nskk-core--initialize-cache ()
   "キャッシュを初期化する。"
@@ -129,10 +141,8 @@
   "ローマ字をかなに変換する。
 INPUTはローマ字文字列。
 戻り値は (確定文字列 . 未確定文字列) のコンスセル。"
-  ;; キャッシュチェック
   (or (gethash input nskk-core--conversion-cache)
       (let ((result (nskk-core--convert-romaji-uncached input)))
-        ;; キャッシュに保存
         (when (< (hash-table-count nskk-core--conversion-cache)
                  nskk-core-cache-size)
           (puthash input result nskk-core--conversion-cache))
@@ -141,40 +151,28 @@ INPUTはローマ字文字列。
 (defun nskk-core--convert-romaji-uncached (input)
   "ローマ字をかなに変換する（キャッシュなし）。
 INPUTはローマ字文字列。"
-  ;; 既存のnskk-converterロジックを利用
-  ;; 実装は統合時に完成
   (nskk-core--log "Converting romaji: %s" input)
-  (cons input ""))
+  (let* ((result (nskk-convert-romaji input))
+         (converted (and result (nskk-converter-result-converted result)))
+         (pending (and result (nskk-converter-result-pending result))))
+    (cons (or converted "") (or pending ""))))
 
 (defun nskk-core--build-romaji-table ()
   "ローマ字変換テーブルを構築する。"
-  ;; 既存のnskk-romaji-tablesから取得
-  ;; 実装は統合時に完成
-  (make-hash-table :test 'equal))
+  (nskk-romaji-init-hash-table)
+  nskk-romaji-hash-table)
 
 ;;; かな・カタカナ変換
 
 (defun nskk-core-hiragana-to-katakana (hiragana)
   "ひらがなをカタカナに変換する。
 HIRAGANAはひらがな文字列。"
-  (mapconcat
-   (lambda (char)
-     (if (and (>= char ?ぁ) (<= char ?ん))
-         (string (+ char (- ?ァ ?ぁ)))
-       (string char)))
-   hiragana
-   ""))
+  (nskk-hiragana-to-katakana hiragana))
 
 (defun nskk-core-katakana-to-hiragana (katakana)
   "カタカナをひらがなに変換する。
 KATAKANAはカタカナ文字列。"
-  (mapconcat
-   (lambda (char)
-     (if (and (>= char ?ァ) (<= char ?ン))
-         (string (+ char (- ?ぁ ?ァ)))
-       (string char)))
-   katakana
-   ""))
+  (nskk-katakana-to-hiragana katakana))
 
 ;;; 半角・全角変換
 
@@ -182,34 +180,26 @@ KATAKANAはカタカナ文字列。"
   "半角文字を全角文字に変換する。
 HANKAKUは半角文字列。"
   (mapconcat
-   (lambda (char)
-     (cond
-      ;; ASCII英数字記号
-      ((and (>= char ?!) (<= char ?~))
-       (string (+ char (- ?! ?!))))
-      ;; 半角スペース
-      ((= char ? )
-       "　")
-      ;; その他はそのまま
-      (t (string char))))
-   hankaku
+   (lambda (code-point)
+     (pcase code-point
+       (#x20 (string nskk-core--fullwidth-space))
+       (_ (if (and (>= code-point #x21) (<= code-point #x7e))
+              (string (+ code-point nskk-core--fullwidth-offset))
+            (string code-point)))))
+   (string-to-list hankaku)
    ""))
 
 (defun nskk-core-zenkaku-to-hankaku (zenkaku)
   "全角文字を半角文字に変換する。
 ZENKAKUは全角文字列。"
   (mapconcat
-   (lambda (char)
+   (lambda (code-point)
      (cond
-      ;; 全角英数字記号
-      ((and (>= char ?!) (<= char ?~))
-       (string (+ char (- ?! ?!))))
-      ;; 全角スペース
-      ((= char ?　)
-       " ")
-      ;; その他はそのまま
-      (t (string char))))
-   zenkaku
+      ((= code-point nskk-core--fullwidth-space) " ")
+      ((and (>= code-point #xFF01) (<= code-point #xFF5E))
+       (string (- code-point nskk-core--fullwidth-offset)))
+      (t (string code-point))))
+   (string-to-list zenkaku)
    ""))
 
 ;;; 辞書検索エンジン
@@ -218,29 +208,40 @@ ZENKAKUは全角文字列。"
   "辞書を検索する。
 QUERYは検索クエリ、OPTIONSは検索オプション。
 戻り値は候補のリスト。"
-  ;; 既存のnskk-searchを利用
-  ;; 実装は統合時に完成
   (nskk-core--log "Searching dictionary: %s with options %S" query options)
-  nil)
+  (if-let ((engine (nskk-core--ensure-dictionary-engine))
+           (fn (plist-get engine :search)))
+      (funcall fn query options)
+    (nskk-core--log "No dictionary engine registered")
+    nil))
 
 (defun nskk-core--create-dictionary-engine ()
   "辞書検索エンジンを作成する。"
-  ;; トライ木ベースの検索エンジンを構築
-  ;; 実装は統合時に完成
-  (make-hash-table :test 'equal))
+  (when (fboundp 'nskk-data-search)
+    ;; Data Layerが利用可能なら、そちらのAPIに委譲する
+    (list :search #'nskk-data-search
+          :lookup (when (fboundp 'nskk-data-lookup)
+                    #'nskk-data-lookup)
+          :prefix (when (fboundp 'nskk-data-prefix-search)
+                    #'nskk-data-prefix-search))))
 
 (defun nskk-core-lookup (query)
   "辞書で完全一致検索を行う。
 QUERYは検索クエリ。"
-  (gethash query nskk-core--dictionary-engine))
+  (if-let ((engine (nskk-core--ensure-dictionary-engine))
+           (fn (plist-get engine :lookup)))
+      (funcall fn query)
+    (nskk-core--log "No dictionary engine registered for lookup")
+    nil))
 
 (defun nskk-core-prefix-search (prefix)
   "辞書で前方一致検索を行う。
 PREFIXは検索プレフィックス。"
-  ;; トライ木での前方一致検索
-  ;; 実装は統合時に完成
   (nskk-core--log "Prefix search: %s" prefix)
-  nil)
+  (if-let ((engine (nskk-core--ensure-dictionary-engine))
+           (fn (plist-get engine :prefix)))
+      (funcall fn prefix)
+    nil))
 
 ;;; 特殊文字処理
 
@@ -362,6 +363,18 @@ FORMAT-STRINGはフォーマット文字列、ARGSは引数。"
         :cache-entries (hash-table-count nskk-core--conversion-cache)
         :cache-capacity nskk-core-cache-size
         :optimization-enabled nskk-core-enable-optimization))
+
+(defun nskk-core-register-dictionary-engine (engine)
+  "辞書検索エンジンを登録する。
+ENGINEは :search/:lookup/:prefix をキーに持つplist。"
+  (unless (plist-get engine :search)
+    (error "Dictionary engine must provide :search function"))
+  (setq nskk-core--dictionary-engine engine))
+
+(defun nskk-core--ensure-dictionary-engine ()
+  "辞書検索エンジンが存在することを保証する。"
+  (or nskk-core--dictionary-engine
+      (setq nskk-core--dictionary-engine (nskk-core--create-dictionary-engine))))
 
 (provide 'nskk-layer-core)
 ;;; nskk-layer-core.el ends here
