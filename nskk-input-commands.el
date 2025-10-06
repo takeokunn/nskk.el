@@ -93,6 +93,19 @@ NSKKの未確定入力に挿入する。"
     (when text
       (nskk-buffer-insert text))))
 
+;;; Obsolete Functions
+
+;; ddskk完全互換のため、以下の関数は使用されなくなった
+;; 標準Emacsコマンドを使用すること
+
+(make-obsolete 'nskk-input-delete-forward-char 'delete-char "1.0.0")
+(make-obsolete 'nskk-input-kill-line 'kill-line "1.0.0")
+(make-obsolete 'nskk-input-kill-whole-line nil "1.0.0")
+(make-obsolete 'nskk-input-kill-region 'kill-region "1.0.0")
+(make-obsolete 'nskk-input-yank 'yank "1.0.0")
+
+;; nskk-input-delete-backward-charは将来的なエミュレーション機構で使用する可能性があるため保持
+
 (provide 'nskk-input-commands)
 
 ;;; nskk-input-commands.el ends here

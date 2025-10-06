@@ -57,6 +57,13 @@
 ;; - 11,000+テスト (100%パス)
 ;; - 0 critical脆弱性
 ;; - 1,200+ページドキュメント
+;;
+;; === ddskk互換性 ===
+;;
+;; NSKKはddskkとの完全互換性を重視した設計です:
+;; - 標準Emacsコマンド(C-d, C-w, C-h等)を上書きしない
+;; - 最小限のキーバインドのみを設定
+;; - ユーザーの既存キーバインド設定を尊重
 
 ;;; Code:
 
@@ -382,6 +389,12 @@
 
 (defun nskk-input-method (key)
   "NSKK入力メソッド本体。KEYは入力イベント。"
+  ;; フェイルセーフ: Application Layer未初期化チェック
+  (when (and (null nskk-application--current-mode)
+             (fboundp 'nskk-application-initialize))
+    (nskk-application-initialize)
+    (nskk-state-init))
+
   (cond
    ((or (null key) (eq key 'timeout)) nil)
    ((characterp key)
@@ -403,8 +416,12 @@
   (nskk-state-init)
   (nskk--reset-state)
   (nskk--maybe-load-dictionary)
+
+  ;; Application Layer初期化
+  (when (fboundp 'nskk-application-initialize)
+    (nskk-application-initialize))
+
   (nskk-initialize)
-  (set-input-method "nskk")
   (run-hook-with-args 'nskk-mode-change-hook '(inactive . active))
   t)
 
@@ -533,6 +550,249 @@
                  loaded (length modules) failed)
       (message "NSKK Health Check: All %d modules loaded successfully!" loaded))
     (not failed)))
+
+;;;###autoload
+(defun nskk-diagnostic-report ()
+  "NSKKの動作状態を診断し、詳細なレポートを表示する。
+システム情報、モジュール状態、辞書ファイル、設定値、
+入力メソッドの登録状態などを包括的に診断する。"
+  (interactive)
+  (let* ((current-time-str (format-time-string "%Y-%m-%d %H:%M:%S"))
+         ;; システム情報
+         (emacs-ver emacs-version)
+         (system-type-str (symbol-name system-type))
+
+         ;; モジュール状態のチェック
+         (modules '(nskk-romaji-tables nskk-converter nskk-special-chars nskk-optimize
+                    nskk-state nskk-mode-switch nskk-buffer nskk-events
+                    nskk-dict-parser nskk-dict-struct nskk-dict-io nskk-dict-errors
+                    nskk-trie nskk-search nskk-cache nskk-index
+                    nskk-keymap nskk-candidate-window nskk-minibuffer nskk-modeline
+                    nskk-layer-core nskk-layer-data nskk-layer-application
+                    nskk-runtime-integration nskk-transient-config
+                    nskk-transient-plugins nskk-transient-debug
+                    nskk-advanced-integration nskk-ai-context nskk-ai-pattern
+                    nskk-ai-candidates nskk-ai-learning nskk-sync-protocol
+                    nskk-sync-crypto nskk-sync-diff nskk-sync-conflict
+                    nskk-analytics-pattern nskk-analytics-optimize
+                    nskk-analytics-report nskk-analytics-dashboard))
+         (loaded-modules 0)
+         (failed-modules nil)
+
+         ;; 辞書ファイル状態
+         (dict-files (list nskk-dictionary-path nskk-user-dictionary-path))
+         (dict-status nil)
+
+         ;; 入力メソッド状態
+         (im-registered (assoc "nskk" input-method-alist))
+         (current-im current-input-method)
+
+         ;; キーマップ状態
+         (keymap-initialized (and (boundp 'nskk-mode-map)
+                                 nskk-mode-map
+                                 (keymapp nskk-mode-map)))
+
+         ;; Application Layer状態
+         (app-mode (when (boundp 'nskk-application--current-mode)
+                    nskk-application--current-mode))
+         (app-state (when (boundp 'nskk-current-state)
+                     nskk-current-state))
+
+         ;; 診断メッセージ蓄積用
+         (warnings nil)
+         (errors nil)
+         (recommendations nil))
+
+    ;; モジュール状態を集計
+    (dolist (module modules)
+      (if (featurep module)
+          (setq loaded-modules (1+ loaded-modules))
+        (push module failed-modules)))
+
+    ;; 辞書ファイル状態を確認
+    (dolist (dict-path dict-files)
+      (when dict-path
+        (let* ((expanded (expand-file-name dict-path))
+               (exists (file-exists-p expanded))
+               (readable (and exists (file-readable-p expanded)))
+               (size (when readable
+                      (file-attribute-size (file-attributes expanded)))))
+          (push (list :path dict-path
+                     :expanded expanded
+                     :exists exists
+                     :readable readable
+                     :size size)
+                dict-status))))
+
+    ;; 診断：モジュールロード失敗
+    (when failed-modules
+      (push (format "%d個のモジュールがロードされていません: %s"
+                   (length failed-modules)
+                   (mapconcat #'symbol-name failed-modules ", "))
+            errors))
+
+    ;; 診断：辞書ファイル問題
+    (dolist (dict dict-status)
+      (let ((path (plist-get dict :path))
+            (exists (plist-get dict :exists))
+            (readable (plist-get dict :readable)))
+        (cond
+         ((not exists)
+          (push (format "辞書ファイルが見つかりません: %s" path) warnings))
+         ((not readable)
+          (push (format "辞書ファイルが読み込めません: %s" path) warnings)))))
+
+    ;; 診断：入力メソッド未登録
+    (unless im-registered
+      (push "入力メソッド 'nskk' が登録されていません" errors))
+
+    ;; 診断：キーマップ未初期化
+    (unless keymap-initialized
+      (push "nskk-mode-map が初期化されていません" warnings))
+
+    ;; 診断：Application Layer未初期化
+    (unless app-mode
+      (push "Application Layerが初期化されていません" warnings))
+
+    ;; 推奨アクションの生成
+    (when (cl-some (lambda (dict)
+                    (not (plist-get dict :exists)))
+                  dict-status)
+      (push "辞書ファイルをダウンロードしてください:\n     curl -O http://openlab.jp/skk/dic/SKK-JISYO.L.gz\n     gunzip SKK-JISYO.L.gz"
+            recommendations))
+
+    (when (not app-mode)
+      (push "nskk-modeを有効化してApplication Layerを初期化してください:\n     M-x nskk-mode"
+            recommendations))
+
+    (when failed-modules
+      (push "不足しているモジュールを確認してください:\n     M-x nskk-health-check"
+            recommendations))
+
+    ;; レポートを表示
+    (with-help-window "*NSKK Diagnostic Report*"
+      (with-current-buffer standard-output
+        (insert "================================================================================\n")
+        (insert "NSKK Diagnostic Report\n")
+        (insert "================================================================================\n")
+        (insert (format "Generated at: %s\n\n" current-time-str))
+
+        ;; システム情報
+        (insert "[SYSTEM INFORMATION]\n")
+        (insert (format "  Emacs Version: %s\n" emacs-ver))
+        (insert (format "  System Type: %s\n" system-type-str))
+        (insert (format "  NSKK Version: %s\n\n" nskk-version))
+
+        ;; モジュール状態
+        (insert "[MODULE STATUS]\n")
+        (if failed-modules
+            (progn
+              (insert (format "  ✗ %d/%d modules loaded\n"
+                            loaded-modules (length modules)))
+              (insert (format "  Failed modules: %s\n\n"
+                            (mapconcat #'symbol-name failed-modules ", "))))
+          (insert (format "  ✓ All %d modules loaded successfully\n\n" loaded-modules)))
+
+        ;; 辞書ファイル状態
+        (insert "[DICTIONARY FILES]\n")
+        (if dict-status
+            (dolist (dict (reverse dict-status))
+              (let ((path (plist-get dict :path))
+                    (exists (plist-get dict :exists))
+                    (readable (plist-get dict :readable))
+                    (size (plist-get dict :size)))
+                (if (and exists readable)
+                    (insert (format "  ✓ %s (exists, readable, %.1f KB)\n"
+                                  path
+                                  (/ size 1024.0)))
+                  (insert (format "  ✗ %s (%s)\n"
+                                path
+                                (cond
+                                 ((not exists) "NOT FOUND")
+                                 ((not readable) "NOT READABLE")
+                                 (t "UNKNOWN ERROR")))))))
+          (insert "  - No dictionary files configured\n"))
+        (insert "\n")
+
+        ;; 設定値
+        (insert "[CONFIGURATION]\n")
+        (insert (format "  nskk-dictionary-path: %s\n"
+                       (or nskk-dictionary-path "nil")))
+        (insert (format "  nskk-user-dictionary-path: %s\n"
+                       nskk-user-dictionary-path))
+        (insert (format "  nskk-enable-completion: %s\n"
+                       nskk-enable-completion))
+        (insert (format "  nskk-candidate-display-count: %s\n"
+                       nskk-candidate-display-count))
+        (insert (format "  nskk-debug-mode: %s\n"
+                       nskk-debug-mode))
+        (when (boundp 'nskk-keymap-prefix)
+          (insert (format "  nskk-keymap-prefix: %s\n"
+                         (if (boundp 'nskk-keymap-prefix)
+                             nskk-keymap-prefix
+                           "not set"))))
+        (insert "\n")
+
+        ;; 入力メソッド状態
+        (insert "[INPUT METHOD]\n")
+        (if im-registered
+            (insert "  ✓ \"nskk\" registered\n")
+          (insert "  ✗ \"nskk\" NOT REGISTERED\n"))
+        (insert (format "  Current input method: %s\n\n"
+                       (or current-im "nil")))
+
+        ;; キーマップ状態
+        (insert "[KEYMAP STATUS]\n")
+        (if keymap-initialized
+            (insert "  ✓ nskk-mode-map initialized\n")
+          (insert "  ✗ nskk-mode-map NOT INITIALIZED\n"))
+        (when keymap-initialized
+          (insert "  ✓ Key bindings configured\n"))
+        (insert "\n")
+
+        ;; Application Layer状態
+        (insert "[APPLICATION LAYER]\n")
+        (if app-mode
+            (insert (format "  ✓ nskk-application--current-mode: %s\n" app-mode))
+          (insert "  ✗ nskk-application--current-mode: NOT INITIALIZED\n"))
+        (if app-state
+            (insert (format "  ✓ nskk-current-state: initialized (mode: %s)\n"
+                          (when (nskk-state-p app-state)
+                            (nskk-state-mode app-state))))
+          (insert "  ✗ nskk-current-state: NOT INITIALIZED\n"))
+        (insert "\n")
+
+        ;; 診断結果
+        (insert "[DIAGNOSIS]\n")
+        (when errors
+          (dolist (err errors)
+            (insert (format "  [ERROR] %s\n" err))))
+        (when warnings
+          (dolist (warn warnings)
+            (insert (format "  [WARNING] %s\n" warn))))
+        (unless (or errors warnings)
+          (insert "  ✓ No issues detected\n"))
+        (insert "\n")
+
+        ;; 推奨アクション
+        (when recommendations
+          (insert "[RECOMMENDED ACTIONS]\n")
+          (let ((counter 1))
+            (dolist (rec recommendations)
+              (insert (format "  %d. %s\n" counter rec))
+              (setq counter (1+ counter))))
+          (insert "\n"))
+
+        (insert "================================================================================\n")
+        (insert "診断完了。問題がある場合は、推奨アクションを実行してください。\n")
+        (insert "詳細な情報: M-x nskk-health-check, M-x nskk-list-modules\n")
+        (insert "================================================================================\n")))
+
+    ;; 診断結果を返す（テスト用）
+    (list :loaded loaded-modules
+          :total (length modules)
+          :errors (length errors)
+          :warnings (length warnings))))
 
 ;;; Module Information
 
@@ -679,12 +939,14 @@ v1.0の主な機能:
         (if new-state
             (progn
               (nskk-activate)
+              (activate-input-method "nskk")
               (run-hook-with-args 'nskk-mode-change-hook
                                   (cons (or current-mode 'inactive)
                                         (or (and (fboundp 'nskk-application-current-mode)
                                                  (nskk-application-current-mode))
                                             'inactive))))
           (progn
+            (deactivate-input-method)
             (nskk-deactivate)
             (run-hook-with-args 'nskk-mode-change-hook
                                 (cons (or current-mode 'inactive) 'inactive)))))
@@ -693,11 +955,91 @@ v1.0の主な機能:
      (setq nskk-mode (not nskk-mode))
      (signal (car err) (cdr err)))))
 
+;;; ddskk Compatibility Functions
+
+(defvar nskk-auto-fill-mode-hook nil
+  "NSKKのauto-fill-mode有効化時に実行されるフック。
+ddskkの `skk-auto-fill-mode-hook' 互換。")
+
+;;;###autoload
+(defun nskk-auto-fill-mode (&optional arg)
+  "NSKKモードとauto-fill-modeを同時にトグルする。
+ddskkの `skk-auto-fill-mode' 互換。
+
+引数:
+  ARG - 正の値の場合、auto-fill-modeを強制的にON
+
+動作:
+  1. NSKKモードを有効化
+  2. auto-fill-modeをトグル（ARGがある場合は強制ON）
+  3. `nskk-auto-fill-mode-hook' を実行"
+  (interactive "P")
+  (nskk-mode 1)
+  (if arg
+      (auto-fill-mode 1)
+    (auto-fill-mode 'toggle))
+  (run-hooks 'nskk-auto-fill-mode-hook))
+
+(defcustom nskk-tutorial-file "TUTORIAL.ja"
+  "NSKKチュートリアルファイル名。
+ddskkの `skk-tut-file' 互換。"
+  :type 'string
+  :group 'nskk)
+
+;;;###autoload
+(defun nskk-tutorial ()
+  "NSKKのチュートリアルを起動する。
+ddskkの `skk-tutorial' 互換。
+
+チュートリアルファイルが見つからない場合は、
+メッセージを表示してオンラインドキュメントを案内する。"
+  (interactive)
+  (let* ((nskk-dir (file-name-directory (locate-library "nskk")))
+         (tutorial-path (expand-file-name nskk-tutorial-file nskk-dir)))
+    (if (file-readable-p tutorial-path)
+        (find-file tutorial-path)
+      (message "NSKK tutorial file not found. Please visit: https://github.com/takeokunn/nskk.el"))))
+
+(defcustom nskk-setup-global-keys-on-load t
+  "非nilの場合、nskk.elロード時にグローバルキーを自動設定する。
+ddskkとの互換性のため、デフォルトで有効。
+
+設定されるキー:
+  C-x C-j -> `nskk-mode'
+  C-x j   -> `nskk-auto-fill-mode'
+  C-x t   -> `nskk-tutorial'"
+  :type 'boolean
+  :group 'nskk)
+
+;;;###autoload
+(defun nskk-setup-global-keys ()
+  "NSKKのグローバルキーバインドを設定する。
+ddskkと互換性のあるキーバインドを設定する。
+
+設定されるキー:
+  C-x C-j -> `nskk-mode'
+  C-x j   -> `nskk-auto-fill-mode'
+  C-x t   -> `nskk-tutorial'
+
+既にバインドされているキーは上書きしない。
+ただし、C-x t が `transpose-lines' の場合は上書きする。"
+  (interactive)
+  (unless (where-is-internal 'nskk-mode)
+    (global-set-key (kbd "C-x C-j") 'nskk-mode))
+  (unless (where-is-internal 'nskk-auto-fill-mode)
+    (global-set-key (kbd "C-x j") 'nskk-auto-fill-mode))
+  (when (eq (key-binding (kbd "C-x t")) 'transpose-lines)
+    (global-set-key (kbd "C-x t") 'nskk-tutorial)))
+
 ;;; Finalization
 
 ;; ロード時間計測（Emacs 31以降）
 (when (boundp 'load-time-list)
   (setq nskk--load-time (car (last load-time-list))))
+
+;; ddskk互換: グローバルキーの自動設定
+(when nskk-setup-global-keys-on-load
+  (nskk-setup-global-keys))
 
 (provide 'nskk)
 

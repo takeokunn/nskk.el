@@ -15,6 +15,11 @@
         (nskk-runtime-integration-enable-profiling nil)
         (nskk-runtime-integration-enable-optimization nil)
         (nskk-runtime-integration-enable-auto-tune nil))
+    ;; 既に初期化されている場合は一度シャットダウン
+    (when (nskk-runtime-integration-initialized-p)
+      (nskk-runtime-integration-shutdown))
+
+    ;; クリーンな状態から開始
     (should-not (nskk-runtime-integration-initialized-p))
     (nskk-runtime-integration-initialize)
     (should (nskk-runtime-integration-initialized-p))

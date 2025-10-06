@@ -29,19 +29,45 @@
 ;;; Code:
 
 ;;; ========================================
-;;; 1. 最小限の設定（3行）
+;;; 1. 最小限の設定（2行）- ddskk完全互換
 ;;; ========================================
 
 ;; NSKKを動作させるための必要最小限の設定です。
 ;; とりあえず動かしてみたい場合はこれだけで十分です。
+;;
+;; ddskk互換性のため、グローバルキーバインドは自動設定されます:
+;;   C-x C-j -> nskk-mode
+;;   C-x j   -> nskk-auto-fill-mode
+;;   C-x t   -> nskk-tutorial
 
 ;; (add-to-list 'load-path "/path/to/nskk.el")
 ;; (require 'nskk)
-;; (global-set-key (kbd "C-x C-j") 'nskk-mode)
 
 ;; 注意:
 ;; - /path/to/nskk.el は実際のNSKKのパスに置き換えてください
 ;; - 辞書ファイルは自動的に検索されます（~/dict/SKK-JISYO.Lなど）
+;; - グローバルキーの自動設定を無効化する場合:
+;;   (setq nskk-setup-global-keys-on-load nil)
+
+;;; ========================================
+;;; キーバインドについて
+;;; ========================================
+
+;; NSKKはddskkと同様に、標準Emacsコマンドを上書きしません。
+;; 以下のキーは通常のEmacsコマンドとして動作します:
+;;
+;;   C-d: delete-char (前方削除)
+;;   C-w: kill-region (リージョン削除)
+;;   C-y: yank (ヤンク)
+;;   C-k: kill-line (行削除)
+;;   C-u: universal-argument (数値引数)
+;;   C-h: help-command (ヘルプ)
+;;
+;; NSKKモード固有のキーバインド:
+;;   C-j: ひらがなモード切り替え
+;;   q:   カナモード切り替え
+;;   l:   英数モード切り替え
+;;   SPC: 変換開始
 
 ;;; ========================================
 ;;; 2. 標準的な設定（10行）
@@ -53,9 +79,9 @@
 ;; ;; NSKKのロード
 ;; (add-to-list 'load-path "/path/to/nskk.el")
 ;; (require 'nskk)
-
-;; ;; グローバルキーバインド
-;; (global-set-key (kbd "C-x C-j") 'nskk-mode)
+;;
+;; ;; グローバルキーバインド（ddskk互換で自動設定済み）
+;; ;; C-x C-j, C-x j, C-x t が自動的に設定されます
 
 ;; ;; 辞書設定
 ;; (setq nskk-dictionary-list
@@ -81,10 +107,11 @@
 ;; ;; NSKKのロードとコンパイル最適化
 ;; (add-to-list 'load-path "/path/to/nskk.el")
 ;; (require 'nskk)
-
-;; ;; グローバルキーバインド
-;; (global-set-key (kbd "C-x C-j") 'nskk-mode)
-;; (global-set-key (kbd "C-x j") 'nskk-mode-toggle)  ; トグル用
+;;
+;; ;; グローバルキーバインド（ddskk互換で自動設定済み）
+;; ;; C-x C-j -> nskk-mode
+;; ;; C-x j   -> nskk-auto-fill-mode
+;; ;; C-x t   -> nskk-tutorial
 
 ;; ;; 辞書設定 - 階層化による高速検索
 ;; (setq nskk-dictionary-list

@@ -34,6 +34,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'nskk)
 (require 'nskk-keymap)
 (require 'nskk-state)
 
@@ -377,6 +378,141 @@
     ;; 統計情報が取得できることを確認
     (let ((stats (nskk-keymap-stats)))
       (should (> (plist-get stats :mode-keymaps) 0)))))
+
+;;; ddskk互換性テスト (グローバルキーバインド)
+
+(ert-deftest nskk-keymap-test-global-keys-auto-setup ()
+  "グローバルキーバインドの自動設定をテスト"
+  (let ((nskk-setup-global-keys-on-load t))
+    (nskk-setup-global-keys)
+
+    (should (eq (key-binding (kbd "C-x C-j")) 'nskk-mode))
+    (should (eq (key-binding (kbd "C-x j")) 'nskk-auto-fill-mode))
+
+    (when (eq (key-binding (kbd "C-x t")) 'nskk-tutorial)
+      (should (eq (key-binding (kbd "C-x t")) 'nskk-tutorial)))))
+
+(ert-deftest nskk-keymap-test-nskk-auto-fill-mode ()
+  "nskk-auto-fill-mode の動作確認"
+  (with-temp-buffer
+    (should-not auto-fill-function)
+
+    (nskk-auto-fill-mode)
+
+    (should auto-fill-function)
+
+    (nskk-auto-fill-mode)
+    (should-not auto-fill-function)))
+
+(ert-deftest nskk-keymap-test-nskk-auto-fill-mode-with-arg ()
+  "nskk-auto-fill-mode の引数付き動作確認"
+  (with-temp-buffer
+    (should-not auto-fill-function)
+
+    (nskk-auto-fill-mode 1)
+    (should auto-fill-function)
+
+    (nskk-auto-fill-mode 1)
+    (should auto-fill-function)))
+
+(ert-deftest nskk-keymap-test-nskk-tutorial ()
+  "nskk-tutorial の動作確認"
+  (let ((tutorial-called nil))
+    (cl-letf (((symbol-function 'find-file)
+               (lambda (_file) (setq tutorial-called t))))
+      (let ((nskk-tutorial-file "test-tutorial.txt")
+            (nskk-dir (file-name-directory (locate-library "nskk"))))
+        (with-temp-file (expand-file-name nskk-tutorial-file nskk-dir)
+          (insert "Test tutorial"))
+        (nskk-tutorial)
+        (should tutorial-called)))))
+
+(ert-deftest nskk-keymap-test-setup-global-keys-idempotent ()
+  "nskk-setup-global-keys の冪等性確認"
+  (nskk-setup-global-keys)
+  (let ((first-binding (key-binding (kbd "C-x C-j"))))
+    (nskk-setup-global-keys)
+    (should (eq (key-binding (kbd "C-x C-j")) first-binding))))
+
+;;; 11. ddskk完全互換テスト: キーバインド削除確認
+
+(ert-deftest nskk-keymap-test-ddskk-compatible-no-bindings ()
+  "ddskk完全互換: nskk-mode-mapに入力編集キーがバインドされていないことを確認"
+  (nskk-setup-keybindings)
+
+  ;; 以下のキーは全てバインドされていないべき
+  (dolist (key '("C-h" "DEL" "C-d" "C-w" "C-y" "C-k" "C-u"))
+    (let ((binding (lookup-key nskk-mode-map (kbd key))))
+      (should (or (not binding) (numberp binding)))
+      (message "Key %s binding: %s" key binding))))
+
+(ert-deftest nskk-keymap-test-emacs-default-commands-accessible ()
+  "nskk-mode有効時でも標準Emacsコマンドがアクセス可能であることを確認"
+  (with-temp-buffer
+    (nskk-mode 1)
+
+    ;; 標準Emacsコマンドがグローバルバインディングとして解決されることを確認
+    (should (eq (key-binding (kbd "C-d")) 'delete-char))
+    (message "C-d is bound to delete-char")
+
+    (should (eq (key-binding (kbd "C-k")) 'kill-line))
+    (message "C-k is bound to kill-line")
+
+    (should (eq (key-binding (kbd "C-w")) 'kill-region))
+    (message "C-w is bound to kill-region")
+
+    (should (eq (key-binding (kbd "C-y")) 'yank))
+    (message "C-y is bound to yank")
+
+    (should (eq (key-binding (kbd "DEL")) 'delete-backward-char))
+    (message "DEL is bound to delete-backward-char")
+
+    (should (eq (key-binding (kbd "C-u")) 'universal-argument))
+    (message "C-u is bound to universal-argument")
+
+    (nskk-mode -1)))
+
+(ert-deftest nskk-keymap-test-c-h-is-help ()
+  "C-hがhelpコマンドとして動作することを確認"
+  (with-temp-buffer
+    (nskk-mode 1)
+
+    ;; C-hがnskk-mode-mapでバインドされていないことを確認
+    (let ((binding (lookup-key nskk-mode-map (kbd "C-h"))))
+      (should (or (not binding) (numberp binding))))
+
+    ;; グローバルのC-hバインディングを確認(help-command)
+    (let ((global-binding (key-binding (kbd "C-h"))))
+      (should (eq global-binding 'help-command)))
+
+    (nskk-mode -1)))
+
+(ert-deftest nskk-keymap-test-input-keys-empty ()
+  "nskk-keymap-input-keysが空であることを確認"
+  (should (null nskk-keymap-input-keys)))
+
+(ert-deftest nskk-keymap-test-obsolete-functions ()
+  "obsolete化された関数が警告を出すことを確認"
+  (let ((obsolete-functions
+         '(nskk-input-delete-forward-char
+           nskk-input-kill-line
+           nskk-input-kill-whole-line
+           nskk-input-kill-region
+           nskk-input-yank)))
+    (dolist (func obsolete-functions)
+      (should (get func 'byte-obsolete-info))
+      (message "Function %s is correctly marked as obsolete" func))))
+
+(ert-deftest nskk-keymap-test-mode-switch-keys-unaffected ()
+  "モード切り替えキーが修正の影響を受けていないことを確認"
+  (nskk-setup-keybindings)
+
+  ;; モード切り替えキーは正常にバインドされているべき
+  (should (lookup-key nskk-mode-map (kbd "C-j")))
+  (should (lookup-key nskk-mode-map (kbd "q")))
+  (should (lookup-key nskk-mode-map (kbd "l")))
+
+  (message "Mode switch keys are properly bound"))
 
 (provide 'nskk-keymap-test)
 

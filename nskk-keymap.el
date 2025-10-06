@@ -27,7 +27,8 @@
 ;; このファイルはNSKKのキーマップ定義を実装します。
 ;;
 ;; 特徴:
-;; - ddskk互換のキーバインド
+;; - ddskk完全互換のキーバインド設計
+;; - 標準Emacsコマンドを上書きしない
 ;; - モード別キーマップの提供
 ;; - カスタマイズ可能なキーバインド設定
 ;; - プレフィックスキーによるコマンド体系
@@ -178,15 +179,18 @@ ddskkの`skk-use-jisx0201-input-method'互換。"
     ("C-i"   . nskk-henkan-complete))         ; 補完
   "変換操作用のキーバインド定義。")
 
-(defconst nskk-keymap-input-keys
-  '(("C-h"   . nskk-input-delete-backward-char)  ; 後退削除
-    ("DEL"   . nskk-input-delete-backward-char)  ; 後退削除
-    ("C-d"   . nskk-input-delete-forward-char)   ; 前方削除
-    ("C-k"   . nskk-input-kill-line)             ; 行削除
-    ("C-u"   . nskk-input-kill-whole-line)       ; 全行削除
-    ("C-w"   . nskk-input-kill-region)           ; リージョン削除
-    ("C-y"   . nskk-input-yank))                 ; ヤンク
-  "入力操作用のキーバインド定義。")
+;; ddskk互換: 直接キーバインドは行わない
+;; 将来的にエミュレーション機構を実装する場合のプレースホルダー
+(defconst nskk-keymap-input-keys nil
+  "入力操作用のキーバインド定義。
+ddskk完全互換のため、現在は空リスト。
+標準Emacsコマンド(C-d, C-w, C-h等)を上書きしない。
+
+将来的にddskkのエミュレーション機構と同等の実装を行う場合、
+`nskk-setup-emulation-commands'関数を通じて設定する。")
+
+;; 後方互換性のため、古い定義をobsolete化
+(make-obsolete-variable 'nskk-keymap-input-keys nil "1.0.0")
 
 (defconst nskk-keymap-special-keys
   '(("C-q"   . nskk-input-toggle-kuten)         ; 句点入力モード切り替え
@@ -286,8 +290,11 @@ ddskkの`skk-use-jisx0201-input-method'互換。"
   (nskk-define-keys keymap nskk-keymap-henkan-keys t))
 
 (defun nskk-setup-input-keys (keymap)
-  "KEYMAPに入力操作用のキーバインドを設定する。"
-  (nskk-define-keys keymap nskk-keymap-input-keys t))
+  "KEYMAPに入力操作用のキーバインドを設定する。
+ddskk完全互換のため、現在は何も設定しない。"
+  ;; ddskk互換: 直接キーバインドを設定しない
+  ;; 将来的にエミュレーション機構を実装する場合はここに追加
+  (ignore keymap))
 
 (defun nskk-setup-special-keys (keymap)
   "KEYMAPに特殊文字入力用のキーバインドを設定する。"
