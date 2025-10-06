@@ -54,6 +54,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 
 ;;; カスタマイズ可能変数
 
@@ -86,7 +87,10 @@
   "現在の入力モード。")
 
 (defvar nskk-application--input-buffer ""
-  "入力バッファ。")
+  "未確定のローマ字入力を保持するバッファ。")
+
+(defvar nskk-application--committed-text ""
+  "直近で確定済みとして出力したテキストを追跡する補助バッファ。")
 
 (defvar nskk-application--conversion-state nil
   "変換状態。")
@@ -116,6 +120,7 @@
   "Application Layerを初期化する。"
   (setq nskk-application--current-mode nskk-application-default-mode)
   (setq nskk-application--input-buffer "")
+  (setq nskk-application--committed-text "")
   (setq nskk-application--conversion-state nil)
   (setq nskk-application--candidate-list nil)
   (setq nskk-application--candidate-index 0)
@@ -137,8 +142,66 @@
 (defun nskk-application--cleanup-session ()
   "現在のセッションをクリーンアップする。"
   (setq nskk-application--input-buffer "")
+  (setq nskk-application--committed-text "")
   (setq nskk-application--conversion-state nil)
   (setq nskk-application--candidate-list nil))
+
+;;; 入力バッファ管理
+
+(defun nskk-application--set-input-buffer (content)
+  "アプリケーション層の未確定入力バッファを CONTENT に設定する。"
+  (setq nskk-application--input-buffer content)
+  (when (and (boundp 'nskk-current-state) nskk-current-state)
+    (setf (nskk-state-input-buffer nskk-current-state) content)))
+
+(defun nskk-application--append-input (input)
+  "未確定入力バッファに INPUT を追加する。"
+  (nskk-application--set-input-buffer
+   (concat nskk-application--input-buffer input)))
+
+(defun nskk-application--reset-committed-text ()
+  "確定済みテキスト追跡をリセットする。"
+  (setq nskk-application--committed-text ""))
+
+(defun nskk-application--romaji-char-p (input)
+  "INPUT がローマ字入力対象の1文字か判定する。"
+  (and (= (length input) 1)
+       (let ((ch (aref input 0)))
+         (or (and (>= ch ?a) (<= ch ?z))
+             (and (>= ch ?A) (<= ch ?Z))
+             (= ch ?')))))
+
+(defun nskk-application--process-romaji (input &optional post-fn)
+  "ローマ字 INPUT を処理し、確定テキストを返す。
+POST-FN が関数なら、確定テキストに適用する。"
+  (nskk-application--append-input input)
+  (let* ((result (nskk-convert-romaji nskk-application--input-buffer))
+         (converted (nskk-converter-result-converted result))
+         (pending (nskk-converter-result-pending result)))
+    (nskk-application--set-input-buffer pending)
+    (when post-fn
+      (setq converted (funcall post-fn converted)))
+    (unless (string-empty-p converted)
+      (setq nskk-application--committed-text
+            (concat nskk-application--committed-text converted))
+      converted)))
+
+(defun nskk-application--flush-pending (&optional post-fn)
+  "未確定ローマ字バッファを強制的に確定する。
+POST-FN が関数なら確定文字列に適用する。"
+  (if (string-empty-p nskk-application--input-buffer)
+      ""
+    (let* ((result (nskk-convert-romaji nskk-application--input-buffer))
+           (converted (nskk-converter-result-converted result))
+           (pending (nskk-converter-result-pending result)))
+      (nskk-application--set-input-buffer "")
+      (when post-fn
+        (setq converted (funcall post-fn converted)))
+      (when (and pending (not (string-empty-p pending)))
+        (setq converted (concat converted pending)))
+      (unless (string-empty-p converted)
+        (nskk-application--reset-committed-text)
+        converted))))
 
 ;;; 入力処理
 
@@ -164,30 +227,51 @@ INPUTは入力文字またはキーイベント。"
 (defun nskk-application--process-hiragana-input (input)
   "ひらがなモードでの入力を処理する。
 INPUTは入力文字。"
-  ;; Core Layerの変換エンジンを呼び出す
-  (nskk-application--delegate-to-core :convert-romaji input))
+  (if (nskk-application--romaji-char-p input)
+      (nskk-application--process-romaji (downcase input))
+    (let ((prefix (nskk-application--flush-pending)))
+      (cond
+       ((and prefix (not (string-empty-p prefix)))
+        (concat prefix input))
+       (t input)))))
 
 (defun nskk-application--process-katakana-input (input)
   "カタカナモードでの入力を処理する。
 INPUTは入力文字。"
-  ;; Core Layerの変換エンジンを呼び出し、ひらがな→カタカナ変換
-  (let ((hiragana (nskk-application--delegate-to-core :convert-romaji input)))
-    (nskk-application--hiragana-to-katakana hiragana)))
+  (if (nskk-application--romaji-char-p input)
+      (nskk-application--process-romaji
+       (downcase input)
+       #'nskk-application--hiragana-to-katakana)
+    (let ((prefix (nskk-application--flush-pending #'nskk-application--hiragana-to-katakana)))
+      (cond
+       ((and prefix (not (string-empty-p prefix)))
+        (concat prefix
+                (nskk-application--hiragana-to-katakana input)))
+       (t input)))))
 
 (defun nskk-application--process-latin-input (input)
   "英数モードでの入力を処理する。
 INPUTは入力文字。"
-  input)
+  (let ((prefix (nskk-application--flush-pending)))
+    (cond
+     ((and prefix (not (string-empty-p prefix)))
+      (concat prefix input))
+     (t input))))
 
 (defun nskk-application--process-zenkaku-latin-input (input)
   "全角英数モードでの入力を処理する。
 INPUTは入力文字。"
-  (nskk-application--hankaku-to-zenkaku input))
+  (let ((prefix (nskk-application--flush-pending #'nskk-application--hiragana-to-katakana)))
+    (concat (or prefix "")
+            (nskk-application--hankaku-to-zenkaku input))))
 
 (defun nskk-application--process-default-input (input)
   "デフォルトの入力処理。
 INPUTは入力文字。"
-  input)
+  (let ((prefix (nskk-application--flush-pending)))
+    (if (and prefix (not (string-empty-p prefix)))
+        (concat prefix input)
+      input)))
 
 ;;; 変換処理
 

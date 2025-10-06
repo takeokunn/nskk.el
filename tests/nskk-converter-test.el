@@ -250,10 +250,9 @@
   (should (nskk-converter-test--result-equal
            (nskk-convert-romaji "sh") "" "sh"))
 
-  ;; "kk" は促音の可能性があるが、3文字未満なので促音処理されない
-  ;; "kk" 全体にマッチなし → 最初の "k" を出力、残りの "k" は pending
+  ;; "kk" は促音の可能性があるため確定を保留
   (should (nskk-converter-test--result-equal
-           (nskk-convert-romaji "kk") "k" "k")))
+           (nskk-convert-romaji "kk") "" "kk")))
 
 (ert-deftest nskk-converter-test-no-match ()
   "マッチしない入力のテストする。"

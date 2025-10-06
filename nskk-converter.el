@@ -106,6 +106,13 @@
        (= (aref str 0) (aref str 1))
        (nskk-converter--is-sokuon-char (aref str 0))))
 
+(defun nskk-converter--should-delay-for-sokuon (input)
+  "INPUT が促音候補であり、確定を保留すべきか判定する。"
+  (and (>= (length input) 2)
+       (= (aref input 0) (aref input 1))
+       (not (= (aref input 0) ?n))
+       (nskk-converter--is-sokuon-char (aref input 0))))
+
 (defun nskk-converter--process-sokuon (input)
   "INPUT から促音パターンを処理する。
 促音が検出された場合は (\"っ\" . 残り) を返す。
@@ -288,19 +295,27 @@ converted/pending/consumed の各スロットに結果を格納する。
                                   (nskk-converter-result-consumed rest-result))))
 
                  ;; プレフィックスマッチがあれば未確定として保持
-                 (if (nskk-converter--has-prefix-match input)
-                     (nskk-converter-result-create
-                      :converted ""
-                      :pending input
-                      :consumed 0)
+                 (cond
+                  ((nskk-converter--has-prefix-match input)
+                   (nskk-converter-result-create
+                    :converted ""
+                    :pending input
+                    :consumed 0))
 
+                  ((nskk-converter--should-delay-for-sokuon input)
+                   (nskk-converter-result-create
+                    :converted ""
+                    :pending input
+                    :consumed 0))
+
+                  (t
                    ;; どのパターンにもマッチしない → 最初の1文字をそのまま出力
                    (let ((rest-result (nskk-convert-romaji (substring input 1))))
                      (nskk-converter-result-create
                       :converted (concat (substring input 0 1)
                                          (nskk-converter-result-converted rest-result))
                       :pending (nskk-converter-result-pending rest-result)
-                      :consumed (1+ (nskk-converter-result-consumed rest-result)))))))))))
+                      :consumed (1+ (nskk-converter-result-consumed rest-result))))))))))))
     (nskk-converter--finalize-result result)))
 
 (defun nskk-convert-romaji-simple (input)

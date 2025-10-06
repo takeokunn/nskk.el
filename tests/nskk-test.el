@@ -127,8 +127,36 @@
 
 (ert-deftest nskk-test-input-method-character ()
   "文字キーに対する入力メソッドの動作を確認する。"
-  (let ((result (nskk-input-method ?a)))
-    (should (or (null result) (listp result)))))
+  (unwind-protect
+      (progn
+        (nskk--reset-state)
+        (let ((result (nskk-input-method ?a)))
+          (should (equal result '("あ")))))
+    (nskk--reset-state)))
+
+(ert-deftest nskk-test-input-method-romaji-sequence ()
+  "ローマ字シーケンスがかなに変換されることを確認する。"
+  (unwind-protect
+      (progn
+        (nskk--reset-state)
+        (let ((first (nskk-input-method ?k))
+              (second (nskk-input-method ?a)))
+          (should (null first))
+          (should (equal second '("か")))))
+    (nskk--reset-state)))
+
+(ert-deftest nskk-test-input-method-double-consonant ()
+  "促音を含む入力が正しく確定されることを確認する。"
+  (unwind-protect
+      (progn
+        (nskk--reset-state)
+        (let ((first (nskk-input-method ?k))
+              (second (nskk-input-method ?k))
+              (third (nskk-input-method ?a)))
+          (should (null first))
+          (should (null second))
+          (should (equal third '("っか")))))
+    (nskk--reset-state)))
 
 (ert-deftest nskk-test-input-method-non-character ()
   "非文字キーに対する入力メソッドの動作を確認する。"

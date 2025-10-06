@@ -168,6 +168,69 @@
    (should (equal (buffer-string) "こんにちは"))
    (should (= (point) 6))))
 
+;;; 句読点コマンドのテスト
+
+(ert-deftest nskk-input-commands-test-toggle-kuten-cycle ()
+  "句読点スタイルのトグルがサイクルすることをテストする。"
+  (let ((nskk-input-kutouten-type 'jp))
+    (nskk-input-toggle-kuten)
+    (should (eq nskk-input-kutouten-type 'en))
+    (nskk-input-toggle-kuten)
+    (should (eq nskk-input-kutouten-type 'jp-en))
+    (nskk-input-toggle-kuten)
+    (should (eq nskk-input-kutouten-type 'en-jp))
+    (nskk-input-toggle-kuten)
+    (should (eq nskk-input-kutouten-type 'jp))))
+
+(ert-deftest nskk-input-commands-test-insert-period-default ()
+  "デフォルトスタイルで句点が全角になることをテストする。"
+  (nskk-input-commands-test-with-temp-buffer
+   (let ((nskk-input-kutouten-type 'jp)
+         (nskk-input-use-auto-kutouten nil))
+     (call-interactively 'nskk-input-insert-period)
+     (should (equal (buffer-string) "。"))
+     (should (= (point) 2)))))
+
+(ert-deftest nskk-input-commands-test-insert-period-after-digit ()
+  "直前が数字の場合に半角句点が挿入されることをテストする。"
+  (nskk-input-commands-test-with-temp-buffer
+   (let ((nskk-input-kutouten-type 'jp)
+         (nskk-input-use-auto-kutouten t))
+     (nskk-buffer-insert "3")
+     (call-interactively 'nskk-input-insert-period)
+     (should (equal (buffer-string) "3."))
+     (should (= (point) 3)))))
+
+(ert-deftest nskk-input-commands-test-insert-comma-zenkaku-latin ()
+  "全角英数モードで全角読点が挿入されることをテストする。"
+  (nskk-input-commands-test-with-temp-buffer
+   (setf (nskk-state-mode nskk-current-state) 'zenkaku-latin)
+   (let ((nskk-input-kutouten-type 'jp)
+         (nskk-input-use-auto-kutouten t))
+     (call-interactively 'nskk-input-insert-comma)
+     (should (equal (buffer-string) "，"))
+     (should (= (point) 2)))))
+
+(ert-deftest nskk-input-commands-test-insert-question-style ()
+  "句読点スタイルに応じて疑問符が切り替わることをテストする。"
+  (nskk-input-commands-test-with-temp-buffer
+   (let ((nskk-input-kutouten-type 'jp))
+     (call-interactively 'nskk-input-insert-question)
+     (should (equal (buffer-string) "？")))
+   (nskk-buffer-clear)
+   (let ((nskk-input-kutouten-type 'en))
+     (call-interactively 'nskk-input-insert-question)
+     (should (equal (buffer-string) "?")))))
+
+(ert-deftest nskk-input-commands-test-insert-exclamation-ascii-mode ()
+  "半角英数モードでは半角の感嘆符が挿入されることをテストする。"
+  (nskk-input-commands-test-with-temp-buffer
+   (setf (nskk-state-mode nskk-current-state) 'latin)
+   (let ((nskk-input-kutouten-type 'jp))
+     (call-interactively 'nskk-input-insert-exclamation)
+     (should (equal (buffer-string) "!"))
+     (should (= (point) 2)))))
+
 ;;; エッジケースのテスト
 
 (ert-deftest nskk-input-commands-test-delete-empty-buffer ()

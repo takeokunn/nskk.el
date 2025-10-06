@@ -34,6 +34,149 @@
 (require 'nskk-buffer)
 (require 'nskk-state)
 
+;;; 句読点設定
+
+(defgroup nskk-input-punctuation nil
+  "ddskk互換の句読点入力設定。"
+  :group 'nskk
+  :prefix "nskk-input-")
+
+(defcustom nskk-input-kuten-touten-alist
+  '((jp . ("。" . "、"))
+    (en . ("." . ","))
+    (jp-en . ("。" . ","))
+    (en-jp . ("." . "、")))
+  "句読点のスタイルを定義する連想リスト。
+`nskk-input-kutouten-type'で指すシンボルに対応する句読点ペアを返す。"
+  :type '(repeat (cons (choice :tag "スタイル"
+                               (const :tag "日本語" jp)
+                               (const :tag "英語" en)
+                               (const :tag "句点:。／読点: ," jp-en)
+                               (const :tag "句点:.／読点: 、" en-jp)
+                               (cons :tag "カスタム" (string :tag "句点") (string :tag "読点")))
+                       (cons :tag "句読点ペア"
+                             (string :tag "句点" "。")
+                             (string :tag "読点" "、"))))
+  :group 'nskk-input-punctuation)
+
+(defcustom nskk-input-kutouten-type 'jp
+  "現在の句読点スタイル。`
+nskk-input-toggle-kuten'でサイクルする。"
+  :type '(choice (const jp)
+                 (const en)
+                 (const jp-en)
+                 (const en-jp)
+                 (cons (string :tag "句点") (string :tag "読点")))
+  :group 'nskk-input-punctuation)
+
+(defcustom nskk-input-use-auto-kutouten t
+  "前の文字が数字の場合に句点・読点を自動切り替えするかどうか。"
+  :type 'boolean
+  :group 'nskk-input-punctuation)
+
+(defconst nskk-input--kutouten-cycle '(jp en jp-en en-jp)
+  "`nskk-input-toggle-kuten'が巡回するスタイル順。")
+
+(defun nskk-input--resolve-kutouten ()
+  "現在の句読点ペアを返す。"
+  (let ((entry (assq nskk-input-kutouten-type nskk-input-kuten-touten-alist)))
+    (cond
+     (entry (cdr entry))
+     ((consp nskk-input-kutouten-type) nskk-input-kutouten-type)
+     (t (cdr (assq 'jp nskk-input-kuten-touten-alist))))))
+
+(defun nskk-input--current-kuten ()
+  "現在の句点文字列を返す。"
+  (car (nskk-input--resolve-kutouten)))
+
+(defun nskk-input--current-touten ()
+  "現在の読点文字列を返す。"
+  (cdr (nskk-input--resolve-kutouten)))
+
+(defun nskk-input--fullwidth-string-p (str)
+  "STRがASCII以外の文字を含むか判定する。"
+  (and str (string-match-p "[^[:ascii:]]" str)))
+
+(defun nskk-input--current-script ()
+  "現在の入力モードに基づくスクリプト種別を返す。"
+  (pcase (and nskk-current-state (nskk-state-mode nskk-current-state))
+    ((or 'latin 'abbrev) 'ascii)
+    ('zenkaku-latin 'fullwidth)
+    (_ 'kana)))
+
+(defun nskk-input--auto-kutouten (char)
+  "CHARに対応する句読点文字列を返す。"
+  (let* ((choices (pcase char
+                    (?. (list "." "．" (nskk-input--current-kuten)))
+                    (?, (list "," "，" (nskk-input--current-touten)))
+                    (_ (error "Unsupported kutouten char: %s" char))))
+         (script (nskk-input--current-script)))
+    (pcase script
+      ('ascii (nth 0 choices))
+      ('fullwidth (nth 1 choices))
+      (_
+       (let ((prev (char-before (point))))
+         (cond
+          ((null prev) (nth 2 choices))
+          ((and nskk-input-use-auto-kutouten
+                (<= ?0 prev) (<= prev ?9)) (nth 0 choices))
+          ((and nskk-input-use-auto-kutouten
+                (<= ?０ prev) (<= prev ?９)) (nth 1 choices))
+          (t (nth 2 choices))))))))
+
+(defun nskk-input--japanese-punctuation-active-p ()
+  "句点スタイルが日本語ベースか判定する。"
+  (nskk-input--fullwidth-string-p (nskk-input--current-kuten)))
+
+(defun nskk-input--general-punctuation (ascii fullwidth)
+  "現在のモードに合わせてASCIIか全角記号を選択する。"
+  (pcase (nskk-input--current-script)
+    ('ascii ascii)
+    ('fullwidth fullwidth)
+    (_ (if (nskk-input--japanese-punctuation-active-p) fullwidth ascii))))
+
+(defun nskk-input--insert-string (text)
+  "TEXTをNSKKバッファに挿入する。"
+  (unless (stringp text)
+    (signal 'wrong-type-argument (list 'stringp text)))
+  (nskk-buffer-insert text))
+
+;;;###autoload
+(defun nskk-input-toggle-kuten ()
+  "句読点のスタイルをトグルで切り替える。"
+  (interactive)
+  (setq nskk-input-kutouten-type
+        (or (cadr (member nskk-input-kutouten-type nskk-input--kutouten-cycle))
+            (car nskk-input--kutouten-cycle)))
+  (when (called-interactively-p 'interactive)
+    (message "読点: %s  句点: %s"
+             (nskk-input--current-touten)
+             (nskk-input--current-kuten))))
+
+;;;###autoload
+(defun nskk-input-insert-period ()
+  "句点を挿入する。"
+  (interactive)
+  (nskk-input--insert-string (nskk-input--auto-kutouten ?.)))
+
+;;;###autoload
+(defun nskk-input-insert-comma ()
+  "読点を挿入する。"
+  (interactive)
+  (nskk-input--insert-string (nskk-input--auto-kutouten ?,)))
+
+;;;###autoload
+(defun nskk-input-insert-question ()
+  "疑問符を挿入する。"
+  (interactive)
+  (nskk-input--insert-string (nskk-input--general-punctuation "?" "？")))
+
+;;;###autoload
+(defun nskk-input-insert-exclamation ()
+  "感嘆符を挿入する。"
+  (interactive)
+  (nskk-input--insert-string (nskk-input--general-punctuation "!" "！")))
+
 ;;; 削除コマンド
 
 (defun nskk-input-delete-backward-char (&optional n)
