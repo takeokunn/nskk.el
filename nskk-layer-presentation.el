@@ -340,6 +340,19 @@ QUERYは取得する情報のタイプ。"
 (defvar nskk-presentation--debug-enabled nil
   "デバッグモードが有効かどうか。")
 
+;;; 統計情報
+
+(defun nskk-presentation-get-statistics ()
+  "Presentation Layerの統計情報を取得する。
+戻り値: 統計情報のplist"
+  (list :layer 'presentation
+        :initialized (buffer-live-p nskk-presentation--candidate-buffer)
+        :event-handlers-count (hash-table-count nskk-presentation--event-handlers)
+        :debug-enabled nskk-presentation--debug-enabled
+        :mode-line-enabled nskk-presentation-enable-mode-line
+        :candidate-window-position nskk-presentation-candidate-window-position
+        :inline-candidates-max nskk-presentation-inline-candidates-max))
+
 (defun nskk-presentation-enable-debug ()
   "デバッグモードを有効にする。"
   (interactive)

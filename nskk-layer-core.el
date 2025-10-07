@@ -318,15 +318,13 @@ FUNCTIONは測定する関数、ARGSは引数。"
 
 (defun nskk-core-enable-debug ()
   "デバッグモードを有効にする。"
-  (interactive)
   (setq nskk-core--debug-enabled t)
-  (message "NSKK Core Engine Layer: Debug mode enabled"))
+  (message "NSKK Core: Debug mode enabled"))
 
 (defun nskk-core-disable-debug ()
   "デバッグモードを無効にする。"
-  (interactive)
   (setq nskk-core--debug-enabled nil)
-  (message "NSKK Core Engine Layer: Debug mode disabled"))
+  (message "NSKK Core: Debug mode disabled"))
 
 (defun nskk-core--log (format-string &rest args)
   "デバッグログを出力する。
@@ -357,12 +355,12 @@ FORMAT-STRINGはフォーマット文字列、ARGSは引数。"
 ;;; 統計情報
 
 (defun nskk-core-get-statistics ()
-  "Core Engine Layerの統計情報を取得する。"
-  (interactive)
-  (list :initialized nskk-core--initialized
-        :cache-entries (hash-table-count nskk-core--conversion-cache)
-        :cache-capacity nskk-core-cache-size
-        :optimization-enabled nskk-core-enable-optimization))
+  "Core Layerの統計情報を取得する。
+戻り値: 統計情報のplist"
+  (list :layer 'core
+        :initialized nskk-core--initialized
+        :cache-size (hash-table-count nskk-core--conversion-cache)
+        :romaji-table-loaded (not (null nskk-core--romaji-table))))
 
 (defun nskk-core-register-dictionary-engine (engine)
   "辞書検索エンジンを登録する。

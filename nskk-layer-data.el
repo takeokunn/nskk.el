@@ -477,18 +477,13 @@ FILEはインポート元ファイルパス。"
 ;;; 統計情報
 
 (defun nskk-data-get-statistics ()
-  "Data Access Layerの統計情報を取得する。"
-  (interactive)
-  (let ((dict-count (length nskk-data--dictionaries))
-        (learning-entries (hash-table-count nskk-data--learning-data))
-        (cache-entries (hash-table-count nskk-data--cache)))
-    (message "Data Layer Statistics:\n  Dictionaries: %d\n  Learning entries: %d\n  Cache entries: %d\n  Dirty: %s"
-             dict-count learning-entries cache-entries
-             (if nskk-data--dirty-flag "yes" "no"))
-    (list :dictionaries dict-count
-          :learning-entries learning-entries
-          :cache-entries cache-entries
-          :dirty nskk-data--dirty-flag)))
+  "Data Layerの統計情報を取得する。
+戻り値: 統計情報のplist"
+  (list :layer 'data
+        :initialized (not (null nskk-data--dictionaries))
+        :loaded-dictionaries (length nskk-data--dictionaries)
+        :cache-size (hash-table-count nskk-data--cache)
+        :learning-entries (hash-table-count nskk-data--learning-data)))
 
 ;;; デバッグ・ロギング
 
@@ -497,15 +492,13 @@ FILEはインポート元ファイルパス。"
 
 (defun nskk-data-enable-debug ()
   "デバッグモードを有効にする。"
-  (interactive)
   (setq nskk-data--debug-enabled t)
-  (message "NSKK Data Access Layer: Debug mode enabled"))
+  (message "NSKK Data: Debug mode enabled"))
 
 (defun nskk-data-disable-debug ()
   "デバッグモードを無効にする。"
-  (interactive)
   (setq nskk-data--debug-enabled nil)
-  (message "NSKK Data Access Layer: Debug mode disabled"))
+  (message "NSKK Data: Debug mode disabled"))
 
 (defun nskk-data--log (format-string &rest args)
   "デバッグログを出力する。

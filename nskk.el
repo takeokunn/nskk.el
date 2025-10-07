@@ -410,6 +410,36 @@
    (t (run-hook-with-args 'nskk-after-input-hook key)
       (list key))))
 
+(defun nskk-self-insert-command ()
+  "NSKKのself-insert-commandラッパー。
+キーマップ経由で文字入力を処理し、execute-kbd-macro互換性を提供する。"
+  (interactive)
+  ;; フェイルセーフ: Application Layer未初期化チェック
+  (when (and (null nskk-application--current-mode)
+             (fboundp 'nskk-application-initialize))
+    (nskk-application-initialize)
+    (nskk-state-init))
+
+  (let* ((key (if (integerp last-command-event)
+                  last-command-event
+                (event-basic-type last-command-event))))
+    (when (characterp key)
+      (let ((result (nskk--process-character key)))
+        (cond
+         ;; 結果が文字列の場合: 直接挿入
+         ((stringp result)
+          (insert result)
+          nil)
+         ;; 結果が文字列リストの場合: 連結して挿入
+         ((and (listp result) (cl-every #'stringp result))
+          (insert (mapconcat #'identity result ""))
+          nil)
+         ;; 結果がnilの場合: 何もしない
+         ((null result) nil)
+         ;; その他の場合: 文字列化して挿入
+         (t (insert (format "%s" result))
+            nil))))))
+
 ;;; Mode Control
 
 ;;;###autoload
@@ -914,6 +944,10 @@
   "NSKK用の入力メソッドを初期化する。"
   (setq deactivate-current-input-method-function #'nskk--deactivate-input-method)
   (setq input-method-function #'nskk-input-method)
+  (when (fboundp 'nskk-application-initialize)
+    (nskk-application-initialize))
+  (when (fboundp 'nskk-state-init)
+    (nskk-state-init))
   t)
 
 (defun nskk--deactivate-input-method ()
@@ -944,22 +978,22 @@ v1.0の主な機能:
 \\{nskk-mode-map}"
   :lighter " NSKK"
   :global nil
-  :keymap (make-sparse-keymap)
+  :keymap nskk-mode-map
   (condition-case err
       (let* ((new-state nskk-mode)
              (current-mode (when (fboundp 'nskk-application-current-mode)
                              (nskk-application-current-mode))))
         (if new-state
             (progn
+              ;; キーマップによるexecute-kbd-macro互換アプローチ
+              ;; input-methodは使わず、キーマップで全文字を処理
               (nskk-activate)
-              (activate-input-method "nskk")
               (run-hook-with-args 'nskk-mode-change-hook
                                   (cons (or current-mode 'inactive)
                                         (or (and (fboundp 'nskk-application-current-mode)
                                                  (nskk-application-current-mode))
                                             'inactive))))
           (progn
-            (deactivate-input-method)
             (nskk-deactivate)
             (run-hook-with-args 'nskk-mode-change-hook
                                 (cons (or current-mode 'inactive) 'inactive)))))

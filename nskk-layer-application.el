@@ -55,6 +55,7 @@
 
 (require 'cl-lib)
 (require 'subr-x)
+(require 'nskk-state)
 
 ;;; カスタマイズ可能変数
 
@@ -515,13 +516,13 @@ POINT-NAMEは拡張ポイント名、ARGSは引数。"
   "デバッグモードを有効にする。"
   (interactive)
   (setq nskk-application--debug-enabled t)
-  (message "NSKK Application Layer: Debug mode enabled"))
+  (message "NSKK Application: Debug mode enabled"))
 
 (defun nskk-application-disable-debug ()
   "デバッグモードを無効にする。"
   (interactive)
   (setq nskk-application--debug-enabled nil)
-  (message "NSKK Application Layer: Debug mode disabled"))
+  (message "NSKK Application: Debug mode disabled"))
 
 (defun nskk-application--log (format-string &rest args)
   "デバッグログを出力する。
@@ -549,13 +550,16 @@ FORMAT-STRINGはフォーマット文字列、ARGSは引数。"
 ;;; 統計情報
 
 (defun nskk-application-get-statistics ()
-  "Application Layerの統計情報を取得する。"
+  "Application Layerの統計情報を取得する。
+戻り値: 統計情報のplist"
   (interactive)
-  (list :session-id nskk-application--session-id
+  (list :layer 'application
+        :initialized (not (null nskk-application--session-id))
         :current-mode nskk-application--current-mode
-        :input-buffer-size (length nskk-application--input-buffer)
-        :has-conversion-state (not (null nskk-application--conversion-state))
-        :candidate-count (length nskk-application--candidate-list)))
+        :session-id nskk-application--session-id
+        :input-buffer-length (length nskk-application--input-buffer)
+        :candidate-count (length nskk-application--candidate-list)
+        :in-conversion (not (null nskk-application--conversion-state))))
 
 (provide 'nskk-layer-application)
 ;;; nskk-layer-application.el ends here

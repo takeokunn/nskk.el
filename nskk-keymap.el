@@ -339,6 +339,11 @@ ddskk完全互換のため、現在は何も設定しない。"
   (nskk-setup-prefix-keys nskk-prefix-map)
   (nskk-define-key nskk-mode-map nskk-keymap-prefix nskk-prefix-map t)
 
+  ;; execute-kbd-macro互換性のため、全印字可能文字をバインド
+  (dotimes (i (- ?~ ?\s))
+    (let ((char (+ ?\s i)))
+      (define-key nskk-mode-map (vector char) 'nskk-self-insert-command)))
+
   ;; ひらがなモード
   (nskk-setup-henkan-keys nskk-hiragana-mode-map)
   (nskk-setup-special-keys nskk-hiragana-mode-map)

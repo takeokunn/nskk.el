@@ -397,15 +397,13 @@ EVENT-TYPEはイベントタイプ。"
 
 (defun nskk-extension-enable-debug ()
   "デバッグモードを有効にする。"
-  (interactive)
   (setq nskk-extension--debug-enabled t)
-  (message "NSKK Extension Layer: Debug mode enabled"))
+  (message "NSKK Extension: Debug mode enabled"))
 
 (defun nskk-extension-disable-debug ()
   "デバッグモードを無効にする。"
-  (interactive)
   (setq nskk-extension--debug-enabled nil)
-  (message "NSKK Extension Layer: Debug mode disabled"))
+  (message "NSKK Extension: Debug mode disabled"))
 
 (defun nskk-extension--log (format-string &rest args)
   "デバッグログを出力する。
@@ -429,11 +427,12 @@ FORMAT-STRINGはフォーマット文字列、ARGSは引数。"
 ;;; 統計情報
 
 (defun nskk-extension-get-statistics ()
-  "Extension Layerの統計情報を取得する。"
-  (interactive)
-  (list :hooks (hash-table-count nskk-extension--hooks)
-        :events (hash-table-count nskk-extension--event-bus)
-        :routes (hash-table-count nskk-extension--message-routes)
+  "Extension Layerの統計情報を取得する。
+戻り値: 統計情報のplist"
+  (list :layer 'extension
+        :hook-count (hash-table-count nskk-extension--global-hooks)
+        :event-subscribers (hash-table-count nskk-extension--event-bus)
+        :message-routes (hash-table-count nskk-extension--message-routes)
         :extension-points (hash-table-count nskk-extension--extension-points)
         :event-history-size (length nskk-extension--event-history)))
 

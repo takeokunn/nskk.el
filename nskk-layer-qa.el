@@ -409,6 +409,14 @@ METRICSは更新するメトリクスのplist。"
     (message "QA Metrics: %S" metrics)
     metrics))
 
+(defun nskk-qa-get-statistics ()
+  "QA Layerの統計情報を取得する。
+戻り値: 統計情報のplist"
+  (if (fboundp 'nskk-qa-get-metrics)
+      (nskk-qa-get-metrics)
+    (list :layer 'qa
+          :initialized t)))
+
 ;;; デバッグ・ロギング
 
 (defvar nskk-qa--debug-enabled nil
