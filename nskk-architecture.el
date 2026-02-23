@@ -1,10 +1,11 @@
 ;;; nskk-architecture.el --- Architecture integration and orchestration layer -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Developers
-;; Keywords: Japanese, input, method, architecture, layer
-;; Homepage: https://github.com/takeokunn/nskk.el
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 

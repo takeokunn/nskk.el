@@ -1,10 +1,11 @@
 ;;; nskk-trie.el --- Trie data structure for fast prefix search -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, dictionary, trie
-;; Version: 0.1.0
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 

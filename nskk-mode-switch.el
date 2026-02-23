@@ -1,6 +1,6 @@
 ;;; nskk-mode-switch.el --- Mode switching logic for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026 NSKK Contributors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: NSKK Contributors
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
@@ -39,32 +39,34 @@
 
 (require 'nskk-state)
 
-(defvar nskk-converting-active nil
+(declare-function nskk-modeline-update "nskk-modeline")
+
+(defvar-local nskk-converting-active nil
   "Non-nil when conversion mode is active.")
 
 (defun nskk-set-mode-hiragana ()
   "Switch to hiragana mode."
   (interactive)
   (nskk--set-mode 'hiragana)
-  (nskk--update-modeline))
+  (nskk-modeline-update))
 
 (defun nskk-set-mode-katakana ()
   "Switch to katakana mode."
   (interactive)
   (nskk--set-mode 'katakana)
-  (nskk--update-modeline))
+  (nskk-modeline-update))
 
 (defun nskk-set-mode-latin ()
   "Switch to latin mode."
   (interactive)
   (nskk--set-mode 'latin)
-  (nskk--update-modeline))
+  (nskk-modeline-update))
 
 (defun nskk-set-mode-abbrev ()
   "Switch to abbrev mode."
   (interactive)
   (nskk--set-mode 'abbrev)
-  (nskk--update-modeline))
+  (nskk-modeline-update))
 
 (defun nskk-toggle-katakana ()
   "Toggle between hiragana and katakana modes."
@@ -87,25 +89,9 @@ MODE is the target mode symbol."
 
 (defun nskk--clear-conversion-context ()
   "Clear conversion context when switching modes."
-  ;; Clear any pending conversion state
-  (when (nskk-converting-p)
-    (nskk-commit-current)))
-
-(defun nskk-converting-p ()
-  "Return non-nil if currently in conversion state."
-  (and (boundp 'nskk-converting-active)
-       nskk-converting-active))
-
-(defun nskk-commit-current ()
-  "Commit current conversion and exit conversion state."
-  (when (nskk-converting-p)
+  (when nskk-converting-active
     (setq nskk-converting-active nil)
-    (nskk--update-modeline)))
-
-(defun nskk--update-modeline ()
-  "Update modeline to reflect current mode."
-  ;; This will be implemented by presentation layer
-  (force-mode-line-update))
+    (nskk-modeline-update)))
 
 (provide 'nskk-mode-switch)
 

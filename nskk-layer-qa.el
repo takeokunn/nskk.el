@@ -1,10 +1,11 @@
 ;;; nskk-layer-qa.el --- NSKK QA Layer Interface  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Developers
-;; Keywords: Japanese, input, method, qa, layer
-;; Homepage: https://github.com/takeokunn/nskk.el
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 
@@ -48,8 +49,8 @@
 
 (require 'ert)
 (require 'json)
-(require 'nskk-test-framework)
-(require 'nskk-test-macros)
+(require 'nskk-test-framework nil t)
+(require 'nskk-test-macros nil t)
 (eval-when-compile (require 'cl-lib))
 
 
@@ -276,7 +277,7 @@
     (dolist (input test-inputs)
       (let ((start (current-time)))
         (dotimes (_ 1000)
-          (nskk-convert-romaji input))
+          (ignore (nskk-convert-romaji input)))
         (push (* 1000.0 (float-time (time-subtract (current-time) start)))
               times)))
     (list :mean (/ (apply #'+ times) (float (length times)))

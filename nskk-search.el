@@ -67,11 +67,6 @@
 (require 'nskk-dict-errors)
 (require 'nskk-cache)
 
-(declare-function nskk-index-p "nskk-index" (object))
-(declare-function nskk-index-dict-struct "nskk-index" (index))
-
-(defvar nskk-parallel-search--sequential-cache nil)
-
 ;;; カスタマイズ変数
 
 (defgroup nskk-search nil
@@ -118,17 +113,9 @@
 SEARCH-TYPE is `exact', `prefix', `partial', or `fuzzy'.
 OKURI-TYPE is `okuri-ari', `okuri-nasi', or nil.
 LIMIT is the maximum number of results."
-  (let ((dict-index (cond
-                     ((nskk-dict-index-p index)
-                      index)
-                     ((and (fboundp 'nskk-index-p)
-                           (nskk-index-p index))
-                      (let ((dict (nskk-index-dict-struct index)))
-                        (unless dict
-                          (signal 'nskk-dict-search-invalid-index (list index)))
-                        dict))
-                     (t
-                      (signal 'nskk-dict-search-invalid-index (list index))))))
+  (let ((dict-index (if (nskk-dict-index-p index)
+                      index
+                    (signal 'nskk-dict-search-invalid-index (list index)))))
     (unless (and (stringp query) (> (length query) 0))
       (signal 'nskk-dict-search-invalid-query (list query)))
 
@@ -149,19 +136,6 @@ LIMIT is the maximum number of results."
              (_
               (signal 'nskk-dict-search-invalid-query
                       (list (format "Unknown search type: %s" search-type)))))))
-      ;; 並列検索のウォームアップ用に逐次結果をキャッシュ
-      (cond
-       ((and (eq search-type 'prefix)
-             (not okuri-type)
-             (fboundp 'nskk-index-p)
-             (nskk-index-p index))
-        (setq nskk-parallel-search--sequential-cache
-              (list :index index
-                    :query query
-                    :search-type search-type
-                    :result result)))
-       (t
-        (setq nskk-parallel-search--sequential-cache nil)))
       result)))
 
 ;;; 完全一致検索

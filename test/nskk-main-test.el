@@ -135,15 +135,15 @@
   "Test that enabling mode creates buffer-local state."
   (with-temp-buffer
     (nskk-mode 1)
-    (should (boundp 'nskk--state))
-    (should (nskk-state-p nskk--state))
+    (should nskk-current-state)
+    (should (nskk-state-p nskk-current-state))
     (nskk-mode -1)))
 
 (nskk-deftest-unit main-state-has-default-mode
   "Test that state starts with default mode."
   (with-temp-buffer
     (nskk-mode 1)
-    (should (eq (nskk-state-mode nskk--state) nskk-state-default-mode))
+    (should (eq (nskk-state-mode nskk-current-state) nskk-state-default-mode))
     (nskk-mode -1)))
 
 ;;;
@@ -181,8 +181,10 @@
   (should (fboundp 'nskk--post-command-handler)))
 
 (nskk-deftest-unit main-switch-mode-exists
-  "Test that nskk--switch-mode function exists."
-  (should (fboundp 'nskk--switch-mode)))
+  "Test that mode switching aliases exist."
+  (should (fboundp 'nskk-switch-to-hiragana))
+  (should (fboundp 'nskk-switch-to-katakana))
+  (should (fboundp 'nskk-switch-to-ascii)))
 
 (nskk-deftest-unit main-update-modeline-exists
   "Test that nskk--update-modeline function exists."
@@ -196,10 +198,10 @@
   "Test kakutei inserts input buffer content."
   (with-temp-buffer
     (nskk-mode 1)
-    (nskk-state-set nskk--state 'input-buffer "test")
+    (nskk-state-set nskk-current-state 'input-buffer "test")
     (nskk-kakutei)
     (should (string= (buffer-string) "test"))
-    (should (string= (nskk-state-input-buffer nskk--state) ""))
+    (should (string= (nskk-state-input-buffer nskk-current-state) ""))
     (nskk-mode -1)))
 
 (nskk-deftest-unit main-kakutei-with-empty-input

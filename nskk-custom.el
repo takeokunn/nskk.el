@@ -1,6 +1,6 @@
 ;;; nskk-custom.el --- NSKK customization variables -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026 NSKK Contributors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: NSKK Contributors
 ;; Maintainer: takeokunn <bararararatty@gmail.com>

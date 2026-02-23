@@ -1,8 +1,9 @@
 ;;; nskk-cache.el --- Cache mechanism for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Development Team
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
 
@@ -62,24 +63,7 @@
 ;;; Code:
 
 (require 'cl-lib)
-
-;;; カスタマイズ変数
-
-(defgroup nskk-cache nil
-  "Cache mechanism customization."
-  :group 'nskk
-  :prefix "nskk-cache-")
-
-(defcustom nskk-cache-default-capacity 1000
-  "Default cache capacity in number of entries."
-  :type 'integer
-  :group 'nskk-cache)
-
-(defcustom nskk-cache-default-type 'lru
-  "Default cache type, either `lru' or `lfu'."
-  :type '(choice (const :tag "LRU (Least Recently Used)" lru)
-                 (const :tag "LFU (Least Frequently Used)" lfu))
-  :group 'nskk-cache)
+(require 'nskk-custom)
 
 ;;; LRUキャッシュ用データ構造
 
@@ -376,7 +360,7 @@ Return t if KEY was found and removed, nil otherwise."
 (defun nskk-cache-create (&rest args)
   "Create a cache.
 ARGS can be TYPE and CAPACITY positional, or keyword :type and :size/:capacity."
-  (let ((cache-type nskk-cache-default-type)
+  (let ((cache-type nskk-cache-strategy)
         (cache-capacity nskk-cache-default-capacity))
     (cond
      ((null args))

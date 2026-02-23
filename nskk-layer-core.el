@@ -3,10 +3,9 @@
 ;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: Takeshi Umeda <takeokunn@gmail.com>
-;; Maintainer: Takeshi Umeda <takeokunn@gmail.com>
+;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1
-;; Keywords: japanese, input-method, mvc
+;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -68,6 +67,7 @@
 (require 'nskk-converter)
 (require 'nskk-core)
 (require 'nskk-search)
+(require 'nskk-dict-io)
 
 ;; NOTE: Core Engine Layer (Layer 4) does NOT depend on State Management.
 ;; State is managed by the Application Layer (Layer 3) which coordinates
@@ -137,11 +137,13 @@ Returns list of candidate strings."
     (let ((search-type (or type :exact)))
       (cond
        ((eq search-type :exact)
-        (nskk-search-exact nil key nil))
+        (nskk-dict-lookup key))
        ((eq search-type :prefix)
-        (nskk-search-prefix nil key nil limit))
+        (when nskk--system-dict-index
+          (nskk-search-prefix nskk--system-dict-index key nil limit)))
        ((eq search-type :regex)
-        (nskk-search-partial nil key nil limit))
+        (when nskk--system-dict-index
+          (nskk-search-partial nskk--system-dict-index key nil limit)))
        (t
         (error "Unknown search type: %s" search-type))))))
 
@@ -151,19 +153,7 @@ KEY is the search key.
 TYPE is search type: :exact (default), :prefix, or :regex.
 LIMIT is maximum results (default: 100).
 Returns ranked list of candidate strings."
-  (when (stringp key)
-    (let* ((search-type (or type :exact))
-           (results
-            (cond
-             ((eq search-type :exact)
-              (nskk-search-exact nil key nil))
-             ((eq search-type :prefix)
-              (nskk-search-prefix nil key nil limit))
-             ((eq search-type :regex)
-              (nskk-search-partial nil key nil limit))
-             (t
-              (error "Unknown search type: %s" search-type)))))
-      results)))
+  (nskk-core-search key type limit))
 
 ;; Character classification functions are provided by nskk-core.el:
 ;; - nskk-core-hiragana-p

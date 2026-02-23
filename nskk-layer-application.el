@@ -1,12 +1,11 @@
 ;;; nskk-layer-application.el --- Application layer interface for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026 NSKK Contributors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: NSKK Contributors
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: japanese, input, mule
+;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -129,7 +128,3 @@
 (provide 'nskk-layer-application)
 
 ;;; nskk-layer-application.el ends here
-
-;; Local Variables:
-;; byte-compile-warnings: (not unresolved)
-;; End:

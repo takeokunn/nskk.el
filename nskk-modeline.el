@@ -1,7 +1,12 @@
 ;;; nskk-modeline.el --- Mode line indicator for NSKK -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2024-2026 Takeshi Umeda
-;;
+
+;; Author: Takeshi Umeda <takeokunn@gmail.com>
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
+
 ;; This file is part of NSKK (Next-generation SKK).
 ;;
 ;; This program is free software: you can redistribute it and/or modify
@@ -41,6 +46,13 @@
 ;;; Code:
 
 (require 'nskk-layer-application)
+(require 'nskk-custom)
+(require 'nskk-state)
+
+(defgroup nskk-modeline nil
+  "Mode line indicator settings for NSKK."
+  :prefix "nskk-modeline-"
+  :group 'nskk-ui)
 
 (defface nskk-modeline-hiragana-face
   '((t (:foreground "#4CAF50" :weight bold)))
@@ -66,15 +78,28 @@
   '(:eval (nskk-modeline-indicator))
   "Mode line lighter for NSKK.")
 
-(defun nskk-modeline-indicator ()
-  "Return mode line indicator string for current mode."
-  (let ((mode (nskk-current-mode)))
-    (propertize (nskk-modeline--mode-string mode)
+(defun nskk-modeline-indicator (&optional state)
+  "Return mode line indicator string for current mode.
+When STATE (an nskk-state struct) is provided, derive the mode and
+conversion indicator from it.  Otherwise fall back to `nskk-current-mode'
+for backward compatibility."
+  (let* ((mode (if state
+                   (nskk-state-mode state)
+                 (nskk-current-mode)))
+         (mode-name (or (cdr (assq mode nskk-modeline-mode-names))
+                        (nskk-modeline--mode-string mode)))
+         (indicator (if (and state (nskk-state-in-henkan-mode-p state))
+                        "\u25bc" "\u25bd"))
+         (formatted (format-spec nskk-modeline-format
+                                 `((?m . ,mode-name)
+                                   (?s . ,indicator)))))
+    (propertize formatted
                 'face (nskk-modeline--mode-face mode)
                 'help-echo (nskk-modeline--mode-help mode))))
 
 (defun nskk-modeline--mode-string (mode)
   "Return mode string for MODE."
+  (declare (pure t) (side-effect-free t))
   (pcase mode
     ('hiragana "あ")
     ('katakana "ア")
@@ -84,6 +109,7 @@
 
 (defun nskk-modeline--mode-face (mode)
   "Return face for MODE."
+  (declare (pure t) (side-effect-free t))
   (pcase mode
     ('hiragana 'nskk-modeline-hiragana-face)
     ('katakana 'nskk-modeline-katakana-face)
@@ -93,12 +119,22 @@
 
 (defun nskk-modeline--mode-help (mode)
   "Return help text for MODE."
+  (declare (pure t) (side-effect-free t))
   (pcase mode
     ('hiragana "Hiragana input mode")
     ('katakana "Katakana input mode")
     ('abbrev "Abbreviation mode")
     ('direct "Direct/ASCII input mode")
     (_ "NSKK input method")))
+
+(defun nskk-modeline-update ()
+  "Update modeline to reflect current NSKK state."
+  (when (and (boundp 'nskk-current-state) nskk-current-state)
+    (let* ((indicator (nskk-modeline-indicator nskk-current-state))
+           (entry (assq 'nskk-mode minor-mode-alist)))
+      (when entry
+        (setcar (cdr entry) indicator))
+      (force-mode-line-update))))
 
 (provide 'nskk-modeline)
 

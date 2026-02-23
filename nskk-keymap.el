@@ -23,35 +23,62 @@
 
 ;;; Commentary:
 
-;; Keymap definitions matching ddskk bindings (Layer 1: UI Layer).
+;; Key handling utility functions for NSKK (Layer 1: Presentation Layer).
 ;;
-;; Layer Responsibilities:
-;; - UI Layer defines key bindings for user interaction
-;; - Does NOT directly access state management (nskk-state)
-;; - Routes all operations through Application Layer APIs (nskk-layer-application)
-;; - Maintains separation between UI and business logic
+;; These functions provide state-aware key dispatch for special keys
+;; (q, l, SPC, RET).  They check the current NSKK state before
+;; intercepting keys, falling through to `self-insert-command' when
+;; NSKK is in ASCII mode or the state is not active.
+;;
+;; State reads use nskk-state accessors directly (acceptable for L1),
+;; but state mutations are routed through the Application Layer API.
 
 ;;; Code:
 
-(require 'nskk-layer-application)
+(require 'nskk-state)
 
-;; TODO: Keybindings are disabled until state-aware conditional dispatch is
-;; implemented.  The bindings below (SPC, q, l, etc.) unconditionally intercept
-;; regular typing, which makes the mode unusable for normal editing.  They need
-;; to be wrapped in a dispatch mechanism that checks the current NSKK state
-;; (e.g., conversion-active, henkan mode) before intercepting keys.
-;;
-;; Planned bindings (to be added with state-aware dispatch):
-;;   SPC  -> nskk-convert-or-commit-selection
-;;   RET  -> nskk-commit
-;;   q/Q  -> nskk-cancel
-;;   l    -> nskk-enter-hiragana-mode
-;;   L    -> nskk-enter-katakana-mode
-;;   /    -> nskk-toggle-japanese-mode
-;;   x    -> convert to katakana
-;;   C-x  -> convert to half-width katakana
-;;   C-f  -> forward character in completion
-;;   C-b  -> backward character in completion
+(declare-function nskk-toggle-japanese-mode "nskk-layer-application")
+(declare-function nskk-enter-latin-mode "nskk-layer-application")
+(declare-function nskk-next "nskk-layer-application")
+(declare-function nskk-commit "nskk-layer-application")
+
+(defun nskk-handle-q ()
+  "Handle q key: toggle between hiragana and katakana.
+In ASCII mode or when NSKK state is inactive, fall through to
+`self-insert-command'."
+  (interactive)
+  (if (and nskk-current-state
+           (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
+      (nskk-toggle-japanese-mode)
+    (self-insert-command 1)))
+
+(defun nskk-handle-l ()
+  "Handle l key: switch to ASCII mode.
+In ASCII mode or when NSKK state is inactive, fall through to
+`self-insert-command'."
+  (interactive)
+  (if (and nskk-current-state
+           (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
+      (nskk-enter-latin-mode)
+    (self-insert-command 1)))
+
+(defun nskk-handle-space ()
+  "Handle SPC key: start conversion or select next candidate.
+When not in a convertible state, fall through to `self-insert-command'."
+  (interactive)
+  (if (and nskk-current-state
+           (nskk-state-in-henkan-mode-p nskk-current-state))
+      (nskk-next)
+    (self-insert-command 1)))
+
+(defun nskk-handle-return ()
+  "Handle RET key: commit current conversion.
+When not in a convertible state, fall through to `newline'."
+  (interactive)
+  (if (and nskk-current-state
+           (nskk-state-in-henkan-mode-p nskk-current-state))
+      (nskk-commit)
+    (newline)))
 
 (provide 'nskk-keymap)
 

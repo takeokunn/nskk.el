@@ -170,40 +170,32 @@
     (should (nskk-converting-p))))
 
 ;;;
-;;; State Get/Set Candidate Tests
+;;; State Candidate Accessor Tests
 ;;;
 
 (nskk-deftest-unit input-commands-get-candidates-nil
-  "Test get-candidates returns nil when no candidates."
+  "Test candidates returns nil when no candidates."
   (nskk-input-test-with-state 'hiragana
-    (should (null (nskk-state-get-candidates)))))
+    (should (null (nskk-state-candidates nskk-current-state)))))
 
 (nskk-deftest-unit input-commands-get-candidates-with-data
-  "Test get-candidates returns candidate list."
+  "Test candidates returns candidate list."
   (nskk-input-test-with-state 'hiragana
     (setf (nskk-state-candidates nskk-current-state)
           '("\u6F22\u5B57" "\u611F\u3058"))
-    (should (equal (nskk-state-get-candidates)
+    (should (equal (nskk-state-candidates nskk-current-state)
                    '("\u6F22\u5B57" "\u611F\u3058")))))
 
 (nskk-deftest-unit input-commands-get-current-index-default
-  "Test get-current-index returns 0 by default."
+  "Test current-index returns 0 by default."
   (nskk-input-test-with-state 'hiragana
-    (should (= (nskk-state-get-current-index) 0))))
+    (should (= (nskk-state-current-index nskk-current-state) 0))))
 
 (nskk-deftest-unit input-commands-set-current-index
-  "Test set-current-index updates the index."
+  "Test setf current-index updates the index."
   (nskk-input-test-with-state 'hiragana
-    (nskk-state-set-current-index 5)
-    (should (= (nskk-state-get-current-index) 5))))
-
-;;;
-;;; Get Original Text Tests
-;;;
-
-(nskk-deftest-unit input-commands-get-original-text-nil
-  "Test get-original-text returns nil (not yet implemented)."
-  (should (null (nskk-get-original-text))))
+    (setf (nskk-state-current-index nskk-current-state) 5)
+    (should (= (nskk-state-current-index nskk-current-state) 5))))
 
 ;;;
 ;;; Overlay Management Tests

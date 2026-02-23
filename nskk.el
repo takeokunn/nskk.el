@@ -42,15 +42,40 @@
 
 ;;; Code:
 
+;; Foundation modules (needed for defcustom, state types)
 (require 'nskk-custom)
 (require 'nskk-state)
+
+;; Layer modules (bottom-up dependency order)
+(require 'nskk-layer-infrastructure)
+(require 'nskk-layer-data)
+(require 'nskk-layer-core)
+(require 'nskk-layer-extension)
+(require 'nskk-layer-application)
+(require 'nskk-layer-presentation)
+
+;; Cross-cutting concerns (optional)
+(require 'nskk-optimize nil t)
+(require 'nskk-native-compile nil t)
+(require 'nskk-architecture nil t)
+
+(declare-function nskk-modeline-update "nskk-modeline")
+
+(defvar nskk--system-dict-index)
 
 ;; Define the minor mode
 (defvar nskk-mode-map
   (let ((map (make-sparse-keymap)))
-    ;; Global key bindings for NSKK
+    ;; Remap self-insert for romaji->kana conversion
+    (define-key map [remap self-insert-command] 'nskk-self-insert)
+    ;; Mode switching
     (define-key map (kbd "C-x C-j") 'nskk-toggle-mode)
     (define-key map (kbd "C-j") 'nskk-kakutei)
+    ;; State-aware special key dispatch (see nskk-keymap.el)
+    (define-key map (kbd "q") 'nskk-handle-q)
+    (define-key map (kbd "l") 'nskk-handle-l)
+    (define-key map (kbd "SPC") 'nskk-handle-space)
+    (define-key map (kbd "RET") 'nskk-handle-return)
     map)
   "Keymap for NSKK minor mode.")
 
@@ -77,13 +102,17 @@
 
 (defun nskk--enable ()
   "Enable NSKK in current buffer."
-  (unless (boundp 'nskk--state)
-    (setq-local nskk--state (nskk-state-create nskk-state-default-mode)))
+  (unless nskk--system-dict-index
+    (nskk-dict-initialize))
+  (unless nskk-current-state
+    (setq nskk-current-state (nskk-state-create nskk-state-default-mode)))
   (nskk--setup-buffer))
 
 (defun nskk--disable ()
   "Disable NSKK in current buffer."
-  (nskk--cleanup-buffer))
+  (run-hooks 'nskk-mode-off-hook)
+  (nskk--cleanup-buffer)
+  (setq nskk-current-state nil))
 
 (defun nskk--turn-on-mode ()
   "Turn on nskk-mode in appropriate buffers."
@@ -100,9 +129,7 @@
 
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update."
-  (when (and nskk-mode
-             (boundp 'nskk--state)
-             (nskk-state-p nskk--state))
+  (when (and nskk-mode nskk-current-state)
     (nskk--update-modeline)))
 
 ;; User commands
@@ -120,71 +147,25 @@
 (defun nskk-kakutei ()
   "Commit the current conversion (決定)."
   (interactive)
-  (when (and (boundp 'nskk--state)
-             (nskk-state-p nskk--state))
-    (let ((input (nskk-state-input-buffer nskk--state)))
+  (when nskk-current-state
+    (let ((input (nskk-state-input-buffer nskk-current-state)))
       (when (> (length input) 0)
         (insert input)
-        (nskk-state-clear-input nskk--state)
+        (nskk-state-clear-input nskk-current-state)
         (nskk--update-modeline)))))
 
-;; Mode switching commands
-
+;; Mode switching commands — delegate to Application Layer
 ;;;###autoload
-(defun nskk-switch-to-hiragana ()
-  "Switch to hiragana input mode."
-  (interactive)
-  (nskk--switch-mode 'hiragana))
-
+(defalias 'nskk-switch-to-hiragana #'nskk-enter-hiragana-mode)
 ;;;###autoload
-(defun nskk-switch-to-katakana ()
-  "Switch to katakana input mode."
-  (interactive)
-  (nskk--switch-mode 'katakana))
-
+(defalias 'nskk-switch-to-katakana #'nskk-enter-katakana-mode)
 ;;;###autoload
-(defun nskk-switch-to-ascii ()
-  "Switch to ASCII input mode."
-  (interactive)
-  (nskk--switch-mode 'ascii))
-
+(defalias 'nskk-switch-to-ascii #'nskk-enter-latin-mode)
 ;;;###autoload
-(defun nskk-toggle-kana ()
-  "Toggle between hiragana and katakana modes."
-  (interactive)
-  (when (boundp 'nskk--state)
-    (let ((current-mode (nskk-state-mode nskk--state)))
-      (cond
-       ((eq current-mode 'hiragana)
-        (nskk-switch-to-katakana))
-       ((eq current-mode 'katakana)
-        (nskk-switch-to-hiragana))
-       (t
-        (nskk-switch-to-hiragana))))))
+(defalias 'nskk-toggle-kana #'nskk-toggle-japanese-mode)
 
-;; Internal helper functions
-
-(defun nskk--switch-mode (new-mode)
-  "Internal function to switch to NEW-MODE."
-  (when (and (boundp 'nskk--state)
-             (nskk-state-p nskk--state))
-    (let ((old-mode (nskk-state-mode nskk--state)))
-      (when (nskk-state-transition nskk--state old-mode new-mode)
-        (nskk--update-modeline)
-        (message "NSKK mode: %s" new-mode)))))
-
-(defun nskk--update-modeline ()
-  "Update modeline to reflect current NSKK state."
-  (when (and (boundp 'nskk--state)
-             (nskk-state-p nskk--state))
-    (let* ((state nskk--state)
-           (mode (nskk-state-mode state))
-           (mode-name (cdr (assq mode nskk-modeline-mode-names)))
-           (indicator (if (nskk-state-in-henkan-mode-p state) "▼" "▽"))
-           (format-string (format-spec nskk-modeline-format
-                                       `((?m . ,mode-name)
-                                         (?s . ,indicator)))))
-      (setq mode-name format-string))))
+;; Modeline update — delegate to nskk-modeline.el
+(defalias 'nskk--update-modeline #'nskk-modeline-update)
 
 (provide 'nskk)
 

@@ -1,10 +1,11 @@
 ;;; nskk-layer-data.el --- Data Access Layer for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Development Team
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, architecture
-;; Version: 0.1.0
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 
@@ -54,8 +55,6 @@
 (require 'nskk-dict-io)
 (require 'nskk-dict-struct)
 (require 'nskk-search)
-
-(declare-function nskk-core-register-dictionary-engine "nskk-layer-core" (engine))
 
 ;;; カスタマイズ可能変数
 
@@ -112,7 +111,6 @@
   (nskk-data--load-learning-data)
   (when nskk-data-auto-save
     (nskk-data--start-auto-save))
-  (nskk-data--register-core-engine)
   (nskk-data--log "Data Access Layer initialized"))
 
 (defun nskk-data-shutdown ()
@@ -143,7 +141,7 @@
   "辞書ファイルをロードする。
 PATHは辞書ファイルのパス。"
   (nskk-data--log "Loading dictionary file: %s" path)
-  (nskk-load-dictionary path))
+  (nskk-dict-load-file path))
 
 (defun nskk-data-load-dictionary (path)
   "辞書ファイルをロードして追加する。
@@ -153,7 +151,6 @@ PATHは辞書ファイルのパス。"
     (let ((dict (nskk-data--load-dictionary-file path)))
       (push dict nskk-data--dictionaries)
       (nskk-data--cleanup-cache)
-      (nskk-data--register-core-engine)
       (message "Dictionary loaded: %s" path))))
 
 ;;; 辞書検索
@@ -263,7 +260,7 @@ QUERYは検索クエリ、OPTIONSは検索オプション。"
           (setq acc (cons item (delete existing acc)))))))
     (nreverse acc)))
 
-(defun nskk-data--apply-learning-order (results query search-type)
+(defun nskk-data--apply-learning-order (results _query search-type)
   "学習データを考慮してRESULTSの並びを調整する。"
   (pcase search-type
     ('exact
@@ -275,7 +272,7 @@ QUERYは検索クエリ、OPTIONSは検索オプション。"
 (defun nskk-data--sort-entry-by-learning (entry)
   "ENTRY の候補を学習スコア順に並べ替える。"
   (when (nskk-dict-entry-p entry)
-    (let* ((reading (nskk-dict-entry-midashi entry))
+    (let* ((reading (nskk-dict-entry-key entry))
            (scores (gethash reading nskk-data--learning-data)))
       (when scores
         (setf (nskk-dict-entry-candidates entry)
@@ -315,9 +312,6 @@ QUERYは検索クエリ、OPTIONSは検索オプション。"
    ((and (consp candidate)
          (stringp (car candidate)))
     (car candidate))
-   ((and (fboundp 'nskk-dict-candidate-word)
-         (nskk-dict-candidate-p candidate))
-    (nskk-dict-candidate-word candidate))
    (t nil)))
 
 (defun nskk-data--learning-key (entry)
@@ -328,7 +322,7 @@ QUERYは検索クエリ、OPTIONSは検索オプション。"
          (stringp (car entry)))
     (car entry))
    ((nskk-dict-entry-p entry)
-    (nskk-dict-entry-midashi entry))
+    (nskk-dict-entry-key entry))
    (t entry)))
 
 ;;; 学習データ管理
@@ -363,7 +357,7 @@ QUERYは検索クエリ、OPTIONSは検索オプション。"
      (nskk-data--log "Failed to save learning data: %s" err)
      (message "Failed to save learning data: %s" err))))
 
-(defun nskk-data-learn (query candidate &optional context)
+(defun nskk-data-learn (query candidate &optional _context)
   "学習データを記録する。
 QUERYは検索クエリ、CANDIDATEは選択された候補、
 CONTEXTは学習コンテキスト。"
@@ -419,14 +413,6 @@ CONTEXTは学習コンテキスト。"
   "辞書がロードされていることを確認する。"
   (unless nskk-data--dictionaries
     (nskk-data--log "No dictionaries loaded. Configure `nskk-data-dictionary-paths'.")))
-
-(defun nskk-data--register-core-engine ()
-  "Core層に辞書エンジンを登録する。"
-  (when (fboundp 'nskk-core-register-dictionary-engine)
-    (nskk-core-register-dictionary-engine
-     (list :search #'nskk-data-search
-           :lookup #'nskk-data-lookup
-           :prefix #'nskk-data-prefix-search))))
 
 ;;; データ同期
 

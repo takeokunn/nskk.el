@@ -3,10 +3,9 @@
 ;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: Takeshi Umeda <takeokunn@gmail.com>
-;; Maintainer: Takeshi Umeda <takeokunn@gmail.com>
+;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1
-;; Keywords: japanese, input-method, mvc
+;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
 

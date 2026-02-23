@@ -11,16 +11,16 @@ SRC_CORE = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.
 # All source files (including those with issues)
 SRC = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
        nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-converter.el nskk-optimize.el nskk-memory-optimize.el nskk-native-compile.el \
+       nskk-converter.el nskk-optimize.el nskk-native-compile.el \
        nskk-search.el nskk-cache.el nskk-thread-pool.el \
        nskk-layer-core.el nskk-layer-infrastructure.el \
        nskk-layer-application.el nskk-layer-extension.el nskk-layer-presentation.el nskk-layer-qa.el \
-       nskk-architecture.el nskk-input-commands.el nskk-ddskk-compat.el nskk-migrate.el \
+       nskk-architecture.el nskk-input-commands.el \
        nskk-dict-io.el nskk-dict-struct.el nskk-dict-errors.el nskk-trie.el
 
 CORE_SRC = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
        nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-converter.el nskk-optimize.el nskk-memory-optimize.el nskk-native-compile.el \
+       nskk-converter.el nskk-optimize.el nskk-native-compile.el \
        nskk-search.el nskk-cache.el nskk-thread-pool.el
 TEST_SRC = $(wildcard test/*-test.el)
 

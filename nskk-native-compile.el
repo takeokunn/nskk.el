@@ -1,8 +1,9 @@
 ;;; nskk-native-compile.el --- Native compilation support for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Developers
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
 
@@ -53,20 +54,23 @@
 
 ;;;; Native Compilation Configuration
 
-(when nskk-native-compile-available
-  ;; Optimize native compilation for NSKK
-  (when (boundp 'native-comp-speed)
-    (setq native-comp-speed 3))
-  (when (boundp 'native-comp-debug)
-    (setq native-comp-debug 0))
-  (when (boundp 'native-comp-verbose)
-    (setq native-comp-verbose nil))
-  (when (boundp 'native-comp-async-report-warnings-errors)
-    (setq native-comp-async-report-warnings-errors nil))
-  (when (boundp 'native-comp-jit-compilation)
-    (setq native-comp-jit-compilation t))
-  (when (boundp 'native-comp-enable-subr-trampolines)
-    (setq native-comp-enable-subr-trampolines t)))
+(defun nskk-native-compile-configure ()
+  "Configure native compilation settings for NSKK.
+Call this explicitly if you want optimized native compilation."
+  (interactive)
+  (when nskk-native-compile-available
+    (when (boundp 'native-comp-speed)
+      (setq native-comp-speed 3))
+    (when (boundp 'native-comp-debug)
+      (setq native-comp-debug 0))
+    (when (boundp 'native-comp-verbose)
+      (setq native-comp-verbose nil))
+    (when (boundp 'native-comp-async-report-warnings-errors)
+      (setq native-comp-async-report-warnings-errors nil))
+    (when (boundp 'native-comp-jit-compilation)
+      (setq native-comp-jit-compilation t))
+    (when (boundp 'native-comp-enable-subr-trampolines)
+      (setq native-comp-enable-subr-trampolines t))))
 
 ;;;; Type Hints for Compiler
 
@@ -249,9 +253,9 @@ If LOAD is non-nil, load compiled files after compilation."
 ;;;; Initialize
 
 (defun nskk-native-compile-initialize ()
-  "Initialize native compilation support for NSKK."
-  (when nskk-native-compile-available
-    (add-hook 'after-init-hook #'nskk-native-compile-async-refresh)))
+  "Initialize native compilation support for NSKK.
+Call `nskk-native-compile-async-refresh' to trigger recompilation."
+  nil)
 
 (defun nskk-native-compile-async-refresh ()
   "Refresh native compilation on startup if needed."
@@ -279,9 +283,16 @@ If LOAD is non-nil, load compiled files after compilation."
       (when (file-exists-p eln-file)
         (native-compile-async (buffer-file-name))))))
 
-(add-hook 'after-save-hook #'nskk-native-compile-after-save)
+(defun nskk-native-compile-enable-auto-recompile ()
+  "Enable automatic recompilation of NSKK files on save."
+  (interactive)
+  (add-hook 'after-save-hook #'nskk-native-compile-after-save))
 
 ;;;; Provide
+
+(defalias 'nskk-compile-all #'nskk-native-compile-async
+  "Compile all NSKK modules using native compilation.
+This is an alias for `nskk-native-compile-async'.")
 
 (provide 'nskk-native-compile)
 

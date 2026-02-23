@@ -1,10 +1,11 @@
 ;;; nskk-layer-infrastructure.el --- Infrastructure Layer for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Development Team
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, architecture
-;; Version: 0.1.0
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 
@@ -51,7 +52,13 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'nskk-thread-pool)
+(require 'nskk-thread-pool nil t)
+
+;; Provide fallback stubs when thread-pool is unavailable
+(unless (featurep 'nskk-thread-pool)
+  (defun nskk-thread-pool-available-p () nil)
+  (defun nskk-thread-pool-create (_size) nil)
+  (defun nskk-thread-pool-shutdown (_pool &optional _force) nil))
 
 ;;; カスタマイズ可能変数
 

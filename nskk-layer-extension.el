@@ -1,9 +1,11 @@
 ;;; nskk-layer-extension.el --- Extension layer interface  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025  NSKK Contributors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: NSKK Contributors
-;; Keywords: Japanese, input method, extensions
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 

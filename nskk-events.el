@@ -1,8 +1,9 @@
 ;;; nskk-events.el --- Event system for NSKK extensions  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025  NSKK Contributors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
 
@@ -28,8 +29,10 @@
 
 ;;; Code:
 
+(require 'cl-lib)
+
 ;;;; Token Generation
-(defun generate-new-token ()
+(defun nskk--generate-token ()
   "Generate a unique token for event subscription."
   (cl-gensym))
 
@@ -103,7 +106,7 @@ CALLBACK is a function that receives a single argument (event data plist)."
     (error "Callback must not be nil"))
 
   (let* ((subscribers (gethash event-type nskk-event-subscribers))
-         (token (generate-new-token))
+         (token (nskk--generate-token))
          (subscriber-info (cons token callback)))
     (puthash event-type
              (append subscribers (list subscriber-info))
@@ -129,7 +132,7 @@ All subscribers to this event type will be called with DATA."
         nskk-event-history)
   (when (> (length nskk-event-history) nskk-event-history-max)
     (setq nskk-event-history
-          (nthcdr nskk-event-history-max nskk-event-history)))
+          (seq-take nskk-event-history nskk-event-history-max)))
 
   ;; Notify subscribers
   (dolist (subscriber (gethash event-type nskk-event-subscribers))

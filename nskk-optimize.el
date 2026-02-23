@@ -1,8 +1,9 @@
 ;;; nskk-optimize.el --- Performance optimization for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
-;; Author: NSKK Development Team
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
 
@@ -163,7 +164,7 @@ Return plist with :total-time, :avg-time, :iterations, and :throughput."
   (garbage-collect)
   (let ((start-time (current-time)))
     (dotimes (_ iterations)
-      (nskk-core-hiragana-to-katakana input))
+      (ignore (nskk-core-hiragana-to-katakana input)))
     (let* ((end-time (current-time))
            (elapsed (float-time (time-subtract end-time start-time)))
            (avg-us (* (/ elapsed iterations) 1000000.0))
@@ -276,21 +277,6 @@ Return plist with :total-time, :avg-time, :iterations, and :throughput."
                        (- (plist-get after :strings-allocated)
                           (plist-get before :strings-allocated)))))
       (list :before before :after after :delta delta))))
-
-;;; 最適化マクロ
-
-(defmacro nskk-optimize-loop (var limit &rest body)
-  "Execute BODY with VAR iterating from 0 to LIMIT minus one."
-  (declare (indent 2) (debug (symbolp form body)))
-  `(let ((,var 0)
-         (limit ,limit))
-     (while (< ,var limit)
-       ,@body
-       (setq ,var (1+ ,var)))))
-
-(defmacro nskk-optimize-string-concat (str1 str2)
-  "Concatenate STR1 and STR2 efficiently."
-  `(concat ,str1 ,str2))
 
 ;;; パフォーマンス回帰テスト
 

@@ -130,6 +130,7 @@ INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
 ;; State validation functions
 (defun nskk-state-valid-mode-p (mode)
   "Check if MODE is a valid NSKK mode."
+  (declare (pure t) (side-effect-free t))
   (and (symbolp mode)
        (memq mode nskk-state-modes)))
 
@@ -262,12 +263,12 @@ Returns current candidate or nil if no candidates."
   (when (nskk-state-p state)
     (nskk-state-put-metadata state 'width-type value)))
 
-;; Global state management
-(defvar nskk-current-state nil
-  "Global NSKK state object for the current buffer.")
+;; Buffer-local state management
+(defvar-local nskk-current-state nil
+  "Buffer-local NSKK state object for the current buffer.")
 
 (defun nskk-state-initialize ()
-  "Initialize the global NSKK state."
+  "Initialize NSKK state for the current buffer."
   (setq nskk-current-state (nskk-state-create nskk-state-default-mode)))
 
 (defun nskk-state-get-mode ()

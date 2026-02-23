@@ -119,30 +119,6 @@
     (should (plist-get result :delta))))
 
 ;;;
-;;; Optimization Macros Tests
-;;;
-
-(nskk-deftest-unit optimize-loop-basic
-  "Test nskk-optimize-loop iterates correctly."
-  (let ((sum 0))
-    (nskk-optimize-loop i 10
-      (setq sum (+ sum i)))
-    (should (= sum 45))))
-
-(nskk-deftest-unit optimize-loop-zero-iterations
-  "Test nskk-optimize-loop with zero iterations."
-  (let ((sum 0))
-    (nskk-optimize-loop i 0
-      (setq sum (+ sum i)))
-    (should (= sum 0))))
-
-(nskk-deftest-unit optimize-string-concat-works
-  "Test nskk-optimize-string-concat produces correct result."
-  (should (string= (nskk-optimize-string-concat "hello" " world") "hello world"))
-  (should (string= (nskk-optimize-string-concat "" "test") "test"))
-  (should (string= (nskk-optimize-string-concat "a" "") "a")))
-
-;;;
 ;;; Statistics Tests
 ;;;
 

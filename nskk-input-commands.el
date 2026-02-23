@@ -1,12 +1,11 @@
 ;;; nskk-input-commands.el --- Input processing commands for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2026 NSKK Contributors
+;; Copyright (C) 2024-2026 Takeshi Umeda
 
 ;; Author: NSKK Contributors
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: japanese, input, mule
+;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -41,7 +40,6 @@
 ;;; Code:
 
 (require 'nskk-mode-switch)
-(require 'nskk-converter)
 (require 'nskk-layer-core)
 (require 'nskk-state)
 
@@ -90,7 +88,7 @@ N is the repeat count."
         (insert converted)))))
 
 ;; Overlay management for conversion display
-(defvar nskk--conversion-overlay nil
+(defvar-local nskk--conversion-overlay nil
   "Overlay for displaying converted text.")
 
 (defun nskk--update-overlay (start end text)
@@ -155,8 +153,8 @@ N is the repeat count."
   (when (and nskk-converting-active
              (boundp 'nskk-current-state)
              (nskk-state-p nskk-current-state))
-    (let* ((candidates (nskk-state-get-candidates))
-           (index (nskk-state-get-current-index))
+    (let* ((candidates (nskk-state-candidates nskk-current-state))
+           (index (nskk-state-current-index nskk-current-state))
            (candidate (nth index candidates))
            (start (nskk--get-conversion-start))
            (end (point)))
@@ -182,7 +180,7 @@ to kana when a complete romaji sequence is recognized.
 Returns the converted kana string, or an empty string if the input
 is still incomplete (waiting for more characters)."
   (let* ((input (concat nskk--romaji-buffer (char-to-string char)))
-         (result (nskk-converter-convert input)))
+         (result (nskk-core-convert-romaji input)))
     (cond
      ;; Successful conversion: return kana, keep remainder in buffer
      ((and result (stringp (car result)))
@@ -201,29 +199,6 @@ is still incomplete (waiting for more characters)."
      (t
       (setq nskk--romaji-buffer "")
       input))))
-
-(defun nskk-state-get-candidates ()
-  "Get current candidates from state."
-  (when (and (boundp 'nskk-current-state)
-             (nskk-state-p nskk-current-state))
-    (nskk-state-candidates nskk-current-state)))
-
-(defun nskk-state-get-current-index ()
-  "Get current candidate index from state."
-  (when (and (boundp 'nskk-current-state)
-             (nskk-state-p nskk-current-state))
-    (nskk-state-current-index nskk-current-state)))
-
-(defun nskk-state-set-current-index (index)
-  "Set current candidate index in state."
-  (when (and (boundp 'nskk-current-state)
-             (nskk-state-p nskk-current-state))
-    (setf (nskk-state-current-index nskk-current-state) index)))
-
-(defun nskk-get-original-text ()
-  "Get the original preedit text before conversion."
-  ;; TODO: Store original text when conversion starts
-  nil)
 
 (defun nskk--has-preedit ()
   "Check if there's preedit to convert."
@@ -249,29 +224,20 @@ is still incomplete (waiting for more characters)."
         (setf (nskk-state-current-index nskk-current-state) 0)))))
 
 (defun nskk--restore-preedit ()
-  "Restore preedit text after cancel."
-  (let* ((candidates (when (and (boundp 'nskk-current-state)
-                                (nskk-state-p nskk-current-state))
-                       (nskk-state-candidates nskk-current-state)))
-         (original (when candidates
-                     (nskk-get-original-text))))
-    (when original
-      (save-excursion
-        (let ((start (nskk--get-conversion-start))
-              (end (point)))
-          (delete-region start end)
-          (goto-char start)
-          (insert original))))))
+  "Restore preedit text after cancel.
+Clears the conversion overlay."
+  (when (overlayp nskk--conversion-overlay)
+    (delete-overlay nskk--conversion-overlay)))
 
 (defun nskk--select-candidate (direction)
   "Select candidate in DIRECTION (next or previous)."
-  (let* ((candidates (nskk-state-get-candidates))
-         (current (nskk-state-get-current-index))
+  (let* ((candidates (nskk-state-candidates nskk-current-state))
+         (current (nskk-state-current-index nskk-current-state))
          (total (length candidates))
          (new-index (if (eq direction 'next)
                         (mod (1+ current) total)
                       (mod (1- current) total))))
-    (nskk-state-set-current-index new-index)
+    (setf (nskk-state-current-index nskk-current-state) new-index)
     (let* ((candidate (nth new-index candidates))
            (start (nskk--get-conversion-start))
            (end (point)))

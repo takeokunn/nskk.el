@@ -44,9 +44,27 @@
   (by-prefix nil)
   (by-freq nil))
 
+(defun nskk-dict-struct-lookup (index query &optional _okuri-type)
+  "Look up QUERY in dictionary INDEX.
+Returns `nskk-dict-entry' or nil if not found."
+  (when (and (nskk-dict-index-p index) (stringp query))
+    (let ((entries (nskk-dict-index-entries index)))
+      (when entries
+        (if (hash-table-p entries)
+            (let ((candidates (gethash query entries)))
+              (when candidates
+                (make-nskk-dict-entry :key query :candidates candidates)))
+          (let ((pair (assoc query entries)))
+            (when pair
+              (make-nskk-dict-entry :key (car pair) :candidates (cdr pair)))))))))
+
 (defun nskk-dict-struct-entry-count (index _okuri-type)
   "Return count of entries in INDEX."
-  (length (nskk-dict-index-entries index)))
+  (let ((entries (nskk-dict-index-entries index)))
+    (cond
+     ((hash-table-p entries) (hash-table-count entries))
+     ((listp entries) (length entries))
+     (t 0))))
 
 (defun nskk-search-reset-stats ()
   "Reset search statistics."
