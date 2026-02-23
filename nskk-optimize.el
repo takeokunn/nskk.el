@@ -3,9 +3,8 @@
 ;; Copyright (C) 2024 NSKK Development Team
 
 ;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, performance
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 
@@ -55,27 +54,20 @@
   :prefix "nskk-optimize-")
 
 (defcustom nskk-optimize-enable-profiling nil
-  "非nilの場合、プロファイリング情報を収集する。
-本番環境ではnilにすることを推奨。"
+  "Enable profiling data collection when non-nil."
   :type 'boolean
   :group 'nskk-optimize)
 
 (defcustom nskk-optimize-benchmark-iterations 10000
-  "ベンチマークの反復回数。
-大きいほど精度が上がるが、時間がかかる。"
+  "Number of iterations for benchmarks."
   :type 'integer
   :group 'nskk-optimize)
 
 ;;; パフォーマンス測定マクロ
 
 (defmacro nskk-measure-time (&rest body)
-  "BODY の実行時間を測定し、結果をマイクロ秒単位で返す。
-
-返り値: (実行時間(μs) . BODYの返り値)
-
-例:
-  (nskk-measure-time (nskk-convert-romaji \"ka\"))
-  ;; => (15.2 . #s(nskk-converter-result ...))"
+  "Measure execution time of BODY and return result in microseconds.
+Return value is a cons cell (ELAPSED-MICROSECONDS . BODY-RESULT)."
   (declare (indent 0) (debug t))
   (let ((start-time (make-symbol "start-time"))
         (end-time (make-symbol "end-time"))
@@ -87,13 +79,8 @@
              ,result))))
 
 (defmacro nskk-with-profiling (name &rest body)
-  "BODY の実行をプロファイリングし、NAME として記録する。
-
-`nskk-optimize-enable-profiling' が非nilの場合のみ有効。
-
-例:
-  (nskk-with-profiling \"romaji-conversion\"
-    (nskk-convert-romaji \"konnnichiha\"))"
+  "Profile execution of BODY and record under NAME.
+Only effective when `nskk-optimize-enable-profiling' is non-nil."
   (declare (indent 1) (debug t))
   `(if nskk-optimize-enable-profiling
        (let ((start-time (current-time))
@@ -108,13 +95,11 @@
 ;;; プロファイリングデータ管理
 
 (defvar nskk-optimize--profile-data nil
-  "プロファイリングデータを保持するalist。
-形式: ((name . (count total-time min-time max-time)) ...)")
+  "Alist holding profiling data.
+Format: ((NAME COUNT TOTAL-TIME MIN-TIME MAX-TIME) ...).")
 
 (defun nskk-optimize--record-profile (name elapsed-time)
-  "プロファイリングデータを記録する。
-NAME: プロファイル名
-ELAPSED-TIME: 経過時間（time-subtract の返り値）"
+  "Record profiling data for NAME with ELAPSED-TIME."
   (let* ((elapsed-us (* (float-time elapsed-time) 1000000.0))
          (entry (assoc name nskk-optimize--profile-data))
          (count (if entry (nth 1 entry) 0))
@@ -125,12 +110,12 @@ ELAPSED-TIME: 経過時間（time-subtract の返り値）"
           (list (1+ count) (+ total elapsed-us) min-time max-time))))
 
 (defun nskk-optimize-reset-profile ()
-  "プロファイリングデータをリセットする。"
+  "Reset profiling data."
   (interactive)
   (setq nskk-optimize--profile-data nil))
 
 (defun nskk-optimize-show-profile ()
-  "プロファイリングデータを表示する。"
+  "Display profiling data in a buffer."
   (interactive)
   (if (null nskk-optimize--profile-data)
       (message "No profiling data available")
@@ -153,16 +138,8 @@ ELAPSED-TIME: 経過時間（time-subtract の返り値）"
 ;;; ベンチマーク関数
 
 (defun nskk-benchmark-romaji-conversion (input iterations)
-  "ローマ字変換のベンチマークを実行する。
-
-INPUT: 変換する入力文字列
-ITERATIONS: 反復回数
-
-返り値: plist (:total-time :avg-time :iterations :throughput)
-  :total-time  - 合計実行時間（秒）
-  :avg-time    - 平均実行時間（マイクロ秒）
-  :iterations  - 反復回数
-  :throughput  - スループット（回/秒）"
+  "Benchmark romaji conversion with INPUT string for ITERATIONS times.
+Return plist with :total-time, :avg-time, :iterations, and :throughput."
   (require 'nskk-converter)
   (garbage-collect) ; GC の影響を最小化
   (let ((start-time (current-time))
@@ -181,15 +158,12 @@ ITERATIONS: 反復回数
             :result result))))
 
 (defun nskk-benchmark-hiragana-to-katakana (input iterations)
-  "ひらがな→カタカナ変換のベンチマークを実行する。
-
-INPUT: 変換する入力文字列
-ITERATIONS: 反復回数"
-  (require 'nskk-special-chars)
+  "Benchmark hiragana-to-katakana conversion with INPUT for ITERATIONS times."
+  (require 'nskk-core)
   (garbage-collect)
   (let ((start-time (current-time)))
     (dotimes (_ iterations)
-      (nskk-hiragana-to-katakana input))
+      (nskk-core-hiragana-to-katakana input))
     (let* ((end-time (current-time))
            (elapsed (float-time (time-subtract end-time start-time)))
            (avg-us (* (/ elapsed iterations) 1000000.0))
@@ -201,13 +175,9 @@ ITERATIONS: 反復回数"
             :input input))))
 
 (defun nskk-benchmark-suite ()
-  "包括的なベンチマークスイートを実行する。
-
-複数の入力パターンで各種変換のベンチマークを実施。
-結果を *NSKK Benchmark* バッファに表示。"
+  "Run comprehensive benchmark suite and display results."
   (interactive)
   (require 'nskk-converter)
-  (require 'nskk-special-chars)
 
   (let ((test-cases
          '(;; 短い入力
@@ -281,15 +251,7 @@ ITERATIONS: 反復回数"
 ;;; メモリプロファイリング
 
 (defun nskk-benchmark-memory-usage ()
-  "現在のメモリ使用量を測定する。
-
-返り値: plist
-  :gc-cons-threshold    - GC閾値
-  :gc-elapsed           - GC累積時間
-  :gcs-done             - GC実行回数
-  :cons-cells-allocated - Cons セル割り当て数
-  :floats-allocated     - Float割り当て数
-  :strings-allocated    - String割り当て数"
+  "Measure and return current memory usage as a plist."
   (list :gc-cons-threshold gc-cons-threshold
         :gc-elapsed gc-elapsed
         :gcs-done gcs-done
@@ -298,14 +260,7 @@ ITERATIONS: 反復回数"
         :strings-allocated (cl-seventh (memory-use-counts))))
 
 (defun nskk-measure-memory-delta (func)
-  "FUNC の実行前後のメモリ使用量の差分を測定する。
-
-FUNC: 引数なしの関数
-
-返り値: plist
-  :before        - 実行前のメモリ使用量
-  :after         - 実行後のメモリ使用量
-  :delta         - 差分"
+  "Measure memory usage delta before and after calling FUNC."
   (garbage-collect)
   (let ((before (nskk-benchmark-memory-usage)))
     (funcall func)
@@ -325,14 +280,7 @@ FUNC: 引数なしの関数
 ;;; 最適化マクロ
 
 (defmacro nskk-optimize-loop (var limit &rest body)
-  "最適化されたループマクロ。
-VARが0からLIMIT-1まで反復し、BODYを実行する。
-
-通常のdotimesより高速だが、副作用に注意。
-
-例:
-  (nskk-optimize-loop i 1000
-    (do-something i))"
+  "Execute BODY with VAR iterating from 0 to LIMIT minus one."
   (declare (indent 2) (debug (symbolp form body)))
   `(let ((,var 0)
          (limit ,limit))
@@ -341,20 +289,16 @@ VARが0からLIMIT-1まで反復し、BODYを実行する。
        (setq ,var (1+ ,var)))))
 
 (defmacro nskk-optimize-string-concat (str1 str2)
-  "文字列連結の最適化版。
-短い文字列の連結に特化。
-
-STR1, STR2: 連結する文字列"
+  "Concatenate STR1 and STR2 efficiently."
   `(concat ,str1 ,str2))
 
 ;;; パフォーマンス回帰テスト
 
 (defvar nskk-optimize--performance-baseline nil
-  "パフォーマンスベースラインデータ。
-形式: plist")
+  "Performance baseline data as a plist.")
 
 (defun nskk-optimize-set-baseline ()
-  "現在のパフォーマンスをベースラインとして記録する。"
+  "Record current performance as the baseline."
   (interactive)
   (setq nskk-optimize--performance-baseline
         (nskk-benchmark-romaji-conversion "konnnichiha" 1000))
@@ -362,18 +306,10 @@ STR1, STR2: 連結する文字列"
            (plist-get nskk-optimize--performance-baseline :avg-time)))
 
 (defun nskk-optimize-check-regression ()
-  "パフォーマンス回帰をチェックする。
-
-ベースラインと比較して、10%以上の性能低下がある場合は警告。
-
-返り値: plist
-  :baseline      - ベースライン平均時間
-  :current       - 現在の平均時間
-  :ratio         - 比率（current/baseline）
-  :regression    - 回帰の有無（10%以上遅い場合t）"
+  "Check for performance regression against the baseline."
   (interactive)
   (unless nskk-optimize--performance-baseline
-    (error "No baseline set. Run `nskk-optimize-set-baseline' first"))
+    (error "No baseline set.  Run `nskk-optimize-set-baseline' first"))
 
   (let* ((current (nskk-benchmark-romaji-conversion "konnnichiha" 1000))
          (baseline-time (plist-get nskk-optimize--performance-baseline :avg-time))
@@ -394,13 +330,7 @@ STR1, STR2: 連結する文字列"
 ;;; 統計情報
 
 (defun nskk-optimize-stats ()
-  "最適化機能の統計情報を返す。
-
-返り値: plist
-  :profiling-enabled   - プロファイリング有効/無効
-  :benchmark-iterations - ベンチマーク反復回数
-  :profile-entries     - プロファイルエントリ数
-  :baseline-set        - ベースライン設定済み"
+  "Return optimization statistics as a plist."
   (list :profiling-enabled nskk-optimize-enable-profiling
         :benchmark-iterations nskk-optimize-benchmark-iterations
         :profile-entries (length nskk-optimize--profile-data)

@@ -1,11 +1,26 @@
 ;;; nskk-thread-pool.el --- Thread pool implementation for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Development Team
+;; Copyright (C) 2024-2026 Takeshi Umeda
+;;
+;; This file is part of NSKK (Next-generation SKK).
+;;
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;; Author: NSKK Development Team
 ;; Maintainer: NSKK Development Team
-;; Keywords: japanese, input-method, skk, threading
-;; Package-Requires: ((emacs "30.0"))
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;;; Commentary:
 
@@ -32,24 +47,24 @@
 ;;; カスタマイズ変数
 
 (defgroup nskk-thread-pool nil
-  "NSKK スレッドプール設定。"
+  "NSKK thread pool settings."
   :group 'nskk
   :prefix "nskk-thread-pool-")
 
 (defcustom nskk-thread-pool-default-size nil
-  "デフォルトのスレッドプールサイズ。
-nilの場合、CPUコア数に基づいて自動設定される。"
+  "Default thread pool size.
+When nil, automatically set based on CPU core count."
   :type '(choice (const :tag "Auto" nil)
                  (integer :tag "Fixed size"))
   :group 'nskk-thread-pool)
 
 (defcustom nskk-thread-pool-idle-timeout 60
-  "アイドル状態のワーカースレッドが終了するまでのタイムアウト秒数。"
+  "Timeout in seconds before idle worker threads are terminated."
   :type 'integer
   :group 'nskk-thread-pool)
 
 (defcustom nskk-thread-pool-max-queue-size 1000
-  "タスクキューの最大サイズ。"
+  "Maximum number of tasks in the queue."
   :type 'integer
   :group 'nskk-thread-pool)
 
@@ -78,8 +93,7 @@ nilの場合、CPUコア数に基づいて自動設定される。"
 ;;; ユーティリティ関数
 
 (defun nskk-thread-pool--get-cpu-count ()
-  "利用可能なCPUコア数を取得する。
-Emacs 31以降の`num-processors'を使用する。"
+  "Return the number of available CPU cores."
   (if (fboundp 'num-processors)
       (num-processors)
     ;; フォールバック: 環境変数から取得を試みる
@@ -94,8 +108,7 @@ Emacs 31以降の`num-processors'を使用する。"
         4)))
 
 (defun nskk-thread-pool--optimal-size ()
-  "最適なスレッドプールサイズを計算する。
-CPUコア数に基づいて決定する。"
+  "Calculate optimal thread pool size based on CPU core count."
   (let ((cpu-count (nskk-thread-pool--get-cpu-count)))
     ;; CPUコア数と同じか、やや少なめに設定
     (max 2 (min cpu-count 8))))
@@ -103,7 +116,7 @@ CPUコア数に基づいて決定する。"
 ;;; キュー操作
 
 (defun nskk-thread-pool--enqueue (pool task)
-  "POOL にタスク TASK をエンキューする。"
+  "Enqueue TASK into POOL."
   (with-mutex (nskk-thread-pool-queue-mutex pool)
     (when (>= (length (nskk-thread-pool-task-queue pool))
               nskk-thread-pool-max-queue-size)
@@ -118,8 +131,7 @@ CPUコア数に基づいて決定する。"
     (condition-notify (nskk-thread-pool-queue-condition pool))))
 
 (defun nskk-thread-pool--dequeue (pool)
-  "POOL からタスクをデキューする。
-タスクがない場合は nil を返す。"
+  "Dequeue and return the next task from POOL, or nil if empty."
   (let ((queue (nskk-thread-pool-task-queue pool)))
     (when queue
       (let ((task (car queue)))
@@ -129,8 +141,7 @@ CPUコア数に基づいて決定する。"
 ;;; ワーカースレッド
 
 (defun nskk-thread-pool--worker-loop (pool worker-id)
-  "ワーカースレッドのメインループ。
-POOL はスレッドプール、WORKER-ID はワーカー識別子。"
+  "Main loop for worker WORKER-ID in POOL."
   (cl-block nil
     (while t
       (let ((task nil)
@@ -165,8 +176,7 @@ POOL はスレッドプール、WORKER-ID はワーカー識別子。"
 
 
 (defun nskk-thread-pool--create-worker (pool worker-id)
-  "POOL のワーカースレッドを作成する。
-WORKER-ID はワーカー識別子。"
+  "Create a worker thread with WORKER-ID for POOL."
   (make-thread
    (lambda ()
      (nskk-thread-pool--worker-loop pool worker-id))
@@ -176,9 +186,8 @@ WORKER-ID はワーカー識別子。"
 
 ;;;###autoload
 (defun nskk-thread-pool-create (&optional size)
-  "スレッドプールを作成する。
-SIZE が指定されている場合はそのサイズ、
-そうでない場合はCPUコア数に基づいて自動調整される。"
+  "Create a thread pool with SIZE workers.
+When SIZE is nil, automatically determine based on CPU core count."
   (interactive)
   (let* ((pool-size (or size
                         nskk-thread-pool-default-size
@@ -202,10 +211,9 @@ SIZE が指定されている場合はそのサイズ、
 
 ;;;###autoload
 (defun nskk-thread-submit (pool task &optional callback error-handler)
-  "POOL にタスク TASK を投入する。
-TASK は引数なしの関数。
-CALLBACK はタスク完了時に呼ばれる関数（オプション）。
-ERROR-HANDLER はエラー発生時に呼ばれる関数（オプション）。"
+  "Submit TASK to POOL for execution.
+CALLBACK is called with the result on completion.
+ERROR-HANDLER is called with the error on failure."
   (when (nskk-thread-pool-shutdown-flag pool)
     (error "Cannot submit task to shutdown pool"))
 
@@ -217,8 +225,8 @@ ERROR-HANDLER はエラー発生時に呼ばれる関数（オプション）。
 
 ;;;###autoload
 (defun nskk-thread-pool-shutdown (pool &optional wait)
-  "POOL をシャットダウンする。
-WAIT が non-nil の場合、全タスクの完了を待つ。"
+  "Shut down POOL.
+When WAIT is non-nil, wait for all tasks to complete."
   (interactive)
   (setf (nskk-thread-pool-shutdown-flag pool) t)
 
@@ -235,7 +243,7 @@ WAIT が non-nil の場合、全タスクの完了を待つ。"
 
 ;;;###autoload
 (defun nskk-thread-pool-status (pool)
-  "POOL の状態を表示する。"
+  "Display status of POOL."
   (interactive)
   (message "Thread Pool Status:
   Size: %d
@@ -251,8 +259,8 @@ WAIT が non-nil の場合、全タスクの完了を待つ。"
 ;;; ヘルパー関数
 
 (defun nskk-thread-pool-wait-for-completion (pool timeout)
-  "POOL の全タスク完了を TIMEOUT 秒まで待機する。
-完了した場合 t を、タイムアウトした場合 nil を返す。"
+  "Wait for all tasks in POOL to complete within TIMEOUT seconds.
+Return t if completed, nil if timed out."
   (let ((start-time (current-time)))
     (while (and (> (length (nskk-thread-pool-task-queue pool)) 0)
                 (< (float-time (time-subtract (current-time) start-time))
@@ -261,7 +269,7 @@ WAIT が non-nil の場合、全タスクの完了を待つ。"
     (= (length (nskk-thread-pool-task-queue pool)) 0)))
 
 (defun nskk-thread-pool-available-p ()
-  "スレッド機能が利用可能かチェックする。"
+  "Return non-nil if threading functionality is available."
   (and (fboundp 'make-thread)
        (fboundp 'make-mutex)
        (fboundp 'make-condition-variable)))

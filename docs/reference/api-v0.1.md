@@ -2344,7 +2344,7 @@ abbrevモード用キーマップ
 
 ### Dictionary
 - 辞書読み込み: < 3秒（50万エントリ）
-- 完全一致検索: < 0.1ms
+- 完全一致検索: < 1ms
 - 前方一致検索: < 1ms（10件取得）
 
 ### Search & Cache
@@ -2353,7 +2353,7 @@ abbrevモード用キーマップ
 - キャッシュヒット率: > 80%
 
 ### UI
-- キー入力応答: < 10ms
+- キー入力応答: < 1ms
 - 候補表示更新: < 50ms
 
 ---
@@ -2393,16 +2393,16 @@ abbrevモード用キーマップ
 
 ```elisp
 ;; 促音処理を無効化
-(setq nskk-converter-use-sokuon nil)
+(setopt nskk-converter-use-sokuon nil)
 
 ;; キャッシュサイズを増やす
-(setq nskk-cache-default-capacity 2000)
+(setopt nskk-cache-default-capacity 2000)
 
 ;; Sticky Shiftキーを変更
-(setq nskk-sticky-shift-key ":")
+(setopt nskk-sticky-shift-key ":")
 
 ;; 候補ウィンドウのページサイズ変更
-(setq nskk-candidate-window-page-size 10)
+(setopt nskk-candidate-window-page-size 10)
 
 ;; モード切り替えフック登録
 (add-hook 'nskk-mode-switch-hook
@@ -2477,7 +2477,7 @@ nskk-dict-error              ;; 基底エラー
 ## 統計情報
 
 - **総モジュール数:** 20
-- **公開関数数:** 150+
+- **公開関数数:** 多数
 - **カスタマイズ変数数:** 60+
 - **データ構造数:** 15
 - **イベント型数:** 9

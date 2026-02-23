@@ -778,7 +778,7 @@ C-j → 強制的にひらがなモードに復帰
 
 ```elisp
 ;; キャッシュサイズの増加
-(setq nskk-dictionary-cache-size 100000)
+(setopt nskk-dictionary-cache-size 100000)
 
 ;; インデックスの再構築
 M-x nskk-rebuild-dictionary-index
@@ -878,8 +878,8 @@ HinshitsuNO TakaiSehinWO TodokeMASHOU.
 
 さらなるスキルアップのために：
 
-1. **[advanced-features.md](advanced-features.md)**: AI補完・同期機能を学ぶ
-2. **[customization.md](customization.md)**: 個人設定の最適化
+1. **[customization.md](customization.md)**: 個人設定の最適化
+2. **ドキュメント整備の進捗を確認**: 拡張機能（AI・同期など）は再設計完了後に公開予定
 3. **実践**: 毎日の作業でNSKKを使い続ける
 
 ### パフォーマンス目標

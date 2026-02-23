@@ -1,132 +1,54 @@
-# Makefile for NSKK
-
 EMACS ?= emacs
-BATCH = $(EMACS) -Q --batch -L . -L tests
+BATCH = $(EMACS) -Q --batch
 
-# ソースファイル
-SOURCES = $(wildcard nskk-*.el)
+LOAD_PATH = -L . -L test
+# Core functionality files (working)
+SRC_CORE = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
+       nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
+       nskk-converter.el nskk-cache.el nskk-core.el \
+       nskk-thread-pool.el
 
-# 全テストファイル自動検出
-ALL_TEST_FILES = $(wildcard tests/*-test.el)
+# All source files (including those with issues)
+SRC = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
+       nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
+       nskk-converter.el nskk-optimize.el nskk-memory-optimize.el nskk-native-compile.el \
+       nskk-search.el nskk-cache.el nskk-thread-pool.el \
+       nskk-layer-core.el nskk-layer-infrastructure.el \
+       nskk-layer-application.el nskk-layer-extension.el nskk-layer-presentation.el nskk-layer-qa.el \
+       nskk-architecture.el nskk-input-commands.el nskk-ddskk-compat.el nskk-migrate.el \
+       nskk-dict-io.el nskk-dict-struct.el nskk-dict-errors.el nskk-trie.el
 
-# 統合テスト
-INTEGRATION_TESTS = \
-	tests/nskk-core-smoke-test.el \
-	tests/nskk-integration-test.el \
-	tests/nskk-runtime-integration-test.el \
-	tests/nskk-runtime-integration-threadsafe-test.el \
-	tests/nskk-advanced-integration-test.el
+CORE_SRC = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
+       nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
+       nskk-converter.el nskk-optimize.el nskk-memory-optimize.el nskk-native-compile.el \
+       nskk-search.el nskk-cache.el nskk-thread-pool.el
+TEST_SRC = $(wildcard test/*-test.el)
 
-# E2Eテスト
-E2E_TESTS = \
-	tests/nskk-e2e-basic-test.el \
-	tests/nskk-e2e-mode-control-test.el
+.PHONY: all compile compile-core test lint package-lint clean
 
-.PHONY: all test test-unit test-integration test-e2e test-e2e-setter test-scenarios test-scenarios-all test-scenarios-basic test-scenarios-beginner list-scenarios coverage clean help
+all: compile
 
-all: test
+compile:
+	$(BATCH) $(LOAD_PATH) \
+	  --eval "(setq byte-compile-error-on-warn t)" \
+	  $(foreach f,$(SRC),--eval "(byte-compile-file \"$(f)\")")
 
-## 全テスト実行
 test:
-	@echo "=== Running All NSKK Tests ==="
-	@echo "Found $(words $(ALL_TEST_FILES)) test files"
-	$(BATCH) \
-		$(foreach test,$(ALL_TEST_FILES),-l $(test)) \
-		-f ert-run-tests-batch-and-exit
+	$(BATCH) $(LOAD_PATH) \
+	  -l test/nskk-test-macros.el \
+	  -l test/nskk-test-framework.el \
+	  $(foreach f,$(TEST_SRC),-l $(f)) \
+	  -f ert-run-tests-batch-and-exit
 
-## 統合テストのみ実行
-test-integration:
-	@echo "=== Running Integration Tests ==="
-	$(BATCH) \
-		$(foreach test,$(INTEGRATION_TESTS),-l $(test)) \
-		-f ert-run-tests-batch-and-exit
+lint:
+	$(BATCH) $(LOAD_PATH) \
+	  $(foreach f,$(CORE_SRC),--eval "(checkdoc-file \"$(f)\")")
 
-## E2Eテストのみ実行
-test-e2e:
-	@echo "=== Running E2E Tests ==="
-	$(BATCH) \
-		$(foreach test,$(E2E_TESTS),-l $(test)) \
-		-f ert-run-tests-batch-and-exit
+package-lint:
+	$(BATCH) $(LOAD_PATH) \
+	  --eval "(progn (require 'package) (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) (package-initialize) (package-refresh-contents) (package-install 'package-lint))" \
+	  -l package-lint \
+	  -f package-lint-batch-and-exit nskk.el
 
-## E2E Setterテスト実行
-test-e2e-setter:
-	@echo "=== Running E2E Setter Test ==="
-	$(BATCH) -l run-e2e-test.el
-
-## シナリオテスト実行
-test-scenarios: test-scenarios-all
-
-## 全シナリオテスト実行
-test-scenarios-all:
-	@echo "=== Running All Scenario Tests ==="
-	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
-		-l tests/nskk-scenario-suite.el \
-		-f nskk-scenario-run-all-batch
-
-## 基本シナリオのみ実行
-test-scenarios-basic:
-	@echo "=== Running Basic Scenario Tests ==="
-	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
-		-l tests/nskk-scenario-suite.el \
-		-f nskk-scenario-run-basic-batch
-
-## 初心者向けシナリオのみ実行
-test-scenarios-beginner:
-	@echo "=== Running Beginner Scenario Tests ==="
-	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
-		-l tests/nskk-scenario-suite.el \
-		--eval "(ert-run-tests-batch-and-exit '(tag :beginner))"
-
-## シナリオリスト表示
-list-scenarios:
-	@echo "=== NSKK Scenario Tests ==="
-	$(BATCH) -L tests/scenarios -L tests/scenarios/basic -L tests/scenarios/advanced -L tests/scenarios/performance -L tests/scenarios/learning -L tests/scenarios/completion -L tests/scenarios/mode -L tests/scenarios/ui \
-		-l tests/nskk-scenario-suite.el \
-		--eval "(nskk-scenario-list-all)" \
-		--eval "(with-current-buffer \"*NSKK Scenarios*\" (princ (buffer-string)))"
-
-## カバレッジ測定とレポート生成
-coverage:
-	@echo "=== Running NSKK Tests with Coverage ==="
-	$(BATCH) -l tests/run-coverage.el || true
-
-## HTMLレポートをブラウザで開く
-coverage-report: coverage
-	@echo "Opening coverage report..."
-	@if [ -f coverage/index.html ]; then \
-		if command -v open > /dev/null; then \
-			open coverage/index.html; \
-		elif command -v xdg-open > /dev/null; then \
-			xdg-open coverage/index.html; \
-		else \
-			echo "Coverage report generated at coverage/index.html"; \
-		fi \
-	else \
-		echo "Error: coverage/index.html not found"; \
-	fi
-
-## カバレッジデータとレポートをクリーンアップ
 clean:
-	@echo "Cleaning coverage data..."
-	rm -rf coverage/
-	rm -f *.elc tests/*.elc
-
-## ヘルプ表示
-help:
-	@echo "NSKK Makefile Commands:"
-	@echo ""
-	@echo "Testing:"
-	@echo "  make test                  - Run all tests (auto-detect all *-test.el)"
-	@echo "  make test-integration      - Run integration tests only"
-	@echo "  make test-e2e              - Run E2E tests only"
-	@echo "  make test-e2e-setter       - Run E2E setter test"
-	@echo "  make test-scenarios        - Run all scenario tests"
-	@echo "  make test-scenarios-basic  - Run basic scenario tests"
-	@echo "  make test-scenarios-beginner - Run beginner scenario tests"
-	@echo "  make list-scenarios        - List all available scenarios"
-	@echo "  make coverage              - Run tests with coverage measurement"
-	@echo "  make coverage-report       - Generate and open HTML coverage report"
-	@echo ""
-	@echo "Utilities:"
-	@echo "  make clean                 - Remove coverage data and compiled files"
-	@echo "  make help                  - Show this help message"
+	rm -f *.elc test/*.elc

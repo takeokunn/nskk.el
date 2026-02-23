@@ -5,7 +5,6 @@
 ;; Author: NSKK Development Team
 ;; Keywords: japanese, input method, skk, dictionary, trie
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
 
 ;; This file is part of NSKK.
 
@@ -307,7 +306,7 @@
           (setq node (gethash char (nskk-trie-node-children node)))))
 
       ;; 末尾から親方向にたどる
-      (dotimes (i key-len)
+      (dotimes (_i key-len)
         (when (and node
                   (not (nskk-trie-node-is-end node))
                   (or (null (nskk-trie-node-children node))
@@ -384,16 +383,6 @@
     (nreverse results)))
 
 ;;; ユーティリティ関数
-
-(defun nskk-trie-size (trie)
-  "トライ木TRIEに格納されているキーの総数を返す。
-
-引数:
-  TRIE - nskk-trie構造体
-
-戻り値:
-  キー数"
-  (nskk-trie-size trie))
 
 (defun nskk-trie-empty-p (trie)
   "トライ木TRIEが空か判定する。

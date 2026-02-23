@@ -7,30 +7,27 @@
 - **競合回避**: 他パッケージとの競合リスクなし
 - **軽量性**: 最小限のリソース使用とネイティブコンパイル効率
 - **保守性**: 外部ライブラリの変更に影響されない
-- **Emacs 30以上対応**: setopt、スレッド、transientフルサポート
+- **Emacs 30以上対応**: setopt（Emacs 29.1導入）や協調スレッド（Emacs 26導入）など標準APIを活用
 
 ### 使用可能なEmacs標準機能
 ```elisp
-;; Emacs内蔵ライブラリ（Emacs 30以上最適化）
+;; Emacs内蔵ライブラリ（Emacs 30以上対応）
 (require 'subr-x)      ; 文字列・リスト操作拡張
 (require 'seq)         ; シーケンス操作
 (require 'map)         ; マップ操作
 (require 'pcase)       ; パターンマッチング
 (require 'rx)          ; 正規表現構築
 (require 'cl-lib)      ; Common Lisp拡張（標準バンドル）
-(require 'thread)      ; ネイティブスレッド（Emacs 30以上）
-(require 'transient)   ; Transient UI（Emacs 30以上統合）
-(eval-when-compile
-  (native-compile-async-skip-p nil))  ; ネイティブコンパイル最適化
+(require 'thread)      ; 協調スレッド（Emacs 26以降）
 ```
 
 ## 外部依存を避ける実装パターン
 
 ### 1. オブジェクトシステム（Emacs 30以上最適化）
 ```elisp
-;; ネイティブコンパイル対応構造体定義（Emacs 30以上）
+;; ネイティブコンパイル対応構造体定義
 (defmacro nskk-defstruct (name &rest slots)
-  "構造体定義マクロ（Emacs 30以上のネイティブコンパイル最適化）"
+  "構造体定義マクロ（defsubstによるインライン化最適化）"
   (declare (indent 1))
   (let ((constructor (intern (format "make-%s" name)))
         (predicate (intern (format "%s-p" name))))
@@ -54,26 +51,12 @@
 (nskk-defstruct candidate
   text probability source)
 
-;; Emacs 30以上のThreadプールを使用した並列構造体処理
-(defun nskk--process-candidates-parallel (candidates processor)
-  "候補を並列処理（Emacs 30以上のスレッド使用）"
-  (if (< (length candidates) 4)  ; 小さい場合は通常処理
-      (mapcar processor candidates)
-    (let ((threads (make-vector 4 nil))
-          (chunk-size (/ (length candidates) 4))
-          (results (make-vector 4 nil)))
-      (dotimes (i 4)
-        (let ((start (* i chunk-size))
-              (end (if (= i 3) (length candidates)
-                     (* (1+ i) chunk-size))))
-          (aset threads i
-                (make-thread
-                 `(lambda ()
-                    (mapcar ,processor
-                            (seq-subseq ',candidates ,start ,end)))))))
-      (dotimes (i 4)
-        (aset results i (thread-join (aref threads i))))
-      (apply #'append (append results nil)))))
+;; 候補の逐次処理（mapcar使用）
+;; 注意: Emacsのスレッドは協調的（GILあり）のため、CPU集約的な処理を
+;; スレッド分割してもパフォーマンスは向上しない。候補処理はmapcarで十分。
+(defun nskk--process-candidates (candidates processor)
+  "候補をPROCESSORで処理する。"
+  (mapcar processor candidates))
 ```
 
 ### 2. ハッシュテーブル代替（Emacs 30以上最適化）
@@ -89,9 +72,9 @@
   (cons (cons key value)
         (assq-delete-all key (copy-alist alist))))
 
-;; Emacs 30以上並列対応トライ木構造
+;; トライ木構造
 (defun nskk--trie-insert (trie key value)
-  "トライ木への挿入（Emacs 30以上のスレッドセーフ）"
+  "トライ木への挿入"
   (if (null key)
       (nskk--alist-put :value value trie)
     (let* ((char (car key))
@@ -100,39 +83,41 @@
                        (nskk--trie-insert subtrie (cdr key) value)
                        trie))))
 
-;; Emacs 30以上のobarray最適化
+;; obarray最適化
 (defvar nskk--symbol-cache (obarray-make 1024)
-  "シンボルキャッシュ（Emacs 30以上 obarray）")
+  "シンボルキャッシュ（obarray使用）")
 
 (defsubst nskk--intern-cached (name)
   "キャッシュ済みシンボル取得"
   (intern name nskk--symbol-cache))
 ```
 
-### 3. 非同期処理（Emacs 30以上のネイティブスレッド）
+### 3. 非同期処理（Emacs協調スレッド）
 ```elisp
-;; Emacs 30以上のネイティブスレッドによる真の並列処理
+;; Emacsの協調スレッドによる並行処理（Emacs 26以降で利用可能）
+;; 重要: Emacsスレッドは協調的（GILあり）であり、真の並列実行ではない。
+;; I/O待ちの重ね合わせによる効率化に有効。
+
 (defvar nskk--thread-pool nil
-  "スレッドプール（Emacs 30以上）")
+  "スレッドプール")
 
 (defvar nskk--max-threads 4
   "最大スレッド数")
 
-(defun nskk-async-run-native (function &optional priority)
-  "ネイティブスレッドによる非同期実行"
+(defun nskk-async-run-native (function)
+  "協調スレッドによる非同期実行。
+I/O待ちを含む処理に有効。CPU集約処理には効果がない。"
   (let ((thread (make-thread
                  (lambda ()
                    (condition-case err
                        (funcall function)
                      (error
                       (message "NSKK thread error: %s" err)))))))
-    (when priority
-      (thread-set-priority thread priority))
     (push thread nskk--thread-pool)
     thread))
 
 (defun nskk-async-run-timer (function &optional delay)
-  "タイマーベース非同期処理（フォールバック）"
+  "タイマーベース非同期処理（スレッドを使わない代替手段）"
   (run-with-timer (or delay 0.001) nil
                   (lambda ()
                     (condition-case err
@@ -140,9 +125,10 @@
                       (error
                        (message "NSKK async error: %s" err))))))
 
-;; Emacs 30以上のPromise風実装
+;; Promise風実装（thread-joinで結果を受け取る）
 (defmacro nskk-async-then (async-expr then-fn &optional catch-fn)
-  "Promise風非同期チェーン"
+  "Promise風非同期チェーン。
+thread-joinはスレッド完了まで（協調的に）ブロックする。"
   (let ((thread-sym (gensym "thread"))
         (result-sym (gensym "result")))
     `(let ((,thread-sym ,async-expr))
@@ -156,19 +142,22 @@
                (funcall ,catch-fn err)))))))))
 
 (defun nskk-async-cancel-all ()
-  "全スレッドの終了待機"
+  "全スレッドにquitシグナルを送信し、終了を待機する。
+thread-joinはタイムアウト引数を受け付けないため、
+シグナルによる終了を試みる。"
   (dolist (thread nskk--thread-pool)
     (when (thread-live-p thread)
       (condition-case nil
-          (thread-join thread 1.0)  ; 1秒でタイムアウト
-        (error
-         (thread-signal thread 'quit nil)))))
+          (progn
+            (thread-signal thread 'quit nil)
+            (thread-join thread))
+        (error nil))))
   (setq nskk--thread-pool nil))
 ```
 
-### 4. ファイルI/O最適化（Emacs 30以上の並列処理）
+### 4. ファイルI/O最適化
 ```elisp
-;; Emacs 30以上の並列ファイル処理
+;; ファイルI/O処理の効率化
 (defun nskk--read-file-lines (filename)
   "ファイル行読み込み（ネイティブコンパイル最適化）"
   (when (file-readable-p filename)
@@ -178,7 +167,9 @@
       (split-string (buffer-string) "\n" t))))
 
 (defun nskk--write-file-lines (filename lines)
-  "ファイル行書き込み（原子的書き込み）"
+  "ファイル行書き込み（原子的書き込み）。
+with-temp-fileは一時バッファを作成し、bodyを評価後、指定ファイルに書き込む。
+原子性を確保するため、一時ファイルを経由してrenameする方式を採用する。"
   (let ((temp-file (make-temp-file (file-name-nondirectory filename)))
         (coding-system-for-write 'utf-8))
     (with-temp-file temp-file
@@ -186,43 +177,27 @@
         (insert line "\n")))
     (rename-file temp-file filename t)))
 
-;; Emacs 30以上のスレッド対応ストリーミング処理
-(defun nskk--process-file-streaming (filename processor &optional parallel)
-  "ファイルのストリーミング処理（並列対応）"
-  (if (not parallel)
-      ;; 従来のシーケンシャル処理
-      (with-temp-buffer
-        (insert-file-contents filename)
-        (goto-char (point-min))
-        (while (not (eobp))
-          (let ((line (buffer-substring-no-properties
-                       (line-beginning-position)
-                       (line-end-position))))
-            (funcall processor line))
-          (forward-line 1)))
-    ;; Emacs 30以上の並列処理
-    (let* ((lines (nskk--read-file-lines filename))
-           (chunk-size (max 100 (/ (length lines) nskk--max-threads)))
-           (threads nil))
-      (dotimes (i nskk--max-threads)
-        (let* ((start (* i chunk-size))
-               (end (min (length lines) (* (1+ i) chunk-size)))
-               (chunk (seq-subseq lines start end)))
-          (when chunk
-            (push (make-thread
-                   `(lambda ()
-                      (dolist (line ',chunk)
-                        (funcall ,processor line))))
-                  threads))))
-      (dolist (thread threads)
-        (thread-join thread)))))
+;; ストリーミング処理
+(defun nskk--process-file-streaming (filename processor)
+  "ファイルを行単位でストリーミング処理する。
+Emacsスレッドは協調的（GILあり）のため、ファイル内容の行処理を
+スレッド分割してもパフォーマンスは向上しない。逐次処理が適切。"
+  (with-temp-buffer
+    (insert-file-contents filename)
+    (goto-char (point-min))
+    (while (not (eobp))
+      (let ((line (buffer-substring-no-properties
+                   (line-beginning-position)
+                   (line-end-position))))
+        (funcall processor line))
+      (forward-line 1))))
 
-;; Emacs 30以上のfile-notify最適化
+;; file-notifyによるファイル変更監視
 (defvar nskk--file-watchers nil
   "ファイル監視ハンドル")
 
 (defun nskk--watch-file (filename callback)
-  "ファイル変更監視（Emacs 30以上最適化）"
+  "ファイル変更監視"
   (when (file-exists-p filename)
     (let ((watcher (file-notify-add-watch
                     filename '(change) callback)))
@@ -230,14 +205,14 @@
       watcher)))
 ```
 
-### 5. 状態管理（Emacs 30以上のスレッドセーフ）
+### 5. 状態管理（スレッドセーフ）
 ```elisp
-;; Emacs 30以上のスレッドセーフ状態管理
+;; mutexによるスレッドセーフ状態管理
 (defvar nskk--state nil
   "アプリケーション状態")
 
 (defvar nskk--state-mutex (make-mutex)
-  "状態変更用mutex（Emacs 30以上）")
+  "状態変更用mutex")
 
 (defsubst nskk--state-get (key &optional default)
   "状態値取得（読み込み専用、ロックなし）"
@@ -249,19 +224,23 @@
     (setq nskk--state (plist-put nskk--state key value))))
 
 (defmacro nskk-with-state-lock (&rest body)
-  "状態変更の排他制御（Emacs 30以上 mutex使用）"
+  "状態変更の排他制御（mutex使用）"
   `(with-mutex nskk--state-mutex
      ,@body))
 
-;; Emacs 30以上のsetopt対応状態管理
+;; setopt vs setq の使い分け
+;; setopt: defcustomで定義されたユーザー向け変数にのみ使用（Emacs 29.1導入）
+;; setq: defvarで定義された内部変数に使用
+
 (defcustom nskk-enable-threading t
-  "スレッド機能の有効化"
+  "スレッド機能の有効化。"
   :type 'boolean
   :group 'nskk)
 
 (defun nskk--configure-state ()
-  "状態管理の設定（setopt使用）"
-  ;; 従来のsetqをsetoptに置き換え
+  "状態管理の設定。
+setoptはdefcustom変数にのみ使用し、内部defvar変数にはsetqを使用する。"
+  ;; defcustom変数にはsetoptを使用
   (setopt nskk-enable-threading (and (fboundp 'make-thread)
                                      nskk-enable-threading)))
 
@@ -279,7 +258,7 @@
 
 ### メモ化パターン（スレッドセーフ）
 ```elisp
-;; Emacs 30以上のスレッドセーフメモ化
+;; mutexによるスレッドセーフメモ化
 (defmacro nskk-memoize (function)
   "関数のメモ化（スレッドセーフ）"
   (let ((cache-var (intern (format "%s--cache" function)))
@@ -302,7 +281,7 @@
                                        (nskk--alist-put args result ,cache-var))
                                  result)))))))))))
 
-;; Emacs 30以上のハッシュテーブル使用高速メモ化
+;; ハッシュテーブル使用高速メモ化
 (defmacro nskk-memoize-hash (function &optional max-size)
   "ハッシュテーブル使用メモ化（LRU付き）"
   (let ((cache-var (intern (format "%s--hash-cache" function)))
@@ -327,24 +306,25 @@
                                result)))))))))
 ```
 
-### 遅延評価（Emacs 30以上最適化）
+### 遅延評価
 ```elisp
-;; 遅延初期化パターン（setopt対応）
+;; 遅延初期化パターン
+;; 注意: setoptはdefcustom変数にのみ使用。内部defvar変数にはsetqを使用。
 (defmacro nskk-lazy-init (var init-form)
-  "遅延初期化（Emacs 30以上最適化）"
-  `(or ,var (setopt ,var ,init-form)))
+  "遅延初期化マクロ。VARが未設定なら初期化する。"
+  `(or ,var (setq ,var ,init-form)))
 
-;; Emacs 30以上の並列遅延読み込み
+;; 協調スレッドによる遅延読み込み
 (defvar nskk--dictionary nil)
 (defvar nskk--dictionary-loading nil)
 (defvar nskk--dictionary-mutex (make-mutex))
 
 (defun nskk--get-dictionary ()
-  "辞書の並列遅延読み込み"
+  "辞書の遅延読み込み（I/O待ちを協調スレッドで処理）。"
   (cond
    (nskk--dictionary nskk--dictionary)
    (nskk--dictionary-loading
-    ;; 読み込み中の場合は待機
+    ;; 読み込み中の場合は待機（thread-joinは引数1つのみ）
     (thread-join nskk--dictionary-loading)
     nskk--dictionary)
    (t
@@ -353,8 +333,9 @@
         (setq nskk--dictionary-loading
               (nskk-async-run-native
                (lambda ()
-                 (setopt nskk--dictionary
-                         (nskk--load-dictionary-from-file))
+                 ;; 内部defvar変数にはsetqを使用
+                 (setq nskk--dictionary
+                       (nskk--load-dictionary-from-file))
                  (setq nskk--dictionary-loading nil)))))
       (when nskk--dictionary-loading
         (thread-join nskk--dictionary-loading))
@@ -363,84 +344,58 @@
 
 ## テスト戦略（Emacs 30以上対応）
 
-### ミニマルテストフレームワーク（並列テスト対応）
+### ミニマルテストフレームワーク
 ```elisp
-;; ERT使用（Emacs標準、Emacs 30以上並列対応）
+;; ERT使用（Emacs標準テストフレームワーク）
 (require 'ert)
 
 (defmacro nskk-deftest (name &rest body)
-  "NSKKテスト定義（Emacs 30以上最適化）"
+  "NSKKテスト定義マクロ。"
   `(ert-deftest ,(intern (format "nskk-test-%s" name)) ()
-     ;; ネイティブコンパイル対応の最適化ヒント
-     (declare (speed 3) (safety 1))
      ,@body))
 
-;; Emacs 30以上の並列テスト実行
-(defun nskk-run-tests-parallel (&optional selector)
-  "テストの並列実行（Emacs 30以上）"
+;; テスト実行
+(defun nskk-run-tests (&optional selector)
+  "テストを実行する。"
   (interactive)
-  (let* ((tests (ert-select-tests selector t))
-         (test-count (length tests))
-         (thread-count (min 4 test-count))
-         (chunk-size (ceiling test-count thread-count))
-         (threads nil)
-         (results nil))
+  (ert-run-tests-batch-and-exit (or selector "nskk-test-")))
 
-    ;; テストを並列実行
-    (dotimes (i thread-count)
-      (let* ((start (* i chunk-size))
-             (end (min test-count (* (1+ i) chunk-size)))
-             (chunk (seq-subseq tests start end)))
-        (when chunk
-          (push (make-thread
-                 `(lambda ()
-                    (mapcar (lambda (test)
-                              (condition-case err
-                                  (ert-run-test test)
-                                (error
-                                 (cons test err))))
-                            ',chunk)))
-                threads))))
-
-    ;; 結果収集
-    (dolist (thread threads)
-      (when thread
-        (push (thread-join thread) results)))
-
-    (apply #'append results)))
-
-;; 使用例（setopt対応）
+;; 使用例
 (nskk-deftest conversion-basic
   (should (equal (nskk-convert "ka") "か")))
 
-;; Emacs 30以上のTransient UIを使ったテスト管理
-(transient-define-prefix nskk-test-menu ()
-  "NSKK テスト実行メニュー"
-  ["テスト実行"
-   ("a" "全テスト実行" nskk-run-tests-parallel)
-   ("u" "単体テスト" ert-run-tests-interactively)
-   ("b" "ベンチマーク" nskk-run-benchmarks)])
+;; ミニバッファUIを使ったテスト管理
+(defun nskk-test-menu ()
+  "NSKK テスト実行メニュー (ミニバッファ版)。"
+  (interactive)
+  (let* ((choices '("全テスト実行" "単体テスト" "ベンチマーク"))
+         (selection (completing-read "NSKK test action: " choices nil t)))
+    (pcase selection
+      ("全テスト実行" (nskk-run-tests))
+      ("単体テスト" (call-interactively #'ert-run-tests-interactively))
+      ("ベンチマーク" (nskk-run-benchmarks)))))
 
 (defun nskk-run-benchmarks ()
-  "Emacs 30以上の並列処理を使ったベンチマーク"
+  "候補処理のベンチマーク。"
   (interactive)
   (let ((start-time (float-time)))
-    (nskk--process-candidates-parallel
+    (nskk--process-candidates
      (make-list 10000 "test")
-     (lambda (x) (string-reverse x)))
-    (message "並列処理時間: %.3f秒" (- (float-time) start-time))))
+     ;; string-reverseは存在しない。seq-reverseまたはreverse+string-to-listを使用。
+     (lambda (x) (concat (reverse (string-to-list x)))))
+    (message "処理時間: %.3f秒" (- (float-time) start-time))))
 ```
 
-## Emacs 30以上最適化まとめ
+## まとめ
 
-この戦略により、Emacs 30以上の新機能を活用しながら外部依存なしで高機能なSKK実装を実現：
+この戦略により、Emacs 30以上の標準機能を活用しながら外部依存なしで高機能なSKK実装を目指す。
 
-### 主な改善点
-- **setopt**: 従来のsetqを全てsetoptに置き換え
-- **ネイティブスレッド**: 真の並列処理でパフォーマンス向上
-- **ネイティブコンパイル**: defsubstとdeclareでインライン化促進
-- **Transient UI**: 統一的なユーザーインターフェース
+### 主な方針
+- **setopt**: defcustomで定義されたユーザー向け変数にsetoptを使用（Emacs 29.1導入）。内部defvar変数にはsetqを使用
+- **協調スレッド**: I/O待ちの重ね合わせによる効率化（Emacs 26導入）。CPU集約処理には効果がない点に注意
+- **ネイティブコンパイル**: defsubstによるインライン化。declareで有効なのは(pure t)と(side-effect-free t)のみ
+- **ミニバッファUI**: completing-readによる統一的なユーザーインターフェース
 - **スレッドセーフ**: mutexによる安全な並行アクセス
 - **原子的操作**: ファイルI/Oと状態管理の安全性向上
 
-これらにより、外部依存ゼロでありながらモダンなEmacs 30以上の能力を最大限活用できます。
+これらにより、外部依存ゼロでありながらEmacs標準機能を最大限活用する設計とする。

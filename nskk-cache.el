@@ -3,9 +3,8 @@
 ;; Copyright (C) 2024 NSKK Development Team
 
 ;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, cache
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 
@@ -72,12 +71,12 @@
   :prefix "nskk-cache-")
 
 (defcustom nskk-cache-default-capacity 1000
-  "デフォルトのキャッシュ容量（エントリ数）。"
+  "Default cache capacity in number of entries."
   :type 'integer
   :group 'nskk-cache)
 
 (defcustom nskk-cache-default-type 'lru
-  "デフォルトのキャッシュタイプ（'lru または 'lfu）。"
+  "Default cache type, either `lru' or `lfu'."
   :type '(choice (const :tag "LRU (Least Recently Used)" lru)
                  (const :tag "LFU (Least Frequently Used)" lfu))
   :group 'nskk-cache)
@@ -164,13 +163,7 @@
 
 ;;;###autoload
 (defun nskk-cache-lru-create (capacity)
-  "LRUキャッシュを作成する。
-
-引数:
-  CAPACITY - 最大容量（エントリ数）
-
-戻り値:
-  nskk-cache-lru構造体"
+  "Create an LRU cache with CAPACITY entries."
   (let* ((head (nskk-cache-lru-node--create))
          (tail (nskk-cache-lru-node--create)))
     ;; ダミーヘッドとテールを接続
@@ -186,21 +179,14 @@
      :misses 0)))
 
 (defsubst nskk-cache-lru--remove-node (node)
-  "ノードをリストから削除する（内部関数）。
-
-引数:
-  NODE - 削除するノード"
+  "Remove NODE from the doubly-linked list."
   (let ((prev-node (nskk-cache-lru-node-prev node))
         (next-node (nskk-cache-lru-node-next node)))
     (setf (nskk-cache-lru-node-next prev-node) next-node)
     (setf (nskk-cache-lru-node-prev next-node) prev-node)))
 
 (defsubst nskk-cache-lru--add-to-head (cache node)
-  "ノードをヘッドの直後に追加する（内部関数）。
-
-引数:
-  CACHE - LRUキャッシュ
-  NODE  - 追加するノード"
+  "Add NODE right after the head of CACHE."
   (let ((head (nskk-cache-lru-head cache))
         (next-node (nskk-cache-lru-node-next (nskk-cache-lru-head cache))))
     (setf (nskk-cache-lru-node-next node) next-node)
@@ -209,22 +195,12 @@
     (setf (nskk-cache-lru-node-prev next-node) node)))
 
 (defsubst nskk-cache-lru--move-to-head (cache node)
-  "ノードをヘッドの直後に移動する（内部関数）。
-
-引数:
-  CACHE - LRUキャッシュ
-  NODE  - 移動するノード"
+  "Move NODE to the head position in CACHE."
   (nskk-cache-lru--remove-node node)
   (nskk-cache-lru--add-to-head cache node))
 
 (defsubst nskk-cache-lru--remove-tail (cache)
-  "テールの直前のノードを削除する（内部関数）。
-
-引数:
-  CACHE - LRUキャッシュ
-
-戻り値:
-  削除されたノード"
+  "Remove and return the tail node from CACHE."
   (let* ((tail (nskk-cache-lru-tail cache))
          (node (nskk-cache-lru-node-prev tail)))
     (nskk-cache-lru--remove-node node)
@@ -232,14 +208,7 @@
 
 ;;;###autoload
 (defun nskk-cache-lru-get (cache key)
-  "LRUキャッシュから値を取得する。
-
-引数:
-  CACHE - LRUキャッシュ
-  KEY   - キー
-
-戻り値:
-  値（存在しない場合はnil）"
+  "Get value for KEY from LRU CACHE."
   (let ((node (gethash key (nskk-cache-lru-hash cache))))
     (if node
         (progn
@@ -253,12 +222,7 @@
 
 ;;;###autoload
 (defun nskk-cache-lru-put (cache key value)
-  "LRUキャッシュに値を追加する。
-
-引数:
-  CACHE - LRUキャッシュ
-  KEY   - キー
-  VALUE - 値"
+  "Put KEY and VALUE pair into LRU CACHE."
   (let ((node (gethash key (nskk-cache-lru-hash cache))))
     (if node
         ;; 既存エントリ：値を更新してヘッドに移動
@@ -278,14 +242,8 @@
 
 ;;;###autoload
 (defun nskk-cache-lru-invalidate (cache key)
-  "LRUキャッシュから特定のキーを無効化する。
-
-引数:
-  CACHE - LRUキャッシュ
-  KEY   - 無効化するキー
-
-戻り値:
-  削除された場合はt、存在しなかった場合はnil"
+  "Invalidate KEY in LRU CACHE.
+Return t if KEY was found and removed, nil otherwise."
   (let ((node (gethash key (nskk-cache-lru-hash cache))))
     (when node
       (nskk-cache-lru--remove-node node)
@@ -295,10 +253,7 @@
 
 ;;;###autoload
 (defun nskk-cache-lru-clear (cache)
-  "LRUキャッシュをクリアする。
-
-引数:
-  CACHE - LRUキャッシュ"
+  "Clear all entries from LRU CACHE."
   (clrhash (nskk-cache-lru-hash cache))
   (setf (nskk-cache-lru-size cache) 0)
   ;; ヘッドとテールを再接続
@@ -314,13 +269,7 @@
 
 ;;;###autoload
 (defun nskk-cache-lfu-create (capacity)
-  "LFUキャッシュを作成する。
-
-引数:
-  CAPACITY - 最大容量（エントリ数）
-
-戻り値:
-  nskk-cache-lfu構造体"
+  "Create an LFU cache with CAPACITY entries."
   (nskk-cache-lfu--create
    :capacity capacity
    :size 0
@@ -331,12 +280,7 @@
    :misses 0))
 
 (defsubst nskk-cache-lfu--update-freq (cache entry old-freq)
-  "エントリの頻度を更新する（内部関数）。
-
-引数:
-  CACHE    - LFUキャッシュ
-  ENTRY    - 更新するエントリ
-  OLD-FREQ - 古い頻度"
+  "Update frequency of ENTRY in LFU CACHE from OLD-FREQ."
   (let ((freq-table (nskk-cache-lfu-freq cache))
         (key (nskk-cache-lfu-entry-key entry))
         (new-freq (nskk-cache-lfu-entry-frequency entry)))
@@ -350,20 +294,13 @@
           ;; 最小頻度が削除された場合、更新
           (when (= old-freq (nskk-cache-lfu-min-freq cache))
             (setf (nskk-cache-lfu-min-freq cache) new-freq)))))
-    ;; 新しい頻度のリストに追加
+    ;; 新しい頻度のリストに追加（FIFO順序: 末尾に追加）
     (let ((keys (gethash new-freq freq-table)))
-      (puthash new-freq (cons key keys) freq-table))))
+      (puthash new-freq (append keys (list key)) freq-table))))
 
 ;;;###autoload
 (defun nskk-cache-lfu-get (cache key)
-  "LFUキャッシュから値を取得する。
-
-引数:
-  CACHE - LFUキャッシュ
-  KEY   - キー
-
-戻り値:
-  値（存在しない場合はnil）"
+  "Get value for KEY from LFU CACHE."
   (let ((entry (gethash key (nskk-cache-lfu-hash cache))))
     (if entry
         (progn
@@ -379,12 +316,7 @@
 
 ;;;###autoload
 (defun nskk-cache-lfu-put (cache key value)
-  "LFUキャッシュに値を追加する。
-
-引数:
-  CACHE - LFUキャッシュ
-  KEY   - キー
-  VALUE - 値"
+  "Put KEY and VALUE pair into LFU CACHE."
   (let ((entry (gethash key (nskk-cache-lfu-hash cache))))
     (if entry
         ;; 既存エントリ：値を更新して頻度を増やす
@@ -414,14 +346,8 @@
 
 ;;;###autoload
 (defun nskk-cache-lfu-invalidate (cache key)
-  "LFUキャッシュから特定のキーを無効化する。
-
-引数:
-  CACHE - LFUキャッシュ
-  KEY   - 無効化するキー
-
-戻り値:
-  削除された場合はt、存在しなかった場合はnil"
+  "Invalidate KEY in LFU CACHE.
+Return t if KEY was found and removed, nil otherwise."
   (let ((entry (gethash key (nskk-cache-lfu-hash cache))))
     (when entry
       (let* ((freq (nskk-cache-lfu-entry-frequency entry))
@@ -436,10 +362,7 @@
 
 ;;;###autoload
 (defun nskk-cache-lfu-clear (cache)
-  "LFUキャッシュをクリアする。
-
-引数:
-  CACHE - LFUキャッシュ"
+  "Clear all entries from LFU CACHE."
   (clrhash (nskk-cache-lfu-hash cache))
   (clrhash (nskk-cache-lfu-freq cache))
   (setf (nskk-cache-lfu-size cache) 0)
@@ -451,14 +374,8 @@
 
 ;;;###autoload
 (defun nskk-cache-create (&rest args)
-  "キャッシュを作成する。
-
-引数:
-  - TYPE と CAPACITY を順に渡す旧API形式
-  - キーワード引数 :type と :size/:capacity を渡す新API形式
-
-戻り値:
-  キャッシュ構造体（nskk-cache-lru または nskk-cache-lfu）"
+  "Create a cache.
+ARGS can be TYPE and CAPACITY positional, or keyword :type and :size/:capacity."
   (let ((cache-type nskk-cache-default-type)
         (cache-capacity nskk-cache-default-capacity))
     (cond
@@ -482,14 +399,7 @@
 
 ;;;###autoload
 (defun nskk-cache-get (cache key)
-  "キャッシュから値を取得する。
-
-引数:
-  CACHE - キャッシュ
-  KEY   - キー
-
-戻り値:
-  値（存在しない場合はnil）"
+  "Get value for KEY from CACHE."
   (cond
    ((nskk-cache-lru-p cache)
     (nskk-cache-lru-get cache key))
@@ -499,12 +409,7 @@
 
 ;;;###autoload
 (defun nskk-cache-put (cache key value)
-  "キャッシュに値を追加する。
-
-引数:
-  CACHE - キャッシュ
-  KEY   - キー
-  VALUE - 値"
+  "Put KEY and VALUE pair into CACHE."
   (cond
    ((nskk-cache-lru-p cache)
     (nskk-cache-lru-put cache key value))
@@ -514,14 +419,8 @@
 
 ;;;###autoload
 (defun nskk-cache-invalidate (cache key)
-  "キャッシュから特定のキーを無効化する。
-
-引数:
-  CACHE - キャッシュ
-  KEY   - 無効化するキー
-
-戻り値:
-  削除された場合はt、存在しなかった場合はnil"
+  "Invalidate KEY in CACHE.
+Return t if KEY was found and removed, nil otherwise."
   (cond
    ((nskk-cache-lru-p cache)
     (nskk-cache-lru-invalidate cache key))
@@ -531,10 +430,7 @@
 
 ;;;###autoload
 (defun nskk-cache-clear (cache)
-  "キャッシュをクリアする。
-
-引数:
-  CACHE - キャッシュ"
+  "Clear all entries from CACHE."
   (cond
    ((nskk-cache-lru-p cache)
     (nskk-cache-lru-clear cache))
@@ -544,14 +440,8 @@
 
 ;;;###autoload
 (defun nskk-cache-invalidate-pattern (cache pattern)
-  "パターンに一致するキーを無効化する。
-
-引数:
-  CACHE   - キャッシュ
-  PATTERN - 正規表現パターン
-
-戻り値:
-  削除されたキーのリスト"
+  "Invalidate all keys matching PATTERN in CACHE.
+Return a list of invalidated keys."
   (let ((deleted-keys nil)
         (hash-table (cond
                      ((nskk-cache-lru-p cache)
@@ -568,14 +458,7 @@
 
 ;;;###autoload
 (defun nskk-cache-stats (cache)
-  "キャッシュの統計情報を取得する。
-
-引数:
-  CACHE - キャッシュ
-
-戻り値:
-  統計情報のplist
-  (:type TYPE :capacity CAPACITY :size SIZE :hits HITS :misses MISSES :hit-rate RATE)"
+  "Return statistics plist for CACHE."
   (let* ((type (cond ((nskk-cache-lru-p cache) 'lru)
                      ((nskk-cache-lfu-p cache) 'lfu)
                      (t 'unknown)))
@@ -602,30 +485,18 @@
 
 ;;;###autoload
 (defun nskk-cache-hit-rate (cache)
-  "キャッシュのヒット率を返す後方互換API。"
+  "Return hit rate for CACHE as a float between 0.0 and 1.0."
   (plist-get (nskk-cache-stats cache) :hit-rate))
 
 ;;;###autoload
 (defun nskk-cache-p (cache)
-  "CACHEがキャッシュ構造体かどうかを判定する。
-
-引数:
-  CACHE - 判定対象のオブジェクト
-
-戻り値:
-  キャッシュ構造体の場合はt、それ以外はnil"
+  "Return non-nil if CACHE is a valid cache structure."
   (or (nskk-cache-lru-p cache)
       (nskk-cache-lfu-p cache)))
 
 ;;;###autoload
 (defun nskk-cache-size (cache)
-  "CACHEの現在のエントリ数を取得する。
-
-引数:
-  CACHE - キャッシュ
-
-戻り値:
-  現在のエントリ数（整数）"
+  "Return the current number of entries in CACHE."
   (cond
    ((nskk-cache-lru-p cache)
     (nskk-cache-lru-size cache))

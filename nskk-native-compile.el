@@ -1,11 +1,10 @@
-;;; nskk-native-compile.el --- Native compilation optimizations for NSKK -*- lexical-binding: t; -*-
+;;; nskk-native-compile.el --- Native compilation support for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
+;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, optimization, native-compile
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; Author: NSKK Developers
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
 ;; This file is part of NSKK.
 
@@ -24,438 +23,265 @@
 
 ;;; Commentary:
 
-;; このファイルはNSKKのネイティブコンパイル最適化機能を提供します。
-;;
-;; 主な機能:
-;; 1. JITコンパイラヒント最適化
-;; 2. プロファイルガイデッド最適化（PGO）
-;; 3. SIMD活用準備
-;; 4. 速度優先コンパイル設定
-;; 5. ネイティブコンパイルバッチ処理
-;;
-;; 目標:
-;; - ネイティブコード生成の最適化
-;; - 実行速度の向上（10x-100x）
-;; - 型情報の最大活用
-;;
-;; 使用例:
-;;   (nskk-native-compile-enable)
-;;   (nskk-native-compile-package)
-;;   (nskk-native-compile-with-pgo)
+;; Native compilation support for NSKK.
+;; Requires Emacs 28+ with native compilation enabled.
+
+;; This module provides:
+;; - Native compilation configuration
+;; - Compilation function declarations with type hints
+;; - Async compilation utilities
+;; - Performance monitoring
 
 ;;; Code:
 
-(require 'cl-lib)
+;;;; Requirements
 
-;;; カスタマイズ変数
+(eval-when-compile
+  (require 'cl-lib))
 
-(defgroup nskk-native-compile nil
-  "Native compilation optimization settings."
-  :group 'nskk
-  :prefix "nskk-native-compile-")
+;;;; Native Compilation Detection
 
-(defcustom nskk-native-compile-speed 3
-  "ネイティブコンパイルの速度優先度（0-3）。
-0: デバッグ優先
-1: バランス
-2: 速度重視
-3: 最大速度（デバッグ情報なし）"
-  :type '(choice (const :tag "Debug" 0)
-                 (const :tag "Balanced" 1)
-                 (const :tag "Speed" 2)
-                 (const :tag "Max Speed" 3))
-  :group 'nskk-native-compile)
-
-(defcustom nskk-native-compile-safety 0
-  "ネイティブコンパイルの安全性レベル（0-3）。
-0: 安全性チェックなし（最速）
-1: 最小限のチェック
-2: 標準的なチェック
-3: 完全なチェック（最遅）"
-  :type '(choice (const :tag "No checks" 0)
-                 (const :tag "Minimal checks" 1)
-                 (const :tag "Standard checks" 2)
-                 (const :tag "Full checks" 3))
-  :group 'nskk-native-compile)
-
-(defcustom nskk-native-compile-parallel-jobs 4
-  "並列コンパイルのジョブ数。"
-  :type 'integer
-  :group 'nskk-native-compile)
-
-;;; ネイティブコンパイル検出
-
-(defun nskk-native-compile-available-p ()
-  "ネイティブコンパイルが利用可能かどうかチェックする。
-
-返り値:
-  利用可能な場合はt、そうでない場合はnil"
+(defconst nskk-native-compile-available
   (and (fboundp 'native-comp-available-p)
-       (native-comp-available-p)))
+       (native-comp-available-p))
+  "Non-nil if native compilation is available.")
 
-(defun nskk-native-compile-enabled-p ()
-  "ネイティブコンパイルが有効かどうかチェックする。
+(defconst nskk-native-compile-enabled
+  (and nskk-native-compile-available
+       (featurep 'native-compile))
+  "Non-nil if native compilation is enabled.")
 
-返り値:
-  有効な場合はt、そうでない場合はnil"
-  (and (nskk-native-compile-available-p)
-       (or (and (boundp 'native-comp-enable-subr-trampolines)
-                native-comp-enable-subr-trampolines)
-           (and (boundp 'comp-deferred-compilation)
-                comp-deferred-compilation))))
+;;;; Native Compilation Configuration
 
-;;; JITコンパイラヒント
+(when nskk-native-compile-available
+  ;; Optimize native compilation for NSKK
+  (when (boundp 'native-comp-speed)
+    (setq native-comp-speed 3))
+  (when (boundp 'native-comp-debug)
+    (setq native-comp-debug 0))
+  (when (boundp 'native-comp-verbose)
+    (setq native-comp-verbose nil))
+  (when (boundp 'native-comp-async-report-warnings-errors)
+    (setq native-comp-async-report-warnings-errors nil))
+  (when (boundp 'native-comp-jit-compilation)
+    (setq native-comp-jit-compilation t))
+  (when (boundp 'native-comp-enable-subr-trampolines)
+    (setq native-comp-enable-subr-trampolines t)))
 
-(defmacro nskk-native-compile-hot-path (&rest body)
-  "ホットパス（頻繁に実行される部分）の最適化ヒント。
+;;;; Type Hints for Compiler
 
-引数:
-  BODY - 処理
+;; Input processing functions
+(declare-function nskk-convert-romaji "nskk-converter" t)
+(put 'nskk-convert-romaji 'side-effect-free t)
 
-返り値:
-  BODYの返り値
+;; State management functions
+(declare-function nskk-state-get-mode "nskk-state" t)
+(put 'nskk-state-get-mode 'side-effect-free t)
 
-最適化:
-  - JITコンパイラに対してこのコードが頻繁に実行されることを示唆"
-  (declare (indent 0))
-  `(progn ,@body))
+(declare-function nskk-state-set-mode "nskk-state" t)
+(put 'nskk-state-set-mode 'side-effect-free nil)
 
-(defmacro nskk-native-compile-cold-path (&rest body)
-  "コールドパス（稀に実行される部分）の最適化ヒント。
+;; Mode switching functions
+(declare-function nskk-switch-to-hiragana "nskk" t)
 
-引数:
-  BODY - 処理
+;; Conversion helper functions
+(declare-function nskk-core-hiragana-to-katakana "nskk-core" t)
+(put 'nskk-core-hiragana-to-katakana 'side-effect-free t)
 
-返り値:
-  BODYの返り値
+(declare-function nskk-core-katakana-to-hiragana "nskk-core" t)
+(put 'nskk-core-katakana-to-hiragana 'side-effect-free t)
 
-最適化:
-  - JITコンパイラに対してこのコードが稀にしか実行されないことを示唆"
-  (declare (indent 0))
-  `(progn ,@body))
+(declare-function nskk-core-hankaku-to-zenkaku "nskk-core" t)
+(put 'nskk-core-hankaku-to-zenkaku 'side-effect-free t)
 
-;;; 型ヒント
+(declare-function nskk-core-zenkaku-to-hankaku "nskk-core" t)
+(put 'nskk-core-zenkaku-to-hankaku 'side-effect-free t)
 
-(defmacro nskk-native-compile-type-hint (type var &rest body)
-  "変数の型ヒントを提供する。
+;;;; Compiler Macros for Native Compilation
 
-引数:
-  TYPE - 型（'string, 'number, 'vector など）
-  VAR  - 変数
-  BODY - 処理
+;; Note: nskk-converter-lookup is already defined as inline in nskk-converter.el
+;; No additional compiler macro needed here
 
-返り値:
-  BODYの返り値
+;; Note: nskk-char-alphabetic-p is not currently used in the codebase
+;; Compiler macro removed to avoid reference to undefined function
 
-最適化:
-  - ネイティブコンパイラに型情報を提供"
-  (declare (indent 2))
-  `(let ((,var (cl-the ,type ,var)))
-     ,@body))
+;;;; Async Compilation Utilities
 
-(defmacro nskk-native-compile-declare-string (var &rest body)
-  "VARが文字列であることを宣言する。
-
-引数:
-  VAR  - 変数
-  BODY - 処理
-
-返り値:
-  BODYの返り値"
-  (declare (indent 1))
-  `(nskk-native-compile-type-hint string ,var ,@body))
-
-(defmacro nskk-native-compile-declare-integer (var &rest body)
-  "VARが整数であることを宣言する。
-
-引数:
-  VAR  - 変数
-  BODY - 処理
-
-返り値:
-  BODYの返り値"
-  (declare (indent 1))
-  `(nskk-native-compile-type-hint integer ,var ,@body))
-
-;;; プロファイルガイデッド最適化（PGO）
-
-(defvar nskk-native-compile--pgo-data nil
-  "プロファイルガイデッド最適化用データ。
-形式: ((function-name . call-count) ...)")
-
-(defmacro nskk-native-compile-with-profiling (name &rest body)
-  "PGO用のプロファイリング付き実行。
-
-引数:
-  NAME - 関数名（シンボル）
-  BODY - 処理
-
-返り値:
-  BODYの返り値"
-  (declare (indent 1))
-  `(progn
-     (when nskk-native-compile--pgo-data
-       (let ((entry (assq ',name nskk-native-compile--pgo-data)))
-         (if entry
-             (cl-incf (cdr entry))
-           (push (cons ',name 1) nskk-native-compile--pgo-data))))
-     ,@body))
-
-(defun nskk-native-compile-pgo-start ()
-  "PGOプロファイリングを開始する。"
-  (interactive)
-  (setq nskk-native-compile--pgo-data nil)
-  (message "PGO profiling started"))
-
-(defun nskk-native-compile-pgo-stop ()
-  "PGOプロファイリングを停止する。"
-  (interactive)
-  (message "PGO profiling stopped. Collected %d entries"
-           (length nskk-native-compile--pgo-data)))
-
-(defun nskk-native-compile-pgo-report ()
-  "PGOプロファイリング結果を表示する。"
-  (interactive)
-  (if (null nskk-native-compile--pgo-data)
-      (message "No PGO data available")
-    (with-output-to-temp-buffer "*NSKK PGO Report*"
-      (princ "NSKK Profile-Guided Optimization Report\n")
-      (princ (make-string 60 ?=))
-      (princ "\n\n")
-      (princ (format "%-40s %15s\n" "Function" "Call Count"))
-      (princ (make-string 60 ?-))
-      (princ "\n")
-      (dolist (entry (sort (copy-sequence nskk-native-compile--pgo-data)
-                           (lambda (a b) (> (cdr a) (cdr b)))))
-        (princ (format "%-40s %15d\n" (car entry) (cdr entry)))))))
-
-;;; コンパイル設定
-
-(defun nskk-native-compile-set-optimization-level (speed safety)
-  "ネイティブコンパイルの最適化レベルを設定する。
-
-引数:
-  SPEED  - 速度優先度（0-3）
-  SAFETY - 安全性レベル（0-3）"
-  (when (nskk-native-compile-available-p)
-    (setq nskk-native-compile-speed speed
-          nskk-native-compile-safety safety)
-    ;; native-comp-speed と native-comp-debug の設定
-    (when (boundp 'native-comp-speed)
-      (setq native-comp-speed speed))
-    (when (boundp 'native-comp-debug)
-      (setq native-comp-debug (- 3 speed)))
-    (message "Native compile optimization: speed=%d, safety=%d" speed safety)))
-
-(defun nskk-native-compile-enable ()
-  "ネイティブコンパイルを有効にする。"
-  (interactive)
-  (unless (nskk-native-compile-available-p)
+(defun nskk-native-compile-async (&optional recursively load)
+  "Asynchronously compile NSKK files.
+If RECURSIVELY is non-nil, compile subdirectories too.
+If LOAD is non-nil, load compiled files after compilation."
+  (interactive "P")
+  (unless nskk-native-compile-available
     (error "Native compilation is not available in this Emacs build"))
 
-  ;; 遅延コンパイルを有効化
-  (when (boundp 'comp-deferred-compilation)
-    (setq comp-deferred-compilation t))
+  (let ((nskk-dir (file-name-directory (locate-library "nskk-native-compile"))))
+    (message "NSKK: Starting native compilation...")
+    (native-compile-async nskk-dir recursively load)
+    (message "NSKK: Native compilation scheduled")))
 
-  ;; サブルーチントランポリンを有効化
-  (when (boundp 'native-comp-enable-subr-trampolines)
-    (setq native-comp-enable-subr-trampolines t))
+(defun nskk-native-compile-refresh ()
+  "Recompile all NSKK files that have been modified."
+  (interactive)
+  (unless nskk-native-compile-available
+    (error "Native compilation is not available in this Emacs build"))
 
-  ;; 最適化レベルを設定
-  (nskk-native-compile-set-optimization-level
-   nskk-native-compile-speed
-   nskk-native-compile-safety)
+  (let ((nskk-dir (file-name-directory (locate-library "nskk-native-compile"))))
+    (message "NSKK: Refreshing native compilation...")
+    (native-compile-async nskk-dir t t) ; Recursively compile and load
+    (message "NSKK: Native compilation refresh scheduled")))
 
-  (message "Native compilation enabled"))
+;;;; Compilation Status Reporting
 
-;;; バッチコンパイル
+(defun nskk-native-compile-status ()
+  "Report native compilation status."
+  (interactive)
+  (message "=== NSKK Native Compilation Status ===")
+  (message "Native compilation available: %s"
+           (if nskk-native-compile-available "Yes" "No"))
+  (message "Native compilation enabled: %s"
+           (if nskk-native-compile-enabled "Yes" "No"))
+  (message "Native compilation speed: %d"
+           (if (bound-and-true-p native-comp-speed)
+               native-comp-speed
+             0))
+  (message "JIT compilation: %s"
+           (if (bound-and-true-p native-comp-jit-compilation) "Yes" "No"))
 
-(defun nskk-native-compile-file (file)
-  "指定されたファイルをネイティブコンパイルする。
+  (when nskk-native-compile-enabled
+    (let ((nskk-dir (file-name-directory (locate-library "nskk-native-compile"))))
+      (message "NSKK directory: %s" nskk-dir)
+      (message "Compiled files: %d"
+               (length (directory-files-recursively
+                        nskk-dir "\\.eln$" nil))))))
 
-引数:
-  FILE - コンパイルするファイルパス
+;;;; Performance Monitoring
 
-返り値:
-  コンパイル成功時はt、失敗時はnil"
-  (interactive "fFile to native compile: ")
-  (unless (nskk-native-compile-available-p)
+(defvar nskk--native-comp-baseline nil
+  "Baseline performance metrics before native compilation.")
+
+(defun nskk-native-compile-benchmark ()
+  "Benchmark NSKK with and without native compilation."
+  (interactive)
+  (unless nskk-native-compile-available
     (error "Native compilation is not available"))
 
-  (condition-case err
-      (progn
-        (when (fboundp 'native-compile)
-          (native-compile file)
-          (message "Native compiled: %s" file)
-          t))
-    (error
-     (message "Native compilation failed for %s: %s" file err)
-     nil)))
+  (message "NSKK: Running native compilation benchmark...")
 
-(defun nskk-native-compile-package ()
-  "NSKKパッケージ全体をネイティブコンパイルする。"
-  (interactive)
-  (unless (nskk-native-compile-available-p)
-    (error "Native compilation is not available"))
+  ;; Run benchmark suite
+  (let ((results (nskk--run-compile-benchmark)))
+    (nskk--report-benchmark results)))
 
-  (let* ((nskk-dir (file-name-directory (locate-library "nskk")))
-         (files (directory-files nskk-dir t "^nskk-.*\\.el$"))
-         (success-count 0)
-         (fail-count 0))
+(defun nskk--run-compile-benchmark ()
+  "Execute compilation benchmark suite."
+  (let ((results (make-hash-table :test 'equal)))
+    ;; Benchmark romaji conversion
+    (puthash 'romaji-conversion
+             (nskk--benchmark-function
+              (lambda () (nskk-convert-romaji "konnichiwa"))
+              1000)
+             results)
 
-    (message "Starting native compilation of %d files..." (length files))
+    ;; Benchmark mode switching
+    (puthash 'mode-switch
+             (nskk--benchmark-function
+              (lambda () (nskk-switch-to-hiragana))
+              100)
+             results)
 
-    (dolist (file files)
-      (if (nskk-native-compile-file file)
-          (cl-incf success-count)
-        (cl-incf fail-count)))
+    results))
 
-    (message "Native compilation completed: %d succeeded, %d failed"
-             success-count fail-count)
+(defun nskk--benchmark-function (func iterations)
+  "Benchmark FUNC over ITERATIONS run cycles."
+  (let ((times nil))
+    ;; Warmup
+    (dotimes (_ 10)
+      (funcall func))
 
-    (list :success success-count :failed fail-count)))
+    ;; Measurement
+    (dotimes (_ iterations)
+      (let ((start (current-time)))
+        (funcall func)
+        (push (float-time (time-subtract (current-time) start)) times)))
 
-;;; SIMD準備
+    ;; Calculate statistics
+    (let* ((sorted (sort times #'<))
+           (total (apply #'+ times))
+           (count (length times))
+           (mean (/ total count))
+           (median (nth (/ count 2) sorted))
+           (min-time (car sorted))
+           (max-time (car (last sorted))))
+      (list :mean mean
+            :median median
+            :min min-time
+            :max max-time
+            :iterations count))))
 
-(defmacro nskk-native-compile-simd-hint (&rest body)
-  "SIMD最適化のヒント（将来の拡張用）。
+(defun nskk--report-benchmark (results)
+  "Report benchmark RESULTS in a temporary buffer."
+  (with-output-to-temp-buffer "*NSKK Native Compile Benchmark*"
+    (princ "=== NSKK Native Compilation Benchmark ===\n\n")
 
-引数:
-  BODY - 処理
+    (maphash
+     (lambda (name data)
+       (princ (format "--- %s ---\n" name))
+       (princ (format "  Mean:   %.6f ms\n" (* 1000 (plist-get data :mean))))
+       (princ (format "  Median: %.6f ms\n" (* 1000 (plist-get data :median))))
+       (princ (format "  Min:    %.6f ms\n" (* 1000 (plist-get data :min))))
+       (princ (format "  Max:    %.6f ms\n" (* 1000 (plist-get data :max))))
+       (princ (format "  Runs:   %d\n\n" (plist-get data :iterations))))
+     results)))
 
-返り値:
-  BODYの返り値
+;;;; Optimization Hints for Native Compiler
 
-注意:
-  現在のEmacsではSIMDは直接サポートされていないが、
-  将来のネイティブコンパイラ拡張に備えてマーカーとして使用"
-  (declare (indent 0))
-  `(progn ,@body))
+;; Type declarations (using cl-deftype for better optimization)
+(cl-deftype nskk-string () 'string)
+(cl-deftype nskk-character () '(integer 0 1114111))
+(cl-deftype nskk-mode () '(member hiragana katakana ascii))
 
-;;; ベクトル化ヒント
+;;;; Compilation Warnings Suppression
 
-(defmacro nskk-native-compile-vectorize-loop (var sequence &rest body)
-  "ループのベクトル化ヒント。
+;; Suppress known warnings in native compilation
+(with-eval-after-load 'warnings
+  (add-to-list 'warning-suppress-types '(nskk)))
 
-引数:
-  VAR      - ループ変数
-  SEQUENCE - シーケンス
-  BODY     - 処理
+;;;; Initialize
 
-返り値:
-  最後のBODYの返り値
+(defun nskk-native-compile-initialize ()
+  "Initialize native compilation support for NSKK."
+  (when nskk-native-compile-available
+    (add-hook 'after-init-hook #'nskk-native-compile-async-refresh)))
 
-最適化:
-  - ネイティブコンパイラにベクトル化可能なループであることを示唆"
-  (declare (indent 2))
-  `(dolist (,var ,sequence)
-     ,@body))
+(defun nskk-native-compile-async-refresh ()
+  "Refresh native compilation on startup if needed."
+  (when nskk-native-compile-available
+    (let ((nskk-dir (file-name-directory (locate-library "nskk-native-compile"))))
+      ;; Check if any .el files are newer than their .eln counterparts
+      (let ((needs-recompile nil))
+        (dolist (el-file (directory-files-recursively nskk-dir "\\.el$"))
+          (let ((eln-file (concat el-file "n")))
+            (when (or (not (file-exists-p eln-file))
+                      (file-newer-than-file-p el-file eln-file))
+              (setq needs-recompile t)
+              (cl-return))))
+        (when needs-recompile
+          (nskk-native-compile-refresh))))))
 
-;;; インライン化強制
+;;;; Auto-compilation on Save
 
-(defmacro nskk-native-compile-force-inline (name args &rest body)
-  "関数のインライン化を強制する。
+(defun nskk-native-compile-after-save ()
+  "Automatically recompile after saving NSKK files."
+  (when (and nskk-native-compile-available
+             (buffer-file-name)
+             (string-match-p "nskk-.*\\.el\\'" (buffer-file-name)))
+    (let ((eln-file (concat (buffer-file-name) "n")))
+      (when (file-exists-p eln-file)
+        (native-compile-async (buffer-file-name))))))
 
-引数:
-  NAME - 関数名
-  ARGS - 引数リスト
-  BODY - 関数本体
+(add-hook 'after-save-hook #'nskk-native-compile-after-save)
 
-特徴:
-  - defsubstを使用
-  - ネイティブコンパイラに対してインライン化を強く推奨"
-  (declare (indent defun))
-  `(eval-and-compile
-     (defsubst ,name ,args
-       ,@body)))
-
-;;; コンパイルキャッシュ管理
-
-(defun nskk-native-compile-clear-cache ()
-  "ネイティブコンパイルキャッシュをクリアする。"
-  (interactive)
-  (when (and (nskk-native-compile-available-p)
-             (boundp 'native-comp-eln-load-path))
-    (let ((cache-dir (car native-comp-eln-load-path)))
-      (when (file-directory-p cache-dir)
-        (dolist (file (directory-files cache-dir t "^nskk-.*\\.eln$"))
-          (delete-file file))
-        (message "Native compile cache cleared")))))
-
-;;; 診断
-
-(defun nskk-native-compile-check-status ()
-  "ネイティブコンパイルの状態をチェックする。
-
-返り値:
-  plist
-    :available         - 利用可能か
-    :enabled           - 有効か
-    :speed             - 速度優先度
-    :safety            - 安全性レベル
-    :deferred          - 遅延コンパイル有効か
-    :trampolines       - トランポリン有効か
-    :compiled-files    - コンパイル済みファイル数"
-  (list :available (nskk-native-compile-available-p)
-        :enabled (nskk-native-compile-enabled-p)
-        :speed (if (boundp 'native-comp-speed) native-comp-speed 0)
-        :safety nskk-native-compile-safety
-        :deferred (and (boundp 'comp-deferred-compilation)
-                      comp-deferred-compilation)
-        :trampolines (and (boundp 'native-comp-enable-subr-trampolines)
-                         native-comp-enable-subr-trampolines)
-        :compiled-files (nskk-native-compile--count-compiled-files)))
-
-(defun nskk-native-compile--count-compiled-files ()
-  "コンパイル済みのNSKKファイル数を数える。
-
-返り値:
-  コンパイル済みファイル数"
-  (if (and (nskk-native-compile-available-p)
-           (boundp 'native-comp-eln-load-path))
-      (let ((cache-dir (car native-comp-eln-load-path)))
-        (if (file-directory-p cache-dir)
-            (length (directory-files cache-dir nil "^nskk-.*\\.eln$"))
-          0))
-    0))
-
-(defun nskk-native-compile-show-status ()
-  "ネイティブコンパイルの状態を表示する。"
-  (interactive)
-  (let ((status (nskk-native-compile-check-status)))
-    (with-output-to-temp-buffer "*NSKK Native Compile Status*"
-      (princ "NSKK Native Compilation Status\n")
-      (princ (make-string 60 ?=))
-      (princ "\n\n")
-      (princ (format "Available:         %s\n"
-                    (if (plist-get status :available) "Yes" "No")))
-      (princ (format "Enabled:           %s\n"
-                    (if (plist-get status :enabled) "Yes" "No")))
-      (princ (format "Speed:             %d\n" (plist-get status :speed)))
-      (princ (format "Safety:            %d\n" (plist-get status :safety)))
-      (princ (format "Deferred:          %s\n"
-                    (if (plist-get status :deferred) "Yes" "No")))
-      (princ (format "Trampolines:       %s\n"
-                    (if (plist-get status :trampolines) "Yes" "No")))
-      (princ (format "Compiled Files:    %d\n"
-                    (plist-get status :compiled-files))))))
-
-;;; 統計情報
-
-(defun nskk-native-compile-stats ()
-  "ネイティブコンパイル最適化の統計情報を返す。
-
-返り値:
-  plist
-    :available       - 利用可能か
-    :enabled         - 有効か
-    :optimization    - 最適化設定
-    :pgo-entries     - PGOエントリ数"
-  (list :available (nskk-native-compile-available-p)
-        :enabled (nskk-native-compile-enabled-p)
-        :optimization (list :speed nskk-native-compile-speed
-                           :safety nskk-native-compile-safety)
-        :pgo-entries (length nskk-native-compile--pgo-data)))
+;;;; Provide
 
 (provide 'nskk-native-compile)
 

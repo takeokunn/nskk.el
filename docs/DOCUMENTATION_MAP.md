@@ -1,38 +1,62 @@
-# NSKK ドキュメントマップ
+# NSKK Documentation Map
 
-## 概要
+## Document Metadata
 
-このドキュメントは、NSKKのドキュメント体系へのナビゲーションガイドです。[Diátaxisフレームワーク](https://diataxis.fr/)に基づいて体系化されたドキュメントを、ユーザーの目的とレベルに応じて見つけることができます。
+| Attribute | Value |
+|-----------|-------|
+| **Version** | 2.0.0 |
+| **Last Updated** | 2026-02-22 |
+| **Framework** | Diátaxis (diataxis.fr) |
+| **ddskk Compatibility Coverage** | 82% |
+| **Total Documents** | 29 |
 
-## Diátaxis分類による文書体系
+## Overview
+
+This document serves as a navigation guide for the NSKK documentation system. Based on the [Diátaxis framework](https://diataxis.fr/), the documentation is organized to help you find relevant content based on your purpose and skill level.
+
+## Diátaxis Documentation Structure
 
 ```mermaid
 graph TB
-    subgraph "学習指向 (Tutorial)"
-        T1[getting-started.md<br/>初心者向け完全ガイド]
+    subgraph "Learning-oriented (Tutorial)"
+        T1[getting-started.md<br/>Beginner's guide]
+        T2[getting-started-v0.1.md<br/>v0.1 tutorial]
+        T3[basic-usage.md<br/>Basic usage]
+        T4[customization.md<br/>Customization]
+        T5[troubleshooting.md<br/>Troubleshooting]
     end
 
-    subgraph "問題解決指向 (How-to)"
-        H1[customize-input-behavior.md<br/>入力動作カスタマイズ]
-        H2[advanced-customization.md<br/>カスタマイゼーション]
-        H3[contributing.md<br/>コントリビューションガイド]
+    subgraph "Problem-oriented (How-to)"
+        H1[customize-input-behavior.md<br/>Input behavior customization]
+        H2[migrate-from-ddskk.md<br/>Migrate from ddskk]
+        H3[contributing.md<br/>Contribution guide]
     end
 
-    subgraph "情報指向 (Reference)"
-        R1[api-reference.md<br/>API仕様]
+    subgraph "Information-oriented (Reference)"
+        R1[api-reference.md<br/>API specification]
+        R2[api-v0.1.md<br/>API specification v0.1]
+        R3[ddskk-compatibility-specification.md<br/>ddskk compatibility spec]
+        R4[ddskk-ui-checklist.md<br/>ddskk UI comparison checklist]
+        R5[ddskk-keymap-diff-log.md<br/>ddskk keymap diff log]
     end
 
-    subgraph "理解指向 (Explanation)"
-        E1[design-philosophy.md<br/>設計哲学]
-        E2[comprehensive-architecture-overview.md<br/>総合アーキテクチャ]
-        E3[skk-comprehensive-feature-analysis.md<br/>SKK機能分析]
-        E4[zero-dependency-strategy.md<br/>外部依存ゼロ戦略]
-        E5[emacs-lisp-best-practices.md<br/>Emacs Lispベストプラクティス]
-        E6[performance-benchmarks.md<br/>パフォーマンス・ベンチマーク]
-        E7[tdd-pbt-strategy.md<br/>TDD/PBT戦略]
-        E8[macro-architecture.md<br/>マクロアーキテクチャ]
-        E9[performance-optimization.md<br/>パフォーマンス調整]
-        E10[extensible-architecture.md<br/>拡張可能アーキテクチャ]
+    subgraph "Understanding-oriented (Explanation)"
+        E1[design-philosophy.md<br/>Design philosophy]
+        E2[architecture-v0.1.md<br/>Architecture v0.1]
+        E3[7-layer-architecture.md<br/>7-layer architecture]
+        E4[zero-dependency-strategy.md<br/>Zero dependency strategy]
+        E5[emacs-lisp-best-practices.md<br/>Emacs Lisp best practices]
+        E6[performance-benchmarks.md<br/>Performance benchmarks]
+        E7[tdd-pbt-strategy.md<br/>TDD/PBT strategy]
+        E8[macro-architecture.md<br/>Macro architecture]
+        E9[performance-optimization.md<br/>Performance optimization]
+        E10[candidate-window-implementation.md<br/>Candidate window design]
+        E11[completion-implementation-report.md<br/>Completion design]
+        E12[server-implementation.md<br/>Server design]
+        E13[track-s-minibuffer-ui-implementation.md<br/>Minibuffer UI design]
+        E14[track-q-implementation-report.md<br/>Track Q design]
+        E15[usability-report.md<br/>Usability evaluation]
+        E16[security-audit-report.md<br/>Security design & principles]
     end
 
     classDef tutorial fill:#e3f2fd
@@ -40,163 +64,200 @@ graph TB
     classDef reference fill:#fff3e0
     classDef explanation fill:#f3e5f5
 
-    class T1 tutorial
+    class T1,T2,T3,T4,T5 tutorial
     class H1,H2,H3 howto
-    class R1 reference
-    class E1,E2,E3,E4,E5,E6,E7,E8,E9,E10 explanation
+    class R1,R2,R3,R4,R5 reference
+    class E1,E2,E3,E4,E5,E6,E7,E8,E9,E10,E11,E12,E13,E14,E15,E16 explanation
 ```
 
-## ユーザー別ナビゲーション
+## User-specific Navigation
 
-### 🚀 初心者向け（NSKKを始める）
+### 🚀 For Beginners (Getting Started with NSKK)
 
-**目標**: NSKKの基本機能を習得し、日常的に使えるようになる
-
-```
-1. 📖 [Tutorial: 始めよう](tutorial/getting-started.md)
-   ↓ 基本操作をマスター
-2. 📚 [設計哲学を理解](explanation/design-philosophy.md)
-   ↓ NSKKの考え方を理解
-3. 🔧 [入力動作カスタマイズ](how-to/customize-input-behavior.md)
-   ↓ 個人設定を調整
-4. 📋 [API リファレンス](reference/api-reference.md)
-   ↓ 必要に応じて参照
-```
-
-### 🛠️ 中級者向け（カスタマイズ・拡張）
-
-**目標**: NSKKを自分の用途に最適化し、高度な機能を活用
+**Goal**: Master basic NSKK functionality for daily use
 
 ```
-1. 🏗️ [総合アーキテクチャ理解](explanation/comprehensive-architecture-overview.md)
-   ↓ システム全体を把握
-2. ⚙️ [高度カスタマイゼーション](how-to/advanced-customization.md)
-   ↓ 詳細設定をマスター
-3. 🔬 [SKK機能分析](explanation/skk-comprehensive-feature-analysis.md)
-   ↓ 利用可能な全機能を理解
-4. 🚀 [パフォーマンス最適化](explanation/performance-optimization.md)
-   ↓ 高速化テクニックを適用
-5. 🔌 [拡張可能アーキテクチャ](explanation/extensible-architecture.md)
-   ↓ プラグイン・カスタマイゼーション
+1. 📖 [Tutorial: Getting Started](tutorial/getting-started.md)
+   ↓ Master basic operations
+2. 📚 [Understand Design Philosophy](explanation/design-philosophy.md)
+   ↓ Understand NSKK concepts
+3. 🔧 [Customize Input Behavior](how-to/customize-input-behavior.md)
+   ↓ Adjust personal settings
+4. 📋 [API Reference](reference/api-reference.md)
+   ↓ Refer as needed
 ```
 
-### 👨‍💻 開発者向け（開発・貢献）
+**🔄 For ddskk Users**: If you're an existing ddskk user, please refer to the [Migration Guide from ddskk](how-to/migrate-from-ddskk.md) first.
 
-**目標**: NSKKの開発に参加し、高品質なコードを書く
+### 🛠️ For Intermediate Users (Customization & Extension)
 
-```
-1. 🤝 [コントリビューションガイド](how-to/contributing.md)
-   ↓ 開発プロセスを理解
-2. 💎 [Emacs Lispベストプラクティス](explanation/emacs-lisp-best-practices.md)
-   ↓ コーディング規約をマスター
-3. 🧪 [TDD/PBT戦略](explanation/tdd-pbt-strategy.md)
-   ↓ テスト手法を習得
-4. ⏱️ [パフォーマンス・ベンチマーク](explanation/performance-benchmarks.md)
-   ↓ 性能評価手法を理解
-5. 🏛️ [マクロアーキテクチャ](explanation/macro-architecture.md)
-   ↓ 高度な実装技術を習得
-6. 🎯 [外部依存ゼロ戦略](explanation/zero-dependency-strategy.md)
-   ↓ 独立性維持手法を学習
-```
-
-### 🏢 上級者・研究者向け（深層理解）
-
-**目標**: NSKKの技術的深層を理解し、改善を提案
+**Goal**: Optimize NSKK for your needs and leverage advanced features
 
 ```
-すべてのExplanationドキュメントを読破:
-1. [設計哲学](explanation/design-philosophy.md)
-2. [総合アーキテクチャ概観](explanation/comprehensive-architecture-overview.md)
-3. [SKK機能分析](explanation/skk-comprehensive-feature-analysis.md)
-4. [外部依存ゼロ戦略](explanation/zero-dependency-strategy.md)
-5. [Emacs Lispベストプラクティス](explanation/emacs-lisp-best-practices.md)
-6. [パフォーマンス・ベンチマーク](explanation/performance-benchmarks.md)
-7. [TDD/PBT戦略](explanation/tdd-pbt-strategy.md)
-8. [マクロアーキテクチャ](explanation/macro-architecture.md)
-9. [パフォーマンス最適化](explanation/performance-optimization.md)
-10. [拡張可能アーキテクチャ](explanation/extensible-architecture.md)
+1. [Architecture v0.1](explanation/architecture-v0.1.md)
+   ↓ Understand the whole system
+2. [7-Layer Architecture](explanation/7-layer-architecture.md)
+   ↓ Deep dive into architecture
+3. [Customization Guide](tutorial/customization.md)
+   ↓ Master detailed settings
+4. [Performance Optimization](explanation/performance-optimization.md)
+   ↓ Apply speed optimization techniques
 ```
 
-## 目的別クイックリファレンス
+**🔄 For ddskk Intermediate Users**: Check the [ddskk Compatibility Specification](reference/ddskk-compatibility-specification.md) for detailed feature mapping and refer to the [Migration Guide](how-to/migrate-from-ddskk.md) for advanced migration scenarios.
 
-### ⚡ 即座に問題解決したい
+### 👨‍💻 For Developers (Development & Contribution)
 
-| 状況 | 参照ドキュメント | 予想時間 |
-|------|----------------|----------|
-| NSKKが動かない | [Tutorial: トラブルシューティング](tutorial/getting-started.md#トラブルシューティング) | 5分 |
-| カスタマイズしたい | [入力動作カスタマイズ](how-to/customize-input-behavior.md) | 15分 |
-| 関数仕様を知りたい | [API リファレンス](reference/api-reference.md) | 2分 |
-| 性能問題がある | [パフォーマンス最適化](explanation/performance-optimization.md) | 30分 |
-| 開発に参加したい | [コントリビューションガイド](how-to/contributing.md) | 20分 |
+**Goal**: Participate in NSKK development and write high-quality code
 
-### 🎯 特定技術領域を深く理解したい
+```
+1. 🤝 [Contribution Guide](how-to/contributing.md)
+   ↓ Understand development process
+2. 💎 [Emacs Lisp Best Practices](explanation/emacs-lisp-best-practices.md)
+   ↓ Master coding conventions
+3. 🧪 [TDD/PBT Strategy](explanation/tdd-pbt-strategy.md)
+   ↓ Learn testing methodology
+4. ⏱️ [Performance Benchmarks](explanation/performance-benchmarks.md)
+   ↓ Understand performance evaluation
+5. 🏛️ [Macro Architecture](explanation/macro-architecture.md)
+   ↓ Master advanced implementation techniques
+6. 🎯 [Zero Dependency Strategy](explanation/zero-dependency-strategy.md)
+   ↓ Learn independence maintenance
+7. 🔒 [Security Audit Report](explanation/security-audit-report.md)
+   ↓ Understand security considerations
+```
 
-| 技術領域 | 主要ドキュメント | 副次ドキュメント |
-|----------|----------------|----------------|
-| **アーキテクチャ** | [総合アーキテクチャ概観](explanation/comprehensive-architecture-overview.md) | [拡張可能アーキテクチャ](explanation/extensible-architecture.md) |
-| **パフォーマンス** | [パフォーマンス・ベンチマーク](explanation/performance-benchmarks.md) | [パフォーマンス最適化](explanation/performance-optimization.md) |
-| **実装技術** | [Emacs Lispベストプラクティス](explanation/emacs-lisp-best-practices.md) | [マクロアーキテクチャ](explanation/macro-architecture.md) |
-| **品質保証** | [TDD/PBT戦略](explanation/tdd-pbt-strategy.md) | [コントリビューションガイド](how-to/contributing.md) |
-| **設計思想** | [設計哲学](explanation/design-philosophy.md) | [外部依存ゼロ戦略](explanation/zero-dependency-strategy.md) |
+### 🏢 For Experts & Researchers (Deep Understanding)
 
-### 🔧 実践的作業を進めたい
+**Goal**: Deep technical understanding and improvement proposals
 
-| 作業内容 | 手順書 | 所要時間 |
-|----------|--------|----------|
-| **初期セットアップ** | [Tutorial: ステップ1-2](tutorial/getting-started.md#ステップ1-nskkのインストールと最適化設定) | 30分 |
-| **基本操作習得** | [Tutorial: ステップ3-6](tutorial/getting-started.md#ステップ3-高速入力システムの習得) | 60分 |
-| **高度カスタマイズ** | [高度カスタマイゼーション全体](how-to/advanced-customization.md) | 120分 |
-| **プラグイン開発** | [高度カスタマイゼーション: プラグインシステム](how-to/advanced-customization.md#プラグインシステム) | 90分 |
-| **性能チューニング** | [高度カスタマイゼーション: パフォーマンスチューニング](how-to/advanced-customization.md#パフォーマンスチューニング) | 45分 |
+```
+Read all Explanation documents:
+1. [Design Philosophy](explanation/design-philosophy.md)
+2. [Architecture v0.1](explanation/architecture-v0.1.md)
+3. [7-Layer Architecture](explanation/7-layer-architecture.md)
+4. [Zero Dependency Strategy](explanation/zero-dependency-strategy.md)
+5. [Emacs Lisp Best Practices](explanation/emacs-lisp-best-practices.md)
+6. [Performance Benchmarks](explanation/performance-benchmarks.md)
+7. [TDD/PBT Strategy](explanation/tdd-pbt-strategy.md)
+8. [Macro Architecture](explanation/macro-architecture.md)
+9. [Performance Optimization](explanation/performance-optimization.md)
+10. Implementation Design Documents:
+    - [Candidate Window Design](explanation/candidate-window-implementation.md)
+    - [Completion Design](explanation/completion-implementation-report.md)
+    - [Server Design](explanation/server-implementation.md)
+    - [Minibuffer UI Design](explanation/track-s-minibuffer-ui-implementation.md)
+    - [Track Q Design](explanation/track-q-implementation-report.md)
+11. [Usability Report](explanation/usability-report.md)
+```
 
-## ドキュメント品質指標
+## Quick Reference by Purpose
 
-### 📊 完全性評価
+### ⚡ Need Immediate Problem Solving
 
-| カテゴリ | ドキュメント数 | 網羅度 | 品質スコア |
-|----------|----------------|--------|------------|
-| **Tutorial** | 1 | 100% | ⭐⭐⭐⭐⭐ |
-| **How-to** | 3 | 95% | ⭐⭐⭐⭐⭐ |
-| **Reference** | 1 | 100% | ⭐⭐⭐⭐⭐ |
-| **Explanation** | 10 | 100% | ⭐⭐⭐⭐⭐ |
-| **総合** | 15 | 98% | ⭐⭐⭐⭐⭐ |
+| Situation | Reference Document | Estimated Time |
+|-----------|-------------------|----------------|
+| NSKK not working | [Tutorial: Troubleshooting](tutorial/troubleshooting.md) | 5 min |
+| Want to customize | [Input Behavior Customization](how-to/customize-input-behavior.md) | 15 min |
+| Migrating from ddskk | [Migration Guide from ddskk](how-to/migrate-from-ddskk.md) | 30 min |
+| Need function specs | [API Reference](reference/api-reference.md) | 2 min |
+| Check ddskk compatibility | [ddskk Compatibility Specification](reference/ddskk-compatibility-specification.md) | 10 min |
+| Compare UI with ddskk | [ddskk UI Checklist](reference/ddskk-ui-checklist.md) | 5 min |
+| Check keymap differences | [ddskk Keymap Diff Log](reference/ddskk-keymap-diff-log.md) | 5 min |
+| Performance issues | [Performance Optimization](explanation/performance-optimization.md) | 30 min |
+| Want to contribute | [Contribution Guide](how-to/contributing.md) | 20 min |
+| Security concerns | [Security Audit Report](explanation/security-audit-report.md) | 15 min |
 
-### 🎯 特徴的な強み
+### 🎯 Deep Understanding of Specific Technical Areas
 
-1. **網羅性**: SKK機能からアーキテクチャまで幅広く対応
-2. **実践性**: 段階的学習から高度なカスタマイズまで対応
-3. **技術深度**: マクロ活用から外部依存ゼロまでの技術解説
-4. **品質保証**: TDD/PBTからベンチマークまでの仕組み
-5. **視覚化**: mermaidダイアグラムによる理解促進
+| Technical Area | Primary Documents | Secondary Documents |
+|----------------|-------------------|---------------------|
+| **Architecture** | [Architecture v0.1](explanation/architecture-v0.1.md) | [7-Layer Architecture](explanation/7-layer-architecture.md), [Track Q Design](explanation/track-q-implementation-report.md) |
+| **Performance** | [Performance Benchmarks](explanation/performance-benchmarks.md) | [Performance Optimization](explanation/performance-optimization.md) |
+| **Implementation** | [Emacs Lisp Best Practices](explanation/emacs-lisp-best-practices.md) | [Macro Architecture](explanation/macro-architecture.md) |
+| **Quality Assurance** | [TDD/PBT Strategy](explanation/tdd-pbt-strategy.md) | [Contribution Guide](how-to/contributing.md) |
+| **Design Philosophy** | [Design Philosophy](explanation/design-philosophy.md) | [Zero Dependency Strategy](explanation/zero-dependency-strategy.md) |
+| **Compatibility** | [ddskk Compatibility Specification](reference/ddskk-compatibility-specification.md) | [Migration from ddskk](how-to/migrate-from-ddskk.md), [UI Checklist](reference/ddskk-ui-checklist.md) |
+| **UI Implementation** | [Candidate Window Design](explanation/candidate-window-implementation.md) | [Completion Design](explanation/completion-implementation-report.md), [Minibuffer UI Design](explanation/track-s-minibuffer-ui-implementation.md) |
+| **Server Implementation** | [Server Design](explanation/server-implementation.md) | - |
 
-## 学習パス推奨
+### 🔧 Practical Tasks
 
-### 🌟 推奨学習パス
+| Task | Guide | Estimated Time |
+|------|-------|----------------|
+| **Initial Setup** | [Tutorial: Steps 1-2](tutorial/getting-started.md#step-1-installation-and-optimization) | 30 min |
+| **Master Basic Operations** | [Tutorial: Steps 3-6](tutorial/getting-started.md#step-3-learn-fast-input-system) | 60 min |
+| **Advanced Customization** | [Customization Guide](tutorial/customization.md) | 60 min |
+| **Performance Tuning** | [Performance Optimization](explanation/performance-optimization.md) | 45 min |
+| **Migrate from ddskk** | [Migration Guide](how-to/migrate-from-ddskk.md) | 30-60 min |
+| **Verify ddskk Compatibility** | [UI Checklist](reference/ddskk-ui-checklist.md) | 15 min |
+
+## Documentation Quality Metrics
+
+### 📊 Completeness Evaluation
+
+| Category | Document Count |
+|----------|----------------|
+| **Tutorial** | 5 |
+| **How-to** | 3 |
+| **Reference** | 5 |
+| **Explanation** | 16 |
+| **Total** | 29 |
+
+### 📊 ddskk Compatibility Coverage
+
+| Level | Coverage | Status |
+|-------|----------|--------|
+| **Level 1: Core** | 100% | ✅ Fully Compatible |
+| **Level 2: Standard** | 85% | 🟡 Some Differences |
+| **Level 3: Extended** | 60% | ⚠️ Planned |
+| **Overall** | 82% | 🟢 Practical Level |
+
+See [ddskk Compatibility Specification](reference/ddskk-compatibility-specification.md) for details.
+
+### 🎯 Key Strengths
+
+1. **Comprehensive**: Covers from SKK features to architecture
+2. **Practical**: Supports from gradual learning to advanced customization
+3. **Technical Depth**: From macro usage to zero dependency strategy
+4. **Quality Assurance**: From TDD/PBT to benchmarking
+5. **Visualization**: Mermaid diagrams for understanding
+6. **Compatibility**: ddskk compatibility documentation for smooth migration
+
+## Recommended Learning Paths
+
+### 🌟 Recommended Learning Path
 
 ```mermaid
 flowchart TD
-    START([NSKKドキュメント開始]) --> LEVEL{現在のレベル}
+    START([Start NSKK Documentation]) --> LEVEL{Current Level}
 
-    LEVEL -->|初心者| TUTORIAL[Tutorial: 始めよう]
-    LEVEL -->|中級者| ARCH[総合アーキテクチャ理解]
-    LEVEL -->|開発者| CONTRIB[コントリビューションガイド]
+    LEVEL -->|Beginner| TUTORIAL[Tutorial: Getting Started]
+    LEVEL -->|Intermediate| ARCH[Architecture Understanding]
+    LEVEL -->|Developer| CONTRIB[Contribution Guide]
+    LEVEL -->|ddskk User| MIGRATE[Migration from ddskk]
 
-    TUTORIAL --> PHIL[設計哲学理解]
-    PHIL --> CUSTOM[入力動作カスタマイズ]
-    CUSTOM --> API[APIリファレンス参照]
+    TUTORIAL --> PHIL[Design Philosophy]
+    PHIL --> CUSTOM[Input Behavior Customization]
+    CUSTOM --> API[API Reference]
 
-    ARCH --> ADV_CUSTOM[高度カスタマイゼーション]
-    ADV_CUSTOM --> PERF[パフォーマンス最適化]
-    PERF --> EXT[拡張可能アーキテクチャ]
+    ARCH --> SEVEN_LAYER[7-Layer Architecture]
+    SEVEN_LAYER --> ADV_CUSTOM[Customization Guide]
+    ADV_CUSTOM --> PERF[Performance Optimization]
 
-    CONTRIB --> PRACTICES[Emacs Lispベストプラクティス]
-    PRACTICES --> TDD[TDD/PBT戦略]
-    TDD --> BENCHMARK[パフォーマンス・ベンチマーク]
-    BENCHMARK --> MACRO[マクロアーキテクチャ]
+    CONTRIB --> PRACTICES[Emacs Lisp Best Practices]
+    PRACTICES --> TDD[TDD/PBT Strategy]
+    TDD --> BENCHMARK[Performance Benchmarks]
+    BENCHMARK --> MACRO[Macro Architecture]
+    MACRO --> SECURITY[Security Audit]
 
-    API --> MASTERY[NSKKマスター]
-    EXT --> MASTERY
-    MACRO --> MASTERY
+    MIGRATE --> COMPAT[Compatibility Specification]
+    COMPAT --> UI_CHECK[UI Checklist]
+    UI_CHECK --> API
+
+    API --> MASTERY[NSKK Mastery]
+    PERF --> MASTERY
+    SECURITY --> MASTERY
 
     classDef startEnd fill:#ff9999
     classDef decision fill:#99ccff
@@ -207,71 +268,72 @@ flowchart TD
 
     class START,MASTERY startEnd
     class LEVEL decision
-    class TUTORIAL tutorial
-    class CUSTOM,ADV_CUSTOM,CONTRIB howto
-    class API reference
-    class PHIL,ARCH,PERF,EXT,PRACTICES,TDD,BENCHMARK,MACRO explanation
+    class TUTORIAL,ADV_CUSTOM tutorial
+    class CONTRIB,CUSTOM,MIGRATE howto
+    class API,COMPAT,UI_CHECK reference
+    class PHIL,ARCH,SEVEN_LAYER,PERF,PRACTICES,TDD,BENCHMARK,MACRO,SECURITY explanation
 ```
 
-### 📈 習熟度別目標設定
+### 📈 Skill Level Goals
 
-#### レベル1: 基本ユーザー (10時間)
-- ✅ 基本操作の習得
-- ✅ 設定ファイルのカスタマイズ
-- ✅ 日常利用での快適性確保
+#### Level 1: Basic User (10 hours)
+- ✅ Master basic operations
+- ✅ Customize configuration files
+- ✅ Ensure comfort for daily use
 
-#### レベル2: パワーユーザー (25時間)
-- ✅ 高度機能の活用
-- ✅ 個人最適化の実現
-- ✅ プラグイン・拡張の理解
+#### Level 2: Power User (25 hours)
+- ✅ Leverage advanced features
+- ✅ Achieve personal optimization
+- ✅ Understand plugins and extensions
 
-#### レベル3: 開発者 (50時間)
-- ✅ コード貢献能力の習得
-- ✅ テスト・品質保証の実践
-- ✅ アーキテクチャ深層理解
+#### Level 3: Developer (50 hours)
+- ✅ Acquire code contribution skills
+- ✅ Practice testing and quality assurance
+- ✅ Deep understanding of architecture
 
-#### レベル4: エキスパート (100時間)
-- ✅ 新機能・改善の提案
-- ✅ パフォーマンス最適化の実践
-- ✅ NSKKの技術的リーダーシップ
+#### Level 4: Expert (100 hours)
+- ✅ Propose new features and improvements
+- ✅ Practice performance optimization
+- ✅ Technical leadership in NSKK
 
-## メンテナンス・更新方針
+## Maintenance & Update Policy
 
-### 🔄 継続的改善
+### 🔄 Continuous Improvement
 
-| 更新サイクル | 対象 | 更新内容 |
-|------------|------|---------|
-| **毎週** | API Reference | 最新実装の反映 |
-| **毎月** | Tutorial/How-to | ユーザーフィードバック反映 |
-| **四半期** | Explanation | 新技術・改善手法の追加 |
-| **半年** | 全体構造 | Diátaxis準拠度の見直し |
+| Update Cycle | Target | Content |
+|--------------|--------|---------|
+| **Weekly** | API Reference | Reflect latest implementation |
+| **Monthly** | Tutorial/How-to | Incorporate user feedback |
+| **Quarterly** | Explanation | Add new technologies and improvements |
+| **Semi-annually** | Overall Structure | Review Diátaxis compliance |
 
-### 📝 ドキュメント品質保証
+### 📝 Documentation Quality Assurance
 
-1. **技術査読**: 実装との整合性確認
-2. **ユーザビリティテスト**: 実際の使用感検証
-3. **アクセシビリティチェック**: 多様なレベルへの対応
-4. **国際化対応**: 多言語展開の準備
+1. **Technical Review**: Verify consistency with implementation
+2. **Usability Testing**: Verify actual user experience
+3. **Accessibility Check**: Support for diverse skill levels
+4. **Internationalization**: Prepare for multi-language support
 
-## 結論
+## Conclusion
 
-NSKKドキュメント体系は、以下を実現しています：
+The NSKK documentation system achieves:
 
-### ✅ 網羅性
-- SKK機能からアーキテクチャまで幅広く対応
-- 初心者から上級者まで各レベルに対応
-- 学習・実践・参照・理解の目的をサポート
+### ✅ Comprehensiveness
+- Covers from SKK features to architecture
+- Supports from beginners to experts
+- Supports learning, practice, reference, and understanding purposes
+- Assists ddskk user migration (82% compatibility)
 
-### ✅ 実用性
-- 段階的学習パスの提供
-- 目的別クイックアクセス
-- 実践的な例とテンプレート
+### ✅ Practicality
+- Provides gradual learning paths
+- Quick access by purpose
+- Practical examples and templates
 
-### ✅ 技術的品質
-- ベストプラクティスの反映
-- 技術実装の説明
-- 継続的品質改善体制
+### ✅ Technical Quality
+- Reflects best practices
+- Explains technical implementation
+- Continuous quality improvement system
 
-このドキュメントマップを活用して、あなたの目的と現在のレベルに適した学習・実践パスを見つけ、NSKKの機能を活用してください。
+Use this documentation map to find the learning and practice path suitable for your goals and current level, and leverage NSKK's functionality.
 
 **🚀 Welcome to the NSKK Documentation Universe!**

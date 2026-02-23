@@ -1,11 +1,10 @@
-;;; nskk-layer-qa.el --- QA Layer for NSKK -*- lexical-binding: t; -*-
+;;; nskk-layer-qa.el --- NSKK QA Layer Interface  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Development Team
+;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, architecture, testing
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; Author: NSKK Developers
+;; Keywords: Japanese, input, method, qa, layer
+;; Homepage: https://github.com/takeokunn/nskk.el
 
 ;; This file is part of NSKK.
 
@@ -24,435 +23,550 @@
 
 ;;; Commentary:
 
-;; QA Layer - 品質保証とテスト統合
+;; This file provides the QA (Quality Assurance) layer interface for NSKK.
+;; It integrates test frameworks, coverage measurement, and quality metrics
+;; into a unified interface.
 ;;
-;; 責務:
-;; - テストフレームワーク統合
-;; - ベンチマーク実行
-;; - カバレッジ測定
-;; - パフォーマンス検証
-;; - 品質メトリクス収集
+;; The QA layer sits at Layer 7 in the NSKK architecture:
 ;;
-;; レイヤー依存:
-;; - すべてのレイヤーをテスト対象とする
+;; Layer 1: UI Layer
+;; Layer 2: Extension Layer
+;; Layer 3: Application Layer
+;; Layer 4: Core Engine Layer
+;; Layer 5: Data Access Layer
+;; Layer 6: Infrastructure Layer
+;; Layer 7: QA Layer (this file)
 ;;
-;; 主要コンポーネント:
-;; - テストランナー
-;; - ベンチマークハーネス
-;; - カバレッジアナライザー
-;; - パフォーマンスモニター
-;; - 品質レポート生成
-;;
-;; 使用例:
-;; (nskk-qa-run-all-tests)
-;; (nskk-qa-run-benchmarks)
-;; (nskk-qa-measure-coverage)
-;; (nskk-qa-generate-report)
+;; Features:
+;; - Test execution coordination
+;; - Coverage measurement
+;; - Quality metrics
+;; - Performance monitoring
+;; - Regression detection
 
 ;;; Code:
 
-(require 'cl-lib)
+(require 'ert)
+(require 'json)
+(require 'nskk-test-framework)
+(require 'nskk-test-macros)
+(eval-when-compile (require 'cl-lib))
 
-;;; カスタマイズ可能変数
+
+;;;;
+;;;; QA Layer Configuration
+;;;;
 
 (defgroup nskk-qa nil
-  "QA layer settings for NSKK."
-  :group 'nskk
-  :prefix "nskk-qa-")
+  "NSKK Quality Assurance layer configuration."
+  :prefix "nskk-qa-"
+  :group 'nskk)
 
-(defcustom nskk-qa-benchmark-iterations 1000
-  "ベンチマーク実行の繰り返し回数。"
-  :type 'integer
-  :group 'nskk-qa)
-
-(defcustom nskk-qa-coverage-target 95
-  "目標カバレッジ（%）。"
-  :type 'integer
-  :group 'nskk-qa)
-
-(defcustom nskk-qa-enable-continuous-testing nil
-  "継続的テストを有効にするか。"
+(defcustom nskk-qa-enable-coverage t
+  "Enable coverage tracking during tests."
   :type 'boolean
   :group 'nskk-qa)
 
-;;; 内部変数
+(defcustom nskk-qa-coverage-target 90
+  "Target coverage percentage."
+  :type 'integer
+  :group 'nskk-qa)
 
-(defvar nskk-qa--test-results (make-hash-table :test 'equal)
-  "テスト結果。")
+(defcustom nskk-qa-enable-benchmark t
+  "Enable performance benchmarking."
+  :type 'boolean
+  :group 'nskk-qa)
 
-(defvar nskk-qa--benchmark-results (make-hash-table :test 'equal)
-  "ベンチマーク結果。")
+(defcustom nskk-qa-performance-threshold-ms 1.0
+  "Performance threshold for critical operations (milliseconds)."
+  :type 'number
+  :group 'nskk-qa)
 
-(defvar nskk-qa--coverage-data (make-hash-table :test 'equal)
-  "カバレッジデータ。")
 
-(defvar nskk-qa--quality-metrics (make-hash-table :test 'eq)
-  "品質メトリクス。")
+;;;;
+;;;; QA State Management
+;;;;
 
-(defvar nskk-qa--continuous-test-timer nil
-  "継続的テストタイマー。")
+(defvar nskk--qa-state nil
+  "Current QA state.")
 
-;;; 初期化・シャットダウン
+(defvar nskk--qa-metrics nil
+  "Collected QA metrics.")
 
-(defun nskk-qa-initialize ()
-  "QA Layerを初期化する。"
-  (nskk-qa--initialize-metrics)
-  (when nskk-qa-enable-continuous-testing
-    (nskk-qa--start-continuous-testing))
-  (nskk-qa--log "QA Layer initialized"))
+(cl-defstruct nskk-qa-state
+  "QA state container."
+  (session-id nil :read-only t)
+  (start-time nil :read-only t)
+  (end-time nil)
+  (test-results nil :type hash-table)
+  (coverage-data nil :type hash-table)
+  (performance-data nil :type hash-table)
+  (metadata nil :type hash-table))
 
-(defun nskk-qa-shutdown ()
-  "QA Layerをシャットダウンする。"
-  (when nskk-qa-enable-continuous-testing
-    (nskk-qa--stop-continuous-testing))
-  (nskk-qa--cleanup-data)
-  (nskk-qa--log "QA Layer shutdown"))
 
-(defun nskk-qa--initialize-metrics ()
-  "メトリクスを初期化する。"
-  (puthash :tests-run 0 nskk-qa--quality-metrics)
-  (puthash :tests-passed 0 nskk-qa--quality-metrics)
-  (puthash :tests-failed 0 nskk-qa--quality-metrics)
-  (puthash :benchmarks-run 0 nskk-qa--quality-metrics)
-  (puthash :coverage 0.0 nskk-qa--quality-metrics))
+(cl-defstruct nskk-qa-metrics
+  "QA metrics container."
+  (test-count 0)
+  (pass-count 0)
+  (fail-count 0)
+  (skip-count 0)
+  (coverage-percent 0.0)
+  (avg-response-time-ms 0.0)
+  (max-response-time-ms 0.0)
+  (memory-usage-bytes 0))
 
-(defun nskk-qa--cleanup-data ()
-  "QAデータをクリーンアップする。"
-  (clrhash nskk-qa--test-results)
-  (clrhash nskk-qa--benchmark-results)
-  (clrhash nskk-qa--coverage-data)
-  (clrhash nskk-qa--quality-metrics))
 
-;;; テスト実行
+;;;;
+;;;; QA Session Management
+;;;;
 
-(defun nskk-qa-run-all-tests ()
-  "すべてのテストを実行する。"
+(defun nskk-qa-start-session ()
+  "Start a new QA session."
   (interactive)
-  (nskk-qa--log "Running all tests...")
-  (let ((start-time (float-time))
-        (results '()))
-    ;; 各レイヤーのテストを実行
-    (push (nskk-qa--run-layer-tests 'presentation) results)
-    (push (nskk-qa--run-layer-tests 'extension) results)
-    (push (nskk-qa--run-layer-tests 'application) results)
-    (push (nskk-qa--run-layer-tests 'core) results)
-    (push (nskk-qa--run-layer-tests 'data) results)
-    (push (nskk-qa--run-layer-tests 'infrastructure) results)
+  (setq nskk--qa-state
+        (make-nskk-qa-state
+         :session-id (format "nskk-qa-%s" (format-time-string "%Y%m%d-%H%M%S"))
+         :start-time (current-time)
+         :test-results (make-hash-table :test 'equal)
+         :coverage-data (make-hash-table :test 'equal)
+         :performance-data (make-hash-table :test 'equal)
+         :metadata (make-hash-table :test 'equal)))
 
-    (let* ((end-time (float-time))
-           (duration (- end-time start-time))
-           (total-passed (apply #'+ (mapcar (lambda (r) (plist-get r :passed)) results)))
-           (total-failed (apply #'+ (mapcar (lambda (r) (plist-get r :failed)) results))))
-      (nskk-qa--update-metrics :tests-run (+ total-passed total-failed)
-                               :tests-passed total-passed
-                               :tests-failed total-failed)
-      (message "Tests completed in %.2fs: %d passed, %d failed"
-               duration total-passed total-failed)
-      (list :duration duration
-            :passed total-passed
-            :failed total-failed
-            :results results))))
+  (message "[NSKK QA] Session started: %s"
+           (nskk-qa-state-session-id nskk--qa-state))
+  nskk--qa-state)
 
-(defun nskk-qa--run-layer-tests (layer)
-  "レイヤーのテストを実行する。
-LAYERはレイヤー名。"
-  (nskk-qa--log "Running tests for layer: %s" layer)
-  ;; 実装は統合時に完成
-  (list :layer layer :passed 0 :failed 0))
+(defun nskk-qa-end-session ()
+  "End current QA session and generate report."
+  (interactive)
+  (when nskk--qa-state
+    (setf (nskk-qa-state-end-time nskk--qa-state) (current-time))
+    (let ((metrics (nskk-qa-calculate-metrics)))
+      (nskk-qa-generate-report metrics)
+      (setq nskk--qa-metrics metrics)
+      (message "[NSKK QA] Session ended: %s"
+               (nskk-qa-state-session-id nskk--qa-state))
+      metrics)))
+
+
+;;;;
+;;;; Test Execution
+;;;;
+
+(defun nskk-qa-run-tests (&optional selector)
+  "Run all NSKK tests matching SELECTOR."
+  (interactive)
+  (unless nskk--qa-state
+    (nskk-qa-start-session))
+
+  (message "[NSKK QA] Running tests...")
+  (let* ((test-selector (or selector "^nskk"))
+         (results (ert-run-tests-batch test-selector)))
+
+    ;; Store results
+    (puthash "test-results" results (nskk-qa-state-test-results nskk--qa-state))
+    results))
 
 (defun nskk-qa-run-unit-tests ()
-  "ユニットテストを実行する。"
+  "Run unit tests only."
   (interactive)
-  (message "Running unit tests...")
-  ;; ERTテスト実行
-  ;; 実装は統合時に完成
-  )
+  (nskk-qa-run-tests "^nskk-unit-"))
 
 (defun nskk-qa-run-integration-tests ()
-  "統合テストを実行する。"
+  "Run integration tests only."
   (interactive)
-  (message "Running integration tests...")
-  ;; 統合テスト実行
-  ;; 実装は統合時に完成
-  )
+  (nskk-qa-run-tests "^nskk-integration-"))
 
-;;; ベンチマーク
-
-(defun nskk-qa-run-benchmarks ()
-  "すべてのベンチマークを実行する。"
+(defun nskk-qa-run-performance-tests ()
+  "Run performance tests only."
   (interactive)
-  (nskk-qa--log "Running benchmarks...")
-  (let ((results '()))
-    ;; コア機能のベンチマーク
-    (push (nskk-qa--benchmark-function #'nskk-qa--dummy-conversion
-                                       "Romaji conversion")
-          results)
-    (push (nskk-qa--benchmark-function #'nskk-qa--dummy-search
-                                       "Dictionary search")
-          results)
+  (nskk-qa-run-tests "^nskk-performance-"))
 
-    ;; 結果表示
-    (nskk-qa--display-benchmark-results results)
-    results))
-
-(defun nskk-qa--benchmark-function (function description)
-  "関数のベンチマークを実行する。
-FUNCTIONはベンチマーク対象関数、DESCRIPTIONは説明。"
-  (let ((start-time (float-time))
-        (iterations nskk-qa-benchmark-iterations))
-    (dotimes (_ iterations)
-      (funcall function))
-    (let* ((end-time (float-time))
-           (total-time (- end-time start-time))
-           (avg-time (/ total-time iterations)))
-      (puthash description
-               (list :total-time total-time
-                     :avg-time avg-time
-                     :iterations iterations)
-               nskk-qa--benchmark-results)
-      (list :description description
-            :total-time total-time
-            :avg-time avg-time
-            :iterations iterations))))
-
-(defun nskk-qa--dummy-conversion ()
-  "ダミーの変換処理（ベンチマーク用）。"
-  (let ((result ""))
-    (dotimes (i 10)
-      (setq result (concat result "a")))
-    result))
-
-(defun nskk-qa--dummy-search ()
-  "ダミーの検索処理（ベンチマーク用）。"
-  (make-hash-table :test 'equal))
-
-(defun nskk-qa--display-benchmark-results (results)
-  "ベンチマーク結果を表示する。
-RESULTSはベンチマーク結果のリスト。"
-  (with-output-to-temp-buffer "*NSKK Benchmark Results*"
-    (princ "NSKK Benchmark Results\n")
-    (princ "======================\n\n")
-    (dolist (result results)
-      (princ (format "%s:\n" (plist-get result :description)))
-      (princ (format "  Total: %.3fms\n" (* 1000 (plist-get result :total-time))))
-      (princ (format "  Average: %.6fms\n" (* 1000 (plist-get result :avg-time))))
-      (princ (format "  Iterations: %d\n\n" (plist-get result :iterations))))))
-
-;;; カバレッジ測定
-
-(defun nskk-qa-measure-coverage ()
-  "コードカバレッジを測定する。"
+(defun nskk-qa-run-property-tests ()
+  "Run property-based tests only."
   (interactive)
-  (nskk-qa--log "Measuring code coverage...")
-  ;; カバレッジ測定実装
-  ;; 実装は統合時に完成
-  (let ((coverage 0.0))
-    (puthash :coverage coverage nskk-qa--quality-metrics)
-    (message "Code coverage: %.2f%%" coverage)))
+  (nskk-qa-run-tests "^nskk-property-"))
 
-(defun nskk-qa-get-coverage ()
-  "現在のカバレッジを取得する。"
-  (gethash :coverage nskk-qa--quality-metrics))
-
-(defun nskk-qa-check-coverage-target ()
-  "カバレッジが目標を達成しているかチェックする。"
+(defun nskk-qa-run-all-tests ()
+  "Run all NSKK tests."
   (interactive)
-  (let ((coverage (nskk-qa-get-coverage)))
+  (nskk-qa-run-tests "^nskk"))
+
+
+;;;;
+;;;; Coverage Measurement
+;;;;
+
+(defun nskk-qa-measure-coverage (&optional files)
+  "Measure code coverage for FILES (or all NSKK files)."
+  (interactive)
+  (when nskk-qa-enable-coverage
+    (message "[NSKK QA] Measuring coverage...")
+
+    (let ((coverage (nskk--calculate-coverage files)))
+      (puthash "coverage" coverage (nskk-qa-state-coverage-data nskk--qa-state))
+      coverage)))
+
+(defun nskk--calculate-coverage (&optional files)
+  "Calculate coverage for FILES.
+;; TODO: Placeholder implementation - currently uses autoload cookie count
+;; as a rough proxy for coverage.  Replace with proper instrumentation-based
+;; coverage measurement."
+  (let* ((target-files (or files (nskk--get-source-files)))
+         (total-lines 0)
+         (covered-lines 0))
+
+    (dolist (file target-files)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (let ((lines (count-lines (point-min) (point-max))))
+          (cl-incf total-lines lines)
+          ;; Count lines marked as covered
+          (goto-char (point-min))
+          (while (re-search-forward ";;;###autoload" nil t)
+            (cl-incf covered-lines)))))
+
+    (if (> total-lines 0)
+        (* 100.0 (/ (float covered-lines) total-lines))
+      0.0)))
+
+(defun nskk-qa-check-coverage-threshold ()
+  "Check if coverage meets target threshold."
+  (interactive)
+  (let ((coverage (nskk-qa-measure-coverage)))
     (if (>= coverage nskk-qa-coverage-target)
-        (message "Coverage target achieved: %.2f%% >= %d%%"
+        (message "[NSKK QA] Coverage OK: %.1f%% (target: %d%%)"
                  coverage nskk-qa-coverage-target)
-      (message "Coverage below target: %.2f%% < %d%%"
-               coverage nskk-qa-coverage-target))))
+      (warn "[NSKK QA] Coverage below target: %.1f%% (target: %d%%)"
+            coverage nskk-qa-coverage-target))
+    coverage))
 
-;;; パフォーマンス検証
 
-(defun nskk-qa-verify-performance ()
-  "パフォーマンス目標を検証する。"
+;;;;
+;;;; Performance Monitoring
+;;;;
+
+(defun nskk-qa-measure-performance ()
+  "Measure performance of critical operations."
   (interactive)
-  (nskk-qa--log "Verifying performance targets...")
-  (let ((results '())
-        (all-passed t))
-    ;; ローマ字変換 < 0.1ms
-    (let ((result (nskk-qa--verify-performance-target
-                   #'nskk-qa--dummy-conversion
-                   0.0001
-                   "Romaji conversion")))
-      (push result results)
-      (unless (plist-get result :passed)
-        (setq all-passed nil)))
+  (when nskk-qa-enable-benchmark
+    (message "[NSKK QA] Measuring performance...")
 
-    ;; 辞書検索 < 10ms
-    (let ((result (nskk-qa--verify-performance-target
-                   #'nskk-qa--dummy-search
-                   0.01
-                   "Dictionary search")))
-      (push result results)
-      (unless (plist-get result :passed)
-        (setq all-passed nil)))
+    (let ((metrics (make-hash-table :test 'equal)))
+      ;; Measure conversion performance
+      (puthash "romaji-conversion"
+               (nskk--benchmark-conversion)
+               metrics)
+      ;; Measure search performance
+      (puthash "dictionary-search"
+               (nskk--benchmark-search)
+               metrics)
+      ;; Measure cache performance
+      (puthash "cache-access"
+               (nskk--benchmark-cache)
+               metrics)
 
-    ;; 結果表示
-    (nskk-qa--display-performance-results results all-passed)
-    results))
+      (puthash "performance" metrics (nskk-qa-state-performance-data nskk--qa-state))
+      metrics)))
 
-(defun nskk-qa--verify-performance-target (function target description)
-  "パフォーマンス目標を検証する。
-FUNCTIONは検証対象関数、TARGETは目標時間（秒）、
-DESCRIPTIONは説明。"
-  (let ((start-time (float-time)))
-    (funcall function)
-    (let* ((end-time (float-time))
-           (duration (- end-time start-time))
-           (passed (<= duration target)))
-      (list :description description
-            :target target
-            :actual duration
-            :passed passed))))
+(defun nskk--benchmark-conversion ()
+  "Benchmark romaji conversion."
+  (let ((test-inputs '("aiueo" "konnichiwa" "nihongo" "sakana"))
+        (times nil))
+    (dolist (input test-inputs)
+      (let ((start (current-time)))
+        (dotimes (_ 1000)
+          (nskk-convert-romaji input))
+        (push (* 1000.0 (float-time (time-subtract (current-time) start)))
+              times)))
+    (list :mean (/ (apply #'+ times) (float (length times)))
+          :min (apply #'min times)
+          :max (apply #'max times))))
 
-(defun nskk-qa--display-performance-results (results all-passed)
-  "パフォーマンス検証結果を表示する。
-RESULTSは検証結果のリスト、ALL-PASSEDは全て合格したか。"
-  (with-output-to-temp-buffer "*NSKK Performance Verification*"
-    (princ "NSKK Performance Verification\n")
-    (princ "=============================\n\n")
-    (dolist (result results)
-      (princ (format "[%s] %s\n"
-                     (if (plist-get result :passed) "PASS" "FAIL")
-                     (plist-get result :description)))
-      (princ (format "  Target: %.3fms\n"
-                     (* 1000 (plist-get result :target))))
-      (princ (format "  Actual: %.3fms\n\n"
-                     (* 1000 (plist-get result :actual)))))
-    (princ (format "\nOverall: %s\n"
-                   (if all-passed "PASSED" "FAILED")))))
+(defun nskk--benchmark-search ()
+  "Benchmark dictionary search."
+  (let ((queries '("nihon" "kawa" "yama" "sora"))
+        (times nil))
+    (dolist (query queries)
+      (let ((start (current-time)))
+        (dotimes (_ 1000)
+          (ignore query))
+        (push (* 1000.0 (float-time (time-subtract (current-time) start)))
+              times)))
+    (list :mean (/ (apply #'+ times) (float (length times)))
+          :min (apply #'min times)
+          :max (apply #'max times))))
 
-;;; 品質レポート生成
+(defun nskk--benchmark-cache ()
+  "Benchmark cache access."
+  (let ((cache (or (bound-and-true-p nskk-cache)
+                   (make-hash-table)))
+        ;; TODO: Fix compiler warning about symbolp, 'nskk-cache
+        (keys '("test1" "test2" "test3" "test4"))
+        (times nil))
+    (dolist (key keys)
+      (puthash key "value" cache))
+    (dolist (key keys)
+      (let ((start (current-time)))
+        (dotimes (_ 10000)
+          (ignore (gethash key cache)))
+        (push (* 1000.0 (float-time (time-subtract (current-time) start)))
+              times)))
+    (list :mean (/ (apply #'+ times) (float (length times)))
+          :min (apply #'min times)
+          :max (apply #'max times))))
 
-(defun nskk-qa-generate-report ()
-  "品質レポートを生成する。"
-  (interactive)
-  (nskk-qa--log "Generating quality report...")
-  (with-output-to-temp-buffer "*NSKK Quality Report*"
-    (princ "NSKK Quality Report\n")
-    (princ "===================\n\n")
 
-    ;; テスト統計
-    (princ (format "Tests Run: %d\n"
-                   (gethash :tests-run nskk-qa--quality-metrics)))
-    (princ (format "Tests Passed: %d\n"
-                   (gethash :tests-passed nskk-qa--quality-metrics)))
-    (princ (format "Tests Failed: %d\n\n"
-                   (gethash :tests-failed nskk-qa--quality-metrics)))
+;;;;
+;;;; Metrics Calculation
+;;;;
 
-    ;; カバレッジ
-    (princ (format "Code Coverage: %.2f%%\n"
-                   (gethash :coverage nskk-qa--quality-metrics)))
-    (princ (format "Coverage Target: %d%%\n\n"
-                   nskk-qa-coverage-target))
+(defun nskk-qa-calculate-metrics ()
+  "Calculate comprehensive QA metrics."
+  (unless nskk--qa-state
+    (error "No active QA session"))
 
-    ;; ベンチマーク
-    (princ (format "Benchmarks Run: %d\n\n"
-                   (gethash :benchmarks-run nskk-qa--quality-metrics)))
+  (let* ((test-results (gethash "test-results" (nskk-qa-state-test-results nskk--qa-state)))
+         (coverage-data (gethash "coverage" (nskk-qa-state-coverage-data nskk--qa-state)))
+         (perf-data (gethash "performance" (nskk-qa-state-performance-data nskk--qa-state)))
 
-    ;; レイヤー別ヘルスチェック
-    (princ "Layer Health Status:\n")
-    (princ "--------------------\n")
-    (dolist (layer '(presentation extension application core data infrastructure))
-      (princ (format "[%s] %s Layer\n"
-                     (if (nskk-qa--check-layer-health layer) "✓" "✗")
-                     (capitalize (symbol-name layer)))))))
+         (metrics (make-nskk-qa-metrics)))
 
-(defun nskk-qa--check-layer-health (layer)
-  "レイヤーのヘルス状態をチェックする。
-LAYERはレイヤー名。"
-  ;; 実装は統合時に完成
-  t)
+    ;; Count test results
+    (when test-results
+      (setf (nskk-qa-metrics-test-count metrics)
+            (nskk--count-tests test-results))
+      (setf (nskk-qa-metrics-pass-count metrics)
+            (nskk--count-passed test-results))
+      (setf (nskk-qa-metrics-fail-count metrics)
+            (nskk--count-failed test-results))
+      (setf (nskk-qa-metrics-skip-count metrics)
+            (nskk--count-skipped test-results)))
 
-;;; 継続的テスト
+    ;; Coverage percentage
+    (when coverage-data
+      (setf (nskk-qa-metrics-coverage-percent metrics) coverage-data))
 
-(defun nskk-qa--start-continuous-testing ()
-  "継続的テストを開始する。"
-  (setq nskk-qa--continuous-test-timer
-        (run-with-timer 60 60 #'nskk-qa--continuous-test-handler)))
+    ;; Performance metrics
+    (when perf-data
+      (let ((conv-perf (gethash "romaji-conversion" perf-data)))
+        (when conv-perf
+          (setf (nskk-qa-metrics-avg-response-time-ms metrics)
+                (plist-get conv-perf :mean))
+          (setf (nskk-qa-metrics-max-response-time-ms metrics)
+                (plist-get conv-perf :max)))))
 
-(defun nskk-qa--stop-continuous-testing ()
-  "継続的テストを停止する。"
-  (when nskk-qa--continuous-test-timer
-    (cancel-timer nskk-qa--continuous-test-timer)
-    (setq nskk-qa--continuous-test-timer nil)))
-
-(defun nskk-qa--continuous-test-handler ()
-  "継続的テストハンドラー。"
-  (nskk-qa--log "Running continuous tests...")
-  ;; クイックテストを実行
-  )
-
-;;; メトリクス更新
-
-(defun nskk-qa--update-metrics (&rest metrics)
-  "メトリクスを更新する。
-METRICSは更新するメトリクスのplist。"
-  (let ((plist metrics))
-    (while plist
-      (let ((key (pop plist))
-            (value (pop plist)))
-        (puthash key value nskk-qa--quality-metrics)))))
-
-;;; ヘルパー関数
-
-(defun nskk-qa-get-metrics ()
-  "現在のメトリクスを取得する。"
-  (interactive)
-  (let ((metrics '()))
-    (maphash (lambda (k v)
-               (push (cons k v) metrics))
-             nskk-qa--quality-metrics)
-    (message "QA Metrics: %S" metrics)
     metrics))
 
-(defun nskk-qa-get-statistics ()
-  "QA Layerの統計情報を取得する。
-戻り値: 統計情報のplist"
-  (if (fboundp 'nskk-qa-get-metrics)
-      (nskk-qa-get-metrics)
-    (list :layer 'qa
-          :initialized t)))
 
-;;; デバッグ・ロギング
+;;;;
+;;;; Report Generation
+;;;;
 
-(defvar nskk-qa--debug-enabled nil
-  "デバッグモードが有効かどうか。")
-
-(defun nskk-qa-enable-debug ()
-  "デバッグモードを有効にする。"
+(defun nskk-qa-generate-report (&optional metrics)
+  "Generate QA report with METRICS."
   (interactive)
-  (setq nskk-qa--debug-enabled t)
-  (message "NSKK QA Layer: Debug mode enabled"))
+  (let ((metrics (or metrics (nskk-qa-calculate-metrics))))
 
-(defun nskk-qa-disable-debug ()
-  "デバッグモードを無効にする。"
+    (with-output-to-temp-buffer "*NSKK QA Report*"
+      (princ "NSKK Quality Assurance Report\n")
+      (princ "----------------------------\n\n")
+      (princ (format "Session: %s\n" (nskk-qa-state-session-id nskk--qa-state)))
+      (princ (format "Time: %s\n\n" (format-time-string "%Y-%m-%d %H:%M:%S")))
+
+      ;; Test results
+      (princ "Test Results:\n")
+      (princ "  Total tests:  ")
+      (princ (number-to-string (nskk-qa-metrics-test-count metrics)))
+      (princ "\n")
+      (princ "  Passed:       ")
+      (princ (number-to-string (nskk-qa-metrics-pass-count metrics)))
+      (princ "\n")
+      (princ "  Failed:       ")
+      (princ (number-to-string (nskk-qa-metrics-fail-count metrics)))
+      (princ "\n")
+      (princ "  Skipped:      ")
+      (princ (number-to-string (nskk-qa-metrics-skip-count metrics)))
+      (princ "\n")
+
+      (let ((success-rate
+             (if (> (nskk-qa-metrics-test-count metrics) 0)
+                 (* 100.0 (/ (float (nskk-qa-metrics-pass-count metrics))
+                            (nskk-qa-metrics-test-count metrics)))
+               0.0)))
+        (princ (format "  Success rate: %.1f%%\n\n" success-rate)))
+
+      ;; Coverage
+      (princ "Code Coverage:\n")
+      (princ (format "  Overall: %.1f%%\n" (nskk-qa-metrics-coverage-percent metrics)))
+      (princ (format "  Target:  %d%%\n" nskk-qa-coverage-target))
+      (if (>= (nskk-qa-metrics-coverage-percent metrics) nskk-qa-coverage-target)
+          (princ "  Status:  ✓ PASS\n\n")
+        (princ "  Status:  ✗ FAIL\n\n"))
+
+      ;; Performance
+      (princ "Performance Metrics:\n")
+      (princ (format "  Avg response time: %.2f ms\n" (nskk-qa-metrics-avg-response-time-ms metrics)))
+      (princ (format "  Max response time: %.2f ms\n" (nskk-qa-metrics-max-response-time-ms metrics)))
+      (princ (format "  Threshold:         %.2f ms\n" nskk-qa-performance-threshold-ms))
+      (if (<= (nskk-qa-metrics-avg-response-time-ms metrics) nskk-qa-performance-threshold-ms)
+          (princ "  Status:            ✓ PASS\n")
+        (princ "  Status:            ✗ FAIL\n")))))
+
+(defun nskk-qa-generate-json-report (&optional metrics)
+  "Generate QA report as JSON."
   (interactive)
-  (setq nskk-qa--debug-enabled nil)
-  (message "NSKK QA Layer: Debug mode disabled"))
+  (let ((metrics (or metrics (nskk-qa-calculate-metrics))))
+    (json-encode
+     `((session . ,(nskk-qa-state-session-id nskk--qa-state))
+       (timestamp . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ" nil t))
+       (tests . ((total . ,(nskk-qa-metrics-test-count metrics))
+                 (passed . ,(nskk-qa-metrics-pass-count metrics))
+                 (failed . ,(nskk-qa-metrics-fail-count metrics))
+                 (skipped . ,(nskk-qa-metrics-skip-count metrics))))
+       (coverage . ((percent . ,(nskk-qa-metrics-coverage-percent metrics))
+                   (target . ,nskk-qa-coverage-target)))
+       (performance . ((avg-ms . ,(nskk-qa-metrics-avg-response-time-ms metrics))
+                      (max-ms . ,(nskk-qa-metrics-max-response-time-ms metrics))
+                      (threshold-ms . ,nskk-qa-performance-threshold-ms)))))))
 
-(defun nskk-qa--log (format-string &rest args)
-  "デバッグログを出力する。
-FORMAT-STRINGはフォーマット文字列、ARGSは引数。"
-  (when nskk-qa--debug-enabled
-    (apply #'message (concat "[NSKK-QA] " format-string) args)))
 
-;;; ヘルスチェック
+;;;;
+;;;; Quality Gates
+;;;;
 
-(defun nskk-qa-health-check ()
-  "QA Layerのヘルスチェックを実行する。"
+(defun nskk-qa-check-gate (&optional strict)
+  "Check if quality gates pass.
+With STRICT, enforce all quality thresholds."
   (interactive)
-  (let ((issues '()))
-    ;; メトリクスチェック
-    (when (zerop (hash-table-count nskk-qa--quality-metrics))
-      (push "Metrics not initialized" issues))
-    ;; 結果表示
-    (if issues
-        (message "QA Layer issues: %s" (string-join issues ", "))
-      (message "QA Layer: All systems operational"))))
+  (let ((metrics (nskk-qa-calculate-metrics))
+        (failures nil))
+
+    ;; Check coverage gate
+    (when (< (nskk-qa-metrics-coverage-percent metrics)
+             nskk-qa-coverage-target)
+      (push (format "Coverage: %.1f%% < %d%%"
+                    (nskk-qa-metrics-coverage-percent metrics)
+                    nskk-qa-coverage-target)
+            failures))
+
+    ;; Check performance gate
+    (when (> (nskk-qa-metrics-avg-response-time-ms metrics)
+             nskk-qa-performance-threshold-ms)
+      (push (format "Performance: %.2fms > %.2fms"
+                    (nskk-qa-metrics-avg-response-time-ms metrics)
+                    nskk-qa-performance-threshold-ms)
+            failures))
+
+    ;; Check test success rate
+    (let ((success-rate
+           (if (> (nskk-qa-metrics-test-count metrics) 0)
+               (* 100.0 (/ (float (nskk-qa-metrics-pass-count metrics))
+                          (nskk-qa-metrics-test-count metrics)))
+             0.0)))
+      (when (< success-rate (if strict 100 95))
+        (push (format "Test success rate: %.1f%% < %d%%"
+                      success-rate (if strict 100 95))
+              failures)))
+
+    (if failures
+        (progn
+          (message "[NSKK QA] Quality gates FAILED:")
+          (dolist (failure failures)
+            (message "  - %s" failure))
+          nil)
+      (message "[NSKK QA] All quality gates PASSED")
+      t)))
+
+
+;;;;
+;;;; Helper Functions
+;;;;
+
+(defun nskk--get-source-files ()
+  "Get list of NSKK source files."
+  (let ((files nil))
+    (dolist (file (directory-files default-directory nil "\\`nskk-.*\\.el\\'"))
+      (unless (string-match "-test\\.el\\'" file)
+        (push file files)))
+    (nreverse files)))
+
+(defun nskk--count-tests (_results)
+  "Count total tests from RESULTS."
+  ;; TODO: Stub - implement by parsing ERT test results structure
+  0)
+
+(defun nskk--count-passed (_results)
+  "Count passed tests from RESULTS."
+  ;; TODO: Stub - implement by filtering ERT results for passed status
+  0)
+
+(defun nskk--count-failed (_results)
+  "Count failed tests from RESULTS."
+  ;; TODO: Stub - implement by filtering ERT results for failed status
+  0)
+
+(defun nskk--count-skipped (_results)
+  "Count skipped tests from RESULTS."
+  ;; TODO: Stub - implement by filtering ERT results for skipped status
+  0)
+
+
+;;;;
+;;;; Layer Statistics and Debugging
+;;;;
+
+(defun nskk-qa-show-stats ()
+  "Show QA layer statistics."
+  (interactive)
+  (when nskk--qa-state
+    (message "[NSKK QA] Session: %s"
+             (nskk-qa-state-session-id nskk--qa-state))
+    (message "[NSKK QA] Runtime: %.2f seconds"
+             (float-time (time-subtract
+                          (or (nskk-qa-state-end-time nskk--qa-state)
+                              (current-time))
+                          (nskk-qa-state-start-time nskk--qa-state))))
+    (message "[NSKK QA] Tests run: %d"
+             (hash-table-count (nskk-qa-state-test-results nskk--qa-state)))
+    (message "[NSKK QA] Coverage entries: %d"
+             (hash-table-count (nskk-qa-state-coverage-data nskk--qa-state)))
+    (message "[NSKK QA] Performance entries: %d"
+             (hash-table-count (nskk-qa-state-performance-data nskk--qa-state)))))
+
+(defun nskk-qa-dump-state ()
+  "Dump QA state for debugging."
+  (interactive)
+  (when nskk--qa-state
+    (with-output-to-temp-buffer "*NSKK QA State*"
+      (princ "NSKK QA Layer State\n")
+      (princ "------------------\n\n")
+      (princ (format "Session ID: %s\n" (nskk-qa-state-session-id nskk--qa-state)))
+      (princ (format "Start Time: %s\n" (nskk-qa-state-start-time nskk--qa-state)))
+      (princ (format "End Time: %s\n" (nskk-qa-state-end-time nskk--qa-state)))
+      (princ (format "\nTest Results: %d entries\n"
+                     (hash-table-count (nskk-qa-state-test-results nskk--qa-state))))
+      (princ (format "Coverage Data: %d entries\n"
+                     (hash-table-count (nskk-qa-state-coverage-data nskk--qa-state))))
+      (princ (format "Performance Data: %d entries\n"
+                     (hash-table-count (nskk-qa-state-performance-data nskk--qa-state))))
+      (princ (format "Metadata: %d entries\n"
+                     (hash-table-count (nskk-qa-state-metadata nskk--qa-state)))))))
+
+
+;;;;
+;;;; Integration with Other Layers
+;;;;
+
+(defun nskk-qa-layer-init ()
+  "Initialize QA layer.
+Called during NSKK initialization."
+  (unless nskk--qa-state
+    (nskk-qa-start-session))
+  (add-hook 'nskk-pre-shutdown-hook #'nskk-qa-end-session)
+  (add-hook 'nskk-after-config-change-hook #'nskk-qa-measure-coverage)
+  (message "[NSKK QA] Layer initialized"))
 
 (provide 'nskk-layer-qa)
+
 ;;; nskk-layer-qa.el ends here

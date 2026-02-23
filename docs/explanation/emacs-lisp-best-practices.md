@@ -2,261 +2,230 @@
 
 ## エグゼクティブサマリー
 
-Emacs 30以上の革新的機能を完全活用し、外部依存ゼロで最高性能を実現するNSKK実装のための包括的ベストプラクティス集です。setopt、ネイティブコンパイル、スレッド並列処理、Transient UI等の最新機能を駆使したモダンEmacs Lispプログラミング手法を提供します。
+Emacs 30以上の機能を活用し、外部依存ゼロで高性能を目指すNSKK実装のための包括的ベストプラクティス集です。setopt（Emacs 29.1導入）、ネイティブコンパイル、協調スレッド、ミニバッファメニュー等の機能を活用したモダンEmacs Lispプログラミング手法を提供します。
 
 ## 1. Emacs 30以上 機能の活用
 
 ### 1.1 ネイティブコンパイル（Native Compilation）
 
 ```elisp
-;;; Emacs 30以上のネイティブコンパイル完全最適化
+;;; Emacs 30以上のネイティブコンパイル最適化
 
-;; setoptによるモダンな設定（Emacs 30以上の新機能）
+;; setoptによるモダンな設定（Emacs 29.1で導入）
+;; 注意: setoptはdefcustomで定義された変数専用
 (setopt native-comp-speed 3                          ; 最大速度最適化
         native-comp-debug 0                          ; デバッグ情報削除
         native-comp-verbose nil                      ; 冗長出力抑制
         native-comp-async-report-warnings-errors nil ; 非同期エラー報告無効
-        native-comp-jit-compilation t                ; JITコンパイル有効
-        native-comp-deferred-compilation t           ; 遅延コンパイル有効
+        native-comp-jit-compilation t                ; JITコンパイル有効（Emacs 29で名称変更）
         native-comp-enable-subr-trampolines t)       ; サブルーチントランポリン有効
 
-;; Emacs 30以上の新しいdeclare構文による関数最適化
+;; declare構文で使用可能なのは (pure t) と (side-effect-free t) のみ
 (defun nskk-critical-path-function (input)
-  "Emacs 30以上最適化ディレクティブ活用例"
-  (declare (speed 3)                    ; 最高速度最適化
-           (safety 0)                   ; 安全性チェック完全無効
-           (compilation-speed 0)         ; コンパイル時間度外視
-           (debug 0)                    ; デバッグ情報完全削除
-           (pure t)                     ; 純粋関数指定
-           (side-effect-free t)         ; 副作用なし保証
-           (inline t)                   ; 強制インライン化
-           (native-comp-speed 3))       ; ネイティブコンパイル最大速度
-  ;; Emacs 30以上最適化済みコード
+  "純粋関数として宣言する最適化例。
+declareで使用可能: pure, side-effect-free。
+インライン化にはdefsubstまたはdefine-inlineを使用する。"
+  (declare (pure t)                     ; 純粋関数指定
+           (side-effect-free t))        ; 副作用なし保証
   (when (stringp input)
     (string-trim input)))
 
-;; Emacs 30以上強化されたインライン化機構
+;; インライン化にはdefsubstを使用する（declareの(inline ...)は無効）
 (defsubst nskk-hot-function (x)
-  "Emacs 30以上の強制インライン化とマクロ展開最適化"
-  (declare (side-effect-free t)         ; 副作用なし保証
-           (pure t)                     ; 純粋関数保証
-           (inline always)              ; 強制インライン化
-           (speed 3)                    ; 最高速度最適化
-           (native-comp-speed 3)        ; ネイティブ最適化
-           (compiler-macro nskk-hot-function-macro)) ; コンパイラマクロ指定
+  "defsubstによりバイトコンパイル時にインライン展開される。"
+  (declare (side-effect-free t)
+           (pure t))
   (* x x))
 
-;; コンパイラマクロによる定数畳み込み最適化
+;; コンパイラマクロはdefine-compiler-macroで別途定義する
+;; （declareの(compiler-macro ...)は無効）
 (define-compiler-macro nskk-hot-function (&whole form x)
   (if (numberp x)
       (* x x)  ; コンパイル時定数計算
     form))
 
-;; Emacs 30以上のネイティブコンパイル高度最適化
-(when (and (native-comp-available-p)
-           (>= emacs-major-version 31))
-  ;; 新しいバッチコンパイルシステム
-  (native-compile-batch
-   (directory-files-recursively user-emacs-directory "\\.el$")
-   :async t
-   :recursively t
-   :optimization-level 3
-   :profile 'speed)
-
-  ;; JITコンパイルの事前準備
-  (native-comp-preload-trampolines)
-
-  ;; メモリプールの事前確保
-  (native-comp-ensure-function-objects))
+;; ネイティブコンパイルの非同期バッチ処理
+;; native-compile-async: (native-compile-async FILES &optional RECURSIVELY LOAD SELECTOR)
+(when (native-comp-available-p)
+  (native-compile-async
+   (list user-emacs-directory)
+   t))    ; RECURSIVELY=t でサブディレクトリも対象
 ```
 
-### 1.2 Threads（並列処理）
+### 1.2 Threads（協調スレッド）
 
 ```elisp
-;;; Emacs 30以上の高度スレッド並列処理システム
+;;; Emacsの協調スレッドシステム（Emacs 26以降で利用可能）
+;;;
+;;; 重要: Emacsのスレッドは「協調的」（cooperative）であり、プリエンプティブではない。
+;;; GIL（Global Interpreter Lock）があるため、同時に実行されるスレッドは常に1つのみ。
+;;; スレッドはI/O待ち、mutex操作、thread-yield呼び出し時にのみ切り替わる。
+;;; CPU集約的な処理を複数スレッドに分割してもパフォーマンスは向上しない。
+;;; スレッドはI/O待ちの並行処理（例: ネットワーク通信中に他の処理を進める）に有効。
 
-;; スレッドプールの高度実装（Emacs 30以上強化機能）
+;; スレッドプールの実装（mutex + リストによるキュー）
 (defclass nskk-thread-pool ()
-  ((workers :initform (make-vector (num-processors) nil)
-            :type vector
-            :documentation "CPUコア数に応じたワーカースレッド")
-   (queue :initform (make-concurrent-queue)  ; Emacs 30以上の新機能
-          :type concurrent-queue
-          :documentation "ロックフリー同時実行キュー")
-   (semaphore :initform (make-semaphore (num-processors))
-              :type semaphore
-              :documentation "ワーカー管理セマフォア")
-   (condition :initform (make-condition-variable)
-              :type condition-variable
-              :documentation "タスク完了通知")
-   (mutex :initform (make-mutex :name "nskk-pool-mutex")
-          :type mutex
-          :documentation "プール状態保護")
+  ((workers :initform nil
+            :type list
+            :documentation "ワーカースレッドのリスト")
+   (queue :initform nil
+          :type list
+          :documentation "タスクキュー（mutexで保護）")
+   (queue-mutex :initform (make-mutex "nskk-queue-mutex")
+                :type mutex
+                :documentation "キュー操作の排他制御")
+   (condition :initform nil
+              :type t
+              :documentation "タスク通知用condition-variable")
+   (pool-mutex :initform (make-mutex "nskk-pool-mutex")
+               :type mutex
+               :documentation "プール状態保護")
    (active-count :initform 0
                  :type integer
-                 :documentation "アクティブスレッド数"))
+                 :documentation "アクティブスレッド数")
+   (max-workers :initarg :max-workers
+                :initform 4
+                :type integer
+                :documentation "最大ワーカー数")))
+
+(cl-defmethod nskk-thread-pool-initialize ((pool nskk-thread-pool))
+  "スレッドプールを初期化する。"
+  (oset pool condition (make-condition-variable (oref pool pool-mutex))))
+
+(cl-defmethod nskk-thread-pool-enqueue ((pool nskk-thread-pool) task)
+  "タスクをキューに追加する。"
+  (with-mutex (oref pool queue-mutex)
+    (setf (oref pool queue)
+          (append (oref pool queue) (list task))))
+  ;; condition-variableで待機中のワーカーに通知
+  (with-mutex (oref pool pool-mutex)
+    (condition-notify (oref pool condition))))
+
+(cl-defmethod nskk-thread-pool-dequeue ((pool nskk-thread-pool))
+  "キューからタスクを取り出す。キューが空ならnilを返す。"
+  (with-mutex (oref pool queue-mutex)
+    (pop (oref pool queue))))
 
 (cl-defmethod nskk-thread-pool-execute ((pool nskk-thread-pool) task)
-  "Emacs 30以上の高度スレッドプールでタスク実行"
-  (with-slots (queue semaphore condition mutex active-count) pool
-    ;; セマフォアでスレッド数制御
-    (semaphore-acquire semaphore)
+  "タスクをワーカースレッドで実行する。"
+  (with-slots (queue-mutex pool-mutex active-count condition max-workers) pool
+    ;; ワーカー数制限チェック
+    (when (< active-count max-workers)
+      ;; タスクをキューに追加
+      (nskk-thread-pool-enqueue pool task)
 
-    ;; タスクをキューに追加
-    (concurrent-queue-enqueue queue task)
+      ;; ワーカースレッド生成
+      (let ((worker-thread
+             (make-thread
+              (lambda ()
+                (unwind-protect
+                    (let ((current-task t))
+                      (while current-task
+                        (setq current-task (nskk-thread-pool-dequeue pool))
+                        (when current-task
+                          (condition-case err
+                              (funcall current-task)
+                            (error
+                             (message "[NSKK Thread Pool] Worker error: %s" err))))
+                        ;; キューが空なら協調的に譲る
+                        (unless current-task
+                          (thread-yield))))
+                  ;; スレッド終了時のクリーンアップ
+                  (with-mutex pool-mutex
+                    (cl-decf active-count)
+                    (condition-notify condition))))
+              (format "nskk-worker-%d" (random 10000)))))
 
-    ;; ワーカースレッド生成（再利用可能）
-    (let ((worker-thread
-           (make-thread
-            (lambda ()
-              (unwind-protect
-                  (while-let ((current-task (concurrent-queue-dequeue queue :timeout 1.0)))
-                    (condition-case err
-                        (funcall current-task)
-                      (error
-                       (message "[NSKK Thread Pool] Worker error: %s" err)
-                       (nskk--log-thread-error err))))
-                ;; スレッド終了時のクリーンアップ
-                (with-mutex mutex
-                  (cl-decf active-count)
-                  (condition-notify condition))
-                (semaphore-release semaphore)))
-            (format "nskk-worker-%d" (random 10000)))))
+        ;; アクティブスレッド数更新
+        (with-mutex pool-mutex
+          (cl-incf active-count))
 
-      ;; アクティブスレッド数更新
-      (with-mutex mutex
-        (cl-incf active-count))
+        (thread-yield)
+        worker-thread))))
 
-      ;; スレッドをプールに登録
-      (thread-yield)  ; CPU譲渡で公平なスケジューリング
-      worker-thread)))
+;; 辞書検索の協調的並行処理
+;; 注意: Emacsスレッドは協調的なため、真の並列検索にはならないが、
+;; I/O待ち（辞書ファイル読み込み等）を重ね合わせることで効率化できる。
+(defun nskk-concurrent-dictionary-search (query)
+  "複数辞書を協調スレッドで並行検索する。
+I/O待ちを重ね合わせることで、逐次検索より高速化を図る。"
+  (let* ((results-mutex (make-mutex "nskk-search-results"))
+         (results (make-hash-table :test 'equal))
+         (threads nil))
 
-;; Emacs 30以上の高度並列辞書検索システム
-(defun nskk-parallel-dictionary-search (query &optional timeout)
-  "Emacs 30以上の高度並列辞書検索（タイムアウト・キャンセル対応）"
-  (let* ((timeout (or timeout 5.0))  ; デフォルトタイムアウト5秒
-         (results (make-concurrent-hash-table :test 'equal))  ; Emacs 30以上のスレッドセーフ
-         (barrier (make-barrier (length nskk-dictionaries)))  ; バリア同期
-         (cancel-token (make-cancellation-token))             ; キャンセルトークン
-         (thread-futures nil))
-
-    ;; 辞書ごとに並列検索スレッド起動
+    ;; 辞書ごとにスレッドを起動
     (dolist (dict nskk-dictionaries)
       (push
-       (thread-create-future
-        (lambda (dictionary)
-          (when-let ((dict-results
-                      (with-timeout timeout
-                        (nskk-search-single-dictionary dictionary query cancel-token))))
-            ;; スレッドセーフハッシュテーブルに結果格納
-            (concurrent-hash-table-put results dictionary dict-results))
+       (make-thread
+        (lambda ()
+          (condition-case err
+              (let ((dict-results (nskk-search-single-dictionary dict query)))
+                (with-mutex results-mutex
+                  (puthash dict dict-results results)))
+            (error
+             (message "[NSKK] Search error in %s: %s" dict err))))
+        (format "nskk-search-%s" dict))
+       threads))
 
-          ;; バリアで全スレッド同期
-          (barrier-wait barrier))
-        dict)
-       thread-futures))
+    ;; 全スレッドの完了を待機
+    ;; thread-joinは引数1つのみ（タイムアウトなし）
+    (dolist (thread threads)
+      (thread-join thread))
 
-    ;; Future結果を非同期で集約
-    (let ((final-results (make-hash-table :test 'equal)))
-      (condition-case err
-          (progn
-            ;; 全Futureの完了待機（タイムアウト付き）
-            (thread-join-futures thread-futures :timeout timeout)
-
-            ;; 結果を最終ハッシュテーブルにマージ
-            (concurrent-hash-table-foreach
-             results
-             (lambda (dict dict-results)
-               (puthash dict dict-results final-results)))
-
-            final-results)
-        (timeout-error
-         ;; タイムアウト時は部分結果を返却
-         (cancellation-token-cancel cancel-token)
-         (message "[NSKK] Dictionary search timeout after %.1fs, returning partial results" timeout)
-         (concurrent-hash-table-to-hash-table results)))))
+    results))
 ```
 
-### 1.3 Transient + Emacs 30以上 UIシステム（次世代UI構築）
+### 1.3 Minibuffer + Emacs 30以上 UIシステム（軽量UI構築）
 
 ```elisp
-;;; Emacs 30以上 Transient + 新しいUIシステムによる次世代インターフェース
+;;; Emacs 30以上 Minibuffer UIによるシンプルなインターフェース
 
-(require 'transient)
-(require 'nskk-ui-components)  ; Emacs 30以上用カスタムUIコンポーネント
+(require 'nskk-config-menu)   ; NSKK標準設定メニュー
 
-;; Emacs 30以上強化されたTransient + リアルタイム状態反映
-(transient-define-prefix nskk-main-menu ()
-  "NSKK 次世代メインメニュー（Emacs 30以上強化版）"
-  :transient-suffix 'transient--do-stay
-  :incompatible '((nskk-mode-romaji nskk-mode-azik))
-  :refresh-suffixes t  ; リアルタイム状態更新
+(defconst nskk-main-menu-options
+  '(("設定メニューを開く" . nskk-config-menu)
+    ("プラグイン管理" . nskk-plugins-menu)
+    ("デバッグツール" . nskk-debug-menu)
+    ("終了" . ignore))
+  "メインメニューの選択肢。")
 
-  ;; 動的ステータス表示
-  [:description (lambda ()
-                  (format "NSKK Status: %s | Performance: %s | Threads: %d"
-                         (if nskk-mode "Active" "Inactive")
-                         (nskk-get-performance-level)
-                         (length (thread-list))))
-   :class transient-row]
+(defun nskk-main-menu ()
+  "NSKK ミニバッファメニュー。"
+  (interactive)
+  (catch 'exit
+    (while t
+      (let* ((choice (completing-read
+                      "NSKKメニュー: "
+                      (mapcar #'car nskk-main-menu-options) nil t))
+             (command (cdr (assoc choice nskk-main-menu-options))))
+        (if (eq command #'ignore)
+            (throw 'exit nil)
+          (call-interactively command))))))
 
-  ["入力モード" :class transient-columns
-   ["ローマ字系"
-    ("r" "ローマ字" nskk-mode-romaji
-     :description (lambda () (nskk-format-mode-status "romaji")))
-    ("a" "AZIK" nskk-mode-azik
-     :description (lambda () (nskk-format-mode-status "azik")))
-    ("t" "TUT-code" nskk-mode-tut
-     :description (lambda () (nskk-format-mode-status "tut")))]
-   ["ひらがな系"
-    ("k" "かな" nskk-mode-kana
-     :description (lambda () (nskk-format-mode-status "kana")))
-    ("h" "ハイブリッド" nskk-mode-hybrid
-     :description (lambda () (nskk-format-mode-status "hybrid")))]]
-
-  ["辞書システム" :class transient-columns
-   ["管理"
-    ("d" "辞書選択" nskk-select-dictionary
-     :description (lambda () (format "辞書選択 (%d loaded)" (length nskk-active-dictionaries))))
-    ("u" "辞書更新" nskk-update-dictionary
-     :transient nil
-     :if-mode nskk-dictionary-auto-update-mode)
-    ("s" "サーバー設定" nskk-server-config)]
-   ["同期"
-    ("S" "同期" nskk-sync-dictionaries
-     :if (lambda () (> (length nskk-dictionary-servers) 0)))]]
-
-  ["学習・統計"
-   :if nskk-learning-enabled-p
-   [("l" "学習設定" nskk-learning-config)
-    ("v" "統計表示" nskk-show-statistics)
-    ("o" "最適化実行" nskk-optimize-for-user)]]
-
-  ["高度な設定"
-   [("c" "カスタマイズ" nskk-customize)
-    ("p" "プラグイン" nskk-plugin-manager)
-    ("?" "ヘルプ" nskk-help)]])
-
-;; コンテキスト依存メニュー
-(transient-define-prefix nskk-context-menu ()
-  "文脈依存メニュー"
-  :transient-suffix 'transient--do-stay
-  [:description
-   (lambda () (format "現在の入力: %s" nskk-current-input))
-   [("SPC" "次候補" nskk-next-candidate)
-    ("x" "前候補" nskk-previous-candidate)
-    ("RET" "確定" nskk-commit)
-    ("q" "キャンセル" nskk-quit)]])
+;; コンテキスト依存メニュー（簡易版）
+(defun nskk-context-menu ()
+  "入力状態に基づく簡易メニュー。"
+  (interactive)
+  (let ((choices '(("次候補" . nskk-next-candidate)
+                   ("前候補" . nskk-previous-candidate)
+                   ("確定" . nskk-commit)
+                   ("キャンセル" . nskk-quit)
+                   ("終了" . ignore)))
+        selection)
+    (setq selection (completing-read "Context: "
+                                     (mapcar #'car choices) nil t))
+    (let ((command (cdr (assoc selection choices))))
+      (unless (eq command #'ignore)
+        (call-interactively command)))))
 ```
 
-### 1.4 JSONRPC + WebSocket + HTTP/3サポート（次世代外部連携）
+### 1.4 JSONRPC（Emacs標準ライブラリによる外部連携）
 
 ```elisp
-;;; Emacs 30以上 JSONRPC + 新しい非同期通信システム（完全外部依存ゼロ）
+;;; Emacs標準のJSONRPCによる外部辞書サーバー連携
+;;; jsonrpcはEmacs標準バンドルライブラリ（外部依存なし）
 
 (require 'jsonrpc)
-(require 'async)        ; Emacs 30以上強化された非同期処理
-(require 'websocket)    ; WebSocketサポート
 
 ;; 辞書サーバークライアント実装
 (defclass nskk-jsonrpc-client (jsonrpc-connection)
@@ -498,10 +467,10 @@ Emacs 30以上の革新的機能を完全活用し、外部依存ゼロで最高
 ```elisp
 ;;; CPU効率向上
 
-;; ホットパス最適化
+;; ホットパス最適化（defsubstによるインライン展開）
 (defsubst nskk-fast-member (item list)
-  "最適化されたmember関数"
-  (declare (pure t) (side-effect-free t))
+  "最適化されたmember関数（defsubstでインライン化）"
+  (declare (side-effect-free t))
   (catch 'found
     (while list
       (when (eq item (car list))
@@ -517,20 +486,27 @@ Emacs 30以上の革新的機能を完全活用し、外部依存ゼロで最高
              do (setq hash (logxor (ash hash 5) hash char)))
     (logand hash #x7FFFFFFF)))
 
-;; SIMD風並列処理
-(defun nskk-parallel-map (function list)
-  "並列map実装"
-  (let ((chunk-size (/ (length list) (num-processors))))
-    (apply #'append
-           (mapcar
-            (lambda (chunk)
-              (let ((thread-result nil))
-                (make-thread
-                 (lambda ()
-                   (setq thread-result
-                         (mapcar function chunk))))
-                thread-result))
-            (nskk--split-list list chunk-size)))))
+;; 注意: Emacsスレッドは協調的（GILあり）のため、CPU集約的な処理を
+;; スレッド分割してもパフォーマンスは向上しない。
+;; 以下はI/O待ちを含む処理向けの並行map実装。
+(defun nskk-concurrent-map (function list)
+  "I/O待ちを含む処理を協調スレッドで並行実行する。
+CPU集約的な処理には効果がない点に注意。"
+  (let* ((results-mutex (make-mutex "nskk-map-results"))
+         (results (make-hash-table :test 'eql))
+         (threads nil))
+    (cl-loop for item in list
+             for idx from 0
+             do (push (make-thread
+                       (lambda ()
+                         (let ((result (funcall function item)))
+                           (with-mutex results-mutex
+                             (puthash idx result results)))))
+                      threads))
+    (dolist (thread threads)
+      (thread-join thread))
+    (cl-loop for idx from 0 below (length list)
+             collect (gethash idx results))))
 ```
 
 ## 5. コーディング規約とスタイルガイド
@@ -540,10 +516,9 @@ Emacs 30以上の革新的機能を完全活用し、外部依存ゼロで最高
 ```elisp
 ;;; NSKKプロジェクト命名規則
 
-;; パッケージプレフィックス
+;; パッケージプレフィックス（Emacs標準規約）
 ;; nskk-     : 公開API
-;; nskk--    : 内部関数（private）
-;; nskk---   : 内部マクロ専用
+;; nskk--    : 内部関数・内部マクロ（private）
 
 ;; 変数命名
 (defvar nskk-public-variable nil
@@ -805,7 +780,7 @@ NSKKは、以下のベストプラクティスにより、Emacs Lispの機能を
 
 ### パフォーマンス向上
 1. **ネイティブコンパイル最適化**
-2. **並列処理の活用**
+2. **協調スレッドによるI/O並行処理の活用**
 3. **メモリ効率向上**
 
 ### 品質保証

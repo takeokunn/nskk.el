@@ -1,11 +1,10 @@
-;;; nskk-architecture.el --- 7-Layer Architecture Integration for NSKK -*- lexical-binding: t; -*-
+;;; nskk-architecture.el --- Architecture integration and orchestration layer -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Development Team
+;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, architecture
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; Author: NSKK Developers
+;; Keywords: Japanese, input, method, architecture, layer
+;; Homepage: https://github.com/takeokunn/nskk.el
 
 ;; This file is part of NSKK.
 
@@ -24,436 +23,729 @@
 
 ;;; Commentary:
 
-;; 7層アーキテクチャ統合モジュール
+;; This file provides the architecture integration layer for NSKK,
+;; orchestrating all 7 layers in the correct initialization sequence.
 ;;
-;; NSKKの7層アーキテクチャ:
+;; Architecture Overview:
+;; ┌─────────────────────────────────────────────────────────┐
+;; │                Layer 1: Presentation                    │
+;; │              UI integration, event handling              │
+;; ├─────────────────────────────────────────────────────────┤
+;; │                Layer 2: Extension                       │
+;; │          Hooks, event bus, inter-layer messaging        │
+;; ├─────────────────────────────────────────────────────────┤
+;; │                Layer 3: Application                     │
+;; │           Business logic, conversion control            │
+;; ├─────────────────────────────────────────────────────────┤
+;; │                Layer 4: Core Engine                     │
+;; │           Conversion engine, dictionary engine          │
+;; ├─────────────────────────────────────────────────────────┤
+;; │                Layer 5: Data Access                     │
+;; │              Persistence, sync, dictionary access       │
+;; ├─────────────────────────────────────────────────────────┤
+;; │                Layer 6: Infrastructure                  │
+;; │         Thread management, memory, resource management  │
+;; ├─────────────────────────────────────────────────────────┤
+;; │                Layer 7: QA                              │
+;; │          Testing, benchmarking, quality assurance       │
+;; └─────────────────────────────────────────────────────────┘
 ;;
-;; Layer 1: Presentation Layer    - UI統合、イベントハンドリング
-;; Layer 2: Extension Layer       - フック、イベントバス、レイヤー間通信
-;; Layer 3: Application Layer     - ビジネスロジック、変換制御
-;; Layer 4: Core Engine Layer     - 変換エンジン、辞書エンジン
-;; Layer 5: Data Access Layer     - 永続化、同期
-;; Layer 6: Infrastructure Layer  - スレッド管理、メモリ管理
-;; Layer 7: QA Layer              - テスト、ベンチマーク統合
+;; Layer Initialization Order (bottom-up):
+;; 1. Infrastructure (nskk-infrastructure-initialize)
+;; 2. Data (nskk-data-initialize)
+;; 3. Core (nskk-core-initialize)
+;; 4. Application (nskk-application-initialize)
+;; 5. Extension (nskk-extension-initialize)
+;; 6. Presentation (nskk-presentation-initialize)
+;; 7. QA (nskk-qa-initialize)
 ;;
-;; レイヤー間通信フロー:
-;;
-;; ユーザー入力
-;;   ↓
-;; Presentation Layer (UI)
-;;   ↓ (Extension Layerを経由)
-;; Application Layer (ビジネスロジック)
-;;   ↓
-;; Core Engine Layer (変換処理)
-;;   ↓
-;; Data Access Layer (辞書検索)
-;;   ↓
-;; Infrastructure Layer (リソース管理)
-;;
-;; 依存性注入とメッセージング:
-;; - すべてのレイヤー間通信はExtension Layerを経由
-;; - イベント駆動アーキテクチャによる疎結合
-;; - 依存性逆転の原則に基づく設計
-;;
-;; 使用例:
-;; (nskk-architecture-initialize)
-;; (nskk-architecture-health-check)
-;; (nskk-architecture-get-layer-status 'application)
+;; Shutdown Order (top-down):
+;; 1. QA
+;; 2. Presentation
+;; 3. Extension
+;; 4. Application
+;; 5. Core
+;; 6. Data
+;; 7. Infrastructure
 
 ;;; Code:
 
 (require 'cl-lib)
-(require 'nskk-layer-presentation)
-(require 'nskk-layer-extension)
-(require 'nskk-layer-application)
-(require 'nskk-layer-core)
-(require 'nskk-layer-data)
-(require 'nskk-layer-infrastructure)
-(require 'nskk-layer-qa)
 
-;;; カスタマイズ可能変数
+;;;; Customization
 
 (defgroup nskk-architecture nil
-  "7-layer architecture settings for NSKK."
-  :group 'nskk
-  :prefix "nskk-architecture-")
+  "NSKK architecture layer configuration."
+  :prefix "nskk-architecture-"
+  :group 'nskk)
 
-(defcustom nskk-architecture-enable-validation t
-  "レイヤー間通信の検証を有効にするか。"
+(defcustom nskk-architecture-enable-debug nil
+  "Enable debug logging for architecture operations."
   :type 'boolean
   :group 'nskk-architecture)
 
 (defcustom nskk-architecture-enable-tracing nil
-  "レイヤー間通信のトレースを有効にするか。"
+  "Enable tracing of inter-layer communication."
   :type 'boolean
   :group 'nskk-architecture)
 
-;;; 内部変数
+(defcustom nskk-architecture-auto-recovery t
+  "Enable automatic recovery from layer failures."
+  :type 'boolean
+  :group 'nskk-architecture)
 
-(defvar nskk-architecture--layers
-  '(infrastructure data core application extension presentation qa)
-  "レイヤーのリスト（初期化順）。")
+(defcustom nskk-architecture-init-timeout-seconds 30
+  "Maximum time to wait for layer initialization."
+  :type 'integer
+  :group 'nskk-architecture)
 
-(defvar nskk-architecture--layer-status (make-hash-table :test 'eq)
-  "各レイヤーの状態。")
+;;;; Layer State Management
+
+(cl-defstruct (nskk-layer-state
+              (:constructor nskk-layer-state-create)
+              (:copier nil))
+  "State tracking for a single layer."
+  (name nil :read-only t :type symbol)
+  (status 'uninitialized :type symbol)  ; uninitialized, initializing, initialized, failed, shutdown
+  (initialized-at nil :type (or null integer))
+  (startup-time-ms nil :type (or null number))
+  (error-message nil :type (or null string))
+  (health-status 'unknown :type symbol)  ; ok, warning, critical
+  (metadata nil :type (or null hash-table)))
+
+(defvar nskk-architecture--layer-states (make-hash-table :test 'eq)
+  "Registry of all layer states.")
 
 (defvar nskk-architecture--initialized nil
-  "アーキテクチャが初期化済みかどうか。")
+  "Whether architecture has been initialized.")
 
 (defvar nskk-architecture--communication-log nil
-  "レイヤー間通信ログ。")
+  "Log of inter-layer communications when tracing is enabled.")
 
-;;; 初期化・シャットダウン
+(defvar nskk-architecture--dependency-registry nil
+  "Registry of layer dependencies.")
 
-(defun nskk-architecture-initialize ()
-  "7層アーキテクチャを初期化する。"
-  (interactive)
-  (unless nskk-architecture--initialized
-    (nskk-architecture--log "Initializing 7-layer architecture...")
+;;;; Layer Definition
 
-    ;; レイヤーを下から順に初期化
-    (dolist (layer nskk-architecture--layers)
-      (nskk-architecture--initialize-layer layer))
+(defvar nskk-architecture--layers
+  '(;; Layer 6: Infrastructure (bottom layer)
+    (infrastructure
+     . (:init-function nskk-infrastructure-initialize
+        :shutdown-function nskk-infrastructure-shutdown
+        :health-function nskk-infrastructure-health-check
+        :dependencies nil
+        :priority 100))
 
-    ;; レイヤー間通信をセットアップ
-    (nskk-architecture--setup-layer-communication)
+    ;; Layer 5: Data Access
+    (data
+     . (:init-function nskk-data-initialize
+        :shutdown-function nskk-data-shutdown
+        :health-function nskk-data-health-check
+        :dependencies (infrastructure)
+        :priority 90))
 
-    ;; イベントフローをセットアップ
-    (nskk-architecture--setup-event-flow)
+    ;; Layer 4: Core Engine
+    (core
+     . (:init-function nskk-core-initialize
+        :shutdown-function nskk-core-shutdown
+        :health-function nskk-core-health-check
+        :dependencies (infrastructure data)
+        :priority 80))
 
-    (setq nskk-architecture--initialized t)
-    (nskk-architecture--log "7-layer architecture initialized successfully")
-    (message "NSKK 7-layer architecture initialized")))
+    ;; Layer 3: Application
+    (application
+     . (:init-function nskk-application-initialize
+        :shutdown-function nskk-application-shutdown
+        :health-function nskk-application-health-check
+        :dependencies (core extension)
+        :priority 70))
 
-(defun nskk-architecture-shutdown ()
-  "7層アーキテクチャをシャットダウンする。"
-  (interactive)
-  (when nskk-architecture--initialized
-    (nskk-architecture--log "Shutting down 7-layer architecture...")
+    ;; Layer 2: Extension
+    (extension
+     . (:init-function nskk-extension-initialize
+        :shutdown-function nskk-extension-shutdown
+        :health-function nskk-extension-health-check
+        :dependencies nil
+        :priority 60))
 
-    ;; レイヤーを上から順にシャットダウン
-    (dolist (layer (reverse nskk-architecture--layers))
-      (nskk-architecture--shutdown-layer layer))
+    ;; Layer 1: Presentation
+    (presentation
+     . (:init-function nskk-presentation-initialize
+        :shutdown-function nskk-presentation-shutdown
+        :health-function nskk-presentation-health-check
+        :dependencies (application extension)
+        :priority 50))
 
-    ;; 通信ログをクリア
-    (setq nskk-architecture--communication-log nil)
+    ;; Layer 7: QA (top layer, but independent)
+    (qa
+     . (:init-function nskk-qa-initialize
+        :shutdown-function nskk-qa-shutdown
+        :health-function nskk-qa-health-check
+        :dependencies nil
+        :priority 40)))
+  "Registry of all layers with their lifecycle functions.")
 
-    (setq nskk-architecture--initialized nil)
-    (nskk-architecture--log "7-layer architecture shutdown complete")
-    (message "NSKK 7-layer architecture shutdown")))
+;;;; Logging and Tracing
 
-;;; レイヤー初期化
+(defun nskk-architecture--log (level &rest args)
+  "Log message at LEVEL with ARGS."
+  (when nskk-architecture-enable-debug
+    (let ((message-string (apply #'format args))
+          (timestamp (format-time-string "%H:%M:%S.%3N")))
+      (message "[NSKK-Arch %s] %s: %s"
+               timestamp level message-string))))
 
-(defun nskk-architecture--initialize-layer (layer)
-  "レイヤーを初期化する。
-LAYERはレイヤー名。"
-  (nskk-architecture--log "Initializing layer: %s" layer)
-  (condition-case err
-      (progn
-        (pcase layer
-          ('infrastructure (nskk-infrastructure-initialize))
-          ('data (nskk-data-initialize))
-          ('core (nskk-core-initialize))
-          ('application (nskk-application-initialize))
-          ('extension (nskk-extension-initialize))
-          ('presentation (nskk-presentation-initialize))
-          ('qa (nskk-qa-initialize)))
-        (puthash layer :initialized nskk-architecture--layer-status)
-        (nskk-architecture--log "Layer %s initialized" layer))
-    (error
-     (nskk-architecture--log "Failed to initialize layer %s: %s" layer err)
-     (puthash layer :error nskk-architecture--layer-status)
-     (error "Layer initialization failed: %s" layer))))
-
-(defun nskk-architecture--shutdown-layer (layer)
-  "レイヤーをシャットダウンする。
-LAYERはレイヤー名。"
-  (nskk-architecture--log "Shutting down layer: %s" layer)
-  (condition-case err
-      (progn
-        (pcase layer
-          ('infrastructure (nskk-infrastructure-shutdown))
-          ('data (nskk-data-shutdown))
-          ('core (nskk-core-shutdown))
-          ('application (nskk-application-shutdown))
-          ('extension (nskk-extension-shutdown))
-          ('presentation (nskk-presentation-shutdown))
-          ('qa (nskk-qa-shutdown)))
-        (puthash layer :shutdown nskk-architecture--layer-status))
-    (error
-     (nskk-architecture--log "Failed to shutdown layer %s: %s" layer err))))
-
-;;; レイヤー間通信セットアップ
-
-(defun nskk-architecture--setup-layer-communication ()
-  "レイヤー間通信をセットアップする。"
-  (nskk-architecture--log "Setting up layer communication...")
-
-  ;; Presentation → Application
-  (nskk-extension-register-route
-   'presentation 'application
-   #'nskk-architecture--route-presentation-to-application)
-
-  ;; Application → Core
-  (nskk-extension-register-route
-   'application 'core
-   #'nskk-architecture--route-application-to-core)
-
-  ;; Application → Data
-  (nskk-extension-register-route
-   'application 'data
-   #'nskk-architecture--route-application-to-data)
-
-  ;; Core → Data
-  (nskk-extension-register-route
-   'core 'data
-   #'nskk-architecture--route-core-to-data)
-
-  ;; Data → Infrastructure
-  (nskk-extension-register-route
-   'data 'infrastructure
-   #'nskk-architecture--route-data-to-infrastructure)
-
-  (nskk-architecture--log "Layer communication setup complete"))
-
-;;; ルーティングハンドラー
-
-(defun nskk-architecture--route-presentation-to-application (action &rest args)
-  "Presentation → Application ルーティング。
-ACTIONはアクション、ARGSは引数。"
-  (nskk-architecture--trace-communication 'presentation 'application action args)
-  (pcase action
-    (:process-key (apply #'nskk-application-process-input args))
-    (:commit-candidate (apply #'nskk-application-commit-candidate args))
-    (_ (nskk-architecture--log "Unknown action: %s" action))))
-
-(defun nskk-architecture--route-application-to-core (action &rest args)
-  "Application → Core ルーティング。
-ACTIONはアクション、ARGSは引数。"
-  (nskk-architecture--trace-communication 'application 'core action args)
-  (pcase action
-    (:convert-romaji (apply #'nskk-core-convert-romaji args))
-    (:hiragana-to-katakana (apply #'nskk-core-hiragana-to-katakana args))
-    (:hankaku-to-zenkaku (apply #'nskk-core-hankaku-to-zenkaku args))
-    (_ (nskk-architecture--log "Unknown action: %s" action))))
-
-(defun nskk-architecture--route-application-to-data (action &rest args)
-  "Application → Data ルーティング。
-ACTIONはアクション、ARGSは引数。"
-  (nskk-architecture--trace-communication 'application 'data action args)
-  (pcase action
-    (:search (apply #'nskk-data-search args))
-    (:learn (apply #'nskk-data-learn args))
-    (_ (nskk-architecture--log "Unknown action: %s" action))))
-
-(defun nskk-architecture--route-core-to-data (action &rest args)
-  "Core → Data ルーティング。
-ACTIONはアクション、ARGSは引数。"
-  (nskk-architecture--trace-communication 'core 'data action args)
-  (pcase action
-    (:lookup (apply #'nskk-data-search args))
-    (_ (nskk-architecture--log "Unknown action: %s" action))))
-
-(defun nskk-architecture--route-data-to-infrastructure (action &rest args)
-  "Data → Infrastructure ルーティング。
-ACTIONはアクション、ARGSは引数。"
-  (nskk-architecture--trace-communication 'data 'infrastructure action args)
-  (pcase action
-    (:read-file (apply #'nskk-infrastructure-read-file args))
-    (:write-file (apply #'nskk-infrastructure-write-file args))
-    (_ (nskk-architecture--log "Unknown action: %s" action))))
-
-;;; イベントフロー
-
-(defun nskk-architecture--setup-event-flow ()
-  "イベントフローをセットアップする。"
-  (nskk-architecture--log "Setting up event flow...")
-
-  ;; Application Layerのイベントを Presentation Layerで受信
-  (nskk-extension-subscribe :conversion-started
-                            #'nskk-architecture--on-conversion-started)
-  (nskk-extension-subscribe :conversion-committed
-                            #'nskk-architecture--on-conversion-committed)
-  (nskk-extension-subscribe :mode-changed
-                            #'nskk-architecture--on-mode-changed)
-
-  (nskk-architecture--log "Event flow setup complete"))
-
-(defun nskk-architecture--on-conversion-started (&rest data)
-  "変換開始イベントハンドラー。
-DATAはイベントデータ。"
-  (let ((candidates (plist-get data :candidates)))
-    (nskk-presentation-show-candidates candidates)))
-
-(defun nskk-architecture--on-conversion-committed (&rest data)
-  "変換確定イベントハンドラー。
-DATAはイベントデータ。"
-  (nskk-presentation-hide-candidates))
-
-(defun nskk-architecture--on-mode-changed (&rest data)
-  "モード変更イベントハンドラー。
-DATAはイベントデータ。"
-  (let ((new-mode (plist-get data :to)))
-    (nskk-presentation-update-mode-line new-mode)))
-
-;;; 通信トレース
-
-(defun nskk-architecture--trace-communication (from to action args)
-  "レイヤー間通信をトレースする。
-FROMは送信元レイヤー、TOは送信先レイヤー、
-ACTIONはアクション、ARGSは引数。"
+(defun nskk-architecture--trace-communication (from-layer to-layer event-type data)
+  "Trace communication FROM-LAYER to TO-LAYER with EVENT-TYPE and DATA."
   (when nskk-architecture-enable-tracing
-    (let ((trace (list :timestamp (float-time)
-                       :from from
-                       :to to
-                       :action action
-                       :args args)))
-      (push trace nskk-architecture--communication-log)
-      (nskk-architecture--log "Communication: %s -> %s : %s" from to action))))
+    (let ((entry (list :timestamp (current-time)
+                       :from from-layer
+                       :to to-layer
+                       :event event-type
+                       :data data)))
+      (push entry nskk-architecture--communication-log)
+      (nskk-architecture--log "TRACE" "%s -> %s: %s"
+                              from-layer to-layer event-type))))
 
-(defun nskk-architecture-get-communication-log ()
-  "通信ログを取得する。"
+;;;; Layer State Queries
+
+(defun nskk-architecture-get-layer-state (layer-name)
+  "Get state for LAYER-NAME."
+  (gethash layer-name nskk-architecture--layer-states))
+
+(defun nskk-architecture-layer-status (layer-name)
+  "Get status symbol for LAYER-NAME."
+  (let ((state (nskk-architecture-get-layer-state layer-name)))
+    (when state
+      (nskk-layer-state-status state))))
+
+(defun nskk-architecture-layer-initialized-p (layer-name)
+  "Check if LAYER-NAME is initialized."
+  (eq (nskk-architecture-layer-status layer-name) 'initialized))
+
+(defun nskk-architecture-layer-healthy-p (layer-name)
+  "Check if LAYER-NAME is healthy."
+  (let ((state (nskk-architecture-get-layer-state layer-name)))
+    (when state
+      (eq (nskk-layer-state-health-status state) 'ok))))
+
+;;;; Dependency Resolution
+
+(defun nskk-architecture--build-dependency-graph ()
+  "Build dependency graph from layer definitions."
+  (let ((graph (make-hash-table :test 'eq)))
+    (dolist (layer-spec nskk-architecture--layers)
+      (let ((layer-name (car layer-spec))
+            (layer-data (cdr layer-spec)))
+        (puthash layer-name
+                 (plist-get layer-data :dependencies)
+                 graph)))
+    graph))
+
+(defun nskk-architecture--get-dependencies (layer-name)
+  "Get list of LAYER-NAME's dependencies."
+  (let ((layer-spec (assq layer-name nskk-architecture--layers)))
+    (when layer-spec
+      (plist-get (cdr layer-spec) :dependencies))))
+
+(defun nskk-architecture--sort-layers-by-dependency ()
+  "Sort layers topologically by dependencies (bottom-up init order)."
+  (let ((result '())
+        (visited (make-hash-table :test 'eq))
+        (visiting (make-hash-table :test 'eq))
+        (graph (nskk-architecture--build-dependency-graph)))
+
+    (cl-labels ((visit (layer)
+                      (when (gethash layer visiting)
+                        (error "Circular dependency detected involving layer: %s" layer))
+                      (unless (gethash layer visited)
+                        (puthash layer t visiting)
+                        (dolist (dep (gethash layer graph))
+                          (visit dep))
+                        (puthash layer t visited)
+                        (push layer result))))
+      (dolist (layer (mapcar #'car nskk-architecture--layers))
+        (visit layer)))
+
+    (nreverse result)))
+
+;;;; Layer Initialization
+
+;;;###autoload (autoload 'nskk-architecture-initialize "nskk-architecture" nil t)
+(defun nskk-architecture-initialize (&optional force)
+  "Initialize NSKK architecture in correct dependency order.
+With FORCE, reinitialize even if already initialized.
+Returns t if successful, nil on failure."
+  (interactive "P")
+
+  (if (and nskk-architecture--initialized (not force))
+      (progn
+        (nskk-architecture--log "WARN" "Architecture already initialized. Use force to reinitialize.")
+        t)
+
+    (nskk-architecture--log "INFO" "Starting architecture initialization...")
+
+    ;; Initialize layer states
+    (dolist (layer-spec nskk-architecture--layers)
+      (let* ((layer-name (car layer-spec))
+             (state (nskk-layer-state-create :name layer-name)))
+        (puthash layer-name state nskk-architecture--layer-states)))
+
+    ;; Sort layers by dependency (bottom-up for initialization)
+    (let ((init-order (nskk-architecture--sort-layers-by-dependency))
+          (failed-layers '())
+          (start-time (float-time)))
+
+      (nskk-architecture--log "INFO" "Initialization order: %S" init-order)
+
+      ;; Initialize each layer
+      (dolist (layer-name init-order)
+        (condition-case err
+            (if (nskk-architecture--initialize-layer layer-name)
+                (nskk-architecture--log "INFO" "Layer %s initialized successfully" layer-name)
+              (progn
+                (push layer-name failed-layers)
+                (nskk-architecture--log "ERROR" "Layer %s initialization failed" layer-name)))
+          (error
+           (push layer-name failed-layers)
+           (nskk-architecture--log "ERROR" "Layer %s initialization error: %S"
+                                   layer-name err))))
+
+      ;; Check if critical layers failed
+      (let* ((critical-layers '(infrastructure data core application))
+             (critical-failed (cl-intersection critical-layers failed-layers)))
+        (if critical-failed
+            (progn
+              (nskk-architecture--log "ERROR" "Critical layer initialization failed: %S"
+                                     critical-failed)
+              ;; Attempt cleanup
+              (nskk-architecture-shutdown)
+              (error "Architecture initialization failed: %S" critical-failed))
+          ;; Success
+          (setq nskk-architecture--initialized t)
+          (let ((elapsed (* 1000.0 (- (float-time) start-time))))
+            (nskk-architecture--log "INFO" "Architecture initialization complete in %.2fms" elapsed)
+            (nskk-architecture--emit-event :architecture-initialized
+                                          :elapsed-ms elapsed
+                                          :layers init-order))
+          t)))))
+
+(defun nskk-architecture--initialize-layer (layer-name)
+  "Initialize single LAYER-NAME.
+Returns t if successful, nil on failure."
+  (let* ((layer-spec (assq layer-name nskk-architecture--layers))
+         (layer-data (cdr layer-spec))
+         (init-function (plist-get layer-data :init-function))
+         (state (nskk-architecture-get-layer-state layer-name))
+         (start-time (float-time)))
+
+    (cond
+     ;; Check if already initialized
+     ((eq (nskk-layer-state-status state) 'initialized)
+      (nskk-architecture--log "DEBUG" "Layer %s already initialized, skipping" layer-name)
+      t)
+
+     ;; Check dependencies
+     ((cl-some (lambda (dep)
+                 (not (nskk-architecture-layer-initialized-p dep)))
+               (nskk-architecture--get-dependencies layer-name))
+      (nskk-architecture--log "ERROR" "Layer %s has uninitialized dependencies" layer-name)
+      nil)
+
+     ;; Proceed with initialization
+     (t
+      ;; Mark as initializing
+      (setf (nskk-layer-state-status state) 'initializing)
+      (nskk-architecture--log "DEBUG" "Initializing layer: %s" layer-name)
+
+      ;; Call init function if it exists
+      (cond
+       ((fboundp init-function)
+        (condition-case err
+            (progn
+              (funcall init-function)
+              (let ((elapsed (* 1000.0 (- (float-time) start-time))))
+                (setf (nskk-layer-state-status state) 'initialized)
+                (setf (nskk-layer-state-initialized-at state) (float-time))
+                (setf (nskk-layer-state-startup-time-ms state) elapsed)
+                (nskk-architecture--log "DEBUG" "Layer %s initialized in %.2fms"
+                                       layer-name elapsed)
+                t))
+          (error
+           (setf (nskk-layer-state-status state) 'failed)
+           (setf (nskk-layer-state-error-message state) (format "%s" err))
+           (nskk-architecture--log "ERROR" "Layer %s init failed: %S"
+                                  layer-name err)
+           nil)))
+       ;; No init function - mark as initialized
+       (t
+        (nskk-architecture--log "DEBUG" "Layer %s has no init function, marking initialized"
+                               layer-name)
+        (setf (nskk-layer-state-status state) 'initialized)
+        (setf (nskk-layer-state-initialized-at state) (float-time))
+        t))))))
+
+;;;; Layer Shutdown
+
+;;;###autoload (autoload 'nskk-architecture-shutdown "nskk-architecture" nil t)
+(defun nskk-architecture-shutdown ()
+  "Shutdown NSKK architecture in reverse dependency order."
   (interactive)
-  (if nskk-architecture--communication-log
-      (with-output-to-temp-buffer "*NSKK Communication Log*"
-        (princ "NSKK Layer Communication Log\n")
-        (princ "============================\n\n")
-        (dolist (entry (reverse nskk-architecture--communication-log))
-          (princ (format "[%.3f] %s -> %s : %s\n"
-                         (plist-get entry :timestamp)
-                         (plist-get entry :from)
-                         (plist-get entry :to)
-                         (plist-get entry :action)))))
-    (message "Communication log is empty")))
 
-(defun nskk-architecture-clear-communication-log ()
-  "通信ログをクリアする。"
-  (interactive)
-  (setq nskk-architecture--communication-log nil)
-  (message "Communication log cleared"))
+  (if (not nskk-architecture--initialized)
+      (nskk-architecture--log "WARN" "Architecture not initialized")
 
-;;; ヘルスチェック
+    (nskk-architecture--log "INFO" "Starting architecture shutdown...")
 
+    ;; Shutdown in reverse initialization order (top-down)
+    (let* ((init-order (nskk-architecture--sort-layers-by-dependency))
+           (shutdown-order (nreverse init-order))
+           (start-time (float-time)))
+
+      (nskk-architecture--log "INFO" "Shutdown order: %S" shutdown-order)
+
+      (dolist (layer-name shutdown-order)
+        (nskk-architecture--shutdown-layer layer-name))
+
+      (let ((elapsed (* 1000.0 (- (float-time) start-time))))
+        (nskk-architecture--log "INFO" "Architecture shutdown complete in %.2fms" elapsed)
+        (nskk-architecture--emit-event :architecture-shutdown-complete
+                                      :elapsed-ms elapsed))
+
+      ;; Reset state
+      (setq nskk-architecture--initialized nil)
+      (clrhash nskk-architecture--layer-states)
+      (setq nskk-architecture--communication-log nil))))
+
+(defun nskk-architecture--shutdown-layer (layer-name)
+  "Shutdown single LAYER-NAME."
+  (let* ((layer-spec (assq layer-name nskk-architecture--layers))
+         (layer-data (cdr layer-spec))
+         (shutdown-function (plist-get layer-data :shutdown-function))
+         (state (nskk-architecture-get-layer-state layer-name)))
+
+    (if (not state)
+        (nskk-architecture--log "DEBUG" "Layer %s has no state, skipping shutdown" layer-name)
+
+      (nskk-architecture--log "DEBUG" "Shutting down layer: %s" layer-name)
+
+      ;; Call shutdown function if it exists
+      (when (fboundp shutdown-function)
+        (condition-case err
+            (funcall shutdown-function)
+          (error
+           (nskk-architecture--log "ERROR" "Layer %s shutdown error: %S"
+                                  layer-name err))))
+
+      ;; Mark as shutdown
+      (setf (nskk-layer-state-status state) 'shutdown))))
+
+;;;; Health Checking
+
+;;;###autoload (autoload 'nskk-architecture-health-check "nskk-architecture" nil t)
 (defun nskk-architecture-health-check ()
-  "7層アーキテクチャのヘルスチェックを実行する。"
+  "Perform health check across all layers.
+Returns alist with overall status and per-layer status."
   (interactive)
-  (nskk-architecture--log "Running architecture health check...")
 
-  (let ((issues '()))
-    ;; 初期化状態チェック
-    (unless nskk-architecture--initialized
-      (push "Architecture not initialized" issues))
+  (nskk-architecture--log "INFO" "Running architecture health check...")
 
-    ;; 各レイヤーの状態チェック
-    (dolist (layer nskk-architecture--layers)
-      (let ((status (gethash layer nskk-architecture--layer-status)))
-        (unless (eq status :initialized)
-          (push (format "Layer %s not initialized (status: %s)" layer status)
-                issues))))
+  (let ((results '())
+        (overall-status 'ok)
+        (issues '())
+        (warnings '()))
 
-    ;; 結果表示
-    (if issues
-        (message "Architecture issues:\n%s" (string-join issues "\n"))
-      (message "Architecture: All systems operational"))
+    (dolist (layer-spec nskk-architecture--layers)
+      (let* ((layer-name (car layer-spec))
+             (layer-data (cdr layer-spec))
+             (health-function (plist-get layer-data :health-function))
+             (state (nskk-architecture-get-layer-state layer-name))
+             (layer-health 'unknown))
 
-    (not issues)))
+        ;; Call health function if available
+        (cond
+         ((fboundp health-function)
+          (condition-case err
+              (let ((result (funcall health-function)))
+                (setq layer-health (plist-get result :status))
+                (when (eq layer-health 'critical)
+                  (push (list layer-name result) issues))
+                (when (eq layer-health 'warning)
+                  (push (list layer-name result) warnings)))
+            (error
+             (setq layer-health 'error)
+             (push (list layer-name :error (format "%s" err)) issues))))
+         ;; No health function - use state status
+         ((eq (nskk-layer-state-status state) 'initialized)
+          (setq layer-health 'ok))
+         (t
+          (setq layer-health 'error)
+          (push (list layer-name :status 'not-initialized) issues)))
 
-(defun nskk-architecture-get-layer-status (layer)
-  "レイヤーの状態を取得する。
-LAYERはレイヤー名。"
-  (gethash layer nskk-architecture--layer-status))
+        ;; Update layer state health
+        (when state
+          (setf (nskk-layer-state-health-status state) layer-health))
 
-;;; アーキテクチャ図生成
+        ;; Collect result
+        (push (cons layer-name layer-health) results)))
+
+    ;; Determine overall status
+    (when issues
+      (setq overall-status 'critical))
+    (when (and (eq overall-status 'ok) warnings)
+      (setq overall-status 'warning))
+
+    ;; Log results
+    (nskk-architecture--log "INFO" "Health check complete: %s" overall-status)
+
+    ;; Display in interactive mode
+    (when (called-interactively-p 'interactive)
+      (message "NSKK Architecture Health: %s" overall-status)
+      (dolist (result (nreverse results))
+        (message "  %s: %s" (car result) (cdr result))))
+
+    `((status . ,overall-status)
+      (layers . ,(nreverse results))
+      (issues . ,issues)
+      (warnings . ,warnings)
+      (timestamp . ,(current-time)))))
+
+;;;; Dependency Injection
+
+(defun nskk-architecture-register-service (service-name service-function)
+  "Register SERVICE-NAME with SERVICE-FUNCTION for dependency injection."
+  (unless nskk-architecture--dependency-registry
+    (setq nskk-architecture--dependency-registry (make-hash-table :test 'eq)))
+  (puthash service-name service-function nskk-architecture--dependency-registry))
+
+(defun nskk-architecture-get-service (service-name)
+  "Get service implementation for SERVICE-NAME."
+  (when nskk-architecture--dependency-registry
+    (gethash service-name nskk-architecture--dependency-registry)))
+
+;;;; Event Emission
+
+(defun nskk-architecture--emit-event (event-type &rest data)
+  "Emit architecture-level EVENT-TYPE with DATA."
+  ;; Check if events layer is available
+  (when (fboundp 'nskk-event-emit)
+    (apply #'nskk-event-emit event-type data))
+
+  ;; Also run hooks for backward compatibility
+  (run-hook-with-args 'nskk-architecture-event-hook event-type data))
+
+(defvar nskk-architecture-event-hook nil
+  "Hook run on architecture events.
+Each function receives (EVENT-TYPE DATA plist).")
+
+;;;; Lifecycle Management
+
+(defun nskk-architecture-restart-layer (layer-name)
+  "Restart a single LAYER-NAME."
+  (interactive (list (intern (completing-read "Layer to restart: "
+                                              (mapcar #'car nskk-architecture--layers)))))
+
+  (nskk-architecture--log "INFO" "Restarting layer: %s" layer-name)
+
+  ;; Shutdown
+  (nskk-architecture--shutdown-layer layer-name)
+
+  ;; Reset state
+  (let ((state (nskk-architecture-get-layer-state layer-name)))
+    (when state
+      (setf (nskk-layer-state-status state) 'uninitialized)
+      (setf (nskk-layer-state-error-message state) nil)))
+
+  ;; Reinitialize
+  (if (nskk-architecture--initialize-layer layer-name)
+      (progn
+        (nskk-architecture--log "INFO" "Layer %s restarted successfully" layer-name)
+        (nskk-architecture--emit-event :layer-restarted
+                                      :layer layer-name)
+        t)
+    (progn
+      (nskk-architecture--log "ERROR" "Layer %s restart failed" layer-name)
+      nil)))
+
+(defun nskk-architecture-reload ()
+  "Reload and reinitialize entire architecture."
+  (interactive)
+
+  (nskk-architecture--log "INFO" "Reloading architecture...")
+
+  ;; Shutdown
+  (when nskk-architecture--initialized
+    (nskk-architecture-shutdown))
+
+  ;; Reload layer files
+  (dolist (layer-spec nskk-architecture--layers)
+    (let* ((layer-name (car layer-spec))
+           (filename (format "nskk-layer-%s" layer-name)))
+      (when (locate-library filename)
+        (load-file filename)
+        (nskk-architecture--log "DEBUG" "Reloaded %s" filename))))
+
+  ;; Reinitialize
+  (nskk-architecture-initialize 'force))
+
+;;;; Statistics and Debugging
+
+(defun nskk-architecture-show-statistics ()
+  "Display architecture statistics."
+  (interactive)
+
+  (if (not nskk-architecture--initialized)
+      (message "NSKK Architecture not initialized")
+
+    (with-output-to-temp-buffer "*NSKK Architecture Statistics*"
+      (princ "NSKK Architecture Statistics\n")
+      (princ "---------------------------\n\n")
+
+      (princ "Layer Status:\n")
+      (dolist (layer-spec nskk-architecture--layers)
+        (let* ((layer-name (car layer-spec))
+               (state (nskk-architecture-get-layer-state layer-name)))
+          (princ (format "  %s: %s\n" layer-name
+                        (if state
+                            (nskk-layer-state-status state)
+                          'no-state)))))
+
+      (princ "\nStartup Times:\n")
+      (dolist (layer-spec nskk-architecture--layers)
+        (let* ((layer-name (car layer-spec))
+               (state (nskk-architecture-get-layer-state layer-name)))
+          (when (and state (nskk-layer-state-startup-time-ms state))
+            (princ (format "  %s: %.2fms\n" layer-name
+                          (nskk-layer-state-startup-time-ms state))))))
+
+      (princ "\nHealth Status:\n")
+      (dolist (layer-spec nskk-architecture--layers)
+        (let* ((layer-name (car layer-spec))
+               (state (nskk-architecture-get-layer-state layer-name)))
+          (when state
+            (princ (format "  %s: %s\n" layer-name
+                          (nskk-layer-state-health-status state)))))))))
 
 (defun nskk-architecture-show-diagram ()
-  "アーキテクチャ図を表示する。"
+  "Display architecture diagram."
   (interactive)
-  (with-output-to-temp-buffer "*NSKK Architecture*"
+
+  (with-output-to-temp-buffer "*NSKK Architecture Diagram*"
     (princ "NSKK 7-Layer Architecture\n")
-    (princ "=========================\n\n")
-    (princ "┌─────────────────────────────────────┐\n")
-    (princ "│   Layer 1: Presentation Layer       │\n")
-    (princ "│   - UI統合、イベントハンドリング     │\n")
-    (princ "├─────────────────────────────────────┤\n")
-    (princ "│   Layer 2: Extension Layer          │\n")
-    (princ "│   - フック、イベントバス             │\n")
-    (princ "├─────────────────────────────────────┤\n")
-    (princ "│   Layer 3: Application Layer        │\n")
-    (princ "│   - ビジネスロジック、変換制御       │\n")
-    (princ "├─────────────────────────────────────┤\n")
-    (princ "│   Layer 4: Core Engine Layer        │\n")
-    (princ "│   - 変換エンジン、辞書エンジン       │\n")
-    (princ "├─────────────────────────────────────┤\n")
-    (princ "│   Layer 5: Data Access Layer        │\n")
-    (princ "│   - 永続化、同期                     │\n")
-    (princ "├─────────────────────────────────────┤\n")
-    (princ "│   Layer 6: Infrastructure Layer     │\n")
-    (princ "│   - スレッド管理、メモリ管理         │\n")
-    (princ "├─────────────────────────────────────┤\n")
-    (princ "│   Layer 7: QA Layer                 │\n")
-    (princ "│   - テスト、ベンチマーク統合         │\n")
-    (princ "└─────────────────────────────────────┘\n\n")
-    (princ "Layer Status:\n")
-    (princ "-------------\n")
-    (dolist (layer nskk-architecture--layers)
-      (let ((status (gethash layer nskk-architecture--layer-status)))
-        (princ (format "[%s] %s: %s\n"
-                       (if (eq status :initialized) "✓" "✗")
-                       layer
-                       (or status "not initialized")))))))
+    (princ "-------------------------\n\n")
+    (princ "┌─────────────────────────────────────────────────────────┐\n")
+    (princ "│                Layer 1: Presentation                    │\n")
+    (princ "│              UI integration, event handling              │\n")
+    (princ "│  nskk-layer-presentation.el                             │\n")
+    (princ "├─────────────────────────────────────────────────────────┤\n")
+    (princ "│                Layer 2: Extension                       │\n")
+    (princ "│          Hooks, event bus, inter-layer messaging        │\n")
+    (princ "│  nskk-layer-extension.el                                │\n")
+    (princ "├─────────────────────────────────────────────────────────┤\n")
+    (princ "│                Layer 3: Application                     │\n")
+    (princ "│           Business logic, conversion control            │\n")
+    (princ "│  nskk-layer-application.el                              │\n")
+    (princ "├─────────────────────────────────────────────────────────┤\n")
+    (princ "│                Layer 4: Core Engine                     │\n")
+    (princ "│           Conversion engine, dictionary engine          │\n")
+    (princ "│  nskk-layer-core.el                                     │\n")
+    (princ "├─────────────────────────────────────────────────────────┤\n")
+    (princ "│                Layer 5: Data Access                     │\n")
+    (princ "│              Persistence, sync, dictionary access       │\n")
+    (princ "│  nskk-layer-data.el                                     │\n")
+    (princ "├─────────────────────────────────────────────────────────┤\n")
+    (princ "│                Layer 6: Infrastructure                  │\n")
+    (princ "│         Thread management, memory, resource management  │\n")
+    (princ "│  nskk-layer-infrastructure.el                           │\n")
+    (princ "├─────────────────────────────────────────────────────────┤\n")
+    (princ "│                Layer 7: QA                              │\n")
+    (princ "│          Testing, benchmarking, quality assurance       │\n")
+    (princ "│  nskk-layer-qa.el                                       │\n")
+    (princ "└─────────────────────────────────────────────────────────┘\n\n")
 
-;;; 統計情報
+    (princ "Integration Layer: nskk-architecture.el\n\n")
 
-(defun nskk-architecture-get-statistics ()
-  "アーキテクチャ全体の統計情報を取得する。"
+    (princ "Initialization Order (bottom-up):\n")
+    (princ "  1. Infrastructure\n")
+    (princ "  2. Data\n")
+    (princ "  3. Core\n")
+    (princ "  4. Application\n")
+    (princ "  5. Extension\n")
+    (princ "  6. Presentation\n")
+    (princ "  7. QA\n\n")
+
+    (princ "Shutdown Order (top-down):\n")
+    (princ "  1. QA\n")
+    (princ "  2. Presentation\n")
+    (princ "  3. Extension\n")
+    (princ "  4. Application\n")
+    (princ "  5. Core\n")
+    (princ "  6. Data\n")
+    (princ "  7. Infrastructure\n")))
+
+(defun nskk-architecture-get-communication-log ()
+  "Get inter-layer communication log."
   (interactive)
-  (let ((stats (make-hash-table :test 'eq)))
-    (puthash 'infrastructure (nskk-infrastructure-get-statistics) stats)
-    (puthash 'data (nskk-data-get-statistics) stats)
-    (puthash 'core (nskk-core-get-statistics) stats)
-    (puthash 'application (nskk-application-get-statistics) stats)
-    (puthash 'extension (nskk-extension-get-statistics) stats)
-    (puthash 'qa (nskk-qa-get-metrics) stats)
-    stats))
 
-;;; デバッグ・ロギング
-
-(defvar nskk-architecture--debug-enabled nil
-  "デバッグモードが有効かどうか。")
+  (cond
+   ((not nskk-architecture-enable-tracing)
+    (message "Tracing not enabled. Set `nskk-architecture-enable-tracing' to t."))
+   (nskk-architecture--communication-log
+    (with-output-to-temp-buffer "*NSKK Communication Log*"
+      (princ "NSKK Inter-Layer Communication Log\n")
+      (princ "-----------------------------------\n\n")
+      (dolist (entry (reverse nskk-architecture--communication-log))
+        (let* ((timestamp (plist-get entry :timestamp))
+               (from (plist-get entry :from))
+               (to (plist-get entry :to))
+               (event (plist-get entry :event))
+               (data (plist-get entry :data)))
+          (princ (format "[%s] %s -> %s: %s\n"
+                        (format-time-string "%H:%M:%S.%3N" timestamp)
+                        from to event))
+          (when data
+            (princ (format "    Data: %S\n" data))))))
+    (length nskk-architecture--communication-log))
+   (t
+    (message "No communication log entries"))))
 
 (defun nskk-architecture-enable-debug ()
-  "デバッグモードを有効にする。"
+  "Enable debug mode for all layers."
   (interactive)
-  (setq nskk-architecture--debug-enabled t)
-  ;; 各レイヤーのデバッグも有効化
-  (nskk-infrastructure-enable-debug)
-  (nskk-data-enable-debug)
-  (nskk-core-enable-debug)
-  (nskk-application-enable-debug)
-  (nskk-extension-enable-debug)
-  (nskk-presentation-enable-debug)
-  (nskk-qa-enable-debug)
-  (message "NSKK Architecture: Debug mode enabled for all layers"))
+
+  (nskk-architecture--log "INFO" "Enabling debug mode...")
+
+  ;; Enable architecture debug
+  (setq nskk-architecture-enable-debug t)
+  (setq nskk-architecture-enable-tracing t)
+
+  ;; Enable layer-specific debug
+  (when (boundp 'nskk-infrastructure-debug)
+    (setq nskk-infrastructure-debug t))
+
+  ;; Notify other layers via event
+  (nskk-architecture--emit-event :debug-enabled)
+
+  (message "NSKK Architecture debug mode enabled"))
 
 (defun nskk-architecture-disable-debug ()
-  "デバッグモードを無効にする。"
+  "Disable debug mode for all layers."
   (interactive)
-  (setq nskk-architecture--debug-enabled nil)
-  ;; 各レイヤーのデバッグも無効化
-  (nskk-infrastructure-disable-debug)
-  (nskk-data-disable-debug)
-  (nskk-core-disable-debug)
-  (nskk-application-disable-debug)
-  (nskk-extension-disable-debug)
-  (nskk-presentation-disable-debug)
-  (nskk-qa-disable-debug)
-  (message "NSKK Architecture: Debug mode disabled for all layers"))
 
-(defun nskk-architecture--log (format-string &rest args)
-  "デバッグログを出力する。
-FORMAT-STRINGはフォーマット文字列、ARGSは引数。"
-  (when nskk-architecture--debug-enabled
-    (apply #'message (concat "[NSKK-Architecture] " format-string) args)))
+  (nskk-architecture--log "INFO" "Disabling debug mode...")
+
+  (setq nskk-architecture-enable-debug nil)
+  (setq nskk-architecture-enable-tracing nil)
+
+  (when (boundp 'nskk-infrastructure-debug)
+    (setq nskk-infrastructure-debug nil))
+
+  (nskk-architecture--emit-event :debug-disabled)
+
+  (message "NSKK Architecture debug mode disabled"))
+
+;;;; Provide
 
 (provide 'nskk-architecture)
+
 ;;; nskk-architecture.el ends here

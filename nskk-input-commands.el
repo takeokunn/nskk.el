@@ -1,253 +1,281 @@
-;;; nskk-input-commands.el --- Input command wrappers for NSKK -*- lexical-binding: t; -*-
+;;; nskk-input-commands.el --- Input processing commands for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; Keywords: japanese, input, mule
 
-;; This file is part of NSKK.
+;; This file is NOT part of GNU Emacs.
 
-;; NSKK is free software: you can redistribute it and/or modify
+;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
 
-;; NSKK is distributed in the hope that it will be useful,
+;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
-;; このファイルはNSKKの入力コマンド群を実装します。
+;; This file implements input processing commands (Layer 3: Application Layer).
 ;;
-;; キーマップから呼び出される入力操作コマンドのラッパー関数を提供し、
-;; 内部的にnskk-buffer.elの機能を使用します。
+;; Layer Responsibilities:
+;; - Application Layer handles character input and conversion control
+;; - Routes conversion requests through Core Engine Layer API (nskk-layer-core)
+;; - Uses State Management API (nskk-state) for mode and context tracking
+;; - Does NOT directly depend on Core Engine implementation (nskk-converter)
+;;
+;; Functions:
+;; - Character input processing and mode-aware routing
+;; - Conversion control (start, commit, cancel)
+;; - Candidate navigation
 
 ;;; Code:
 
-(require 'nskk-buffer)
+(require 'nskk-mode-switch)
+(require 'nskk-converter)
+(require 'nskk-layer-core)
 (require 'nskk-state)
 
-;;; 句読点設定
+;; Romaji input buffer for incremental kana conversion
+(defvar-local nskk--romaji-buffer ""
+  "Buffer for accumulating romaji input before conversion to kana.")
 
-(defgroup nskk-input-punctuation nil
-  "ddskk互換の句読点入力設定。"
-  :group 'nskk
-  :prefix "nskk-input-")
-
-(defcustom nskk-input-kuten-touten-alist
-  '((jp . ("。" . "、"))
-    (en . ("." . ","))
-    (jp-en . ("。" . ","))
-    (en-jp . ("." . "、")))
-  "句読点のスタイルを定義する連想リスト。
-`nskk-input-kutouten-type'で指すシンボルに対応する句読点ペアを返す。"
-  :type '(repeat (cons (choice :tag "スタイル"
-                               (const :tag "日本語" jp)
-                               (const :tag "英語" en)
-                               (const :tag "句点:。／読点: ," jp-en)
-                               (const :tag "句点:.／読点: 、" en-jp)
-                               (cons :tag "カスタム" (string :tag "句点") (string :tag "読点")))
-                       (cons :tag "句読点ペア"
-                             (string :tag "句点" "。")
-                             (string :tag "読点" "、"))))
-  :group 'nskk-input-punctuation)
-
-(defcustom nskk-input-kutouten-type 'jp
-  "現在の句読点スタイル。`
-nskk-input-toggle-kuten'でサイクルする。"
-  :type '(choice (const jp)
-                 (const en)
-                 (const jp-en)
-                 (const en-jp)
-                 (cons (string :tag "句点") (string :tag "読点")))
-  :group 'nskk-input-punctuation)
-
-(defcustom nskk-input-use-auto-kutouten t
-  "前の文字が数字の場合に句点・読点を自動切り替えするかどうか。"
-  :type 'boolean
-  :group 'nskk-input-punctuation)
-
-(defconst nskk-input--kutouten-cycle '(jp en jp-en en-jp)
-  "`nskk-input-toggle-kuten'が巡回するスタイル順。")
-
-(defun nskk-input--resolve-kutouten ()
-  "現在の句読点ペアを返す。"
-  (let ((entry (assq nskk-input-kutouten-type nskk-input-kuten-touten-alist)))
+;; Input processing
+(defun nskk-self-insert (n)
+  "Process self-insert input character.
+N is the command prefix argument."
+  (interactive "p")
+  (let ((char (if (integerp last-command-event)
+                  last-command-event
+                (aref last-command-event 0))))
     (cond
-     (entry (cdr entry))
-     ((consp nskk-input-kutouten-type) nskk-input-kutouten-type)
-     (t (cdr (assq 'jp nskk-input-kuten-touten-alist))))))
+     ;; Latin mode: direct insertion
+     ((eq (nskk-get-mode) 'latin)
+      (nskk-insert-char char n))
+     ;; Abbrev mode: handle abbreviations
+     ((eq (nskk-get-mode) 'abbrev)
+      (nskk-process-abbrev-input char))
+     ;; Japanese modes: convert and insert
+     (t
+      (nskk-process-japanese-input char n)))))
 
-(defun nskk-input--current-kuten ()
-  "現在の句点文字列を返す。"
-  (car (nskk-input--resolve-kutouten)))
+(defun nskk-insert-char (char &optional n)
+  "Insert CHAR N times without conversion."
+  (let ((n (or n 1)))
+    (dotimes (_ n)
+      (insert char))))
 
-(defun nskk-input--current-touten ()
-  "現在の読点文字列を返す。"
-  (cdr (nskk-input--resolve-kutouten)))
+(defun nskk-process-japanese-input (char n)
+  "Process input in Japanese mode (hiragana/katakana).
+CHAR is the input character.
+N is the repeat count."
+  (let* ((kana (nskk-convert-input-to-kana char))
+         (mode (nskk-get-mode))
+         (converted (cond
+                     ((string-empty-p kana) nil)
+                     ((eq mode 'katakana)
+                      (nskk-layer-core-hiragana-to-katakana kana))
+                     (t kana))))
+    (when converted
+      (dotimes (_ n)
+        (insert converted)))))
 
-(defun nskk-input--fullwidth-string-p (str)
-  "STRがASCII以外の文字を含むか判定する。"
-  (and str (string-match-p "[^[:ascii:]]" str)))
+;; Overlay management for conversion display
+(defvar nskk--conversion-overlay nil
+  "Overlay for displaying converted text.")
 
-(defun nskk-input--current-script ()
-  "現在の入力モードに基づくスクリプト種別を返す。"
-  (pcase (and nskk-current-state (nskk-state-mode nskk-current-state))
-    ((or 'latin 'abbrev) 'ascii)
-    ('zenkaku-latin 'fullwidth)
-    (_ 'kana)))
+(defun nskk--update-overlay (start end text)
+  "Update overlay to show TEXT from START to END."
+  (unless (overlayp nskk--conversion-overlay)
+    (setq nskk--conversion-overlay (make-overlay start end)))
+  (move-overlay nskk--conversion-overlay start end (current-buffer))
+  (overlay-put nskk--conversion-overlay 'display text)
+  (overlay-put nskk--conversion-overlay 'face 'highlight))
 
-(defun nskk-input--auto-kutouten (char)
-  "CHARに対応する句読点文字列を返す。"
-  (let* ((choices (pcase char
-                    (?. (list "." "．" (nskk-input--current-kuten)))
-                    (?, (list "," "，" (nskk-input--current-touten)))
-                    (_ (error "Unsupported kutouten char: %s" char))))
-         (script (nskk-input--current-script)))
-    (pcase script
-      ('ascii (nth 0 choices))
-      ('fullwidth (nth 1 choices))
-      (_
-       (let ((prev (char-before (point))))
-         (cond
-          ((null prev) (nth 2 choices))
-          ((and nskk-input-use-auto-kutouten
-                (<= ?0 prev) (<= prev ?9)) (nth 0 choices))
-          ((and nskk-input-use-auto-kutouten
-                (<= ?０ prev) (<= prev ?９)) (nth 1 choices))
-          (t (nth 2 choices))))))))
-
-(defun nskk-input--japanese-punctuation-active-p ()
-  "句点スタイルが日本語ベースか判定する。"
-  (nskk-input--fullwidth-string-p (nskk-input--current-kuten)))
-
-(defun nskk-input--general-punctuation (ascii fullwidth)
-  "現在のモードに合わせてASCIIか全角記号を選択する。"
-  (pcase (nskk-input--current-script)
-    ('ascii ascii)
-    ('fullwidth fullwidth)
-    (_ (if (nskk-input--japanese-punctuation-active-p) fullwidth ascii))))
-
-(defun nskk-input--insert-string (text)
-  "TEXTをNSKKバッファに挿入する。"
-  (unless (stringp text)
-    (signal 'wrong-type-argument (list 'stringp text)))
-  (nskk-buffer-insert text))
-
-;;;###autoload
-(defun nskk-input-toggle-kuten ()
-  "句読点のスタイルをトグルで切り替える。"
+;; Conversion control
+(defun nskk-convert ()
+  "Start conversion."
   (interactive)
-  (setq nskk-input-kutouten-type
-        (or (cadr (member nskk-input-kutouten-type nskk-input--kutouten-cycle))
-            (car nskk-input--kutouten-cycle)))
-  (when (called-interactively-p 'interactive)
-    (message "読点: %s  句点: %s"
-             (nskk-input--current-touten)
-             (nskk-input--current-kuten))))
+  (when (nskk--has-preedit)
+    (nskk-start-conversion)))
 
-;;;###autoload
-(defun nskk-input-insert-period ()
-  "句点を挿入する。"
+(defun nskk-convert-or-commit ()
+  "Start conversion or commit current candidate."
   (interactive)
-  (nskk-input--insert-string (nskk-input--auto-kutouten ?.)))
+  (if (nskk-converting-p)
+      (nskk-commit-current)
+    (nskk-convert)))
 
-;;;###autoload
-(defun nskk-input-insert-comma ()
-  "読点を挿入する。"
+(defun nskk-cancel-conversion ()
+  "Cancel conversion and return to input state."
   (interactive)
-  (nskk-input--insert-string (nskk-input--auto-kutouten ?,)))
+  (when (nskk-converting-p)
+    (nskk-rollback-conversion)))
 
-;;;###autoload
-(defun nskk-input-insert-question ()
-  "疑問符を挿入する。"
+(defun nskk-rollback-conversion ()
+  "Rollback to pre-conversion state."
   (interactive)
-  (nskk-input--insert-string (nskk-input--general-punctuation "?" "？")))
+  (when (nskk-converting-p)
+    (nskk--restore-preedit)
+    (setq nskk-converting-active nil)))
 
-;;;###autoload
-(defun nskk-input-insert-exclamation ()
-  "感嘆符を挿入する。"
+(defun nskk-next-candidate ()
+  "Select next conversion candidate."
   (interactive)
-  (nskk-input--insert-string (nskk-input--general-punctuation "!" "！")))
+  (when (nskk-converting-p)
+    (nskk--select-candidate 'next)))
 
-;;; 削除コマンド
-
-(defun nskk-input-delete-backward-char (&optional n)
-  "後退削除を行う。N 文字削除する。
-キーマップから呼び出される入力操作コマンド。"
-  (interactive "p")
-  (nskk-buffer-delete-backward-char n))
-
-(defun nskk-input-delete-forward-char (&optional n)
-  "前方削除を行う。N 文字削除する。
-キーマップから呼び出される入力操作コマンド。"
-  (interactive "p")
-  (nskk-buffer-delete-forward-char n))
-
-(defun nskk-input-kill-line ()
-  "カーソル位置から行末までを削除する。
-未確定入力がある場合は、そのコンテキスト内でのみ削除を行う。"
+(defun nskk-previous-candidate ()
+  "Select previous conversion candidate."
   (interactive)
-  (when (and nskk-current-state
-             (nskk-state-marker-start nskk-current-state)
-             (nskk-state-marker-end nskk-current-state))
-    (let* ((current (point))
-           (start (marker-position (nskk-state-marker-start nskk-current-state)))
-           (end (marker-position (nskk-state-marker-end nskk-current-state))))
-      (when (and (>= current start) (< current end))
-        (nskk-buffer-delete-region current end)))))
+  (when (nskk-converting-p)
+    (nskk--select-candidate 'previous)))
 
-(defun nskk-input-kill-whole-line ()
-  "未確定入力を全てクリアする。
-キーマップから呼び出される入力操作コマンド。"
+;; Helper functions
+(defun nskk-get-mode ()
+  "Get current input mode."
+  (nskk-state-get-mode))
+
+(defun nskk-converting-p ()
+  "Check if currently in conversion state."
+  nskk-converting-active)
+
+(defun nskk-commit-current ()
+  "Commit current conversion candidate."
   (interactive)
-  (nskk-buffer-clear))
+  (when (and nskk-converting-active
+             (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (let* ((candidates (nskk-state-get-candidates))
+           (index (nskk-state-get-current-index))
+           (candidate (nth index candidates))
+           (start (nskk--get-conversion-start))
+           (end (point)))
+      ;; Delete overlay and insert actual text
+      (when (overlayp nskk--conversion-overlay)
+        (delete-overlay nskk--conversion-overlay))
+      (delete-region start end)
+      (goto-char start)
+      (insert candidate)
+      (setq nskk-converting-active nil)
+      (setf (nskk-state-candidates nskk-current-state) nil)
+      (setf (nskk-state-current-index nskk-current-state) 0))))
 
-(defun nskk-input-kill-region ()
-  "リージョンを削除する。
-ただし、NSKKの未確定入力範囲内のみで動作する。"
-  (interactive)
-  (when (and nskk-current-state
-             (nskk-state-marker-start nskk-current-state)
-             (nskk-state-marker-end nskk-current-state)
-             (use-region-p))
-    (let* ((region-start (region-beginning))
-           (region-end (region-end))
-           (start (marker-position (nskk-state-marker-start nskk-current-state)))
-           (end (marker-position (nskk-state-marker-end nskk-current-state))))
-      ;; NSKK入力範囲内のリージョンのみ削除
-      (when (and (>= region-start start)
-                 (<= region-end end))
-        (nskk-buffer-delete-region region-start region-end)
-        (deactivate-mark)))))
+(defun nskk-process-abbrev-input (char)
+  "Process input in abbrev mode."
+  ;; TODO: Implement abbrev mode processing
+  (insert char))
 
-(defun nskk-input-yank ()
-  "キルリングからテキストをヤンクする。
-NSKKの未確定入力に挿入する。"
-  (interactive)
-  (let ((text (current-kill 0 t)))
-    (when text
-      (nskk-buffer-insert text))))
+(defun nskk-convert-input-to-kana (char)
+  "Convert input CHAR to kana using the romaji-to-kana converter.
+Accumulates romaji characters in `nskk--romaji-buffer' and converts
+to kana when a complete romaji sequence is recognized.
+Returns the converted kana string, or an empty string if the input
+is still incomplete (waiting for more characters)."
+  (let* ((input (concat nskk--romaji-buffer (char-to-string char)))
+         (result (nskk-converter-convert input)))
+    (cond
+     ;; Successful conversion: return kana, keep remainder in buffer
+     ((and result (stringp (car result)))
+      (let ((kana (car result))
+            (remaining (cdr result)))
+        (setq nskk--romaji-buffer
+              (if (and (stringp remaining) (> (length remaining) 0))
+                  remaining
+                ""))
+        kana))
+     ;; Incomplete: buffer the input, return empty string
+     ((and result (eq (car result) :incomplete))
+      (setq nskk--romaji-buffer input)
+      "")
+     ;; No match at all: flush the buffer as-is and return the character
+     (t
+      (setq nskk--romaji-buffer "")
+      input))))
 
-;;; Obsolete Functions
+(defun nskk-state-get-candidates ()
+  "Get current candidates from state."
+  (when (and (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (nskk-state-candidates nskk-current-state)))
 
-;; ddskk完全互換のため、以下の関数は使用されなくなった
-;; 標準Emacsコマンドを使用すること
+(defun nskk-state-get-current-index ()
+  "Get current candidate index from state."
+  (when (and (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (nskk-state-current-index nskk-current-state)))
 
-(make-obsolete 'nskk-input-delete-forward-char 'delete-char "1.0.0")
-(make-obsolete 'nskk-input-kill-line 'kill-line "1.0.0")
-(make-obsolete 'nskk-input-kill-whole-line nil "1.0.0")
-(make-obsolete 'nskk-input-kill-region 'kill-region "1.0.0")
-(make-obsolete 'nskk-input-yank 'yank "1.0.0")
+(defun nskk-state-set-current-index (index)
+  "Set current candidate index in state."
+  (when (and (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (setf (nskk-state-current-index nskk-current-state) index)))
 
-;; nskk-input-delete-backward-charは将来的なエミュレーション機構で使用する可能性があるため保持
+(defun nskk-get-original-text ()
+  "Get the original preedit text before conversion."
+  ;; TODO: Store original text when conversion starts
+  nil)
+
+(defun nskk--has-preedit ()
+  "Check if there's preedit to convert."
+  (> (point) (nskk--get-conversion-start)))
+
+(defun nskk--get-conversion-start ()
+  "Get conversion start position."
+  (mark t))
+
+(defun nskk-start-conversion ()
+  "Start conversion process."
+  (let ((start (nskk--get-conversion-start))
+        (end (point)))
+    (setq nskk-converting-active t)
+    (let* ((text (buffer-substring start end))
+           ;; Use Core layer API for dictionary search
+           (candidates (nskk-core-search text :prefix))
+           (primary (car candidates)))
+      (nskk--update-overlay start end primary)
+      ;; Store candidates in global state
+      (when (boundp 'nskk-current-state)
+        (nskk-state-set-candidates nskk-current-state candidates)
+        (setf (nskk-state-current-index nskk-current-state) 0)))))
+
+(defun nskk--restore-preedit ()
+  "Restore preedit text after cancel."
+  (let* ((candidates (when (and (boundp 'nskk-current-state)
+                                (nskk-state-p nskk-current-state))
+                       (nskk-state-candidates nskk-current-state)))
+         (original (when candidates
+                     (nskk-get-original-text))))
+    (when original
+      (save-excursion
+        (let ((start (nskk--get-conversion-start))
+              (end (point)))
+          (delete-region start end)
+          (goto-char start)
+          (insert original))))))
+
+(defun nskk--select-candidate (direction)
+  "Select candidate in DIRECTION (next or previous)."
+  (let* ((candidates (nskk-state-get-candidates))
+         (current (nskk-state-get-current-index))
+         (total (length candidates))
+         (new-index (if (eq direction 'next)
+                        (mod (1+ current) total)
+                      (mod (1- current) total))))
+    (nskk-state-set-current-index new-index)
+    (let* ((candidate (nth new-index candidates))
+           (start (nskk--get-conversion-start))
+           (end (point)))
+      (nskk--update-overlay start end candidate))))
 
 (provide 'nskk-input-commands)
 

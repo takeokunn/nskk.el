@@ -1,11 +1,9 @@
-;;; nskk-layer-extension.el --- Extension Layer for NSKK -*- lexical-binding: t; -*-
+;;; nskk-layer-extension.el --- Extension layer interface  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Development Team
+;; Copyright (C) 2025  NSKK Contributors
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk, architecture
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; Author: NSKK Contributors
+;; Keywords: Japanese, input method, extensions
 
 ;; This file is part of NSKK.
 
@@ -24,417 +22,171 @@
 
 ;;; Commentary:
 
-;; Extension Layer - レイヤー間通信とフックシステムを提供
+;; Extension layer provides:
+;; - Hook interface compatible with DDSKK
+;; - Event subscription mechanism
+;; - Extension lifecycle management
 ;;
-;; 責務:
-;; - フックポイント管理（300+拡張ポイント）
-;; - イベントバス実装
-;; - レイヤー間メッセージング
-;; - プラグインインターフェース
-;; - 拡張ポイント登録
-;;
-;; レイヤー依存:
-;; - すべてのレイヤーから独立
-;; - すべてのレイヤーに利用される
-;;
-;; 主要コンポーネント:
-;; - フックシステム
-;; - イベントバス
-;; - メッセージディスパッチャー
-;; - 拡張ポイントレジストリ
-;;
-;; 使用例:
-;; (nskk-extension-add-hook :before-conversion #'my-hook)
-;; (nskk-extension-emit-event :conversion-started data)
-;; (nskk-extension-send-message 'application 'core :process-input input)
+;; DDSKK Hook Compatibility:
+;; This layer maps DDSKK hook names to NSKK event system,
+;; allowing existing DDSKK extensions to work with minimal changes.
 
 ;;; Code:
 
-(require 'cl-lib)
+(require 'nskk-events)
 
-;;; カスタマイズ可能変数
+;;; Hook Compatibility Layer (DDSKK -> NSKK)
 
-(defgroup nskk-extension nil
-  "Extension layer settings for NSKK."
-  :group 'nskk
-  :prefix "nskk-extension-")
+(defvar nskk-extensions-loaded nil
+  "List of loaded extensions.")
 
-(defcustom nskk-extension-enable-logging t
-  "イベントログを有効にするか。"
-  :type 'boolean
-  :group 'nskk-extension)
+;; Input hooks
+(defvar nskk-mode-hook nil
+  "Hook run when NSKK mode is enabled.
+DDSKK equivalent: skk-mode-hook")
 
-(defcustom nskk-extension-max-event-history 1000
-  "保持するイベント履歴の最大数。"
-  :type 'integer
-  :group 'nskk-extension)
+(defvar nskk-mode-off-hook nil
+  "Hook run when NSKK mode is disabled.
+DDSKK equivalent: skk-mode-off-hook")
 
-;;; 内部変数
+(defvar nskk-input-mode-hook nil
+  "Hook run when input mode changes.
+DDSKK equivalent: skk-input-mode-hook")
 
-(defvar nskk-extension--global-hooks (make-hash-table :test 'eq)
-  "グローバルフックポイントとハンドラーリストのマッピング。")
+;; Conversion hooks
+(defvar nskk-start-henkan-hook nil
+  "Hook run before conversion starts.
+DDSKK equivalent: skk-start-henkan-hook")
+(put 'nskk-start-henkan-hook 'permanent-local t)
 
-(defvar nskk-extension--hooks nskk-extension--global-hooks
-  "現在のバッファで使用するフックテーブル。
-バッファローカルフックを登録する場合は `setq-local' によって
-個別のハッシュテーブルが割り当てられる。")
+(defvar nskk-henkan-hook nil
+  "Hook run during conversion.
+DDSKK equivalent: skk-henkan-hook")
 
-(defvar nskk-extension--event-bus (make-hash-table :test 'eq)
-  "イベントバス: イベントタイプとリスナーのマッピング。")
+(defvar nskk-post-henkan-hook nil
+  "Hook run after conversion completes.
+DDSKK equivalent: skk-post-henkan-hook")
 
-(defvar nskk-extension--event-history nil
-  "イベント履歴。")
+(defvar nskk-after-henkan-hook nil
+  "Hook run after conversion is committed.
+DDSKK equivalent: skk-after-henkan-hook")
 
-(defvar nskk-extension--message-routes (make-hash-table :test 'equal)
-  "メッセージルーティングテーブル。")
+;; Candidate hooks
+(defvar nskk-henkan-select-hook nil
+  "Hook run when a candidate is selected.
+DDSKK equivalent: skk-henkan-select-hook")
 
-(defvar nskk-extension--extension-points (make-hash-table :test 'eq)
-  "拡張ポイントレジストリ。")
+;; Dictionary hooks
+(defvar nskk-search-jisyo-hook nil
+  "Hook run during dictionary search.
+DDSKK equivalent: skk-search-jisyo-hook")
 
-;;; フックシステム
+(defvar nskk-jisyo-update-hook nil
+  "Hook run when dictionary is updated.
+DDSKK equivalent: skk-jisyo-update-hook")
 
-(defun nskk-extension-add-hook (hook-point function &optional append local)
-  "フックポイントにハンドラーを追加する。
-HOOK-POINTはフックポイント名、FUNCTIONはハンドラー関数。
-APPENDが非nilなら末尾に追加、LOCALが非nilならバッファローカル。
-LOCAL指定時は現在のバッファにのみ登録される。"
-  (unless (functionp function)
-    (user-error "FUNCTION must be a function"))
-  (if local
-      (with-current-buffer (current-buffer)
-        (unless (local-variable-p 'nskk-extension--hooks)
-          (setq-local nskk-extension--hooks (make-hash-table :test 'eq)))
-        (let* ((local-table nskk-extension--hooks)
-               (handlers (gethash hook-point local-table)))
-          (puthash hook-point (nskk-extension--normalize-hook-list handlers function append)
-                   local-table)))
-    (let ((handlers (gethash hook-point nskk-extension--global-hooks)))
-      (puthash hook-point (nskk-extension--normalize-hook-list handlers function append)
-               nskk-extension--global-hooks))))
+;; State hooks
+(defvar nskk-save-history-hook nil
+  "Hook run when history is saved.
+DDSKK equivalent: skk-save-history-hook")
 
-(defun nskk-extension-remove-hook (hook-point function &optional local)
-  "フックポイントからハンドラーを削除する。
-HOOK-POINTはフックポイント名、FUNCTIONはハンドラー関数。
-LOCALが非nilならバッファローカルから削除。"
-  (if local
-      (when (local-variable-p 'nskk-extension--hooks)
-        (let ((handlers (gethash hook-point nskk-extension--hooks)))
-          (when handlers
-            (puthash hook-point (delq function (copy-sequence handlers))
-                     nskk-extension--hooks))))
-    (let ((handlers (gethash hook-point nskk-extension--global-hooks)))
-      (when handlers
-        (puthash hook-point (delq function (copy-sequence handlers))
-                 nskk-extension--global-hooks)))))
+;; Keymap hooks
+(defvar nskk-annotate-mode-map-hook nil
+  "Hook run when annotating mode map.
+DDSKK equivalent: skk-annotate-mode-map-hook")
 
-(defun nskk-extension-run-hook (hook-point &rest args)
-  "フックポイントのハンドラーを実行する。
-HOOK-POINTはフックポイント名、ARGSはハンドラーに渡す引数。"
-  (let* ((global-table nskk-extension--global-hooks)
-         (local-table (when (and (local-variable-p 'nskk-extension--hooks)
-                                 (hash-table-p nskk-extension--hooks))
-                        nskk-extension--hooks)))
-    (when (hash-table-p global-table)
-      (nskk-extension--run-handlers (gethash hook-point global-table) args hook-point))
-    (when (hash-table-p local-table)
-      (nskk-extension--run-handlers (gethash hook-point local-table) args hook-point))))
+(defvar nskk-annotate-minibuffer-map-hook nil
+  "Hook run when annotating minibuffer map.
+DDSKK equivalent: skk-annotate-minibuffer-map-hook")
 
-(defun nskk-extension-clear-hooks (hook-point)
-  "フックポイントのすべてのハンドラーをクリアする。
-HOOK-POINTはフックポイント名。"
-  (puthash hook-point nil nskk-extension--global-hooks))
+;;; Hook to Event Bridge
 
-(defun nskk-extension--normalize-hook-list (handlers function append)
-  "HANDLERS に FUNCTION を追加したリストを返す。
-APPEND が非nilの場合は末尾に追加する。"
-  (let ((filtered (delq function (copy-sequence handlers))))
-    (if append
-        (nconc filtered (list function))
-      (cons function filtered))))
+(defun nskk-hook-to-event-bridge (hook-name event-type)
+  "Convert HOOK-NAME to EVENT-TYPE subscription.
+This allows DDSKK-style hooks to emit NSKK events."
+  (add-hook hook-name
+            (lambda (&rest args)
+              (apply #'nskk-event-emit event-type args))))
 
-(defun nskk-extension--run-handlers (handlers args hook-point)
-  "HANDLERS を ARGS で順に実行する。"
-  (dolist (hook handlers)
-    (condition-case err
-        (apply hook args)
-      (error
-       (nskk-extension--log "Hook error at %s: %s" hook-point err)))))
+;; Establish bridge for standard hooks
+(dolist (hook-spec '((nskk-mode-hook . mode-enter)
+                     (nskk-mode-off-hook . mode-exit)
+                     (nskk-start-henkan-hook . conversion-start)
+                     (nskk-henkan-hook . conversion-candidate)
+                     (nskk-post-henkan-hook . conversion-end)
+                     (nskk-after-henkan-hook . conversion-commit)
+                     (nskk-henkan-select-hook . conversion-candidate)
+                     (nskk-search-jisyo-hook . dict-search)
+                     (nskk-jisyo-update-hook . dict-update)
+                     (nskk-save-history-hook . state-save)))
+  (nskk-hook-to-event-bridge (car hook-spec) (cdr hook-spec)))
 
-;;; イベントバス
+;;; Extension Management
 
-(defun nskk-extension-subscribe (event-type listener)
-  "イベントタイプにリスナーを登録する。
-EVENT-TYPEはイベントタイプ、LISTENERはリスナー関数。"
-  (let ((listeners (gethash event-type nskk-extension--event-bus)))
-    (unless (memq listener listeners)
-      (puthash event-type (cons listener listeners)
-               nskk-extension--event-bus))))
+(defun nskk-extension-load (extension)
+  "Load EXTENSION and initialize it.
+EXTENSION should be a symbol naming the extension feature.
+Returns t if successful, nil otherwise."
+  (condition-case err
+      (progn
+        (require extension)
+        (push extension nskk-extensions-loaded)
+        (nskk-event-emit 'extension-load :extension extension)
+        t)
+    (error
+     (message "NSKK failed to load extension %s: %S" extension err)
+     (nskk-event-emit 'extension-error
+                     :extension extension
+                     :error err)
+     nil)))
 
-(defun nskk-extension-unsubscribe (event-type listener)
-  "イベントタイプからリスナーを登録解除する。
-EVENT-TYPEはイベントタイプ、LISTENERはリスナー関数。"
-  (let ((listeners (gethash event-type nskk-extension--event-bus)))
-    (puthash event-type (delq listener listeners)
-             nskk-extension--event-bus)))
+(defun nskk-extension-unload (extension)
+  "Unload EXTENSION and cleanup.
+Returns t if successful, nil otherwise."
+  (when (memq extension nskk-extensions-loaded)
+    (setq nskk-extensions-loaded
+          (delq extension nskk-extensions-loaded))
+    (nskk-event-emit 'extension-unload :extension extension)
+    t))
 
-(defun nskk-extension-emit-event (event-type &rest data)
-  "イベントを発行する。
-EVENT-TYPEはイベントタイプ、DATAはイベントデータ。"
-  ;; イベント履歴に記録
-  (when nskk-extension-enable-logging
-    (nskk-extension--record-event event-type data))
-  ;; リスナーに通知
-  (let ((listeners (gethash event-type nskk-extension--event-bus)))
-    (dolist (listener listeners)
-      (condition-case err
-          (apply listener data)
-        (error
-         (nskk-extension--log "Event listener error for %s: %s"
-                              event-type err))))))
+(defun nskk-extension-loaded-p (extension)
+  "Check if EXTENSION is loaded."
+  (memq extension nskk-extensions-loaded))
 
-(defun nskk-extension--record-event (event-type data)
-  "イベントを履歴に記録する。
-EVENT-TYPEはイベントタイプ、DATAはイベントデータ。"
-  (let ((event (list :type event-type
-                     :data data
-                     :timestamp (float-time))))
-    (push event nskk-extension--event-history)
-    ;; 履歴サイズを制限
-    (when (> (length nskk-extension--event-history)
-             nskk-extension-max-event-history)
-      (setq nskk-extension--event-history
-            (seq-take nskk-extension--event-history
-                      nskk-extension-max-event-history)))))
+;;; Event Subscription Helpers
 
-(defun nskk-extension-get-event-history (&optional event-type)
-  "イベント履歴を取得する。
-EVENT-TYPEが指定された場合、そのタイプのイベントのみを返す。"
-  (if event-type
-      (seq-filter (lambda (event)
-                    (eq (plist-get event :type) event-type))
-                  nskk-extension--event-history)
-    nskk-extension--event-history))
+(defmacro nskk-on (event-type &rest body)
+  "Subscribe to EVENT-TYPE and run BODY on event.
+BODY is wrapped in a lambda and receives event data as implicit plist.
+Access event properties with `nskk-event-prop' or destructuring-bind."
+  (declare (indent 1))
+  (let ((callback (gensym "callback")))
+    `(let ((,callback (lambda (data) ,@body)))
+       (nskk-event-subscribe ',event-type ,callback))))
 
-(defun nskk-extension-clear-event-history ()
-  "イベント履歴をクリアする。"
-  (interactive)
-  (setq nskk-extension--event-history nil))
+(defun nskk-event-prop (prop data)
+  "Get PROP from event DATA plist."
+  (plist-get data prop))
 
-;;; メッセージディスパッチャー
+(defmacro nskk-define-extension (name &rest body)
+  "Define an extension named NAME.
+BODY is executed when extension loads.
+Use `nskk-on' inside to subscribe to events."
+  (declare (indent 1))
+  `(progn
+     (eval-after-load 'nskk-events
+       '(progn
+          ,@body))
+     (provide ',name)))
 
-(defun nskk-extension-register-route (from-layer to-layer handler)
-  "レイヤー間メッセージのルートを登録する。
-FROM-LAYERは送信元レイヤー、TO-LAYERは送信先レイヤー、
-HANDLERはメッセージハンドラー関数。"
-  (let ((key (cons from-layer to-layer)))
-    (puthash key handler nskk-extension--message-routes)))
+;;; Initialization
 
-(defun nskk-extension-send-message (from-layer to-layer action &rest args)
-  "レイヤー間でメッセージを送信する。
-FROM-LAYERは送信元レイヤー、TO-LAYERは送信先レイヤー、
-ACTIONは実行するアクション、ARGSは引数。"
-  (let* ((key (cons from-layer to-layer))
-         (handler (gethash key nskk-extension--message-routes)))
-    (if handler
-        (condition-case err
-            (apply handler action args)
-          (error
-           (nskk-extension--log "Message handler error %s->%s: %s"
-                                from-layer to-layer err)
-           nil))
-      (nskk-extension--log "No route from %s to %s" from-layer to-layer)
-      nil)))
+(defun nskk-extension-init ()
+  "Initialize extension layer."
+  (nskk-event-emit 'init))
 
-(defun nskk-extension-broadcast-message (from-layer action &rest args)
-  "すべてのレイヤーにメッセージをブロードキャストする。
-FROM-LAYERは送信元レイヤー、ACTIONはアクション、ARGSは引数。"
-  (let ((results nil))
-    (maphash
-     (lambda (key handler)
-       (when (eq (car key) from-layer)
-         (let ((result (condition-case err
-                           (apply handler action args)
-                         (error
-                          (nskk-extension--log "Broadcast error: %s" err)
-                          nil))))
-           (push (cons (cdr key) result) results))))
-     nskk-extension--message-routes)
-    results))
-
-;;; 拡張ポイント
-
-(defun nskk-extension-register-extension-point (point-name metadata)
-  "拡張ポイントを登録する。
-POINT-NAMEは拡張ポイント名、METADATAはメタデータplist。
-METADATAには :description, :args, :return などを含む。"
-  (puthash point-name metadata nskk-extension--extension-points))
-
-(defun nskk-extension-get-extension-point (point-name)
-  "拡張ポイントの情報を取得する。
-POINT-NAMEは拡張ポイント名。"
-  (gethash point-name nskk-extension--extension-points))
-
-(defun nskk-extension-list-extension-points ()
-  "登録されているすべての拡張ポイントを一覧表示する。"
-  (interactive)
-  (let ((points nil))
-    (maphash (lambda (name metadata)
-               (push (cons name metadata) points))
-             nskk-extension--extension-points)
-    (if points
-        (message "Extension points: %s"
-                 (mapconcat (lambda (p)
-                              (format "%s: %s"
-                                      (car p)
-                                      (plist-get (cdr p) :description)))
-                            points
-                            "\n"))
-      (message "No extension points registered"))))
-
-;;; 初期化・シャットダウン
-
-(defun nskk-extension-initialize ()
-  "Extension Layerを初期化する。"
-  (nskk-extension--setup-standard-extension-points)
-  (nskk-extension--log "Extension Layer initialized"))
-
-(defun nskk-extension-shutdown ()
-  "Extension Layerをシャットダウンする。"
-  (clrhash nskk-extension--hooks)
-  (clrhash nskk-extension--event-bus)
-  (clrhash nskk-extension--message-routes)
-  (clrhash nskk-extension--extension-points)
-  (setq nskk-extension--event-history nil)
-  (nskk-extension--log "Extension Layer shutdown"))
-
-;;; 標準拡張ポイント定義
-
-(defun nskk-extension--setup-standard-extension-points ()
-  "標準の拡張ポイントをセットアップする。"
-  ;; 変換関連
-  (nskk-extension-register-extension-point
-   :before-conversion
-   '(:description "変換開始前に実行"
-     :args (input)
-     :return modified-input))
-
-  (nskk-extension-register-extension-point
-   :after-conversion
-   '(:description "変換完了後に実行"
-     :args (result)
-     :return modified-result))
-
-  ;; 候補選択関連
-  (nskk-extension-register-extension-point
-   :before-candidate-selection
-   '(:description "候補選択前に実行"
-     :args (candidates)
-     :return modified-candidates))
-
-  (nskk-extension-register-extension-point
-   :after-candidate-selection
-   '(:description "候補選択後に実行"
-     :args (selected-candidate)
-     :return modified-candidate))
-
-  ;; モード変更関連
-  (nskk-extension-register-extension-point
-   :before-mode-change
-   '(:description "モード変更前に実行"
-     :args (old-mode new-mode)
-     :return allowed))
-
-  (nskk-extension-register-extension-point
-   :after-mode-change
-   '(:description "モード変更後に実行"
-     :args (old-mode new-mode)
-     :return nil))
-
-  ;; 辞書アクセス関連
-  (nskk-extension-register-extension-point
-   :before-dictionary-lookup
-   '(:description "辞書検索前に実行"
-     :args (query)
-     :return modified-query))
-
-  (nskk-extension-register-extension-point
-   :after-dictionary-lookup
-   '(:description "辞書検索後に実行"
-     :args (query results)
-     :return modified-results))
-
-  ;; 学習関連
-  (nskk-extension-register-extension-point
-   :before-learning
-   '(:description "学習実行前に実行"
-     :args (entry)
-     :return modified-entry))
-
-  (nskk-extension-register-extension-point
-   :after-learning
-   '(:description "学習実行後に実行"
-     :args (entry)
-     :return nil)))
-
-;;; ヘルパー関数
-
-(defun nskk-extension-hook-count (hook-point)
-  "フックポイントに登録されているハンドラーの数を返す。
-HOOK-POINTはフックポイント名。"
-  (let ((hooks (gethash hook-point nskk-extension--hooks)))
-    (if hooks (length hooks) 0)))
-
-(defun nskk-extension-listener-count (event-type)
-  "イベントタイプに登録されているリスナーの数を返す。
-EVENT-TYPEはイベントタイプ。"
-  (let ((listeners (gethash event-type nskk-extension--event-bus)))
-    (if listeners (length listeners) 0)))
-
-;;; デバッグ・ロギング
-
-(defvar nskk-extension--debug-enabled nil
-  "デバッグモードが有効かどうか。")
-
-(defun nskk-extension-enable-debug ()
-  "デバッグモードを有効にする。"
-  (setq nskk-extension--debug-enabled t)
-  (message "NSKK Extension: Debug mode enabled"))
-
-(defun nskk-extension-disable-debug ()
-  "デバッグモードを無効にする。"
-  (setq nskk-extension--debug-enabled nil)
-  (message "NSKK Extension: Debug mode disabled"))
-
-(defun nskk-extension--log (format-string &rest args)
-  "デバッグログを出力する。
-FORMAT-STRINGはフォーマット文字列、ARGSは引数。"
-  (when nskk-extension--debug-enabled
-    (apply #'message (concat "[NSKK-Extension] " format-string) args)))
-
-;;; ヘルスチェック
-
-(defun nskk-extension-health-check ()
-  "Extension Layerのヘルスチェックを実行する。"
-  (interactive)
-  (let ((hook-count (hash-table-count nskk-extension--hooks))
-        (event-count (hash-table-count nskk-extension--event-bus))
-        (route-count (hash-table-count nskk-extension--message-routes))
-        (ext-point-count (hash-table-count nskk-extension--extension-points)))
-    (message "Extension Layer Status:\n  Hooks: %d\n  Events: %d\n  Routes: %d\n  Extension Points: %d\n  Event History: %d"
-             hook-count event-count route-count ext-point-count
-             (length nskk-extension--event-history))))
-
-;;; 統計情報
-
-(defun nskk-extension-get-statistics ()
-  "Extension Layerの統計情報を取得する。
-戻り値: 統計情報のplist"
-  (list :layer 'extension
-        :hook-count (hash-table-count nskk-extension--global-hooks)
-        :event-subscribers (hash-table-count nskk-extension--event-bus)
-        :message-routes (hash-table-count nskk-extension--message-routes)
-        :extension-points (hash-table-count nskk-extension--extension-points)
-        :event-history-size (length nskk-extension--event-history)))
+(add-hook 'after-init-hook #'nskk-extension-init)
 
 (provide 'nskk-layer-extension)
+
 ;;; nskk-layer-extension.el ends here

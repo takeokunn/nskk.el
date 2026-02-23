@@ -6,14 +6,14 @@
 
 ### 習得内容
 - ⚡ 高速ローマ字-ひらがな変換（1ms以下）
-- 🧠 AI級学習機能による最適化
+- 🧠 学習機能による最適化
 - 📝 送り仮名処理による日本語入力
 - 🔍 動的補完による効率的入力
 - 🎯 マクロ駆使による高パフォーマンス
 
 ## 前提条件
 
-- **Emacs 27.1以降**（推奨：29.1以降でマクロ最適化を活用）
+- **Emacs 30以上**
 - **基本的なEmacsの操作**（ファイルの開閉、バッファの切り替えなど）
 - **UTF-8環境**（NSKKの高速処理には必須）
 - **メモリ**：最低512MB（辞書キャッシュ用）
@@ -30,24 +30,18 @@
    emacs --batch -f batch-byte-compile *.el
    ```
 
-2. **Emacs 30以上での高性能設定でのロード**：
+2. **Emacs 30以上での設定でのロード**：
    ```elisp
-   ;; Emacs 30以上での最新パフォーマンス最適化設定
-   (setopt gc-cons-threshold 134217728       ; GC圧迫を防止（128MB）
-           gc-cons-percentage 1.0            ; GC実行条件緩和
-           read-process-output-max 1048576   ; プロセス出力バッファ拡張
-           native-comp-speed 3               ; ネイティブコンパイル最大速度
-           native-comp-jit-compilation t     ; JITコンパイル有効
-           native-comp-deferred-compilation t) ; 遅延コンパイル有効
+   ;; Emacs 30以上でのパフォーマンス設定
+   (setq gc-cons-threshold 134217728       ; GC圧迫を防止（128MB）
+         gc-cons-percentage 1.0            ; GC実行条件緩和
+         read-process-output-max 1048576)  ; プロセス出力バッファ拡張
 
    (add-to-list 'load-path "/path/to/nskk.el")
 
-   ;; Emacs 30以上でのマクロシステムとスレッドプールによる高速初期化
+   ;; NSKKの読み込みと初期化
    (require 'nskk)
-   (nskk-emacs31-optimized-setup)     ; Emacs 30以上対応セットアップ
-
-   ;; 並列メモリプール事前確保
-   (nskk-parallel-initialize-memory-pools)
+   (nskk-setup)
 
    ;; ネイティブコンパイル事前ウォームアップ
    (when (native-comp-available-p)
@@ -56,42 +50,24 @@
 
 3. **設定の即座反映**：
    ```elisp
-   ;; Emacs 30以上での高速動的リロード（ホットスワップ対応）
+   ;; 設定ファイルを評価して反映
    M-x eval-buffer
-   ;; またはEmacs 30以上対応ホットリロード（状態保持）
-   M-x nskk-emacs31-hot-reload
-   ;; JITコンパイル済み関数の即座更新
-   M-x nskk-jit-recompile-all-functions
    ```
 
 ### パッケージマネージャー経由（推奨）
 
 ```elisp
-;; straight.el + Emacs 30以上でのネイティブコンパイル統合
+;; straight.el経由
 (straight-use-package
- '(nskk :type git :host github :repo "takeokunn/nskk.el"
-        :build (:native-compile t    ; ネイティブコンパイル強制
-                :optimization-level 3
-                :profile speed
-                :pre-build nskk-prepare-native-compilation)))
+ '(nskk :type git :host github :repo "takeokunn/nskk.el"))
 
-;; use-package + Emacs 30以上での最適化統合
+;; use-package + straight.el
 (use-package nskk
-  :straight (nskk :type git :host github :repo "takeokunn/nskk.el"
-                  :build (:native-compile t :optimization-level 3))
+  :straight (nskk :type git :host github :repo "takeokunn/nskk.el")
   :init
-  ;; Emacs 30以上でのsetoptによるモダン設定
-  (setopt nskk-performance-mode 'emacs31-turbo  ; Emacs 30以上対応高性能モード
-          nskk-enable-threading t               ; スレッド並列処理有効
-          nskk-use-native-json t                ; ネイティブJSON処理
-          nskk-concurrent-dictionary-loading t  ; 辞書並列読み込み
-          nskk-jit-compilation-strategy 'aggressive) ; 積極的JITコンパイル
+  (setopt nskk-enable-learning t)         ; 学習機能有効
   :config
-  (nskk-emacs31-comprehensive-setup)    ; Emacs 30以上総合最適化設定
-
-  ;; 非同期初期化でUIブロックを回避
-  (nskk-async-initialize-with-progress-callback
-   (lambda (progress) (message "NSKK initialization: %d%%" (* progress 100)))))
+  (keymap-global-set "C-x C-j" #'nskk-mode))
 ```
 
 ## ステップ2: 辞書システムセットアップ
@@ -111,41 +87,38 @@ graph TD
 
 1. **高速辞書セットアップ**：
    ```bash
-   # メイン辞書（L辞書）
-   curl -o ~/dict/SKK-JISYO.L.gz http://openlab.jp/skk/dic/SKK-JISYO.L.gz
-   gunzip ~/dict/SKK-JISYO.L.gz
+   mkdir -p ~/dict
+
+   # メイン辞書（L辞書） - GitHub (skk-dev/dict) が現在の主要配布元
+   curl -o ~/dict/SKK-JISYO.L https://raw.githubusercontent.com/skk-dev/dict/master/SKK-JISYO.L
 
    # 専門辞書
-   curl -o ~/dict/SKK-JISYO.jinmei.gz http://openlab.jp/skk/dic/SKK-JISYO.jinmei.gz
-   curl -o ~/dict/SKK-JISYO.geo.gz http://openlab.jp/skk/dic/SKK-JISYO.geo.gz
-   gunzip ~/dict/*.gz
-
-   # 索引の事前構築（高速検索用）
-   nskk-build-dictionary-index ~/dict/
+   curl -o ~/dict/SKK-JISYO.jinmei https://raw.githubusercontent.com/skk-dev/dict/master/SKK-JISYO.jinmei
+   curl -o ~/dict/SKK-JISYO.geo https://raw.githubusercontent.com/skk-dev/dict/master/SKK-JISYO.geo
    ```
 
 2. **最適化辞書設定**：
    ```elisp
    ;; 階層辞書設定
-   (setq nskk-dictionary-list
-         '(("~/dict/personal.dic" . personal)     ; 個人辞書（高優先）
-           ("~/dict/SKK-JISYO.L" . system)        ; システム辞書
-           ("~/dict/SKK-JISYO.jinmei" . names)    ; 人名辞書
-           ("~/dict/SKK-JISYO.geo" . geography))) ; 地名辞書
+   (setopt nskk-dictionary-list
+           '(("~/dict/personal.dic" . personal)     ; 個人辞書（高優先）
+             ("~/dict/SKK-JISYO.L" . system)        ; システム辞書
+             ("~/dict/SKK-JISYO.jinmei" . names)    ; 人名辞書
+             ("~/dict/SKK-JISYO.geo" . geography))) ; 地名辞書
 
    ;; 高速検索のためのキャッシュ設定
-   (setq nskk-dictionary-cache-size 50000)  ; 50,000エントリキャッシュ
-   (setq nskk-dictionary-preload t)         ; 起動時プリロード
+   (setopt nskk-dictionary-cache-size 50000)  ; 50,000エントリキャッシュ
+   (setopt nskk-dictionary-preload t)         ; 起動時プリロード
    ```
 
 3. **トライ木構造による高速検索**：
    ```elisp
    ;; トライ木インデックス有効化
-   (setq nskk-use-trie-index t)
+   (setopt nskk-use-trie-index t)
    ;; 前方一致検索最適化
-   (setq nskk-prefix-search-threshold 2)
+   (setopt nskk-prefix-search-threshold 2)
    ;; メモリマップドファイル使用
-   (setq nskk-use-memory-mapped-dictionary t)
+   (setopt nskk-use-memory-mapped-dictionary t)
    ```
 
 ### 設定診断とベンチマーク
@@ -156,9 +129,10 @@ M-x nskk-diagnostic-report
 
 ;; パフォーマンステスト
 M-x nskk-benchmark-all
-;; 期待値：
-;; - 辞書検索: < 1ms
-;; - 候補生成: < 100ms
+;; パフォーマンス目標値：
+;; - 辞書検索（完全一致）: < 1ms
+;; - 辞書検索（前方一致/全検索）: < 10ms
+;; - 候補表示: < 50ms
 ;; - メモリ使用量: < 50MB
 ```
 
@@ -202,7 +176,7 @@ stateDiagram-v2
 
 ### 2. ローマ字-ひらがな超高速変換
 
-**標準変換（1ms以下保証）**：
+**標準変換（目標: < 0.1ms）**：
 ```
 ka → か    ki → き    ku → く    ke → け    ko → こ
 sa → さ    shi → し   su → す    se → せ    so → そ
@@ -262,13 +236,12 @@ oyasuminasai → おやすみなさい
 ;; 入力速度測定
 M-x nskk-typing-speed-test
 
-;; 期待パフォーマンス
-;; - ローマ字変換遅延: < 1ms
-;; - 変換正確率: > 99.9%
-;; - WPM (Words Per Minute): > 120
+;; パフォーマンス目標
+;; - ローマ字変換遅延: < 0.1ms
+;; - キー入力応答: < 1ms
 ```
 
-## ステップ4: AI級漢字変換システム
+## ステップ4: 学習ベース漢字変換システム
 
 ### 漢字変換の高度アルゴリズム
 
@@ -292,7 +265,7 @@ flowchart TD
 大文字入力 → 瞬時に▽モード
 K → ▽k（変換準備完了）
 Konnichiwa → ▽こんにちわ（読み確定）
-SPC → 候補表示（100ms以下保証）
+SPC → 候補表示（目標: < 50ms）
 ```
 
 **連続変換最適化**：
@@ -311,9 +284,9 @@ TabeMono → たべ▽もの（送り仮名自動処理）
 
 ```elisp
 ;; 学習パラメータ調整
-(setq nskk-learning-factor 0.8)      ; 学習強度
-(setq nskk-temporal-decay 0.95)     ; 時間減衰
-(setq nskk-context-window 3)        ; 文脈範囲
+(setopt nskk-learning-factor 0.8)      ; 学習強度
+(setopt nskk-temporal-decay 0.95)     ; 時間減衰
+(setopt nskk-context-window 3)        ; 文脈範囲
 ```
 
 ### 3. 高精度変換の実践演習
@@ -487,7 +460,7 @@ A: しばらく使用すると学習機能により改善されます
 ✅ ゼロ依存高速インストールと最適化設定
 ✅ 多層辞書アーキテクチャの構築
 ✅ 高速入力システムの習得 (1ms応答)
-✅ AI級漢字変換アルゴリズムの理解
+✅ 学習ベース漢字変換アルゴリズムの理解
 ✅ 瞬間候補選択テクニック
 ✅ 高度学習機能の活用
 ✅ 絶対皇級拡張機能のマスター

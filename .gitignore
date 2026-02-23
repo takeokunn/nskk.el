@@ -5,9 +5,20 @@ dist/
 
 # Editor backups
 *~
+*.~undo-tree~
 
-auto-save-list/
+# Emacs auto-save files
+\#*\#
+.\#*
 
 # Test artifacts
 cli-test.log
 scenario.log
+vendor/
+
+# Direnv cache
+.direnv/
+
+# Nix build results
+result
+flake.lock

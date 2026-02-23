@@ -1,453 +1,284 @@
-;;; nskk-state.el --- State management for NSKK -*- lexical-binding: t; -*-
+;;; nskk-state.el --- NSKK state management -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
+;; Author: NSKK Contributors
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n
 
-;; This file is part of NSKK.
+;; This file is NOT part of GNU Emacs.
 
-;; NSKK is free software: you can redistribute it and/or modify
+;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
 
-;; NSKK is distributed in the hope that it will be useful,
+;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
-;; このファイルはNSKKの状態管理システムを実装します。
-;;
-;; 特徴:
-;; - cl-defstructによる型安全な状態管理
-;; - 明確な状態遷移定義
-;; - バッファローカルな状態保持
-;; - イベントベースの状態変更
-;;
-;; 状態の種類:
-;; - ひらがな入力モード (hiragana)
-;; - カタカナ入力モード (katakana)
-;; - 全角英数モード (zenkaku-latin)
-;; - 半角英数モード (latin)
-;; - abbrevモード (abbrev)
-;; - 変換モード (conversion)
-;;
-;; 使用例:
-;; (nskk-state-create :mode 'hiragana)
-;; (nskk-state-transition state 'katakana)
-;; (nskk-state-current-mode state)
+;; State management for NSKK using cl-defstruct with efficient
+;; getter and setter functions.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'nskk-custom)
 
-;;; モード定義
-
+;; State mode constants
 (defconst nskk-state-modes
-  '(hiragana          ; ひらがな入力モード
-    katakana          ; カタカナ入力モード
-    zenkaku-latin     ; 全角英数モード
-    latin             ; 半角英数モード（ASCII）
-    abbrev            ; abbrevモード
-    conversion)       ; 変換モード（候補選択中）
-  "NSKKで使用可能な全ての入力モード。")
+  '(ascii hiragana katakana katakana-半角 abbrev latin)
+  "List of valid NSKK modes.")
 
-(defconst nskk-state-mode-descriptions
-  '((hiragana . "ひらがな")
-    (katakana . "カタカナ")
-    (zenkaku-latin . "全角英数")
-    (latin . "半角英数")
-    (abbrev . "Abbrev")
-    (conversion . "変換中"))
-  "各モードの日本語説明。")
+;; Main state structure
+(cl-defstruct nskk-state
+  "Core state structure for NSKK input."
+  mode              ;; Current mode (symbol from nskk-state-modes)
+  input-buffer      ;; Pending input buffer (string)
+  converted-buffer  ;; Converted text buffer (string)
+  candidates        ;; List of conversion candidates (list)
+  current-index     ;; Current candidate index (integer)
+  henkan-position   ;; Position where conversion started (integer or nil)
+  marker-position   ;; Cursor position marker (marker or nil)
+  previous-mode     ;; Previous mode before current (symbol)
+  undo-stack        ;; Undo history stack (list)
+  redo-stack        ;; Redo history stack (list)
+  metadata)         ;; Additional metadata (plist)
 
-(defconst nskk-state-mode-indicators
-  '((hiragana . "あ")
-    (katakana . "ア")
-    (zenkaku-latin . "Ａ")
-    (latin . "A")
-    (abbrev . "aあ")
-    (conversion . "▼"))
-  "各モードのモードライン表示用インジケーター。")
+;; Getter function with validation
+(defun nskk-state-get (state key)
+  "Get KEY value from STATE struct.
+KEY can be a slot name symbol or string.
+Returns nil if key is not found or state is invalid."
+  (when (nskk-state-p state)
+    (let ((accessor (intern (format "nskk-state-%s" key))))
+      (when (fboundp accessor)
+        (funcall accessor state)))))
 
-;;; 状態データ構造
+;; Setter function with validation
+(defun nskk-state-set (state key value)
+  "Set KEY to VALUE in STATE struct.
+Returns VALUE on success, nil on failure.
+Supports validation for mode changes."
+  (when (nskk-state-p state)
+    (let ((key-sym (if (stringp key) (intern key) key)))
+      (cond
+       ;; Mode validation
+       ((eq key-sym 'mode)
+        (when (nskk-state-valid-mode-p value)
+          ;; Store previous mode
+          (setf (nskk-state-previous-mode state) (nskk-state-mode state))
+          (setf (nskk-state-mode state) value)
+          value))
+       ;; Explicit slot setters
+       ((eq key-sym 'input-buffer)
+        (setf (nskk-state-input-buffer state) value) value)
+       ((eq key-sym 'converted-buffer)
+        (setf (nskk-state-converted-buffer state) value) value)
+       ((eq key-sym 'candidates)
+        (setf (nskk-state-candidates state) value) value)
+       ((eq key-sym 'current-index)
+        (setf (nskk-state-current-index state) value) value)
+       ((eq key-sym 'henkan-position)
+        (setf (nskk-state-henkan-position state) value) value)
+       ((eq key-sym 'marker-position)
+        (setf (nskk-state-marker-position state) value) value)
+       ((eq key-sym 'previous-mode)
+        (setf (nskk-state-previous-mode state) value) value)
+       ((eq key-sym 'undo-stack)
+        (setf (nskk-state-undo-stack state) value) value)
+       ((eq key-sym 'redo-stack)
+        (setf (nskk-state-redo-stack state) value) value)
+       ((eq key-sym 'metadata)
+        (setf (nskk-state-metadata state) value) value)
+       (t nil)))))
 
-(cl-defstruct (nskk-state
-               (:constructor nskk-state--create)
-               (:copier nskk-state-copy))
-  "NSKK入力状態を表す構造体。
+;; Internal helper to get slot accessor name
+(defun nskk-state--slot-accessor-name (slot)
+  "Generate accessor name for SLOT."
+  (intern (format "nskk-state-%s" slot)))
 
-スロット:
-  mode              - 現在の入力モード（`nskk-state-modes' のいずれか）
-  submode           - サブモード（nil または 'okuri-ari, 'okuri-nasi）
-  input-buffer      - 未確定入力文字列
-  conversion-buffer - 変換対象文字列
-  candidates        - 変換候補リスト
-  candidate-index   - 現在選択中の候補インデックス
-  okuri-char        - 送り仮名の最初の文字
-  marker-start      - 入力開始位置（マーカー）
-  marker-end        - 入力終了位置（マーカー）
-  previous-mode     - 前回のモード（モード復帰用）
-  timestamp         - 最終更新時刻
-  properties        - 拡張プロパティ（plist形式）"
-  (mode 'hiragana
-        :type symbol
-        :documentation "現在の入力モード")
-  (submode nil
-           :type (or null symbol)
-           :documentation "サブモード（送り仮名の状態）")
-  (input-buffer ""
-                :type string
-                :documentation "未確定のローマ字入力")
-  (conversion-buffer ""
-                     :type string
-                     :documentation "変換対象の文字列")
-  (candidates nil
-              :type list
-              :documentation "変換候補のリスト")
-  (candidate-index 0
-                   :type integer
-                   :documentation "現在選択中の候補インデックス")
-  (okuri-char nil
-              :type (or null character)
-              :documentation "送り仮名の最初の文字")
-  (marker-start nil
-                :type (or null marker)
-                :documentation "入力開始位置のマーカー")
-  (marker-end nil
-              :type (or null marker)
-              :documentation "入力終了位置のマーカー")
-  (previous-mode nil
-                 :type (or null symbol)
-                 :documentation "前回のモード")
-  (timestamp (current-time)
-             :type list
-             :documentation "最終更新時刻")
-  (properties nil
-              :type list
-              :documentation "拡張プロパティ（plist）"))
+;; State creation functions
+(defun nskk-state-create (&optional initial-mode)
+  "Create a new NSKK state object.
+INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
+  (let ((mode (or initial-mode
+                   nskk-state-default-mode
+                   'ascii)))
+    (unless (nskk-state-valid-mode-p mode)
+      (setq mode 'ascii))
+    (make-nskk-state
+     :mode mode
+     :input-buffer ""
+     :converted-buffer ""
+     :candidates nil
+     :current-index 0
+     :henkan-position nil
+     :marker-position nil
+     :previous-mode mode
+     :undo-stack nil
+     :redo-stack nil
+     :metadata nil)))
 
-;;; Setterの定義
-;; cl-defstructは自動的にsetterを生成しないため、gv-define-setterで明示的に定義する
-
-(gv-define-setter nskk-state-mode (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'mode ,state) ,value))
-
-(gv-define-setter nskk-state-submode (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'submode ,state) ,value))
-
-(gv-define-setter nskk-state-input-buffer (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'input-buffer ,state) ,value))
-
-(gv-define-setter nskk-state-conversion-buffer (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'conversion-buffer ,state) ,value))
-
-(gv-define-setter nskk-state-candidates (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'candidates ,state) ,value))
-
-(gv-define-setter nskk-state-candidate-index (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'candidate-index ,state) ,value))
-
-(gv-define-setter nskk-state-okuri-char (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'okuri-char ,state) ,value))
-
-(gv-define-setter nskk-state-marker-start (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'marker-start ,state) ,value))
-
-(gv-define-setter nskk-state-marker-end (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'marker-end ,state) ,value))
-
-(gv-define-setter nskk-state-previous-mode (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'previous-mode ,state) ,value))
-
-(gv-define-setter nskk-state-timestamp (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'timestamp ,state) ,value))
-
-(gv-define-setter nskk-state-properties (value state)
-  `(setf (cl-struct-slot-value 'nskk-state 'properties ,state) ,value))
-
-;;; 状態生成関数
-
-(defun nskk-state-create (&rest args)
-  "新しいNSKK状態を生成する。
-
-引数:
-  ARGS - cl-defstructのキーワード引数
-
-例:
-  (nskk-state-create)
-  (nskk-state-create :mode 'katakana)
-  (nskk-state-create :mode 'hiragana :input-buffer \"ka\")"
-  (let ((mode (or (plist-get args :mode) 'hiragana)))
-    (unless (memq mode nskk-state-modes)
-      (error "Invalid mode: %s" mode))
-    (apply #'nskk-state--create args)))
-
-;;; 状態検査関数
-
+;; State validation functions
 (defun nskk-state-valid-mode-p (mode)
-  "MODE が有効なNSKK入力モードかどうかを判定する。"
+  "Check if MODE is a valid NSKK mode."
   (and (symbolp mode)
        (memq mode nskk-state-modes)))
 
-(defun nskk-state-mode-description (mode)
-  "MODE の日本語説明を取得する。"
-  (or (alist-get mode nskk-state-mode-descriptions)
-      (symbol-name mode)))
+(defun nskk-state-in-henkan-mode-p (state)
+  "Check if STATE is currently in conversion mode."
+  (and (nskk-state-p state)
+       (nskk-state-henkan-position state)
+       (not (zerop (length (nskk-state-input-buffer state))))))
 
-(defun nskk-state-mode-indicator (mode)
-  "MODE のモードライン表示用インジケーターを取得する。"
-  (or (alist-get mode nskk-state-mode-indicators)
-      "?"))
+;; State transition functions
+(defun nskk-state-transition (state from-mode to-mode)
+  "Transition STATE from FROM-MODE to TO-MODE.
+Returns t on success, nil on failure."
+  (when (and (nskk-state-p state)
+             (eq (nskk-state-mode state) from-mode)
+             (nskk-state-valid-mode-p to-mode))
+    (nskk-state-set state 'mode to-mode)
+    t))
 
-(defun nskk-state-in-conversion-p (state)
-  "STATE が変換モード中かどうかを判定する。"
-  (eq (nskk-state-mode state) 'conversion))
+(defun nskk-state-reset (state)
+  "Reset STATE to initial state (preserves mode).
+Clears buffers, candidates, and stacks."
+  (when (nskk-state-p state)
+    (setf (nskk-state-input-buffer state) ""
+          (nskk-state-converted-buffer state) ""
+          (nskk-state-candidates state) nil
+          (nskk-state-current-index state) 0
+          (nskk-state-henkan-position state) nil
+          (nskk-state-marker-position state) nil
+          (nskk-state-undo-stack state) nil
+          (nskk-state-redo-stack state) nil
+          (nskk-state-metadata state) nil)
+    t))
 
-(defun nskk-state-has-candidates-p (state)
-  "STATE が変換候補を持っているかどうかを判定する。"
-  (and (nskk-state-candidates state) t))
+;; Buffer management helpers
+(defun nskk-state-append-input (state char)
+  "Append CHAR to STATE's input buffer.
+Uses O(1) character append for efficient buffer building."
+  (when (nskk-state-p state)
+    (let ((buf (nskk-state-input-buffer state)))
+      (let ((len (length buf)))
+        ;; Create new string with one more character
+        (let ((new-buf (make-string (1+ len) ?\0)))
+          ;; Copy old buffer
+          (dotimes (i len)
+            (aset new-buf i (aref buf i)))
+          ;; Add new character
+          (aset new-buf len char)
+          (setf (nskk-state-input-buffer state) new-buf))))))
 
-(defun nskk-state-current-candidate (state)
-  "STATE の現在選択中の候補を取得する。
-候補がない場合は nil を返す。"
-  (when-let ((candidates (nskk-state-candidates state))
-             (index (nskk-state-candidate-index state)))
-    (nth index candidates)))
-
-(defun nskk-state-empty-p (state)
-  "STATE が空（入力も変換もない）かどうかを判定する。"
-  (and (string-empty-p (nskk-state-input-buffer state))
-       (string-empty-p (nskk-state-conversion-buffer state))
-       (null (nskk-state-candidates state))))
-
-;;; 状態更新関数
-
-(defun nskk-state-update-timestamp (state)
-  "STATE のタイムスタンプを現在時刻に更新する。"
-  (setf (nskk-state-timestamp state) (current-time))
-  state)
-
-(defun nskk-state-set-mode (state mode)
-  "STATE のモードを MODE に設定する。
-前回のモードを保存し、タイムスタンプを更新する。"
-  (unless (nskk-state-valid-mode-p mode)
-    (error "Invalid mode: %s" mode))
-  (setf (nskk-state-previous-mode state) (nskk-state-mode state))
-  (setf (nskk-state-mode state) mode)
-  (nskk-state-update-timestamp state))
-
-(defun nskk-state-restore-previous-mode (state)
-  "STATE を前回のモードに戻す。
-前回のモードがない場合は hiragana モードに戻る。"
-  (let ((prev-mode (or (nskk-state-previous-mode state) 'hiragana)))
-    (nskk-state-set-mode state prev-mode)))
+(defun nskk-state-delete-last-char (state)
+  "Delete last character from STATE's input buffer.
+Returns deleted char or nil if buffer empty."
+  (when (nskk-state-p state)
+    (let ((buf (nskk-state-input-buffer state)))
+      (when (> (length buf) 0)
+        (let ((len (length buf)))
+          (setf (nskk-state-input-buffer state)
+                (substring buf 0 (1- len)))
+          (aref buf (1- len)))))))
 
 (defun nskk-state-clear-input (state)
-  "STATE の入力バッファをクリアする。"
-  (setf (nskk-state-input-buffer state) "")
-  (nskk-state-update-timestamp state))
+  "Clear STATE's input buffer."
+  (when (nskk-state-p state)
+    (setf (nskk-state-input-buffer state) "")))
 
-(defun nskk-state-clear-conversion (state)
-  "STATE の変換関連データをクリアする。"
-  (setf (nskk-state-conversion-buffer state) "")
-  (setf (nskk-state-candidates state) nil)
-  (setf (nskk-state-candidate-index state) 0)
-  (setf (nskk-state-okuri-char state) nil)
-  (nskk-state-update-timestamp state))
-
-(defun nskk-state-clear-all (state)
-  "STATE の全ての入力・変換データをクリアする。"
-  (nskk-state-clear-input state)
-  (nskk-state-clear-conversion state))
-
-(defun nskk-state-append-input (state char)
-  "STATE の入力バッファに CHAR を追加する。"
-  (setf (nskk-state-input-buffer state)
-        (concat (nskk-state-input-buffer state)
-                (char-to-string char)))
-  (nskk-state-update-timestamp state))
-
-(defun nskk-state-set-candidates (state candidates &optional index)
-  "STATE に変換候補 CANDIDATES を設定する。
-INDEX が指定された場合は、その候補をデフォルト選択にする。"
-  (setf (nskk-state-candidates state) candidates)
-  (setf (nskk-state-candidate-index state) (or index 0))
-  (nskk-state-update-timestamp state))
+;; Candidate management helpers
+(defun nskk-state-set-candidates (state candidates)
+  "Set CANDIDATES list in STATE and reset index to 0."
+  (when (nskk-state-p state)
+    (setf (nskk-state-candidates state) candidates
+          (nskk-state-current-index state) 0)))
 
 (defun nskk-state-next-candidate (state)
-  "STATE の候補選択を次に進める。
-最後の候補の場合は最初に戻る。"
-  (when-let ((candidates (nskk-state-candidates state)))
-    (let* ((index (nskk-state-candidate-index state))
-           (next-index (mod (1+ index) (length candidates))))
-      (setf (nskk-state-candidate-index state) next-index)
-      (nskk-state-update-timestamp state)
-      next-index)))
+  "Move to next candidate in STATE.
+Returns current candidate or nil if no candidates."
+  (when (and (nskk-state-p state)
+             (nskk-state-candidates state))
+    (let ((candidates (nskk-state-candidates state))
+          (index (nskk-state-current-index state)))
+      (when candidates
+        (setf (nskk-state-current-index state)
+              (mod (1+ index) (length candidates)))
+        (nth (nskk-state-current-index state) candidates)))))
 
 (defun nskk-state-previous-candidate (state)
-  "STATE の候補選択を前に戻す。
-最初の候補の場合は最後に戻る。"
-  (when-let ((candidates (nskk-state-candidates state)))
-    (let* ((index (nskk-state-candidate-index state))
-           (prev-index (mod (1- index) (length candidates))))
-      (setf (nskk-state-candidate-index state) prev-index)
-      (nskk-state-update-timestamp state)
-      prev-index)))
+  "Move to previous candidate in STATE.
+Returns current candidate or nil if no candidates."
+  (when (and (nskk-state-p state)
+             (nskk-state-candidates state))
+    (let ((candidates (nskk-state-candidates state))
+          (index (nskk-state-current-index state)))
+      (when candidates
+        (setf (nskk-state-current-index state)
+              (mod (1- index) (length candidates)))
+        (nth (nskk-state-current-index state) candidates)))))
 
-;;; 状態遷移定義
+(defun nskk-state-current-candidate (state)
+  "Get current candidate from STATE."
+  (when (and (nskk-state-p state)
+             (nskk-state-candidates state))
+    (nth (nskk-state-current-index state)
+         (nskk-state-candidates state))))
 
-(defconst nskk-state-transitions
-  '((hiragana . (katakana zenkaku-latin latin abbrev conversion))
-    (katakana . (hiragana zenkaku-latin latin abbrev conversion))
-    (zenkaku-latin . (hiragana katakana latin abbrev conversion))
-    (latin . (hiragana katakana zenkaku-latin abbrev conversion))
-    (abbrev . (hiragana katakana zenkaku-latin latin conversion))
-    (conversion . (hiragana katakana zenkaku-latin latin abbrev)))
-  "各モードから遷移可能なモードのリスト。")
+;; Metadata helpers
+(defun nskk-state-get-metadata (state key)
+  "Get metadata KEY from STATE."
+  (when (nskk-state-p state)
+    (plist-get (nskk-state-metadata state) key)))
 
-(defun nskk-state-can-transition-p (from-mode to-mode)
-  "FROM-MODE から TO-MODE への遷移が可能かどうかを判定する。"
-  (and (nskk-state-valid-mode-p from-mode)
-       (nskk-state-valid-mode-p to-mode)
-       (memq to-mode (alist-get from-mode nskk-state-transitions))))
+(defun nskk-state-put-metadata (state key value)
+  "Set metadata KEY to VALUE in STATE."
+  (when (nskk-state-p state)
+    (setf (nskk-state-metadata state)
+          (plist-put (nskk-state-metadata state) key value))))
 
-(defun nskk-state-transition (state to-mode &optional force)
-  "STATE を TO-MODE に遷移させる。
-FORCE が非nilの場合、遷移可能性チェックをスキップする。
+;; Additional state setters for layer integration
+(defun nskk-state-set-remaining-romaji (state value)
+  "Set remaining romaji in STATE metadata to VALUE."
+  (when (nskk-state-p state)
+    (nskk-state-put-metadata state 'remaining-romaji value)))
 
-遷移が成功した場合は t を返し、失敗した場合は nil を返す。"
-  (let ((from-mode (nskk-state-mode state)))
-    (cond
-     ;; 同じモードへの遷移は何もしない
-     ((eq from-mode to-mode)
-      t)
+(defun nskk-state-set-kana-type (state value)
+  "Set kana type in STATE metadata to VALUE."
+  (when (nskk-state-p state)
+    (nskk-state-put-metadata state 'kana-type value)))
 
-     ;; 強制モードまたは遷移可能な場合
-     ((or force (nskk-state-can-transition-p from-mode to-mode))
-      (nskk-state-set-mode state to-mode)
-      t)
+(defun nskk-state-set-width-type (state value)
+  "Set width type in STATE metadata to VALUE."
+  (when (nskk-state-p state)
+    (nskk-state-put-metadata state 'width-type value)))
 
-     ;; 遷移不可能
-     (t
-      (message "Cannot transition from %s to %s" from-mode to-mode)
-      nil))))
+;; Global state management
+(defvar nskk-current-state nil
+  "Global NSKK state object for the current buffer.")
 
-;;; プロパティ管理
+(defun nskk-state-initialize ()
+  "Initialize the global NSKK state."
+  (setq nskk-current-state (nskk-state-create nskk-state-default-mode)))
 
-(defun nskk-state-get-property (state key &optional default)
-  "STATE の拡張プロパティから KEY の値を取得する。
-KEY が存在しない場合は DEFAULT を返す。"
-  (or (plist-get (nskk-state-properties state) key)
-      default))
+(defun nskk-state-get-mode ()
+  "Get current mode from global state."
+  (when (nskk-state-p nskk-current-state)
+    (nskk-state-mode nskk-current-state)))
 
-(defun nskk-state-set-property (state key value)
-  "STATE の拡張プロパティに KEY と VALUE を設定する。"
-  (setf (nskk-state-properties state)
-        (plist-put (nskk-state-properties state) key value))
-  (nskk-state-update-timestamp state))
-
-(defun nskk-state-remove-property (state key)
-  "STATE の拡張プロパティから KEY を削除する。"
-  (let ((props (nskk-state-properties state)))
-    (setf (nskk-state-properties state)
-          (cl-loop for (k v) on props by #'cddr
-                   unless (eq k key)
-                   append (list k v))))
-  (nskk-state-update-timestamp state))
-
-;;; マーカー管理
-
-(defun nskk-state-set-markers (state start end)
-  "STATE にバッファ位置マーカーを設定する。
-START と END は buffer position または marker。"
-  (when (nskk-state-marker-start state)
-    (set-marker (nskk-state-marker-start state) nil))
-  (when (nskk-state-marker-end state)
-    (set-marker (nskk-state-marker-end state) nil))
-
-  (setf (nskk-state-marker-start state)
-        (if (markerp start) start (copy-marker start)))
-  (setf (nskk-state-marker-end state)
-        (if (markerp end) end (copy-marker end)))
-
-  (nskk-state-update-timestamp state))
-
-(defun nskk-state-clear-markers (state)
-  "STATE のマーカーをクリアする。"
-  (when (nskk-state-marker-start state)
-    (set-marker (nskk-state-marker-start state) nil)
-    (setf (nskk-state-marker-start state) nil))
-  (when (nskk-state-marker-end state)
-    (set-marker (nskk-state-marker-end state) nil)
-    (setf (nskk-state-marker-end state) nil))
-  (nskk-state-update-timestamp state))
-
-(defun nskk-state-marker-region (state)
-  "STATE のマーカーで示される領域を (start . end) で返す。
-マーカーが設定されていない場合は nil を返す。"
-  (when (and (nskk-state-marker-start state)
-             (nskk-state-marker-end state))
-    (cons (marker-position (nskk-state-marker-start state))
-          (marker-position (nskk-state-marker-end state)))))
-
-;;; デバッグ・表示機能
-
-(defun nskk-state-to-string (state)
-  "STATE を人間が読める文字列に変換する。"
-  (format "#<nskk-state mode:%s input:\"%s\" conv:\"%s\" cands:%d>"
-          (nskk-state-mode state)
-          (nskk-state-input-buffer state)
-          (nskk-state-conversion-buffer state)
-          (length (nskk-state-candidates state))))
-
-(defun nskk-state-describe (state)
-  "STATE の詳細情報を表示する。"
-  (message "NSKK State:
-  Mode: %s (%s)
-  Submode: %s
-  Input Buffer: \"%s\"
-  Conversion Buffer: \"%s\"
-  Candidates: %s
-  Current Candidate: %s
-  Okuri Char: %s
-  Previous Mode: %s
-  Timestamp: %s"
-           (nskk-state-mode state)
-           (nskk-state-mode-description (nskk-state-mode state))
-           (nskk-state-submode state)
-           (nskk-state-input-buffer state)
-           (nskk-state-conversion-buffer state)
-           (nskk-state-candidates state)
-           (nskk-state-current-candidate state)
-           (nskk-state-okuri-char state)
-           (nskk-state-previous-mode state)
-           (format-time-string "%Y-%m-%d %H:%M:%S"
-                               (nskk-state-timestamp state))))
-
-;;; バッファローカル変数
-
-(defvar-local nskk-current-state nil
-  "現在のバッファのNSKK入力状態。")
-
-(defun nskk-state-init ()
-  "現在のバッファのNSKK状態を初期化する。"
-  (unless nskk-current-state
-    (setq nskk-current-state (nskk-state-create))))
-
-(defun nskk-state-cleanup ()
-  "現在のバッファのNSKK状態をクリーンアップする。"
-  (when nskk-current-state
-    (nskk-state-clear-markers nskk-current-state)
-    (setq nskk-current-state nil)))
+(defun nskk-state-set-mode (mode)
+  "Set MODE in global state."
+  (when (nskk-state-p nskk-current-state)
+    (nskk-state-set nskk-current-state 'mode mode)))
 
 (provide 'nskk-state)
 

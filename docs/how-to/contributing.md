@@ -63,22 +63,19 @@ mindmap
    git checkout -b feature/your-feature-name
    ```
 
-3. **Emacs 30以上開発環境初期化**：
+3. **開発環境初期化**：
    ```bash
-   # 依存関係チェック（Emacs 30以上特有の機能含む）
-   make check-deps-emacs31
+   # バイトコンパイル
+   emacs --batch -f batch-byte-compile *.el
 
-   # 開発用設定適用（ネイティブコンパイル含む）
-   make dev-setup-emacs31
+   # テスト実行
+   emacs --batch -L . -l ert -l tests/nskk-test.el -f ert-run-tests-batch-and-exit
 
-   # ネイティブコンパイル
-   make native-compile
+   # ネイティブコンパイル（Emacs 30以上）
+   emacs --batch --eval '(native-compile-async "." '\''recursively)'
 
-   # 並列テスト実行（Emacs 30以上のスレッド活用）
-   make test-all-parallel JOBS=$(nproc)
-
-   # パフォーマンスベンチマーク
-   make benchmark-native
+   # ベンチマーク実行
+   emacs --batch -L . -l tests/nskk-benchmark.el -f nskk-run-benchmarks
    ```
 
 ### 開発者設定
@@ -89,13 +86,10 @@ mindmap
   (add-to-list 'load-path "~/path/to/nskk.el")
   (require 'nskk)
 
-  ;; Emacs 30以上 setoptを使用した開発モード設定
-  (setopt nskk-debug-mode t                      ; デバッグモード
-          nskk-performance-monitoring t           ; パフォーマンス監視
-          nskk-log-level 'debug                  ; ログレベル
-          nskk-native-compile-dev t              ; ネイティブコンパイルデバッグ
-          nskk-thread-debug t                    ; スレッドデバッグ
-          nskk-profiling-enabled t)              ; プロファイリング
+  ;; 開発モード設定
+  (setopt nskk-debug-mode t)                     ; デバッグモード
+  (setopt nskk-log-level 'debug)                ; ログレベル
+  (setq nskk--profiling-enabled t)              ; プロファイリング（内部変数）
 
   ;; Emacs 30以上自動リロード設定（ホットリロード対応）
   (global-auto-revert-mode 1)
@@ -112,14 +106,14 @@ mindmap
 
 ### Emacs 30以上コーディング原則
 
-NSKKのコーディング規約は[Emacs 30以上ベストプラクティス](./explanation/emacs-lisp-best-practices.md)に基づきます：
+NSKKのコーディング規約は[Emacs 30以上ベストプラクティス](../explanation/emacs-lisp-best-practices.md)に基づきます：
 
 **必須要件：**
-- 全ての`setq`を`setopt`に置換
+- `defcustom`変数には`setopt`、`defvar`/内部変数には`setq`を使用
 - `keymap-set`/`keymap-global-set`の使用
 - ネイティブコンパイル最適化
 - スレッドセーフな実装
-- Transient UIの活用
+- ミニバッファメニューの活用
 
 #### 1. 命名規則
 
@@ -189,9 +183,10 @@ NSKKのコーディング規約は[Emacs 30以上ベストプラクティス](./
 | 操作 | 目標時間 | 必須 |
 |------|----------|------|
 | キー入力応答 | < 1ms | ✅ |
-| ローマ字変換 | < 1ms | ✅ |
-| 漢字変換 | < 100ms | ✅ |
-| 辞書検索 | < 50ms | ✅ |
+| ローマ字変換 | < 0.1ms | ✅ |
+| 辞書検索（完全一致） | < 1ms | ✅ |
+| 辞書検索（前方一致/全検索） | < 10ms | ✅ |
+| 候補表示 | < 50ms | ✅ |
 
 #### パフォーマンステスト
 
@@ -285,18 +280,13 @@ graph LR
 
 ```bash
 # 全テスト実行
-make test
+emacs --batch -L . -l ert -l tests/nskk-test.el -f ert-run-tests-batch-and-exit
 
-# 特定カテゴリのテスト
-make test-unit
-make test-integration
-make test-performance
+# 特定テストファイルの実行
+emacs --batch -L . -l ert -l tests/nskk-converter-test.el -f ert-run-tests-batch-and-exit
 
-# カバレッジ測定
-make coverage
-
-# テスト結果レポート
-make test-report
+# ベンチマーク実行
+emacs --batch -L . -l tests/nskk-benchmark.el -f nskk-run-benchmarks
 ```
 
 ## プルリクエストプロセス
@@ -306,17 +296,14 @@ make test-report
 プルリクエスト作成前の必須項目：
 
 ```bash
-# コードスタイルチェック
-make lint
+# バイトコンパイル（警告の確認）
+emacs --batch -L . -f batch-byte-compile *.el
 
 # 全テスト実行
-make test-all
+emacs --batch -L . -l ert -l tests/nskk-test.el -f ert-run-tests-batch-and-exit
 
-# パフォーマンステスト
-make benchmark
-
-# ドキュメント更新確認
-make doc-check
+# ベンチマーク実行
+emacs --batch -L . -l tests/nskk-benchmark.el -f nskk-run-benchmarks
 ```
 
 ### 2. プルリクエストテンプレート
@@ -655,31 +642,24 @@ timeline
 
 1. **準備フェーズ**：
    ```bash
-   # バージョン更新
-   make update-version VERSION=1.2.0
+   # バージョン文字列を更新（手動でnskk.elのヘッダーを編集）
 
    # 全テスト実行
-   make test-all
-
-   # ドキュメント更新
-   make doc-update
+   emacs --batch -L . -l ert -l tests/nskk-test.el -f ert-run-tests-batch-and-exit
    ```
 
 2. **リリース候補版**：
    ```bash
-   # RC版作成
-   make release-candidate VERSION=1.2.0-rc1
+   # RC版のタグ作成
+   git tag v1.2.0-rc1
 
    # コミュニティテスト期間（1週間）
    ```
 
 3. **正式リリース**：
    ```bash
-   # 正式版リリース
-   make release VERSION=1.2.0
-
-   # パッケージ公開
-   make publish
+   # 正式版タグ作成
+   git tag v1.2.0
    ```
 
 ## コミュニティガイドライン
@@ -746,14 +726,14 @@ NSKKコミュニティでは以下の価値観を大切にします：
 #### 1. 開発環境の問題
 
 ```bash
-# 依存関係の問題
-make clean && make setup
+# 既存の.elcを削除して再コンパイル
+rm -f *.elc && emacs --batch -L . -f batch-byte-compile *.el
 
-# テスト失敗
-make test-debug
+# テストを詳細出力で実行
+emacs --batch -L . -l ert -l tests/nskk-test.el --eval '(ert-run-tests-batch-and-exit t)'
 
-# パフォーマンス問題
-make profile
+# ベンチマーク実行
+emacs --batch -L . -l tests/nskk-benchmark.el -f nskk-run-benchmarks
 ```
 
 #### 2. プルリクエストの問題
@@ -772,10 +752,10 @@ make profile
 
 ### 開発関連
 
-- [Emacs Lispベストプラクティス](./explanation/emacs-lisp-best-practices.md)
-- [パフォーマンス・ベンチマーク仕様](./explanation/performance-benchmarks.md)
-- [TDD/PBT戦略](./explanation/tdd-pbt-strategy.md)
-- [アーキテクチャ概観](./explanation/comprehensive-architecture-overview.md)
+- [Emacs Lispベストプラクティス](../explanation/emacs-lisp-best-practices.md)
+- [パフォーマンス・ベンチマーク仕様](../explanation/performance-benchmarks.md)
+- [TDD/PBT戦略](../explanation/tdd-pbt-strategy.md)
+- [アーキテクチャガイド](../explanation/architecture-v0.1.md)
 
 ### 外部リソース
 

@@ -105,10 +105,14 @@
 (defvar nskk--gc-threshold-backup nil)
 
 (defun nskk--optimize-gc-settings ()
-  "GC設定の最適化"
+  "GC設定の最適化
+NOTE: 100MBは大きな値であり、Emacs全体のメモリ使用量が増加する。
+GCの頻度を減らして変換中の停止を避ける効果があるが、
+ピークメモリ使用量が増大するトレードオフがある。
+nskk-mode無効化時に元の値に戻すべきである。"
   (unless nskk--gc-threshold-backup
     (setq nskk--gc-threshold-backup gc-cons-threshold
-          gc-cons-threshold (* 100 1024 1024)))) ; 100MB
+          gc-cons-threshold (* 100 1024 1024)))) ; 100MB（トレードオフあり）
 ```
 
 ## リアルタイム性能監視
@@ -291,15 +295,15 @@ graph LR
     ALLOC --> OPTIMIZATION
 ```
 
-**詳細プロファイラー実装**：
+**詳細パフォーマンスモニター実装**：
 
 ```elisp
-;; NSKK専用プロファイラー
-(defvar nskk--profiler-data (make-hash-table :test 'equal)
+;; NSKK専用パフォーマンスモニター
+(defvar nskk--perf-data (make-hash-table :test 'equal)
   "プロファイリングデータ")
 
-(defvar nskk--profiler-active nil
-  "プロファイラー有効状態")
+(defvar nskk--perf-active nil
+  "パフォーマンスモニター有効状態")
 
 (defmacro nskk-profile-function (func-name)
   "関数プロファイリング設定"
@@ -307,7 +311,7 @@ graph LR
 
 (defun nskk--profile-advice (orig-func &rest args)
   "プロファイリングアドバイス"
-  (if nskk--profiler-active
+  (if nskk--perf-active
       (let* ((func-name (advice--symbol-function orig-func))
              (start-time (current-time))
              (start-memory (memory-use-counts))
@@ -323,22 +327,22 @@ graph LR
 
 (defun nskk--record-profile-data (func-name time memory)
   "プロファイリングデータ記録"
-  (let ((existing (gethash func-name nskk--profiler-data)))
+  (let ((existing (gethash func-name nskk--perf-data)))
     (if existing
         (puthash func-name
                  (list :calls (1+ (plist-get existing :calls))
                        :total-time (+ time (plist-get existing :total-time))
                        :total-memory (+ memory (plist-get existing :total-memory))
                        :max-time (max time (plist-get existing :max-time)))
-                 nskk--profiler-data)
+                 nskk--perf-data)
       (puthash func-name
                (list :calls 1
                      :total-time time
                      :total-memory memory
                      :max-time time)
-               nskk--profiler-data))))
+               nskk--perf-data))))
 
-(defun nskk-profiler-report ()
+(defun nskk-performance-report ()
   "プロファイリングレポート生成"
   (interactive)
   (with-output-to-temp-buffer "*NSKK Profile Report*"
@@ -348,12 +352,12 @@ graph LR
     (princ (make-string 80 ?-))
     (princ "\n")
 
-    (let ((sorted-data (sort (hash-table-keys nskk--profiler-data)
+    (let ((sorted-data (sort (hash-table-keys nskk--perf-data)
                             (lambda (a b)
-                              (> (plist-get (gethash a nskk--profiler-data) :total-time)
-                                 (plist-get (gethash b nskk--profiler-data) :total-time))))))
+                              (> (plist-get (gethash a nskk--perf-data) :total-time)
+                                 (plist-get (gethash b nskk--perf-data) :total-time))))))
       (dolist (func sorted-data)
-        (let* ((data (gethash func nskk--profiler-data))
+        (let* ((data (gethash func nskk--perf-data))
                (calls (plist-get data :calls))
                (total-time (plist-get data :total-time))
                (avg-time (/ total-time calls))
@@ -385,8 +389,10 @@ graph LR
      (dotimes (_ 1000)
        (nskk-convert-romaji "konnichiwa"))))
 
-  (concurrent-operations
-   ;; 同時操作シミュレーション
+  (timer-based-operations
+   ;; タイマーによる非同期操作シミュレーション
+   ;; NOTE: Emacsのスレッドは協調的であり並列実行ではない。
+   ;; ここではタイマーによる擬似的な非同期処理をテストする。
    (let ((timers nil))
      (dotimes (i 10)
        (push (run-with-timer (* i 0.01) nil
@@ -579,17 +585,17 @@ graph TD
       (pcase (plist-get bottleneck :type)
         ('cpu-intensive
          (push '(:description "マクロによるインライン展開追加"
-                :expected-improvement "10-20% CPU使用率削減"
+                :expected-improvement "CPU使用率削減（目標: 10-20%）"
                 :implementation "nskk--enable-aggressive-inlining"
                 :auto-applicable t) recommendations))
         ('memory-pressure
          (push '(:description "キャッシュサイズ動的調整"
-                :expected-improvement "30% メモリ使用量削減"
+                :expected-improvement "メモリ使用量削減（目標: 有意な改善）"
                 :implementation "nskk--enable-adaptive-cache"
                 :auto-applicable t) recommendations))
         ('gc-pressure
          (push '(:description "GC閾値最適化"
-                :expected-improvement "GC頻度50%削減"
+                :expected-improvement "GC頻度削減（目標: 有意な改善）"
                 :implementation "nskk--optimize-gc-thresholds"
                 :auto-applicable t) recommendations))))
     recommendations))

@@ -2,7 +2,7 @@
 
 ## エグゼクティブサマリー
 
-本ドキュメントは、NSKKが高パフォーマンスを達成するためのマクロアーキテクチャを包括的に解説します。Emacs Lispのマクロシステムを最大限活用し、実行時オーバーヘッドを最小化する最適化技術を実装します。
+本ドキュメントは、NSKKが高パフォーマンスを達成するためのマクロアーキテクチャを包括的に解説します。Emacs Lispのマクロシステムを最大限活用し、実行時オーバーヘッドを最小化する最適化技術を適用する設計方針を示します。
 
 ## 1. マクロ最適化の理論的基盤
 
@@ -24,10 +24,10 @@ graph TD
         CT4[直接コード生成]
     end
 
-    subgraph "パフォーマンス改善"
-        PERF1[100倍高速化]
-        PERF2[メモリ削減90%]
-        PERF3[CPU使用率1/10]
+    subgraph "パフォーマンス改善目標"
+        PERF1[実行時オーバーヘッド削減]
+        PERF2[メモリ効率向上]
+        PERF3[CPU使用率低減]
     end
 
     RT1 --> RT2 --> RT3 --> RT4
@@ -137,15 +137,16 @@ graph TD
         (puthash input func-name dispatch-table)))
 
     ;; ディスパッチ関数の生成
-    `(progn
-       ,@(nreverse expanded-functions)
-       (defun nskk-dispatch-conversion (input)
-         (case (intern input)
-           ,@(hash-table-map-list
-              (lambda (key value)
-                `(,(intern key) (,value)))
-              dispatch-table)
-           (t nil))))))
+    (let ((cases nil))
+      (maphash (lambda (key value)
+                 (push `(,(intern key) (,value)) cases))
+               dispatch-table)
+      `(progn
+         ,@(nreverse expanded-functions)
+         (defun nskk-dispatch-conversion (input)
+           (cl-case (intern input)
+             ,@(nreverse cases)
+             (t nil)))))))
 
 ;; 使用例：500以上の変換ルールを瞬時に展開
 (nskk-expand-conversion-table
@@ -226,11 +227,10 @@ graph TD
 ;; 多態的ディスパッチの静的解決
 (defmacro nskk-static-dispatch (type &rest handlers)
   "実行時型チェックの除去"
-  `(ecase ,type
+  `(cl-ecase ,type
      ,@(mapcar (lambda (handler)
                  `(,(car handler)
-                   (locally (declare (optimize (speed 3) (safety 0)))
-                     ,@(cdr handler))))
+                   ,@(cdr handler)))
                handlers)))
 ```
 
@@ -321,8 +321,6 @@ graph TD
     `(progn
        (defun ,specialized-name (&rest remaining-args)
          (apply ',function ,@known-args remaining-args))
-       ;; インライン化指示
-       (put ',specialized-name 'speed 3)
        ',specialized-name)))
 
 ;; ステージング
@@ -523,30 +521,30 @@ graph TD
 
 ### 8.2 パフォーマンス目標
 
-| マクロ種別 | 展開時間 | 実行時改善 | メモリ削減 |
+| マクロ種別 | 目標展開時間 | 目標実行時改善 | 目標メモリ削減 |
 |----------|---------|-----------|-----------|
-| 変換ルール | < 1ms | 100x | 90% |
-| データ構造 | < 5ms | 50x | 80% |
-| 制御フロー | < 0.5ms | 20x | 70% |
-| キャッシュ | < 0.1ms | 10x | 60% |
+| 変換ルール | < 1ms | 大幅改善 | 高 |
+| データ構造 | < 5ms | 中程度改善 | 中 |
+| 制御フロー | < 0.5ms | 改善 | 中 |
+| キャッシュ | < 0.1ms | 改善 | 低～中 |
 
 ## 9. 結論：マクロによる最適化
 
-NSKKのマクロアーキテクチャは、以下の技術により高性能を実現します：
+NSKKのマクロアーキテクチャは、以下の技術により高性能を目指します：
 
-### 技術的達成
-1. **実行時オーバーヘッドゼロの実現**
+### 技術的目標
+1. **実行時オーバーヘッドの最小化**
 2. **コンパイル時計算の極大化**
-3. **メモリ使用量の最小化**
+3. **メモリ使用量の削減**
 
-### パフォーマンス成果
-1. **ddskk比100倍の高速化**
-2. **メモリ使用量90%削減**
-3. **応答時間0.1ms以下**
+### パフォーマンス目標
+1. **キー入力応答: < 1ms**
+2. **ローマ字変換: < 0.1ms**
+3. **メモリ使用量: < 50MB**
 
 ### 保守性と拡張性
 1. **明確なマクロ設計パターン**
 2. **包括的なデバッグ支援**
 3. **プラグイン対応の柔軟性**
 
-**マクロアーキテクチャは、NSKKの高性能を支える技術的基盤です。**
+**マクロアーキテクチャは、NSKKの高性能を支える技術的基盤となります。**

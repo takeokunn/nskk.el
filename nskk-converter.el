@@ -1,357 +1,373 @@
-;;; nskk-converter.el --- Romaji to Kana conversion engine for NSKK -*- lexical-binding: t; -*-
+;;; nskk-converter.el --- Romaji to kana conversion engine -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
-
-;; Author: NSKK Development Team
-;; Keywords: japanese, input method, skk
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.0"))
-
-;; This file is part of NSKK.
-
-;; NSKK is free software: you can redistribute it and/or modify
+;; Copyright (C) 2024-2026 Takeshi Umeda
+;;
+;; This file is part of NSKK (Next-generation SKK).
+;;
+;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
-;; NSKK is distributed in the hope that it will be useful,
+;;
+;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
+;;
 ;; You should have received a copy of the GNU General Public License
-;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;; Author: Takeshi Umeda <takeokunn@gmail.com>
+;; Maintainer: Takeshi Umeda <takeokunn@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1
+;; Keywords: i18n
 
 ;;; Commentary:
 
-;; このファイルはNSKKのローマ字→かな変換エンジンを実装します。
+;; This module implements the core romaji-to-kana conversion engine (Layer 4).
 ;;
-;; 特徴:
-;; - 最長一致アルゴリズムによる効率的な変換
-;; - 促音（っ）の自動処理（子音重複検出）
-;; - 撥音（ん）の文脈依存処理
-;; - 未確定入力のプレフィックスマッチング
-;; - 状態機械ベースの実装
+;; Layer Responsibilities:
+;; - Core Engine Layer implements pure conversion functions
+;; - NO state management - state is handled by Application Layer (Layer 3)
+;; - Provides conversion utilities that are independent of application state
 ;;
-;; 使用例:
-;; (nskk-convert-romaji "kya")        ;; => ("きゃ" "")
-;; (nskk-convert-romaji "kk")         ;; => ("" "kk")  ; 未確定
-;; (nskk-convert-romaji "kka")        ;; => ("っか" "")
-;; (nskk-convert-romaji "n")          ;; => ("" "n")   ; 未確定
-;; (nskk-convert-romaji "nn")         ;; => ("ん" "")
-;; (nskk-convert-romaji "ka")         ;; => ("か" "")
+;; It handles:
+;; - Romaji to kana conversion using a table-driven approach
+;; - Partial and complete romaji sequence matching
+;; - Vowel-based conversion (a, i, u, e, o)
+;; - Consonant-vowel combinations (ka, ki, ku, ke, ko, etc.)
+;; - Special combinations (sha, shu, sho, cha, chu, cho, etc.)
+;; - Small kana and digraph handling
+;;
+;; Performance target: < 0.1ms for single conversion operation
+;; Memory: Minimal overhead with shared romaji table
 
 ;;; Code:
 
 (require 'cl-lib)
-(require 'nskk-romaji-tables)
 
-;;; カスタマイズ可能変数
+;; Romaji conversion table
+;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)
+(defvar nskk--romaji-table
+  (make-hash-table :test 'equal :size 200)
+  "Romaji to kana conversion table.")
 
-(defgroup nskk-converter nil
-  "NSKK romaji to kana conversion settings."
-  :group 'nskk
-  :prefix "nskk-converter-")
+(defun nskk--initialize-romaji-table ()
+  "Initialize the romaji conversion table."
+  (clrhash nskk--romaji-table)
 
-(defcustom nskk-converter-use-sokuon t
-  "非nilの場合、促音（っ）の自動処理を有効にする。
-例: \"kka\" → \"っか\""
-  :type 'boolean
-  :group 'nskk-converter)
+  ;; Vowels
+  (puthash "a" "あ" nskk--romaji-table)
+  (puthash "i" "い" nskk--romaji-table)
+  (puthash "u" "う" nskk--romaji-table)
+  (puthash "e" "え" nskk--romaji-table)
+  (puthash "o" "お" nskk--romaji-table)
 
-(defcustom nskk-converter-sokuon-chars "kgtdbpszfchjmnyrw"
-  "促音として扱う子音文字。
-これらの文字が連続した場合、最初の文字を「っ」として処理する。"
-  :type 'string
-  :group 'nskk-converter)
+  ;; K row
+  (puthash "ka" "か" nskk--romaji-table)
+  (puthash "ki" "き" nskk--romaji-table)
+  (puthash "ku" "く" nskk--romaji-table)
+  (puthash "ke" "け" nskk--romaji-table)
+  (puthash "ko" "こ" nskk--romaji-table)
 
-(defcustom nskk-converter-n-processing-mode 'smart
-  "撥音「ん」の処理モード。
-- `smart': 文脈依存（n+子音で自動確定、n+母音で継続）
-- `explicit': nn, n', xn のみで確定
-- `aggressive': n単独でも即座に確定"
-  :type '(choice (const :tag "スマート処理" smart)
-                 (const :tag "明示的のみ" explicit)
-                 (const :tag "積極的確定" aggressive))
-  :group 'nskk-converter)
+  ;; G row
+  (puthash "ga" "が" nskk--romaji-table)
+  (puthash "gi" "ぎ" nskk--romaji-table)
+  (puthash "gu" "ぐ" nskk--romaji-table)
+  (puthash "ge" "げ" nskk--romaji-table)
+  (puthash "go" "ご" nskk--romaji-table)
 
-;;; 内部変数
+  ;; S row
+  (puthash "sa" "さ" nskk--romaji-table)
+  (puthash "shi" "し" nskk--romaji-table)
+  (puthash "si" "し" nskk--romaji-table)
+  (puthash "su" "す" nskk--romaji-table)
+  (puthash "se" "せ" nskk--romaji-table)
+  (puthash "so" "そ" nskk--romaji-table)
 
-(defvar nskk-converter--max-romaji-length nil
-  "ローマ字テーブル内の最大文字列長（内部キャッシュ）。")
+  ;; Z row
+  (puthash "za" "ざ" nskk--romaji-table)
+  (puthash "ji" "じ" nskk--romaji-table)
+  (puthash "zi" "じ" nskk--romaji-table)
+  (puthash "zu" "ず" nskk--romaji-table)
+  (puthash "ze" "ぜ" nskk--romaji-table)
+  (puthash "zo" "ぞ" nskk--romaji-table)
 
-;;; 補助関数
+  ;; T row
+  (puthash "ta" "た" nskk--romaji-table)
+  (puthash "chi" "ち" nskk--romaji-table)
+  (puthash "ti" "ち" nskk--romaji-table)
+  (puthash "tsu" "つ" nskk--romaji-table)
+  (puthash "tu" "つ" nskk--romaji-table)
+  (puthash "te" "て" nskk--romaji-table)
+  (puthash "to" "と" nskk--romaji-table)
 
-(defun nskk-converter--init-max-length ()
-  "ローマ字テーブルの最大長を初期化する。"
-  (unless nskk-converter--max-romaji-length
-    (setq nskk-converter--max-romaji-length
-          (nskk-romaji-get-max-length))))
+  ;; D row
+  (puthash "da" "だ" nskk--romaji-table)
+  (puthash "di" "ぢ" nskk--romaji-table)
+  (puthash "du" "づ" nskk--romaji-table)
+  (puthash "de" "で" nskk--romaji-table)
+  (puthash "do" "ど" nskk--romaji-table)
 
-(defsubst nskk-converter--is-vowel (char)
-  "CHAR が母音（a, i, u, e, o）かどうかを判定する。"
-  (and char (memq char '(?a ?i ?u ?e ?o))))
+  ;; N row (including special n')
+  (puthash "na" "な" nskk--romaji-table)
+  (puthash "ni" "に" nskk--romaji-table)
+  (puthash "nu" "ぬ" nskk--romaji-table)
+  (puthash "ne" "ね" nskk--romaji-table)
+  (puthash "no" "の" nskk--romaji-table)
+  (puthash "n'" "ん" nskk--romaji-table)
+  (puthash "nn" "ん" nskk--romaji-table)
 
-(defsubst nskk-converter--is-sokuon-char (char)
-  "CHAR が促音化可能な子音かどうかを判定する。"
-  (and char
-       nskk-converter-use-sokuon
-       (string-match-p (regexp-quote (char-to-string char))
-                       nskk-converter-sokuon-chars)))
+  ;; H row
+  (puthash "ha" "は" nskk--romaji-table)
+  (puthash "hi" "ひ" nskk--romaji-table)
+  (puthash "fu" "ふ" nskk--romaji-table)
+  (puthash "hu" "ふ" nskk--romaji-table)
+  (puthash "he" "へ" nskk--romaji-table)
+  (puthash "ho" "ほ" nskk--romaji-table)
 
-(defsubst nskk-converter--can-be-sokuon (str)
-  "STR が促音パターン（同じ子音の連続）かどうかを判定する。
-例: \"kk\", \"tt\", \"pp\" など"
-  (and (>= (length str) 2)
-       (= (aref str 0) (aref str 1))
-       (nskk-converter--is-sokuon-char (aref str 0))))
+  ;; B row
+  (puthash "ba" "ば" nskk--romaji-table)
+  (puthash "bi" "び" nskk--romaji-table)
+  (puthash "bu" "ぶ" nskk--romaji-table)
+  (puthash "be" "べ" nskk--romaji-table)
+  (puthash "bo" "ぼ" nskk--romaji-table)
 
-(defun nskk-converter--should-delay-for-sokuon (input)
-  "INPUT が促音候補であり、確定を保留すべきか判定する。"
-  (and (>= (length input) 2)
-       (= (aref input 0) (aref input 1))
-       (not (= (aref input 0) ?n))
-       (nskk-converter--is-sokuon-char (aref input 0))))
+  ;; P row
+  (puthash "pa" "ぱ" nskk--romaji-table)
+  (puthash "pi" "ぴ" nskk--romaji-table)
+  (puthash "pu" "ぷ" nskk--romaji-table)
+  (puthash "pe" "ぺ" nskk--romaji-table)
+  (puthash "po" "ぽ" nskk--romaji-table)
 
-(defun nskk-converter--process-sokuon (input)
-  "INPUT から促音パターンを処理する。
-促音が検出された場合は (\"っ\" . 残り) を返す。
-検出されない場合は nil を返す。
+  ;; M row
+  (puthash "ma" "ま" nskk--romaji-table)
+  (puthash "mi" "み" nskk--romaji-table)
+  (puthash "mu" "む" nskk--romaji-table)
+  (puthash "me" "め" nskk--romaji-table)
+  (puthash "mo" "も" nskk--romaji-table)
 
-例:
-  (nskk-converter--process-sokuon \"kka\")  ;; => (\"っ\" . \"ka\")
-  (nskk-converter--process-sokuon \"ka\")   ;; => nil
-  (nskk-converter--process-sokuon \"kk\")   ;; => nil (未確定)"
-  (when (and nskk-converter-use-sokuon
-             ;; 3文字以上必要（kk + 続く文字）
-             (>= (length input) 3))
-    (let ((first-char (aref input 0))
-          (second-char (aref input 1)))
-      (when (and (= first-char second-char)
-                 (nskk-converter--is-sokuon-char first-char)
-                 ;; "nn" は促音ではなく撥音
-                 (not (= first-char ?n)))
-        (cons "っ" (substring input 1))))))
+  ;; Y row
+  (puthash "ya" "や" nskk--romaji-table)
+  (puthash "yu" "ゆ" nskk--romaji-table)
+  (puthash "yo" "よ" nskk--romaji-table)
 
-(defun nskk-converter--process-n (input)
-  "INPUT の先頭が 'n' の場合の特殊処理を行う。
-撥音「ん」として確定できる場合は (\"ん\" . 残り) を返す。
-確定できない場合は nil を返す。
+  ;; R row
+  (puthash "ra" "ら" nskk--romaji-table)
+  (puthash "ri" "り" nskk--romaji-table)
+  (puthash "ru" "る" nskk--romaji-table)
+  (puthash "re" "れ" nskk--romaji-table)
+  (puthash "ro" "ろ" nskk--romaji-table)
 
-処理ルール:
-- nn, n', xn → 即座に「ん」として確定
-- n + 子音 → スマートモードでは「ん」として確定
-- n + 母音 → 確定せず（「な」等の可能性）
-- n単独 → モード依存"
-  (when (and (>= (length input) 1)
-             (= (aref input 0) ?n))
-    (cond
-     ;; 2文字以上の場合
-     ((>= (length input) 2)
-      (let ((second-char (aref input 1)))
+  ;; W row
+  (puthash "wa" "わ" nskk--romaji-table)
+  (puthash "wo" "を" nskk--romaji-table)
+
+  ;; Special combinations with small kana
+  (puthash "sha" "しゃ" nskk--romaji-table)
+  (puthash "shu" "しゅ" nskk--romaji-table)
+  (puthash "sho" "しょ" nskk--romaji-table)
+  (puthash "tsa" "つぁ" nskk--romaji-table)
+  (puthash "tsi" "つぃ" nskk--romaji-table)
+  (puthash "tse" "つぇ" nskk--romaji-table)
+  (puthash "tso" "つぉ" nskk--romaji-table)
+  (puthash "fa" "ふぁ" nskk--romaji-table)
+  (puthash "fi" "ふぃ" nskk--romaji-table)
+  (puthash "fe" "ふぇ" nskk--romaji-table)
+  (puthash "fo" "ふぉ" nskk--romaji-table)
+
+  ;; Digraph combinations
+  (puthash "kya" "きゃ" nskk--romaji-table)
+  (puthash "kyu" "きゅ" nskk--romaji-table)
+  (puthash "kyo" "きょ" nskk--romaji-table)
+
+  (puthash "gya" "ぎゃ" nskk--romaji-table)
+  (puthash "gyu" "ぎゅ" nskk--romaji-table)
+  (puthash "gyo" "ぎょ" nskk--romaji-table)
+
+  (puthash "ja" "じゃ" nskk--romaji-table)
+  (puthash "ju" "じゅ" nskk--romaji-table)
+  (puthash "jo" "じょ" nskk--romaji-table)
+
+  (puthash "cha" "ちゃ" nskk--romaji-table)
+  (puthash "chu" "ちゅ" nskk--romaji-table)
+  (puthash "cho" "ちょ" nskk--romaji-table)
+
+  (puthash "nya" "にゃ" nskk--romaji-table)
+  (puthash "nyu" "にゅ" nskk--romaji-table)
+  (puthash "nyo" "にょ" nskk--romaji-table)
+
+  (puthash "hya" "ひゃ" nskk--romaji-table)
+  (puthash "hyu" "ひゅ" nskk--romaji-table)
+  (puthash "hyo" "ひょ" nskk--romaji-table)
+
+  (puthash "bya" "びゃ" nskk--romaji-table)
+  (puthash "byu" "びゅ" nskk--romaji-table)
+  (puthash "byo" "びょ" nskk--romaji-table)
+
+  (puthash "pya" "ぴゃ" nskk--romaji-table)
+  (puthash "pyu" "ぴゅ" nskk--romaji-table)
+  (puthash "pyo" "ぴょ" nskk--romaji-table)
+
+  (puthash "mya" "みゃ" nskk--romaji-table)
+  (puthash "myu" "みゅ" nskk--romaji-table)
+  (puthash "myo" "みょ" nskk--romaji-table)
+
+  (puthash "rya" "りゃ" nskk--romaji-table)
+  (puthash "ryu" "りゅ" nskk--romaji-table)
+  (puthash "ryo" "りょ" nskk--romaji-table)
+
+  ;; Small vowels for explicit input
+  (puthash "la" "ぁ" nskk--romaji-table)
+  (puthash "li" "ぃ" nskk--romaji-table)
+  (puthash "lu" "ぅ" nskk--romaji-table)
+  (puthash "le" "ぇ" nskk--romaji-table)
+  (puthash "lo" "ぉ" nskk--romaji-table)
+
+  (puthash "xa" "ぁ" nskk--romaji-table)
+  (puthash "xi" "ぃ" nskk--romaji-table)
+  (puthash "xu" "ぅ" nskk--romaji-table)
+  (puthash "xe" "ぇ" nskk--romaji-table)
+  (puthash "xo" "ぉ" nskk--romaji-table)
+
+  ;; Small ya/yu/yo
+  (puthash "xya" "ゃ" nskk--romaji-table)
+  (puthash "xyu" "ゅ" nskk--romaji-table)
+  (puthash "xyo" "ょ" nskk--romaji-table)
+
+  ;; Small tsu
+  (puthash "xtsu" "っ" nskk--romaji-table)
+  (puthash "xtu" "っ" nskk--romaji-table)
+
+  ;; Iteration mark
+  (puthash "-" "ー" nskk--romaji-table)
+
+  ;; Consonant-only (for partial match)
+  (puthash "k" :incomplete nskk--romaji-table)
+  (puthash "g" :incomplete nskk--romaji-table)
+  (puthash "s" :incomplete nskk--romaji-table)
+  (puthash "z" :incomplete nskk--romaji-table)
+  (puthash "t" :incomplete nskk--romaji-table)
+  (puthash "d" :incomplete nskk--romaji-table)
+  (puthash "n" :incomplete nskk--romaji-table)
+  (puthash "h" :incomplete nskk--romaji-table)
+  (puthash "b" :incomplete nskk--romaji-table)
+  (puthash "p" :incomplete nskk--romaji-table)
+  (puthash "m" :incomplete nskk--romaji-table)
+  (puthash "y" :incomplete nskk--romaji-table)
+  (puthash "r" :incomplete nskk--romaji-table)
+  (puthash "w" :incomplete nskk--romaji-table))
+
+;; Initialize on load
+(nskk--initialize-romaji-table)
+
+(define-inline nskk-converter-lookup (romaji)
+  "Look up ROMAJI in conversion table.
+Returns kana string if found, nil if not found.
+Returns :incomplete if ROMAJI is a partial match.
+Declared inline for hot path optimization."
+  (inline-letevals (romaji)
+    (inline-quote
+     (when (stringp ,romaji)
+       (gethash ,romaji nskk--romaji-table)))))
+
+(defun nskk-convert-romaji (romaji)
+  "Convert full ROMAJI string to kana.
+Returns converted kana string for string input, nil for nil input.
+This is a convenience wrapper for nskk-converter-convert."
+  (cond
+   ((null romaji) nil)
+   ((not (stringp romaji)) nil)
+   ((zerop (length romaji)) "")
+   (t
+    (nskk-convert-romaji--internal (downcase romaji)))))
+
+(defun nskk-convert-romaji--internal (input)
+  "Internal romaji conversion for INPUT string."
+  (let ((result nil)
+        (remaining input)
+        (iteration 0)
+        (len 0))
+    (while (and remaining (> (setq len (length remaining)) 0) (< iteration 100))
+      (let ((c0 (aref remaining 0)))
         (cond
-         ;; nn, n', xn → 確定
-         ((or (= second-char ?n)
-              (= second-char ?')
-              (and (= (aref input 0) ?x) (= second-char ?n)))
-          (cons "ん" (substring input 2)))
+         ;; Double consonant (sokuon): same ASCII consonant repeated, not vowel/n
+         ((and (> len 1)
+               (>= c0 ?a) (<= c0 ?z)
+               (not (memq c0 '(?a ?i ?u ?e ?o ?n)))
+               (= c0 (aref remaining 1)))
+          (setq result (concat result "っ"))
+          (setq remaining (substring remaining 1)))
 
-         ;; n + 母音 → 確定しない（na, ni, nu, ne, no の可能性）
-         ((nskk-converter--is-vowel second-char)
-          nil)
+         ;; Standalone 'n' at end of string
+         ((and (= len 1) (= c0 ?n))
+          (setq result (concat result "ん"))
+          (setq remaining nil))
 
-         ;; n + 子音 → smartモードでは確定
-         ((eq nskk-converter-n-processing-mode 'smart)
-          (cons "ん" (substring input 1)))
+         ;; "nn" at end of string -> "ん"
+         ((and (= c0 ?n) (= len 2) (= (aref remaining 1) ?n))
+          (setq result (concat result "ん"))
+          (setq remaining nil))
 
-         ;; それ以外 → 確定しない
-         (t nil))))
+         ;; "nn" followed by more characters -> "ん" + continue from second n
+         ((and (= c0 ?n) (> len 2) (= (aref remaining 1) ?n))
+          (setq result (concat result "ん"))
+          (setq remaining (substring remaining 1)))
 
-     ;; n単独の場合
-     ((= (length input) 1)
-      (pcase nskk-converter-n-processing-mode
-        ('aggressive
-         (cons "ん" ""))
-        (_ nil)))
+         ;; "n'" -> "ん"  (39 = ASCII code for single quote)
+         ((and (= c0 ?n) (> len 1) (= (aref remaining 1) 39))
+          (setq result (concat result "ん"))
+          (setq remaining (if (> len 2) (substring remaining 2) nil)))
 
-     (t nil))))
+         ;; 'n' before consonant (not vowel, not y, not n, not quote)
+         ((and (= c0 ?n) (> len 1)
+               (not (memq (aref remaining 1) '(?a ?i ?u ?e ?o ?y ?n 39))))
+          (setq result (concat result "ん"))
+          (setq remaining (substring remaining 1)))
 
-(defun nskk-converter--longest-match (input)
-  "INPUT に対して最長一致するローマ字変換を試みる。
-成功した場合は (変換後文字列 . 残り) を返す。
-失敗した場合は nil を返す。
-
-アルゴリズム:
-1. INPUTの長さから降順に検索
-2. 最初にマッチした（最長の）パターンを採用
-3. マッチしない場合は nil
-
-例:
-  (nskk-converter--longest-match \"kya\")  ;; => (\"きゃ\" . \"\")
-  (nskk-converter--longest-match \"ka\")   ;; => (\"か\" . \"\")
-  (nskk-converter--longest-match \"xyz\")  ;; => nil"
-  (nskk-converter--init-max-length)
-  (let* ((max-len (min (length input) nskk-converter--max-romaji-length))
-         (result nil))
-    (cl-loop for len from max-len downto 1
-             until result
-             do (let* ((prefix (substring input 0 len))
-                       (kana (nskk-romaji-lookup prefix)))
-                  (when kana
-                    (setq result (cons kana (substring input len))))))
+         ;; Normal table-driven conversion
+         (t
+          (let ((conv (nskk-converter-convert remaining)))
+            (if (or (null conv) (eq (car conv) :incomplete))
+                (progn
+                  (setq result (concat result remaining))
+                  (setq remaining nil))
+              (setq result (concat result (car conv)))
+              (setq remaining (let ((rest (cdr conv)))
+                                (if (and (stringp rest) (> (length rest) 0))
+                                    rest
+                                  nil))))))))
+      (setq iteration (1+ iteration)))
     result))
 
-(defun nskk-converter--has-prefix-match (input)
-  "INPUT が何らかのローマ字パターンのプレフィックスかどうかを判定する。
-プレフィックスマッチがある場合は t、ない場合は nil を返す。
+(defun nskk-converter-convert (romaji)
+  "Convert ROMAJI string to kana.
+Returns (kana . remaining-romaji) cons cell.
+If conversion fails, returns nil.
+If incomplete, returns (:incomplete . romaji)."
+  (when (and (stringp romaji) (> (length romaji) 0))
+    ;; Try longest match first (up to 4 chars for digraphs)
+    (cl-loop for len from (min 4 (length romaji)) downto 1
+             for prefix = (substring romaji 0 len)
+             for result = (nskk-converter-lookup prefix)
+             when (and result (stringp result))
+             return (cons result (substring romaji len))
+             when (eq result :incomplete)
+             return (cons :incomplete romaji))))
 
-これは未確定入力の判定に使用される。
-
-例:
-  (nskk-converter--has-prefix-match \"k\")   ;; => t (\"ka\", \"ki\" 等の候補)
-  (nskk-converter--has-prefix-match \"ky\")  ;; => t (\"kya\", \"kyu\" 等の候補)
-  (nskk-converter--has-prefix-match \"xyz\") ;; => nil (候補なし)"
-  (let ((candidates (nskk-romaji-get-candidates input)))
-    (and candidates t)))
-
-(defun nskk-converter--finalize-result (result)
-  "必要に応じて RESULT の未確定 n を確定させる。"
-  (if (and (eq nskk-converter-n-processing-mode 'smart)
-           (string= (nskk-converter-result-pending result) "n")
-           (not (string-empty-p (nskk-converter-result-converted result))))
-      (nskk-converter-result-create
-       :converted (concat (nskk-converter-result-converted result) "ん")
-       :pending ""
-       :consumed (1+ (nskk-converter-result-consumed result)))
-    result))
-
-;;; 公開API
-
-(cl-defstruct (nskk-converter-result
-               (:constructor nskk-converter-result-create)
-               (:copier nil))
-  "ローマ字変換の結果を表す構造体。
-
-スロット:
-  converted  - 変換確定した文字列
-  pending    - 未確定の入力文字列
-  consumed   - 処理した文字数"
-  (converted "" :type string :read-only t)
-  (pending "" :type string :read-only t)
-  (consumed 0 :type integer :read-only t))
-
-(defun nskk-convert-romaji (input)
-  "INPUT をローマ字→かなに変換する。
-
-`nskk-converter-result' 構造体を返し、
-converted/pending/consumed の各スロットに結果を格納する。
-
-変換処理の概略:
-1. 促音処理
-2. 撥音処理
-3. 最長一致変換
-4. プレフィックスマッチングによる未確定判定"
-  (let ((result
-         (if (string-empty-p input)
-             (nskk-converter-result-create :converted ""
-                                           :pending ""
-                                           :consumed 0)
-
-           ;; 促音処理を試行
-           (if-let ((sokuon-result (nskk-converter--process-sokuon input)))
-               (let* ((sokuon-kana (car sokuon-result))
-                      (rest-input (cdr sokuon-result))
-                      ;; 残りを再帰的に変換
-                      (rest-result (nskk-convert-romaji rest-input)))
-                 (nskk-converter-result-create
-                  :converted (concat sokuon-kana
-                                     (nskk-converter-result-converted rest-result))
-                  :pending (nskk-converter-result-pending rest-result)
-                  :consumed (+ 1 (nskk-converter-result-consumed rest-result))))
-
-             ;; 撥音処理を試行
-             (if-let ((n-result (nskk-converter--process-n input)))
-                 (let* ((n-kana (car n-result))
-                        (rest-input (cdr n-result))
-                        (rest-result (nskk-convert-romaji rest-input)))
-                   (nskk-converter-result-create
-                    :converted (concat n-kana
-                                       (nskk-converter-result-converted rest-result))
-                    :pending (nskk-converter-result-pending rest-result)
-                    :consumed (+ (- (length input) (length rest-input))
-                                (nskk-converter-result-consumed rest-result))))
-
-               ;; 最長一致変換を試行
-               (if-let ((match-result (nskk-converter--longest-match input)))
-                   (let* ((kana (car match-result))
-                          (rest-input (cdr match-result))
-                          (consumed-len (- (length input) (length rest-input)))
-                          (rest-result (nskk-convert-romaji rest-input)))
-                     (nskk-converter-result-create
-                      :converted (concat kana
-                                         (nskk-converter-result-converted rest-result))
-                      :pending (nskk-converter-result-pending rest-result)
-                      :consumed (+ consumed-len
-                                  (nskk-converter-result-consumed rest-result))))
-
-                 ;; プレフィックスマッチがあれば未確定として保持
-                 (cond
-                  ((nskk-converter--has-prefix-match input)
-                   (nskk-converter-result-create
-                    :converted ""
-                    :pending input
-                    :consumed 0))
-
-                  ((nskk-converter--should-delay-for-sokuon input)
-                   (nskk-converter-result-create
-                    :converted ""
-                    :pending input
-                    :consumed 0))
-
-                  (t
-                   ;; どのパターンにもマッチしない → 最初の1文字をそのまま出力
-                   (let ((rest-result (nskk-convert-romaji (substring input 1))))
-                     (nskk-converter-result-create
-                      :converted (concat (substring input 0 1)
-                                         (nskk-converter-result-converted rest-result))
-                      :pending (nskk-converter-result-pending rest-result)
-                      :consumed (1+ (nskk-converter-result-consumed rest-result))))))))))))
-    (nskk-converter--finalize-result result)))
-
-(defun nskk-convert-romaji-simple (input)
-  "INPUT をローマ字→かなに変換し、確定部分のみを返す。
-`nskk-convert-romaji' の簡易版。
-
-例:
-  (nskk-convert-romaji-simple \"kya\")   ;; => \"きゃ\"
-  (nskk-convert-romaji-simple \"k\")     ;; => \"\"
-  (nskk-convert-romaji-simple \"kka\")   ;; => \"っか\""
-  (nskk-converter-result-converted (nskk-convert-romaji input)))
-
-(defun nskk-convert-romaji-pending (input)
-  "INPUT をローマ字→かなに変換し、未確定部分のみを返す。
-
-例:
-  (nskk-convert-romaji-pending \"kya\")  ;; => \"\"
-  (nskk-convert-romaji-pending \"k\")    ;; => \"k\"
-  (nskk-convert-romaji-pending \"kka\")  ;; => \"\""
-  (nskk-converter-result-pending (nskk-convert-romaji input)))
-
-;;; デバッグ・統計機能
-
-(defun nskk-converter-stats ()
-  "変換エンジンの統計情報を返す。
-
-返り値は以下の要素を含むplist:
-  :romaji-table-size  - ローマ字テーブルのエントリ数
-  :max-romaji-length  - 最大ローマ字長
-  :sokuon-enabled     - 促音処理の有効/無効
-  :n-processing-mode  - 撥音処理モード"
-  (nskk-converter--init-max-length)
-  (list :romaji-table-size (length nskk-romaji-table)
-        :max-romaji-length nskk-converter--max-romaji-length
-        :sokuon-enabled nskk-converter-use-sokuon
-        :n-processing-mode nskk-converter-n-processing-mode))
+(defun nskk-converter-get-possible-completions (romaji)
+  "Get list of possible completions for ROMAJI prefix.
+Returns list of (romaji . kana) pairs."
+  (when (stringp romaji)
+    (let ((completions '()))
+      (maphash
+       (lambda (key value)
+         (when (and (string-prefix-p romaji key)
+                    (stringp value))
+           (push (cons key value) completions)))
+       nskk--romaji-table)
+      (nreverse completions))))
 
 (provide 'nskk-converter)
 
