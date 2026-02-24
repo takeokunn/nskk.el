@@ -78,13 +78,20 @@
       (when (eq current-mode 'katakana)
         (nskk-set-mode-hiragana)))))
 
+(defun nskk-toggle-japanese-mode ()
+  "Toggle between hiragana and katakana modes.
+This is an alias for `nskk-toggle-katakana' for compatibility."
+  (interactive)
+  (nskk-toggle-katakana))
+
 (defun nskk--set-mode (mode)
   "Internal mode setter with validation.
 MODE is the target mode symbol."
-  (unless (memq mode '(hiragana katakana latin abbrev))
+  (unless (nskk-state-valid-mode-p mode)
     (error "Invalid mode: %s" mode))
-  (when (boundp 'nskk-current-state)
-    (nskk-state-set nskk-current-state 'mode mode))
+  (unless (boundp 'nskk-current-state)
+    (error "NSKK state not initialized"))
+  (nskk-state-set nskk-current-state 'mode mode)
   (nskk--clear-conversion-context))
 
 (defun nskk--clear-conversion-context ()

@@ -42,27 +42,56 @@
 (require 'cl-lib)
 
 ;; Character code ranges for classification
+;; Based on Unicode Standard 15.0
+;;
 ;; Hiragana: #x3040-#x309F
+;;   - Includes: Hiragana letters, small letters, iteration marks,
+;;     voiced/semi-voiced sound marks
+;;
 ;; Katakana: #x30A0-#x30FF
-;; Han (Kanji): #x4E00-#x9FFF
+;;   - Includes: Katakana letters, small letters, extension letters,
+;;     voiced/semi-voiced sound marks, iteration marks
+;;
+;; CJK Unified Ideographs (Kanji): #x4E00-#x9FFF
+;;   - Main CJK block containing common kanji
+;;
+;; CJK Unified Ideographs Extension A: #x3400-#x4DBF
+;;   - Rare/historical kanji characters
+;;
+;; Half-width and Full-width Forms (Katakana subset): #xFF65-#xFF9F
+;;   - Half-width katakana characters used in legacy systems
 
 (defconst nskk--hiragana-start #x3040
-  "Start code point of hiragana block.")
+  "Start code point of hiragana block (Unicode U+3040).")
 
 (defconst nskk--hiragana-end #x309F
-  "End code point of hiragana block.")
+  "End code point of hiragana block (Unicode U+309F).")
 
 (defconst nskk--katakana-start #x30A0
-  "Start code point of katakana block.")
+  "Start code point of katakana block (Unicode U+30A0).")
 
 (defconst nskk--katakana-end #x30FF
-  "End code point of katakana block.")
+  "End code point of katakana block (Unicode U+30FF).")
 
 (defconst nskk--han-start #x4E00
-  "Start code point of han (kanji) block.")
+  "Start code point of CJK Unified Ideographs block (Unicode U+4E00).")
 
 (defconst nskk--han-end #x9FFF
-  "End code point of han (kanji) block.")
+  "End code point of CJK Unified Ideographs block (Unicode U+9FFF).")
+
+(defconst nskk--han-extension-a-start #x3400
+  "Start code point of CJK Unified Ideographs Extension A (Unicode U+3400).
+Contains rare and historical kanji characters.")
+
+(defconst nskk--han-extension-a-end #x4DBF
+  "End code point of CJK Unified Ideographs Extension A (Unicode U+4DBF).")
+
+(defconst nskk--hankaku-katakana-start #xFF65
+  "Start code point of half-width katakana block (Unicode U+FF65).
+Half-width katakana characters from the Half-width and Full-width Forms block.")
+
+(defconst nskk--hankaku-katakana-end #xFF9F
+  "End code point of half-width katakana block (Unicode U+FF9F).")
 
 ;; Hankaku katakana conversion table
 ;; Maps zenkaku katakana (as string) to hankaku katakana (as string)
@@ -294,16 +323,36 @@
        (<= char nskk--katakana-end)))
 
 (defun nskk-core-han-p (char)
-  "Check if CHAR is a han (kanji) character."
+  "Check if CHAR is a han (kanji) character.
+Includes both main CJK Unified Ideographs (U+4E00-U+9FFF) and
+CJK Unified Ideographs Extension A (U+3400-U+4DBF) which contains
+rare and historical kanji."
   (and (integerp char)
-       (>= char nskk--han-start)
-       (<= char nskk--han-end)))
+       (or (and (>= char nskk--han-start)
+                (<= char nskk--han-end))
+           (and (>= char nskk--han-extension-a-start)
+                (<= char nskk--han-extension-a-end)))))
+
+(defun nskk-core-hankaku-katakana-p (char)
+  "Check if CHAR is a half-width katakana character.
+Half-width katakana are in the range U+FF65-U+FF9F,
+part of the Half-width and Full-width Forms Unicode block."
+  (and (integerp char)
+       (>= char nskk--hankaku-katakana-start)
+       (<= char nskk--hankaku-katakana-end)))
 
 (defun nskk-core-japanese-p (char)
-  "Check if CHAR is a Japanese character (hiragana, katakana, or han)."
+  "Check if CHAR is a Japanese character.
+Recognizes the following Unicode ranges:
+- Hiragana (U+3040-U+309F)
+- Katakana (U+30A0-U+30FF)
+- CJK Unified Ideographs (U+4E00-U+9FFF)
+- CJK Unified Ideographs Extension A (U+3400-U+4DBF)
+- Half-width Katakana (U+FF65-U+FF9F)"
   (or (nskk-core-hiragana-p char)
       (nskk-core-katakana-p char)
-      (nskk-core-han-p char)))
+      (nskk-core-han-p char)
+      (nskk-core-hankaku-katakana-p char)))
 
 ;;; Hiragana/Katakana Conversion Functions
 

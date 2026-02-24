@@ -58,6 +58,7 @@
 (require 'nskk-optimize nil t)
 (require 'nskk-native-compile nil t)
 (require 'nskk-architecture nil t)
+(require 'nskk-debug nil t)
 
 (declare-function nskk-modeline-update "nskk-modeline")
 
@@ -92,21 +93,33 @@
       (nskk--enable)
     (nskk--disable)))
 
+(defvar nskk-global-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-x C-j") 'nskk-toggle-mode)
+    map)
+  "Global keymap for `nskk-global-mode'.
+This provides global bindings that work even when nskk-mode is not yet active.")
+
 ;;;###autoload
 (define-globalized-minor-mode nskk-global-mode
   nskk-mode
   nskk--turn-on-mode
+  :global t
+  :keymap nskk-global-mode-map
   :group 'nskk)
 
 ;; Internal implementation functions
 
 (defun nskk--enable ()
   "Enable NSKK in current buffer."
+  (nskk-debug-message "NSKK enabled in buffer: %s" (buffer-name))
   (unless nskk--system-dict-index
     (nskk-dict-initialize))
   (unless nskk-current-state
-    (setq nskk-current-state (nskk-state-create nskk-state-default-mode)))
-  (nskk--setup-buffer))
+    (setq nskk-current-state (nskk-state-create nskk-state-default-mode))
+    (nskk-debug-message "Created initial state: mode=%s" nskk-state-default-mode))
+  (nskk--setup-buffer)
+  (nskk--update-modeline))
 
 (defun nskk--disable ()
   "Disable NSKK in current buffer."
@@ -116,6 +129,7 @@
 
 (defun nskk--turn-on-mode ()
   "Turn on nskk-mode in appropriate buffers."
+  (nskk-debug-message "Turning on NSKK mode in buffer: %s" (buffer-name))
   (unless (minibufferp)
     (nskk-mode 1)))
 
@@ -163,6 +177,10 @@
 (defalias 'nskk-switch-to-ascii #'nskk-enter-latin-mode)
 ;;;###autoload
 (defalias 'nskk-toggle-kana #'nskk-toggle-japanese-mode)
+
+;; Convenience alias for global toggle
+;;;###autoload
+(defalias 'nskk-toggle #'nskk-toggle-mode)
 
 ;; Modeline update — delegate to nskk-modeline.el
 (defalias 'nskk--update-modeline #'nskk-modeline-update)

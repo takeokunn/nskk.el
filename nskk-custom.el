@@ -88,6 +88,39 @@
   :type 'boolean
   :group 'nskk-converter)
 
+(defcustom nskk-converter-romaji-style 'standard
+  "Romaji input style for Japanese conversion.
+\\='standard - Standard SKK romaji (default)
+\\='azik     - AZIK extended romaji with efficiency shortcuts"
+  :type '(choice (const :tag "Standard SKK" standard)
+                 (const :tag "AZIK" azik))
+  :group 'nskk-converter)
+
+(defgroup nskk-azik nil
+  "AZIK extended romaji input settings."
+  :prefix "nskk-azik-"
+  :group 'nskk-converter)
+
+(defcustom nskk-azik-q-behavior 'context-aware
+  "Behavior of q key when AZIK style is active.
+\\='context-aware - Produce ん when there is pending romaji input,
+                 otherwise toggle hiragana/katakana mode (recommended)
+\\='always-n      - Always produce ん (AZIK purist)
+\\='toggle-only   - Keep standard SKK toggle behavior (use nn for ん)"
+  :type '(choice (const :tag "Context-aware (Recommended)" context-aware)
+                 (const :tag "Always produce ん" always-n)
+                 (const :tag "Toggle only" toggle-only))
+  :group 'nskk-azik)
+
+(defcustom nskk-azik-keyboard-type 'jp106
+  "Keyboard layout for AZIK mappings.
+Affects key position-based shortcuts.
+\\='jp106 - Japanese 106-key layout (default)
+\\='us101 - US 101-key layout"
+  :type '(choice (const :tag "Japanese 106-key" jp106)
+                 (const :tag "US 101-key" us101))
+  :group 'nskk-azik)
+
 ;; State settings
 (defcustom nskk-state-default-mode 'ascii
   "Default input mode when NSKK is activated."

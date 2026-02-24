@@ -140,20 +140,33 @@ LIMIT is the maximum number of results."
 
 ;;; 完全一致検索
 
-(defun nskk-search-exact (index query _okuri-type)
+(defun nskk-search-exact (index query okuri-type)
   "Perform exact match search in INDEX for QUERY.
-_OKURI-TYPE specifies okurigana filtering."
-  (let ((entries (nskk-dict-index-entries index)))
+OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil."
+  (let ((entries (nskk-dict-index-entries index))
+        (entry nil))
     (when entries
-      (if (hash-table-p entries)
-          (gethash query entries)
-        (assoc query entries)))))
+      (setq entry (if (hash-table-p entries)
+                      (gethash query entries)
+                    (assoc query entries)))
+      ;; Filter by okuri-type if specified
+      (when (and entry okuri-type)
+        (let ((entry-okuri (nskk-dict-entry-okuri entry)))
+          (setq entry
+                (cond
+                 ((eq okuri-type 'okuri-ari)
+                  (when entry-okuri entry))
+                 ((eq okuri-type 'okuri-nasi)
+                  (when (or (null entry-okuri) (string= entry-okuri ""))
+                    entry))
+                 (t entry)))))
+      entry)))
 
 ;;; 前方一致検索
 
-(defun nskk-search-prefix (index query _okuri-type limit)
+(defun nskk-search-prefix (index query okuri-type limit)
   "Perform prefix match search in INDEX for QUERY.
-_OKURI-TYPE specifies okurigana filtering.
+OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
 LIMIT is the maximum number of results."
   (let ((results nil)
         (tries (list (nskk-dict-index-by-prefix index))))
@@ -163,6 +176,20 @@ LIMIT is the maximum number of results."
       (when trie
         (let ((trie-results (nskk-trie-prefix-search trie query limit)))
           (setq results (append results trie-results)))))
+
+    ;; Filter by okuri-type if specified
+    (when okuri-type
+      (setq results
+            (cl-remove-if-not
+             (lambda (result)
+               (let ((entry-okuri (nskk-dict-entry-okuri (cdr result))))
+                 (cond
+                  ((eq okuri-type 'okuri-ari)
+                   entry-okuri)
+                  ((eq okuri-type 'okuri-nasi)
+                   (or (null entry-okuri) (string= entry-okuri "")))
+                  (t t))))
+             results)))
 
     ;; 重複を除去（同じキーが送り仮名ありとなしに存在する場合）
     (setq results (nskk-search--remove-duplicates results))
@@ -187,9 +214,9 @@ LIMIT is the maximum number of results."
 
 ;;; 部分一致検索
 
-(defun nskk-search-partial (index query _okuri-type limit)
+(defun nskk-search-partial (index query okuri-type limit)
   "Perform partial match search in INDEX for QUERY.
-_OKURI-TYPE specifies okurigana filtering.
+OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
 LIMIT is the maximum number of results."
   (let ((results nil)
         (count 0)
@@ -200,10 +227,22 @@ LIMIT is the maximum number of results."
       (catch 'limit-reached
         (maphash (lambda (key entry)
                    (when (string-match-p (regexp-quote query) key)
-                     (push (cons key entry) results)
-                     (cl-incf count)
-                     (when (and limit (>= count limit))
-                       (throw 'limit-reached nil))))
+                     ;; Filter by okuri-type if specified
+                     (let ((include-entry t))
+                       (when okuri-type
+                         (let ((entry-okuri (nskk-dict-entry-okuri entry)))
+                           (setq include-entry
+                                 (cond
+                                  ((eq okuri-type 'okuri-ari)
+                                   entry-okuri)
+                                  ((eq okuri-type 'okuri-nasi)
+                                   (or (null entry-okuri) (string= entry-okuri "")))
+                                  (t t)))))
+                       (when include-entry
+                         (push (cons key entry) results)
+                         (cl-incf count)
+                         (when (and limit (>= count limit))
+                           (throw 'limit-reached nil))))))
                  entries)))
 
     ;; ソート

@@ -467,6 +467,169 @@
     (should (null (nskk-state-get-metadata state :key2)))))
 
 ;;;
+;;; Error Handling Tests: Mode Validation
+;;;
+
+(nskk-deftest-unit state-valid-mode-p-comprehensive
+  "Test nskk-state-valid-mode-p validates all modes correctly."
+  ;; Valid modes should pass
+  (should (nskk-state-valid-mode-p 'ascii))
+  (should (nskk-state-valid-mode-p 'hiragana))
+  (should (nskk-state-valid-mode-p 'katakana))
+  (should (nskk-state-valid-mode-p 'katakana-半角))
+  (should (nskk-state-valid-mode-p 'abbrev))
+  (should (nskk-state-valid-mode-p 'latin))
+
+  ;; Invalid modes should fail
+  (should (not (nskk-state-valid-mode-p 'invalid)))
+  (should (not (nskk-state-valid-mode-p 'mode)))
+  (should (not (nskk-state-valid-mode-p nil)))
+  (should (not (nskk-state-valid-mode-p "hiragana")))
+  (should (not (nskk-state-valid-mode-p 42)))
+  (should (not (nskk-state-valid-mode-p '()))))
+
+(nskk-deftest-unit state-set-mode-boundary-cases
+  "Test nskk-state-set mode setter with boundary cases."
+  (let ((state (nskk-state-create 'ascii)))
+    ;; Setting to each valid mode should work
+    (dolist (mode '(ascii hiragana katakana katakana-半角 abbrev latin))
+      (let ((result (nskk-state-set state 'mode mode)))
+        (should (eq result mode))
+        (should (eq (nskk-state-mode state) mode))))
+
+    ;; Invalid modes should fail and not change state
+    (nskk-state-set state 'mode 'hiragana)
+    (let ((result (nskk-state-set state 'mode 'not-a-mode)))
+      (should (null result))
+      (should (eq (nskk-state-mode state) 'hiragana)))))
+
+(nskk-deftest-unit state-set-mode-previous-tracking
+  "Test that previous-mode is tracked through multiple transitions."
+  (let ((state (nskk-state-create 'ascii)))
+    ;; Initial state
+    (should (eq (nskk-state-mode state) 'ascii))
+    (should (eq (nskk-state-previous-mode state) 'ascii))
+
+    ;; First transition
+    (nskk-state-set state 'mode 'hiragana)
+    (should (eq (nskk-state-mode state) 'hiragana))
+    (should (eq (nskk-state-previous-mode state) 'ascii))
+
+    ;; Second transition
+    (nskk-state-set state 'mode 'katakana)
+    (should (eq (nskk-state-mode state) 'katakana))
+    (should (eq (nskk-state-previous-mode state) 'hiragana))
+
+    ;; Third transition
+    (nskk-state-set state 'mode 'latin)
+    (should (eq (nskk-state-mode state) 'latin))
+    (should (eq (nskk-state-previous-mode state) 'katakana))))
+
+;;;
+;;; Error Handling Tests: State Transition Validation
+;;;
+
+(nskk-deftest-unit state-transition-validates-from-mode
+  "Test that transition validates current mode matches from-mode."
+  (let ((state (nskk-state-create 'ascii)))
+    ;; Correct from-mode should succeed
+    (should (nskk-state-transition state 'ascii 'hiragana))
+    (should (eq (nskk-state-mode state) 'hiragana))
+
+    ;; Wrong from-mode should fail
+    (should (not (nskk-state-transition state 'ascii 'katakana)))
+    (should (eq (nskk-state-mode state) 'hiragana))))
+
+(nskk-deftest-unit state-transition-validates-to-mode
+  "Test that transition validates target mode is valid."
+  (let ((state (nskk-state-create 'ascii)))
+    ;; Invalid to-mode should fail
+    (should (not (nskk-state-transition state 'ascii 'not-a-mode)))
+    (should (eq (nskk-state-mode state) 'ascii))))
+
+(nskk-deftest-unit state-transition-rejects-nil-state
+  "Test that transition fails safely with nil state."
+  (should (not (nskk-state-transition nil 'ascii 'hiragana))))
+
+(nskk-deftest-unit state-transition-sequence-validation
+  "Test multiple transitions maintain validation."
+  (let ((state (nskk-state-create 'ascii)))
+    ;; Build a sequence of transitions
+    (should (nskk-state-transition state 'ascii 'hiragana))
+    (should (nskk-state-transition state 'hiragana 'katakana))
+    (should (nskk-state-transition state 'katakana 'latin))
+    (should (nskk-state-transition state 'latin 'abbrev))
+    (should (nskk-state-transition state 'abbrev 'ascii))
+
+    ;; Final state should be ascii
+    (should (eq (nskk-state-mode state) 'ascii))))
+
+;;;
+;;; Error Handling Tests: State Get/Set With Invalid Input
+;;;
+
+(nskk-deftest-unit state-set-with-nil-state
+  "Test that state-set handles nil state gracefully."
+  (should (null (nskk-state-set nil 'mode 'hiragana)))
+  (should (null (nskk-state-set nil 'input-buffer "test"))))
+
+(nskk-deftest-unit state-set-rejects-invalid-slot
+  "Test that state-set rejects non-existent slots."
+  (let ((state (nskk-state-create)))
+    ;; Setting invalid slot should return nil
+    (should (null (nskk-state-set state 'not-a-slot 'value)))))
+
+(nskk-deftest-unit state-get-with-nil-state
+  "Test that state-get handles nil state gracefully."
+  (should (null (nskk-state-get nil 'mode)))
+  (should (null (nskk-state-get nil 'input-buffer))))
+
+(nskk-deftest-unit state-get-with-invalid-slot
+  "Test that state-get handles invalid slot names gracefully."
+  (let ((state (nskk-state-create)))
+    (should (null (nskk-state-get state 'not-a-slot)))))
+
+;;;
+;;; Error Handling Tests: Mode-Sensitive Operations
+;;;
+
+(nskk-deftest-unit state-mode-change-affects-operations
+  "Test that mode changes properly affect state behavior."
+  (let ((state (nskk-state-create 'ascii)))
+    ;; In ascii mode
+    (should (eq (nskk-state-mode state) 'ascii))
+
+    ;; Switch to hiragana
+    (nskk-state-set state 'mode 'hiragana)
+    (should (eq (nskk-state-mode state) 'hiragana))
+
+    ;; State operations should work consistently
+    (nskk-state-append-input state ?a)
+    (should (string= (nskk-state-input-buffer state) "a"))
+
+    ;; Mode-aware operations should respect current mode
+    (let ((mode (nskk-state-mode state)))
+      (should (eq mode 'hiragana)))))
+
+(nskk-deftest-unit state-reset-preserves-mode
+  "Test that reset preserves the current mode."
+  (let ((state (nskk-state-create 'katakana)))
+    ;; Set up state
+    (nskk-state-set state 'input-buffer "test")
+    (nskk-state-set state 'henkan-position 5)
+    (nskk-state-set-candidates state '("a" "b" "c"))
+
+    ;; Reset
+    (nskk-state-reset state)
+
+    ;; Mode should be preserved
+    (should (eq (nskk-state-mode state) 'katakana))
+    ;; But other state should be cleared
+    (should (string= (nskk-state-input-buffer state) ""))
+    (should (null (nskk-state-henkan-position state)))
+    (should (null (nskk-state-candidates state)))))
+
+;;;
 ;;; Integration Tests
 ;;;
 

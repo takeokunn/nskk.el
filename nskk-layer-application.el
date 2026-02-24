@@ -123,7 +123,7 @@
 
 (defun nskk-current-mode ()
   "Return current input mode."
-  (nskk-get-mode))
+  (nskk-state-get-mode))
 
 (provide 'nskk-layer-application)
 

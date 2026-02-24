@@ -22,6 +22,7 @@
 (require 'ert)
 (require 'nskk-layer-application)
 (require 'nskk-state)
+(require 'nskk-modeline)
 (require 'nskk-test-framework)
 
 ;;;

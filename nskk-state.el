@@ -72,11 +72,17 @@ Supports validation for mode changes."
       (cond
        ;; Mode validation
        ((eq key-sym 'mode)
-        (when (nskk-state-valid-mode-p value)
-          ;; Store previous mode
-          (setf (nskk-state-previous-mode state) (nskk-state-mode state))
-          (setf (nskk-state-mode state) value)
-          value))
+        (if (nskk-state-valid-mode-p value)
+            (progn
+              ;; Store previous mode
+              (setf (nskk-state-previous-mode state) (nskk-state-mode state))
+              (setf (nskk-state-mode state) value)
+              value)
+          (progn
+            (require 'nskk-debug nil t)
+            (nskk-debug-message "Mode validation failed: %s not in %s"
+                               value nskk-state-modes)
+            nil)))
        ;; Explicit slot setters
        ((eq key-sym 'input-buffer)
         (setf (nskk-state-input-buffer state) value) value)
@@ -168,34 +174,41 @@ Clears buffers, candidates, and stacks."
 ;; Buffer management helpers
 (defun nskk-state-append-input (state char)
   "Append CHAR to STATE's input buffer.
-Uses O(1) character append for efficient buffer building."
-  (when (nskk-state-p state)
+CHAR must be a valid character (integer).
+Returns the new buffer string on success, nil on failure.
+Uses efficient string concatenation for buffer building."
+  (when (and (nskk-state-p state)
+             (characterp char))
     (let ((buf (nskk-state-input-buffer state)))
-      (let ((len (length buf)))
-        ;; Create new string with one more character
-        (let ((new-buf (make-string (1+ len) ?\0)))
-          ;; Copy old buffer
-          (dotimes (i len)
-            (aset new-buf i (aref buf i)))
-          ;; Add new character
-          (aset new-buf len char)
-          (setf (nskk-state-input-buffer state) new-buf))))))
+      ;; Ensure buf is a string (defensive check)
+      (unless (stringp buf)
+        (setq buf ""))
+      (let ((new-buf (concat buf (string char))))
+        (setf (nskk-state-input-buffer state) new-buf)
+        new-buf))))
 
 (defun nskk-state-delete-last-char (state)
   "Delete last character from STATE's input buffer.
-Returns deleted char or nil if buffer empty."
+Returns the deleted character on success, nil if buffer is empty
+or state is invalid.
+Properly handles multibyte characters."
   (when (nskk-state-p state)
     (let ((buf (nskk-state-input-buffer state)))
-      (when (> (length buf) 0)
-        (let ((len (length buf)))
-          (setf (nskk-state-input-buffer state)
-                (substring buf 0 (1- len)))
-          (aref buf (1- len)))))))
+      ;; Ensure buf is a string (defensive check)
+      (when (and (stringp buf)
+                 (> (length buf) 0))
+        ;; Get the last character before deleting
+        (let ((last-char (aref buf (1- (length buf))))
+              (new-buf (substring buf 0 (1- (length buf)))))
+          (setf (nskk-state-input-buffer state) new-buf)
+          last-char)))))
 
 (defun nskk-state-clear-input (state)
-  "Clear STATE's input buffer."
+  "Clear STATE's input buffer.
+Returns t on success, nil if state is invalid."
   (when (nskk-state-p state)
-    (setf (nskk-state-input-buffer state) "")))
+    (setf (nskk-state-input-buffer state) "")
+    t))
 
 ;; Candidate management helpers
 (defun nskk-state-set-candidates (state candidates)
@@ -262,6 +275,17 @@ Returns current candidate or nil if no candidates."
   "Set width type in STATE metadata to VALUE."
   (when (nskk-state-p state)
     (nskk-state-put-metadata state 'width-type value)))
+
+(defun nskk-state-set-okurigana (state value)
+  "Set okurigana in STATE metadata to VALUE.
+VALUE should be the okurigana consonant (e.g., \\='k\\=' for \\='く\\=')."
+  (when (nskk-state-p state)
+    (nskk-state-put-metadata state 'okurigana value)))
+
+(defun nskk-state-get-okurigana (state)
+  "Get okurigana from STATE metadata."
+  (when (nskk-state-p state)
+    (nskk-state-get-metadata state 'okurigana)))
 
 ;; Buffer-local state management
 (defvar-local nskk-current-state nil

@@ -39,6 +39,35 @@
 (require 'nskk-test-framework)
 (eval-when-compile (require 'cl-lib))
 
+;; Optional require for PBT generators (may not exist in all environments)
+(when (locate-library "nskk-pbt-generators")
+  (require 'nskk-pbt-generators))
+
+
+;;;;
+;;;; Customization Variables for Property Tests
+;;;;
+
+(defcustom nskk-test-property-seeded-runs 100
+  "Default number of runs for seeded property-based tests."
+  :type 'integer
+  :group 'nskk-test)
+
+(defcustom nskk-test-state-machine-runs 50
+  "Default number of runs for state machine tests."
+  :type 'integer
+  :group 'nskk-test)
+
+(defcustom nskk-test-sequence-runs 75
+  "Default number of runs for sequence-based tests."
+  :type 'integer
+  :group 'nskk-test)
+
+(defcustom nskk-test-shrinking-max-steps 100
+  "Maximum number of shrinking steps to attempt."
+  :type 'integer
+  :group 'nskk-test)
+
 
 ;;;;
 ;;;; Property-Based Testing Macros
@@ -83,6 +112,318 @@ Like `nskk-property-test' but with fewer runs by default."
                    `(,(car gen) (nskk-generate ',(cadr gen))))
                  generators)
      ,@body))
+
+
+;;;;
+;;;; Shrinking Support Functions
+;;;;
+
+(defun nskk-shrink-sequence (sequence property shrink-fn)
+  "Shrink SEQUENCE to find minimal failing case for PROPERTY.
+SHRINK-FN is called with smaller sequences to attempt shrinking.
+Returns (MINIMAL-SEQUENCE . SHRINK-STEPS) or nil if no shrinking possible."
+  (let ((current sequence)
+        (steps 0)
+        (max-steps nskk-test-shrinking-max-steps))
+    (while (and (< steps max-steps)
+                (> (length current) 1))
+      (let ((shrunk (funcall shrink-fn current)))
+        (when (and shrunk
+                   (not (funcall property shrunk)))
+          (setq current shrunk))
+        (cl-incf steps)))
+    (when (> steps 0)
+      (cons current steps))))
+
+(defun nskk-shrink-list (list)
+  "Return a list of smaller versions of LIST for shrinking.
+Returns the first shrinking candidate that reduces size."
+  (when (and list (> (length list) 0))
+    ;; Try removing first element
+    (if (> (length list) 1)
+        (cdr list)
+      nil)))
+
+(defun nskk-shrink-string (str)
+  "Return a smaller version of STR for shrinking.
+Returns the first shrinking candidate that reduces length."
+  (when (and str (> (length str) 1))
+    (substring str 1)))
+
+(defun nskk-shrink-integer (n)
+  "Return a smaller version of integer N for shrinking.
+Returns N/2 if N is non-zero, otherwise nil."
+  (when (and n (not (zerop n)))
+    (/ n 2)))
+
+
+;;;;
+;;;; Seeded Property-Based Testing Macros
+;;;;
+
+(defmacro nskk-property-test-seeded (name generators property &optional runs seed)
+  "Define a property-based test with seed tracking for reproducibility.
+NAME: Test name
+GENERATORS: ((var generator-name)...) pairs
+PROPERTY: Property expression to test
+RUNS: Number of test runs (default: nskk-test-property-seeded-runs)
+SEED: Random seed for reproducibility (default: random)"
+  (declare (indent 3))
+  `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
+     (let ((test-seed (or ,seed (abs (random))))
+           (runs (or ,runs nskk-test-property-seeded-runs))
+           (failures nil))
+       (random test-seed)
+       (message "Property test '%s' seed: %d" ',name test-seed)
+       (dotimes (_ runs)
+         (let ,(mapcar (lambda (gen)
+                         `(,(car gen) (nskk-generate ',(cadr gen))))
+                       generators)
+           (condition-case err
+               (unless ,property
+                 (push (list :seed test-seed ,@(mapcar #'car generators)) failures))
+             (error
+              (push (list :seed test-seed :error ,@(mapcar #'car generators) err)
+                    failures)))))
+       (when failures
+         (ert-fail (format "Property failed for %d cases (seed: %d):\n%S"
+                           (length failures) test-seed
+                           (take 5 failures)))))))
+
+(defmacro nskk-property-test-with-shrinking (name generators property &optional runs seed)
+  "Define a property-based test with automatic shrinking on failure.
+Extends `nskk-property-test-seeded' with shrinking support.
+When a failure is detected, attempts to find the minimal failing case.
+NAME: Test name
+GENERATORS: ((var generator-name)...) pairs
+PROPERTY: Property expression to test
+RUNS: Number of test runs (default: nskk-test-property-seeded-runs)
+SEED: Random seed for reproducibility (default: random)"
+  (declare (indent 3))
+  `(ert-deftest ,(intern (format "nskk-property-shrinking-%s" name)) ()
+     (let ((test-seed (or ,seed (abs (random))))
+           (runs (or ,runs nskk-test-property-seeded-runs))
+           (failure-case nil)
+           (minimal-case nil))
+       (random test-seed)
+       (message "Property test (with shrinking) '%s' seed: %d" ',name test-seed)
+       ;; First pass: find a failure
+       (dotimes (_ runs)
+         (when (not failure-case)
+           (let ,(mapcar (lambda (gen)
+                           `(,(car gen) (nskk-generate ',(cadr gen))))
+                         generators)
+             (condition-case err
+                 (unless ,property
+                   (setq failure-case (list ,@(mapcar #'car generators)))
+                   (message "Found failure case, attempting to shrink..."))
+               (error
+                (setq failure-case (list :error ,@(mapcar #'car generators) err))))))
+         ;; Move to next random state if no failure yet
+         (when (not failure-case)
+           (random)))
+       ;; If we found a failure, try to shrink it
+       (when failure-case
+         (let* ((shrunk-values
+                 (cl-loop for val in failure-case
+                          for gen in ',generators
+                          collect (nskk--shrink-value val (cadr gen))))
+                (shrunk-case shrunk-values))
+           ;; Try the shrunk case
+           (condition-case err
+               (let ,(cl-loop for gen in generators
+                              for i from 0
+                              collect `(,(car gen) (nth ,i shrunk-case)))
+                 (unless ,property
+                   (setq minimal-case shrunk-case)))
+             (error nil)))
+         ;; Report results
+         (if minimal-case
+             (ert-fail (format "Property failed (seed: %d)\nOriginal case: %S\nMinimal case: %S"
+                               test-seed failure-case minimal-case))
+           (ert-fail (format "Property failed (seed: %d)\nFailing case: %S"
+                             test-seed failure-case)))))))
+
+(defun nskk--shrink-value (value generator-type)
+  "Attempt to shrink VALUE based on GENERATOR-TYPE.
+Returns a potentially smaller value of the same type."
+  (pcase generator-type
+    ((or 'romaji-string 'hiragana-string 'kanji-string 'string)
+     (nskk-shrink-string value))
+    ((or 'integer 'positive-integer 'natnum)
+     (nskk-shrink-integer value))
+    ('list (nskk-shrink-list value))
+    (_ value)))  ; Return unchanged if no shrinker available
+
+
+;;;;
+;;;; State Machine Test Macro
+;;;;
+
+(defmacro nskk-state-machine-test (name initial-state transitions property &optional runs)
+  "Define a state machine property test.
+NAME: Test name
+INITIAL-STATE: Expression to create initial state
+TRANSITIONS: List of (trigger target-state) pairs
+PROPERTY: Invariant that should hold after any transition
+RUNS: Number of transition sequences to test (default: nskk-test-state-machine-runs)
+
+The test generates random sequences of transitions and verifies that
+the PROPERTY invariant holds after each transition."
+  (declare (indent 3))
+  `(ert-deftest ,(intern (format "nskk-state-machine-%s" name)) ()
+     (let ((runs (or ,runs nskk-test-state-machine-runs))
+           (failures nil)
+           (test-seed (abs (random))))
+       (random test-seed)
+       (message "State machine test '%s' seed: %d" ',name test-seed)
+       (dotimes (run runs)
+         (let ((state ,initial-state)
+               (steps-taken nil)
+               (max-steps 20)
+               (step-count 0))
+           ;; Execute random sequence of transitions
+           (while (and (< step-count max-steps)
+                       (< (random 10) 8))  ; 80% chance to continue
+             (let* ((transition-idx (random (length ',transitions)))
+                    (transition (nth transition-idx ',transitions))
+                    (trigger (car transition))
+                    (target-state-fn (cadr transition)))
+               (push (list :step step-count :trigger trigger) steps-taken)
+               (setq state (funcall target-state-fn state trigger))
+               (cl-incf step-count)
+               ;; Check invariant after each transition
+               (condition-case err
+                   (unless (funcall ,property state)
+                     (push (list :seed test-seed
+                                 :run run
+                                 :steps (nreverse steps-taken)
+                                 :final-state state)
+                           failures))
+                 (error
+                  (push (list :seed test-seed
+                              :run run
+                              :error err
+                              :steps (nreverse steps-taken))
+                        failures)))))
+           ;; Also check final state
+           (condition-case err
+               (unless (funcall ,property state)
+                 (push (list :seed test-seed
+                             :run run
+                             :final-check t
+                             :steps (nreverse steps-taken)
+                             :final-state state)
+                       failures))
+             (error
+              (push (list :seed test-seed
+                          :run run
+                          :final-check t
+                          :error err
+                          :steps (nreverse steps-taken))
+                    failures)))))
+       (when failures
+         (ert-fail (format "State machine invariant failed for %d cases (seed: %d):\n%S"
+                           (length failures) test-seed
+                           (take 3 failures)))))))
+
+
+;;;;
+;;;; Sequence Test Macro
+;;;;
+
+(defmacro nskk-sequence-test (name key-sequence-generator setup property &optional runs)
+  "Define a sequence-based property test.
+NAME: Test name
+KEY-SEQUENCE-GENERATOR: Generator name for key sequences
+SETUP: Setup expression before each test
+PROPERTY: Invariant that should hold after sequence execution
+RUNS: Number of sequences to test (default: nskk-test-sequence-runs)
+
+The test generates random key sequences, executes them, and verifies
+that the PROPERTY invariant holds."
+  (declare (indent 3))
+  `(ert-deftest ,(intern (format "nskk-sequence-%s" name)) ()
+     (let ((runs (or ,runs nskk-test-sequence-runs))
+           (failures nil)
+           (test-seed (abs (random))))
+       (random test-seed)
+       (message "Sequence test '%s' seed: %d" ',name test-seed)
+       (dotimes (run runs)
+         ;; Generate key sequence
+         (let* ((key-sequence (nskk-generate ',key-sequence-generator))
+                (execution-context (progn ,setup)))
+           (condition-case err
+               ;; Execute the sequence (implementation depends on context)
+               (progn
+                 (dolist (key key-sequence)
+                   ;; Simulate key press in context
+                   (setq execution-context
+                         (nskk--simulate-key execution-context key)))
+                 ;; Check property after sequence execution
+                 (unless (funcall ,property execution-context)
+                   (push (list :seed test-seed
+                               :run run
+                               :key-sequence key-sequence
+                               :final-context execution-context)
+                         failures)))
+             (error
+              (push (list :seed test-seed
+                          :run run
+                          :error err
+                          :key-sequence key-sequence)
+                    failures)))))
+       (when failures
+         (ert-fail (format "Sequence property failed for %d cases (seed: %d):\n%S"
+                           (length failures) test-seed
+                           (take 3 failures)))))))
+
+(defun nskk--simulate-key (context key)
+  "Simulate KEY press in CONTEXT.
+Returns updated context after processing the key.
+Handles nskk-state objects, plists, and other context types."
+  (cond
+   ;; Handle nskk-state objects
+   ((and (fboundp 'nskk-state-p) (nskk-state-p context))
+    (nskk--simulate-key-for-state context key))
+   ;; Handle plist contexts
+   ((listp context)
+    (plist-put context :last-key key))
+   ;; Fallback for unknown context types
+   (t
+    (list :last-key key :input (if (stringp key) key "")))))
+
+(defun nskk--simulate-key-for-state (state key)
+  "Process KEY press on nskk-state STATE.
+Returns updated state."
+  (when (nskk-state-p state)
+    (cond
+     ;; Mode switch keys
+     ((string= key "C-j")
+      (nskk-state-set state 'mode 'hiragana)
+      state)
+     ((string= key "q")
+      (let ((current-mode (nskk-state-mode state)))
+        (cond
+         ((eq current-mode 'hiragana)
+          (nskk-state-set state 'mode 'katakana))
+         ((eq current-mode 'katakana)
+          (nskk-state-set state 'mode 'hiragana))
+         (t state))
+        state))
+     ((string= key "l")
+      (nskk-state-set state 'mode 'latin)
+      state)
+     ((string= key ";")
+      (nskk-state-set state 'mode 'abbrev)
+      state)
+     ;; Regular character input (single character strings)
+     ((and (stringp key) (= (length key) 1))
+      (let ((current-buffer (nskk-state-input-buffer state)))
+        (nskk-state-set state 'input-buffer (concat current-buffer key))
+        state))
+     ;; Unknown key - pass through unchanged
+     (t state))))
 
 
 ;;;;

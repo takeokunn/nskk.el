@@ -42,6 +42,63 @@
 (require 'nskk-mode-switch)
 (require 'nskk-layer-core)
 (require 'nskk-state)
+(require 'nskk-custom)
+(require 'nskk-azik nil t)  ; Optional - only if available
+
+(declare-function nskk-toggle-japanese-mode "nskk-mode-switch")
+(declare-function nskk-start-conversion "nskk-layer-core")
+(declare-function nskk-core-convert-romaji "nskk-layer-core")
+(declare-function nskk-core-search "nskk-layer-core")
+(declare-function nskk-state-get-mode "nskk-state")
+(declare-function nskk-state-p "nskk-state")
+(declare-function nskk-state-candidates "nskk-state")
+(declare-function nskk-state-current-index "nskk-state")
+(declare-function nskk-state-set-candidates "nskk-state")
+(declare-function nskk-converter-load-style "nskk-converter")
+
+;; AZIK style initialization
+(defun nskk--maybe-load-azik-style ()
+  "Load AZIK style if configured and not already loaded."
+  (when (and (featurep 'nskk-azik)
+             (eq nskk-converter-romaji-style 'azik))
+    (nskk-converter-load-style 'azik)))
+
+;; AZIK-specific key handlers
+(defun nskk-handle-q-key ()
+  "Handle q key press based on current romaji style and configuration.
+In AZIK mode with context-aware behavior:
+  - If there is pending romaji input, produce ん
+  - Otherwise, toggle hiragana/katakana mode
+In always-n mode: always produce ん
+In toggle-only mode: toggle mode regardless of context
+In standard mode: toggle mode (default SKK behavior)."
+  (interactive)
+  (cond
+   ;; Standard mode: normal toggle behavior
+   ((not (eq nskk-converter-romaji-style 'azik))
+    (nskk-toggle-japanese-mode))
+   ;; AZIK always-n mode
+   ((eq nskk-azik-q-behavior 'always-n)
+    (insert "ん"))
+   ;; AZIK toggle-only mode
+   ((eq nskk-azik-q-behavior 'toggle-only)
+    (nskk-toggle-japanese-mode))
+   ;; AZIK context-aware mode (default)
+   (t
+    (if (string-empty-p nskk--romaji-buffer)
+        (nskk-toggle-japanese-mode)
+      (insert "ん")))))
+
+(defun nskk-handle-semicolon-key ()
+  "Handle semicolon key press.
+In AZIK mode: produce small tsu (っ)
+In standard mode with empty buffer: start abbrev mode (if applicable)
+Otherwise: process as normal input."
+  (interactive)
+  (if (eq nskk-converter-romaji-style 'azik)
+      (insert "っ")
+    ;; Standard behavior - could trigger abbrev mode
+    (nskk-self-insert 1)))
 
 ;; Romaji input buffer for incremental kana conversion
 (defvar-local nskk--romaji-buffer ""
@@ -54,13 +111,14 @@ N is the command prefix argument."
   (interactive "p")
   (let ((char (if (integerp last-command-event)
                   last-command-event
-                (aref last-command-event 0))))
+                (aref last-command-event 0)))
+        (current-mode (or (nskk-state-get-mode) 'ascii)))
     (cond
-     ;; Latin mode: direct insertion
-     ((eq (nskk-get-mode) 'latin)
+     ;; ASCII/Latin mode: direct insertion
+     ((memq current-mode '(ascii latin))
       (nskk-insert-char char n))
      ;; Abbrev mode: handle abbreviations
-     ((eq (nskk-get-mode) 'abbrev)
+     ((eq current-mode 'abbrev)
       (nskk-process-abbrev-input char))
      ;; Japanese modes: convert and insert
      (t
@@ -76,16 +134,21 @@ N is the command prefix argument."
   "Process input in Japanese mode (hiragana/katakana).
 CHAR is the input character.
 N is the repeat count."
-  (let* ((kana (nskk-convert-input-to-kana char))
-         (mode (nskk-get-mode))
-         (converted (cond
-                     ((string-empty-p kana) nil)
-                     ((eq mode 'katakana)
-                      (nskk-layer-core-hiragana-to-katakana kana))
-                     (t kana))))
-    (when converted
-      (dotimes (_ n)
-        (insert converted)))))
+  ;; First check for okurigana marker (uppercase consonant)
+  (if (nskk-process-okurigana-input char)
+      ;; Okurigana was processed, no further action needed
+      nil
+    ;; Normal processing
+    (let* ((kana (nskk-convert-input-to-kana char))
+           (mode (nskk-state-get-mode))
+           (converted (cond
+                       ((string-empty-p kana) nil)
+                       ((eq mode 'katakana)
+                        (nskk-layer-core-hiragana-to-katakana kana))
+                       (t kana))))
+      (when converted
+        (dotimes (_ n)
+          (insert converted))))))
 
 ;; Overlay management for conversion display
 (defvar-local nskk--conversion-overlay nil
@@ -139,10 +202,6 @@ N is the repeat count."
     (nskk--select-candidate 'previous)))
 
 ;; Helper functions
-(defun nskk-get-mode ()
-  "Get current input mode."
-  (nskk-state-get-mode))
-
 (defun nskk-converting-p ()
   "Check if currently in conversion state."
   nskk-converting-active)
@@ -200,6 +259,60 @@ is still incomplete (waiting for more characters)."
       (setq nskk--romaji-buffer "")
       input))))
 
+;; Okurigana detection and processing
+(defun nskk-detect-okurigana-char (char)
+  "Check if CHAR is an okurigana marker (uppercase consonant).
+Returns the lowercase consonant if it's a marker, nil otherwise."
+  (when (and (characterp char)
+             (<= ?A char) (<= char ?Z))
+    (downcase char)))
+
+(defun nskk-process-okurigana-input (char)
+  "Process CHAR as potential okurigana marker.
+If CHAR is uppercase, store okurigana context and start conversion.
+Returns t if okurigana was processed, nil otherwise."
+  (let ((okuri-char (nskk-detect-okurigana-char char)))
+    (when (and okuri-char
+               (not (string-empty-p nskk--romaji-buffer))
+               (boundp 'nskk-current-state)
+               (nskk-state-p nskk-current-state))
+      ;; Store okurigana consonant in state
+      (nskk-state-set-okurigana nskk-current-state okuri-char)
+      ;; Convert remaining romaji to kana
+      (let ((kana (nskk-convert-input-to-kana-final)))
+        (when kana
+          (insert kana)
+          ;; Start conversion with okurigana context
+          (nskk-start-conversion-with-okuri okuri-char)
+          t)))))
+
+(defun nskk-convert-input-to-kana-final ()
+  "Convert remaining romaji buffer to kana and clear buffer.
+Returns the converted kana string."
+  (let ((result (nskk-core-convert-romaji nskk--romaji-buffer)))
+    (prog1
+        (if (and result (stringp (car result)))
+            (car result)
+          nskk--romaji-buffer)
+      (setq nskk--romaji-buffer ""))))
+
+(defun nskk-start-conversion-with-okuri (okuri-char)
+  "Start conversion with okurigana context OKURI-CHAR.
+Searches dictionary with okuri-ari type."
+  (let* ((start (nskk--get-conversion-start))
+         (end (point))
+         (text (buffer-substring start end))
+         (query (concat text okuri-char)))
+    (setq nskk-converting-active t)
+    ;; Search with okuri-ari type
+    (let* ((candidates (nskk-core-search query :exact 'okuri-ari))
+           (primary (car candidates)))
+      (when primary
+        (nskk--update-overlay start end primary)
+        (when (boundp 'nskk-current-state)
+          (nskk-state-set-candidates nskk-current-state candidates)
+          (setf (nskk-state-current-index nskk-current-state) 0))))))
+
 (defun nskk--has-preedit ()
   "Check if there's preedit to convert."
   (> (point) (nskk--get-conversion-start)))
@@ -207,21 +320,6 @@ is still incomplete (waiting for more characters)."
 (defun nskk--get-conversion-start ()
   "Get conversion start position."
   (mark t))
-
-(defun nskk-start-conversion ()
-  "Start conversion process."
-  (let ((start (nskk--get-conversion-start))
-        (end (point)))
-    (setq nskk-converting-active t)
-    (let* ((text (buffer-substring start end))
-           ;; Use Core layer API for dictionary search
-           (candidates (nskk-core-search text :prefix))
-           (primary (car candidates)))
-      (nskk--update-overlay start end primary)
-      ;; Store candidates in global state
-      (when (boundp 'nskk-current-state)
-        (nskk-state-set-candidates nskk-current-state candidates)
-        (setf (nskk-state-current-index nskk-current-state) 0)))))
 
 (defun nskk--restore-preedit ()
   "Restore preedit text after cancel.
@@ -242,6 +340,10 @@ Clears the conversion overlay."
            (start (nskk--get-conversion-start))
            (end (point)))
       (nskk--update-overlay start end candidate))))
+
+;; Hook integration for AZIK style loading
+;; Note: Call (nskk--maybe-load-azik-style) from nskk-mode activation
+;; Example: (add-hook 'nskk-mode-hook #'nskk--maybe-load-azik-style)
 
 (provide 'nskk-input-commands)
 

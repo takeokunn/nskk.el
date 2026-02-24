@@ -46,7 +46,7 @@
             shellHook = ''
               cat <<'USAGE_EOF'
 
-=== NSKK Development Shell ===
+=== NSKK Development Shell (Debug Mode Enabled) ===
 
 Automated checks:
   nix flake check   # Run all checks (compile + test + lint) in sandbox
@@ -58,8 +58,19 @@ Automated checks:
 Manual testing:
   emacs -Q -L . \
     --eval "(setq nskk-dict-system-dictionary-files '(\"${skkDict}/share/skk/SKK-JISYO.L\"))" \
+    --eval "(setq nskk-debug-enabled t)" \
+    --eval "(require 'nskk-debug)" \
     --eval "(require 'nskk)" \
     --eval "(nskk-global-mode 1)"
+
+Debug commands in Emacs:
+  M-x nskk-debug-toggle     Toggle debug mode
+  M-x nskk-debug-show       View *NSKK Debug* buffer
+  M-x nskk-debug-clear      Clear debug buffer
+
+AZIK usage:
+  (setq nskk-converter-romaji-style 'azik)  ; Enable AZIK input
+  (setq nskk-azik-q-behavior 'context-aware) ; q-key: ん or toggle
 
 Key bindings (after nskk-global-mode is enabled):
   C-x C-j          Toggle NSKK mode

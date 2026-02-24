@@ -52,6 +52,9 @@
   (make-hash-table :test 'equal :size 200)
   "Romaji to kana conversion table.")
 
+(defvar nskk--style-registry '((standard . nskk--initialize-romaji-table))
+  "Registry mapping style symbols to their initialization functions.")
+
 (defun nskk--initialize-romaji-table ()
   "Initialize the romaji conversion table."
   (clrhash nskk--romaji-table)
@@ -367,6 +370,180 @@ Returns list of (romaji . kana) pairs."
            (push (cons key value) completions)))
        nskk--romaji-table)
       (nreverse completions))))
+
+(defun nskk-converter-add-rule (romaji kana)
+  "Add ROMAJI -> KANA mapping to the conversion table.
+KANA can be a string or `:incomplete' for partial match markers.
+Overrides existing mapping if ROMAJI already exists."
+  (puthash romaji kana nskk--romaji-table))
+
+(defun nskk-converter-remove-rule (romaji)
+  "Remove ROMAJI from the conversion table.
+Returns t if the rule existed and was removed, nil otherwise."
+  (remhash romaji nskk--romaji-table))
+
+(defun nskk-converter-get-rule (romaji)
+  "Return the KANA mapped to ROMAJI, or nil if not found."
+  (gethash romaji nskk--romaji-table))
+
+;;; Conversion Lifecycle Operations
+
+(defun nskk-converter-start-conversion (state &optional candidates)
+  "Start conversion process in STATE.
+Initializes conversion state with CANDIDATES (or empty list if nil).
+Sets henkan-position and prepares for candidate selection.
+Returns the updated state.
+
+This function:
+- Sets henkan-position to mark conversion start point
+- Initializes candidates list (or uses provided CANDIDATES)
+- Resets current-index to 0
+- Returns updated state
+
+Edge cases:
+- Empty input buffer: returns state unchanged with nil henkan-position
+- Nil state: returns nil
+- No candidates: sets empty candidates list"
+  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
+    (let ((input-buffer (when (fboundp 'nskk-state-input-buffer)
+                          (funcall #'nskk-state-input-buffer state))))
+      ;; Only start conversion if there's input
+      (when (and input-buffer (> (length input-buffer) 0))
+        ;; Set henkan-position to mark where conversion started
+        (when (fboundp 'nskk-state-set)
+          (funcall #'nskk-state-set state 'henkan-position 0)
+          ;; Set candidates (use provided or empty list)
+          (funcall #'nskk-state-set state 'candidates (or candidates '()))
+          ;; Reset index to first candidate
+          (funcall #'nskk-state-set state 'current-index 0))
+        state))))
+
+(defun nskk-converter-commit-conversion (state)
+  "Commit the current conversion in STATE.
+Finalizes the selected candidate and clears conversion state.
+Returns the updated state.
+
+This function:
+- Gets the currently selected candidate
+- Moves candidate to converted-buffer
+- Clears input-buffer
+- Clears candidates and current-index
+- Resets henkan-position to nil
+
+Edge cases:
+- No active conversion (nil henkan-position): returns state unchanged
+- No candidates: returns state unchanged
+- Invalid state: returns nil"
+  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
+    (let ((henkan-pos (when (fboundp 'nskk-state-henkan-position)
+                        (funcall #'nskk-state-henkan-position state)))
+          (candidates (when (fboundp 'nskk-state-candidates)
+                        (funcall #'nskk-state-candidates state)))
+          (current-idx (when (fboundp 'nskk-state-current-index)
+                         (funcall #'nskk-state-current-index state))))
+      ;; Only commit if there's an active conversion with candidates
+      (when (and henkan-pos candidates (> (length candidates) 0))
+        (let ((selected-candidate (nth current-idx candidates)))
+          ;; Move selected candidate to converted-buffer
+          (when (and selected-candidate (fboundp 'nskk-state-set))
+            (let ((current-converted (when (fboundp 'nskk-state-converted-buffer)
+                                       (funcall #'nskk-state-converted-buffer state))))
+              (funcall #'nskk-state-set state 'converted-buffer
+                       (concat (or current-converted "") selected-candidate))))
+          ;; Clear conversion state
+          (when (fboundp 'nskk-state-set)
+            (funcall #'nskk-state-set state 'input-buffer "")
+            (funcall #'nskk-state-set state 'candidates nil)
+            (funcall #'nskk-state-set state 'current-index 0)
+            (funcall #'nskk-state-set state 'henkan-position nil))
+          state)))))
+
+(defun nskk-converter-cancel-conversion (state &optional original-input)
+  "Cancel the current conversion in STATE.
+Restores ORIGINAL-INPUT if provided, otherwise clears conversion state.
+Returns the updated state.
+
+This function:
+- Restores input-buffer to ORIGINAL-INPUT (or clears if nil)
+- Clears candidates and current-index
+- Resets henkan-position to nil
+
+Edge cases:
+- No active conversion: still clears state (idempotent)
+- Nil state: returns nil"
+  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
+    ;; Restore or clear input buffer
+    (when (fboundp 'nskk-state-set)
+      (funcall #'nskk-state-set state 'input-buffer (or original-input ""))
+      ;; Clear candidates
+      (funcall #'nskk-state-set state 'candidates nil)
+      ;; Reset index
+      (funcall #'nskk-state-set state 'current-index 0)
+      ;; Clear henkan-position
+      (funcall #'nskk-state-set state 'henkan-position nil))
+    state))
+
+(defun nskk-converter-in-conversion-p (state)
+  "Check if STATE is currently in conversion mode.
+Returns non-nil if conversion is active (henkan-position is set and has input)."
+  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
+    (let ((henkan-pos (when (fboundp 'nskk-state-henkan-position)
+                        (funcall #'nskk-state-henkan-position state)))
+          (input (when (fboundp 'nskk-state-input-buffer)
+                   (funcall #'nskk-state-input-buffer state))))
+      (and henkan-pos
+           input
+           (> (length input) 0)))))
+
+(defun nskk-converter-has-candidates-p (state)
+  "Check if STATE has conversion candidates available.
+Returns non-nil if candidates list is non-empty."
+  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
+    (let ((candidates (when (fboundp 'nskk-state-candidates)
+                        (funcall #'nskk-state-candidates state))))
+      (and candidates (> (length candidates) 0)))))
+
+(defun nskk-converter-get-current-candidate (state)
+  "Get the currently selected candidate from STATE.
+Returns the candidate at current-index, or nil if no candidates."
+  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
+    (let ((candidates (when (fboundp 'nskk-state-candidates)
+                        (funcall #'nskk-state-candidates state)))
+          (idx (when (fboundp 'nskk-state-current-index)
+                 (funcall #'nskk-state-current-index state))))
+      (when (and candidates idx (< idx (length candidates)))
+        (nth idx candidates)))))
+
+(defun nskk-converter-register-style (style init-fn)
+  "Register INIT-FN as the initialization function for STYLE.
+INIT-FN is called with no arguments and should populate the romaji table."
+  (setf (alist-get style nskk--style-registry) init-fn))
+
+(defun nskk-converter-load-style (style)
+  "Load romaji rules for STYLE.
+Clears existing table and calls the registered initialization function.
+Valid styles are defined in `nskk--style-registry'."
+  (let ((init-fn (alist-get style nskk--style-registry)))
+    (if init-fn
+        (progn
+          (clrhash nskk--romaji-table)
+          (funcall init-fn)
+          style)
+      (error "Unknown romaji style: %s" style))))
+
+(defmacro nskk-converter-define-style (name docstring &rest rules)
+  "Define a new input style NAME with RULES.
+DOCSTRING describes the style.
+RULES is a list of (romaji kana) pairs."
+  (declare (doc-string 2) (indent 2))
+  `(progn
+     (defun ,(intern (format "nskk--init-%s-rules" name)) ()
+       ,docstring
+       ,@(mapcar (lambda (rule)
+                   `(nskk-converter-add-rule ,(car rule) ,(cadr rule)))
+                 rules))
+     (nskk-converter-register-style ',name
+       ',(intern (format "nskk--init-%s-rules" name)))))
 
 (provide 'nskk-converter)
 

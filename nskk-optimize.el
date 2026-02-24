@@ -47,6 +47,10 @@
 (require 'cl-lib)
 (require 'benchmark)
 
+;; Declare functions from other modules for native compilation
+(declare-function nskk-convert-romaji "nskk-converter" t)
+(declare-function nskk-core-hiragana-to-katakana "nskk-core" t)
+
 ;;; カスタマイズ可能変数
 
 (defgroup nskk-optimize nil
