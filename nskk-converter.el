@@ -169,6 +169,7 @@
   ;; Special combinations with small kana
   (puthash "sha" "しゃ" nskk--romaji-table)
   (puthash "shu" "しゅ" nskk--romaji-table)
+  (puthash "she" "しぇ" nskk--romaji-table)
   (puthash "sho" "しょ" nskk--romaji-table)
   (puthash "tsa" "つぁ" nskk--romaji-table)
   (puthash "tsi" "つぃ" nskk--romaji-table)
@@ -190,10 +191,12 @@
 
   (puthash "ja" "じゃ" nskk--romaji-table)
   (puthash "ju" "じゅ" nskk--romaji-table)
+  (puthash "je" "じぇ" nskk--romaji-table)
   (puthash "jo" "じょ" nskk--romaji-table)
 
   (puthash "cha" "ちゃ" nskk--romaji-table)
   (puthash "chu" "ちゅ" nskk--romaji-table)
+  (puthash "che" "ちぇ" nskk--romaji-table)
   (puthash "cho" "ちょ" nskk--romaji-table)
 
   (puthash "nya" "にゃ" nskk--romaji-table)
@@ -237,10 +240,115 @@
   (puthash "xya" "ゃ" nskk--romaji-table)
   (puthash "xyu" "ゅ" nskk--romaji-table)
   (puthash "xyo" "ょ" nskk--romaji-table)
+  (puthash "lya" "ゃ" nskk--romaji-table)
+  (puthash "lyu" "ゅ" nskk--romaji-table)
+  (puthash "lyo" "ょ" nskk--romaji-table)
 
   ;; Small tsu
   (puthash "xtsu" "っ" nskk--romaji-table)
   (puthash "xtu" "っ" nskk--romaji-table)
+  (puthash "ltsu" "っ" nskk--romaji-table)
+  (puthash "ltu" "っ" nskk--romaji-table)
+
+  ;; V row (ヴ-based, common in modern Japanese)
+  (puthash "va" "ゔぁ" nskk--romaji-table)
+  (puthash "vi" "ゔぃ" nskk--romaji-table)
+  (puthash "vu" "ゔ" nskk--romaji-table)
+  (puthash "ve" "ゔぇ" nskk--romaji-table)
+  (puthash "vo" "ゔぉ" nskk--romaji-table)
+  (puthash "vya" "ゔゃ" nskk--romaji-table)
+  (puthash "vyu" "ゔゅ" nskk--romaji-table)
+  (puthash "vyo" "ゔょ" nskk--romaji-table)
+
+  ;; Additional digraph combinations (dya/dyu/dyo)
+  (puthash "dya" "ぢゃ" nskk--romaji-table)
+  (puthash "dyu" "ぢゅ" nskk--romaji-table)
+  (puthash "dyo" "ぢょ" nskk--romaji-table)
+
+  ;; Zy-row (alternative for じゃ行)
+  (puthash "zya" "じゃ" nskk--romaji-table)
+  (puthash "zyu" "じゅ" nskk--romaji-table)
+  (puthash "zyo" "じょ" nskk--romaji-table)
+
+  ;; Ty-row (alternative for ちゃ行)
+  (puthash "tya" "ちゃ" nskk--romaji-table)
+  (puthash "tyu" "ちゅ" nskk--romaji-table)
+  (puthash "tyo" "ちょ" nskk--romaji-table)
+
+  ;; Sy-row (alternative for しゃ行)
+  (puthash "sya" "しゃ" nskk--romaji-table)
+  (puthash "syu" "しゅ" nskk--romaji-table)
+  (puthash "sye" "しぇ" nskk--romaji-table)
+  (puthash "syo" "しょ" nskk--romaji-table)
+
+  ;; Jy-row
+  (puthash "jya" "じゃ" nskk--romaji-table)
+  (puthash "jyu" "じゅ" nskk--romaji-table)
+  (puthash "jye" "じぇ" nskk--romaji-table)
+  (puthash "jyo" "じょ" nskk--romaji-table)
+
+  ;; Ty-row -ye extension
+  (puthash "tye" "ちぇ" nskk--romaji-table)
+
+  ;; Zy-row -ye extension
+  (puthash "zye" "じぇ" nskk--romaji-table)
+
+  ;; Dy-row -ye extension
+  (puthash "dye" "ぢぇ" nskk--romaji-table)
+
+  ;; Gy-row (additional)
+  (puthash "gye" "ぎぇ" nskk--romaji-table)
+
+  ;; Ky-row (additional)
+  (puthash "kye" "きぇ" nskk--romaji-table)
+
+  ;; Ny-row (additional)
+  (puthash "nye" "にぇ" nskk--romaji-table)
+
+  ;; Hy-row (additional)
+  (puthash "hye" "ひぇ" nskk--romaji-table)
+
+  ;; By-row (additional)
+  (puthash "bye" "びぇ" nskk--romaji-table)
+
+  ;; Py-row (additional)
+  (puthash "pye" "ぴぇ" nskk--romaji-table)
+
+  ;; My-row (additional)
+  (puthash "mye" "みぇ" nskk--romaji-table)
+
+  ;; Ry-row (additional)
+  (puthash "rye" "りぇ" nskk--romaji-table)
+
+  ;; Th-row (ティ etc.)
+  (puthash "tha" "てぁ" nskk--romaji-table)
+  (puthash "thi" "てぃ" nskk--romaji-table)
+  (puthash "thu" "てゅ" nskk--romaji-table)
+  (puthash "the" "てぇ" nskk--romaji-table)
+  (puthash "tho" "てょ" nskk--romaji-table)
+
+  ;; Dh-row (ディ etc.)
+  (puthash "dha" "でぁ" nskk--romaji-table)
+  (puthash "dhi" "でぃ" nskk--romaji-table)
+  (puthash "dhu" "でゅ" nskk--romaji-table)
+  (puthash "dhe" "でぇ" nskk--romaji-table)
+  (puthash "dho" "でょ" nskk--romaji-table)
+
+  ;; Wh-row (ウィ etc.)
+  (puthash "wha" "うぁ" nskk--romaji-table)
+  (puthash "whi" "うぃ" nskk--romaji-table)
+  (puthash "whu" "う" nskk--romaji-table)
+  (puthash "whe" "うぇ" nskk--romaji-table)
+  (puthash "who" "うぉ" nskk--romaji-table)
+  (puthash "wi" "ゐ" nskk--romaji-table)
+  (puthash "we" "ゑ" nskk--romaji-table)
+
+  ;; Small wa
+  (puthash "xwa" "ゎ" nskk--romaji-table)
+
+  ;; Small ka/ke
+  (puthash "xka" "ゕ" nskk--romaji-table)
+  (puthash "xke" "ゖ" nskk--romaji-table)
 
   ;; Iteration mark
   (puthash "-" "ー" nskk--romaji-table)
@@ -259,7 +367,43 @@
   (puthash "m" :incomplete nskk--romaji-table)
   (puthash "y" :incomplete nskk--romaji-table)
   (puthash "r" :incomplete nskk--romaji-table)
-  (puthash "w" :incomplete nskk--romaji-table))
+  (puthash "w" :incomplete nskk--romaji-table)
+  (puthash "v" :incomplete nskk--romaji-table)
+  (puthash "x" :incomplete nskk--romaji-table)
+  (puthash "c" :incomplete nskk--romaji-table)
+  (puthash "f" :incomplete nskk--romaji-table)
+  (puthash "j" :incomplete nskk--romaji-table)
+  (puthash "l" :incomplete nskk--romaji-table)
+
+  ;; Multi-char incomplete markers
+  (puthash "ch" :incomplete nskk--romaji-table)
+  (puthash "sh" :incomplete nskk--romaji-table)
+  (puthash "th" :incomplete nskk--romaji-table)
+  (puthash "dh" :incomplete nskk--romaji-table)
+  (puthash "wh" :incomplete nskk--romaji-table)
+  (puthash "ts" :incomplete nskk--romaji-table)
+  (puthash "ky" :incomplete nskk--romaji-table)
+  (puthash "gy" :incomplete nskk--romaji-table)
+  (puthash "sy" :incomplete nskk--romaji-table)
+  (puthash "zy" :incomplete nskk--romaji-table)
+  (puthash "ty" :incomplete nskk--romaji-table)
+  (puthash "dy" :incomplete nskk--romaji-table)
+  (puthash "ny" :incomplete nskk--romaji-table)
+  (puthash "hy" :incomplete nskk--romaji-table)
+  (puthash "by" :incomplete nskk--romaji-table)
+  (puthash "py" :incomplete nskk--romaji-table)
+  (puthash "my" :incomplete nskk--romaji-table)
+  (puthash "ry" :incomplete nskk--romaji-table)
+  (puthash "jy" :incomplete nskk--romaji-table)
+  (puthash "xt" :incomplete nskk--romaji-table)
+  (puthash "xy" :incomplete nskk--romaji-table)
+  (puthash "xk" :incomplete nskk--romaji-table)
+  (puthash "xw" :incomplete nskk--romaji-table)
+  (puthash "xts" :incomplete nskk--romaji-table)
+  (puthash "ly" :incomplete nskk--romaji-table)
+  (puthash "lt" :incomplete nskk--romaji-table)
+  (puthash "lts" :incomplete nskk--romaji-table)
+  (puthash "vy" :incomplete nskk--romaji-table))
 
 ;; Initialize on load
 (nskk--initialize-romaji-table)

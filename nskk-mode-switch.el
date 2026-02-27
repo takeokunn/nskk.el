@@ -41,6 +41,10 @@
 
 (declare-function nskk-modeline-update "nskk-modeline")
 
+(defvar nskk--romaji-buffer)
+(defvar nskk--conversion-overlay)
+(defvar nskk--conversion-start-marker)
+
 (defvar-local nskk-converting-active nil
   "Non-nil when conversion mode is active.")
 
@@ -68,6 +72,12 @@
   (nskk--set-mode 'abbrev)
   (nskk-modeline-update))
 
+(defun nskk-set-mode-jisx0208-latin ()
+  "Switch to full-width latin (jisx0208-latin) mode."
+  (interactive)
+  (nskk--set-mode 'jisx0208-latin)
+  (nskk-modeline-update))
+
 (defun nskk-toggle-katakana ()
   "Toggle between hiragana and katakana modes."
   (interactive)
@@ -87,18 +97,37 @@ This is an alias for `nskk-toggle-katakana' for compatibility."
 (defun nskk--set-mode (mode)
   "Internal mode setter with validation.
 MODE is the target mode symbol."
-  (unless (nskk-state-valid-mode-p mode)
-    (error "Invalid mode: %s" mode))
-  (unless (boundp 'nskk-current-state)
+  (unless (and (boundp 'nskk-current-state) (nskk-state-p nskk-current-state))
     (error "NSKK state not initialized"))
   (nskk-state-set nskk-current-state 'mode mode)
   (nskk--clear-conversion-context))
 
 (defun nskk--clear-conversion-context ()
-  "Clear conversion context when switching modes."
+  "Clear conversion context when switching modes.
+Clears the conversion overlay, start marker, romaji buffer,
+and resets candidate state to prevent stale state leaks."
   (when nskk-converting-active
     (setq nskk-converting-active nil)
-    (nskk-modeline-update)))
+    (nskk-modeline-update))
+  ;; Clear conversion overlay
+  (when (and (boundp 'nskk--conversion-overlay)
+             (overlayp nskk--conversion-overlay))
+    (delete-overlay nskk--conversion-overlay))
+  ;; Clear conversion start marker
+  (when (and (boundp 'nskk--conversion-start-marker)
+             (markerp nskk--conversion-start-marker))
+    (set-marker nskk--conversion-start-marker nil))
+  ;; Clear romaji buffer
+  (when (boundp 'nskk--romaji-buffer)
+    (setq nskk--romaji-buffer ""))
+  ;; Reset candidates and okurigana in state
+  (when (and (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (setf (nskk-state-candidates nskk-current-state) nil)
+    (setf (nskk-state-current-index nskk-current-state) 0)
+    (nskk-state-set-okurigana nskk-current-state nil)
+    ;; Reset henkan phase
+    (nskk-state-set-henkan-phase nskk-current-state nil)))
 
 (provide 'nskk-mode-switch)
 

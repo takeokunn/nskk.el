@@ -95,6 +95,10 @@
   "Test that enter-abbrev-mode function exists."
   (should (fboundp 'nskk-enter-abbrev-mode)))
 
+(nskk-deftest-unit layer-app-enter-jisx0208-latin-exists
+  "Test that enter-jisx0208-latin-mode function exists."
+  (should (fboundp 'nskk-enter-jisx0208-latin-mode)))
+
 (nskk-deftest-unit layer-app-toggle-japanese-exists
   "Test that toggle-japanese-mode function exists."
   (should (fboundp 'nskk-toggle-japanese-mode)))
@@ -127,6 +131,12 @@
     (nskk-enter-abbrev-mode)
     (should (eq (nskk-state-mode nskk-current-state) 'abbrev))))
 
+(nskk-deftest-unit layer-app-enter-jisx0208-latin-changes-mode
+  "Test that enter-jisx0208-latin-mode actually switches to jisx0208-latin."
+  (nskk-layer-app-test-with-state 'hiragana
+    (nskk-enter-jisx0208-latin-mode)
+    (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin))))
+
 (nskk-deftest-unit layer-app-toggle-hiragana-to-katakana
   "Test toggle switches hiragana to katakana."
   (nskk-layer-app-test-with-state 'hiragana
@@ -154,6 +164,8 @@
     (should (eq (nskk-state-mode nskk-current-state) 'katakana))
     (nskk-enter-abbrev-mode)
     (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+    (nskk-enter-jisx0208-latin-mode)
+    (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin))
     (nskk-enter-latin-mode)
     (should (eq (nskk-state-mode nskk-current-state) 'latin))
     (nskk-enter-hiragana-mode)
@@ -255,8 +267,8 @@
   "Test that nskk-commit clears converting-active when in conversion."
   (with-temp-buffer
     (nskk-layer-app-test-with-state 'hiragana
+      (nskk--set-conversion-start-marker (point-min))
       (insert "test")
-      (push-mark (point-min) t)
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
       (setq nskk-converting-active t)
@@ -267,8 +279,8 @@
   "Test that nskk-commit replaces preedit with selected candidate."
   (with-temp-buffer
     (nskk-layer-app-test-with-state 'hiragana
+      (nskk--set-conversion-start-marker (point-min))
       (insert "preedit")
-      (push-mark (point-min) t)
       (setf (nskk-state-candidates nskk-current-state) '("committed"))
       (setf (nskk-state-current-index nskk-current-state) 0)
       (setq nskk-converting-active t)
@@ -303,8 +315,8 @@
   "Test convert-or-commit commits when already in conversion."
   (with-temp-buffer
     (nskk-layer-app-test-with-state 'hiragana
+      (nskk--set-conversion-start-marker (point-min))
       (insert "preedit")
-      (push-mark (point-min) t)
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
       (setq nskk-converting-active t)
@@ -364,6 +376,7 @@
   (should (commandp 'nskk-enter-katakana-mode))
   (should (commandp 'nskk-enter-latin-mode))
   (should (commandp 'nskk-enter-abbrev-mode))
+  (should (commandp 'nskk-enter-jisx0208-latin-mode))
   (should (commandp 'nskk-toggle-japanese-mode)))
 
 (nskk-deftest-unit layer-app-conversion-functions-interactive

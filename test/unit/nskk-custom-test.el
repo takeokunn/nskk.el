@@ -91,10 +91,9 @@
   (should (string-match-p "jisyo" nskk-dict-user-dictionary-file)))
 
 (nskk-deftest-unit custom-dict-system-dictionary-files-default
-  "Test default value of nskk-dict-system-dictionary-files."
-  (should (listp nskk-dict-system-dictionary-files))
-  (should (= (length nskk-dict-system-dictionary-files) 1))
-  (should (stringp (car nskk-dict-system-dictionary-files))))
+  "Test default value of nskk-dict-system-dictionary-files.
+Default is nil to enable auto-detection."
+  (should (null nskk-dict-system-dictionary-files)))
 
 (nskk-deftest-unit custom-dict-cache-enabled-default
   "Test default value of nskk-dict-cache-enabled."
@@ -135,25 +134,27 @@
 (nskk-deftest-unit custom-modeline-format-default
   "Test default value of nskk-modeline-format."
   (should (stringp nskk-modeline-format))
-  (should (equal nskk-modeline-format "[%m%s]")))
+  (should (equal nskk-modeline-format "[%m]")))
 
 (nskk-deftest-unit custom-modeline-mode-names-default
   "Test default value of nskk-modeline-mode-names."
   (should (listp nskk-modeline-mode-names))
-  ;; Should have entries for all expected modes
+  ;; Should have entries for all expected modes (ddskk-style)
   (should (assq 'ascii nskk-modeline-mode-names))
   (should (assq 'hiragana nskk-modeline-mode-names))
   (should (assq 'katakana nskk-modeline-mode-names))
   (should (assq 'abbrev nskk-modeline-mode-names))
-  (should (assq 'latin nskk-modeline-mode-names)))
+  (should (assq 'latin nskk-modeline-mode-names))
+  (should (assq 'jisx0208-latin nskk-modeline-mode-names)))
 
 (nskk-deftest-unit custom-modeline-mode-names-values
-  "Test modeline mode name display values."
-  (should (equal (alist-get 'ascii nskk-modeline-mode-names) "A"))
-  (should (equal (alist-get 'hiragana nskk-modeline-mode-names) "\u3042"))
-  (should (equal (alist-get 'katakana nskk-modeline-mode-names) "\u30A2"))
+  "Test modeline mode name display values (ddskk-style)."
+  (should (equal (alist-get 'ascii nskk-modeline-mode-names) "SKK"))
+  (should (equal (alist-get 'hiragana nskk-modeline-mode-names) "\u304B\u306A"))
+  (should (equal (alist-get 'katakana nskk-modeline-mode-names) "\u30AB\u30CA"))
   (should (equal (alist-get 'abbrev nskk-modeline-mode-names) "aA"))
-  (should (equal (alist-get 'latin nskk-modeline-mode-names) "L")))
+  (should (equal (alist-get 'latin nskk-modeline-mode-names) "SKK"))
+  (should (equal (alist-get 'jisx0208-latin nskk-modeline-mode-names) "\u5168\u82F1")))
 
 ;;;
 ;;; Dictionary Path Settings
@@ -173,14 +174,17 @@
                  nskk-converter-auto-start-henkan
                  nskk-dict-cache-enabled
                  nskk-candidate-window-use-annotation
-                 nskk-minibuffer-show-inline-candidate))
+                 nskk-minibuffer-show-inline-candidate
+                 nskk-use-color-cursor))
     (should (booleanp (symbol-value var)))))
 
 (nskk-deftest-unit custom-integer-variables-are-integers
   "Test that integer custom variables have integer values."
   (dolist (var '(nskk-state-undo-limit
                  nskk-cache-default-capacity
-                 nskk-candidate-window-page-size))
+                 nskk-candidate-window-page-size
+                 nskk-henkan-show-candidates-nth
+                 nskk-henkan-number-to-display-candidates))
     (should (integerp (symbol-value var)))))
 
 (nskk-deftest-unit custom-string-variables-are-strings
@@ -219,7 +223,16 @@
                  nskk-minibuffer-show-inline-candidate
                  nskk-modeline-format
                  nskk-modeline-mode-names
-                 nskk-large-dictionary))
+                 nskk-large-dictionary
+                 nskk-henkan-show-candidates-nth
+                 nskk-henkan-number-to-display-candidates
+                 nskk-henkan-show-candidates-keys
+                 nskk-use-color-cursor
+                 nskk-cursor-hiragana-color
+                 nskk-cursor-katakana-color
+                 nskk-cursor-latin-color
+                 nskk-cursor-jisx0208-latin-color
+                 nskk-cursor-abbrev-color))
     (let ((doc (documentation-property var 'variable-documentation)))
       (should (stringp doc))
       (should (> (length doc) 0)))))
@@ -259,6 +272,53 @@
 (nskk-deftest-unit custom-page-size-positive
   "Test that page-size is a positive integer."
   (should (> nskk-candidate-window-page-size 0)))
+
+;;;
+;;; Henkan (Conversion) Settings Defaults
+;;;
+
+(nskk-deftest-unit custom-henkan-show-candidates-nth-default
+  "Test default value of nskk-henkan-show-candidates-nth."
+  (should (= nskk-henkan-show-candidates-nth 5)))
+
+(nskk-deftest-unit custom-henkan-number-to-display-default
+  "Test default value of nskk-henkan-number-to-display-candidates."
+  (should (= nskk-henkan-number-to-display-candidates 7)))
+
+(nskk-deftest-unit custom-henkan-show-candidates-keys-default
+  "Test default value of nskk-henkan-show-candidates-keys."
+  (should (listp nskk-henkan-show-candidates-keys))
+  (should (= (length nskk-henkan-show-candidates-keys) 7))
+  (should (equal nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))))
+
+;;;
+;;; Cursor Color Settings Defaults
+;;;
+
+(nskk-deftest-unit custom-use-color-cursor-default
+  "Test default value of nskk-use-color-cursor."
+  (should (eq nskk-use-color-cursor t)))
+
+(nskk-deftest-unit custom-cursor-color-variables-are-strings
+  "Test that cursor color variables have string values."
+  (dolist (var '(nskk-cursor-hiragana-color
+                 nskk-cursor-katakana-color
+                 nskk-cursor-latin-color
+                 nskk-cursor-jisx0208-latin-color
+                 nskk-cursor-abbrev-color))
+    (should (stringp (symbol-value var)))))
+
+(nskk-deftest-unit custom-cursor-jisx0208-latin-color-default
+  "Test default value of nskk-cursor-jisx0208-latin-color."
+  (should (equal nskk-cursor-jisx0208-latin-color "gold")))
+
+(nskk-deftest-unit custom-cursor-abbrev-color-default
+  "Test default value of nskk-cursor-abbrev-color."
+  (should (equal nskk-cursor-abbrev-color "royalblue")))
+
+(nskk-deftest-unit custom-default-mode-includes-jisx0208-latin
+  "Test that default-mode choice type includes jisx0208-latin."
+  (should (memq nskk-state-default-mode '(ascii hiragana katakana jisx0208-latin))))
 
 (provide 'nskk-custom-test)
 

@@ -19,6 +19,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'nskk-dict-io)
 (require 'nskk-trie)
 (require 'nskk-dict-struct)
@@ -214,6 +215,83 @@
             (should (equal (car (nskk-trie-lookup loaded "かきく")) "カキク"))))
       (when (file-exists-p temp-file)
         (delete-file temp-file)))))
+
+;;;;
+;;;; Dictionary Auto-Detection Tests
+;;;;
+
+(nskk-deftest-unit dict-detect-returns-empty-when-no-files
+  "Auto-detection returns empty list when no dictionary files exist."
+  (cl-letf (((symbol-function 'file-readable-p) (lambda (_f) nil)))
+    (let ((result (nskk-dict--detect-system-dictionaries)))
+      (should (listp result))
+      (should (null result)))))
+
+(nskk-deftest-unit dict-detect-finds-nix-profile-dict
+  "Auto-detection finds dictionary in nix profile."
+  (cl-letf (((symbol-function 'file-readable-p)
+             (lambda (f) (string-match-p "nix-profile" f))))
+    (let ((result (nskk-dict--detect-system-dictionaries)))
+      (should result)
+      (should (cl-some (lambda (p) (string-match-p "nix-profile" p)) result)))))
+
+(nskk-deftest-unit dict-detect-finds-system-dict
+  "Auto-detection finds dictionary in standard system path."
+  (cl-letf (((symbol-function 'file-readable-p)
+             (lambda (f) (string= f "/usr/share/skk/SKK-JISYO.L"))))
+    (let ((result (nskk-dict--detect-system-dictionaries)))
+      (should result)
+      (should (member "/usr/share/skk/SKK-JISYO.L" result)))))
+
+(nskk-deftest-unit dict-detect-respects-large-dictionary
+  "Auto-detection includes nskk-large-dictionary when set."
+  (let ((nskk-large-dictionary "/tmp/test-large-dict"))
+    (cl-letf (((symbol-function 'file-readable-p)
+               (lambda (f) (string= f "/tmp/test-large-dict"))))
+      (let ((result (nskk-dict--detect-system-dictionaries)))
+        (should result)
+        (should (member "/tmp/test-large-dict" result))))))
+
+(nskk-deftest-unit dict-detect-nix-profiles-env
+  "Auto-detection uses NIX_PROFILES environment variable."
+  (cl-letf (((symbol-function 'getenv)
+             (lambda (var) (when (string= var "NIX_PROFILES")
+                             "/nix/var/nix/profiles/default /home/user/.nix-profile")))
+            ((symbol-function 'file-readable-p)
+             (lambda (f) (string-match-p "/nix/var/nix/profiles/default/share/skk" f))))
+    (let ((result (nskk-dict--detect-system-dictionaries)))
+      (should result)
+      (should (cl-some (lambda (p) (string-match-p "profiles/default" p)) result)))))
+
+(nskk-deftest-unit dict-initialize-uses-detection-when-nil
+  "nskk-dict-initialize uses auto-detection when config is nil."
+  (let ((nskk-dict-system-dictionary-files nil)
+        (nskk-dict-user-dictionary-file nil)
+        (nskk--system-dict-index nil)
+        (nskk--user-dict-index nil)
+        (detect-called nil))
+    (cl-letf (((symbol-function 'nskk-dict--detect-system-dictionaries)
+               (lambda () (setq detect-called t) nil))
+              ((symbol-function 'nskk-dict-load-user-dictionary)
+               (lambda () nil)))
+      (nskk-dict-initialize)
+      (should detect-called))))
+
+(nskk-deftest-unit dict-initialize-skips-detection-when-configured
+  "nskk-dict-initialize skips auto-detection when files are configured."
+  (let ((nskk-dict-system-dictionary-files '("/some/path"))
+        (nskk-dict-user-dictionary-file nil)
+        (nskk--system-dict-index nil)
+        (nskk--user-dict-index nil)
+        (detect-called nil))
+    (cl-letf (((symbol-function 'nskk-dict--detect-system-dictionaries)
+               (lambda () (setq detect-called t) nil))
+              ((symbol-function 'nskk-dict-load-system-dictionaries)
+               (lambda () nil))
+              ((symbol-function 'nskk-dict-load-user-dictionary)
+               (lambda () nil)))
+      (nskk-dict-initialize)
+      (should-not detect-called))))
 
 (provide 'nskk-dict-io-test)
 

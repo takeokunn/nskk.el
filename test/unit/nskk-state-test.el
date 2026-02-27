@@ -27,7 +27,7 @@
 ;; Test Constants
 
 (defconst nskk-state-test-valid-modes
-  '(ascii hiragana katakana katakana-半角 abbrev latin)
+  '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
   "Valid NSKK modes for testing.")
 
 ;;;
@@ -47,6 +47,7 @@
     (should (null (nskk-state-marker-position state)))
     (should (null (nskk-state-undo-stack state)))
     (should (null (nskk-state-redo-stack state)))
+    (should (null (nskk-state-henkan-phase state)))
     (should (null (nskk-state-metadata state)))))
 
 (nskk-deftest-unit state-create-hiragana
@@ -109,7 +110,7 @@
       (should (nskk-state-get state slot)))
     ;; These slots default to nil - verify they are accessible without error
     (dolist (slot '(candidates henkan-position marker-position
-                              undo-stack redo-stack metadata))
+                              undo-stack redo-stack henkan-phase metadata))
       (should-not (nskk-state-get state slot)))))
 
 ;;;
@@ -155,9 +156,9 @@
     (should (= (nskk-state-henkan-position state) 10))))
 
 (nskk-deftest-unit state-set-invalid-mode
-  "Test nskk-state-set with invalid mode (should fail)."
+  "Test nskk-state-set with invalid mode (should raise error)."
   (let ((state (nskk-state-create 'ascii)))
-    (should (null (nskk-state-set state 'mode 'invalid-mode)))
+    (should-error (nskk-state-set state 'mode 'invalid-mode))
     (should (eq (nskk-state-mode state) 'ascii))))
 
 (nskk-deftest-unit state-set-nil-state
@@ -180,24 +181,80 @@
   (should (not (nskk-state-valid-mode-p "hiragana")))
   (should (not (nskk-state-valid-mode-p 123))))
 
-(nskk-deftest-unit state-in-henkan-mode-true
-  "Test nskk-state-in-henkan-mode-p when in conversion mode."
+(nskk-deftest-unit state-in-henkan-mode-true-on
+  "Test nskk-state-in-henkan-mode-p when henkan-phase is on."
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "test")
-    (nskk-state-set state 'henkan-position 0)
+    (nskk-state-set-henkan-phase state 'on)
     (should (nskk-state-in-henkan-mode-p state))))
 
-(nskk-deftest-unit state-in-henkan-mode-false-no-buffer
-  "Test nskk-state-in-henkan-mode-p with empty buffer."
+(nskk-deftest-unit state-in-henkan-mode-true-active
+  "Test nskk-state-in-henkan-mode-p when henkan-phase is active."
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'henkan-position 0)
-    (should (not (nskk-state-in-henkan-mode-p state))))
+    (nskk-state-set-henkan-phase state 'active)
+    (should (nskk-state-in-henkan-mode-p state))))
 
-(nskk-deftest-unit state-in-henkan-mode-false-no-position
-  "Test nskk-state-in-henkan-mode-p without henkan position."
+(nskk-deftest-unit state-in-henkan-mode-true-list
+  "Test nskk-state-in-henkan-mode-p when henkan-phase is list."
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "test")
-    (should (not (nskk-state-in-henkan-mode-p state))))
+    (nskk-state-set-henkan-phase state 'list)
+    (should (nskk-state-in-henkan-mode-p state))))
+
+(nskk-deftest-unit state-in-henkan-mode-true-registration
+  "Test nskk-state-in-henkan-mode-p when henkan-phase is registration."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set-henkan-phase state 'registration)
+    (should (nskk-state-in-henkan-mode-p state))))
+
+(nskk-deftest-unit state-in-henkan-mode-false-nil-phase
+  "Test nskk-state-in-henkan-mode-p with nil henkan-phase."
+  (let ((state (nskk-state-create 'hiragana)))
+    (should (not (nskk-state-in-henkan-mode-p state)))))
+
+(nskk-deftest-unit state-henkan-on-p-true
+  "Test nskk-state-henkan-on-p when phase is on."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set-henkan-phase state 'on)
+    (should (nskk-state-henkan-on-p state))))
+
+(nskk-deftest-unit state-henkan-on-p-false
+  "Test nskk-state-henkan-on-p when phase is not on."
+  (let ((state (nskk-state-create 'hiragana)))
+    (should (not (nskk-state-henkan-on-p state)))
+    (nskk-state-set-henkan-phase state 'active)
+    (should (not (nskk-state-henkan-on-p state)))))
+
+(nskk-deftest-unit state-henkan-active-p-true
+  "Test nskk-state-henkan-active-p when phase is active."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set-henkan-phase state 'active)
+    (should (nskk-state-henkan-active-p state))))
+
+(nskk-deftest-unit state-henkan-active-p-false
+  "Test nskk-state-henkan-active-p when phase is not active."
+  (let ((state (nskk-state-create 'hiragana)))
+    (should (not (nskk-state-henkan-active-p state)))
+    (nskk-state-set-henkan-phase state 'on)
+    (should (not (nskk-state-henkan-active-p state)))))
+
+(nskk-deftest-unit state-set-henkan-phase-transitions
+  "Test nskk-state-set-henkan-phase transitions through all phases."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set-henkan-phase state 'on)
+    (should (eq (nskk-state-henkan-phase state) 'on))
+    (nskk-state-set-henkan-phase state 'active)
+    (should (eq (nskk-state-henkan-phase state) 'active))
+    (nskk-state-set-henkan-phase state 'list)
+    (should (eq (nskk-state-henkan-phase state) 'list))
+    (nskk-state-set-henkan-phase state 'registration)
+    (should (eq (nskk-state-henkan-phase state) 'registration))
+    (nskk-state-set-henkan-phase state nil)
+    (should (null (nskk-state-henkan-phase state)))))
+
+(nskk-deftest-unit state-create-jisx0208-latin
+  "Test state creation with jisx0208-latin mode."
+  (let ((state (nskk-state-create 'jisx0208-latin)))
+    (should (nskk-state-p state))
+    (should (eq (nskk-state-mode state) 'jisx0208-latin))))
 
 ;;;
 ;;; Mode Transition Tests
@@ -260,6 +317,7 @@
     (should (null (nskk-state-marker-position state)))
     (should (null (nskk-state-undo-stack state)))
     (should (null (nskk-state-redo-stack state)))
+    (should (null (nskk-state-henkan-phase state)))
     (should (null (nskk-state-metadata state)))))
 
 (nskk-deftest-unit state-reset-nil-state
@@ -281,10 +339,10 @@
 (nskk-deftest-unit state-append-input-japanese
   "Test appending Japanese characters to input buffer."
   (let ((state (nskk-state-create)))
-    (nskk-state-append-input state ?あ)
-    (should (string= (nskk-state-input-buffer state) "あ"))
-    (nskk-state-append-input state ?い)
-    (should (string= (nskk-state-input-buffer state) "あい"))))
+    (nskk-state-append-input state ?\u3042)
+    (should (string= (nskk-state-input-buffer state) "\u3042"))
+    (nskk-state-append-input state ?\u3044)
+    (should (string= (nskk-state-input-buffer state) "\u3042\u3044"))))
 
 (nskk-deftest-unit state-delete-last-char
   "Test deleting last character from input buffer."
@@ -320,7 +378,7 @@
     (should (string= (nskk-state-input-buffer state) "te"))
 
     (nskk-state-clear-input state)
-    (should (string= (nskk-state-input-buffer state) "")))))
+    (should (string= (nskk-state-input-buffer state) ""))))
 
 ;;;
 ;;; Candidate Management Tests
@@ -384,7 +442,7 @@
 
     ;; Should wrap around
     (should (string= (nskk-state-previous-candidate state) "c"))
-    (should (= (nskk-state-current-index state) 2)))))
+    (should (= (nskk-state-current-index state) 2))))
 
 (nskk-deftest-unit state-previous-candidate-nil-candidates
   "Test previous candidate with no candidates."
@@ -479,6 +537,7 @@
   (should (nskk-state-valid-mode-p 'katakana-半角))
   (should (nskk-state-valid-mode-p 'abbrev))
   (should (nskk-state-valid-mode-p 'latin))
+  (should (nskk-state-valid-mode-p 'jisx0208-latin))
 
   ;; Invalid modes should fail
   (should (not (nskk-state-valid-mode-p 'invalid)))
@@ -492,16 +551,15 @@
   "Test nskk-state-set mode setter with boundary cases."
   (let ((state (nskk-state-create 'ascii)))
     ;; Setting to each valid mode should work
-    (dolist (mode '(ascii hiragana katakana katakana-半角 abbrev latin))
+    (dolist (mode '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin))
       (let ((result (nskk-state-set state 'mode mode)))
         (should (eq result mode))
         (should (eq (nskk-state-mode state) mode))))
 
-    ;; Invalid modes should fail and not change state
+    ;; Invalid modes should raise error and not change state
     (nskk-state-set state 'mode 'hiragana)
-    (let ((result (nskk-state-set state 'mode 'not-a-mode)))
-      (should (null result))
-      (should (eq (nskk-state-mode state) 'hiragana)))))
+    (should-error (nskk-state-set state 'mode 'not-a-mode))
+    (should (eq (nskk-state-mode state) 'hiragana))))
 
 (nskk-deftest-unit state-set-mode-previous-tracking
   "Test that previous-mode is tracked through multiple transitions."
@@ -643,19 +701,20 @@
     (nskk-state-append-input state ?j)
     (should (string= (nskk-state-input-buffer state) "kanj"))
 
-    ;; Conversion phase
-    (nskk-state-set state 'henkan-position 0)
+    ;; Conversion phase - set henkan-phase to on
+    (nskk-state-set-henkan-phase state 'on)
     (should (nskk-state-in-henkan-mode-p state))
 
-    ;; Candidates phase
-    (nskk-state-set-candidates state '("漢字" "感じ" "幾時"))
-    (should (string= (nskk-state-current-candidate state) "漢字"))
+    ;; Candidates phase - transition to active
+    (nskk-state-set-henkan-phase state 'active)
+    (nskk-state-set-candidates state '("\u6f22\u5b57" "\u611f\u3058" "\u5e7e\u6642"))
+    (should (string= (nskk-state-current-candidate state) "\u6f22\u5b57"))
 
     (nskk-state-next-candidate state)
-    (should (string= (nskk-state-current-candidate state) "感じ"))
+    (should (string= (nskk-state-current-candidate state) "\u611f\u3058"))
 
     (nskk-state-next-candidate state)
-    (should (string= (nskk-state-current-candidate state) "幾時"))
+    (should (string= (nskk-state-current-candidate state) "\u5e7e\u6642"))
 
     ;; Reset for next input
     (nskk-state-reset state)
@@ -673,8 +732,8 @@
     (should (eq (nskk-state-previous-mode state) 'ascii))
 
     ;; Input in hiragana
-    (nskk-state-append-input state ?あ)
-    (should (string= (nskk-state-input-buffer state) "あ"))
+    (nskk-state-append-input state ?\u3042)
+    (should (string= (nskk-state-input-buffer state) "\u3042"))
 
     ;; Switch to katakana
     (nskk-state-transition state 'hiragana 'katakana)
@@ -682,8 +741,8 @@
 
     ;; Input in katakana
     (nskk-state-clear-input state)
-    (nskk-state-append-input state ?ア)
-    (should (string= (nskk-state-input-buffer state) "ア"))
+    (nskk-state-append-input state ?\u30a2)
+    (should (string= (nskk-state-input-buffer state) "\u30a2"))
 
     ;; Switch back to ascii
     (nskk-state-transition state 'katakana 'ascii)
@@ -708,17 +767,17 @@
     (nskk-state-append-input state ?o)
     (should (string= (nskk-state-input-buffer state) "touko"))
 
-    ;; Set conversion position and get candidates
-    (nskk-state-set state 'henkan-position 0)
-    (nskk-state-set-candidates state '("東京" "登校" "渡航"))
-    (should (string= (nskk-state-current-candidate state) "東京"))
+    ;; Set conversion phase and get candidates
+    (nskk-state-set-henkan-phase state 'active)
+    (nskk-state-set-candidates state '("\u6771\u4eac" "\u767b\u6821" "\u6e21\u822a"))
+    (should (string= (nskk-state-current-candidate state) "\u6771\u4eac"))
 
     ;; Navigate through candidates
     (nskk-state-next-candidate state)
-    (should (string= (nskk-state-current-candidate state) "登校"))
+    (should (string= (nskk-state-current-candidate state) "\u767b\u6821"))
 
     (nskk-state-previous-candidate state)
-    (should (string= (nskk-state-current-candidate state) "東京"))))
+    (should (string= (nskk-state-current-candidate state) "\u6771\u4eac"))))
 
 (provide 'nskk-state-test)
 

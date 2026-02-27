@@ -223,15 +223,22 @@ TRIGGER is ignored; a random valid mode is chosen."
     (dotimes (_ runs)
       (let ((state (nskk-state-create 'hiragana))
             (invalid-mode (nskk-pbt--random-choice invalid-modes)))
-        ;; Try to set an invalid mode
-        (let ((result (nskk-state-set state 'mode invalid-mode)))
-          ;; Should return nil and mode should remain unchanged
-          (unless (and (null result)
-                       (eq (nskk-state-mode state) 'hiragana))
-            (push (list :invalid-mode invalid-mode
-                        :result result
-                        :actual-mode (nskk-state-mode state))
-                  failures)))))
+        ;; Try to set an invalid mode - should raise error
+        (condition-case err
+            (nskk-state-set state 'mode invalid-mode)
+          (error
+           ;; Error expected - check that mode remained unchanged
+           (unless (eq (nskk-state-mode state) 'hiragana)
+             (push (list :invalid-mode invalid-mode
+                         :error err
+                         :actual-mode (nskk-state-mode state))
+                   failures)))
+          (:no-error
+           ;; No error raised - this is a failure
+           (push (list :invalid-mode invalid-mode
+                       :error "No error raised"
+                       :actual-mode (nskk-state-mode state))
+                 failures)))))
     (when failures
       (ert-fail (format "Invalid mode rejection failed for %d cases:\n%S"
                         (length failures)

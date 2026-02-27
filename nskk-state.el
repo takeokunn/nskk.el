@@ -32,9 +32,11 @@
 (require 'cl-lib)
 (require 'nskk-custom)
 
+(declare-function nskk-debug-message "nskk-debug" (format-string &rest args))
+
 ;; State mode constants
 (defconst nskk-state-modes
-  '(ascii hiragana katakana katakana-半角 abbrev latin)
+  '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
   "List of valid NSKK modes.")
 
 ;; Main state structure
@@ -50,6 +52,7 @@
   previous-mode     ;; Previous mode before current (symbol)
   undo-stack        ;; Undo history stack (list)
   redo-stack        ;; Redo history stack (list)
+  henkan-phase      ;; Henkan phase: nil, on (▽), active (▼), list, registration
   metadata)         ;; Additional metadata (plist)
 
 ;; Getter function with validation
@@ -72,17 +75,12 @@ Supports validation for mode changes."
       (cond
        ;; Mode validation
        ((eq key-sym 'mode)
-        (if (nskk-state-valid-mode-p value)
-            (progn
-              ;; Store previous mode
-              (setf (nskk-state-previous-mode state) (nskk-state-mode state))
-              (setf (nskk-state-mode state) value)
-              value)
-          (progn
-            (require 'nskk-debug nil t)
-            (nskk-debug-message "Mode validation failed: %s not in %s"
-                               value nskk-state-modes)
-            nil)))
+        (unless (nskk-state-valid-mode-p value)
+          (error "Invalid mode: %s. Valid modes: %s" value nskk-state-modes))
+        ;; Store previous mode
+        (setf (nskk-state-previous-mode state) (nskk-state-mode state))
+        (setf (nskk-state-mode state) value)
+        value)
        ;; Explicit slot setters
        ((eq key-sym 'input-buffer)
         (setf (nskk-state-input-buffer state) value) value)
@@ -102,6 +100,8 @@ Supports validation for mode changes."
         (setf (nskk-state-undo-stack state) value) value)
        ((eq key-sym 'redo-stack)
         (setf (nskk-state-redo-stack state) value) value)
+       ((eq key-sym 'henkan-phase)
+        (setf (nskk-state-henkan-phase state) value) value)
        ((eq key-sym 'metadata)
         (setf (nskk-state-metadata state) value) value)
        (t nil)))))
@@ -131,6 +131,7 @@ INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
      :previous-mode mode
      :undo-stack nil
      :redo-stack nil
+     :henkan-phase nil
      :metadata nil)))
 
 ;; State validation functions
@@ -143,8 +144,28 @@ INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
 (defun nskk-state-in-henkan-mode-p (state)
   "Check if STATE is currently in conversion mode."
   (and (nskk-state-p state)
-       (nskk-state-henkan-position state)
-       (not (zerop (length (nskk-state-input-buffer state))))))
+       (memq (nskk-state-henkan-phase state) '(on active list registration))))
+
+(defun nskk-state-henkan-on-p (state)
+  "Check if STATE is in henkan-on phase (▽)."
+  (and (nskk-state-p state)
+       (eq (nskk-state-henkan-phase state) 'on)))
+
+(defun nskk-state-henkan-active-p (state)
+  "Check if STATE is in henkan-active phase (▼)."
+  (and (nskk-state-p state)
+       (eq (nskk-state-henkan-phase state) 'active)))
+
+(defconst nskk-state-henkan-phases '(nil on active list registration)
+  "List of valid henkan phases.")
+
+(defun nskk-state-set-henkan-phase (state phase)
+  "Set henkan PHASE in STATE.
+PHASE must be nil, on, active, list, or registration."
+  (when (nskk-state-p state)
+    (unless (memq phase nskk-state-henkan-phases)
+      (error "Invalid henkan phase: %s. Valid phases: %s" phase nskk-state-henkan-phases))
+    (setf (nskk-state-henkan-phase state) phase)))
 
 ;; State transition functions
 (defun nskk-state-transition (state from-mode to-mode)
@@ -168,6 +189,7 @@ Clears buffers, candidates, and stacks."
           (nskk-state-marker-position state) nil
           (nskk-state-undo-stack state) nil
           (nskk-state-redo-stack state) nil
+          (nskk-state-henkan-phase state) nil
           (nskk-state-metadata state) nil)
     t))
 
@@ -176,14 +198,14 @@ Clears buffers, candidates, and stacks."
   "Append CHAR to STATE's input buffer.
 CHAR must be a valid character (integer).
 Returns the new buffer string on success, nil on failure.
-Uses efficient string concatenation for buffer building."
+Uses `concat' with a list to avoid intermediate string allocation."
   (when (and (nskk-state-p state)
              (characterp char))
     (let ((buf (nskk-state-input-buffer state)))
       ;; Ensure buf is a string (defensive check)
       (unless (stringp buf)
         (setq buf ""))
-      (let ((new-buf (concat buf (string char))))
+      (let ((new-buf (concat buf (list char))))
         (setf (nskk-state-input-buffer state) new-buf)
         new-buf))))
 

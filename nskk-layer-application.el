@@ -74,10 +74,10 @@
   (interactive)
   (nskk-set-mode-abbrev))
 
-(defun nskk-toggle-japanese-mode ()
-  "Toggle between hiragana and katakana modes."
+(defun nskk-enter-jisx0208-latin-mode ()
+  "Enter full-width latin (jisx0208-latin) input mode."
   (interactive)
-  (nskk-toggle-katakana))
+  (nskk-set-mode-jisx0208-latin))
 
 ;; Input processing API
 (defun nskk-process-input (_char)

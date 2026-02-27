@@ -40,6 +40,7 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-converter)  ; Assumes converter implementation exists
+(require 'nskk-state)
 (eval-when-compile (require 'cl-lib))
 
 
@@ -343,6 +344,325 @@
   nskk-performance-conversion-complex-performance
   nskk-performance-conversion-batch-performance
   nskk-performance-conversion-memory-performance)
+
+
+;;;;
+;;;; Unit Tests: Converter Lifecycle Operations
+;;;;
+
+(nskk-deftest-unit converter-start-conversion-basic
+  "Test basic conversion start."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set state 'input-buffer "かんじ")
+    (let ((result (nskk-converter-start-conversion state '("漢字" "感じ"))))
+      (should result)
+      (should (nskk-state-henkan-position result))
+      (should (equal (nskk-state-candidates result) '("漢字" "感じ")))
+      (should (= (nskk-state-current-index result) 0)))))
+
+(nskk-deftest-unit converter-start-conversion-empty-input
+  "Test conversion start with empty input buffer."
+  (let ((state (nskk-state-create 'hiragana)))
+    ;; Empty input buffer — should not start conversion
+    (should-not (nskk-converter-start-conversion state '("漢字")))))
+
+(nskk-deftest-unit converter-start-conversion-nil-state
+  "Test conversion start with nil state."
+  (should-not (nskk-converter-start-conversion nil '("漢字"))))
+
+(nskk-deftest-unit converter-start-conversion-no-candidates
+  "Test conversion start with no candidates."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set state 'input-buffer "てすと")
+    (let ((result (nskk-converter-start-conversion state)))
+      (should result)
+      (should (equal (nskk-state-candidates result) '())))))
+
+(nskk-deftest-unit converter-commit-conversion-basic
+  "Test basic conversion commit."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set state 'input-buffer "かんじ")
+    (nskk-converter-start-conversion state '("漢字" "感じ"))
+    (let ((result (nskk-converter-commit-conversion state)))
+      (should result)
+      (should (string-match-p "漢字" (nskk-state-converted-buffer result)))
+      (should (equal (nskk-state-input-buffer result) ""))
+      (should-not (nskk-state-candidates result))
+      (should-not (nskk-state-henkan-position result)))))
+
+(nskk-deftest-unit converter-commit-conversion-no-active
+  "Test commit when no conversion is active."
+  (let ((state (nskk-state-create 'hiragana)))
+    ;; No henkan-position set — should return nil (no-op)
+    (should-not (nskk-converter-commit-conversion state))))
+
+(nskk-deftest-unit converter-commit-conversion-second-candidate
+  "Test committing second candidate."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set state 'input-buffer "かんじ")
+    (nskk-converter-start-conversion state '("漢字" "感じ" "幹事"))
+    ;; Move to second candidate
+    (nskk-state-set state 'current-index 1)
+    (let ((result (nskk-converter-commit-conversion state)))
+      (should result)
+      (should (string-match-p "感じ" (nskk-state-converted-buffer result))))))
+
+(nskk-deftest-unit converter-cancel-conversion-basic
+  "Test basic conversion cancel."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set state 'input-buffer "かんじ")
+    (nskk-converter-start-conversion state '("漢字" "感じ"))
+    (let ((result (nskk-converter-cancel-conversion state "かんじ")))
+      (should result)
+      (should (equal (nskk-state-input-buffer result) "かんじ"))
+      (should-not (nskk-state-candidates result))
+      (should-not (nskk-state-henkan-position result)))))
+
+(nskk-deftest-unit converter-cancel-conversion-no-original
+  "Test cancel conversion without original input."
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set state 'input-buffer "てすと")
+    (nskk-converter-start-conversion state '("テスト"))
+    (let ((result (nskk-converter-cancel-conversion state)))
+      (should result)
+      (should (equal (nskk-state-input-buffer result) "")))))
+
+(nskk-deftest-unit converter-cancel-conversion-idempotent
+  "Test cancel is idempotent when no conversion is active."
+  (let ((state (nskk-state-create 'hiragana)))
+    (let ((result (nskk-converter-cancel-conversion state)))
+      (should result)
+      (should-not (nskk-state-henkan-position result)))))
+
+(nskk-deftest-unit converter-in-conversion-p-basic
+  "Test conversion state check."
+  (let ((state (nskk-state-create 'hiragana)))
+    ;; Not in conversion initially
+    (should-not (nskk-converter-in-conversion-p state))
+    ;; Start conversion
+    (nskk-state-set state 'input-buffer "かんじ")
+    (nskk-converter-start-conversion state '("漢字"))
+    (should (nskk-converter-in-conversion-p state))
+    ;; After commit, no longer in conversion
+    (nskk-converter-commit-conversion state)
+    (should-not (nskk-converter-in-conversion-p state))))
+
+(nskk-deftest-unit converter-has-candidates-p-basic
+  "Test candidate availability check."
+  (let ((state (nskk-state-create 'hiragana)))
+    (should-not (nskk-converter-has-candidates-p state))
+    (nskk-state-set state 'input-buffer "かんじ")
+    (nskk-converter-start-conversion state '("漢字" "感じ"))
+    (should (nskk-converter-has-candidates-p state))
+    (nskk-converter-commit-conversion state)
+    (should-not (nskk-converter-has-candidates-p state))))
+
+(nskk-deftest-unit converter-get-current-candidate-basic
+  "Test getting current candidate."
+  (let ((state (nskk-state-create 'hiragana)))
+    ;; No candidates
+    (should-not (nskk-converter-get-current-candidate state))
+    ;; With candidates
+    (nskk-state-set state 'input-buffer "かんじ")
+    (nskk-converter-start-conversion state '("漢字" "感じ" "幹事"))
+    (should (equal (nskk-converter-get-current-candidate state) "漢字"))
+    ;; After moving index
+    (nskk-state-set state 'current-index 2)
+    (should (equal (nskk-converter-get-current-candidate state) "幹事"))))
+
+(nskk-deftest-unit converter-get-current-candidate-nil-state
+  "Test getting candidate from nil state."
+  (should-not (nskk-converter-get-current-candidate nil)))
+
+
+;;;;
+;;;; Unit Tests: Converter Convert Function
+;;;;
+
+(nskk-deftest-unit converter-convert-basic
+  "Test basic converter-convert function."
+  (let ((result (nskk-converter-convert "ka")))
+    (should result)
+    (should (equal (car result) "か"))
+    (should (equal (cdr result) ""))))
+
+(nskk-deftest-unit converter-convert-incomplete
+  "Test converter-convert with incomplete input."
+  (let ((result (nskk-converter-convert "k")))
+    (should result)
+    (should (eq (car result) :incomplete))))
+
+(nskk-deftest-unit converter-convert-nil
+  "Test converter-convert with nil input."
+  (should-not (nskk-converter-convert nil)))
+
+(nskk-deftest-unit converter-convert-empty
+  "Test converter-convert with empty input."
+  (should-not (nskk-converter-convert "")))
+
+(nskk-deftest-unit converter-convert-long-match
+  "Test converter-convert with multi-char match."
+  (let ((result (nskk-converter-convert "sha")))
+    (should result)
+    (should (equal (car result) "しゃ"))
+    (should (equal (cdr result) ""))))
+
+(nskk-deftest-unit converter-convert-with-remaining
+  "Test converter-convert that has remaining input."
+  (let ((result (nskk-converter-convert "kak")))
+    (should result)
+    (should (equal (car result) "か"))
+    (should (equal (cdr result) "k"))))
+
+
+;;;;
+;;;; Unit Tests: Possible Completions
+;;;;
+
+(nskk-deftest-unit converter-get-completions-basic
+  "Test getting possible completions."
+  (let ((completions (nskk-converter-get-possible-completions "ka")))
+    (should completions)
+    (should (cl-some (lambda (c) (equal (car c) "ka")) completions))))
+
+(nskk-deftest-unit converter-get-completions-empty
+  "Test completions for nil input."
+  (should-not (nskk-converter-get-possible-completions nil)))
+
+(nskk-deftest-unit converter-get-completions-k-prefix
+  "Test completions for 'k' prefix."
+  (let ((completions (nskk-converter-get-possible-completions "k")))
+    (should completions)
+    (should (> (length completions) 5))))
+
+
+;;;;
+;;;; Unit Tests: Rule Management
+;;;;
+
+(nskk-deftest-unit converter-add-rule-basic
+  "Test adding a conversion rule."
+  (let ((original (nskk-converter-get-rule "testkey")))
+    (unwind-protect
+        (progn
+          (nskk-converter-add-rule "testkey" "テスト")
+          (should (equal (nskk-converter-get-rule "testkey") "テスト")))
+      ;; Cleanup
+      (if original
+          (nskk-converter-add-rule "testkey" original)
+        (nskk-converter-remove-rule "testkey")))))
+
+(nskk-deftest-unit converter-remove-rule-basic
+  "Test removing a conversion rule."
+  (unwind-protect
+      (progn
+        (nskk-converter-add-rule "tempkey" "テンプ")
+        (should (nskk-converter-get-rule "tempkey"))
+        (nskk-converter-remove-rule "tempkey")
+        (should-not (nskk-converter-get-rule "tempkey")))
+    (nskk-converter-remove-rule "tempkey")))
+
+(nskk-deftest-unit converter-get-rule-existing
+  "Test getting an existing rule."
+  (should (equal (nskk-converter-get-rule "ka") "か")))
+
+(nskk-deftest-unit converter-get-rule-nonexistent
+  "Test getting a nonexistent rule."
+  (should-not (nskk-converter-get-rule "nonexistent-romaji-key")))
+
+(nskk-deftest-unit converter-add-rule-override
+  "Test overriding an existing rule."
+  (let ((original (nskk-converter-get-rule "ka")))
+    (unwind-protect
+        (progn
+          (nskk-converter-add-rule "ka" "カ")
+          (should (equal (nskk-converter-get-rule "ka") "カ")))
+      ;; Restore original
+      (nskk-converter-add-rule "ka" original))))
+
+
+;;;;
+;;;; Unit Tests: Style System
+;;;;
+
+(nskk-deftest-unit converter-register-style-basic
+  "Test registering a new style."
+  (let ((test-style-called nil))
+    (nskk-converter-register-style 'test-style
+      (lambda () (setq test-style-called t)))
+    (unwind-protect
+        (progn
+          (nskk-converter-load-style 'test-style)
+          (should test-style-called))
+      ;; Restore standard style
+      (nskk-converter-load-style 'standard))))
+
+(nskk-deftest-unit converter-load-style-standard
+  "Test loading the standard style."
+  (should (eq (nskk-converter-load-style 'standard) 'standard))
+  ;; Verify basic rules still work
+  (should (equal (nskk-converter-get-rule "ka") "か")))
+
+(nskk-deftest-unit converter-load-style-unknown
+  "Test loading an unknown style raises error."
+  (should-error (nskk-converter-load-style 'nonexistent-style)))
+
+(nskk-deftest-unit converter-register-style-replaces-table
+  "Test that loading a style clears and replaces the table."
+  (nskk-converter-register-style 'minimal-test
+    (lambda ()
+      (nskk-converter-add-rule "x" "エックス")))
+  (unwind-protect
+      (progn
+        (nskk-converter-load-style 'minimal-test)
+        (should (equal (nskk-converter-get-rule "x") "エックス"))
+        ;; Standard rules should be gone
+        (should-not (equal (nskk-converter-get-rule "ka") "か")))
+    ;; Restore standard
+    (nskk-converter-load-style 'standard)))
+
+
+;;;;
+;;;; Unit Tests: Internal Conversion
+;;;;
+
+(nskk-deftest-unit converter-internal-simple
+  "Test internal conversion for simple input."
+  (let ((result (nskk-convert-romaji--internal "ka")))
+    (should (equal result "か"))))
+
+(nskk-deftest-unit converter-internal-compound
+  "Test internal conversion for compound input."
+  (let ((result (nskk-convert-romaji--internal "kanji")))
+    (should (equal result "かんじ"))))
+
+(nskk-deftest-unit converter-internal-sokuon
+  "Test internal conversion with double consonant."
+  (let ((result (nskk-convert-romaji--internal "kka")))
+    (should (equal result "っか"))))
+
+
+(nskk-test-suite converter-lifecycle
+  nskk-unit-converter-start-conversion-basic
+  nskk-unit-converter-start-conversion-empty-input
+  nskk-unit-converter-start-conversion-nil-state
+  nskk-unit-converter-commit-conversion-basic
+  nskk-unit-converter-commit-conversion-no-active
+  nskk-unit-converter-cancel-conversion-basic
+  nskk-unit-converter-in-conversion-p-basic
+  nskk-unit-converter-has-candidates-p-basic
+  nskk-unit-converter-get-current-candidate-basic)
+
+(nskk-test-suite converter-rules
+  nskk-unit-converter-add-rule-basic
+  nskk-unit-converter-remove-rule-basic
+  nskk-unit-converter-get-rule-existing
+  nskk-unit-converter-get-rule-nonexistent)
+
+(nskk-test-suite converter-styles
+  nskk-unit-converter-register-style-basic
+  nskk-unit-converter-load-style-standard
+  nskk-unit-converter-load-style-unknown)
 
 (provide 'nskk-converter-test)
 

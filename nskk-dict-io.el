@@ -156,10 +156,45 @@ Returns a `nskk-dict-index', or nil if not found."
 (defvar nskk--user-dict-index nil
   "Loaded user dictionary index.")
 
+(defun nskk-dict--detect-system-dictionaries ()
+  "Auto-detect system dictionary files.
+Probes nix profiles, common system paths, and homebrew locations.
+Also checks `nskk-large-dictionary' as a fallback.
+Returns a list of readable dictionary file paths."
+  (let ((candidates
+         (append
+          ;; Nix profile paths
+          (list (expand-file-name "~/.nix-profile/share/skk/SKK-JISYO.L")
+                "/run/current-system/sw/share/skk/SKK-JISYO.L")
+          ;; NIX_PROFILES env var paths
+          (let ((nix-profiles (getenv "NIX_PROFILES")))
+            (when nix-profiles
+              (mapcar (lambda (p) (expand-file-name "share/skk/SKK-JISYO.L" p))
+                      (split-string nix-profiles))))
+          ;; Common system paths
+          (list "/usr/share/skk/SKK-JISYO.L"
+                "/usr/local/share/skk/SKK-JISYO.L")
+          ;; Homebrew paths
+          (list "/opt/homebrew/share/skk/SKK-JISYO.L")
+          ;; nskk-large-dictionary fallback
+          (when nskk-large-dictionary
+            (list nskk-large-dictionary))))
+        (found nil))
+    (dolist (path candidates)
+      (when (and (stringp path) (file-readable-p path))
+        (push path found)))
+    (nreverse found)))
+
 (defun nskk-dict-initialize ()
-  "Initialize dictionaries by loading system and user dictionaries."
+  "Initialize dictionaries by loading system and user dictionaries.
+When `nskk-dict-system-dictionary-files' is nil, auto-detects
+dictionary paths from nix profiles and common system locations."
   (interactive)
-  (setq nskk--system-dict-index (nskk-dict-load-system-dictionaries))
+  (let ((dict-files (or nskk-dict-system-dictionary-files
+                        (nskk-dict--detect-system-dictionaries))))
+    (when dict-files
+      (let ((nskk-dict-system-dictionary-files dict-files))
+        (setq nskk--system-dict-index (nskk-dict-load-system-dictionaries)))))
   (setq nskk--user-dict-index (nskk-dict-load-user-dictionary))
   (message "NSKK: Dictionary initialization complete"))
 
@@ -176,6 +211,38 @@ Returns list of candidates or nil."
             (cl-union user-result system-result :test #'equal)
           user-result)
       system-result)))
+
+;;; User Dictionary Modification
+
+(defvar nskk-dict-modified nil
+  "Non-nil when the user dictionary has unsaved modifications.")
+
+(defun nskk-dict-register-word (reading word)
+  "Register WORD as a conversion candidate for READING in user dictionary.
+Adds the entry to the in-memory user dictionary index and marks it for saving.
+If no user dictionary index exists, creates one.
+READING is the headword (e.g., hiragana reading).
+WORD is the conversion result to register."
+  (when (and (stringp reading) (stringp word)
+             (not (string-empty-p reading))
+             (not (string-empty-p word)))
+    ;; Ensure user dict index exists
+    (unless nskk--user-dict-index
+      (setq nskk--user-dict-index
+            (make-nskk-dict-index
+             :entries (make-hash-table :test 'equal :size 1000)
+             :by-prefix nil
+             :by-freq nil)))
+    (let* ((entries (nskk-dict-index-entries nskk--user-dict-index))
+           (existing (gethash reading entries)))
+      (if existing
+          ;; Prepend to existing entry (higher priority) unless already present
+          (unless (member word existing)
+            (puthash reading (cons word existing) entries))
+        ;; Create new entry
+        (puthash reading (list word) entries)))
+    (setq nskk-dict-modified t)
+    (message "NSKK: Registered %s -> %s" reading word)))
 
 ;;; User Dictionary Save
 

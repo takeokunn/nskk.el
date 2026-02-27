@@ -93,6 +93,22 @@
   "Test that C-j is bound to nskk-kakutei."
   (should (eq (lookup-key nskk-mode-map (kbd "C-j")) 'nskk-kakutei)))
 
+(nskk-deftest-unit main-upper-l-bound
+  "Test that L is bound to nskk-handle-upper-l."
+  (should (eq (lookup-key nskk-mode-map (kbd "L")) 'nskk-handle-upper-l)))
+
+(nskk-deftest-unit main-slash-bound
+  "Test that / is bound to nskk-handle-slash."
+  (should (eq (lookup-key nskk-mode-map (kbd "/")) 'nskk-handle-slash)))
+
+(nskk-deftest-unit main-x-bound
+  "Test that x is bound to nskk-handle-x."
+  (should (eq (lookup-key nskk-mode-map (kbd "x")) 'nskk-handle-x)))
+
+(nskk-deftest-unit main-c-g-bound
+  "Test that C-g is bound to nskk-handle-cancel."
+  (should (eq (lookup-key nskk-mode-map (kbd "C-g")) 'nskk-handle-cancel)))
+
 ;;;
 ;;; Command Tests
 ;;;
@@ -194,22 +210,36 @@
 ;;; Kakutei (Commit) Tests
 ;;;
 
-(nskk-deftest-unit main-kakutei-with-input
-  "Test kakutei inserts input buffer content."
+(nskk-deftest-unit main-kakutei-enters-hiragana-from-ascii
+  "Test C-j (kakutei) switches to hiragana from ascii mode."
   (with-temp-buffer
     (nskk-mode 1)
-    (nskk-state-set nskk-current-state 'input-buffer "test")
+    ;; Default mode is ascii
+    (should (eq (nskk-state-mode nskk-current-state) 'ascii))
     (nskk-kakutei)
-    (should (string= (buffer-string) "test"))
-    (should (string= (nskk-state-input-buffer nskk-current-state) ""))
+    ;; Should switch to hiragana
+    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
     (nskk-mode -1)))
 
-(nskk-deftest-unit main-kakutei-with-empty-input
-  "Test kakutei with empty input buffer does nothing."
+(nskk-deftest-unit main-kakutei-enters-hiragana-from-latin
+  "Test C-j (kakutei) switches to hiragana from latin mode."
   (with-temp-buffer
     (nskk-mode 1)
+    (nskk-set-mode-latin)
+    (should (eq (nskk-state-mode nskk-current-state) 'latin))
     (nskk-kakutei)
-    (should (string= (buffer-string) ""))
+    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-newline-in-hiragana
+  "Test C-j (kakutei) inserts newline when in hiragana with no preedit."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (nskk-set-mode-hiragana)
+    (nskk-kakutei)
+    ;; Should stay in hiragana and insert newline
+    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+    (should (string= (buffer-string) "\n"))
     (nskk-mode -1)))
 
 ;;;

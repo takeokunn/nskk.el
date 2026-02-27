@@ -33,13 +33,17 @@
 ;; Layer Responsibilities:
 ;; - UI Layer displays mode information to user
 ;; - Uses Application Layer API (nskk-current-mode) to query mode
-;; - Does NOT directly access state management (nskk-state)
+;; - Manages cursor color per mode when nskk-use-color-cursor is enabled
 ;;
-;; Displays mode indicator in modeline:
-;; - あ (hiragana)
-;; - ア (katakana)
-;; - ：a (abbrev)
-;; - 英 (direct/ASCII)
+;; Displays mode indicator in modeline (ddskk-compatible strings):
+;; - かな (hiragana)
+;; - カナ (katakana)
+;; - aA  (abbrev)
+;; - SKK (ascii/latin)
+;; - 全英 (jisx0208-latin / full-width latin)
+;;
+;; Conversion markers (▽/▼) are displayed inline in the buffer,
+;; not in the modeline.
 ;;
 ;; Uses distinct faces for each mode for visual clarity.
 
@@ -48,6 +52,20 @@
 (require 'nskk-layer-application)
 (require 'nskk-custom)
 (require 'nskk-state)
+
+;; Forward declarations for cursor color variables (defined in nskk-custom.el).
+(defvar nskk-use-color-cursor)
+(defvar nskk-cursor-hiragana-color)
+(defvar nskk-cursor-katakana-color)
+(defvar nskk-cursor-latin-color)
+(defvar nskk-cursor-jisx0208-latin-color)
+(defvar nskk-cursor-abbrev-color)
+
+(defvar-local nskk--last-cursor-color nil
+  "Last cursor color applied, to avoid redundant set-cursor-color calls.")
+
+(defvar-local nskk--last-modeline-indicator nil
+  "Last modeline indicator string, to avoid redundant updates.")
 
 (defgroup nskk-modeline nil
   "Mode line indicator settings for NSKK."
@@ -69,6 +87,11 @@
   "Face for abbrev mode indicator."
   :group 'nskk-modeline)
 
+(defface nskk-modeline-jisx0208-latin-face
+  '((t (:foreground "#FFD700" :weight bold)))
+  "Face for full-width latin mode indicator."
+  :group 'nskk-modeline)
+
 (defface nskk-modeline-direct-face
   '((t (:foreground "#9E9E9E" :weight bold)))
   "Face for direct mode indicator."
@@ -80,19 +103,15 @@
 
 (defun nskk-modeline-indicator (&optional state)
   "Return mode line indicator string for current mode.
-When STATE (an nskk-state struct) is provided, derive the mode and
-conversion indicator from it.  Otherwise fall back to `nskk-current-mode'
-for backward compatibility."
+When STATE (an nskk-state struct) is provided, derive the mode from it.
+Otherwise fall back to `nskk-current-mode' for backward compatibility."
   (let* ((mode (if state
                    (nskk-state-mode state)
                  (nskk-current-mode)))
          (mode-name (or (cdr (assq mode nskk-modeline-mode-names))
                         (nskk-modeline--mode-string mode)))
-         (indicator (if (and state (nskk-state-in-henkan-mode-p state))
-                        "\u25bc" "\u25bd"))
          (formatted (format-spec nskk-modeline-format
-                                 `((?m . ,mode-name)
-                                   (?s . ,indicator)))))
+                                 `((?m . ,mode-name)))))
     (propertize formatted
                 'face (nskk-modeline--mode-face mode)
                 'help-echo (nskk-modeline--mode-help mode))))
@@ -101,10 +120,12 @@ for backward compatibility."
   "Return mode string for MODE."
   (declare (pure t) (side-effect-free t))
   (pcase mode
-    ('hiragana "あ")
-    ('katakana "ア")
-    ('abbrev "：a")
-    ('direct "英")
+    ('hiragana "かな")
+    ('katakana "カナ")
+    ('abbrev "aA")
+    ('ascii "SKK")
+    ('latin "SKK")
+    ('jisx0208-latin "全英")
     (_ "NSKK")))
 
 (defun nskk-modeline--mode-face (mode)
@@ -114,7 +135,8 @@ for backward compatibility."
     ('hiragana 'nskk-modeline-hiragana-face)
     ('katakana 'nskk-modeline-katakana-face)
     ('abbrev 'nskk-modeline-abbrev-face)
-    ('direct 'nskk-modeline-direct-face)
+    ((or 'ascii 'latin 'direct) 'nskk-modeline-direct-face)
+    ('jisx0208-latin 'nskk-modeline-jisx0208-latin-face)
     (_ 'default)))
 
 (defun nskk-modeline--mode-help (mode)
@@ -124,17 +146,44 @@ for backward compatibility."
     ('hiragana "Hiragana input mode")
     ('katakana "Katakana input mode")
     ('abbrev "Abbreviation mode")
-    ('direct "Direct/ASCII input mode")
+    ((or 'ascii 'latin 'direct) "Direct/ASCII input mode")
+    ('jisx0208-latin "Full-width latin input mode")
     (_ "NSKK input method")))
 
 (defun nskk-modeline-update ()
-  "Update modeline to reflect current NSKK state."
+  "Update modeline and cursor to reflect current NSKK state.
+Only triggers redisplay when the indicator actually changes."
   (when (and (boundp 'nskk-current-state) nskk-current-state)
-    (let* ((indicator (nskk-modeline-indicator nskk-current-state))
-           (entry (assq 'nskk-mode minor-mode-alist)))
-      (when entry
-        (setcar (cdr entry) indicator))
-      (force-mode-line-update))))
+    (let ((indicator (nskk-modeline-indicator nskk-current-state)))
+      (unless (equal indicator nskk--last-modeline-indicator)
+        (setq nskk--last-modeline-indicator indicator)
+        (let ((entry (assq 'nskk-mode minor-mode-alist)))
+          (when entry
+            (setcar (cdr entry) indicator)))
+        (force-mode-line-update)))
+    (nskk-cursor-update)))
+
+(defun nskk-cursor-update ()
+  "Update cursor color to reflect current NSKK mode.
+Only calls `set-cursor-color' when the color actually changes."
+  (when (and nskk-use-color-cursor
+             (boundp 'nskk-current-state)
+             nskk-current-state)
+    (let* ((mode (nskk-state-mode nskk-current-state))
+           (color (nskk-cursor--mode-color mode)))
+      (when (and color (not (equal color nskk--last-cursor-color)))
+        (set-cursor-color color)
+        (setq nskk--last-cursor-color color)))))
+
+(defun nskk-cursor--mode-color (mode)
+  "Return cursor color for MODE."
+  (pcase mode
+    ('hiragana nskk-cursor-hiragana-color)
+    ('katakana nskk-cursor-katakana-color)
+    ((or 'ascii 'latin) nskk-cursor-latin-color)
+    ('jisx0208-latin nskk-cursor-jisx0208-latin-color)
+    ('abbrev nskk-cursor-abbrev-color)
+    (_ nil)))
 
 (provide 'nskk-modeline)
 

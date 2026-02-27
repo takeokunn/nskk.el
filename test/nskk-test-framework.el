@@ -39,6 +39,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'nskk-dict-struct)
 (eval-when-compile (require 'cl-lib))
 
 
@@ -420,6 +421,45 @@
           :passed passed
           :failed failed
           :skipped skipped)))
+
+;;;;
+;;;; Mock Dictionary Helpers
+;;;;
+
+(defun nskk-test-create-mock-dict (&optional entries)
+  "Create a mock dictionary index with ENTRIES.
+ENTRIES is an alist of (key . candidates-list).
+If nil, uses a default set of common Japanese words."
+  (let ((default-entries
+         '(("かんじ" . ("漢字" "感じ" "幹事"))
+           ("にほんご" . ("日本語"))
+           ("にほん" . ("日本" "二本"))
+           ("ひらがな" . ("平仮名"))
+           ("かたかな" . ("片仮名"))
+           ("へんかん" . ("変換"))
+           ("にゅうりょく" . ("入力"))
+           ("もじ" . ("文字"))
+           ("さくら" . ("桜"))
+           ("やま" . ("山"))
+           ("かわ" . ("川" "河"))
+           ("はな" . ("花" "鼻"))
+           ("あめ" . ("雨" "飴"))))
+        (ht (make-hash-table :test 'equal :size 50)))
+    (dolist (entry (or entries default-entries))
+      (puthash (car entry) (cdr entry) ht))
+    (make-nskk-dict-index
+     :entries ht
+     :by-prefix nil
+     :by-freq nil)))
+
+(defmacro nskk-with-mock-dict (entries &rest body)
+  "Execute BODY with a mock dictionary installed.
+ENTRIES is an alist of (key . candidates-list) or nil for defaults.
+Restores original dictionary state after BODY completes."
+  (declare (indent 1))
+  `(let ((nskk--system-dict-index (nskk-test-create-mock-dict ,entries))
+         (nskk--user-dict-index nil))
+     ,@body))
 
 (provide 'nskk-test-framework)
 

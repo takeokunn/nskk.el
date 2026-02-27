@@ -126,7 +126,8 @@ Affects key position-based shortcuts.
   "Default input mode when NSKK is activated."
   :type '(choice (const :tag "ASCII" ascii)
                  (const :tag "Hiragana" hiragana)
-                 (const :tag "Katakana" katakana))
+                 (const :tag "Katakana" katakana)
+                 (const :tag "Full-width Latin" jisx0208-latin))
   :group 'nskk-state)
 
 (defcustom nskk-state-undo-limit 100
@@ -141,9 +142,10 @@ Affects key position-based shortcuts.
   :type 'file
   :group 'nskk-dictionary)
 
-(defcustom nskk-dict-system-dictionary-files
-  (list (expand-file-name "/usr/share/skk/SKK-JISYO.L"))
-  "List of system dictionary files to load."
+(defcustom nskk-dict-system-dictionary-files nil
+  "List of system dictionary files to load.
+When nil, NSKK auto-detects dictionary paths from nix profiles
+and common system locations."
   :type '(repeat file)
   :group 'nskk-dictionary)
 
@@ -192,19 +194,19 @@ Affects key position-based shortcuts.
   :type 'boolean
   :group 'nskk-ui)
 
-(defcustom nskk-modeline-format "[%m%s]"
+(defcustom nskk-modeline-format "[%m]"
   "Modeline format string.
-%m is replaced with the mode name.
-%s is replaced with the state indicator."
+%m is replaced with the mode name."
   :type 'string
   :group 'nskk-ui)
 
 (defcustom nskk-modeline-mode-names
-  '((ascii . "A")
-    (hiragana . "あ")
-    (katakana . "ア")
+  '((ascii . "SKK")
+    (hiragana . "かな")
+    (katakana . "カナ")
     (abbrev . "aA")
-    (latin . "L"))
+    (latin . "SKK")
+    (jisx0208-latin . "全英"))
   "Mode name display mapping for modeline."
   :type 'alist
   :group 'nskk-ui)
@@ -214,6 +216,59 @@ Affects key position-based shortcuts.
   "Path to large SKK dictionary file."
   :type '(choice file (const nil))
   :group 'nskk-dictionary)
+
+;; Henkan (conversion) settings
+(defcustom nskk-henkan-show-candidates-nth 5
+  "Number of SPC presses before showing candidate list.
+After this many candidates shown one-by-one, switch to echo area
+candidate list display with selection keys."
+  :type 'integer
+  :group 'nskk-ui)
+
+(defcustom nskk-henkan-number-to-display-candidates 7
+  "Number of candidates to display per page in candidate list."
+  :type 'integer
+  :group 'nskk-ui)
+
+(defcustom nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l)
+  "Selection keys for candidate list display.
+These keys allow direct candidate selection in the echo area list."
+  :type '(repeat character)
+  :group 'nskk-ui)
+
+;; Cursor color settings
+(defcustom nskk-use-color-cursor t
+  "Whether to change cursor color based on input mode."
+  :type 'boolean
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-hiragana-color
+  (if (eq (frame-parameter nil 'background-mode) 'dark) "coral4" "pink")
+  "Cursor color for hiragana mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-katakana-color
+  (if (eq (frame-parameter nil 'background-mode) 'dark) "forestgreen" "green")
+  "Cursor color for katakana mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-latin-color
+  (if (eq (frame-parameter nil 'background-mode) 'dark) "ivory4" "gray")
+  "Cursor color for ASCII/latin mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-jisx0208-latin-color "gold"
+  "Cursor color for full-width latin mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-abbrev-color "royalblue"
+  "Cursor color for abbrev mode."
+  :type 'color
+  :group 'nskk-ui)
 
 (provide 'nskk-custom)
 

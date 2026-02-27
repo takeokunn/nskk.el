@@ -39,7 +39,12 @@ PBT_SRC = test/pbt/nskk-pbt-generators.el \
           test/pbt/nskk-layer-state-pbt-test.el \
           test/pbt/nskk-layer-application-pbt-test.el \
           test/pbt/nskk-layer-data-pbt-test.el \
-          test/pbt/nskk-input-routing-pbt-test.el
+          test/pbt/nskk-input-routing-pbt-test.el \
+          test/pbt/nskk-conversion-flow-pbt-test.el \
+          test/pbt/nskk-dictionary-integration-pbt-test.el \
+          test/pbt/nskk-okurigana-pbt-test.el \
+          test/pbt/nskk-multi-buffer-pbt-test.el \
+          test/pbt/nskk-error-recovery-pbt-test.el
 
 .PHONY: all compile compile-core test test-pbt test-unit lint package-lint clean
 

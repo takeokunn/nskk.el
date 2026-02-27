@@ -36,49 +36,139 @@
 ;;; Code:
 
 (require 'nskk-state)
+(require 'nskk-layer-application)
 
-(declare-function nskk-toggle-japanese-mode "nskk-layer-application")
+(declare-function nskk-toggle-japanese-mode "nskk-mode-switch")
 (declare-function nskk-enter-latin-mode "nskk-layer-application")
-(declare-function nskk-next "nskk-layer-application")
-(declare-function nskk-commit "nskk-layer-application")
+(declare-function nskk-converting-p "nskk-input-commands")
+(declare-function nskk--has-preedit "nskk-input-commands")
+(declare-function nskk-start-conversion "nskk-input-commands")
+(declare-function nskk-next-candidate "nskk-input-commands")
+(declare-function nskk-commit-current "nskk-input-commands")
+(declare-function nskk-previous-candidate "nskk-input-commands")
+(declare-function nskk-cancel-conversion "nskk-input-commands")
+(declare-function nskk-cancel-preedit "nskk-input-commands")
+(declare-function nskk-enter-abbrev-mode "nskk-layer-application")
+(declare-function nskk-enter-jisx0208-latin-mode "nskk-layer-application")
 
 (defun nskk-handle-q ()
   "Handle q key: toggle between hiragana and katakana.
+In henkan-active mode (▼), perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
-  (if (and nskk-current-state
-           (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
-      (nskk-toggle-japanese-mode)
-    (self-insert-command 1)))
+  (cond
+   ;; Implicit kakutei: if converting, commit first then toggle
+   ((nskk-converting-p)
+    (nskk-commit-current)
+    (nskk-toggle-japanese-mode))
+   ;; Normal toggle in Japanese mode
+   ((and nskk-current-state
+         (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
+    (nskk-toggle-japanese-mode))
+   (t
+    (self-insert-command 1))))
 
 (defun nskk-handle-l ()
   "Handle l key: switch to ASCII mode.
+In henkan-active mode (▼), perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
-  (if (and nskk-current-state
-           (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
-      (nskk-enter-latin-mode)
+  (cond
+   ;; Implicit kakutei: if converting, commit first then enter latin
+   ((nskk-converting-p)
+    (nskk-commit-current)
+    (nskk-enter-latin-mode))
+   ;; Normal switch in Japanese mode
+   ((and nskk-current-state
+         (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
+    (nskk-enter-latin-mode))
+   (t
+    (self-insert-command 1))))
+
+(defun nskk-handle-upper-l ()
+  "Handle L key: switch to full-width latin (jisx0208-latin) mode.
+In henkan-active mode (▼), perform implicit kakutei first.
+In ASCII mode or when NSKK state is inactive, fall through to
+`self-insert-command'."
+  (interactive)
+  (cond
+   ;; Implicit kakutei
+   ((nskk-converting-p)
+    (nskk-commit-current)
+    (nskk-enter-jisx0208-latin-mode))
+   ;; Switch from Japanese mode
+   ((and nskk-current-state
+         (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
+    (nskk-enter-jisx0208-latin-mode))
+   (t
+    (self-insert-command 1))))
+
+(defun nskk-handle-slash ()
+  "Handle / key: enter abbrev mode from Japanese mode.
+In henkan-active mode (▼), perform implicit kakutei first.
+In ASCII mode or when NSKK state is inactive, fall through to
+`self-insert-command'."
+  (interactive)
+  (cond
+   ;; Implicit kakutei
+   ((nskk-converting-p)
+    (nskk-commit-current)
+    (nskk-enter-abbrev-mode))
+   ;; Enter abbrev from Japanese mode
+   ((and nskk-current-state
+         (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
+    (nskk-enter-abbrev-mode))
+   (t
+    (self-insert-command 1))))
+
+(defun nskk-handle-x ()
+  "Handle x key: select previous candidate.
+When converting, go to previous candidate.
+Otherwise fall through to `self-insert-command'."
+  (interactive)
+  (if (nskk-converting-p)
+      (nskk-previous-candidate)
     (self-insert-command 1)))
 
 (defun nskk-handle-space ()
   "Handle SPC key: start conversion or select next candidate.
-When not in a convertible state, fall through to `self-insert-command'."
+When converting, cycle to next candidate.  When preedit text
+exists, start dictionary conversion.  Otherwise insert a space."
   (interactive)
-  (if (and nskk-current-state
-           (nskk-state-in-henkan-mode-p nskk-current-state))
-      (nskk-next)
-    (self-insert-command 1)))
+  (cond
+   ((nskk-converting-p)
+    (nskk-next-candidate))
+   ((nskk--has-preedit)
+    (nskk-start-conversion))
+   (t
+    (self-insert-command 1))))
 
 (defun nskk-handle-return ()
-  "Handle RET key: commit current conversion.
-When not in a convertible state, fall through to `newline'."
+  "Handle RET key: commit current conversion and insert newline.
+In ddskk, RET confirms the candidate AND inserts a newline.
+When not in conversion state, fall through to `newline'."
   (interactive)
-  (if (and nskk-current-state
-           (nskk-state-in-henkan-mode-p nskk-current-state))
-      (nskk-commit)
+  (if (nskk-converting-p)
+      (progn
+        (nskk-commit-current)
+        (newline))
     (newline)))
+
+(defun nskk-handle-cancel ()
+  "Handle C-g: cancel conversion or preedit.
+In conversion mode (▼), cancel and restore preedit.
+In preedit mode (▽), remove marker and clear preedit.
+Otherwise, pass through to `keyboard-quit'."
+  (interactive)
+  (cond
+   ((nskk-converting-p)
+    (nskk-cancel-conversion))
+   ((nskk--has-preedit)
+    (nskk-cancel-preedit))
+   (t
+    (keyboard-quit))))
 
 (provide 'nskk-keymap)
 
