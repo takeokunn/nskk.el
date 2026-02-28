@@ -42,6 +42,7 @@
 (require 'nskk-converter)  ; Assumes converter implementation exists
 (require 'nskk-henkan)
 (require 'nskk-state)
+(require 'nskk-pbt-generators)
 (eval-when-compile (require 'cl-lib))
 
 
@@ -211,10 +212,11 @@
 ;;;; Property-Based Tests: Conversion Properties
 ;;;;
 
-(nskk-property-test conversion-idempotent-property
+(nskk-property-test conversion-output-never-expands
   ((input romaji-string))
-  (let ((converted (nskk-convert-romaji input)))
-    (equal converted (nskk-convert-romaji converted)))
+  ;; Romaji-to-kana conversion never produces more characters than the input.
+  ;; Kana is more compact than romaji; incomplete sequences pass through unchanged.
+  (<= (length (nskk-convert-romaji input)) (length input))
   100)
 
 (nskk-property-test conversion-length-property
@@ -371,135 +373,6 @@ remaining string is pushed verbatim and conversion stops."
   nskk-performance-conversion-complex-performance
   nskk-performance-conversion-batch-performance
   nskk-performance-conversion-memory-performance)
-
-
-;;;;
-;;;; Unit Tests: Converter Lifecycle Operations
-;;;;
-
-(nskk-deftest-unit converter-start-conversion-basic
-  "Test basic conversion start."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "かんじ")
-    (let ((result (nskk-henkan-start-conversion state '("漢字" "感じ"))))
-      (should result)
-      (should (nskk-state-henkan-position result))
-      (should (equal (nskk-state-candidates result) '("漢字" "感じ")))
-      (should (= (nskk-state-current-index result) 0)))))
-
-(nskk-deftest-unit converter-start-conversion-empty-input
-  "Test conversion start with empty input buffer."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; Empty input buffer — should not start conversion
-    (should-not (nskk-henkan-start-conversion state '("漢字")))))
-
-(nskk-deftest-unit converter-start-conversion-nil-state
-  "Test conversion start with nil state."
-  (should-not (nskk-henkan-start-conversion nil '("漢字"))))
-
-(nskk-deftest-unit converter-start-conversion-no-candidates
-  "Test conversion start with no candidates."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "てすと")
-    (let ((result (nskk-henkan-start-conversion state)))
-      (should result)
-      (should (equal (nskk-state-candidates result) '())))))
-
-(nskk-deftest-unit converter-commit-conversion-basic
-  "Test basic conversion commit."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-henkan-start-conversion state '("漢字" "感じ"))
-    (let ((result (nskk-henkan-commit-conversion state)))
-      (should result)
-      (should (string-match-p "漢字" (nskk-state-converted-buffer result)))
-      (should (equal (nskk-state-input-buffer result) ""))
-      (should-not (nskk-state-candidates result))
-      (should-not (nskk-state-henkan-position result)))))
-
-(nskk-deftest-unit converter-commit-conversion-no-active
-  "Test commit when no conversion is active."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; No henkan-position set — should return nil (no-op)
-    (should-not (nskk-henkan-commit-conversion state))))
-
-(nskk-deftest-unit converter-commit-conversion-second-candidate
-  "Test committing second candidate."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-henkan-start-conversion state '("漢字" "感じ" "幹事"))
-    ;; Move to second candidate
-    (nskk-state-set state 'current-index 1)
-    (let ((result (nskk-henkan-commit-conversion state)))
-      (should result)
-      (should (string-match-p "感じ" (nskk-state-converted-buffer result))))))
-
-(nskk-deftest-unit converter-cancel-conversion-basic
-  "Test basic conversion cancel."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-henkan-start-conversion state '("漢字" "感じ"))
-    (let ((result (nskk-henkan-cancel-conversion state "かんじ")))
-      (should result)
-      (should (equal (nskk-state-input-buffer result) "かんじ"))
-      (should-not (nskk-state-candidates result))
-      (should-not (nskk-state-henkan-position result)))))
-
-(nskk-deftest-unit converter-cancel-conversion-no-original
-  "Test cancel conversion without original input."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "てすと")
-    (nskk-henkan-start-conversion state '("テスト"))
-    (let ((result (nskk-henkan-cancel-conversion state)))
-      (should result)
-      (should (equal (nskk-state-input-buffer result) "")))))
-
-(nskk-deftest-unit converter-cancel-conversion-idempotent
-  "Test cancel is idempotent when no conversion is active."
-  (let ((state (nskk-state-create 'hiragana)))
-    (let ((result (nskk-henkan-cancel-conversion state)))
-      (should result)
-      (should-not (nskk-state-henkan-position result)))))
-
-(nskk-deftest-unit converter-in-conversion-p-basic
-  "Test conversion state check."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; Not in conversion initially
-    (should-not (nskk-henkan-in-conversion-p state))
-    ;; Start conversion
-    (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-henkan-start-conversion state '("漢字"))
-    (should (nskk-henkan-in-conversion-p state))
-    ;; After commit, no longer in conversion
-    (nskk-henkan-commit-conversion state)
-    (should-not (nskk-henkan-in-conversion-p state))))
-
-(nskk-deftest-unit converter-has-candidates-p-basic
-  "Test candidate availability check."
-  (let ((state (nskk-state-create 'hiragana)))
-    (should-not (nskk-henkan-has-candidates-p state))
-    (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-henkan-start-conversion state '("漢字" "感じ"))
-    (should (nskk-henkan-has-candidates-p state))
-    (nskk-henkan-commit-conversion state)
-    (should-not (nskk-henkan-has-candidates-p state))))
-
-(nskk-deftest-unit converter-get-current-candidate-basic
-  "Test getting current candidate."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; No candidates
-    (should-not (nskk-henkan-get-current-candidate state))
-    ;; With candidates
-    (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-henkan-start-conversion state '("漢字" "感じ" "幹事"))
-    (should (equal (nskk-henkan-get-current-candidate state) "漢字"))
-    ;; After moving index
-    (nskk-state-set state 'current-index 2)
-    (should (equal (nskk-henkan-get-current-candidate state) "幹事"))))
-
-(nskk-deftest-unit converter-get-current-candidate-nil-state
-  "Test getting candidate from nil state."
-  (should-not (nskk-henkan-get-current-candidate nil)))
 
 
 ;;;;
@@ -669,17 +542,6 @@ remaining string is pushed verbatim and conversion stops."
     (should (equal result "っか"))))
 
 
-(nskk-test-suite converter-lifecycle
-  nskk-unit-converter-start-conversion-basic
-  nskk-unit-converter-start-conversion-empty-input
-  nskk-unit-converter-start-conversion-nil-state
-  nskk-unit-converter-commit-conversion-basic
-  nskk-unit-converter-commit-conversion-no-active
-  nskk-unit-converter-cancel-conversion-basic
-  nskk-unit-converter-in-conversion-p-basic
-  nskk-unit-converter-has-candidates-p-basic
-  nskk-unit-converter-get-current-candidate-basic)
-
 (nskk-test-suite converter-rules
   nskk-unit-converter-add-rule-basic
   nskk-unit-converter-remove-rule-basic
@@ -730,6 +592,55 @@ remaining string is pushed verbatim and conversion stops."
    ("chi" . "ち"))
   :description "Known romaji→kana mapping"
   :body (should (equal expected (nskk-convert-romaji input))))
+
+;;;
+;;; Seeded Property-Based Tests (new)
+;;;
+
+;; Property: nskk-converter-convert returns nil or a cons where car is a string.
+(nskk-property-test-seeded converter-pbt-convert-returns-string-or-nil
+  ((input romaji-basic))
+  (let ((result (nskk-converter-convert input)))
+    (or (null result)
+        (and (consp result)
+             (or (stringp (car result))
+                 (eq (car result) :incomplete)))))
+  100 1001)
+
+;; Property: nskk-converter-get-possible-completions for "k" always returns a list.
+(nskk-property-test-seeded converter-pbt-completions-k-prefix-returns-list
+  ((input romaji-basic))
+  (let ((completions (nskk-converter-get-possible-completions "k")))
+    (listp completions))
+  50 1002)
+
+;; Property: convert-is-deterministic — same input always gives same result (seeded).
+(nskk-property-test-seeded converter-pbt-convert-is-deterministic
+  ((input romaji-basic))
+  (let ((result1 (nskk-converter-convert input))
+        (result2 (nskk-converter-convert input)))
+    (equal result1 result2))
+  50 1003)
+
+;;;
+;;; Table-driven tests using nskk-should-convert-to
+;;;
+
+;; Ten known conversions not already covered by existing tests above.
+(nskk-deftest-table converter-should-convert-to-known-cases
+  :columns (romaji expected)
+  :rows (("ge"  "げ")
+         ("gi"  "ぎ")
+         ("go"  "ご")
+         ("gu"  "ぐ")
+         ("ze"  "ぜ")
+         ("zo"  "ぞ")
+         ("de"  "で")
+         ("do"  "ど")
+         ("be"  "べ")
+         ("pe"  "ぺ"))
+  :description "Known romaji->kana conversions via nskk-should-convert-to"
+  :body (nskk-should-convert-to romaji expected))
 
 (provide 'nskk-converter-test)
 

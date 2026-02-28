@@ -5,8 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -26,7 +24,10 @@
 
 ;;; Commentary:
 
-;; Conversion (henkan) pipeline for NSKK.
+;; Conversion (henkan) pipeline for NSKK (Layer 3: Application).
+;;
+;; Layer position: L3 (Application) -- depends on nskk-kana, nskk-state,
+;;   nskk-search, nskk-dictionary, nskk-prolog, nskk-converter, nskk-custom.
 ;;
 ;; This module orchestrates the full Japanese input conversion (henkan) flow:
 ;; preedit management, dictionary search dispatch, candidate navigation,
@@ -78,6 +79,7 @@
 (require 'nskk-dictionary)
 (require 'nskk-prolog)
 (require 'nskk-converter)
+(require 'nskk-custom)
 
 (declare-function nskk-state-p "nskk-state")
 (declare-function nskk-state-candidates "nskk-state")
@@ -90,7 +92,7 @@
 (declare-function nskk-dict-lookup "nskk-dictionary")
 (declare-function nskk-search-prefix "nskk-search")
 (declare-function nskk-search-partial "nskk-search")
-(declare-function nskk-kana-string-hiragana-to-katakana "nskk-kana")
+(declare-function nskk-state-henkan-phase "nskk-state")
 (declare-function nskk-converter-convert "nskk-converter")
 
 ;;;; Buffer Modification Guard
@@ -136,29 +138,6 @@ INDEX-VAR is bound to the current candidate index."
               (,(cadr vars) (nskk-state-current-index nskk-current-state)))
          ,@body))))
 
-(defgroup nskk-henkan nil
-  "Conversion (henkan) pipeline settings."
-  :prefix "nskk-henkan-"
-  :group 'nskk-ui)
-
-(defcustom nskk-henkan-show-candidates-nth 5
-  "Number of SPC presses before showing candidate list.
-After this many candidates shown one-by-one, switch to echo area
-candidate list display with selection keys."
-  :type 'integer
-  :group 'nskk-henkan)
-
-(defcustom nskk-henkan-number-to-display-candidates 7
-  "Number of candidates to display per page in candidate list."
-  :type 'integer
-  :group 'nskk-henkan)
-
-(defcustom nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l)
-  "Selection keys for candidate list display.
-These keys allow direct candidate selection in the echo area list."
-  :type '(repeat character)
-  :group 'nskk-henkan)
-
 (defvar nskk-start-henkan-hook nil
   "Hook run before conversion starts.
 DDSKK equivalent to `skk-start-henkan-hook'.")
@@ -180,8 +159,12 @@ DDSKK equivalent to `skk-after-henkan-hook'.")
   "Hook run when a candidate is selected.
 DDSKK equivalent to `skk-henkan-select-hook'.")
 
-(defvar nskk--romaji-buffer)  ;; defined in nskk-state.el
-(defvar nskk--system-dict-index) ;; defined in nskk-dictionary.el
+(defvar nskk--romaji-buffer)            ;; defined in nskk-state.el
+(defvar nskk--system-dict-index)       ;; defined in nskk-dictionary.el
+(defvar nskk--henkan-count)            ;; defined in nskk-state.el
+(defvar nskk--registration-depth)      ;; defined in nskk-state.el
+(defvar nskk--conversion-overlay)      ;; defined in nskk-state.el
+(defvar nskk--conversion-start-marker) ;; defined in nskk-state.el
 
 ;;;; Candidate Display Hooks
 
@@ -200,69 +183,6 @@ Set by candidate window implementation via hooks.")
   "Function to select a candidate by key press.
 Called with (key candidates current-index).
 Returns the selected candidate index, or nil if KEY is not valid.")
-
-;;;; Prolog Core Search Type Mapping
-
-(nskk-prolog-set-index 'core-search-type 2 :hash)
-(nskk-prolog-<- (core-search-type :exact dict-lookup))
-(nskk-prolog-<- (core-search-type :prefix prefix-search))
-(nskk-prolog-<- (core-search-type :regex partial-search))
-
-;;;; Prolog Converting Phase Facts
-
-(nskk-prolog-set-index 'converting-phase 1 :hash)
-(nskk-prolog-<- (converting-phase active))
-(nskk-prolog-<- (converting-phase list))
-(nskk-prolog-<- (converting-phase registration))
-
-;;;; Prolog Okurigana Character Classification
-
-(nskk-prolog-set-index 'okurigana-char 2 :hash)
-(dolist (c (number-sequence ?A ?Z))
-  (nskk-prolog-assert `((okurigana-char ,c ,(downcase c)))))
-
-;;;; Prolog Okurigana Trigger Predicate
-
-(nskk-prolog-<- (okurigana-trigger \?c)
-  (okurigana-char \?c \?_))
-
-;;;; Prolog Candidate Navigation Action Rules
-
-(nskk-prolog-set-index 'candidate-nav-next-action 3 :list)
-(nskk-prolog-<- (candidate-nav-next-action \?count \?threshold select-next)
-  (< \?count \?threshold))
-(nskk-prolog-<- (candidate-nav-next-action \?count \?threshold show-list-next)
-  (>= \?count \?threshold))
-
-(nskk-prolog-set-index 'candidate-nav-prev-action 2 :hash)
-(nskk-prolog-<- (candidate-nav-prev-action list-active  show-list-prev))
-(nskk-prolog-<- (candidate-nav-prev-action not-active   select-prev))
-
-;;;; Prolog Search Result Action Dispatch
-
-(nskk-prolog-set-index 'search-result-action 2 :hash)
-(nskk-prolog-<- (search-result-action has-candidates  show-overlay))
-(nskk-prolog-<- (search-result-action no-candidates   start-registration))
-
-;;;; Prolog Convert-or-Commit Action Dispatch
-
-(nskk-prolog-set-index 'convert-or-commit-action 2 :hash)
-(nskk-prolog-<- (convert-or-commit-action converting     commit-current))
-(nskk-prolog-<- (convert-or-commit-action not-converting start-conversion))
-
-;;;; Prolog Registration Depth Guard
-
-(nskk-prolog-set-index 'max-registration-depth 1 :hash)
-(nskk-prolog-<- (max-registration-depth 3))
-(nskk-prolog-<- (registration-allowed \?depth)
-  (max-registration-depth \?max)
-  (< \?depth \?max))
-
-;;;; Prolog Overlay Update Phase Guard
-
-(nskk-prolog-set-index 'should-update-overlay 1 :hash)
-(nskk-prolog-<- (should-update-overlay active))
-(nskk-prolog-<- (should-update-overlay list))
 
 ;;;; Dictionary Search API
 
@@ -346,7 +266,7 @@ LIMIT is maximum results (default: 100)."
        nskk-current-state
        (nskk-state-p nskk-current-state)
        (let ((phase (nskk-state-henkan-phase nskk-current-state)))
-         (not (null (nskk-prolog-query `(converting-phase ,phase)))))))
+         (nskk-prolog-query-one `(converting-phase ,phase)))))
 
 (defsubst nskk--has-preedit ()
   "Check if there is preedit text to convert.
@@ -748,7 +668,7 @@ The \u25bd marker is replaced with \u25bc when conversion begins."
                  (insert registered)
                  (nskk--clear-conversion-start-marker)
                  (setq nskk--romaji-buffer "")
-                 (setq nskk--henkan-count 0)))))))))
+                 (setq nskk--henkan-count 0))))))))))
 
 ;;;; Dictionary Registration
 
@@ -758,7 +678,7 @@ Opens a minibuffer prompt for the user to enter the desired text.
 READING is the headword that could not be converted.
 Supports recursive registration up to `max-registration-depth' levels:
 depth 1 shows [辞書登録], depth 2 shows [[辞書登録]], etc.
-Returns the registered word on success, or nil if cancelled (C-g)
+Returns the registered word on success, or nil if the user cancels
 or if the maximum nesting depth (as defined by Prolog `registration-allowed/1')
 has been reached."
   (when (nskk-prolog-query-one `(registration-allowed ,nskk--registration-depth))
@@ -783,7 +703,7 @@ has been reached."
 (defun nskk--exhaust-candidates ()
   "Handle exhausted candidates by triggering dictionary registration.
 If registration succeeds, insert the registered word and clean up state.
-If cancelled (C-g), wrap around to the first candidate in list display."
+If the user cancels, wrap around to the first candidate in list display."
   (run-hook-with-args 'nskk-henkan-hide-candidates-functions)
   (setq nskk-henkan--candidate-list-active nil)
   (let* ((start (nskk--get-conversion-start))
@@ -817,6 +737,69 @@ If cancelled (C-g), wrap around to the first candidate in list display."
         (nskk-state-set-henkan-phase nskk-current-state 'list)
         (run-hook-with-args 'nskk-henkan-show-candidates-functions candidates 0)
         (setq nskk-henkan--candidate-list-active t)))))
+
+(defvar nskk--henkan-initialized nil
+  "Non-nil when henkan Prolog predicates have been initialized.")
+
+(defun nskk-henkan-initialize ()
+  "Initialize henkan pipeline Prolog predicates.
+Idempotent: subsequent calls are no-ops."
+  (unless nskk--henkan-initialized
+    ;; Core search type mapping
+    (nskk-prolog-set-index 'core-search-type 2 :hash)
+    (nskk-prolog-<- (core-search-type :exact dict-lookup))
+    (nskk-prolog-<- (core-search-type :prefix prefix-search))
+    (nskk-prolog-<- (core-search-type :regex partial-search))
+
+    ;; Converting phase facts
+    (nskk-prolog-set-index 'converting-phase 1 :hash)
+    (nskk-prolog-<- (converting-phase active))
+    (nskk-prolog-<- (converting-phase list))
+    (nskk-prolog-<- (converting-phase registration))
+
+    ;; Okurigana character classification
+    (nskk-prolog-set-index 'okurigana-char 2 :hash)
+    (dolist (c (number-sequence ?A ?Z))
+      (nskk-prolog-assert `((okurigana-char ,c ,(downcase c)))))
+
+    ;; Okurigana trigger predicate
+    (nskk-prolog-<- (okurigana-trigger \?c)
+      (okurigana-char \?c \?_))
+
+    ;; Candidate navigation action rules
+    (nskk-prolog-set-index 'candidate-nav-next-action 3 :list)
+    (nskk-prolog-<- (candidate-nav-next-action \?count \?threshold select-next)
+      (< \?count \?threshold))
+    (nskk-prolog-<- (candidate-nav-next-action \?count \?threshold show-list-next)
+      (>= \?count \?threshold))
+
+    (nskk-prolog-set-index 'candidate-nav-prev-action 2 :hash)
+    (nskk-prolog-<- (candidate-nav-prev-action list-active  show-list-prev))
+    (nskk-prolog-<- (candidate-nav-prev-action not-active   select-prev))
+
+    ;; Search result action dispatch
+    (nskk-prolog-set-index 'search-result-action 2 :hash)
+    (nskk-prolog-<- (search-result-action has-candidates  show-overlay))
+    (nskk-prolog-<- (search-result-action no-candidates   start-registration))
+
+    ;; Convert-or-commit action dispatch
+    (nskk-prolog-set-index 'convert-or-commit-action 2 :hash)
+    (nskk-prolog-<- (convert-or-commit-action converting     commit-current))
+    (nskk-prolog-<- (convert-or-commit-action not-converting start-conversion))
+
+    ;; Registration depth guard
+    (nskk-prolog-set-index 'max-registration-depth 1 :hash)
+    (nskk-prolog-<- (max-registration-depth 3))
+    (nskk-prolog-<- (registration-allowed \?depth)
+      (max-registration-depth \?max)
+      (< \?depth \?max))
+
+    ;; Overlay update phase guard
+    (nskk-prolog-set-index 'should-update-overlay 1 :hash)
+    (nskk-prolog-<- (should-update-overlay active))
+    (nskk-prolog-<- (should-update-overlay list))
+
+    (setq nskk--henkan-initialized t)))
 
 (provide 'nskk-henkan)
 

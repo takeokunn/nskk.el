@@ -1145,6 +1145,76 @@ Example:
                     (seq-take failures 5))))))))
 
 
+;;;;
+;;;; Henkan State Assertion Macros
+;;;;
+
+(defmacro nskk-should-be-phase (phase &optional state-form)
+  "Assert that henkan-phase in STATE-FORM (or `nskk-current-state') equals PHASE."
+  (declare (indent 0))
+  `(should (eq (nskk-state-henkan-phase (or ,state-form nskk-current-state))
+               ,phase)))
+
+(defmacro nskk-should-convert-to (romaji expected)
+  "Assert that ROMAJI converts to EXPECTED kana via `nskk-convert-romaji'."
+  `(should (equal (nskk-convert-romaji ,romaji) ,expected)))
+
+(defmacro nskk-with-henkan-state (phase candidates &rest body)
+  "Execute BODY with henkan state set to PHASE with CANDIDATES.
+Provides bindings: `nskk-current-state', `nskk--conversion-start-marker',
+`nskk--romaji-buffer', `nskk--henkan-count', `nskk-henkan--candidate-list-active'."
+  (declare (indent 2))
+  `(with-temp-buffer
+     (let ((nskk-current-state (nskk-state-create 'hiragana))
+           (nskk--conversion-start-marker (make-marker))
+           (nskk--romaji-buffer "")
+           (nskk--henkan-count 0)
+           (nskk-henkan--candidate-list-active nil))
+       (set-marker nskk--conversion-start-marker (point-min))
+       (insert "preedit")
+       (when ,candidates
+         (nskk-state-set-candidates nskk-current-state ,candidates))
+       (nskk-state-force-henkan-phase nskk-current-state ,phase)
+       ,@body)))
+
+
+;;;;
+;;;; Exhaustive and Invariant Property Macros
+;;;;
+
+(defmacro nskk-property-test-exhaustive (name domain property)
+  "Define a property test that checks PROPERTY for every element in DOMAIN.
+NAME: test name (produces nskk-exhaustive-NAME)
+DOMAIN: expression that evaluates to a list of all values to test
+PROPERTY: form evaluated with `item' bound to each domain element"
+  (declare (indent 2))
+  `(ert-deftest ,(intern (format "nskk-exhaustive-%s" name)) ()
+     ,(format "Exhaustive property test: %s" name)
+     (let ((failures nil))
+       (dolist (item ,domain)
+         (condition-case err
+             (unless ,property
+               (push item failures))
+           (error (push (list :error item err) failures))))
+       (when failures
+         (ert-fail (format "Exhaustive property failed for %d/%d items:\n%S"
+                           (length failures)
+                           (length ,domain)
+                           (seq-take failures 10)))))))
+
+(defmacro nskk-assert-state-invariant (state-form &rest invariants)
+  "Assert that STATE-FORM satisfies all INVARIANTS.
+Each invariant is a form evaluated with `state' bound to STATE-FORM's value.
+Fails immediately on the first violated invariant."
+  (declare (indent 1))
+  `(let ((state ,state-form))
+     ,@(mapcar (lambda (inv)
+                 `(unless ,inv
+                    (ert-fail (format "State invariant violated: %S\nState: %S"
+                                      ',inv state))))
+               invariants)))
+
+
 (provide 'nskk-test-macros)
 
 ;;; nskk-test-macros.el ends here

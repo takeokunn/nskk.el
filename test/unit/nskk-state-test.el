@@ -913,6 +913,88 @@
          (string= (nskk-state-converted-buffer state) "")))
   100)
 
+;;;
+;;; Prolog Predicate Tests: mode-properties/5
+;;;
+
+(nskk-deftest-unit state-prolog-mode-properties-hiragana
+  "Test mode-properties fact for hiragana mode."
+  (let ((display (nskk-prolog-query-value
+                  `(mode-properties hiragana ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
+    (should (equal display "かな"))))
+
+(nskk-deftest-unit state-prolog-mode-properties-katakana
+  "Test mode-properties fact for katakana mode."
+  (let ((display (nskk-prolog-query-value
+                  `(mode-properties katakana ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
+    (should (equal display "カナ"))))
+
+(nskk-deftest-unit state-prolog-mode-properties-abbrev
+  "Test mode-properties fact for abbrev mode."
+  (let ((display (nskk-prolog-query-value
+                  `(mode-properties abbrev ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
+    (should (equal display "aA"))))
+
+(nskk-deftest-unit state-prolog-mode-properties-ascii
+  "Test mode-properties fact for ascii mode."
+  (let ((display (nskk-prolog-query-value
+                  `(mode-properties ascii ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
+    (should (equal display "SKK"))))
+
+(nskk-deftest-unit state-prolog-mode-properties-latin
+  "Test mode-properties fact for latin mode."
+  (let ((display (nskk-prolog-query-value
+                  `(mode-properties latin ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
+    (should (equal display "SKK"))))
+
+(nskk-deftest-unit state-prolog-mode-properties-jisx0208-latin
+  "Test mode-properties fact for jisx0208-latin mode."
+  (let ((display (nskk-prolog-query-value
+                  `(mode-properties jisx0208-latin ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
+    (should (equal display "全英"))))
+
+(nskk-deftest-unit state-prolog-mode-properties-katakana-hankaku
+  "Test mode-properties fact for katakana-半角 mode."
+  (should (nskk-prolog-query-one
+           `(mode-properties katakana-半角 ,'\?s ,'\?f ,'\?h ,'\?c))))
+
+(nskk-deftest-unit state-prolog-mode-properties-unknown
+  "Test mode-properties returns nil for unknown mode."
+  (should-not (nskk-prolog-query-one
+               `(mode-properties nonexistent ,'\?s ,'\?f ,'\?h ,'\?c))))
+
+;;;
+;;; Prolog Predicate Tests: preedit-phase/1
+;;;
+
+(nskk-deftest-unit state-prolog-preedit-phase-normal
+  "Test preedit-phase fact for normal phase."
+  (should (nskk-prolog-query-one '(preedit-phase normal))))
+
+(nskk-deftest-unit state-prolog-preedit-phase-preedit
+  "Test preedit-phase fact for preedit phase."
+  (should (nskk-prolog-query-one '(preedit-phase preedit))))
+
+(nskk-deftest-unit state-prolog-preedit-phase-unknown
+  "Test preedit-phase returns nil for unknown phase."
+  (should-not (nskk-prolog-query-one '(preedit-phase on))))
+
+;;;
+;;; Prolog Predicate Tests: registration-phase/1
+;;;
+
+(nskk-deftest-unit state-prolog-registration-phase-active
+  "Test registration-phase fact for active phase."
+  (should (nskk-prolog-query-one '(registration-phase active))))
+
+(nskk-deftest-unit state-prolog-registration-phase-list
+  "Test registration-phase fact for list phase."
+  (should (nskk-prolog-query-one '(registration-phase list))))
+
+(nskk-deftest-unit state-prolog-registration-phase-unknown
+  "Test registration-phase returns nil for invalid phase."
+  (should-not (nskk-prolog-query-one '(registration-phase normal))))
+
 (provide 'nskk-state-test)
 
 ;;; nskk-state-test.el ends here

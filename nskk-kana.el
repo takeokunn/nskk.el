@@ -5,14 +5,10 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
 
-;; This file is part of NSKK (Next-generation SKK).
-;;
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
@@ -28,18 +24,42 @@
 
 ;;; Commentary:
 
-;; This module provides kana character classification and conversion utilities
-;; for NSKK.  It handles:
-;; - Hiragana to katakana conversion
-;; - Katakana to hiragana conversion
-;; - Zenkaku (full-width) to hankaku (half-width) katakana conversion
-;; - Hankaku to zenkaku katakana conversion
-;; - Character classification predicates
+;; Kana character utilities for NSKK (Layer 1: Core Engine).
+;;
+;; Layer position: L1 (Core Engine) -- depends only on nskk-prolog.
+;;
+;; Provides kana character classification predicates and bidirectional
+;; conversion functions used throughout the conversion pipeline:
+;; - Hiragana <-> katakana conversion (code-point arithmetic)
+;; - Zenkaku (full-width) <-> hankaku (half-width) katakana conversion
+;; - Unicode character classification predicates
 ;;
 ;; Character classification and conversion rules are expressed as Prolog
-;; facts and rules, with hash table caches for hot-path performance.
-;; The `nskk-kana--fill-hash-table' macro fills conversion tables at load
-;; time.
+;; rules (range predicates) and hash table facts (zenkaku/hankaku tables).
+;; Hash table caches provide O(1) hot-path performance for string conversion.
+;; The `nskk-kana--fill-hash-table' macro populates both tables at load time.
+;;
+;; Prolog predicates maintained by this module:
+;; - `kana-hiragana/1'          -- range rule: U+3040-U+309F
+;; - `kana-katakana/1'          -- range rule: U+30A0-U+30FF
+;; - `kana-hankaku-katakana/1'  -- range rule: U+FF65-U+FF9F
+;; - `kana-han/1'               -- range rule: U+4E00-U+9FFF and U+3400-U+4DBF
+;; - `kana-japanese/1'          -- disjunction of the four ranges above
+;; - `zenkaku-to-hankaku/2'     -- hash-indexed facts (string -> string)
+;; - `hankaku-to-zenkaku/2'     -- hash-indexed facts (string -> string)
+;;
+;; Key public API:
+;; - `nskk-kana-hiragana-p'                 -- test hiragana char
+;; - `nskk-kana-katakana-p'                 -- test katakana char
+;; - `nskk-kana-hankaku-katakana-p'         -- test half-width katakana char
+;; - `nskk-kana-han-p'                      -- test han (kanji) char
+;; - `nskk-kana-japanese-p'                 -- test any Japanese char
+;; - `nskk-kana-hiragana-to-katakana'       -- convert single char
+;; - `nskk-kana-katakana-to-hiragana'       -- convert single char
+;; - `nskk-kana-string-hiragana-to-katakana' -- convert string
+;; - `nskk-kana-string-katakana-to-hiragana' -- convert string
+;; - `nskk-kana-zenkaku-to-hankaku'         -- convert zenkaku string/char
+;; - `nskk-kana-hankaku-to-zenkaku'         -- convert hankaku string/char
 ;;
 ;; Unicode ranges used:
 ;; - Hiragana: U+3040-U+309F
@@ -132,32 +152,27 @@ Generates:
 
 ;;;; Prolog Database Initialization
 
-;; Initialize classification predicates as Prolog rules.
-;; Each rule asserts: (predicate ?c) :- (>= ?c start) (<= ?c end)
+;; Character classification predicate definitions (ELisp side only at top level).
+;; The Prolog rule installation is deferred to `nskk-kana-initialize'.
 
-(nskk-kana--define-range-predicate
- nskk-kana-hiragana-p kana-hiragana
- nskk-kana--hiragana-start nskk-kana--hiragana-end
- "Return non-nil if CHAR is a hiragana character (U+3040-U+309F).")
+(defun nskk-kana-hiragana-p (char)
+  "Return non-nil if CHAR is a hiragana character (U+3040-U+309F)."
+  (and (integerp char)
+       (not (null (nskk-prolog-query-one
+                   (list 'kana-hiragana char))))))
 
-(nskk-kana--define-range-predicate
- nskk-kana-katakana-p kana-katakana
- nskk-kana--katakana-start nskk-kana--katakana-end
- "Return non-nil if CHAR is a katakana character (U+30A0-U+30FF).")
+(defun nskk-kana-katakana-p (char)
+  "Return non-nil if CHAR is a katakana character (U+30A0-U+30FF)."
+  (and (integerp char)
+       (not (null (nskk-prolog-query-one
+                   (list 'kana-katakana char))))))
 
-(nskk-kana--define-range-predicate
- nskk-kana-hankaku-katakana-p kana-hankaku-katakana
- nskk-kana--hankaku-katakana-start nskk-kana--hankaku-katakana-end
- "Return non-nil if CHAR is a half-width katakana character (U+FF65-U+FF9F).
-Half-width katakana are part of the Half-width and Full-width Forms block.")
-
-;; Han (kanji) spans two disjoint Unicode ranges; define it manually.
-(nskk-prolog-<- (kana-han \?c)
-  (>= \?c nskk-kana--han-start)
-  (<= \?c nskk-kana--han-end))
-(nskk-prolog-<- (kana-han \?c)
-  (>= \?c nskk-kana--han-extension-a-start)
-  (<= \?c nskk-kana--han-extension-a-end))
+(defun nskk-kana-hankaku-katakana-p (char)
+  "Return non-nil if CHAR is a half-width katakana character (U+FF65-U+FF9F).
+Half-width katakana are part of the Half-width and Full-width Forms block."
+  (and (integerp char)
+       (not (null (nskk-prolog-query-one
+                   (list 'kana-hankaku-katakana char))))))
 
 (defun nskk-kana-han-p (char)
   "Return non-nil if CHAR is a han (kanji) character.
@@ -165,12 +180,6 @@ Recognizes both CJK Unified Ideographs (U+4E00-U+9FFF) and
 CJK Unified Ideographs Extension A (U+3400-U+4DBF)."
   (and (integerp char)
        (not (null (nskk-prolog-query-one (list 'kana-han char))))))
-
-;; Japanese composite: any of hiragana, katakana, han, hankaku-katakana.
-(nskk-prolog-<- (kana-japanese \?c) (kana-hiragana \?c))
-(nskk-prolog-<- (kana-japanese \?c) (kana-katakana \?c))
-(nskk-prolog-<- (kana-japanese \?c) (kana-han \?c))
-(nskk-prolog-<- (kana-japanese \?c) (kana-hankaku-katakana \?c))
 
 (defun nskk-kana-japanese-p (char)
   "Return non-nil if CHAR is a Japanese character.
@@ -183,23 +192,11 @@ Recognizes the following Unicode ranges:
   (and (integerp char)
        (not (null (nskk-prolog-query-one (list 'kana-japanese char))))))
 
-;; Hiragana <-> katakana conversion via arithmetic offset.
-(nskk-prolog-<- (kana-hiragana-to-katakana \?h \?k)
-  (kana-hiragana \?h)
-  (is \?k (+ \?h nskk-kana--kana-offset)))
-
-(nskk-prolog-<- (kana-katakana-to-hiragana \?k \?h)
-  (kana-katakana \?k)
-  (is \?h (- \?k nskk-kana--kana-offset)))
-
 ;;;; Zenkaku/Hankaku Conversion Tables
 ;;
 ;; Both Prolog facts and hash table caches are maintained (dual-write pattern).
 ;; The hash tables provide O(1) hot-path performance.
 ;; The Prolog facts expose the mappings to the rest of the Prolog database.
-
-(nskk-prolog-set-index 'zenkaku-to-hankaku 2 :hash)
-(nskk-prolog-set-index 'hankaku-to-zenkaku 2 :hash)
 
 (defconst nskk-kana--zenkaku-to-hankaku-table
   (let ((table (make-hash-table :test 'equal :size 200)))
@@ -263,16 +260,6 @@ Recognizes the following Unicode ranges:
       ("ｳﾞ" "ヴ")))
   "Hash table (string -> string) mapping hankaku katakana to zenkaku equivalents.
 Includes two-character dakuten/handakuten sequences (e.g., \"ｶﾞ\" -> \"ガ\").")
-
-;; Populate Prolog facts from the hash tables.
-;; This is done after table initialization to keep all mappings in one place.
-(maphash (lambda (k v)
-           (nskk-prolog-assert (list (list 'zenkaku-to-hankaku k v))))
-         nskk-kana--zenkaku-to-hankaku-table)
-
-(maphash (lambda (k v)
-           (nskk-prolog-assert (list (list 'hankaku-to-zenkaku k v))))
-         nskk-kana--hankaku-to-zenkaku-table)
 
 ;;;; Character Conversion Functions
 
@@ -388,6 +375,58 @@ Unrecognized characters are passed through unchanged."
             (setq result-pos (1+ result-pos))
             (setq i (1+ i)))))
       (substring result-vec 0 result-pos))))
+
+(defvar nskk--kana-initialized nil
+  "Non-nil when kana Prolog predicates have been initialized.")
+
+(defun nskk-kana-initialize ()
+  "Initialize kana classification and conversion Prolog predicates.
+Idempotent: subsequent calls are no-ops."
+  (unless nskk--kana-initialized
+    ;; Initialize classification predicates as Prolog rules.
+    ;; Each rule asserts: (predicate ?c) :- (>= ?c start) (<= ?c end)
+    (nskk-kana--define-range-predicate
+     nskk-kana-hiragana-p kana-hiragana
+     nskk-kana--hiragana-start nskk-kana--hiragana-end
+     "Return non-nil if CHAR is a hiragana character (U+3040-U+309F).")
+
+    (nskk-kana--define-range-predicate
+     nskk-kana-katakana-p kana-katakana
+     nskk-kana--katakana-start nskk-kana--katakana-end
+     "Return non-nil if CHAR is a katakana character (U+30A0-U+30FF).")
+
+    (nskk-kana--define-range-predicate
+     nskk-kana-hankaku-katakana-p kana-hankaku-katakana
+     nskk-kana--hankaku-katakana-start nskk-kana--hankaku-katakana-end
+     "Return non-nil if CHAR is a half-width katakana character (U+FF65-U+FF9F).
+Half-width katakana are part of the Half-width and Full-width Forms block.")
+
+    ;; Han (kanji) spans two disjoint Unicode ranges; define it manually.
+    (nskk-prolog-<- (kana-han \?c)
+      (>= \?c nskk-kana--han-start)
+      (<= \?c nskk-kana--han-end))
+    (nskk-prolog-<- (kana-han \?c)
+      (>= \?c nskk-kana--han-extension-a-start)
+      (<= \?c nskk-kana--han-extension-a-end))
+
+    ;; Japanese composite: any of hiragana, katakana, han, hankaku-katakana.
+    (nskk-prolog-<- (kana-japanese \?c) (kana-hiragana \?c))
+    (nskk-prolog-<- (kana-japanese \?c) (kana-katakana \?c))
+    (nskk-prolog-<- (kana-japanese \?c) (kana-han \?c))
+    (nskk-prolog-<- (kana-japanese \?c) (kana-hankaku-katakana \?c))
+
+    ;; Populate Prolog facts from the hash tables.
+    ;; This is done after table initialization to keep all mappings in one place.
+    (nskk-prolog-set-index 'zenkaku-to-hankaku 2 :hash)
+    (nskk-prolog-set-index 'hankaku-to-zenkaku 2 :hash)
+    (maphash (lambda (k v)
+               (nskk-prolog-assert (list (list 'zenkaku-to-hankaku k v))))
+             nskk-kana--zenkaku-to-hankaku-table)
+    (maphash (lambda (k v)
+               (nskk-prolog-assert (list (list 'hankaku-to-zenkaku k v))))
+             nskk-kana--hankaku-to-zenkaku-table)
+
+    (setq nskk--kana-initialized t)))
 
 (provide 'nskk-kana)
 

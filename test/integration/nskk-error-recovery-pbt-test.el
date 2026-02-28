@@ -314,6 +314,43 @@
       (ert-fail (format "State corrupted after rapid mode switches: %S" failures)))))
 
 
+;;;;
+;;;; Seeded PBT: State recovery invariant — resetting henkan-phase to nil
+;;;;
+
+(nskk-property-test-seeded state-recovery-after-phase-reset
+  ((phase converting-phase))
+  (let* ((state (nskk-state-create 'hiragana)))
+    ;; Force state into a converting phase bypassing transition validation
+    (nskk-state-force-henkan-phase state phase)
+    ;; Now reset the phase to nil via the validated setter
+    (nskk-state-set-henkan-phase state nil)
+    ;; Assert: phase is nil and state is still structurally valid
+    (and (null (nskk-state-henkan-phase state))
+         (nskk-state-p state)))
+  50)
+
+
+;;;;
+;;;; Seeded PBT: Candidate reset invariant — nil candidates leave state valid
+;;;;
+
+(nskk-property-test-seeded candidate-reset-invariant
+  ((pair candidates-with-valid-index))
+  (let* ((candidates (plist-get pair :candidates))
+         (index (plist-get pair :index))
+         (state (nskk-state-create 'hiragana)))
+    ;; Set up non-empty candidates and a valid index
+    (nskk-state-set-candidates state candidates)
+    (nskk-state-set state 'current-index index)
+    ;; Now reset candidates to nil
+    (nskk-state-set state 'candidates nil)
+    ;; Assert: candidates are nil and state is still valid
+    (and (null (nskk-state-candidates state))
+         (nskk-state-p state)))
+  30)
+
+
 (provide 'nskk-error-recovery-pbt-test)
 
 ;;; nskk-error-recovery-pbt-test.el ends here

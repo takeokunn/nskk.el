@@ -81,6 +81,33 @@
     (nskk-state-set state 'input-buffer (nskk-pbt--random-hiragana-input))
     state))
 
+;; These helpers replicate the deleted parallel API:
+;; nskk-pbt--start-conversion, nskk-pbt--commit-conversion,
+;; nskk-pbt--cancel-conversion.
+;; They operate purely on the state struct for integration-level testing.
+
+(defun nskk-pbt--start-conversion (state candidates)
+  "Set STATE into active conversion with CANDIDATES (test helper)."
+  (nskk-state-set-candidates state candidates)
+  (nskk-state-set state 'henkan-position 0)
+  (nskk-state-force-henkan-phase state 'active))
+
+(defun nskk-pbt--commit-conversion (state)
+  "Commit STATE conversion by taking first candidate (test helper)."
+  (let ((first-candidate (car (nskk-state-candidates state))))
+    (when first-candidate
+      (nskk-state-set state 'converted-buffer first-candidate))
+    (nskk-state-set-candidates state nil)
+    (nskk-state-set state 'henkan-position nil)
+    (nskk-state-force-henkan-phase state nil)))
+
+(defun nskk-pbt--cancel-conversion (state original-input)
+  "Cancel conversion in STATE, restoring ORIGINAL-INPUT (test helper)."
+  (nskk-state-set state 'input-buffer original-input)
+  (nskk-state-set-candidates state nil)
+  (nskk-state-set state 'henkan-position nil)
+  (nskk-state-force-henkan-phase state nil))
+
 
 ;;;;
 ;;;; Property 1: Conversion Roundtrip
@@ -95,9 +122,9 @@
              (candidates (nskk-pbt--random-candidates))
              (input-before (nskk-state-input-buffer state)))
         ;; Start conversion with candidates
-        (nskk-henkan-start-conversion state candidates)
+        (nskk-pbt--start-conversion state candidates)
         ;; Commit conversion
-        (nskk-henkan-commit-conversion state)
+        (nskk-pbt--commit-conversion state)
         ;; Verify: converted-buffer should contain the first candidate
         (let ((converted (nskk-state-converted-buffer state)))
           (unless (and (stringp converted)
@@ -111,7 +138,7 @@
     (when failures
       (ert-fail (format "Conversion roundtrip failed for %d cases:\n%S"
                         (length failures)
-                        (take 5 failures))))))
+                        (seq-take failures 5))))))
 
 
 ;;;;
@@ -127,9 +154,9 @@
              (candidates (nskk-pbt--random-candidates))
              (original-input (nskk-state-input-buffer state)))
         ;; Start conversion
-        (nskk-henkan-start-conversion state candidates)
+        (nskk-pbt--start-conversion state candidates)
         ;; Cancel with original input
-        (nskk-henkan-cancel-conversion state original-input)
+        (nskk-pbt--cancel-conversion state original-input)
         ;; Verify: state should be restored
         (let ((input-after (nskk-state-input-buffer state))
               (henkan-pos (nskk-state-henkan-position state))
@@ -145,7 +172,7 @@
     (when failures
       (ert-fail (format "Conversion cancel failed for %d cases:\n%S"
                         (length failures)
-                        (take 5 failures))))))
+                        (seq-take failures 5))))))
 
 
 ;;;;
@@ -161,7 +188,7 @@
              (candidates (nskk-pbt--random-candidates))
              (num-candidates (length candidates)))
         ;; Start conversion
-        (nskk-henkan-start-conversion state candidates)
+        (nskk-pbt--start-conversion state candidates)
         ;; Set candidates on state
         (nskk-state-set-candidates state candidates)
         ;; Cycle through all candidates with next
@@ -185,7 +212,7 @@
     (when failures
       (ert-fail (format "Candidate navigation failed for %d cases:\n%S"
                         (length failures)
-                        (take 5 failures))))))
+                        (seq-take failures 5))))))
 
 
 ;;;;
@@ -200,8 +227,8 @@
       (let* ((state (nskk-pbt--make-conversion-state))
              (candidates (nskk-pbt--random-candidates)))
         ;; Start and commit once
-        (nskk-henkan-start-conversion state candidates)
-        (nskk-henkan-commit-conversion state)
+        (nskk-pbt--start-conversion state candidates)
+        (nskk-pbt--commit-conversion state)
         ;; Capture state after first commit
         (let ((converted-1 (nskk-state-converted-buffer state))
               (input-1 (nskk-state-input-buffer state))
@@ -209,7 +236,7 @@
               (cands-1 (nskk-state-candidates state))
               (idx-1 (nskk-state-current-index state)))
           ;; Commit again (should be no-op since no active conversion)
-          (nskk-henkan-commit-conversion state)
+          (nskk-pbt--commit-conversion state)
           ;; State should be identical
           (let ((converted-2 (nskk-state-converted-buffer state))
                 (input-2 (nskk-state-input-buffer state))
@@ -227,7 +254,7 @@
     (when failures
       (ert-fail (format "Idempotent commit failed for %d cases:\n%S"
                         (length failures)
-                        (take 5 failures))))))
+                        (seq-take failures 5))))))
 
 
 ;;;;
@@ -249,11 +276,11 @@
             (pcase op
               (0 ;; Start conversion
                (when (> (length (nskk-state-input-buffer state)) 0)
-                 (nskk-henkan-start-conversion state candidates)))
+                 (nskk-pbt--start-conversion state candidates)))
               (1 ;; Cancel conversion
-               (nskk-henkan-cancel-conversion state original-input))
+               (nskk-pbt--cancel-conversion state original-input))
               (2 ;; Commit conversion
-               (nskk-henkan-commit-conversion state)))))
+               (nskk-pbt--commit-conversion state)))))
         ;; Verify state consistency invariants
         (let ((henkan-pos (nskk-state-henkan-position state))
               (cands (nskk-state-candidates state))
@@ -286,7 +313,7 @@
     (when failures
       (ert-fail (format "State consistency failed for %d cases:\n%S"
                         (length failures)
-                        (take 5 failures))))))
+                        (seq-take failures 5))))))
 
 
 ;;;; Enhanced PBT Coverage
@@ -304,8 +331,8 @@
     ;; Put a non-empty input in the buffer
     (nskk-state-set state 'input-buffer hiragana-input)
     ;; Start and commit conversion
-    (nskk-henkan-start-conversion state candidates)
-    (nskk-henkan-commit-conversion state)
+    (nskk-pbt--start-conversion state candidates)
+    (nskk-pbt--commit-conversion state)
     ;; After commit, converted-buffer must be a non-empty string
     (let ((converted (nskk-state-converted-buffer state)))
       (and (stringp converted)
@@ -323,8 +350,8 @@
          (hiragana-input (nskk-pbt--random-hiragana-input)))
     (nskk-state-set state 'input-buffer hiragana-input)
     ;; Start then cancel conversion
-    (nskk-henkan-start-conversion state candidates)
-    (nskk-henkan-cancel-conversion state hiragana-input)
+    (nskk-pbt--start-conversion state candidates)
+    (nskk-pbt--cancel-conversion state hiragana-input)
     ;; Post-cancel invariants: input restored, henkan-position cleared
     (and (string= (nskk-state-input-buffer state) hiragana-input)
          (null (nskk-state-henkan-position state))
@@ -346,8 +373,8 @@
         (nskk-state-set state 'input-buffer original-input)
         (nskk-when
           (progn
-            (nskk-henkan-start-conversion state candidates)
-            (nskk-henkan-cancel-conversion state original-input)))
+            (nskk-pbt--start-conversion state candidates)
+            (nskk-pbt--cancel-conversion state original-input)))
         (nskk-then
           (should (string= (nskk-state-input-buffer state) original-input))
           (should (null (nskk-state-henkan-position state)))
@@ -361,8 +388,8 @@
         (nskk-state-set state 'input-buffer "かんじ")
         (nskk-when
           (progn
-            (nskk-henkan-start-conversion state candidates)
-            (nskk-henkan-commit-conversion state)))
+            (nskk-pbt--start-conversion state candidates)
+            (nskk-pbt--commit-conversion state)))
         (nskk-then
           (let ((converted (nskk-state-converted-buffer state)))
             (should (stringp converted))

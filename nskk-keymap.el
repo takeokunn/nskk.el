@@ -1,13 +1,11 @@
 ;;; nskk-keymap.el --- Keymap definitions for NSKK -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 NSKK Contributors
+
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
-
-;; Copyright (C) 2026 NSKK Contributors
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -26,26 +24,39 @@
 
 ;;; Commentary:
 
-;; Key handling utility functions for NSKK (Layer 1: Presentation Layer).
+;; State-aware key dispatch for NSKK (Layer 5: Presentation).
 ;;
-;; These functions provide state-aware key dispatch for special keys
-;; (q, l, L, /, x, SPC, RET, C-g).  They check the current NSKK state
-;; before intercepting keys, falling through to `self-insert-command'
-;; when NSKK is in ASCII mode or the state is not active.
+;; Layer position: L5 (Presentation) -- depends on nskk-state and nskk-prolog.
+;; State mutations are delegated to the Application layer (nskk-input,
+;; nskk-henkan); this module only reads state to determine dispatch.
 ;;
-;; State reads use nskk-state accessors directly (acceptable for L1),
-;; but state mutations are routed through the Application Layer API.
+;; Provides interactive handlers for the eight special keys in nskk-mode-map:
+;; q, l, L, /, x, SPC, RET, C-g.  Each handler checks the current NSKK
+;; conversion state before acting, falling through to `self-insert-command'
+;; or `keyboard-quit' when NSKK is in ASCII mode or state is inactive.
 ;;
-;; Key Architecture:
+;; Prolog predicates maintained by this module:
+;; - `key-action/3'  -- (key state action) dispatch rules for x, SPC, RET, C-g
 ;;
-;; `nskk-define-key-handler' -- macro for Prolog-dispatched handlers.
-;;   Generates interactive commands that query the `key-action/3' Prolog
-;;   predicate to determine the appropriate action based on current state.
+;; Key architecture:
+;; - `nskk-define-key-handler' -- macro that generates Prolog-dispatched
+;;     interactive commands.  Queries `key-action/3' to decide the action
+;;     based on the current dispatch state (converting, preedit, normal).
+;; - `nskk-with-japanese-mode' -- macro for q/l/L// handlers.  Uses the
+;;     `japanese-mode/1' predicate (defined in nskk-state.el) to guard
+;;     mode-switch actions.
+;; - `nskk--current-key-state' -- returns `converting', `preedit', or
+;;     `normal' for use by the dispatch system.
 ;;
-;; `nskk-with-japanese-mode' -- macro for mode-conditional handlers
-;;   (q, l, L, /).  Uses the `japanese-mode/1' Prolog predicate (defined
-;;   in nskk-state.el) to test whether the current mode accepts Japanese
-;;   input.
+;; Key public API (all interactive):
+;; - `nskk-handle-q'       -- toggle hiragana/katakana
+;; - `nskk-handle-l'       -- switch to ASCII mode
+;; - `nskk-handle-upper-l' -- switch to full-width latin mode
+;; - `nskk-handle-slash'   -- enter abbrev mode
+;; - `nskk-handle-x'       -- previous candidate
+;; - `nskk-handle-space'   -- start conversion / next candidate
+;; - `nskk-handle-return'  -- commit and newline
+;; - `nskk-handle-cancel'  -- cancel conversion / preedit / keyboard-quit
 
 ;;; Code:
 

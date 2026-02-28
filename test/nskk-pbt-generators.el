@@ -648,7 +648,7 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
 SIZE controls the length of the query."
   (let* ((sz (nskk-pbt--resolve-size size 3))
          (query-type (nskk-pbt--random 4)))
-    (case query-type
+    (cl-case query-type
       (0 ;; Hiragana only
        (mapconcat #'identity
                   (cl-loop repeat sz
@@ -730,6 +730,77 @@ SIZE controls the length of the query."
       (list :initial-mode initial-mode
             :target-mode target-mode
             :trigger-key (or trigger-key "C-j")))))
+
+;;;;
+;;;; Henkan Phase Generator
+;;;;
+
+;; Generate any valid (or nil) henkan phase
+(nskk-register-generator 'henkan-phase
+  (lambda (&rest _)
+    (nskk-pbt--random-choice '(nil on active list registration))))
+
+;; Generate a converting phase only (excludes nil and on)
+(nskk-register-generator 'converting-phase
+  (lambda (&rest _)
+    (nskk-pbt--random-choice '(active list registration))))
+
+
+;;;;
+;;;; Okurigana Full-Pattern Generator
+;;;;
+
+;; Generate a romaji prefix + uppercase consonant marker (full okurigana input)
+(nskk-register-generator 'okurigana-full-pattern
+  (lambda (&optional size)
+    (let* ((sz (nskk-pbt--resolve-size size 3))
+           (prefix (nskk-pbt--generate-romaji-pattern sz 'basic))
+           (consonant (nskk-pbt--random-choice
+                       '(?K ?S ?T ?N ?H ?M ?Y ?R ?W ?G ?Z ?D ?B ?P))))
+      (list :prefix prefix
+            :consonant consonant
+            :full (concat prefix (string consonant))))))
+
+;; Generate only the uppercase consonant character
+(nskk-register-generator 'okurigana-consonant-char
+  (lambda (&rest _)
+    (nskk-pbt--random-choice '(?K ?S ?T ?N ?H ?M ?Y ?R ?W ?G ?Z ?D ?B ?P))))
+
+
+;;;;
+;;;; Candidate Index Generator
+;;;;
+
+;; Generate a valid zero-based index into a candidate list of given size
+(nskk-register-generator 'candidate-index
+  (lambda (&optional size)
+    (let ((n (max 1 (or size (1+ (nskk-pbt--random-int 0 9))))))
+      (nskk-pbt--random-int 0 (1- n)))))
+
+;; Generate (candidates . index) pair where index is valid for candidates
+(nskk-register-generator 'candidates-with-valid-index
+  (lambda (&optional size)
+    (let* ((pool '("漢字" "感じ" "幹事" "日本" "二本" "変換" "桜" "山" "川"))
+           (n (max 1 (nskk-pbt--resolve-size size 3)))
+           (candidates (cl-loop repeat n
+                                collect (nskk-pbt--random-choice pool)))
+           (index (nskk-pbt--random-int 0 (1- n))))
+      (list :candidates candidates :index index))))
+
+
+;;;;
+;;;; Multi-Buffer Scenario Generator
+;;;;
+
+;; Generate independent state descriptors for multiple buffers
+(nskk-register-generator 'multi-buffer-scenario
+  (lambda (&optional size)
+    (let ((n (max 2 (nskk-pbt--resolve-size size 3))))
+      (cl-loop repeat n
+               collect (list :mode (nskk-pbt--generate-valid-mode)
+                             :input (nskk-pbt--generate-romaji-pattern 3 'basic)
+                             :henkan-phase nil)))))
+
 
 ;;;;
 ;;;; Utility Functions

@@ -5,8 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -26,23 +24,27 @@
 
 ;;; Commentary:
 
-;; This module implements the core romaji-to-kana conversion engine (Layer 4).
+;; Romaji-to-kana conversion engine for NSKK (Layer 2: Domain).
 ;;
-;; Layer Responsibilities:
-;; - Core Engine Layer implements pure conversion functions
-;; - NO state management - state is handled by Application Layer (Layer 3)
-;; - Provides conversion utilities that are independent of application state
+;; Layer position: L2 (Domain) -- depends on nskk-prolog and nskk-custom.
+;;
+;; Implements pure conversion functions with no buffer or state side effects.
+;; All conversion state (pending romaji, henkan phase) is managed by the
+;; Application layer (nskk-input, nskk-henkan).
 ;;
 ;; It handles:
-;; - Romaji to kana conversion using a table-driven approach
+;; - Romaji-to-kana conversion using a table-driven longest-match approach
 ;; - Partial and complete romaji sequence matching
 ;; - Vowel-based conversion (a, i, u, e, o)
 ;; - Consonant-vowel combinations (ka, ki, ku, ke, ko, etc.)
 ;; - Special combinations (sha, shu, sho, cha, chu, cho, etc.)
 ;; - Small kana and digraph handling
+;; - Sokuon (っ) detection: doubled consonant
+;; - Hatsuon (ん) detection: n followed by non-vowel/non-y/non-n/non-quote
 ;;
-;; Performance target: < 0.1ms for single conversion operation
-;; Memory: Minimal overhead with shared romaji table
+;; Romaji styles are registered via `nskk-converter-register-style' and
+;; loaded on demand.  Standard SKK style is initialized at load time.
+;; AZIK style is registered by nskk-azik.el and loaded when configured.
 
 ;;;; Prolog Predicates
 ;;
@@ -76,39 +78,7 @@
 
 (require 'cl-lib)
 (require 'nskk-prolog)
-
-(defgroup nskk-converter nil
-  "Romaji to Kana conversion settings."
-  :prefix "nskk-converter-"
-  :group 'nskk-kana)
-
-(defcustom nskk-converter-use-sokuon t
-  "Whether to enable automatic sokuon (small tsu) conversion."
-  :type 'boolean
-  :group 'nskk-converter)
-
-(defcustom nskk-converter-n-processing-mode 'smart
-  "How to process \\='n' for \\='ん' (hiragana) or \\='ン' (katakana).
-\\='smart means auto-detect based on context.
-\\='strict means \\='nn' is required.
-\\='loose means single \\='n' is sufficient."
-  :type '(choice (const :tag "Smart (auto)" smart)
-                 (const :tag "Strict (nn required)" strict)
-                 (const :tag "Loose (single n ok)" loose))
-  :group 'nskk-converter)
-
-(defcustom nskk-converter-auto-start-henkan t
-  "Whether to automatically start conversion on uppercase input."
-  :type 'boolean
-  :group 'nskk-converter)
-
-(defcustom nskk-converter-romaji-style 'standard
-  "Romaji input style for Japanese conversion.
-\\='standard - Standard SKK romaji (default)
-\\='azik     - AZIK extended romaji with efficiency shortcuts"
-  :type '(choice (const :tag "Standard SKK" standard)
-                 (const :tag "AZIK" azik))
-  :group 'nskk-converter)
+(require 'nskk-custom)
 
 ;; Romaji conversion table
 ;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)
@@ -446,7 +416,7 @@ This is a convenience wrapper for nskk-converter-convert."
     (nskk-convert-romaji--internal (downcase romaji)))))
 
 (defun nskk-convert-n--internal (remaining)
-  "Handle all ん-producing cases when REMAINING starts with the character n.
+  "Handle all ん-producing cases where REMAINING begins with character n.
 Precondition: REMAINING must be a non-empty string whose first character is ?n.
 Returns (kana . rest) cons cell if ん is produced, or nil to fall through
 to normal table-driven conversion (e.g. for \"na\" -> \"な\")."
@@ -569,7 +539,7 @@ Valid styles are defined in `nskk--style-registry'."
   "Define a new input style NAME with RULES.
 DOCSTRING describes the style.
 RULES is a list of (romaji kana) pairs."
-  (declare (doc-string 2) (indent 2))
+  (declare (doc-string 2) (indent 2) (debug (symbolp stringp body)))
   `(progn
      (defun ,(intern (format "nskk--init-%s-rules" name)) ()
        ,docstring
@@ -579,10 +549,15 @@ RULES is a list of (romaji kana) pairs."
      (nskk-converter-register-style ',name
        ',(intern (format "nskk--init-%s-rules" name)))))
 
-;; Initialize on load (placed after all function definitions to ensure
-;; nskk-converter-add-rule and nskk-converter--populate-incomplete-markers
-;; are defined before they are called during initialization)
-(nskk--initialize-romaji-table)
+(defvar nskk--converter-initialized nil
+  "Non-nil when the romaji-to-kana conversion table has been initialized.")
+
+(defun nskk-converter-initialize ()
+  "Initialize the romaji-to-kana conversion table.
+Idempotent: subsequent calls are no-ops."
+  (unless nskk--converter-initialized
+    (nskk--initialize-romaji-table)
+    (setq nskk--converter-initialized t)))
 
 (provide 'nskk-converter)
 

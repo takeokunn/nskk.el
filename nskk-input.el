@@ -5,8 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: japanese i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -25,17 +23,36 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
+
+;; Input processing and mode switching for NSKK (Layer 4: Input).
 ;;
-;; Input processing and mode switching for NSKK.  Handles character
-;; routing, romaji-to-kana conversion, mode switching, and AZIK key
-;; handlers.
+;; Layer position: L4 (Input) -- depends on nskk-henkan, nskk-kana,
+;;   nskk-state, nskk-converter, nskk-prolog.  Optionally loads nskk-azik.
+;;
+;; Handles character routing, romaji-to-kana accumulation, mode switching,
+;; and AZIK-aware key handlers.  This layer bridges keymap events (L5) and
+;; the henkan conversion pipeline (L3).
 ;;
 ;; Prolog predicates registered by this module:
 ;;   input-route/2          -- maps input mode to routing action
 ;;   toggle-mode/2          -- hiragana<->katakana toggle table
-;;   q-key-action/4         -- q key dispatch rules (style, behavior, buf-state, action)
-;;   semicolon-key-action/2 -- semicolon key dispatch rules (style, action)
+;;   q-key-action/4         -- q key dispatch (style, behavior, buf-state, action)
+;;   semicolon-key-action/2 -- semicolon key dispatch (style, action)
 ;;   fullwidth-char/2       -- ASCII to JIS X0208 full-width character table
+;;
+;; Key public API:
+;;   `nskk-self-insert'              -- main entry point for character input
+;;   `nskk-set-mode-hiragana'        -- switch to hiragana mode
+;;   `nskk-set-mode-katakana'        -- switch to katakana mode
+;;   `nskk-set-mode-latin'           -- switch to ASCII/latin mode
+;;   `nskk-set-mode-abbrev'          -- switch to abbrev mode
+;;   `nskk-set-mode-jisx0208-latin'  -- switch to full-width latin mode
+;;   `nskk-toggle-japanese-mode'     -- toggle hiragana<->katakana
+;;   `nskk-current-mode'             -- return current mode symbol
+;;   `nskk-handle-q-key'             -- q key with AZIK dispatch
+;;   `nskk-handle-semicolon-key'     -- semicolon key with AZIK dispatch
+;;   `nskk-convert-input-to-kana'    -- accumulate romaji, emit kana
+;;   `nskk--maybe-load-azik-style'   -- load AZIK if configured
 
 ;;; Code:
 
@@ -72,27 +89,12 @@
 (defvar nskk-converter-romaji-style)
 (defvar nskk-azik-q-behavior)
 
-;;;; Prolog Input Routing Rules
-
-(nskk-prolog-set-index 'input-route 2 :hash)
-(nskk-prolog-<- (input-route ascii insert-direct))
-(nskk-prolog-<- (input-route latin insert-direct))
-(nskk-prolog-<- (input-route abbrev process-abbrev))
-(nskk-prolog-<- (input-route jisx0208-latin insert-fullwidth))
-(nskk-prolog-<- (input-route hiragana process-japanese))
-(nskk-prolog-<- (input-route katakana process-japanese))
-
-;;;; Prolog Mode Toggle Rules
-
-(nskk-prolog-set-index 'toggle-mode 2 :hash)
-(nskk-prolog-<- (toggle-mode hiragana katakana))
-(nskk-prolog-<- (toggle-mode katakana hiragana))
-
 ;;;; Mode Setter Macro
 
 (defmacro nskk-define-mode-setter (mode)
   "Define an interactive mode setter function for MODE.
 Creates `nskk-set-mode-MODE' that switches to MODE and updates modeline."
+  (declare (indent 1) (debug t))
   (let ((fn-name (intern (format "nskk-set-mode-%s" mode))))
     `(defun ,fn-name ()
        ,(format "Switch to %s mode." mode)
@@ -142,21 +144,6 @@ Returns a mode symbol such as `hiragana', `katakana', `ascii',
              (eq nskk-converter-romaji-style 'azik))
     (nskk-converter-load-style 'azik)))
 
-;;;; Prolog Key Behavior Rules
-
-(nskk-prolog-set-index 'q-key-action 4 :hash)
-;; Non-AZIK: always toggle (behavior and buffer-state don't matter)
-(nskk-prolog-<- (q-key-action standard \?behavior \?buf toggle-mode))
-;; AZIK: behavior-driven dispatch
-(nskk-prolog-<- (q-key-action azik always-n \?buf insert-n))
-(nskk-prolog-<- (q-key-action azik toggle-only \?buf toggle-mode))
-(nskk-prolog-<- (q-key-action azik context-aware empty toggle-mode))
-(nskk-prolog-<- (q-key-action azik context-aware pending insert-n))
-
-(nskk-prolog-set-index 'semicolon-key-action 2 :hash)
-(nskk-prolog-<- (semicolon-key-action azik insert-small-tsu))
-(nskk-prolog-<- (semicolon-key-action standard self-insert))
-
 ;;;; AZIK-specific Key Handlers
 
 (defun nskk-handle-q-key ()
@@ -191,15 +178,6 @@ In standard mode: self-insert (pass through to `nskk-self-insert')."
       ('insert-small-tsu (insert "\u3063"))
       ('self-insert      (nskk-self-insert 1))
       (_                 nil))))
-
-;;;; Prolog Full-Width Character Table
-
-(nskk-prolog-set-index 'fullwidth-char 2 :hash)
-;; Space maps to ideographic space (special case)
-(nskk-prolog-assert '((fullwidth-char ?\s ?\u3000)))
-;; ASCII printable range (! 0x21 to ~ 0x7E) maps to FF01-FF5E (offset +#xFEE0)
-(cl-loop for c from ?! to ?~
-         do (nskk-prolog-assert `((fullwidth-char ,c ,(+ c #xFEE0)))))
 
 ;;;; Input Processing
 
@@ -312,7 +290,7 @@ lowercase version of the letter as normal romaji input."
 
 (defun nskk-process-abbrev-input (char)
   "Process input CHAR in abbrev mode.
-Currently inserts CHAR directly.  Full abbrev-mode lookup
+Currently inserts CHAR directly.  Full `abbrev-mode' lookup
 \(dictionary-assisted expansion) is not yet implemented."
   (insert char))
 
@@ -366,6 +344,51 @@ is still incomplete (waiting for more characters)."
      (t
       (setq nskk--romaji-buffer "")
       input))))
+
+(defvar nskk--input-initialized nil
+  "Non-nil when input routing Prolog predicates have been initialized.")
+
+(defun nskk-input-initialize ()
+  "Initialize input routing and fullwidth character Prolog predicates.
+Idempotent: subsequent calls are no-ops."
+  (unless nskk--input-initialized
+    ;; Input routing rules
+    (nskk-prolog-set-index 'input-route 2 :hash)
+    (nskk-prolog-<- (input-route ascii insert-direct))
+    (nskk-prolog-<- (input-route latin insert-direct))
+    (nskk-prolog-<- (input-route abbrev process-abbrev))
+    (nskk-prolog-<- (input-route jisx0208-latin insert-fullwidth))
+    (nskk-prolog-<- (input-route hiragana process-japanese))
+    (nskk-prolog-<- (input-route katakana process-japanese))
+
+    ;; Mode toggle rules
+    (nskk-prolog-set-index 'toggle-mode 2 :hash)
+    (nskk-prolog-<- (toggle-mode hiragana katakana))
+    (nskk-prolog-<- (toggle-mode katakana hiragana))
+
+    ;; Key behavior rules
+    (nskk-prolog-set-index 'q-key-action 4 :hash)
+    ;; Non-AZIK: always toggle (behavior and buffer-state don't matter)
+    (nskk-prolog-<- (q-key-action standard \?behavior \?buf toggle-mode))
+    ;; AZIK: behavior-driven dispatch
+    (nskk-prolog-<- (q-key-action azik always-n \?buf insert-n))
+    (nskk-prolog-<- (q-key-action azik toggle-only \?buf toggle-mode))
+    (nskk-prolog-<- (q-key-action azik context-aware empty toggle-mode))
+    (nskk-prolog-<- (q-key-action azik context-aware pending insert-n))
+
+    (nskk-prolog-set-index 'semicolon-key-action 2 :hash)
+    (nskk-prolog-<- (semicolon-key-action azik insert-small-tsu))
+    (nskk-prolog-<- (semicolon-key-action standard self-insert))
+
+    ;; Full-width character table
+    (nskk-prolog-set-index 'fullwidth-char 2 :hash)
+    ;; Space maps to ideographic space (special case)
+    (nskk-prolog-assert '((fullwidth-char ?\s ?\u3000)))
+    ;; ASCII printable range (! 0x21 to ~ 0x7E) maps to FF01-FF5E (offset +#xFEE0)
+    (cl-loop for c from ?! to ?~
+             do (nskk-prolog-assert `((fullwidth-char ,c ,(+ c #xFEE0)))))
+
+    (setq nskk--input-initialized t)))
 
 (provide 'nskk-input)
 

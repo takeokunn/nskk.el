@@ -19,6 +19,7 @@
 (require 'ert)
 (require 'nskk-debug)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
 
 ;;; Test Setup/Teardown
 
@@ -246,6 +247,87 @@
       (when window
         (delete-window window)))
     (nskk-debug-test--cleanup-buffer)))
+
+;;;
+;;; PBT-001 — Timestamp format invariant (enabled debug, various messages)
+;;;
+
+(nskk-deftest-table debug-timestamp-format-invariant
+  :columns (format-str arg)
+  :rows (("Test message: %s" "hello")
+         ("Value: %d" 42)
+         ("Key input: %s" "romaji")
+         ("Buffer content: %s" "かんじ")
+         ("Debug info: %s" "foo bar"))
+  :body (let ((original-value nskk-debug-enabled))
+          (unwind-protect
+              (progn
+                (setq nskk-debug-enabled t)
+                (nskk-debug-test--cleanup-buffer)
+                (nskk-debug-log format-str arg)
+                (let ((contents (nskk-debug-test--get-buffer-contents)))
+                  (should (string-match-p "\\[[0-9]+:[0-9]+:[0-9]+\\.[0-9]+\\]" contents))))
+            (setq nskk-debug-enabled original-value)
+            (nskk-debug-test--cleanup-buffer))))
+
+;;;
+;;; PBT-002 — Log idempotency after clear (table-driven over initial states)
+;;;
+
+(nskk-deftest-table debug-clear-idempotency
+  :columns (initial-content)
+  :rows (("Single line\n")
+         ("[00:00:00.000] Entry 1\n[00:00:00.001] Entry 2\n")
+         ("")
+         ("[00:00:00.000] A\n[00:00:00.001] B\n[00:00:00.002] C\n[00:00:00.003] D\n")
+         ("Large content to clear\n"))
+  :body (unwind-protect
+            (progn
+              ;; Setup: put initial-content into debug buffer
+              (nskk-debug-test--cleanup-buffer)
+              (let ((buffer (nskk-debug--buffer)))
+                (with-current-buffer buffer
+                  (let ((inhibit-read-only t))
+                    (erase-buffer)
+                    (when (and (stringp initial-content)
+                               (> (length initial-content) 0))
+                      (insert initial-content)))))
+              ;; Act: clear the buffer
+              (nskk-debug-clear)
+              ;; Assert: buffer is always empty after clear
+              (should (equal (nskk-debug-test--get-buffer-contents) "")))
+          (nskk-debug-test--cleanup-buffer)))
+
+;;;
+;;; PBT-003 — Max entries enforcement (exhaustive over small max values)
+;;;
+
+(nskk-property-test-exhaustive debug-max-entries-enforcement
+  '(1 2 3 5 10)
+  (let ((original-max nskk-debug-max-entries)
+        (result t))
+    (unwind-protect
+        (progn
+          (setq nskk-debug-max-entries item)
+          (nskk-debug-test--cleanup-buffer)
+          (let ((buffer (nskk-debug--buffer)))
+            (with-current-buffer buffer
+              (let ((inhibit-read-only t))
+                (erase-buffer)
+                ;; Insert item+3 lines (more than max)
+                (dotimes (i (+ item 3))
+                  (insert (format "[00:00:%02d.000] Entry %d\n" i i))))
+              ;; Trim to max
+              (nskk-debug--trim)
+              ;; Count remaining lines
+              (let* ((contents (buffer-string))
+                     (lines (if (string= contents "")
+                                0
+                              (length (split-string (string-trim-right contents "\n") "\n")))))
+                (setq result (<= lines item)))))
+          result)
+      (setq nskk-debug-max-entries original-max)
+      (nskk-debug-test--cleanup-buffer))))
 
 ;;; Provide
 

@@ -6,8 +6,6 @@
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -26,8 +24,14 @@
 
 ;;; Commentary:
 
-;; Self-built Prolog engine providing unification, backtracking,
-;; and declarative rule matching for NSKK's conversion rules.
+;; Embedded Prolog engine for NSKK (Layer 0: Foundation).
+;;
+;; Layer position: L0 (Foundation) -- no dependencies on other NSKK modules.
+;;
+;; Self-contained Prolog engine providing unification, backtracking, and
+;; declarative rule matching for NSKK's conversion and dispatch rules.
+;; Used by all other NSKK modules to express logic as facts and rules
+;; rather than imperative conditionals.
 ;;
 ;; Features:
 ;; - First-order unification without occurs check
@@ -38,7 +42,25 @@
 ;; - Arithmetic built-in goals: is/2, </2, >/2, <=/2, >=/2, =:=/2
 ;; - DSL macros for natural Prolog-like syntax
 ;;
-;; Performance target: single query < 20us with hash indexing
+;; Performance target: single query < 20us with hash indexing.
+;;
+;; Key public API:
+;; - `nskk-prolog-<-'              -- assert a fact or rule (DSL macro)
+;; - `nskk-prolog-?-'              -- query for first solution (DSL macro)
+;; - `nskk-prolog-set-index'       -- configure index strategy
+;; - `nskk-prolog-assert'          -- assert a clause
+;; - `nskk-prolog-retract'         -- retract first matching clause
+;; - `nskk-prolog-retract-all'     -- retract all clauses for a predicate
+;; - `nskk-prolog-clear-database'  -- reset the entire database
+;; - `nskk-prolog-query'           -- query, return all solutions
+;; - `nskk-prolog-query-one'       -- query, return first solution
+;; - `nskk-prolog-query-value'     -- query and extract one variable binding
+;; - `nskk-prolog-query-values'    -- query and extract multiple bindings
+;; - `nskk-prolog-query-all-values' -- query and extract all bindings for var
+;; - `nskk-prolog-trie-prefix-search' -- prefix search via trie index
+;; - `nskk-prolog-variable-p'     -- test for Prolog variable symbol
+;; - `nskk-prolog-ground-p'       -- test for ground (variable-free) term
+;; - `nskk-prolog-unify'          -- unify two terms
 ;;
 ;; Usage:
 ;;
@@ -465,7 +487,7 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
    ((nskk-prolog-variable-p expr)
     (let ((val (nskk-prolog-walk expr subst)))
       (if (eq val expr)
-          (error "nskk-prolog: unbound variable in arithmetic: %S" expr)
+          (error "Unbound variable in arithmetic: %S" expr)
         (nskk-prolog--eval-arith val subst))))
    ;; Emacs Lisp bound symbol (e.g., defconst values used in rule bodies)
    ((and (symbolp expr) (not (nskk-prolog-variable-p expr)) (boundp expr))
@@ -479,8 +501,8 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
        ((eq op '-) (- a b))
        ((eq op '*) (* a b))
        ((eq op '/) (/ a b))
-       (t (error "nskk-prolog: unknown arithmetic operator: %S" op)))))
-   (t (error "nskk-prolog: cannot evaluate arithmetic: %S" expr))))
+       (t (error "Unknown arithmetic operator: %S" op)))))
+   (t (error "Cannot evaluate arithmetic expression: %S" expr))))
 
 ;;;; Prove Engine
 
@@ -589,7 +611,7 @@ For single-solution efficiency, prefer `nskk-prolog-prove-one'."
     (nreverse results)))
 
 (defun nskk-prolog-prove-first (goals subst)
-  "Like `nskk-prolog-prove' but abort via `nskk-prolog-first-solution' on first match.
+  "Like `nskk-prolog-prove' but throw on the first matching solution.
 GOALS is a list of Prolog goals to satisfy.
 SUBST is the current variable substitution alist.
 Used internally by `nskk-prolog-prove-one' for early termination.
@@ -754,7 +776,7 @@ Example:
 ;;;; Utility Functions
 
 (defun nskk-prolog-ground-p (term)
-  "Return non-nil if TERM contains no Prolog variables.
+  "Return non-nil if TERM has no unbound Prolog variables.
 A ground term is fully instantiated with no unbound variables."
   (cond
    ((nskk-prolog-variable-p term) nil)
@@ -829,7 +851,7 @@ GOAL is (predicate arg1 ...) -- not quoted.
 Example:
   (nskk-prolog-?- (romaji-to-kana \"ka\" \\?kana))
   ;; => substitution alist for first solution"
-  (declare (debug t))
+  (declare (indent 0) (debug t))
   `(nskk-prolog-query-one ',goal))
 
 (provide 'nskk-prolog)

@@ -43,6 +43,20 @@
 (require 'nskk-prolog)
 (eval-when-compile (require 'cl-lib))
 
+;; Load all NSKK modules and initialize their Prolog predicates once for the
+;; test session.  This mirrors what `nskk--enable' does at mode activation
+;; time, but without dictionary loading or buffer-local setup.
+(require 'nskk-state)
+(require 'nskk-kana)
+(require 'nskk-henkan)
+(require 'nskk-input)
+(require 'nskk-converter)
+(nskk-state-initialize-prolog)
+(nskk-kana-initialize)
+(nskk-henkan-initialize)
+(nskk-input-initialize)
+(nskk-converter-initialize)
+
 
 ;;;;
 ;;;; Test Framework Configuration

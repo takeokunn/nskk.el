@@ -612,15 +612,15 @@ Note: Prolog-backed classification costs ~200-300us per character."
   (should (not (nskk-prolog-query '(kana-katakana ?あ)))))
 
 (nskk-deftest-unit kana-prolog-conversion-rules
-  "Test that kana conversion Prolog rules work."
-  (let ((result (nskk-prolog-query-one (list 'kana-hiragana-to-katakana ?あ '\?k))))
-    (should result)
-    (should (listp result))
-    (should (= (nskk-prolog-walk '\?k result) ?ア)))
-  (let ((result (nskk-prolog-query-one (list 'kana-katakana-to-hiragana ?ア '\?h))))
-    (should result)
-    (should (listp result))
-    (should (= (nskk-prolog-walk '\?h result) ?あ))))
+  "Test that kana conversion functions work correctly.
+Note: hiragana<->katakana conversion is provided as elisp functions,
+not Prolog predicates.  This test validates the elisp API."
+  (should (= (nskk-kana-hiragana-to-katakana ?あ) ?ア))
+  (should (= (nskk-kana-hiragana-to-katakana ?い) ?イ))
+  (should (= (nskk-kana-hiragana-to-katakana ?う) ?ウ))
+  (should (= (nskk-kana-katakana-to-hiragana ?ア) ?あ))
+  (should (= (nskk-kana-katakana-to-hiragana ?イ) ?い))
+  (should (= (nskk-kana-katakana-to-hiragana ?ウ) ?う)))
 
 (nskk-deftest-unit kana-prolog-zenkaku-facts
   "Test that zenkaku-to-hankaku Prolog facts are asserted."

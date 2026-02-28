@@ -5,8 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -25,32 +23,43 @@
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
+
+;; AZIK extended romaji input for NSKK (Layer 3: Application).
 ;;
-;; AZIK (Extended Romaji) input support for NSKK.
-;; Implements the AZIK specification for efficient Japanese input.
+;; Layer position: L3 (Application) -- depends on nskk-converter and
+;;   nskk-prolog.  Loaded optionally by nskk-input.el when
+;;   `nskk-converter-romaji-style' is set to \\='azik.
+;;
+;; Implements the AZIK specification for efficient Japanese input.  AZIK
+;; reduces keystrokes compared to standard romaji by using consonant suffix
+;; keys for hatsuon (ん extension) and double vowel sequences.
 ;;
 ;; Architecture:
 ;; - Standard romaji rules are initialized via nskk--initialize-romaji-table.
-;; - AZIK-specific rules are stored in the azik-rule/2 Prolog predicate.
-;; - The nskk-azik-rules macro asserts batches of azik-rule/2 facts at
-;;   compile time, expanding into individual nskk-prolog-<- calls.
+;; - AZIK-specific rules are stored in the `azik-rule/2' Prolog predicate.
+;; - The `nskk-azik-rules' macro asserts batches of azik-rule/2 facts at
+;;   load time, expanding into individual nskk-prolog-<- calls.
 ;; - A bridge rule (romaji-to-kana ?r ?k) :- (azik-rule ?r ?k) connects
 ;;   azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
 ;;   Note: the bridge rule is NOT indexed by the trie (variable first arg);
 ;;   ground trie queries on romaji-to-kana/2 bypass AZIK rules.
 ;; - The hash table is populated from azik-rule/2 for hot-path lookups.
-;;   nskk-converter-lookup (inline) reads only from the hash, never Prolog.
+;;   `nskk-converter-lookup' (inline) reads only from the hash, never Prolog.
 ;;
 ;; Partial match markers (:incomplete entries in the hash) are derived
 ;; automatically from azik-rule/2 by scanning all romaji keys of length > 1
-;; and computing their proper prefixes.  This also covers 2-char youon
-;; prefixes (e.g., "kg", "hg") that were absent from the old hardcoded list.
+;; and computing their proper prefixes.  This covers 2-char youon prefixes
+;; (e.g., "kg", "hg") automatically.
+;;
+;; Prolog predicates maintained by this module:
+;; - `azik-rule/2'  -- (romaji kana) AZIK-specific conversion rules,
+;;     hash-indexed on first arg for O(1) lookup.
 ;;
 ;; AZIK rule categories (stored in azik-rule/2):
-;; 1. Special keys (; → っ, : → ー)
+;; 1. Special keys (; -> っ, : -> ー)
 ;; 2. Consonant compatibility (x=しゃ行, c=ちゃ行)
-;; 3. Hatsuon extensions (z/k/j/d/l → +ん)
-;; 4. Double vowel extensions (q/h/w/p → +vowel pair)
+;; 3. Hatsuon extensions (z/k/j/d/l -> +ん)
+;; 4. Double vowel extensions (q/h/w/p -> +vowel pair)
 ;; 5. Youon compatibility (g substitutes for y)
 ;; 6. Same-finger alternatives (f suffix)
 ;; 7. Word shortcuts
@@ -94,7 +103,7 @@ PREFIX is the consonant key string.
 A/I/U/E/O are the base kana for each vowel position.
 Generates: prefix+z→A+ん, prefix+k→I+ん, prefix+j→U+ん,
            prefix+d→E+ん, prefix+l→O+ん."
-  (declare (debug t))
+  (declare (indent 0) (debug t))
   `(progn
      (nskk-prolog-<- (azik-rule ,(concat prefix "z") ,(concat a "ん")))
      (nskk-prolog-<- (azik-rule ,(concat prefix "k") ,(concat i "ん")))
@@ -107,7 +116,7 @@ Generates: prefix+z→A+ん, prefix+k→I+ん, prefix+j→U+ん,
 PREFIX is the consonant key string.
 A/U/E/O are the base kana for each vowel position.
 Generates: prefix+q→A+い, prefix+h→U+う, prefix+w→E+い, prefix+p→O+う."
-  (declare (debug t))
+  (declare (indent 0) (debug t))
   `(progn
      (nskk-prolog-<- (azik-rule ,(concat prefix "q") ,(concat a "い")))
      (nskk-prolog-<- (azik-rule ,(concat prefix "h") ,(concat u "う")))
@@ -119,7 +128,7 @@ Generates: prefix+q→A+い, prefix+h→U+う, prefix+w→E+い, prefix+p→O+�
 PREFIX is the consonant key string.
 A/I/U/E/O are the base kana for each vowel position.
 DV-O overrides O for double vowel (e.g., わ行 uses うぉ instead of を)."
-  (declare (debug t))
+  (declare (indent 0) (debug t))
   `(progn
      (nskk-azik-hatsuon ,prefix ,a ,i ,u ,e ,o)
      (nskk-azik-double-vowel ,prefix ,a ,u ,e ,(or dv-o o))))
@@ -130,7 +139,7 @@ PREFIX is the key combo (e.g., \"kg\" for きゃ行).
 A/I/U/E/O are the base kana.
 Base rules generated for a/u/e/o only (no i).
 Hatsuon and double vowel extensions are generated for all positions."
-  (declare (debug t))
+  (declare (indent 0) (debug t))
   `(progn
      ;; Base rules (no i for youon)
      (nskk-prolog-<- (azik-rule ,(concat prefix "a") ,a))

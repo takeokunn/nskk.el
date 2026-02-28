@@ -207,6 +207,42 @@
                         (take 5 failures))))))
 
 
+;;;;
+;;;; Exhaustive: All 26 uppercase letters detected as okurigana triggers
+;;;;
+
+(nskk-property-test-exhaustive uppercase-letters-are-okurigana-triggers
+  (number-sequence ?A ?Z)
+  (let ((result (nskk-detect-okurigana-char item)))
+    (and result
+         (characterp result)
+         (= result (downcase item)))))
+
+
+;;;;
+;;;; Seeded PBT: Okurigana full-pattern — consonant stored in state
+;;;;
+
+(nskk-property-test-seeded okurigana-full-pattern-state-roundtrip
+  ((pattern okurigana-full-pattern))
+  (let* ((consonant (plist-get pattern :consonant))
+         (state (nskk-state-create 'hiragana))
+         (detected (nskk-detect-okurigana-char consonant)))
+    (when detected
+      (nskk-state-set-okurigana state detected)
+      (equal (nskk-state-get-okurigana state) detected)))
+  50)
+
+
+;;;;
+;;;; Exhaustive: Consonant-lowercase symmetry for the 14 okurigana consonants
+;;;;
+
+(nskk-property-test-exhaustive okurigana-consonant-lowercase-symmetry
+  '(?K ?S ?T ?N ?H ?M ?Y ?R ?W ?G ?Z ?D ?B ?P)
+  (equal (nskk-detect-okurigana-char item) (downcase item)))
+
+
 (provide 'nskk-okurigana-pbt-test)
 
 ;;; nskk-okurigana-pbt-test.el ends here

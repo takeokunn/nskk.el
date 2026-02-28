@@ -14,7 +14,7 @@
 ;; - Indicator return value when state is nil
 ;; - Indicator suffix text per mode (hiragana, katakana, abbrev, ascii, latin, jisx0208-latin)
 ;; - Face text-property per mode
-;; - Prolog mode-info/4 facts for all 7 modes
+;; - Prolog mode-properties/5 facts for all 6 modes (direct is not a valid mode)
 ;; - nskk-cursor--mode-color returns non-nil for each mode
 ;; - nskk-modeline-format customization
 ;; - nskk-modeline-update callable without error
@@ -27,6 +27,7 @@
 (require 'nskk-modeline)
 (require 'nskk-state)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
 
 ;;;
 ;;; TR-001 — nskk-modeline-indicator is fboundp
@@ -165,71 +166,74 @@
     (should (eq face 'nskk-modeline-direct-face))))
 
 ;;;
-;;; TR-005 — Prolog mode-info/4 has facts for all 7 modes
+;;; TR-005 — Prolog mode-properties/5 has facts for all 6 modes
 ;;;
 
 (nskk-deftest-unit modeline-prolog-mode-info-hiragana
-  "Test that mode-info/4 has a fact for hiragana."
-  (let ((result (nskk-prolog-query-one '(mode-info hiragana \?s \?f \?h))))
+  "Test that mode-properties/5 has a fact for hiragana."
+  (let ((result (nskk-prolog-query-one '(mode-properties hiragana \?s \?f \?h \?c))))
     (should result)))
 
 (nskk-deftest-unit modeline-prolog-mode-info-katakana
-  "Test that mode-info/4 has a fact for katakana."
-  (let ((result (nskk-prolog-query-one '(mode-info katakana \?s \?f \?h))))
+  "Test that mode-properties/5 has a fact for katakana."
+  (let ((result (nskk-prolog-query-one '(mode-properties katakana \?s \?f \?h \?c))))
     (should result)))
 
 (nskk-deftest-unit modeline-prolog-mode-info-abbrev
-  "Test that mode-info/4 has a fact for abbrev."
-  (let ((result (nskk-prolog-query-one '(mode-info abbrev \?s \?f \?h))))
+  "Test that mode-properties/5 has a fact for abbrev."
+  (let ((result (nskk-prolog-query-one '(mode-properties abbrev \?s \?f \?h \?c))))
     (should result)))
 
 (nskk-deftest-unit modeline-prolog-mode-info-ascii
-  "Test that mode-info/4 has a fact for ascii."
-  (let ((result (nskk-prolog-query-one '(mode-info ascii \?s \?f \?h))))
+  "Test that mode-properties/5 has a fact for ascii."
+  (let ((result (nskk-prolog-query-one '(mode-properties ascii \?s \?f \?h \?c))))
     (should result)))
 
 (nskk-deftest-unit modeline-prolog-mode-info-latin
-  "Test that mode-info/4 has a fact for latin."
-  (let ((result (nskk-prolog-query-one '(mode-info latin \?s \?f \?h))))
+  "Test that mode-properties/5 has a fact for latin."
+  (let ((result (nskk-prolog-query-one '(mode-properties latin \?s \?f \?h \?c))))
     (should result)))
 
 (nskk-deftest-unit modeline-prolog-mode-info-jisx0208-latin
-  "Test that mode-info/4 has a fact for jisx0208-latin."
-  (let ((result (nskk-prolog-query-one '(mode-info jisx0208-latin \?s \?f \?h))))
+  "Test that mode-properties/5 has a fact for jisx0208-latin."
+  (let ((result (nskk-prolog-query-one '(mode-properties jisx0208-latin \?s \?f \?h \?c))))
     (should result)))
 
 (nskk-deftest-unit modeline-prolog-mode-info-direct
-  "Test that mode-info/4 has a fact for direct."
-  (let ((result (nskk-prolog-query-one '(mode-info direct \?s \?f \?h))))
-    (should result)))
+  "Test that `direct' is handled as an alias of ascii (no separate mode-properties fact)."
+  ;; `direct' is defined in nskk-define-mode-entry for face lookup only; it is
+  ;; not a standalone mode in nskk-state-modes nor in mode-properties/5.
+  ;; nskk-cursor--mode-color therefore returns nil for direct, which is expected.
+  (let ((result (nskk-prolog-query-one '(mode-properties direct \?s \?f \?h \?c))))
+    (should-not result)))
 
 ;;;
-;;; TR-005 — Prolog mode-info/4 returns correct strings per mode
+;;; TR-005 — Prolog mode-properties/5 returns correct strings per mode
 ;;;
 
 (nskk-deftest-unit modeline-prolog-mode-info-hiragana-string
-  "Test that mode-info/4 returns the hiragana display string."
-  (let ((s (nskk-prolog-query-value '(mode-info hiragana \?s \?f \?h) '\?s)))
+  "Test that mode-properties/5 returns the hiragana display string."
+  (let ((s (nskk-prolog-query-value '(mode-properties hiragana \?s \?f \?h \?c) '\?s)))
     (should (string= s "かな"))))
 
 (nskk-deftest-unit modeline-prolog-mode-info-katakana-string
-  "Test that mode-info/4 returns the katakana display string."
-  (let ((s (nskk-prolog-query-value '(mode-info katakana \?s \?f \?h) '\?s)))
+  "Test that mode-properties/5 returns the katakana display string."
+  (let ((s (nskk-prolog-query-value '(mode-properties katakana \?s \?f \?h \?c) '\?s)))
     (should (string= s "カナ"))))
 
 (nskk-deftest-unit modeline-prolog-mode-info-abbrev-string
-  "Test that mode-info/4 returns the abbrev display string."
-  (let ((s (nskk-prolog-query-value '(mode-info abbrev \?s \?f \?h) '\?s)))
+  "Test that mode-properties/5 returns the abbrev display string."
+  (let ((s (nskk-prolog-query-value '(mode-properties abbrev \?s \?f \?h \?c) '\?s)))
     (should (string= s "aA"))))
 
 (nskk-deftest-unit modeline-prolog-mode-info-jisx0208-latin-string
-  "Test that mode-info/4 returns the jisx0208-latin display string."
-  (let ((s (nskk-prolog-query-value '(mode-info jisx0208-latin \?s \?f \?h) '\?s)))
+  "Test that mode-properties/5 returns the jisx0208-latin display string."
+  (let ((s (nskk-prolog-query-value '(mode-properties jisx0208-latin \?s \?f \?h \?c) '\?s)))
     (should (string= s "全英"))))
 
 (nskk-deftest-unit modeline-prolog-mode-info-ascii-string
-  "Test that mode-info/4 returns the ascii display string."
-  (let ((s (nskk-prolog-query-value '(mode-info ascii \?s \?f \?h) '\?s)))
+  "Test that mode-properties/5 returns the ascii display string."
+  (let ((s (nskk-prolog-query-value '(mode-properties ascii \?s \?f \?h \?c) '\?s)))
     (should (string= s "SKK"))))
 
 ;;;
@@ -273,10 +277,11 @@
     (should (> (length color) 0))))
 
 (nskk-deftest-unit modeline-cursor-color-direct
-  "Test that nskk-cursor--mode-color returns non-nil for direct."
+  "Test that nskk-cursor--mode-color returns nil for direct (no standalone mode-properties fact)."
+  ;; `direct' is a face alias in nskk-modeline.el but not in mode-properties/5.
+  ;; ascii/latin cover this display case; direct returns nil for cursor color.
   (let ((color (nskk-cursor--mode-color 'direct)))
-    (should (stringp color))
-    (should (> (length color) 0))))
+    (should-not color)))
 
 ;;;
 ;;; TR-007 — nskk-modeline-format customization
@@ -396,8 +401,8 @@
     ;; Temporarily set state to a non-registered mode struct by mutating mode slot
     ;; We test the fallback via nskk-prolog-query-value returning nil for an unknown mode.
     (let ((result (nskk-prolog-query-value
-                   '(mode-info nonexistent-mode \?s \?f \?h) '\?s)))
-      ;; mode-info/4 has no fact for nonexistent-mode — query returns nil
+                   `(mode-properties nonexistent-mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
+      ;; mode-properties/5 has no fact for nonexistent-mode — query returns nil
       (should (null result)))))
 
 (nskk-deftest-unit modeline-cursor--mode-color-unknown-mode-returns-nil
@@ -420,6 +425,53 @@
 (nskk-deftest-unit modeline-requires-nskk-prolog
   "Test that nskk-prolog is loaded."
   (should (featurep 'nskk-prolog)))
+
+;;;
+;;; PBT-001 — Exhaustive mode indicator invariant
+;;;
+
+(nskk-property-test-exhaustive modeline-all-modes-return-nonempty
+  '(hiragana katakana ascii latin jisx0208-latin abbrev)
+  (let ((nskk-current-state (nskk-state-create item)))
+    (and (stringp (nskk-modeline-indicator))
+         (> (length (nskk-modeline-indicator)) 0))))
+
+;;;
+;;; PBT-002 — Format string invariant (seeded PBT with valid-mode generator)
+;;;
+
+(nskk-property-test-seeded modeline-format-bracket-invariant
+  ((mode valid-mode))
+  (let* ((nskk-modeline-format "[%m]")
+         (nskk-current-state (if (memq mode '(hiragana katakana ascii latin jisx0208-latin abbrev))
+                                 (nskk-state-create mode)
+                               (nskk-state-create 'hiragana)))
+         (indicator (nskk-modeline-indicator)))
+    ;; When state is set and format is "[%m]", indicator must start with "[" and end with "]"
+    (if (null nskk-current-state)
+        t
+      (and (stringp indicator)
+           (string-prefix-p "[" indicator)
+           (string-suffix-p "]" indicator))))
+  50
+  42)
+
+;;;
+;;; PBT-003 — Face consistency table-driven test
+;;;
+
+(nskk-deftest-table modeline-face-consistency
+  :columns (mode expected-face)
+  :rows ((hiragana      nskk-modeline-hiragana-face)
+         (katakana      nskk-modeline-katakana-face)
+         (ascii         nskk-modeline-direct-face)
+         (latin         nskk-modeline-direct-face)
+         (jisx0208-latin nskk-modeline-jisx0208-latin-face)
+         (abbrev        nskk-modeline-abbrev-face))
+  :body (let* ((nskk-current-state (nskk-state-create mode))
+               (indicator (nskk-modeline-indicator))
+               (actual-face (get-text-property 0 'face indicator)))
+          (should (eq actual-face expected-face))))
 
 (provide 'nskk-modeline-test)
 

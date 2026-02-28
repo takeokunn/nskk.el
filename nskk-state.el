@@ -5,8 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -26,49 +24,65 @@
 
 ;;; Commentary:
 
-;; Buffer-local state management for NSKK using `cl-defstruct'.
+;; Buffer-local state management for NSKK (Layer 2: Domain).
 ;;
-;; The central `nskk-state' struct tracks:
+;; Layer position: L2 (Domain) -- depends on nskk-prolog and nskk-custom.
+;;
+;; Manages the per-buffer `nskk-state' struct and the Prolog facts that
+;; encode valid modes, valid transitions, and struct slot defaults.
+;;
+;; The central `nskk-state' struct (cl-defstruct) tracks:
 ;; - Current input mode: hiragana, katakana, ascii, latin, abbrev,
-;;   jisx0208-latin
-;; - Henkan (conversion) phase: whether the user is mid-conversion (▼)
+;;   jisx0208-latin, katakana-半角
+;; - Henkan (conversion) phase: nil, on (▽), active (▼), list, registration
 ;; - Candidate list and selection index
-;; - Preedit text (reading under construction, shown with ▽ marker)
+;; - Input and converted text buffers
+;; - Conversion start position (henkan-position)
+;; - Okurigana consonant (stored as metadata)
+;; - Undo/redo stacks
 ;;
 ;; State is stored buffer-locally in `nskk-current-state' and mutated
 ;; exclusively through the setter functions defined in this module.
+;; The `nskk-state-set' dispatcher routes mode and henkan-phase changes
+;; through validated setters; all other slots are dispatched via the
+;; `nskk-state-slot-dispatch' macro.
 ;;
 ;; Prolog predicates provided by this module:
-;; - `valid-mode/1': validates mode symbols against `nskk-state-modes'
-;; - `japanese-mode/1': identifies modes where Japanese input is active
-;; - `can-transition/2': validates any mode-to-mode transition
-;; - `valid-henkan-transition/2': validates henkan phase transitions
-;; - `henkan-mode-phase/1': classifies phases as active henkan phases
-;; - `state-slot-default/2': default values for state struct slots
-;; - `resettable-field/1': fields cleared by `nskk-state-reset'
-;; - `metadata-key/1': valid metadata key symbols
+;; - `mode-properties/5'         -- unified mode descriptor
+;;     (mode display-string face help-text cursor-color-var)
+;;     Single source of truth for all mode display data.
+;; - `valid-mode/1'              -- derived rule: succeeds iff mode has
+;;     a mode-properties/5 fact; used as a guard in transition rules.
+;; - `japanese-mode/1'           -- hiragana, katakana, katakana-半角
+;; - `can-transition/2'          -- valid-mode/1 to valid-mode/1
+;; - `valid-henkan-phase/1'      -- membership: nil, on, active, list, registration
+;; - `valid-henkan-transition/2' -- (from to) transition graph
+;; - `henkan-mode-phase/1'       -- active henkan phases (on, active, list, registration)
+;; - `preedit-phase/1'           -- preedit (non-converting) phases
+;; - `registration-phase/1'      -- dict-registration phases
+;; - `state-slot-default/2'      -- (slot default-value) for struct creation
+;; - `resettable-field/1'        -- fields reset by `nskk-state-reset'
+;;
+;; Key public API:
+;; - `nskk-state-create'           -- create a new state struct
+;; - `nskk-state-get' / `nskk-state-set' -- generic accessor/mutator
+;; - `nskk-state-valid-mode-p'     -- validate a mode symbol
+;; - `nskk-state-set-henkan-phase' -- validated phase transition
+;; - `nskk-state-force-henkan-phase' -- unvalidated (test/emergency use)
+;; - `nskk-state-in-henkan-mode-p' -- test for active conversion
+;; - `nskk-state-henkan-on-p'      -- test for ▽ phase
+;; - `nskk-state-henkan-active-p'  -- test for ▼ phase
+;; - `nskk-state-transition'       -- validated mode switch
+;; - `nskk-state-reset'            -- reset to initial values (preserves mode)
+;; - `nskk-state-append-input'     -- append char to input buffer
+;; - `nskk-state-delete-last-char' -- delete last char from input buffer
+;; - `nskk-state-next-candidate' / `nskk-state-previous-candidate'
 
 ;;; Code:
 
 (require 'cl-lib)
 (require 'nskk-prolog)
-(defgroup nskk-state nil
-  "State management settings."
-  :prefix "nskk-state-"
-  :group 'nskk)
-
-(defcustom nskk-state-default-mode 'ascii
-  "Default input mode when NSKK is activated."
-  :type '(choice (const :tag "ASCII" ascii)
-                 (const :tag "Hiragana" hiragana)
-                 (const :tag "Katakana" katakana)
-                 (const :tag "Full-width Latin" jisx0208-latin))
-  :group 'nskk-state)
-
-(defcustom nskk-state-undo-limit 100
-  "Maximum number of undo operations to keep in history."
-  :type 'integer
-  :group 'nskk-state)
+(require 'nskk-custom)
 
 ;;;; Internal Macros
 
@@ -88,7 +102,8 @@ Binds `candidates' and `index' for use in BODY."
   "Generate cond dispatch for STATE struct slot setters.
 KEY-SYM is a symbol being dispatched on, VALUE is the value to set.
 SLOTS is a list of slot name symbols.
-Each generates: ((eq KEY-SYM \\='SLOT) (setf (nskk-state-SLOT STATE) VALUE) VALUE)
+Each slot generates:
+  ((eq KEY-SYM \\='SLOT) (setf (nskk-state-SLOT STATE) VALUE) VALUE)
 Falls through to nil if no slot matches."
   (declare (indent 3) (debug t))
   `(cond
@@ -105,17 +120,6 @@ Falls through to nil if no slot matches."
 (defconst nskk-state-modes
   '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
   "List of valid NSKK modes.")
-
-;;;; Prolog Mode/Phase Facts
-(nskk-prolog-set-index 'valid-mode 1 :hash)
-(dolist (m nskk-state-modes)
-  (nskk-prolog-assert (list (list 'valid-mode m))))
-
-;;;; Japanese Input Mode Classification
-(nskk-prolog-set-index 'japanese-mode 1 :hash)
-(nskk-prolog-<- (japanese-mode hiragana))
-(nskk-prolog-<- (japanese-mode katakana))
-(nskk-prolog-<- (japanese-mode katakana-半角))
 
 ;; Main state structure
 (cl-defstruct nskk-state
@@ -235,67 +239,6 @@ Note: nil phase (the common case) short-circuits before the query."
 
 (defconst nskk-state-henkan-phases '(nil on active list registration)
   "List of valid henkan phases.")
-
-(nskk-prolog-set-index 'valid-henkan-phase 1 :hash)
-(dolist (p nskk-state-henkan-phases)
-  (nskk-prolog-assert (list (list 'valid-henkan-phase p))))
-
-;; Transition rules: any valid mode can transition to any other valid mode
-(nskk-prolog-<- (can-transition \?from \?to)
-  (valid-mode \?from) (valid-mode \?to))
-
-;;;; Henkan Phase Transition Graph
-(nskk-prolog-set-index 'valid-henkan-transition 2 :hash)
-(nskk-prolog-<- (valid-henkan-transition nil on))
-(nskk-prolog-<- (valid-henkan-transition on active))
-(nskk-prolog-<- (valid-henkan-transition on registration))
-(nskk-prolog-<- (valid-henkan-transition on nil))
-(nskk-prolog-<- (valid-henkan-transition active nil))
-(nskk-prolog-<- (valid-henkan-transition active list))
-(nskk-prolog-<- (valid-henkan-transition list nil))
-(nskk-prolog-<- (valid-henkan-transition list registration))
-(nskk-prolog-<- (valid-henkan-transition registration nil))
-(nskk-prolog-<- (valid-henkan-transition registration list))
-
-;;;; Henkan Mode Phase Classification
-(nskk-prolog-set-index 'henkan-mode-phase 1 :hash)
-(nskk-prolog-<- (henkan-mode-phase on))
-(nskk-prolog-<- (henkan-mode-phase active))
-(nskk-prolog-<- (henkan-mode-phase list))
-(nskk-prolog-<- (henkan-mode-phase registration))
-
-;;;; State Slot Defaults
-(nskk-prolog-set-index 'state-slot-default 2 :hash)
-(nskk-prolog-<- (state-slot-default input-buffer ""))
-(nskk-prolog-<- (state-slot-default converted-buffer ""))
-(nskk-prolog-<- (state-slot-default candidates nil))
-(nskk-prolog-<- (state-slot-default current-index 0))
-(nskk-prolog-<- (state-slot-default henkan-position nil))
-(nskk-prolog-<- (state-slot-default marker-position nil))
-(nskk-prolog-<- (state-slot-default undo-stack nil))
-(nskk-prolog-<- (state-slot-default redo-stack nil))
-(nskk-prolog-<- (state-slot-default henkan-phase nil))
-(nskk-prolog-<- (state-slot-default metadata nil))
-
-;;;; Resettable Fields
-(nskk-prolog-set-index 'resettable-field 1 :hash)
-(nskk-prolog-<- (resettable-field input-buffer))
-(nskk-prolog-<- (resettable-field converted-buffer))
-(nskk-prolog-<- (resettable-field candidates))
-(nskk-prolog-<- (resettable-field current-index))
-(nskk-prolog-<- (resettable-field henkan-position))
-(nskk-prolog-<- (resettable-field marker-position))
-(nskk-prolog-<- (resettable-field undo-stack))
-(nskk-prolog-<- (resettable-field redo-stack))
-(nskk-prolog-<- (resettable-field henkan-phase))
-(nskk-prolog-<- (resettable-field metadata))
-
-;;;; Metadata Key Registry
-(nskk-prolog-set-index 'metadata-key 1 :hash)
-(nskk-prolog-<- (metadata-key remaining-romaji))
-(nskk-prolog-<- (metadata-key kana-type))
-(nskk-prolog-<- (metadata-key width-type))
-(nskk-prolog-<- (metadata-key okurigana))
 
 (defun nskk-state-set-henkan-phase (state phase)
   "Set henkan PHASE in STATE with transition validation.
@@ -499,6 +442,119 @@ Emacs mark ring.")
 
 (defvar-local nskk--registration-depth 0
   "Current nesting depth of dictionary registration.")
+
+(defvar nskk--state-prolog-initialized nil
+  "Non-nil when state machine Prolog predicates have been initialized.")
+
+(defun nskk-state-initialize-prolog ()
+  "Initialize NSKK state machine Prolog predicates.
+Idempotent: subsequent calls are no-ops.
+Distinct from `nskk-state-initialize', which sets up buffer-local state."
+  (unless nskk--state-prolog-initialized
+    ;; Unified mode properties
+    ;; mode-properties/5: (MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-COLOR-VAR)
+    ;; NOTE: Faces (nskk-modeline-*-face) are defined in nskk-modeline.el, which
+    ;; is loaded after nskk-state.el.  Prolog facts store the face symbols as
+    ;; data—they are not evaluated at assertion time, so forward references are safe.
+    ;; Similarly, cursor color variables are stored as symbols and dereferenced via
+    ;; `symbol-value' at runtime (see `nskk-cursor--mode-color' in nskk-modeline.el).
+    (nskk-prolog-set-index 'mode-properties 5 :hash)
+    (nskk-prolog-<- (mode-properties hiragana "かな" nskk-modeline-hiragana-face
+                                     "Hiragana input mode" nskk-cursor-hiragana-color))
+    (nskk-prolog-<- (mode-properties katakana "カナ" nskk-modeline-katakana-face
+                                     "Katakana input mode" nskk-cursor-katakana-color))
+    (nskk-prolog-<- (mode-properties katakana-半角 "ｶﾅ" nskk-modeline-katakana-face
+                                     "Half-width katakana input mode" nskk-cursor-katakana-color))
+    (nskk-prolog-<- (mode-properties abbrev "aA" nskk-modeline-abbrev-face
+                                     "Abbreviation mode" nskk-cursor-abbrev-color))
+    (nskk-prolog-<- (mode-properties ascii "SKK" nskk-modeline-direct-face
+                                     "Direct/ASCII input mode" nskk-cursor-latin-color))
+    (nskk-prolog-<- (mode-properties latin "SKK" nskk-modeline-direct-face
+                                     "Direct/ASCII input mode" nskk-cursor-latin-color))
+    (nskk-prolog-<- (mode-properties jisx0208-latin "全英" nskk-modeline-jisx0208-latin-face
+                                     "Full-width latin input mode" nskk-cursor-jisx0208-latin-color))
+
+    ;; valid-mode/1: derived rule — a symbol is a valid mode iff it has a mode-properties fact.
+    ;; Uses distinct variable names (?disp, ?face, ?help, ?cur) to avoid
+    ;; spurious unification failures that occur with repeated ?_ names.
+    (nskk-prolog-<- (valid-mode \?m)
+      (mode-properties \?m \?disp \?face \?help \?cur))
+
+    ;; Japanese input mode classification
+    (nskk-prolog-set-index 'japanese-mode 1 :hash)
+    (nskk-prolog-<- (japanese-mode hiragana))
+    (nskk-prolog-<- (japanese-mode katakana))
+    (nskk-prolog-<- (japanese-mode katakana-半角))
+
+    ;; Valid henkan phases (derived from nskk-state-henkan-phases defconst)
+    (nskk-prolog-set-index 'valid-henkan-phase 1 :hash)
+    (dolist (p nskk-state-henkan-phases)
+      (nskk-prolog-assert (list (list 'valid-henkan-phase p))))
+
+    ;; Transition rules: any valid mode can transition to any other valid mode
+    (nskk-prolog-<- (can-transition \?from \?to)
+      (valid-mode \?from) (valid-mode \?to))
+
+    ;; Henkan phase transition graph
+    (nskk-prolog-set-index 'valid-henkan-transition 2 :hash)
+    (nskk-prolog-<- (valid-henkan-transition nil on))
+    (nskk-prolog-<- (valid-henkan-transition on active))
+    (nskk-prolog-<- (valid-henkan-transition on registration))
+    (nskk-prolog-<- (valid-henkan-transition on nil))
+    (nskk-prolog-<- (valid-henkan-transition active nil))
+    (nskk-prolog-<- (valid-henkan-transition active list))
+    (nskk-prolog-<- (valid-henkan-transition list nil))
+    (nskk-prolog-<- (valid-henkan-transition list registration))
+    (nskk-prolog-<- (valid-henkan-transition registration nil))
+    (nskk-prolog-<- (valid-henkan-transition registration list))
+
+    ;; Henkan mode phase classification
+    (nskk-prolog-set-index 'henkan-mode-phase 1 :hash)
+    (nskk-prolog-<- (henkan-mode-phase on))
+    (nskk-prolog-<- (henkan-mode-phase active))
+    (nskk-prolog-<- (henkan-mode-phase list))
+    (nskk-prolog-<- (henkan-mode-phase registration))
+
+    ;; Preedit phase classification
+    ;; Phases in which the user is building preedit text (▽ marker visible)
+    ;; but no dictionary search has started yet.
+    (nskk-prolog-set-index 'preedit-phase 1 :hash)
+    (nskk-prolog-<- (preedit-phase normal))
+    (nskk-prolog-<- (preedit-phase preedit))
+
+    ;; Registration phase classification
+    ;; Phases related to dictionary registration (active nesting).
+    (nskk-prolog-set-index 'registration-phase 1 :hash)
+    (nskk-prolog-<- (registration-phase active))
+    (nskk-prolog-<- (registration-phase list))
+
+    ;; State slot defaults
+    (nskk-prolog-set-index 'state-slot-default 2 :hash)
+    (nskk-prolog-<- (state-slot-default input-buffer ""))
+    (nskk-prolog-<- (state-slot-default converted-buffer ""))
+    (nskk-prolog-<- (state-slot-default candidates nil))
+    (nskk-prolog-<- (state-slot-default current-index 0))
+    (nskk-prolog-<- (state-slot-default henkan-position nil))
+    (nskk-prolog-<- (state-slot-default marker-position nil))
+    (nskk-prolog-<- (state-slot-default undo-stack nil))
+    (nskk-prolog-<- (state-slot-default redo-stack nil))
+    (nskk-prolog-<- (state-slot-default henkan-phase nil))
+    (nskk-prolog-<- (state-slot-default metadata nil))
+
+    ;; Resettable fields
+    (nskk-prolog-set-index 'resettable-field 1 :hash)
+    (nskk-prolog-<- (resettable-field input-buffer))
+    (nskk-prolog-<- (resettable-field converted-buffer))
+    (nskk-prolog-<- (resettable-field candidates))
+    (nskk-prolog-<- (resettable-field current-index))
+    (nskk-prolog-<- (resettable-field henkan-position))
+    (nskk-prolog-<- (resettable-field marker-position))
+    (nskk-prolog-<- (resettable-field undo-stack))
+    (nskk-prolog-<- (resettable-field redo-stack))
+    (nskk-prolog-<- (resettable-field henkan-phase))
+    (nskk-prolog-<- (resettable-field metadata))
+
+    (setq nskk--state-prolog-initialized t)))
 
 (provide 'nskk-state)
 

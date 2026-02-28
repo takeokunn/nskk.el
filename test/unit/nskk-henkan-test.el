@@ -34,6 +34,8 @@
 (require 'nskk-state)
 (require 'nskk-prolog)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 
 ;;;
 ;;; Feature Loading Tests
@@ -657,6 +659,8 @@
   (let ((nskk-current-state (nskk-state-create 'hiragana))
         (nskk--registration-depth 0)
         prompt-shown)
+    ;; Set phase to `on' (preedit) so the nil->registration transition is valid
+    (nskk-state-force-henkan-phase nskk-current-state 'on)
     (cl-letf (((symbol-function 'read-from-minibuffer)
                (lambda (p) (setq prompt-shown p) ""))
               ((symbol-function 'nskk-dict-register-word)
@@ -736,6 +740,143 @@
 (nskk-deftest-unit henkan-deleted-get-current-candidate-removed
   "Test that nskk-henkan-get-current-candidate (parallel API) was removed."
   (should-not (fboundp 'nskk-henkan-get-current-candidate)))
+
+;;;
+;;; nskk-henkan-dispatch Literal-Value Tests (Issue 8)
+;;;
+
+(nskk-deftest-unit henkan-dispatch-literal-value
+  "Test nskk-henkan-dispatch clause matching with a literal non-Prolog value."
+  (let ((result nil))
+    (nskk-henkan-dispatch my-action 'foo
+      (foo (setq result 'matched-foo))
+      (bar (setq result 'matched-bar)))
+    (should (eq result 'matched-foo))))
+
+(nskk-deftest-unit henkan-dispatch-no-match-returns-nil
+  "Test nskk-henkan-dispatch returns nil when no clause matches."
+  (let ((result 'unchanged))
+    (nskk-henkan-dispatch my-action 'baz
+      (foo (setq result 'matched-foo))
+      (bar (setq result 'matched-bar)))
+    (should (eq result 'unchanged))))
+
+;;;
+;;; nskk-start-conversion Direct Tests (Issue 10)
+;;;
+
+(nskk-deftest-unit henkan-start-conversion-has-candidates
+  "Test nskk-start-conversion sets candidates and active phase when search returns results."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--conversion-start-marker (make-marker))
+          (nskk--romaji-buffer "")
+          (nskk--henkan-count 0)
+          (nskk--conversion-overlay nil))
+      (insert "▽かんじ")
+      (set-marker nskk--conversion-start-marker (point-min))
+      (goto-char (point-max))
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
+      (cl-letf (((symbol-function 'nskk-core-search)
+                 (lambda (&rest _) '("漢字" "感じ")))
+                ((symbol-function 'nskk--update-overlay)
+                 #'ignore)
+                ((symbol-function 'nskk--replace-marker-at)
+                 #'ignore))
+        (nskk-start-conversion)
+        (should (equal (nskk-state-candidates nskk-current-state) '("漢字" "感じ")))
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
+
+(nskk-deftest-unit henkan-start-conversion-no-candidates-starts-registration
+  "Test nskk-start-conversion calls nskk-start-registration when no candidates found."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--conversion-start-marker (make-marker))
+          (nskk--romaji-buffer "")
+          (nskk--henkan-count 0)
+          (nskk--conversion-overlay nil)
+          (nskk--registration-depth 0)
+          registration-called)
+      (insert "▽てすと")
+      (set-marker nskk--conversion-start-marker (point-min))
+      (goto-char (point-max))
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
+      (cl-letf (((symbol-function 'nskk-core-search)
+                 (lambda (&rest _) nil))
+                ((symbol-function 'nskk-start-registration)
+                 (lambda (reading) (setq registration-called reading))))
+        (nskk-start-conversion)
+        (should registration-called)))))
+
+;;;
+;;; nskk-rollback-conversion Tests (Issue 11)
+;;;
+
+(nskk-deftest-unit henkan-rollback-conversion-resets-state
+  "Test nskk-rollback-conversion resets count and restores preedit phase."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--conversion-start-marker (make-marker))
+          (nskk--romaji-buffer "")
+          (nskk--henkan-count 3)
+          (nskk--conversion-overlay nil)
+          (nskk-henkan--candidate-list-active nil))
+      (insert "▼漢字")
+      (set-marker nskk--conversion-start-marker (point-min))
+      (goto-char (point-max))
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (nskk-state-set-candidates nskk-current-state '("漢字" "感じ"))
+      (cl-letf (((symbol-function 'nskk--restore-preedit) #'ignore)
+                ((symbol-function 'nskk--delete-marker-at) #'ignore)
+                ((symbol-function 'run-hook-with-args) #'ignore))
+        (nskk-rollback-conversion)
+        (should (= nskk--henkan-count 0))))))
+
+;;;
+;;; Seeded Property-Based Tests (new)
+;;;
+
+;; Property: "converting-p state invariant"
+;; For any henkan-phase, set it on a fresh state, then verify nskk-converting-p
+;; matches whether the phase is in '(active list registration).
+(nskk-property-test-seeded henkan-pbt-converting-p-invariant
+  ((phase henkan-phase))
+  (let ((nskk-current-state (nskk-state-create 'hiragana)))
+    (if phase
+        (nskk-state-force-henkan-phase nskk-current-state phase)
+      ;; nil phase: do not force any phase (state is freshly created)
+      nil)
+    (let ((converting (nskk-converting-p))
+          (is-converting-phase (memq phase '(active list registration))))
+      (nskk-assert-state-invariant nskk-current-state
+        ;; converting-p is non-nil iff phase is active/list/registration
+        (eq (not (null converting)) (not (null is-converting-phase))))
+      t))
+  100 2001)
+
+;; Property: "detect-okurigana-char type invariant"
+;; For any uppercase char A-Z, result is always equal to (downcase char).
+(nskk-property-test-seeded henkan-pbt-detect-okurigana-type-invariant
+  ((char okurigana-consonant-char))
+  (equal (nskk-detect-okurigana-char char) (downcase char))
+  100 2002)
+
+;; Property: "henkan-dispatch never errors for valid prolog values"
+;; Both search-result-action values (has-candidates, no-candidates) always
+;; return a known symbol without signaling an error.
+(nskk-property-test-seeded henkan-pbt-search-result-action-never-errors
+  ((phase converting-phase))
+  (condition-case err
+      (let* ((has-cand-result
+              (nskk-prolog-query-value '(search-result-action has-candidates \?a) '\?a))
+             (no-cand-result
+              (nskk-prolog-query-value '(search-result-action no-candidates \?a) '\?a)))
+        (and (symbolp has-cand-result)
+             (symbolp no-cand-result)
+             (memq has-cand-result '(show-overlay start-registration))
+             (memq no-cand-result  '(show-overlay start-registration))))
+    (error nil))
+  50 2003)
 
 (provide 'nskk-henkan-test)
 

@@ -5,12 +5,10 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
-;; Keywords: japanese, input, mule, i18n
+;; Keywords: i18n
 
-;; This file is part of NSKK (Next-generation SKK).
-;;
+;; This file is NOT part of GNU Emacs.
+
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
@@ -26,28 +24,40 @@
 
 ;;; Commentary:
 
-;; Dictionary module for NSKK (Layer 2: Domain Layer).
+;; Dictionary loading and lookup for NSKK (Layer 1: Core Engine).
+;;
+;; Layer position: L1 (Core Engine) -- depends only on nskk-prolog.
 ;;
 ;; Provides loading, lookup, registration, and persistence of SKK dictionaries.
 ;; Supports both user dictionaries (read/write) and system dictionaries
-;; (read-only, e.g. SKK-JISYO.L).
+;; (read-only, e.g. SKK-JISYO.L from the skktools package).
 ;;
 ;; Dictionary sources are identified by source symbols (`user', `system')
-;; mapped to Prolog predicates via `dict-source/2' facts.  Two predicates
-;; are maintained in the global Prolog database:
+;; mapped to Prolog predicates via `dict-source/2' facts.  All dictionary
+;; data lives in the global Prolog database as two predicates:
 ;;
 ;;   `user-dict-entry/2'   --- (user-dict-entry READING CANDIDATES-LIST)
 ;;   `system-dict-entry/2' --- (system-dict-entry READING CANDIDATES-LIST)
 ;;
 ;; Lookup is O(1) for exact matches via Prolog hash index, O(k + n) for
-;; prefix matches via Prolog trie index.
+;; prefix matches via Prolog trie index.  User dictionary entries take
+;; priority over system entries via Prolog clause ordering in `dict-entry/2'.
 ;;
-;; Main entry points:
-;;   `nskk-dict-lookup'              - look up a reading key
-;;   `nskk-dict-register-word'       - register a new word to user dict
-;;   `nskk-dict-load-user-dictionary'   - load user dictionary from file
-;;   `nskk-dict-load-system-dictionaries' - load system dictionaries
-;;   `nskk-dict-save-user-dictionary'   - persist user dictionary to file
+;; Prolog predicates maintained by this module:
+;; - `dict-source/2'        -- maps source symbol to predicate name
+;; - `user-dict-entry/2'    -- trie-indexed user dictionary entries
+;; - `system-dict-entry/2'  -- trie-indexed system dictionary entries
+;; - `dict-entry/2'         -- bridge rule (user then system lookup)
+;; - `member/2'             -- list membership helper
+;; - `dict-register/2'      -- assertz/retract-based registration rule
+;;
+;; Key public API:
+;; - `nskk-dict-lookup'                   -- look up a reading key
+;; - `nskk-dict-register-word'            -- register a new word
+;; - `nskk-dict-load-user-dictionary'     -- load user dictionary from file
+;; - `nskk-dict-load-system-dictionaries' -- load system dictionaries
+;; - `nskk-dict-save-user-dictionary'     -- persist user dictionary to file
+;; - `nskk-dict-initialize'               -- initialize all dictionaries
 
 ;;; Code:
 

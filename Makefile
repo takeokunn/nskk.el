@@ -4,7 +4,7 @@ BATCH = $(EMACS) -Q --batch
 LOAD_PATH = -L . -L test -L test/integration -L test/unit
 
 # All source files
-SRC = nskk.el nskk-state.el \
+SRC = nskk.el nskk-custom.el nskk-state.el \
        nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
        nskk-converter.el nskk-debug.el \
        nskk-search.el nskk-cache.el nskk-kana.el \

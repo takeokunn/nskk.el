@@ -61,6 +61,7 @@
 ;;; Code:
 
 ;; Foundation modules
+(require 'nskk-custom)
 (require 'nskk-prolog)
 (require 'nskk-state)
 
@@ -78,17 +79,6 @@
 
 (declare-function nskk-set-mode-hiragana "nskk-input")
 (declare-function nskk--maybe-load-azik-style "nskk-input")
-
-(defgroup nskk nil
-  "NSKK - Next-generation SKK with zero dependencies and extreme performance."
-  :prefix "nskk-"
-  :group 'i18n
-  :link '(url-link :tag "GitHub" "https://github.com/takeokunn/nskk.el"))
-
-(defgroup nskk-ui nil
-  "UI components settings."
-  :prefix "nskk-"
-  :group 'nskk)
 
 (defvar nskk-mode-hook nil
   "Hook run when NSKK mode is enabled.
@@ -162,6 +152,12 @@ This provides global bindings that work even when nskk-mode is not yet active.")
 (defun nskk--enable ()
   "Enable NSKK in current buffer."
   (nskk-debug-message "NSKK enabled in buffer: %s" (buffer-name))
+  ;; Initialize global Prolog predicates (idempotent, guard-protected)
+  (nskk-state-initialize-prolog)
+  (nskk-kana-initialize)
+  (nskk-henkan-initialize)
+  (nskk-input-initialize)
+  (nskk-converter-initialize)
   (unless nskk--system-dict-index
     (nskk-dict-initialize))
   (unless nskk-current-state
@@ -215,7 +211,7 @@ This provides global bindings that work even when nskk-mode is not yet active.")
 ;;;###autoload
 (defun nskk-kakutei ()
   "Commit the current conversion or enter hiragana mode (確定).
-In SKK, C-j serves as both the kakutei (commit) key and the key
+In SKK, the kakutei key serves as both the commit key and the key
 to enter hiragana mode from ASCII/Latin.  This function dispatches:
 - Converting → commit current candidate
 - Preedit active → commit preedit text as-is (without conversion)

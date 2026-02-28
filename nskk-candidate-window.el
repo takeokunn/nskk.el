@@ -5,8 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -26,25 +24,36 @@
 
 ;;; Commentary:
 
-;; Candidate display UI for NSKK (Layer 1: UI Layer).
+;; Candidate display UI for NSKK (Layer 5: Presentation).
+;;
+;; Layer position: L5 (Presentation) -- depends on nskk-prolog, nskk-henkan,
+;;   and nskk-custom.  Wired into the henkan pipeline via hooks in nskk.el.
 ;;
 ;; Implements ddskk-compatible candidate display:
-;; - First N-1 candidates shown inline one-by-one with ▼ marker
-;; - After Nth SPC press, switches to echo area list with home-row
+;; - First N-1 candidates shown inline one-by-one with a ▼ marker
+;; - After the Nth SPC press, switches to echo area list with home-row
 ;;   selection keys (a s d f j k l)
 ;; - Shows [残り N] count for remaining candidates
 ;; - Supports page navigation (SPC = next page, x = prev page)
 ;; - Direct selection by pressing the corresponding key
 ;;
-;; Prolog integration:
-;; - `candidate-selection-key'/2 facts map key characters to page positions
-;; - Initialized from `nskk-henkan-show-candidates-keys' at load time
-;; - Uses hash indexing for O(1) key dispatch
+;; Prolog predicates maintained by this module:
+;; - `candidate-selection-key'/2: (candidate-selection-key KEY POSITION)
+;;   Maps each home-row selection key character to its 0-based page
+;;   position.  Initialized at load time from
+;;   `nskk-henkan-show-candidates-keys'.  Uses hash indexing for O(1)
+;;   key dispatch during candidate selection.
+;;
+;; Key public API:
+;; - `nskk-candidate-show-list'         Display a page of candidates in echo area
+;; - `nskk-candidate-hide-list'         Clear the echo area candidate display
+;; - `nskk-candidate-list-active-p'     Non-nil when candidate list is visible
+;; - `nskk-candidate-list-select-by-key' Return absolute index for a key press
 ;;
 ;; Hook integration:
 ;; - `nskk-henkan-show-candidates-functions': called to display page
 ;; - `nskk-henkan-hide-candidates-functions': called to clear display
-;; - `nskk-henkan-select-candidate-by-key-function': key→index lookup
+;; - `nskk-henkan-select-candidate-by-key-function': key->index lookup
 ;;
 ;; These hooks are wired in `nskk.el' during `nskk--enable'.
 
@@ -53,16 +62,13 @@
 (require 'cl-lib)
 (require 'nskk-prolog)
 (require 'nskk-henkan)
-
-(defgroup nskk-candidate-window nil
-  "Candidate display UI for NSKK."
-  :prefix "nskk-candidate-"
-  :group 'nskk-ui)
+(require 'nskk-custom)
 
 ;;;; Prolog Candidate Key Selection Facts
 
 (defun nskk--candidate-init-key-facts ()
-  "Initialize `candidate-selection-key'/2 Prolog facts from `nskk-henkan-show-candidates-keys'.
+  "Initialize Prolog facts for `candidate-selection-key'/2.
+Source: `nskk-henkan-show-candidates-keys'.
 Maps each selection key character to its 0-based page position.
 Uses hash indexing for O(1) key dispatch during candidate selection."
   (nskk-prolog-set-index 'candidate-selection-key 2 :hash)

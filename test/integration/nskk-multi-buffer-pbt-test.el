@@ -219,6 +219,54 @@
                         (take 5 failures))))))
 
 
+;;;;
+;;;; Seeded PBT: Buffer state isolation — each buffer's mode is independent
+;;;;
+
+(nskk-property-test-seeded buffer-state-isolation
+  ((scenario multi-buffer-scenario))
+  (let* ((states (mapcar (lambda (entry)
+                           (nskk-state-create (plist-get entry :mode)))
+                         scenario))
+         ;; Verify initial mode matches the scenario entry
+         (modes-correct
+          (cl-every (lambda (state entry)
+                      (eq (nskk-state-mode state) (plist-get entry :mode)))
+                    states scenario)))
+    ;; Now mutate the first state's mode and verify others are unaffected
+    (when (and modes-correct (>= (length states) 2))
+      (let* ((state1 (car states))
+             (rest-states (cdr states))
+             (rest-modes-before (mapcar #'nskk-state-mode rest-states))
+             (new-mode (if (eq (nskk-state-mode state1) 'hiragana) 'ascii 'hiragana)))
+        (nskk-state-set state1 'mode new-mode)
+        ;; After mutating state1, remaining states should be unchanged
+        (cl-every (lambda (state mode-before)
+                    (eq (nskk-state-mode state) mode-before))
+                  rest-states rest-modes-before))))
+  30)
+
+
+;;;;
+;;;; Seeded PBT: Mode independence — two states hold independent candidate lists
+;;;;
+
+(nskk-property-test-seeded mode-independence-candidates
+  ((mode1 valid-mode)
+   (mode2 valid-mode))
+  (let* ((state1 (nskk-state-create mode1))
+         (state2 (nskk-state-create mode2))
+         (cands1 '("漢字" "感じ" "幹事"))
+         (cands2 '("日本" "二本" "入本")))
+    (nskk-state-set-candidates state1 cands1)
+    (nskk-state-set-candidates state2 cands2)
+    (and (equal (nskk-state-candidates state1) cands1)
+         (equal (nskk-state-candidates state2) cands2)
+         (not (equal (nskk-state-candidates state1)
+                     (nskk-state-candidates state2)))))
+  30)
+
+
 (provide 'nskk-multi-buffer-pbt-test)
 
 ;;; nskk-multi-buffer-pbt-test.el ends here

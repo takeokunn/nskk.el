@@ -1,38 +1,43 @@
 ;;; nskk-search.el --- Dictionary search algorithms for NSKK -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 NSKK Contributors
+
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
 ;; Keywords: i18n
 
-;; Copyright (C) 2026 NSKK Contributors
+;; This file is NOT part of GNU Emacs.
 
-;; This file is part of NSKK.
-
-;; NSKK is free software: you can redistribute it and/or modify
+;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
 
-;; NSKK is distributed in the hope that it will be useful,
+;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
-;; Integrated dictionary search engine for NSKK (SKK Japanese input method).
+;; Dictionary search algorithms for NSKK (Layer 2: Domain).
+;;
+;; Layer position: L2 (Domain) -- depends on nskk-dictionary, nskk-cache,
+;;   nskk-prolog, and nskk-custom.
+;;
+;; Provides an integrated search engine over the Prolog-backed dictionary
+;; with four search modes, learning-based candidate ranking, and optional
+;; result caching.
 ;;
 ;; Supported search types:
-;; - Exact match (exact): O(1) average via hash table
-;; - Prefix match (prefix): O(k + n) leveraging the Prolog trie index
-;; - Partial match (partial): O(n)
-;; - Fuzzy match (fuzzy): O(n * m) using Levenshtein distance
+;; - Exact match (exact):   O(1) average via Prolog hash index
+;; - Prefix match (prefix): O(k + n) via Prolog trie index
+;; - Partial match (partial): O(n) substring scan
+;; - Fuzzy match (fuzzy):   O(n * m) Levenshtein distance
 ;;
 ;; Performance targets:
 ;; - Exact match: < 0.1ms
@@ -40,18 +45,32 @@
 ;; - Partial match (1000 entries): < 50ms
 ;; - Fuzzy match (1000 entries): < 100ms
 ;;
-;; The search engine supports okurigana type filtering and
-;; customizable sort order for candidate ranking.
+;; The search engine supports okurigana type filtering and customizable
+;; sort order for candidate ranking.  Learning data is persisted via
+;; Prolog `learning-score/3' facts and serialized to
+;; `nskk-search-learning-file'.
 ;;
-;;   ;; 完全一致検索
+;; Prolog predicates maintained by this module:
+;; - `search-strategy/1'  -- valid search type membership
+;; - `learning-score/3'   -- (reading candidate score) usage frequency
+;;
+;; Key public API:
+;; - `nskk-search'              -- unified search dispatcher
+;; - `nskk-search-exact'        -- exact match search
+;; - `nskk-search-prefix'       -- prefix match search
+;; - `nskk-search-partial'      -- partial (substring) match search
+;; - `nskk-search-fuzzy'        -- fuzzy (Levenshtein) match search
+;; - `nskk-search-with-cache'   -- cache-backed search
+;; - `nskk-search-learn'        -- record candidate selection for learning
+;; - `nskk-search-save-learning-data' -- persist learning data to file
+;;
+;; Usage examples:
 ;;   (nskk-search index "かんじ" 'exact)
 ;;   ;; => nskk-dict-entry
 ;;
-;;   ;; 前方一致検索
 ;;   (nskk-search index "かん" 'prefix nil 10)
 ;;   ;; => (("かん" . entry1) ("かんじ" . entry2) ...)
 ;;
-;;   ;; ファジー検索
 ;;   (nskk-search index "かんじ" 'fuzzy nil 5)
 ;;   ;; => (("かんじ" . entry1 . 0) ("かんき" . entry2 . 1) ...)
 
@@ -62,45 +81,9 @@
 (require 'nskk-dictionary)
 (require 'nskk-cache)
 (require 'nskk-prolog)
+(require 'nskk-custom)
 
 (declare-function nskk-dict--entry-count "nskk-dictionary")
-
-(defgroup nskk-search nil
-  "SKK dictionary search customization."
-  :group 'nskk-dictionary
-  :prefix "nskk-search-")
-
-(defcustom nskk-search-sort-method 'frequency
-  "Sort method for search results."
-  :type '(choice (const :tag "Frequency order" frequency)
-                 (const :tag "Kana order" kana)
-                 (const :tag "No sorting" none))
-  :group 'nskk-search)
-
-(defcustom nskk-search-fuzzy-threshold 3
-  "Maximum Levenshtein distance threshold for fuzzy search."
-  :type 'integer
-  :group 'nskk-search)
-
-(defcustom nskk-search-enable-cache t
-  "Enable search result caching when non-nil."
-  :type 'boolean
-  :group 'nskk-search)
-
-(defcustom nskk-search-learning-file "~/.emacs.d/nskk/learning.dat"
-  "File path for persisting learning data."
-  :type 'file
-  :group 'nskk-search)
-
-(defcustom nskk-search-auto-save t
-  "When non-nil, automatically save learning data periodically."
-  :type 'boolean
-  :group 'nskk-search)
-
-(defcustom nskk-search-auto-save-interval 300
-  "Auto-save interval in seconds for learning data."
-  :type 'integer
-  :group 'nskk-search)
 
 (defvar nskk-search-jisyo-hook nil
   "Hook run during dictionary search.
@@ -113,7 +96,7 @@ DDSKK equivalent: skk-save-history-hook")
 ;;; Internal variables for learning data
 
 (defvar nskk-search--dirty-flag nil
-  "Non-nil when learning data has been modified since last save.")
+  "Non-nil means learning data has been modified since last save.")
 
 (defvar nskk-search--auto-save-timer nil
   "Timer for periodic auto-save of learning data.")
@@ -141,20 +124,9 @@ DDSKK equivalent: skk-save-history-hook")
 (nskk-prolog-<- (search-strategy partial))
 (nskk-prolog-<- (search-strategy fuzzy))
 
-;; Sort method dispatch rules
-(nskk-prolog-set-index 'sort-strategy 1 :hash)
-(nskk-prolog-<- (sort-strategy frequency))
-(nskk-prolog-<- (sort-strategy kana))
-(nskk-prolog-<- (sort-strategy none))
-
 ;; Learning score facts: (learning-score reading candidate score)
 ;; Hash-indexed on first arg (reading) for O(1) lookup by reading
 (nskk-prolog-set-index 'learning-score 3 :hash)
-
-;; Okurigana type dispatch rules
-(nskk-prolog-set-index 'okuri-type 1 :hash)
-(nskk-prolog-<- (okuri-type okuri-ari))
-(nskk-prolog-<- (okuri-type okuri-nasi))
 
 ;;; 統合検索インターフェース
 

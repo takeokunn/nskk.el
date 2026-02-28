@@ -5,11 +5,9 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
-;; This file is part of NSKK (Next-generation SKK).
+;; This file is NOT part of GNU Emacs.
 ;;
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -26,15 +24,16 @@
 
 ;;; Commentary:
 
-;; Mode line indicator showing current input mode (Layer 1: UI Layer).
+;; Mode line indicator showing current input mode (Layer 5: Presentation Layer).
 ;;
 ;; Architecture:
-;; - All mode display data (strings, faces, help text) is stored as
-;;   Prolog `mode-info/4' facts, queried at display time via
-;;   `nskk-modeline-indicator'.
-;; - The `nskk-define-mode-entry' macro co-locates face definition
-;;   and Prolog fact assertion into a single declaration per mode.
-;; - Cursor color per mode is stored as `cursor-color/2' Prolog facts.
+;; - All mode display data (strings, faces, help text, cursor colors) is stored
+;;   as unified `mode-properties/5' Prolog facts in nskk-state.el:
+;;     (mode-properties MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-COLOR-VAR)
+;; - This module queries `mode-properties/5' at display time; it does not
+;;   maintain its own separate Prolog predicates for mode data.
+;; - The `nskk-define-mode-entry' macro defines only the face for each mode;
+;;   the corresponding `mode-properties/5' fact is declared in nskk-state.el.
 ;; - The mode-line lighter uses `(:eval (nskk-modeline-indicator))' in
 ;;   `define-minor-mode', so Emacs calls this function directly on each
 ;;   mode-line redisplay without manual `minor-mode-alist' mutation.
@@ -52,93 +51,36 @@
 ;; Customization:
 ;; - `nskk-modeline-format': Control the format string (%m = mode name).
 ;; - `nskk-use-color-cursor': Enable/disable cursor color changes.
-;; - `nskk-cursor-*-color': Cursor color per mode.
-;;
-;; Breaking change from earlier versions:
-;; `nskk-modeline-mode-names' has been removed.  Mode display strings
-;; are now defined solely via Prolog `mode-info/4' facts.
+;; - `nskk-cursor-*-color': Cursor color per mode (defined in nskk-custom.el).
 
 ;;; Code:
 
 (require 'nskk-state)
 (require 'nskk-prolog)
-
-(defgroup nskk-modeline nil
-  "Mode line indicator settings for NSKK."
-  :prefix "nskk-modeline-"
-  :group 'nskk-ui)
-
-(defcustom nskk-modeline-format "[%m]"
-  "Modeline format string.
-%m is replaced with the mode name."
-  :type 'string
-  :group 'nskk-modeline)
-
-(defcustom nskk-use-color-cursor t
-  "Whether to change cursor color based on input mode."
-  :type 'boolean
-  :group 'nskk-ui)
-
-(defcustom nskk-cursor-hiragana-color
-  (if (eq (frame-parameter nil 'background-mode) 'dark) "coral4" "pink")
-  "Cursor color for hiragana mode."
-  :type 'color
-  :group 'nskk-ui)
-
-(defcustom nskk-cursor-katakana-color
-  (if (eq (frame-parameter nil 'background-mode) 'dark) "forestgreen" "green")
-  "Cursor color for katakana mode."
-  :type 'color
-  :group 'nskk-ui)
-
-(defcustom nskk-cursor-latin-color
-  (if (eq (frame-parameter nil 'background-mode) 'dark) "ivory4" "gray")
-  "Cursor color for ASCII/latin mode."
-  :type 'color
-  :group 'nskk-ui)
-
-(defcustom nskk-cursor-jisx0208-latin-color "gold"
-  "Cursor color for full-width latin mode."
-  :type 'color
-  :group 'nskk-ui)
-
-(defcustom nskk-cursor-abbrev-color "royalblue"
-  "Cursor color for abbrev mode."
-  :type 'color
-  :group 'nskk-ui)
+(require 'nskk-custom)
 
 (defvar-local nskk--last-cursor-color nil
-  "Last cursor color applied, to avoid redundant set-cursor-color calls.")
+  "Last cursor color applied, to avoid redundant `set-cursor-color' calls.")
 
-;;;; Macro
+;;;; Face Definitions
 
-(defmacro nskk-define-mode-entry (mode display face-or-spec help)
-  "Define a modeline entry for input MODE.
+(defmacro nskk-define-mode-entry (mode _display face-or-spec _help)
+  "Define the display face for input MODE.
 MODE is the mode symbol (e.g., `hiragana').
-DISPLAY is the mode-line display string (e.g., \"かな\").
+_DISPLAY and _HELP are accepted for readability but unused here;
+the corresponding `mode-properties/5' Prolog fact in nskk-state.el
+is the single source of truth for display data.
 FACE-OR-SPEC is either:
   - A list like (:foreground COLOR :weight WEIGHT): creates
     `nskk-modeline-MODE-face' with this spec.
-  - A symbol naming an existing face: uses it directly.
-HELP is the help-echo tooltip string.
-
-Emits `defface' (when FACE-OR-SPEC is a list) and asserts a
-Prolog `mode-info/4' fact for `nskk-modeline-indicator'."
+  - A symbol naming an existing face: uses it directly (no-op)."
   (declare (indent 1) (debug t))
-  (let ((face-sym (if (listp face-or-spec)
-                      (intern (format "nskk-modeline-%s-face" mode))
-                    face-or-spec)))
-    `(progn
-       ,@(when (listp face-or-spec)
-           `((defface ,face-sym
-               '((t ,face-or-spec))
-               ,(format "Face for %s mode indicator." mode)
-               :group 'nskk-modeline)))
-       (nskk-prolog-<- (mode-info ,mode ,display ,face-sym ,help)))))
-
-;;;; Prolog Mode Facts
-
-(nskk-prolog-set-index 'mode-info 4 :hash)
+  (when (listp face-or-spec)
+    (let ((face-sym (intern (format "nskk-modeline-%s-face" mode))))
+      `(defface ,face-sym
+         '((t ,face-or-spec))
+         ,(format "Face for %s mode indicator." mode)
+         :group 'nskk-modeline))))
 
 (nskk-define-mode-entry hiragana "かな"
   (:foreground "#4CAF50" :weight bold)
@@ -165,43 +107,52 @@ Prolog `mode-info/4' fact for `nskk-modeline-indicator'."
 (nskk-define-mode-entry latin  "SKK" nskk-modeline-direct-face "Direct/ASCII input mode")
 (nskk-define-mode-entry direct "SKK" nskk-modeline-direct-face "Direct/ASCII input mode")
 
-;; Cursor color mapping
-(nskk-prolog-set-index 'cursor-color 2 :hash)
-(nskk-prolog-<- (cursor-color hiragana nskk-cursor-hiragana-color))
-(nskk-prolog-<- (cursor-color katakana nskk-cursor-katakana-color))
-(nskk-prolog-<- (cursor-color ascii nskk-cursor-latin-color))
-(nskk-prolog-<- (cursor-color latin nskk-cursor-latin-color))
-(nskk-prolog-<- (cursor-color jisx0208-latin nskk-cursor-jisx0208-latin-color))
-(nskk-prolog-<- (cursor-color abbrev nskk-cursor-abbrev-color))
-(nskk-prolog-<- (cursor-color direct nskk-cursor-latin-color))
+;;;; Modeline Indicator
+
+(defvar-local nskk--modeline-indicator-cache nil
+  "Memoized modeline data as (MODE NAME FACE HELP) or nil.
+Invalidated when the current NSKK mode changes.")
 
 (defun nskk-modeline-indicator ()
   "Return mode-line indicator string for the current NSKK input mode.
-Queries Prolog `mode-info/4' for the display string, face, and
+Queries `mode-properties/5' for the display string, face, and
 help-echo text.  The string is formatted via `nskk-modeline-format'.
 
-Returns an empty string when `nskk-current-state' is nil or unbound
-(state not yet initialized).  When the current mode has no `mode-info/4'
-fact, falls back to \"NSKK\" with `default' face.
+The Prolog query result is memoized in `nskk--modeline-indicator-cache'
+keyed by the current mode symbol, so the Prolog engine is only invoked
+when the mode actually changes — not on every mode-line redisplay.
 
-Intended for use as the `:eval' expression in `define-minor-mode'
-`:lighter'; it is called on every mode-line redisplay and must be fast."
+Returns an empty string when `nskk-current-state' is nil or unbound."
   (if (and (boundp 'nskk-current-state) nskk-current-state)
       (let* ((mode (nskk-state-mode nskk-current-state))
-             (info (nskk-prolog-query-values
-                    `(mode-info ,mode ,'\?s ,'\?f ,'\?h)
-                    '(\?s \?f \?h)))
-             (name (or (nth 0 info) "NSKK"))
-             (face (or (nth 1 info) 'default))
-             (help (or (nth 2 info) "NSKK input method"))
+             (data (if (and nskk--modeline-indicator-cache
+                            (eq (car nskk--modeline-indicator-cache) mode))
+                       (cdr nskk--modeline-indicator-cache)
+                     (let ((info (nskk-prolog-query-values
+                                  `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c)
+                                  '(\?s \?f \?h))))
+                       (setq nskk--modeline-indicator-cache (cons mode info))
+                       info)))
+             (name (or (nth 0 data) "NSKK"))
+             (face (or (nth 1 data) 'default))
+             (help (or (nth 2 data) "NSKK input method"))
              (text (format-spec nskk-modeline-format `((?m . ,name)))))
         (propertize text 'face face 'help-echo help))
     ""))
 
+(defun nskk-modeline--clear-cache ()
+  "Clear the memoized modeline indicator cache.
+Call this after any mode change to ensure the next redisplay
+re-queries the Prolog database for the new mode's display data."
+  (setq nskk--modeline-indicator-cache nil))
+
 (defun nskk-modeline-update ()
   "Update the modeline and cursor color to reflect current NSKK state."
+  (nskk-modeline--clear-cache)
   (nskk-cursor-update)
   (force-mode-line-update))
+
+;;;; Cursor Color
 
 (defun nskk-cursor-update ()
   "Update cursor color to reflect current NSKK mode.
@@ -219,16 +170,15 @@ Only calls `set-cursor-color' when the color actually changes."
   "Return cursor color string for input MODE, or nil if none is registered.
 MODE is a mode symbol such as `hiragana' or `ascii'.
 
-Looks up a `cursor-color/2' Prolog fact for MODE.  The fact stores the
-name of a bound `defcustom' variable (e.g. `nskk-cursor-hiragana-color'),
-not a color string directly.  That variable is then dereferenced via
-`symbol-value' so that runtime customization of `nskk-cursor-*-color'
-variables is picked up without reloading.
+Looks up `mode-properties/5' for MODE to get the cursor color variable
+name (e.g. `nskk-cursor-hiragana-color').  That variable is then
+dereferenced via `symbol-value' so that runtime customization of
+`nskk-cursor-*-color' variables is picked up without reloading.
 
-Returns nil when no `cursor-color/2' fact exists for MODE or when the
-resolved variable is not bound."
+Returns nil when no `mode-properties/5' fact exists for MODE or when
+the resolved cursor-color variable is not bound."
   (let ((color-var (nskk-prolog-query-value
-                    `(cursor-color ,mode ,'\?c) '\?c)))
+                    `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?c)))
     (when (and color-var (boundp color-var))
       (symbol-value color-var))))
 

@@ -507,6 +507,79 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
       (should (= (nskk-dict--struct-entry-count index nil) 5))
       (should (= (nskk-dict--struct-entry-count index 'okuri-ari) 5)))))
 
+;;;
+;;; PBT-001 — Levenshtein symmetry (seeded PBT, 50 runs)
+;;;
+
+(require 'nskk-test-macros)
+
+(nskk-property-test-seeded search-levenshtein-symmetry
+  ((a romaji-basic)
+   (b romaji-basic))
+  (= (nskk-search--levenshtein-distance a b)
+     (nskk-search--levenshtein-distance b a))
+  50
+  7)
+
+;;;
+;;; PBT-002 — Levenshtein identity (seeded PBT, 50 runs)
+;;;
+
+(nskk-property-test-seeded search-levenshtein-identity
+  ((input romaji-basic))
+  (= (nskk-search--levenshtein-distance input input) 0)
+  50
+  13)
+
+;;;
+;;; PBT-003 — Levenshtein triangle inequality (seeded PBT, 30 runs)
+;;;
+
+(nskk-property-test-seeded search-levenshtein-triangle-inequality
+  ((a romaji-basic)
+   (b romaji-basic)
+   (c romaji-basic))
+  (<= (nskk-search--levenshtein-distance a c)
+      (+ (nskk-search--levenshtein-distance a b)
+         (nskk-search--levenshtein-distance b c)))
+  30
+  17)
+
+;;;
+;;; PBT-004 — Cache key uniqueness (table-driven)
+;;;
+
+(nskk-deftest-table search-cache-key-uniqueness
+  :columns (query type okuri label)
+  :rows (("query1" exact   nil         "exact-no-okuri")
+         ("query1" prefix  nil         "prefix-no-okuri")
+         ("query1" exact   okuri-ari   "exact-okuri-ari")
+         ("query1" exact   okuri-nasi  "exact-okuri-nasi")
+         ("query2" exact   nil         "different-query")
+         ("query1" fuzzy   nil         "fuzzy-no-okuri")
+         ("query1" partial okuri-ari   "partial-okuri-ari"))
+  :body (let* ((all-queries '(("query1" exact   nil)
+                              ("query1" prefix  nil)
+                              ("query1" exact   okuri-ari)
+                              ("query1" exact   okuri-nasi)
+                              ("query2" exact   nil)
+                              ("query1" fuzzy   nil)
+                              ("query1" partial okuri-ari)))
+               (this-key (nskk-search--cache-key query type okuri))
+               (other-keys (mapcar (lambda (row)
+                                     (nskk-search--cache-key (nth 0 row)
+                                                              (nth 1 row)
+                                                              (nth 2 row)))
+                                   (cl-remove-if (lambda (row)
+                                                   (and (equal (nth 0 row) query)
+                                                        (eq (nth 1 row) type)
+                                                        (eq (nth 2 row) okuri)))
+                                                 all-queries))))
+          ;; This key must be a string and must differ from all other combinations
+          (should (stringp this-key))
+          (dolist (other other-keys)
+            (should (not (equal this-key other))))))
+
 (provide 'nskk-search-test)
 
 ;;; nskk-search-test.el ends here

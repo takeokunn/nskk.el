@@ -5,42 +5,59 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
 ;; Keywords: i18n
 
-;; This file is part of NSKK.
+;; This file is NOT part of GNU Emacs.
 
-;; NSKK is free software: you can redistribute it and/or modify
+;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
 
-;; NSKK is distributed in the hope that it will be useful,
+;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
-;; Cache mechanism for the NSKK dictionary search engine.
+;; Caching layer for the NSKK dictionary search engine (Layer 1: Core Engine).
+;;
+;; Layer position: L1 (Core Engine) -- depends only on nskk-prolog.
+;;
+;; Provides LRU and LFU cache implementations with O(1) get/put operations,
+;; automatic eviction, and hit-rate statistics.  Cache type validation and
+;; operation dispatch are driven by Prolog facts, keeping the dispatch table
+;; declarative and consistent with the rest of the NSKK architecture.
 ;;
 ;; Supported algorithms (selectable at creation time):
-;; - LRU (Least Recently Used): evicts the least recently accessed entry
-;; - LFU (Least Frequently Used): evicts the least frequently accessed entry
+;; - LRU (Least Recently Used): doubly-linked list + hash table
+;; - LFU (Least Frequently Used): frequency buckets + hash table
 ;;
-;; Both algorithms provide O(1) get and put via hash table plus doubly-linked
-;; list (LRU) or frequency table (LFU).  Capacity is managed by entry count
-;; with automatic eviction.  Hit-rate statistics are collected and accessible
-;; via `nskk-cache-stats'.
+;; Both algorithms provide O(1) get and put.  Capacity is managed by entry
+;; count with automatic eviction.  Hit-rate statistics are collected and
+;; accessible via `nskk-cache-stats'.
 ;;
-;; Cache type validation and operation dispatch are driven by Prolog facts
-;; (cache-type/1, cache-dispatch-fn/3, cache-field-fn/3), keeping the
-;; dispatch table declarative and consistent with the rest of the NSKK
-;; architecture.
+;; Prolog predicates maintained by this module:
+;; - `cache-type/1'           -- valid cache type membership (lru, lfu)
+;; - `cache-eviction-policy/2' -- type -> policy name documentation
+;; - `cache-dispatch-fn/3'    -- (type op fn) operation dispatch table
+;; - `cache-field-fn/3'       -- (type field accessor-fn) field accessor table
+;;
+;; Key public API:
+;; - `nskk-cache-create'             -- create LRU or LFU cache
+;; - `nskk-cache-get'                -- retrieve a value by key
+;; - `nskk-cache-put'                -- store a key/value pair
+;; - `nskk-cache-invalidate'         -- remove a specific key
+;; - `nskk-cache-invalidate-pattern' -- remove keys matching a regexp
+;; - `nskk-cache-clear'              -- clear all entries
+;; - `nskk-cache-stats'              -- return statistics plist
+;; - `nskk-cache-hit-rate'           -- return hit rate as float
+;; - `nskk-cache-size'               -- return current entry count
+;; - `nskk-cache-p'                  -- test for valid cache object
 ;;
 ;; Performance targets:
 ;; - get: O(1), < 0.1ms (Prolog dispatch via hash index is ~20us)
@@ -154,7 +171,7 @@ and ARGS."
 FIELD is a literal symbol naming the struct slot (e.g., capacity, size).
 DEFAULT is returned when no accessor is found (defaults to 0).
 The accessor function is resolved at runtime via Prolog hash-indexed lookup."
-  (declare (debug t))
+  (declare (indent 0) (debug t))
   `(nskk-cache--field-prolog ,cache ',field ,(or default 0)))
 
 (defun nskk-cache--field-prolog (cache field default)

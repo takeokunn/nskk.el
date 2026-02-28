@@ -197,6 +197,61 @@
     (let ((result (nskk-candidate-list-select-by-key ?l '("漢字" "感じ") 0)))
       (should (null result)))))
 
+;;;
+;;; PBT-001 — Pagination invariant (seeded PBT with manual random generation)
+;;;
+
+(require 'nskk-test-macros)
+
+(nskk-property-test-exhaustive candidate-pagination-invariant
+  '(3 4 5 6 7)
+  ;; item = page-size; exhaustively test each page size in {3,4,5,6,7}
+  (let* ((pg-size item)
+         (n-candidates (+ 1 (random 20)))
+         (all-candidates (cl-loop repeat n-candidates
+                                  for i from 0
+                                  collect (format "candidate-%d" i)))
+         (nskk-henkan-show-candidates-keys
+          (cl-subseq '(?a ?s ?d ?f ?j ?k ?l) 0 (min pg-size 7)))
+         (nskk-henkan-number-to-display-candidates pg-size))
+    (with-temp-buffer
+      ;; First page must return min(pg-size, n-candidates) elements
+      (let* ((result (nskk-candidate-show-list all-candidates 0))
+             (expected-count (min pg-size n-candidates)))
+        (= (length result) expected-count)))))
+
+;;;
+;;; PBT-002 — Selection key exhaustive test for all 7 default keys
+;;;
+
+(nskk-property-test-exhaustive candidate-selection-key-returns-valid-index
+  '(?a ?s ?d ?f ?j ?k ?l)
+  (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+        (candidates '("a" "b" "c" "d" "e" "f" "g")))
+    (let ((result (nskk-candidate-list-select-by-key item candidates 0)))
+      ;; Each key must return a number in [0, 6]
+      (and (numberp result)
+           (>= result 0)
+           (<= result 6)))))
+
+;;;
+;;; PBT-003 — Key position monotonicity (table-driven)
+;;;
+
+(nskk-deftest-table candidate-key-position-monotonic
+  :columns (key expected-position)
+  :rows ((?a 0)
+         (?s 1)
+         (?d 2)
+         (?f 3)
+         (?j 4)
+         (?k 5)
+         (?l 6))
+  :body (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+              (candidates '("a" "b" "c" "d" "e" "f" "g")))
+          (let ((result (nskk-candidate-list-select-by-key key candidates 0)))
+            (should (= result expected-position)))))
+
 (provide 'nskk-candidate-window-test)
 
 ;;; nskk-candidate-window-test.el ends here

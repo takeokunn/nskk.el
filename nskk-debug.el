@@ -5,8 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -26,60 +24,48 @@
 
 ;;; Commentary:
 
-;; Unified debug mode for NSKK.
-;; Provides centralized debug logging with zero overhead when disabled.
+;; Debug logging for NSKK (Layer 0: Foundation).
 ;;
-;; Usage Examples:
+;; Layer position: L0 (Foundation) -- depends only on nskk-custom.
 ;;
-;;   ;; Enable debug mode
-;;   M-x nskk-debug-toggle
+;; Provides centralized debug logging to the *NSKK Debug* buffer with
+;; zero overhead when disabled.  The `nskk-debug-log' macro expands to
+;; nothing when `nskk-debug-enabled' is nil at compile time; the
+;; `nskk-debug-message' function provides a safe runtime variant.
 ;;
-;;   ;; Or programmatically
-;;   (setq nskk-debug-enabled t)
+;; No Prolog predicates are maintained by this module.
 ;;
-;;   ;; Log messages from code
+;; Key public API:
+;; - `nskk-debug-log'     -- macro: log with zero overhead when disabled
+;; - `nskk-debug-message' -- function: log, safe for use in all contexts
+;; - `nskk-debug-toggle'  -- interactive: toggle debug mode on/off
+;; - `nskk-debug-show'    -- interactive: display the *NSKK Debug* buffer
+;; - `nskk-debug-clear'   -- interactive: clear all entries from the buffer
+;;
+;; Usage:
+;;
+;;   M-x nskk-debug-toggle        ;; Enable debug mode
+;;
+;;   (setq nskk-debug-enabled t)  ;; Or programmatically
+;;
 ;;   (nskk-debug-log "Processing key: %s" key)
 ;;   (nskk-debug-log "State changed from %s to %s" old-state new-state)
 ;;
-;;   ;; View the debug buffer
-;;   M-x nskk-debug-show
-;;
-;;   ;; Clear the debug buffer
-;;   M-x nskk-debug-clear
-;;
-;; Public Commands:
-;;
-;;   `nskk-debug-toggle' - Toggle debug mode on/off
-;;   `nskk-debug-show'   - Display the *NSKK Debug* buffer
-;;   `nskk-debug-clear'  - Clear all entries from the debug buffer
+;;   M-x nskk-debug-show          ;; View the debug buffer
+;;   M-x nskk-debug-clear         ;; Clear the debug buffer
 
 ;;; Code:
 
 (require 'cl-lib)
-
-(defgroup nskk-debug nil
-  "NSKK debugging configuration."
-  :prefix "nskk-debug-"
-  :group 'nskk)
-
-(defcustom nskk-debug-enabled nil
-  "Whether NSKK debug mode is enabled.
-When enabled, debug messages are logged to the *NSKK Debug* buffer."
-  :type 'boolean
-  :group 'nskk-debug)
-
-(defcustom nskk-debug-max-entries 1000
-  "Maximum number of log entries before trimming the debug buffer."
-  :type 'integer
-  :group 'nskk-debug)
+(require 'nskk-custom)
 
 ;;;; Logging Macro
 
 (defmacro nskk-debug-log (format-string &rest args)
-  "Log message if debug enabled. Zero overhead when disabled.
+  "Log message if debug enabled.  Zero overhead when disabled.
 FORMAT-STRING is passed to `format' with ARGS.
 Usage: (nskk-debug-log \"Processing: %s\" value)"
-  (declare (debug (stringp body)))
+  (declare (indent 0) (debug t))
   `(when (bound-and-true-p nskk-debug-enabled)
      (nskk-debug--append (format ,format-string ,@args))))
 
