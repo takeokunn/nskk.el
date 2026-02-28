@@ -40,7 +40,7 @@ TRIE-ENTRIES is ((key . candidates-list) ...) for trie-indexed entries.
 PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)."
   (let* ((pred (or pred-name (intern (format "test-dict-%d" (abs (random))))))
          (all-entries (append entries-alist trie-entries)))
-    (nskk-prolog-set-index pred 1 :trie)
+    (nskk-prolog-set-index pred 2 :trie)
     (dolist (pair all-entries)
       (let ((key (car pair))
             (val (if (listp (cdr pair)) (cdr pair) (list (cdr pair)))))
@@ -61,7 +61,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
     (nskk-prolog-clear-database)
     (let* ((pred 'test-exact-dict)
            (index (progn
-                    (nskk-prolog-set-index pred 1 :trie)
+                    (nskk-prolog-set-index pred 2 :trie)
                     (nskk-prolog-assert `((,pred "かんじ" ("漢字" "感じ"))))
                     (make-nskk-dict-index :predicate pred))))
       (let ((result (nskk-search index "かんじ" 'exact)))
@@ -75,7 +75,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
     (nskk-prolog-clear-database)
     (let* ((pred 'test-nonexist-dict)
            (index (progn
-                    (nskk-prolog-set-index pred 1 :trie)
+                    (nskk-prolog-set-index pred 2 :trie)
                     (nskk-prolog-assert `((,pred "abc" ("value"))))
                     (make-nskk-dict-index :predicate pred))))
       (let ((result (nskk-search index "xyz" 'exact)))
@@ -87,7 +87,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
     (nskk-prolog-clear-database)
     (let* ((pred 'test-default-dict)
            (index (progn
-                    (nskk-prolog-set-index pred 1 :trie)
+                    (nskk-prolog-set-index pred 2 :trie)
                     (nskk-prolog-assert `((,pred "key" ("value"))))
                     (make-nskk-dict-index :predicate pred))))
       (let ((result (nskk-search index "key")))
@@ -411,39 +411,43 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 
 (nskk-deftest-unit search-with-cache-basic
   "Test search with cache integration."
-  (nskk-prolog-test-with-isolated-db
-    (nskk-prolog-clear-database)
-    (let* ((cache (nskk-cache-create 'lru 100))
-           (index (nskk-search-test--make-index '(("test" . ("value"))))))
-      ;; First search (cache miss)
-      (let ((result (nskk-search-with-cache cache index "test" 'exact)))
-        (should result)
-        (should (nskk-dict-entry-p result))
-        (should (equal (nskk-dict-entry-candidates result) '("value"))))
-      ;; Second search (cache hit)
-      (let ((result (nskk-search-with-cache cache index "test" 'exact)))
-        (should result)
-        (should (nskk-dict-entry-p result))
-        (should (equal (nskk-dict-entry-candidates result) '("value"))))
-      ;; Verify cache statistics
-      (let ((stats (nskk-cache-stats cache)))
-        (should (= (plist-get stats :hits) 1))
-        (should (= (plist-get stats :size) 1))))))
+  ;; Not wrapped in nskk-prolog-test-with-isolated-db because the cache
+  ;; dispatch system (cache-dispatch-fn/3 facts) must remain intact.
+  ;; Each call to nskk-search-test--make-index uses a unique predicate name,
+  ;; so there is no test-pollution risk.
+  (let* ((cache (nskk-cache-lru-create 100))
+         (index (nskk-search-test--make-index '(("test" . ("value"))))))
+    ;; First search (cache miss)
+    (let ((result (nskk-search-with-cache cache index "test" 'exact)))
+      (should result)
+      (should (nskk-dict-entry-p result))
+      (should (equal (nskk-dict-entry-candidates result) '("value"))))
+    ;; Second search (cache hit)
+    (let ((result (nskk-search-with-cache cache index "test" 'exact)))
+      (should result)
+      (should (nskk-dict-entry-p result))
+      (should (equal (nskk-dict-entry-candidates result) '("value"))))
+    ;; Verify cache statistics
+    (let ((stats (nskk-cache-stats cache)))
+      (should (= (plist-get stats :hits) 1))
+      (should (= (plist-get stats :size) 1)))))
 
 (nskk-deftest-unit search-with-cache-prolog-index
   "Test search with cache for Prolog dict index."
-  (nskk-prolog-test-with-isolated-db
-    (nskk-prolog-clear-database)
-    (let* ((cache (nskk-cache-create 'lru 100))
-           (pred 'cache-test-dict)
-           (index (progn
-                    (nskk-prolog-set-index pred 1 :trie)
-                    (nskk-prolog-assert `((,pred "key" ("trie-value"))))
-                    (make-nskk-dict-index :predicate pred))))
-      (let ((result (nskk-search-with-cache cache index "key" 'exact)))
-        (should result)
-        (should (nskk-dict-entry-p result))
-        (should (equal (nskk-dict-entry-candidates result) '("trie-value")))))))
+  ;; Not wrapped in nskk-prolog-test-with-isolated-db because the cache
+  ;; dispatch system (cache-dispatch-fn/3 facts) must remain intact.
+  ;; The predicate 'cache-test-dict is unique to this test and is
+  ;; re-asserted on each run, so there is no test-pollution risk.
+  (let* ((cache (nskk-cache-lru-create 100))
+         (pred 'cache-test-dict)
+         (index (progn
+                  (nskk-prolog-set-index pred 2 :trie)
+                  (nskk-prolog-assert `((,pred "key" ("trie-value"))))
+                  (make-nskk-dict-index :predicate pred))))
+    (let ((result (nskk-search-with-cache cache index "key" 'exact)))
+      (should result)
+      (should (nskk-dict-entry-p result))
+      (should (equal (nskk-dict-entry-candidates result) '("trie-value"))))))
 
 (nskk-deftest-unit search-with-cache-invalid-cache
   "Test search with invalid cache signals error."
@@ -493,7 +497,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
     (nskk-prolog-clear-database)
     (let* ((pred 'entry-count-dict)
            (index (progn
-                    (nskk-prolog-set-index pred 1 :trie)
+                    (nskk-prolog-set-index pred 2 :trie)
                     (nskk-prolog-assert `((,pred "a" ("v1"))))
                     (nskk-prolog-assert `((,pred "b" ("v2"))))
                     (nskk-prolog-assert `((,pred "c" ("v3"))))

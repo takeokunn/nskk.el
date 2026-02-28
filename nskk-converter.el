@@ -5,9 +5,11 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
-;; This file is part of NSKK (Next-generation SKK).
+;; This file is NOT part of GNU Emacs.
 ;;
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -42,11 +44,38 @@
 ;; Performance target: < 0.1ms for single conversion operation
 ;; Memory: Minimal overhead with shared romaji table
 
+;;;; Prolog Predicates
+;;
+;; This module maintains the following predicates in the global Prolog database:
+;;
+;; `romaji-to-kana/2' --- (romaji-to-kana ROMAJI KANA)
+;;   Maps a romaji ASCII string to its kana equivalent string.
+;;   Indexed with :trie for O(k) prefix lookups (longest-match-first).
+;;   ~192 facts; populated by `nskk--initialize-romaji-table'.
+;;   Example: (romaji-to-kana "ka" "か")
+;;
+;; `hatsuon-blocker/1' --- (hatsuon-blocker CHAR)
+;;   Integer character codes that do NOT produce ん after `n'.
+;;   Blocked set: ?a ?i ?u ?e ?o ?y ?n ?\'.
+;;   Indexed with :hash for O(1) membership tests.
+;;
+;; `sokuon-blocker/1' --- (sokuon-blocker CHAR)
+;;   Integer character codes that cannot be doubled to produce っ.
+;;   Blocked set: ?a ?i ?u ?e ?o ?n.
+;;   Indexed with :hash for O(1) membership tests.
+;;
+;; `hatsuon-trigger/1' --- (hatsuon-trigger ?C) :- (not (hatsuon-blocker ?C))
+;;   Rule: character C produces ん when it is NOT a hatsuon-blocker.
+;;   Queried by `nskk-convert-n--internal' for context-sensitive ん insertion.
+;;
+;; `sokuon-eligible/1' --- (sokuon-eligible ?C) :- (not (sokuon-blocker ?C))
+;;   Rule: character C is eligible for っ doubling when NOT a sokuon-blocker.
+;;   Queried by `nskk-convert-romaji--internal' for double-consonant detection.
+
 ;;; Code:
 
 (require 'cl-lib)
 (require 'nskk-prolog)
-(eval-when-compile (require 'nskk-state))
 
 (defgroup nskk-converter nil
   "Romaji to Kana conversion settings."
@@ -89,6 +118,12 @@
 
 (defvar nskk--style-registry '((standard . nskk--initialize-romaji-table))
   "Registry mapping style symbols to their initialization functions.")
+
+(defconst nskk--sokuon-blockers '(?a ?i ?u ?e ?o ?n)
+  "Characters that cannot be doubled to produce っ (small tsu).")
+
+(defconst nskk--hatsuon-blockers '(?a ?i ?u ?e ?o ?y ?n ?')
+  "Characters after n that do NOT trigger ん conversion.")
 
 (defun nskk--initialize-romaji-table ()
   "Initialize the romaji conversion table as Prolog facts."
@@ -428,48 +463,51 @@ to normal table-driven conversion (e.g. for \"na\" -> \"な\")."
      ;; \"n'\" sequence: n followed by single quote (ASCII 39)
      ((= (aref remaining 1) 39)
       (cons "ん" (if (> len 2) (substring remaining 2) nil)))
-     ;; \"n\" before a consonant (checked via Prolog hatsuon-trigger rule)
-     ((nskk-prolog-query-one `(hatsuon-trigger ,(aref remaining 1)))
+     ;; \"n\" before a consonant (not in hatsuon-blocker set)
+     ((not (memq (aref remaining 1) nskk--hatsuon-blockers))
       (cons "ん" (substring remaining 1)))
      ;; n followed by vowel/y/etc: fall through to table lookup (\"na\"->\"な\")
      (t nil))))
 
 (defun nskk-convert-romaji--internal (input)
-  "Internal romaji conversion for INPUT string."
-  (let ((result nil)
+  "Internal romaji conversion for INPUT string.
+Accumulates converted parts as a list and joins at the end to avoid
+the O(n²) string allocation of repeated `concat' calls in a loop."
+  (let ((parts nil)   ; list of converted string segments (prepended, reversed at end)
         (remaining input)
-        (iteration 0)
         (len 0))
-    (while (and remaining (> (setq len (length remaining)) 0) (< iteration 100))
+    (while (and remaining (> (setq len (length remaining)) 0))
       (let* ((c0 (aref remaining 0))
              (n-result (when (= c0 ?n) (nskk-convert-n--internal remaining))))
         (cond
-         ;; Double consonant (sokuon): same ASCII consonant repeated, not vowel/n
+         ;; Double consonant (sokuon): same ASCII consonant repeated, not vowel/n.
+         ;; The (< c0 128) guard ensures kana characters (e.g. "かか") never
+         ;; accidentally trigger sokuon, keeping nskk-convert-romaji idempotent.
          ((and (> len 1)
+               (< c0 128)
                (= c0 (aref remaining 1))
-               (nskk-prolog-query-one `(sokuon-eligible ,c0)))
-          (setq result (concat result "っ"))
+               (not (memq c0 nskk--sokuon-blockers)))
+          (push "っ" parts)
           (setq remaining (substring remaining 1)))
 
          ;; n-prefix producing ん (falls through to table if n-result is nil)
          ((and (= c0 ?n) n-result)
-          (setq result (concat result (car n-result)))
+          (push (car n-result) parts)
           (setq remaining (cdr n-result)))
 
-         ;; Normal table-driven conversion (including \"na\", \"ni\", etc.)
+         ;; Normal table-driven conversion (including "na", "ni", etc.)
          (t
           (let ((conv (nskk-converter-convert remaining)))
             (if (or (null conv) (eq (car conv) :incomplete))
                 (progn
-                  (setq result (concat result remaining))
+                  (push remaining parts)
                   (setq remaining nil))
-              (setq result (concat result (car conv)))
+              (push (car conv) parts)
               (setq remaining (let ((rest (cdr conv)))
                                 (if (and (stringp rest) (> (length rest) 0))
                                     rest
-                                  nil))))))))
-      (setq iteration (1+ iteration)))
-    result))
+                                  nil)))))))))
+    (apply #'concat (nreverse parts))))
 
 (defun nskk-converter-convert (romaji)
   "Convert ROMAJI string to kana.

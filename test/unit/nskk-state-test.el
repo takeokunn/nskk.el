@@ -1,6 +1,6 @@
 ;;; nskk-state-test.el --- State management tests -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2026 NSKK Authors
 
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
@@ -347,7 +347,7 @@
     (nskk-state-set state 'redo-stack '(("c" . "d")))
     (nskk-state-set state 'metadata '(:key "value"))
 
-    (should (nskk-state-reset state))
+    (nskk-state-reset state)
 
     (should (eq (nskk-state-mode state) 'hiragana))
     (should (string= (nskk-state-input-buffer state) ""))
@@ -819,6 +819,38 @@
 
     (nskk-state-previous-candidate state)
     (should (string= (nskk-state-current-candidate state) "\u6771\u4eac"))))
+
+;;;
+;;; Japanese Mode Classification Tests
+;;;
+
+(nskk-deftest-unit state-japanese-mode-hiragana
+  "Test japanese-mode/1 is true for hiragana."
+  (should (nskk-prolog-query '(japanese-mode hiragana))))
+
+(nskk-deftest-unit state-japanese-mode-katakana
+  "Test japanese-mode/1 is true for katakana."
+  (should (nskk-prolog-query '(japanese-mode katakana))))
+
+(nskk-deftest-unit state-japanese-mode-ascii-false
+  "Test japanese-mode/1 is false for ascii."
+  (should-not (nskk-prolog-query '(japanese-mode ascii))))
+
+(nskk-deftest-unit state-japanese-mode-latin-false
+  "Test japanese-mode/1 is false for latin."
+  (should-not (nskk-prolog-query '(japanese-mode latin))))
+
+(nskk-deftest-unit state-japanese-mode-jisx0208-false
+  "Test japanese-mode/1 is false for jisx0208-latin."
+  (should-not (nskk-prolog-query '(japanese-mode jisx0208-latin))))
+
+(nskk-deftest-unit state-japanese-mode-abbrev-false
+  "Test japanese-mode/1 is false for abbrev."
+  (should-not (nskk-prolog-query '(japanese-mode abbrev))))
+
+(nskk-deftest-unit state-japanese-mode-katakana-hankaku
+  "Test japanese-mode/1 is true for katakana-半角 (half-width katakana)."
+  (should (nskk-prolog-query '(japanese-mode katakana-半角))))
 
 ;;;
 ;;; Property-Based Tests

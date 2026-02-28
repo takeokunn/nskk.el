@@ -536,26 +536,20 @@ Assert that OPTIMIZED is at least SPEEDUP-FACTOR times faster."
 ;;;;
 
 (defmacro nskk-with-temp-dictionary (&rest body)
-  "Execute BODY with a temporary test dictionary."
+  "Execute BODY with a temporary test dictionary loaded via Prolog.
+Uses `nskk-with-mock-dict' with default test entries and provides
+full Prolog database isolation via `nskk-prolog-test-with-isolated-db'."
   (declare (indent 0))
-  `(let ((nskk--dictionary-cache (nskk--create-test-dictionary))
-         (nskk--user-dictionary nil)
-         (nskk--system-dictionary nil))
-     (unwind-protect
-         (progn ,@body)
-       (nskk--cleanup-dictionary-cache))))
+  `(nskk-with-mock-dict nil
+     ,@body))
 
 (defmacro nskk-with-clean-state (&rest body)
   "Execute BODY with clean NSKK state."
   (declare (indent 0))
-  `(let ((nskk--conversion-mode nil)
-         (nskk--input-buffer "")
-         (nskk--candidate-list nil)
-         (nskk--current-candidate-index 0)
-         (nskk--okurigana nil))
+  `(let ((nskk-current-state nil))
      (unwind-protect
          (progn ,@body)
-       (nskk--reset-state))))
+       (setq nskk-current-state nil))))
 
 (defmacro nskk-with-mode (mode &rest body)
   "Execute BODY with NSKK in MODE."

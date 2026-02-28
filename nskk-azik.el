@@ -1,15 +1,31 @@
 ;;; nskk-azik.el --- AZIK extended romaji input support -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
+
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
-;; This file is part of NSKK (Next-generation SKK).
-;; GNU General Public License v3+
+;; This file is NOT part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
+;;
 ;; AZIK (Extended Romaji) input support for NSKK.
 ;; Implements the AZIK specification for efficient Japanese input.
 ;;
@@ -25,6 +41,11 @@
 ;; - The hash table is populated from azik-rule/2 for hot-path lookups.
 ;;   nskk-converter-lookup (inline) reads only from the hash, never Prolog.
 ;;
+;; Partial match markers (:incomplete entries in the hash) are derived
+;; automatically from azik-rule/2 by scanning all romaji keys of length > 1
+;; and computing their proper prefixes.  This also covers 2-char youon
+;; prefixes (e.g., "kg", "hg") that were absent from the old hardcoded list.
+;;
 ;; AZIK rule categories (stored in azik-rule/2):
 ;; 1. Special keys (; → っ, : → ー)
 ;; 2. Consonant compatibility (x=しゃ行, c=ちゃ行)
@@ -39,6 +60,7 @@
 
 (require 'nskk-converter)
 (require 'nskk-prolog)
+
 (defgroup nskk-azik nil
   "AZIK extended romaji input settings."
   :prefix "nskk-azik-"
@@ -122,7 +144,7 @@ Hatsuon and double vowel extensions are generated for all positions."
   "Assert multiple azik-rule/2 Prolog facts from a literal rule list.
 Each element of RULES must be a (ROMAJI KANA) pair of string literals.
 Expands at compile time into individual nskk-prolog-<- calls."
-  (declare (debug t))
+  (declare (debug t) (indent 0))
   `(progn
      ,@(mapcar (lambda (rule)
                  `(nskk-prolog-<- (azik-rule ,(car rule) ,(cadr rule))))
@@ -254,14 +276,25 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
         (puthash romaji kana nskk--romaji-table))))
 
   ;; ============================================================
-  ;; Consonant-only (partial match markers) — hash only.
+  ;; Partial match markers — derived from azik-rule/2, hash only.
   ;; :incomplete is not a string so it stays out of azik-rule/2.
+  ;; Scan all romaji keys of length > 1 and compute every proper
+  ;; prefix; these become :incomplete entries so the converter
+  ;; knows to keep accumulating input.  This automatically covers
+  ;; single-char consonants (k, g, ...) and 2-char youon prefixes
+  ;; (kg, hg, ...) without a hand-maintained list.
   ;; ============================================================
-  (dolist (rule '(("k" :incomplete) ("g" :incomplete) ("s" :incomplete) ("z" :incomplete)
-                  ("t" :incomplete) ("d" :incomplete) ("n" :incomplete) ("h" :incomplete)
-                  ("b" :incomplete) ("p" :incomplete) ("m" :incomplete) ("y" :incomplete)
-                  ("r" :incomplete) ("w" :incomplete)))
-    (nskk-converter-add-rule (car rule) (cadr rule))))
+  (let ((partials (make-hash-table :test 'equal)))
+    (dolist (subst (nskk-prolog-query '(azik-rule \?r \?_)))
+      (let* ((romaji (nskk-prolog-walk '\?r subst))
+             (len (and (stringp romaji) (length romaji))))
+        (when (and len (> len 1))
+          (dotimes (i (1- len))
+            (puthash (substring romaji 0 (1+ i)) t partials)))))
+    (maphash (lambda (prefix _)
+               (unless (gethash prefix nskk--romaji-table)
+                 (nskk-converter-add-rule prefix :incomplete)))
+             partials)))
 
 ;; Register AZIK style
 (nskk-converter-register-style 'azik #'nskk--init-azik-rules)

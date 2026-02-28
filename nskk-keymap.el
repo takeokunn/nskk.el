@@ -3,6 +3,8 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; Copyright (C) 2026 NSKK Contributors
@@ -27,12 +29,23 @@
 ;; Key handling utility functions for NSKK (Layer 1: Presentation Layer).
 ;;
 ;; These functions provide state-aware key dispatch for special keys
-;; (q, l, SPC, RET).  They check the current NSKK state before
-;; intercepting keys, falling through to `self-insert-command' when
-;; NSKK is in ASCII mode or the state is not active.
+;; (q, l, L, /, x, SPC, RET, C-g).  They check the current NSKK state
+;; before intercepting keys, falling through to `self-insert-command'
+;; when NSKK is in ASCII mode or the state is not active.
 ;;
 ;; State reads use nskk-state accessors directly (acceptable for L1),
 ;; but state mutations are routed through the Application Layer API.
+;;
+;; Key Architecture:
+;;
+;; `nskk-define-key-handler' -- macro for Prolog-dispatched handlers.
+;;   Generates interactive commands that query the `key-action/3' Prolog
+;;   predicate to determine the appropriate action based on current state.
+;;
+;; `nskk-with-japanese-mode' -- macro for mode-conditional handlers
+;;   (q, l, L, /).  Uses the `japanese-mode/1' Prolog predicate (defined
+;;   in nskk-state.el) to test whether the current mode accepts Japanese
+;;   input.
 
 ;;; Code:
 
@@ -41,9 +54,9 @@
 
 ;; Functions in nskk-input.el
 (declare-function nskk-toggle-japanese-mode "nskk-input")
-(declare-function nskk-enter-latin-mode "nskk-input")
-(declare-function nskk-enter-abbrev-mode "nskk-input")
-(declare-function nskk-enter-jisx0208-latin-mode "nskk-input")
+(declare-function nskk-set-mode-latin "nskk-input")
+(declare-function nskk-set-mode-abbrev "nskk-input")
+(declare-function nskk-set-mode-jisx0208-latin "nskk-input")
 ;; Functions in nskk-henkan.el
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--has-preedit "nskk-henkan")
@@ -56,11 +69,11 @@
 
 (defvar nskk-annotate-mode-map-hook nil
   "Hook run when annotating mode map.
-DDSKK equivalent: skk-annotate-mode-map-hook")
+DDSKK equivalent to `skk-annotate-mode-map-hook'.")
 
 (defvar nskk-annotate-minibuffer-map-hook nil
   "Hook run when annotating minibuffer map.
-DDSKK equivalent: skk-annotate-minibuffer-map-hook")
+DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
 
 ;;;; Prolog Key-Action Rules
 
@@ -97,18 +110,41 @@ Returns `converting', `preedit', or `normal'."
 ;;;; Internal Macros
 
 (defmacro nskk-with-japanese-mode (action &rest fallback)
-  "If in Japanese mode (hiragana/katakana), execute ACTION.
-If converting, commit first then execute ACTION.
-Otherwise execute FALLBACK forms."
+  "Execute ACTION if currently in Japanese input mode.
+If currently converting (▼ active), commit the candidate first
+then execute ACTION.  If in a Japanese mode as classified by the
+`japanese-mode/1' Prolog predicate (hiragana or katakana), execute
+ACTION directly.  Otherwise execute FALLBACK forms."
   (declare (indent 1) (debug t))
   `(cond
     ((nskk-converting-p)
      (nskk-commit-current)
      ,action)
     ((and nskk-current-state
-          (memq (nskk-state-mode nskk-current-state) '(hiragana katakana)))
+          (nskk-prolog-query-one
+           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
      ,action)
     (t ,@fallback)))
+
+(defmacro nskk-define-key-handler (key docstring &rest clauses)
+  "Define an interactive Prolog-dispatched key handler for KEY.
+DOCSTRING is the function documentation string.
+CLAUSES are `pcase' match arms applied to the action symbol returned
+by the `key-action/3' Prolog query for KEY.
+
+The generated function is named `nskk-handle-KEY' and is interactive.
+It calls `nskk--current-key-state' to determine the current dispatch
+state (converting, preedit, or normal) before querying Prolog."
+  (declare (indent 2) (debug t))
+  (let ((fn-name (intern (format "nskk-handle-%s" key))))
+    `(defun ,fn-name ()
+       ,docstring
+       (interactive)
+       (let* ((state (nskk--current-key-state))
+              (action (nskk-prolog-query-value
+                       (list 'key-action ',key state '\?a) '\?a)))
+         (pcase action
+           ,@clauses)))))
 
 (defun nskk-handle-q ()
   "Handle q key: toggle between hiragana and katakana.
@@ -125,7 +161,7 @@ In henkan-active mode (▼), perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
-  (nskk-with-japanese-mode (nskk-enter-latin-mode)
+  (nskk-with-japanese-mode (nskk-set-mode-latin)
     (self-insert-command 1)))
 
 (defun nskk-handle-upper-l ()
@@ -134,7 +170,7 @@ In henkan-active mode (▼), perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
-  (nskk-with-japanese-mode (nskk-enter-jisx0208-latin-mode)
+  (nskk-with-japanese-mode (nskk-set-mode-jisx0208-latin)
     (self-insert-command 1)))
 
 (defun nskk-handle-slash ()
@@ -143,50 +179,41 @@ In henkan-active mode (▼), perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
-  (nskk-with-japanese-mode (nskk-enter-abbrev-mode)
+  (nskk-with-japanese-mode (nskk-set-mode-abbrev)
     (self-insert-command 1)))
 
-(defun nskk-handle-x ()
-  "Handle x key: select previous candidate."
-  (interactive)
-  (let* ((state (nskk--current-key-state))
-         (action (nskk-prolog-query-value
-                  `(key-action x ,state ,'\?a) '\?a)))
-    (pcase action
-      ('previous-candidate (nskk-previous-candidate))
-      (_ (self-insert-command 1)))))
+(nskk-define-key-handler x
+  "Handle x key: select previous candidate.
+In conversion mode (▼), moves to the previous candidate.
+Otherwise falls through to `self-insert-command'."
+  ('previous-candidate (nskk-previous-candidate))
+  (_ (self-insert-command 1)))
 
-(defun nskk-handle-space ()
-  "Handle SPC key: start conversion or select next candidate."
-  (interactive)
-  (let* ((state (nskk--current-key-state))
-         (action (nskk-prolog-query-value
-                  `(key-action space ,state ,'\?a) '\?a)))
-    (pcase action
-      ('next-candidate (nskk-next-candidate))
-      ('start-conversion (nskk-start-conversion))
-      (_ (self-insert-command 1)))))
+(nskk-define-key-handler space
+  "Handle SPC key: start conversion or select next candidate.
+In conversion mode (▼), moves to the next candidate.
+In preedit mode (▽), initiates dictionary conversion.
+Otherwise inserts a literal space via `self-insert-command'."
+  ('next-candidate (nskk-next-candidate))
+  ('start-conversion (nskk-start-conversion))
+  (_ (self-insert-command 1)))
 
-(defun nskk-handle-return ()
-  "Handle RET key: commit current conversion and insert newline."
-  (interactive)
-  (let* ((state (nskk--current-key-state))
-         (action (nskk-prolog-query-value
-                  `(key-action return ,state ,'\?a) '\?a)))
-    (pcase action
-      ('commit-and-newline (nskk-commit-current) (newline))
-      (_ (newline)))))
+(nskk-define-key-handler return
+  "Handle RET key: commit current conversion and insert newline.
+In conversion mode (▼), commits the selected candidate then inserts
+a newline.  In preedit mode (▽) or normal mode, inserts a newline
+unconditionally (preedit text is left in place)."
+  ('commit-and-newline (nskk-commit-current) (newline))
+  (_ (newline)))
 
-(defun nskk-handle-cancel ()
-  "Handle C-g: cancel conversion or preedit."
-  (interactive)
-  (let* ((state (nskk--current-key-state))
-         (action (nskk-prolog-query-value
-                  `(key-action cancel ,state ,'\?a) '\?a)))
-    (pcase action
-      ('cancel-conversion (nskk-cancel-conversion))
-      ('cancel-preedit (nskk-cancel-preedit))
-      (_ (keyboard-quit)))))
+(nskk-define-key-handler cancel
+  "Handle C-g: cancel current conversion or preedit.
+In conversion mode (▼), cancels conversion and restores preedit text.
+In preedit mode (▽), discards preedit text and resets state.
+Otherwise calls `keyboard-quit'."
+  ('cancel-conversion (nskk-cancel-conversion))
+  ('cancel-preedit (nskk-cancel-preedit))
+  (_ (keyboard-quit)))
 
 (provide 'nskk-keymap)
 

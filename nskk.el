@@ -76,6 +76,9 @@
 ;; Optional
 (require 'nskk-debug nil t)
 
+(declare-function nskk-set-mode-hiragana "nskk-input")
+(declare-function nskk--maybe-load-azik-style "nskk-input")
+
 (defgroup nskk nil
   "NSKK - Next-generation SKK with zero dependencies and extreme performance."
   :prefix "nskk-"
@@ -126,9 +129,13 @@ DDSKK equivalent: skk-input-mode-hook")
 (define-minor-mode nskk-mode
   "Minor mode for NSKK (Next-generation SKK) input method.
 
+The mode-line indicator is generated dynamically by `nskk-modeline-indicator'.
+Use `nskk-modeline-format' to customize its format, and `nskk-use-color-cursor'
+to control per-mode cursor color changes.
+
 \\{nskk-mode-map}"
   :init-value nil
-  :lighter " NSKK"
+  :lighter '(:eval (nskk-modeline-indicator))
   :keymap nskk-mode-map
   :group 'nskk
   (if nskk-mode
@@ -164,6 +171,8 @@ This provides global bindings that work even when nskk-mode is not yet active.")
   (add-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
   (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
   (setq nskk-henkan-select-candidate-by-key-function #'nskk-candidate-list-select-by-key)
+  ;; Load AZIK style if configured
+  (nskk--maybe-load-azik-style)
   (nskk--setup-buffer)
   (nskk-modeline-update))
 
@@ -224,7 +233,7 @@ to enter hiragana mode from ASCII/Latin.  This function dispatches:
    ;; If in ASCII/Latin mode, switch to hiragana
    ((and nskk-current-state
          (memq (nskk-state-mode nskk-current-state) '(ascii latin)))
-    (nskk-enter-hiragana-mode))
+    (nskk-set-mode-hiragana))
    ;; Flush any pending romaji
    ((and (boundp 'nskk--romaji-buffer)
          (not (string-empty-p nskk--romaji-buffer)))
@@ -232,20 +241,6 @@ to enter hiragana mode from ASCII/Latin.  This function dispatches:
    ;; Otherwise, insert newline
    (t
     (newline))))
-
-;; Mode switching commands
-;;;###autoload
-(defalias 'nskk-switch-to-hiragana #'nskk-enter-hiragana-mode)
-;;;###autoload
-(defalias 'nskk-switch-to-katakana #'nskk-enter-katakana-mode)
-;;;###autoload
-(defalias 'nskk-switch-to-ascii #'nskk-enter-latin-mode)
-;;;###autoload
-(defalias 'nskk-toggle-kana #'nskk-toggle-japanese-mode)
-
-;; Convenience alias for global toggle
-;;;###autoload
-(defalias 'nskk-toggle #'nskk-toggle-mode)
 
 (provide 'nskk)
 

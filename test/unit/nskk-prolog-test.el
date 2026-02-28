@@ -42,6 +42,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'subr-x)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-prolog)
@@ -106,7 +107,7 @@ Saves and restores the global database so tests don't leak."
 
 (nskk-deftest-unit prolog-anonymous-p
   "The anonymous variable predicate recognizes the char-literal ?_ (95).
-The implementation uses `(eq x '?_)' where '?_ is the character literal
+The implementation uses `(eq x ?_)' where ?_ is the character literal
 for underscore (integer 95).  Symbol \\='\\?_ (the Prolog-variable form)
 does NOT match because it is a symbol, not an integer."
   (should (nskk-prolog--anonymous-p ?_))
@@ -417,10 +418,12 @@ so unification succeeds and produces a binding for \\?_."
 ;;;; 6. Cut
 ;;;;
 
-(nskk-deftest-unit prolog-cut-commits-to-first
-  "Cut in the current engine is caught per-clause, so alternative clauses
-are still tried.  Verify that all three clauses produce results and that
-the first result is `first'."
+(nskk-deftest-unit prolog-cut-clause-local-scope
+  "Cut in this engine has clause-local scope: the cut throw is caught at
+the clause boundary, so alternative clauses are still explored.  This is
+non-standard (ISO Prolog cut prunes all remaining alternatives); the
+implementation documents this as a known limitation.  Verify that all
+three clauses produce results and that the first result is `first'."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
     (nskk-prolog-assert '((choice first) !))
@@ -615,9 +618,8 @@ data facts produce results and that the first is `a'."
 
 (nskk-deftest-unit prolog-dsl-query-success
   "nskk-prolog-?- queries successfully.
-For a ground query, `query-one' returns nil (empty substitution),
-which is indistinguishable from no-match.  Use `nskk-prolog-query'
-to verify the fact exists."
+For a ground query, `query-one' returns t (ground success), not nil.
+Use `nskk-prolog-query' if you need the actual substitution alist."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
     (nskk-prolog-<- (dsl-hello world))
@@ -730,6 +732,36 @@ to verify the fact exists."
     (nskk-prolog-clear-database)
     (should-not (nskk-prolog-query-all-values '(empty \?x) '\?x))))
 
+(nskk-deftest-unit prolog-query-values-basic
+  "query-values extracts multiple variable bindings in order."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-assert '((triple a 1 x)))
+    (let ((result (nskk-prolog-query-values
+                   '(triple \?p \?q \?r) '(\?p \?q \?r))))
+      (should result)
+      (should (equal result '(a 1 x))))))
+
+(nskk-deftest-unit prolog-query-values-no-match
+  "query-values returns nil when no solution exists."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (should-not (nskk-prolog-query-values '(no-triple \?a \?b \?c) '(\?a \?b)))))
+
+(nskk-deftest-unit prolog-query-values-with-rule
+  "query-values works with rule-derived bindings."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-assert '((item pen red)))
+    (nskk-prolog-assert '((stock item pen 42)))
+    (nskk-prolog-assert '((inventory \?name \?color \?count)
+                           (item \?name \?color) (stock item \?name \?count)))
+    (let ((result (nskk-prolog-query-values
+                   '(inventory pen \?color \?count) '(\?color \?count))))
+      (should result)
+      (should (equal (car result) 'red))
+      (should (= (cadr result) 42)))))
+
 (nskk-deftest-unit prolog-query-returns-all-solutions
   "query returns list of all substitution alists."
   (nskk-prolog-test-with-isolated-db
@@ -751,18 +783,19 @@ to verify the fact exists."
       (should result)
       (should (equal (nskk-prolog-walk '\?n result) 1)))))
 
-(nskk-deftest-unit prolog-ground-query-nil-ambiguity
-  "Demonstrate ground query nil ambiguity between query-one and query.
-`nskk-prolog-query-one' returns nil for both no-match and ground success
-\(empty substitution).  `nskk-prolog-query' returns (nil) for success
-vs nil for failure, making them distinguishable."
+(nskk-deftest-unit prolog-ground-query-distinguishable
+  "Ground query: query-one returns t for success, nil for no-solution.
+`nskk-prolog-query-one' upgrades a nil (empty) substitution to t so
+callers can distinguish ground success from no-solution.  `nskk-prolog-query'
+returns (nil) for success vs nil for failure, offering the same
+distinction via list membership."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
     (nskk-prolog-assert '((ground-fact)))
-    ;; query-one: nil for both success and failure (ambiguous)
-    (should (null (nskk-prolog-query-one '(ground-fact))))
+    ;; query-one: t for ground success, nil for no-solution (distinguishable)
+    (should (eq t (nskk-prolog-query-one '(ground-fact))))
     (should (null (nskk-prolog-query-one '(nonexistent))))
-    ;; query: (nil) for success, nil for failure (unambiguous)
+    ;; query: (nil) for success, nil for failure (also distinguishable)
     (should (nskk-prolog-query '(ground-fact)))
     (should-not (nskk-prolog-query '(nonexistent)))))
 
@@ -847,7 +880,7 @@ vs nil for failure, making them distinguishable."
   nskk-unit-prolog-prove-chained-rules)
 
 (nskk-test-suite prolog-cut
-  nskk-unit-prolog-cut-commits-to-first
+  nskk-unit-prolog-cut-clause-local-scope
   nskk-unit-prolog-cut-after-first-body-goal)
 
 (nskk-test-suite prolog-negation
@@ -890,9 +923,13 @@ vs nil for failure, making them distinguishable."
   nskk-unit-prolog-query-value-no-match
   nskk-unit-prolog-query-all-values-basic
   nskk-unit-prolog-query-all-values-empty
+  nskk-unit-prolog-query-values-basic
+  nskk-unit-prolog-query-values-no-match
+  nskk-unit-prolog-query-values-with-rule
   nskk-unit-prolog-query-returns-all-solutions
   nskk-unit-prolog-query-one-returns-first
-  nskk-unit-prolog-query-complex-rule)
+  nskk-unit-prolog-query-complex-rule
+  nskk-unit-prolog-ground-query-distinguishable)
 
 ;;;
 ;;; Property-Based Tests

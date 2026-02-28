@@ -3,6 +3,8 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
 ;; Keywords: i18n
 
 ;; Copyright (C) 2026 NSKK Contributors
@@ -199,7 +201,7 @@ OKURI-TYPE is \\='okuri-ari, \\='okuri-nasi, or nil (match all)."
 (defun nskk-search-exact (index query okuri-type)
   "Perform exact match search in INDEX for QUERY.
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil."
-  (let* ((pred (nskk-prolog-query-value `(dict-source ,index \?pred) '\?pred))
+  (let* ((pred (nskk-dict-index-predicate index))
          (candidates (when pred
                        (nskk-prolog-query-value
                         `(,pred ,query \?candidates) '\?candidates))))
@@ -216,7 +218,7 @@ OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
   "Perform prefix match search in INDEX for QUERY.
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
 LIMIT is the maximum number of results."
-  (let* ((pred (nskk-prolog-query-value `(dict-source ,index \?pred) '\?pred))
+  (let* ((pred (nskk-dict-index-predicate index))
          (raw-results (when pred (nskk-prolog-trie-prefix-search pred 2 query)))
          ;; Convert raw (key . candidates) pairs to (key . nskk-dict-entry) pairs
          (results (mapcar (lambda (pair)
@@ -258,7 +260,7 @@ LIMIT is the maximum number of results."
   "Perform partial match search in INDEX for QUERY.
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
 LIMIT is the maximum number of results."
-  (let* ((pred (nskk-prolog-query-value `(dict-source ,index \?pred) '\?pred))
+  (let* ((pred (nskk-dict-index-predicate index))
          (results nil)
          (count 0))
     (when pred
@@ -284,7 +286,7 @@ LIMIT is the maximum number of results."
   "Perform fuzzy search in INDEX for QUERY using Levenshtein distance.
 _OKURI-TYPE specifies okurigana filtering.
 LIMIT is the maximum number of results."
-  (let* ((pred (nskk-prolog-query-value `(dict-source ,index \?pred) '\?pred))
+  (let* ((pred (nskk-dict-index-predicate index))
          (results nil))
     (when pred
       (let ((all-solutions (nskk-prolog-query `(,pred \?k \?candidates))))

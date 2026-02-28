@@ -1,11 +1,16 @@
 ;;; nskk-input-test.el --- Input and henkan tests -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2026 NSKK Contributors
 
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
 
-;; This file is part of NSKK.
+;; This file is NOT part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
 
 ;;; Commentary:
 
@@ -24,6 +29,7 @@
 (require 'nskk-input)
 (require 'nskk-state)
 (require 'nskk-converter)
+(require 'nskk-prolog)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 
@@ -818,6 +824,8 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 When registration is cancelled (empty input), preedit is left as-is."
   (with-temp-buffer
     (nskk-input-test-with-state 'hiragana
+      ;; Set 'on phase: in practice a capital letter sets this before SPC
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk--set-conversion-start-marker (point-min))
       ;; Include ▽ marker as ddskk does
       (insert "\u25BDxyznonexistent")
@@ -832,6 +840,8 @@ When registration is cancelled (empty input), preedit is left as-is."
   "Test start-conversion inserts registered word when registration succeeds."
   (with-temp-buffer
     (nskk-input-test-with-state 'hiragana
+      ;; Set 'on phase: in practice a capital letter sets this before SPC
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk--set-conversion-start-marker (point-min))
       (insert "\u25BDmyreading")
       ;; Mock read-from-minibuffer to simulate successful registration
@@ -852,6 +862,8 @@ When registration is cancelled (empty input), preedit is left as-is."
       (nskk--set-conversion-start-marker (point-min))
       ;; Include ▽ marker as ddskk does
       (insert "\u25BDtest")
+      ;; Set henkan-phase to 'on (preedit mode) before starting conversion
+      (nskk-state-set-henkan-phase nskk-current-state 'on)
       ;; Mock nskk-core-search to return candidates
       (cl-letf (((symbol-function 'nskk-core-search)
                  (lambda (_key &optional _type _limit) '("result1" "result2"))))
@@ -1064,6 +1076,90 @@ When registration is cancelled (empty input), preedit is left as-is."
   :body (let ((state (nskk-state-create input)))
           (should (nskk-state-p state))
           (should (eq (nskk-state-mode state) expected))))
+
+;;;
+;;; Fullwidth-Char Prolog Table Tests
+;;;
+
+(nskk-deftest-unit input-fullwidth-char-space
+  "Test that space maps to ideographic space (U+3000)."
+  (should (eq (nskk-prolog-query-value
+               `(fullwidth-char ?\s ,'\?fw) '\?fw)
+              ?\u3000)))
+
+(nskk-deftest-unit input-fullwidth-char-exclamation
+  "Test that ! (0x21) maps to FF01."
+  (should (eq (nskk-prolog-query-value
+               `(fullwidth-char ?! ,'\?fw) '\?fw)
+              ?\uFF01)))
+
+(nskk-deftest-unit input-fullwidth-char-tilde
+  "Test that ~ (0x7E) maps to FF5E."
+  (should (eq (nskk-prolog-query-value
+               `(fullwidth-char ?~ ,'\?fw) '\?fw)
+              ?\uFF5E)))
+
+(nskk-deftest-unit input-fullwidth-char-upper-a
+  "Test that A (0x41) maps to FF21."
+  (should (eq (nskk-prolog-query-value
+               `(fullwidth-char ?A ,'\?fw) '\?fw)
+              ?\uFF21)))
+
+(nskk-deftest-unit input-fullwidth-char-lower-a
+  "Test that a (0x61) maps to FF41."
+  (should (eq (nskk-prolog-query-value
+               `(fullwidth-char ?a ,'\?fw) '\?fw)
+              ?\uFF41)))
+
+(nskk-deftest-unit input-fullwidth-char-passthrough
+  "Test that non-ASCII character passes through unchanged."
+  (with-temp-buffer
+    (nskk-insert-fullwidth-char ?\u3042 1)
+    ;; Non-ASCII should be inserted as-is
+    (should (string= (buffer-string) "\u3042"))))
+
+;;;
+;;; Toggle-Mode Prolog Rule Tests
+;;;
+
+(nskk-deftest-unit input-toggle-mode-hiragana-to-katakana
+  "Test that toggle-mode rule maps hiragana to katakana."
+  (should (eq (nskk-prolog-query-value
+               `(toggle-mode hiragana ,'\?target) '\?target)
+              'katakana)))
+
+(nskk-deftest-unit input-toggle-mode-katakana-to-hiragana
+  "Test that toggle-mode rule maps katakana to hiragana."
+  (should (eq (nskk-prolog-query-value
+               `(toggle-mode katakana ,'\?target) '\?target)
+              'hiragana)))
+
+(nskk-deftest-unit input-toggle-mode-ascii-no-rule
+  "Test that ascii mode has no toggle-mode mapping."
+  (should (null (nskk-prolog-query-value
+                 `(toggle-mode ascii ,'\?target) '\?target))))
+
+;;;
+;;; Input-Route Prolog Rule Tests
+;;;
+
+(nskk-deftest-unit input-route-hiragana-processes-japanese
+  "Test that hiragana mode routes to process-japanese."
+  (should (eq (nskk-prolog-query-value
+               `(input-route hiragana ,'\?action) '\?action)
+              'process-japanese)))
+
+(nskk-deftest-unit input-route-ascii-inserts-direct
+  "Test that ascii mode routes to insert-direct."
+  (should (eq (nskk-prolog-query-value
+               `(input-route ascii ,'\?action) '\?action)
+              'insert-direct)))
+
+(nskk-deftest-unit input-route-jisx0208-latin-inserts-fullwidth
+  "Test that jisx0208-latin mode routes to insert-fullwidth."
+  (should (eq (nskk-prolog-query-value
+               `(input-route jisx0208-latin ,'\?action) '\?action)
+              'insert-fullwidth)))
 
 (provide 'nskk-input-test)
 

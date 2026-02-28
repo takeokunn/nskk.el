@@ -46,7 +46,6 @@
 (require 'nskk-converter)
 (require 'nskk-azik)
 (require 'nskk-prolog)
-(eval-when-compile (require 'cl-lib))
 
 
 ;;;;
@@ -55,14 +54,14 @@
 
 (defmacro nskk-with-azik-style (&rest body)
   "Execute BODY with AZIK style loaded."
-  (declare (indent 0))
+  (declare (indent 0) (debug t))
   `(progn
      (nskk-converter-load-style 'azik)
      ,@body))
 
 (defmacro nskk-with-standard-style (&rest body)
   "Execute BODY with standard style loaded."
-  (declare (indent 0))
+  (declare (indent 0) (debug t))
   `(progn
      (nskk-converter-load-style 'standard)
      ,@body))
@@ -942,6 +941,23 @@ AZIK-specific keys are absent from nskk-converter-lookup after switching."
     (should-not (nskk-converter-lookup "kz"))
     ;; Standard romaji rules are still accessible
     (should (equal (nskk-convert-romaji "ka") "か"))))
+
+(ert-deftest nskk-azik-prolog-youon-prefix-incomplete ()
+  "Test that 2-char youon prefixes produce :incomplete in the hash table.
+The Prolog-derived partial marker computation must cover not only single
+consonants (\"k\", \"h\") but also 2-char youon prefixes like \"kg\", \"hg\".
+These are proper prefixes of romaji keys like \"kga\", \"kgz\" etc."
+  (nskk-with-azik-style
+    ;; Single-char consonant prefixes
+    (should (eq (nskk-converter-lookup "k") :incomplete))
+    (should (eq (nskk-converter-lookup "h") :incomplete))
+    (should (eq (nskk-converter-lookup "m") :incomplete))
+    ;; 2-char youon prefixes (derived from azik-rule/2, not hardcoded)
+    (should (eq (nskk-converter-lookup "kg") :incomplete))
+    (should (eq (nskk-converter-lookup "hg") :incomplete))
+    (should (eq (nskk-converter-lookup "mg") :incomplete))
+    (should (eq (nskk-converter-lookup "rg") :incomplete))
+    (should (eq (nskk-converter-lookup "jg") :incomplete))))
 
 
 ;;;;

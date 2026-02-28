@@ -92,30 +92,37 @@
     (concat (nskk-pbt--random-choice prefixes)
             (nskk-pbt--random-choice suffixes))))
 
+(defconst nskk-pbt--test-pred 'nskk-pbt-test-dict-entry
+  "Prolog predicate used in fixture-loading integration tests.")
+
 
 ;;;;
 ;;;; Property 1: Dictionary Load Fixture
 ;;;;
 
 (ert-deftest nskk-state-machine-dict-load-fixture ()
-  "Loading test dictionary yields accessible entries."
-  (let* ((dict-path (nskk-pbt--fixture-dict-path))
-         (index (nskk-dict-load-file dict-path)))
-    ;; Index should be a valid struct
-    (should (nskk-dict-index-p index))
-    ;; Entries should be a hash table
-    (let ((entries (nskk-dict-index-entries index)))
-      (should (hash-table-p entries))
-      ;; Should have multiple entries
-      (should (> (hash-table-count entries) 10)))
-    ;; All known keys should be present
-    (let ((failures nil))
-      (dolist (key nskk-pbt--known-dict-keys)
-        (let ((result (gethash key (nskk-dict-index-entries index))))
-          (unless result
-            (push key failures))))
-      (when failures
-        (ert-fail (format "Missing keys in loaded dictionary: %S" failures))))))
+  "Loading test dictionary yields accessible entries via Prolog."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (let* ((dict-path (nskk-pbt--fixture-dict-path))
+           (pred (nskk-dict-load-file dict-path nil nskk-pbt--test-pred)))
+      ;; nskk-dict-load-file returns the predicate symbol on success
+      (should (symbolp pred))
+      (should (eq pred nskk-pbt--test-pred))
+      ;; Create an index struct from the predicate
+      (let ((index (make-nskk-dict-index :predicate pred)))
+        (should (nskk-dict-index-p index))
+        ;; Should have multiple entries in the Prolog database
+        (should (> (nskk-dict--struct-entry-count index nil) 10)))
+      ;; All known keys should be present via Prolog query
+      (let ((failures nil))
+        (dolist (key nskk-pbt--known-dict-keys)
+          (let ((result (nskk-prolog-query-value
+                         `(,nskk-pbt--test-pred ,key \?c) '\?c)))
+            (unless result
+              (push key failures))))
+        (when failures
+          (ert-fail (format "Missing keys in loaded dictionary: %S" failures)))))))
 
 
 ;;;;
@@ -124,22 +131,25 @@
 
 (ert-deftest nskk-state-machine-dict-lookup-returns-candidates ()
   "Known keys always return non-nil candidates from fixture dictionary."
-  (let* ((dict-path (nskk-pbt--fixture-dict-path))
-         (index (nskk-dict-load-file dict-path))
-         (runs 50)
-         (failures nil))
-    (dotimes (_ runs)
-      (let* ((key (nskk-pbt--random-choice nskk-pbt--known-dict-keys))
-             (result (nskk-dict--struct-lookup index key)))
-        (unless (and result
-                     (nskk-dict-entry-p result)
-                     (nskk-dict-entry-candidates result)
-                     (> (length (nskk-dict-entry-candidates result)) 0))
-          (push (list :key key :result result) failures))))
-    (when failures
-      (ert-fail (format "Lookup failed for %d known keys:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (let* ((dict-path (nskk-pbt--fixture-dict-path))
+           (pred (nskk-dict-load-file dict-path nil nskk-pbt--test-pred))
+           (index (make-nskk-dict-index :predicate pred))
+           (runs 50)
+           (failures nil))
+      (dotimes (_ runs)
+        (let* ((key (nskk-pbt--random-choice nskk-pbt--known-dict-keys))
+               (result (nskk-dict--struct-lookup index key)))
+          (unless (and result
+                       (nskk-dict-entry-p result)
+                       (nskk-dict-entry-candidates result)
+                       (> (length (nskk-dict-entry-candidates result)) 0))
+            (push (list :key key :result result) failures))))
+      (when failures
+        (ert-fail (format "Lookup failed for %d known keys:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;
@@ -148,19 +158,22 @@
 
 (ert-deftest nskk-state-machine-dict-lookup-unknown-returns-nil ()
   "Random unknown keys return nil from fixture dictionary."
-  (let* ((dict-path (nskk-pbt--fixture-dict-path))
-         (index (nskk-dict-load-file dict-path))
-         (runs 50)
-         (failures nil))
-    (dotimes (_ runs)
-      (let* ((key (nskk-pbt--generate-unknown-key))
-             (result (nskk-dict--struct-lookup index key)))
-        (when result
-          (push (list :key key :result result) failures))))
-    (when failures
-      (ert-fail (format "Unknown key returned non-nil for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (let* ((dict-path (nskk-pbt--fixture-dict-path))
+           (pred (nskk-dict-load-file dict-path nil nskk-pbt--test-pred))
+           (index (make-nskk-dict-index :predicate pred))
+           (runs 50)
+           (failures nil))
+      (dotimes (_ runs)
+        (let* ((key (nskk-pbt--generate-unknown-key))
+               (result (nskk-dict--struct-lookup index key)))
+          (when result
+            (push (list :key key :result result) failures))))
+      (when failures
+        (ert-fail (format "Unknown key returned non-nil for %d cases:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;
@@ -169,38 +182,49 @@
 
 (ert-deftest nskk-state-machine-dict-save-load-roundtrip ()
   "Save user dict then reload: entries are preserved."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((entries (make-hash-table :test 'equal))
-             (key (nskk-pbt--random-choice nskk-pbt--known-dict-keys))
-             (candidates (nskk-pbt--random-choice
-                          '(("候補1" "候補2") ("テスト") ("漢字" "感じ"))))
-             (temp-file (make-temp-file "nskk-test-dict-" nil ".skk")))
-        (unwind-protect
-            (progn
-              (puthash key candidates entries)
-              (let ((nskk--user-dict-index (make-nskk-dict-index :entries entries))
-                    (nskk-dict-user-dictionary-file temp-file))
-                (nskk-dict-save-user-dictionary)
-                (let ((reloaded (nskk-dict-load-file temp-file)))
-                  (if (not (nskk-dict-index-p reloaded))
-                      (push (list :key key :error "reload returned nil") failures)
-                    (let ((reloaded-candidates
-                           (gethash key (nskk-dict-index-entries reloaded))))
-                      (dolist (c candidates)
-                        (unless (member c reloaded-candidates)
-                          (push (list :key key
-                                      :original candidates
-                                      :reloaded reloaded-candidates
-                                      :missing c)
-                                failures))))))))
-          (when (file-exists-p temp-file)
-            (delete-file temp-file)))))
-    (when failures
-      (ert-fail (format "Save-load roundtrip failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+  (nskk-prolog-test-with-isolated-db
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((key (nskk-pbt--random-choice nskk-pbt--known-dict-keys))
+               (candidates (nskk-pbt--random-choice
+                            '(("候補1" "候補2") ("テスト") ("漢字" "感じ"))))
+               (temp-file (make-temp-file "nskk-test-dict-" nil ".skk")))
+          (unwind-protect
+              (progn
+                ;; Set up user dict entries via Prolog
+                ;; Use targeted retract-all instead of clear-database to preserve
+                ;; module-level facts (valid-henkan-transition, cache-type, etc.)
+                (nskk-prolog-retract-all 'user-dict-entry 2)
+                (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                (nskk-prolog-assert (list (list 'user-dict-entry key candidates)))
+                ;; Save user dictionary to temp file
+                (let ((nskk--user-dict-index 'user)
+                      (nskk-dict-user-dictionary-file temp-file))
+                  (nskk-dict-save-user-dictionary)
+                  ;; Reload the saved file under a separate predicate
+                  (let* ((reload-pred 'nskk-pbt-reload-dict)
+                         (_ (nskk-prolog-retract-all reload-pred 2))
+                         (loaded (nskk-dict-load-file temp-file nil reload-pred)))
+                    (if (not (symbolp loaded))
+                        (push (list :key key :error "reload returned non-symbol") failures)
+                      ;; Check that the key's candidates are present
+                      (let ((reloaded-candidates
+                             (nskk-prolog-query-value
+                              `(,reload-pred ,key \?c) '\?c)))
+                        (dolist (c candidates)
+                          (unless (member c reloaded-candidates)
+                            (push (list :key key
+                                        :original candidates
+                                        :reloaded reloaded-candidates
+                                        :missing c)
+                                  failures))))))))
+            (when (file-exists-p temp-file)
+              (delete-file temp-file)))))
+      (when failures
+        (ert-fail (format "Save-load roundtrip failed for %d cases:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;

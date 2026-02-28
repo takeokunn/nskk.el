@@ -1,6 +1,6 @@
 ;;; nskk-keymap-test.el --- Keymap tests -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2026 NSKK Authors
 
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
@@ -87,20 +87,20 @@
   (should (fboundp 'nskk-convert-or-commit)))
 
 (nskk-deftest-unit keymap-app-layer-hiragana-defined
-  "Test that nskk-enter-hiragana-mode is available from input commands."
-  (should (fboundp 'nskk-enter-hiragana-mode)))
+  "Test that nskk-set-mode-hiragana is available from input commands."
+  (should (fboundp 'nskk-set-mode-hiragana)))
 
 (nskk-deftest-unit keymap-app-layer-katakana-defined
-  "Test that nskk-enter-katakana-mode is available from input commands."
-  (should (fboundp 'nskk-enter-katakana-mode)))
+  "Test that nskk-set-mode-katakana is available from input commands."
+  (should (fboundp 'nskk-set-mode-katakana)))
 
 (nskk-deftest-unit keymap-app-layer-latin-defined
-  "Test that nskk-enter-latin-mode is available from input commands."
-  (should (fboundp 'nskk-enter-latin-mode)))
+  "Test that nskk-set-mode-latin is available from input commands."
+  (should (fboundp 'nskk-set-mode-latin)))
 
 (nskk-deftest-unit keymap-app-layer-abbrev-defined
-  "Test that nskk-enter-abbrev-mode is available from input commands."
-  (should (fboundp 'nskk-enter-abbrev-mode)))
+  "Test that nskk-set-mode-abbrev is available from input commands."
+  (should (fboundp 'nskk-set-mode-abbrev)))
 
 ;;;
 ;;; Interactive Command Tests
@@ -123,12 +123,28 @@
   (should (commandp 'nskk-convert-or-commit)))
 
 (nskk-deftest-unit keymap-hiragana-mode-is-interactive
-  "Test nskk-enter-hiragana-mode is an interactive command."
-  (should (commandp 'nskk-enter-hiragana-mode)))
+  "Test nskk-set-mode-hiragana is an interactive command."
+  (should (commandp 'nskk-set-mode-hiragana)))
 
 (nskk-deftest-unit keymap-katakana-mode-is-interactive
-  "Test nskk-enter-katakana-mode is an interactive command."
-  (should (commandp 'nskk-enter-katakana-mode)))
+  "Test nskk-set-mode-katakana is an interactive command."
+  (should (commandp 'nskk-set-mode-katakana)))
+
+(nskk-deftest-unit keymap-latin-mode-is-interactive
+  "Test nskk-set-mode-latin is an interactive command."
+  (should (commandp 'nskk-set-mode-latin)))
+
+(nskk-deftest-unit keymap-abbrev-mode-is-interactive
+  "Test nskk-set-mode-abbrev is an interactive command."
+  (should (commandp 'nskk-set-mode-abbrev)))
+
+(nskk-deftest-unit keymap-app-layer-jisx0208-latin-defined
+  "Test that nskk-set-mode-jisx0208-latin is available from input commands."
+  (should (fboundp 'nskk-set-mode-jisx0208-latin)))
+
+(nskk-deftest-unit keymap-jisx0208-latin-mode-is-interactive
+  "Test nskk-set-mode-jisx0208-latin is an interactive command."
+  (should (commandp 'nskk-set-mode-jisx0208-latin)))
 
 ;;;
 ;;; Behavioral Tests for Input Commands via Keymap
@@ -137,11 +153,11 @@
 (nskk-deftest-unit keymap-mode-switch-via-app-layer
   "Test that mode switching works when invoked through input commands API."
   (let ((nskk-current-state (nskk-state-create 'ascii)))
-    (nskk-enter-hiragana-mode)
+    (nskk-set-mode-hiragana)
     (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (nskk-enter-katakana-mode)
+    (nskk-set-mode-katakana)
     (should (eq (nskk-state-mode nskk-current-state) 'katakana))
-    (nskk-enter-latin-mode)
+    (nskk-set-mode-latin)
     (should (eq (nskk-state-mode nskk-current-state) 'latin))))
 
 (nskk-deftest-unit keymap-toggle-japanese-mode-behavior
@@ -207,6 +223,8 @@
       ;; Set up preedit: marker at beginning, ▽ marker then text after it
       (nskk--set-conversion-start-marker (point-min))
       (insert "\u25BDtest")
+      ;; Set henkan-phase to 'on (preedit mode) before pressing space
+      (nskk-state-set-henkan-phase nskk-current-state 'on)
       ;; Mock search to return candidates
       (cl-letf (((symbol-function 'nskk-core-search)
                  (lambda (_k &optional _t _l)
@@ -304,6 +322,51 @@
       (nskk-handle-cancel)
       (should quit-called))))
 
+(nskk-deftest-unit keymap-handle-x-previous-candidate-when-converting
+  "Test handle-x calls nskk-previous-candidate when converting."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (prev-candidate-called nil))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "preedit")
+      (setf (nskk-state-candidates nskk-current-state) '("result"))
+      (setf (nskk-state-current-index nskk-current-state) 0)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (cl-letf (((symbol-function 'nskk-previous-candidate)
+                 (lambda () (setq prev-candidate-called t))))
+        (nskk-handle-x)
+        (should prev-candidate-called)))))
+
+(nskk-deftest-unit keymap-handle-space-next-candidate-when-converting
+  "Test handle-space calls nskk-next-candidate when converting."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (next-candidate-called nil))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "preedit")
+      (setf (nskk-state-candidates nskk-current-state) '("result"))
+      (setf (nskk-state-current-index nskk-current-state) 0)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (cl-letf (((symbol-function 'nskk-next-candidate)
+                 (lambda () (setq next-candidate-called t))))
+        (nskk-handle-space)
+        (should next-candidate-called)))))
+
+(nskk-deftest-unit keymap-handle-cancel-cancels-when-converting
+  "Test handle-cancel calls nskk-cancel-conversion when converting."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (cancel-called nil))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "preedit")
+      (setf (nskk-state-candidates nskk-current-state) '("result"))
+      (setf (nskk-state-current-index nskk-current-state) 0)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (cl-letf (((symbol-function 'nskk-cancel-conversion)
+                 (lambda () (setq cancel-called t))))
+        (nskk-handle-cancel)
+        (should cancel-called)))))
+
 (nskk-deftest-unit keymap-handle-q-implicit-kakutei
   "Test handle-q does implicit kakutei when converting."
   (with-temp-buffer
@@ -335,23 +398,43 @@
 ;;; Handler Function Existence Tests
 ;;;
 
+(nskk-deftest-unit keymap-handle-q-defined
+  "Test that nskk-handle-q is defined and interactive."
+  (should (fboundp 'nskk-handle-q))
+  (should (commandp 'nskk-handle-q)))
+
+(nskk-deftest-unit keymap-handle-l-defined
+  "Test that nskk-handle-l is defined and interactive."
+  (should (fboundp 'nskk-handle-l))
+  (should (commandp 'nskk-handle-l)))
+
 (nskk-deftest-unit keymap-handle-upper-l-defined
-  "Test that nskk-handle-upper-l is defined."
+  "Test that nskk-handle-upper-l is defined and interactive."
   (should (fboundp 'nskk-handle-upper-l))
   (should (commandp 'nskk-handle-upper-l)))
 
 (nskk-deftest-unit keymap-handle-slash-defined
-  "Test that nskk-handle-slash is defined."
+  "Test that nskk-handle-slash is defined and interactive."
   (should (fboundp 'nskk-handle-slash))
   (should (commandp 'nskk-handle-slash)))
 
 (nskk-deftest-unit keymap-handle-x-defined
-  "Test that nskk-handle-x is defined."
+  "Test that nskk-handle-x is defined and interactive."
   (should (fboundp 'nskk-handle-x))
   (should (commandp 'nskk-handle-x)))
 
+(nskk-deftest-unit keymap-handle-space-defined
+  "Test that nskk-handle-space is defined and interactive."
+  (should (fboundp 'nskk-handle-space))
+  (should (commandp 'nskk-handle-space)))
+
+(nskk-deftest-unit keymap-handle-return-defined
+  "Test that nskk-handle-return is defined and interactive."
+  (should (fboundp 'nskk-handle-return))
+  (should (commandp 'nskk-handle-return)))
+
 (nskk-deftest-unit keymap-handle-cancel-defined
-  "Test that nskk-handle-cancel is defined."
+  "Test that nskk-handle-cancel is defined and interactive."
   (should (fboundp 'nskk-handle-cancel))
   (should (commandp 'nskk-handle-cancel)))
 

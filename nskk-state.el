@@ -5,6 +5,8 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -35,6 +37,16 @@
 ;;
 ;; State is stored buffer-locally in `nskk-current-state' and mutated
 ;; exclusively through the setter functions defined in this module.
+;;
+;; Prolog predicates provided by this module:
+;; - `valid-mode/1': validates mode symbols against `nskk-state-modes'
+;; - `japanese-mode/1': identifies modes where Japanese input is active
+;; - `can-transition/2': validates any mode-to-mode transition
+;; - `valid-henkan-transition/2': validates henkan phase transitions
+;; - `henkan-mode-phase/1': classifies phases as active henkan phases
+;; - `state-slot-default/2': default values for state struct slots
+;; - `resettable-field/1': fields cleared by `nskk-state-reset'
+;; - `metadata-key/1': valid metadata key symbols
 
 ;;; Code:
 
@@ -43,7 +55,7 @@
 (defgroup nskk-state nil
   "State management settings."
   :prefix "nskk-state-"
-  :group 'nskk-kana)
+  :group 'nskk)
 
 (defcustom nskk-state-default-mode 'ascii
   "Default input mode when NSKK is activated."
@@ -98,6 +110,12 @@ Falls through to nil if no slot matches."
 (nskk-prolog-set-index 'valid-mode 1 :hash)
 (dolist (m nskk-state-modes)
   (nskk-prolog-assert (list (list 'valid-mode m))))
+
+;;;; Japanese Input Mode Classification
+(nskk-prolog-set-index 'japanese-mode 1 :hash)
+(nskk-prolog-<- (japanese-mode hiragana))
+(nskk-prolog-<- (japanese-mode katakana))
+(nskk-prolog-<- (japanese-mode katakana-半角))
 
 ;; Main state structure
 (cl-defstruct nskk-state
@@ -317,14 +335,15 @@ Returns t on success, nil on failure."
 (defun nskk-state-reset (state)
   "Reset STATE to initial state (preserves mode).
 Iterates resettable-field Prolog facts and restores each
-to its state-slot-default value."
+to its state-slot-default value.
+Returns nil (side-effect function)."
   (nskk-with-state state
     (dolist (slot (nskk-prolog-query-all-values '(resettable-field \?s) '\?s))
       (let ((default (nskk-state--get-default slot)))
         (if (eq slot 'henkan-phase)
             (nskk-state-force-henkan-phase state default)
           (nskk-state-set state slot default))))
-    t))
+    nil))
 
 ;; Buffer management helpers
 (defun nskk-state-append-input (state char)

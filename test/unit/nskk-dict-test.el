@@ -302,7 +302,7 @@
   "Test creating a dict-index with a Prolog predicate."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'test-dict 1 :trie)
+    (nskk-prolog-set-index 'test-dict 2 :trie)
     (nskk-prolog-assert '((test-dict "key1" ("val1"))))
     (nskk-prolog-assert '((test-dict "key2" ("val2"))))
     (let ((index (make-nskk-dict-index :predicate 'test-dict)))
@@ -313,7 +313,7 @@
   "Test creating a dict-index backed by Prolog trie index."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'prefix-dict 1 :trie)
+    (nskk-prolog-set-index 'prefix-dict 2 :trie)
     (nskk-prolog-assert '((prefix-dict "test" ("value"))))
     (let ((index (make-nskk-dict-index :predicate 'prefix-dict)))
       (should (nskk-dict-index-p index))
@@ -369,7 +369,7 @@
   "Test entry count with Prolog facts."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'count-dict 1 :trie)
+    (nskk-prolog-set-index 'count-dict 2 :trie)
     (nskk-prolog-assert '((count-dict "a" ("v1"))))
     (nskk-prolog-assert '((count-dict "b" ("v2"))))
     (nskk-prolog-assert '((count-dict "c" ("v3"))))
@@ -384,7 +384,7 @@
   "Test building a dict-index backed by Prolog facts."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'workflow-dict 1 :trie)
+    (nskk-prolog-set-index 'workflow-dict 2 :trie)
     (nskk-prolog-assert '((workflow-dict "かんじ" ("漢字" "感じ"))))
     (nskk-prolog-assert '((workflow-dict "にほん" ("日本"))))
     (nskk-prolog-assert '((workflow-dict "にほんご" ("日本語"))))
@@ -430,7 +430,7 @@
   "Test asserting dict entries and looking them up via Prolog."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'io-test-dict 1 :trie)
+    (nskk-prolog-set-index 'io-test-dict 2 :trie)
     (nskk-prolog-assert '((io-test-dict "かんじ" ("漢字"))))
     (let ((result (nskk-prolog-query-value
                    '(io-test-dict "かんじ" \?c) '\?c)))
@@ -440,7 +440,7 @@
   "Test prefix search over Prolog dict facts."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'prefix-test-dict 1 :trie)
+    (nskk-prolog-set-index 'prefix-test-dict 2 :trie)
     (nskk-prolog-assert '((prefix-test-dict "かんじ" ("漢字"))))
     (nskk-prolog-assert '((prefix-test-dict "かんたん" ("簡単"))))
     (nskk-prolog-assert '((prefix-test-dict "にほん" ("日本"))))
@@ -453,7 +453,7 @@
   "Test Prolog dict with Japanese candidate lists."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'ja-dict 1 :trie)
+    (nskk-prolog-set-index 'ja-dict 2 :trie)
     (nskk-prolog-assert '((ja-dict "にほん" ("日本" "二本"))))
     (let ((result (nskk-prolog-query-value '(ja-dict "にほん" \?c) '\?c)))
       (should (equal result '("日本" "二本"))))))
@@ -462,7 +462,7 @@
   "Test clearing all entries via retract-all."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'retract-dict 1 :trie)
+    (nskk-prolog-set-index 'retract-dict 2 :trie)
     (nskk-prolog-assert '((retract-dict "a" ("val1"))))
     (nskk-prolog-assert '((retract-dict "b" ("val2"))))
     (nskk-prolog-retract-all 'retract-dict 2)
@@ -497,7 +497,7 @@
   "Test full workflow: assert Prolog facts, query, prefix-search, verify."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (nskk-prolog-set-index 'workflow-io-dict 1 :trie)
+    (nskk-prolog-set-index 'workflow-io-dict 2 :trie)
     (nskk-prolog-assert '((workflow-io-dict "あいう" ("アイウ"))))
     (nskk-prolog-assert '((workflow-io-dict "あいうえ" ("アイウエ"))))
     (nskk-prolog-assert '((workflow-io-dict "あいうえお" ("アイウエオ"))))

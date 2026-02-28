@@ -123,26 +123,6 @@
   (should (fboundp 'nskk-kakutei))
   (should (commandp 'nskk-kakutei)))
 
-(nskk-deftest-unit main-switch-to-hiragana-exists
-  "Test that switch-to-hiragana function exists."
-  (should (fboundp 'nskk-switch-to-hiragana))
-  (should (commandp 'nskk-switch-to-hiragana)))
-
-(nskk-deftest-unit main-switch-to-katakana-exists
-  "Test that switch-to-katakana function exists."
-  (should (fboundp 'nskk-switch-to-katakana))
-  (should (commandp 'nskk-switch-to-katakana)))
-
-(nskk-deftest-unit main-switch-to-ascii-exists
-  "Test that switch-to-ascii function exists."
-  (should (fboundp 'nskk-switch-to-ascii))
-  (should (commandp 'nskk-switch-to-ascii)))
-
-(nskk-deftest-unit main-toggle-kana-exists
-  "Test that toggle-kana function exists."
-  (should (fboundp 'nskk-toggle-kana))
-  (should (commandp 'nskk-toggle-kana)))
-
 ;;;
 ;;; Buffer State Tests
 ;;;
@@ -195,16 +175,6 @@
 (nskk-deftest-unit main-post-command-handler-exists
   "Test that nskk--post-command-handler function exists."
   (should (fboundp 'nskk--post-command-handler)))
-
-(nskk-deftest-unit main-switch-mode-exists
-  "Test that mode switching aliases exist."
-  (should (fboundp 'nskk-switch-to-hiragana))
-  (should (fboundp 'nskk-switch-to-katakana))
-  (should (fboundp 'nskk-switch-to-ascii)))
-
-(nskk-deftest-unit main-update-modeline-exists
-  "Test that nskk--update-modeline function exists."
-  (should (fboundp 'nskk--update-modeline)))
 
 ;;;
 ;;; Kakutei (Commit) Tests

@@ -6,6 +6,8 @@
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1"))
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -29,7 +31,7 @@
 ;;
 ;; Features:
 ;; - First-order unification without occurs check
-;; - Depth-first search with backtracking
+;; - Depth-first search with backtracking (continuation-passing style engine)
 ;; - Cut (!) and negation-as-failure (not)
 ;; - Three index strategies: hash (O(1)), trie (prefix), list (scan)
 ;; - Assert/retract for dynamic clause management
@@ -50,6 +52,27 @@
 ;;
 ;; Note: Prolog variables use `?' prefix.  In Emacs Lisp source,
 ;; escape the `?' with backslash: `\?x', `\?who', `\?_'.
+;;
+;; Known limitations and design decisions:
+;;
+;; 1. No occurs check: Unification does not detect circular bindings
+;;    (e.g., unifying ?x with (f ?x)).  Safe for NSKK's ground conversion
+;;    rules, which never produce cyclic terms.
+;;
+;; 2. Non-standard cut semantics: Cut (!) uses per-clause catch/throw.
+;;    Alternative clauses for the same predicate are still tried after a
+;;    cut -- cut prevents only goals *after* the cut in the current clause
+;;    body from being retried.  Standard Prolog cut prunes all remaining
+;;    alternatives; this engine does not.
+;;
+;; 3. Global database: All Prolog facts are stored in a single global
+;;    hash table shared across all Emacs buffers.  There is no
+;;    per-buffer isolation.
+;;
+;; 4. Ground query return value: `nskk-prolog-query-one' returns t for
+;;    ground success (empty substitution) and nil for no-solution, so
+;;    callers can distinguish the two cases.  Use `nskk-prolog-query'
+;;    when you need the actual substitution alist for ground queries.
 
 ;;; Code:
 
@@ -66,8 +89,13 @@ In Emacs Lisp source code, write them as \\?x, \\?char, \\?_."
        (string-prefix-p "?" (symbol-name x))))
 
 (defsubst nskk-prolog--anonymous-p (x)
-  "Return non-nil if X is the anonymous variable `?_'."
-  (eq x '?_))
+  "Return non-nil if X is the anonymous variable wildcard.
+X is compared against the character literal `?_' (integer 95, the
+underscore character), not the Prolog-variable symbol `\\='\\?_'.
+This is intentional: the anonymous wildcard in clause bodies is
+written as `?_' (bare character literal) to avoid creating a named
+binding, whereas `\\='\\?_' would be a regular named variable."
+  (eq x ?_))
 
 ;;;; Substitution / Walk
 
@@ -454,7 +482,96 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
        (t (error "nskk-prolog: unknown arithmetic operator: %S" op)))))
    (t (error "nskk-prolog: cannot evaluate arithmetic: %S" expr))))
 
-;;;; Prove Engine (Backtracking)
+;;;; Prove Engine
+
+(defun nskk-prolog--prove-internal (goals subst on-solution)
+  "Core Prolog solver; call ON-SOLUTION for each successful substitution.
+GOALS is the list of goals remaining to prove.
+SUBST is the current variable-binding alist.
+ON-SOLUTION is a unary function called with each solution substitution.
+
+This is the single implementation shared by `nskk-prolog-prove' (which
+collects all solutions) and `nskk-prolog-prove-first' (which stops at the
+first solution).  Do not call this function directly; use the public API.
+
+Built-in goals handled in addition to user-defined predicates:
+  `!'           Cut: commit to current clause, abort alternatives.
+  `(not GOAL)'  Negation-as-failure: succeed iff GOAL has no solution.
+  `(assertz H)' Side-effect: assert ground H as a new fact, then continue.
+  `(retract H)' Side-effect: remove first matching clause H, then continue.
+  `(is V E)'    Arithmetic: unify variable V with the value of expression E.
+  `(=:= A B)'   Arithmetic equality: succeed iff A and B evaluate equal.
+  `(>= A B)', `(<= A B)', `(> A B)', `(< A B)' — comparison built-ins.
+
+Cut semantics: this engine uses per-clause catch/throw for cut.
+Alternative clauses for the same predicate are still tried after a cut --
+cut prevents only the goals *after* cut in the current clause body from
+being retried.  This differs from standard Prolog cut."
+  (if (null goals)
+      (funcall on-solution subst)
+    (let* ((goal (car goals))
+           (rest-goals (cdr goals)))
+      (cond
+       ;; Cut: prove remaining goals, then abort alternative clauses
+       ((eq goal '!)
+        (let ((found nil))
+          (catch 'nskk-prolog-cut
+            (nskk-prolog--prove-internal rest-goals subst
+              (lambda (s) (setq found t) (funcall on-solution s))))
+          (when found
+            (throw 'nskk-prolog-cut nil))))
+       ;; Negation-as-failure: succeed iff inner goal has no solution
+       ((and (consp goal) (eq (car goal) 'not))
+        (unless (catch 'nskk-prolog-naf
+                  (nskk-prolog--prove-internal
+                   (list (cadr goal)) subst
+                   (lambda (_) (throw 'nskk-prolog-naf t)))
+                  nil)
+          (nskk-prolog--prove-internal rest-goals subst on-solution)))
+       ;; assertz: assert a ground fact as a side-effect, then continue
+       ((and (consp goal) (eq (car goal) 'assertz))
+        (nskk-prolog-assert
+         (list (nskk-prolog-substitute (cadr goal) subst)))
+        (nskk-prolog--prove-internal rest-goals subst on-solution))
+       ;; retract: remove first matching clause as a side-effect, then continue
+       ((and (consp goal) (eq (car goal) 'retract))
+        (when (nskk-prolog-retract
+               (nskk-prolog-substitute (cadr goal) subst))
+          (nskk-prolog--prove-internal rest-goals subst on-solution)))
+       ;; Arithmetic comparisons: >=, <=, >, <
+       ((and (consp goal) (memq (car goal) '(>= <= > <)))
+        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
+              (b (nskk-prolog--eval-arith (caddr goal) subst)))
+          (when (funcall (car goal) a b)
+            (nskk-prolog--prove-internal rest-goals subst on-solution))))
+       ;; Arithmetic equality: =:=
+       ((and (consp goal) (eq (car goal) '=:=))
+        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
+              (b (nskk-prolog--eval-arith (caddr goal) subst)))
+          (when (= a b)
+            (nskk-prolog--prove-internal rest-goals subst on-solution))))
+       ;; Arithmetic assignment: (is ?var expr)
+       ((and (consp goal) (eq (car goal) 'is))
+        (let* ((new-subst (nskk-prolog-unify
+                           (cadr goal)
+                           (nskk-prolog--eval-arith (caddr goal) subst)
+                           subst)))
+          (unless (nskk-prolog--fail-p new-subst)
+            (nskk-prolog--prove-internal rest-goals new-subst on-solution))))
+       ;; Normal goal: retrieve candidate clauses and try each
+       (t
+        (let* ((predicate (car goal))
+               (args (cdr goal))
+               (clauses (nskk-prolog--get-clauses predicate args subst)))
+          (dolist (clause clauses)
+            (let* ((counter (cl-incf nskk-prolog--var-counter))
+                   (renamed (nskk-prolog--rename-variables clause counter))
+                   (new-subst (nskk-prolog-unify goal (car renamed) subst)))
+              (unless (nskk-prolog--fail-p new-subst)
+                (catch 'nskk-prolog-cut
+                  (nskk-prolog--prove-internal
+                   (append (cdr renamed) rest-goals)
+                   new-subst on-solution)))))))))))
 
 (defun nskk-prolog-prove (goals subst)
   "Prove GOALS under substitution SUBST using depth-first backtracking.
@@ -464,185 +581,41 @@ Returns a list of all successful substitutions (possibly empty).
 An empty list nil means no solution was found; a list containing
 nil means one solution with an empty substitution.
 
-For each goal, candidate clauses are retrieved (via indexing),
-variables are renamed fresh, and the goal is unified with each
-clause head.  On success, the clause body and remaining goals
-are proved recursively."
-  (if (null goals)
-      (list subst)
-    (let* ((goal (car goals))
-           (rest-goals (cdr goals)))
-      (cond
-       ;; Cut: commit to current choice
-       ((eq goal '!)
-        (let ((results (nskk-prolog-prove rest-goals subst)))
-          (when results
-            (throw 'nskk-prolog-cut results))
-          nil))
-       ;; Negation-as-failure: succeed iff goal has no solutions
-       ((and (consp goal) (eq (car goal) 'not))
-        (if (null (nskk-prolog-prove (list (cadr goal)) subst))
-            (nskk-prolog-prove rest-goals subst)
-          nil))
-       ;; assertz: side-effect goal - assert a new fact into database
-       ((and (consp goal) (eq (car goal) 'assertz))
-        (let* ((head-term (cadr goal))
-               (ground-head (nskk-prolog-substitute head-term subst)))
-          (nskk-prolog-assert (list ground-head))
-          (nskk-prolog-prove rest-goals subst)))
-       ;; retract: side-effect goal - remove first matching clause
-       ((and (consp goal) (eq (car goal) 'retract))
-        (let* ((head-term (cadr goal))
-               (ground-head (nskk-prolog-substitute head-term subst)))
-          (when (nskk-prolog-retract ground-head)
-            (nskk-prolog-prove rest-goals subst))))
-       ;; Arithmetic comparisons: (>= a b), (<= a b), (> a b), (< a b)
-       ((and (consp goal)
-             (memq (car goal) '(>= <= > <)))
-        (let* ((op (car goal))
-               (a (nskk-prolog--eval-arith (cadr goal) subst))
-               (b (nskk-prolog--eval-arith (caddr goal) subst)))
-          (when (funcall op a b)
-            (nskk-prolog-prove rest-goals subst))))
-       ;; Arithmetic equality: (=:= a b)
-       ((and (consp goal) (eq (car goal) (intern "=:=")))
-        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
-              (b (nskk-prolog--eval-arith (caddr goal) subst)))
-          (when (= a b)
-            (nskk-prolog-prove rest-goals subst))))
-       ;; Arithmetic assignment: (is ?var expr) — unify ?var with evaluated result
-       ((and (consp goal) (eq (car goal) 'is))
-        (let* ((var (cadr goal))
-               (val (nskk-prolog--eval-arith (caddr goal) subst))
-               (new-subst (nskk-prolog-unify var val subst)))
-          (unless (nskk-prolog--fail-p new-subst)
-            (nskk-prolog-prove rest-goals new-subst))))
-       ;; Normal goal resolution
-       (t
-        (let* ((predicate (car goal))
-               (args (cdr goal))
-               (clauses (nskk-prolog--get-clauses
-                         predicate args subst))
-               (results nil))
-          (dolist (clause clauses)
-            (let* ((counter (cl-incf nskk-prolog--var-counter))
-                   (renamed (nskk-prolog--rename-variables
-                             clause counter))
-                   (renamed-head (car renamed))
-                   (renamed-body (cdr renamed))
-                   (new-subst (nskk-prolog-unify
-                               goal renamed-head subst)))
-              (unless (nskk-prolog--fail-p new-subst)
-                (let ((cut-results
-                       (catch 'nskk-prolog-cut
-                         (nskk-prolog-prove
-                          (append renamed-body rest-goals)
-                          new-subst))))
-                  (when cut-results
-                    (setq results
-                          (nconc results cut-results)))))))
-          results))))))
+Delegates to `nskk-prolog--prove-internal' with an accumulator callback.
+For single-solution efficiency, prefer `nskk-prolog-prove-one'."
+  (let (results)
+    (nskk-prolog--prove-internal goals subst
+      (lambda (s) (push s results)))
+    (nreverse results)))
 
 (defun nskk-prolog-prove-first (goals subst)
-  "Like `nskk-prolog-prove' but throw the first solution found.
-Used internally by `nskk-prolog-prove-one' for early termination.
+  "Like `nskk-prolog-prove' but abort via `nskk-prolog-first-solution' on first match.
 GOALS is a list of Prolog goals to satisfy.
 SUBST is the current variable substitution alist.
+Used internally by `nskk-prolog-prove-one' for early termination.
 
-Instead of collecting all solutions, this function throws the
-first successful substitution via the `nskk-prolog-first-solution'
-tag, allowing `nskk-prolog-prove-one' to return immediately
+Throws the first successful substitution via the tag
+`nskk-prolog-first-solution', allowing the caller to return immediately
 without exploring further branches.
 
-Cut (!) is handled correctly: the `nskk-prolog-cut' tag is caught
-within this function so that cut semantics are preserved while
-still allowing early termination of the overall search."
-  (if (null goals)
-      (throw 'nskk-prolog-first-solution subst)
-    (let* ((goal (car goals))
-           (rest-goals (cdr goals)))
-      (cond
-       ;; Cut: commit to current choice
-       ((eq goal '!)
-        (let ((result (catch 'nskk-prolog-cut
-                        (nskk-prolog-prove-first rest-goals subst))))
-          (when result
-            (throw 'nskk-prolog-first-solution result))))
-       ;; Negation-as-failure: succeed iff goal has no solutions
-       ((and (consp goal) (eq (car goal) 'not))
-        (let ((naf-result (catch 'nskk-prolog-first-solution
-                            (nskk-prolog-prove-first (list (cadr goal)) subst)
-                            :not-found)))
-          (when (eq naf-result :not-found)
-            (nskk-prolog-prove-first rest-goals subst))))
-       ;; assertz: side-effect goal - assert a new fact into database
-       ((and (consp goal) (eq (car goal) 'assertz))
-        (let* ((head-term (cadr goal))
-               (ground-head (nskk-prolog-substitute head-term subst)))
-          (nskk-prolog-assert (list ground-head))
-          (nskk-prolog-prove-first rest-goals subst)))
-       ;; retract: side-effect goal - remove first matching clause
-       ((and (consp goal) (eq (car goal) 'retract))
-        (let* ((head-term (cadr goal))
-               (ground-head (nskk-prolog-substitute head-term subst)))
-          (when (nskk-prolog-retract ground-head)
-            (nskk-prolog-prove-first rest-goals subst))))
-       ;; Arithmetic comparisons: (>= a b), (<= a b), (> a b), (< a b)
-       ((and (consp goal)
-             (memq (car goal) '(>= <= > <)))
-        (let* ((op (car goal))
-               (a (nskk-prolog--eval-arith (cadr goal) subst))
-               (b (nskk-prolog--eval-arith (caddr goal) subst)))
-          (when (funcall op a b)
-            (nskk-prolog-prove-first rest-goals subst))))
-       ;; Arithmetic equality: (=:= a b)
-       ((and (consp goal) (eq (car goal) (intern "=:=")))
-        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
-              (b (nskk-prolog--eval-arith (caddr goal) subst)))
-          (when (= a b)
-            (nskk-prolog-prove-first rest-goals subst))))
-       ;; Arithmetic assignment: (is ?var expr) — unify ?var with evaluated result
-       ((and (consp goal) (eq (car goal) 'is))
-        (let* ((var (cadr goal))
-               (val (nskk-prolog--eval-arith (caddr goal) subst))
-               (new-subst (nskk-prolog-unify var val subst)))
-          (unless (nskk-prolog--fail-p new-subst)
-            (nskk-prolog-prove-first rest-goals new-subst))))
-       ;; Normal goal resolution
-       (t
-        (let* ((predicate (car goal))
-               (args (cdr goal))
-               (clauses (nskk-prolog--get-clauses predicate args subst)))
-          (dolist (clause clauses)
-            (let* ((counter (cl-incf nskk-prolog--var-counter))
-                   (renamed (nskk-prolog--rename-variables clause counter))
-                   (renamed-head (car renamed))
-                   (renamed-body (cdr renamed))
-                   (new-subst (nskk-prolog-unify goal renamed-head subst)))
-              (unless (nskk-prolog--fail-p new-subst)
-                (catch 'nskk-prolog-cut
-                  (nskk-prolog-prove-first
-                   (append renamed-body rest-goals)
-                   new-subst)))))))))))
+Delegates to `nskk-prolog--prove-internal' with an on-solution callback
+that throws instead of accumulating, so backtracking stops at the first match."
+  (nskk-prolog--prove-internal goals subst
+    (lambda (s) (throw 'nskk-prolog-first-solution s))))
 
 (defun nskk-prolog-prove-one (goals subst)
   "Like `nskk-prolog-prove' but return only the first solution.
-Uses early termination for efficiency - stops searching after the
-first successful substitution is found.
 GOALS is a list of Prolog goals to satisfy.
 SUBST is the current variable substitution alist.
 Returns the first successful substitution, or nil if none.
 
-Unlike `nskk-prolog-prove' which collects all solutions via
-depth-first backtracking, this function uses catch/throw with
-the `nskk-prolog-first-solution' tag to abort the search as soon
-as one solution is found.  This is significantly more efficient
-for deterministic queries or when only the first answer is needed.
+Uses `nskk-prolog-prove-first' internally for early termination:
+stops backtracking as soon as one solution is found.
 
-For ground queries (no variables), success returns t rather
-than nil, so callers can distinguish success from no-solution.
-Use `nskk-prolog-prove' when you need the actual substitution
-alist for ground queries."
+For ground queries (no Prolog variables), returns t on success
+and nil when no solution exists, so callers can distinguish the two
+cases.  Use `nskk-prolog-prove' when you need the actual substitution
+alist for a ground query."
   (let ((result (catch 'nskk-prolog-first-solution
                   (nskk-prolog-prove-first goals subst)
                   :nskk-no-solution)))

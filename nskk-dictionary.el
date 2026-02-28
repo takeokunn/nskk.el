@@ -6,6 +6,7 @@
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
 ;; Keywords: japanese, input, mule, i18n
 
 ;; This file is part of NSKK (Next-generation SKK).
@@ -25,25 +26,28 @@
 
 ;;; Commentary:
 
-;; Merged dictionary module consolidating:
+;; Dictionary module for NSKK (Layer 2: Domain Layer).
 ;;
-;; nskk-dict-errors: Dictionary error handling and recovery module.
-;; Provides automatic recovery from dictionary errors.
+;; Provides loading, lookup, registration, and persistence of SKK dictionaries.
+;; Supports both user dictionaries (read/write) and system dictionaries
+;; (read-only, e.g. SKK-JISYO.L).
 ;;
-;; nskk-dict-struct: Core data structures for the NSKK SKK dictionary system.
+;; Dictionary sources are identified by source symbols (`user', `system')
+;; mapped to Prolog predicates via `dict-source/2' facts.  Two predicates
+;; are maintained in the global Prolog database:
 ;;
-;; Defines one primary structure:
-;; - `nskk-dict-entry': a single dictionary entry (reading key, candidates,
-;;   optional okurigana type)
-;;
-;; Dictionary sources are identified by source symbols (\\='user, \\='system)
-;; mapped to Prolog predicates via `dict-source/2' facts.
+;;   `user-dict-entry/2'   --- (user-dict-entry READING CANDIDATES-LIST)
+;;   `system-dict-entry/2' --- (system-dict-entry READING CANDIDATES-LIST)
 ;;
 ;; Lookup is O(1) for exact matches via Prolog hash index, O(k + n) for
 ;; prefix matches via Prolog trie index.
 ;;
-;; nskk-dict-io: Dictionary I/O module for loading and saving SKK dictionary files.
-;; Supports the standard SKK dictionary format with EUC-JP and UTF-8 encoding.
+;; Main entry points:
+;;   `nskk-dict-lookup'              - look up a reading key
+;;   `nskk-dict-register-word'       - register a new word to user dict
+;;   `nskk-dict-load-user-dictionary'   - load user dictionary from file
+;;   `nskk-dict-load-system-dictionaries' - load system dictionaries
+;;   `nskk-dict-save-user-dictionary'   - persist user dictionary to file
 
 ;;; Code:
 
@@ -134,6 +138,17 @@ PREDICATE is a symbol naming the Prolog predicate (e.g., \\='system-dict-entry)
 with arity 2: (predicate key candidates-list)."
   (predicate nil)
   (by-freq nil))
+
+(defun nskk-dict--struct-lookup (index query &optional _okuri-type)
+  "Look up QUERY in dictionary INDEX via Prolog.
+Returns `nskk-dict-entry' or nil if not found."
+  (when (and (nskk-dict-index-p index) (stringp query))
+    (let* ((pred (nskk-dict-index-predicate index))
+           (candidates (when pred
+                         (nskk-prolog-query-value
+                          `(,pred ,query \?candidates) '\?candidates))))
+      (when candidates
+        (make-nskk-dict-entry :key query :candidates candidates)))))
 
 (defun nskk-dict--struct-entry-count (index _okuri-type)
   "Return count of entries in INDEX."
@@ -344,10 +359,10 @@ and updates to existing entries via assertz/retract builtins."
       (insert ";; NSKK user dictionary\n")
       (insert ";; okuri-nasi entries.\n")
       ;; Single query fetches all key+candidates pairs (eliminates N+1 pattern)
-      (let ((solutions (nskk-prolog-query '(user-dict-entry ?k ?c))))
+      (let ((solutions (nskk-prolog-query '(user-dict-entry \?k \?c))))
         (dolist (sol solutions)
-          (let ((key (nskk-prolog-walk '?k sol))
-                (candidates (nskk-prolog-walk '?c sol)))
+          (let ((key (nskk-prolog-walk '\?k sol))
+                (candidates (nskk-prolog-walk '\?c sol)))
             (when (and key candidates)
               (insert (format "%s /%s/\n"
                               key

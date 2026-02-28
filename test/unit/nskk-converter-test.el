@@ -305,6 +305,32 @@
   (should (equal (nskk-convert-romaji "kyouto") "きょうと"))
   (should (equal (nskk-convert-romaji "sushi") "すし")))
 
+(nskk-regression-test internal-long-string
+  "internal-long-string-001"
+  "nskk-convert-romaji--internal handles long inputs without truncation.
+Verifies that the O(n) accumulation fix produces correct output for
+strings that would previously hit the 100-iteration guard."
+  ;; 25 syllables — well above previous 100-iteration limit but tests
+  ;; that each romaji token advances exactly one step.
+  (let ((long-romaji "aiueoaiueoaiueoaiueoaiueo")
+        (expected    "あいうえおあいうえおあいうえおあいうえおあいうえお"))
+    (should (equal (nskk-convert-romaji long-romaji) expected)))
+  ;; 30+ conversion steps via consonant+vowel pairs
+  (should (equal (nskk-convert-romaji "kakikukekokakikukekokakikukeko")
+                 "かきくけこかきくけこかきくけこ")))
+
+(nskk-regression-test internal-fallback-path
+  "internal-fallback-001"
+  "nskk-convert-romaji--internal fallback: unconvertible tail is appended as-is.
+When a romaji suffix has no match and no prefix match either, the
+remaining string is pushed verbatim and conversion stops."
+  ;; Pure unknown sequence: returned unchanged
+  (should (equal (nskk-convert-romaji "xyz") "xyz"))
+  ;; Mixed: known prefix converted, unknown tail appended
+  (should (equal (nskk-convert-romaji "kaxyz") "かxyz"))
+  ;; Trailing isolated consonant: appended as-is
+  (should (equal (nskk-convert-romaji "kak") "かk")))
+
 
 ;;;;
 ;;;; Custom Assertions
