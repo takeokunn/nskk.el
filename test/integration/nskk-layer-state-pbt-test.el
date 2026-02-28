@@ -421,6 +421,70 @@
         (equal (nskk-state-input-buffer state) original))))
   100)
 
+;;;; Enhanced PBT Coverage
+;;;;
+
+;;;
+;;; Contract test: nskk-state-create
+;;;
+;;; Precondition: a valid mode symbol.
+;;; Postcondition: result is an nskk-state whose mode slot equals the input mode.
+;;; Invariant: all buffer slots are strings and index is non-negative.
+;;;
+
+(nskk-property-from-contract nskk-state-create
+  :precondition  (nskk-generate 'valid-mode)
+  :postcondition (and (nskk-state-p result)
+                      (eq (nskk-state-mode result) input))
+  :invariant     (and (stringp (nskk-state-input-buffer result))
+                      (stringp (nskk-state-converted-buffer result))
+                      (listp (nskk-state-candidates result))
+                      (integerp (nskk-state-current-index result))
+                      (>= (nskk-state-current-index result) 0))
+  :runs 100)
+
+;;;
+;;; Contract test: nskk-state-reset
+;;;
+;;; Precondition: an nskk-state struct with some populated slots.
+;;; Postcondition: after reset, input/converted buffers are empty strings,
+;;;               candidates are nil, index is 0, henkan-position is nil.
+;;; Invariant: the state struct remains valid after reset.
+;;;
+
+(nskk-property-from-contract nskk-state-reset
+  :precondition  (let* ((mode  (nskk-generate 'valid-mode))
+                        (state (nskk-state-create mode)))
+                   (nskk-state-set state 'input-buffer "test-input")
+                   (nskk-state-set state 'converted-buffer "converted")
+                   (nskk-state-set state 'candidates '("a" "b" "c"))
+                   (nskk-state-set state 'current-index 2)
+                   (nskk-state-set state 'henkan-position 3)
+                   state)
+  :postcondition (and (null result)
+                      (string= (nskk-state-input-buffer input) "")
+                      (string= (nskk-state-converted-buffer input) "")
+                      (null (nskk-state-candidates input))
+                      (= (nskk-state-current-index input) 0)
+                      (null (nskk-state-henkan-position input)))
+  :invariant     (nskk-state-p input)
+  :runs 100)
+
+;;;
+;;; Contract test: nskk-state-valid-mode-p
+;;;
+;;; Precondition: a valid mode symbol drawn from the generator.
+;;; Postcondition: result is non-nil (the function recognises all valid modes).
+;;; Invariant: result is always a boolean-like value (non-nil or nil).
+;;;
+
+(nskk-property-from-contract nskk-state-valid-mode-p
+  :precondition  (nskk-generate 'valid-mode)
+  :postcondition (not (null result))
+  :invariant     t
+  :runs 100)
+
+
 (provide 'nskk-layer-state-pbt-test)
 
 ;;; nskk-layer-state-pbt-test.el ends here

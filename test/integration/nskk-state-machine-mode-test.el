@@ -331,6 +331,37 @@ TRIGGER is ignored; a random valid mode is chosen."
     (should (nskk-state-valid-mode-p (nskk-state-mode state)))))
 
 
+;;;; Enhanced PBT Coverage
+;;;;
+
+;;;
+;;; Shrinking Property: Mode transition invariant — mode is always in valid-modes set
+;;;
+;;; This test uses nskk-property-test-with-shrinking so that when a failure
+;;; is detected the framework attempts to minimise the generated scenario before
+;;; reporting, making the root-cause easier to identify.
+;;;
+
+(nskk-property-test-with-shrinking mode-transition-invariant-shrinking
+  ((scenario mode-switch-scenario))
+  ;; scenario is a plist {:initial-mode :target-mode :trigger-key}
+  (let* ((initial-mode (plist-get scenario :initial-mode))
+         (target-mode  (plist-get scenario :target-mode))
+         (state        (nskk-state-create initial-mode))
+         (transitions  (nskk-pbt--random-int 3 15)))
+    ;; Drive a random sequence of valid mode transitions
+    (dotimes (_ transitions)
+      (let ((next-mode (nskk-pbt--generate-valid-mode)))
+        (nskk-state-set state 'mode next-mode)))
+    ;; Finally apply the scenario's explicit target transition
+    (nskk-state-set state 'mode target-mode)
+    ;; Invariant: mode must remain within the recognised valid-modes set
+    (and (nskk-state-p state)
+         (nskk-state-valid-mode-p (nskk-state-mode state))
+         (memq (nskk-state-mode state) nskk-state-modes)))
+  50)
+
+
 (provide 'nskk-state-machine-mode-test)
 
 ;;; nskk-state-machine-mode-test.el ends here

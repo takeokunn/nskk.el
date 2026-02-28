@@ -32,6 +32,10 @@
 ;; - Environment setup macros
 ;; - Assertion helper macros
 ;; - Mock and fixture macros
+;; - Behavior DSL (nskk-describe/nskk-it/nskk-context/nskk-given/nskk-when/nskk-then)
+;; - Table-driven data providers (nskk-deftest-cases/nskk-deftest-table)
+;; - Composable fixture system (nskk-deffixture/nskk-with-fixtures)
+;; - Contract-based PBT (nskk-property-from-contract)
 
 ;;; Code:
 
@@ -118,10 +122,11 @@ Like `nskk-property-test' but with fewer runs by default."
 ;;;; Shrinking Support Functions
 ;;;;
 
-(defun nskk-shrink-sequence (sequence property shrink-fn)
+(defun nskk--test-shrink-sequence (sequence property shrink-fn)
   "Shrink SEQUENCE to find minimal failing case for PROPERTY.
 SHRINK-FN is called with smaller sequences to attempt shrinking.
-Returns (MINIMAL-SEQUENCE . SHRINK-STEPS) or nil if no shrinking possible."
+Returns (MINIMAL-SEQUENCE . SHRINK-STEPS) or nil if no shrinking possible.
+Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
   (let ((current sequence)
         (steps 0)
         (max-steps nskk-test-shrinking-max-steps))
@@ -135,24 +140,27 @@ Returns (MINIMAL-SEQUENCE . SHRINK-STEPS) or nil if no shrinking possible."
     (when (> steps 0)
       (cons current steps))))
 
-(defun nskk-shrink-list (list)
+(defun nskk--test-shrink-list (list)
   "Return a list of smaller versions of LIST for shrinking.
-Returns the first shrinking candidate that reduces size."
+Returns the first shrinking candidate that reduces size.
+Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
   (when (and list (> (length list) 0))
     ;; Try removing first element
     (if (> (length list) 1)
         (cdr list)
       nil)))
 
-(defun nskk-shrink-string (str)
+(defun nskk--test-shrink-string (str)
   "Return a smaller version of STR for shrinking.
-Returns the first shrinking candidate that reduces length."
+Returns the first shrinking candidate that reduces length.
+Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
   (when (and str (> (length str) 1))
     (substring str 1)))
 
-(defun nskk-shrink-integer (n)
+(defun nskk--test-shrink-integer (n)
   "Return a smaller version of integer N for shrinking.
-Returns N/2 if N is non-zero, otherwise nil."
+Returns N/2 if N is non-zero, otherwise nil.
+Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
   (when (and n (not (zerop n)))
     (/ n 2)))
 
@@ -249,10 +257,10 @@ SEED: Random seed for reproducibility (default: random)"
 Returns a potentially smaller value of the same type."
   (pcase generator-type
     ((or 'romaji-string 'hiragana-string 'kanji-string 'string)
-     (nskk-shrink-string value))
+     (nskk--test-shrink-string value))
     ((or 'integer 'positive-integer 'natnum)
-     (nskk-shrink-integer value))
-    ('list (nskk-shrink-list value))
+     (nskk--test-shrink-integer value))
+    ('list (nskk--test-shrink-list value))
     (_ value)))  ; Return unchanged if no shrinker available
 
 
@@ -829,6 +837,319 @@ STEPS: List of (step-description step-form) pairs"
   `(nskk-skip-when
     (version< emacs-version
               (format "%d.%d" ,major ,minor))))
+
+;;;;
+;;;; Behavior DSL (describe/it/given/when/then)
+;;;;
+
+(defun nskk--normalize-test-name (str)
+  "Normalize STR to a valid ERT test name component.
+Converts to lowercase, replaces non-alphanumeric chars with hyphens,
+collapses multiple hyphens, and strips leading/trailing hyphens."
+  (let* ((lower (downcase str))
+         (replaced (replace-regexp-in-string "[^a-z0-9]+" "-" lower))
+         (stripped (replace-regexp-in-string "^-+\\|-+$" "" replaced)))
+    stripped))
+
+(defmacro nskk-given (setup)
+  "Document SETUP phase of a test.  Evaluates SETUP with no additional wrapping.
+Use inside `nskk-it' to clarify test preconditions."
+  (declare (indent 0))
+  setup)
+
+(defmacro nskk-when (action)
+  "Document ACTION phase of a test.  Evaluates ACTION with no additional wrapping.
+Use inside `nskk-it' to clarify the operation under test."
+  (declare (indent 0))
+  action)
+
+(defmacro nskk-then (&rest assertions)
+  "Document and execute ASSERTIONS phase of a test.
+Use inside `nskk-it' to clarify expected outcomes."
+  (declare (indent 0))
+  `(progn ,@assertions))
+
+(defun nskk--expand-it-form (prefix it-form)
+  "Expand a single IT-FORM into an `ert-deftest' with PREFIX.
+IT-FORM must be (nskk-it BEHAVIOR &rest BODY).
+Returns an `ert-deftest' form or signals an error."
+  (unless (and (listp it-form)
+               (eq (car it-form) 'nskk-it)
+               (>= (length it-form) 2))
+    (error "nskk--expand-it-form: expected (nskk-it BEHAVIOR ...), got %S" it-form))
+  (let* ((behavior (cadr it-form))
+         (body (cddr it-form))
+         (test-name (intern (format "nskk-it/%s/%s"
+                                    prefix
+                                    (nskk--normalize-test-name behavior)))))
+    `(ert-deftest ,test-name ()
+       ,behavior
+       (let ((nskk--test-mode t))
+         (nskk--test-setup)
+         (unwind-protect
+             (progn ,@body)
+           (nskk--test-teardown))))))
+
+(defmacro nskk-describe (description &rest body)
+  "Group related test behaviors under DESCRIPTION.
+Each `nskk-it' form in BODY expands to an independent `ert-deftest'.
+Each `nskk-context' form in BODY provides sub-grouping.
+Non-nskk-it/nskk-context forms are emitted as-is (for shared let/defvar etc).
+
+Test names follow the pattern: nskk-it/DESCRIPTION/BEHAVIOR
+where both DESCRIPTION and BEHAVIOR are normalized (lowercase, hyphens).
+
+Example:
+  (nskk-describe \"romaji conversion\"
+    (nskk-it \"converts ka to か\"
+      (nskk-given (let ((state (nskk-state-create \\='hiragana))))
+      (nskk-when  (nskk-process-input state \"ka\"))
+      (nskk-then  (should (equal (nskk-state-buffer state) \"か\"))))))"
+  (declare (indent 1))
+  (let ((prefix (nskk--normalize-test-name description)))
+    `(progn
+       ,@(mapcar
+          (lambda (form)
+            (cond
+             ;; nskk-it → expand to named ert-deftest
+             ((and (listp form) (eq (car form) 'nskk-it))
+              (nskk--expand-it-form prefix form))
+             ;; nskk-context → nested group with sub-prefix
+             ((and (listp form) (eq (car form) 'nskk-context))
+              (let* ((ctx-desc (cadr form))
+                     (ctx-body (cddr form))
+                     (ctx-prefix (format "%s/%s"
+                                         prefix
+                                         (nskk--normalize-test-name ctx-desc))))
+                `(progn
+                   ,@(mapcar
+                      (lambda (inner)
+                        (if (and (listp inner) (eq (car inner) 'nskk-it))
+                            (nskk--expand-it-form ctx-prefix inner)
+                          inner))
+                      ctx-body))))
+             ;; Other forms pass through (shared variables, constants, etc.)
+             (t form)))
+          body))))
+
+(defmacro nskk-context (description &rest body)
+  "Provide sub-grouping under DESCRIPTION within a `nskk-describe' block.
+When used outside `nskk-describe', expands to a plain progn (no test naming).
+BODY may contain `nskk-it' forms and regular Emacs Lisp forms."
+  (declare (indent 1))
+  `(progn ,@body))
+
+(defmacro nskk-it (behavior &rest body)
+  "Define a single test behavior BEHAVIOR with BODY.
+When used inside `nskk-describe', the containing describe macro renames
+this test.  When used standalone, expands to a unit test named
+nskk-unit-BEHAVIOR (normalized).
+
+BEHAVIOR should be a string describing what is being tested."
+  (declare (indent 1))
+  (let ((test-name (intern (format "nskk-unit-%s"
+                                   (nskk--normalize-test-name behavior)))))
+    `(ert-deftest ,test-name ()
+       ,behavior
+       (let ((nskk--test-mode t))
+         (nskk--test-setup)
+         (unwind-protect
+             (progn ,@body)
+           (nskk--test-teardown))))))
+
+
+;;;;
+;;;; Table-Driven Data Providers
+;;;;
+
+(defmacro nskk-deftest-cases (name cases &rest keys)
+  "Define parameterized unit tests from a table of (INPUT . EXPECTED) pairs.
+NAME: base name (tests get prefix nskk-unit-)
+CASES: literal list of (input . expected) cons pairs
+KEYS: keyword arguments:
+  :description STR  - static string used as ERT test docstring for all cases
+  :body FORM        - test body using `input' and `expected' (default: (should (equal expected input)))
+
+Each case expands to an independent ERT test named:
+  nskk-unit-NAME/case-00, nskk-unit-NAME/case-01, ...
+
+The test failure message shows both the case index and input/expected values.
+
+Example:
+  (nskk-deftest-cases romaji->hiragana
+    ((\"ka\" . \"か\")
+     (\"ki\" . \"き\")
+     (\"sha\" . \"し\"))
+    :body (should (equal expected (nskk-convert-romaji input))))"
+  (declare (indent 2))
+  (let ((description (plist-get keys :description))
+        (body (plist-get keys :body)))
+    `(progn
+       ,@(cl-loop for case-pair in cases
+                  for i from 0
+                  collect
+                  (let* ((input (car case-pair))
+                         (expected (cdr case-pair))
+                         (test-name (intern (format "nskk-unit-%s/case-%02d" name i)))
+                         (doc (or description
+                                  (format "Case %02d: input=%S expected=%S" i input expected))))
+                    `(ert-deftest ,test-name ()
+                       ,doc
+                       (let ((input ',input)
+                             (expected ',expected))
+                         ,(or body '(should (equal expected input))))))))))
+
+(defmacro nskk-deftest-table (name &rest keys)
+  "Define parameterized unit tests from a multi-column table.
+NAME: base name (tests get prefix nskk-unit-)
+KEYS: keyword arguments:
+  :columns (COL1 COL2 ...) - column variable names (bound in :body)
+  :rows    ((VAL1 VAL2 ...) ...) - rows of test data
+  :description STR  - shared description string
+  :body FORM        - test body using the column variables
+
+Each row expands to: nskk-unit-NAME/row-00, nskk-unit-NAME/row-01, ...
+
+Example:
+  (nskk-deftest-table dict-search
+    :columns (input mode expected-count)
+    :rows    ((\"か\" hiragana 3)
+              (\"ai\" ascii    1))
+    :body    (should (= expected-count
+                        (length (nskk-search-dict input mode)))))"
+  (declare (indent 1))
+  (let ((columns (plist-get keys :columns))
+        (rows (plist-get keys :rows))
+        (description (plist-get keys :description))
+        (body (plist-get keys :body)))
+    (unless columns (error "nskk-deftest-table: :columns is required"))
+    (unless rows    (error "nskk-deftest-table: :rows is required"))
+    (unless body    (error "nskk-deftest-table: :body is required"))
+    `(progn
+       ,@(cl-loop for row in rows
+                  for i from 0
+                  collect
+                  (let* ((test-name (intern (format "nskk-unit-%s/row-%02d" name i)))
+                         (doc (or description
+                                  (format "Row %02d: %S" i row)))
+                         (bindings (cl-mapcar (lambda (col val) `(,col ',val))
+                                              columns row)))
+                    `(ert-deftest ,test-name ()
+                       ,doc
+                       (let ,bindings
+                         ,body)))))))
+
+
+;;;;
+;;;; Composable Fixture System
+;;;;
+
+(defmacro nskk-deffixture (name arglist &rest macro-body)
+  "Define a named, composable fixture macro NAME.
+NAME: macro name (conventionally with-SOMETHING)
+ARGLIST: explicit arguments to the fixture (excluding the implicit body)
+MACRO-BODY: the macro expansion body (may reference `body' for wrapped forms)
+
+The generated macro signature is: (NAME ARGLIST... &rest body)
+where BODY is the test code to run inside the fixture.
+
+Example:
+  (nskk-deffixture with-hiragana-state ()
+    `(let ((state (nskk-state-create \\='hiragana)))
+       (unwind-protect (progn ,@body)
+         (nskk-state-reset state))))
+
+  (nskk-deffixture with-mock-dict (entries)
+    `(nskk-with-mock-dict ,entries ,@body))"
+  (declare (indent 2))
+  `(defmacro ,name ,(append arglist '(&rest body))
+     (declare (indent ,(length arglist)))
+     ,@macro-body))
+
+(defmacro nskk-with-fixtures (fixtures &rest body)
+  "Compose FIXTURES as nested wrappers around BODY.
+FIXTURES: list of fixture invocations.  Each element is either:
+  - A symbol: (fixture-name)  — fixture with no extra args
+  - A list:   (fixture-name arg1 arg2 ...) — fixture with args
+Fixtures are applied left-to-right (leftmost is outermost wrapper).
+
+Example:
+  (nskk-with-fixtures (with-hiragana-state
+                       (with-mock-dict nil))
+    (should (nskk-state-p state)))"
+  (declare (indent 1))
+  (if (null fixtures)
+      `(progn ,@body)
+    (let* ((first (car fixtures))
+           (rest  (cdr fixtures))
+           (call  (if (listp first) first (list first))))
+      `(,@call
+        (nskk-with-fixtures ,rest
+          ,@body)))))
+
+
+;;;;
+;;;; Contract-Based Property Testing
+;;;;
+
+(defmacro nskk-property-from-contract (fn &rest keys)
+  "Generate a property-based test from FN's behavioral contract.
+FN: unary function symbol under test (called as (FN input))
+KEYS: keyword arguments:
+  :precondition FORM  - expression that generates one valid input value
+                        (bound as `input' in postcondition/invariant)
+  :postcondition FORM - property to verify (uses `input' and `result')
+  :invariant FORM     - additional invariant checked on `result'
+  :runs N             - number of test runs (default: 100)
+  :name SYM           - override test name (default: nskk-contract-FN)
+
+The generated test name is: nskk-contract-FN
+
+Example:
+  (nskk-property-from-contract nskk-convert-romaji
+    :precondition  (nskk-generate \\='romaji-pattern)
+    :postcondition (stringp result)
+    :invariant     (>= (length result) 0)
+    :runs 100)"
+  (declare (indent 1))
+  (let* ((precond   (plist-get keys :precondition))
+         (postcond  (plist-get keys :postcondition))
+         (invariant (plist-get keys :invariant))
+         (runs      (or (plist-get keys :runs) 100))
+         (override  (plist-get keys :name))
+         (test-name (or override (intern (format "nskk-contract-%s" fn)))))
+    (unless precond
+      (error "nskk-property-from-contract: :precondition is required"))
+    (unless postcond
+      (error "nskk-property-from-contract: :postcondition is required"))
+    `(ert-deftest ,test-name ()
+       ,(format "Contract test: verifies %s honors its pre/postconditions." fn)
+       (let ((failures nil)
+             (test-seed (abs (random)))
+             (runs ,runs))
+         (random test-seed)
+         (message "Contract test `%s' seed: %d" ',fn test-seed)
+         (dotimes (_ runs)
+           (condition-case err
+               (let* ((input  ,precond)
+                      (result (funcall #',fn input)))
+                 (unless ,postcond
+                   (push (list :postcondition-failed
+                               :input input :result result)
+                         failures))
+                 ,@(when invariant
+                     `((unless ,invariant
+                         (push (list :invariant-failed
+                                     :input input :result result)
+                               failures)))))
+             (error
+              (push (list :error-during-call :fn ',fn :err err) failures))))
+         (when failures
+           (ert-fail
+            (format "Contract for `%s' violated (seed: %d) — %d/%d cases failed:\n%S"
+                    ',fn test-seed (length failures) runs
+                    (seq-take failures 5))))))))
+
 
 (provide 'nskk-test-macros)
 

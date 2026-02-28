@@ -23,6 +23,7 @@
 (require 'ert)
 (require 'nskk-state)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
 
 ;; Test Constants
 
@@ -190,19 +191,19 @@
 (nskk-deftest-unit state-in-henkan-mode-true-active
   "Test nskk-state-in-henkan-mode-p when henkan-phase is active."
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-henkan-phase state 'active)
+    (nskk-state-force-henkan-phase state 'active)
     (should (nskk-state-in-henkan-mode-p state))))
 
 (nskk-deftest-unit state-in-henkan-mode-true-list
   "Test nskk-state-in-henkan-mode-p when henkan-phase is list."
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-henkan-phase state 'list)
+    (nskk-state-force-henkan-phase state 'list)
     (should (nskk-state-in-henkan-mode-p state))))
 
 (nskk-deftest-unit state-in-henkan-mode-true-registration
   "Test nskk-state-in-henkan-mode-p when henkan-phase is registration."
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-henkan-phase state 'registration)
+    (nskk-state-force-henkan-phase state 'registration)
     (should (nskk-state-in-henkan-mode-p state))))
 
 (nskk-deftest-unit state-in-henkan-mode-false-nil-phase
@@ -220,13 +221,13 @@
   "Test nskk-state-henkan-on-p when phase is not on."
   (let ((state (nskk-state-create 'hiragana)))
     (should (not (nskk-state-henkan-on-p state)))
-    (nskk-state-set-henkan-phase state 'active)
+    (nskk-state-force-henkan-phase state 'active)
     (should (not (nskk-state-henkan-on-p state)))))
 
 (nskk-deftest-unit state-henkan-active-p-true
   "Test nskk-state-henkan-active-p when phase is active."
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-henkan-phase state 'active)
+    (nskk-state-force-henkan-phase state 'active)
     (should (nskk-state-henkan-active-p state))))
 
 (nskk-deftest-unit state-henkan-active-p-false
@@ -249,6 +250,46 @@
     (should (eq (nskk-state-henkan-phase state) 'registration))
     (nskk-state-set-henkan-phase state nil)
     (should (null (nskk-state-henkan-phase state)))))
+
+(nskk-deftest-unit state-set-henkan-phase-invalid-transition
+  "Test that invalid henkan phase transitions signal an error."
+  (let ((state (nskk-state-create 'hiragana)))
+    ;; nil -> active is not a valid transition (must go nil -> on -> active)
+    (should-error (nskk-state-set-henkan-phase state 'active))
+    ;; nil -> list is not valid
+    (should-error (nskk-state-set-henkan-phase state 'list))
+    ;; nil -> registration is not valid
+    (should-error (nskk-state-set-henkan-phase state 'registration))
+    ;; Verify valid transitions still work
+    (nskk-state-set-henkan-phase state 'on)
+    (should (eq (nskk-state-henkan-phase state) 'on))
+    (nskk-state-set-henkan-phase state 'active)
+    (should (eq (nskk-state-henkan-phase state) 'active))))
+
+(nskk-deftest-unit state-force-henkan-phase-bypasses-validation
+  "Test that force-henkan-phase bypasses transition validation."
+  (let ((state (nskk-state-create 'hiragana)))
+    ;; nil -> active would fail with set-henkan-phase but works with force
+    (nskk-state-force-henkan-phase state 'active)
+    (should (eq (nskk-state-henkan-phase state) 'active))
+    ;; active -> list -> nil via force
+    (nskk-state-force-henkan-phase state 'list)
+    (should (eq (nskk-state-henkan-phase state) 'list))
+    (nskk-state-force-henkan-phase state nil)
+    (should (null (nskk-state-henkan-phase state)))
+    ;; Still validates the phase itself
+    (should-error (nskk-state-force-henkan-phase state 'invalid-phase))))
+
+(nskk-deftest-unit state-set-henkan-phase-same-phase-noop
+  "Test that same-phase transitions are allowed (no-op)."
+  (let ((state (nskk-state-create 'hiragana)))
+    ;; nil -> nil should succeed
+    (nskk-state-set-henkan-phase state nil)
+    (should (null (nskk-state-henkan-phase state)))
+    ;; on -> on should succeed
+    (nskk-state-set-henkan-phase state 'on)
+    (nskk-state-set-henkan-phase state 'on)
+    (should (eq (nskk-state-henkan-phase state) 'on))))
 
 (nskk-deftest-unit state-create-jisx0208-latin
   "Test state creation with jisx0208-latin mode."
@@ -768,7 +809,7 @@
     (should (string= (nskk-state-input-buffer state) "touko"))
 
     ;; Set conversion phase and get candidates
-    (nskk-state-set-henkan-phase state 'active)
+    (nskk-state-force-henkan-phase state 'active)
     (nskk-state-set-candidates state '("\u6771\u4eac" "\u767b\u6821" "\u6e21\u822a"))
     (should (string= (nskk-state-current-candidate state) "\u6771\u4eac"))
 
@@ -778,6 +819,67 @@
 
     (nskk-state-previous-candidate state)
     (should (string= (nskk-state-current-candidate state) "\u6771\u4eac"))))
+
+;;;
+;;; Property-Based Tests
+;;;
+
+;; Inline valid modes list (no external dep needed)
+(defconst nskk-state-pbt--valid-modes
+  '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
+  "Valid modes for state property-based tests.")
+
+(nskk-property-test state-pbt-mode-set-invariant
+  ((input romaji-string))
+  ;; For any valid mode, nskk-state-set-mode sets that mode.
+  ;; Generate a random valid mode from the inline list.
+  (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
+                    nskk-state-pbt--valid-modes))
+         (state (nskk-state-create)))
+    (nskk-state-set state 'mode mode)
+    (eq (nskk-state-mode state) mode))
+  100)
+
+(nskk-property-test state-pbt-buffer-append-grows
+  ((input romaji-string))
+  ;; Appending a character to input-buffer always grows it or keeps it the same length.
+  ;; The romaji-string generator always produces non-empty strings.
+  (let ((state (nskk-state-create)))
+    (let ((before-len (length (nskk-state-input-buffer state))))
+      (if (> (length input) 0)
+          (progn
+            (nskk-state-append-input state (aref input 0))
+            (let ((after-len (length (nskk-state-input-buffer state))))
+              (>= after-len before-len)))
+        t)))  ; vacuously ok for empty strings
+  100)
+
+(nskk-property-test state-pbt-created-state-is-valid
+  ((input romaji-string))
+  ;; State is always valid after creation: nskk-state-p returns t for any created state.
+  ;; input is used only to drive the PBT loop; we test creation of states with each mode.
+  (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
+                    nskk-state-pbt--valid-modes))
+         (state (nskk-state-create mode)))
+    (nskk-state-p state))
+  100)
+
+(nskk-property-test state-pbt-reset-clears-buffers
+  ((input romaji-string))
+  ;; After nskk-state-reset, mode stays but buffers are cleared.
+  (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
+                    nskk-state-pbt--valid-modes))
+         (state (nskk-state-create mode)))
+    ;; Set some state
+    (nskk-state-set state 'input-buffer input)
+    (nskk-state-set state 'converted-buffer input)
+    ;; Reset
+    (nskk-state-reset state)
+    ;; Mode preserved, buffers cleared
+    (and (eq (nskk-state-mode state) mode)
+         (string= (nskk-state-input-buffer state) "")
+         (string= (nskk-state-converted-buffer state) "")))
+  100)
 
 (provide 'nskk-state-test)
 

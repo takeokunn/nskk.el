@@ -39,8 +39,6 @@
 
 (require 'nskk-converter)
 (require 'nskk-prolog)
-(eval-when-compile (require 'nskk-macros))
-
 (defgroup nskk-azik nil
   "AZIK extended romaji input settings."
   :prefix "nskk-azik-"

@@ -53,7 +53,9 @@
   "Deep-copy hash table HT."
   (let ((new (make-hash-table :test (hash-table-test ht)
                               :size (hash-table-size ht))))
-    (maphash (lambda (k v) (puthash k (copy-sequence v) new)) ht)
+    (maphash (lambda (k v)
+               (puthash k (if (sequencep v) (copy-sequence v) v) new))
+             ht)
     new))
 
 (defmacro nskk-prolog-test-with-isolated-db (&rest body)
@@ -555,18 +557,17 @@ data facts produce results and that the first is `a'."
       (should (equal (nskk-prolog-walk '\?v (car results)) 'y)))))
 
 (nskk-deftest-unit prolog-trie-index-lookup
-  "Trie index: prefix-based lookup with nskk-trie."
+  "Trie index: prefix-based lookup with inline private trie."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    (when (require 'nskk-trie nil t)
-      (nskk-prolog-set-index 'trie-word 1 :trie)
-      (nskk-prolog-assert '((trie-word "hello" "greeting")))
-      (nskk-prolog-assert '((trie-word "help" "assistance")))
-      (nskk-prolog-assert '((trie-word "world" "noun")))
-      (let ((result (nskk-prolog-query '(trie-word "hello" \?meaning))))
-        (should result)
-        (should (equal (nskk-prolog-walk '\?meaning (car result))
-                       "greeting"))))))
+    (nskk-prolog-set-index 'trie-word 1 :trie)
+    (nskk-prolog-assert '((trie-word "hello" "greeting")))
+    (nskk-prolog-assert '((trie-word "help" "assistance")))
+    (nskk-prolog-assert '((trie-word "world" "noun")))
+    (let ((result (nskk-prolog-query '(trie-word "hello" \?meaning))))
+      (should result)
+      (should (equal (nskk-prolog-walk '\?meaning (car result))
+                     "greeting")))))
 
 (nskk-deftest-unit prolog-list-index-default
   "List index (default) performs full scan."
@@ -892,6 +893,125 @@ vs nil for failure, making them distinguishable."
   nskk-unit-prolog-query-returns-all-solutions
   nskk-unit-prolog-query-one-returns-first
   nskk-unit-prolog-query-complex-rule)
+
+;;;
+;;; Property-Based Tests
+;;;
+
+(require 'nskk-test-macros)
+
+;; Table-driven atom unification cases using multi-column nskk-deftest-table.
+(nskk-deftest-table prolog-pbt-atom-unification
+  :columns (a b should-succeed)
+  :rows    ((foo foo t)
+            (foo bar nil)
+            (hello-sym hello-sym t)
+            (hello-sym world-sym nil))
+  :description "Atom unification: known symbol pairs produce expected results"
+  :body (let ((result (nskk-prolog-unify a b nil)))
+          (if should-succeed
+              (should (not (nskk-prolog--fail-p result)))
+            (should (nskk-prolog--fail-p result)))))
+
+;; Unification symmetry: if (unify A B) succeeds, (unify B A) also succeeds
+(nskk-deftest-unit prolog-pbt-unify-symmetry-atoms
+  "Unification symmetry: if (nskk-prolog-unify A B) succeeds,
+(nskk-prolog-unify B A) also succeeds, and vice versa."
+  (nskk-prolog-test-with-isolated-db
+    ;; Test symmetric atom pairs: both (A,B) and (B,A) should succeed or fail together.
+    (dolist (pair '((foo foo)
+                    (bar bar)
+                    (foo bar)))
+      (let ((a (car pair))
+            (b (cadr pair)))
+        (let ((ab (nskk-prolog-unify a b nil))
+              (ba (nskk-prolog-unify b a nil)))
+          ;; Both succeed or both fail — symmetry invariant
+          (should (eq (nskk-prolog--fail-p ab) (nskk-prolog--fail-p ba))))))
+    ;; Test with integers
+    (dolist (pair '((42 42) (42 99)))
+      (let ((a (car pair))
+            (b (cadr pair)))
+        (let ((ab (nskk-prolog-unify a b nil))
+              (ba (nskk-prolog-unify b a nil)))
+          (should (eq (nskk-prolog--fail-p ab) (nskk-prolog--fail-p ba))))))))
+
+;; Assert/retract roundtrip: DB returns to same state
+(nskk-deftest-unit prolog-pbt-assert-retract-roundtrip
+  "Assert/retract roundtrip: asserting a fact then retracting it leaves
+the database in the same state as before the assertion."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    ;; Capture initial state (no facts)
+    (let ((before-result (nskk-prolog-query '(roundtrip-fact test-value))))
+      (should (null before-result))
+      ;; Assert a fact
+      (nskk-prolog-assert '((roundtrip-fact test-value)))
+      (should (nskk-prolog-query '(roundtrip-fact test-value)))
+      ;; Retract the fact
+      (nskk-prolog-retract '(roundtrip-fact test-value))
+      ;; Should be back to nil
+      (let ((after-result (nskk-prolog-query '(roundtrip-fact test-value))))
+        (should (null after-result))))))
+
+;;;
+;;; Arithmetic Built-in Tests
+;;;
+
+(nskk-deftest-unit prolog-arithmetic-comparison-gte
+  "Test arithmetic >= comparison goal."
+  (should (nskk-prolog-query-one '(>= 10 5)))
+  (should (nskk-prolog-query-one '(>= 5 5)))
+  (should (not (nskk-prolog-query-one '(>= 3 5)))))
+
+(nskk-deftest-unit prolog-arithmetic-comparison-lte
+  "Test arithmetic <= comparison goal."
+  (should (nskk-prolog-query-one '(<= 3 5)))
+  (should (nskk-prolog-query-one '(<= 5 5)))
+  (should (not (nskk-prolog-query-one '(<= 10 5)))))
+
+(nskk-deftest-unit prolog-arithmetic-comparison-gt
+  "Test arithmetic > comparison goal."
+  (should (nskk-prolog-query-one '(> 10 5)))
+  (should (not (nskk-prolog-query-one '(> 5 5))))
+  (should (not (nskk-prolog-query-one '(> 3 5)))))
+
+(nskk-deftest-unit prolog-arithmetic-comparison-lt
+  "Test arithmetic < comparison goal."
+  (should (nskk-prolog-query-one '(< 3 5)))
+  (should (not (nskk-prolog-query-one '(< 5 5))))
+  (should (not (nskk-prolog-query-one '(< 10 5)))))
+
+(nskk-deftest-unit prolog-arithmetic-is-assignment
+  "Test arithmetic is/2 assignment goal."
+  (let ((result (nskk-prolog-query-one '(is \?x (+ 3 5)))))
+    (should result)
+    (should (listp result))
+    (should (= (nskk-prolog-walk '\?x result) 8)))
+  (let ((result (nskk-prolog-query-one '(is \?x (- 100 4)))))
+    (should result)
+    (should (listp result))
+    (should (= (nskk-prolog-walk '\?x result) 96)))
+  (let ((result (nskk-prolog-query-one '(is \?x (* 3 7)))))
+    (should result)
+    (should (listp result))
+    (should (= (nskk-prolog-walk '\?x result) 21))))
+
+(nskk-deftest-unit prolog-arithmetic-equality
+  "Test arithmetic =:= equality goal."
+  (should (nskk-prolog-query-one (list (intern "=:=") 5 5)))
+  (should (not (nskk-prolog-query-one (list (intern "=:=") 5 6)))))
+
+(nskk-deftest-unit prolog-arithmetic-in-rule-body
+  "Test arithmetic goals work in rule bodies."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-retract-all 'arith-test-double 2)
+    (nskk-prolog-<- (arith-test-double \?x \?y)
+      (is \?y (* \?x 2)))
+    (let ((result (nskk-prolog-query-one '(arith-test-double 5 \?y))))
+      (should result)
+      (should (listp result))
+      (should (= (nskk-prolog-walk '\?y result) 10)))))
 
 (provide 'nskk-prolog-test)
 

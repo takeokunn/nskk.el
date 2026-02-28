@@ -256,6 +256,64 @@
                         (take 5 failures))))))
 
 
+;;;; Enhanced PBT Coverage
+;;;;
+
+;;;
+;;; Shrinking Property: Error recovery after invalid mode
+;;;
+
+(nskk-property-test-with-shrinking error-recovery-invalid-mode-shrinking
+  ((mode valid-mode))
+  (let* ((state (nskk-state-create mode))
+         (invalid-mode (nskk-pbt--random-choice nskk-pbt--invalid-modes)))
+    (nskk-state-set state 'input-buffer "test-input")
+    ;; Attempt invalid mode assignment; expect an error that leaves state intact
+    (let ((error-raised nil))
+      (condition-case _err
+          (nskk-state-set state 'mode invalid-mode)
+        (error
+         (setq error-raised t)))
+      ;; Either an error was raised and state is consistent, or no error but
+      ;; state remains a valid nskk-state struct.
+      (and (nskk-state-p state)
+           (nskk-state-valid-mode-p (nskk-state-mode state))
+           (stringp (nskk-state-input-buffer state))
+           (stringp (nskk-state-converted-buffer state))
+           (listp (nskk-state-candidates state))
+           (integerp (nskk-state-current-index state))
+           ;; If no error was raised, mode must still be valid (accepted silently)
+           (or error-raised
+               (nskk-state-valid-mode-p (nskk-state-mode state))))))
+  50)
+
+;;;
+;;; Scenario: System recovers from rapid mode switches without state corruption
+;;;
+
+(nskk-scenario-test rapid-mode-switch-no-corruption
+  "Scenario: rapid mode switches never corrupt state structural invariants."
+  (let* ((state (nskk-state-create 'hiragana))
+         (valid-modes '(ascii hiragana katakana latin abbrev))
+         (failures nil))
+    ;; Perform 200 rapid mode switches
+    (dotimes (_ 200)
+      (let ((new-mode (nskk-pbt--random-choice valid-modes)))
+        (nskk-state-set state 'mode new-mode)))
+    ;; Verify every structural invariant
+    (unless (and (nskk-state-p state)
+                 (nskk-state-valid-mode-p (nskk-state-mode state))
+                 (nskk-state-valid-mode-p (nskk-state-previous-mode state))
+                 (stringp (nskk-state-input-buffer state))
+                 (stringp (nskk-state-converted-buffer state))
+                 (listp (nskk-state-candidates state))
+                 (integerp (nskk-state-current-index state))
+                 (>= (nskk-state-current-index state) 0))
+      (push :state-corrupted failures))
+    (when failures
+      (ert-fail (format "State corrupted after rapid mode switches: %S" failures)))))
+
+
 (provide 'nskk-error-recovery-pbt-test)
 
 ;;; nskk-error-recovery-pbt-test.el ends here

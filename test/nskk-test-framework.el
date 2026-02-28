@@ -40,6 +40,7 @@
 
 (require 'ert)
 (require 'nskk-dictionary)
+(require 'nskk-prolog)
 (eval-when-compile (require 'cl-lib))
 
 
@@ -423,11 +424,45 @@
           :skipped skipped)))
 
 ;;;;
+;;;; Prolog Test Isolation
+;;;;
+
+(defun nskk-prolog-test--copy-hash-table (ht)
+  "Deep-copy hash table HT."
+  (let ((new (make-hash-table :test (hash-table-test ht)
+                              :size (hash-table-size ht))))
+    (maphash (lambda (k v)
+               (puthash k (if (sequencep v) (copy-sequence v) v) new))
+             ht)
+    new))
+
+(defmacro nskk-prolog-test-with-isolated-db (&rest body)
+  "Execute BODY with an isolated Prolog database.
+Saves and restores the global database so tests don't leak."
+  (declare (indent 0))
+  `(let ((saved-db (nskk-prolog-test--copy-hash-table
+                    nskk-prolog--database))
+         (saved-idx (nskk-prolog-test--copy-hash-table
+                     nskk-prolog--index-config))
+         (saved-hash (nskk-prolog-test--copy-hash-table
+                      nskk-prolog--hash-indices))
+         (saved-trie (nskk-prolog-test--copy-hash-table
+                      nskk-prolog--trie-indices))
+         (saved-counter nskk-prolog--var-counter))
+     (unwind-protect
+         (progn ,@body)
+       (setq nskk-prolog--database saved-db
+             nskk-prolog--index-config saved-idx
+             nskk-prolog--hash-indices saved-hash
+             nskk-prolog--trie-indices saved-trie
+             nskk-prolog--var-counter saved-counter))))
+
+;;;;
 ;;;; Mock Dictionary Helpers
 ;;;;
 
 (defun nskk-test-create-mock-dict (&optional entries)
-  "Create a mock dictionary index with ENTRIES.
+  "Create a mock dictionary index with ENTRIES via Prolog facts.
 ENTRIES is an alist of (key . candidates-list).
 If nil, uses a default set of common Japanese words."
   (let ((default-entries
@@ -444,12 +479,13 @@ If nil, uses a default set of common Japanese words."
            ("かわ" . ("川" "河"))
            ("はな" . ("花" "鼻"))
            ("あめ" . ("雨" "飴"))))
-        (ht (make-hash-table :test 'equal :size 50)))
+        (pred 'mock-dict-entry))
+    (nskk-prolog-retract-all pred 2)
+    (nskk-prolog-set-index pred 1 :trie)
     (dolist (entry (or entries default-entries))
-      (puthash (car entry) (cdr entry) ht))
+      (nskk-prolog-assert (list (list pred (car entry) (cdr entry)))))
     (make-nskk-dict-index
-     :entries ht
-     :by-prefix nil
+     :predicate pred
      :by-freq nil)))
 
 (defmacro nskk-with-mock-dict (entries &rest body)
@@ -457,9 +493,10 @@ If nil, uses a default set of common Japanese words."
 ENTRIES is an alist of (key . candidates-list) or nil for defaults.
 Restores original dictionary state after BODY completes."
   (declare (indent 1))
-  `(let ((nskk--system-dict-index (nskk-test-create-mock-dict ,entries))
-         (nskk--user-dict-index nil))
-     ,@body))
+  `(nskk-prolog-test-with-isolated-db
+     (let ((nskk--system-dict-index (nskk-test-create-mock-dict ,entries))
+           (nskk--user-dict-index nil))
+       ,@body)))
 
 (provide 'nskk-test-framework)
 

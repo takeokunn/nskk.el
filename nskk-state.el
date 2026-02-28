@@ -40,8 +40,6 @@
 
 (require 'cl-lib)
 (require 'nskk-prolog)
-(eval-when-compile (require 'nskk-macros))
-
 (defgroup nskk-state nil
   "State management settings."
   :prefix "nskk-state-"
@@ -73,17 +71,6 @@ Binds `candidates' and `index' for use in BODY."
          (let ((candidates (nskk-state-candidates ,s))
                (index (nskk-state-current-index ,s)))
            ,@body)))))
-
-(defmacro nskk-reset-state-fields (state &rest field-specs)
-  "Reset fields in STATE according to FIELD-SPECS.
-Each spec is (FIELD DEFAULT-VALUE).
-Example: (nskk-reset-state-fields s (input-buffer \"\") (candidates nil))"
-  (declare (indent 1) (debug t))
-  `(setf ,@(cl-mapcan
-            (lambda (spec)
-              (list `(,(intern (format "nskk-state-%s" (car spec))) ,state)
-                    (cadr spec)))
-            field-specs)))
 
 (defmacro nskk-state-slot-dispatch (state key-sym value &rest slots)
   "Generate cond dispatch for STATE struct slot setters.
@@ -151,32 +138,38 @@ Returns nil if key is not found or state is invalid."
 (defun nskk-state-set (state key value)
   "Set KEY to VALUE in STATE struct.
 Returns VALUE on success, nil on failure.
-Supports validation for mode changes."
+Supports validation for mode and henkan-phase changes."
   (nskk-with-state state
     (let ((key-sym (if (stringp key) (intern key) key)))
-      (if (eq key-sym 'mode)
-          ;; Mode requires validation + previous-mode tracking
-          (progn
-            (unless (nskk-state-valid-mode-p value)
-              (error "Invalid mode: %s. Valid modes: %s" value nskk-state-modes))
-            (setf (nskk-state-previous-mode state) (nskk-state-mode state))
-            (setf (nskk-state-mode state) value)
-            value)
+      (cond
+       ((eq key-sym 'mode)
+        ;; Mode requires validation + previous-mode tracking
+        (unless (nskk-state-valid-mode-p value)
+          (error "Invalid mode: %s. Valid modes: %s" value nskk-state-modes))
+        (setf (nskk-state-previous-mode state) (nskk-state-mode state))
+        (setf (nskk-state-mode state) value)
+        value)
+       ((eq key-sym 'henkan-phase)
+        ;; Henkan phase requires transition validation
+        (nskk-state-set-henkan-phase state value)
+        value)
+       (t
         ;; All other slots: generated dispatch
         (nskk-state-slot-dispatch state key-sym value
           input-buffer converted-buffer candidates current-index
           henkan-position marker-position previous-mode
-          undo-stack redo-stack henkan-phase metadata)))))
+          undo-stack redo-stack metadata))))))
 
-;; Internal helper to get slot accessor name
-(defun nskk-state--slot-accessor-name (slot)
-  "Generate accessor name for SLOT."
-  (intern (format "nskk-state-%s" slot)))
+;; Internal helper to get default value from Prolog
+(defun nskk-state--get-default (slot)
+  "Get default value for SLOT from state-slot-default Prolog facts."
+  (nskk-prolog-query-value `(state-slot-default ,slot ,'\?v) '\?v))
 
 ;; State creation functions
 (defun nskk-state-create (&optional initial-mode)
   "Create a new NSKK state object.
-INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
+INITIAL-MODE defaults to `nskk-state-default-mode' if not specified.
+Slot defaults are sourced from state-slot-default Prolog facts."
   (let ((mode (or initial-mode
                    nskk-state-default-mode
                    'ascii)))
@@ -184,17 +177,17 @@ INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
       (setq mode 'ascii))
     (make-nskk-state
      :mode mode
-     :input-buffer ""
-     :converted-buffer ""
-     :candidates nil
-     :current-index 0
-     :henkan-position nil
-     :marker-position nil
+     :input-buffer (nskk-state--get-default 'input-buffer)
+     :converted-buffer (nskk-state--get-default 'converted-buffer)
+     :candidates (nskk-state--get-default 'candidates)
+     :current-index (nskk-state--get-default 'current-index)
+     :henkan-position (nskk-state--get-default 'henkan-position)
+     :marker-position (nskk-state--get-default 'marker-position)
      :previous-mode mode
-     :undo-stack nil
-     :redo-stack nil
-     :henkan-phase nil
-     :metadata nil)))
+     :undo-stack (nskk-state--get-default 'undo-stack)
+     :redo-stack (nskk-state--get-default 'redo-stack)
+     :henkan-phase (nskk-state--get-default 'henkan-phase)
+     :metadata (nskk-state--get-default 'metadata))))
 
 ;; State validation functions
 (defun nskk-state-valid-mode-p (mode)
@@ -203,9 +196,14 @@ INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
        (not (null (nskk-prolog-query `(valid-mode ,mode))))))
 
 (defun nskk-state-in-henkan-mode-p (state)
-  "Check if STATE is currently in conversion mode."
+  "Check if STATE is currently in conversion mode.
+Queries the henkan-mode-phase Prolog predicate.
+Uses `nskk-prolog-query-one' for early termination.
+Note: nil phase (the common case) short-circuits before the query."
   (nskk-with-state state
-    (memq (nskk-state-henkan-phase state) '(on active list registration))))
+    (let ((phase (nskk-state-henkan-phase state)))
+      (and phase
+           (not (null (nskk-prolog-query-one `(henkan-mode-phase ,phase))))))))
 
 (defun nskk-state-henkan-on-p (state)
   "Check if STATE is in henkan-on phase (▽)."
@@ -228,9 +226,78 @@ INITIAL-MODE defaults to `nskk-state-default-mode' if not specified."
 (nskk-prolog-<- (can-transition \?from \?to)
   (valid-mode \?from) (valid-mode \?to))
 
+;;;; Henkan Phase Transition Graph
+(nskk-prolog-set-index 'valid-henkan-transition 2 :hash)
+(nskk-prolog-<- (valid-henkan-transition nil on))
+(nskk-prolog-<- (valid-henkan-transition on active))
+(nskk-prolog-<- (valid-henkan-transition on registration))
+(nskk-prolog-<- (valid-henkan-transition on nil))
+(nskk-prolog-<- (valid-henkan-transition active nil))
+(nskk-prolog-<- (valid-henkan-transition active list))
+(nskk-prolog-<- (valid-henkan-transition list nil))
+(nskk-prolog-<- (valid-henkan-transition list registration))
+(nskk-prolog-<- (valid-henkan-transition registration nil))
+(nskk-prolog-<- (valid-henkan-transition registration list))
+
+;;;; Henkan Mode Phase Classification
+(nskk-prolog-set-index 'henkan-mode-phase 1 :hash)
+(nskk-prolog-<- (henkan-mode-phase on))
+(nskk-prolog-<- (henkan-mode-phase active))
+(nskk-prolog-<- (henkan-mode-phase list))
+(nskk-prolog-<- (henkan-mode-phase registration))
+
+;;;; State Slot Defaults
+(nskk-prolog-set-index 'state-slot-default 2 :hash)
+(nskk-prolog-<- (state-slot-default input-buffer ""))
+(nskk-prolog-<- (state-slot-default converted-buffer ""))
+(nskk-prolog-<- (state-slot-default candidates nil))
+(nskk-prolog-<- (state-slot-default current-index 0))
+(nskk-prolog-<- (state-slot-default henkan-position nil))
+(nskk-prolog-<- (state-slot-default marker-position nil))
+(nskk-prolog-<- (state-slot-default undo-stack nil))
+(nskk-prolog-<- (state-slot-default redo-stack nil))
+(nskk-prolog-<- (state-slot-default henkan-phase nil))
+(nskk-prolog-<- (state-slot-default metadata nil))
+
+;;;; Resettable Fields
+(nskk-prolog-set-index 'resettable-field 1 :hash)
+(nskk-prolog-<- (resettable-field input-buffer))
+(nskk-prolog-<- (resettable-field converted-buffer))
+(nskk-prolog-<- (resettable-field candidates))
+(nskk-prolog-<- (resettable-field current-index))
+(nskk-prolog-<- (resettable-field henkan-position))
+(nskk-prolog-<- (resettable-field marker-position))
+(nskk-prolog-<- (resettable-field undo-stack))
+(nskk-prolog-<- (resettable-field redo-stack))
+(nskk-prolog-<- (resettable-field henkan-phase))
+(nskk-prolog-<- (resettable-field metadata))
+
+;;;; Metadata Key Registry
+(nskk-prolog-set-index 'metadata-key 1 :hash)
+(nskk-prolog-<- (metadata-key remaining-romaji))
+(nskk-prolog-<- (metadata-key kana-type))
+(nskk-prolog-<- (metadata-key width-type))
+(nskk-prolog-<- (metadata-key okurigana))
+
 (defun nskk-state-set-henkan-phase (state phase)
-  "Set henkan PHASE in STATE.
-PHASE must be nil, on, active, list, or registration."
+  "Set henkan PHASE in STATE with transition validation.
+PHASE must be nil, on, active, list, or registration.
+Validates that the transition from the current phase to PHASE
+follows the valid-henkan-transition graph.
+Same-phase transitions (no-op) are always allowed."
+  (nskk-with-state state
+    (unless (nskk-prolog-query `(valid-henkan-phase ,phase))
+      (error "Invalid henkan phase: %s. Valid phases: %s" phase nskk-state-henkan-phases))
+    (let ((current (nskk-state-henkan-phase state)))
+      (unless (or (eq current phase)
+                  (nskk-prolog-query `(valid-henkan-transition ,current ,phase)))
+        (error "Invalid henkan phase transition: %s -> %s" current phase)))
+    (setf (nskk-state-henkan-phase state) phase)))
+
+(defun nskk-state-force-henkan-phase (state phase)
+  "Force set henkan PHASE in STATE, bypassing transition validation.
+Only validates that PHASE is a valid henkan phase.
+Use for test setup or emergency reset."
   (nskk-with-state state
     (unless (nskk-prolog-query `(valid-henkan-phase ,phase))
       (error "Invalid henkan phase: %s. Valid phases: %s" phase nskk-state-henkan-phases))
@@ -239,28 +306,24 @@ PHASE must be nil, on, active, list, or registration."
 ;; State transition functions
 (defun nskk-state-transition (state from-mode to-mode)
   "Transition STATE from FROM-MODE to TO-MODE.
+Uses can-transition Prolog rule for validation.
 Returns t on success, nil on failure."
   (nskk-with-state state
     (when (and (eq (nskk-state-mode state) from-mode)
-               (nskk-state-valid-mode-p to-mode))
+               (nskk-prolog-query `(can-transition ,from-mode ,to-mode)))
       (nskk-state-set state 'mode to-mode)
       t)))
 
 (defun nskk-state-reset (state)
   "Reset STATE to initial state (preserves mode).
-Clears buffers, candidates, and stacks."
+Iterates resettable-field Prolog facts and restores each
+to its state-slot-default value."
   (nskk-with-state state
-    (nskk-reset-state-fields state
-      (input-buffer "")
-      (converted-buffer "")
-      (candidates nil)
-      (current-index 0)
-      (henkan-position nil)
-      (marker-position nil)
-      (undo-stack nil)
-      (redo-stack nil)
-      (henkan-phase nil)
-      (metadata nil))
+    (dolist (slot (nskk-prolog-query-all-values '(resettable-field \?s) '\?s))
+      (let ((default (nskk-state--get-default slot)))
+        (if (eq slot 'henkan-phase)
+            (nskk-state-force-henkan-phase state default)
+          (nskk-state-set state slot default))))
     t))
 
 ;; Buffer management helpers

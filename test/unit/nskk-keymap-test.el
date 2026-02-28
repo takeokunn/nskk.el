@@ -232,7 +232,7 @@
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (nskk-state-set-henkan-phase nskk-current-state 'active)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
       (nskk-handle-return)
       (should-not (nskk-converting-p))
       ;; ddskk style: commit + newline
@@ -264,7 +264,7 @@
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (nskk-state-set-henkan-phase nskk-current-state 'active)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
       (nskk-handle-upper-l)
       ;; Should have committed and switched mode
       (should-not (nskk-converting-p))
@@ -312,7 +312,7 @@
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (nskk-state-set-henkan-phase nskk-current-state 'active)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
       (nskk-handle-q)
       ;; Should have committed and toggled mode
       (should-not (nskk-converting-p)))))
@@ -325,7 +325,7 @@
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (nskk-state-set-henkan-phase nskk-current-state 'active)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
       (nskk-handle-l)
       ;; Should have committed and entered latin
       (should-not (nskk-converting-p))

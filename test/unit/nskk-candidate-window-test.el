@@ -1,6 +1,6 @@
 ;;; nskk-candidate-window-test.el --- Candidate window tests -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2026 NSKK Authors
 
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
@@ -9,9 +9,10 @@
 
 ;;; Commentary:
 
-;; Comprehensive tests for nskk-candidate-window.el covering:
+;; Unit tests for nskk-candidate-window.el covering:
 ;; - Echo area candidate list display
-;; - Candidate selection by key
+;; - Candidate selection by key (Prolog-based)
+;; - Prolog candidate-selection-key/2 fact initialization
 ;; - Page state management (show/hide)
 ;; - Custom variable defaults
 ;; - Face definitions
@@ -21,6 +22,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'nskk-candidate-window)
+(require 'nskk-prolog)
 (require 'nskk-test-framework)
 
 ;;;
@@ -34,10 +36,6 @@
 (nskk-deftest-unit candidate-face-defined
   "Test that candidate face is defined."
   (should (facep 'nskk-candidate-face)))
-
-(nskk-deftest-unit candidate-annotation-face-defined
-  "Test that annotation face is defined."
-  (should (facep 'nskk-candidate-annotation-face)))
 
 ;;;
 ;;; Defgroup Tests
@@ -144,6 +142,26 @@
     ;; Should not error
     (nskk-candidate-hide-list)
     (should-not nskk--candidate-list-active)))
+
+;;;
+;;; Prolog Key Selection Facts Tests
+;;;
+
+(nskk-deftest-unit candidate-selection-key-facts-initialized
+  "Test that candidate-selection-key Prolog facts are initialized at load time."
+  (should (nskk-prolog-query-one '(candidate-selection-key \?a \?pos))))
+
+(nskk-deftest-unit candidate-selection-key-default-mapping
+  "Test that all 7 default selection keys map to positions 0-6."
+  (cl-loop for key in '(?a ?s ?d ?f ?j ?k ?l)
+           for expected-pos from 0
+           do (should (= (nskk-prolog-query-value
+                          `(candidate-selection-key ,key ,'\?pos) '\?pos)
+                         expected-pos))))
+
+(nskk-deftest-unit candidate-selection-key-invalid-returns-nil
+  "Test that non-selection keys have no Prolog fact."
+  (should (null (nskk-prolog-query-one `(candidate-selection-key ,?z ,'\?pos)))))
 
 ;;;
 ;;; Key Selection Tests

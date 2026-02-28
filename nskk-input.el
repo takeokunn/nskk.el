@@ -30,11 +30,11 @@
 ;;; Code:
 
 (require 'nskk-henkan)
+(require 'nskk-kana)
 (require 'nskk-state)
 (require 'nskk-converter)
 (require 'nskk-prolog)
 (require 'nskk-azik nil t)
-(eval-when-compile (require 'nskk-macros))
 (eval-when-compile (require 'nskk-state))
 
 (declare-function nskk-modeline-update "nskk-modeline")
@@ -62,6 +62,8 @@
 (defvar nskk--henkan-count)
 (defvar nskk-henkan--candidate-list-active)
 (defvar nskk-henkan-select-candidate-by-key-function)
+(defvar nskk-converter-romaji-style)
+(defvar nskk-azik-q-behavior)
 
 ;;;; Prolog Input Routing Rules
 
@@ -72,6 +74,12 @@
 (nskk-prolog-<- (input-route jisx0208-latin insert-fullwidth))
 (nskk-prolog-<- (input-route hiragana process-japanese))
 (nskk-prolog-<- (input-route katakana process-japanese))
+
+;;;; Prolog Mode Toggle Rules
+
+(nskk-prolog-set-index 'toggle-mode 2 :hash)
+(nskk-prolog-<- (toggle-mode hiragana katakana))
+(nskk-prolog-<- (toggle-mode katakana hiragana))
 
 ;;;; Mode Setter Macro
 
@@ -96,12 +104,13 @@ Creates `nskk-set-mode-MODE' that switches to MODE and updates modeline."
 (defun nskk-toggle-japanese-mode ()
   "Toggle between hiragana and katakana modes."
   (interactive)
-  (let ((current-mode (when (boundp 'nskk-current-state)
-                        (nskk-state-mode nskk-current-state))))
-    (if (eq current-mode 'hiragana)
-        (nskk-set-mode-katakana)
-      (when (eq current-mode 'katakana)
-        (nskk-set-mode-hiragana)))))
+  (let* ((current-mode (when (boundp 'nskk-current-state)
+                         (nskk-state-mode nskk-current-state)))
+         (target (nskk-prolog-query-value
+                  `(toggle-mode ,current-mode ,'\?target) '\?target)))
+    (when target
+      (nskk--set-mode target)
+      (nskk-modeline-update))))
 
 (defalias 'nskk-toggle-katakana #'nskk-toggle-japanese-mode)
 
@@ -133,6 +142,21 @@ MODE is the target mode symbol."
              (eq nskk-converter-romaji-style 'azik))
     (nskk-converter-load-style 'azik)))
 
+;;;; Prolog Key Behavior Rules
+
+(nskk-prolog-set-index 'q-key-action 4 :hash)
+;; Non-AZIK: always toggle (behavior and buffer-state don't matter)
+(nskk-prolog-<- (q-key-action standard \?behavior \?buf toggle-mode))
+;; AZIK: behavior-driven dispatch
+(nskk-prolog-<- (q-key-action azik always-n \?buf insert-n))
+(nskk-prolog-<- (q-key-action azik toggle-only \?buf toggle-mode))
+(nskk-prolog-<- (q-key-action azik context-aware empty toggle-mode))
+(nskk-prolog-<- (q-key-action azik context-aware pending insert-n))
+
+(nskk-prolog-set-index 'semicolon-key-action 2 :hash)
+(nskk-prolog-<- (semicolon-key-action azik insert-small-tsu))
+(nskk-prolog-<- (semicolon-key-action standard self-insert))
+
 ;;;; AZIK-specific Key Handlers
 
 (defun nskk-handle-q-key ()
@@ -144,32 +168,128 @@ In always-n mode: always produce \u3093
 In toggle-only mode: toggle mode regardless of context
 In standard mode: toggle mode (default SKK behavior)."
   (interactive)
-  (cond
-   ;; Standard mode: normal toggle behavior
-   ((not (eq nskk-converter-romaji-style 'azik))
-    (nskk-toggle-japanese-mode))
-   ;; AZIK always-n mode
-   ((eq nskk-azik-q-behavior 'always-n)
-    (insert "\u3093"))
-   ;; AZIK toggle-only mode
-   ((eq nskk-azik-q-behavior 'toggle-only)
-    (nskk-toggle-japanese-mode))
-   ;; AZIK context-aware mode (default)
-   (t
-    (if (string-empty-p nskk--romaji-buffer)
-        (nskk-toggle-japanese-mode)
-      (insert "\u3093")))))
+  (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+         (behavior (if (featurep 'nskk-azik) nskk-azik-q-behavior 'context-aware))
+         (buf-state (if (string-empty-p nskk--romaji-buffer) 'empty 'pending))
+         (action (nskk-prolog-query-value
+                  `(q-key-action ,style ,behavior ,buf-state ,'\?action)
+                  '\?action)))
+    (pcase action
+      ('toggle-mode (nskk-toggle-japanese-mode))
+      ('insert-n    (insert "\u3093"))
+      (_            nil))))
 
 (defun nskk-handle-semicolon-key ()
   "Handle semicolon key press.
-In AZIK mode: produce small tsu (\u3063)
-In standard mode with empty buffer: start abbrev mode (if applicable)
-Otherwise: process as normal input."
+In AZIK mode: produce small tsu (\u3063).
+In standard mode: self-insert (pass through to `nskk-self-insert')."
   (interactive)
-  (if (eq nskk-converter-romaji-style 'azik)
-      (insert "\u3063")
-    ;; Standard behavior - could trigger abbrev mode
-    (nskk-self-insert 1)))
+  (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+         (action (nskk-prolog-query-value
+                  `(semicolon-key-action ,style ,'\?action) '\?action)))
+    (pcase action
+      ('insert-small-tsu (insert "\u3063"))
+      ('self-insert      (nskk-self-insert 1))
+      (_                 nil))))
+
+;;;; Prolog Full-Width Character Table
+
+(nskk-prolog-set-index 'fullwidth-char 2 :hash)
+(nskk-prolog-<- (fullwidth-char ?\s  ?\u3000))  ; space -> ideographic space
+(nskk-prolog-<- (fullwidth-char ?!   ?\uFF01))
+(nskk-prolog-<- (fullwidth-char ?\"  ?\uFF02))
+(nskk-prolog-<- (fullwidth-char ?#   ?\uFF03))
+(nskk-prolog-<- (fullwidth-char ?$   ?\uFF04))
+(nskk-prolog-<- (fullwidth-char ?%   ?\uFF05))
+(nskk-prolog-<- (fullwidth-char ?&   ?\uFF06))
+(nskk-prolog-<- (fullwidth-char ?\'  ?\uFF07))
+(nskk-prolog-<- (fullwidth-char ?\(  ?\uFF08))
+(nskk-prolog-<- (fullwidth-char ?\)  ?\uFF09))
+(nskk-prolog-<- (fullwidth-char ?*   ?\uFF0A))
+(nskk-prolog-<- (fullwidth-char ?+   ?\uFF0B))
+(nskk-prolog-<- (fullwidth-char ?,   ?\uFF0C))
+(nskk-prolog-<- (fullwidth-char ?-   ?\uFF0D))
+(nskk-prolog-<- (fullwidth-char ?.   ?\uFF0E))
+(nskk-prolog-<- (fullwidth-char ?/   ?\uFF0F))
+(nskk-prolog-<- (fullwidth-char ?0   ?\uFF10))
+(nskk-prolog-<- (fullwidth-char ?1   ?\uFF11))
+(nskk-prolog-<- (fullwidth-char ?2   ?\uFF12))
+(nskk-prolog-<- (fullwidth-char ?3   ?\uFF13))
+(nskk-prolog-<- (fullwidth-char ?4   ?\uFF14))
+(nskk-prolog-<- (fullwidth-char ?5   ?\uFF15))
+(nskk-prolog-<- (fullwidth-char ?6   ?\uFF16))
+(nskk-prolog-<- (fullwidth-char ?7   ?\uFF17))
+(nskk-prolog-<- (fullwidth-char ?8   ?\uFF18))
+(nskk-prolog-<- (fullwidth-char ?9   ?\uFF19))
+(nskk-prolog-<- (fullwidth-char ?:   ?\uFF1A))
+(nskk-prolog-<- (fullwidth-char ?\;  ?\uFF1B))
+(nskk-prolog-<- (fullwidth-char ?<   ?\uFF1C))
+(nskk-prolog-<- (fullwidth-char ?=   ?\uFF1D))
+(nskk-prolog-<- (fullwidth-char ?>   ?\uFF1E))
+(nskk-prolog-<- (fullwidth-char ??   ?\uFF1F))
+(nskk-prolog-<- (fullwidth-char ?@   ?\uFF20))
+(nskk-prolog-<- (fullwidth-char ?A   ?\uFF21))
+(nskk-prolog-<- (fullwidth-char ?B   ?\uFF22))
+(nskk-prolog-<- (fullwidth-char ?C   ?\uFF23))
+(nskk-prolog-<- (fullwidth-char ?D   ?\uFF24))
+(nskk-prolog-<- (fullwidth-char ?E   ?\uFF25))
+(nskk-prolog-<- (fullwidth-char ?F   ?\uFF26))
+(nskk-prolog-<- (fullwidth-char ?G   ?\uFF27))
+(nskk-prolog-<- (fullwidth-char ?H   ?\uFF28))
+(nskk-prolog-<- (fullwidth-char ?I   ?\uFF29))
+(nskk-prolog-<- (fullwidth-char ?J   ?\uFF2A))
+(nskk-prolog-<- (fullwidth-char ?K   ?\uFF2B))
+(nskk-prolog-<- (fullwidth-char ?L   ?\uFF2C))
+(nskk-prolog-<- (fullwidth-char ?M   ?\uFF2D))
+(nskk-prolog-<- (fullwidth-char ?N   ?\uFF2E))
+(nskk-prolog-<- (fullwidth-char ?O   ?\uFF2F))
+(nskk-prolog-<- (fullwidth-char ?P   ?\uFF30))
+(nskk-prolog-<- (fullwidth-char ?Q   ?\uFF31))
+(nskk-prolog-<- (fullwidth-char ?R   ?\uFF32))
+(nskk-prolog-<- (fullwidth-char ?S   ?\uFF33))
+(nskk-prolog-<- (fullwidth-char ?T   ?\uFF34))
+(nskk-prolog-<- (fullwidth-char ?U   ?\uFF35))
+(nskk-prolog-<- (fullwidth-char ?V   ?\uFF36))
+(nskk-prolog-<- (fullwidth-char ?W   ?\uFF37))
+(nskk-prolog-<- (fullwidth-char ?X   ?\uFF38))
+(nskk-prolog-<- (fullwidth-char ?Y   ?\uFF39))
+(nskk-prolog-<- (fullwidth-char ?Z   ?\uFF3A))
+(nskk-prolog-<- (fullwidth-char ?\[  ?\uFF3B))
+(nskk-prolog-<- (fullwidth-char ?\\  ?\uFF3C))
+(nskk-prolog-<- (fullwidth-char ?\]  ?\uFF3D))
+(nskk-prolog-<- (fullwidth-char ?^   ?\uFF3E))
+(nskk-prolog-<- (fullwidth-char ?_   ?\uFF3F))
+(nskk-prolog-<- (fullwidth-char ?\`  ?\uFF40))
+(nskk-prolog-<- (fullwidth-char ?a   ?\uFF41))
+(nskk-prolog-<- (fullwidth-char ?b   ?\uFF42))
+(nskk-prolog-<- (fullwidth-char ?c   ?\uFF43))
+(nskk-prolog-<- (fullwidth-char ?d   ?\uFF44))
+(nskk-prolog-<- (fullwidth-char ?e   ?\uFF45))
+(nskk-prolog-<- (fullwidth-char ?f   ?\uFF46))
+(nskk-prolog-<- (fullwidth-char ?g   ?\uFF47))
+(nskk-prolog-<- (fullwidth-char ?h   ?\uFF48))
+(nskk-prolog-<- (fullwidth-char ?i   ?\uFF49))
+(nskk-prolog-<- (fullwidth-char ?j   ?\uFF4A))
+(nskk-prolog-<- (fullwidth-char ?k   ?\uFF4B))
+(nskk-prolog-<- (fullwidth-char ?l   ?\uFF4C))
+(nskk-prolog-<- (fullwidth-char ?m   ?\uFF4D))
+(nskk-prolog-<- (fullwidth-char ?n   ?\uFF4E))
+(nskk-prolog-<- (fullwidth-char ?o   ?\uFF4F))
+(nskk-prolog-<- (fullwidth-char ?p   ?\uFF50))
+(nskk-prolog-<- (fullwidth-char ?q   ?\uFF51))
+(nskk-prolog-<- (fullwidth-char ?r   ?\uFF52))
+(nskk-prolog-<- (fullwidth-char ?s   ?\uFF53))
+(nskk-prolog-<- (fullwidth-char ?t   ?\uFF54))
+(nskk-prolog-<- (fullwidth-char ?u   ?\uFF55))
+(nskk-prolog-<- (fullwidth-char ?v   ?\uFF56))
+(nskk-prolog-<- (fullwidth-char ?w   ?\uFF57))
+(nskk-prolog-<- (fullwidth-char ?x   ?\uFF58))
+(nskk-prolog-<- (fullwidth-char ?y   ?\uFF59))
+(nskk-prolog-<- (fullwidth-char ?z   ?\uFF5A))
+(nskk-prolog-<- (fullwidth-char ?{   ?\uFF5B))
+(nskk-prolog-<- (fullwidth-char ?|   ?\uFF5C))
+(nskk-prolog-<- (fullwidth-char ?}   ?\uFF5D))
+(nskk-prolog-<- (fullwidth-char ?~   ?\uFF5E))
 
 ;;;; Input Processing
 
@@ -202,14 +322,12 @@ N is the command prefix argument."
 
 (defun nskk-insert-fullwidth-char (char &optional n)
   "Insert full-width version of ASCII CHAR N times.
-Converts ASCII characters (0x21-0x7E) to their JIS X 0208 full-width
-equivalents (0xFF01-0xFF5E).  Space (0x20) becomes ideographic space (0x3000)."
-  (let ((n (or n 1))
-        (fw-char (cond
-                  ((= char ?\s) ?\u3000)  ; space -> ideographic space
-                  ((and (>= char ?!) (<= char ?~))
-                   (+ char #xFF01 (- ?!)))  ; ASCII printable -> full-width
-                  (t char))))              ; non-ASCII: pass through
+Converts ASCII characters (0x20-0x7E) to their JIS X 0208 full-width
+equivalents via the fullwidth-char/2 Prolog table."
+  (let* ((n (or n 1))
+         (fw-char (or (nskk-prolog-query-value
+                       `(fullwidth-char ,char ,'\?fw) '\?fw)
+                      char)))             ; non-ASCII: pass through
     (dotimes (_ n)
       (insert fw-char))))
 

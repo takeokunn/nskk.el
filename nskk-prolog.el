@@ -33,6 +33,7 @@
 ;; - Cut (!) and negation-as-failure (not)
 ;; - Three index strategies: hash (O(1)), trie (prefix), list (scan)
 ;; - Assert/retract for dynamic clause management
+;; - Arithmetic built-in goals: is/2, </2, >/2, <=/2, >=/2, =:=/2
 ;; - DSL macros for natural Prolog-like syntax
 ;;
 ;; Performance target: single query < 20us with hash indexing
@@ -53,13 +54,6 @@
 ;;; Code:
 
 (require 'cl-lib)
-
-(declare-function nskk-trie-create "nskk-trie" ())
-(declare-function nskk-trie-insert "nskk-trie" (trie key value))
-(declare-function nskk-trie-lookup "nskk-trie" (trie key))
-(declare-function nskk-trie-delete "nskk-trie" (trie key))
-(declare-function nskk-trie-prefix-search
-                  "nskk-trie" (trie prefix &optional limit))
 
 ;;;; Variable Representation
 
@@ -152,6 +146,158 @@ and body is a list of goals (nil for facts).")
   "Return the database key string for clause HEAD."
   (nskk-prolog--clause-key (car head) (1- (length head))))
 
+;;;; Private Trie Implementation
+
+(cl-defstruct (nskk-prolog--trie-node
+               (:constructor nskk-prolog--trie-node--create)
+               (:copier nil))
+  "Private trie node for nskk-prolog internal use.
+Slots:
+  char     - character this node represents (nil for root)
+  children - hash-table of child nodes (char -> node)
+  value    - value stored at this node (terminal nodes only)
+  is-end   - non-nil if this node terminates a key
+  count    - number of keys passing through this node"
+  (char nil :type (or null character))
+  (children nil :type (or null hash-table))
+  (value nil)
+  (is-end nil :type boolean)
+  (count 0 :type integer))
+
+(cl-defstruct (nskk-prolog--trie
+               (:constructor nskk-prolog--trie--create-internal)
+               (:copier nil))
+  "Private trie structure for nskk-prolog internal use.
+Slots:
+  root     - root node
+  size     - total number of stored keys
+  metadata - metadata plist"
+  (root nil :type nskk-prolog--trie-node)
+  (size 0 :type integer)
+  (metadata nil :type list))
+
+(defun nskk-prolog--trie-create ()
+  "Create and return a new empty private trie."
+  (nskk-prolog--trie--create-internal
+   :root (nskk-prolog--trie-node--create)
+   :size 0
+   :metadata nil))
+
+(defun nskk-prolog--trie-insert (trie key value)
+  "Insert KEY with VALUE into private TRIE.
+KEY must be a non-empty string.  Returns TRIE."
+  (unless (stringp key)
+    (error "Key must be a string: %s" key))
+  (when (zerop (length key))
+    (error "Key cannot be empty"))
+  (let ((node (nskk-prolog--trie-root trie))
+        (key-len (length key))
+        (was-new nil))
+    (dotimes (i key-len)
+      (let ((char (aref key i)))
+        (unless (nskk-prolog--trie-node-children node)
+          (setf (nskk-prolog--trie-node-children node)
+                (make-hash-table :test 'eq :size 50)))
+        (let ((next-node (gethash char (nskk-prolog--trie-node-children node))))
+          (unless next-node
+            (setq next-node (nskk-prolog--trie-node--create :char char))
+            (puthash char next-node (nskk-prolog--trie-node-children node)))
+          (cl-incf (nskk-prolog--trie-node-count next-node))
+          (setq node next-node))))
+    (setq was-new (not (nskk-prolog--trie-node-is-end node)))
+    (setf (nskk-prolog--trie-node-is-end node) t)
+    (setf (nskk-prolog--trie-node-value node) value)
+    (when was-new
+      (cl-incf (nskk-prolog--trie-size trie)))
+    trie))
+
+(defun nskk-prolog--trie-lookup (trie key)
+  "Look up KEY in private TRIE.
+Returns (value . t) if found, (nil . nil) otherwise."
+  (unless (stringp key)
+    (error "Key must be a string: %s" key))
+  (let ((node (nskk-prolog--trie--find-node trie key)))
+    (if (and node (nskk-prolog--trie-node-is-end node))
+        (cons (nskk-prolog--trie-node-value node) t)
+      (cons nil nil))))
+
+(defun nskk-prolog--trie-delete (trie key)
+  "Delete KEY from private TRIE.
+Returns t if deleted, nil if KEY was not present."
+  (unless (stringp key)
+    (error "Key must be a string: %s" key))
+  (let ((node (nskk-prolog--trie--find-node trie key)))
+    (when (and node (nskk-prolog--trie-node-is-end node))
+      (setf (nskk-prolog--trie-node-is-end node) nil)
+      (setf (nskk-prolog--trie-node-value node) nil)
+      (cl-decf (nskk-prolog--trie-size trie))
+      (nskk-prolog--trie--cleanup-path trie key)
+      t)))
+
+(defun nskk-prolog--trie--find-node (trie key)
+  "Return the trie node for KEY in private TRIE, or nil if not found."
+  (let ((node (nskk-prolog--trie-root trie))
+        (key-len (length key)))
+    (catch 'not-found
+      (dotimes (i key-len)
+        (let ((char (aref key i)))
+          (unless (and (nskk-prolog--trie-node-children node)
+                       (setq node (gethash char (nskk-prolog--trie-node-children node))))
+            (throw 'not-found nil))))
+      node)))
+
+(defun nskk-prolog--trie--cleanup-path (trie key)
+  "Remove leaf nodes that are no longer needed after deleting KEY from TRIE."
+  (let ((node (nskk-prolog--trie-root trie))
+        (parent-stack nil)
+        (key-len (length key)))
+    (dotimes (i key-len)
+      (let ((char (aref key i)))
+        (push node parent-stack)
+        (setq node (gethash char (nskk-prolog--trie-node-children node)))))
+    (dotimes (_i key-len)
+      (when (and node
+                 (not (nskk-prolog--trie-node-is-end node))
+                 (or (null (nskk-prolog--trie-node-children node))
+                     (zerop (hash-table-count (nskk-prolog--trie-node-children node)))))
+        (let ((parent (pop parent-stack)))
+          (when (nskk-prolog--trie-node-children parent)
+            (remhash (nskk-prolog--trie-node-char node)
+                     (nskk-prolog--trie-node-children parent)))
+          (setq node parent))))))
+
+(defun nskk-prolog--trie-prefix-search (trie prefix &optional limit)
+  "Search private TRIE for all keys starting with PREFIX.
+Returns a list of (key . value) pairs.
+Optional LIMIT caps the number of results."
+  (unless (stringp prefix)
+    (error "Prefix must be a string: %s" prefix))
+  (let ((node (if (zerop (length prefix))
+                  (nskk-prolog--trie-root trie)
+                (nskk-prolog--trie--find-node trie prefix))))
+    (when node
+      (nskk-prolog--trie--collect-all node prefix limit 0))))
+
+(defun nskk-prolog--trie--collect-all (node prefix limit collected-count)
+  "Collect all (key . value) pairs reachable from NODE with PREFIX.
+LIMIT caps results; COLLECTED-COUNT tracks how many have been gathered."
+  (let ((results nil)
+        (count collected-count))
+    (catch 'limit-reached
+      (cl-labels ((dfs-collect (node prefix)
+                    (when (nskk-prolog--trie-node-is-end node)
+                      (push (cons prefix (nskk-prolog--trie-node-value node)) results)
+                      (cl-incf count)
+                      (when (and limit (>= count limit))
+                        (throw 'limit-reached nil)))
+                    (when (nskk-prolog--trie-node-children node)
+                      (maphash (lambda (char child-node)
+                                 (let ((new-prefix (concat prefix (char-to-string char))))
+                                   (dfs-collect child-node new-prefix)))
+                               (nskk-prolog--trie-node-children node)))))
+        (dfs-collect node prefix)))
+    (nreverse results)))
+
 ;;;; Indexing
 
 (defvar nskk-prolog--index-config (make-hash-table :test 'equal)
@@ -164,7 +310,7 @@ Key: \"pred/arity\", Value: hash-table (first-arg -> clause list).")
 
 (defvar nskk-prolog--trie-indices (make-hash-table :test 'equal)
   "Trie indices for predicates configured with :trie.
-Key: \"pred/arity\", Value: nskk-trie storing clause lists.")
+Key: \"pred/arity\", Value: private nskk-prolog--trie storing clause lists.")
 
 (defun nskk-prolog-set-index (predicate arity type)
   "Configure index strategy for PREDICATE with ARITY.
@@ -181,9 +327,8 @@ TYPE must be one of :hash, :trie, or :list.
          (puthash key (make-hash-table :test 'equal)
                   nskk-prolog--hash-indices)))
       (:trie
-       (require 'nskk-trie)
        (unless (gethash key nskk-prolog--trie-indices)
-         (puthash key (nskk-trie-create)
+         (puthash key (nskk-prolog--trie-create)
                   nskk-prolog--trie-indices))))))
 
 (defun nskk-prolog--index-add (key clause)
@@ -198,8 +343,8 @@ TYPE must be one of :hash, :trie, or :list.
       (:trie
        (when (stringp first-arg)
          (let* ((trie (gethash key nskk-prolog--trie-indices))
-                (existing (car (nskk-trie-lookup trie first-arg))))
-           (nskk-trie-insert
+                (existing (car (nskk-prolog--trie-lookup trie first-arg))))
+           (nskk-prolog--trie-insert
             trie first-arg
             (nconc existing (list clause)))))))))
 
@@ -219,12 +364,12 @@ TYPE must be one of :hash, :trie, or :list.
       (:trie
        (when (stringp first-arg)
          (let* ((trie (gethash key nskk-prolog--trie-indices))
-                (existing (car (nskk-trie-lookup trie first-arg)))
+                (existing (car (nskk-prolog--trie-lookup trie first-arg)))
                 (filtered (cl-remove clause existing
                                     :test #'equal :count 1)))
            (if filtered
-               (nskk-trie-insert trie first-arg filtered)
-             (nskk-trie-delete trie first-arg))))))))
+               (nskk-prolog--trie-insert trie first-arg filtered)
+             (nskk-prolog--trie-delete trie first-arg))))))))
 
 (defun nskk-prolog--get-clauses (predicate args subst)
   "Retrieve candidate clauses for PREDICATE given ARGS and SUBST.
@@ -246,7 +391,7 @@ Uses the configured index strategy for dispatch:
       (:trie
        (if (and (stringp first-arg)
                 (not (nskk-prolog-variable-p first-arg)))
-           (car (nskk-trie-lookup
+           (car (nskk-prolog--trie-lookup
                  (gethash key nskk-prolog--trie-indices)
                  first-arg))
          (gethash key nskk-prolog--database)))
@@ -281,6 +426,34 @@ variable capture between different clause attempts."
             (t term))))
       (rename clause))))
 
+;;;; Arithmetic Evaluator
+
+(defun nskk-prolog--eval-arith (expr subst)
+  "Evaluate arithmetic EXPR under SUBST, returning a number.
+EXPR may be a number, a bound Prolog variable, or a list (OP A B)
+where OP is one of +, -, *, / and A, B are arithmetic expressions."
+  (cond
+   ((numberp expr) expr)
+   ((nskk-prolog-variable-p expr)
+    (let ((val (nskk-prolog-walk expr subst)))
+      (if (eq val expr)
+          (error "nskk-prolog: unbound variable in arithmetic: %S" expr)
+        (nskk-prolog--eval-arith val subst))))
+   ;; Emacs Lisp bound symbol (e.g., defconst values used in rule bodies)
+   ((and (symbolp expr) (not (nskk-prolog-variable-p expr)) (boundp expr))
+    (nskk-prolog--eval-arith (symbol-value expr) subst))
+   ((consp expr)
+    (let ((op (car expr))
+          (a (nskk-prolog--eval-arith (cadr expr) subst))
+          (b (nskk-prolog--eval-arith (caddr expr) subst)))
+      (cond
+       ((eq op '+) (+ a b))
+       ((eq op '-) (- a b))
+       ((eq op '*) (* a b))
+       ((eq op '/) (/ a b))
+       (t (error "nskk-prolog: unknown arithmetic operator: %S" op)))))
+   (t (error "nskk-prolog: cannot evaluate arithmetic: %S" expr))))
+
 ;;;; Prove Engine (Backtracking)
 
 (defun nskk-prolog-prove (goals subst)
@@ -311,6 +484,39 @@ are proved recursively."
         (if (null (nskk-prolog-prove (list (cadr goal)) subst))
             (nskk-prolog-prove rest-goals subst)
           nil))
+       ;; assertz: side-effect goal - assert a new fact into database
+       ((and (consp goal) (eq (car goal) 'assertz))
+        (let* ((head-term (cadr goal))
+               (ground-head (nskk-prolog-substitute head-term subst)))
+          (nskk-prolog-assert (list ground-head))
+          (nskk-prolog-prove rest-goals subst)))
+       ;; retract: side-effect goal - remove first matching clause
+       ((and (consp goal) (eq (car goal) 'retract))
+        (let* ((head-term (cadr goal))
+               (ground-head (nskk-prolog-substitute head-term subst)))
+          (when (nskk-prolog-retract ground-head)
+            (nskk-prolog-prove rest-goals subst))))
+       ;; Arithmetic comparisons: (>= a b), (<= a b), (> a b), (< a b)
+       ((and (consp goal)
+             (memq (car goal) '(>= <= > <)))
+        (let* ((op (car goal))
+               (a (nskk-prolog--eval-arith (cadr goal) subst))
+               (b (nskk-prolog--eval-arith (caddr goal) subst)))
+          (when (funcall op a b)
+            (nskk-prolog-prove rest-goals subst))))
+       ;; Arithmetic equality: (=:= a b)
+       ((and (consp goal) (eq (car goal) (intern "=:=")))
+        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
+              (b (nskk-prolog--eval-arith (caddr goal) subst)))
+          (when (= a b)
+            (nskk-prolog-prove rest-goals subst))))
+       ;; Arithmetic assignment: (is ?var expr) — unify ?var with evaluated result
+       ((and (consp goal) (eq (car goal) 'is))
+        (let* ((var (cadr goal))
+               (val (nskk-prolog--eval-arith (caddr goal) subst))
+               (new-subst (nskk-prolog-unify var val subst)))
+          (unless (nskk-prolog--fail-p new-subst)
+            (nskk-prolog-prove rest-goals new-subst))))
        ;; Normal goal resolution
        (t
         (let* ((predicate (car goal))
@@ -369,6 +575,39 @@ still allowing early termination of the overall search."
                             :not-found)))
           (when (eq naf-result :not-found)
             (nskk-prolog-prove-first rest-goals subst))))
+       ;; assertz: side-effect goal - assert a new fact into database
+       ((and (consp goal) (eq (car goal) 'assertz))
+        (let* ((head-term (cadr goal))
+               (ground-head (nskk-prolog-substitute head-term subst)))
+          (nskk-prolog-assert (list ground-head))
+          (nskk-prolog-prove-first rest-goals subst)))
+       ;; retract: side-effect goal - remove first matching clause
+       ((and (consp goal) (eq (car goal) 'retract))
+        (let* ((head-term (cadr goal))
+               (ground-head (nskk-prolog-substitute head-term subst)))
+          (when (nskk-prolog-retract ground-head)
+            (nskk-prolog-prove-first rest-goals subst))))
+       ;; Arithmetic comparisons: (>= a b), (<= a b), (> a b), (< a b)
+       ((and (consp goal)
+             (memq (car goal) '(>= <= > <)))
+        (let* ((op (car goal))
+               (a (nskk-prolog--eval-arith (cadr goal) subst))
+               (b (nskk-prolog--eval-arith (caddr goal) subst)))
+          (when (funcall op a b)
+            (nskk-prolog-prove-first rest-goals subst))))
+       ;; Arithmetic equality: (=:= a b)
+       ((and (consp goal) (eq (car goal) (intern "=:=")))
+        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
+              (b (nskk-prolog--eval-arith (caddr goal) subst)))
+          (when (= a b)
+            (nskk-prolog-prove-first rest-goals subst))))
+       ;; Arithmetic assignment: (is ?var expr) — unify ?var with evaluated result
+       ((and (consp goal) (eq (car goal) 'is))
+        (let* ((var (cadr goal))
+               (val (nskk-prolog--eval-arith (caddr goal) subst))
+               (new-subst (nskk-prolog-unify var val subst)))
+          (unless (nskk-prolog--fail-p new-subst)
+            (nskk-prolog-prove-first rest-goals new-subst))))
        ;; Normal goal resolution
        (t
         (let* ((predicate (car goal))
@@ -459,8 +698,7 @@ Also clears any associated indices."
       (pcase type
         (:hash (puthash key (make-hash-table :test 'equal)
                         nskk-prolog--hash-indices))
-        (:trie (require 'nskk-trie)
-               (puthash key (nskk-trie-create)
+        (:trie (puthash key (nskk-prolog--trie-create)
                         nskk-prolog--trie-indices))))))
 
 (defun nskk-prolog-clear-database ()
@@ -567,28 +805,27 @@ Unbound variables remain as-is in the result."
           (nskk-prolog-substitute (cdr term) subst)))
    (t term)))
 
-;;;###autoload
 (defun nskk-prolog-trie-prefix-search (predicate arity prefix)
-  "Return list of (key . value) pairs from PREDICATE/ARITY trie where KEY starts with PREFIX.
-PREDICATE is a symbol (e.g. \\='romaji-to-kana), ARITY is integer (e.g. 2), PREFIX is a string.
-Returns list of (romaji . kana) pairs where kana is a string.
-Uses the trie index for O(k+n) performance instead of O(N) full scan.
-
-Returns nil if no trie index exists for PREDICATE/ARITY, or if PREFIX
-matches no entries."
+  "Search PREDICATE/ARITY trie for keys starting with PREFIX.
+Return list of (key . value) pairs matching PREFIX.
+PREDICATE is a symbol, ARITY is integer, PREFIX is a string.
+For arity-2 predicates, value is the second argument of each fact.
+Uses the trie index for O(k+n) performance instead of O(N).
+Returns nil if no trie index exists or PREFIX matches nothing."
   (let* ((key (nskk-prolog--clause-key predicate arity))
          (trie (gethash key nskk-prolog--trie-indices)))
     (when trie
-      (let ((raw-results (nskk-trie-prefix-search trie prefix)))
+      (let ((raw-results (nskk-prolog--trie-prefix-search trie prefix)))
         (delq nil
               (mapcar (lambda (entry)
-                        (let* ((romaji (car entry))
+                        (let* ((index-key (car entry))
                                (clauses (cdr entry))
                                (first-clause (car clauses))
                                (head (when first-clause (car first-clause)))
-                               (kana (when head (caddr head))))
-                          (when (stringp kana)
-                            (cons romaji kana))))
+                               (value (when (and head (>= (length head) 3))
+                                        (nth 2 head))))
+                          (when value
+                            (cons index-key value))))
                       raw-results))))))
 
 ;;;; DSL Macros

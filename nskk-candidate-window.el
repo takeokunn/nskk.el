@@ -33,43 +33,43 @@
 ;; - Shows [残り N] count for remaining candidates
 ;; - Supports page navigation (SPC = next page, x = prev page)
 ;; - Direct selection by pressing the corresponding key
+;;
+;; Prolog integration:
+;; - `candidate-selection-key'/2 facts map key characters to page positions
+;; - Initialized from `nskk-henkan-show-candidates-keys' at load time
+;; - Uses hash indexing for O(1) key dispatch
+;;
+;; Hook integration:
+;; - `nskk-henkan-show-candidates-functions': called to display page
+;; - `nskk-henkan-hide-candidates-functions': called to clear display
+;; - `nskk-henkan-select-candidate-by-key-function': key→index lookup
+;;
+;; These hooks are wired in `nskk.el' during `nskk--enable'.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'nskk-prolog)
+(require 'nskk-henkan)
 
 (defgroup nskk-candidate-window nil
   "Candidate display UI for NSKK."
   :prefix "nskk-candidate-"
   :group 'nskk-ui)
 
-(defcustom nskk-candidate-window-page-size 7
-  "Number of candidates to display per page in the candidate window."
-  :type 'integer
-  :group 'nskk-candidate-window)
+;;;; Prolog Candidate Key Selection Facts
 
-(defcustom nskk-candidate-window-use-annotation t
-  "Whether to show annotations in the candidate window."
-  :type 'boolean
-  :group 'nskk-candidate-window)
+(defun nskk--candidate-init-key-facts ()
+  "Initialize `candidate-selection-key'/2 Prolog facts from `nskk-henkan-show-candidates-keys'.
+Maps each selection key character to its 0-based page position.
+Uses hash indexing for O(1) key dispatch during candidate selection."
+  (nskk-prolog-set-index 'candidate-selection-key 2 :hash)
+  (let ((i 0))
+    (dolist (k nskk-henkan-show-candidates-keys)
+      (nskk-prolog-assert `((candidate-selection-key ,k ,i)))
+      (cl-incf i))))
 
-(defcustom nskk-candidate-window-position 'bottom
-  "Where to display the candidate window.
-\\='bottom means below the current line.
-\\='top means above the current line.
-\\='inline means inline with the text."
-  :type '(choice (const :tag "Bottom" bottom)
-                 (const :tag "Top" top)
-                 (const :tag "Inline" inline))
-  :group 'nskk-candidate-window)
-
-(defcustom nskk-minibuffer-show-inline-candidate t
-  "Whether to show inline candidate preview in minibuffer."
-  :type 'boolean
-  :group 'nskk-candidate-window)
-
-(defvar nskk-henkan-show-candidates-keys)
-(defvar nskk-henkan-number-to-display-candidates)
+(nskk--candidate-init-key-facts)
 
 (defface nskk-candidate-key-face
   '((t (:foreground "#FF9800" :weight bold)))
@@ -81,11 +81,6 @@
   "Face for candidate text."
   :group 'nskk-candidate-window)
 
-(defface nskk-candidate-annotation-face
-  '((t (:inherit shadow :height 0.85)))
-  "Face for candidate annotations."
-  :group 'nskk-candidate-window)
-
 (defvar-local nskk--candidate-list-page 0
   "Current page in candidate list display (0-indexed).")
 
@@ -93,9 +88,10 @@
   "Non-nil when the echo area candidate list is active.")
 
 (defun nskk-candidate-show-list (candidates current-index)
-  "Show CANDIDATES in echo area starting from CURRENT-INDEX.
-Displays candidates with home-row selection keys.
-Returns the list of displayed candidates for selection mapping."
+  "Display CANDIDATES in echo area starting at CURRENT-INDEX.
+Shows candidates with home-row selection keys and a [残り N] remaining
+count when more candidates exist beyond the current page.
+Returns the page candidates (a sublist of CANDIDATES) for key mapping."
   (let* ((keys nskk-henkan-show-candidates-keys)
          (per-page (min nskk-henkan-number-to-display-candidates
                         (length keys)))
@@ -138,16 +134,16 @@ Returns the list of displayed candidates for selection mapping."
     (message nil)))
 
 (defun nskk-candidate-list-select-by-key (key candidates current-index)
-  "Select candidate by KEY press from CANDIDATES at CURRENT-INDEX.
-KEY is the character pressed.  Returns the selected candidate index
-relative to the full candidates list, or nil if KEY is not a valid
-selection key."
-  (let* ((keys nskk-henkan-show-candidates-keys)
-         (key-pos (cl-position key keys)))
-    (when key-pos
-      (let ((absolute-index (+ current-index key-pos)))
-        (when (< absolute-index (length candidates))
-          absolute-index)))))
+  "Return the absolute index of the candidate selected by KEY.
+CANDIDATES is the full candidate list; CURRENT-INDEX is the page start
+offset.  KEY is the character pressed.  Returns the selected index
+relative to the full CANDIDATES list, or nil if KEY is not a valid
+selection key or if the resulting index is out of range."
+  (when-let* ((pos (nskk-prolog-query-value
+                    `(candidate-selection-key ,key ,'\?pos) '\?pos)))
+    (let ((absolute-index (+ current-index pos)))
+      (when (< absolute-index (length candidates))
+        absolute-index))))
 
 (provide 'nskk-candidate-window)
 

@@ -30,12 +30,18 @@
 ;; - LRU (Least Recently Used): evicts the least recently accessed entry
 ;; - LFU (Least Frequently Used): evicts the least frequently accessed entry
 ;;
-;; Both algorithms provide O(1) get and put via hash table + doubly-linked
-;; list.  Capacity is managed by entry count with automatic eviction.
-;; Hit-rate statistics are collected and accessible via `nskk-cache-stats'.
+;; Both algorithms provide O(1) get and put via hash table plus doubly-linked
+;; list (LRU) or frequency table (LFU).  Capacity is managed by entry count
+;; with automatic eviction.  Hit-rate statistics are collected and accessible
+;; via `nskk-cache-stats'.
+;;
+;; Cache type validation and operation dispatch are driven by Prolog facts
+;; (cache-type/1, cache-dispatch-fn/3, cache-field-fn/3), keeping the
+;; dispatch table declarative and consistent with the rest of the NSKK
+;; architecture.
 ;;
 ;; Performance targets:
-;; - get: O(1), < 0.1ms
+;; - get: O(1), < 0.1ms (Prolog dispatch via hash index is ~20us)
 ;; - put: O(1), < 0.1ms
 ;; - cache-hit search: < 10ms
 ;;
@@ -45,19 +51,19 @@
 ;;   (nskk-cache-put cache "key" "value")
 ;;   (nskk-cache-get cache "key")  ; => "value"
 ;;   (nskk-cache-stats cache)      ; => (:hits N :misses N :hit-rate R ...)
-;;   (nskk-cache-get cache "key1")
-;;   ;; => "value1"
 ;;
-;;   ;; 統計情報
-;;   (nskk-cache-stats cache)
-;;   ;; => (:hits 10 :misses 5 :hit-rate 0.666 ...)
+;;   ;; Query dispatch table via Prolog:
+;;   (nskk-prolog-query-value '(cache-type \?t) '\?t)  ; => lru or lfu
+;;   (nskk-prolog-query-value
+;;     '(cache-eviction-policy lru \?p) '\?p)           ; => least-recently-used
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'nskk-prolog)
 
 (defgroup nskk-cache nil
-  "Cache settings."
+  "Cache settings for NSKK."
   :prefix "nskk-cache-"
   :group 'nskk)
 
@@ -74,68 +80,119 @@
                  (const :tag "LFU" lfu))
   :group 'nskk-cache)
 
-;;; Cache type dispatch macros
+;;; Prolog Facts
+
+;; Cache type validation: (cache-type TYPE)
+(nskk-prolog-set-index 'cache-type 1 :hash)
+(nskk-prolog-<- (cache-type lru))
+(nskk-prolog-<- (cache-type lfu))
+
+;; Cache eviction policy documentation: (cache-eviction-policy TYPE POLICY)
+(nskk-prolog-set-index 'cache-eviction-policy 2 :hash)
+(nskk-prolog-<- (cache-eviction-policy lru least-recently-used))
+(nskk-prolog-<- (cache-eviction-policy lfu least-frequently-used))
+
+;; Cache operation dispatch table: (cache-dispatch-fn TYPE OP FN)
+(nskk-prolog-set-index 'cache-dispatch-fn 3 :hash)
+(nskk-prolog-<- (cache-dispatch-fn lru get nskk-cache-lru-get))
+(nskk-prolog-<- (cache-dispatch-fn lru put nskk-cache-lru-put))
+(nskk-prolog-<- (cache-dispatch-fn lru invalidate nskk-cache-lru-invalidate))
+(nskk-prolog-<- (cache-dispatch-fn lru clear nskk-cache-lru-clear))
+(nskk-prolog-<- (cache-dispatch-fn lru size nskk-cache-lru-size))
+(nskk-prolog-<- (cache-dispatch-fn lfu get nskk-cache-lfu-get))
+(nskk-prolog-<- (cache-dispatch-fn lfu put nskk-cache-lfu-put))
+(nskk-prolog-<- (cache-dispatch-fn lfu invalidate nskk-cache-lfu-invalidate))
+(nskk-prolog-<- (cache-dispatch-fn lfu clear nskk-cache-lfu-clear))
+(nskk-prolog-<- (cache-dispatch-fn lfu size nskk-cache-lfu-size))
+
+;; Cache field accessor table: (cache-field-fn TYPE FIELD ACCESSOR-FN)
+(nskk-prolog-set-index 'cache-field-fn 3 :hash)
+(nskk-prolog-<- (cache-field-fn lru capacity nskk-cache-lru-capacity))
+(nskk-prolog-<- (cache-field-fn lru size nskk-cache-lru-size))
+(nskk-prolog-<- (cache-field-fn lru hits nskk-cache-lru-hits))
+(nskk-prolog-<- (cache-field-fn lru misses nskk-cache-lru-misses))
+(nskk-prolog-<- (cache-field-fn lru hash nskk-cache-lru-hash))
+(nskk-prolog-<- (cache-field-fn lfu capacity nskk-cache-lfu-capacity))
+(nskk-prolog-<- (cache-field-fn lfu size nskk-cache-lfu-size))
+(nskk-prolog-<- (cache-field-fn lfu hits nskk-cache-lfu-hits))
+(nskk-prolog-<- (cache-field-fn lfu misses nskk-cache-lfu-misses))
+(nskk-prolog-<- (cache-field-fn lfu hash nskk-cache-lfu-hash))
+
+;;; Cache Type Dispatch
+
+(defun nskk-cache--type-of (cache)
+  "Return the cache type symbol for CACHE.
+Returns the symbol `lru' or `lfu'.  Signals an error for invalid CACHE."
+  (cond
+   ((nskk-cache-lru-p cache) 'lru)
+   ((nskk-cache-lfu-p cache) 'lfu)
+   (t (error "Invalid cache type: %S" cache))))
 
 (defmacro nskk-cache-dispatch (cache op &rest args)
-  "Dispatch OP on CACHE to LRU or LFU implementation.
+  "Dispatch OP on CACHE via the Prolog cache-dispatch-fn/3 table.
 OP is a literal symbol (unquoted) naming the operation (e.g., get, put).
-ARGS are passed through to the implementation function."
+ARGS are passed through to the dispatched implementation function.
+The dispatch function is resolved at runtime via Prolog hash-indexed lookup."
   (declare (indent 2) (debug t))
-  (let ((c (make-symbol "cache"))
-        (lru-fn (intern (format "nskk-cache-lru-%s" op)))
-        (lfu-fn (intern (format "nskk-cache-lfu-%s" op))))
-    `(let ((,c ,cache))
-       (cond
-        ((nskk-cache-lru-p ,c) (,lru-fn ,c ,@args))
-        ((nskk-cache-lfu-p ,c) (,lfu-fn ,c ,@args))
-        (t (error "Invalid cache type"))))))
+  `(nskk-cache--dispatch-prolog ,cache ',op ,@args))
+
+(defun nskk-cache--dispatch-prolog (cache op &rest args)
+  "Internal Prolog-backed dispatcher for OP on CACHE.
+Queries cache-dispatch-fn/3 with (TYPE OP ?FN) and applies FN to CACHE
+and ARGS."
+  (let* ((type (nskk-cache--type-of cache))
+         (fn (nskk-prolog-query-value
+              `(cache-dispatch-fn ,type ,op \?fn) '\?fn)))
+    (unless fn
+      (error "No Prolog dispatch for op=%s cache-type=%s" op type))
+    (apply fn cache args)))
 
 (defmacro nskk-cache-field (cache field &optional default)
-  "Get FIELD from CACHE, dispatching to LRU or LFU accessor.
+  "Get FIELD from CACHE via the Prolog cache-field-fn/3 table.
 FIELD is a literal symbol naming the struct slot (e.g., capacity, size).
-DEFAULT is returned for unknown cache types (defaults to 0)."
+DEFAULT is returned when no accessor is found (defaults to 0).
+The accessor function is resolved at runtime via Prolog hash-indexed lookup."
   (declare (debug t))
-  (let ((c (make-symbol "cache"))
-        (lru-fn (intern (format "nskk-cache-lru-%s" field)))
-        (lfu-fn (intern (format "nskk-cache-lfu-%s" field))))
-    `(let ((,c ,cache))
-       (cond
-        ((nskk-cache-lru-p ,c) (,lru-fn ,c))
-        ((nskk-cache-lfu-p ,c) (,lfu-fn ,c))
-        (t ,(or default 0))))))
+  `(nskk-cache--field-prolog ,cache ',field ,(or default 0)))
 
-;;; LRUキャッシュ用データ構造
+(defun nskk-cache--field-prolog (cache field default)
+  "Internal Prolog-backed field accessor for FIELD on CACHE.
+Queries cache-field-fn/3 with (TYPE FIELD ?FN) and calls FN with CACHE."
+  (let* ((type (nskk-cache--type-of cache))
+         (fn (nskk-prolog-query-value
+              `(cache-field-fn ,type ,field \?fn) '\?fn)))
+    (if fn (funcall fn cache) default)))
 
-;; LRUキャッシュ用ノード（双方向リンクリスト）
+;;; LRU Cache Data Structures
+
+;; LRU cache node (doubly-linked list element)
 (cl-defstruct (nskk-cache-lru-node
                (:constructor nskk-cache-lru-node--create)
                (:copier nil))
-  "LRUキャッシュ用ノード。
-
-スロット:
-  key   - キー
-  value - 値
-  prev  - 前のノード（nskk-cache-lru-node）
-  next  - 次のノード（nskk-cache-lru-node）"
+  "LRU cache node for the doubly-linked list.
+Slots:
+  key   - the cache key
+  value - the cached value
+  prev  - previous node (nskk-cache-lru-node or nil)
+  next  - next node (nskk-cache-lru-node or nil)"
   key
   value
   prev
   next)
 
-;; LRUキャッシュ構造
+;; LRU cache structure
 (cl-defstruct (nskk-cache-lru
                (:constructor nskk-cache-lru--create)
                (:copier nil))
-  "LRUキャッシュ構造。
-
-スロット:
-  capacity - 最大容量（エントリ数）
-  size     - 現在のエントリ数
-  hash     - キー→ノードのハッシュテーブル
-  head     - ダミーヘッドノード（最新側）
-  tail     - ダミーテールノード（最古側）
-  hits     - キャッシュヒット数
-  misses   - キャッシュミス数"
+  "LRU cache structure.
+Slots:
+  capacity - maximum number of entries
+  size     - current number of entries
+  hash     - hash table mapping keys to nodes
+  head     - dummy head node (most-recently-used side)
+  tail     - dummy tail node (least-recently-used side)
+  hits     - cumulative cache hit count
+  misses   - cumulative cache miss count"
   (capacity 1000 :type integer)
   (size 0 :type integer)
   (hash nil :type hash-table)
@@ -144,36 +201,34 @@ DEFAULT is returned for unknown cache types (defaults to 0)."
   (hits 0 :type integer)
   (misses 0 :type integer))
 
-;;; LFUキャッシュ用データ構造
+;;; LFU Cache Data Structures
 
-;; LFUキャッシュ用エントリ
+;; LFU cache entry
 (cl-defstruct (nskk-cache-lfu-entry
                (:constructor nskk-cache-lfu-entry--create)
                (:copier nil))
-  "LFUキャッシュ用エントリ。
-
-スロット:
-  key       - キー
-  value     - 値
-  frequency - 使用頻度"
+  "LFU cache entry.
+Slots:
+  key       - the cache key
+  value     - the cached value
+  frequency - access frequency count"
   key
   value
   (frequency 1 :type integer))
 
-;; LFUキャッシュ構造
+;; LFU cache structure
 (cl-defstruct (nskk-cache-lfu
                (:constructor nskk-cache-lfu--create)
                (:copier nil))
-  "LFUキャッシュ構造。
-
-スロット:
-  capacity  - 最大容量（エントリ数）
-  size      - 現在のエントリ数
-  hash      - キー→エントリのハッシュテーブル
-  freq      - 頻度→キーのリストのハッシュテーブル
-  min-freq  - 現在の最小頻度
-  hits      - キャッシュヒット数
-  misses    - キャッシュミス数"
+  "LFU cache structure.
+Slots:
+  capacity  - maximum number of entries
+  size      - current number of entries
+  hash      - hash table mapping keys to entries
+  freq      - hash table mapping frequency to list of keys
+  min-freq  - current minimum frequency (used for eviction)
+  hits      - cumulative cache hit count
+  misses    - cumulative cache miss count"
   (capacity 1000 :type integer)
   (size 0 :type integer)
   (hash nil :type hash-table)
@@ -182,14 +237,14 @@ DEFAULT is returned for unknown cache types (defaults to 0)."
   (hits 0 :type integer)
   (misses 0 :type integer))
 
-;;; LRUキャッシュ実装
+;;; LRU Cache Implementation
 
 ;;;###autoload
 (defun nskk-cache-lru-create (capacity)
   "Create an LRU cache with CAPACITY entries."
   (let* ((head (nskk-cache-lru-node--create))
          (tail (nskk-cache-lru-node--create)))
-    ;; ダミーヘッドとテールを接続
+    ;; Link dummy head and tail sentinels
     (setf (nskk-cache-lru-node-next head) tail)
     (setf (nskk-cache-lru-node-prev tail) head)
     (nskk-cache-lru--create
@@ -209,7 +264,7 @@ DEFAULT is returned for unknown cache types (defaults to 0)."
     (setf (nskk-cache-lru-node-prev next-node) prev-node)))
 
 (defsubst nskk-cache-lru--add-to-head (cache node)
-  "Add NODE right after the head of CACHE."
+  "Insert NODE immediately after the dummy head of CACHE."
   (let ((head (nskk-cache-lru-head cache))
         (next-node (nskk-cache-lru-node-next (nskk-cache-lru-head cache))))
     (setf (nskk-cache-lru-node-next node) next-node)
@@ -218,12 +273,12 @@ DEFAULT is returned for unknown cache types (defaults to 0)."
     (setf (nskk-cache-lru-node-prev next-node) node)))
 
 (defsubst nskk-cache-lru--move-to-head (cache node)
-  "Move NODE to the head position in CACHE."
+  "Move NODE to the most-recently-used position in CACHE."
   (nskk-cache-lru--remove-node node)
   (nskk-cache-lru--add-to-head cache node))
 
 (defsubst nskk-cache-lru--remove-tail (cache)
-  "Remove and return the tail node from CACHE."
+  "Remove and return the least-recently-used node from CACHE."
   (let* ((tail (nskk-cache-lru-tail cache))
          (node (nskk-cache-lru-node-prev tail)))
     (nskk-cache-lru--remove-node node)
@@ -231,33 +286,36 @@ DEFAULT is returned for unknown cache types (defaults to 0)."
 
 ;;;###autoload
 (defun nskk-cache-lru-get (cache key)
-  "Get value for KEY from LRU CACHE."
+  "Get the value for KEY from LRU CACHE.
+Returns nil on a cache miss.  Updates access order on hit."
   (let ((node (gethash key (nskk-cache-lru-hash cache))))
     (if node
         (progn
-          ;; キャッシュヒット：ノードをヘッドに移動
+          ;; Cache hit: move to most-recently-used position
           (nskk-cache-lru--move-to-head cache node)
           (cl-incf (nskk-cache-lru-hits cache))
           (nskk-cache-lru-node-value node))
-      ;; キャッシュミス
+      ;; Cache miss
       (cl-incf (nskk-cache-lru-misses cache))
       nil)))
 
 ;;;###autoload
 (defun nskk-cache-lru-put (cache key value)
-  "Put KEY and VALUE pair into LRU CACHE."
+  "Store KEY with VALUE in LRU CACHE.
+Updates VALUE and access order if KEY already exists.
+Evicts the least-recently-used entry when CACHE is at capacity."
   (let ((node (gethash key (nskk-cache-lru-hash cache))))
     (if node
-        ;; 既存エントリ：値を更新してヘッドに移動
+        ;; Existing entry: update value and promote to head
         (progn
           (setf (nskk-cache-lru-node-value node) value)
           (nskk-cache-lru--move-to-head cache node))
-      ;; 新規エントリ
+      ;; New entry
       (let ((new-node (nskk-cache-lru-node--create :key key :value value)))
         (puthash key new-node (nskk-cache-lru-hash cache))
         (nskk-cache-lru--add-to-head cache new-node)
         (cl-incf (nskk-cache-lru-size cache))
-        ;; 容量超過チェック
+        ;; Evict LRU entry if over capacity
         (when (> (nskk-cache-lru-size cache) (nskk-cache-lru-capacity cache))
           (let ((tail-node (nskk-cache-lru--remove-tail cache)))
             (remhash (nskk-cache-lru-node-key tail-node) (nskk-cache-lru-hash cache))
@@ -265,8 +323,8 @@ DEFAULT is returned for unknown cache types (defaults to 0)."
 
 ;;;###autoload
 (defun nskk-cache-lru-invalidate (cache key)
-  "Invalidate KEY in LRU CACHE.
-Return t if KEY was found and removed, nil otherwise."
+  "Remove KEY from LRU CACHE.
+Returns t if KEY was found and removed, nil otherwise."
   (let ((node (gethash key (nskk-cache-lru-hash cache))))
     (when node
       (nskk-cache-lru--remove-node node)
@@ -276,19 +334,19 @@ Return t if KEY was found and removed, nil otherwise."
 
 ;;;###autoload
 (defun nskk-cache-lru-clear (cache)
-  "Clear all entries from LRU CACHE."
+  "Remove all entries from LRU CACHE and reset statistics."
   (clrhash (nskk-cache-lru-hash cache))
   (setf (nskk-cache-lru-size cache) 0)
-  ;; ヘッドとテールを再接続
+  ;; Reconnect dummy head and tail sentinels
   (let ((head (nskk-cache-lru-head cache))
         (tail (nskk-cache-lru-tail cache)))
     (setf (nskk-cache-lru-node-next head) tail)
     (setf (nskk-cache-lru-node-prev tail) head))
-  ;; 統計をリセット
+  ;; Reset statistics
   (setf (nskk-cache-lru-hits cache) 0)
   (setf (nskk-cache-lru-misses cache) 0))
 
-;;; LFUキャッシュ実装
+;;; LFU Cache Implementation
 
 ;;;###autoload
 (defun nskk-cache-lfu-create (capacity)
@@ -303,53 +361,57 @@ Return t if KEY was found and removed, nil otherwise."
    :misses 0))
 
 (defsubst nskk-cache-lfu--update-freq (cache entry old-freq)
-  "Update frequency of ENTRY in LFU CACHE from OLD-FREQ."
+  "Promote ENTRY in LFU CACHE from OLD-FREQ to its new frequency.
+Removes ENTRY from the old frequency bucket and inserts into the new one.
+Updates min-freq when the old minimum frequency bucket becomes empty."
   (let ((freq-table (nskk-cache-lfu-freq cache))
         (key (nskk-cache-lfu-entry-key entry))
         (new-freq (nskk-cache-lfu-entry-frequency entry)))
-    ;; 古い頻度のリストから削除
+    ;; Remove from old frequency bucket
     (when old-freq
       (let ((keys (gethash old-freq freq-table)))
         (setq keys (delq key keys))
         (if keys
             (puthash old-freq keys freq-table)
           (remhash old-freq freq-table)
-          ;; 最小頻度が削除された場合、更新
+          ;; Update min-freq when the minimum bucket is emptied
           (when (= old-freq (nskk-cache-lfu-min-freq cache))
             (setf (nskk-cache-lfu-min-freq cache) new-freq)))))
-    ;; 新しい頻度のリストに追加（FIFO順序: 末尾に追加）
+    ;; Append to new frequency bucket (FIFO within equal frequencies)
     (let ((keys (gethash new-freq freq-table)))
       (puthash new-freq (append keys (list key)) freq-table))))
 
 ;;;###autoload
 (defun nskk-cache-lfu-get (cache key)
-  "Get value for KEY from LFU CACHE."
+  "Get the value for KEY from LFU CACHE.
+Returns nil on a cache miss.  Increments access frequency on hit."
   (let ((entry (gethash key (nskk-cache-lfu-hash cache))))
     (if entry
         (progn
-          ;; キャッシュヒット：頻度を増やす
+          ;; Cache hit: increment frequency
           (let ((old-freq (nskk-cache-lfu-entry-frequency entry)))
             (cl-incf (nskk-cache-lfu-entry-frequency entry))
             (nskk-cache-lfu--update-freq cache entry old-freq))
           (cl-incf (nskk-cache-lfu-hits cache))
           (nskk-cache-lfu-entry-value entry))
-      ;; キャッシュミス
+      ;; Cache miss
       (cl-incf (nskk-cache-lfu-misses cache))
       nil)))
 
 ;;;###autoload
 (defun nskk-cache-lfu-put (cache key value)
-  "Put KEY and VALUE pair into LFU CACHE."
+  "Store KEY with VALUE in LFU CACHE.
+Updates VALUE and increments frequency if KEY already exists.
+Evicts the least-frequently-used entry when CACHE is at capacity."
   (let ((entry (gethash key (nskk-cache-lfu-hash cache))))
     (if entry
-        ;; 既存エントリ：値を更新して頻度を増やす
+        ;; Existing entry: update value and increment frequency
         (let ((old-freq (nskk-cache-lfu-entry-frequency entry)))
           (setf (nskk-cache-lfu-entry-value entry) value)
           (cl-incf (nskk-cache-lfu-entry-frequency entry))
           (nskk-cache-lfu--update-freq cache entry old-freq))
-      ;; 新規エントリ
+      ;; New entry: evict if at capacity
       (when (>= (nskk-cache-lfu-size cache) (nskk-cache-lfu-capacity cache))
-        ;; 容量超過：最小頻度のエントリを削除
         (let* ((min-freq (nskk-cache-lfu-min-freq cache))
                (keys (gethash min-freq (nskk-cache-lfu-freq cache)))
                (evict-key (car keys)))
@@ -360,7 +422,7 @@ Return t if KEY was found and removed, nil otherwise."
                 (puthash min-freq keys (nskk-cache-lfu-freq cache))
               (remhash min-freq (nskk-cache-lfu-freq cache)))
             (cl-decf (nskk-cache-lfu-size cache)))))
-      ;; 新規エントリを追加
+      ;; Insert new entry at frequency 1
       (let ((new-entry (nskk-cache-lfu-entry--create :key key :value value :frequency 1)))
         (puthash key new-entry (nskk-cache-lfu-hash cache))
         (nskk-cache-lfu--update-freq cache new-entry nil)
@@ -369,8 +431,8 @@ Return t if KEY was found and removed, nil otherwise."
 
 ;;;###autoload
 (defun nskk-cache-lfu-invalidate (cache key)
-  "Invalidate KEY in LFU CACHE.
-Return t if KEY was found and removed, nil otherwise."
+  "Remove KEY from LFU CACHE.
+Returns t if KEY was found and removed, nil otherwise."
   (let ((entry (gethash key (nskk-cache-lfu-hash cache))))
     (when entry
       (let* ((freq (nskk-cache-lfu-entry-frequency entry))
@@ -385,7 +447,7 @@ Return t if KEY was found and removed, nil otherwise."
 
 ;;;###autoload
 (defun nskk-cache-lfu-clear (cache)
-  "Clear all entries from LFU CACHE."
+  "Remove all entries from LFU CACHE and reset statistics."
   (clrhash (nskk-cache-lfu-hash cache))
   (clrhash (nskk-cache-lfu-freq cache))
   (setf (nskk-cache-lfu-size cache) 0)
@@ -393,12 +455,15 @@ Return t if KEY was found and removed, nil otherwise."
   (setf (nskk-cache-lfu-hits cache) 0)
   (setf (nskk-cache-lfu-misses cache) 0))
 
-;;; 統合インターフェース
+;;; Unified Interface
 
 ;;;###autoload
 (defun nskk-cache-create (&rest args)
-  "Create a cache.
-ARGS can be TYPE and CAPACITY positional, or keyword :type and :size/:capacity."
+  "Create a cache, returning an LRU or LFU cache structure.
+ARGS can be positional (TYPE CAPACITY) or keyword (:type TYPE :capacity CAP).
+TYPE defaults to `nskk-cache-strategy'; CAPACITY defaults to
+`nskk-cache-default-capacity'.
+Signals an error if TYPE is not a registered cache type."
   (let ((cache-type nskk-cache-strategy)
         (cache-capacity nskk-cache-default-capacity))
     (cond
@@ -415,36 +480,39 @@ ARGS can be TYPE and CAPACITY positional, or keyword :type and :size/:capacity."
       (setq cache-type (car args))
       (when (> (length args) 1)
         (setq cache-capacity (nth 1 args)))))
+    ;; Validate via Prolog before constructing
+    (unless (nskk-prolog-query-one `(cache-type ,cache-type))
+      (error "Unknown cache type: %s; valid types: lru, lfu" cache-type))
     (pcase cache-type
       ('lru (nskk-cache-lru-create cache-capacity))
-      ('lfu (nskk-cache-lfu-create cache-capacity))
-      (_ (error "Unknown cache type: %s" cache-type)))))
+      ('lfu (nskk-cache-lfu-create cache-capacity)))))
 
 ;;;###autoload
 (defun nskk-cache-get (cache key)
-  "Get value for KEY from CACHE."
+  "Get the value for KEY from CACHE."
   (nskk-cache-dispatch cache get key))
 
 ;;;###autoload
 (defun nskk-cache-put (cache key value)
-  "Put KEY and VALUE pair into CACHE."
+  "Store KEY with VALUE in CACHE."
   (nskk-cache-dispatch cache put key value))
 
 ;;;###autoload
 (defun nskk-cache-invalidate (cache key)
-  "Invalidate KEY in CACHE.
-Return t if KEY was found and removed, nil otherwise."
+  "Remove KEY from CACHE.
+Returns t if KEY was found and removed, nil otherwise."
   (nskk-cache-dispatch cache invalidate key))
 
 ;;;###autoload
 (defun nskk-cache-clear (cache)
-  "Clear all entries from CACHE."
+  "Remove all entries from CACHE and reset statistics."
   (nskk-cache-dispatch cache clear))
 
 ;;;###autoload
 (defun nskk-cache-invalidate-pattern (cache pattern)
-  "Invalidate all keys matching PATTERN in CACHE.
-Return a list of invalidated keys."
+  "Remove all keys matching PATTERN from CACHE.
+PATTERN is a regular expression matched against each key string.
+Returns a list of the invalidated keys."
   (let ((deleted-keys nil)
         (hash-table (nskk-cache-field cache hash)))
     (maphash (lambda (key _value)
@@ -456,10 +524,11 @@ Return a list of invalidated keys."
 
 ;;;###autoload
 (defun nskk-cache-stats (cache)
-  "Return statistics plist for CACHE."
-  (let* ((type (cond ((nskk-cache-lru-p cache) 'lru)
-                     ((nskk-cache-lfu-p cache) 'lfu)
-                     (t 'unknown)))
+  "Return a statistics plist for CACHE.
+The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
+  (let* ((type (if (nskk-cache-p cache)
+                   (nskk-cache--type-of cache)
+                 'unknown))
          (capacity (nskk-cache-field cache capacity))
          (size (nskk-cache-field cache size))
          (hits (nskk-cache-field cache hits))
@@ -475,12 +544,12 @@ Return a list of invalidated keys."
 
 ;;;###autoload
 (defun nskk-cache-hit-rate (cache)
-  "Return hit rate for CACHE as a float between 0.0 and 1.0."
+  "Return the hit rate for CACHE as a float between 0.0 and 1.0."
   (plist-get (nskk-cache-stats cache) :hit-rate))
 
 ;;;###autoload
 (defun nskk-cache-p (cache)
-  "Return non-nil if CACHE is a valid cache structure."
+  "Return non-nil if CACHE is a valid LRU or LFU cache structure."
   (or (nskk-cache-lru-p cache)
       (nskk-cache-lfu-p cache)))
 

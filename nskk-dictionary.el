@@ -32,14 +32,15 @@
 ;;
 ;; nskk-dict-struct: Core data structures for the NSKK SKK dictionary system.
 ;;
-;; Defines two primary structures:
+;; Defines one primary structure:
 ;; - `nskk-dict-entry': a single dictionary entry (reading key, candidates,
 ;;   optional okurigana type)
-;; - `nskk-dict-index': the full dictionary index (hash table of entries,
-;;   trie for prefix search, frequency table)
 ;;
-;; Lookup is O(1) for exact matches via hash table, O(k + n) for prefix
-;; matches via the trie.
+;; Dictionary sources are identified by source symbols (\\='user, \\='system)
+;; mapped to Prolog predicates via `dict-source/2' facts.
+;;
+;; Lookup is O(1) for exact matches via Prolog hash index, O(k + n) for
+;; prefix matches via Prolog trie index.
 ;;
 ;; nskk-dict-io: Dictionary I/O module for loading and saving SKK dictionary files.
 ;; Supports the standard SKK dictionary format with EUC-JP and UTF-8 encoding.
@@ -47,7 +48,7 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'nskk-trie)
+(require 'nskk-prolog)
 
 (defgroup nskk-dictionary nil
   "Dictionary and search settings."
@@ -85,7 +86,40 @@ DDSKK equivalent: skk-jisyo-update-hook")
 
 (define-error 'nskk-dict-error "Dictionary error")
 
-;;; Section 2: Data structures
+;;; Section 2: Prolog infrastructure
+
+;; Dictionary source facts: (dict-source source-symbol predicate-name)
+;; These map source symbols to their Prolog predicate names
+(nskk-prolog-set-index 'dict-source 2 :hash)
+(nskk-prolog-<- (dict-source user user-dict-entry))
+(nskk-prolog-<- (dict-source system system-dict-entry))
+
+;; Bridge rule: unified lookup across all dictionary sources
+;; User dictionary has priority (first clause wins on first solution)
+(nskk-prolog-<- (dict-entry \?k \?c) (user-dict-entry \?k \?c))
+(nskk-prolog-<- (dict-entry \?k \?c) (system-dict-entry \?k \?c))
+
+;; List membership helper (needed for dict-register rule)
+(nskk-prolog-<- (member \?x (\?x . \?_)))
+(nskk-prolog-<- (member \?x (\?_ . \?rest)) (member \?x \?rest))
+
+;; Dictionary registration rule using assertz/retract builtins
+;; Clause 1: update existing entry, prepend word if not already present
+(nskk-prolog-<- (dict-register \?reading \?word)
+  (user-dict-entry \?reading \?existing)
+  (not (member \?word \?existing))
+  (retract (user-dict-entry \?reading \?existing))
+  (assertz (user-dict-entry \?reading (\?word . \?existing))))
+;; Clause 2: word already exists in entry, no-op success
+(nskk-prolog-<- (dict-register \?reading \?word)
+  (user-dict-entry \?reading \?existing)
+  (member \?word \?existing))
+;; Clause 3: no entry exists yet, create new one
+(nskk-prolog-<- (dict-register \?reading \?word)
+  (not (user-dict-entry \?reading \?_))
+  (assertz (user-dict-entry \?reading (\?word))))
+
+;;; Section 3: Data structures
 
 (cl-defstruct nskk-dict-entry
   "Dictionary entry structure."
@@ -94,34 +128,32 @@ DDSKK equivalent: skk-jisyo-update-hook")
   (okuri nil))
 
 (cl-defstruct nskk-dict-index
-  "Dictionary index structure."
-  (entries nil)
-  (by-prefix nil)
+  "Dictionary index structure.
+Lookup is performed via the Prolog database using PREDICATE.
+PREDICATE is a symbol naming the Prolog predicate (e.g., \\='system-dict-entry)
+with arity 2: (predicate key candidates-list)."
+  (predicate nil)
   (by-freq nil))
-
-(defun nskk-dict--struct-lookup (index query &optional _okuri-type)
-  "Look up QUERY in dictionary INDEX.
-Returns `nskk-dict-entry' or nil if not found."
-  (when (and (nskk-dict-index-p index) (stringp query))
-    (let ((entries (nskk-dict-index-entries index)))
-      (when entries
-        (if (hash-table-p entries)
-            (let ((candidates (gethash query entries)))
-              (when candidates
-                (make-nskk-dict-entry :key query :candidates candidates)))
-          (let ((pair (assoc query entries)))
-            (when pair
-              (make-nskk-dict-entry :key (car pair) :candidates (cdr pair)))))))))
 
 (defun nskk-dict--struct-entry-count (index _okuri-type)
   "Return count of entries in INDEX."
-  (let ((entries (nskk-dict-index-entries index)))
-    (cond
-     ((hash-table-p entries) (hash-table-count entries))
-     ((listp entries) (length entries))
-     (t 0))))
+  (let ((pred (nskk-dict-index-predicate index)))
+    (if pred
+        (length (gethash (format "%s/2" pred) nskk-prolog--database))
+      0)))
 
-;;; Section 3: I/O and lifecycle
+(defun nskk-dict-source-p (source)
+  "Return non-nil if SOURCE is a valid dictionary source symbol."
+  (not (null (nskk-prolog-query-one `(dict-source ,source \?_)))))
+
+(defun nskk-dict--entry-count (source _okuri-type)
+  "Return count of entries for dictionary SOURCE."
+  (let ((pred (nskk-prolog-query-value `(dict-source ,source \?pred) '\?pred)))
+    (if pred
+        (length (gethash (format "%s/2" pred) nskk-prolog--database))
+      0)))
+
+;;; Section 4: I/O and lifecycle
 
 ;;; Dictionary Parsing
 
@@ -155,15 +187,16 @@ Returns (key . candidates-list) or nil for comments/invalid lines."
 
 ;;; Dictionary Loading
 
-(defun nskk-dict-load-file (file &optional coding-system)
-  "Load SKK dictionary from FILE.
-CODING-SYSTEM defaults to nil which lets Emacs auto-detect encoding
-from the file's coding cookie (e.g. -*- coding: euc-jp -*-).
-Returns a `nskk-dict-index' struct, or nil on failure."
+(defun nskk-dict-load-file (file &optional coding-system predicate-name)
+  "Load SKK dictionary from FILE into Prolog as PREDICATE-NAME/2 facts.
+PREDICATE-NAME defaults to \\='system-dict-entry.
+CODING-SYSTEM defaults to nil which lets Emacs auto-detect encoding.
+Returns PREDICATE-NAME symbol on success, or nil on failure."
   (when (and (stringp file) (file-readable-p file))
-    (let ((entries (make-hash-table :test 'equal :size 50000))
-          (trie (nskk-trie-create))
-          (coding coding-system))
+    (let* ((pred (or predicate-name 'system-dict-entry))
+           (coding coding-system))
+      ;; Set up trie index for this predicate (arity 2: key + candidates)
+      (nskk-prolog-set-index pred 2 :trie)
       (with-temp-buffer
         (let ((coding-system-for-read coding))
           (insert-file-contents file))
@@ -175,74 +208,52 @@ Returns a `nskk-dict-index' struct, or nil on failure."
             (when parsed
               (let ((key (car parsed))
                     (candidates (cdr parsed)))
-                ;; Add to hash-table
-                (let ((existing (gethash key entries)))
-                  (if existing
-                      ;; Merge candidates (avoid duplicates)
-                      (puthash key (cl-union existing candidates :test #'equal) entries)
-                    (puthash key candidates entries)))
-                ;; Add to trie for prefix search
-                (nskk-trie-insert trie key candidates))))
+                (nskk-prolog-assert (list (list pred key candidates))))))
           (forward-line 1)))
-      ;; Build and return index
-      (make-nskk-dict-index
-       :entries entries
-       :by-prefix trie
-       :by-freq nil))))
+      ;; Return predicate symbol indicating successful load
+      pred)))
 
 (defun nskk-dict-load-system-dictionaries ()
   "Load all system dictionaries configured in `nskk-dict-system-dictionary-files'.
-Returns a merged `nskk-dict-index', or nil if no dictionaries found."
-  (let ((merged-entries (make-hash-table :test 'equal :size 100000))
-        (merged-trie (nskk-trie-create))
-        (loaded 0))
+Asserts all entries as \\='system-dict-entry/2 Prolog facts.
+Returns \\='system if any dictionaries loaded, or nil if none found."
+  (let ((loaded 0))
+    ;; Clear any previously loaded system dict facts
+    (nskk-prolog-retract-all 'system-dict-entry 2)
     (dolist (file nskk-dict-system-dictionary-files)
       (when (file-readable-p file)
-        (let ((index (nskk-dict-load-file file)))
+        (let ((index (nskk-dict-load-file file nil 'system-dict-entry)))
           (when index
-            ;; Merge entries
-            (maphash (lambda (key candidates)
-                       (let ((existing (gethash key merged-entries)))
-                         (if existing
-                             (puthash key (cl-union existing candidates :test #'equal)
-                                      merged-entries)
-                           (puthash key candidates merged-entries))))
-                     (nskk-dict-index-entries index))
-            ;; Merge trie data
-            (let ((keys (nskk-trie-keys (nskk-dict-index-by-prefix index))))
-              (dolist (k keys)
-                (let ((vals (nskk-trie-lookup-values
-                             (nskk-dict-index-by-prefix index) k)))
-                  (nskk-trie-insert merged-trie k vals))))
             (cl-incf loaded)))))
     (if (> loaded 0)
         (progn
-          (message "NSKK: Loaded %d system dictionar%s (%d entries)"
-                   loaded (if (= loaded 1) "y" "ies")
-                   (hash-table-count merged-entries))
-          (make-nskk-dict-index
-           :entries merged-entries
-           :by-prefix merged-trie
-           :by-freq nil))
+          (message "NSKK: Loaded %d system dictionar%s"
+                   loaded (if (= loaded 1) "y" "ies"))
+          'system)
       (message "NSKK: No system dictionaries found")
       nil)))
 
 (defun nskk-dict-load-user-dictionary ()
   "Load user dictionary from `nskk-dict-user-dictionary-file'.
-Returns a `nskk-dict-index', or nil if not found."
+Returns \\='user if loaded, or nil if not found."
   (when (and nskk-dict-user-dictionary-file
              (file-readable-p nskk-dict-user-dictionary-file))
     (message "NSKK: Loading user dictionary from %s"
              nskk-dict-user-dictionary-file)
-    (nskk-dict-load-file nskk-dict-user-dictionary-file)))
+    ;; Clear any previously loaded user dict facts
+    (nskk-prolog-retract-all 'user-dict-entry 2)
+    (when (nskk-dict-load-file nskk-dict-user-dictionary-file nil 'user-dict-entry)
+      'user)))
 
 ;;; Global Dictionary State
 
 (defvar nskk--system-dict-index nil
-  "Loaded system dictionary index.")
+  "Non-nil when system dictionary is loaded.
+Value is the source symbol \\='system.")
 
 (defvar nskk--user-dict-index nil
-  "Loaded user dictionary index.")
+  "Non-nil when user dictionary is loaded.
+Value is the source symbol \\='user.")
 
 (defun nskk-dict--detect-system-dictionaries ()
   "Auto-detect system dictionary files.
@@ -287,18 +298,17 @@ dictionary paths from nix profiles and common system locations."
   (message "NSKK: Dictionary initialization complete"))
 
 (defun nskk-dict-lookup (key)
-  "Look up KEY in loaded dictionaries.
-Returns list of candidates or nil."
-  (let ((user-result (when nskk--user-dict-index
-                       (gethash key (nskk-dict-index-entries nskk--user-dict-index))))
-        (system-result (when nskk--system-dict-index
-                         (gethash key (nskk-dict-index-entries nskk--system-dict-index)))))
-    ;; User dictionary results come first
-    (if user-result
-        (if system-result
-            (cl-union user-result system-result :test #'equal)
-          user-result)
-      system-result)))
+  "Look up KEY in loaded dictionaries via Prolog bridge rule.
+Returns list of candidates or nil.
+User dictionary results take priority via clause ordering."
+  (let* ((solutions (nskk-prolog-query `(dict-entry ,key \?c)))
+         (all-candidate-lists
+          (mapcar (lambda (sol) (nskk-prolog-walk '\?c sol))
+                  solutions)))
+    (when all-candidate-lists
+      (cl-reduce (lambda (acc lst) (cl-union acc lst :test #'equal))
+                 all-candidate-lists
+                 :initial-value nil))))
 
 ;;; User Dictionary Modification
 
@@ -307,28 +317,16 @@ Returns list of candidates or nil."
 
 (defun nskk-dict-register-word (reading word)
   "Register WORD as a conversion candidate for READING in user dictionary.
-Adds the entry to the in-memory user dictionary index and marks it for saving.
-If no user dictionary index exists, creates one.
-READING is the headword (e.g., hiragana reading).
-WORD is the conversion result to register."
+Uses the Prolog dict-register rule which handles both new entries
+and updates to existing entries via assertz/retract builtins."
   (when (and (stringp reading) (stringp word)
              (not (string-empty-p reading))
              (not (string-empty-p word)))
-    ;; Ensure user dict index exists
+    ;; Ensure user dict index exists before registering
     (unless nskk--user-dict-index
-      (setq nskk--user-dict-index
-            (make-nskk-dict-index
-             :entries (make-hash-table :test 'equal :size 1000)
-             :by-prefix nil
-             :by-freq nil)))
-    (let* ((entries (nskk-dict-index-entries nskk--user-dict-index))
-           (existing (gethash reading entries)))
-      (if existing
-          ;; Prepend to existing entry (higher priority) unless already present
-          (unless (member word existing)
-            (puthash reading (cons word existing) entries))
-        ;; Create new entry
-        (puthash reading (list word) entries)))
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (setq nskk--user-dict-index 'user))
+    (nskk-prolog-query-one `(dict-register ,reading ,word))
     (setq nskk-dict-modified t)
     (message "NSKK: Registered %s -> %s" reading word)))
 
@@ -345,11 +343,15 @@ WORD is the conversion result to register."
       (insert ";; -*- mode: fundamental; coding: utf-8 -*-\n")
       (insert ";; NSKK user dictionary\n")
       (insert ";; okuri-nasi entries.\n")
-      (maphash (lambda (key candidates)
-                 (insert (format "%s /%s/\n"
-                                 key
-                                 (mapconcat #'identity candidates "/"))))
-               (nskk-dict-index-entries nskk--user-dict-index)))
+      ;; Single query fetches all key+candidates pairs (eliminates N+1 pattern)
+      (let ((solutions (nskk-prolog-query '(user-dict-entry ?k ?c))))
+        (dolist (sol solutions)
+          (let ((key (nskk-prolog-walk '?k sol))
+                (candidates (nskk-prolog-walk '?c sol)))
+            (when (and key candidates)
+              (insert (format "%s /%s/\n"
+                              key
+                              (mapconcat #'identity candidates "/"))))))))
     (message "NSKK: User dictionary saved to %s"
              nskk-dict-user-dictionary-file)))
 

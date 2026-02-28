@@ -29,11 +29,11 @@
 
 ;;; Code:
 
+(require 'nskk-kana)
 (require 'nskk-state)
 (require 'nskk-search)
 (require 'nskk-dictionary)
 (require 'nskk-prolog)
-(eval-when-compile (require 'nskk-macros))
 (eval-when-compile (require 'nskk-state))
 
 (declare-function nskk-state-p "nskk-state")
@@ -50,23 +50,28 @@
 (declare-function nskk-kana-string-hiragana-to-katakana "nskk-kana")
 (declare-function nskk-converter-convert "nskk-converter")
 
+(defgroup nskk-henkan nil
+  "Conversion (henkan) pipeline settings."
+  :prefix "nskk-henkan-"
+  :group 'nskk-ui)
+
 (defcustom nskk-henkan-show-candidates-nth 5
   "Number of SPC presses before showing candidate list.
 After this many candidates shown one-by-one, switch to echo area
 candidate list display with selection keys."
   :type 'integer
-  :group 'nskk-ui)
+  :group 'nskk-henkan)
 
 (defcustom nskk-henkan-number-to-display-candidates 7
   "Number of candidates to display per page in candidate list."
   :type 'integer
-  :group 'nskk-ui)
+  :group 'nskk-henkan)
 
 (defcustom nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l)
   "Selection keys for candidate list display.
 These keys allow direct candidate selection in the echo area list."
   :type '(repeat character)
-  :group 'nskk-ui)
+  :group 'nskk-henkan)
 
 (defvar nskk-start-henkan-hook nil
   "Hook run before conversion starts.
@@ -116,6 +121,19 @@ Returns the selected candidate index, or nil if KEY is not valid.")
 (nskk-prolog-<- (core-search-type :exact dict-lookup))
 (nskk-prolog-<- (core-search-type :prefix prefix-search))
 (nskk-prolog-<- (core-search-type :regex partial-search))
+
+;;;; Prolog Converting Phase Facts
+
+(nskk-prolog-set-index 'converting-phase 1 :hash)
+(nskk-prolog-<- (converting-phase active))
+(nskk-prolog-<- (converting-phase list))
+(nskk-prolog-<- (converting-phase registration))
+
+;;;; Prolog Okurigana Character Classification
+
+(nskk-prolog-set-index 'okurigana-char 2 :hash)
+(dolist (c (number-sequence ?A ?Z))
+  (nskk-prolog-assert `((okurigana-char ,c ,(downcase c)))))
 
 ;;;; Dictionary Search API
 
@@ -198,7 +216,8 @@ LIMIT is maximum results (default: 100)."
   (and (boundp 'nskk-current-state)
        nskk-current-state
        (nskk-state-p nskk-current-state)
-       (memq (nskk-state-henkan-phase nskk-current-state) '(active list registration))))
+       (let ((phase (nskk-state-henkan-phase nskk-current-state)))
+         (not (null (nskk-prolog-query `(converting-phase ,phase)))))))
 
 (defun nskk--has-preedit ()
   "Check if there is preedit text to convert.
@@ -439,9 +458,8 @@ When all candidates are exhausted, trigger dictionary registration."
 (defun nskk-detect-okurigana-char (char)
   "Check if CHAR is an okurigana marker (uppercase consonant).
 Returns the lowercase consonant if it's a marker, nil otherwise."
-  (when (and (characterp char)
-             (<= ?A char) (<= char ?Z))
-    (downcase char)))
+  (when (characterp char)
+    (nskk-prolog-query-value `(okurigana-char ,char ,'\?lc) '\?lc)))
 
 (defun nskk-process-okurigana-input (char)
   "Process CHAR as potential okurigana marker.

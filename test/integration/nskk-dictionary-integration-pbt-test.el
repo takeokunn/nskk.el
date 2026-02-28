@@ -58,8 +58,8 @@
   (let ((base (or (and load-file-name
                        (file-name-directory load-file-name))
                   default-directory)))
-    ;; If loaded from test/pbt/, go up to project root
-    (when (string-match-p "test/pbt/?$" base)
+    ;; If loaded from test/integration/, go up to project root
+    (when (string-match-p "test/integration/?$" base)
       (setq base (file-name-directory
                   (directory-file-name
                    (file-name-directory

@@ -237,6 +237,48 @@ The bug was: (eq (nskk-get-mode) 'latin) instead of
       (nskk-self-insert 1)
       (should (string= (buffer-string) "a")))))
 
+;;;; Enhanced PBT Coverage
+;;;;
+
+;;;
+;;; Shrinking Property: Input routing is deterministic
+;;;
+;;; Same character in same mode must always produce the same buffer content.
+;;; When a failure is found, the framework attempts to shrink the scenario to
+;;; the smallest character/mode pair that still exhibits the failure.
+;;;
+
+(nskk-property-test-with-shrinking input-routing-deterministic
+  ((scenario input-scenario))
+  ;; scenario plist: {:mode :key-sequence :expected-length}
+  (let* ((mode (plist-get scenario :mode))
+         ;; Pick a single character from the key sequence for determinism check
+         (key-seq (plist-get scenario :key-sequence))
+         (char-str (if key-seq (car key-seq) "a"))
+         ;; char-str may be a special key string like "C-j"; only test single chars
+         (single-char-p (and (stringp char-str)
+                             (= (length char-str) 1)))
+         (char-val (when single-char-p
+                     (string-to-char char-str))))
+    (if (not single-char-p)
+        t  ; Skip non-single-char keys — not testable as direct insert
+      ;; Run the same insert twice from identical initial states and compare
+      (let (result-1 result-2)
+        (nskk-input-routing-test-with-state mode
+          (with-temp-buffer
+            (setq last-command-event char-val)
+            (nskk-self-insert 1)
+            (setq result-1 (buffer-string))))
+        (nskk-input-routing-test-with-state mode
+          (with-temp-buffer
+            (setq last-command-event char-val)
+            (nskk-self-insert 1)
+            (setq result-2 (buffer-string))))
+        ;; Property: both runs must produce identical output
+        (string= result-1 result-2))))
+  60)
+
+
 (provide 'nskk-input-routing-pbt-test)
 
 ;;; nskk-input-routing-pbt-test.el ends here

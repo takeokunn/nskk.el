@@ -65,6 +65,7 @@
 (require 'nskk-state)
 
 ;; Core modules
+(require 'nskk-henkan)
 (require 'nskk-input)
 
 ;; UI modules
@@ -98,23 +99,7 @@ DDSKK equivalent: skk-mode-off-hook")
   "Hook run when input mode changes.
 DDSKK equivalent: skk-input-mode-hook")
 
-(declare-function nskk-modeline-update "nskk-modeline")
-(declare-function nskk-candidate-show-list "nskk-candidate-window")
-(declare-function nskk-candidate-hide-list "nskk-candidate-window")
-(declare-function nskk-candidate-list-select-by-key "nskk-candidate-window")
-;; Functions in nskk-henkan.el
-(declare-function nskk-converting-p "nskk-henkan")
-(declare-function nskk-commit-current "nskk-henkan")
-(declare-function nskk--has-preedit "nskk-henkan")
-(declare-function nskk-henkan-kakutei "nskk-henkan")
-;; Functions in nskk-input.el
-(declare-function nskk-enter-hiragana-mode "nskk-input")
-
 (defvar nskk--system-dict-index)
-(defvar nskk--romaji-buffer)
-(defvar nskk-henkan-show-candidates-functions)
-(defvar nskk-henkan-hide-candidates-functions)
-(defvar nskk-henkan-select-candidate-by-key-function)
 
 ;; Define the minor mode
 (defvar nskk-mode-map
@@ -180,7 +165,7 @@ This provides global bindings that work even when nskk-mode is not yet active.")
   (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
   (setq nskk-henkan-select-candidate-by-key-function #'nskk-candidate-list-select-by-key)
   (nskk--setup-buffer)
-  (nskk--update-modeline))
+  (nskk-modeline-update))
 
 (defun nskk--disable ()
   "Disable NSKK in current buffer."
@@ -205,7 +190,7 @@ This provides global bindings that work even when nskk-mode is not yet active.")
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update."
   (when (and nskk-mode nskk-current-state)
-    (nskk--update-modeline)))
+    (nskk-modeline-update)))
 
 ;; User commands
 
@@ -261,9 +246,6 @@ to enter hiragana mode from ASCII/Latin.  This function dispatches:
 ;; Convenience alias for global toggle
 ;;;###autoload
 (defalias 'nskk-toggle #'nskk-toggle-mode)
-
-;; Modeline update — delegate to nskk-modeline.el
-(defalias 'nskk--update-modeline #'nskk-modeline-update)
 
 (provide 'nskk)
 

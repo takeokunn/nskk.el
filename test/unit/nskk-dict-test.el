@@ -15,7 +15,7 @@
 ;; - nskk-dict-index struct: creation, accessors, predicates
 ;; - nskk-dict--struct-entry-count function
 ;; - Module loading and feature provision
-;; - Trie file I/O and trie save/load functions.
+;; - Prolog dictionary facts and I/O.
 
 ;;; Code:
 
@@ -23,7 +23,7 @@
 (require 'cl-lib)
 (require 'nskk-dictionary)
 (require 'nskk-search)
-(require 'nskk-trie)
+(require 'nskk-prolog)
 (require 'nskk-test-framework)
 
 ;;; Section 1: Error type tests
@@ -295,27 +295,29 @@
   "Test creating a dict-index with default values."
   (let ((index (make-nskk-dict-index)))
     (should (nskk-dict-index-p index))
-    (should (null (nskk-dict-index-entries index)))
-    (should (null (nskk-dict-index-by-prefix index)))
+    (should (null (nskk-dict-index-predicate index)))
     (should (null (nskk-dict-index-by-freq index)))))
 
-(nskk-deftest-unit dict-index-create-with-hash-entries
-  "Test creating a dict-index with hash table entries."
-  (let ((entries (make-hash-table :test 'equal)))
-    (puthash "key1" (make-nskk-dict-entry :key "key1") entries)
-    (puthash "key2" (make-nskk-dict-entry :key "key2") entries)
-    (let ((index (make-nskk-dict-index :entries entries)))
+(nskk-deftest-unit dict-index-create-with-predicate
+  "Test creating a dict-index with a Prolog predicate."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'test-dict 1 :trie)
+    (nskk-prolog-assert '((test-dict "key1" ("val1"))))
+    (nskk-prolog-assert '((test-dict "key2" ("val2"))))
+    (let ((index (make-nskk-dict-index :predicate 'test-dict)))
       (should (nskk-dict-index-p index))
-      (should (hash-table-p (nskk-dict-index-entries index)))
-      (should (= (hash-table-count (nskk-dict-index-entries index)) 2)))))
+      (should (eq (nskk-dict-index-predicate index) 'test-dict)))))
 
-(nskk-deftest-unit dict-index-create-with-prefix-trie
-  "Test creating a dict-index with a prefix trie."
-  (let ((trie (nskk-trie-create)))
-    (nskk-trie-insert trie "test" "value")
-    (let ((index (make-nskk-dict-index :by-prefix trie)))
+(nskk-deftest-unit dict-index-create-with-prolog-trie
+  "Test creating a dict-index backed by Prolog trie index."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'prefix-dict 1 :trie)
+    (nskk-prolog-assert '((prefix-dict "test" ("value"))))
+    (let ((index (make-nskk-dict-index :predicate 'prefix-dict)))
       (should (nskk-dict-index-p index))
-      (should (nskk-trie-p (nskk-dict-index-by-prefix index))))))
+      (should (eq (nskk-dict-index-predicate index) 'prefix-dict)))))
 
 ;;;
 ;;; dict-index Predicate Tests
@@ -340,19 +342,10 @@
 ;;; dict-index Accessor Tests
 ;;;
 
-(nskk-deftest-unit dict-index-accessor-entries
-  "Test nskk-dict-index-entries accessor."
-  (let ((entries '(("a" . "entry-a") ("b" . "entry-b")))
-        (index (make-nskk-dict-index)))
-    (setf (nskk-dict-index-entries index) entries)
-    (should (equal (nskk-dict-index-entries index) entries))))
-
-(nskk-deftest-unit dict-index-accessor-by-prefix
-  "Test nskk-dict-index-by-prefix accessor."
-  (let ((trie (nskk-trie-create))
-        (index (make-nskk-dict-index)))
-    (setf (nskk-dict-index-by-prefix index) trie)
-    (should (eq (nskk-dict-index-by-prefix index) trie))))
+(nskk-deftest-unit dict-index-accessor-predicate
+  "Test nskk-dict-index-predicate accessor."
+  (let ((index (make-nskk-dict-index :predicate 'my-dict)))
+    (should (eq (nskk-dict-index-predicate index) 'my-dict))))
 
 (nskk-deftest-unit dict-index-accessor-by-freq
   "Test nskk-dict-index-by-freq accessor."
@@ -365,50 +358,41 @@
 ;;; nskk-dict--struct-entry-count Tests
 ;;;
 
-(nskk-deftest-unit dict-struct-entry-count-nil-entries
-  "Test entry count on index with nil entries."
-  (let ((index (make-nskk-dict-index :entries nil)))
-    (should (= (nskk-dict--struct-entry-count index nil) 0))))
+(nskk-deftest-unit dict-struct-entry-count-empty-prolog
+  "Test entry count on empty Prolog predicate."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (let ((index (make-nskk-dict-index :predicate 'empty-dict)))
+      (should (= (nskk-dict--struct-entry-count index nil) 0)))))
 
-(nskk-deftest-unit dict-struct-entry-count-list-entries
-  "Test entry count on index with list entries."
-  (let ((index (make-nskk-dict-index :entries '(a b c d e))))
-    (should (= (nskk-dict--struct-entry-count index nil) 5))))
-
-(nskk-deftest-unit dict-struct-entry-count-ignores-okuri-type
-  "Test that entry count ignores okuri-type parameter."
-  (let ((index (make-nskk-dict-index :entries '(a b c))))
-    (should (= (nskk-dict--struct-entry-count index 'okuri-ari) 3))
-    (should (= (nskk-dict--struct-entry-count index 'okuri-nasi) 3))
-    (should (= (nskk-dict--struct-entry-count index nil) 3))))
+(nskk-deftest-unit dict-struct-entry-count-with-prolog-facts
+  "Test entry count with Prolog facts."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'count-dict 1 :trie)
+    (nskk-prolog-assert '((count-dict "a" ("v1"))))
+    (nskk-prolog-assert '((count-dict "b" ("v2"))))
+    (nskk-prolog-assert '((count-dict "c" ("v3"))))
+    (let ((index (make-nskk-dict-index :predicate 'count-dict)))
+      (should (= (nskk-dict--struct-entry-count index nil) 3)))))
 
 ;;;
 ;;; Integration Tests
 ;;;
 
 (nskk-deftest-integration dict-struct-build-index-workflow
-  "Test building a dict-index with entries and trie."
-  (let ((entries (make-hash-table :test 'equal))
-        (trie (nskk-trie-create)))
-    ;; Build entries
-    (let ((entry1 (make-nskk-dict-entry :key "かんじ" :candidates '("漢字" "感じ")))
-          (entry2 (make-nskk-dict-entry :key "にほん" :candidates '("日本")))
-          (entry3 (make-nskk-dict-entry :key "にほんご" :candidates '("日本語"))))
-      (puthash "かんじ" entry1 entries)
-      (puthash "にほん" entry2 entries)
-      (puthash "にほんご" entry3 entries)
-      (nskk-trie-insert trie "かんじ" entry1)
-      (nskk-trie-insert trie "にほん" entry2)
-      (nskk-trie-insert trie "にほんご" entry3))
-
-    ;; Build index
-    (let ((index (make-nskk-dict-index :entries entries :by-prefix trie)))
+  "Test building a dict-index backed by Prolog facts."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'workflow-dict 1 :trie)
+    (nskk-prolog-assert '((workflow-dict "かんじ" ("漢字" "感じ"))))
+    (nskk-prolog-assert '((workflow-dict "にほん" ("日本"))))
+    (nskk-prolog-assert '((workflow-dict "にほんご" ("日本語"))))
+    (let ((index (make-nskk-dict-index :predicate 'workflow-dict)))
       (should (nskk-dict-index-p index))
-      (should (= (hash-table-count (nskk-dict-index-entries index)) 3))
-      ;; Verify trie prefix search
-      (let ((prefix-results (nskk-trie-prefix-search
-                             (nskk-dict-index-by-prefix index)
-                             "にほん")))
+      (should (= (nskk-dict--struct-entry-count index nil) 3))
+      ;; Verify prefix search
+      (let ((prefix-results (nskk-prolog-trie-prefix-search 'workflow-dict 2 "にほん")))
         (should (= (length prefix-results) 2))))))
 
 (nskk-deftest-integration dict-struct-entry-with-okuri
@@ -439,128 +423,51 @@
   (should (featurep 'nskk-dictionary)))
 
 ;;;
-;;; Trie File I/O Tests (trie provides the actual I/O functions)
+;;; Prolog Dictionary I/O Tests
 ;;;
 
-(nskk-deftest-unit dict-io-trie-save-and-load
-  "Test saving and loading a trie to/from a file."
-  (let ((trie (nskk-trie-create))
-        (temp-file (make-temp-file "nskk-trie-test-" nil ".dat")))
-    (unwind-protect
-        (progn
-          ;; Insert data
-          (nskk-trie-insert trie "かんじ" "漢字")
-          (nskk-trie-insert trie "にほん" "日本")
-          (nskk-trie-insert trie "にほんご" "日本語")
+(nskk-deftest-unit dict-io-prolog-assert-and-lookup
+  "Test asserting dict entries and looking them up via Prolog."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'io-test-dict 1 :trie)
+    (nskk-prolog-assert '((io-test-dict "かんじ" ("漢字"))))
+    (let ((result (nskk-prolog-query-value
+                   '(io-test-dict "かんじ" \?c) '\?c)))
+      (should (equal result '("漢字"))))))
 
-          ;; Save to file
-          (nskk-trie-save-to-file trie temp-file)
+(nskk-deftest-unit dict-io-prolog-prefix-search
+  "Test prefix search over Prolog dict facts."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'prefix-test-dict 1 :trie)
+    (nskk-prolog-assert '((prefix-test-dict "かんじ" ("漢字"))))
+    (nskk-prolog-assert '((prefix-test-dict "かんたん" ("簡単"))))
+    (nskk-prolog-assert '((prefix-test-dict "にほん" ("日本"))))
+    (let ((results (nskk-prolog-trie-prefix-search 'prefix-test-dict 2 "かん")))
+      (should (= (length results) 2))
+      (should (assoc "かんじ" results))
+      (should (assoc "かんたん" results)))))
 
-          ;; Verify file exists and has content
-          (should (file-exists-p temp-file))
-          (should (> (file-attribute-size (file-attributes temp-file)) 0))
+(nskk-deftest-unit dict-io-prolog-japanese-values
+  "Test Prolog dict with Japanese candidate lists."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'ja-dict 1 :trie)
+    (nskk-prolog-assert '((ja-dict "にほん" ("日本" "二本"))))
+    (let ((result (nskk-prolog-query-value '(ja-dict "にほん" \?c) '\?c)))
+      (should (equal result '("日本" "二本"))))))
 
-          ;; Load from file
-          (let ((loaded (nskk-trie-load-from-file temp-file)))
-            (should (nskk-trie-p loaded))
-            (should (= (nskk-trie-size loaded) 3))
-            (should (equal (car (nskk-trie-lookup loaded "かんじ")) "漢字"))
-            (should (equal (car (nskk-trie-lookup loaded "にほん")) "日本"))
-            (should (equal (car (nskk-trie-lookup loaded "にほんご")) "日本語"))))
-      ;; Cleanup
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
-
-(nskk-deftest-unit dict-io-trie-save-empty
-  "Test saving and loading an empty trie."
-  (let ((trie (nskk-trie-create))
-        (temp-file (make-temp-file "nskk-trie-empty-" nil ".dat")))
-    (unwind-protect
-        (progn
-          (nskk-trie-save-to-file trie temp-file)
-          (let ((loaded (nskk-trie-load-from-file temp-file)))
-            (should (nskk-trie-p loaded))
-            (should (= (nskk-trie-size loaded) 0))
-            (should (nskk-trie-empty-p loaded))))
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
-
-(nskk-deftest-unit dict-io-trie-save-with-metadata
-  "Test saving and loading a trie with metadata."
-  (let ((trie (nskk-trie-create))
-        (temp-file (make-temp-file "nskk-trie-meta-" nil ".dat")))
-    (unwind-protect
-        (progn
-          (setf (nskk-trie-metadata trie) '(:source "test-dict" :version "1.0"))
-          (nskk-trie-insert trie "key" "value")
-          (nskk-trie-save-to-file trie temp-file)
-
-          (let ((loaded (nskk-trie-load-from-file temp-file)))
-            (should (equal (nskk-trie-metadata loaded)
-                           '(:source "test-dict" :version "1.0")))))
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
-
-(nskk-deftest-unit dict-io-trie-load-nonexistent-file
-  "Test loading from nonexistent file signals an error."
-  (should-error (nskk-trie-load-from-file "/tmp/nskk-nonexistent-file.dat")
-                :type 'file-missing))
-
-(nskk-deftest-unit dict-io-trie-save-load-large
-  "Test saving and loading a trie with many entries."
-  (let ((trie (nskk-trie-create))
-        (temp-file (make-temp-file "nskk-trie-large-" nil ".dat"))
-        (n 200))
-    (unwind-protect
-        (progn
-          ;; Insert many entries
-          (dotimes (i n)
-            (nskk-trie-insert trie (format "key-%03d" i) (format "val-%03d" i)))
-          (should (= (nskk-trie-size trie) n))
-
-          ;; Save and load
-          (nskk-trie-save-to-file trie temp-file)
-          (let ((loaded (nskk-trie-load-from-file temp-file)))
-            (should (= (nskk-trie-size loaded) n))
-            ;; Verify some entries
-            (should (equal (car (nskk-trie-lookup loaded "key-000")) "val-000"))
-            (should (equal (car (nskk-trie-lookup loaded "key-100")) "val-100"))
-            (should (equal (car (nskk-trie-lookup loaded "key-199")) "val-199"))))
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
-
-(nskk-deftest-unit dict-io-trie-file-content-readable
-  "Test that saved trie file contains readable Emacs Lisp."
-  (let ((trie (nskk-trie-create))
-        (temp-file (make-temp-file "nskk-trie-readable-" nil ".dat")))
-    (unwind-protect
-        (progn
-          (nskk-trie-insert trie "test" "value")
-          (nskk-trie-save-to-file trie temp-file)
-
-          ;; Read file and verify it starts with comment
-          (with-temp-buffer
-            (insert-file-contents temp-file)
-            (goto-char (point-min))
-            (should (looking-at ";;"))))
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
-
-(nskk-deftest-unit dict-io-trie-save-load-japanese-values
-  "Test saving and loading trie with Japanese values."
-  (let ((trie (nskk-trie-create))
-        (temp-file (make-temp-file "nskk-trie-ja-" nil ".dat")))
-    (unwind-protect
-        (progn
-          (nskk-trie-insert trie "あ" '("亜" "阿" "娃"))
-          (nskk-trie-insert trie "い" '("位" "依" "威"))
-          (nskk-trie-save-to-file trie temp-file)
-
-          (let ((loaded (nskk-trie-load-from-file temp-file)))
-            (should (equal (car (nskk-trie-lookup loaded "あ")) '("亜" "阿" "娃")))
-            (should (equal (car (nskk-trie-lookup loaded "い")) '("位" "依" "威")))))
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
+(nskk-deftest-unit dict-io-prolog-retract-all
+  "Test clearing all entries via retract-all."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'retract-dict 1 :trie)
+    (nskk-prolog-assert '((retract-dict "a" ("val1"))))
+    (nskk-prolog-assert '((retract-dict "b" ("val2"))))
+    (nskk-prolog-retract-all 'retract-dict 2)
+    (let ((result (nskk-prolog-query-value '(retract-dict "a" \?c) '\?c)))
+      (should (null result)))))
 
 ;;;
 ;;; Dict-entry Serialization Tests
@@ -586,34 +493,27 @@
 ;;; Integration Tests
 ;;;
 
-(nskk-deftest-integration dict-io-trie-roundtrip-workflow
-  "Test full workflow: create trie, populate, save, load, verify."
-  (let ((temp-file (make-temp-file "nskk-trie-workflow-" nil ".dat")))
-    (unwind-protect
-        (progn
-          ;; Phase 1: Create and populate
-          (let ((trie (nskk-trie-create)))
-            (nskk-trie-insert trie "あいう" "アイウ")
-            (nskk-trie-insert trie "あいうえ" "アイウエ")
-            (nskk-trie-insert trie "あいうえお" "アイウエオ")
-            (nskk-trie-insert trie "かきく" "カキク")
-            (nskk-trie-save-to-file trie temp-file))
-
-          ;; Phase 2: Load and verify
-          (let ((loaded (nskk-trie-load-from-file temp-file)))
-            (should (= (nskk-trie-size loaded) 4))
-
-            ;; Verify prefix search works on loaded trie
-            (let ((results (nskk-trie-prefix-search loaded "あいう")))
-              (should (= (length results) 3))
-              (should (assoc "あいう" results))
-              (should (assoc "あいうえ" results))
-              (should (assoc "あいうえお" results)))
-
-            ;; Verify exact lookup
-            (should (equal (car (nskk-trie-lookup loaded "かきく")) "カキク"))))
-      (when (file-exists-p temp-file)
-        (delete-file temp-file)))))
+(nskk-deftest-integration dict-io-prolog-roundtrip-workflow
+  "Test full workflow: assert Prolog facts, query, prefix-search, verify."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'workflow-io-dict 1 :trie)
+    (nskk-prolog-assert '((workflow-io-dict "あいう" ("アイウ"))))
+    (nskk-prolog-assert '((workflow-io-dict "あいうえ" ("アイウエ"))))
+    (nskk-prolog-assert '((workflow-io-dict "あいうえお" ("アイウエオ"))))
+    (nskk-prolog-assert '((workflow-io-dict "かきく" ("カキク"))))
+    (let ((index (make-nskk-dict-index :predicate 'workflow-io-dict)))
+      (should (= (nskk-dict--struct-entry-count index nil) 4))
+      ;; Verify prefix search works
+      (let ((results (nskk-prolog-trie-prefix-search 'workflow-io-dict 2 "あいう")))
+        (should (= (length results) 3))
+        (should (assoc "あいう" results))
+        (should (assoc "あいうえ" results))
+        (should (assoc "あいうえお" results)))
+      ;; Verify exact lookup
+      (let ((result (nskk-prolog-query-value
+                     '(workflow-io-dict "かきく" \?c) '\?c)))
+        (should (equal result '("カキク")))))))
 
 ;;;;
 ;;;; Dictionary Auto-Detection Tests
@@ -691,6 +591,43 @@
                (lambda () nil)))
       (nskk-dict-initialize)
       (should-not detect-called))))
+
+;;;
+;;; Property-Based Tests
+;;;
+
+(require 'nskk-test-macros)
+
+;; Table-driven dict entry creation
+(nskk-deftest-cases dict-pbt-entry-creation
+  (("かんじ"   . ("漢字" "感じ" "幹事"))
+   ("にほん"   . ("日本" "二本"))
+   ("さくら"   . ("桜"))
+   ("やま"     . ("山")))
+  :description "Dict entry creation with known keys and candidates"
+  :body (let ((entry (make-nskk-dict-entry :key input :candidates expected)))
+          (should (nskk-dict-entry-p entry))
+          (should (equal (nskk-dict-entry-key entry) input))
+          (should (equal (nskk-dict-entry-candidates entry) expected))))
+
+;; Search invariant: inserting a key then searching returns non-empty results
+(nskk-deftest-unit dict-pbt-search-inserted-key-found
+  "Search invariant: searching for a key that was inserted returns a non-empty result."
+  (nskk-with-mock-dict '(("てすと" . ("テスト")))
+    (let ((result (nskk-prolog-query-value
+                   '(mock-dict-entry "てすと" \?c) '\?c)))
+      (should result)
+      (should (= (length result) 1))
+      (should (equal (car result) "テスト")))))
+
+;; Empty search: searching for non-existent key returns nil (no crash)
+(nskk-deftest-unit dict-pbt-search-nonexistent-key-no-crash
+  "Empty search: searching for a non-existent key returns nil without crashing."
+  (nskk-with-mock-dict nil
+    (nskk-should-not-error
+      (let ((result (nskk-prolog-query-value
+                     '(mock-dict-entry "ぜったいにそんざいしないきー" \?c) '\?c)))
+        (should (null result))))))
 
 (provide 'nskk-dict-test)
 

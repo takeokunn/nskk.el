@@ -1,4 +1,4 @@
-;;; nskk-kana.el --- Core conversion utilities -*- lexical-binding: t; -*-
+;;; nskk-kana.el --- Kana character classification and conversion -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -26,84 +26,183 @@
 
 ;;; Commentary:
 
-;; This module provides core conversion utilities for NSKK.
-;; It handles:
+;; This module provides kana character classification and conversion utilities
+;; for NSKK.  It handles:
 ;; - Hiragana to katakana conversion
 ;; - Katakana to hiragana conversion
-;; - Zenkaku (full-width) to hankaku (half-width) conversion
-;; - Hankaku to zenkaku conversion
-;; - Character classification functions
+;; - Zenkaku (full-width) to hankaku (half-width) katakana conversion
+;; - Hankaku to zenkaku katakana conversion
+;; - Character classification predicates
 ;;
-;; Performance target: < 0.01ms per character conversion
-;; Memory: Minimal overhead with vector-based lookups
+;; Character classification and conversion rules are expressed as Prolog
+;; facts and rules, with hash table caches for hot-path performance.
+;; The `nskk-kana--fill-hash-table' macro fills conversion tables at load
+;; time.
+;;
+;; Unicode ranges used:
+;; - Hiragana: U+3040-U+309F
+;; - Katakana: U+30A0-U+30FF
+;; - CJK Unified Ideographs (Kanji): U+4E00-U+9FFF
+;; - CJK Unified Ideographs Extension A: U+3400-U+4DBF
+;; - Half-width Katakana: U+FF65-U+FF9F
 
 ;;; Code:
 
 (require 'cl-lib)
-(eval-when-compile (require 'nskk-macros))
+(require 'nskk-prolog)
+
+;;;; Customization
 
 (defgroup nskk-kana nil
-  "Kana conversion and state management settings."
-  :prefix "nskk-"
+  "Kana character classification and conversion settings."
+  :prefix "nskk-kana-"
   :group 'nskk)
 
-;; Character code ranges for classification
-;; Based on Unicode Standard 15.0
+;;;; Unicode Code Point Constants
 ;;
-;; Hiragana: #x3040-#x309F
-;;   - Includes: Hiragana letters, small letters, iteration marks,
-;;     voiced/semi-voiced sound marks
-;;
-;; Katakana: #x30A0-#x30FF
-;;   - Includes: Katakana letters, small letters, extension letters,
-;;     voiced/semi-voiced sound marks, iteration marks
-;;
-;; CJK Unified Ideographs (Kanji): #x4E00-#x9FFF
-;;   - Main CJK block containing common kanji
-;;
-;; CJK Unified Ideographs Extension A: #x3400-#x4DBF
-;;   - Rare/historical kanji characters
-;;
-;; Half-width and Full-width Forms (Katakana subset): #xFF65-#xFF9F
-;;   - Half-width katakana characters used in legacy systems
+;; Based on Unicode Standard 15.0.
 
-(defconst nskk--hiragana-start #x3040
+(defconst nskk-kana--hiragana-start #x3040
   "Start code point of hiragana block (Unicode U+3040).")
 
-(defconst nskk--hiragana-end #x309F
+(defconst nskk-kana--hiragana-end #x309F
   "End code point of hiragana block (Unicode U+309F).")
 
-(defconst nskk--katakana-start #x30A0
+(defconst nskk-kana--katakana-start #x30A0
   "Start code point of katakana block (Unicode U+30A0).")
 
-(defconst nskk--katakana-end #x30FF
+(defconst nskk-kana--katakana-end #x30FF
   "End code point of katakana block (Unicode U+30FF).")
 
-(defconst nskk--han-start #x4E00
+(defconst nskk-kana--han-start #x4E00
   "Start code point of CJK Unified Ideographs block (Unicode U+4E00).")
 
-(defconst nskk--han-end #x9FFF
+(defconst nskk-kana--han-end #x9FFF
   "End code point of CJK Unified Ideographs block (Unicode U+9FFF).")
 
-(defconst nskk--han-extension-a-start #x3400
+(defconst nskk-kana--han-extension-a-start #x3400
   "Start code point of CJK Unified Ideographs Extension A (Unicode U+3400).
 Contains rare and historical kanji characters.")
 
-(defconst nskk--han-extension-a-end #x4DBF
+(defconst nskk-kana--han-extension-a-end #x4DBF
   "End code point of CJK Unified Ideographs Extension A (Unicode U+4DBF).")
 
-(defconst nskk--hankaku-katakana-start #xFF65
+(defconst nskk-kana--hankaku-katakana-start #xFF65
   "Start code point of half-width katakana block (Unicode U+FF65).
-Half-width katakana characters from the Half-width and Full-width Forms block.")
+Part of the Half-width and Full-width Forms Unicode block.")
 
-(defconst nskk--hankaku-katakana-end #xFF9F
+(defconst nskk-kana--hankaku-katakana-end #xFF9F
   "End code point of half-width katakana block (Unicode U+FF9F).")
 
-;; Hankaku katakana conversion table
-;; Maps zenkaku katakana (as string) to hankaku katakana (as string)
-(defvar nskk--zenkaku-to-hankaku-table
+(defconst nskk-kana--kana-offset 96
+  "Code point offset between hiragana and katakana.
+A katakana character equals the corresponding hiragana plus this offset.")
+
+;;;; Internal Macros
+
+(defmacro nskk-kana--fill-hash-table (table &rest entries)
+  "Fill TABLE with ENTRIES, each entry being a list (KEY VALUE).
+Returns TABLE."
+  (declare (indent 1) (debug t))
+  `(prog1 ,table
+     ,@(mapcar (lambda (entry)
+                 `(puthash ,(car entry) ,(cadr entry) ,table))
+               entries)))
+
+(defmacro nskk-kana--define-range-predicate (name prolog-name start end docstring)
+  "Define a character range predicate NAME backed by a Prolog rule.
+PROLOG-NAME is the Prolog predicate symbol.
+START and END are defconst symbols for the Unicode range boundaries.
+DOCSTRING documents the generated ELisp predicate.
+
+Generates:
+  - A Prolog rule: (PROLOG-NAME ?c) with arithmetic range check
+  - An ELisp predicate: (NAME char) => boolean"
+  (declare (indent 1) (debug t))
+  `(progn
+     (nskk-prolog-<- (,prolog-name \?c)
+       (>= \?c ,start)
+       (<= \?c ,end))
+     (defun ,name (char)
+       ,docstring
+       (and (integerp char)
+            (not (null (nskk-prolog-query-one
+                        (list ',prolog-name char))))))))
+
+;;;; Prolog Database Initialization
+
+;; Initialize classification predicates as Prolog rules.
+;; Each rule asserts: (predicate ?c) :- (>= ?c start) (<= ?c end)
+
+(nskk-kana--define-range-predicate
+ nskk-kana-hiragana-p kana-hiragana
+ nskk-kana--hiragana-start nskk-kana--hiragana-end
+ "Return non-nil if CHAR is a hiragana character (U+3040-U+309F).")
+
+(nskk-kana--define-range-predicate
+ nskk-kana-katakana-p kana-katakana
+ nskk-kana--katakana-start nskk-kana--katakana-end
+ "Return non-nil if CHAR is a katakana character (U+30A0-U+30FF).")
+
+(nskk-kana--define-range-predicate
+ nskk-kana-hankaku-katakana-p kana-hankaku-katakana
+ nskk-kana--hankaku-katakana-start nskk-kana--hankaku-katakana-end
+ "Return non-nil if CHAR is a half-width katakana character (U+FF65-U+FF9F).
+Half-width katakana are part of the Half-width and Full-width Forms block.")
+
+;; Han (kanji) spans two disjoint Unicode ranges; define it manually.
+(nskk-prolog-<- (kana-han \?c)
+  (>= \?c nskk-kana--han-start)
+  (<= \?c nskk-kana--han-end))
+(nskk-prolog-<- (kana-han \?c)
+  (>= \?c nskk-kana--han-extension-a-start)
+  (<= \?c nskk-kana--han-extension-a-end))
+
+(defun nskk-kana-han-p (char)
+  "Return non-nil if CHAR is a han (kanji) character.
+Recognizes both CJK Unified Ideographs (U+4E00-U+9FFF) and
+CJK Unified Ideographs Extension A (U+3400-U+4DBF)."
+  (and (integerp char)
+       (not (null (nskk-prolog-query-one (list 'kana-han char))))))
+
+;; Japanese composite: any of hiragana, katakana, han, hankaku-katakana.
+(nskk-prolog-<- (kana-japanese \?c) (kana-hiragana \?c))
+(nskk-prolog-<- (kana-japanese \?c) (kana-katakana \?c))
+(nskk-prolog-<- (kana-japanese \?c) (kana-han \?c))
+(nskk-prolog-<- (kana-japanese \?c) (kana-hankaku-katakana \?c))
+
+(defun nskk-kana-japanese-p (char)
+  "Return non-nil if CHAR is a Japanese character.
+Recognizes the following Unicode ranges:
+- Hiragana (U+3040-U+309F)
+- Katakana (U+30A0-U+30FF)
+- CJK Unified Ideographs (U+4E00-U+9FFF)
+- CJK Unified Ideographs Extension A (U+3400-U+4DBF)
+- Half-width Katakana (U+FF65-U+FF9F)"
+  (and (integerp char)
+       (not (null (nskk-prolog-query-one (list 'kana-japanese char))))))
+
+;; Hiragana <-> katakana conversion via arithmetic offset.
+(nskk-prolog-<- (kana-hiragana-to-katakana \?h \?k)
+  (kana-hiragana \?h)
+  (is \?k (+ \?h nskk-kana--kana-offset)))
+
+(nskk-prolog-<- (kana-katakana-to-hiragana \?k \?h)
+  (kana-katakana \?k)
+  (is \?h (- \?k nskk-kana--kana-offset)))
+
+;;;; Zenkaku/Hankaku Conversion Tables
+;;
+;; Both Prolog facts and hash table caches are maintained (dual-write pattern).
+;; The hash tables provide O(1) hot-path performance.
+;; The Prolog facts expose the mappings to the rest of the Prolog database.
+
+(nskk-prolog-set-index 'zenkaku-to-hankaku 2 :hash)
+(nskk-prolog-set-index 'hankaku-to-zenkaku 2 :hash)
+
+(defconst nskk-kana--zenkaku-to-hankaku-table
   (let ((table (make-hash-table :test 'equal :size 200)))
-    (nskk-fill-hash-table table
+    (nskk-kana--fill-hash-table table
       ;; Basic katakana
       ("ア" "ｱ") ("イ" "ｲ") ("ウ" "ｳ") ("エ" "ｴ") ("オ" "ｵ")
       ("カ" "ｶ") ("キ" "ｷ") ("ク" "ｸ") ("ケ" "ｹ") ("コ" "ｺ")
@@ -115,28 +214,25 @@ Half-width katakana characters from the Half-width and Full-width Forms block.")
       ("ヤ" "ﾔ") ("ユ" "ﾕ") ("ヨ" "ﾖ")
       ("ラ" "ﾗ") ("リ" "ﾘ") ("ル" "ﾙ") ("レ" "ﾚ") ("ロ" "ﾛ")
       ("ワ" "ﾜ") ("ヲ" "ｦ") ("ン" "ﾝ") ("ヴ" "ｳﾞ")
-      ;; Dakuten / Handakuten
+      ;; Dakuten / handakuten combining marks
       ("゛" "ﾞ") ("゜" "ﾟ")
       ;; Small katakana
       ("ァ" "ｧ") ("ィ" "ｨ") ("ゥ" "ｩ") ("ェ" "ｪ") ("ォ" "ｫ")
       ("ッ" "ｯ") ("ャ" "ｬ") ("ュ" "ｭ") ("ョ" "ｮ") ("ヮ" "ﾜ")
-      ;; Dakuten extended
+      ;; Voiced (dakuten) extended
       ("ガ" "ｶﾞ") ("ギ" "ｷﾞ") ("グ" "ｸﾞ") ("ゲ" "ｹﾞ") ("ゴ" "ｺﾞ")
       ("ザ" "ｻﾞ") ("ジ" "ｼﾞ") ("ズ" "ｽﾞ") ("ゼ" "ｾﾞ") ("ゾ" "ｿﾞ")
       ("ダ" "ﾀﾞ") ("ヂ" "ﾁﾞ") ("ヅ" "ﾂﾞ") ("デ" "ﾃﾞ") ("ド" "ﾄﾞ")
       ("バ" "ﾊﾞ") ("ビ" "ﾋﾞ") ("ブ" "ﾌﾞ") ("ベ" "ﾍﾞ") ("ボ" "ﾎﾞ")
-      ;; Handakuten extended
+      ;; Semi-voiced (handakuten) extended
       ("パ" "ﾊﾟ") ("ピ" "ﾋﾟ") ("プ" "ﾌﾟ") ("ペ" "ﾍﾟ") ("ポ" "ﾎﾟ")
       ;; Punctuation
-      ("。" "｡") ("、" "､") ("・" "･") ("ー" "ｰ"))
-    table)
-  "Hash table mapping zenkaku to hankaku katakana.")
+      ("。" "｡") ("、" "､") ("・" "･") ("ー" "ｰ")))
+  "Hash table (string -> string) mapping zenkaku katakana to hankaku equivalents.")
 
-;; Hankaku to zenkaku conversion table
-;; Inverse of the above
-(defvar nskk--hankaku-to-zenkaku-table
+(defconst nskk-kana--hankaku-to-zenkaku-table
   (let ((table (make-hash-table :test 'equal :size 200)))
-    (nskk-fill-hash-table table
+    (nskk-kana--fill-hash-table table
       ;; Basic katakana
       ("ｱ" "ア") ("ｲ" "イ") ("ｳ" "ウ") ("ｴ" "エ") ("ｵ" "オ")
       ("ｶ" "カ") ("ｷ" "キ") ("ｸ" "ク") ("ｹ" "ケ") ("ｺ" "コ")
@@ -147,7 +243,7 @@ Half-width katakana characters from the Half-width and Full-width Forms block.")
       ("ﾏ" "マ") ("ﾐ" "ミ") ("ﾑ" "ム") ("ﾒ" "メ") ("ﾓ" "モ")
       ("ﾔ" "ヤ") ("ﾕ" "ユ") ("ﾖ" "ヨ")
       ("ﾗ" "ラ") ("ﾘ" "リ") ("ﾙ" "ル") ("ﾚ" "レ") ("ﾛ" "ロ")
-      ("ﾜ" "ワ") ("ｦ" "ヲ") ("ﾝ" "ン") ("ｳﾞ" "ヴ")
+      ("ﾜ" "ワ") ("ｦ" "ヲ") ("ﾝ" "ン")
       ;; Small katakana
       ("ｧ" "ァ") ("ｨ" "ィ") ("ｩ" "ゥ") ("ｪ" "ェ") ("ｫ" "ォ")
       ("ｯ" "ッ") ("ｬ" "ャ") ("ｭ" "ュ") ("ｮ" "ョ")
@@ -155,86 +251,47 @@ Half-width katakana characters from the Half-width and Full-width Forms block.")
       ("｡" "。") ("､" "、") ("･" "・") ("ｰ" "ー")
       ;; Combining marks
       ("ﾞ" "゛") ("ﾟ" "゜")
-      ;; Dakuten extended
+      ;; Voiced (dakuten) extended — two-character hankaku sequences
       ("ｶﾞ" "ガ") ("ｷﾞ" "ギ") ("ｸﾞ" "グ") ("ｹﾞ" "ゲ") ("ｺﾞ" "ゴ")
       ("ｻﾞ" "ザ") ("ｼﾞ" "ジ") ("ｽﾞ" "ズ") ("ｾﾞ" "ゼ") ("ｿﾞ" "ゾ")
       ("ﾀﾞ" "ダ") ("ﾁﾞ" "ヂ") ("ﾂﾞ" "ヅ") ("ﾃﾞ" "デ") ("ﾄﾞ" "ド")
       ("ﾊﾞ" "バ") ("ﾋﾞ" "ビ") ("ﾌﾞ" "ブ") ("ﾍﾞ" "ベ") ("ﾎﾞ" "ボ")
-      ;; Handakuten extended
-      ("ﾊﾟ" "パ") ("ﾋﾟ" "ピ") ("ﾌﾟ" "プ") ("ﾍﾟ" "ペ") ("ﾎﾟ" "ポ"))
-    table)
-  "Hash table mapping hankaku to zenkaku katakana.")
+      ;; Semi-voiced (handakuten) extended
+      ("ﾊﾟ" "パ") ("ﾋﾟ" "ピ") ("ﾌﾟ" "プ") ("ﾍﾟ" "ペ") ("ﾎﾟ" "ポ")
+      ;; Voiced u
+      ("ｳﾞ" "ヴ")))
+  "Hash table (string -> string) mapping hankaku katakana to zenkaku equivalents.
+Includes two-character dakuten/handakuten sequences (e.g., \"ｶﾞ\" -> \"ガ\").")
 
-;; Hiragana to katakana offset
-;; Each hiragana character can be converted to katakana by adding this offset
-(defconst nskk--kana-offset 96
-  "Offset between hiragana and katakana code points.
- katakana = hiragana + 96")
+;; Populate Prolog facts from the hash tables.
+;; This is done after table initialization to keep all mappings in one place.
+(maphash (lambda (k v)
+           (nskk-prolog-assert (list (list 'zenkaku-to-hankaku k v))))
+         nskk-kana--zenkaku-to-hankaku-table)
 
-;;; Character Classification Functions
+(maphash (lambda (k v)
+           (nskk-prolog-assert (list (list 'hankaku-to-zenkaku k v))))
+         nskk-kana--hankaku-to-zenkaku-table)
 
-(defun nskk-kana-hiragana-p (char)
-  "Check if CHAR is a hiragana character."
-  (and (integerp char)
-       (>= char nskk--hiragana-start)
-       (<= char nskk--hiragana-end)))
-
-(defun nskk-kana-katakana-p (char)
-  "Check if CHAR is a katakana character."
-  (and (integerp char)
-       (>= char nskk--katakana-start)
-       (<= char nskk--katakana-end)))
-
-(defun nskk-kana-han-p (char)
-  "Check if CHAR is a han (kanji) character.
-Includes both main CJK Unified Ideographs (U+4E00-U+9FFF) and
-CJK Unified Ideographs Extension A (U+3400-U+4DBF) which contains
-rare and historical kanji."
-  (and (integerp char)
-       (or (and (>= char nskk--han-start)
-                (<= char nskk--han-end))
-           (and (>= char nskk--han-extension-a-start)
-                (<= char nskk--han-extension-a-end)))))
-
-(defun nskk-kana-hankaku-katakana-p (char)
-  "Check if CHAR is a half-width katakana character.
-Half-width katakana are in the range U+FF65-U+FF9F,
-part of the Half-width and Full-width Forms Unicode block."
-  (and (integerp char)
-       (>= char nskk--hankaku-katakana-start)
-       (<= char nskk--hankaku-katakana-end)))
-
-(defun nskk-kana-japanese-p (char)
-  "Check if CHAR is a Japanese character.
-Recognizes the following Unicode ranges:
-- Hiragana (U+3040-U+309F)
-- Katakana (U+30A0-U+30FF)
-- CJK Unified Ideographs (U+4E00-U+9FFF)
-- CJK Unified Ideographs Extension A (U+3400-U+4DBF)
-- Half-width Katakana (U+FF65-U+FF9F)"
-  (or (nskk-kana-hiragana-p char)
-      (nskk-kana-katakana-p char)
-      (nskk-kana-han-p char)
-      (nskk-kana-hankaku-katakana-p char)))
-
-;;; Hiragana/Katakana Conversion Functions
+;;;; Character Conversion Functions
 
 (defun nskk-kana-hiragana-to-katakana (char)
   "Convert hiragana CHAR to katakana.
-Returns converted character or CHAR if not hiragana."
+Returns the converted character code, or CHAR unchanged if not hiragana."
   (if (nskk-kana-hiragana-p char)
-      (+ char nskk--kana-offset)
+      (+ char nskk-kana--kana-offset)
     char))
 
 (defun nskk-kana-katakana-to-hiragana (char)
   "Convert katakana CHAR to hiragana.
-Returns converted character or CHAR if not katakana."
+Returns the converted character code, or CHAR unchanged if not katakana."
   (if (nskk-kana-katakana-p char)
-      (- char nskk--kana-offset)
+      (- char nskk-kana--kana-offset)
     char))
 
 (defun nskk-kana--map-string-chars (string converter)
-  "Apply CONVERTER function to each char in STRING, return new string."
+  "Apply CONVERTER to each character in STRING, returning a new string.
+Returns nil if STRING is not a string."
   (when (stringp string)
     (let ((result (make-string (length string) ?\0)))
       (dotimes (i (length string))
@@ -242,109 +299,94 @@ Returns converted character or CHAR if not katakana."
       result)))
 
 (defun nskk-kana-string-hiragana-to-katakana (string)
-  "Convert hiragana in STRING to katakana."
+  "Convert all hiragana characters in STRING to katakana."
   (nskk-kana--map-string-chars string #'nskk-kana-hiragana-to-katakana))
 
 (defun nskk-kana-string-katakana-to-hiragana (string)
-  "Convert katakana in STRING to hiragana."
+  "Convert all katakana characters in STRING to hiragana."
   (nskk-kana--map-string-chars string #'nskk-kana-katakana-to-hiragana))
 
-;;; Hankaku/Zenkaku Conversion Functions
+;;;; Zenkaku/Hankaku Conversion Functions
 
 (defun nskk-kana-zenkaku-to-hankaku (string-or-char)
-  "Convert zenkaku katakana STRING-OR-CHAR to hankaku."
+  "Convert zenkaku katakana STRING-OR-CHAR to hankaku.
+For a string, converts each recognized zenkaku character; unrecognized
+characters are passed through unchanged.  For a character, returns the
+hankaku string equivalent, or a one-character string if unrecognized."
   (if (stringp string-or-char)
       (nskk-kana--zenkaku-string-to-hankaku string-or-char)
-    ;; Single character case
     (let ((str (char-to-string string-or-char)))
-      (or (gethash str nskk--zenkaku-to-hankaku-table)
-          str))))
+      (or (gethash str nskk-kana--zenkaku-to-hankaku-table) str))))
 
 (defun nskk-kana--zenkaku-string-to-hankaku (string)
-  "Internal: Convert zenkaku katakana STRING to hankaku.
-Uses vector accumulation for O(n) performance."
+  "Convert zenkaku katakana in STRING to hankaku.
+Unrecognized characters are passed through unchanged.
+Uses a pre-allocated buffer for O(n) performance."
   (when (stringp string)
     (let* ((len (length string))
-           ;; Pre-allocate vector with worst-case size (2x for multi-char conversions)
+           ;; Worst case: each zenkaku char expands to 2 hankaku chars.
            (result-vec (make-string (* len 2) ?\0))
            (result-pos 0)
            (i 0))
       (while (< i len)
-        (let ((char (aref string i)))
-          ;; Look up single character
-          (let ((hankaku (gethash (char-to-string char)
-                                  nskk--zenkaku-to-hankaku-table)))
-            (if hankaku
-                ;; Copy converted string to result vector
-                (let ((hankaku-len (length hankaku)))
-                  (dotimes (j hankaku-len)
-                    (aset result-vec (+ result-pos j) (aref hankaku j)))
-                  (setq result-pos (+ result-pos hankaku-len)))
-              ;; No conversion, keep original
-              (aset result-vec result-pos char)
-              (setq result-pos (1+ result-pos)))))
+        (let* ((char (aref string i))
+               (hankaku (gethash (char-to-string char)
+                                 nskk-kana--zenkaku-to-hankaku-table)))
+          (if hankaku
+              (let ((hlen (length hankaku)))
+                (dotimes (j hlen)
+                  (aset result-vec (+ result-pos j) (aref hankaku j)))
+                (setq result-pos (+ result-pos hlen)))
+            (aset result-vec result-pos char)
+            (setq result-pos (1+ result-pos))))
         (setq i (1+ i)))
-      ;; Return only the filled portion
       (substring result-vec 0 result-pos))))
 
 (defun nskk-kana-hankaku-to-zenkaku (string-or-char)
   "Convert hankaku katakana STRING-OR-CHAR to zenkaku.
-Handles combined dakuten/handakuten marks (e.g., \"ｶﾞ\" -> \"ガ\")."
+Handles combined dakuten/handakuten marks (e.g., \"ｶﾞ\" -> \"ガ\").
+Unrecognized characters are passed through unchanged."
   (if (stringp string-or-char)
       (nskk-kana--hankaku-string-to-zenkaku string-or-char)
-    ;; Single character case
-    (let ((hankaku (char-to-string string-or-char)))
-      (or (gethash hankaku nskk--hankaku-to-zenkaku-table)
-          hankaku))))
+    (let ((str (char-to-string string-or-char)))
+      (or (gethash str nskk-kana--hankaku-to-zenkaku-table) str))))
 
 (defun nskk-kana--hankaku-string-to-zenkaku (string)
-  "Internal: Convert hankaku katakana STRING to zenkaku.
-Handles dakuten/handakuten combinations.
-Uses vector accumulation for O(n) performance."
+  "Convert hankaku katakana in STRING to zenkaku.
+Handles two-character dakuten/handakuten sequences (e.g., \"ｶﾞ\" -> \"ガ\").
+Unrecognized characters are passed through unchanged."
   (when (stringp string)
     (let* ((len (length string))
-           ;; Pre-allocate vector with worst-case size (same length)
+           ;; Output is never longer than input in character count.
            (result-vec (make-string len ?\0))
            (result-pos 0)
            (i 0))
       (while (< i len)
-        ;; Try to match 2-character combination first
         (if (< (1+ i) len)
-            (let ((two-chars (concat (char-to-string (aref string i))
-                                    (char-to-string (aref string (1+ i))))))
-              (let ((zenkaku (gethash two-chars nskk--hankaku-to-zenkaku-table)))
-                (if zenkaku
-                    (progn
-                      ;; Copy converted string to result vector
-                      (let ((zenkaku-len (length zenkaku)))
-                        (dotimes (j zenkaku-len)
-                          (aset result-vec (+ result-pos j) (aref zenkaku j)))
-                        (setq result-pos (+ result-pos zenkaku-len)))
-                      (setq i (+ i 2)))
-                  ;; No 2-char match, try 1-char
-                  (let ((one-char (char-to-string (aref string i))))
-                    (let ((zenkaku (gethash one-char nskk--hankaku-to-zenkaku-table)))
-                      (aset result-vec result-pos (aref (or zenkaku one-char) 0))
-                      (setq result-pos (1+ result-pos))
-                      (setq i (1+ i)))))))
-          ;; Last character
-          (let ((one-char (char-to-string (aref string i))))
-            (let ((zenkaku (gethash one-char nskk--hankaku-to-zenkaku-table)))
-              (aset result-vec result-pos (aref (or zenkaku one-char) 0))
-              (setq result-pos (1+ result-pos))
-              (setq i (1+ i))))))
-      ;; Return only the filled portion
+            ;; Try two-character sequence first (dakuten combinations).
+            (let* ((two (concat (char-to-string (aref string i))
+                                (char-to-string (aref string (1+ i)))))
+                   (zen2 (gethash two nskk-kana--hankaku-to-zenkaku-table)))
+              (if zen2
+                  (progn
+                    (let ((zlen (length zen2)))
+                      (dotimes (j zlen)
+                        (aset result-vec (+ result-pos j) (aref zen2 j)))
+                      (setq result-pos (+ result-pos zlen)))
+                    (setq i (+ i 2)))
+                ;; Fall back to single-character lookup.
+                (let* ((one (char-to-string (aref string i)))
+                       (zen1 (gethash one nskk-kana--hankaku-to-zenkaku-table)))
+                  (aset result-vec result-pos (aref (or zen1 one) 0))
+                  (setq result-pos (1+ result-pos))
+                  (setq i (1+ i)))))
+          ;; Last character: single-character lookup only.
+          (let* ((one (char-to-string (aref string i)))
+                 (zen1 (gethash one nskk-kana--hankaku-to-zenkaku-table)))
+            (aset result-vec result-pos (aref (or zen1 one) 0))
+            (setq result-pos (1+ result-pos))
+            (setq i (1+ i)))))
       (substring result-vec 0 result-pos))))
-
-(defun nskk-kana-string-zenkaku-to-hankaku (string)
-  "Convert zenkaku katakana in STRING to hankaku.
-Alias for nskk-kana-zenkaku-to-hankaku for string argument."
-  (nskk-kana--zenkaku-string-to-hankaku string))
-
-(defun nskk-kana-string-hankaku-to-zenkaku (string)
-  "Convert hankaku katakana in STRING to zenkaku.
-Alias for nskk-kana-hankaku-to-zenkaku for string argument."
-  (nskk-kana--hankaku-string-to-zenkaku string))
 
 (provide 'nskk-kana)
 

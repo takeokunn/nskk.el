@@ -46,7 +46,6 @@
 
 (require 'cl-lib)
 (require 'nskk-prolog)
-(eval-when-compile (require 'nskk-macros))
 (eval-when-compile (require 'nskk-state))
 
 (defgroup nskk-converter nil
@@ -413,6 +412,7 @@ This is a convenience wrapper for nskk-converter-convert."
 
 (defun nskk-convert-n--internal (remaining)
   "Handle all ん-producing cases when REMAINING starts with the character n.
+Precondition: REMAINING must be a non-empty string whose first character is ?n.
 Returns (kana . rest) cons cell if ん is produced, or nil to fall through
 to normal table-driven conversion (e.g. for \"na\" -> \"な\")."
   (let ((len (length remaining)))
@@ -521,7 +521,9 @@ Valid styles are defined in `nskk--style-registry'."
     (if init-fn
         (progn
           (clrhash nskk--romaji-table)
+          (nskk-prolog-retract-all 'romaji-to-kana 2)
           (funcall init-fn)
+          (nskk-converter--populate-incomplete-markers)
           style)
       (error "Unknown romaji style: %s" style))))
 

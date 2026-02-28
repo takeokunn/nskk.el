@@ -289,6 +289,87 @@
                         (take 5 failures))))))
 
 
+;;;; Enhanced PBT Coverage
+;;;;
+
+;;;
+;;; Shrinking Property 1: Conversion roundtrip with shrinking
+;;;
+
+(nskk-property-test-with-shrinking conversion-roundtrip-shrinking
+  ((scenario conversion-scenario))
+  (let* ((state (nskk-state-create (plist-get scenario :mode)))
+         (candidates (nskk-pbt--random-candidates))
+         (hiragana-input (nskk-pbt--random-hiragana-input)))
+    ;; Put a non-empty input in the buffer
+    (nskk-state-set state 'input-buffer hiragana-input)
+    ;; Start and commit conversion
+    (nskk-henkan-start-conversion state candidates)
+    (nskk-henkan-commit-conversion state)
+    ;; After commit, converted-buffer must be a non-empty string
+    (let ((converted (nskk-state-converted-buffer state)))
+      (and (stringp converted)
+           (> (length converted) 0))))
+  50)
+
+;;;
+;;; Shrinking Property 2: Cancel restores original input with shrinking
+;;;
+
+(nskk-property-test-with-shrinking conversion-cancel-restores-shrinking
+  ((scenario conversion-scenario))
+  (let* ((state (nskk-state-create (plist-get scenario :mode)))
+         (candidates (nskk-pbt--random-candidates))
+         (hiragana-input (nskk-pbt--random-hiragana-input)))
+    (nskk-state-set state 'input-buffer hiragana-input)
+    ;; Start then cancel conversion
+    (nskk-henkan-start-conversion state candidates)
+    (nskk-henkan-cancel-conversion state hiragana-input)
+    ;; Post-cancel invariants: input restored, henkan-position cleared
+    (and (string= (nskk-state-input-buffer state) hiragana-input)
+         (null (nskk-state-henkan-position state))
+         (null (nskk-state-candidates state))
+         (nskk-state-p state)))
+  50)
+
+;;;
+;;; Scenario DSL: Kanji conversion lifecycle
+;;;
+
+(nskk-describe "Kanji conversion lifecycle"
+
+  (nskk-it "cancelling conversion restores pre-conversion state"
+    (nskk-given
+      (let* ((state (nskk-state-create 'hiragana))
+             (candidates '("漢字" "感じ" "幹事"))
+             (original-input "かんじ"))
+        (nskk-state-set state 'input-buffer original-input)
+        (nskk-when
+          (progn
+            (nskk-henkan-start-conversion state candidates)
+            (nskk-henkan-cancel-conversion state original-input)))
+        (nskk-then
+          (should (string= (nskk-state-input-buffer state) original-input))
+          (should (null (nskk-state-henkan-position state)))
+          (should (null (nskk-state-candidates state)))
+          (should (nskk-state-p state))))))
+
+  (nskk-it "committing first candidate updates converted-buffer"
+    (nskk-given
+      (let* ((state (nskk-state-create 'hiragana))
+             (candidates '("漢字" "感じ" "幹事")))
+        (nskk-state-set state 'input-buffer "かんじ")
+        (nskk-when
+          (progn
+            (nskk-henkan-start-conversion state candidates)
+            (nskk-henkan-commit-conversion state)))
+        (nskk-then
+          (let ((converted (nskk-state-converted-buffer state)))
+            (should (stringp converted))
+            (should (> (length converted) 0))
+            (should (nskk-state-p state))))))))
+
+
 (provide 'nskk-conversion-flow-pbt-test)
 
 ;;; nskk-conversion-flow-pbt-test.el ends here

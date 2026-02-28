@@ -101,7 +101,7 @@
   (should (equal (nskk-convert-romaji "ji") "じ"))
   (should (equal (nskk-convert-romaji "zu") "ず"))
   (should (equal (nskk-convert-romaji "da") "だ"))
-  (should (equal (nskk-convert-romaji "ji") "じ"))
+  (should (equal (nskk-convert-romaji "du") "づ"))
   (should (equal (nskk-convert-romaji "ba") "ば"))
   (should (equal (nskk-convert-romaji "bi") "び"))
   (should (equal (nskk-convert-romaji "bu") "ぶ"))
@@ -664,6 +664,46 @@
   nskk-unit-converter-register-style-basic
   nskk-unit-converter-load-style-standard
   nskk-unit-converter-load-style-unknown)
+
+;;;
+;;; Property-Based Tests
+;;;
+
+;; Conversion determinism: same input always produces same output.
+(nskk-property-test conversion-pbt-determinism
+  ((input romaji-string))
+  (let ((result1 (nskk-convert-romaji input))
+        (result2 (nskk-convert-romaji input)))
+    (equal result1 result2))
+  100)
+
+;; Output is always a string: nskk-convert-romaji always returns a string.
+(nskk-property-test conversion-pbt-returns-string
+  ((input romaji-string))
+  (let ((result (nskk-convert-romaji input)))
+    (stringp result))
+  100)
+
+;; Empty string: converting empty string returns empty string or nil gracefully
+;; (no error). Use a fixed empty string — the generator drives the loop.
+(nskk-property-test conversion-pbt-empty-string-no-crash
+  ((input romaji-string))
+  (condition-case nil
+      (progn (nskk-convert-romaji "") t)
+    (error nil))
+  50)
+
+;; Table-driven cases: known romaji->kana mappings
+(nskk-deftest-cases conversion-pbt-known-romaji-kana
+  (("ka"  . "か")
+   ("ki"  . "き")
+   ("ku"  . "く")
+   ("sa"  . "さ")
+   ("shi" . "し")
+   ("tsu" . "つ")
+   ("chi" . "ち"))
+  :description "Known romaji→kana mapping"
+  :body (should (equal expected (nskk-convert-romaji input))))
 
 (provide 'nskk-converter-test)
 
