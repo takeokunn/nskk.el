@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test, property-based
 ;; Homepage: https://github.com/takeokunn/nskk.el
 
@@ -43,6 +43,7 @@
 (require 'nskk-pbt-generators)
 (require 'nskk-state)
 (require 'nskk-converter)
+(require 'nskk-henkan)
 
 
 ;;;;
@@ -94,9 +95,9 @@
              (candidates (nskk-pbt--random-candidates))
              (input-before (nskk-state-input-buffer state)))
         ;; Start conversion with candidates
-        (nskk-converter-start-conversion state candidates)
+        (nskk-henkan-start-conversion state candidates)
         ;; Commit conversion
-        (nskk-converter-commit-conversion state)
+        (nskk-henkan-commit-conversion state)
         ;; Verify: converted-buffer should contain the first candidate
         (let ((converted (nskk-state-converted-buffer state)))
           (unless (and (stringp converted)
@@ -126,9 +127,9 @@
              (candidates (nskk-pbt--random-candidates))
              (original-input (nskk-state-input-buffer state)))
         ;; Start conversion
-        (nskk-converter-start-conversion state candidates)
+        (nskk-henkan-start-conversion state candidates)
         ;; Cancel with original input
-        (nskk-converter-cancel-conversion state original-input)
+        (nskk-henkan-cancel-conversion state original-input)
         ;; Verify: state should be restored
         (let ((input-after (nskk-state-input-buffer state))
               (henkan-pos (nskk-state-henkan-position state))
@@ -160,7 +161,7 @@
              (candidates (nskk-pbt--random-candidates))
              (num-candidates (length candidates)))
         ;; Start conversion
-        (nskk-converter-start-conversion state candidates)
+        (nskk-henkan-start-conversion state candidates)
         ;; Set candidates on state
         (nskk-state-set-candidates state candidates)
         ;; Cycle through all candidates with next
@@ -199,8 +200,8 @@
       (let* ((state (nskk-pbt--make-conversion-state))
              (candidates (nskk-pbt--random-candidates)))
         ;; Start and commit once
-        (nskk-converter-start-conversion state candidates)
-        (nskk-converter-commit-conversion state)
+        (nskk-henkan-start-conversion state candidates)
+        (nskk-henkan-commit-conversion state)
         ;; Capture state after first commit
         (let ((converted-1 (nskk-state-converted-buffer state))
               (input-1 (nskk-state-input-buffer state))
@@ -208,7 +209,7 @@
               (cands-1 (nskk-state-candidates state))
               (idx-1 (nskk-state-current-index state)))
           ;; Commit again (should be no-op since no active conversion)
-          (nskk-converter-commit-conversion state)
+          (nskk-henkan-commit-conversion state)
           ;; State should be identical
           (let ((converted-2 (nskk-state-converted-buffer state))
                 (input-2 (nskk-state-input-buffer state))
@@ -248,11 +249,11 @@
             (pcase op
               (0 ;; Start conversion
                (when (> (length (nskk-state-input-buffer state)) 0)
-                 (nskk-converter-start-conversion state candidates)))
+                 (nskk-henkan-start-conversion state candidates)))
               (1 ;; Cancel conversion
-               (nskk-converter-cancel-conversion state original-input))
+               (nskk-henkan-cancel-conversion state original-input))
               (2 ;; Commit conversion
-               (nskk-converter-commit-conversion state)))))
+               (nskk-henkan-commit-conversion state)))))
         ;; Verify state consistency invariants
         (let ((henkan-pos (nskk-state-henkan-position state))
               (cands (nskk-state-candidates state))

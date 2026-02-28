@@ -1,8 +1,8 @@
 ;;; nskk-modeline.el --- Mode line indicator for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: Takeshi Umeda <takeokunn@gmail.com>
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -22,17 +22,13 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-;; Author: NSKK Developers
-;; URL: https://github.com/takeokunn/nskk.el
-;; Keywords: i18n
-
 ;;; Commentary:
 
 ;; Mode line indicator showing current input mode (Layer 1: UI Layer).
 ;;
 ;; Layer Responsibilities:
 ;; - UI Layer displays mode information to user
-;; - Uses Application Layer API (nskk-current-mode) to query mode
+;; - Uses nskk-state-get-mode to query current mode
 ;; - Manages cursor color per mode when nskk-use-color-cursor is enabled
 ;;
 ;; Displays mode indicator in modeline (ddskk-compatible strings):
@@ -49,28 +45,69 @@
 
 ;;; Code:
 
-(require 'nskk-layer-application)
-(require 'nskk-custom)
 (require 'nskk-state)
+(require 'nskk-prolog)
 
-;; Forward declarations for cursor color variables (defined in nskk-custom.el).
-(defvar nskk-use-color-cursor)
-(defvar nskk-cursor-hiragana-color)
-(defvar nskk-cursor-katakana-color)
-(defvar nskk-cursor-latin-color)
-(defvar nskk-cursor-jisx0208-latin-color)
-(defvar nskk-cursor-abbrev-color)
+(defgroup nskk-modeline nil
+  "Mode line indicator settings for NSKK."
+  :prefix "nskk-modeline-"
+  :group 'nskk-ui)
+
+(defcustom nskk-modeline-format "[%m]"
+  "Modeline format string.
+%m is replaced with the mode name."
+  :type 'string
+  :group 'nskk-modeline)
+
+(defcustom nskk-modeline-mode-names
+  '((ascii . "SKK")
+    (hiragana . "かな")
+    (katakana . "カナ")
+    (abbrev . "aA")
+    (latin . "SKK")
+    (jisx0208-latin . "全英"))
+  "Mode name display mapping for modeline."
+  :type 'alist
+  :group 'nskk-modeline)
+
+(defcustom nskk-use-color-cursor t
+  "Whether to change cursor color based on input mode."
+  :type 'boolean
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-hiragana-color
+  (if (eq (frame-parameter nil 'background-mode) 'dark) "coral4" "pink")
+  "Cursor color for hiragana mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-katakana-color
+  (if (eq (frame-parameter nil 'background-mode) 'dark) "forestgreen" "green")
+  "Cursor color for katakana mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-latin-color
+  (if (eq (frame-parameter nil 'background-mode) 'dark) "ivory4" "gray")
+  "Cursor color for ASCII/latin mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-jisx0208-latin-color "gold"
+  "Cursor color for full-width latin mode."
+  :type 'color
+  :group 'nskk-ui)
+
+(defcustom nskk-cursor-abbrev-color "royalblue"
+  "Cursor color for abbrev mode."
+  :type 'color
+  :group 'nskk-ui)
 
 (defvar-local nskk--last-cursor-color nil
   "Last cursor color applied, to avoid redundant set-cursor-color calls.")
 
 (defvar-local nskk--last-modeline-indicator nil
   "Last modeline indicator string, to avoid redundant updates.")
-
-(defgroup nskk-modeline nil
-  "Mode line indicator settings for NSKK."
-  :prefix "nskk-modeline-"
-  :group 'nskk-ui)
 
 (defface nskk-modeline-hiragana-face
   '((t (:foreground "#4CAF50" :weight bold)))
@@ -97,6 +134,26 @@
   "Face for direct mode indicator."
   :group 'nskk-modeline)
 
+;;;; Prolog Mode Facts
+
+(nskk-prolog-set-index 'mode-info 4 :hash)
+(nskk-prolog-<- (mode-info hiragana "かな" nskk-modeline-hiragana-face "Hiragana input mode"))
+(nskk-prolog-<- (mode-info katakana "カナ" nskk-modeline-katakana-face "Katakana input mode"))
+(nskk-prolog-<- (mode-info abbrev "aA" nskk-modeline-abbrev-face "Abbreviation mode"))
+(nskk-prolog-<- (mode-info ascii "SKK" nskk-modeline-direct-face "Direct/ASCII input mode"))
+(nskk-prolog-<- (mode-info latin "SKK" nskk-modeline-direct-face "Direct/ASCII input mode"))
+(nskk-prolog-<- (mode-info direct "SKK" nskk-modeline-direct-face "Direct/ASCII input mode"))
+(nskk-prolog-<- (mode-info jisx0208-latin "全英" nskk-modeline-jisx0208-latin-face "Full-width latin input mode"))
+
+;; Cursor color mapping
+(nskk-prolog-set-index 'cursor-color 2 :hash)
+(nskk-prolog-<- (cursor-color hiragana nskk-cursor-hiragana-color))
+(nskk-prolog-<- (cursor-color katakana nskk-cursor-katakana-color))
+(nskk-prolog-<- (cursor-color ascii nskk-cursor-latin-color))
+(nskk-prolog-<- (cursor-color latin nskk-cursor-latin-color))
+(nskk-prolog-<- (cursor-color jisx0208-latin nskk-cursor-jisx0208-latin-color))
+(nskk-prolog-<- (cursor-color abbrev nskk-cursor-abbrev-color))
+
 (defvar nskk-modeline-lighter
   '(:eval (nskk-modeline-indicator))
   "Mode line lighter for NSKK.")
@@ -104,51 +161,21 @@
 (defun nskk-modeline-indicator (&optional state)
   "Return mode line indicator string for current mode.
 When STATE (an nskk-state struct) is provided, derive the mode from it.
-Otherwise fall back to `nskk-current-mode' for backward compatibility."
+Otherwise fall back to `nskk-state-get-mode' for backward compatibility.
+Uses a single Prolog query to fetch mode string, face, and help text."
   (let* ((mode (if state
                    (nskk-state-mode state)
-                 (nskk-current-mode)))
+                 (nskk-state-get-mode)))
+         (info (nskk-prolog-query-values
+                `(mode-info ,mode ,'\?s ,'\?f ,'\?h)
+                '(\?s \?f \?h)))
          (mode-name (or (cdr (assq mode nskk-modeline-mode-names))
-                        (nskk-modeline--mode-string mode)))
+                        (or (nth 0 info) "NSKK")))
+         (face (or (nth 1 info) 'default))
+         (help (or (nth 2 info) "NSKK input method"))
          (formatted (format-spec nskk-modeline-format
                                  `((?m . ,mode-name)))))
-    (propertize formatted
-                'face (nskk-modeline--mode-face mode)
-                'help-echo (nskk-modeline--mode-help mode))))
-
-(defun nskk-modeline--mode-string (mode)
-  "Return mode string for MODE."
-  (declare (pure t) (side-effect-free t))
-  (pcase mode
-    ('hiragana "かな")
-    ('katakana "カナ")
-    ('abbrev "aA")
-    ('ascii "SKK")
-    ('latin "SKK")
-    ('jisx0208-latin "全英")
-    (_ "NSKK")))
-
-(defun nskk-modeline--mode-face (mode)
-  "Return face for MODE."
-  (declare (pure t) (side-effect-free t))
-  (pcase mode
-    ('hiragana 'nskk-modeline-hiragana-face)
-    ('katakana 'nskk-modeline-katakana-face)
-    ('abbrev 'nskk-modeline-abbrev-face)
-    ((or 'ascii 'latin 'direct) 'nskk-modeline-direct-face)
-    ('jisx0208-latin 'nskk-modeline-jisx0208-latin-face)
-    (_ 'default)))
-
-(defun nskk-modeline--mode-help (mode)
-  "Return help text for MODE."
-  (declare (pure t) (side-effect-free t))
-  (pcase mode
-    ('hiragana "Hiragana input mode")
-    ('katakana "Katakana input mode")
-    ('abbrev "Abbreviation mode")
-    ((or 'ascii 'latin 'direct) "Direct/ASCII input mode")
-    ('jisx0208-latin "Full-width latin input mode")
-    (_ "NSKK input method")))
+    (propertize formatted 'face face 'help-echo help)))
 
 (defun nskk-modeline-update ()
   "Update modeline and cursor to reflect current NSKK state.
@@ -176,14 +203,11 @@ Only calls `set-cursor-color' when the color actually changes."
         (setq nskk--last-cursor-color color)))))
 
 (defun nskk-cursor--mode-color (mode)
-  "Return cursor color for MODE."
-  (pcase mode
-    ('hiragana nskk-cursor-hiragana-color)
-    ('katakana nskk-cursor-katakana-color)
-    ((or 'ascii 'latin) nskk-cursor-latin-color)
-    ('jisx0208-latin nskk-cursor-jisx0208-latin-color)
-    ('abbrev nskk-cursor-abbrev-color)
-    (_ nil)))
+  "Return cursor color for MODE via Prolog lookup."
+  (let ((color-var (nskk-prolog-query-value
+                    `(cursor-color ,mode ,'\?c) '\?c)))
+    (when (and color-var (boundp color-var))
+      (symbol-value color-var))))
 
 (provide 'nskk-modeline)
 

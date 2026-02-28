@@ -1,8 +1,8 @@
 ;;; nskk-converter.el --- Romaji to kana conversion engine -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: Takeshi Umeda <takeokunn@gmail.com>
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -45,6 +45,42 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'nskk-prolog)
+(eval-when-compile (require 'nskk-macros))
+(eval-when-compile (require 'nskk-state))
+
+(defgroup nskk-converter nil
+  "Romaji to Kana conversion settings."
+  :prefix "nskk-converter-"
+  :group 'nskk-kana)
+
+(defcustom nskk-converter-use-sokuon t
+  "Whether to enable automatic sokuon (small tsu) conversion."
+  :type 'boolean
+  :group 'nskk-converter)
+
+(defcustom nskk-converter-n-processing-mode 'smart
+  "How to process \\='n' for \\='ん' (hiragana) or \\='ン' (katakana).
+\\='smart means auto-detect based on context.
+\\='strict means \\='nn' is required.
+\\='loose means single \\='n' is sufficient."
+  :type '(choice (const :tag "Smart (auto)" smart)
+                 (const :tag "Strict (nn required)" strict)
+                 (const :tag "Loose (single n ok)" loose))
+  :group 'nskk-converter)
+
+(defcustom nskk-converter-auto-start-henkan t
+  "Whether to automatically start conversion on uppercase input."
+  :type 'boolean
+  :group 'nskk-converter)
+
+(defcustom nskk-converter-romaji-style 'standard
+  "Romaji input style for Japanese conversion.
+\\='standard - Standard SKK romaji (default)
+\\='azik     - AZIK extended romaji with efficiency shortcuts"
+  :type '(choice (const :tag "Standard SKK" standard)
+                 (const :tag "AZIK" azik))
+  :group 'nskk-converter)
 
 ;; Romaji conversion table
 ;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)
@@ -56,357 +92,303 @@
   "Registry mapping style symbols to their initialization functions.")
 
 (defun nskk--initialize-romaji-table ()
-  "Initialize the romaji conversion table."
+  "Initialize the romaji conversion table as Prolog facts."
+  ;; Clear existing romaji rules
+  (nskk-prolog-retract-all 'romaji-to-kana 2)
+  (nskk-prolog-retract-all 'hatsuon-blocker 1)
+  (nskk-prolog-retract-all 'sokuon-blocker 1)
+  (nskk-prolog-retract-all 'hatsuon-trigger 1)
+  (nskk-prolog-retract-all 'sokuon-eligible 1)
+
+  ;; Also clear the hash table for backward compat
   (clrhash nskk--romaji-table)
 
+  ;; Configure trie-based indexing for longest-match-first
+  (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
+
   ;; Vowels
-  (puthash "a" "あ" nskk--romaji-table)
-  (puthash "i" "い" nskk--romaji-table)
-  (puthash "u" "う" nskk--romaji-table)
-  (puthash "e" "え" nskk--romaji-table)
-  (puthash "o" "お" nskk--romaji-table)
+  (nskk-converter-add-rule "a" "あ")
+  (nskk-converter-add-rule "i" "い")
+  (nskk-converter-add-rule "u" "う")
+  (nskk-converter-add-rule "e" "え")
+  (nskk-converter-add-rule "o" "お")
 
   ;; K row
-  (puthash "ka" "か" nskk--romaji-table)
-  (puthash "ki" "き" nskk--romaji-table)
-  (puthash "ku" "く" nskk--romaji-table)
-  (puthash "ke" "け" nskk--romaji-table)
-  (puthash "ko" "こ" nskk--romaji-table)
+  (nskk-converter-add-rule "ka" "か")
+  (nskk-converter-add-rule "ki" "き")
+  (nskk-converter-add-rule "ku" "く")
+  (nskk-converter-add-rule "ke" "け")
+  (nskk-converter-add-rule "ko" "こ")
 
   ;; G row
-  (puthash "ga" "が" nskk--romaji-table)
-  (puthash "gi" "ぎ" nskk--romaji-table)
-  (puthash "gu" "ぐ" nskk--romaji-table)
-  (puthash "ge" "げ" nskk--romaji-table)
-  (puthash "go" "ご" nskk--romaji-table)
+  (nskk-converter-add-rule "ga" "が")
+  (nskk-converter-add-rule "gi" "ぎ")
+  (nskk-converter-add-rule "gu" "ぐ")
+  (nskk-converter-add-rule "ge" "げ")
+  (nskk-converter-add-rule "go" "ご")
 
   ;; S row
-  (puthash "sa" "さ" nskk--romaji-table)
-  (puthash "shi" "し" nskk--romaji-table)
-  (puthash "si" "し" nskk--romaji-table)
-  (puthash "su" "す" nskk--romaji-table)
-  (puthash "se" "せ" nskk--romaji-table)
-  (puthash "so" "そ" nskk--romaji-table)
+  (nskk-converter-add-rule "sa" "さ")
+  (nskk-converter-add-rule "shi" "し")
+  (nskk-converter-add-rule "si" "し")
+  (nskk-converter-add-rule "su" "す")
+  (nskk-converter-add-rule "se" "せ")
+  (nskk-converter-add-rule "so" "そ")
 
   ;; Z row
-  (puthash "za" "ざ" nskk--romaji-table)
-  (puthash "ji" "じ" nskk--romaji-table)
-  (puthash "zi" "じ" nskk--romaji-table)
-  (puthash "zu" "ず" nskk--romaji-table)
-  (puthash "ze" "ぜ" nskk--romaji-table)
-  (puthash "zo" "ぞ" nskk--romaji-table)
+  (nskk-converter-add-rule "za" "ざ")
+  (nskk-converter-add-rule "ji" "じ")
+  (nskk-converter-add-rule "zi" "じ")
+  (nskk-converter-add-rule "zu" "ず")
+  (nskk-converter-add-rule "ze" "ぜ")
+  (nskk-converter-add-rule "zo" "ぞ")
 
   ;; T row
-  (puthash "ta" "た" nskk--romaji-table)
-  (puthash "chi" "ち" nskk--romaji-table)
-  (puthash "ti" "ち" nskk--romaji-table)
-  (puthash "tsu" "つ" nskk--romaji-table)
-  (puthash "tu" "つ" nskk--romaji-table)
-  (puthash "te" "て" nskk--romaji-table)
-  (puthash "to" "と" nskk--romaji-table)
+  (nskk-converter-add-rule "ta" "た")
+  (nskk-converter-add-rule "chi" "ち")
+  (nskk-converter-add-rule "ti" "ち")
+  (nskk-converter-add-rule "tsu" "つ")
+  (nskk-converter-add-rule "tu" "つ")
+  (nskk-converter-add-rule "te" "て")
+  (nskk-converter-add-rule "to" "と")
 
   ;; D row
-  (puthash "da" "だ" nskk--romaji-table)
-  (puthash "di" "ぢ" nskk--romaji-table)
-  (puthash "du" "づ" nskk--romaji-table)
-  (puthash "de" "で" nskk--romaji-table)
-  (puthash "do" "ど" nskk--romaji-table)
+  (nskk-converter-add-rule "da" "だ")
+  (nskk-converter-add-rule "di" "ぢ")
+  (nskk-converter-add-rule "du" "づ")
+  (nskk-converter-add-rule "de" "で")
+  (nskk-converter-add-rule "do" "ど")
 
-  ;; N row (including special n')
-  (puthash "na" "な" nskk--romaji-table)
-  (puthash "ni" "に" nskk--romaji-table)
-  (puthash "nu" "ぬ" nskk--romaji-table)
-  (puthash "ne" "ね" nskk--romaji-table)
-  (puthash "no" "の" nskk--romaji-table)
-  (puthash "n'" "ん" nskk--romaji-table)
-  (puthash "nn" "ん" nskk--romaji-table)
+  ;; N row
+  (nskk-converter-add-rule "na" "な")
+  (nskk-converter-add-rule "ni" "に")
+  (nskk-converter-add-rule "nu" "ぬ")
+  (nskk-converter-add-rule "ne" "ね")
+  (nskk-converter-add-rule "no" "の")
+  (nskk-converter-add-rule "n'" "ん")
+  (nskk-converter-add-rule "nn" "ん")
 
   ;; H row
-  (puthash "ha" "は" nskk--romaji-table)
-  (puthash "hi" "ひ" nskk--romaji-table)
-  (puthash "fu" "ふ" nskk--romaji-table)
-  (puthash "hu" "ふ" nskk--romaji-table)
-  (puthash "he" "へ" nskk--romaji-table)
-  (puthash "ho" "ほ" nskk--romaji-table)
+  (nskk-converter-add-rule "ha" "は")
+  (nskk-converter-add-rule "hi" "ひ")
+  (nskk-converter-add-rule "fu" "ふ")
+  (nskk-converter-add-rule "hu" "ふ")
+  (nskk-converter-add-rule "he" "へ")
+  (nskk-converter-add-rule "ho" "ほ")
 
   ;; B row
-  (puthash "ba" "ば" nskk--romaji-table)
-  (puthash "bi" "び" nskk--romaji-table)
-  (puthash "bu" "ぶ" nskk--romaji-table)
-  (puthash "be" "べ" nskk--romaji-table)
-  (puthash "bo" "ぼ" nskk--romaji-table)
+  (nskk-converter-add-rule "ba" "ば")
+  (nskk-converter-add-rule "bi" "び")
+  (nskk-converter-add-rule "bu" "ぶ")
+  (nskk-converter-add-rule "be" "べ")
+  (nskk-converter-add-rule "bo" "ぼ")
 
   ;; P row
-  (puthash "pa" "ぱ" nskk--romaji-table)
-  (puthash "pi" "ぴ" nskk--romaji-table)
-  (puthash "pu" "ぷ" nskk--romaji-table)
-  (puthash "pe" "ぺ" nskk--romaji-table)
-  (puthash "po" "ぽ" nskk--romaji-table)
+  (nskk-converter-add-rule "pa" "ぱ")
+  (nskk-converter-add-rule "pi" "ぴ")
+  (nskk-converter-add-rule "pu" "ぷ")
+  (nskk-converter-add-rule "pe" "ぺ")
+  (nskk-converter-add-rule "po" "ぽ")
 
   ;; M row
-  (puthash "ma" "ま" nskk--romaji-table)
-  (puthash "mi" "み" nskk--romaji-table)
-  (puthash "mu" "む" nskk--romaji-table)
-  (puthash "me" "め" nskk--romaji-table)
-  (puthash "mo" "も" nskk--romaji-table)
+  (nskk-converter-add-rule "ma" "ま")
+  (nskk-converter-add-rule "mi" "み")
+  (nskk-converter-add-rule "mu" "む")
+  (nskk-converter-add-rule "me" "め")
+  (nskk-converter-add-rule "mo" "も")
 
   ;; Y row
-  (puthash "ya" "や" nskk--romaji-table)
-  (puthash "yu" "ゆ" nskk--romaji-table)
-  (puthash "yo" "よ" nskk--romaji-table)
+  (nskk-converter-add-rule "ya" "や")
+  (nskk-converter-add-rule "yu" "ゆ")
+  (nskk-converter-add-rule "yo" "よ")
 
   ;; R row
-  (puthash "ra" "ら" nskk--romaji-table)
-  (puthash "ri" "り" nskk--romaji-table)
-  (puthash "ru" "る" nskk--romaji-table)
-  (puthash "re" "れ" nskk--romaji-table)
-  (puthash "ro" "ろ" nskk--romaji-table)
+  (nskk-converter-add-rule "ra" "ら")
+  (nskk-converter-add-rule "ri" "り")
+  (nskk-converter-add-rule "ru" "る")
+  (nskk-converter-add-rule "re" "れ")
+  (nskk-converter-add-rule "ro" "ろ")
 
   ;; W row
-  (puthash "wa" "わ" nskk--romaji-table)
-  (puthash "wo" "を" nskk--romaji-table)
+  (nskk-converter-add-rule "wa" "わ")
+  (nskk-converter-add-rule "wo" "を")
 
-  ;; Special combinations with small kana
-  (puthash "sha" "しゃ" nskk--romaji-table)
-  (puthash "shu" "しゅ" nskk--romaji-table)
-  (puthash "she" "しぇ" nskk--romaji-table)
-  (puthash "sho" "しょ" nskk--romaji-table)
-  (puthash "tsa" "つぁ" nskk--romaji-table)
-  (puthash "tsi" "つぃ" nskk--romaji-table)
-  (puthash "tse" "つぇ" nskk--romaji-table)
-  (puthash "tso" "つぉ" nskk--romaji-table)
-  (puthash "fa" "ふぁ" nskk--romaji-table)
-  (puthash "fi" "ふぃ" nskk--romaji-table)
-  (puthash "fe" "ふぇ" nskk--romaji-table)
-  (puthash "fo" "ふぉ" nskk--romaji-table)
+  ;; Special combinations
+  (nskk-converter-add-rule "sha" "しゃ")
+  (nskk-converter-add-rule "shu" "しゅ")
+  (nskk-converter-add-rule "she" "しぇ")
+  (nskk-converter-add-rule "sho" "しょ")
+  (nskk-converter-add-rule "tsa" "つぁ")
+  (nskk-converter-add-rule "tsi" "つぃ")
+  (nskk-converter-add-rule "tse" "つぇ")
+  (nskk-converter-add-rule "tso" "つぉ")
+  (nskk-converter-add-rule "fa" "ふぁ")
+  (nskk-converter-add-rule "fi" "ふぃ")
+  (nskk-converter-add-rule "fe" "ふぇ")
+  (nskk-converter-add-rule "fo" "ふぉ")
 
-  ;; Digraph combinations
-  (puthash "kya" "きゃ" nskk--romaji-table)
-  (puthash "kyu" "きゅ" nskk--romaji-table)
-  (puthash "kyo" "きょ" nskk--romaji-table)
+  ;; Digraphs
+  (nskk-converter-add-rule "kya" "きゃ")
+  (nskk-converter-add-rule "kyu" "きゅ")
+  (nskk-converter-add-rule "kyo" "きょ")
+  (nskk-converter-add-rule "gya" "ぎゃ")
+  (nskk-converter-add-rule "gyu" "ぎゅ")
+  (nskk-converter-add-rule "gyo" "ぎょ")
+  (nskk-converter-add-rule "ja" "じゃ")
+  (nskk-converter-add-rule "ju" "じゅ")
+  (nskk-converter-add-rule "je" "じぇ")
+  (nskk-converter-add-rule "jo" "じょ")
+  (nskk-converter-add-rule "cha" "ちゃ")
+  (nskk-converter-add-rule "chu" "ちゅ")
+  (nskk-converter-add-rule "che" "ちぇ")
+  (nskk-converter-add-rule "cho" "ちょ")
+  (nskk-converter-add-rule "nya" "にゃ")
+  (nskk-converter-add-rule "nyu" "にゅ")
+  (nskk-converter-add-rule "nyo" "にょ")
+  (nskk-converter-add-rule "hya" "ひゃ")
+  (nskk-converter-add-rule "hyu" "ひゅ")
+  (nskk-converter-add-rule "hyo" "ひょ")
+  (nskk-converter-add-rule "bya" "びゃ")
+  (nskk-converter-add-rule "byu" "びゅ")
+  (nskk-converter-add-rule "byo" "びょ")
+  (nskk-converter-add-rule "pya" "ぴゃ")
+  (nskk-converter-add-rule "pyu" "ぴゅ")
+  (nskk-converter-add-rule "pyo" "ぴょ")
+  (nskk-converter-add-rule "mya" "みゃ")
+  (nskk-converter-add-rule "myu" "みゅ")
+  (nskk-converter-add-rule "myo" "みょ")
+  (nskk-converter-add-rule "rya" "りゃ")
+  (nskk-converter-add-rule "ryu" "りゅ")
+  (nskk-converter-add-rule "ryo" "りょ")
 
-  (puthash "gya" "ぎゃ" nskk--romaji-table)
-  (puthash "gyu" "ぎゅ" nskk--romaji-table)
-  (puthash "gyo" "ぎょ" nskk--romaji-table)
+  ;; Small kana
+  (nskk-converter-add-rule "la" "ぁ")
+  (nskk-converter-add-rule "li" "ぃ")
+  (nskk-converter-add-rule "lu" "ぅ")
+  (nskk-converter-add-rule "le" "ぇ")
+  (nskk-converter-add-rule "lo" "ぉ")
+  (nskk-converter-add-rule "xa" "ぁ")
+  (nskk-converter-add-rule "xi" "ぃ")
+  (nskk-converter-add-rule "xu" "ぅ")
+  (nskk-converter-add-rule "xe" "ぇ")
+  (nskk-converter-add-rule "xo" "ぉ")
+  (nskk-converter-add-rule "xya" "ゃ")
+  (nskk-converter-add-rule "xyu" "ゅ")
+  (nskk-converter-add-rule "xyo" "ょ")
+  (nskk-converter-add-rule "lya" "ゃ")
+  (nskk-converter-add-rule "lyu" "ゅ")
+  (nskk-converter-add-rule "lyo" "ょ")
+  (nskk-converter-add-rule "xtsu" "っ")
+  (nskk-converter-add-rule "xtu" "っ")
+  (nskk-converter-add-rule "ltsu" "っ")
+  (nskk-converter-add-rule "ltu" "っ")
 
-  (puthash "ja" "じゃ" nskk--romaji-table)
-  (puthash "ju" "じゅ" nskk--romaji-table)
-  (puthash "je" "じぇ" nskk--romaji-table)
-  (puthash "jo" "じょ" nskk--romaji-table)
+  ;; V row
+  (nskk-converter-add-rule "va" "ゔぁ")
+  (nskk-converter-add-rule "vi" "ゔぃ")
+  (nskk-converter-add-rule "vu" "ゔ")
+  (nskk-converter-add-rule "ve" "ゔぇ")
+  (nskk-converter-add-rule "vo" "ゔぉ")
+  (nskk-converter-add-rule "vya" "ゔゃ")
+  (nskk-converter-add-rule "vyu" "ゔゅ")
+  (nskk-converter-add-rule "vyo" "ゔょ")
 
-  (puthash "cha" "ちゃ" nskk--romaji-table)
-  (puthash "chu" "ちゅ" nskk--romaji-table)
-  (puthash "che" "ちぇ" nskk--romaji-table)
-  (puthash "cho" "ちょ" nskk--romaji-table)
+  ;; Additional digraphs
+  (nskk-converter-add-rule "dya" "ぢゃ")
+  (nskk-converter-add-rule "dyu" "ぢゅ")
+  (nskk-converter-add-rule "dyo" "ぢょ")
 
-  (puthash "nya" "にゃ" nskk--romaji-table)
-  (puthash "nyu" "にゅ" nskk--romaji-table)
-  (puthash "nyo" "にょ" nskk--romaji-table)
+  ;; Alternative rows
+  (nskk-converter-add-rule "zya" "じゃ")
+  (nskk-converter-add-rule "zyu" "じゅ")
+  (nskk-converter-add-rule "zyo" "じょ")
+  (nskk-converter-add-rule "tya" "ちゃ")
+  (nskk-converter-add-rule "tyu" "ちゅ")
+  (nskk-converter-add-rule "tyo" "ちょ")
+  (nskk-converter-add-rule "sya" "しゃ")
+  (nskk-converter-add-rule "syu" "しゅ")
+  (nskk-converter-add-rule "sye" "しぇ")
+  (nskk-converter-add-rule "syo" "しょ")
+  (nskk-converter-add-rule "jya" "じゃ")
+  (nskk-converter-add-rule "jyu" "じゅ")
+  (nskk-converter-add-rule "jye" "じぇ")
+  (nskk-converter-add-rule "jyo" "じょ")
 
-  (puthash "hya" "ひゃ" nskk--romaji-table)
-  (puthash "hyu" "ひゅ" nskk--romaji-table)
-  (puthash "hyo" "ひょ" nskk--romaji-table)
+  ;; -ye extensions
+  (nskk-converter-add-rule "tye" "ちぇ")
+  (nskk-converter-add-rule "zye" "じぇ")
+  (nskk-converter-add-rule "dye" "ぢぇ")
+  (nskk-converter-add-rule "gye" "ぎぇ")
+  (nskk-converter-add-rule "kye" "きぇ")
+  (nskk-converter-add-rule "nye" "にぇ")
+  (nskk-converter-add-rule "hye" "ひぇ")
+  (nskk-converter-add-rule "bye" "びぇ")
+  (nskk-converter-add-rule "pye" "ぴぇ")
+  (nskk-converter-add-rule "mye" "みぇ")
+  (nskk-converter-add-rule "rye" "りぇ")
 
-  (puthash "bya" "びゃ" nskk--romaji-table)
-  (puthash "byu" "びゅ" nskk--romaji-table)
-  (puthash "byo" "びょ" nskk--romaji-table)
+  ;; Th/Dh/Wh rows
+  (nskk-converter-add-rule "tha" "てぁ")
+  (nskk-converter-add-rule "thi" "てぃ")
+  (nskk-converter-add-rule "thu" "てゅ")
+  (nskk-converter-add-rule "the" "てぇ")
+  (nskk-converter-add-rule "tho" "てょ")
+  (nskk-converter-add-rule "dha" "でぁ")
+  (nskk-converter-add-rule "dhi" "でぃ")
+  (nskk-converter-add-rule "dhu" "でゅ")
+  (nskk-converter-add-rule "dhe" "でぇ")
+  (nskk-converter-add-rule "dho" "でょ")
+  (nskk-converter-add-rule "wha" "うぁ")
+  (nskk-converter-add-rule "whi" "うぃ")
+  (nskk-converter-add-rule "whu" "う")
+  (nskk-converter-add-rule "whe" "うぇ")
+  (nskk-converter-add-rule "who" "うぉ")
+  (nskk-converter-add-rule "wi" "ゐ")
+  (nskk-converter-add-rule "we" "ゑ")
 
-  (puthash "pya" "ぴゃ" nskk--romaji-table)
-  (puthash "pyu" "ぴゅ" nskk--romaji-table)
-  (puthash "pyo" "ぴょ" nskk--romaji-table)
+  ;; Small wa, ka, ke
+  (nskk-converter-add-rule "xwa" "ゎ")
+  (nskk-converter-add-rule "xka" "ゕ")
+  (nskk-converter-add-rule "xke" "ゖ")
 
-  (puthash "mya" "みゃ" nskk--romaji-table)
-  (puthash "myu" "みゅ" nskk--romaji-table)
-  (puthash "myo" "みょ" nskk--romaji-table)
+  ;; Long vowel mark
+  (nskk-converter-add-rule "-" "ー")
 
-  (puthash "rya" "りゃ" nskk--romaji-table)
-  (puthash "ryu" "りゅ" nskk--romaji-table)
-  (puthash "ryo" "りょ" nskk--romaji-table)
+  ;; Character classification for hatsuon/sokuon rules
+  ;; Hatsuon blockers: chars after 'n' that do NOT trigger ん
+  (nskk-prolog-set-index 'hatsuon-blocker 1 :hash)
+  (dolist (c '(?a ?i ?u ?e ?o ?y ?n ?'))
+    (nskk-prolog-assert (list (list 'hatsuon-blocker c))))
 
-  ;; Small vowels for explicit input
-  (puthash "la" "ぁ" nskk--romaji-table)
-  (puthash "li" "ぃ" nskk--romaji-table)
-  (puthash "lu" "ぅ" nskk--romaji-table)
-  (puthash "le" "ぇ" nskk--romaji-table)
-  (puthash "lo" "ぉ" nskk--romaji-table)
+  ;; Sokuon blockers: chars that cannot be doubled for っ
+  (nskk-prolog-set-index 'sokuon-blocker 1 :hash)
+  (dolist (c '(?a ?i ?u ?e ?o ?n))
+    (nskk-prolog-assert (list (list 'sokuon-blocker c))))
 
-  (puthash "xa" "ぁ" nskk--romaji-table)
-  (puthash "xi" "ぃ" nskk--romaji-table)
-  (puthash "xu" "ぅ" nskk--romaji-table)
-  (puthash "xe" "ぇ" nskk--romaji-table)
-  (puthash "xo" "ぉ" nskk--romaji-table)
+  ;; Hatsuon trigger: n followed by this char produces ん
+  (nskk-prolog-<- (hatsuon-trigger \?c)
+    (not (hatsuon-blocker \?c)))
 
-  ;; Small ya/yu/yo
-  (puthash "xya" "ゃ" nskk--romaji-table)
-  (puthash "xyu" "ゅ" nskk--romaji-table)
-  (puthash "xyo" "ょ" nskk--romaji-table)
-  (puthash "lya" "ゃ" nskk--romaji-table)
-  (puthash "lyu" "ゅ" nskk--romaji-table)
-  (puthash "lyo" "ょ" nskk--romaji-table)
+  ;; Sokuon eligible: doubled char produces っ
+  (nskk-prolog-<- (sokuon-eligible \?c)
+    (not (sokuon-blocker \?c)))
 
-  ;; Small tsu
-  (puthash "xtsu" "っ" nskk--romaji-table)
-  (puthash "xtu" "っ" nskk--romaji-table)
-  (puthash "ltsu" "っ" nskk--romaji-table)
-  (puthash "ltu" "っ" nskk--romaji-table)
+  ;; Auto-derive incomplete markers from populated hash table
+  (nskk-converter--populate-incomplete-markers))
 
-  ;; V row (ヴ-based, common in modern Japanese)
-  (puthash "va" "ゔぁ" nskk--romaji-table)
-  (puthash "vi" "ゔぃ" nskk--romaji-table)
-  (puthash "vu" "ゔ" nskk--romaji-table)
-  (puthash "ve" "ゔぇ" nskk--romaji-table)
-  (puthash "vo" "ゔぉ" nskk--romaji-table)
-  (puthash "vya" "ゔゃ" nskk--romaji-table)
-  (puthash "vyu" "ゔゅ" nskk--romaji-table)
-  (puthash "vyo" "ゔょ" nskk--romaji-table)
-
-  ;; Additional digraph combinations (dya/dyu/dyo)
-  (puthash "dya" "ぢゃ" nskk--romaji-table)
-  (puthash "dyu" "ぢゅ" nskk--romaji-table)
-  (puthash "dyo" "ぢょ" nskk--romaji-table)
-
-  ;; Zy-row (alternative for じゃ行)
-  (puthash "zya" "じゃ" nskk--romaji-table)
-  (puthash "zyu" "じゅ" nskk--romaji-table)
-  (puthash "zyo" "じょ" nskk--romaji-table)
-
-  ;; Ty-row (alternative for ちゃ行)
-  (puthash "tya" "ちゃ" nskk--romaji-table)
-  (puthash "tyu" "ちゅ" nskk--romaji-table)
-  (puthash "tyo" "ちょ" nskk--romaji-table)
-
-  ;; Sy-row (alternative for しゃ行)
-  (puthash "sya" "しゃ" nskk--romaji-table)
-  (puthash "syu" "しゅ" nskk--romaji-table)
-  (puthash "sye" "しぇ" nskk--romaji-table)
-  (puthash "syo" "しょ" nskk--romaji-table)
-
-  ;; Jy-row
-  (puthash "jya" "じゃ" nskk--romaji-table)
-  (puthash "jyu" "じゅ" nskk--romaji-table)
-  (puthash "jye" "じぇ" nskk--romaji-table)
-  (puthash "jyo" "じょ" nskk--romaji-table)
-
-  ;; Ty-row -ye extension
-  (puthash "tye" "ちぇ" nskk--romaji-table)
-
-  ;; Zy-row -ye extension
-  (puthash "zye" "じぇ" nskk--romaji-table)
-
-  ;; Dy-row -ye extension
-  (puthash "dye" "ぢぇ" nskk--romaji-table)
-
-  ;; Gy-row (additional)
-  (puthash "gye" "ぎぇ" nskk--romaji-table)
-
-  ;; Ky-row (additional)
-  (puthash "kye" "きぇ" nskk--romaji-table)
-
-  ;; Ny-row (additional)
-  (puthash "nye" "にぇ" nskk--romaji-table)
-
-  ;; Hy-row (additional)
-  (puthash "hye" "ひぇ" nskk--romaji-table)
-
-  ;; By-row (additional)
-  (puthash "bye" "びぇ" nskk--romaji-table)
-
-  ;; Py-row (additional)
-  (puthash "pye" "ぴぇ" nskk--romaji-table)
-
-  ;; My-row (additional)
-  (puthash "mye" "みぇ" nskk--romaji-table)
-
-  ;; Ry-row (additional)
-  (puthash "rye" "りぇ" nskk--romaji-table)
-
-  ;; Th-row (ティ etc.)
-  (puthash "tha" "てぁ" nskk--romaji-table)
-  (puthash "thi" "てぃ" nskk--romaji-table)
-  (puthash "thu" "てゅ" nskk--romaji-table)
-  (puthash "the" "てぇ" nskk--romaji-table)
-  (puthash "tho" "てょ" nskk--romaji-table)
-
-  ;; Dh-row (ディ etc.)
-  (puthash "dha" "でぁ" nskk--romaji-table)
-  (puthash "dhi" "でぃ" nskk--romaji-table)
-  (puthash "dhu" "でゅ" nskk--romaji-table)
-  (puthash "dhe" "でぇ" nskk--romaji-table)
-  (puthash "dho" "でょ" nskk--romaji-table)
-
-  ;; Wh-row (ウィ etc.)
-  (puthash "wha" "うぁ" nskk--romaji-table)
-  (puthash "whi" "うぃ" nskk--romaji-table)
-  (puthash "whu" "う" nskk--romaji-table)
-  (puthash "whe" "うぇ" nskk--romaji-table)
-  (puthash "who" "うぉ" nskk--romaji-table)
-  (puthash "wi" "ゐ" nskk--romaji-table)
-  (puthash "we" "ゑ" nskk--romaji-table)
-
-  ;; Small wa
-  (puthash "xwa" "ゎ" nskk--romaji-table)
-
-  ;; Small ka/ke
-  (puthash "xka" "ゕ" nskk--romaji-table)
-  (puthash "xke" "ゖ" nskk--romaji-table)
-
-  ;; Iteration mark
-  (puthash "-" "ー" nskk--romaji-table)
-
-  ;; Consonant-only (for partial match)
-  (puthash "k" :incomplete nskk--romaji-table)
-  (puthash "g" :incomplete nskk--romaji-table)
-  (puthash "s" :incomplete nskk--romaji-table)
-  (puthash "z" :incomplete nskk--romaji-table)
-  (puthash "t" :incomplete nskk--romaji-table)
-  (puthash "d" :incomplete nskk--romaji-table)
-  (puthash "n" :incomplete nskk--romaji-table)
-  (puthash "h" :incomplete nskk--romaji-table)
-  (puthash "b" :incomplete nskk--romaji-table)
-  (puthash "p" :incomplete nskk--romaji-table)
-  (puthash "m" :incomplete nskk--romaji-table)
-  (puthash "y" :incomplete nskk--romaji-table)
-  (puthash "r" :incomplete nskk--romaji-table)
-  (puthash "w" :incomplete nskk--romaji-table)
-  (puthash "v" :incomplete nskk--romaji-table)
-  (puthash "x" :incomplete nskk--romaji-table)
-  (puthash "c" :incomplete nskk--romaji-table)
-  (puthash "f" :incomplete nskk--romaji-table)
-  (puthash "j" :incomplete nskk--romaji-table)
-  (puthash "l" :incomplete nskk--romaji-table)
-
-  ;; Multi-char incomplete markers
-  (puthash "ch" :incomplete nskk--romaji-table)
-  (puthash "sh" :incomplete nskk--romaji-table)
-  (puthash "th" :incomplete nskk--romaji-table)
-  (puthash "dh" :incomplete nskk--romaji-table)
-  (puthash "wh" :incomplete nskk--romaji-table)
-  (puthash "ts" :incomplete nskk--romaji-table)
-  (puthash "ky" :incomplete nskk--romaji-table)
-  (puthash "gy" :incomplete nskk--romaji-table)
-  (puthash "sy" :incomplete nskk--romaji-table)
-  (puthash "zy" :incomplete nskk--romaji-table)
-  (puthash "ty" :incomplete nskk--romaji-table)
-  (puthash "dy" :incomplete nskk--romaji-table)
-  (puthash "ny" :incomplete nskk--romaji-table)
-  (puthash "hy" :incomplete nskk--romaji-table)
-  (puthash "by" :incomplete nskk--romaji-table)
-  (puthash "py" :incomplete nskk--romaji-table)
-  (puthash "my" :incomplete nskk--romaji-table)
-  (puthash "ry" :incomplete nskk--romaji-table)
-  (puthash "jy" :incomplete nskk--romaji-table)
-  (puthash "xt" :incomplete nskk--romaji-table)
-  (puthash "xy" :incomplete nskk--romaji-table)
-  (puthash "xk" :incomplete nskk--romaji-table)
-  (puthash "xw" :incomplete nskk--romaji-table)
-  (puthash "xts" :incomplete nskk--romaji-table)
-  (puthash "ly" :incomplete nskk--romaji-table)
-  (puthash "lt" :incomplete nskk--romaji-table)
-  (puthash "lts" :incomplete nskk--romaji-table)
-  (puthash "vy" :incomplete nskk--romaji-table))
-
-;; Initialize on load
-(nskk--initialize-romaji-table)
+(defun nskk-converter--populate-incomplete-markers ()
+  "Populate nskk--romaji-table with :incomplete for all proper romaji prefixes.
+Auto-derived from the complete romaji entries already in the table.
+This eliminates manual maintenance of prefix lists when adding new rules."
+  (let (keys)
+    (maphash (lambda (k _v) (when (stringp k) (push k keys)))
+             nskk--romaji-table)
+    (dolist (romaji keys)
+      (let ((len (length romaji)))
+        (dotimes (i (1- len))
+          (let ((prefix (substring romaji 0 (1+ i))))
+            (unless (gethash prefix nskk--romaji-table)
+              (puthash prefix :incomplete nskk--romaji-table))))))))
 
 (define-inline nskk-converter-lookup (romaji)
   "Look up ROMAJI in conversion table.
@@ -429,6 +411,29 @@ This is a convenience wrapper for nskk-converter-convert."
    (t
     (nskk-convert-romaji--internal (downcase romaji)))))
 
+(defun nskk-convert-n--internal (remaining)
+  "Handle all ん-producing cases when REMAINING starts with the character n.
+Returns (kana . rest) cons cell if ん is produced, or nil to fall through
+to normal table-driven conversion (e.g. for \"na\" -> \"な\")."
+  (let ((len (length remaining)))
+    (cond
+     ;; Standalone \"n\" at end of input
+     ((= len 1)
+      (cons "ん" nil))
+     ;; \"nn\" sequence: double-n always produces ん
+     ((= (aref remaining 1) ?n)
+      (if (= len 2)
+          (cons "ん" nil)
+        (cons "ん" (substring remaining 1))))
+     ;; \"n'\" sequence: n followed by single quote (ASCII 39)
+     ((= (aref remaining 1) 39)
+      (cons "ん" (if (> len 2) (substring remaining 2) nil)))
+     ;; \"n\" before a consonant (checked via Prolog hatsuon-trigger rule)
+     ((nskk-prolog-query-one `(hatsuon-trigger ,(aref remaining 1)))
+      (cons "ん" (substring remaining 1)))
+     ;; n followed by vowel/y/etc: fall through to table lookup (\"na\"->\"な\")
+     (t nil))))
+
 (defun nskk-convert-romaji--internal (input)
   "Internal romaji conversion for INPUT string."
   (let ((result nil)
@@ -436,43 +441,22 @@ This is a convenience wrapper for nskk-converter-convert."
         (iteration 0)
         (len 0))
     (while (and remaining (> (setq len (length remaining)) 0) (< iteration 100))
-      (let ((c0 (aref remaining 0)))
+      (let* ((c0 (aref remaining 0))
+             (n-result (when (= c0 ?n) (nskk-convert-n--internal remaining))))
         (cond
          ;; Double consonant (sokuon): same ASCII consonant repeated, not vowel/n
          ((and (> len 1)
-               (>= c0 ?a) (<= c0 ?z)
-               (not (memq c0 '(?a ?i ?u ?e ?o ?n)))
-               (= c0 (aref remaining 1)))
+               (= c0 (aref remaining 1))
+               (nskk-prolog-query-one `(sokuon-eligible ,c0)))
           (setq result (concat result "っ"))
           (setq remaining (substring remaining 1)))
 
-         ;; Standalone 'n' at end of string
-         ((and (= len 1) (= c0 ?n))
-          (setq result (concat result "ん"))
-          (setq remaining nil))
+         ;; n-prefix producing ん (falls through to table if n-result is nil)
+         ((and (= c0 ?n) n-result)
+          (setq result (concat result (car n-result)))
+          (setq remaining (cdr n-result)))
 
-         ;; "nn" at end of string -> "ん"
-         ((and (= c0 ?n) (= len 2) (= (aref remaining 1) ?n))
-          (setq result (concat result "ん"))
-          (setq remaining nil))
-
-         ;; "nn" followed by more characters -> "ん" + continue from second n
-         ((and (= c0 ?n) (> len 2) (= (aref remaining 1) ?n))
-          (setq result (concat result "ん"))
-          (setq remaining (substring remaining 1)))
-
-         ;; "n'" -> "ん"  (39 = ASCII code for single quote)
-         ((and (= c0 ?n) (> len 1) (= (aref remaining 1) 39))
-          (setq result (concat result "ん"))
-          (setq remaining (if (> len 2) (substring remaining 2) nil)))
-
-         ;; 'n' before consonant (not vowel, not y, not n, not quote)
-         ((and (= c0 ?n) (> len 1)
-               (not (memq (aref remaining 1) '(?a ?i ?u ?e ?o ?y ?n 39))))
-          (setq result (concat result "ん"))
-          (setq remaining (substring remaining 1)))
-
-         ;; Normal table-driven conversion
+         ;; Normal table-driven conversion (including \"na\", \"ni\", etc.)
          (t
           (let ((conv (nskk-converter-convert remaining)))
             (if (or (null conv) (eq (car conv) :incomplete))
@@ -504,159 +488,25 @@ If incomplete, returns (:incomplete . romaji)."
 
 (defun nskk-converter-get-possible-completions (romaji)
   "Get list of possible completions for ROMAJI prefix.
-Returns list of (romaji . kana) pairs."
+Returns list of (romaji . kana) pairs using Prolog trie prefix search."
   (when (stringp romaji)
-    (let ((completions '()))
-      (maphash
-       (lambda (key value)
-         (when (and (string-prefix-p romaji key)
-                    (stringp value))
-           (push (cons key value) completions)))
-       nskk--romaji-table)
-      (nreverse completions))))
+    (nskk-prolog-trie-prefix-search 'romaji-to-kana 2 romaji)))
 
 (defun nskk-converter-add-rule (romaji kana)
-  "Add ROMAJI -> KANA mapping to the conversion table.
-KANA can be a string or `:incomplete' for partial match markers.
-Overrides existing mapping if ROMAJI already exists."
-  (puthash romaji kana nskk--romaji-table))
+  "Add ROMAJI -> KANA mapping.
+Adds to both Prolog database and hash table."
+  (puthash romaji kana nskk--romaji-table)
+  (when (stringp kana)
+    (nskk-prolog-assert (list (list 'romaji-to-kana romaji kana)))))
 
 (defun nskk-converter-remove-rule (romaji)
-  "Remove ROMAJI from the conversion table.
-Returns t if the rule existed and was removed, nil otherwise."
-  (remhash romaji nskk--romaji-table))
+  "Remove ROMAJI from conversion table."
+  (prog1 (remhash romaji nskk--romaji-table)
+    (nskk-prolog-retract (list 'romaji-to-kana romaji '\?_))))
 
 (defun nskk-converter-get-rule (romaji)
   "Return the KANA mapped to ROMAJI, or nil if not found."
   (gethash romaji nskk--romaji-table))
-
-;;; Conversion Lifecycle Operations
-
-(defun nskk-converter-start-conversion (state &optional candidates)
-  "Start conversion process in STATE.
-Initializes conversion state with CANDIDATES (or empty list if nil).
-Sets henkan-position and prepares for candidate selection.
-Returns the updated state.
-
-This function:
-- Sets henkan-position to mark conversion start point
-- Initializes candidates list (or uses provided CANDIDATES)
-- Resets current-index to 0
-- Returns updated state
-
-Edge cases:
-- Empty input buffer: returns state unchanged with nil henkan-position
-- Nil state: returns nil
-- No candidates: sets empty candidates list"
-  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
-    (let ((input-buffer (when (fboundp 'nskk-state-input-buffer)
-                          (funcall #'nskk-state-input-buffer state))))
-      ;; Only start conversion if there's input
-      (when (and input-buffer (> (length input-buffer) 0))
-        ;; Set henkan-position to mark where conversion started
-        (when (fboundp 'nskk-state-set)
-          (funcall #'nskk-state-set state 'henkan-position 0)
-          ;; Set candidates (use provided or empty list)
-          (funcall #'nskk-state-set state 'candidates (or candidates '()))
-          ;; Reset index to first candidate
-          (funcall #'nskk-state-set state 'current-index 0))
-        state))))
-
-(defun nskk-converter-commit-conversion (state)
-  "Commit the current conversion in STATE.
-Finalizes the selected candidate and clears conversion state.
-Returns the updated state.
-
-This function:
-- Gets the currently selected candidate
-- Moves candidate to converted-buffer
-- Clears input-buffer
-- Clears candidates and current-index
-- Resets henkan-position to nil
-
-Edge cases:
-- No active conversion (nil henkan-position): returns state unchanged
-- No candidates: returns state unchanged
-- Invalid state: returns nil"
-  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
-    (let ((henkan-pos (when (fboundp 'nskk-state-henkan-position)
-                        (funcall #'nskk-state-henkan-position state)))
-          (candidates (when (fboundp 'nskk-state-candidates)
-                        (funcall #'nskk-state-candidates state)))
-          (current-idx (when (fboundp 'nskk-state-current-index)
-                         (funcall #'nskk-state-current-index state))))
-      ;; Only commit if there's an active conversion with candidates
-      (when (and henkan-pos candidates (> (length candidates) 0))
-        (let ((selected-candidate (nth current-idx candidates)))
-          ;; Move selected candidate to converted-buffer
-          (when (and selected-candidate (fboundp 'nskk-state-set))
-            (let ((current-converted (when (fboundp 'nskk-state-converted-buffer)
-                                       (funcall #'nskk-state-converted-buffer state))))
-              (funcall #'nskk-state-set state 'converted-buffer
-                       (concat (or current-converted "") selected-candidate))))
-          ;; Clear conversion state
-          (when (fboundp 'nskk-state-set)
-            (funcall #'nskk-state-set state 'input-buffer "")
-            (funcall #'nskk-state-set state 'candidates nil)
-            (funcall #'nskk-state-set state 'current-index 0)
-            (funcall #'nskk-state-set state 'henkan-position nil))
-          state)))))
-
-(defun nskk-converter-cancel-conversion (state &optional original-input)
-  "Cancel the current conversion in STATE.
-Restores ORIGINAL-INPUT if provided, otherwise clears conversion state.
-Returns the updated state.
-
-This function:
-- Restores input-buffer to ORIGINAL-INPUT (or clears if nil)
-- Clears candidates and current-index
-- Resets henkan-position to nil
-
-Edge cases:
-- No active conversion: still clears state (idempotent)
-- Nil state: returns nil"
-  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
-    ;; Restore or clear input buffer
-    (when (fboundp 'nskk-state-set)
-      (funcall #'nskk-state-set state 'input-buffer (or original-input ""))
-      ;; Clear candidates
-      (funcall #'nskk-state-set state 'candidates nil)
-      ;; Reset index
-      (funcall #'nskk-state-set state 'current-index 0)
-      ;; Clear henkan-position
-      (funcall #'nskk-state-set state 'henkan-position nil))
-    state))
-
-(defun nskk-converter-in-conversion-p (state)
-  "Check if STATE is currently in conversion mode.
-Returns non-nil if conversion is active (henkan-position is set and has input)."
-  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
-    (let ((henkan-pos (when (fboundp 'nskk-state-henkan-position)
-                        (funcall #'nskk-state-henkan-position state)))
-          (input (when (fboundp 'nskk-state-input-buffer)
-                   (funcall #'nskk-state-input-buffer state))))
-      (and henkan-pos
-           input
-           (> (length input) 0)))))
-
-(defun nskk-converter-has-candidates-p (state)
-  "Check if STATE has conversion candidates available.
-Returns non-nil if candidates list is non-empty."
-  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
-    (let ((candidates (when (fboundp 'nskk-state-candidates)
-                        (funcall #'nskk-state-candidates state))))
-      (and candidates (> (length candidates) 0)))))
-
-(defun nskk-converter-get-current-candidate (state)
-  "Get the currently selected candidate from STATE.
-Returns the candidate at current-index, or nil if no candidates."
-  (when (and state (fboundp 'nskk-state-p) (funcall #'nskk-state-p state))
-    (let ((candidates (when (fboundp 'nskk-state-candidates)
-                        (funcall #'nskk-state-candidates state)))
-          (idx (when (fboundp 'nskk-state-current-index)
-                 (funcall #'nskk-state-current-index state))))
-      (when (and candidates idx (< idx (length candidates)))
-        (nth idx candidates)))))
 
 (defun nskk-converter-register-style (style init-fn)
   "Register INIT-FN as the initialization function for STYLE.
@@ -688,6 +538,11 @@ RULES is a list of (romaji kana) pairs."
                  rules))
      (nskk-converter-register-style ',name
        ',(intern (format "nskk--init-%s-rules" name)))))
+
+;; Initialize on load (placed after all function definitions to ensure
+;; nskk-converter-add-rule and nskk-converter--populate-incomplete-markers
+;; are defined before they are called during initialization)
+(nskk--initialize-romaji-table)
 
 (provide 'nskk-converter)
 

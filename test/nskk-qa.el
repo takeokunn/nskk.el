@@ -1,8 +1,8 @@
-;;; nskk-layer-qa.el --- NSKK QA Layer Interface  -*- lexical-binding: t; -*-
+;;; nskk-qa.el --- NSKK QA Interface  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -568,6 +568,6 @@ Called during NSKK initialization."
   (add-hook 'nskk-after-config-change-hook #'nskk-qa-measure-coverage)
   (message "[NSKK QA] Layer initialized"))
 
-(provide 'nskk-layer-qa)
+(provide 'nskk-qa)
 
-;;; nskk-layer-qa.el ends here
+;;; nskk-qa.el ends here

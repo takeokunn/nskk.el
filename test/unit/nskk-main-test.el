@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
 
 ;; This file is part of NSKK.
@@ -268,10 +268,6 @@
 (nskk-deftest-unit main-provides-feature
   "Test that nskk provides its feature."
   (should (featurep 'nskk)))
-
-(nskk-deftest-unit main-requires-custom
-  "Test that nskk-custom is loaded."
-  (should (featurep 'nskk-custom)))
 
 (nskk-deftest-unit main-requires-state
   "Test that nskk-state is loaded."

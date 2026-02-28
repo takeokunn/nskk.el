@@ -4,7 +4,7 @@
 
 (require 'ert)
 (require 'nskk-state)
-(require 'nskk-input-commands)
+(require 'nskk-input)
 
 ;;; Code:
 

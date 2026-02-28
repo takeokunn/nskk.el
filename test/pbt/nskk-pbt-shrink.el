@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: Japanese, input, method, test, property-based, shrinking
 ;; Homepage: https://github.com/takeokunn/nskk.el
 

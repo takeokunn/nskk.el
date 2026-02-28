@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: Japanese, input, method, test, framework
 ;; Homepage: https://github.com/takeokunn/nskk.el
 
@@ -39,7 +39,7 @@
 ;;; Code:
 
 (require 'ert)
-(require 'nskk-dict-struct)
+(require 'nskk-dictionary)
 (eval-when-compile (require 'cl-lib))
 
 

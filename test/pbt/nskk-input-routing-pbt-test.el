@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n, testing, property-based
@@ -42,7 +42,7 @@
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
 (require 'nskk-state)
-(require 'nskk-input-commands)
+(require 'nskk-input)
 
 ;;;;
 ;;;; Helper Macros
@@ -52,7 +52,6 @@
   "Execute BODY with a fresh state initialized to INITIAL-MODE."
   (declare (indent 1))
   `(let ((nskk-current-state (nskk-state-create ,initial-mode))
-         (nskk-converting-active nil)
          (nskk--romaji-buffer ""))
      ,@body))
 

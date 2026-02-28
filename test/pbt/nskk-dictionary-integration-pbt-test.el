@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test, property-based
 ;; Homepage: https://github.com/takeokunn/nskk.el
 
@@ -46,8 +46,7 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
-(require 'nskk-dict-io)
-(require 'nskk-dict-struct)
+(require 'nskk-dictionary)
 
 
 ;;;;
@@ -131,7 +130,7 @@
          (failures nil))
     (dotimes (_ runs)
       (let* ((key (nskk-pbt--random-choice nskk-pbt--known-dict-keys))
-             (result (nskk-dict-struct-lookup index key)))
+             (result (nskk-dict--struct-lookup index key)))
         (unless (and result
                      (nskk-dict-entry-p result)
                      (nskk-dict-entry-candidates result)
@@ -155,7 +154,7 @@
          (failures nil))
     (dotimes (_ runs)
       (let* ((key (nskk-pbt--generate-unknown-key))
-             (result (nskk-dict-struct-lookup index key)))
+             (result (nskk-dict--struct-lookup index key)))
         (when result
           (push (list :key key :result result) failures))))
     (when failures

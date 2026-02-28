@@ -1,15 +1,15 @@
-;;; nskk-input-commands-test.el --- Input commands tests -*- lexical-binding: t; -*-
+;;; nskk-input-test.el --- Input and henkan tests -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
 
 ;; This file is part of NSKK.
 
 ;;; Commentary:
 
-;; Comprehensive tests for nskk-input-commands.el covering:
+;; Comprehensive tests for nskk-input.el and nskk-henkan.el covering:
 ;; - Character insertion in latin mode
 ;; - Input conversion to kana
 ;; - Mode-aware command dispatch
@@ -21,7 +21,7 @@
 ;;; Code:
 
 (require 'ert)
-(require 'nskk-input-commands)
+(require 'nskk-input)
 (require 'nskk-state)
 (require 'nskk-converter)
 (require 'nskk-test-framework)
@@ -34,7 +34,6 @@
   "Execute BODY with a fresh state initialized to INITIAL-MODE."
   (declare (indent 1))
   `(let ((nskk-current-state (nskk-state-create ,initial-mode))
-         (nskk-converting-active nil)
          (nskk--conversion-overlay nil))
      ,@body))
 
@@ -174,9 +173,9 @@ Ensures the standard romaji table is loaded regardless of prior test state."
     (should-not (nskk-converting-p))))
 
 (nskk-deftest-unit input-commands-converting-p-true
-  "Test converting-p returns non-nil when converting."
+  "Test converting-p returns non-nil when henkan-phase is active."
   (nskk-input-test-with-state 'hiragana
-    (setq nskk-converting-active t)
+    (nskk-state-set-henkan-phase nskk-current-state 'active)
     (should (nskk-converting-p))))
 
 ;;;
@@ -279,18 +278,18 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 ;;;
 
 (nskk-deftest-unit input-commands-rollback-clears-active
-  "Test that rollback clears converting-active."
+  "Test that rollback clears converting state."
   (nskk-input-test-with-state 'hiragana
-    (setq nskk-converting-active t)
+    (nskk-state-set-henkan-phase nskk-current-state 'active)
     (nskk-rollback-conversion)
-    (should-not nskk-converting-active)))
+    (should-not (nskk-converting-p))))
 
 (nskk-deftest-unit input-commands-rollback-noop-when-not-converting
   "Test that rollback does nothing when not converting."
   (nskk-input-test-with-state 'hiragana
     ;; Should not error
     (nskk-rollback-conversion)
-    (should-not nskk-converting-active)))
+    (should-not (nskk-converting-p))))
 
 ;;;
 ;;; Cancel Conversion Tests
@@ -301,7 +300,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
   (nskk-input-test-with-state 'hiragana
     ;; Should not error
     (nskk-cancel-conversion)
-    (should-not nskk-converting-active)))
+    (should-not (nskk-converting-p))))
 
 ;;;
 ;;; Convert-or-commit Tests
@@ -316,10 +315,10 @@ Ensures the standard romaji table is loaded regardless of prior test state."
       (insert "test")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       ;; When converting, should call commit which clears active.
       (nskk-convert-or-commit)
-      (should-not nskk-converting-active))))
+      (should-not (nskk-converting-p)))))
 
 ;;;
 ;;; Next/Previous Candidate Guard Tests
@@ -344,7 +343,6 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 (nskk-deftest-unit input-commands-self-insert-requires-state
   "Test that self-insert handles missing state gracefully."
   (let ((nskk-current-state nil)
-        (nskk-converting-active nil)
         (last-command-event ?a))
     ;; Should not error even without state
     (with-temp-buffer
@@ -407,36 +405,32 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 (nskk-deftest-unit input-commands-convert-when-not-initialized
   "Test convert handles uninitialized state gracefully."
   (let ((nskk-current-state nil)
-        (nskk-converting-active nil)
         (nskk--conversion-start-marker nil))
     ;; Should not error - nskk-convert checks nskk--has-preedit which uses marker
     (with-temp-buffer
       (nskk-convert)
       ;; When marker is nil, nskk--has-preedit returns nil, so convert is a no-op
-      (should-not nskk-converting-active))))
+      (should-not (nskk-converting-p)))))
 
 (nskk-deftest-unit input-commands-cancel-when-not-initialized
   "Test cancel handles uninitialized state gracefully."
-  (let ((nskk-current-state nil)
-        (nskk-converting-active nil))
+  (let ((nskk-current-state nil))
     ;; Should not error
     (nskk-cancel-conversion)))
 
 (nskk-deftest-unit input-commands-commit-current-guards
   "Test commit-current has proper guards."
-  (let ((nskk-current-state nil)
-        (nskk-converting-active nil))
+  (let ((nskk-current-state nil))
     ;; Should not error when not converting
     (nskk-commit-current)
-    (should-not nskk-converting-active)))
+    (should-not (nskk-converting-p))))
 
 (nskk-deftest-unit input-commands-rollback-guards
   "Test rollback has proper guards."
-  (let ((nskk-current-state nil)
-        (nskk-converting-active nil))
+  (let ((nskk-current-state nil))
     ;; Should not error
     (nskk-rollback-conversion)
-    (should-not nskk-converting-active)))
+    (should-not (nskk-converting-p))))
 
 ;;;
 ;;; Error Handling Tests: Mode Queries With Missing State
@@ -452,20 +446,19 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 
 (nskk-deftest-unit input-commands-converting-p-with-nil-state
   "Test converting-p returns nil safely when state is uninitialized."
-  (let ((nskk-current-state nil)
-        (nskk-converting-active nil))
+  (let ((nskk-current-state nil))
     ;; Should return nil when not converting
     (should (not (nskk-converting-p)))))
 
-(nskk-deftest-unit input-commands-converting-p-reflects-flag
-  "Test converting-p correctly reflects nskk-converting-active."
+(nskk-deftest-unit input-commands-converting-p-reflects-henkan-phase
+  "Test converting-p correctly reflects nskk-state-henkan-phase."
   (nskk-input-test-with-state 'hiragana
     (should (not (nskk-converting-p)))
 
-    (setq nskk-converting-active t)
+    (nskk-state-set-henkan-phase nskk-current-state 'active)
     (should (nskk-converting-p))
 
-    (setq nskk-converting-active nil)
+    (nskk-state-set-henkan-phase nskk-current-state nil)
     (should (not (nskk-converting-p)))))
 
 ;;;
@@ -503,7 +496,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 (nskk-deftest-unit input-commands-next-candidate-with-no-candidates
   "Test next-candidate guards against missing candidates."
   (nskk-input-test-with-state 'hiragana
-    (setq nskk-converting-active t)
+    (nskk-state-set-henkan-phase nskk-current-state 'active)
     ;; next-candidate internally checks converting-p and calls nskk--select-candidate
     ;; which accesses state's candidates - should not error if state exists
     (condition-case err
@@ -514,7 +507,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 (nskk-deftest-unit input-commands-previous-candidate-with-no-candidates
   "Test previous-candidate guards against missing candidates."
   (nskk-input-test-with-state 'hiragana
-    (setq nskk-converting-active t)
+    (nskk-state-set-henkan-phase nskk-current-state 'active)
     ;; previous-candidate internally checks converting-p and calls nskk--select-candidate
     ;; which accesses state's candidates - should not error if state exists
     (condition-case err
@@ -790,7 +783,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
       (insert "test")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-commit-current)
       ;; Marker should be cleared
       (should-not (nskk--conversion-start-active-p)))))
@@ -801,7 +794,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
     (nskk-input-test-with-state 'hiragana
       (nskk--set-conversion-start-marker (point-min))
       (insert "test")
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-rollback-conversion)
       ;; Marker should be cleared
       (should-not (nskk--conversion-start-active-p)))))
@@ -817,7 +810,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
       (insert "test")
       ;; No marker set, so start-conversion should do nothing
       (nskk-start-conversion)
-      (should-not nskk-converting-active))))
+      (should-not (nskk-converting-p)))))
 
 (nskk-deftest-unit input-commands-start-conversion-no-candidates
   "Test start-conversion triggers registration when no candidates found.
@@ -849,7 +842,7 @@ When registration is cancelled (empty input), preedit is left as-is."
         ;; Should have replaced preedit with registered word
         (should (equal (buffer-string) "registered-word"))
         ;; Should NOT be in conversion mode
-        (should-not nskk-converting-active)))))
+        (should-not (nskk-converting-p))))))
 
 (nskk-deftest-unit input-commands-start-conversion-with-candidates
   "Test start-conversion enters conversion mode when candidates found."
@@ -863,7 +856,7 @@ When registration is cancelled (empty input), preedit is left as-is."
                  (lambda (_key &optional _type _limit) '("result1" "result2"))))
         (nskk-start-conversion)
         ;; Should enter conversion mode
-        (should nskk-converting-active)
+        (should (nskk-converting-p))
         ;; Should have set candidates in state
         (should (equal (nskk-state-candidates nskk-current-state)
                        '("result1" "result2")))
@@ -962,7 +955,6 @@ When registration is cancelled (empty input), preedit is left as-is."
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
       (nskk-state-set-henkan-phase nskk-current-state 'active)
-      (setq nskk-converting-active t)
       (nskk-commit-current)
       ;; henkan-phase should be reset
       (should (null (nskk-state-henkan-phase nskk-current-state))))))
@@ -975,7 +967,7 @@ When registration is cancelled (empty input), preedit is left as-is."
       (insert "test")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (setq nskk--henkan-count 3)
       (nskk-commit-current)
       (should (= nskk--henkan-count 0)))))
@@ -990,7 +982,7 @@ When registration is cancelled (empty input), preedit is left as-is."
     (nskk-input-test-with-state 'hiragana
       (nskk--set-conversion-start-marker (point-min))
       (insert "\u25BCtest")
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-rollback-conversion)
       ;; ▼ marker should be removed
       (should-not (string-match-p "\u25BC" (buffer-string)))
@@ -1003,7 +995,7 @@ When registration is cancelled (empty input), preedit is left as-is."
     (nskk-input-test-with-state 'hiragana
       (nskk--set-conversion-start-marker (point-min))
       (insert "\u25BDtest")
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-rollback-conversion)
       ;; ▽ marker should be removed
       (should-not (string-match-p "\u25BD" (buffer-string))))))
@@ -1028,6 +1020,6 @@ When registration is cancelled (empty input), preedit is left as-is."
   (should (null (nskk-detect-okurigana-char ?1)))
   (should (null (nskk-detect-okurigana-char ? ))))
 
-(provide 'nskk-input-commands-test)
+(provide 'nskk-input-test)
 
-;;; nskk-input-commands-test.el ends here
+;;; nskk-input-test.el ends here

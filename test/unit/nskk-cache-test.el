@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, cache, test
 
 ;; This file is part of NSKK.

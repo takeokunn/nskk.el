@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
 
 ;; This file is part of NSKK.
@@ -18,8 +18,7 @@
 ;;; Code:
 
 (require 'ert)
-(require 'nskk-layer-application)
-(require 'nskk-input-commands)
+(require 'nskk-input)
 (require 'nskk-keymap)
 (require 'nskk-state)
 (require 'nskk-converter)
@@ -34,7 +33,6 @@
   (declare (indent 1))
   `(with-temp-buffer
      (let ((nskk-current-state (nskk-state-create ,mode))
-           (nskk-converting-active nil)
            (nskk--conversion-overlay nil)
            (nskk--romaji-buffer "")
            (nskk-converter-auto-start-henkan t))
@@ -209,11 +207,11 @@
       (let ((last-command-event ? ))
         (nskk-handle-space))
       ;; Should be in conversion mode
-      (should nskk-converting-active)
+      (should (nskk-converting-p))
       ;; Commit with return (ddskk: commit + newline)
       (nskk-handle-return)
       ;; Should have committed the first candidate
-      (should-not nskk-converting-active)
+      (should-not (nskk-converting-p))
       ;; ddskk handle-return commits AND inserts newline
       (should (equal (buffer-string) "亜\n")))))
 
@@ -228,10 +226,10 @@
                  (lambda (_k &optional _t _l) '("result"))))
         (let ((last-command-event ? ))
           (nskk-handle-space)))
-      (should nskk-converting-active)
+      (should (nskk-converting-p))
       ;; Cancel
       (nskk-cancel-conversion)
-      (should-not nskk-converting-active))))
+      (should-not (nskk-converting-p)))))
 
 (nskk-deftest-integration space-without-preedit-inserts-space
   "Test SPC inserts literal space when no preedit."
@@ -262,10 +260,10 @@
                (lambda (_k &optional _t _l) '("result"))))
       (let ((last-command-event ? ))
         (nskk-handle-space)))
-    (should nskk-converting-active)
+    (should (nskk-converting-p))
     (nskk-handle-return)
     ;; All state should be clear
-    (should-not nskk-converting-active)
+    (should-not (nskk-converting-p))
     (should-not (nskk--conversion-start-active-p))
     (should (equal nskk--romaji-buffer ""))
     (should (null (nskk-state-candidates nskk-current-state)))))

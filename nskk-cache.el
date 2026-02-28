@@ -1,8 +1,8 @@
 ;;; nskk-cache.el --- Cache mechanism for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -24,35 +24,27 @@
 
 ;;; Commentary:
 
-;; このファイルはNSKKのキャッシュ機構を実装します。
+;; Cache mechanism for the NSKK dictionary search engine.
 ;;
-;; サポートするキャッシュアルゴリズム:
-;; - LRU (Least Recently Used): 最近使用されていないものを削除
-;; - LFU (Least Frequently Used): 使用頻度が低いものを削除
+;; Supported algorithms (selectable at creation time):
+;; - LRU (Least Recently Used): evicts the least recently accessed entry
+;; - LFU (Least Frequently Used): evicts the least frequently accessed entry
 ;;
-;; 特徴:
-;; - O(1) get/put操作（ハッシュテーブル + 双方向リンクリスト）
-;; - 容量管理（エントリ数ベース）
-;; - 自動エビクション
-;; - キャッシュヒット率測定
-;; - パターンマッチ無効化
+;; Both algorithms provide O(1) get and put via hash table + doubly-linked
+;; list.  Capacity is managed by entry count with automatic eviction.
+;; Hit-rate statistics are collected and accessible via `nskk-cache-stats'.
 ;;
-;; パフォーマンス目標:
-;; - get操作: O(1), < 0.1ms
-;; - put操作: O(1), < 0.1ms
-;; - キャッシュヒット時の検索: < 10ms
+;; Performance targets:
+;; - get: O(1), < 0.1ms
+;; - put: O(1), < 0.1ms
+;; - cache-hit search: < 10ms
 ;;
-;; 使用例:
+;; Usage:
 ;;
-;;   (require 'nskk-cache)
-;;
-;;   ;; LRUキャッシュ作成
 ;;   (setq cache (nskk-cache-create 'lru 1000))
-;;
-;;   ;; データ追加
-;;   (nskk-cache-put cache "key1" "value1")
-;;
-;;   ;; データ取得
+;;   (nskk-cache-put cache "key" "value")
+;;   (nskk-cache-get cache "key")  ; => "value"
+;;   (nskk-cache-stats cache)      ; => (:hits N :misses N :hit-rate R ...)
 ;;   (nskk-cache-get cache "key1")
 ;;   ;; => "value1"
 ;;
@@ -63,7 +55,54 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'nskk-custom)
+
+(defgroup nskk-cache nil
+  "Cache settings."
+  :prefix "nskk-cache-"
+  :group 'nskk)
+
+(defcustom nskk-cache-default-capacity 1000
+  "Default cache capacity for LRU/LFU caches."
+  :type 'integer
+  :group 'nskk-cache)
+
+(defcustom nskk-cache-strategy 'lru
+  "Cache eviction strategy.
+\\='lru means Least Recently Used.
+\\='lfu means Least Frequently Used."
+  :type '(choice (const :tag "LRU" lru)
+                 (const :tag "LFU" lfu))
+  :group 'nskk-cache)
+
+;;; Cache type dispatch macros
+
+(defmacro nskk-cache-dispatch (cache op &rest args)
+  "Dispatch OP on CACHE to LRU or LFU implementation.
+OP is a literal symbol (unquoted) naming the operation (e.g., get, put).
+ARGS are passed through to the implementation function."
+  (declare (indent 2) (debug t))
+  (let ((c (make-symbol "cache"))
+        (lru-fn (intern (format "nskk-cache-lru-%s" op)))
+        (lfu-fn (intern (format "nskk-cache-lfu-%s" op))))
+    `(let ((,c ,cache))
+       (cond
+        ((nskk-cache-lru-p ,c) (,lru-fn ,c ,@args))
+        ((nskk-cache-lfu-p ,c) (,lfu-fn ,c ,@args))
+        (t (error "Invalid cache type"))))))
+
+(defmacro nskk-cache-field (cache field &optional default)
+  "Get FIELD from CACHE, dispatching to LRU or LFU accessor.
+FIELD is a literal symbol naming the struct slot (e.g., capacity, size).
+DEFAULT is returned for unknown cache types (defaults to 0)."
+  (declare (debug t))
+  (let ((c (make-symbol "cache"))
+        (lru-fn (intern (format "nskk-cache-lru-%s" field)))
+        (lfu-fn (intern (format "nskk-cache-lfu-%s" field))))
+    `(let ((,c ,cache))
+       (cond
+        ((nskk-cache-lru-p ,c) (,lru-fn ,c))
+        ((nskk-cache-lfu-p ,c) (,lfu-fn ,c))
+        (t ,(or default 0))))))
 
 ;;; LRUキャッシュ用データ構造
 
@@ -384,55 +423,30 @@ ARGS can be TYPE and CAPACITY positional, or keyword :type and :size/:capacity."
 ;;;###autoload
 (defun nskk-cache-get (cache key)
   "Get value for KEY from CACHE."
-  (cond
-   ((nskk-cache-lru-p cache)
-    (nskk-cache-lru-get cache key))
-   ((nskk-cache-lfu-p cache)
-    (nskk-cache-lfu-get cache key))
-   (t (error "Invalid cache type"))))
+  (nskk-cache-dispatch cache get key))
 
 ;;;###autoload
 (defun nskk-cache-put (cache key value)
   "Put KEY and VALUE pair into CACHE."
-  (cond
-   ((nskk-cache-lru-p cache)
-    (nskk-cache-lru-put cache key value))
-   ((nskk-cache-lfu-p cache)
-    (nskk-cache-lfu-put cache key value))
-   (t (error "Invalid cache type"))))
+  (nskk-cache-dispatch cache put key value))
 
 ;;;###autoload
 (defun nskk-cache-invalidate (cache key)
   "Invalidate KEY in CACHE.
 Return t if KEY was found and removed, nil otherwise."
-  (cond
-   ((nskk-cache-lru-p cache)
-    (nskk-cache-lru-invalidate cache key))
-   ((nskk-cache-lfu-p cache)
-    (nskk-cache-lfu-invalidate cache key))
-   (t (error "Invalid cache type"))))
+  (nskk-cache-dispatch cache invalidate key))
 
 ;;;###autoload
 (defun nskk-cache-clear (cache)
   "Clear all entries from CACHE."
-  (cond
-   ((nskk-cache-lru-p cache)
-    (nskk-cache-lru-clear cache))
-   ((nskk-cache-lfu-p cache)
-    (nskk-cache-lfu-clear cache))
-   (t (error "Invalid cache type"))))
+  (nskk-cache-dispatch cache clear))
 
 ;;;###autoload
 (defun nskk-cache-invalidate-pattern (cache pattern)
   "Invalidate all keys matching PATTERN in CACHE.
 Return a list of invalidated keys."
   (let ((deleted-keys nil)
-        (hash-table (cond
-                     ((nskk-cache-lru-p cache)
-                      (nskk-cache-lru-hash cache))
-                     ((nskk-cache-lfu-p cache)
-                      (nskk-cache-lfu-hash cache))
-                     (t (error "Invalid cache type")))))
+        (hash-table (nskk-cache-field cache hash)))
     (maphash (lambda (key _value)
                (when (string-match-p pattern key)
                  (nskk-cache-invalidate cache key)
@@ -446,18 +460,10 @@ Return a list of invalidated keys."
   (let* ((type (cond ((nskk-cache-lru-p cache) 'lru)
                      ((nskk-cache-lfu-p cache) 'lfu)
                      (t 'unknown)))
-         (capacity (cond ((nskk-cache-lru-p cache) (nskk-cache-lru-capacity cache))
-                        ((nskk-cache-lfu-p cache) (nskk-cache-lfu-capacity cache))
-                        (t 0)))
-         (size (cond ((nskk-cache-lru-p cache) (nskk-cache-lru-size cache))
-                    ((nskk-cache-lfu-p cache) (nskk-cache-lfu-size cache))
-                    (t 0)))
-         (hits (cond ((nskk-cache-lru-p cache) (nskk-cache-lru-hits cache))
-                    ((nskk-cache-lfu-p cache) (nskk-cache-lfu-hits cache))
-                    (t 0)))
-         (misses (cond ((nskk-cache-lru-p cache) (nskk-cache-lru-misses cache))
-                      ((nskk-cache-lfu-p cache) (nskk-cache-lfu-misses cache))
-                      (t 0)))
+         (capacity (nskk-cache-field cache capacity))
+         (size (nskk-cache-field cache size))
+         (hits (nskk-cache-field cache hits))
+         (misses (nskk-cache-field cache misses))
          (total (+ hits misses))
          (hit-rate (if (> total 0) (/ (float hits) total) 0.0)))
     (list :type type
@@ -481,12 +487,7 @@ Return a list of invalidated keys."
 ;;;###autoload
 (defun nskk-cache-size (cache)
   "Return the current number of entries in CACHE."
-  (cond
-   ((nskk-cache-lru-p cache)
-    (nskk-cache-lru-size cache))
-   ((nskk-cache-lfu-p cache)
-    (nskk-cache-lfu-size cache))
-   (t (error "Invalid cache type"))))
+  (nskk-cache-dispatch cache size))
 
 (provide 'nskk-cache)
 

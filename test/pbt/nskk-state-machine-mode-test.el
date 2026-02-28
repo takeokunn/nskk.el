@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test, state-machine, property-based
 ;; Homepage: https://github.com/takeokunn/nskk.el
 

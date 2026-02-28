@@ -1,6 +1,6 @@
 ;;; nskk-azik.el --- AZIK extended romaji input support -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 takeokunn
+;; Copyright (C) 2026 NSKK Contributors
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
@@ -12,672 +12,258 @@
 ;;; Commentary:
 ;; AZIK (Extended Romaji) input support for NSKK.
 ;; Implements the AZIK specification for efficient Japanese input.
+;;
+;; Architecture:
+;; - Standard romaji rules are initialized via nskk--initialize-romaji-table.
+;; - AZIK-specific rules are stored in the azik-rule/2 Prolog predicate.
+;; - The nskk-azik-rules macro asserts batches of azik-rule/2 facts at
+;;   compile time, expanding into individual nskk-prolog-<- calls.
+;; - A bridge rule (romaji-to-kana ?r ?k) :- (azik-rule ?r ?k) connects
+;;   azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
+;;   Note: the bridge rule is NOT indexed by the trie (variable first arg);
+;;   ground trie queries on romaji-to-kana/2 bypass AZIK rules.
+;; - The hash table is populated from azik-rule/2 for hot-path lookups.
+;;   nskk-converter-lookup (inline) reads only from the hash, never Prolog.
+;;
+;; AZIK rule categories (stored in azik-rule/2):
+;; 1. Special keys (; → っ, : → ー)
+;; 2. Consonant compatibility (x=しゃ行, c=ちゃ行)
+;; 3. Hatsuon extensions (z/k/j/d/l → +ん)
+;; 4. Double vowel extensions (q/h/w/p → +vowel pair)
+;; 5. Youon compatibility (g substitutes for y)
+;; 6. Same-finger alternatives (f suffix)
+;; 7. Word shortcuts
+;; 8. Foreign word extensions
 
 ;;; Code:
 
 (require 'nskk-converter)
+(require 'nskk-prolog)
+(eval-when-compile (require 'nskk-macros))
+
+(defgroup nskk-azik nil
+  "AZIK extended romaji input settings."
+  :prefix "nskk-azik-"
+  :group 'nskk-converter)
+
+(defcustom nskk-azik-q-behavior 'context-aware
+  "Behavior of q key when AZIK style is active.
+\\='context-aware - Produce ん when there is pending romaji input,
+                 otherwise toggle hiragana/katakana mode (recommended)
+\\='always-n      - Always produce ん (AZIK purist)
+\\='toggle-only   - Keep standard SKK toggle behavior (use nn for ん)"
+  :type '(choice (const :tag "Context-aware (Recommended)" context-aware)
+                 (const :tag "Always produce ん" always-n)
+                 (const :tag "Toggle only" toggle-only))
+  :group 'nskk-azik)
+
+(defcustom nskk-azik-keyboard-type 'jp106
+  "Keyboard layout for AZIK mappings.
+Affects key position-based shortcuts.
+\\='jp106 - Japanese 106-key layout (default)
+\\='us101 - US 101-key layout"
+  :type '(choice (const :tag "Japanese 106-key" jp106)
+                 (const :tag "US 101-key" us101))
+  :group 'nskk-azik)
+
+;;;; AZIK Macros
+
+(defmacro nskk-azik-hatsuon (prefix a i u e o)
+  "Define AZIK hatsuon (撥音) extensions as azik-rule/2 Prolog facts.
+PREFIX is the consonant key string.
+A/I/U/E/O are the base kana for each vowel position.
+Generates: prefix+z→A+ん, prefix+k→I+ん, prefix+j→U+ん,
+           prefix+d→E+ん, prefix+l→O+ん."
+  (declare (debug t))
+  `(progn
+     (nskk-prolog-<- (azik-rule ,(concat prefix "z") ,(concat a "ん")))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "k") ,(concat i "ん")))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "j") ,(concat u "ん")))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "d") ,(concat e "ん")))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "l") ,(concat o "ん")))))
+
+(defmacro nskk-azik-double-vowel (prefix a u e o)
+  "Define AZIK double vowel (二重母音) extensions as azik-rule/2 Prolog facts.
+PREFIX is the consonant key string.
+A/U/E/O are the base kana for each vowel position.
+Generates: prefix+q→A+い, prefix+h→U+う, prefix+w→E+い, prefix+p→O+う."
+  (declare (debug t))
+  `(progn
+     (nskk-prolog-<- (azik-rule ,(concat prefix "q") ,(concat a "い")))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "h") ,(concat u "う")))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "w") ,(concat e "い")))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "p") ,(concat o "う")))))
+
+(defmacro nskk-azik-extensions (prefix a i u e o &optional dv-o)
+  "Define hatsuon + double vowel extensions for a consonant row.
+PREFIX is the consonant key string.
+A/I/U/E/O are the base kana for each vowel position.
+DV-O overrides O for double vowel (e.g., わ行 uses うぉ instead of を)."
+  (declare (debug t))
+  `(progn
+     (nskk-azik-hatsuon ,prefix ,a ,i ,u ,e ,o)
+     (nskk-azik-double-vowel ,prefix ,a ,u ,e ,(or dv-o o))))
+
+(defmacro nskk-azik-youon (prefix a i u e o)
+  "Define AZIK youon (拗音) row with base rules + all extensions.
+PREFIX is the key combo (e.g., \"kg\" for きゃ行).
+A/I/U/E/O are the base kana.
+Base rules generated for a/u/e/o only (no i).
+Hatsuon and double vowel extensions are generated for all positions."
+  (declare (debug t))
+  `(progn
+     ;; Base rules (no i for youon)
+     (nskk-prolog-<- (azik-rule ,(concat prefix "a") ,a))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "u") ,u))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "e") ,e))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "o") ,o))
+     ;; Hatsuon + double vowel
+     (nskk-azik-extensions ,prefix ,a ,i ,u ,e ,o)))
+
+(defmacro nskk-azik-rules (&rest rules)
+  "Assert multiple azik-rule/2 Prolog facts from a literal rule list.
+Each element of RULES must be a (ROMAJI KANA) pair of string literals.
+Expands at compile time into individual nskk-prolog-<- calls."
+  (declare (debug t))
+  `(progn
+     ,@(mapcar (lambda (rule)
+                 `(nskk-prolog-<- (azik-rule ,(car rule) ,(cadr rule))))
+               rules)))
 
 (defun nskk--init-azik-rules ()
-  "Initialize AZIK romaji rules."
+  "Initialize AZIK romaji rules.
+Sets up standard romaji as base, then asserts AZIK-specific rules
+into the azik-rule/2 Prolog predicate.  A bridge rule connects
+azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
+The hash table is populated from azik-rule/2 for hot-path lookups."
 
   ;; ============================================================
-  ;; Basic vowels
+  ;; Step 1: Initialize standard romaji rules as the base.
+  ;; nskk--initialize-romaji-table is an internal function in
+  ;; nskk-converter.el.  Calling it here avoids duplicating the
+  ;; ~50-rule standard romaji set; it clears and repopulates both
+  ;; romaji-to-kana/2 and the hash table before AZIK rules are added.
   ;; ============================================================
-  (nskk-converter-add-rule "a" "あ")
-  (nskk-converter-add-rule "i" "い")
-  (nskk-converter-add-rule "u" "う")
-  (nskk-converter-add-rule "e" "え")
-  (nskk-converter-add-rule "o" "お")
+  (nskk--initialize-romaji-table)
+
+  ;; ============================================================
+  ;; Step 2: Set up azik-rule/2 predicate (index before assert).
+  ;; ============================================================
+  (nskk-prolog-retract-all 'azik-rule 2)
+  (nskk-prolog-set-index 'azik-rule 2 :hash)
 
   ;; ============================================================
   ;; 1. Special keys
   ;; ============================================================
-  (nskk-converter-add-rule ";" "っ")
-  (nskk-converter-add-rule ":" "ー")
+  (nskk-prolog-<- (azik-rule ";" "っ"))
+  (nskk-prolog-<- (azik-rule ":" "ー"))
 
   ;; ============================================================
   ;; 2. Consonant compatibility keys (x/c prefixes)
   ;; ============================================================
-  ;; x prefix - しゃ行互換
-  (nskk-converter-add-rule "xa" "しゃ")
-  (nskk-converter-add-rule "xi" "し")
-  (nskk-converter-add-rule "xu" "しゅ")
-  (nskk-converter-add-rule "xe" "しぇ")
-  (nskk-converter-add-rule "xo" "しょ")
-
+  ;; x prefix - しゃ行互換 (overrides standard small-kana xa=ぁ)
   ;; c prefix - ちゃ行互換
-  (nskk-converter-add-rule "ca" "ちゃ")
-  (nskk-converter-add-rule "ci" "ち")
-  (nskk-converter-add-rule "cu" "ちゅ")
-  (nskk-converter-add-rule "ce" "しぇ")
-  (nskk-converter-add-rule "co" "ちょ")
+  (nskk-azik-rules
+   ("xa" "しゃ") ("xi" "し") ("xu" "しゅ") ("xe" "しぇ") ("xo" "しょ")
+   ("ca" "ちゃ") ("ci" "ち") ("cu" "ちゅ") ("ce" "しぇ") ("co" "ちょ"))
 
   ;; ============================================================
-  ;; 3. 撥音拡張 (consonant + extension key = consonant + vowel + ん)
-  ;; Extension keys: z=a+n, k=i+n, j=u+n, d=e+n, l=o+n
+  ;; 3-4. Hatsuon (撥音) + Double vowel (二重母音) extensions
+  ;; Extension keys: z=a+ん, k=i+ん, j=u+ん, d=e+ん, l=o+ん
+  ;;                 q=a+い, h=u+う, w=e+い, p=o+う
   ;; ============================================================
-
-  ;; か行 (k)
-  (nskk-converter-add-rule "kz" "かん")
-  (nskk-converter-add-rule "kk" "きん")
-  (nskk-converter-add-rule "kj" "くん")
-  (nskk-converter-add-rule "kd" "けん")
-  (nskk-converter-add-rule "kl" "こん")
-
-  ;; さ行 (s)
-  (nskk-converter-add-rule "sz" "さん")
-  (nskk-converter-add-rule "sk" "しん")
-  (nskk-converter-add-rule "sj" "すん")
-  (nskk-converter-add-rule "sd" "せん")
-  (nskk-converter-add-rule "sl" "そん")
-
-  ;; た行 (t)
-  (nskk-converter-add-rule "tz" "たん")
-  (nskk-converter-add-rule "tk" "ちん")
-  (nskk-converter-add-rule "tj" "つん")
-  (nskk-converter-add-rule "td" "てん")
-  (nskk-converter-add-rule "tl" "とん")
-
-  ;; な行 (n)
-  (nskk-converter-add-rule "nz" "なん")
-  (nskk-converter-add-rule "nk" "にん")
-  (nskk-converter-add-rule "nj" "ぬん")
-  (nskk-converter-add-rule "nd" "ねん")
-  (nskk-converter-add-rule "nl" "のん")
-
-  ;; は行 (h)
-  (nskk-converter-add-rule "hz" "はん")
-  (nskk-converter-add-rule "hk" "ひん")
-  (nskk-converter-add-rule "hj" "ふん")
-  (nskk-converter-add-rule "hd" "へん")
-  (nskk-converter-add-rule "hl" "ほん")
-
-  ;; ま行 (m)
-  (nskk-converter-add-rule "mz" "まん")
-  (nskk-converter-add-rule "mk" "みん")
-  (nskk-converter-add-rule "mj" "むん")
-  (nskk-converter-add-rule "md" "めん")
-  (nskk-converter-add-rule "ml" "もん")
-
-  ;; や行 (y)
-  (nskk-converter-add-rule "yz" "やん")
-  (nskk-converter-add-rule "yk" "いん")
-  (nskk-converter-add-rule "yj" "ゆん")
-  (nskk-converter-add-rule "yd" "えん")
-  (nskk-converter-add-rule "yl" "よん")
-
-  ;; ら行 (r)
-  (nskk-converter-add-rule "rz" "らん")
-  (nskk-converter-add-rule "rk" "りん")
-  (nskk-converter-add-rule "rj" "るん")
-  (nskk-converter-add-rule "rd" "れん")
-  (nskk-converter-add-rule "rl" "ろん")
-
-  ;; わ行 (w)
-  (nskk-converter-add-rule "wz" "わん")
-  (nskk-converter-add-rule "wk" "うぃん")
-  (nskk-converter-add-rule "wj" "うん")
-  (nskk-converter-add-rule "wd" "うぇん")
-  (nskk-converter-add-rule "wl" "をん")
-
-  ;; が行 (g)
-  (nskk-converter-add-rule "gz" "がん")
-  (nskk-converter-add-rule "gk" "ぎん")
-  (nskk-converter-add-rule "gj" "ぐん")
-  (nskk-converter-add-rule "gd" "げん")
-  (nskk-converter-add-rule "gl" "ごん")
-
-  ;; ざ行 (z)
-  (nskk-converter-add-rule "zz" "ざん")
-  (nskk-converter-add-rule "zk" "じん")
-  (nskk-converter-add-rule "zj" "ずん")
-  (nskk-converter-add-rule "zd" "ぜん")
-  (nskk-converter-add-rule "zl" "ぞん")
-
-  ;; だ行 (d)
-  (nskk-converter-add-rule "dz" "だん")
-  (nskk-converter-add-rule "dk" "ぢん")
-  (nskk-converter-add-rule "dj" "づん")
-  (nskk-converter-add-rule "dd" "でん")
-  (nskk-converter-add-rule "dl" "どん")
-
-  ;; ば行 (b)
-  (nskk-converter-add-rule "bz" "ばん")
-  (nskk-converter-add-rule "bk" "びん")
-  (nskk-converter-add-rule "bj" "ぶん")
-  (nskk-converter-add-rule "bd" "べん")
-  (nskk-converter-add-rule "bl" "ぼん")
-
-  ;; ぱ行 (p)
-  (nskk-converter-add-rule "pz" "ぱん")
-  (nskk-converter-add-rule "pk" "ぴん")
-  (nskk-converter-add-rule "pj" "ぷん")
-  (nskk-converter-add-rule "pd" "ぺん")
-  (nskk-converter-add-rule "pl" "ぽん")
+  (nskk-azik-extensions "k" "か" "き" "く" "け" "こ")
+  (nskk-azik-extensions "s" "さ" "し" "す" "せ" "そ")
+  (nskk-azik-extensions "t" "た" "ち" "つ" "て" "と")
+  (nskk-azik-extensions "n" "な" "に" "ぬ" "ね" "の")
+  (nskk-azik-extensions "h" "は" "ひ" "ふ" "へ" "ほ")
+  (nskk-azik-extensions "m" "ま" "み" "む" "め" "も")
+  (nskk-azik-extensions "y" "や" "い" "ゆ" "え" "よ")
+  (nskk-azik-extensions "r" "ら" "り" "る" "れ" "ろ")
+  (nskk-azik-extensions "w" "わ" "うぃ" "う" "うぇ" "を" "うぉ")
+  (nskk-azik-extensions "g" "が" "ぎ" "ぐ" "げ" "ご")
+  (nskk-azik-extensions "z" "ざ" "じ" "ず" "ぜ" "ぞ")
+  (nskk-azik-extensions "d" "だ" "ぢ" "づ" "で" "ど")
+  (nskk-azik-extensions "b" "ば" "び" "ぶ" "べ" "ぼ")
+  (nskk-azik-extensions "p" "ぱ" "ぴ" "ぷ" "ぺ" "ぽ")
 
   ;; ============================================================
-  ;; 4. 二重母音拡張 (consonant + extension key = consonant + vowel + vowel)
-  ;; Extension keys: q=ai, h=uu, w=ei, p=ou
-  ;; NOT for あ行
+  ;; 5. Youon compatibility (g substitutes for y)
+  ;; Each row: base (a/u/e/o) + hatsuon (5) + double vowel (4)
   ;; ============================================================
-
-  ;; か行 (k)
-  (nskk-converter-add-rule "kq" "かい")
-  (nskk-converter-add-rule "kh" "くう")
-  (nskk-converter-add-rule "kw" "けい")
-  (nskk-converter-add-rule "kp" "こう")
-
-  ;; さ行 (s)
-  (nskk-converter-add-rule "sq" "さい")
-  (nskk-converter-add-rule "sh" "すう")
-  (nskk-converter-add-rule "sw" "せい")
-  (nskk-converter-add-rule "sp" "そう")
-
-  ;; た行 (t)
-  (nskk-converter-add-rule "tq" "たい")
-  (nskk-converter-add-rule "th" "つう")
-  (nskk-converter-add-rule "tw" "てい")
-  (nskk-converter-add-rule "tp" "とう")
-
-  ;; な行 (n)
-  (nskk-converter-add-rule "nq" "ない")
-  (nskk-converter-add-rule "nh" "ぬう")
-  (nskk-converter-add-rule "nw" "ねい")
-  (nskk-converter-add-rule "np" "のう")
-
-  ;; は行 (h)
-  (nskk-converter-add-rule "hq" "はい")
-  (nskk-converter-add-rule "hh" "ふう")
-  (nskk-converter-add-rule "hw" "へい")
-  (nskk-converter-add-rule "hp" "ほう")
-
-  ;; ま行 (m)
-  (nskk-converter-add-rule "mq" "まい")
-  (nskk-converter-add-rule "mh" "むう")
-  (nskk-converter-add-rule "mw" "めい")
-  (nskk-converter-add-rule "mp" "もう")
-
-  ;; や行 (y)
-  (nskk-converter-add-rule "yq" "やい")
-  (nskk-converter-add-rule "yh" "ゆう")
-  (nskk-converter-add-rule "yw" "えい")
-  (nskk-converter-add-rule "yp" "よう")
-
-  ;; ら行 (r)
-  (nskk-converter-add-rule "rq" "らい")
-  (nskk-converter-add-rule "rh" "るう")
-  (nskk-converter-add-rule "rw" "れい")
-  (nskk-converter-add-rule "rp" "ろう")
-
-  ;; わ行 (w)
-  (nskk-converter-add-rule "wq" "わい")
-  (nskk-converter-add-rule "wh" "うう")
-  (nskk-converter-add-rule "ww" "うぇい")
-  (nskk-converter-add-rule "wp" "うぉう")
-
-  ;; が行 (g)
-  (nskk-converter-add-rule "gq" "がい")
-  (nskk-converter-add-rule "gh" "ぐう")
-  (nskk-converter-add-rule "gw" "げい")
-  (nskk-converter-add-rule "gp" "ごう")
-
-  ;; ざ行 (z)
-  (nskk-converter-add-rule "zq" "ざい")
-  (nskk-converter-add-rule "zh" "ずう")
-  (nskk-converter-add-rule "zw" "ぜい")
-  (nskk-converter-add-rule "zp" "ぞう")
-
-  ;; だ行 (d)
-  (nskk-converter-add-rule "dq" "だい")
-  (nskk-converter-add-rule "dh" "づう")
-  (nskk-converter-add-rule "dw" "でい")
-  (nskk-converter-add-rule "dp" "どう")
-
-  ;; ば行 (b)
-  (nskk-converter-add-rule "bq" "ばい")
-  (nskk-converter-add-rule "bh" "ぶう")
-  (nskk-converter-add-rule "bw" "べい")
-  (nskk-converter-add-rule "bp" "ぼう")
-
-  ;; ぱ行 (p)
-  (nskk-converter-add-rule "pq" "ぱい")
-  (nskk-converter-add-rule "ph" "ぷう")
-  (nskk-converter-add-rule "pw" "ぺい")
-  (nskk-converter-add-rule "pp" "ぽう")
+  (nskk-azik-youon "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
+  (nskk-azik-youon "hg" "ひゃ" "ひぃ" "ひゅ" "ひぇ" "ひょ")
+  (nskk-azik-youon "mg" "みゃ" "みぃ" "みゅ" "みぇ" "みょ")
+  (nskk-azik-youon "rg" "りゃ" "りぃ" "りゅ" "りぇ" "りょ")
+  (nskk-azik-youon "gg" "ぎゃ" "ぎぃ" "ぎゅ" "ぎぇ" "ぎょ")
+  (nskk-azik-youon "jg" "じゃ" "じぃ" "じゅ" "じぇ" "じょ")
+  (nskk-azik-youon "bg" "びゃ" "びぃ" "びゅ" "びぇ" "びょ")
+  (nskk-azik-youon "pg" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ")
 
   ;; ============================================================
-  ;; 5. 拗音互換キー (g substitutes for y)
+  ;; 6. Same-finger alternatives (f suffix)
   ;; ============================================================
-
-  ;; きゃ行 (kg = ky)
-  (nskk-converter-add-rule "kga" "きゃ")
-  (nskk-converter-add-rule "kgu" "きゅ")
-  (nskk-converter-add-rule "kge" "きぇ")
-  (nskk-converter-add-rule "kgo" "きょ")
-
-  ;; きゃ行 + 撥音拡張
-  (nskk-converter-add-rule "kgz" "きゃん")
-  (nskk-converter-add-rule "kgk" "きぃん")
-  (nskk-converter-add-rule "kgj" "きゅん")
-  (nskk-converter-add-rule "kgd" "きぇん")
-  (nskk-converter-add-rule "kgl" "きょん")
-
-  ;; きゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "kgq" "きゃい")
-  (nskk-converter-add-rule "kgh" "きゅう")
-  (nskk-converter-add-rule "kgw" "きぇい")
-  (nskk-converter-add-rule "kgp" "きょう")
-
-  ;; ひゃ行 (hg = hy)
-  (nskk-converter-add-rule "hga" "ひゃ")
-  (nskk-converter-add-rule "hgu" "ひゅ")
-  (nskk-converter-add-rule "hge" "ひぇ")
-  (nskk-converter-add-rule "hgo" "ひょ")
-
-  ;; ひゃ行 + 撥音拡張
-  (nskk-converter-add-rule "hgz" "ひゃん")
-  (nskk-converter-add-rule "hgk" "ひぃん")
-  (nskk-converter-add-rule "hgj" "ひゅん")
-  (nskk-converter-add-rule "hgd" "ひぇん")
-  (nskk-converter-add-rule "hgl" "ひょん")
-
-  ;; ひゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "hgq" "ひゃい")
-  (nskk-converter-add-rule "hgh" "ひゅう")
-  (nskk-converter-add-rule "hgw" "ひぇい")
-  (nskk-converter-add-rule "hgp" "ひょう")
-
-  ;; みゃ行 (mg = my)
-  (nskk-converter-add-rule "mga" "みゃ")
-  (nskk-converter-add-rule "mgu" "みゅ")
-  (nskk-converter-add-rule "mge" "みぇ")
-  (nskk-converter-add-rule "mgo" "みょ")
-
-  ;; みゃ行 + 撥音拡張
-  (nskk-converter-add-rule "mgz" "みゃん")
-  (nskk-converter-add-rule "mgk" "みぃん")
-  (nskk-converter-add-rule "mgj" "みゅん")
-  (nskk-converter-add-rule "mgd" "みぇん")
-  (nskk-converter-add-rule "mgl" "みょん")
-
-  ;; みゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "mgq" "みゃい")
-  (nskk-converter-add-rule "mgh" "みゅう")
-  (nskk-converter-add-rule "mgw" "みぇい")
-  (nskk-converter-add-rule "mgp" "みょう")
-
-  ;; りゃ行 (rg = ry)
-  (nskk-converter-add-rule "rga" "りゃ")
-  (nskk-converter-add-rule "rgu" "りゅ")
-  (nskk-converter-add-rule "rge" "りぇ")
-  (nskk-converter-add-rule "rgo" "りょ")
-
-  ;; りゃ行 + 撥音拡張
-  (nskk-converter-add-rule "rgz" "りゃん")
-  (nskk-converter-add-rule "rgk" "りぃん")
-  (nskk-converter-add-rule "rgj" "りゅん")
-  (nskk-converter-add-rule "rgd" "りぇん")
-  (nskk-converter-add-rule "rgl" "りょん")
-
-  ;; りゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "rgq" "りゃい")
-  (nskk-converter-add-rule "rgh" "りゅう")
-  (nskk-converter-add-rule "rgw" "りぇい")
-  (nskk-converter-add-rule "rgp" "りょう")
-
-  ;; ぎゃ行 (gg = gy)
-  (nskk-converter-add-rule "gga" "ぎゃ")
-  (nskk-converter-add-rule "ggu" "ぎゅ")
-  (nskk-converter-add-rule "gge" "ぎぇ")
-  (nskk-converter-add-rule "ggo" "ぎょ")
-
-  ;; ぎゃ行 + 撥音拡張
-  (nskk-converter-add-rule "ggz" "ぎゃん")
-  (nskk-converter-add-rule "ggk" "ぎぃん")
-  (nskk-converter-add-rule "ggj" "ぎゅん")
-  (nskk-converter-add-rule "ggd" "ぎぇん")
-  (nskk-converter-add-rule "ggl" "ぎょん")
-
-  ;; ぎゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "ggq" "ぎゃい")
-  (nskk-converter-add-rule "ggh" "ぎゅう")
-  (nskk-converter-add-rule "ggw" "ぎぇい")
-  (nskk-converter-add-rule "ggp" "ぎょう")
-
-  ;; じゃ行 (jg = jy)
-  (nskk-converter-add-rule "jga" "じゃ")
-  (nskk-converter-add-rule "jgu" "じゅ")
-  (nskk-converter-add-rule "jge" "じぇ")
-  (nskk-converter-add-rule "jgo" "じょ")
-
-  ;; じゃ行 + 撥音拡張
-  (nskk-converter-add-rule "jgz" "じゃん")
-  (nskk-converter-add-rule "jgk" "じぃん")
-  (nskk-converter-add-rule "jgj" "じゅん")
-  (nskk-converter-add-rule "jgd" "じぇん")
-  (nskk-converter-add-rule "jgl" "じょん")
-
-  ;; じゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "jgq" "じゃい")
-  (nskk-converter-add-rule "jgh" "じゅう")
-  (nskk-converter-add-rule "jgw" "じぇい")
-  (nskk-converter-add-rule "jgp" "じょう")
-
-  ;; びゃ行 (bg = by)
-  (nskk-converter-add-rule "bga" "びゃ")
-  (nskk-converter-add-rule "bgu" "びゅ")
-  (nskk-converter-add-rule "bge" "びぇ")
-  (nskk-converter-add-rule "bgo" "びょ")
-
-  ;; びゃ行 + 撥音拡張
-  (nskk-converter-add-rule "bgz" "びゃん")
-  (nskk-converter-add-rule "bgk" "びぃん")
-  (nskk-converter-add-rule "bgj" "びゅん")
-  (nskk-converter-add-rule "bgd" "びぇん")
-  (nskk-converter-add-rule "bgl" "びょん")
-
-  ;; びゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "bgq" "びゃい")
-  (nskk-converter-add-rule "bgh" "びゅう")
-  (nskk-converter-add-rule "bgw" "びぇい")
-  (nskk-converter-add-rule "bgp" "びょう")
-
-  ;; ぴゃ行 (pg = py)
-  (nskk-converter-add-rule "pga" "ぴゃ")
-  (nskk-converter-add-rule "pgu" "ぴゅ")
-  (nskk-converter-add-rule "pge" "ぴぇ")
-  (nskk-converter-add-rule "pgo" "ぴょ")
-
-  ;; ぴゃ行 + 撥音拡張
-  (nskk-converter-add-rule "pgz" "ぴゃん")
-  (nskk-converter-add-rule "pgk" "ぴぃん")
-  (nskk-converter-add-rule "pgj" "ぴゅん")
-  (nskk-converter-add-rule "pgd" "ぴぇん")
-  (nskk-converter-add-rule "pgl" "ぴょん")
-
-  ;; ぴゃ行 + 二重母音拡張
-  (nskk-converter-add-rule "pgq" "ぴゃい")
-  (nskk-converter-add-rule "pgh" "ぴゅう")
-  (nskk-converter-add-rule "pgw" "ぴぇい")
-  (nskk-converter-add-rule "pgp" "ぴょう")
+  (nskk-azik-rules
+   ("kf" "き") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
+   ("pf" "ぷ") ("rf" "る") ("yf" "ゆ"))
 
   ;; ============================================================
-  ;; 6. 同指打鍵互換キー (f alternatives)
+  ;; 7. Word shortcuts
   ;; ============================================================
-  (nskk-converter-add-rule "kf" "き")
-  (nskk-converter-add-rule "nf" "ぬ")
-  (nskk-converter-add-rule "mf" "む")
-  (nskk-converter-add-rule "gf" "ぐ")
-  (nskk-converter-add-rule "pf" "ぷ")
-  (nskk-converter-add-rule "rf" "る")
-  (nskk-converter-add-rule "yf" "ゆ")
-
-  ;; ============================================================
-  ;; 7. 特殊拡張 (word shortcuts)
-  ;; ============================================================
-  (nskk-converter-add-rule "km" "かも")
-  (nskk-converter-add-rule "kr" "から")
-  (nskk-converter-add-rule "gr" "がら")
-  (nskk-converter-add-rule "kt" "こと")
-  (nskk-converter-add-rule "gt" "ごと")
-
-  (nskk-converter-add-rule "zr" "ざる")
-  (nskk-converter-add-rule "st" "した")
-  (nskk-converter-add-rule "sr" "する")
-  (nskk-converter-add-rule "tt" "たち")
-  (nskk-converter-add-rule "dt" "だち")
-
-  (nskk-converter-add-rule "tb" "たび")
-  (nskk-converter-add-rule "tm" "ため")
-  (nskk-converter-add-rule "tr" "たら")
-  (nskk-converter-add-rule "ds" "です")
-  (nskk-converter-add-rule "dm" "でも")
-
-  (nskk-converter-add-rule "nr" "なる")
-  (nskk-converter-add-rule "nt" "にち")
-  (nskk-converter-add-rule "nb" "ねば")
-  (nskk-converter-add-rule "ht" "ひと")
-  (nskk-converter-add-rule "bt" "びと")
-
-  (nskk-converter-add-rule "ms" "ます")
-  (nskk-converter-add-rule "mt" "また")
-  (nskk-converter-add-rule "mn" "もの")
-  (nskk-converter-add-rule "yr" "よる")
-
-  (nskk-converter-add-rule "rr" "られ")
-  (nskk-converter-add-rule "wt" "わた")
-  (nskk-converter-add-rule "wr" "われ")
+  (nskk-azik-rules
+   ("km" "かも") ("kr" "から") ("gr" "がら") ("kt" "こと") ("gt" "ごと")
+   ("zr" "ざる") ("st" "した") ("sr" "する") ("tt" "たち") ("dt" "だち")
+   ("tb" "たび") ("tm" "ため") ("tr" "たら") ("ds" "です") ("dm" "でも")
+   ("nr" "なる") ("nt" "にち") ("nb" "ねば") ("ht" "ひと") ("bt" "びと")
+   ("ms" "ます") ("mt" "また") ("mn" "もの") ("yr" "よる")
+   ("rr" "られ") ("wt" "わた") ("wr" "われ"))
 
   ;; ============================================================
-  ;; 8. 外来語拡張
+  ;; 8. Foreign word extensions
   ;; ============================================================
-  (nskk-converter-add-rule "tgi" "てぃ")
-  (nskk-converter-add-rule "tgu" "とぅ")
-  (nskk-converter-add-rule "dci" "でぃ")
-  (nskk-converter-add-rule "dcu" "どぅ")
-  (nskk-converter-add-rule "wso" "うぉ")
+  (nskk-azik-rules
+   ("tgi" "てぃ") ("tgu" "とぅ") ("dci" "でぃ") ("dcu" "どぅ") ("wso" "うぉ"))
 
   ;; ============================================================
-  ;; Standard romaji rules (for compatibility)
+  ;; Step 3: Bridge rule — AZIK rules are also romaji-to-kana.
+  ;; Placed after all azik-rule/2 facts so Prolog queries on
+  ;; romaji-to-kana/2 can discover AZIK rules via this rule.
+  ;;
+  ;; Trie limitation: because the head has a variable first arg (?r),
+  ;; this rule is NOT inserted into the trie index.  Ground queries on
+  ;; romaji-to-kana/2 via the trie will not find AZIK rules through
+  ;; this bridge.  Use nskk-prolog-query on azik-rule/2 directly for
+  ;; enumeration; hot-path lookups use the hash cache (Step 4).
   ;; ============================================================
+  (nskk-prolog-<- (romaji-to-kana \?r \?k)
+    (azik-rule \?r \?k))
 
-  ;; か行
-  (nskk-converter-add-rule "ka" "か")
-  (nskk-converter-add-rule "ki" "き")
-  (nskk-converter-add-rule "ku" "く")
-  (nskk-converter-add-rule "ke" "け")
-  (nskk-converter-add-rule "ko" "こ")
+  ;; ============================================================
+  ;; Step 4: Populate hash table from azik-rule/2 for hot-path.
+  ;; nskk-converter-lookup reads from hash only (inline function),
+  ;; so we must sync all azik-rule facts into the hash.
+  ;; AZIK entries override any conflicting standard entries (e.g. xa).
+  ;;
+  ;; We use puthash directly into nskk--romaji-table rather than
+  ;; nskk-converter-add-rule because the Prolog facts already exist
+  ;; (nskk-converter-add-rule would double-assert them).  This step is
+  ;; purely a hash-cache sync from the Prolog truth source.
+  ;; ============================================================
+  (dolist (subst (nskk-prolog-query '(azik-rule \?r \?k)))
+    (let ((romaji (nskk-prolog-walk '\?r subst))
+          (kana (nskk-prolog-walk '\?k subst)))
+      (when (and (stringp romaji) (stringp kana))
+        (puthash romaji kana nskk--romaji-table))))
 
-  ;; が行
-  (nskk-converter-add-rule "ga" "が")
-  (nskk-converter-add-rule "gi" "ぎ")
-  (nskk-converter-add-rule "gu" "ぐ")
-  (nskk-converter-add-rule "ge" "げ")
-  (nskk-converter-add-rule "go" "ご")
-
-  ;; さ行
-  (nskk-converter-add-rule "sa" "さ")
-  (nskk-converter-add-rule "si" "し")
-  (nskk-converter-add-rule "shi" "し")
-  (nskk-converter-add-rule "su" "す")
-  (nskk-converter-add-rule "se" "せ")
-  (nskk-converter-add-rule "so" "そ")
-
-  ;; ざ行
-  (nskk-converter-add-rule "za" "ざ")
-  (nskk-converter-add-rule "zi" "じ")
-  (nskk-converter-add-rule "ji" "じ")
-  (nskk-converter-add-rule "zu" "ず")
-  (nskk-converter-add-rule "ze" "ぜ")
-  (nskk-converter-add-rule "zo" "ぞ")
-
-  ;; た行
-  (nskk-converter-add-rule "ta" "た")
-  (nskk-converter-add-rule "ti" "ち")
-  (nskk-converter-add-rule "chi" "ち")
-  (nskk-converter-add-rule "tu" "つ")
-  (nskk-converter-add-rule "tsu" "つ")
-  (nskk-converter-add-rule "te" "て")
-  (nskk-converter-add-rule "to" "と")
-
-  ;; だ行
-  (nskk-converter-add-rule "da" "だ")
-  (nskk-converter-add-rule "di" "ぢ")
-  (nskk-converter-add-rule "du" "づ")
-  (nskk-converter-add-rule "de" "で")
-  (nskk-converter-add-rule "do" "ど")
-
-  ;; な行
-  (nskk-converter-add-rule "na" "な")
-  (nskk-converter-add-rule "ni" "に")
-  (nskk-converter-add-rule "nu" "ぬ")
-  (nskk-converter-add-rule "ne" "ね")
-  (nskk-converter-add-rule "no" "の")
-  (nskk-converter-add-rule "nn" "ん")
-  (nskk-converter-add-rule "n'" "ん")
-
-  ;; は行
-  (nskk-converter-add-rule "ha" "は")
-  (nskk-converter-add-rule "hi" "ひ")
-  (nskk-converter-add-rule "hu" "ふ")
-  (nskk-converter-add-rule "fu" "ふ")
-  (nskk-converter-add-rule "he" "へ")
-  (nskk-converter-add-rule "ho" "ほ")
-
-  ;; ば行
-  (nskk-converter-add-rule "ba" "ば")
-  (nskk-converter-add-rule "bi" "び")
-  (nskk-converter-add-rule "bu" "ぶ")
-  (nskk-converter-add-rule "be" "べ")
-  (nskk-converter-add-rule "bo" "ぼ")
-
-  ;; ぱ行
-  (nskk-converter-add-rule "pa" "ぱ")
-  (nskk-converter-add-rule "pi" "ぴ")
-  (nskk-converter-add-rule "pu" "ぷ")
-  (nskk-converter-add-rule "pe" "ぺ")
-  (nskk-converter-add-rule "po" "ぽ")
-
-  ;; ま行
-  (nskk-converter-add-rule "ma" "ま")
-  (nskk-converter-add-rule "mi" "み")
-  (nskk-converter-add-rule "mu" "む")
-  (nskk-converter-add-rule "me" "め")
-  (nskk-converter-add-rule "mo" "も")
-
-  ;; や行
-  (nskk-converter-add-rule "ya" "や")
-  (nskk-converter-add-rule "yu" "ゆ")
-  (nskk-converter-add-rule "yo" "よ")
-
-  ;; ら行
-  (nskk-converter-add-rule "ra" "ら")
-  (nskk-converter-add-rule "ri" "り")
-  (nskk-converter-add-rule "ru" "る")
-  (nskk-converter-add-rule "re" "れ")
-  (nskk-converter-add-rule "ro" "ろ")
-
-  ;; わ行
-  (nskk-converter-add-rule "wa" "わ")
-  (nskk-converter-add-rule "wo" "を")
-
-  ;; 拗音 (standard)
-  (nskk-converter-add-rule "kya" "きゃ")
-  (nskk-converter-add-rule "kyu" "きゅ")
-  (nskk-converter-add-rule "kye" "きぇ")
-  (nskk-converter-add-rule "kyo" "きょ")
-
-  (nskk-converter-add-rule "gya" "ぎゃ")
-  (nskk-converter-add-rule "gyu" "ぎゅ")
-  (nskk-converter-add-rule "gye" "ぎぇ")
-  (nskk-converter-add-rule "gyo" "ぎょ")
-
-  (nskk-converter-add-rule "sya" "しゃ")
-  (nskk-converter-add-rule "sha" "しゃ")
-  (nskk-converter-add-rule "syu" "しゅ")
-  (nskk-converter-add-rule "shu" "しゅ")
-  (nskk-converter-add-rule "sye" "しぇ")
-  (nskk-converter-add-rule "she" "しぇ")
-  (nskk-converter-add-rule "syo" "しょ")
-  (nskk-converter-add-rule "sho" "しょ")
-
-  (nskk-converter-add-rule "zya" "じゃ")
-  (nskk-converter-add-rule "ja" "じゃ")
-  (nskk-converter-add-rule "zyu" "じゅ")
-  (nskk-converter-add-rule "ju" "じゅ")
-  (nskk-converter-add-rule "zye" "じぇ")
-  (nskk-converter-add-rule "je" "じぇ")
-  (nskk-converter-add-rule "zyo" "じょ")
-  (nskk-converter-add-rule "jo" "じょ")
-
-  (nskk-converter-add-rule "tya" "ちゃ")
-  (nskk-converter-add-rule "cha" "ちゃ")
-  (nskk-converter-add-rule "tyu" "ちゅ")
-  (nskk-converter-add-rule "chu" "ちゅ")
-  (nskk-converter-add-rule "tye" "ちぇ")
-  (nskk-converter-add-rule "che" "ちぇ")
-  (nskk-converter-add-rule "tyo" "ちょ")
-  (nskk-converter-add-rule "cho" "ちょ")
-
-  (nskk-converter-add-rule "dya" "ぢゃ")
-  (nskk-converter-add-rule "dyu" "ぢゅ")
-  (nskk-converter-add-rule "dye" "ぢぇ")
-  (nskk-converter-add-rule "dyo" "ぢょ")
-
-  (nskk-converter-add-rule "nya" "にゃ")
-  (nskk-converter-add-rule "nyu" "にゅ")
-  (nskk-converter-add-rule "nye" "にぇ")
-  (nskk-converter-add-rule "nyo" "にょ")
-
-  (nskk-converter-add-rule "hya" "ひゃ")
-  (nskk-converter-add-rule "hyu" "ひゅ")
-  (nskk-converter-add-rule "hye" "ひぇ")
-  (nskk-converter-add-rule "hyo" "ひょ")
-
-  (nskk-converter-add-rule "bya" "びゃ")
-  (nskk-converter-add-rule "byu" "びゅ")
-  (nskk-converter-add-rule "bye" "びぇ")
-  (nskk-converter-add-rule "byo" "びょ")
-
-  (nskk-converter-add-rule "pya" "ぴゃ")
-  (nskk-converter-add-rule "pyu" "ぴゅ")
-  (nskk-converter-add-rule "pye" "ぴぇ")
-  (nskk-converter-add-rule "pyo" "ぴょ")
-
-  (nskk-converter-add-rule "mya" "みゃ")
-  (nskk-converter-add-rule "myu" "みゅ")
-  (nskk-converter-add-rule "mye" "みぇ")
-  (nskk-converter-add-rule "myo" "みょ")
-
-  (nskk-converter-add-rule "rya" "りゃ")
-  (nskk-converter-add-rule "ryu" "りゅ")
-  (nskk-converter-add-rule "rye" "りぇ")
-  (nskk-converter-add-rule "ryo" "りょ")
-
-  ;; ふぁ行
-  (nskk-converter-add-rule "fa" "ふぁ")
-  (nskk-converter-add-rule "fi" "ふぃ")
-  (nskk-converter-add-rule "fe" "ふぇ")
-  (nskk-converter-add-rule "fo" "ふぉ")
-
-  ;; つぁ行
-  (nskk-converter-add-rule "tsa" "つぁ")
-  (nskk-converter-add-rule "tsi" "つぃ")
-  (nskk-converter-add-rule "tse" "つぇ")
-  (nskk-converter-add-rule "tso" "つぉ")
-
-  ;; 長音
-  (nskk-converter-add-rule "-" "ー")
-
-  ;; 小さい文字
-  (nskk-converter-add-rule "la" "ぁ")
-  (nskk-converter-add-rule "li" "ぃ")
-  (nskk-converter-add-rule "lu" "ぅ")
-  (nskk-converter-add-rule "le" "ぇ")
-  (nskk-converter-add-rule "lo" "ぉ")
-  (nskk-converter-add-rule "lya" "ゃ")
-  (nskk-converter-add-rule "lyu" "ゅ")
-  (nskk-converter-add-rule "lyo" "ょ")
-  (nskk-converter-add-rule "ltu" "っ")
-  (nskk-converter-add-rule "ltsu" "っ")
-  (nskk-converter-add-rule "xtu" "っ")
-  (nskk-converter-add-rule "xtsu" "っ")
-
-  ;; Consonant-only (for partial match)
-  (nskk-converter-add-rule "k" :incomplete)
-  (nskk-converter-add-rule "g" :incomplete)
-  (nskk-converter-add-rule "s" :incomplete)
-  (nskk-converter-add-rule "z" :incomplete)
-  (nskk-converter-add-rule "t" :incomplete)
-  (nskk-converter-add-rule "d" :incomplete)
-  (nskk-converter-add-rule "n" :incomplete)
-  (nskk-converter-add-rule "h" :incomplete)
-  (nskk-converter-add-rule "b" :incomplete)
-  (nskk-converter-add-rule "p" :incomplete)
-  (nskk-converter-add-rule "m" :incomplete)
-  (nskk-converter-add-rule "y" :incomplete)
-  (nskk-converter-add-rule "r" :incomplete)
-  (nskk-converter-add-rule "w" :incomplete))
+  ;; ============================================================
+  ;; Consonant-only (partial match markers) — hash only.
+  ;; :incomplete is not a string so it stays out of azik-rule/2.
+  ;; ============================================================
+  (dolist (rule '(("k" :incomplete) ("g" :incomplete) ("s" :incomplete) ("z" :incomplete)
+                  ("t" :incomplete) ("d" :incomplete) ("n" :incomplete) ("h" :incomplete)
+                  ("b" :incomplete) ("p" :incomplete) ("m" :incomplete) ("y" :incomplete)
+                  ("r" :incomplete) ("w" :incomplete)))
+    (nskk-converter-add-rule (car rule) (cadr rule))))
 
 ;; Register AZIK style
 (nskk-converter-register-style 'azik #'nskk--init-azik-rules)

@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test, debug
 
 ;; This file is part of NSKK.
@@ -12,7 +12,6 @@
 ;; Unit tests for nskk-debug.el covering:
 ;; - Debug toggle functionality
 ;; - Debug buffer management
-;; - Layer flag synchronization
 ;; - Debug logging macro behavior
 
 ;;; Code:
@@ -93,40 +92,6 @@
         ;; Verify buffer is empty
         (should (equal (nskk-debug-test--get-buffer-contents) "")))
     (nskk-debug-test--cleanup-buffer)))
-
-;;; Layer Synchronization Tests
-
-(nskk-deftest-unit debug-layer-sync
-  "Test that setting `nskk-debug-enabled' syncs with layer flags."
-  (let ((original-value nskk-debug-enabled)
-        (original-arch (boundp 'nskk-architecture-enable-debug))
-        (original-infra (boundp 'nskk-infrastructure--debug-enabled))
-        (original-data (boundp 'nskk-data--debug-enabled)))
-    (unwind-protect
-        (progn
-          ;; Enable debug mode
-          (setq nskk-debug-enabled t)
-          (nskk-debug--sync-layer-flags t)
-          ;; Check layer flags are synced (if bound)
-          (when (boundp 'nskk-architecture-enable-debug)
-            (should (eq nskk-architecture-enable-debug t)))
-          (when (boundp 'nskk-infrastructure--debug-enabled)
-            (should (eq nskk-infrastructure--debug-enabled t)))
-          (when (boundp 'nskk-data--debug-enabled)
-            (should (eq nskk-data--debug-enabled t)))
-          ;; Disable debug mode
-          (setq nskk-debug-enabled nil)
-          (nskk-debug--sync-layer-flags nil)
-          ;; Check layer flags are synced (if bound)
-          (when (boundp 'nskk-architecture-enable-debug)
-            (should (eq nskk-architecture-enable-debug nil)))
-          (when (boundp 'nskk-infrastructure--debug-enabled)
-            (should (eq nskk-infrastructure--debug-enabled nil)))
-          (when (boundp 'nskk-data--debug-enabled)
-            (should (eq nskk-data--debug-enabled nil))))
-      ;; Restore original values
-      (setq nskk-debug-enabled original-value)
-      (nskk-debug-test--cleanup-buffer))))
 
 ;;; Log Macro Tests
 

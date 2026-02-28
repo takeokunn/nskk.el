@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n, testing, property-based
@@ -46,7 +46,7 @@
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
 (require 'nskk-state)
-(require 'nskk-input-commands)
+(require 'nskk-input)
 
 (eval-when-compile (require 'cl-lib))
 

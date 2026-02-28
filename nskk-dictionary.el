@@ -1,39 +1,127 @@
-;;; nskk-dict-io.el --- Dictionary I/O -*- lexical-binding: t; -*-
+;;; nskk-dictionary.el --- Dictionary module for NSKK -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
-;; Keywords: japanese, input, mule
+;; Keywords: japanese, input, mule, i18n
 
-;; This file is NOT part of GNU Emacs.
-
+;; This file is part of NSKK (Next-generation SKK).
+;;
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
+;;
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
+;;
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
-;; Dictionary I/O module for loading and saving SKK dictionary files.
+;; Merged dictionary module consolidating:
+;;
+;; nskk-dict-errors: Dictionary error handling and recovery module.
+;; Provides automatic recovery from dictionary errors.
+;;
+;; nskk-dict-struct: Core data structures for the NSKK SKK dictionary system.
+;;
+;; Defines two primary structures:
+;; - `nskk-dict-entry': a single dictionary entry (reading key, candidates,
+;;   optional okurigana type)
+;; - `nskk-dict-index': the full dictionary index (hash table of entries,
+;;   trie for prefix search, frequency table)
+;;
+;; Lookup is O(1) for exact matches via hash table, O(k + n) for prefix
+;; matches via the trie.
+;;
+;; nskk-dict-io: Dictionary I/O module for loading and saving SKK dictionary files.
 ;; Supports the standard SKK dictionary format with EUC-JP and UTF-8 encoding.
 
 ;;; Code:
 
 (require 'cl-lib)
-(require 'nskk-dict-struct)
 (require 'nskk-trie)
-(require 'nskk-custom)
+
+(defgroup nskk-dictionary nil
+  "Dictionary and search settings."
+  :prefix "nskk-dict-"
+  :group 'nskk)
+
+(defcustom nskk-dict-user-dictionary-file
+  (expand-file-name "~/.skk/jisyo")
+  "Path to the user dictionary file."
+  :type 'file
+  :group 'nskk-dictionary)
+
+(defcustom nskk-dict-system-dictionary-files nil
+  "List of system dictionary files to load.
+When nil, NSKK auto-detects dictionary paths from nix profiles
+and common system locations."
+  :type '(repeat file)
+  :group 'nskk-dictionary)
+
+(defcustom nskk-dict-cache-enabled t
+  "Whether to enable dictionary caching."
+  :type 'boolean
+  :group 'nskk-dictionary)
+
+(defcustom nskk-large-dictionary nil
+  "Path to large SKK dictionary file."
+  :type '(choice file (const nil))
+  :group 'nskk-dictionary)
+
+(defvar nskk-jisyo-update-hook nil
+  "Hook run when dictionary is updated.
+DDSKK equivalent: skk-jisyo-update-hook")
+
+;;; Section 1: Error types
+
+(define-error 'nskk-dict-error "Dictionary error")
+
+;;; Section 2: Data structures
+
+(cl-defstruct nskk-dict-entry
+  "Dictionary entry structure."
+  (key nil)
+  (candidates nil)
+  (okuri nil))
+
+(cl-defstruct nskk-dict-index
+  "Dictionary index structure."
+  (entries nil)
+  (by-prefix nil)
+  (by-freq nil))
+
+(defun nskk-dict--struct-lookup (index query &optional _okuri-type)
+  "Look up QUERY in dictionary INDEX.
+Returns `nskk-dict-entry' or nil if not found."
+  (when (and (nskk-dict-index-p index) (stringp query))
+    (let ((entries (nskk-dict-index-entries index)))
+      (when entries
+        (if (hash-table-p entries)
+            (let ((candidates (gethash query entries)))
+              (when candidates
+                (make-nskk-dict-entry :key query :candidates candidates)))
+          (let ((pair (assoc query entries)))
+            (when pair
+              (make-nskk-dict-entry :key (car pair) :candidates (cdr pair)))))))))
+
+(defun nskk-dict--struct-entry-count (index _okuri-type)
+  "Return count of entries in INDEX."
+  (let ((entries (nskk-dict-index-entries index)))
+    (cond
+     ((hash-table-p entries) (hash-table-count entries))
+     ((listp entries) (length entries))
+     (t 0))))
+
+;;; Section 3: I/O and lifecycle
 
 ;;; Dictionary Parsing
 
@@ -265,6 +353,6 @@ WORD is the conversion result to register."
     (message "NSKK: User dictionary saved to %s"
              nskk-dict-user-dictionary-file)))
 
-(provide 'nskk-dict-io)
+(provide 'nskk-dictionary)
 
-;;; nskk-dict-io.el ends here
+;;; nskk-dictionary.el ends here

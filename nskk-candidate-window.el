@@ -1,8 +1,8 @@
 ;;; nskk-candidate-window.el --- Candidate display UI for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -36,12 +36,40 @@
 
 ;;; Code:
 
-(require 'nskk-custom)
+(require 'cl-lib)
 
 (defgroup nskk-candidate-window nil
   "Candidate display UI for NSKK."
   :prefix "nskk-candidate-"
   :group 'nskk-ui)
+
+(defcustom nskk-candidate-window-page-size 7
+  "Number of candidates to display per page in the candidate window."
+  :type 'integer
+  :group 'nskk-candidate-window)
+
+(defcustom nskk-candidate-window-use-annotation t
+  "Whether to show annotations in the candidate window."
+  :type 'boolean
+  :group 'nskk-candidate-window)
+
+(defcustom nskk-candidate-window-position 'bottom
+  "Where to display the candidate window.
+\\='bottom means below the current line.
+\\='top means above the current line.
+\\='inline means inline with the text."
+  :type '(choice (const :tag "Bottom" bottom)
+                 (const :tag "Top" top)
+                 (const :tag "Inline" inline))
+  :group 'nskk-candidate-window)
+
+(defcustom nskk-minibuffer-show-inline-candidate t
+  "Whether to show inline candidate preview in minibuffer."
+  :type 'boolean
+  :group 'nskk-candidate-window)
+
+(defvar nskk-henkan-show-candidates-keys)
+(defvar nskk-henkan-number-to-display-candidates)
 
 (defface nskk-candidate-key-face
   '((t (:foreground "#FF9800" :weight bold)))

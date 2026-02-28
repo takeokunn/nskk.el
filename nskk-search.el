@@ -1,10 +1,11 @@
 ;;; nskk-search.el --- Dictionary search algorithms for NSKK -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 NSKK Development Team
-
-;; Author: NSKK Development Team
+;; Author: takeokunn <bararararatty@gmail.com>
+;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
+
+;; Copyright (C) 2026 NSKK Contributors
 
 ;; This file is part of NSKK.
 
@@ -23,29 +24,22 @@
 
 ;;; Commentary:
 
-;; このファイルはSKK辞書の統合検索システムを実装します。
+;; Integrated dictionary search engine for NSKK (SKK Japanese input method).
 ;;
-;; サポートする検索タイプ:
-;; - 完全一致検索 (exact): O(1) 平均
-;; - 前方一致検索 (prefix): O(k + n) - トライ木を活用
-;; - 部分一致検索 (partial): O(n)
-;; - ファジー検索 (fuzzy): O(n * m) - Levenshtein距離
+;; Supported search types:
+;; - Exact match (exact): O(1) average via hash table
+;; - Prefix match (prefix): O(k + n) leveraging the trie structure
+;; - Partial match (partial): O(n)
+;; - Fuzzy match (fuzzy): O(n * m) using Levenshtein distance
 ;;
-;; 特徴:
-;; - トライ木を活用した高速前方一致検索
-;; - カスタマイズ可能なソート順
-;; - 送り仮名タイプの柔軟な指定
-;; - パフォーマンス要件を満たす実装
+;; Performance targets:
+;; - Exact match: < 0.1ms
+;; - Prefix match (100 results): < 1ms
+;; - Partial match (1000 entries): < 50ms
+;; - Fuzzy match (1000 entries): < 100ms
 ;;
-;; パフォーマンス目標:
-;; - 完全一致: < 0.1ms
-;; - 前方一致（100件）: < 1ms
-;; - 部分一致（1000件）: < 50ms
-;; - ファジー検索（1000件）: < 100ms
-;;
-;; 使用例:
-;;
-;;   (require 'nskk-search)
+;; The search engine supports okurigana type filtering and
+;; customizable sort order for candidate ranking.
 ;;
 ;;   ;; 完全一致検索
 ;;   (nskk-search index "かんじ" 'exact)
@@ -62,16 +56,17 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'nskk-dict-struct)
+(require 'subr-x)
+(require 'nskk-dictionary)
 (require 'nskk-trie)
-(require 'nskk-dict-errors)
 (require 'nskk-cache)
+(require 'nskk-prolog)
 
-;;; カスタマイズ変数
+(declare-function nskk-dict--struct-entry-count "nskk-dictionary")
 
 (defgroup nskk-search nil
   "SKK dictionary search customization."
-  :group 'nskk
+  :group 'nskk-dictionary
   :prefix "nskk-search-")
 
 (defcustom nskk-search-sort-method 'frequency
@@ -91,6 +86,41 @@
   :type 'boolean
   :group 'nskk-search)
 
+(defcustom nskk-search-learning-file "~/.emacs.d/nskk/learning.dat"
+  "File path for persisting learning data."
+  :type 'file
+  :group 'nskk-search)
+
+(defcustom nskk-search-auto-save t
+  "When non-nil, automatically save learning data periodically."
+  :type 'boolean
+  :group 'nskk-search)
+
+(defcustom nskk-search-auto-save-interval 300
+  "Auto-save interval in seconds for learning data."
+  :type 'integer
+  :group 'nskk-search)
+
+(defvar nskk-search-jisyo-hook nil
+  "Hook run during dictionary search.
+DDSKK equivalent: skk-search-jisyo-hook")
+
+(defvar nskk-save-history-hook nil
+  "Hook run when history is saved.
+DDSKK equivalent: skk-save-history-hook")
+
+;;; Internal variables for learning data
+
+(defvar nskk-search--learning-data (make-hash-table :test 'equal)
+  "Hash table storing learning data.
+Keys are reading strings, values are hash tables mapping candidates to scores.")
+
+(defvar nskk-search--dirty-flag nil
+  "Non-nil when learning data has been modified since last save.")
+
+(defvar nskk-search--auto-save-timer nil
+  "Timer for periodic auto-save of learning data.")
+
 ;;; エラー定義
 
 (define-error 'nskk-dict-search-error
@@ -104,6 +134,21 @@
 (define-error 'nskk-dict-search-invalid-index
   "Invalid dictionary index"
   'nskk-dict-search-error)
+
+;;;; Prolog Search Strategy Facts
+
+;; Search type dispatch rules
+(nskk-prolog-set-index 'search-strategy 1 :hash)
+(nskk-prolog-<- (search-strategy exact))
+(nskk-prolog-<- (search-strategy prefix))
+(nskk-prolog-<- (search-strategy partial))
+(nskk-prolog-<- (search-strategy fuzzy))
+
+;; Sort method dispatch rules
+(nskk-prolog-set-index 'sort-strategy 1 :hash)
+(nskk-prolog-<- (sort-strategy frequency))
+(nskk-prolog-<- (sort-strategy kana))
+(nskk-prolog-<- (sort-strategy none))
 
 ;;; 統合検索インターフェース
 
@@ -122,21 +167,29 @@ LIMIT is the maximum number of results."
     ;; 検索タイプのデフォルト値
     (setq search-type (or search-type 'exact))
 
+    ;; Validate search type via Prolog
+    (unless (nskk-prolog-query `(search-strategy ,search-type))
+      (signal 'nskk-dict-search-invalid-query
+              (list (format "Unknown search type: %s" search-type))))
+
     ;; 検索タイプに応じてディスパッチ
     (let ((result
            (pcase search-type
-             ('exact
-              (nskk-search-exact dict-index query okuri-type))
-             ('prefix
-              (nskk-search-prefix dict-index query okuri-type limit))
-             ('partial
-              (nskk-search-partial dict-index query okuri-type limit))
-             ('fuzzy
-              (nskk-search-fuzzy dict-index query okuri-type limit))
-             (_
-              (signal 'nskk-dict-search-invalid-query
-                      (list (format "Unknown search type: %s" search-type)))))))
+             ('exact (nskk-search-exact dict-index query okuri-type))
+             ('prefix (nskk-search-prefix dict-index query okuri-type limit))
+             ('partial (nskk-search-partial dict-index query okuri-type limit))
+             ('fuzzy (nskk-search-fuzzy dict-index query okuri-type limit)))))
       result)))
+
+;;; Okuri-type filtering
+
+(defsubst nskk-search--match-okuri-type-p (okuri-type entry-okuri)
+  "Return non-nil if ENTRY-OKURI matches OKURI-TYPE filter.
+OKURI-TYPE is \\='okuri-ari, \\='okuri-nasi, or nil (match all)."
+  (cond
+   ((eq okuri-type 'okuri-ari) entry-okuri)
+   ((eq okuri-type 'okuri-nasi) (or (null entry-okuri) (string= entry-okuri "")))
+   (t t)))
 
 ;;; 完全一致検索
 
@@ -151,15 +204,8 @@ OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
                     (assoc query entries)))
       ;; Filter by okuri-type if specified
       (when (and entry okuri-type)
-        (let ((entry-okuri (nskk-dict-entry-okuri entry)))
-          (setq entry
-                (cond
-                 ((eq okuri-type 'okuri-ari)
-                  (when entry-okuri entry))
-                 ((eq okuri-type 'okuri-nasi)
-                  (when (or (null entry-okuri) (string= entry-okuri ""))
-                    entry))
-                 (t entry)))))
+        (unless (nskk-search--match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry))
+          (setq entry nil)))
       entry)))
 
 ;;; 前方一致検索
@@ -182,13 +228,7 @@ LIMIT is the maximum number of results."
       (setq results
             (cl-remove-if-not
              (lambda (result)
-               (let ((entry-okuri (nskk-dict-entry-okuri (cdr result))))
-                 (cond
-                  ((eq okuri-type 'okuri-ari)
-                   entry-okuri)
-                  ((eq okuri-type 'okuri-nasi)
-                   (or (null entry-okuri) (string= entry-okuri "")))
-                  (t t))))
+               (nskk-search--match-okuri-type-p okuri-type (nskk-dict-entry-okuri (cdr result))))
              results)))
 
     ;; 重複を除去（同じキーが送り仮名ありとなしに存在する場合）
@@ -228,21 +268,12 @@ LIMIT is the maximum number of results."
         (maphash (lambda (key entry)
                    (when (string-match-p (regexp-quote query) key)
                      ;; Filter by okuri-type if specified
-                     (let ((include-entry t))
-                       (when okuri-type
-                         (let ((entry-okuri (nskk-dict-entry-okuri entry)))
-                           (setq include-entry
-                                 (cond
-                                  ((eq okuri-type 'okuri-ari)
-                                   entry-okuri)
-                                  ((eq okuri-type 'okuri-nasi)
-                                   (or (null entry-okuri) (string= entry-okuri "")))
-                                  (t t)))))
-                       (when include-entry
-                         (push (cons key entry) results)
-                         (cl-incf count)
-                         (when (and limit (>= count limit))
-                           (throw 'limit-reached nil))))))
+                     (when (or (null okuri-type)
+                               (nskk-search--match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry)))
+                       (push (cons key entry) results)
+                       (cl-incf count)
+                       (when (and limit (>= count limit))
+                         (throw 'limit-reached nil)))))
                  entries)))
 
     ;; ソート
@@ -313,27 +344,153 @@ LIMIT is the maximum number of results."
 
 (defun nskk-search--sort-results (results)
   "Sort search RESULTS according to `nskk-search-sort-method'."
+  (unless (nskk-prolog-query `(sort-strategy ,nskk-search-sort-method))
+    (setq nskk-search-sort-method 'none))
   (pcase nskk-search-sort-method
-    ('frequency
-     (nskk-search-sort-by-frequency results))
-    ('kana
-     (nskk-search-sort-by-kana-order results))
-    ('none
-     results)
-    (_
-     results)))
+    ('frequency (nskk-search-sort-by-frequency results))
+    ('kana (nskk-search-sort-by-kana-order results))
+    (_ results)))
 
 (defun nskk-search-sort-by-frequency (results)
-  "Sort RESULTS by usage frequency in descending order.
-;; TODO: Placeholder - currently returns results unsorted.
-;; Implement frequency-based sorting using nskk-learning data."
-  results)
+  "Sort RESULTS by usage frequency based on learning data."
+  (nskk-search--sort-prefix-results results))
 
 (defun nskk-search-sort-by-kana-order (results)
   "Sort RESULTS in Japanese kana order."
   (sort results
         (lambda (a b)
           (string< (car a) (car b)))))
+
+;;; Learning-based sorting
+
+(defun nskk-search--sort-entry-by-learning (entry)
+  "Sort candidates within ENTRY by learning scores."
+  (when (nskk-dict-entry-p entry)
+    (let* ((reading (nskk-dict-entry-key entry))
+           (scores (gethash reading nskk-search--learning-data)))
+      (when scores
+        (setf (nskk-dict-entry-candidates entry)
+              (sort (copy-sequence (nskk-dict-entry-candidates entry))
+                    (lambda (a b)
+                      (> (nskk-search--candidate-score reading a scores)
+                         (nskk-search--candidate-score reading b scores)))))))
+    entry))
+
+(defun nskk-search--sort-prefix-results (results)
+  "Sort prefix search RESULTS by learning scores in descending order."
+  (let ((scored (mapcar (lambda (item)
+                          (cons (nskk-search--reading-score (car item) (cdr item))
+                                item))
+                        results)))
+    (mapcar #'cdr
+            (sort scored (lambda (a b)
+                           (> (car a) (car b)))))))
+
+(defun nskk-search--reading-score (reading entry)
+  "Return the maximum learning score for READING and ENTRY."
+  (let ((scores (gethash reading nskk-search--learning-data)))
+    (if (and scores (nskk-dict-entry-p entry))
+        (cl-loop for cand in (nskk-dict-entry-candidates entry)
+                 maximize (nskk-search--candidate-score reading cand scores))
+      0)))
+
+(defun nskk-search--candidate-score (_reading candidate scores)
+  "Return learning score for CANDIDATE from SCORES hash table.
+_READING is unused."
+  (let ((word (nskk-search--candidate-word candidate)))
+    (or (and word (gethash word scores)) 0)))
+
+(defun nskk-search--candidate-word (candidate)
+  "Extract the word string from CANDIDATE."
+  (cond
+   ((stringp candidate) candidate)
+   ((and (consp candidate)
+         (stringp (car candidate)))
+    (car candidate))
+   (t nil)))
+
+;;; Deduplication
+
+(defun nskk-search--dedupe-fuzzy (results)
+  "Remove duplicate entries from fuzzy search RESULTS, keeping closest match."
+  (let ((seen (make-hash-table :test 'equal))
+        (acc '()))
+    (dolist (item results)
+      (let* ((key (car item))
+             (distance (cddr item))
+             (existing (gethash key seen)))
+        (cond
+         ((null existing)
+          (puthash key item seen)
+          (push item acc))
+         ((< distance (cddr existing))
+          (puthash key item seen)
+          (setq acc (cons item (delete existing acc)))))))
+    (nreverse acc)))
+
+;;; Learning data management
+
+(defun nskk-search--load-learning-data ()
+  "Load learning data from `nskk-search-learning-file'."
+  (when (file-readable-p nskk-search-learning-file)
+    (condition-case _err
+        (with-temp-buffer
+          (insert-file-contents nskk-search-learning-file)
+          (let ((data (read (current-buffer))))
+            (if (hash-table-p data)
+                (setq nskk-search--learning-data data)
+              (setq nskk-search--learning-data (make-hash-table :test 'equal)))))
+      (error
+       (setq nskk-search--learning-data (make-hash-table :test 'equal))))))
+
+;;;###autoload
+(defun nskk-search-save-learning-data ()
+  "Save learning data to `nskk-search-learning-file'."
+  (interactive)
+  (let ((dir (file-name-directory nskk-search-learning-file)))
+    (unless (file-directory-p dir)
+      (make-directory dir t)))
+  (condition-case err
+      (with-temp-file nskk-search-learning-file
+        (prin1 nskk-search--learning-data (current-buffer))
+        (setq nskk-search--dirty-flag nil)
+        (message "Learning data saved"))
+    (error
+     (message "Failed to save learning data: %s" err))))
+
+;;;###autoload
+(defun nskk-search-learn (query candidate &optional _context)
+  "Record that CANDIDATE was selected for QUERY.
+_CONTEXT is reserved for future use."
+  (let ((scores (or (gethash query nskk-search--learning-data)
+                    (make-hash-table :test 'equal))))
+    (puthash candidate
+             (1+ (or (gethash candidate scores) 0))
+             scores)
+    (puthash query scores nskk-search--learning-data)
+    (setq nskk-search--dirty-flag t)))
+
+;;; Auto-save
+
+(defun nskk-search--start-auto-save ()
+  "Start the auto-save timer for learning data."
+  (when nskk-search--auto-save-timer
+    (cancel-timer nskk-search--auto-save-timer))
+  (setq nskk-search--auto-save-timer
+        (run-with-timer nskk-search-auto-save-interval
+                        nskk-search-auto-save-interval
+                        #'nskk-search--auto-save-handler)))
+
+(defun nskk-search--stop-auto-save ()
+  "Stop the auto-save timer for learning data."
+  (when nskk-search--auto-save-timer
+    (cancel-timer nskk-search--auto-save-timer)
+    (setq nskk-search--auto-save-timer nil)))
+
+(defun nskk-search--auto-save-handler ()
+  "Handler called by the auto-save timer."
+  (when nskk-search--dirty-flag
+    (nskk-search-save-learning-data)))
 
 ;;; ユーティリティ関数
 
@@ -342,7 +499,7 @@ LIMIT is the maximum number of results."
 OKURI-TYPE specifies okurigana filtering."
   (if (null search-type)
       ;; 全エントリ数
-      (nskk-dict-struct-entry-count index okuri-type)
+      (nskk-dict--struct-entry-count index okuri-type)
     ;; 検索実行してカウント
     (let ((results (nskk-search index query search-type okuri-type nil)))
       (if (nskk-dict-entry-p results)

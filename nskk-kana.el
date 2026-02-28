@@ -1,8 +1,8 @@
-;;; nskk-core.el --- Core conversion utilities -*- lexical-binding: t; -*-
+;;; nskk-kana.el --- Core conversion utilities -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: Takeshi Umeda <takeokunn@gmail.com>
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -40,6 +40,12 @@
 ;;; Code:
 
 (require 'cl-lib)
+(eval-when-compile (require 'nskk-macros))
+
+(defgroup nskk-kana nil
+  "Kana conversion and state management settings."
+  :prefix "nskk-"
+  :group 'nskk)
 
 ;; Character code ranges for classification
 ;; Based on Unicode Standard 15.0
@@ -97,104 +103,32 @@ Half-width katakana characters from the Half-width and Full-width Forms block.")
 ;; Maps zenkaku katakana (as string) to hankaku katakana (as string)
 (defvar nskk--zenkaku-to-hankaku-table
   (let ((table (make-hash-table :test 'equal :size 200)))
-    ;; Basic katakana
-    (puthash "ア" "ｱ" table)
-    (puthash "イ" "ｲ" table)
-    (puthash "ウ" "ｳ" table)
-    (puthash "エ" "ｴ" table)
-    (puthash "オ" "ｵ" table)
-    (puthash "カ" "ｶ" table)
-    (puthash "キ" "ｷ" table)
-    (puthash "ク" "ｸ" table)
-    (puthash "ケ" "ｹ" table)
-    (puthash "コ" "ｺ" table)
-    (puthash "サ" "ｻ" table)
-    (puthash "シ" "ｼ" table)
-    (puthash "ス" "ｽ" table)
-    (puthash "セ" "ｾ" table)
-    (puthash "ソ" "ｿ" table)
-    (puthash "タ" "ﾀ" table)
-    (puthash "チ" "ﾁ" table)
-    (puthash "ツ" "ﾂ" table)
-    (puthash "テ" "ﾃ" table)
-    (puthash "ト" "ﾄ" table)
-    (puthash "ナ" "ﾅ" table)
-    (puthash "ニ" "ﾆ" table)
-    (puthash "ヌ" "ﾇ" table)
-    (puthash "ネ" "ﾈ" table)
-    (puthash "ノ" "ﾉ" table)
-    (puthash "ハ" "ﾊ" table)
-    (puthash "ヒ" "ﾋ" table)
-    (puthash "フ" "ﾌ" table)
-    (puthash "ヘ" "ﾍ" table)
-    (puthash "ホ" "ﾎ" table)
-    (puthash "マ" "ﾏ" table)
-    (puthash "ミ" "ﾐ" table)
-    (puthash "ム" "ﾑ" table)
-    (puthash "メ" "ﾒ" table)
-    (puthash "モ" "ﾓ" table)
-    (puthash "ヤ" "ﾔ" table)
-    (puthash "ユ" "ﾕ" table)
-    (puthash "ヨ" "ﾖ" table)
-    (puthash "ラ" "ﾗ" table)
-    (puthash "リ" "ﾘ" table)
-    (puthash "ル" "ﾙ" table)
-    (puthash "レ" "ﾚ" table)
-    (puthash "ロ" "ﾛ" table)
-    (puthash "ワ" "ﾜ" table)
-    (puthash "ヲ" "ｦ" table)
-    (puthash "ン" "ﾝ" table)
-    (puthash "ヴ" "ｳﾞ" table)
-
-    ;; Dakuten and handakuten
-    (puthash "゛" "ﾞ" table)
-    (puthash "゜" "ﾟ" table)
-
-    ;; Small katakana
-    (puthash "ァ" "ｧ" table)
-    (puthash "ィ" "ｨ" table)
-    (puthash "ゥ" "ｩ" table)
-    (puthash "ェ" "ｪ" table)
-    (puthash "ォ" "ｫ" table)
-    (puthash "ッ" "ｯ" table)
-    (puthash "ャ" "ｬ" table)
-    (puthash "ュ" "ｭ" table)
-    (puthash "ョ" "ｮ" table)
-    (puthash "ヮ" "ﾜ" table)
-
-    ;; Extended katakana with dakuten/handakuten
-    (puthash "ガ" "ｶﾞ" table)
-    (puthash "ギ" "ｷﾞ" table)
-    (puthash "グ" "ｸﾞ" table)
-    (puthash "ゲ" "ｹﾞ" table)
-    (puthash "ゴ" "ｺﾞ" table)
-    (puthash "ザ" "ｻﾞ" table)
-    (puthash "ジ" "ｼﾞ" table)
-    (puthash "ズ" "ｽﾞ" table)
-    (puthash "ゼ" "ｾﾞ" table)
-    (puthash "ゾ" "ｿﾞ" table)
-    (puthash "ダ" "ﾀﾞ" table)
-    (puthash "ヂ" "ﾁﾞ" table)
-    (puthash "ヅ" "ﾂﾞ" table)
-    (puthash "デ" "ﾃﾞ" table)
-    (puthash "ド" "ﾄﾞ" table)
-    (puthash "バ" "ﾊﾞ" table)
-    (puthash "ビ" "ﾋﾞ" table)
-    (puthash "ブ" "ﾌﾞ" table)
-    (puthash "ベ" "ﾍﾞ" table)
-    (puthash "ボ" "ﾎﾞ" table)
-    (puthash "パ" "ﾊﾟ" table)
-    (puthash "ピ" "ﾋﾟ" table)
-    (puthash "プ" "ﾌﾟ" table)
-    (puthash "ペ" "ﾍﾟ" table)
-    (puthash "ポ" "ﾎﾟ" table)
-
-    ;; Punctuation and symbols
-    (puthash "。" "｡" table)
-    (puthash "、" "､" table)
-    (puthash "・" "･" table)
-    (puthash "ー" "ｰ" table)
-
+    (nskk-fill-hash-table table
+      ;; Basic katakana
+      ("ア" "ｱ") ("イ" "ｲ") ("ウ" "ｳ") ("エ" "ｴ") ("オ" "ｵ")
+      ("カ" "ｶ") ("キ" "ｷ") ("ク" "ｸ") ("ケ" "ｹ") ("コ" "ｺ")
+      ("サ" "ｻ") ("シ" "ｼ") ("ス" "ｽ") ("セ" "ｾ") ("ソ" "ｿ")
+      ("タ" "ﾀ") ("チ" "ﾁ") ("ツ" "ﾂ") ("テ" "ﾃ") ("ト" "ﾄ")
+      ("ナ" "ﾅ") ("ニ" "ﾆ") ("ヌ" "ﾇ") ("ネ" "ﾈ") ("ノ" "ﾉ")
+      ("ハ" "ﾊ") ("ヒ" "ﾋ") ("フ" "ﾌ") ("ヘ" "ﾍ") ("ホ" "ﾎ")
+      ("マ" "ﾏ") ("ミ" "ﾐ") ("ム" "ﾑ") ("メ" "ﾒ") ("モ" "ﾓ")
+      ("ヤ" "ﾔ") ("ユ" "ﾕ") ("ヨ" "ﾖ")
+      ("ラ" "ﾗ") ("リ" "ﾘ") ("ル" "ﾙ") ("レ" "ﾚ") ("ロ" "ﾛ")
+      ("ワ" "ﾜ") ("ヲ" "ｦ") ("ン" "ﾝ") ("ヴ" "ｳﾞ")
+      ;; Dakuten / Handakuten
+      ("゛" "ﾞ") ("゜" "ﾟ")
+      ;; Small katakana
+      ("ァ" "ｧ") ("ィ" "ｨ") ("ゥ" "ｩ") ("ェ" "ｪ") ("ォ" "ｫ")
+      ("ッ" "ｯ") ("ャ" "ｬ") ("ュ" "ｭ") ("ョ" "ｮ") ("ヮ" "ﾜ")
+      ;; Dakuten extended
+      ("ガ" "ｶﾞ") ("ギ" "ｷﾞ") ("グ" "ｸﾞ") ("ゲ" "ｹﾞ") ("ゴ" "ｺﾞ")
+      ("ザ" "ｻﾞ") ("ジ" "ｼﾞ") ("ズ" "ｽﾞ") ("ゼ" "ｾﾞ") ("ゾ" "ｿﾞ")
+      ("ダ" "ﾀﾞ") ("ヂ" "ﾁﾞ") ("ヅ" "ﾂﾞ") ("デ" "ﾃﾞ") ("ド" "ﾄﾞ")
+      ("バ" "ﾊﾞ") ("ビ" "ﾋﾞ") ("ブ" "ﾌﾞ") ("ベ" "ﾍﾞ") ("ボ" "ﾎﾞ")
+      ;; Handakuten extended
+      ("パ" "ﾊﾟ") ("ピ" "ﾋﾟ") ("プ" "ﾌﾟ") ("ペ" "ﾍﾟ") ("ポ" "ﾎﾟ")
+      ;; Punctuation
+      ("。" "｡") ("、" "､") ("・" "･") ("ー" "ｰ"))
     table)
   "Hash table mapping zenkaku to hankaku katakana.")
 
@@ -202,103 +136,32 @@ Half-width katakana characters from the Half-width and Full-width Forms block.")
 ;; Inverse of the above
 (defvar nskk--hankaku-to-zenkaku-table
   (let ((table (make-hash-table :test 'equal :size 200)))
-    ;; Basic katakana
-    (puthash "ｱ" "ア" table)
-    (puthash "ｲ" "イ" table)
-    (puthash "ｳ" "ウ" table)
-    (puthash "ｴ" "エ" table)
-    (puthash "ｵ" "オ" table)
-    (puthash "ｶ" "カ" table)
-    (puthash "ｷ" "キ" table)
-    (puthash "ｸ" "ク" table)
-    (puthash "ｹ" "ケ" table)
-    (puthash "ｺ" "コ" table)
-    (puthash "ｻ" "サ" table)
-    (puthash "ｼ" "シ" table)
-    (puthash "ｽ" "ス" table)
-    (puthash "ｾ" "セ" table)
-    (puthash "ｿ" "ソ" table)
-    (puthash "ﾀ" "タ" table)
-    (puthash "ﾁ" "チ" table)
-    (puthash "ﾂ" "ツ" table)
-    (puthash "ﾃ" "テ" table)
-    (puthash "ﾄ" "ト" table)
-    (puthash "ﾅ" "ナ" table)
-    (puthash "ﾆ" "ニ" table)
-    (puthash "ﾇ" "ヌ" table)
-    (puthash "ﾈ" "ネ" table)
-    (puthash "ﾉ" "ノ" table)
-    (puthash "ﾊ" "ハ" table)
-    (puthash "ﾋ" "ヒ" table)
-    (puthash "ﾌ" "フ" table)
-    (puthash "ﾍ" "ヘ" table)
-    (puthash "ﾎ" "ホ" table)
-    (puthash "ﾏ" "マ" table)
-    (puthash "ﾐ" "ミ" table)
-    (puthash "ﾑ" "ム" table)
-    (puthash "ﾒ" "メ" table)
-    (puthash "ﾓ" "モ" table)
-    (puthash "ﾔ" "ヤ" table)
-    (puthash "ﾕ" "ユ" table)
-    (puthash "ﾖ" "ヨ" table)
-    (puthash "ﾗ" "ラ" table)
-    (puthash "ﾘ" "リ" table)
-    (puthash "ﾙ" "ル" table)
-    (puthash "ﾚ" "レ" table)
-    (puthash "ﾛ" "ロ" table)
-    (puthash "ﾜ" "ワ" table)
-    (puthash "ｦ" "ヲ" table)
-    (puthash "ﾝ" "ン" table)
-    (puthash "ｳﾞ" "ヴ" table)
-
-    ;; Small katakana
-    (puthash "ｧ" "ァ" table)
-    (puthash "ｨ" "ィ" table)
-    (puthash "ｩ" "ゥ" table)
-    (puthash "ｪ" "ェ" table)
-    (puthash "ｫ" "ォ" table)
-    (puthash "ｯ" "ッ" table)
-    (puthash "ｬ" "ャ" table)
-    (puthash "ｭ" "ュ" table)
-    (puthash "ｮ" "ョ" table)
-
-    ;; Punctuation and symbols
-    (puthash "｡" "。" table)
-    (puthash "､" "、" table)
-    (puthash "･" "・" table)
-    (puthash "ｰ" "ー" table)
-
-    ;; Combining marks
-    (puthash "ﾞ" "゛" table)
-    (puthash "ﾟ" "゜" table)
-
-    ;; Extended katakana with dakuten/handakuten
-    (puthash "ｶﾞ" "ガ" table)
-    (puthash "ｷﾞ" "ギ" table)
-    (puthash "ｸﾞ" "グ" table)
-    (puthash "ｹﾞ" "ゲ" table)
-    (puthash "ｺﾞ" "ゴ" table)
-    (puthash "ｻﾞ" "ザ" table)
-    (puthash "ｼﾞ" "ジ" table)
-    (puthash "ｽﾞ" "ズ" table)
-    (puthash "ｾﾞ" "ゼ" table)
-    (puthash "ｿﾞ" "ゾ" table)
-    (puthash "ﾀﾞ" "ダ" table)
-    (puthash "ﾁﾞ" "ヂ" table)
-    (puthash "ﾂﾞ" "ヅ" table)
-    (puthash "ﾃﾞ" "デ" table)
-    (puthash "ﾄﾞ" "ド" table)
-    (puthash "ﾊﾞ" "バ" table)
-    (puthash "ﾋﾞ" "ビ" table)
-    (puthash "ﾌﾞ" "ブ" table)
-    (puthash "ﾍﾞ" "ベ" table)
-    (puthash "ﾎﾞ" "ボ" table)
-    (puthash "ﾊﾟ" "パ" table)
-    (puthash "ﾋﾟ" "ピ" table)
-    (puthash "ﾌﾟ" "プ" table)
-    (puthash "ﾍﾟ" "ペ" table)
-    (puthash "ﾎﾟ" "ポ" table)
-
+    (nskk-fill-hash-table table
+      ;; Basic katakana
+      ("ｱ" "ア") ("ｲ" "イ") ("ｳ" "ウ") ("ｴ" "エ") ("ｵ" "オ")
+      ("ｶ" "カ") ("ｷ" "キ") ("ｸ" "ク") ("ｹ" "ケ") ("ｺ" "コ")
+      ("ｻ" "サ") ("ｼ" "シ") ("ｽ" "ス") ("ｾ" "セ") ("ｿ" "ソ")
+      ("ﾀ" "タ") ("ﾁ" "チ") ("ﾂ" "ツ") ("ﾃ" "テ") ("ﾄ" "ト")
+      ("ﾅ" "ナ") ("ﾆ" "ニ") ("ﾇ" "ヌ") ("ﾈ" "ネ") ("ﾉ" "ノ")
+      ("ﾊ" "ハ") ("ﾋ" "ヒ") ("ﾌ" "フ") ("ﾍ" "ヘ") ("ﾎ" "ホ")
+      ("ﾏ" "マ") ("ﾐ" "ミ") ("ﾑ" "ム") ("ﾒ" "メ") ("ﾓ" "モ")
+      ("ﾔ" "ヤ") ("ﾕ" "ユ") ("ﾖ" "ヨ")
+      ("ﾗ" "ラ") ("ﾘ" "リ") ("ﾙ" "ル") ("ﾚ" "レ") ("ﾛ" "ロ")
+      ("ﾜ" "ワ") ("ｦ" "ヲ") ("ﾝ" "ン") ("ｳﾞ" "ヴ")
+      ;; Small katakana
+      ("ｧ" "ァ") ("ｨ" "ィ") ("ｩ" "ゥ") ("ｪ" "ェ") ("ｫ" "ォ")
+      ("ｯ" "ッ") ("ｬ" "ャ") ("ｭ" "ュ") ("ｮ" "ョ")
+      ;; Punctuation
+      ("｡" "。") ("､" "、") ("･" "・") ("ｰ" "ー")
+      ;; Combining marks
+      ("ﾞ" "゛") ("ﾟ" "゜")
+      ;; Dakuten extended
+      ("ｶﾞ" "ガ") ("ｷﾞ" "ギ") ("ｸﾞ" "グ") ("ｹﾞ" "ゲ") ("ｺﾞ" "ゴ")
+      ("ｻﾞ" "ザ") ("ｼﾞ" "ジ") ("ｽﾞ" "ズ") ("ｾﾞ" "ゼ") ("ｿﾞ" "ゾ")
+      ("ﾀﾞ" "ダ") ("ﾁﾞ" "ヂ") ("ﾂﾞ" "ヅ") ("ﾃﾞ" "デ") ("ﾄﾞ" "ド")
+      ("ﾊﾞ" "バ") ("ﾋﾞ" "ビ") ("ﾌﾞ" "ブ") ("ﾍﾞ" "ベ") ("ﾎﾞ" "ボ")
+      ;; Handakuten extended
+      ("ﾊﾟ" "パ") ("ﾋﾟ" "ピ") ("ﾌﾟ" "プ") ("ﾍﾟ" "ペ") ("ﾎﾟ" "ポ"))
     table)
   "Hash table mapping hankaku to zenkaku katakana.")
 
@@ -310,19 +173,19 @@ Half-width katakana characters from the Half-width and Full-width Forms block.")
 
 ;;; Character Classification Functions
 
-(defun nskk-core-hiragana-p (char)
+(defun nskk-kana-hiragana-p (char)
   "Check if CHAR is a hiragana character."
   (and (integerp char)
        (>= char nskk--hiragana-start)
        (<= char nskk--hiragana-end)))
 
-(defun nskk-core-katakana-p (char)
+(defun nskk-kana-katakana-p (char)
   "Check if CHAR is a katakana character."
   (and (integerp char)
        (>= char nskk--katakana-start)
        (<= char nskk--katakana-end)))
 
-(defun nskk-core-han-p (char)
+(defun nskk-kana-han-p (char)
   "Check if CHAR is a han (kanji) character.
 Includes both main CJK Unified Ideographs (U+4E00-U+9FFF) and
 CJK Unified Ideographs Extension A (U+3400-U+4DBF) which contains
@@ -333,7 +196,7 @@ rare and historical kanji."
            (and (>= char nskk--han-extension-a-start)
                 (<= char nskk--han-extension-a-end)))))
 
-(defun nskk-core-hankaku-katakana-p (char)
+(defun nskk-kana-hankaku-katakana-p (char)
   "Check if CHAR is a half-width katakana character.
 Half-width katakana are in the range U+FF65-U+FF9F,
 part of the Half-width and Full-width Forms Unicode block."
@@ -341,7 +204,7 @@ part of the Half-width and Full-width Forms Unicode block."
        (>= char nskk--hankaku-katakana-start)
        (<= char nskk--hankaku-katakana-end)))
 
-(defun nskk-core-japanese-p (char)
+(defun nskk-kana-japanese-p (char)
   "Check if CHAR is a Japanese character.
 Recognizes the following Unicode ranges:
 - Hiragana (U+3040-U+309F)
@@ -349,57 +212,55 @@ Recognizes the following Unicode ranges:
 - CJK Unified Ideographs (U+4E00-U+9FFF)
 - CJK Unified Ideographs Extension A (U+3400-U+4DBF)
 - Half-width Katakana (U+FF65-U+FF9F)"
-  (or (nskk-core-hiragana-p char)
-      (nskk-core-katakana-p char)
-      (nskk-core-han-p char)
-      (nskk-core-hankaku-katakana-p char)))
+  (or (nskk-kana-hiragana-p char)
+      (nskk-kana-katakana-p char)
+      (nskk-kana-han-p char)
+      (nskk-kana-hankaku-katakana-p char)))
 
 ;;; Hiragana/Katakana Conversion Functions
 
-(defun nskk-core-hiragana-to-katakana (char)
+(defun nskk-kana-hiragana-to-katakana (char)
   "Convert hiragana CHAR to katakana.
 Returns converted character or CHAR if not hiragana."
-  (if (nskk-core-hiragana-p char)
+  (if (nskk-kana-hiragana-p char)
       (+ char nskk--kana-offset)
     char))
 
-(defun nskk-core-katakana-to-hiragana (char)
+(defun nskk-kana-katakana-to-hiragana (char)
   "Convert katakana CHAR to hiragana.
 Returns converted character or CHAR if not katakana."
-  (if (nskk-core-katakana-p char)
+  (if (nskk-kana-katakana-p char)
       (- char nskk--kana-offset)
     char))
 
-(defun nskk-core-string-hiragana-to-katakana (string)
-  "Convert hiragana in STRING to katakana."
+(defun nskk-kana--map-string-chars (string converter)
+  "Apply CONVERTER function to each char in STRING, return new string."
   (when (stringp string)
     (let ((result (make-string (length string) ?\0)))
       (dotimes (i (length string))
-        (aset result i
-              (nskk-core-hiragana-to-katakana (aref string i))))
+        (aset result i (funcall converter (aref string i))))
       result)))
 
-(defun nskk-core-string-katakana-to-hiragana (string)
+(defun nskk-kana-string-hiragana-to-katakana (string)
+  "Convert hiragana in STRING to katakana."
+  (nskk-kana--map-string-chars string #'nskk-kana-hiragana-to-katakana))
+
+(defun nskk-kana-string-katakana-to-hiragana (string)
   "Convert katakana in STRING to hiragana."
-  (when (stringp string)
-    (let ((result (make-string (length string) ?\0)))
-      (dotimes (i (length string))
-        (aset result i
-              (nskk-core-katakana-to-hiragana (aref string i))))
-      result)))
+  (nskk-kana--map-string-chars string #'nskk-kana-katakana-to-hiragana))
 
 ;;; Hankaku/Zenkaku Conversion Functions
 
-(defun nskk-core-zenkaku-to-hankaku (string-or-char)
+(defun nskk-kana-zenkaku-to-hankaku (string-or-char)
   "Convert zenkaku katakana STRING-OR-CHAR to hankaku."
   (if (stringp string-or-char)
-      (nskk-core--zenkaku-string-to-hankaku string-or-char)
+      (nskk-kana--zenkaku-string-to-hankaku string-or-char)
     ;; Single character case
     (let ((str (char-to-string string-or-char)))
       (or (gethash str nskk--zenkaku-to-hankaku-table)
           str))))
 
-(defun nskk-core--zenkaku-string-to-hankaku (string)
+(defun nskk-kana--zenkaku-string-to-hankaku (string)
   "Internal: Convert zenkaku katakana STRING to hankaku.
 Uses vector accumulation for O(n) performance."
   (when (stringp string)
@@ -426,17 +287,17 @@ Uses vector accumulation for O(n) performance."
       ;; Return only the filled portion
       (substring result-vec 0 result-pos))))
 
-(defun nskk-core-hankaku-to-zenkaku (string-or-char)
+(defun nskk-kana-hankaku-to-zenkaku (string-or-char)
   "Convert hankaku katakana STRING-OR-CHAR to zenkaku.
 Handles combined dakuten/handakuten marks (e.g., \"ｶﾞ\" -> \"ガ\")."
   (if (stringp string-or-char)
-      (nskk-core--hankaku-string-to-zenkaku string-or-char)
+      (nskk-kana--hankaku-string-to-zenkaku string-or-char)
     ;; Single character case
     (let ((hankaku (char-to-string string-or-char)))
       (or (gethash hankaku nskk--hankaku-to-zenkaku-table)
           hankaku))))
 
-(defun nskk-core--hankaku-string-to-zenkaku (string)
+(defun nskk-kana--hankaku-string-to-zenkaku (string)
   "Internal: Convert hankaku katakana STRING to zenkaku.
 Handles dakuten/handakuten combinations.
 Uses vector accumulation for O(n) performance."
@@ -475,16 +336,16 @@ Uses vector accumulation for O(n) performance."
       ;; Return only the filled portion
       (substring result-vec 0 result-pos))))
 
-(defun nskk-core-string-zenkaku-to-hankaku (string)
+(defun nskk-kana-string-zenkaku-to-hankaku (string)
   "Convert zenkaku katakana in STRING to hankaku.
-Alias for nskk-core-zenkaku-to-hankaku for string argument."
-  (nskk-core--zenkaku-string-to-hankaku string))
+Alias for nskk-kana-zenkaku-to-hankaku for string argument."
+  (nskk-kana--zenkaku-string-to-hankaku string))
 
-(defun nskk-core-string-hankaku-to-zenkaku (string)
+(defun nskk-kana-string-hankaku-to-zenkaku (string)
   "Convert hankaku katakana in STRING to zenkaku.
-Alias for nskk-core-hankaku-to-zenkaku for string argument."
-  (nskk-core--hankaku-string-to-zenkaku string))
+Alias for nskk-kana-hankaku-to-zenkaku for string argument."
+  (nskk-kana--hankaku-string-to-zenkaku string))
 
-(provide 'nskk-core)
+(provide 'nskk-kana)
 
-;;; nskk-core.el ends here
+;;; nskk-kana.el ends here

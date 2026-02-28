@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: Japanese, input, method, test, converter
 ;; Homepage: https://github.com/takeokunn/nskk.el
 
@@ -40,6 +40,7 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-converter)  ; Assumes converter implementation exists
+(require 'nskk-henkan)
 (require 'nskk-state)
 (eval-when-compile (require 'cl-lib))
 
@@ -354,7 +355,7 @@
   "Test basic conversion start."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set state 'input-buffer "かんじ")
-    (let ((result (nskk-converter-start-conversion state '("漢字" "感じ"))))
+    (let ((result (nskk-henkan-start-conversion state '("漢字" "感じ"))))
       (should result)
       (should (nskk-state-henkan-position result))
       (should (equal (nskk-state-candidates result) '("漢字" "感じ")))
@@ -364,17 +365,17 @@
   "Test conversion start with empty input buffer."
   (let ((state (nskk-state-create 'hiragana)))
     ;; Empty input buffer — should not start conversion
-    (should-not (nskk-converter-start-conversion state '("漢字")))))
+    (should-not (nskk-henkan-start-conversion state '("漢字")))))
 
 (nskk-deftest-unit converter-start-conversion-nil-state
   "Test conversion start with nil state."
-  (should-not (nskk-converter-start-conversion nil '("漢字"))))
+  (should-not (nskk-henkan-start-conversion nil '("漢字"))))
 
 (nskk-deftest-unit converter-start-conversion-no-candidates
   "Test conversion start with no candidates."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set state 'input-buffer "てすと")
-    (let ((result (nskk-converter-start-conversion state)))
+    (let ((result (nskk-henkan-start-conversion state)))
       (should result)
       (should (equal (nskk-state-candidates result) '())))))
 
@@ -382,8 +383,8 @@
   "Test basic conversion commit."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-converter-start-conversion state '("漢字" "感じ"))
-    (let ((result (nskk-converter-commit-conversion state)))
+    (nskk-henkan-start-conversion state '("漢字" "感じ"))
+    (let ((result (nskk-henkan-commit-conversion state)))
       (should result)
       (should (string-match-p "漢字" (nskk-state-converted-buffer result)))
       (should (equal (nskk-state-input-buffer result) ""))
@@ -394,16 +395,16 @@
   "Test commit when no conversion is active."
   (let ((state (nskk-state-create 'hiragana)))
     ;; No henkan-position set — should return nil (no-op)
-    (should-not (nskk-converter-commit-conversion state))))
+    (should-not (nskk-henkan-commit-conversion state))))
 
 (nskk-deftest-unit converter-commit-conversion-second-candidate
   "Test committing second candidate."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-converter-start-conversion state '("漢字" "感じ" "幹事"))
+    (nskk-henkan-start-conversion state '("漢字" "感じ" "幹事"))
     ;; Move to second candidate
     (nskk-state-set state 'current-index 1)
-    (let ((result (nskk-converter-commit-conversion state)))
+    (let ((result (nskk-henkan-commit-conversion state)))
       (should result)
       (should (string-match-p "感じ" (nskk-state-converted-buffer result))))))
 
@@ -411,8 +412,8 @@
   "Test basic conversion cancel."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-converter-start-conversion state '("漢字" "感じ"))
-    (let ((result (nskk-converter-cancel-conversion state "かんじ")))
+    (nskk-henkan-start-conversion state '("漢字" "感じ"))
+    (let ((result (nskk-henkan-cancel-conversion state "かんじ")))
       (should result)
       (should (equal (nskk-state-input-buffer result) "かんじ"))
       (should-not (nskk-state-candidates result))
@@ -422,15 +423,15 @@
   "Test cancel conversion without original input."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set state 'input-buffer "てすと")
-    (nskk-converter-start-conversion state '("テスト"))
-    (let ((result (nskk-converter-cancel-conversion state)))
+    (nskk-henkan-start-conversion state '("テスト"))
+    (let ((result (nskk-henkan-cancel-conversion state)))
       (should result)
       (should (equal (nskk-state-input-buffer result) "")))))
 
 (nskk-deftest-unit converter-cancel-conversion-idempotent
   "Test cancel is idempotent when no conversion is active."
   (let ((state (nskk-state-create 'hiragana)))
-    (let ((result (nskk-converter-cancel-conversion state)))
+    (let ((result (nskk-henkan-cancel-conversion state)))
       (should result)
       (should-not (nskk-state-henkan-position result)))))
 
@@ -438,41 +439,41 @@
   "Test conversion state check."
   (let ((state (nskk-state-create 'hiragana)))
     ;; Not in conversion initially
-    (should-not (nskk-converter-in-conversion-p state))
+    (should-not (nskk-henkan-in-conversion-p state))
     ;; Start conversion
     (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-converter-start-conversion state '("漢字"))
-    (should (nskk-converter-in-conversion-p state))
+    (nskk-henkan-start-conversion state '("漢字"))
+    (should (nskk-henkan-in-conversion-p state))
     ;; After commit, no longer in conversion
-    (nskk-converter-commit-conversion state)
-    (should-not (nskk-converter-in-conversion-p state))))
+    (nskk-henkan-commit-conversion state)
+    (should-not (nskk-henkan-in-conversion-p state))))
 
 (nskk-deftest-unit converter-has-candidates-p-basic
   "Test candidate availability check."
   (let ((state (nskk-state-create 'hiragana)))
-    (should-not (nskk-converter-has-candidates-p state))
+    (should-not (nskk-henkan-has-candidates-p state))
     (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-converter-start-conversion state '("漢字" "感じ"))
-    (should (nskk-converter-has-candidates-p state))
-    (nskk-converter-commit-conversion state)
-    (should-not (nskk-converter-has-candidates-p state))))
+    (nskk-henkan-start-conversion state '("漢字" "感じ"))
+    (should (nskk-henkan-has-candidates-p state))
+    (nskk-henkan-commit-conversion state)
+    (should-not (nskk-henkan-has-candidates-p state))))
 
 (nskk-deftest-unit converter-get-current-candidate-basic
   "Test getting current candidate."
   (let ((state (nskk-state-create 'hiragana)))
     ;; No candidates
-    (should-not (nskk-converter-get-current-candidate state))
+    (should-not (nskk-henkan-get-current-candidate state))
     ;; With candidates
     (nskk-state-set state 'input-buffer "かんじ")
-    (nskk-converter-start-conversion state '("漢字" "感じ" "幹事"))
-    (should (equal (nskk-converter-get-current-candidate state) "漢字"))
+    (nskk-henkan-start-conversion state '("漢字" "感じ" "幹事"))
+    (should (equal (nskk-henkan-get-current-candidate state) "漢字"))
     ;; After moving index
     (nskk-state-set state 'current-index 2)
-    (should (equal (nskk-converter-get-current-candidate state) "幹事"))))
+    (should (equal (nskk-henkan-get-current-candidate state) "幹事"))))
 
 (nskk-deftest-unit converter-get-current-candidate-nil-state
   "Test getting candidate from nil state."
-  (should-not (nskk-converter-get-current-candidate nil)))
+  (should-not (nskk-henkan-get-current-candidate nil)))
 
 
 ;;;;

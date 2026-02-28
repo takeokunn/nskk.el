@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
 
 ;; This file is part of NSKK.
@@ -23,7 +23,7 @@
 
 (require 'ert)
 (require 'nskk-search)
-(require 'nskk-dict-struct)
+(require 'nskk-dictionary)
 (require 'nskk-trie)
 (require 'nskk-cache)
 (require 'nskk-test-framework)
@@ -422,10 +422,10 @@ TRIE-ENTRIES is ((key . value) ...) for the prefix trie."
       (should (> (length results) 0)))))
 
 (nskk-deftest-integration search-entry-count
-  "Test nskk-dict-struct-entry-count function."
+  "Test nskk-dict--struct-entry-count function."
   (let ((index (make-nskk-dict-index :entries '(a b c d e))))
-    (should (= (nskk-dict-struct-entry-count index nil) 5))
-    (should (= (nskk-dict-struct-entry-count index 'okuri-ari) 5))))
+    (should (= (nskk-dict--struct-entry-count index nil) 5))
+    (should (= (nskk-dict--struct-entry-count index 'okuri-ari) 5))))
 
 (provide 'nskk-search-test)
 

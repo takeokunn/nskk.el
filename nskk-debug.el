@@ -1,8 +1,8 @@
 ;;; nskk-debug.el --- NSKK unified debug mode -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -26,7 +26,6 @@
 
 ;; Unified debug mode for NSKK.
 ;; Provides centralized debug logging with zero overhead when disabled.
-;; Syncs debug state with layer-specific debug flags.
 ;;
 ;; Usage Examples:
 ;;
@@ -51,52 +50,20 @@
 ;;   `nskk-debug-toggle' - Toggle debug mode on/off
 ;;   `nskk-debug-show'   - Display the *NSKK Debug* buffer
 ;;   `nskk-debug-clear'  - Clear all entries from the debug buffer
-;;
-;; Layer Synchronization:
-;;
-;;   When `nskk-debug-enabled' is changed, the following layer-specific
-;;   debug flags are automatically synchronized:
-;;
-;;   - `nskk-architecture-enable-debug' (Architecture layer)
-;;   - `nskk-infrastructure--debug-enabled' (Infrastructure layer)
-;;   - `nskk-data--debug-enabled' (Data layer)
-;;
-;;   This ensures consistent debug output across all NSKK layers.
 
 ;;; Code:
 
 (require 'cl-lib)
-
-;;;; Customization Group
 
 (defgroup nskk-debug nil
   "NSKK debugging configuration."
   :prefix "nskk-debug-"
   :group 'nskk)
 
-;;;; Customization Variables
-
-(defun nskk-debug--sync-layer-flags (enabled)
-  "Sync ENABLED state with existing layer debug flags."
-  (when (boundp 'nskk-architecture-enable-debug)
-    (setq nskk-architecture-enable-debug enabled))
-  (when (boundp 'nskk-infrastructure--debug-enabled)
-    (setq nskk-infrastructure--debug-enabled enabled))
-  (when (boundp 'nskk-data--debug-enabled)
-    (setq nskk-data--debug-enabled enabled)))
-
-(defun nskk-debug--set-enabled (symbol value)
-  "Setter for nskk-debug-enabled.
-SYMBOL is the variable being set, VALUE is the new value."
-  (set-default-toplevel-value symbol value)
-  (nskk-debug--sync-layer-flags value))
-
 (defcustom nskk-debug-enabled nil
   "Whether NSKK debug mode is enabled.
-When enabled, debug messages are logged to the *NSKK Debug* buffer.
-Setting this also syncs with layer-specific debug flags."
+When enabled, debug messages are logged to the *NSKK Debug* buffer."
   :type 'boolean
-  :set #'nskk-debug--set-enabled
   :group 'nskk-debug)
 
 (defcustom nskk-debug-max-entries 1000
@@ -170,7 +137,6 @@ Uses O(1) backward iteration from buffer end instead of O(2n) full scan."
   "Toggle NSKK debug mode."
   (interactive)
   (setq nskk-debug-enabled (not nskk-debug-enabled))
-  (nskk-debug--sync-layer-flags nskk-debug-enabled)
   (if nskk-debug-enabled
       (message "NSKK debug mode enabled")
     (message "NSKK debug mode disabled")))
@@ -195,9 +161,7 @@ Uses O(1) backward iteration from buffer end instead of O(2n) full scan."
 ;;;; Provide
 
 ;; Handle case where nskk-debug-enabled was set before module loaded
-;; The :set handler couldn't run because the function didn't exist yet
 (when (bound-and-true-p nskk-debug-enabled)
-  (nskk-debug--sync-layer-flags t)
   (nskk-debug--append "NSKK debug module loaded (debug was pre-enabled)"))
 
 (provide 'nskk-debug)

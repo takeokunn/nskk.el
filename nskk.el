@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
@@ -26,55 +26,95 @@
 
 ;;; Commentary:
 
-;; NSKK is a next-generation SKK implementation with:
-;; - Zero external dependencies (Emacs 29.1+ only)
-;; - Extreme performance (< 1ms key response)
-;; - Modern architecture with clean separation of concerns
-;; - Extensible plugin system
+;; NSKK is a next-generation SKK (Simple Kana to Kanji) Japanese input
+;; method for Emacs.  SKK converts romaji keystrokes to kana/kanji using
+;; a dictionary, with the user explicitly marking word boundaries.
 ;;
-;; Installation:
+;; Features:
+;; - Zero external dependencies (Emacs 29.1+ only)
+;; - < 1ms key response, < 10ms dictionary search
+;; - Modular architecture with clean layer separation
+;; - AZIK extended romaji support (optional, via nskk-azik.el)
+;;
+;; Quick start:
 ;;   (require 'nskk)
 ;;   (nskk-global-mode 1)
 ;;
-;; Usage:
-;;   C-x C-j  Toggle NSKK mode
-;;   C-j      Enter hiragana mode / commit conversion (kakutei)
+;; Key bindings (in nskk-mode):
+;;   C-x C-j  Toggle NSKK on/off in current buffer
+;;   C-j      Kakutei (commit) / enter hiragana mode from ASCII
+;;   SPC      Start conversion (▽→▼) / cycle next candidate
+;;   x        Previous candidate
+;;   RET      Commit candidate and insert newline
+;;   q        Toggle hiragana ↔ katakana
+;;   l        Switch to ASCII (latin) mode
+;;   L        Switch to full-width latin (JIS X 0208) mode
+;;   /        Enter abbrev mode
+;;   C-g      Cancel conversion or preedit
+;;
+;; Input modes: hiragana (default), katakana, ascii, latin,
+;;   abbrev, jisx0208-latin.
+;;
+;; Dictionary configuration:
+;;   (setq nskk-dict-file "/path/to/SKK-JISYO.L")
 
 ;;; Code:
 
-;; Foundation modules (needed for defcustom, state types)
-(require 'nskk-custom)
+;; Foundation modules
+(require 'nskk-prolog)
 (require 'nskk-state)
 
-;; Layer modules (bottom-up dependency order)
-(require 'nskk-layer-infrastructure)
-(require 'nskk-layer-data)
-(require 'nskk-layer-core)
-(require 'nskk-layer-extension)
-(require 'nskk-layer-application)
-(require 'nskk-layer-presentation)
+;; Core modules
+(require 'nskk-input)
 
-;; Cross-cutting concerns (optional)
-(require 'nskk-optimize nil t)
-(require 'nskk-native-compile nil t)
-(require 'nskk-architecture nil t)
+;; UI modules
+(require 'nskk-keymap)
+(require 'nskk-candidate-window)
+(require 'nskk-modeline)
+
+;; Optional
 (require 'nskk-debug nil t)
 
+(defgroup nskk nil
+  "NSKK - Next-generation SKK with zero dependencies and extreme performance."
+  :prefix "nskk-"
+  :group 'i18n
+  :link '(url-link :tag "GitHub" "https://github.com/takeokunn/nskk.el"))
+
+(defgroup nskk-ui nil
+  "UI components settings."
+  :prefix "nskk-"
+  :group 'nskk)
+
+(defvar nskk-mode-hook nil
+  "Hook run when NSKK mode is enabled.
+DDSKK equivalent: skk-mode-hook")
+
+(defvar nskk-mode-off-hook nil
+  "Hook run when NSKK mode is disabled.
+DDSKK equivalent: skk-mode-off-hook")
+
+(defvar nskk-input-mode-hook nil
+  "Hook run when input mode changes.
+DDSKK equivalent: skk-input-mode-hook")
+
 (declare-function nskk-modeline-update "nskk-modeline")
-(declare-function nskk-converting-p "nskk-input-commands")
-(declare-function nskk-commit-current "nskk-input-commands")
-(declare-function nskk--has-preedit "nskk-input-commands")
-(declare-function nskk--clear-conversion-start-marker "nskk-input-commands")
-(declare-function nskk--get-conversion-start "nskk-input-commands")
-(declare-function nskk-enter-hiragana-mode "nskk-layer-application")
+(declare-function nskk-candidate-show-list "nskk-candidate-window")
+(declare-function nskk-candidate-hide-list "nskk-candidate-window")
+(declare-function nskk-candidate-list-select-by-key "nskk-candidate-window")
+;; Functions in nskk-henkan.el
+(declare-function nskk-converting-p "nskk-henkan")
+(declare-function nskk-commit-current "nskk-henkan")
+(declare-function nskk--has-preedit "nskk-henkan")
+(declare-function nskk-henkan-kakutei "nskk-henkan")
+;; Functions in nskk-input.el
+(declare-function nskk-enter-hiragana-mode "nskk-input")
 
 (defvar nskk--system-dict-index)
 (defvar nskk--romaji-buffer)
-(defvar nskk-henkan-on-marker)
-(defvar nskk-henkan-on-marker-regexp)
-(defvar nskk--conversion-start-marker)
-
-(declare-function nskk--delete-marker-at "nskk-input-commands")
+(defvar nskk-henkan-show-candidates-functions)
+(defvar nskk-henkan-hide-candidates-functions)
+(defvar nskk-henkan-select-candidate-by-key-function)
 
 ;; Define the minor mode
 (defvar nskk-mode-map
@@ -135,6 +175,10 @@ This provides global bindings that work even when nskk-mode is not yet active.")
   (unless nskk-current-state
     (setq nskk-current-state (nskk-state-create nskk-state-default-mode))
     (nskk-debug-message "Created initial state: mode=%s" nskk-state-default-mode))
+  ;; Wire candidate display hooks
+  (add-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
+  (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
+  (setq nskk-henkan-select-candidate-by-key-function #'nskk-candidate-list-select-by-key)
   (nskk--setup-buffer)
   (nskk--update-modeline))
 
@@ -191,14 +235,7 @@ to enter hiragana mode from ASCII/Latin.  This function dispatches:
     (nskk-commit-current))
    ;; If preedit text exists (▽ mode), commit as-is without conversion
    ((nskk--has-preedit)
-    ;; Remove ▽ marker
-    (let ((start (nskk--get-conversion-start)))
-      (when start
-        (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)))
-    (nskk--clear-conversion-start-marker)
-    (setq nskk--romaji-buffer "")
-    (when (and (boundp 'nskk-current-state) (nskk-state-p nskk-current-state))
-      (nskk-state-set-henkan-phase nskk-current-state nil)))
+    (nskk-henkan-kakutei))
    ;; If in ASCII/Latin mode, switch to hiragana
    ((and nskk-current-state
          (memq (nskk-state-mode nskk-current-state) '(ascii latin)))
@@ -211,7 +248,7 @@ to enter hiragana mode from ASCII/Latin.  This function dispatches:
    (t
     (newline))))
 
-;; Mode switching commands — delegate to Application Layer
+;; Mode switching commands
 ;;;###autoload
 (defalias 'nskk-switch-to-hiragana #'nskk-enter-hiragana-mode)
 ;;;###autoload

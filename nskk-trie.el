@@ -1,8 +1,8 @@
 ;;; nskk-trie.el --- Trie data structure for fast prefix search -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 Takeshi Umeda
+;; Copyright (C) 2026 NSKK Contributors
 
-;; Author: NSKK Contributors
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n
@@ -24,34 +24,29 @@
 
 ;;; Commentary:
 
-;; このファイルは高速な前方一致検索を実現するトライ木（Trie Tree）を実装します。
+;; Trie (prefix tree) data structure for fast dictionary lookup in NSKK.
 ;;
-;; トライ木は文字列検索に最適化されたデータ構造で、以下の特徴があります:
-;; - 挿入/検索/削除の計算量: O(m) (m=キー長)
-;; - 前方一致検索: O(k + n) (k=prefix長, n=結果数)
-;; - メモリ効率的な実装（ハッシュテーブルベース）
+;; A trie is a string-optimized tree where each node represents one
+;; character.  This implementation uses hash tables for child nodes,
+;; giving memory-efficient storage with fast traversal.
 ;;
-;; 使用例:
+;; Complexity:
+;; - Insert / lookup / delete: O(m) where m = key length
+;; - Prefix search: O(k + n) where k = prefix length, n = result count
 ;;
-;;   (require 'nskk-trie)
+;; Performance targets:
+;; - Insertion of 100k keys: < 3s
+;; - Single lookup: < 1ms
+;; - Prefix search (100 results): < 10ms
+;; - Memory for 100k keys: < 30MB
 ;;
-;;   ;; トライ木の作成
+;; Usage:
+;;
 ;;   (let ((trie (nskk-trie-create)))
-;;     ;; エントリの挿入
 ;;     (nskk-trie-insert trie "かんじ" entry1)
-;;     (nskk-trie-insert trie "かんたん" entry2)
-;;     (nskk-trie-insert trie "かん" entry3)
-;;
-;;     ;; 完全一致検索
-;;     (nskk-trie-lookup trie "かんじ")
-;;     ;; => (entry1 . t)
-;;
-;;     ;; 前方一致検索
-;;     (nskk-trie-prefix-search trie "かん")
-;;     ;; => (("かん" . entry3) ("かんじ" . entry1) ("かんたん" . entry2))
-;;
-;;     ;; 削除
-;;     (nskk-trie-delete trie "かんじ")
+;;     (nskk-trie-lookup trie "かんじ")          ; => (entry1 . t)
+;;     (nskk-trie-prefix-search trie "かん")     ; => list of matching entries
+;;     (nskk-trie-delete trie "かんじ"))
 ;;
 ;;     ;; シリアライズ
 ;;     (nskk-trie-save-to-file trie "/tmp/trie.dat"))
@@ -66,12 +61,10 @@
 
 (require 'cl-lib)
 
-;;; カスタマイズ変数
-
 (defgroup nskk-trie nil
   "Trie data structure for NSKK."
-  :group 'nskk
-  :prefix "nskk-trie-")
+  :prefix "nskk-trie-"
+  :group 'nskk)
 
 (defcustom nskk-trie-default-hash-size 50
   "トライ木ノードの子ノード用ハッシュテーブルのデフォルトサイズ。"

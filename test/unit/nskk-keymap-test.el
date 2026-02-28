@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
 
 ;; This file is part of NSKK.
@@ -14,7 +14,7 @@
 ;; - Module provides the expected feature
 ;; - Keymap module loads without error
 ;; - nskk-mode-map structure and key bindings
-;; - Application layer API availability via keymap dependency
+;; - Input commands API availability via keymap dependency
 ;; NOTE: nskk-mode-map state-aware dispatch bindings are currently disabled.
 ;; Global bindings (C-x C-j, C-j) defined in nskk.el are tested here.
 
@@ -22,6 +22,7 @@
 
 (require 'ert)
 (require 'nskk-keymap)
+(require 'nskk-henkan)
 (require 'nskk-state)
 (require 'nskk-test-framework)
 
@@ -37,9 +38,9 @@
   "Test that requiring nskk-keymap again is safe."
   (should (require 'nskk-keymap)))
 
-(nskk-deftest-unit keymap-depends-on-layer-application
-  "Test that nskk-layer-application is loaded as dependency."
-  (should (featurep 'nskk-layer-application)))
+(nskk-deftest-unit keymap-depends-on-input
+  "Test that nskk-input is loaded as dependency."
+  (should (featurep 'nskk-input)))
 
 ;;;
 ;;; nskk-mode-map Structure Tests
@@ -66,39 +67,39 @@
     (should (commandp binding))))
 
 ;;;
-;;; Application Layer API Availability Tests
+;;; Input Commands API Availability Tests
 ;;;
 
 (nskk-deftest-unit keymap-app-layer-toggle-defined
-  "Test that nskk-toggle-japanese-mode is available from app layer."
+  "Test that nskk-toggle-japanese-mode is available from input commands."
   (should (fboundp 'nskk-toggle-japanese-mode)))
 
 (nskk-deftest-unit keymap-app-layer-commit-defined
-  "Test that nskk-commit is available from app layer."
-  (should (fboundp 'nskk-commit)))
+  "Test that nskk-commit-current is available from input commands."
+  (should (fboundp 'nskk-commit-current)))
 
 (nskk-deftest-unit keymap-app-layer-cancel-defined
-  "Test that nskk-cancel is available from app layer."
-  (should (fboundp 'nskk-cancel)))
+  "Test that nskk-cancel-conversion is available from input commands."
+  (should (fboundp 'nskk-cancel-conversion)))
 
 (nskk-deftest-unit keymap-app-layer-convert-defined
-  "Test that nskk-convert-or-commit-selection is available from app layer."
-  (should (fboundp 'nskk-convert-or-commit-selection)))
+  "Test that nskk-convert-or-commit is available from input commands."
+  (should (fboundp 'nskk-convert-or-commit)))
 
 (nskk-deftest-unit keymap-app-layer-hiragana-defined
-  "Test that nskk-enter-hiragana-mode is available from app layer."
+  "Test that nskk-enter-hiragana-mode is available from input commands."
   (should (fboundp 'nskk-enter-hiragana-mode)))
 
 (nskk-deftest-unit keymap-app-layer-katakana-defined
-  "Test that nskk-enter-katakana-mode is available from app layer."
+  "Test that nskk-enter-katakana-mode is available from input commands."
   (should (fboundp 'nskk-enter-katakana-mode)))
 
 (nskk-deftest-unit keymap-app-layer-latin-defined
-  "Test that nskk-enter-latin-mode is available from app layer."
+  "Test that nskk-enter-latin-mode is available from input commands."
   (should (fboundp 'nskk-enter-latin-mode)))
 
 (nskk-deftest-unit keymap-app-layer-abbrev-defined
-  "Test that nskk-enter-abbrev-mode is available from app layer."
+  "Test that nskk-enter-abbrev-mode is available from input commands."
   (should (fboundp 'nskk-enter-abbrev-mode)))
 
 ;;;
@@ -110,16 +111,16 @@
   (should (commandp 'nskk-toggle-japanese-mode)))
 
 (nskk-deftest-unit keymap-commit-is-interactive
-  "Test nskk-commit is an interactive command."
-  (should (commandp 'nskk-commit)))
+  "Test nskk-commit-current is an interactive command."
+  (should (commandp 'nskk-commit-current)))
 
 (nskk-deftest-unit keymap-cancel-is-interactive
-  "Test nskk-cancel is an interactive command."
-  (should (commandp 'nskk-cancel)))
+  "Test nskk-cancel-conversion is an interactive command."
+  (should (commandp 'nskk-cancel-conversion)))
 
 (nskk-deftest-unit keymap-convert-or-commit-is-interactive
-  "Test nskk-convert-or-commit-selection is an interactive command."
-  (should (commandp 'nskk-convert-or-commit-selection)))
+  "Test nskk-convert-or-commit is an interactive command."
+  (should (commandp 'nskk-convert-or-commit)))
 
 (nskk-deftest-unit keymap-hiragana-mode-is-interactive
   "Test nskk-enter-hiragana-mode is an interactive command."
@@ -130,13 +131,12 @@
   (should (commandp 'nskk-enter-katakana-mode)))
 
 ;;;
-;;; Behavioral Tests for Application Layer Commands via Keymap
+;;; Behavioral Tests for Input Commands via Keymap
 ;;;
 
 (nskk-deftest-unit keymap-mode-switch-via-app-layer
-  "Test that mode switching works when invoked through app layer API."
-  (let ((nskk-current-state (nskk-state-create 'ascii))
-        (nskk-converting-active nil))
+  "Test that mode switching works when invoked through input commands API."
+  (let ((nskk-current-state (nskk-state-create 'ascii)))
     (nskk-enter-hiragana-mode)
     (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
     (nskk-enter-katakana-mode)
@@ -146,8 +146,7 @@
 
 (nskk-deftest-unit keymap-toggle-japanese-mode-behavior
   "Test that toggle-japanese-mode works correctly via keymap dependency."
-  (let ((nskk-current-state (nskk-state-create 'hiragana))
-        (nskk-converting-active nil))
+  (let ((nskk-current-state (nskk-state-create 'hiragana)))
     (nskk-toggle-japanese-mode)
     (should (eq (nskk-state-mode nskk-current-state) 'katakana))
     (nskk-toggle-japanese-mode)
@@ -159,8 +158,7 @@
 
 (nskk-deftest-unit keymap-handle-q-toggles-in-hiragana
   "Test handle-q toggles to katakana when in hiragana."
-  (let ((nskk-current-state (nskk-state-create 'hiragana))
-        (nskk-converting-active nil))
+  (let ((nskk-current-state (nskk-state-create 'hiragana)))
     (nskk-handle-q)
     (should (eq (nskk-state-mode nskk-current-state) 'katakana))))
 
@@ -168,7 +166,6 @@
   "Test handle-q self-inserts when in ascii mode."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'ascii))
-          (nskk-converting-active nil)
           (last-command-event ?q))
       (nskk-handle-q)
       (should (equal (buffer-string) "q")))))
@@ -183,8 +180,7 @@
 
 (nskk-deftest-unit keymap-handle-l-enters-latin
   "Test handle-l enters latin mode when in hiragana."
-  (let ((nskk-current-state (nskk-state-create 'hiragana))
-        (nskk-converting-active nil))
+  (let ((nskk-current-state (nskk-state-create 'hiragana)))
     (nskk-handle-l)
     (should (eq (nskk-state-mode nskk-current-state) 'latin))))
 
@@ -192,7 +188,6 @@
   "Test handle-l self-inserts when in ascii mode."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'ascii))
-          (nskk-converting-active nil)
           (last-command-event ?l))
       (nskk-handle-l)
       (should (equal (buffer-string) "l")))))
@@ -201,7 +196,6 @@
   "Test handle-space inserts space when no preedit."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil)
           (last-command-event ? ))
       (nskk-handle-space)
       (should (equal (buffer-string) " ")))))
@@ -209,8 +203,7 @@
 (nskk-deftest-unit keymap-handle-space-starts-conversion
   "Test handle-space starts conversion when preedit exists."
   (with-temp-buffer
-    (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil))
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
       ;; Set up preedit: marker at beginning, ▽ marker then text after it
       (nskk--set-conversion-start-marker (point-min))
       (insert "\u25BDtest")
@@ -219,7 +212,7 @@
                  (lambda (_k &optional _t _l)
                    '("result"))))
         (nskk-handle-space)
-        (should nskk-converting-active)
+        (should (nskk-converting-p))
         ;; Cleanup overlay
         (when (overlayp nskk--conversion-overlay)
           (delete-overlay nskk--conversion-overlay))))))
@@ -227,23 +220,21 @@
 (nskk-deftest-unit keymap-handle-return-newline-when-not-converting
   "Test handle-return inserts newline when not converting."
   (with-temp-buffer
-    (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil))
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-handle-return)
       (should (equal (buffer-string) "\n")))))
 
 (nskk-deftest-unit keymap-handle-return-commits-and-newline-when-converting
   "Test handle-return commits and inserts newline when in conversion."
   (with-temp-buffer
-    (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil))
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk--set-conversion-start-marker (point-min))
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-handle-return)
-      (should-not nskk-converting-active)
+      (should-not (nskk-converting-p))
       ;; ddskk style: commit + newline
       (should (equal (buffer-string) "result\n")))))
 
@@ -253,8 +244,7 @@
 
 (nskk-deftest-unit keymap-handle-upper-l-enters-jisx0208-latin
   "Test handle-upper-l enters jisx0208-latin mode when in hiragana."
-  (let ((nskk-current-state (nskk-state-create 'hiragana))
-        (nskk-converting-active nil))
+  (let ((nskk-current-state (nskk-state-create 'hiragana)))
     (nskk-handle-upper-l)
     (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin))))
 
@@ -262,7 +252,6 @@
   "Test handle-upper-l self-inserts when in ascii mode."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'ascii))
-          (nskk-converting-active nil)
           (last-command-event ?L))
       (nskk-handle-upper-l)
       (should (equal (buffer-string) "L")))))
@@ -270,22 +259,20 @@
 (nskk-deftest-unit keymap-handle-upper-l-implicit-kakutei
   "Test handle-upper-l does implicit kakutei when converting."
   (with-temp-buffer
-    (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil))
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk--set-conversion-start-marker (point-min))
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-handle-upper-l)
       ;; Should have committed and switched mode
-      (should-not nskk-converting-active)
+      (should-not (nskk-converting-p))
       (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin)))))
 
 (nskk-deftest-unit keymap-handle-slash-enters-abbrev
   "Test handle-slash enters abbrev mode when in hiragana."
-  (let ((nskk-current-state (nskk-state-create 'hiragana))
-        (nskk-converting-active nil))
+  (let ((nskk-current-state (nskk-state-create 'hiragana)))
     (nskk-handle-slash)
     (should (eq (nskk-state-mode nskk-current-state) 'abbrev))))
 
@@ -293,7 +280,6 @@
   "Test handle-slash self-inserts when in ascii mode."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'ascii))
-          (nskk-converting-active nil)
           (last-command-event ?/))
       (nskk-handle-slash)
       (should (equal (buffer-string) "/")))))
@@ -302,7 +288,6 @@
   "Test handle-x self-inserts when not converting."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil)
           (last-command-event ?x))
       (nskk-handle-x)
       (should (equal (buffer-string) "x")))))
@@ -310,7 +295,6 @@
 (nskk-deftest-unit keymap-handle-cancel-keyboard-quit-when-not-converting
   "Test handle-cancel calls keyboard-quit when not converting."
   (let ((nskk-current-state (nskk-state-create 'hiragana))
-        (nskk-converting-active nil)
         (nskk--conversion-start-marker nil)
         (quit-called nil))
     ;; keyboard-quit signals 'quit which is not catchable by should-error
@@ -323,30 +307,28 @@
 (nskk-deftest-unit keymap-handle-q-implicit-kakutei
   "Test handle-q does implicit kakutei when converting."
   (with-temp-buffer
-    (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil))
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk--set-conversion-start-marker (point-min))
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-handle-q)
       ;; Should have committed and toggled mode
-      (should-not nskk-converting-active))))
+      (should-not (nskk-converting-p)))))
 
 (nskk-deftest-unit keymap-handle-l-implicit-kakutei
   "Test handle-l does implicit kakutei when converting."
   (with-temp-buffer
-    (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk-converting-active nil))
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk--set-conversion-start-marker (point-min))
       (insert "preedit")
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
-      (setq nskk-converting-active t)
+      (nskk-state-set-henkan-phase nskk-current-state 'active)
       (nskk-handle-l)
       ;; Should have committed and entered latin
-      (should-not nskk-converting-active)
+      (should-not (nskk-converting-p))
       (should (eq (nskk-state-mode nskk-current-state) 'latin)))))
 
 ;;;

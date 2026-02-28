@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 NSKK Authors
 
-;; Author: NSKK Developers
+;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: Japanese, input, method, test, macros
 ;; Homepage: https://github.com/takeokunn/nskk.el
 

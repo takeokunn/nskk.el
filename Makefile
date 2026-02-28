@@ -3,27 +3,14 @@ BATCH = $(EMACS) -Q --batch
 
 LOAD_PATH = -L . -L test -L test/pbt -L test/unit
 
-# Core functionality files (working)
-SRC_CORE = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
+# All source files
+SRC = nskk.el nskk-state.el \
        nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-converter.el nskk-cache.el nskk-core.el \
-       nskk-thread-pool.el
-
-# All source files (including those with issues)
-SRC = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
-       nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-converter.el nskk-debug.el nskk-optimize.el nskk-native-compile.el \
-       nskk-search.el nskk-cache.el nskk-thread-pool.el \
-       nskk-layer-core.el nskk-layer-infrastructure.el \
-       nskk-layer-application.el nskk-layer-extension.el nskk-layer-presentation.el nskk-layer-qa.el \
-       nskk-architecture.el nskk-input-commands.el \
-       nskk-dict-io.el nskk-dict-struct.el nskk-dict-errors.el nskk-trie.el \
-       nskk-azik.el
-
-CORE_SRC = nskk.el nskk-custom.el nskk-state.el nskk-mode-switch.el nskk-events.el \
-       nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-converter.el nskk-debug.el nskk-optimize.el nskk-native-compile.el \
-       nskk-search.el nskk-cache.el nskk-thread-pool.el
+       nskk-converter.el nskk-debug.el \
+       nskk-search.el nskk-cache.el nskk-kana.el \
+       nskk-henkan.el nskk-input.el \
+       nskk-dictionary.el nskk-trie.el \
+       nskk-azik.el nskk-macros.el nskk-prolog.el
 
 # Unit test files
 UNIT_SRC = $(wildcard test/unit/*-test.el)
@@ -35,10 +22,7 @@ PBT_SRC = test/pbt/nskk-pbt-generators.el \
           test/pbt/nskk-state-machine-buffer-test.el \
           test/pbt/nskk-state-machine-candidate-test.el \
           test/pbt/nskk-sequence-test.el \
-          test/pbt/nskk-layer-core-pbt-test.el \
           test/pbt/nskk-layer-state-pbt-test.el \
-          test/pbt/nskk-layer-application-pbt-test.el \
-          test/pbt/nskk-layer-data-pbt-test.el \
           test/pbt/nskk-input-routing-pbt-test.el \
           test/pbt/nskk-conversion-flow-pbt-test.el \
           test/pbt/nskk-dictionary-integration-pbt-test.el \
@@ -46,7 +30,7 @@ PBT_SRC = test/pbt/nskk-pbt-generators.el \
           test/pbt/nskk-multi-buffer-pbt-test.el \
           test/pbt/nskk-error-recovery-pbt-test.el
 
-.PHONY: all compile compile-core test test-pbt test-unit lint package-lint clean
+.PHONY: all compile test test-pbt test-unit lint package-lint clean
 
 all: compile
 
@@ -81,7 +65,7 @@ test-unit:
 
 lint:
 	$(BATCH) $(LOAD_PATH) \
-	  $(foreach f,$(CORE_SRC),--eval "(checkdoc-file \"$(f)\")")
+	  $(foreach f,$(SRC),--eval "(checkdoc-file \"$(f)\")")
 
 package-lint:
 	$(BATCH) $(LOAD_PATH) \

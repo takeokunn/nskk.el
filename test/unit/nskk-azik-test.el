@@ -1,6 +1,6 @@
 ;;; nskk-azik-test.el --- Tests for AZIK extended romaji input -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2026 takeokunn
+;; Copyright (C) 2026 takeokunn
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: Japanese, input, method, test, azik
 ;; Homepage: https://github.com/takeokunn/nskk.el
@@ -36,6 +36,7 @@
 ;; - 特殊拡張 (special extension) tests
 ;; - Q-key behavior tests
 ;; - Compatibility tests
+;; - Prolog-level tests (azik-rule/2 direct queries, bridge rule)
 
 ;;; Code:
 
@@ -44,6 +45,7 @@
 (require 'nskk-test-macros)
 (require 'nskk-converter)
 (require 'nskk-azik)
+(require 'nskk-prolog)
 (eval-when-compile (require 'cl-lib))
 
 
@@ -869,6 +871,77 @@ Note: 'nq' has special handling - 'n' before consonant becomes ん first."
   "Regression test: colon should produce chouon."
   (nskk-with-azik-style
     (should (equal (nskk-convert-romaji ":") "ー"))))
+
+
+;;;;
+;;;; 10. Prolog-level Tests
+;;;;
+
+(ert-deftest nskk-azik-prolog-azik-rule-queryable ()
+  "Test that azik-rule/2 facts are directly queryable via Prolog.
+This verifies the core architecture: rules live in Prolog, not just
+in the hash table."
+  (nskk-with-azik-style
+    ;; Special key: ; → っ
+    (let ((results (nskk-prolog-query '(azik-rule ";" \?k))))
+      (should results)
+      (should (equal (nskk-prolog-walk '\?k (car results)) "っ")))
+    ;; Hatsuon extension: kz → かん
+    (let ((results (nskk-prolog-query '(azik-rule "kz" \?k))))
+      (should results)
+      (should (equal (nskk-prolog-walk '\?k (car results)) "かん")))
+    ;; Double vowel: kq → かい
+    (let ((results (nskk-prolog-query '(azik-rule "kq" \?k))))
+      (should results)
+      (should (equal (nskk-prolog-walk '\?k (car results)) "かい")))))
+
+(ert-deftest nskk-azik-prolog-bridge-rule ()
+  "Test that the bridge rule (romaji-to-kana ?r ?k) :- (azik-rule ?r ?k)
+makes azik-rule/2 facts accessible via romaji-to-kana/2 enumeration.
+
+Note: ground queries on romaji-to-kana/2 use hash indexing and bypass
+the bridge rule (the rule head has a variable first arg, so it is not
+indexed by hash key).  Variable queries use the full clause list and
+traverse the bridge rule to enumerate AZIK facts."
+  (nskk-with-azik-style
+    ;; Variable query enumerates all romaji-to-kana mappings including
+    ;; AZIK rules reached via the bridge rule
+    (let ((all-romajis (nskk-prolog-query-all-values
+                        '(romaji-to-kana \?r \?k) '\?r)))
+      (should all-romajis)
+      ;; AZIK-specific keys must appear via bridge rule traversal
+      (should (member ";" all-romajis))
+      (should (member "kz" all-romajis))
+      (should (member "kq" all-romajis)))))
+
+(ert-deftest nskk-azik-prolog-rule-count ()
+  "Test that azik-rule/2 contains a substantial number of facts.
+Verifies all rule categories were asserted (not silently dropped)."
+  (nskk-with-azik-style
+    (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
+      (should results)
+      ;; 2 special + 10 compat + 14*9 extensions + 8*13 youon + 7 same-finger
+      ;; + 27 shortcuts + 5 foreign = at least 200 rules
+      (should (>= (length results) 200)))))
+
+(ert-deftest nskk-azik-prolog-style-isolation ()
+  "Test that switching to standard style resets the hot-path hash cache.
+
+Note: azik-rule/2 itself persists across style switches (there is no
+cleanup mechanism for AZIK-specific predicates in the standard init).
+The observable isolation is via the hash cache and romaji-to-kana/2:
+AZIK-specific keys are absent from nskk-converter-lookup after switching."
+  (nskk-with-azik-style
+    ;; AZIK style: azik-rule/2 is populated
+    (should (nskk-prolog-query '(azik-rule "kz" \?k)))
+    ;; Hot-path lookup finds AZIK rules
+    (should (equal (nskk-converter-lookup "kz") "かん")))
+  ;; After switching to standard: hash cache is reset
+  (nskk-with-standard-style
+    ;; AZIK-specific keys are gone from the hot-path (hash-based) lookup
+    (should-not (nskk-converter-lookup "kz"))
+    ;; Standard romaji rules are still accessible
+    (should (equal (nskk-convert-romaji "ka") "か"))))
 
 
 ;;;;
