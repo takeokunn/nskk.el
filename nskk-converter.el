@@ -524,7 +524,8 @@ INIT-FN is called with no arguments and should populate the romaji table."
 (defun nskk-converter-load-style (style)
   "Load romaji rules for STYLE.
 Clears existing table and calls the registered initialization function.
-Valid styles are defined in `nskk--style-registry'."
+Valid styles are defined in `nskk--style-registry'.
+Signals user-error if STYLE is not a registered style."
   (let ((init-fn (alist-get style nskk--style-registry)))
     (if init-fn
         (progn
@@ -533,7 +534,7 @@ Valid styles are defined in `nskk--style-registry'."
           (funcall init-fn)
           (nskk-converter--populate-incomplete-markers)
           style)
-      (error "Unknown romaji style: %s" style))))
+      (user-error "Unknown romaji style: %s" style))))
 
 (defmacro nskk-converter-define-style (name docstring &rest rules)
   "Define a new input style NAME with RULES.

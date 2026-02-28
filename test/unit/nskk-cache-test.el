@@ -406,6 +406,10 @@
   "Test unified cache creation signals error for unknown type."
   (should-error (nskk-cache-create 'bogus 100)))
 
+(nskk-deftest-unit cache-create-unknown-type-signals-user-error
+  "Test nskk-cache-create signals user-error for an unregistered cache type."
+  (should-error (nskk-cache-create 'unknown-type 100) :type 'user-error))
+
 (nskk-deftest-unit cache-unified-operations
   "Test unified cache get/put operations."
   (let ((cache (nskk-cache-create 'lru 100)))

@@ -501,7 +501,7 @@ Signals an error if TYPE is not a registered cache type."
         (setq cache-capacity (nth 1 args)))))
     ;; Validate via Prolog before constructing
     (unless (nskk-prolog-query-one `(cache-type ,cache-type))
-      (error "Unknown cache type: %s; valid types: lru, lfu" cache-type))
+      (user-error "Unknown cache type: %s; valid types: lru, lfu" cache-type))
     (pcase cache-type
       ('lru (nskk-cache-lru-create cache-capacity))
       ('lfu (nskk-cache-lfu-create cache-capacity)))))

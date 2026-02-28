@@ -504,8 +504,8 @@ remaining string is pushed verbatim and conversion stops."
   (should (equal (nskk-converter-get-rule "ka") "か")))
 
 (nskk-deftest-unit converter-load-style-unknown
-  "Test loading an unknown style raises error."
-  (should-error (nskk-converter-load-style 'nonexistent-style)))
+  "Test loading an unknown style raises user-error."
+  (should-error (nskk-converter-load-style 'nonexistent-style) :type 'user-error))
 
 (nskk-deftest-unit converter-register-style-replaces-table
   "Test that loading a style clears and replaces the table."

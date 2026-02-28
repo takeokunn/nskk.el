@@ -113,6 +113,7 @@ Creates `nskk-set-mode-MODE' that switches to MODE and updates modeline."
 (nskk-define-mode-setter latin)
 (nskk-define-mode-setter jisx0208-latin)
 
+;;;###autoload
 (defun nskk-set-mode-abbrev ()
   "Switch to abbrev mode and set up ▽ preedit marker for dictionary lookup.
 Sets up the conversion start marker and inserts ▽ after the mode switch
@@ -130,6 +131,7 @@ This is DDSKK-compatible: /word SPC → dictionary lookup → candidate."
     (nskk-state-set-henkan-phase nskk-current-state 'on))
   (nskk-modeline-update))
 
+;;;###autoload
 (defun nskk-toggle-japanese-mode ()
   "Toggle between hiragana and katakana modes."
   (interactive)
@@ -143,9 +145,10 @@ This is DDSKK-compatible: /word SPC → dictionary lookup → candidate."
 
 (defun nskk--set-mode (mode)
   "Internal mode setter with validation.
-MODE is the target mode symbol."
+MODE is the target mode symbol.
+Signals user-error if NSKK state is not initialized."
   (unless (and (boundp 'nskk-current-state) (nskk-state-p nskk-current-state))
-    (error "NSKK state not initialized"))
+    (user-error "NSKK state not initialized"))
   (nskk-state-set nskk-current-state 'mode mode)
   (nskk--clear-conversion-context))
 
@@ -166,6 +169,7 @@ Returns a mode symbol such as `hiragana', `katakana', `ascii',
 
 ;;;; AZIK-specific Key Handlers
 
+;;;###autoload
 (defun nskk-handle-q-key ()
   "Handle q key press based on current romaji style and configuration.
 In AZIK mode with context-aware behavior:
@@ -186,6 +190,7 @@ In standard mode: toggle mode (default SKK behavior)."
       ('insert-n    (insert "\u3093"))
       (_            nil))))
 
+;;;###autoload
 (defun nskk-handle-semicolon-key ()
   "Handle semicolon key press.
 In AZIK mode: produce small tsu (\u3063).
@@ -406,11 +411,13 @@ is still incomplete (waiting for more characters)."
   "Initialize input routing and fullwidth character Prolog predicates.
 Idempotent: subsequent calls are no-ops."
   (unless nskk--input-initialized
-    ;; Input routing rules
+    ;; Input routing rules.
+    ;; Note: abbrev mode is NOT listed here — in abbrev mode, `nskk-self-insert'
+    ;; short-circuits to `nskk-process-abbrev-input' before consulting Prolog,
+    ;; mirroring DDSKK's `skk-abbrev-mode-map' direct binding approach.
     (nskk-prolog-set-index 'input-route 2 :hash)
     (nskk-prolog-<- (input-route ascii insert-direct))
     (nskk-prolog-<- (input-route latin insert-direct))
-    (nskk-prolog-<- (input-route abbrev process-abbrev))
     (nskk-prolog-<- (input-route jisx0208-latin insert-fullwidth))
     (nskk-prolog-<- (input-route hiragana process-japanese))
     (nskk-prolog-<- (input-route katakana process-japanese))

@@ -443,6 +443,11 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 ;;; Error Handling Tests: Mode Queries With Missing State
 ;;;
 
+(nskk-deftest-unit input-commands-set-mode-uninitialized-signals-user-error
+  "Test that nskk--set-mode signals user-error when nskk-current-state is nil."
+  (let ((nskk-current-state nil))
+    (should-error (nskk--set-mode 'hiragana) :type 'user-error)))
+
 (nskk-deftest-unit input-commands-get-mode-with-nil-state
   "Test state-get-mode returns nil safely when state is uninitialized."
   (let ((nskk-current-state nil))

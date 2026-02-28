@@ -102,34 +102,32 @@ DDSKK equivalent: skk-input-mode-hook")
 (defvar nskk--system-dict-index)
 
 ;; Define the minor mode
-(defvar nskk-mode-map
-  (let ((map (make-sparse-keymap)))
-    ;; Remap self-insert for romaji->kana conversion
-    (define-key map [remap self-insert-command] 'nskk-self-insert)
-    ;; Mode switching
-    (define-key map (kbd "C-x C-j") 'nskk-toggle-mode)
-    (define-key map (kbd "C-j") 'nskk-kakutei)
-    ;; State-aware special key dispatch (see nskk-keymap.el)
-    (define-key map (kbd "q") 'nskk-handle-q)
-    (define-key map (kbd "l") 'nskk-handle-l)
-    (define-key map (kbd "SPC") 'nskk-handle-space)
-    (define-key map (kbd "RET") 'nskk-handle-return)
-    ;; Additional ddskk-compatible bindings
-    (define-key map (kbd "L") 'nskk-handle-upper-l)
-    (define-key map (kbd "/") 'nskk-handle-slash)
-    (define-key map (kbd "x") 'nskk-handle-x)
-    (define-key map (kbd "C-n") 'nskk-handle-ctrl-n)
-    (define-key map (kbd "C-p") 'nskk-handle-ctrl-p)
-    (define-key map (kbd "C-f") 'nskk-handle-ctrl-f)
-    (define-key map [right] 'nskk-handle-ctrl-f)
-    (define-key map (kbd "C-b") 'nskk-handle-ctrl-b)
-    (define-key map [left] 'nskk-handle-ctrl-b)
-    (define-key map [down] 'nskk-handle-ctrl-n)
-    (define-key map [up] 'nskk-handle-ctrl-p)
-    (define-key map (kbd "C-g") 'nskk-handle-cancel)
-    (define-key map (kbd "DEL") 'nskk-handle-backspace)
-    map)
-  "Keymap for NSKK minor mode.")
+(defvar-keymap nskk-mode-map
+  :doc "Keymap for NSKK minor mode."
+  ;; Remap self-insert for romaji->kana conversion
+  "<remap> <self-insert-command>" #'nskk-self-insert
+  ;; Mode switching
+  "C-x C-j" #'nskk-toggle-mode
+  "C-j"     #'nskk-kakutei
+  ;; State-aware special key dispatch (see nskk-keymap.el)
+  "q"       #'nskk-handle-q
+  "l"       #'nskk-handle-l
+  "SPC"     #'nskk-handle-space
+  "RET"     #'nskk-handle-return
+  ;; Additional ddskk-compatible bindings
+  "L"       #'nskk-handle-upper-l
+  "/"       #'nskk-handle-slash
+  "x"       #'nskk-handle-x
+  "C-n"     #'nskk-handle-ctrl-n
+  "C-p"     #'nskk-handle-ctrl-p
+  "C-f"     #'nskk-handle-ctrl-f
+  "<right>" #'nskk-handle-ctrl-f
+  "C-b"     #'nskk-handle-ctrl-b
+  "<left>"  #'nskk-handle-ctrl-b
+  "<down>"  #'nskk-handle-ctrl-n
+  "<up>"    #'nskk-handle-ctrl-p
+  "C-g"     #'nskk-handle-cancel
+  "DEL"     #'nskk-handle-backspace)
 
 ;;;###autoload
 (define-minor-mode nskk-mode
@@ -148,12 +146,10 @@ to control per-mode cursor color changes.
       (nskk--enable)
     (nskk--disable)))
 
-(defvar nskk-global-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-x C-j") 'nskk-toggle-mode)
-    map)
-  "Global keymap for `nskk-global-mode'.
-This provides global bindings that work even when nskk-mode is not yet active.")
+(defvar-keymap nskk-global-mode-map
+  :doc "Global keymap for `nskk-global-mode'.
+This provides global bindings that work even when nskk-mode is not yet active."
+  "C-x C-j" #'nskk-toggle-mode)
 
 ;;;###autoload
 (define-globalized-minor-mode nskk-global-mode
@@ -204,11 +200,11 @@ This provides global bindings that work even when nskk-mode is not yet active.")
 
 (defun nskk--setup-buffer ()
   "Setup buffer-local NSKK state."
-  (add-hook 'post-command-hook 'nskk--post-command-handler nil t))
+  (add-hook 'post-command-hook #'nskk--post-command-handler nil t))
 
 (defun nskk--cleanup-buffer ()
   "Cleanup buffer-local NSKK state."
-  (remove-hook 'post-command-hook 'nskk--post-command-handler t))
+  (remove-hook 'post-command-hook #'nskk--post-command-handler t))
 
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update."

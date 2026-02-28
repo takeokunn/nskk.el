@@ -1208,6 +1208,151 @@ sets phase to on), so the buffer becomes か▽ and phase is on."
     (nskk-e2e-type "C-j")
     (nskk-e2e-assert-buffer "テスト")))
 
+;;;;
+;;;; Abbrev Mode — Input and Conversion Scenarios
+;;;;
+;;
+;; These tests cover the two functions modified in the abbrev mode bug fix:
+;;
+;;   1. `nskk-self-insert' (nskk-input.el):
+;;      In abbrev mode, all printable ASCII chars bypass the Prolog routing
+;;      path and go directly to `nskk-process-abbrev-input'.  The existing
+;;      `abbrev-typing-inserts-ascii' test above covers basic insertion, but
+;;      does not verify that the Prolog input-route is truly bypassed for
+;;      chars that would otherwise match a Japanese-mode rule (e.g. uppercase
+;;      letters that normally start okurigana, or "n" which accumulates in
+;;      the romaji buffer).
+;;
+;;   2. `nskk--current-key-state' (nskk-keymap.el):
+;;      In abbrev mode with a conversion-start marker set, this now returns
+;;      `preedit' even when `nskk--has-preedit' is false (i.e. the marker
+;;      was set but point hasn't moved past the ▽ yet).  This makes SPC
+;;      trigger `nskk-start-conversion' rather than self-insert.  The
+;;      complementary guard inside `nskk-start-conversion' itself makes
+;;      SPC immediately after "/" (empty abbrev preedit) a no-op.
+
+;;;; 1. ASCII chars in abbrev mode bypass Prolog routing
+
+(nskk-deftest-e2e abbrev-uppercase-is-inserted-not-okurigana
+  "In abbrev mode, uppercase ASCII is inserted verbatim, not treated as okurigana.
+nskk-self-insert short-circuits before the Prolog input-route check, so an
+uppercase letter (which would start okurigana in hiragana mode) just inserts
+the character directly after the ▽ marker."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    (nskk-e2e-type "Te")
+    (nskk-e2e-type "st")
+    (nskk-e2e-assert-buffer "▽Test")))
+
+(nskk-deftest-e2e abbrev-n-is-inserted-not-accumulated-in-romaji-buffer
+  "In abbrev mode, 'n' is inserted directly, not buffered as pending romaji.
+In hiragana mode 'n' + vowel → kana; in abbrev mode the romaji buffer must
+not be touched at all.  Two consecutive 'n' presses must produce 'nn' in the
+buffer, not 'ん'."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    (nskk-e2e-type "nn")
+    (nskk-e2e-assert-buffer "▽nn")))
+
+(nskk-deftest-e2e abbrev-digits-and-symbols-are-inserted-directly
+  "In abbrev mode, digits and ASCII symbols are inserted directly."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    ;; Numbers and hyphens are common abbrev lookup keys (e.g. "iso-8859").
+    ;; They must go through nskk-process-abbrev-input, not Prolog routing.
+    (nskk-e2e-type "1")
+    (nskk-e2e-type "2")
+    (nskk-e2e-type "3")
+    (nskk-e2e-assert-buffer "▽123")))
+
+;;;; 2. SPC in abbrev mode — conversion trigger
+
+(nskk-deftest-e2e abbrev-spc-with-text-starts-conversion
+  "SPC after typing text in abbrev mode triggers dictionary conversion.
+nskk--current-key-state returns 'preedit when mode is abbrev and the
+conversion-start marker is set, so nskk-handle-space dispatches
+'start-conversion → nskk-start-conversion."
+  (let ((dict '(("test" . ("テスト")))))
+    (nskk-e2e-with-buffer 'hiragana dict
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "te")
+      (nskk-e2e-type "st")
+      (nskk-e2e-assert-buffer "▽test")
+      ;; SPC should trigger conversion, not insert a space.
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting))))
+
+(nskk-deftest-e2e abbrev-spc-immediately-after-slash-is-noop
+  "SPC immediately after / (empty abbrev preedit) inserts a space.
+nskk--current-key-state returns 'preedit (marker is set), so handle-space
+dispatches 'start-conversion → nskk-start-conversion.  nskk-start-conversion
+guards on non-empty text and falls back to self-inserting a space when the
+preedit region is empty."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    ;; Nothing typed yet — preedit is empty.
+    ;; Must not crash and must not enter a broken converting state.
+    (nskk-e2e-assert-henkan-phase 'on)
+    (nskk-e2e-type "SPC")
+    ;; After SPC on empty abbrev preedit: still in abbrev mode, not converting.
+    (nskk-e2e-assert-mode 'abbrev)
+    (nskk-e2e-assert-not-converting)))
+
+;;;; 3. Backspace in abbrev preedit
+
+(nskk-deftest-e2e abbrev-backspace-deletes-last-char
+  "DEL in abbrev preedit deletes the last typed character."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    (nskk-e2e-type "te")
+    (nskk-e2e-type "st")
+    (nskk-e2e-assert-buffer "▽test")
+    (nskk-e2e-type "DEL")
+    (nskk-e2e-assert-buffer "▽tes")
+    (nskk-e2e-assert-mode 'abbrev)))
+
+(nskk-deftest-e2e abbrev-backspace-on-empty-preedit-cancels
+  "DEL on empty abbrev preedit (right after /) cancels preedit entirely.
+nskk-handle-backspace detects that point is at the ▽ marker boundary and
+calls nskk-cancel-preedit instead of delete-char."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    (nskk-e2e-assert-henkan-phase 'on)
+    (nskk-e2e-type "DEL")
+    ;; Preedit cancelled: buffer is empty, no longer in preedit.
+    (nskk-e2e-assert-buffer "")
+    (nskk-e2e-assert-henkan-phase nil)))
+
+;;;; 4. C-g cancel in abbrev preedit
+
+(nskk-deftest-e2e abbrev-cg-cancel-clears-preedit
+  "C-g in abbrev preedit (with text) cancels and clears the preedit buffer."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    (nskk-e2e-type "te")
+    (nskk-e2e-assert-buffer "▽te")
+    (nskk-e2e-type "C-g")
+    ;; Preedit cancelled: buffer is empty and we are not converting.
+    (nskk-e2e-assert-buffer "")
+    (nskk-e2e-assert-not-converting)))
+
+(nskk-deftest-e2e abbrev-cg-cancel-empty-preedit-is-safe
+  "C-g immediately after / (empty abbrev preedit) cancels cleanly."
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-assert-mode 'abbrev)
+    (nskk-e2e-type "C-g")
+    (nskk-e2e-assert-buffer "")
+    (nskk-e2e-assert-not-converting)))
+
 (provide 'nskk-buffer-e2e-test)
 
 ;;; nskk-buffer-e2e-test.el ends here

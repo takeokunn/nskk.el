@@ -146,11 +146,19 @@ DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
 
 (defun nskk--current-key-state ()
   "Return current key dispatch state.
-Returns `converting', `preedit', or `normal'.
-In abbrev mode with an active conversion start marker, always returns
-`preedit' so that SPC triggers `nskk-start-conversion' regardless of
-point position (DDSKK-compatible: SPC is directly bound to
-`skk-start-henkan' in `skk-abbrev-mode-map', no dynamic check needed)."
+Returns one of the symbols `converting', `preedit', or `normal'.
+
+`preedit' means the preedit phase is active, NOT necessarily that
+there is non-empty preedit text.  Specifically:
+- Standard preedit (hiragana/katakana ▽): `nskk--has-preedit' is true,
+  i.e. there is at least one character between the ▽ marker and point.
+- Abbrev preedit: returned whenever mode is `abbrev' and the conversion
+  start marker is set, even if no characters have been typed yet.
+  `nskk-start-conversion' guards internally on non-empty text, so
+  calling it on an empty abbrev preedit is safe.
+
+This distinction mirrors DDSKK: in `skk-abbrev-mode-map', SPC is bound
+directly to `skk-start-henkan' with no runtime text-presence check."
   (cond
    ((nskk-converting-p) 'converting)
    ((nskk--has-preedit) 'preedit)

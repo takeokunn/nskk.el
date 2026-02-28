@@ -370,6 +370,7 @@ resets the romaji buffer, and clears the henkan phase."
 
 ;;;; Conversion Control
 
+;;;###autoload
 (defun nskk-convert ()
   "Start conversion when preedit text exists.
 Uses `nskk-henkan-with-preedit' to guard on preedit presence."
@@ -377,6 +378,7 @@ Uses `nskk-henkan-with-preedit' to guard on preedit presence."
   (nskk-henkan-with-preedit _start
     (nskk-start-conversion)))
 
+;;;###autoload
 (defun nskk-convert-or-commit ()
   "Start conversion or commit current candidate.
 When actively converting (\u25bc phase), commits the current candidate.
@@ -390,6 +392,7 @@ Uses Prolog `convert-or-commit-action/2' for dispatch."
       (commit-current (nskk-commit-current))
       (start-conversion (nskk-convert)))))
 
+;;;###autoload
 (defun nskk-cancel-conversion ()
   "Cancel conversion and return to input state."
   (interactive)
@@ -430,6 +433,7 @@ previous-mode (this is a restore, not a user-initiated mode switch)."
           (nskk-with-current-state
             (setf (nskk-state-mode nskk-current-state) prev-mode)))))))
 
+;;;###autoload
 (defun nskk-rollback-conversion ()
   "Rollback to pre-conversion state.
 Deletes the \u25bd or \u25bc marker and restores preedit text."
@@ -450,6 +454,7 @@ Deletes the \u25bd or \u25bc marker and restores preedit text."
 
 ;;;; Candidate Navigation
 
+;;;###autoload
 (defun nskk-next-candidate ()
   "Select next conversion candidate.
 For the first N-1 candidates (N = `nskk-henkan-show-candidates-nth'),
@@ -467,6 +472,7 @@ Uses Prolog `candidate-nav-next-action/3' to dispatch the navigation mode."
       (select-next    (nskk--select-candidate 'next))
       (show-list-next (nskk--show-candidate-list-next)))))
 
+;;;###autoload
 (defun nskk-previous-candidate ()
   "Select previous conversion candidate.
 In candidate list display mode, shows the previous page.
@@ -485,6 +491,7 @@ Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
            (cl-decf nskk--henkan-count))
          (nskk--select-candidate 'previous))))))
 
+;;;###autoload
 (defun nskk-commit-current ()
   "Commit current conversion candidate.
 Replaces preedit text (including \u25bc marker) with the selected candidate,

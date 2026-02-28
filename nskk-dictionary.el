@@ -456,6 +456,7 @@ Returns a list of readable dictionary file paths."
         (push path found)))
     (nreverse found)))
 
+;;;###autoload
 (defun nskk-dict-initialize ()
   "Initialize dictionaries by loading system and user dictionaries.
 When `nskk-dict-system-dictionary-files' is nil, auto-detects
@@ -515,6 +516,7 @@ and updates to existing entries via assertz/retract builtins."
 
 ;;; User Dictionary Save
 
+;;;###autoload
 (defun nskk-dict-save-user-dictionary ()
   "Save user dictionary to `nskk-dict-user-dictionary-file'."
   (interactive)

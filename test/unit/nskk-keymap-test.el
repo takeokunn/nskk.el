@@ -745,6 +745,120 @@
         (should backward-called)
         (should-not commit-called)))))
 
+;;;
+;;; nskk--current-key-state Tests
+;;;
+;; These tests cover the abbrev-mode branch added to nskk--current-key-state:
+;; when mode is 'abbrev AND the conversion-start marker is set, the function
+;; must return 'preedit (so SPC dispatches 'start-conversion) rather than
+;; falling through to 'normal (which would self-insert a space).
+
+(nskk-deftest-unit keymap-key-state-converting
+  "nskk--current-key-state returns 'converting when nskk-converting-p is true."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () t))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil))
+            ((symbol-function 'nskk--get-conversion-start) (lambda () nil)))
+    (should (eq (nskk--current-key-state) 'converting))))
+
+(nskk-deftest-unit keymap-key-state-preedit
+  "nskk--current-key-state returns 'preedit when nskk--has-preedit is true."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () t))
+            ((symbol-function 'nskk--get-conversion-start) (lambda () nil)))
+    (should (eq (nskk--current-key-state) 'preedit))))
+
+(nskk-deftest-unit keymap-key-state-normal-in-hiragana-without-preedit
+  "nskk--current-key-state returns 'normal in hiragana mode with no preedit."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil))
+            ((symbol-function 'nskk--get-conversion-start) (lambda () nil)))
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (should (eq (nskk--current-key-state) 'normal)))))
+
+(nskk-deftest-unit keymap-key-state-abbrev-with-marker-is-preedit
+  "nskk--current-key-state returns 'preedit in abbrev mode when the conversion
+marker is set, even when nskk--has-preedit is false.
+This is the core fix: SPC immediately after / must route to 'start-conversion."
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+              ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+      (let ((nskk-current-state (nskk-state-create 'abbrev)))
+        ;; Simulate the marker being set (as nskk-set-mode-abbrev does).
+        (nskk--set-conversion-start-marker (point-min))
+        (should (eq (nskk--current-key-state) 'preedit))))))
+
+(nskk-deftest-unit keymap-key-state-abbrev-without-marker-is-normal
+  "nskk--current-key-state returns 'normal in abbrev mode when no marker is set.
+Without a conversion-start marker there is no preedit context, so SPC should
+self-insert a space just as it does in ascii/latin mode."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil))
+            ((symbol-function 'nskk--get-conversion-start) (lambda () nil)))
+    (let ((nskk-current-state (nskk-state-create 'abbrev)))
+      (should (eq (nskk--current-key-state) 'normal)))))
+
+(nskk-deftest-unit keymap-key-state-non-abbrev-mode-with-marker-is-normal
+  "nskk--current-key-state returns 'normal for latin mode even with a marker.
+The abbrev branch in nskk--current-key-state must check mode eq 'abbrev
+explicitly; other direct-insert modes (latin, ascii) must not be affected."
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+              ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+      (let ((nskk-current-state (nskk-state-create 'latin)))
+        (nskk--set-conversion-start-marker (point-min))
+        (should (eq (nskk--current-key-state) 'normal))))))
+
+(nskk-deftest-unit keymap-key-state-abbrev-marker-takes-priority-over-normal
+  "nskk--current-key-state: abbrev-with-marker branch fires before 'normal fallthrough.
+Regression guard: before the fix, abbrev mode with marker fell through to
+'normal because only nskk-converting-p and nskk--has-preedit were checked."
+  (with-temp-buffer
+    ;; Stub both guards to nil — pre-fix code returns 'normal from here.
+    (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+              ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+      (let ((nskk-current-state (nskk-state-create 'abbrev)))
+        (nskk--set-conversion-start-marker (point-min))
+        ;; Must be 'preedit, not 'normal.
+        (should-not (eq (nskk--current-key-state) 'normal))
+        (should (eq (nskk--current-key-state) 'preedit))))))
+
+;;;
+;;; nskk-self-insert abbrev-bypass Tests
+;;;
+;; These unit tests verify that nskk-self-insert routes ALL chars to
+;; nskk-process-abbrev-input in abbrev mode, bypassing the Prolog
+;; input-route query entirely.
+
+(nskk-deftest-unit keymap-self-insert-abbrev-bypasses-prolog-for-uppercase
+  "In abbrev mode, nskk-self-insert calls nskk-process-abbrev-input for uppercase.
+Uppercase letters normally trigger okurigana processing via Prolog.
+The abbrev short-circuit must fire before the Prolog query."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'abbrev))
+          (last-command-event ?T)
+          (prolog-called nil))
+      (cl-letf (((symbol-function 'nskk-prolog-query-value)
+                 (lambda (&rest _) (setq prolog-called t) nil)))
+        (nskk-self-insert 1)
+        ;; Prolog must not have been consulted.
+        (should-not prolog-called)
+        ;; The character must have been inserted.
+        (should (> (buffer-size) 0))))))
+
+(nskk-deftest-unit keymap-self-insert-abbrev-bypasses-prolog-for-n
+  "In abbrev mode, nskk-self-insert calls nskk-process-abbrev-input for 'n'.
+'n' normally accumulates in the romaji buffer awaiting a vowel.
+The abbrev short-circuit must bypass all romaji-buffer logic."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'abbrev))
+          (last-command-event ?n)
+          (prolog-called nil))
+      (cl-letf (((symbol-function 'nskk-prolog-query-value)
+                 (lambda (&rest _) (setq prolog-called t) nil)))
+        (nskk-self-insert 1)
+        (should-not prolog-called)
+        (should (> (buffer-size) 0))))))
+
 (provide 'nskk-keymap-test)
 
 ;;; nskk-keymap-test.el ends here

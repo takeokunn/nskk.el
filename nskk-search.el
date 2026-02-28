@@ -402,17 +402,16 @@ LIMIT is the maximum number of results."
   (nskk-prolog-retract-all 'learning-score 3)
   (nskk-prolog-set-index 'learning-score 3 :hash)
   (when (file-readable-p nskk-search-learning-file)
-    (condition-case _err
-        (with-temp-buffer
-          (insert-file-contents nskk-search-learning-file)
-          (let ((data (read (current-buffer))))
-            ;; data is a list of (reading candidate score) tuples
-            (when (listp data)
-              (dolist (entry data)
-                (when (= (length entry) 3)
-                  (nskk-prolog-assert
-                   (list (cons 'learning-score entry))))))))
-      (error nil))))
+    (ignore-errors
+      (with-temp-buffer
+        (insert-file-contents nskk-search-learning-file)
+        (let ((data (read (current-buffer))))
+          ;; data is a list of (reading candidate score) tuples
+          (when (listp data)
+            (dolist (entry data)
+              (when (= (length entry) 3)
+                (nskk-prolog-assert
+                 (list (cons 'learning-score entry)))))))))
 
 ;;;###autoload
 (defun nskk-search-save-learning-data ()
