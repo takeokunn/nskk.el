@@ -587,6 +587,164 @@
         (nskk-handle-ctrl-p)
         (should called)))))
 
+;;;
+;;; C-f and C-b Handler Tests
+;;;
+
+(nskk-deftest-unit keymap-handle-ctrl-f-defined
+  "Test that nskk-handle-ctrl-f is defined and interactive."
+  (should (fboundp 'nskk-handle-ctrl-f))
+  (should (commandp 'nskk-handle-ctrl-f)))
+
+(nskk-deftest-unit keymap-handle-ctrl-b-defined
+  "Test that nskk-handle-ctrl-b is defined and interactive."
+  (should (fboundp 'nskk-handle-ctrl-b))
+  (should (commandp 'nskk-handle-ctrl-b)))
+
+(nskk-deftest-unit keymap-ctrl-f-bound-in-mode-map
+  "Test that C-f is bound in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map (kbd "C-f"))))
+    (should (eq binding 'nskk-handle-ctrl-f))))
+
+(nskk-deftest-unit keymap-ctrl-b-bound-in-mode-map
+  "Test that C-b is bound in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map (kbd "C-b"))))
+    (should (eq binding 'nskk-handle-ctrl-b))))
+
+(nskk-deftest-unit keymap-right-arrow-bound-in-mode-map
+  "Test that [right] is bound to nskk-handle-ctrl-f in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map [right])))
+    (should (eq binding 'nskk-handle-ctrl-f))))
+
+(nskk-deftest-unit keymap-left-arrow-bound-in-mode-map
+  "Test that [left] is bound to nskk-handle-ctrl-b in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map [left])))
+    (should (eq binding 'nskk-handle-ctrl-b))))
+
+(nskk-deftest-unit keymap-down-arrow-bound-in-mode-map
+  "Test that [down] is bound to nskk-handle-ctrl-n in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map [down])))
+    (should (eq binding 'nskk-handle-ctrl-n))))
+
+(nskk-deftest-unit keymap-up-arrow-bound-in-mode-map
+  "Test that [up] is bound to nskk-handle-ctrl-p in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map [up])))
+    (should (eq binding 'nskk-handle-ctrl-p))))
+
+(nskk-deftest-unit keymap-handle-ctrl-f-commits-and-moves-forward-when-converting
+  "Test handle-ctrl-f commits current candidate then moves forward when converting."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (commit-called nil)
+          (forward-called nil))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "preedit")
+      (setf (nskk-state-candidates nskk-current-state) '("result"))
+      (setf (nskk-state-current-index nskk-current-state) 0)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (cl-letf (((symbol-function 'nskk-commit-current)
+                 (lambda () (setq commit-called t)))
+                ((symbol-function 'forward-char)
+                 (lambda (&rest _) (interactive) (setq forward-called t))))
+        (nskk-handle-ctrl-f)
+        (should commit-called)
+        (should forward-called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-f-moves-forward-when-not-converting
+  "Test handle-ctrl-f calls forward-char when not in conversion mode."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (called nil))
+      (cl-letf (((symbol-function 'forward-char)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-f)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-f-moves-forward-when-no-state
+  "Test handle-ctrl-f calls forward-char when nskk-current-state is nil."
+  (with-temp-buffer
+    (let ((nskk-current-state nil)
+          (called nil))
+      (cl-letf (((symbol-function 'forward-char)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-f)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-f-moves-forward-when-preedit
+  "Test handle-ctrl-f calls forward-char (not nskk-commit-current) in preedit state."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (forward-called nil)
+          (commit-called nil))
+      (cl-letf (((symbol-function 'nskk-converting-p)
+                 (lambda () nil))
+                ((symbol-function 'nskk--has-preedit)
+                 (lambda () t))
+                ((symbol-function 'forward-char)
+                 (lambda (&rest _) (interactive) (setq forward-called t)))
+                ((symbol-function 'nskk-commit-current)
+                 (lambda () (setq commit-called t))))
+        (nskk-handle-ctrl-f)
+        (should forward-called)
+        (should-not commit-called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-b-commits-and-moves-backward-when-converting
+  "Test handle-ctrl-b commits current candidate then moves backward when converting."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (commit-called nil)
+          (backward-called nil))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "preedit")
+      (setf (nskk-state-candidates nskk-current-state) '("result"))
+      (setf (nskk-state-current-index nskk-current-state) 0)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (cl-letf (((symbol-function 'nskk-commit-current)
+                 (lambda () (setq commit-called t)))
+                ((symbol-function 'backward-char)
+                 (lambda (&rest _) (interactive) (setq backward-called t))))
+        (nskk-handle-ctrl-b)
+        (should commit-called)
+        (should backward-called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-b-moves-backward-when-not-converting
+  "Test handle-ctrl-b calls backward-char when not in conversion mode."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (called nil))
+      (cl-letf (((symbol-function 'backward-char)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-b)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-b-moves-backward-when-no-state
+  "Test handle-ctrl-b calls backward-char when nskk-current-state is nil."
+  (with-temp-buffer
+    (let ((nskk-current-state nil)
+          (called nil))
+      (cl-letf (((symbol-function 'backward-char)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-b)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-b-moves-backward-when-preedit
+  "Test handle-ctrl-b calls backward-char (not nskk-commit-current) in preedit state."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (backward-called nil)
+          (commit-called nil))
+      (cl-letf (((symbol-function 'nskk-converting-p)
+                 (lambda () nil))
+                ((symbol-function 'nskk--has-preedit)
+                 (lambda () t))
+                ((symbol-function 'backward-char)
+                 (lambda (&rest _) (interactive) (setq backward-called t)))
+                ((symbol-function 'nskk-commit-current)
+                 (lambda () (setq commit-called t))))
+        (nskk-handle-ctrl-b)
+        (should backward-called)
+        (should-not commit-called)))))
+
 (provide 'nskk-keymap-test)
 
 ;;; nskk-keymap-test.el ends here

@@ -80,10 +80,13 @@
 (declare-function nskk-process-okurigana-input "nskk-henkan")
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--clear-conversion-context "nskk-henkan")
+(declare-function nskk--show-pending-romaji "nskk-henkan" (text))
+(declare-function nskk--clear-pending-romaji "nskk-henkan" ())
 (defvar nskk--romaji-buffer)
 (defvar nskk-henkan-on-marker)
 (defvar nskk--conversion-start-marker)
 (defvar nskk--conversion-overlay)
+(defvar nskk--pending-romaji-overlay)
 (defvar nskk--henkan-count)
 (defvar nskk-henkan--candidate-list-active)
 (defvar nskk-henkan-select-candidate-by-key-function)
@@ -209,15 +212,20 @@ N is the command prefix argument."
     ;; Priority 1: candidate selection (special case, not mode-based)
     (unless (and nskk-henkan--candidate-list-active
                  (nskk--try-candidate-selection char))
-      ;; Priority 2: mode-based routing via Prolog
-      (let ((route (nskk-prolog-query-value
-                    `(input-route ,current-mode ,'\?action) '\?action)))
-        (pcase route
-          ('insert-direct (nskk-insert-char char n))
-          ('process-abbrev (nskk-process-abbrev-input char))
-          ('insert-fullwidth (nskk-insert-fullwidth-char char n))
-          ('process-japanese (nskk-process-japanese-input char n))
-          (_ (nskk-process-japanese-input char n)))))))
+      ;; Priority 2: abbrev mode - direct insertion (DDSKK-compatible).
+      ;; In DDSKK, skk-abbrev-mode-map binds all ASCII to skk-abbrev-insert
+      ;; = self-insert-command, bypassing all romaji/kana routing.
+      ;; We replicate this by short-circuiting Prolog routing in abbrev mode.
+      (if (eq current-mode 'abbrev)
+          (nskk-process-abbrev-input char)
+        ;; Priority 3: mode-based routing via Prolog
+        (let ((route (nskk-prolog-query-value
+                      `(input-route ,current-mode ,'\?action) '\?action)))
+          (pcase route
+            ('insert-direct    (nskk-insert-char char n))
+            ('insert-fullwidth (nskk-insert-fullwidth-char char n))
+            ('process-japanese (nskk-process-japanese-input char n))
+            (_                 (nskk-process-japanese-input char n))))))))
 
 (defun nskk-insert-char (char &optional n)
   "Insert CHAR N times without conversion."
@@ -291,6 +299,11 @@ lowercase version of the letter as normal romaji input."
                            ((eq mode 'katakana)
                             (nskk-kana-string-hiragana-to-katakana kana))
                            (t kana))))
+          ;; Pending romaji overlay: show accumulated romaji when the sequence is
+          ;; still incomplete; clear when kana is about to be emitted.
+          (if (string-empty-p kana)
+              (nskk--show-pending-romaji nskk--romaji-buffer)
+            (nskk--clear-pending-romaji))
           (when converted
             (let ((okuri (nskk-with-current-state
                               (nskk-state-get-okurigana nskk-current-state))))
@@ -303,7 +316,12 @@ lowercase version of the letter as normal romaji input."
                     (nskk-state-set-okurigana nskk-current-state nil))
                 ;; Normal insertion
                 (dotimes (_ n)
-                  (insert converted))))))))))
+                  (insert converted)))))
+          ;; Re-show if kana was emitted AND branches 1/3/4 left new pending romaji.
+          ;; (e.g. "nn" emits "ん" and re-buffers "n"; "nk" emits "ん" and buffers "k")
+          (when (and (not (string-empty-p kana))
+                     (not (string-empty-p nskk--romaji-buffer)))
+            (nskk--show-pending-romaji nskk--romaji-buffer)))))))
 
 ;;;; Abbrev Input Processing
 

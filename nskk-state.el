@@ -437,6 +437,12 @@ Emacs mark ring.")
 (defvar-local nskk--conversion-overlay nil
   "Overlay for displaying converted text.")
 
+(defvar-local nskk--pending-romaji-overlay nil
+  "Overlay for displaying pending/incomplete romaji input.
+Unlike `nskk--conversion-overlay' which uses the \\='display property on a
+real buffer range, this overlay uses \\='after-string on a zero-length overlay
+at point -- no buffer text exists yet for the incomplete romaji sequence.")
+
 (defvar-local nskk--henkan-count 0
   "Number of times SPC has been pressed during current conversion.")
 

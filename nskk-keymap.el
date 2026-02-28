@@ -36,7 +36,7 @@
 ;; or `keyboard-quit' when NSKK is in ASCII mode or state is inactive.
 ;;
 ;; Prolog predicates maintained by this module:
-;; - `key-action/3'  -- (key state action) dispatch rules for x, SPC, RET, C-g, C-n, C-p
+;; - `key-action/3'  -- (key state action) dispatch rules for x, SPC, RET, C-g, C-n, C-p, C-f, C-b
 ;;
 ;; Key architecture:
 ;; - `nskk-define-key-handler' -- macro that generates Prolog-dispatched
@@ -60,6 +60,8 @@
 ;; - `nskk-handle-cancel'  -- cancel conversion / preedit / keyboard-quit
 ;; - `nskk-handle-ctrl-n'  -- next candidate / next-line fallthrough
 ;; - `nskk-handle-ctrl-p'  -- previous candidate / previous-line fallthrough
+;; - `nskk-handle-ctrl-f'  -- commit then forward-char / forward-char fallthrough
+;; - `nskk-handle-ctrl-b'  -- commit then backward-char / backward-char fallthrough
 
 ;;; Code:
 
@@ -125,6 +127,16 @@ DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
 (nskk-prolog-<- (key-action ctrl-p preedit   previous-line))
 (nskk-prolog-<- (key-action ctrl-p normal    previous-line))
 
+;; C-f / right-arrow key rules: commit then forward-char
+(nskk-prolog-<- (key-action ctrl-f converting kakutei-then-forward))
+(nskk-prolog-<- (key-action ctrl-f preedit   forward-char))
+(nskk-prolog-<- (key-action ctrl-f normal    forward-char))
+
+;; C-b / left-arrow key rules: commit then backward-char
+(nskk-prolog-<- (key-action ctrl-b converting kakutei-then-backward))
+(nskk-prolog-<- (key-action ctrl-b preedit   backward-char))
+(nskk-prolog-<- (key-action ctrl-b normal    backward-char))
+
 ;; Backspace key rules
 (nskk-prolog-<- (key-action backspace preedit    delete-preedit-char))
 (nskk-prolog-<- (key-action backspace converting cancel-conversion))
@@ -134,10 +146,21 @@ DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
 
 (defun nskk--current-key-state ()
   "Return current key dispatch state.
-Returns `converting', `preedit', or `normal'."
+Returns `converting', `preedit', or `normal'.
+In abbrev mode with an active conversion start marker, always returns
+`preedit' so that SPC triggers `nskk-start-conversion' regardless of
+point position (DDSKK-compatible: SPC is directly bound to
+`skk-start-henkan' in `skk-abbrev-mode-map', no dynamic check needed)."
   (cond
    ((nskk-converting-p) 'converting)
    ((nskk--has-preedit) 'preedit)
+   ;; Abbrev mode with marker set: always treat as preedit context.
+   ;; nskk-start-conversion guards on non-empty text internally,
+   ;; so pressing SPC immediately after / (no text yet) is safe.
+   ((and nskk-current-state
+         (eq (nskk-state-mode nskk-current-state) 'abbrev)
+         (nskk--get-conversion-start))
+    'preedit)
    (t 'normal)))
 
 (defun nskk--current-kakutei-state ()
@@ -291,6 +314,30 @@ In preedit mode (▽) or normal mode, delegates to \\[previous-line]."
   ('previous-line      (condition-case nil
                          (call-interactively #'previous-line)
                        (beginning-of-buffer nil))))
+
+(nskk-define-key-handler ctrl-f
+  "Handle C-f/right-arrow: commit conversion then move forward, else forward-char.
+In conversion mode (▼), commits the current candidate then moves point forward.
+In preedit mode (▽) or normal mode, delegates to \\[forward-char]."
+  ('kakutei-then-forward (nskk-commit-current)
+                         (condition-case nil
+                           (call-interactively #'forward-char)
+                         (end-of-buffer nil)))
+  ('forward-char (condition-case nil
+                   (call-interactively #'forward-char)
+                 (end-of-buffer nil))))
+
+(nskk-define-key-handler ctrl-b
+  "Handle C-b/left-arrow: commit conversion then move backward, else backward-char.
+In conversion mode (▼), commits the current candidate then moves point backward.
+In preedit mode (▽) or normal mode, delegates to \\[backward-char]."
+  ('kakutei-then-backward (nskk-commit-current)
+                          (condition-case nil
+                            (call-interactively #'backward-char)
+                          (beginning-of-buffer nil)))
+  ('backward-char (condition-case nil
+                    (call-interactively #'backward-char)
+                  (beginning-of-buffer nil))))
 
 (nskk-define-key-handler cancel
   "Handle C-g: cancel current conversion or preedit.

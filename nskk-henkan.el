@@ -167,6 +167,7 @@ DDSKK equivalent to `skk-henkan-select-hook'.")
 (defvar nskk--henkan-count)            ;; defined in nskk-state.el
 (defvar nskk--registration-depth)      ;; defined in nskk-state.el
 (defvar nskk--conversion-overlay)      ;; defined in nskk-state.el
+(defvar nskk--pending-romaji-overlay)  ;; defined in nskk-state.el
 (defvar nskk--conversion-start-marker) ;; defined in nskk-state.el
 
 ;;;; Candidate Display Hooks
@@ -261,6 +262,26 @@ LIMIT is maximum results (default: 100)."
   (overlay-put nskk--conversion-overlay 'display text)
   (overlay-put nskk--conversion-overlay 'face 'highlight))
 
+(defun nskk--show-pending-romaji (text)
+  "Show pending romaji TEXT via an after-string overlay at point.
+Creates a zero-length overlay at the current insertion point and sets
+its \\='after-string property to TEXT.  Uses \\='after-string rather than
+\\='display because no buffer text exists yet for the incomplete romaji --
+the characters are buffered in `nskk--romaji-buffer', not yet committed."
+  (when (and (stringp text) (not (string-empty-p text)))
+    (unless (overlayp nskk--pending-romaji-overlay)
+      (setq nskk--pending-romaji-overlay
+            (make-overlay (point) (point) nil t nil)))
+    (move-overlay nskk--pending-romaji-overlay (point) (point) (current-buffer))
+    (overlay-put nskk--pending-romaji-overlay 'after-string text)))
+
+(defun nskk--clear-pending-romaji ()
+  "Delete the pending romaji overlay if it exists.
+Safe to call even when no overlay is active (idempotent)."
+  (when (overlayp nskk--pending-romaji-overlay)
+    (delete-overlay nskk--pending-romaji-overlay)
+    (setq nskk--pending-romaji-overlay nil)))
+
 ;;;; Conversion State Helpers
 
 (defun nskk-converting-p ()
@@ -304,9 +325,11 @@ Creates a new marker if one does not already exist."
 
 (defun nskk--restore-preedit ()
   "Restore preedit text after cancel.
-Clears the conversion overlay, start marker, and romaji buffer."
+Clears the conversion overlay, pending romaji overlay,
+start marker, and romaji buffer."
   (when (overlayp nskk--conversion-overlay)
     (delete-overlay nskk--conversion-overlay))
+  (nskk--clear-pending-romaji)
   (nskk--clear-conversion-start-marker)
   (setq nskk--romaji-buffer ""))
 
@@ -321,6 +344,8 @@ Clears the conversion overlay, start marker, and romaji buffer."
              (markerp nskk--conversion-start-marker))
     (set-marker nskk--conversion-start-marker nil))
   (when (boundp 'nskk--romaji-buffer)
+    (when (boundp 'nskk--pending-romaji-overlay)
+      (nskk--clear-pending-romaji))
     (setq nskk--romaji-buffer ""))
   (nskk-with-current-state
     (setf (nskk-state-candidates nskk-current-state) nil)
@@ -338,6 +363,7 @@ resets the romaji buffer, and clears the henkan phase."
     (when start
       (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)))
   (nskk--clear-conversion-start-marker)
+  (nskk--clear-pending-romaji)
   (setq nskk--romaji-buffer "")
   (nskk-with-current-state
     (nskk-state-set-henkan-phase nskk-current-state nil)))
@@ -388,6 +414,7 @@ previous-mode (this is a restore, not a user-initiated mode switch)."
       (goto-char start))
     ;; Clear all preedit state
     (nskk--clear-conversion-start-marker)
+    (nskk--clear-pending-romaji)
     (setq nskk--romaji-buffer "")
     (setq nskk--henkan-count 0)
     (nskk-with-current-state
@@ -489,6 +516,7 @@ Uses `nskk-with-conversion-context' to guard on active conversion state."
             (insert okuri-kana))))
       ;; Clear all conversion state
       (nskk--clear-conversion-start-marker)
+      (nskk--clear-pending-romaji)
       (setq nskk--romaji-buffer "")
       (setf (nskk-state-candidates nskk-current-state) nil)
       (setf (nskk-state-current-index nskk-current-state) 0)
@@ -600,7 +628,9 @@ okurigana cycle (e.g. AII producing ▽あ*い* instead of converting)."
           ;; Consonant okurigana: put consonant into romaji buffer.
           ;; Kana will be completed when the user types the following vowel
           ;; (e.g. K → romaji="k", then u → "く", triggering conversion).
-          (setq nskk--romaji-buffer (char-to-string okuri-char)))
+          (setq nskk--romaji-buffer (char-to-string okuri-char))
+          ;; Show the buffered consonant so the user sees the pending state.
+          (nskk--show-pending-romaji nskk--romaji-buffer))
         t))))
 
 (defun nskk-convert-input-to-kana-final ()
@@ -621,6 +651,7 @@ Returns the converted kana string, or \"\" when the buffer is empty."
             (if (and result (stringp (car result)))
                 (car result)
               nskk--romaji-buffer))))
+    (nskk--clear-pending-romaji)
     (setq nskk--romaji-buffer "")))
 
 (defun nskk-start-conversion-with-okuri (okuri-char)
@@ -750,6 +781,7 @@ before the dictionary lookup."
                  (goto-char start)
                  (insert registered)
                  (nskk--clear-conversion-start-marker)
+                 (nskk--clear-pending-romaji)
                  (setq nskk--romaji-buffer "")
                  (setq nskk--henkan-count 0)
                  (nskk-with-current-state
@@ -810,6 +842,7 @@ If the user cancels, wrap around to the first candidate in list display."
           (goto-char start)
           (insert registered)
           (nskk--clear-conversion-start-marker)
+          (nskk--clear-pending-romaji)
           (setq nskk--romaji-buffer "")
           (setq nskk--henkan-count 0)
           (nskk-with-current-state
