@@ -34,10 +34,11 @@
 ;; the henkan conversion pipeline (L3).
 ;;
 ;; Prolog predicates registered by this module:
-;;   input-route/2          -- maps input mode to routing action
-;;   toggle-mode/2          -- hiragana<->katakana toggle table
+;;   input-route/2          -- maps input mode to routing action (katakana-半角 → process-japanese)
+;;   toggle-mode/2          -- hiragana<->katakana toggle table (katakana-半角 → hiragana)
 ;;   q-key-action/4         -- q key dispatch (style, behavior, buf-state, action)
 ;;   semicolon-key-action/2 -- semicolon key dispatch (style, action)
+;;   kakutei-action/2       -- C-j dispatch (state, action)
 ;;   fullwidth-char/2       -- ASCII to JIS X0208 full-width character table
 ;;
 ;; Key public API:
@@ -107,8 +108,24 @@ Creates `nskk-set-mode-MODE' that switches to MODE and updates modeline."
 (nskk-define-mode-setter hiragana)
 (nskk-define-mode-setter katakana)
 (nskk-define-mode-setter latin)
-(nskk-define-mode-setter abbrev)
 (nskk-define-mode-setter jisx0208-latin)
+
+(defun nskk-set-mode-abbrev ()
+  "Switch to abbrev mode and set up ▽ preedit marker for dictionary lookup.
+Sets up the conversion start marker and inserts ▽ after the mode switch
+so that `nskk--has-preedit' detects preedit state and Space triggers
+`nskk-start-conversion' with the accumulated ASCII text as the lookup key.
+This is DDSKK-compatible: /word SPC → dictionary lookup → candidate."
+  (interactive)
+  (nskk--set-mode 'abbrev)
+  ;; Set up preedit marker after mode switch.  nskk--set-mode calls
+  ;; nskk--clear-conversion-context which zeros the marker, so the
+  ;; marker must be placed at the current point after that reset.
+  (nskk--set-conversion-start-marker (point))
+  (nskk--insert-marker nskk-henkan-on-marker)
+  (nskk-with-current-state
+    (nskk-state-set-henkan-phase nskk-current-state 'on))
+  (nskk-modeline-update))
 
 (defun nskk-toggle-japanese-mode ()
   "Toggle between hiragana and katakana modes."
@@ -259,9 +276,11 @@ lowercase version of the letter as normal romaji input."
       (nskk-with-current-state
         (nskk-state-set-henkan-phase nskk-current-state 'on)))
     (let ((effective-char (if is-henkan-start (downcase char) char)))
-      ;; Check for okurigana marker (uppercase consonant while henkan is active)
+      ;; Check for okurigana marker (uppercase consonant while henkan is active).
+      ;; Pass the original `char' (not the downcased `effective-char') so that
+      ;; `nskk-detect-okurigana-char' can match uppercase A-Z via okurigana-char/2.
       (if (and (not is-henkan-start)
-               (nskk-process-okurigana-input effective-char))
+               (nskk-process-okurigana-input char))
           ;; Okurigana was processed, no further action needed
           nil
         ;; Normal processing
@@ -290,8 +309,11 @@ lowercase version of the letter as normal romaji input."
 
 (defun nskk-process-abbrev-input (char)
   "Process input CHAR in abbrev mode.
-Currently inserts CHAR directly.  Full `abbrev-mode' lookup
-\(dictionary-assisted expansion) is not yet implemented."
+CHAR is inserted directly after the ▽ preedit marker into the buffer.
+Dictionary lookup is triggered by `nskk-start-conversion' when Space
+is pressed: it extracts text between ▽ and point as the dictionary key.
+CHAR bypasses the romaji buffer — ASCII input is used verbatim as the
+lookup key, consistent with DDSKK abbrev mode behavior."
   (insert char))
 
 ;;;; Romaji-to-Kana Conversion
@@ -305,6 +327,20 @@ is still incomplete (waiting for more characters)."
   (let* ((input (concat nskk--romaji-buffer (char-to-string char)))
          (result (nskk-converter-convert input)))
     (cond
+     ;; n + n: ddskk-compatible hatsuon — emit ん and keep second 'n' pending.
+     ;; Must precede the successful-conversion branch: the romaji table entry
+     ;; "nn" → "ん" would otherwise consume both n's, discarding the second one
+     ;; and breaking sequences like "konnichiwa" (should yield こんにちわ).
+     ((and (not (string-empty-p nskk--romaji-buffer))
+           (= (aref nskk--romaji-buffer (1- (length nskk--romaji-buffer))) ?n)
+           (= char ?n))
+      (let ((prefix-without-n (substring nskk--romaji-buffer 0 (1- (length nskk--romaji-buffer)))))
+        (setq nskk--romaji-buffer "n")
+        (let ((prefix-kana (if (> (length prefix-without-n) 0)
+                               (let ((prev (nskk-converter-convert prefix-without-n)))
+                                 (if (and prev (stringp (car prev))) (car prev) ""))
+                             "")))
+          (concat prefix-kana "\u3093"))))
      ;; Successful conversion: return kana, keep remainder in buffer
      ((and result (stringp (car result)))
       (let ((kana (car result))
@@ -360,11 +396,13 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-<- (input-route jisx0208-latin insert-fullwidth))
     (nskk-prolog-<- (input-route hiragana process-japanese))
     (nskk-prolog-<- (input-route katakana process-japanese))
+    (nskk-prolog-<- (input-route katakana-半角 process-japanese))
 
     ;; Mode toggle rules
     (nskk-prolog-set-index 'toggle-mode 2 :hash)
     (nskk-prolog-<- (toggle-mode hiragana katakana))
     (nskk-prolog-<- (toggle-mode katakana hiragana))
+    (nskk-prolog-<- (toggle-mode katakana-半角 hiragana))
 
     ;; Key behavior rules
     (nskk-prolog-set-index 'q-key-action 4 :hash)
@@ -379,6 +417,14 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-set-index 'semicolon-key-action 2 :hash)
     (nskk-prolog-<- (semicolon-key-action azik insert-small-tsu))
     (nskk-prolog-<- (semicolon-key-action standard self-insert))
+
+    ;; C-j (kakutei) dispatch rules
+    (nskk-prolog-set-index 'kakutei-action 2 :hash)
+    (nskk-prolog-<- (kakutei-action converting     commit-candidate))
+    (nskk-prolog-<- (kakutei-action preedit        commit-preedit))
+    (nskk-prolog-<- (kakutei-action romaji-pending clear-romaji))
+    (nskk-prolog-<- (kakutei-action japanese-idle  insert-newline))
+    (nskk-prolog-<- (kakutei-action direct-idle    enter-hiragana))
 
     ;; Full-width character table
     (nskk-prolog-set-index 'fullwidth-char 2 :hash)

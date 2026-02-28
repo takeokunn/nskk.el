@@ -36,6 +36,14 @@ jobs:
           key: ${{ runner.os }}-emacs-${{ matrix.emacs_version }}-${{ hashFiles('Makefile') }}
           restore-keys: |
             ${{ runner.os }}-emacs-${{ matrix.emacs_version }}-
+      - name: Install Elsa
+        run: |
+          emacs -Q --batch \
+            --eval "(require 'package)" \
+            --eval "(add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)" \
+            --eval "(package-initialize)" \
+            --eval "(package-refresh-contents)" \
+            --eval "(package-install 'elsa)"
       - name: Byte compile
         run: make compile
       - name: Run tests

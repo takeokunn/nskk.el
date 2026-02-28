@@ -42,17 +42,20 @@
 ;;
 ;; Key bindings (in nskk-mode):
 ;;   C-x C-j  Toggle NSKK on/off in current buffer
-;;   C-j      Kakutei (commit) / enter hiragana mode from ASCII
+;;   C-j      Kakutei (commit) / enter hiragana from ASCII / newline in Japanese mode
 ;;   SPC      Start conversion (▽→▼) / cycle next candidate
 ;;   x        Previous candidate
 ;;   RET      Commit candidate and insert newline
 ;;   q        Toggle hiragana ↔ katakana
 ;;   l        Switch to ASCII (latin) mode
 ;;   L        Switch to full-width latin (JIS X 0208) mode
-;;   /        Enter abbrev mode
-;;   C-g      Cancel conversion or preedit
+;;   /        Enter abbrev mode (▽word SPC → dictionary lookup, DDSKK-compatible)
+;;   DEL      Delete last preedit char / cancel empty abbrev preedit
+;;   C-g      Cancel conversion or preedit (abbrev: restores previous mode)
+;;   C-n      Next candidate (in conversion mode) / next-line
+;;   C-p      Previous candidate (in conversion mode) / previous-line
 ;;
-;; Input modes: hiragana (default), katakana, ascii, latin,
+;; Input modes: ascii (default), hiragana, katakana, latin,
 ;;   abbrev, jisx0208-latin.
 ;;
 ;; Dictionary configuration:
@@ -78,7 +81,10 @@
 (require 'nskk-debug nil t)
 
 (declare-function nskk-set-mode-hiragana "nskk-input")
+(declare-function nskk-henkan-kakutei "nskk-henkan")
+(declare-function nskk--current-kakutei-state "nskk-keymap")
 (declare-function nskk--maybe-load-azik-style "nskk-input")
+(declare-function nskk-dict--maybe-save "nskk-dictionary")
 
 (defvar nskk-mode-hook nil
   "Hook run when NSKK mode is enabled.
@@ -111,7 +117,10 @@ DDSKK equivalent: skk-input-mode-hook")
     (define-key map (kbd "L") 'nskk-handle-upper-l)
     (define-key map (kbd "/") 'nskk-handle-slash)
     (define-key map (kbd "x") 'nskk-handle-x)
+    (define-key map (kbd "C-n") 'nskk-handle-ctrl-n)
+    (define-key map (kbd "C-p") 'nskk-handle-ctrl-p)
     (define-key map (kbd "C-g") 'nskk-handle-cancel)
+    (define-key map (kbd "DEL") 'nskk-handle-backspace)
     map)
   "Keymap for NSKK minor mode.")
 
@@ -158,7 +167,7 @@ This provides global bindings that work even when nskk-mode is not yet active.")
   (nskk-henkan-initialize)
   (nskk-input-initialize)
   (nskk-converter-initialize)
-  (unless nskk--system-dict-index
+  (unless (nskk-prolog-holds-p '(dict-initialized))
     (nskk-dict-initialize))
   (unless nskk-current-state
     (setq nskk-current-state (nskk-state-create nskk-state-default-mode))
@@ -169,6 +178,8 @@ This provides global bindings that work even when nskk-mode is not yet active.")
   (setq nskk-henkan-select-candidate-by-key-function #'nskk-candidate-list-select-by-key)
   ;; Load AZIK style if configured
   (nskk--maybe-load-azik-style)
+  ;; Register save-on-exit hook; add-hook deduplicates same symbol safely
+  (add-hook 'kill-emacs-hook #'nskk-dict--maybe-save)
   (nskk--setup-buffer)
   (nskk-modeline-update))
 
@@ -210,33 +221,24 @@ This provides global bindings that work even when nskk-mode is not yet active.")
 
 ;;;###autoload
 (defun nskk-kakutei ()
-  "Commit the current conversion or enter hiragana mode (確定).
-In SKK, the kakutei key serves as both the commit key and the key
-to enter hiragana mode from ASCII/Latin.  This function dispatches:
-- Converting → commit current candidate
-- Preedit active → commit preedit text as-is (without conversion)
-- ASCII/Latin mode → switch to hiragana mode
-- Pending romaji → flush romaji buffer
-- Otherwise → insert newline"
+  "Commit conversion or switch to hiragana mode (確定).
+Dispatches via the `kakutei-action/2' Prolog predicate based on state:
+- converting (▼): commit current candidate
+- preedit (▽): commit preedit text as-is
+- romaji-pending: flush incomplete romaji buffer
+- japanese-idle (hiragana/katakana/katakana-半角): insert newline
+- direct-idle (ascii/latin/jisx0208-latin/abbrev): switch to hiragana"
   (interactive)
-  (cond
-   ;; If converting, commit the current candidate
-   ((nskk-converting-p)
-    (nskk-commit-current))
-   ;; If preedit text exists (▽ mode), commit as-is without conversion
-   ((nskk--has-preedit)
-    (nskk-henkan-kakutei))
-   ;; If in ASCII/Latin mode, switch to hiragana
-   ((and nskk-current-state
-         (memq (nskk-state-mode nskk-current-state) '(ascii latin)))
-    (nskk-set-mode-hiragana))
-   ;; Flush any pending romaji
-   ((and (boundp 'nskk--romaji-buffer)
-         (not (string-empty-p nskk--romaji-buffer)))
-    (setq nskk--romaji-buffer ""))
-   ;; Otherwise, insert newline
-   (t
-    (newline))))
+  (let* ((state (nskk--current-kakutei-state))
+         (action (nskk-prolog-query-value
+                  `(kakutei-action ,state ,'\?a) '\?a)))
+    (pcase action
+      ('commit-candidate (nskk-commit-current))
+      ('commit-preedit   (nskk-henkan-kakutei))
+      ('clear-romaji     (setq nskk--romaji-buffer ""))
+      ('enter-hiragana   (nskk-set-mode-hiragana))
+      ('insert-newline   (newline))
+      (_                 nil))))
 
 (provide 'nskk)
 

@@ -55,16 +55,28 @@
 (defmacro nskk-with-azik-style (&rest body)
   "Execute BODY with AZIK style loaded."
   (declare (indent 0) (debug t))
-  `(progn
-     (nskk-converter-load-style 'azik)
-     ,@body))
+  `(nskk-prolog-test-with-isolated-db
+     (let ((nskk--saved-romaji-table (copy-hash-table nskk--romaji-table)))
+       (unwind-protect
+           (progn
+             (nskk-converter-load-style 'azik)
+             ,@body)
+         (clrhash nskk--romaji-table)
+         (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                  nskk--saved-romaji-table)))))
 
 (defmacro nskk-with-standard-style (&rest body)
-  "Execute BODY with standard style loaded."
+  "Execute BODY with standard style loaded, restoring Prolog DB after."
   (declare (indent 0) (debug t))
-  `(progn
-     (nskk-converter-load-style 'standard)
-     ,@body))
+  `(nskk-prolog-test-with-isolated-db
+     (let ((nskk--saved-romaji-table (copy-hash-table nskk--romaji-table)))
+       (unwind-protect
+           (progn
+             (nskk-converter-load-style 'standard)
+             ,@body)
+         (clrhash nskk--romaji-table)
+         (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                  nskk--saved-romaji-table)))))
 
 
 ;;;;
@@ -73,31 +85,34 @@
 
 (ert-deftest nskk-azik-load-standard-style ()
   "Test loading standard romaji style."
-  (should (eq (nskk-converter-load-style 'standard) 'standard))
-  ;; Standard style should have basic romaji
-  (should (equal (nskk-convert-romaji "ka") "か"))
-  (should (equal (nskk-convert-romaji "shi") "し")))
+  (nskk-prolog-test-with-isolated-db
+    (should (eq (nskk-converter-load-style 'standard) 'standard))
+    ;; Standard style should have basic romaji
+    (should (equal (nskk-convert-romaji "ka") "か"))
+    (should (equal (nskk-convert-romaji "shi") "し"))))
 
 (ert-deftest nskk-azik-load-azik-style ()
   "Test loading AZIK romaji style."
-  (should (eq (nskk-converter-load-style 'azik) 'azik))
-  ;; AZIK style should have extended rules
-  (should (equal (nskk-convert-romaji "kz") "かん"))
-  (should (equal (nskk-convert-romaji "kq") "かい")))
+  (nskk-prolog-test-with-isolated-db
+    (should (eq (nskk-converter-load-style 'azik) 'azik))
+    ;; AZIK style should have extended rules
+    (should (equal (nskk-convert-romaji "kz") "かん"))
+    (should (equal (nskk-convert-romaji "kq") "かい"))))
 
 (ert-deftest nskk-azik-style-switching ()
   "Test switching between standard and AZIK styles."
-  ;; Load standard
-  (nskk-converter-load-style 'standard)
-  (should (equal (nskk-convert-romaji "ka") "か"))
-  ;; In standard, "kz" should not convert to "かん"
-  (should-not (equal (nskk-convert-romaji "kz") "かん"))
-  ;; Switch to AZIK
-  (nskk-converter-load-style 'azik)
-  (should (equal (nskk-convert-romaji "kz") "かん"))
-  ;; Switch back to standard
-  (nskk-converter-load-style 'standard)
-  (should (equal (nskk-convert-romaji "ka") "か")))
+  (nskk-prolog-test-with-isolated-db
+    ;; Load standard
+    (nskk-converter-load-style 'standard)
+    (should (equal (nskk-convert-romaji "ka") "か"))
+    ;; In standard, "kz" should not convert to "かん"
+    (should-not (equal (nskk-convert-romaji "kz") "かん"))
+    ;; Switch to AZIK
+    (nskk-converter-load-style 'azik)
+    (should (equal (nskk-convert-romaji "kz") "かん"))
+    ;; Switch back to standard
+    (nskk-converter-load-style 'standard)
+    (should (equal (nskk-convert-romaji "ka") "か"))))
 
 
 ;;;;

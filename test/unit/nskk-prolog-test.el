@@ -48,38 +48,6 @@
 (require 'nskk-prolog)
 (eval-when-compile (require 'cl-lib))
 
-;;;; Test Isolation Helper
-
-(defun nskk-prolog-test--copy-hash-table (ht)
-  "Deep-copy hash table HT."
-  (let ((new (make-hash-table :test (hash-table-test ht)
-                              :size (hash-table-size ht))))
-    (maphash (lambda (k v)
-               (puthash k (if (sequencep v) (copy-sequence v) v) new))
-             ht)
-    new))
-
-(defmacro nskk-prolog-test-with-isolated-db (&rest body)
-  "Execute BODY with an isolated Prolog database.
-Saves and restores the global database so tests don't leak."
-  (declare (indent 0))
-  `(let ((saved-db (nskk-prolog-test--copy-hash-table
-                    nskk-prolog--database))
-         (saved-idx (nskk-prolog-test--copy-hash-table
-                     nskk-prolog--index-config))
-         (saved-hash (nskk-prolog-test--copy-hash-table
-                      nskk-prolog--hash-indices))
-         (saved-trie (nskk-prolog-test--copy-hash-table
-                      nskk-prolog--trie-indices))
-         (saved-counter nskk-prolog--var-counter))
-     (unwind-protect
-         (progn ,@body)
-       (setq nskk-prolog--database saved-db
-             nskk-prolog--index-config saved-idx
-             nskk-prolog--hash-indices saved-hash
-             nskk-prolog--trie-indices saved-trie
-             nskk-prolog--var-counter saved-counter))))
-
 ;;;;
 ;;;; 1. Variable Representation
 ;;;;
@@ -572,6 +540,48 @@ data facts produce results and that the first is `a'."
       (should (equal (nskk-prolog-walk '\?meaning (car result))
                      "greeting")))))
 
+(nskk-deftest-unit prolog-trie-bulk-assert-single-entry
+  "trie-bulk-assert: single entry is queryable via the prove engine."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'test-dict-entry 2 :trie)
+    (nskk-prolog-trie-bulk-assert 'test-dict-entry 2
+                                  '(("か" . ("花" "家"))))
+    (let ((result (nskk-prolog-query '(test-dict-entry "か" \?candidates))))
+      (should result)
+      (should (equal (nskk-prolog-walk '\?candidates (car result))
+                     '("花" "家"))))))
+
+(nskk-deftest-unit prolog-trie-bulk-assert-multiple-entries
+  "trie-bulk-assert: multiple entries are each individually queryable."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'test-dict-entry 2 :trie)
+    (nskk-prolog-trie-bulk-assert 'test-dict-entry 2
+                                  '(("か" . ("花" "家"))
+                                    ("き" . ("木" "気"))
+                                    ("く" . ("口" "来"))))
+    ;; Each entry should be independently queryable
+    (let ((r1 (nskk-prolog-query '(test-dict-entry "か" \?c))))
+      (should r1)
+      (should (equal (nskk-prolog-walk '\?c (car r1)) '("花" "家"))))
+    (let ((r2 (nskk-prolog-query '(test-dict-entry "き" \?c))))
+      (should r2)
+      (should (equal (nskk-prolog-walk '\?c (car r2)) '("木" "気"))))
+    (let ((r3 (nskk-prolog-query '(test-dict-entry "く" \?c))))
+      (should r3)
+      (should (equal (nskk-prolog-walk '\?c (car r3)) '("口" "来"))))))
+
+(nskk-deftest-unit prolog-trie-bulk-assert-no-result-for-missing-key
+  "trie-bulk-assert: query for non-existent key returns empty."
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-clear-database)
+    (nskk-prolog-set-index 'test-dict-entry 2 :trie)
+    (nskk-prolog-trie-bulk-assert 'test-dict-entry 2
+                                  '(("か" . ("花" "家"))))
+    (let ((result (nskk-prolog-query '(test-dict-entry "き" \?candidates))))
+      (should-not result))))
+
 (nskk-deftest-unit prolog-list-index-default
   "List index (default) performs full scan."
   (nskk-prolog-test-with-isolated-db
@@ -898,6 +908,9 @@ distinction via list membership."
   nskk-unit-prolog-hash-index-variable-scan
   nskk-unit-prolog-hash-index-with-retract
   nskk-unit-prolog-trie-index-lookup
+  nskk-unit-prolog-trie-bulk-assert-single-entry
+  nskk-unit-prolog-trie-bulk-assert-multiple-entries
+  nskk-unit-prolog-trie-bulk-assert-no-result-for-missing-key
   nskk-unit-prolog-list-index-default)
 
 (nskk-test-suite prolog-dsl

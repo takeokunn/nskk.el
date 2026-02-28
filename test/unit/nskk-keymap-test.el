@@ -242,8 +242,8 @@
       (nskk-handle-return)
       (should (equal (buffer-string) "\n")))))
 
-(nskk-deftest-unit keymap-handle-return-commits-and-newline-when-converting
-  "Test handle-return commits and inserts newline when in conversion."
+(nskk-deftest-unit keymap-handle-return-commits-no-newline-when-converting
+  "Test handle-return commits without newline when in conversion."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk--set-conversion-start-marker (point-min))
@@ -253,8 +253,8 @@
       (nskk-state-force-henkan-phase nskk-current-state 'active)
       (nskk-handle-return)
       (should-not (nskk-converting-p))
-      ;; ddskk style: commit + newline
-      (should (equal (buffer-string) "result\n")))))
+      ;; nskk style: commit only (no newline)
+      (should (equal (buffer-string) "result")))))
 
 ;;;
 ;;; New Handler Tests (L, /, x, C-g)
@@ -437,6 +437,155 @@
   "Test that nskk-handle-cancel is defined and interactive."
   (should (fboundp 'nskk-handle-cancel))
   (should (commandp 'nskk-handle-cancel)))
+
+;;;
+;;; nskk--current-kakutei-state Tests
+;;;
+
+(nskk-deftest-unit keymap-kakutei-state-converting
+  "Test nskk--current-kakutei-state returns converting when nskk-converting-p is true."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () t))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+    (should (eq (nskk--current-kakutei-state) 'converting))))
+
+(nskk-deftest-unit keymap-kakutei-state-preedit
+  "Test nskk--current-kakutei-state returns preedit when nskk--has-preedit is true."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () t)))
+    (should (eq (nskk--current-kakutei-state) 'preedit))))
+
+(nskk-deftest-unit keymap-kakutei-state-romaji-pending
+  "Test nskk--current-kakutei-state returns romaji-pending when nskk--romaji-buffer is non-empty."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+    (let ((nskk--romaji-buffer "k"))
+      (should (eq (nskk--current-kakutei-state) 'romaji-pending)))))
+
+(nskk-deftest-unit keymap-kakutei-state-japanese-idle
+  "Test nskk--current-kakutei-state returns japanese-idle in hiragana mode with no pending input."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--romaji-buffer ""))
+      (should (eq (nskk--current-kakutei-state) 'japanese-idle)))))
+
+(nskk-deftest-unit keymap-kakutei-state-japanese-idle-katakana
+  "Test nskk--current-kakutei-state returns japanese-idle in katakana mode."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+    (let ((nskk-current-state (nskk-state-create 'katakana))
+          (nskk--romaji-buffer ""))
+      (should (eq (nskk--current-kakutei-state) 'japanese-idle)))))
+
+(nskk-deftest-unit keymap-kakutei-state-japanese-idle-katakana-半角
+  "Test nskk--current-kakutei-state returns japanese-idle in katakana-半角 mode."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+    (let ((nskk-current-state (nskk-state-create 'katakana-半角))
+          (nskk--romaji-buffer ""))
+      (should (eq (nskk--current-kakutei-state) 'japanese-idle)))))
+
+(nskk-deftest-unit keymap-kakutei-state-direct-idle
+  "Test nskk--current-kakutei-state returns direct-idle in ascii mode with no pending input."
+  (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+            ((symbol-function 'nskk--has-preedit) (lambda () nil)))
+    (let ((nskk-current-state (nskk-state-create 'ascii))
+          (nskk--romaji-buffer ""))
+      (should (eq (nskk--current-kakutei-state) 'direct-idle)))))
+
+;;;
+;;; C-n and C-p Handler Tests
+;;;
+
+(nskk-deftest-unit keymap-handle-ctrl-n-defined
+  "Test that nskk-handle-ctrl-n is defined and interactive."
+  (should (fboundp 'nskk-handle-ctrl-n))
+  (should (commandp 'nskk-handle-ctrl-n)))
+
+(nskk-deftest-unit keymap-handle-ctrl-p-defined
+  "Test that nskk-handle-ctrl-p is defined and interactive."
+  (should (fboundp 'nskk-handle-ctrl-p))
+  (should (commandp 'nskk-handle-ctrl-p)))
+
+(nskk-deftest-unit keymap-handle-ctrl-n-calls-next-candidate-when-converting
+  "Test handle-ctrl-n calls nskk-next-candidate when converting."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (called nil))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "preedit")
+      (setf (nskk-state-candidates nskk-current-state) '("result"))
+      (setf (nskk-state-current-index nskk-current-state) 0)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (cl-letf (((symbol-function 'nskk-next-candidate)
+                 (lambda () (setq called t))))
+        (nskk-handle-ctrl-n)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-p-calls-previous-candidate-when-converting
+  "Test handle-ctrl-p calls nskk-previous-candidate when converting."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (called nil))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "preedit")
+      (setf (nskk-state-candidates nskk-current-state) '("result"))
+      (setf (nskk-state-current-index nskk-current-state) 0)
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (cl-letf (((symbol-function 'nskk-previous-candidate)
+                 (lambda () (setq called t))))
+        (nskk-handle-ctrl-p)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-n-calls-next-line-when-not-converting
+  "Test handle-ctrl-n calls next-line when not in conversion mode."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (called nil))
+      (cl-letf (((symbol-function 'next-line)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-n)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-p-calls-previous-line-when-not-converting
+  "Test handle-ctrl-p calls previous-line when not in conversion mode."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (called nil))
+      (cl-letf (((symbol-function 'previous-line)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-p)
+        (should called)))))
+
+(nskk-deftest-unit keymap-ctrl-n-bound-in-mode-map
+  "Test that C-n is bound in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map (kbd "C-n"))))
+    (should (eq binding 'nskk-handle-ctrl-n))))
+
+(nskk-deftest-unit keymap-ctrl-p-bound-in-mode-map
+  "Test that C-p is bound in nskk-mode-map."
+  (let ((binding (lookup-key nskk-mode-map (kbd "C-p"))))
+    (should (eq binding 'nskk-handle-ctrl-p))))
+
+(nskk-deftest-unit keymap-handle-ctrl-n-next-line-when-no-state
+  "Test handle-ctrl-n calls next-line when nskk-current-state is nil."
+  (with-temp-buffer
+    (let ((nskk-current-state nil)
+          (called nil))
+      (cl-letf (((symbol-function 'next-line)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-n)
+        (should called)))))
+
+(nskk-deftest-unit keymap-handle-ctrl-p-previous-line-when-no-state
+  "Test handle-ctrl-p calls previous-line when nskk-current-state is nil."
+  (with-temp-buffer
+    (let ((nskk-current-state nil)
+          (called nil))
+      (cl-letf (((symbol-function 'previous-line)
+                 (lambda (&rest _) (interactive) (setq called t))))
+        (nskk-handle-ctrl-p)
+        (should called)))))
 
 (provide 'nskk-keymap-test)
 

@@ -1,8 +1,6 @@
-# NSKK - Next-generation SKK for Emacs
+# NSKK — Next-generation SKK for Emacs
 
-<!-- MELPA badge (to be added after acceptance) -->
-<!-- [![MELPA](https://melpa.org/packages/nskk-badge.svg)](https://melpa.org/#/nskk) -->
-<!-- [![MELPA Stable](https://stable.melpa.org/packages/nskk-badge.svg)](https://stable.melpa.org/#/nskk) -->
+[![CI](https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml/badge.svg)](https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml)
 
 NSKK is a modern, zero-dependency Japanese input method for Emacs based on
 [SKK](https://skk-dev.github.io/ddskk/) (Simple Kana to Kanji) principles.
@@ -11,12 +9,13 @@ full lexical-binding, and aggressive performance targets.
 
 ## Features
 
-- **Zero external dependencies** -- relies only on Emacs built-in features
+- **Zero external dependencies** — relies only on Emacs built-in features
 - **Full lexical-binding** throughout every source file
-- **Embedded Prolog engine** -- conversion and dispatch logic expressed as facts/rules
-- **High-performance design** -- targets < 1ms key response, < 10ms dictionary search
+- **Embedded Prolog engine** — conversion and dispatch logic expressed as facts/rules
+- **High-performance design** — targets < 1ms key response, < 10ms dictionary search
 - **ddskk-compatible** key bindings and input behavior
 - **AZIK extended romaji** support (optional, via `nskk-azik.el`)
+- **Tested on Emacs 29.1, 29.4, 30.1, and snapshot** via CI
 
 ## Requirements
 
@@ -24,13 +23,17 @@ full lexical-binding, and aggressive performance targets.
 
 ## Installation
 
-### MELPA (pending)
+### use-package (built-in, Emacs 29+)
 
-MELPA submission is planned. Once accepted:
+Clone the repository first, then load via `:load-path`:
+
+```bash
+git clone https://github.com/takeokunn/nskk.el.git ~/path/to/nskk.el
+```
 
 ```elisp
 (use-package nskk
-  :ensure t
+  :load-path "~/path/to/nskk.el"
   :config
   (nskk-global-mode 1))
 ```
@@ -39,12 +42,73 @@ With optional AZIK and custom dictionary:
 
 ```elisp
 (use-package nskk
-  :ensure t
+  :load-path "~/path/to/nskk.el"
   :custom
   (nskk-state-default-mode 'hiragana)
   (nskk-dict-system-dictionary-files '("/usr/share/skk/SKK-JISYO.L"))
   (nskk-converter-romaji-style 'azik)
   :config
+  (nskk-global-mode 1))
+```
+
+### leaf
+
+```bash
+git clone https://github.com/takeokunn/nskk.el.git ~/path/to/nskk.el
+```
+
+```elisp
+(leaf nskk
+  :load-path "~/path/to/nskk.el"
+  :require t
+  :config
+  (nskk-global-mode 1))
+```
+
+With optional AZIK and custom dictionary:
+
+```elisp
+(leaf nskk
+  :load-path "~/path/to/nskk.el"
+  :require t
+  :custom
+  (nskk-state-default-mode . 'hiragana)
+  (nskk-dict-system-dictionary-files . '("/usr/share/skk/SKK-JISYO.L"))
+  (nskk-converter-romaji-style . 'azik)
+  :config
+  (nskk-global-mode 1))
+```
+
+### straight.el
+
+```elisp
+(straight-use-package
+ '(nskk :type git :host github :repo "takeokunn/nskk.el"))
+```
+
+With `use-package` integration:
+
+```elisp
+(use-package nskk
+  :straight (nskk :type git :host github :repo "takeokunn/nskk.el")
+  :config
+  (nskk-global-mode 1))
+```
+
+With `leaf` + `straight-leaf` integration:
+
+```elisp
+(leaf nskk
+  :straight (nskk :type git :host github :repo "takeokunn/nskk.el")
+  :require t
+  :config
+  (nskk-global-mode 1))
+```
+
+### elpaca
+
+```elisp
+(elpaca (nskk :host github :repo "takeokunn/nskk.el")
   (nskk-global-mode 1))
 ```
 
@@ -68,20 +132,30 @@ git clone https://github.com/takeokunn/nskk.el.git ~/path/to/nskk.el
 ;; Toggle in current buffer with C-x C-j
 ```
 
+To use a system SKK dictionary (e.g. `skktools` on Debian/Ubuntu or `skk-jisyo` on NixOS):
+
+```elisp
+(setq nskk-dict-system-dictionary-files '("/usr/share/skk/SKK-JISYO.L"))
+(nskk-global-mode 1)
+```
+
+NSKK also auto-detects dictionaries from Nix profiles and common system locations
+when `nskk-dict-system-dictionary-files` is `nil`.
+
 ## Key Bindings
 
 All bindings are active inside `nskk-mode`. They follow ddskk conventions.
 
 ### Mode Control
 
-| Key         | Function              | Description                                   |
-|-------------|-----------------------|-----------------------------------------------|
-| `C-x C-j`   | `nskk-toggle-mode`    | Toggle NSKK on/off in current buffer          |
-| `C-j`       | `nskk-kakutei`        | Commit / enter hiragana from ASCII mode       |
-| `q`         | `nskk-handle-q`       | Toggle hiragana/katakana                       |
-| `l`         | `nskk-handle-l`       | Switch to ASCII (latin) mode                  |
-| `L`         | `nskk-handle-upper-l` | Switch to full-width latin (JIS X 0208) mode  |
-| `/`         | `nskk-handle-slash`   | Enter abbrev mode                             |
+| Key         | Function              | Description                                                  |
+|-------------|-----------------------|--------------------------------------------------------------|
+| `C-x C-j`   | `nskk-toggle-mode`    | Toggle NSKK on/off in current buffer                         |
+| `C-j`       | `nskk-kakutei`        | Commit / enter hiragana from ASCII / newline in Japanese mode |
+| `q`         | `nskk-handle-q`       | Toggle hiragana/katakana                                     |
+| `l`         | `nskk-handle-l`       | Switch to ASCII (latin) mode                                 |
+| `L`         | `nskk-handle-upper-l` | Switch to full-width latin (JIS X 0208) mode                 |
+| `/`         | `nskk-handle-slash`   | Enter abbrev mode                                            |
 
 ### Conversion (henkan)
 
@@ -91,18 +165,18 @@ All bindings are active inside `nskk-mode`. They follow ddskk conventions.
 | `x`         | `nskk-handle-x`              | Previous candidate                       |
 | `RET`       | `nskk-handle-return`         | Commit candidate and insert newline      |
 | `C-g`       | `nskk-handle-cancel`         | Cancel conversion or preedit             |
-| `a`-`l`     | (candidate list keys)        | Select candidate directly in list mode   |
+| `a`–`l`     | (candidate list keys)        | Select candidate directly in list mode   |
 
 ### Input Modes
 
-| Mode           | Display | Description                       |
-|----------------|---------|-----------------------------------|
-| `hiragana`     | `かな`  | Default Japanese input mode       |
-| `katakana`     | `カナ`  | Katakana input mode               |
-| `ascii`        | `SKK`   | Direct ASCII (pass-through) mode  |
-| `latin`        | `SKK`   | Direct ASCII mode (same as ascii) |
-| `jisx0208-latin` | `全英` | Full-width latin (JIS X 0208)    |
-| `abbrev`       | `aA`    | Abbreviation mode                 |
+| Mode             | Display | Description                       |
+|------------------|---------|-----------------------------------|
+| `hiragana`       | `かな`  | Default Japanese input mode       |
+| `katakana`       | `カナ`  | Katakana input mode               |
+| `ascii`          | `SKK`   | Direct ASCII (pass-through) mode  |
+| `latin`          | `SKK`   | Direct ASCII mode (same as ascii) |
+| `jisx0208-latin` | `全英`  | Full-width latin (JIS X 0208)     |
+| `abbrev`         | `aA`    | Abbreviation mode                 |
 
 ## Architecture
 
@@ -153,36 +227,36 @@ The table below covers the most commonly adjusted variables.
 
 ### Input behavior
 
-| Variable                            | Default       | Description                                      |
-|-------------------------------------|---------------|--------------------------------------------------|
-| `nskk-state-default-mode`           | `ascii`       | Initial mode when NSKK is activated              |
-| `nskk-converter-romaji-style`       | `standard`    | Romaji style: `standard` or `azik`              |
-| `nskk-converter-auto-start-henkan`  | `t`           | Uppercase letter auto-starts conversion          |
-| `nskk-converter-n-processing-mode`  | `smart`       | ん detection: `smart`, `strict`, or `loose`     |
-| `nskk-converter-use-sokuon`         | `t`           | Enable っ doubling from repeated consonants      |
+| Variable                            | Default    | Description                                     |
+|-------------------------------------|------------|-------------------------------------------------|
+| `nskk-state-default-mode`           | `ascii`    | Initial mode when NSKK is activated             |
+| `nskk-converter-romaji-style`       | `standard` | Romaji style: `standard` or `azik`             |
+| `nskk-converter-auto-start-henkan`  | `t`        | Uppercase letter auto-starts conversion         |
+| `nskk-converter-n-processing-mode`  | `smart`    | ん detection: `smart`, `strict`, or `loose`    |
+| `nskk-converter-use-sokuon`         | `t`        | Enable っ doubling from repeated consonants     |
 
 ### Dictionary
 
-| Variable                             | Default                     | Description                            |
-|--------------------------------------|-----------------------------|----------------------------------------|
-| `nskk-dict-user-dictionary-file`     | `~/.skk/jisyo`              | Path to the user dictionary file       |
-| `nskk-dict-system-dictionary-files`  | `nil`                       | List of system dictionary file paths   |
-| `nskk-dict-cache-enabled`            | `t`                         | Enable in-memory dictionary cache      |
+| Variable                             | Default          | Description                          |
+|--------------------------------------|------------------|--------------------------------------|
+| `nskk-dict-user-dictionary-file`     | `~/.skk/jisyo`   | Path to the user dictionary file     |
+| `nskk-dict-system-dictionary-files`  | `nil`            | List of system dictionary file paths |
+| `nskk-dict-cache-enabled`            | `t`              | Enable in-memory dictionary cache    |
 
 ### Candidate display
 
-| Variable                               | Default                       | Description                                   |
-|----------------------------------------|-------------------------------|-----------------------------------------------|
-| `nskk-henkan-show-candidates-nth`      | `5`                           | Show candidate list after Nth SPC press       |
-| `nskk-henkan-number-to-display-candidates` | `7`                      | Candidates shown per page in echo area        |
-| `nskk-henkan-show-candidates-keys`     | `(?a ?s ?d ?f ?j ?k ?l)`     | Home-row selection keys for candidate list    |
+| Variable                                   | Default                   | Description                                |
+|--------------------------------------------|---------------------------|--------------------------------------------|
+| `nskk-henkan-show-candidates-nth`          | `5`                       | Show candidate list after Nth SPC press    |
+| `nskk-henkan-number-to-display-candidates` | `7`                       | Candidates shown per page in echo area     |
+| `nskk-henkan-show-candidates-keys`         | `(?a ?s ?d ?f ?j ?k ?l)` | Home-row selection keys for candidate list |
 
 ### Display
 
-| Variable                   | Default    | Description                                   |
-|----------------------------|------------|-----------------------------------------------|
-| `nskk-modeline-format`     | `"[%m]"`  | Mode-line format (`%m` = mode display string) |
-| `nskk-use-color-cursor`    | `t`        | Change cursor color to reflect current mode   |
+| Variable                | Default   | Description                                   |
+|-------------------------|-----------|-----------------------------------------------|
+| `nskk-modeline-format`  | `"[%m]"` | Mode-line format (`%m` = mode display string) |
+| `nskk-use-color-cursor` | `t`       | Change cursor color to reflect current mode   |
 
 ### Example configuration
 
@@ -214,41 +288,36 @@ The table below covers the most commonly adjusted variables.
 | Architecture       | 7-layer modular, 16 modules         | Monolithic codebase                  |
 | Decision logic     | Embedded Prolog engine              | Imperative conditionals              |
 
-## Development Setup
+## Development
 
-### Running tests
+### Requirements
 
-Tests use the built-in `ert` framework. From the project root:
+- GNU Make
+- Emacs 29.1 or later
 
-```bash
-emacs --batch -L . -L test \
-  --eval "(require 'nskk)" \
-  -l test/unit/nskk-prolog-test.el \
-  -f ert-run-tests-batch-and-exit
-```
-
-To run all unit tests at once:
+Alternatively, use the provided Nix development shell (includes Emacs and
+`SKK-JISYO.L`):
 
 ```bash
-emacs --batch -L . -L test \
-  $(find test/unit -name '*.el' | sort | perl -ne 'chomp; print "-l $_ "') \
-  -f ert-run-tests-batch-and-exit
+nix develop
 ```
 
-### Byte-compilation check
+### Common tasks
 
 ```bash
-emacs --batch -L . \
-  -f batch-byte-compile \
-  nskk-custom.el nskk-prolog.el nskk-cache.el nskk-kana.el \
-  nskk-dictionary.el nskk-state.el nskk-converter.el nskk-search.el \
-  nskk-henkan.el nskk-azik.el nskk-input.el \
-  nskk-keymap.el nskk-modeline.el nskk-candidate-window.el nskk-debug.el \
-  nskk.el
+make compile      # Byte-compile all .el files (errors on any warning)
+make test         # Run unit and integration tests
+make test-unit    # Run unit tests only
+make lint         # Run checkdoc on all source files
+make package-lint # Run package-lint against nskk.el
+make clean        # Remove compiled .elc files
 ```
 
-Byte-compilation must complete with zero errors and zero warnings before any
-pull request is merged.
+To run the full CI check suite in a Nix sandbox (compile + test + lint):
+
+```bash
+nix flake check
+```
 
 ### Adding a new romaji rule
 
@@ -267,10 +336,10 @@ pull request is merged.
 
 ## Status
 
-**v0.1 -- Early development.**
-Core conversion engine and infrastructure are implemented. Full end-to-end
+**v0.1 — Early development.**
+Core conversion engine and infrastructure are implemented. The full end-to-end
 input pipeline is functional. Dictionary registration and AZIK support are
-complete. MELPA submission is pending.
+complete.
 
 ## License
 

@@ -208,12 +208,12 @@
         (nskk-handle-space))
       ;; Should be in conversion mode
       (should (nskk-converting-p))
-      ;; Commit with return (ddskk: commit + newline)
+      ;; Commit with return (no newline in converting mode)
       (nskk-handle-return)
       ;; Should have committed the first candidate
       (should-not (nskk-converting-p))
-      ;; ddskk handle-return commits AND inserts newline
-      (should (equal (buffer-string) "亜\n")))))
+      ;; nskk handle-return commits only (no newline in converting mode)
+      (should (equal (buffer-string) "亜")))))
 
 (nskk-deftest-integration conversion-cancel-restores-preedit
   "Test that canceling conversion restores preedit text."

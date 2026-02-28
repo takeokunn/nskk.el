@@ -15,7 +15,7 @@
       checks = forAllSystems (system:
         let
           pkgs = pkgsFor system;
-          emacs = pkgs.emacs;
+          emacs = pkgs.emacsPackages.emacsWithPackages (ps: [ ps.elsa ]);
         in
         {
           default = pkgs.runCommand "nskk-check" {
@@ -34,7 +34,7 @@
       devShells = forAllSystems (system:
         let
           pkgs = pkgsFor system;
-          emacs = pkgs.emacs;
+          emacs = pkgs.emacsPackages.emacsWithPackages (ps: [ ps.elsa ]);
           skkDict = pkgs.skkDictionaries.l;
         in
         {
@@ -52,7 +52,7 @@ Automated checks:
   nix flake check   # Run all checks (compile + test + lint) in sandbox
   make compile      # Byte-compile all .el files
   make test         # Run ERT test suite
-  make lint         # Run checkdoc
+  make lint         # Run checkdoc + Elsa static analysis
   make clean        # Remove *.elc files
 
 Manual testing:

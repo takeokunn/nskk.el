@@ -456,6 +456,8 @@ Saves and restores the global database so tests don't leak."
   (declare (indent 0))
   `(let ((saved-db (nskk-prolog-test--copy-hash-table
                     nskk-prolog--database))
+         (saved-tails (nskk-prolog-test--copy-hash-table
+                       nskk-prolog--database-tails))
          (saved-idx (nskk-prolog-test--copy-hash-table
                      nskk-prolog--index-config))
          (saved-hash (nskk-prolog-test--copy-hash-table
@@ -466,6 +468,7 @@ Saves and restores the global database so tests don't leak."
      (unwind-protect
          (progn ,@body)
        (setq nskk-prolog--database saved-db
+             nskk-prolog--database-tails saved-tails
              nskk-prolog--index-config saved-idx
              nskk-prolog--hash-indices saved-hash
              nskk-prolog--trie-indices saved-trie
@@ -505,11 +508,17 @@ If nil, uses a default set of common Japanese words."
 (defmacro nskk-with-mock-dict (entries &rest body)
   "Execute BODY with a mock dictionary installed.
 ENTRIES is an alist of (key . candidates-list) or nil for defaults.
-Restores original dictionary state after BODY completes."
+Restores original dictionary state after BODY completes.
+
+Asserts \\='(dict-initialized) into the isolated Prolog database so
+that guards relying on `nskk-prolog-holds-p' see the mock as
+initialized."
   (declare (indent 1))
   `(nskk-prolog-test-with-isolated-db
      (let ((nskk--system-dict-index (nskk-test-create-mock-dict ,entries))
            (nskk--user-dict-index nil))
+       ;; Assert dict-initialized so Prolog-based init guards pass
+       (nskk-prolog-assert '((dict-initialized)))
        ,@body)))
 
 (provide 'nskk-test-framework)

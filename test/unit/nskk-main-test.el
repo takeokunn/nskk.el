@@ -201,15 +201,100 @@
     (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
     (nskk-mode -1)))
 
-(nskk-deftest-unit main-kakutei-newline-in-hiragana
-  "Test C-j (kakutei) inserts newline when in hiragana with no preedit."
+(nskk-deftest-unit main-kakutei-inserts-newline-in-hiragana
+  "Test C-j (kakutei) inserts a newline when already in hiragana with no preedit."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (electric-indent-local-mode -1)
+    (nskk-set-mode-hiragana)
+    (nskk-kakutei)
+    ;; Should stay in hiragana and insert a newline
+    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+    (should (string= (buffer-string) "\n"))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-inserts-newline-in-katakana
+  "Test C-j (kakutei) inserts a newline when in katakana with no preedit."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (electric-indent-local-mode -1)
+    (nskk-set-mode-katakana)
+    (nskk-kakutei)
+    ;; Should stay in katakana and insert a newline
+    (should (eq (nskk-state-mode nskk-current-state) 'katakana))
+    (should (string= (buffer-string) "\n"))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-inserts-newline-in-katakana-半角
+  "Test C-j (kakutei) inserts a newline when in katakana-半角 with no preedit."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (electric-indent-local-mode -1)
+    ;; No nskk-set-mode-katakana-半角 exists; use nskk-state-transition directly.
+    (nskk-state-transition nskk-current-state (nskk-state-mode nskk-current-state) 'katakana-半角)
+    ;; Verify the transition succeeded before testing kakutei behavior
+    (should (eq (nskk-state-mode nskk-current-state) 'katakana-半角))
+    (nskk-kakutei)
+    ;; Should stay in katakana-半角 and insert a newline
+    (should (eq (nskk-state-mode nskk-current-state) 'katakana-半角))
+    (should (string= (buffer-string) "\n"))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-enters-hiragana-from-jisx0208-latin
+  "Test C-j (kakutei) switches to hiragana from jisx0208-latin mode."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (nskk-set-mode-jisx0208-latin)
+    (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin))
+    (nskk-kakutei)
+    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-enters-hiragana-from-abbrev
+  "Test C-j (kakutei) switches to hiragana from abbrev mode."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (nskk-set-mode-abbrev)
+    (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+    (nskk-kakutei)
+    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-clears-romaji-in-japanese-mode
+  "Test C-j (kakutei) clears pending romaji buffer when in hiragana."
   (with-temp-buffer
     (nskk-mode 1)
     (nskk-set-mode-hiragana)
+    (setq nskk--romaji-buffer "k")
     (nskk-kakutei)
-    ;; Should stay in hiragana and insert newline
+    ;; Should clear the romaji buffer and stay in hiragana
+    (should (string= nskk--romaji-buffer ""))
     (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (should (string= (buffer-string) "\n"))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-commits-candidate-when-converting
+  "Test C-j (kakutei) commits the current candidate when in converting (▼) state."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (nskk-set-mode-hiragana)
+    ;; Simulate converting state by mocking nskk-converting-p
+    (cl-letf (((symbol-function 'nskk-converting-p) (lambda () t))
+              ((symbol-function 'nskk-commit-current) (lambda () (insert "確定"))))
+      (nskk-kakutei)
+      (should (string= (buffer-string) "確定")))
+    (nskk-mode -1)))
+
+(nskk-deftest-unit main-kakutei-commits-preedit-when-in-preedit
+  "Test C-j (kakutei) commits preedit text when in preedit (▽) state."
+  (with-temp-buffer
+    (nskk-mode 1)
+    (nskk-set-mode-hiragana)
+    ;; Simulate preedit state
+    (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
+              ((symbol-function 'nskk--has-preedit) (lambda () t))
+              ((symbol-function 'nskk-henkan-kakutei) (lambda () (insert "変換"))))
+      (nskk-kakutei)
+      (should (string= (buffer-string) "変換")))
     (nskk-mode -1)))
 
 ;;;

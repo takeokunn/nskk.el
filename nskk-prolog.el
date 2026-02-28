@@ -58,6 +58,7 @@
 ;; - `nskk-prolog-query-values'    -- query and extract multiple bindings
 ;; - `nskk-prolog-query-all-values' -- query and extract all bindings for var
 ;; - `nskk-prolog-trie-prefix-search' -- prefix search via trie index
+;; - `nskk-prolog-holds-p'       -- test if a goal has any solution
 ;; - `nskk-prolog-variable-p'     -- test for Prolog variable symbol
 ;; - `nskk-prolog-ground-p'       -- test for ground (variable-free) term
 ;; - `nskk-prolog-unify'          -- unify two terms
@@ -187,6 +188,10 @@ Handles:
 Each value is a list of clauses in insertion order.
 A clause is (head . body) where head is (predicate arg1 ...)
 and body is a list of goals (nil for facts).")
+
+(defvar nskk-prolog--database-tails (make-hash-table :test 'equal)
+  "Tail cons-cell of each predicate's clause list in `nskk-prolog--database'.
+Enables O(1) append in `nskk-prolog-assert' without walking the full list.")
 
 (defsubst nskk-prolog--clause-key (predicate arity)
   "Return the database key string for PREDICATE with ARITY."
@@ -654,12 +659,22 @@ CLAUSE format: ((pred arg1 arg2 ...)) for facts,
 
 Example fact:  ((romaji-to-kana \"ka\" \"ka\"))
 Example rule:  ((grandparent \\?x \\?z)
-                (parent \\?x \\?y) (parent \\?y \\?z))"
+                (parent \\?x \\?y) (parent \\?y \\?z))
+
+Uses O(1) append via `nskk-prolog--database-tails' to avoid the O(N²)
+cost of repeated `nconc' calls on large clause lists."
   (let* ((head (car clause))
          (key (nskk-prolog--head-key head))
-         (existing (gethash key nskk-prolog--database)))
-    (puthash key (nconc existing (list clause))
-             nskk-prolog--database)
+         (new-cell (list clause))
+         (tail (gethash key nskk-prolog--database-tails)))
+    (if tail
+        ;; O(1): set the cdr of the stored tail cell, advance tail pointer
+        (progn
+          (setcdr tail new-cell)
+          (puthash key new-cell nskk-prolog--database-tails))
+      ;; First clause for this key: initialize both database and tail
+      (puthash key new-cell nskk-prolog--database)
+      (puthash key new-cell nskk-prolog--database-tails))
     (nskk-prolog--index-add key clause)))
 
 (defun nskk-prolog-retract (head-pattern)
@@ -678,9 +693,13 @@ Returns t if a clause was removed, nil otherwise."
             (setq found clause)
             (throw 'done nil))))
       (when found
-        (puthash key
-                 (cl-remove found clauses :test #'equal :count 1)
-                 nskk-prolog--database)
+        (let ((new-list (cl-remove found clauses :test #'equal :count 1)))
+          (if new-list
+              (progn
+                (puthash key new-list nskk-prolog--database)
+                (puthash key (last new-list) nskk-prolog--database-tails))
+            (remhash key nskk-prolog--database)
+            (remhash key nskk-prolog--database-tails)))
         (nskk-prolog--index-remove key found)
         t))))
 
@@ -689,6 +708,7 @@ Returns t if a clause was removed, nil otherwise."
 Also clears any associated indices."
   (let ((key (nskk-prolog--clause-key predicate arity)))
     (remhash key nskk-prolog--database)
+    (remhash key nskk-prolog--database-tails)
     (let ((type (gethash key nskk-prolog--index-config)))
       (pcase type
         (:hash (puthash key (make-hash-table :test 'equal)
@@ -699,6 +719,7 @@ Also clears any associated indices."
 (defun nskk-prolog-clear-database ()
   "Reset the entire Prolog database, indices, and variable counter."
   (clrhash nskk-prolog--database)
+  (clrhash nskk-prolog--database-tails)
   (clrhash nskk-prolog--index-config)
   (clrhash nskk-prolog--hash-indices)
   (clrhash nskk-prolog--trie-indices)
@@ -822,6 +843,48 @@ Returns nil if no trie index exists or PREFIX matches nothing."
                           (when value
                             (cons index-key value))))
                       raw-results))))))
+
+(defun nskk-prolog-trie-bulk-assert (predicate arity kana-candidates-pairs)
+  "Bulk-assert dictionary entries directly into the trie index.
+PREDICATE and ARITY identify the predicate (e.g., \\='system-dict-entry and 2).
+KANA-CANDIDATES-PAIRS is a list of (KANA . CANDIDATES-LIST) pairs where
+KANA is a string (the trie key / first argument) and CANDIDATES-LIST is
+the second argument value.
+
+Each pair inserts one fact (PREDICATE KANA CANDIDATES-LIST) directly into
+the trie index, bypassing the flat clause database.  Use this for bulk-loading
+large read-only predicates (e.g., SKK system dictionaries) where the flat
+database fallback is not needed and the O(1) `nskk-prolog-assert' append
+overhead per entry can be avoided entirely.
+
+Requires the predicate to have a :trie index configured via
+`nskk-prolog-set-index' before calling this function."
+  (let* ((dbkey (nskk-prolog--clause-key predicate arity))
+         (trie (gethash dbkey nskk-prolog--trie-indices)))
+    (unless trie
+      (error "No trie index for %s/%d; call (nskk-prolog-set-index '%s %d :trie) first"
+             predicate arity predicate arity))
+    (dolist (pair kana-candidates-pairs)
+      (let* ((kana (car pair))
+             (candidates (cdr pair))
+             (clause (list (list predicate kana candidates))))
+        (when (stringp kana)
+          (nskk-prolog--trie-insert trie kana (list clause)))))))
+
+(defun nskk-prolog-holds-p (goal)
+  "Return non-nil if GOAL succeeds in the Prolog database.
+GOAL is a Prolog term (predicate arg1 arg2 ...).
+Returns t if GOAL has at least one solution, nil otherwise.
+
+Convenience wrapper around `nskk-prolog-query-one\\=' for boolean
+holds-checking.  Particularly useful for testing zero-arity facts
+like \\='(dict-initialized).
+
+Example:
+  (nskk-prolog-holds-p \\='(dict-initialized))
+  ;; => t   (when the fact is asserted)
+  ;; => nil (when the fact is absent)"
+  (not (null (nskk-prolog-query-one goal))))
 
 ;;;; DSL Macros
 
