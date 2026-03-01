@@ -52,92 +52,95 @@
 ;;;; Section 1: Small Kana (xa/la rows)
 ;;;;
 
-(nskk-deftest-table buffer-romaji-small-kana-xa-row
-  :columns (romaji kana)
-  ;; la/li/lu/le/lo omitted: 'l' is bound to nskk-handle-l (Latin-mode switch)
-  ;; and cannot be used as a romaji prefix in E2E key-event tests.
-  :rows (("xa" "ぁ") ("xi" "ぃ") ("xu" "ぅ") ("xe" "ぇ") ("xo" "ぉ"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type romaji)
-          (nskk-e2e-assert-buffer kana
-                                  (format "romaji %S → %S failed" romaji kana))))
+(nskk-describe "small kana romaji rows"
+  (nskk-deftest-table buffer-romaji-small-kana-xa-row
+    :columns (romaji kana)
+    ;; la/li/lu/le/lo omitted: 'l' is bound to nskk-handle-l (Latin-mode switch)
+    ;; and cannot be used as a romaji prefix in E2E key-event tests.
+    :rows (("xa" "ぁ") ("xi" "ぃ") ("xu" "ぅ") ("xe" "ぇ") ("xo" "ぉ"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer kana
+                                    (format "romaji %S → %S failed" romaji kana))))
 
-(nskk-deftest-table buffer-romaji-small-kana-xtsu
-  :columns (romaji kana)
-  ;; ltsu/ltu omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
-  :rows (("xtsu" "っ") ("xtu" "っ"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type romaji)
-          (nskk-e2e-assert-buffer kana
-                                  (format "romaji %S → %S failed" romaji kana))))
+  (nskk-deftest-table buffer-romaji-small-kana-xtsu
+    :columns (romaji kana)
+    ;; ltsu/ltu omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
+    :rows (("xtsu" "っ") ("xtu" "っ"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer kana
+                                    (format "romaji %S → %S failed" romaji kana))))
 
-(nskk-deftest-table buffer-romaji-small-kana-xya-row
-  :columns (romaji kana)
-  ;; lya/lyu/lyo omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
-  :rows (("xya" "ゃ") ("xyu" "ゅ") ("xyo" "ょ"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type romaji)
-          (nskk-e2e-assert-buffer kana
-                                  (format "romaji %S → %S failed" romaji kana))))
+  (nskk-deftest-table buffer-romaji-small-kana-xya-row
+    :columns (romaji kana)
+    ;; lya/lyu/lyo omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
+    :rows (("xya" "ゃ") ("xyu" "ゅ") ("xyo" "ょ"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer kana
+                                    (format "romaji %S → %S failed" romaji kana)))))
 
 ;;;;
 ;;;; Section 2: V-row (ゔ combinations)
 ;;;;
 
-(nskk-deftest-table buffer-romaji-v-row
-  :columns (romaji kana)
-  :rows (("va"  "ゔぁ")
-         ("vi"  "ゔぃ")
-         ("vu"  "ゔ")
-         ("ve"  "ゔぇ")
-         ("vo"  "ゔぉ")
-         ("vya" "ゔゃ")
-         ("vyu" "ゔゅ")
-         ("vyo" "ゔょ"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type romaji)
-          (nskk-e2e-assert-buffer kana
-                                  (format "romaji %S → %S failed" romaji kana))))
+(nskk-describe "v-row romaji"
+  (nskk-deftest-table buffer-romaji-v-row
+    :columns (romaji kana)
+    :rows (("va"  "ゔぁ")
+           ("vi"  "ゔぃ")
+           ("vu"  "ゔ")
+           ("ve"  "ゔぇ")
+           ("vo"  "ゔぉ")
+           ("vya" "ゔゃ")
+           ("vyu" "ゔゅ")
+           ("vyo" "ゔょ"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer kana
+                                    (format "romaji %S → %S failed" romaji kana)))))
 
 ;;;;
 ;;;; Section 3: Foreign Extension Rows
 ;;;;
 
-(nskk-deftest-table buffer-romaji-th-row
-  :columns (romaji kana)
-  :rows (("tha" "てぁ")
-         ("thi" "てぃ")
-         ("thu" "てゅ")
-         ("the" "てぇ")
-         ("tho" "てょ"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type romaji)
-          (nskk-e2e-assert-buffer kana
-                                  (format "romaji %S → %S failed" romaji kana))))
+(nskk-describe "foreign extension romaji rows"
+  (nskk-deftest-table buffer-romaji-th-row
+    :columns (romaji kana)
+    :rows (("tha" "てぁ")
+           ("thi" "てぃ")
+           ("thu" "てゅ")
+           ("the" "てぇ")
+           ("tho" "てょ"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer kana
+                                    (format "romaji %S → %S failed" romaji kana))))
 
-(nskk-deftest-table buffer-romaji-dh-row
-  :columns (romaji kana)
-  :rows (("dha" "でぁ")
-         ("dhi" "でぃ")
-         ("dhu" "でゅ")
-         ("dhe" "でぇ")
-         ("dho" "でょ"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type romaji)
-          (nskk-e2e-assert-buffer kana
-                                  (format "romaji %S → %S failed" romaji kana))))
+  (nskk-deftest-table buffer-romaji-dh-row
+    :columns (romaji kana)
+    :rows (("dha" "でぁ")
+           ("dhi" "でぃ")
+           ("dhu" "でゅ")
+           ("dhe" "でぇ")
+           ("dho" "でょ"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer kana
+                                    (format "romaji %S → %S failed" romaji kana))))
 
-(nskk-deftest-table buffer-romaji-wh-row
-  :columns (romaji kana)
-  :rows (("wha" "うぁ")
-         ("whi" "うぃ")
-         ("whu" "う")
-         ("whe" "うぇ")
-         ("who" "うぉ"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type romaji)
-          (nskk-e2e-assert-buffer kana
-                                  (format "romaji %S → %S failed" romaji kana))))
+  (nskk-deftest-table buffer-romaji-wh-row
+    :columns (romaji kana)
+    :rows (("wha" "うぁ")
+           ("whi" "うぃ")
+           ("whu" "う")
+           ("whe" "うぇ")
+           ("who" "うぉ"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer kana
+                                    (format "romaji %S → %S failed" romaji kana)))))
 
 ;;;;
 ;;;; Section 4: N-apostrophe

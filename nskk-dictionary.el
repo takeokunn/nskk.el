@@ -74,7 +74,7 @@
   :group 'nskk)
 
 (defcustom nskk-dict-user-dictionary-file
-  (expand-file-name "~/.skk/jisyo")
+  (expand-file-name "~/.nskk/jisyo")
   "Path to the user dictionary file."
   :type 'file
   :group 'nskk-dictionary)
@@ -356,20 +356,26 @@ Returns \\='user if loaded, or nil if not found."
   "Return the path to the on-disk system dictionary cache."
   (expand-file-name "nskk/dict-cache.eld" user-emacs-directory))
 
+(defun nskk-dict--file-older-than (file cache-mtime)
+  "Return non-nil if FILE's mtime is strictly older than CACHE-MTIME.
+Returns nil both when FILE cannot be stat'd (missing, unreadable, or broken
+symlink) and when FILE is newer than or equal to CACHE-MTIME."
+  (let ((attr (file-attributes file)))
+    (and attr
+         (time-less-p
+          (file-attribute-modification-time attr)
+          cache-mtime))))
+
 (defun nskk-dict--cache-valid-p (dict-files)
   "Return non-nil if the cache file exists and is newer than all DICT-FILES."
   (let ((cache-path (nskk-dict--cache-file-path)))
     (and dict-files
-         (file-readable-p cache-path)
-         (let ((cache-mtime (file-attribute-modification-time
-                             (file-attributes cache-path))))
-           (cl-every (lambda (f)
-                       (let ((attr (file-attributes f)))
-                         (and attr
-                              (time-less-p
-                               (file-attribute-modification-time attr)
-                               cache-mtime))))
-                     dict-files)))))
+         (let ((cache-attr (file-attributes cache-path)))
+           (and cache-attr
+                (file-readable-p cache-path)
+                (let ((cache-mtime (file-attribute-modification-time cache-attr)))
+                  (cl-every (lambda (f) (nskk-dict--file-older-than f cache-mtime))
+                            dict-files)))))))
 
 (defun nskk-dict--save-system-dict-cache (entries dict-files)
   "Serialize ENTRIES to the on-disk cache.

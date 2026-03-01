@@ -253,9 +253,9 @@ Otherwise execute FALLBACK forms (typically `self-insert-command')."
      ,action)
     (t ,@fallback)))
 
-(defmacro nskk-safe-nav-command (cmd error-type)
+(defmacro nskk--safe-nav-command (cmd error-type)
   "Call CMD interactively, silently ignoring ERROR-TYPE signals.
-Used for navigation commands that may signal buffer-boundary errors.
+Internal macro for navigation commands that may signal buffer-boundary errors.
 CMD should be a quoted command symbol (e.g., #\\='next-line).
 ERROR-TYPE should be an error symbol (e.g., end-of-buffer)."
   (declare (indent 0) (debug t))
@@ -356,30 +356,30 @@ unconditionally (preedit text is left in place)."
 In conversion mode (▼), advances to the next conversion candidate.
 In preedit mode (▽) or normal mode, delegates to \\[next-line]."
   ('next-candidate (nskk-next-candidate))
-  ('next-line      (nskk-safe-nav-command #'next-line end-of-buffer)))
+  ('next-line      (nskk--safe-nav-command #'next-line end-of-buffer)))
 
 (nskk-define-key-handler ctrl-p
   "Handle C-p key: select previous candidate when converting, else previous-line.
 In conversion mode (▼), moves to the previous conversion candidate.
 In preedit mode (▽) or normal mode, delegates to \\[previous-line]."
   ('previous-candidate (nskk-previous-candidate))
-  ('previous-line      (nskk-safe-nav-command #'previous-line beginning-of-buffer)))
+  ('previous-line      (nskk--safe-nav-command #'previous-line beginning-of-buffer)))
 
 (nskk-define-key-handler ctrl-f
   "Handle C-f/right-arrow: commit conversion then move forward, else forward-char.
 In conversion mode (▼), commits the current candidate then moves point forward.
 In preedit mode (▽) or normal mode, delegates to \\[forward-char]."
   ('kakutei-then-forward (nskk-commit-current)
-                         (nskk-safe-nav-command #'forward-char end-of-buffer))
-  ('forward-char (nskk-safe-nav-command #'forward-char end-of-buffer)))
+                         (nskk--safe-nav-command #'forward-char end-of-buffer))
+  ('forward-char (nskk--safe-nav-command #'forward-char end-of-buffer)))
 
 (nskk-define-key-handler ctrl-b
   "Handle C-b/left-arrow: commit conversion then move backward, else backward-char.
 In conversion mode (▼), commits the current candidate then moves point backward.
 In preedit mode (▽) or normal mode, delegates to \\[backward-char]."
   ('kakutei-then-backward (nskk-commit-current)
-                          (nskk-safe-nav-command #'backward-char beginning-of-buffer))
-  ('backward-char (nskk-safe-nav-command #'backward-char beginning-of-buffer)))
+                          (nskk--safe-nav-command #'backward-char beginning-of-buffer))
+  ('backward-char (nskk--safe-nav-command #'backward-char beginning-of-buffer)))
 
 (nskk-define-key-handler ctrl-a
   "Handle C-a/Home: commit then go to beginning of line.
@@ -387,6 +387,7 @@ In conversion mode (▼), commits the current candidate then moves to BOL.
 In preedit mode (▽) or normal mode, delegates to \\[beginning-of-line]."
   ('kakutei-then-bol (nskk-commit-current)
                      (call-interactively #'beginning-of-line))
+  ;; beginning-of-line does not signal beginning-of-buffer; no error suppression needed
   ('beginning-of-line (call-interactively #'beginning-of-line)))
 
 (nskk-define-key-handler ctrl-e
@@ -395,6 +396,7 @@ In conversion mode (▼), commits the current candidate then moves to EOL.
 In preedit mode (▽) or normal mode, delegates to \\[end-of-line]."
   ('kakutei-then-eol (nskk-commit-current)
                      (call-interactively #'end-of-line))
+  ;; end-of-line does not signal end-of-buffer; no error suppression needed
   ('end-of-line (call-interactively #'end-of-line)))
 
 (nskk-define-key-handler cancel

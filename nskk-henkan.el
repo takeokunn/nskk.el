@@ -102,43 +102,40 @@
 (declare-function nskk-server-live-p "nskk-server")
 (declare-function nskk-server-lookup "nskk-server")
 
-;;;; Overlay Management Macros
-
-(defmacro nskk-ensure-overlay (var start end &rest props)
-  "Ensure VAR holds a live overlay covering START to END.
-Reuses existing overlay if live, creates one otherwise.
-PROPS is a plist of (property value ...) pairs set via `overlay-put'."
-  (declare (indent 2) (debug t))
-  `(progn
-     (if (overlayp ,var)
-         (move-overlay ,var ,start ,end (current-buffer))
-       (setq ,var (make-overlay ,start ,end)))
-     (cl-loop for (prop val) on (list ,@props) by #'cddr
-              do (overlay-put ,var prop val))))
-
-(defmacro nskk-delete-overlay (var)
-  "Delete overlay in VAR and set VAR to nil."
-  (declare (indent 1) (debug t))
-  `(when (overlayp ,var)
-     (delete-overlay ,var)
-     (setq ,var nil)))
-
 ;;;; Conversion State Macros
 
 (defmacro nskk-reset-henkan-state ()
-  "Reset conversion state: clear candidates, reset index, clear okurigana and phase.
-Requires `nskk-current-state' to be bound (use inside `nskk-with-current-state')."
+  "Reset conversion state for `nskk-current-state'.
+Clears the candidate list, resets the candidate index to 0 (via
+`nskk-state-set-candidates'), clears okurigana, and transitions
+henkan-phase to nil.
+Requires `nskk-current-state' to be bound (use inside `nskk-with-current-state'
+or `nskk-with-conversion-context')."
   (declare (indent 0) (debug t))
   `(progn
      (nskk-state-set-candidates nskk-current-state nil)
      (nskk-state-set-okurigana nskk-current-state nil)
      (nskk-state-set-henkan-phase nskk-current-state nil)))
 
+(defun nskk-henkan-do-reset ()
+  "Reset all henkan conversion state after a commit or registration.
+Clears: conversion-start-marker, pending-romaji overlay, romaji-buffer,
+henkan-count, and all state fields (candidates, okurigana, phase) via
+`nskk-reset-henkan-state'.  Returns nil."
+  (nskk--clear-conversion-start-marker)
+  (nskk--clear-pending-romaji)
+  (setq nskk--romaji-buffer "")
+  (setq nskk--henkan-count 0)
+  (nskk-with-current-state
+    (nskk-reset-henkan-state)))
+
 (defmacro nskk-set-active-candidates (candidates)
-  "Set CANDIDATES as active in `nskk-current-state' and enter active conversion phase.
-Sets candidates, resets index to 0 (via `nskk-state-set-candidates'), and sets
-henkan-phase to `active'.
-Requires `nskk-current-state' to be bound (use inside `nskk-with-current-state')."
+  "Set CANDIDATES as active in `nskk-current-state' and enter conversion phase.
+Sets candidates, resets index to 0 (via `nskk-state-set-candidates'), and
+sets henkan-phase to `active'.
+CANDIDATES should be a non-nil list of candidate strings.
+Requires `nskk-current-state' to be bound (use inside
+`nskk-with-current-state')."
   (declare (indent 0) (debug t))
   `(progn
      (nskk-state-set-candidates nskk-current-state ,candidates)
@@ -320,11 +317,8 @@ its \\='after-string property to TEXT.  Uses \\='after-string rather than
 \\='display because no buffer text exists yet for the incomplete romaji --
 the characters are buffered in `nskk--romaji-buffer', not yet committed."
   (when (and (stringp text) (not (string-empty-p text)))
-    (unless (overlayp nskk--pending-romaji-overlay)
-      (setq nskk--pending-romaji-overlay
-            (make-overlay (point) (point) nil t nil)))
-    (move-overlay nskk--pending-romaji-overlay (point) (point) (current-buffer))
-    (overlay-put nskk--pending-romaji-overlay 'after-string text)))
+    (nskk-ensure-overlay nskk--pending-romaji-overlay (point) (point)
+                         'after-string text)))
 
 (defun nskk--clear-pending-romaji ()
   "Delete the pending romaji overlay if it exists.
@@ -358,12 +352,21 @@ Returns the marker position as an integer, or nil if no marker is set."
              (marker-position nskk--conversion-start-marker))
     (marker-position nskk--conversion-start-marker)))
 
+(defun nskk--skip-marker-pos (pos marker-regexp)
+  "Return position after marker at POS, or POS if no marker is present.
+Performs a non-destructive `looking-at' check at POS via `save-excursion'.
+MARKER-REGEXP is the regexp to match; on success the advance is taken from
+`match-end', so the result is always exact regardless of marker width."
+  (save-excursion
+    (goto-char pos)
+    (if (looking-at marker-regexp)
+        (match-end 0)
+      pos)))
+
 (defun nskk--set-conversion-start-marker (pos)
   "Set the conversion start marker to POS in the current buffer.
 Creates a new marker if one does not already exist."
-  (unless (markerp nskk--conversion-start-marker)
-    (setq nskk--conversion-start-marker (make-marker)))
-  (set-marker nskk--conversion-start-marker pos (current-buffer)))
+  (nskk-ensure-marker nskk--conversion-start-marker pos))
 
 (defun nskk--clear-conversion-start-marker ()
   "Clear the conversion start marker, releasing the position."
@@ -646,11 +649,7 @@ in place and will immediately follow the inserted candidate."
           (when okuri-kana
             (insert okuri-kana))))
       ;; Clear all conversion state.
-      (nskk--clear-conversion-start-marker)
-      (nskk--clear-pending-romaji)
-      (setq nskk--romaji-buffer "")
-      (nskk-reset-henkan-state)
-      (setq nskk--henkan-count 0)
+      (nskk-henkan-do-reset)
       (run-hook-with-args 'nskk-henkan-hide-candidates-functions)
       (setq nskk-henkan--candidate-list-active nil))))
 
@@ -666,7 +665,8 @@ in place and will immediately follow the inserted candidate."
         (setf (nskk-state-current-index nskk-current-state) new-index)
         (let* ((candidate (nth new-index candidates))
                (start (nskk--get-conversion-start))
-               ;; Account for ▼ marker in start position
+               ;; Skip ▼ marker unconditionally: during candidate cycling the
+               ;; marker is always present, so no looking-at guard is needed.
                (text-start (when start (+ start (length nskk-henkan-active-marker))))
                ;; Preserve the existing overlay end so that okurigana kana
                ;; (which sits after the overlay) is not consumed by the overlay.
@@ -790,11 +790,7 @@ marker for the preedit region.  Handles \u25bd marker in preedit text."
   (let* ((start (nskk--get-conversion-start))
          ;; Skip ▽ marker
          (text-start (when start
-                       (save-excursion
-                         (goto-char start)
-                         (if (looking-at nskk-henkan-on-marker-regexp)
-                             (+ start (length nskk-henkan-on-marker))
-                           start))))
+                       (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
          (end (point))
          (text (when (and text-start (> end text-start))
                  (buffer-substring-no-properties text-start end)))
@@ -819,11 +815,7 @@ found.  When no candidates are found, falls back to dictionary registration."
   (let* ((start (nskk--get-conversion-start))
          ;; Skip ▽ marker for text extraction
          (text-start (when start
-                       (save-excursion
-                         (goto-char start)
-                         (if (looking-at nskk-henkan-on-marker-regexp)
-                             (+ start (length nskk-henkan-on-marker))
-                           start))))
+                       (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
          ;; Find and account for * marker
          (text-with-marker (when (and text-start (> preedit-end text-start))
                              (buffer-substring-no-properties text-start preedit-end)))
@@ -865,12 +857,7 @@ found.  When no candidates are found, falls back to dictionary registration."
               (delete-region start (point))
               (goto-char start)
               (insert registered)
-              (nskk--clear-conversion-start-marker)
-              (nskk--clear-pending-romaji)
-              (setq nskk--romaji-buffer "")
-              (setq nskk--henkan-count 0)
-              (nskk-with-current-state
-                (nskk-state-set-henkan-phase nskk-current-state nil)))))))))
+              (nskk-henkan-do-reset))))))
 
 ;;;; Conversion Pipeline
 
@@ -895,11 +882,7 @@ before the dictionary lookup."
         (insert pending)))
     (let* ((end (point))
            ;; Skip the ▽ marker when extracting preedit text
-           (text-start (save-excursion
-                         (goto-char start)
-                         (if (looking-at nskk-henkan-on-marker-regexp)
-                             (+ start (length nskk-henkan-on-marker))
-                           start)))
+           (text-start (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp))
            (text (when (> end text-start)
                    (buffer-substring-no-properties text-start end))))
       (when (and text (not (string-empty-p text)))
@@ -928,12 +911,7 @@ before the dictionary lookup."
                  (delete-region start end)
                  (goto-char start)
                  (insert registered)
-                 (nskk--clear-conversion-start-marker)
-                 (nskk--clear-pending-romaji)
-                 (setq nskk--romaji-buffer "")
-                 (setq nskk--henkan-count 0)
-                 (nskk-with-current-state
-                   (nskk-state-set-henkan-phase nskk-current-state nil)))))))))))
+                 (nskk-henkan-do-reset))))))))))
 
 ;;;; Dictionary Registration
 
@@ -947,7 +925,7 @@ Returns the registered word on success, or nil if the user cancels
 or if the maximum nesting depth (as defined by Prolog `registration-allowed/1')
 has been reached."
   (nskk-debug-log "[HENKAN] start-registration: reading=%s" reading)
-  (when (nskk-prolog-query-one `(registration-allowed ,nskk--registration-depth))
+  (nskk-when-prolog-holds `(registration-allowed ,nskk--registration-depth)
     (let ((prev-phase (nskk-state-henkan-phase nskk-current-state)))
       (nskk-with-current-state
         (nskk-state-force-henkan-phase nskk-current-state 'registration))
@@ -975,11 +953,7 @@ If the user cancels, wrap around to the first candidate in list display."
   (setq nskk-henkan--candidate-list-active nil)
   (let* ((start (nskk--get-conversion-start))
          (text-start (when start
-                       (save-excursion
-                         (goto-char start)
-                         (if (looking-at nskk-henkan-active-marker-regexp)
-                             (+ start (length nskk-henkan-active-marker))
-                           start))))
+                       (nskk--skip-marker-pos start nskk-henkan-active-marker-regexp)))
          (text (when (and text-start (> (point) text-start))
                  (buffer-substring-no-properties text-start (point))))
          (registered (when text (nskk-start-registration text))))
@@ -989,12 +963,7 @@ If the user cancels, wrap around to the first candidate in list display."
           (delete-region start (point))
           (goto-char start)
           (insert registered)
-          (nskk--clear-conversion-start-marker)
-          (nskk--clear-pending-romaji)
-          (setq nskk--romaji-buffer "")
-          (setq nskk--henkan-count 0)
-          (nskk-with-current-state
-            (nskk-reset-henkan-state)))
+          (nskk-henkan-do-reset))
       ;; Registration cancelled: wrap to first candidate in list
       (let ((candidates (nskk-state-candidates nskk-current-state)))
         (setf (nskk-state-current-index nskk-current-state) 0)

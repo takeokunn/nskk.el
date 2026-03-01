@@ -71,6 +71,7 @@
 (require 'cl-lib)
 (require 'nskk-prolog)
 (require 'nskk-custom)
+(eval-and-compile (require 'nskk-state))
 
 (defvar nskk--conversion-overlay)  ;; defined in nskk-state.el
 (defvar nskk--candidate-overlay)   ;; defined in nskk-state.el
@@ -160,11 +161,8 @@ Returns the page candidates (a sublist of CANDIDATES) for key mapping."
          (after-str (nskk--candidate-build-string page-candidates keys remaining))
          (anchor (nskk--candidate-overlay-anchor)))
     ;; Create or reuse the candidate overlay
-    (unless (overlayp nskk--candidate-overlay)
-      (setq nskk--candidate-overlay
-            (make-overlay anchor anchor nil t nil)))
-    (move-overlay nskk--candidate-overlay anchor anchor (current-buffer))
-    (overlay-put nskk--candidate-overlay 'after-string after-str)
+    (nskk-ensure-overlay nskk--candidate-overlay anchor anchor
+                         'after-string after-str)
     ;; Store state
     (setq nskk--candidate-list-active t)
     (setq nskk--candidate-list-page (/ current-index per-page))
@@ -178,9 +176,7 @@ Returns the page candidates (a sublist of CANDIDATES) for key mapping."
 (defun nskk-candidate-hide-list ()
   "Hide the candidate list by deleting its overlay."
   (when nskk--candidate-list-active
-    (when (overlayp nskk--candidate-overlay)
-      (delete-overlay nskk--candidate-overlay)
-      (setq nskk--candidate-overlay nil))
+    (nskk-delete-overlay nskk--candidate-overlay)
     (setq nskk--candidate-list-active nil)
     (setq nskk--candidate-list-page 0)))
 

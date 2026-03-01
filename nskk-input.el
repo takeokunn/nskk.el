@@ -392,29 +392,12 @@ LAST-BUF-CHAR is the last character in `nskk--romaji-buffer', or nil if empty.
 RESULT is the return value of `nskk-converter-convert' on the full input.
 
 Returns one of: `nn-double', `match', `n-consonant', `sokuon',
-`incomplete', or `no-match'.  The returned symbol can be looked up in
-the `romaji-input-action/2' Prolog dispatch table."
-  (cond
-   ;; n + n: emit ん and keep second 'n' pending (must precede `match' branch)
-   ((and last-buf-char (= last-buf-char ?n) (= char ?n))
-    'nn-double)
-   ;; Successful conversion: return kana, keep remainder in buffer
-   ((and result (stringp (car result)))
-    'match)
-   ;; n + consonant: emit ん for trailing n, buffer new char
-   ((and last-buf-char (= last-buf-char ?n)
-         (nskk-prolog-query-one `(hatsuon-trigger ,char)))
-    'n-consonant)
-   ;; Sokuon: same consonant doubled (not vowel, not n)
-   ((and last-buf-char (= last-buf-char char)
-         (nskk-prolog-query-one `(sokuon-eligible ,char)))
-    'sokuon)
-   ;; Incomplete: buffer the input
-   ((and result (eq (car result) :incomplete))
-    'incomplete)
-   ;; No match: flush buffer
-   (t
-    'no-match)))
+`incomplete', or `no-match'.  Classification delegates to the
+`romaji-class/4' Prolog predicate; clause order encodes priority."
+  (or (nskk-prolog-query-value
+       `(romaji-class ,char ,last-buf-char ,result \?class)
+       '\?class)
+      'no-match))
 
 (defun nskk-convert-input-to-kana (char)
   "Convert input CHAR to kana using the romaji-to-kana converter.
@@ -522,6 +505,40 @@ Idempotent: subsequent calls are no-ops."
       (sokuon      emit-sokuon)
       (incomplete  buffer-input)
       (no-match    flush-buffer))
+
+    ;; Romaji input classifier rules.
+    ;; Clause order encodes priority — first matching clause wins.
+    ;; This replaces the order-dependent cond in `nskk--classify-romaji-input'.
+    ;; Goal handlers char-eql/2, string-pair-p/1, incomplete-pair-p/1 are
+    ;; defined in nskk-converter.el.
+    ;;
+    ;; Query form: (romaji-class CHAR LAST-CHAR RESULT ?class)
+    ;;   CHAR       — new input character (integer)
+    ;;   LAST-CHAR  — last char in romaji buffer (integer or nil)
+    ;;   RESULT     — return value of nskk-converter-convert (cons or nil)
+    ;;   ?class     — output: one of nn-double, match, n-consonant,
+    ;;                         sokuon, incomplete, no-match
+    ;; nn-double: n + n sequence (highest priority — must precede match
+    ;;   because "nn" maps to ん in the romaji table)
+    (nskk-prolog-<- (romaji-class \?char \?last \?result nn-double)
+      (char-eql \?last 110)
+      (char-eql \?char 110))
+    ;; match: converter returned a kana string
+    (nskk-prolog-<- (romaji-class \?char \?last \?result match)
+      (string-pair-p \?result))
+    ;; n-consonant: n followed by a hatsuon-trigger consonant
+    (nskk-prolog-<- (romaji-class \?char \?last \?result n-consonant)
+      (char-eql \?last 110)
+      (hatsuon-trigger \?char))
+    ;; sokuon: same eligible consonant doubled
+    (nskk-prolog-<- (romaji-class \?char \?last \?result sokuon)
+      (char-eql \?last \?char)
+      (sokuon-eligible \?char))
+    ;; incomplete: converter returned :incomplete (partial prefix)
+    (nskk-prolog-<- (romaji-class \?char \?last \?result incomplete)
+      (incomplete-pair-p \?result))
+    ;; no-match: fallback — flush the romaji buffer
+    (nskk-prolog-<- (romaji-class \?_ \?_ \?_ no-match))
 
     (setq nskk--input-initialized t)))
 

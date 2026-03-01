@@ -394,6 +394,42 @@ This eliminates manual maintenance of prefix lists when adding new rules."
             (unless (gethash prefix nskk--romaji-table)
               (puthash prefix :incomplete nskk--romaji-table))))))))
 
+;;;; Prolog Goal Handlers for Romaji Classification
+
+;; char-eql: succeed if C1 and C2 are equal integer character codes.
+(nskk-define-goal-handler char-eql (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) 'char-eql))
+  :body
+  (let ((c1 (nskk-prolog-walk (cadr goal) subst))
+        (c2 (nskk-prolog-walk (caddr goal) subst)))
+    (when (and (integerp c1) (integerp c2) (= c1 c2))
+      (nskk-prolog--prove-internal rest subst k))))
+
+;; string-pair-p: succeed if PAIR is a cons with a string car (converter match result).
+(nskk-define-goal-handler string-pair-p (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) 'string-pair-p))
+  :body
+  (let ((pair (nskk-prolog-walk (cadr goal) subst)))
+    (when (and (consp pair) (stringp (car pair)))
+      (nskk-prolog--prove-internal rest subst k))))
+
+;; incomplete-pair-p: succeed if PAIR is a cons with :incomplete car (partial match result).
+(nskk-define-goal-handler incomplete-pair-p (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) 'incomplete-pair-p))
+  :body
+  (let ((pair (nskk-prolog-walk (cadr goal) subst)))
+    (when (and (consp pair) (eq (car pair) :incomplete))
+      (nskk-prolog--prove-internal rest subst k))))
+
+;; Ensure custom handlers above run before the `normal' catch-all.
+;; `nskk-define-goal-handler' appends new handlers, so `normal' (registered
+;; in nskk-prolog.el) sits before these custom handlers.  Move it to the end.
+(let ((normal-entry (assq 'normal nskk-prolog--goal-handlers)))
+  (when normal-entry
+    (setq nskk-prolog--goal-handlers
+          (append (delq normal-entry nskk-prolog--goal-handlers)
+                  (list normal-entry)))))
+
 (define-inline nskk-converter-lookup (romaji)
   "Look up ROMAJI in conversion table.
 Returns kana string if found, nil if not found.

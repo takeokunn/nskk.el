@@ -159,6 +159,76 @@ Expands at compile time into individual nskk-prolog-<- calls."
                  `(nskk-prolog-<- (azik-rule ,(car rule) ,(cadr rule))))
                rules)))
 
+(defconst nskk-azik--extension-rows
+  '(("k" "か" "き" "く" "け" "こ")
+    ("s" "さ" "し" "す" "せ" "そ")
+    ("t" "た" "ち" "つ" "て" "と")
+    ("n" "な" "に" "ぬ" "ね" "の")
+    ("h" "は" "ひ" "ふ" "へ" "ほ")
+    ("m" "ま" "み" "む" "め" "も")
+    ("y" "や" "い" "ゆ" "え" "よ")
+    ("r" "ら" "り" "る" "れ" "ろ")
+    ("w" "わ" "うぃ" "う" "うぇ" "を" "うぉ")
+    ("g" "が" "ぎ" "ぐ" "げ" "ご")
+    ("z" "ざ" "じ" "ず" "ぜ" "ぞ")
+    ("d" "だ" "ぢ" "づ" "で" "ど")
+    ("b" "ば" "び" "ぶ" "べ" "ぼ")
+    ("p" "ぱ" "ぴ" "ぷ" "ぺ" "ぽ"))
+  "Consonant rows for AZIK hatsuon + double-vowel extension rules.
+Each entry is (PREFIX A I U E O) passed to `nskk-azik-extensions'.
+The w-row has 7 elements: the extra element is the DV-O override (うぉ).")
+
+(defconst nskk-azik--youon-rows
+  '(("kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
+    ("hg" "ひゃ" "ひぃ" "ひゅ" "ひぇ" "ひょ")
+    ("mg" "みゃ" "みぃ" "みゅ" "みぇ" "みょ")
+    ("rg" "りゃ" "りぃ" "りゅ" "りぇ" "りょ")
+    ("gg" "ぎゃ" "ぎぃ" "ぎゅ" "ぎぇ" "ぎょ")
+    ("jg" "じゃ" "じぃ" "じゅ" "じぇ" "じょ")
+    ("bg" "びゃ" "びぃ" "びゅ" "びぇ" "びょ")
+    ("pg" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ"))
+  "Youon (拗音) rows for AZIK rules.
+Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.")
+
+;;;; Runtime assertion helpers (for use with `apply' + `dolist')
+;; The macros `nskk-azik-extensions' and `nskk-azik-youon' are compile-time
+;; constructs and cannot be passed to `apply'.  These functions are the runtime
+;; equivalents, calling `nskk-prolog-assert' directly.
+
+(defun nskk-azik--fn-hatsuon (prefix a i u e o)
+  "Register AZIK hatsuon (撥音) extensions at runtime.
+Runtime equivalent of `nskk-azik-hatsuon' for use with `apply'."
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "z") (concat a "ん"))))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "k") (concat i "ん"))))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "j") (concat u "ん"))))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "d") (concat e "ん"))))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "l") (concat o "ん")))))
+
+(defun nskk-azik--fn-double-vowel (prefix a u e o)
+  "Register AZIK double-vowel (二重母音) extensions at runtime.
+Runtime equivalent of `nskk-azik-double-vowel' for use with `apply'."
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "q") (concat a "い"))))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "h") (concat u "う"))))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "w") (concat e "い"))))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "p") (concat o "う")))))
+
+(defun nskk-azik--fn-extensions (prefix a i u e o &optional dv-o)
+  "Register hatsuon + double-vowel extensions at runtime.
+Runtime equivalent of `nskk-azik-extensions' for use with `apply'.
+PREFIX/A/I/U/E/O are the consonant and vowel kana strings.
+DV-O overrides O for double vowel (e.g., わ行 uses うぉ instead of を)."
+  (nskk-azik--fn-hatsuon prefix a i u e o)
+  (nskk-azik--fn-double-vowel prefix a u e (or dv-o o)))
+
+(defun nskk-azik--fn-youon (prefix a i u e o)
+  "Register AZIK youon (拗音) row at runtime.
+Runtime equivalent of `nskk-azik-youon' for use with `apply'."
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "a") a)))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "u") u)))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "e") e)))
+  (nskk-prolog-assert (list (list 'azik-rule (concat prefix "o") o)))
+  (nskk-azik--fn-extensions prefix a i u e o))
+
 (defun nskk--init-azik-rules ()
   "Initialize AZIK romaji rules.
 Sets up standard romaji as base, then asserts AZIK-specific rules
@@ -201,33 +271,15 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;; Extension keys: z=a+ん, k=i+ん, j=u+ん, d=e+ん, l=o+ん
   ;;                 q=a+い, h=u+う, w=e+い, p=o+う
   ;; ============================================================
-  (nskk-azik-extensions "k" "か" "き" "く" "け" "こ")
-  (nskk-azik-extensions "s" "さ" "し" "す" "せ" "そ")
-  (nskk-azik-extensions "t" "た" "ち" "つ" "て" "と")
-  (nskk-azik-extensions "n" "な" "に" "ぬ" "ね" "の")
-  (nskk-azik-extensions "h" "は" "ひ" "ふ" "へ" "ほ")
-  (nskk-azik-extensions "m" "ま" "み" "む" "め" "も")
-  (nskk-azik-extensions "y" "や" "い" "ゆ" "え" "よ")
-  (nskk-azik-extensions "r" "ら" "り" "る" "れ" "ろ")
-  (nskk-azik-extensions "w" "わ" "うぃ" "う" "うぇ" "を" "うぉ")
-  (nskk-azik-extensions "g" "が" "ぎ" "ぐ" "げ" "ご")
-  (nskk-azik-extensions "z" "ざ" "じ" "ず" "ぜ" "ぞ")
-  (nskk-azik-extensions "d" "だ" "ぢ" "づ" "で" "ど")
-  (nskk-azik-extensions "b" "ば" "び" "ぶ" "べ" "ぼ")
-  (nskk-azik-extensions "p" "ぱ" "ぴ" "ぷ" "ぺ" "ぽ")
+  (dolist (row nskk-azik--extension-rows)
+    (apply #'nskk-azik--fn-extensions row))
 
   ;; ============================================================
   ;; 5. Youon compatibility (g substitutes for y)
   ;; Each row: base (a/u/e/o) + hatsuon (5) + double vowel (4)
   ;; ============================================================
-  (nskk-azik-youon "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
-  (nskk-azik-youon "hg" "ひゃ" "ひぃ" "ひゅ" "ひぇ" "ひょ")
-  (nskk-azik-youon "mg" "みゃ" "みぃ" "みゅ" "みぇ" "みょ")
-  (nskk-azik-youon "rg" "りゃ" "りぃ" "りゅ" "りぇ" "りょ")
-  (nskk-azik-youon "gg" "ぎゃ" "ぎぃ" "ぎゅ" "ぎぇ" "ぎょ")
-  (nskk-azik-youon "jg" "じゃ" "じぃ" "じゅ" "じぇ" "じょ")
-  (nskk-azik-youon "bg" "びゃ" "びぃ" "びゅ" "びぇ" "びょ")
-  (nskk-azik-youon "pg" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ")
+  (dolist (row nskk-azik--youon-rows)
+    (apply #'nskk-azik--fn-youon row))
 
   ;; ============================================================
   ;; 6. Same-finger alternatives (f suffix)

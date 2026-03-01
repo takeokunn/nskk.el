@@ -129,13 +129,13 @@
       (nskk-should-mode 'hiragana)
       (nskk-should-buffer "\n")))
 
-  (nskk-it "switches katakana to hiragana with no preedit"
+  (nskk-it "switches fullwidth katakana to hiragana with no preedit"
     (nskk-with-test-buffer 'katakana
       (nskk-when  (nskk-kakutei))
       (nskk-then  (nskk-should-mode 'hiragana))
       (nskk-should-buffer "")))
 
-  (nskk-it "switches katakana-半角 to hiragana with no preedit"
+  (nskk-it "switches half-width katakana to hiragana with no preedit"
     (nskk-with-test-buffer nil
       ;; No nskk-set-mode-katakana-半角 exists; use nskk-state-transition directly.
       (nskk-state-transition nskk-current-state (nskk-state-mode nskk-current-state) 'katakana-半角)
@@ -191,7 +191,7 @@
       (nskk-toggle-mode)
       (should (not nskk-mode)))))
 
-(nskk-describe "module features"
+(nskk-describe "nskk core module features"
   (nskk-it "nskk provides its feature"
     (should (featurep 'nskk)))
 

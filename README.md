@@ -239,7 +239,7 @@ The table below covers the most commonly adjusted variables.
 
 | Variable                             | Default          | Description                          |
 |--------------------------------------|------------------|--------------------------------------|
-| `nskk-dict-user-dictionary-file`     | `~/.skk/jisyo`   | Path to the user dictionary file     |
+| `nskk-dict-user-dictionary-file`     | `~/.nskk/jisyo`  | Path to the user dictionary file     |
 | `nskk-dict-system-dictionary-files`  | `nil`            | List of system dictionary file paths |
 | `nskk-dict-cache-enabled`            | `t`              | Enable in-memory dictionary cache    |
 

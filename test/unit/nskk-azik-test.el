@@ -83,896 +83,839 @@
 ;;;; 1. Style Switching Tests
 ;;;;
 
-(ert-deftest nskk-azik-load-standard-style ()
-  "Test loading standard romaji style."
-  (nskk-prolog-test-with-isolated-db
-    (should (eq (nskk-converter-load-style 'standard) 'standard))
-    ;; Standard style should have basic romaji
-    (should (equal (nskk-convert-romaji "ka") "か"))
-    (should (equal (nskk-convert-romaji "shi") "し"))))
+(nskk-describe "AZIK style switching"
+  (nskk-it "loading standard style returns standard and provides basic romaji"
+    (nskk-prolog-test-with-isolated-db
+      (should (eq (nskk-converter-load-style 'standard) 'standard))
+      ;; Standard style should have basic romaji
+      (should (equal (nskk-convert-romaji "ka") "か"))
+      (should (equal (nskk-convert-romaji "shi") "し"))))
 
-(ert-deftest nskk-azik-load-azik-style ()
-  "Test loading AZIK romaji style."
-  (nskk-prolog-test-with-isolated-db
-    (should (eq (nskk-converter-load-style 'azik) 'azik))
-    ;; AZIK style should have extended rules
-    (should (equal (nskk-convert-romaji "kz") "かん"))
-    (should (equal (nskk-convert-romaji "kq") "かい"))))
+  (nskk-it "loading AZIK style returns azik and provides extended rules"
+    (nskk-prolog-test-with-isolated-db
+      (should (eq (nskk-converter-load-style 'azik) 'azik))
+      ;; AZIK style should have extended rules
+      (should (equal (nskk-convert-romaji "kz") "かん"))
+      (should (equal (nskk-convert-romaji "kq") "かい"))))
 
-(ert-deftest nskk-azik-style-switching ()
-  "Test switching between standard and AZIK styles."
-  (nskk-prolog-test-with-isolated-db
-    ;; Load standard
-    (nskk-converter-load-style 'standard)
-    (should (equal (nskk-convert-romaji "ka") "か"))
-    ;; In standard, "kz" should not convert to "かん"
-    (should-not (equal (nskk-convert-romaji "kz") "かん"))
-    ;; Switch to AZIK
-    (nskk-converter-load-style 'azik)
-    (should (equal (nskk-convert-romaji "kz") "かん"))
-    ;; Switch back to standard
-    (nskk-converter-load-style 'standard)
-    (should (equal (nskk-convert-romaji "ka") "か"))))
+  (nskk-it "can switch between standard and AZIK styles"
+    (nskk-prolog-test-with-isolated-db
+      ;; Load standard
+      (nskk-converter-load-style 'standard)
+      (should (equal (nskk-convert-romaji "ka") "か"))
+      ;; In standard, "kz" should not convert to "かん"
+      (should-not (equal (nskk-convert-romaji "kz") "かん"))
+      ;; Switch to AZIK
+      (nskk-converter-load-style 'azik)
+      (should (equal (nskk-convert-romaji "kz") "かん"))
+      ;; Switch back to standard
+      (nskk-converter-load-style 'standard)
+      (should (equal (nskk-convert-romaji "ka") "か")))))
 
 
 ;;;;
 ;;;; 2. Special Keys Tests
 ;;;;
 
-(ert-deftest nskk-azik-special-key-small-tsu ()
-  "Test that ';' produces small tsu in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji ";") "っ"))))
+(nskk-describe "AZIK special keys"
+  (nskk-it "semicolon produces small tsu in AZIK mode"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji ";") "っ"))))
 
-(ert-deftest nskk-azik-special-key-chouon ()
-  "Test that ':' produces chouon (long vowel mark) in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji ":") "ー"))))
+  (nskk-it "colon produces chouon (long vowel mark) in AZIK mode"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji ":") "ー"))))
 
-(ert-deftest nskk-azik-special-keys-in-context ()
-  "Test special keys in context with other characters."
-  (nskk-with-azik-style
-    ;; "っか" using semicolon
-    (should (equal (nskk-convert-romaji ";ka") "っか"))
-    ;; "かー" using colon
-    (should (equal (nskk-convert-romaji "ka:") "かー"))))
+  (nskk-it "special keys work in context with other characters"
+    (nskk-with-azik-style
+      ;; "っか" using semicolon
+      (should (equal (nskk-convert-romaji ";ka") "っか"))
+      ;; "かー" using colon
+      (should (equal (nskk-convert-romaji "ka:") "かー")))))
 
 
 ;;;;
 ;;;; 3. 撥音拡張 (Mora Nasal Extension) Tests
 ;;;;
 
-(ert-deftest nskk-azik-hatsuon-k-row ()
-  "Test 撥音拡張 for k-row (kz, kk, kj, kd, kl).
-Note: kk is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "kz") "かん"))
-    (should (equal (nskk-converter-lookup "kk") "きん"))
-    (should (equal (nskk-converter-lookup "kj") "くん"))
-    (should (equal (nskk-converter-lookup "kd") "けん"))
-    (should (equal (nskk-converter-lookup "kl") "こん"))
-    ;; kz, kj, kd, kl should work in conversion
-    (should (equal (nskk-convert-romaji "kz") "かん"))
-    (should (equal (nskk-convert-romaji "kj") "くん"))
-    (should (equal (nskk-convert-romaji "kd") "けん"))
-    (should (equal (nskk-convert-romaji "kl") "こん"))))
+(nskk-describe "AZIK hatsuon (撥音拡張) rules"
+  (nskk-context "k-row hatsuon"
+    (nskk-it "kz kj kd kl convert to かん くん けん こん"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "kz") "かん"))
+        (should (equal (nskk-converter-lookup "kk") "きん"))
+        (should (equal (nskk-converter-lookup "kj") "くん"))
+        (should (equal (nskk-converter-lookup "kd") "けん"))
+        (should (equal (nskk-converter-lookup "kl") "こん"))
+        ;; kz, kj, kd, kl should work in conversion
+        (should (equal (nskk-convert-romaji "kz") "かん"))
+        (should (equal (nskk-convert-romaji "kj") "くん"))
+        (should (equal (nskk-convert-romaji "kd") "けん"))
+        (should (equal (nskk-convert-romaji "kl") "こん")))))
 
-(ert-deftest nskk-azik-hatsuon-s-row ()
-  "Test 撥音拡張 for s-row (sz, sk, sj, sd, sl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "sz") "さん"))
-    (should (equal (nskk-convert-romaji "sk") "しん"))
-    (should (equal (nskk-convert-romaji "sj") "すん"))
-    (should (equal (nskk-convert-romaji "sd") "せん"))
-    (should (equal (nskk-convert-romaji "sl") "そん"))))
+  (nskk-context "s-row hatsuon"
+    (nskk-it "sz sk sj sd sl convert to さん しん すん せん そん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "sz") "さん"))
+        (should (equal (nskk-convert-romaji "sk") "しん"))
+        (should (equal (nskk-convert-romaji "sj") "すん"))
+        (should (equal (nskk-convert-romaji "sd") "せん"))
+        (should (equal (nskk-convert-romaji "sl") "そん")))))
 
-(ert-deftest nskk-azik-hatsuon-t-row ()
-  "Test 撥音拡張 for t-row (tz, tk, tj, td, tl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "tz") "たん"))
-    (should (equal (nskk-convert-romaji "tk") "ちん"))
-    (should (equal (nskk-convert-romaji "tj") "つん"))
-    (should (equal (nskk-convert-romaji "td") "てん"))
-    (should (equal (nskk-convert-romaji "tl") "とん"))))
+  (nskk-context "t-row hatsuon"
+    (nskk-it "tz tk tj td tl convert to たん ちん つん てん とん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "tz") "たん"))
+        (should (equal (nskk-convert-romaji "tk") "ちん"))
+        (should (equal (nskk-convert-romaji "tj") "つん"))
+        (should (equal (nskk-convert-romaji "td") "てん"))
+        (should (equal (nskk-convert-romaji "tl") "とん")))))
 
-(ert-deftest nskk-azik-hatsuon-n-row ()
-  "Test 撥音拡張 for n-row (nz, nk, nj, nd, nl).
-Note: The converter has special handling for 'n' before consonants.
-Rules exist in the table but 'n' + consonant is converted to ん first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "nz") "なん"))
-    (should (equal (nskk-converter-lookup "nk") "にん"))
-    (should (equal (nskk-converter-lookup "nj") "ぬん"))
-    (should (equal (nskk-converter-lookup "nd") "ねん"))
-    (should (equal (nskk-converter-lookup "nl") "のん"))))
+  (nskk-context "n-row hatsuon"
+    (nskk-it "nz nk nj nd nl rules exist in the lookup table"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "nz") "なん"))
+        (should (equal (nskk-converter-lookup "nk") "にん"))
+        (should (equal (nskk-converter-lookup "nj") "ぬん"))
+        (should (equal (nskk-converter-lookup "nd") "ねん"))
+        (should (equal (nskk-converter-lookup "nl") "のん")))))
 
-(ert-deftest nskk-azik-hatsuon-h-row ()
-  "Test 撥音拡張 for h-row (hz, hk, hj, hd, hl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "hz") "はん"))
-    (should (equal (nskk-convert-romaji "hk") "ひん"))
-    (should (equal (nskk-convert-romaji "hj") "ふん"))
-    (should (equal (nskk-convert-romaji "hd") "へん"))
-    (should (equal (nskk-convert-romaji "hl") "ほん"))))
+  (nskk-context "h-row hatsuon"
+    (nskk-it "hz hk hj hd hl convert to はん ひん ふん へん ほん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "hz") "はん"))
+        (should (equal (nskk-convert-romaji "hk") "ひん"))
+        (should (equal (nskk-convert-romaji "hj") "ふん"))
+        (should (equal (nskk-convert-romaji "hd") "へん"))
+        (should (equal (nskk-convert-romaji "hl") "ほん")))))
 
-(ert-deftest nskk-azik-hatsuon-m-row ()
-  "Test 撥音拡張 for m-row (mz, mk, mj, md, ml)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "mz") "まん"))
-    (should (equal (nskk-convert-romaji "mk") "みん"))
-    (should (equal (nskk-convert-romaji "mj") "むん"))
-    (should (equal (nskk-convert-romaji "md") "めん"))
-    (should (equal (nskk-convert-romaji "ml") "もん"))))
+  (nskk-context "m-row hatsuon"
+    (nskk-it "mz mk mj md ml convert to まん みん むん めん もん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "mz") "まん"))
+        (should (equal (nskk-convert-romaji "mk") "みん"))
+        (should (equal (nskk-convert-romaji "mj") "むん"))
+        (should (equal (nskk-convert-romaji "md") "めん"))
+        (should (equal (nskk-convert-romaji "ml") "もん")))))
 
-(ert-deftest nskk-azik-hatsuon-y-row ()
-  "Test 撥音拡張 for y-row (yz, yk, yj, yd, yl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "yz") "やん"))
-    (should (equal (nskk-convert-romaji "yk") "いん"))
-    (should (equal (nskk-convert-romaji "yj") "ゆん"))
-    (should (equal (nskk-convert-romaji "yd") "えん"))
-    (should (equal (nskk-convert-romaji "yl") "よん"))))
+  (nskk-context "y-row hatsuon"
+    (nskk-it "yz yk yj yd yl convert to やん いん ゆん えん よん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "yz") "やん"))
+        (should (equal (nskk-convert-romaji "yk") "いん"))
+        (should (equal (nskk-convert-romaji "yj") "ゆん"))
+        (should (equal (nskk-convert-romaji "yd") "えん"))
+        (should (equal (nskk-convert-romaji "yl") "よん")))))
 
-(ert-deftest nskk-azik-hatsuon-r-row ()
-  "Test 撥音拡張 for r-row (rz, rk, rj, rd, rl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "rz") "らん"))
-    (should (equal (nskk-convert-romaji "rk") "りん"))
-    (should (equal (nskk-convert-romaji "rj") "るん"))
-    (should (equal (nskk-convert-romaji "rd") "れん"))
-    (should (equal (nskk-convert-romaji "rl") "ろん"))))
+  (nskk-context "r-row hatsuon"
+    (nskk-it "rz rk rj rd rl convert to らん りん るん れん ろん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "rz") "らん"))
+        (should (equal (nskk-convert-romaji "rk") "りん"))
+        (should (equal (nskk-convert-romaji "rj") "るん"))
+        (should (equal (nskk-convert-romaji "rd") "れん"))
+        (should (equal (nskk-convert-romaji "rl") "ろん")))))
 
-(ert-deftest nskk-azik-hatsuon-w-row ()
-  "Test 撥音拡張 for w-row (wz, wk, wj, wd, wl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "wz") "わん"))
-    (should (equal (nskk-convert-romaji "wk") "うぃん"))
-    (should (equal (nskk-convert-romaji "wj") "うん"))
-    (should (equal (nskk-convert-romaji "wd") "うぇん"))
-    (should (equal (nskk-convert-romaji "wl") "をん"))))
+  (nskk-context "w-row hatsuon"
+    (nskk-it "wz wk wj wd wl convert to わん うぃん うん うぇん をん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "wz") "わん"))
+        (should (equal (nskk-convert-romaji "wk") "うぃん"))
+        (should (equal (nskk-convert-romaji "wj") "うん"))
+        (should (equal (nskk-convert-romaji "wd") "うぇん"))
+        (should (equal (nskk-convert-romaji "wl") "をん")))))
 
-(ert-deftest nskk-azik-hatsuon-g-row ()
-  "Test 撥音拡張 for g-row (gz, gk, gj, gd, gl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "gz") "がん"))
-    (should (equal (nskk-convert-romaji "gk") "ぎん"))
-    (should (equal (nskk-convert-romaji "gj") "ぐん"))
-    (should (equal (nskk-convert-romaji "gd") "げん"))
-    (should (equal (nskk-convert-romaji "gl") "ごん"))))
+  (nskk-context "g-row hatsuon"
+    (nskk-it "gz gk gj gd gl convert to がん ぎん ぐん げん ごん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "gz") "がん"))
+        (should (equal (nskk-convert-romaji "gk") "ぎん"))
+        (should (equal (nskk-convert-romaji "gj") "ぐん"))
+        (should (equal (nskk-convert-romaji "gd") "げん"))
+        (should (equal (nskk-convert-romaji "gl") "ごん")))))
 
-(ert-deftest nskk-azik-hatsuon-z-row ()
-  "Test 撥音拡張 for z-row (zz, zk, zj, zd, zl).
-Note: zz is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "zz") "ざん"))
-    (should (equal (nskk-converter-lookup "zk") "じん"))
-    (should (equal (nskk-converter-lookup "zj") "ずん"))
-    (should (equal (nskk-converter-lookup "zd") "ぜん"))
-    (should (equal (nskk-converter-lookup "zl") "ぞん"))
-    ;; zk, zj, zd, zl should work in conversion
-    (should (equal (nskk-convert-romaji "zk") "じん"))
-    (should (equal (nskk-convert-romaji "zj") "ずん"))
-    (should (equal (nskk-convert-romaji "zd") "ぜん"))
-    (should (equal (nskk-convert-romaji "zl") "ぞん"))))
+  (nskk-context "z-row hatsuon"
+    (nskk-it "zk zj zd zl convert to じん ずん ぜん ぞん and lookup table is complete"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "zz") "ざん"))
+        (should (equal (nskk-converter-lookup "zk") "じん"))
+        (should (equal (nskk-converter-lookup "zj") "ずん"))
+        (should (equal (nskk-converter-lookup "zd") "ぜん"))
+        (should (equal (nskk-converter-lookup "zl") "ぞん"))
+        ;; zk, zj, zd, zl should work in conversion
+        (should (equal (nskk-convert-romaji "zk") "じん"))
+        (should (equal (nskk-convert-romaji "zj") "ずん"))
+        (should (equal (nskk-convert-romaji "zd") "ぜん"))
+        (should (equal (nskk-convert-romaji "zl") "ぞん")))))
 
-(ert-deftest nskk-azik-hatsuon-d-row ()
-  "Test 撥音拡張 for d-row (dz, dk, dj, dd, dl).
-Note: dd is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "dz") "だん"))
-    (should (equal (nskk-converter-lookup "dk") "ぢん"))
-    (should (equal (nskk-converter-lookup "dj") "づん"))
-    (should (equal (nskk-converter-lookup "dd") "でん"))
-    (should (equal (nskk-converter-lookup "dl") "どん"))
-    ;; dz, dk, dj, dl should work in conversion
-    (should (equal (nskk-convert-romaji "dz") "だん"))
-    (should (equal (nskk-convert-romaji "dk") "ぢん"))
-    (should (equal (nskk-convert-romaji "dj") "づん"))
-    (should (equal (nskk-convert-romaji "dl") "どん"))))
+  (nskk-context "d-row hatsuon"
+    (nskk-it "dz dk dj dl convert to だん ぢん づん どん and lookup table is complete"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "dz") "だん"))
+        (should (equal (nskk-converter-lookup "dk") "ぢん"))
+        (should (equal (nskk-converter-lookup "dj") "づん"))
+        (should (equal (nskk-converter-lookup "dd") "でん"))
+        (should (equal (nskk-converter-lookup "dl") "どん"))
+        ;; dz, dk, dj, dl should work in conversion
+        (should (equal (nskk-convert-romaji "dz") "だん"))
+        (should (equal (nskk-convert-romaji "dk") "ぢん"))
+        (should (equal (nskk-convert-romaji "dj") "づん"))
+        (should (equal (nskk-convert-romaji "dl") "どん")))))
 
-(ert-deftest nskk-azik-hatsuon-b-row ()
-  "Test 撥音拡張 for b-row (bz, bk, bj, bd, bl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "bz") "ばん"))
-    (should (equal (nskk-convert-romaji "bk") "びん"))
-    (should (equal (nskk-convert-romaji "bj") "ぶん"))
-    (should (equal (nskk-convert-romaji "bd") "べん"))
-    (should (equal (nskk-convert-romaji "bl") "ぼん"))))
+  (nskk-context "b-row hatsuon"
+    (nskk-it "bz bk bj bd bl convert to ばん びん ぶん べん ぼん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "bz") "ばん"))
+        (should (equal (nskk-convert-romaji "bk") "びん"))
+        (should (equal (nskk-convert-romaji "bj") "ぶん"))
+        (should (equal (nskk-convert-romaji "bd") "べん"))
+        (should (equal (nskk-convert-romaji "bl") "ぼん")))))
 
-(ert-deftest nskk-azik-hatsuon-p-row ()
-  "Test 撥音拡張 for p-row (pz, pk, pj, pd, pl)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "pz") "ぱん"))
-    (should (equal (nskk-convert-romaji "pk") "ぴん"))
-    (should (equal (nskk-convert-romaji "pj") "ぷん"))
-    (should (equal (nskk-convert-romaji "pd") "ぺん"))
-    (should (equal (nskk-convert-romaji "pl") "ぽん"))))
+  (nskk-context "p-row hatsuon"
+    (nskk-it "pz pk pj pd pl convert to ぱん ぴん ぷん ぺん ぽん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "pz") "ぱん"))
+        (should (equal (nskk-convert-romaji "pk") "ぴん"))
+        (should (equal (nskk-convert-romaji "pj") "ぷん"))
+        (should (equal (nskk-convert-romaji "pd") "ぺん"))
+        (should (equal (nskk-convert-romaji "pl") "ぽん"))))))
 
 
 ;;;;
 ;;;; 4. 二重母音拡張 (Diphthong Extension) Tests
 ;;;;
 
-(ert-deftest nskk-azik-diphthong-k-row ()
-  "Test 二重母音拡張 for k-row (kq, kh, kw, kp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "kq") "かい"))
-    (should (equal (nskk-convert-romaji "kh") "くう"))
-    (should (equal (nskk-convert-romaji "kw") "けい"))
-    (should (equal (nskk-convert-romaji "kp") "こう"))))
+(nskk-describe "AZIK diphthong (二重母音拡張) rules"
+  (nskk-context "k-row diphthong"
+    (nskk-it "kq kh kw kp convert to かい くう けい こう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "kq") "かい"))
+        (should (equal (nskk-convert-romaji "kh") "くう"))
+        (should (equal (nskk-convert-romaji "kw") "けい"))
+        (should (equal (nskk-convert-romaji "kp") "こう")))))
 
-(ert-deftest nskk-azik-diphthong-s-row ()
-  "Test 二重母音拡張 for s-row (sq, sh, sw, sp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "sq") "さい"))
-    (should (equal (nskk-convert-romaji "sh") "すう"))
-    (should (equal (nskk-convert-romaji "sw") "せい"))
-    (should (equal (nskk-convert-romaji "sp") "そう"))))
+  (nskk-context "s-row diphthong"
+    (nskk-it "sq sh sw sp convert to さい すう せい そう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "sq") "さい"))
+        (should (equal (nskk-convert-romaji "sh") "すう"))
+        (should (equal (nskk-convert-romaji "sw") "せい"))
+        (should (equal (nskk-convert-romaji "sp") "そう")))))
 
-(ert-deftest nskk-azik-diphthong-t-row ()
-  "Test 二重母音拡張 for t-row (tq, th, tw, tp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "tq") "たい"))
-    (should (equal (nskk-convert-romaji "th") "つう"))
-    (should (equal (nskk-convert-romaji "tw") "てい"))
-    (should (equal (nskk-convert-romaji "tp") "とう"))))
+  (nskk-context "t-row diphthong"
+    (nskk-it "tq th tw tp convert to たい つう てい とう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "tq") "たい"))
+        (should (equal (nskk-convert-romaji "th") "つう"))
+        (should (equal (nskk-convert-romaji "tw") "てい"))
+        (should (equal (nskk-convert-romaji "tp") "とう")))))
 
-(ert-deftest nskk-azik-diphthong-n-row ()
-  "Test 二重母音拡張 for n-row (nq, nh, nw, np).
-Note: The converter has special handling for 'n' before consonants.
-Rules exist in the table but 'n' + consonant is converted to ん first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table (they are correctly defined)
-    (should (equal (nskk-converter-lookup "nq") "ない"))
-    (should (equal (nskk-converter-lookup "nh") "ぬう"))
-    (should (equal (nskk-converter-lookup "nw") "ねい"))
-    (should (equal (nskk-converter-lookup "np") "のう"))))
+  (nskk-context "n-row diphthong"
+    (nskk-it "nq nh nw np rules exist in the lookup table"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table (they are correctly defined)
+        (should (equal (nskk-converter-lookup "nq") "ない"))
+        (should (equal (nskk-converter-lookup "nh") "ぬう"))
+        (should (equal (nskk-converter-lookup "nw") "ねい"))
+        (should (equal (nskk-converter-lookup "np") "のう")))))
 
-(ert-deftest nskk-azik-diphthong-h-row ()
-  "Test 二重母音拡張 for h-row (hq, hh, hw, hp).
-Note: hh is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "hq") "はい"))
-    (should (equal (nskk-converter-lookup "hh") "ふう"))
-    (should (equal (nskk-converter-lookup "hw") "へい"))
-    (should (equal (nskk-converter-lookup "hp") "ほう"))
-    ;; hq, hw, hp should work in conversion
-    (should (equal (nskk-convert-romaji "hq") "はい"))
-    (should (equal (nskk-convert-romaji "hw") "へい"))
-    (should (equal (nskk-convert-romaji "hp") "ほう"))))
+  (nskk-context "h-row diphthong"
+    (nskk-it "hq hw hp convert to はい へい ほう and lookup table is complete"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "hq") "はい"))
+        (should (equal (nskk-converter-lookup "hh") "ふう"))
+        (should (equal (nskk-converter-lookup "hw") "へい"))
+        (should (equal (nskk-converter-lookup "hp") "ほう"))
+        ;; hq, hw, hp should work in conversion
+        (should (equal (nskk-convert-romaji "hq") "はい"))
+        (should (equal (nskk-convert-romaji "hw") "へい"))
+        (should (equal (nskk-convert-romaji "hp") "ほう")))))
 
-(ert-deftest nskk-azik-diphthong-m-row ()
-  "Test 二重母音拡張 for m-row (mq, mh, mw, mp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "mq") "まい"))
-    (should (equal (nskk-convert-romaji "mh") "むう"))
-    (should (equal (nskk-convert-romaji "mw") "めい"))
-    (should (equal (nskk-convert-romaji "mp") "もう"))))
+  (nskk-context "m-row diphthong"
+    (nskk-it "mq mh mw mp convert to まい むう めい もう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "mq") "まい"))
+        (should (equal (nskk-convert-romaji "mh") "むう"))
+        (should (equal (nskk-convert-romaji "mw") "めい"))
+        (should (equal (nskk-convert-romaji "mp") "もう")))))
 
-(ert-deftest nskk-azik-diphthong-y-row ()
-  "Test 二重母音拡張 for y-row (yq, yh, yw, yp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "yq") "やい"))
-    (should (equal (nskk-convert-romaji "yh") "ゆう"))
-    (should (equal (nskk-convert-romaji "yw") "えい"))
-    (should (equal (nskk-convert-romaji "yp") "よう"))))
+  (nskk-context "y-row diphthong"
+    (nskk-it "yq yh yw yp convert to やい ゆう えい よう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "yq") "やい"))
+        (should (equal (nskk-convert-romaji "yh") "ゆう"))
+        (should (equal (nskk-convert-romaji "yw") "えい"))
+        (should (equal (nskk-convert-romaji "yp") "よう")))))
 
-(ert-deftest nskk-azik-diphthong-r-row ()
-  "Test 二重母音拡張 for r-row (rq, rh, rw, rp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "rq") "らい"))
-    (should (equal (nskk-convert-romaji "rh") "るう"))
-    (should (equal (nskk-convert-romaji "rw") "れい"))
-    (should (equal (nskk-convert-romaji "rp") "ろう"))))
+  (nskk-context "r-row diphthong"
+    (nskk-it "rq rh rw rp convert to らい るう れい ろう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "rq") "らい"))
+        (should (equal (nskk-convert-romaji "rh") "るう"))
+        (should (equal (nskk-convert-romaji "rw") "れい"))
+        (should (equal (nskk-convert-romaji "rp") "ろう")))))
 
-(ert-deftest nskk-azik-diphthong-w-row ()
-  "Test 二重母音拡張 for w-row (wq, wh, ww, wp).
-Note: ww is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "wq") "わい"))
-    (should (equal (nskk-converter-lookup "wh") "うう"))
-    (should (equal (nskk-converter-lookup "ww") "うぇい"))
-    (should (equal (nskk-converter-lookup "wp") "うぉう"))
-    ;; wq, wh, wp should work in conversion
-    (should (equal (nskk-convert-romaji "wq") "わい"))
-    (should (equal (nskk-convert-romaji "wh") "うう"))
-    (should (equal (nskk-convert-romaji "wp") "うぉう"))))
+  (nskk-context "w-row diphthong"
+    (nskk-it "wq wh wp convert to わい うう うぉう and lookup table is complete"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "wq") "わい"))
+        (should (equal (nskk-converter-lookup "wh") "うう"))
+        (should (equal (nskk-converter-lookup "ww") "うぇい"))
+        (should (equal (nskk-converter-lookup "wp") "うぉう"))
+        ;; wq, wh, wp should work in conversion
+        (should (equal (nskk-convert-romaji "wq") "わい"))
+        (should (equal (nskk-convert-romaji "wh") "うう"))
+        (should (equal (nskk-convert-romaji "wp") "うぉう")))))
 
-(ert-deftest nskk-azik-diphthong-g-row ()
-  "Test 二重母音拡張 for g-row (gq, gh, gw, gp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "gq") "がい"))
-    (should (equal (nskk-convert-romaji "gh") "ぐう"))
-    (should (equal (nskk-convert-romaji "gw") "げい"))
-    (should (equal (nskk-convert-romaji "gp") "ごう"))))
+  (nskk-context "g-row diphthong"
+    (nskk-it "gq gh gw gp convert to がい ぐう げい ごう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "gq") "がい"))
+        (should (equal (nskk-convert-romaji "gh") "ぐう"))
+        (should (equal (nskk-convert-romaji "gw") "げい"))
+        (should (equal (nskk-convert-romaji "gp") "ごう")))))
 
-(ert-deftest nskk-azik-diphthong-z-row ()
-  "Test 二重母音拡張 for z-row (zq, zh, zw, zp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "zq") "ざい"))
-    (should (equal (nskk-convert-romaji "zh") "ずう"))
-    (should (equal (nskk-convert-romaji "zw") "ぜい"))
-    (should (equal (nskk-convert-romaji "zp") "ぞう"))))
+  (nskk-context "z-row diphthong"
+    (nskk-it "zq zh zw zp convert to ざい ずう ぜい ぞう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "zq") "ざい"))
+        (should (equal (nskk-convert-romaji "zh") "ずう"))
+        (should (equal (nskk-convert-romaji "zw") "ぜい"))
+        (should (equal (nskk-convert-romaji "zp") "ぞう")))))
 
-(ert-deftest nskk-azik-diphthong-d-row ()
-  "Test 二重母音拡張 for d-row (dq, dh, dw, dp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "dq") "だい"))
-    (should (equal (nskk-convert-romaji "dh") "づう"))
-    (should (equal (nskk-convert-romaji "dw") "でい"))
-    (should (equal (nskk-convert-romaji "dp") "どう"))))
+  (nskk-context "d-row diphthong"
+    (nskk-it "dq dh dw dp convert to だい づう でい どう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "dq") "だい"))
+        (should (equal (nskk-convert-romaji "dh") "づう"))
+        (should (equal (nskk-convert-romaji "dw") "でい"))
+        (should (equal (nskk-convert-romaji "dp") "どう")))))
 
-(ert-deftest nskk-azik-diphthong-b-row ()
-  "Test 二重母音拡張 for b-row (bq, bh, bw, bp)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "bq") "ばい"))
-    (should (equal (nskk-convert-romaji "bh") "ぶう"))
-    (should (equal (nskk-convert-romaji "bw") "べい"))
-    (should (equal (nskk-convert-romaji "bp") "ぼう"))))
+  (nskk-context "b-row diphthong"
+    (nskk-it "bq bh bw bp convert to ばい ぶう べい ぼう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "bq") "ばい"))
+        (should (equal (nskk-convert-romaji "bh") "ぶう"))
+        (should (equal (nskk-convert-romaji "bw") "べい"))
+        (should (equal (nskk-convert-romaji "bp") "ぼう")))))
 
-(ert-deftest nskk-azik-diphthong-p-row ()
-  "Test 二重母音拡張 for p-row (pq, ph, pw, pp).
-Note: pp is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "pq") "ぱい"))
-    (should (equal (nskk-converter-lookup "ph") "ぷう"))
-    (should (equal (nskk-converter-lookup "pw") "ぺい"))
-    (should (equal (nskk-converter-lookup "pp") "ぽう"))
-    ;; pq, ph, pw should work in conversion
-    (should (equal (nskk-convert-romaji "pq") "ぱい"))
-    (should (equal (nskk-convert-romaji "ph") "ぷう"))
-    (should (equal (nskk-convert-romaji "pw") "ぺい"))))
+  (nskk-context "p-row diphthong"
+    (nskk-it "pq ph pw convert to ぱい ぷう ぺい and lookup table is complete"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "pq") "ぱい"))
+        (should (equal (nskk-converter-lookup "ph") "ぷう"))
+        (should (equal (nskk-converter-lookup "pw") "ぺい"))
+        (should (equal (nskk-converter-lookup "pp") "ぽう"))
+        ;; pq, ph, pw should work in conversion
+        (should (equal (nskk-convert-romaji "pq") "ぱい"))
+        (should (equal (nskk-convert-romaji "ph") "ぷう"))
+        (should (equal (nskk-convert-romaji "pw") "ぺい"))))))
 
 
 ;;;;
 ;;;; 5. 拗音互換キー (Yō-on Compatibility Key) Tests
 ;;;;
 
-(ert-deftest nskk-azik-youon-kg-row ()
-  "Test 拗音互換キー for kg-row (kga, kgu, kge, kgo)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "kga") "きゃ"))
-    (should (equal (nskk-convert-romaji "kgu") "きゅ"))
-    (should (equal (nskk-convert-romaji "kge") "きぇ"))
-    (should (equal (nskk-convert-romaji "kgo") "きょ"))))
+(nskk-describe "AZIK youon (拗音互換キー) rules"
+  (nskk-context "kg-row youon"
+    (nskk-it "kga kgu kge kgo convert to きゃ きゅ きぇ きょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "kga") "きゃ"))
+        (should (equal (nskk-convert-romaji "kgu") "きゅ"))
+        (should (equal (nskk-convert-romaji "kge") "きぇ"))
+        (should (equal (nskk-convert-romaji "kgo") "きょ")))))
 
-(ert-deftest nskk-azik-youon-hg-row ()
-  "Test 拗音互換キー for hg-row (hga, hgu, hge, hgo)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "hga") "ひゃ"))
-    (should (equal (nskk-convert-romaji "hgu") "ひゅ"))
-    (should (equal (nskk-convert-romaji "hge") "ひぇ"))
-    (should (equal (nskk-convert-romaji "hgo") "ひょ"))))
+  (nskk-context "hg-row youon"
+    (nskk-it "hga hgu hge hgo convert to ひゃ ひゅ ひぇ ひょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "hga") "ひゃ"))
+        (should (equal (nskk-convert-romaji "hgu") "ひゅ"))
+        (should (equal (nskk-convert-romaji "hge") "ひぇ"))
+        (should (equal (nskk-convert-romaji "hgo") "ひょ")))))
 
-(ert-deftest nskk-azik-youon-mg-row ()
-  "Test 拗音互換キー for mg-row (mga, mgu, mge, mgo)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "mga") "みゃ"))
-    (should (equal (nskk-convert-romaji "mgu") "みゅ"))
-    (should (equal (nskk-convert-romaji "mge") "みぇ"))
-    (should (equal (nskk-convert-romaji "mgo") "みょ"))))
+  (nskk-context "mg-row youon"
+    (nskk-it "mga mgu mge mgo convert to みゃ みゅ みぇ みょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "mga") "みゃ"))
+        (should (equal (nskk-convert-romaji "mgu") "みゅ"))
+        (should (equal (nskk-convert-romaji "mge") "みぇ"))
+        (should (equal (nskk-convert-romaji "mgo") "みょ")))))
 
-(ert-deftest nskk-azik-youon-rg-row ()
-  "Test 拗音互換キー for rg-row (rga, rgu, rge, rgo)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "rga") "りゃ"))
-    (should (equal (nskk-convert-romaji "rgu") "りゅ"))
-    (should (equal (nskk-convert-romaji "rge") "りぇ"))
-    (should (equal (nskk-convert-romaji "rgo") "りょ"))))
+  (nskk-context "rg-row youon"
+    (nskk-it "rga rgu rge rgo convert to りゃ りゅ りぇ りょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "rga") "りゃ"))
+        (should (equal (nskk-convert-romaji "rgu") "りゅ"))
+        (should (equal (nskk-convert-romaji "rge") "りぇ"))
+        (should (equal (nskk-convert-romaji "rgo") "りょ")))))
 
-(ert-deftest nskk-azik-youon-gg-row ()
-  "Test 拗音互換キー for gg-row (gga, ggu, gge, ggo).
-Note: gg is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "gga") "ぎゃ"))
-    (should (equal (nskk-converter-lookup "ggu") "ぎゅ"))
-    (should (equal (nskk-converter-lookup "gge") "ぎぇ"))
-    (should (equal (nskk-converter-lookup "ggo") "ぎょ"))))
+  (nskk-context "gg-row youon"
+    (nskk-it "gga ggu gge ggo rules exist in the lookup table"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "gga") "ぎゃ"))
+        (should (equal (nskk-converter-lookup "ggu") "ぎゅ"))
+        (should (equal (nskk-converter-lookup "gge") "ぎぇ"))
+        (should (equal (nskk-converter-lookup "ggo") "ぎょ")))))
 
-(ert-deftest nskk-azik-youon-jg-row ()
-  "Test 拗音互換キー for jg-row (jga, jgu, jge, jgo)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "jga") "じゃ"))
-    (should (equal (nskk-convert-romaji "jgu") "じゅ"))
-    (should (equal (nskk-convert-romaji "jge") "じぇ"))
-    (should (equal (nskk-convert-romaji "jgo") "じょ"))))
+  (nskk-context "jg-row youon"
+    (nskk-it "jga jgu jge jgo convert to じゃ じゅ じぇ じょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "jga") "じゃ"))
+        (should (equal (nskk-convert-romaji "jgu") "じゅ"))
+        (should (equal (nskk-convert-romaji "jge") "じぇ"))
+        (should (equal (nskk-convert-romaji "jgo") "じょ")))))
 
-(ert-deftest nskk-azik-youon-bg-row ()
-  "Test 拗音互換キー for bg-row (bga, bgu, bge, bgo)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "bga") "びゃ"))
-    (should (equal (nskk-convert-romaji "bgu") "びゅ"))
-    (should (equal (nskk-convert-romaji "bge") "びぇ"))
-    (should (equal (nskk-convert-romaji "bgo") "びょ"))))
+  (nskk-context "bg-row youon"
+    (nskk-it "bga bgu bge bgo convert to びゃ びゅ びぇ びょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "bga") "びゃ"))
+        (should (equal (nskk-convert-romaji "bgu") "びゅ"))
+        (should (equal (nskk-convert-romaji "bge") "びぇ"))
+        (should (equal (nskk-convert-romaji "bgo") "びょ")))))
 
-(ert-deftest nskk-azik-youon-pg-row ()
-  "Test 拗音互換キー for pg-row (pga, pgu, pge, pgo)."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "pga") "ぴゃ"))
-    (should (equal (nskk-convert-romaji "pgu") "ぴゅ"))
-    (should (equal (nskk-convert-romaji "pge") "ぴぇ"))
-    (should (equal (nskk-convert-romaji "pgo") "ぴょ"))))
+  (nskk-context "pg-row youon"
+    (nskk-it "pga pgu pge pgo convert to ぴゃ ぴゅ ぴぇ ぴょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "pga") "ぴゃ"))
+        (should (equal (nskk-convert-romaji "pgu") "ぴゅ"))
+        (should (equal (nskk-convert-romaji "pge") "ぴぇ"))
+        (should (equal (nskk-convert-romaji "pgo") "ぴょ")))))
 
-(ert-deftest nskk-azik-youon-hatsuon ()
-  "Test 拗音互換キー with 撥音拡張."
-  (nskk-with-azik-style
-    ;; kg + 撥音拡張
-    (should (equal (nskk-convert-romaji "kgz") "きゃん"))
-    (should (equal (nskk-convert-romaji "kgk") "きぃん"))
-    (should (equal (nskk-convert-romaji "kgj") "きゅん"))
-    (should (equal (nskk-convert-romaji "kgd") "きぇん"))
-    (should (equal (nskk-convert-romaji "kgl") "きょん"))))
+  (nskk-context "youon with hatsuon extension"
+    (nskk-it "kg + hatsuon codes produce youon followed by ん"
+      (nskk-with-azik-style
+        ;; kg + 撥音拡張
+        (should (equal (nskk-convert-romaji "kgz") "きゃん"))
+        (should (equal (nskk-convert-romaji "kgk") "きぃん"))
+        (should (equal (nskk-convert-romaji "kgj") "きゅん"))
+        (should (equal (nskk-convert-romaji "kgd") "きぇん"))
+        (should (equal (nskk-convert-romaji "kgl") "きょん")))))
 
-(ert-deftest nskk-azik-youon-diphthong ()
-  "Test 拗音互換キー with 二重母音拡張."
-  (nskk-with-azik-style
-    ;; kg + 二重母音拡張
-    (should (equal (nskk-convert-romaji "kgq") "きゃい"))
-    (should (equal (nskk-convert-romaji "kgh") "きゅう"))
-    (should (equal (nskk-convert-romaji "kgw") "きぇい"))
-    (should (equal (nskk-convert-romaji "kgp") "きょう"))))
+  (nskk-context "youon with diphthong extension"
+    (nskk-it "kg + diphthong codes produce youon followed by double vowel"
+      (nskk-with-azik-style
+        ;; kg + 二重母音拡張
+        (should (equal (nskk-convert-romaji "kgq") "きゃい"))
+        (should (equal (nskk-convert-romaji "kgh") "きゅう"))
+        (should (equal (nskk-convert-romaji "kgw") "きぇい"))
+        (should (equal (nskk-convert-romaji "kgp") "きょう"))))))
 
 
 ;;;;
 ;;;; 6. 同指打鍵互換キー (Same-Finger Compatibility Key) Tests
 ;;;;
 
-(ert-deftest nskk-azik-same-finger-k ()
-  "Test 同指打鍵互換キー kf -> ki."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "kf") "き"))))
+(nskk-describe "AZIK same-finger (同指打鍵互換キー) keys"
+  (nskk-it "kf converts to き"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "kf") "き"))))
 
-(ert-deftest nskk-azik-same-finger-n ()
-  "Test 同指打鍵互換キー nf -> nu.
-Note: The converter has special handling for 'n' before consonants.
-Rule exists in the table but 'n' + 'f' is converted to ん first."
-  (nskk-with-azik-style
-    ;; Verify rule exists in the table
-    (should (equal (nskk-converter-lookup "nf") "ぬ"))))
+  (nskk-it "nf rule exists in the lookup table"
+    (nskk-with-azik-style
+      ;; Verify rule exists in the table
+      (should (equal (nskk-converter-lookup "nf") "ぬ"))))
 
-(ert-deftest nskk-azik-same-finger-m ()
-  "Test 同指打鍵互換キー mf -> mu."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "mf") "む"))))
+  (nskk-it "mf converts to む"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "mf") "む"))))
 
-(ert-deftest nskk-azik-same-finger-g ()
-  "Test 同指打鍵互換キー gf -> gu."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "gf") "ぐ"))))
+  (nskk-it "gf converts to ぐ"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "gf") "ぐ"))))
 
-(ert-deftest nskk-azik-same-finger-p ()
-  "Test 同指打鍵互換キー pf -> pu."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "pf") "ぷ"))))
+  (nskk-it "pf converts to ぷ"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "pf") "ぷ"))))
 
-(ert-deftest nskk-azik-same-finger-r ()
-  "Test 同指打鍵互換キー rf -> ru."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "rf") "る"))))
+  (nskk-it "rf converts to る"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "rf") "る"))))
 
-(ert-deftest nskk-azik-same-finger-y ()
-  "Test 同指打鍵互換キー yf -> yu."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "yf") "ゆ"))))
+  (nskk-it "yf converts to ゆ"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "yf") "ゆ")))))
 
 
 ;;;;
 ;;;; 7. 特殊拡張 (Special Extension) Tests
 ;;;;
 
-(ert-deftest nskk-azik-special-extension-k ()
-  "Test 特殊拡張 for k-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "km") "かも"))
-    (should (equal (nskk-convert-romaji "kr") "から"))
-    (should (equal (nskk-convert-romaji "kt") "こと"))))
+(nskk-describe "AZIK special extension (特殊拡張) shortcuts"
+  (nskk-context "k-row shortcuts"
+    (nskk-it "km kr kt convert to かも から こと"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "km") "かも"))
+        (should (equal (nskk-convert-romaji "kr") "から"))
+        (should (equal (nskk-convert-romaji "kt") "こと")))))
 
-(ert-deftest nskk-azik-special-extension-g ()
-  "Test 特殊拡張 for g-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "gr") "がら"))
-    (should (equal (nskk-convert-romaji "gt") "ごと"))))
+  (nskk-context "g-row shortcuts"
+    (nskk-it "gr gt convert to がら ごと"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "gr") "がら"))
+        (should (equal (nskk-convert-romaji "gt") "ごと")))))
 
-(ert-deftest nskk-azik-special-extension-z ()
-  "Test 特殊拡張 for z-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "zr") "ざる"))))
+  (nskk-context "z-row shortcuts"
+    (nskk-it "zr converts to ざる"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "zr") "ざる")))))
 
-(ert-deftest nskk-azik-special-extension-s ()
-  "Test 特殊拡張 for s-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "st") "した"))
-    (should (equal (nskk-convert-romaji "sr") "する"))))
+  (nskk-context "s-row shortcuts"
+    (nskk-it "st sr convert to した する"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "st") "した"))
+        (should (equal (nskk-convert-romaji "sr") "する")))))
 
-(ert-deftest nskk-azik-special-extension-t ()
-  "Test 特殊拡張 for t-row shortcuts.
-Note: tt is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "tt") "たち"))
-    (should (equal (nskk-converter-lookup "tb") "たび"))
-    (should (equal (nskk-converter-lookup "tm") "ため"))
-    (should (equal (nskk-converter-lookup "tr") "たら"))
-    ;; tb, tm, tr should work in conversion
-    (should (equal (nskk-convert-romaji "tb") "たび"))
-    (should (equal (nskk-convert-romaji "tm") "ため"))
-    (should (equal (nskk-convert-romaji "tr") "たら"))))
+  (nskk-context "t-row shortcuts"
+    (nskk-it "tb tm tr convert to たび ため たら and lookup table is complete"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "tt") "たち"))
+        (should (equal (nskk-converter-lookup "tb") "たび"))
+        (should (equal (nskk-converter-lookup "tm") "ため"))
+        (should (equal (nskk-converter-lookup "tr") "たら"))
+        ;; tb, tm, tr should work in conversion
+        (should (equal (nskk-convert-romaji "tb") "たび"))
+        (should (equal (nskk-convert-romaji "tm") "ため"))
+        (should (equal (nskk-convert-romaji "tr") "たら")))))
 
-(ert-deftest nskk-azik-special-extension-d ()
-  "Test 特殊拡張 for d-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "dt") "だち"))
-    (should (equal (nskk-convert-romaji "ds") "です"))
-    (should (equal (nskk-convert-romaji "dm") "でも"))))
+  (nskk-context "d-row shortcuts"
+    (nskk-it "dt ds dm convert to だち です でも"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "dt") "だち"))
+        (should (equal (nskk-convert-romaji "ds") "です"))
+        (should (equal (nskk-convert-romaji "dm") "でも")))))
 
-(ert-deftest nskk-azik-special-extension-n ()
-  "Test 特殊拡張 for n-row shortcuts.
-Note: The converter has special handling for 'n' before consonants.
-Rules exist in the table but 'n' + consonant is converted to ん first."
-  (nskk-with-azik-style
-    ;; Verify rules exist in the table
-    (should (equal (nskk-converter-lookup "nr") "なる"))
-    (should (equal (nskk-converter-lookup "nt") "にち"))
-    (should (equal (nskk-converter-lookup "nb") "ねば"))))
+  (nskk-context "n-row shortcuts"
+    (nskk-it "nr nt nb rules exist in the lookup table"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "nr") "なる"))
+        (should (equal (nskk-converter-lookup "nt") "にち"))
+        (should (equal (nskk-converter-lookup "nb") "ねば")))))
 
-(ert-deftest nskk-azik-special-extension-h ()
-  "Test 特殊拡張 for h-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ht") "ひと"))))
+  (nskk-context "h-row shortcuts"
+    (nskk-it "ht converts to ひと"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ht") "ひと")))))
 
-(ert-deftest nskk-azik-special-extension-b ()
-  "Test 特殊拡張 for b-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "bt") "びと"))))
+  (nskk-context "b-row shortcuts"
+    (nskk-it "bt converts to びと"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "bt") "びと")))))
 
-(ert-deftest nskk-azik-special-extension-m ()
-  "Test 特殊拡張 for m-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ms") "ます"))
-    (should (equal (nskk-convert-romaji "mt") "また"))
-    (should (equal (nskk-convert-romaji "mn") "もの"))))
+  (nskk-context "m-row shortcuts"
+    (nskk-it "ms mt mn convert to ます また もの"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ms") "ます"))
+        (should (equal (nskk-convert-romaji "mt") "また"))
+        (should (equal (nskk-convert-romaji "mn") "もの")))))
 
-(ert-deftest nskk-azik-special-extension-y ()
-  "Test 特殊拡張 for y-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "yr") "よる"))))
+  (nskk-context "y-row shortcuts"
+    (nskk-it "yr converts to よる"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "yr") "よる")))))
 
-(ert-deftest nskk-azik-special-extension-r ()
-  "Test 特殊拡張 for r-row shortcuts.
-Note: rr is handled as double consonant (sokuon) by the converter.
-The rule exists in the table but sokuon check happens first."
-  (nskk-with-azik-style
-    ;; Verify rule exists in the table
-    (should (equal (nskk-converter-lookup "rr") "られ"))))
+  (nskk-context "r-row shortcuts"
+    (nskk-it "rr rule exists in the lookup table"
+      (nskk-with-azik-style
+        ;; Verify rule exists in the table
+        (should (equal (nskk-converter-lookup "rr") "られ")))))
 
-(ert-deftest nskk-azik-special-extension-w ()
-  "Test 特殊拡張 for w-row shortcuts."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "wt") "わた"))
-    (should (equal (nskk-convert-romaji "wr") "われ"))))
+  (nskk-context "w-row shortcuts"
+    (nskk-it "wt wr convert to わた われ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "wt") "わた"))
+        (should (equal (nskk-convert-romaji "wr") "われ"))))))
 
 
 ;;;;
 ;;;; 8. Q-key Behavior Tests
 ;;;;
 
-(ert-deftest nskk-azik-q-key-does-not-conflict ()
-  "Test that q-key can be used as extension key without standalone definition."
-  (nskk-with-azik-style
-    ;; In AZIK, 'q' is used as an extension key for diphthongs
-    ;; It should not have a standalone conversion
-    ;; When used with consonants like 'kq', it produces 'かい'
-    (should (equal (nskk-convert-romaji "kq") "かい"))
-    (should (equal (nskk-convert-romaji "sq") "さい"))
-    (should (equal (nskk-convert-romaji "tq") "たい"))))
+(nskk-describe "AZIK q-key behavior"
+  (nskk-it "q-key works as extension key for diphthongs without standalone definition"
+    (nskk-with-azik-style
+      ;; In AZIK, 'q' is used as an extension key for diphthongs
+      ;; It should not have a standalone conversion
+      ;; When used with consonants like 'kq', it produces 'かい'
+      (should (equal (nskk-convert-romaji "kq") "かい"))
+      (should (equal (nskk-convert-romaji "sq") "さい"))
+      (should (equal (nskk-convert-romaji "tq") "たい"))))
 
-(ert-deftest nskk-azik-q-key-with-empty-buffer ()
-  "Test q-key behavior with empty buffer context."
-  (nskk-with-azik-style
-    ;; When q is typed alone, it should not convert (no rule for standalone q)
-    ;; The rule lookup should return nil for standalone 'q'
-    (should-not (nskk-converter-lookup "q"))))
+  (nskk-it "standalone q has no conversion rule"
+    (nskk-with-azik-style
+      ;; When q is typed alone, it should not convert (no rule for standalone q)
+      ;; The rule lookup should return nil for standalone 'q'
+      (should-not (nskk-converter-lookup "q"))))
 
-(ert-deftest nskk-azik-q-key-with-pending-input ()
-  "Test q-key behavior with pending input.
-Note: 'nq' has special handling - 'n' before consonant becomes ん first."
-  (nskk-with-azik-style
-    ;; When there's pending input like 'k', 'q' should complete to 'かい'
-    (should (equal (nskk-convert-romaji "kq") "かい"))
-    (should (equal (nskk-convert-romaji "hq") "はい"))
-    (should (equal (nskk-convert-romaji "sq") "さい"))
-    (should (equal (nskk-convert-romaji "tq") "たい"))))
+  (nskk-it "q-key with pending consonant input completes diphthong"
+    (nskk-with-azik-style
+      ;; When there's pending input like 'k', 'q' should complete to 'かい'
+      (should (equal (nskk-convert-romaji "kq") "かい"))
+      (should (equal (nskk-convert-romaji "hq") "はい"))
+      (should (equal (nskk-convert-romaji "sq") "さい"))
+      (should (equal (nskk-convert-romaji "tq") "たい")))))
 
 
 ;;;;
 ;;;; 9. Compatibility Tests
 ;;;;
 
-(ert-deftest nskk-azik-standard-romaji-still-works ()
-  "Test that standard romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    ;; Basic vowels
-    (should (equal (nskk-convert-romaji "a") "あ"))
-    (should (equal (nskk-convert-romaji "i") "い"))
-    (should (equal (nskk-convert-romaji "u") "う"))
-    (should (equal (nskk-convert-romaji "e") "え"))
-    (should (equal (nskk-convert-romaji "o") "お"))
-    ;; K-row
-    (should (equal (nskk-convert-romaji "ka") "か"))
-    (should (equal (nskk-convert-romaji "ki") "き"))
-    (should (equal (nskk-convert-romaji "ku") "く"))
-    (should (equal (nskk-convert-romaji "ke") "け"))
-    (should (equal (nskk-convert-romaji "ko") "こ"))))
+(nskk-describe "AZIK compatibility with standard romaji"
+  (nskk-context "basic vowels"
+    (nskk-it "a i u e o convert to あ い う え お in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "a") "あ"))
+        (should (equal (nskk-convert-romaji "i") "い"))
+        (should (equal (nskk-convert-romaji "u") "う"))
+        (should (equal (nskk-convert-romaji "e") "え"))
+        (should (equal (nskk-convert-romaji "o") "お")))))
 
-(ert-deftest nskk-azik-standard-g-row-works ()
-  "Test that standard g-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ga") "が"))
-    (should (equal (nskk-convert-romaji "gi") "ぎ"))
-    (should (equal (nskk-convert-romaji "gu") "ぐ"))
-    (should (equal (nskk-convert-romaji "ge") "げ"))
-    (should (equal (nskk-convert-romaji "go") "ご"))))
+  (nskk-context "k-row standard romaji"
+    (nskk-it "ka ki ku ke ko still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ka") "か"))
+        (should (equal (nskk-convert-romaji "ki") "き"))
+        (should (equal (nskk-convert-romaji "ku") "く"))
+        (should (equal (nskk-convert-romaji "ke") "け"))
+        (should (equal (nskk-convert-romaji "ko") "こ")))))
 
-(ert-deftest nskk-azik-standard-s-row-works ()
-  "Test that standard s-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "sa") "さ"))
-    (should (equal (nskk-convert-romaji "shi") "し"))
-    (should (equal (nskk-convert-romaji "su") "す"))
-    (should (equal (nskk-convert-romaji "se") "せ"))
-    (should (equal (nskk-convert-romaji "so") "そ"))))
+  (nskk-context "g-row standard romaji"
+    (nskk-it "ga gi gu ge go still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ga") "が"))
+        (should (equal (nskk-convert-romaji "gi") "ぎ"))
+        (should (equal (nskk-convert-romaji "gu") "ぐ"))
+        (should (equal (nskk-convert-romaji "ge") "げ"))
+        (should (equal (nskk-convert-romaji "go") "ご")))))
 
-(ert-deftest nskk-azik-standard-t-row-works ()
-  "Test that standard t-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ta") "た"))
-    (should (equal (nskk-convert-romaji "chi") "ち"))
-    (should (equal (nskk-convert-romaji "tsu") "つ"))
-    (should (equal (nskk-convert-romaji "te") "て"))
-    (should (equal (nskk-convert-romaji "to") "と"))))
+  (nskk-context "s-row standard romaji"
+    (nskk-it "sa shi su se so still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "sa") "さ"))
+        (should (equal (nskk-convert-romaji "shi") "し"))
+        (should (equal (nskk-convert-romaji "su") "す"))
+        (should (equal (nskk-convert-romaji "se") "せ"))
+        (should (equal (nskk-convert-romaji "so") "そ")))))
 
-(ert-deftest nskk-azik-standard-n-row-works ()
-  "Test that standard n-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "na") "な"))
-    (should (equal (nskk-convert-romaji "ni") "に"))
-    (should (equal (nskk-convert-romaji "nu") "ぬ"))
-    (should (equal (nskk-convert-romaji "ne") "ね"))
-    (should (equal (nskk-convert-romaji "no") "の"))
-    (should (equal (nskk-convert-romaji "nn") "ん"))))
+  (nskk-context "t-row standard romaji"
+    (nskk-it "ta chi tsu te to still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ta") "た"))
+        (should (equal (nskk-convert-romaji "chi") "ち"))
+        (should (equal (nskk-convert-romaji "tsu") "つ"))
+        (should (equal (nskk-convert-romaji "te") "て"))
+        (should (equal (nskk-convert-romaji "to") "と")))))
 
-(ert-deftest nskk-azik-standard-h-row-works ()
-  "Test that standard h-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ha") "は"))
-    (should (equal (nskk-convert-romaji "hi") "ひ"))
-    (should (equal (nskk-convert-romaji "fu") "ふ"))
-    (should (equal (nskk-convert-romaji "he") "へ"))
-    (should (equal (nskk-convert-romaji "ho") "ほ"))))
+  (nskk-context "n-row standard romaji"
+    (nskk-it "na ni nu ne no nn still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "na") "な"))
+        (should (equal (nskk-convert-romaji "ni") "に"))
+        (should (equal (nskk-convert-romaji "nu") "ぬ"))
+        (should (equal (nskk-convert-romaji "ne") "ね"))
+        (should (equal (nskk-convert-romaji "no") "の"))
+        (should (equal (nskk-convert-romaji "nn") "ん")))))
 
-(ert-deftest nskk-azik-standard-m-row-works ()
-  "Test that standard m-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ma") "ま"))
-    (should (equal (nskk-convert-romaji "mi") "み"))
-    (should (equal (nskk-convert-romaji "mu") "む"))
-    (should (equal (nskk-convert-romaji "me") "め"))
-    (should (equal (nskk-convert-romaji "mo") "も"))))
+  (nskk-context "h-row standard romaji"
+    (nskk-it "ha hi fu he ho still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ha") "は"))
+        (should (equal (nskk-convert-romaji "hi") "ひ"))
+        (should (equal (nskk-convert-romaji "fu") "ふ"))
+        (should (equal (nskk-convert-romaji "he") "へ"))
+        (should (equal (nskk-convert-romaji "ho") "ほ")))))
 
-(ert-deftest nskk-azik-standard-y-row-works ()
-  "Test that standard y-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ya") "や"))
-    (should (equal (nskk-convert-romaji "yu") "ゆ"))
-    (should (equal (nskk-convert-romaji "yo") "よ"))))
+  (nskk-context "m-row standard romaji"
+    (nskk-it "ma mi mu me mo still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ma") "ま"))
+        (should (equal (nskk-convert-romaji "mi") "み"))
+        (should (equal (nskk-convert-romaji "mu") "む"))
+        (should (equal (nskk-convert-romaji "me") "め"))
+        (should (equal (nskk-convert-romaji "mo") "も")))))
 
-(ert-deftest nskk-azik-standard-r-row-works ()
-  "Test that standard r-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "ra") "ら"))
-    (should (equal (nskk-convert-romaji "ri") "り"))
-    (should (equal (nskk-convert-romaji "ru") "る"))
-    (should (equal (nskk-convert-romaji "re") "れ"))
-    (should (equal (nskk-convert-romaji "ro") "ろ"))))
+  (nskk-context "y-row standard romaji"
+    (nskk-it "ya yu yo still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ya") "や"))
+        (should (equal (nskk-convert-romaji "yu") "ゆ"))
+        (should (equal (nskk-convert-romaji "yo") "よ")))))
 
-(ert-deftest nskk-azik-standard-w-row-works ()
-  "Test that standard w-row romaji still works in AZIK mode."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "wa") "わ"))
-    (should (equal (nskk-convert-romaji "wo") "を"))))
+  (nskk-context "r-row standard romaji"
+    (nskk-it "ra ri ru re ro still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ra") "ら"))
+        (should (equal (nskk-convert-romaji "ri") "り"))
+        (should (equal (nskk-convert-romaji "ru") "る"))
+        (should (equal (nskk-convert-romaji "re") "れ"))
+        (should (equal (nskk-convert-romaji "ro") "ろ")))))
 
-(ert-deftest nskk-azik-standard-youon-works ()
-  "Test that standard yō-on (digraphs) still work in AZIK mode."
-  (nskk-with-azik-style
-    ;; Standard kya, kyu, kyo
-    (should (equal (nskk-convert-romaji "kya") "きゃ"))
-    (should (equal (nskk-convert-romaji "kyu") "きゅ"))
-    (should (equal (nskk-convert-romaji "kyo") "きょ"))
-    ;; Standard sha, shu, sho
-    (should (equal (nskk-convert-romaji "sha") "しゃ"))
-    (should (equal (nskk-convert-romaji "shu") "しゅ"))
-    (should (equal (nskk-convert-romaji "sho") "しょ"))
-    ;; Standard cha, chu, cho
-    (should (equal (nskk-convert-romaji "cha") "ちゃ"))
-    (should (equal (nskk-convert-romaji "chu") "ちゅ"))
-    (should (equal (nskk-convert-romaji "cho") "ちょ"))))
+  (nskk-context "w-row standard romaji"
+    (nskk-it "wa wo still convert in AZIK mode"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "wa") "わ"))
+        (should (equal (nskk-convert-romaji "wo") "を")))))
 
-(ert-deftest nskk-azik-word-conversion ()
-  "Test complete word conversion using AZIK features."
-  (nskk-with-azik-style
-    ;; Using 撥音拡張
-    (should (equal (nskk-convert-romaji "sz") "さん"))
-    (should (equal (nskk-convert-romaji "tl") "とん"))
-    ;; Using 二重母音拡張
-    (should (equal (nskk-convert-romaji "tp") "とう"))
-    (should (equal (nskk-convert-romaji "kw") "けい"))
-    ;; Mixed conversion
-    (should (equal (nskk-convert-romaji "kztp") "かんとう"))))
+  (nskk-context "youon (digraphs) standard romaji"
+    (nskk-it "kya kyu kyo sha shu sho cha chu cho still convert in AZIK mode"
+      (nskk-with-azik-style
+        ;; Standard kya, kyu, kyo
+        (should (equal (nskk-convert-romaji "kya") "きゃ"))
+        (should (equal (nskk-convert-romaji "kyu") "きゅ"))
+        (should (equal (nskk-convert-romaji "kyo") "きょ"))
+        ;; Standard sha, shu, sho
+        (should (equal (nskk-convert-romaji "sha") "しゃ"))
+        (should (equal (nskk-convert-romaji "shu") "しゅ"))
+        (should (equal (nskk-convert-romaji "sho") "しょ"))
+        ;; Standard cha, chu, cho
+        (should (equal (nskk-convert-romaji "cha") "ちゃ"))
+        (should (equal (nskk-convert-romaji "chu") "ちゅ"))
+        (should (equal (nskk-convert-romaji "cho") "ちょ")))))
+
+  (nskk-context "complete word conversion"
+    (nskk-it "can convert complete words using AZIK features"
+      (nskk-with-azik-style
+        ;; Using 撥音拡張
+        (should (equal (nskk-convert-romaji "sz") "さん"))
+        (should (equal (nskk-convert-romaji "tl") "とん"))
+        ;; Using 二重母音拡張
+        (should (equal (nskk-convert-romaji "tp") "とう"))
+        (should (equal (nskk-convert-romaji "kw") "けい"))
+        ;; Mixed conversion
+        (should (equal (nskk-convert-romaji "kztp") "かんとう"))))))
 
 
 ;;;;
 ;;;; Integration Tests
 ;;;;
 
-(ert-deftest nskk-azik-integration-basic-input ()
-  "Test basic AZIK input integration."
-  (nskk-with-azik-style
-    ;; Type "kz" -> "かん"
-    (should (equal (nskk-convert-romaji "kz") "かん"))
-    ;; Type "sz" -> "さん"
-    (should (equal (nskk-convert-romaji "sz") "さん"))
-    ;; Type "tp" -> "とう"
-    (should (equal (nskk-convert-romaji "tp") "とう"))))
+(nskk-describe "AZIK integration"
+  (nskk-it "basic AZIK input sequences convert correctly"
+    (nskk-with-azik-style
+      ;; Type "kz" -> "かん"
+      (should (equal (nskk-convert-romaji "kz") "かん"))
+      ;; Type "sz" -> "さん"
+      (should (equal (nskk-convert-romaji "sz") "さん"))
+      ;; Type "tp" -> "とう"
+      (should (equal (nskk-convert-romaji "tp") "とう"))))
 
-(ert-deftest nskk-azik-integration-complex-words ()
-  "Test complex word conversion using AZIK."
-  (nskk-with-azik-style
-    ;; "きょう" using kg + p (拗音 + 二重母音)
-    (should (equal (nskk-convert-romaji "kgp") "きょう"))
-    ;; "きょうと" using 拗音二重母音 + と
-    (should (equal (nskk-convert-romaji "kgpto") "きょうと"))
-    ;; "とうきょう" using tp + きょう
-    (should (equal (nskk-convert-romaji "tpkyo") "とうきょ"))
-    ;; "さんぽ" using さん + ぽ
-    (should (equal (nskk-convert-romaji "szpo") "さんぽ"))))
+  (nskk-it "complex word conversion using AZIK combinations"
+    (nskk-with-azik-style
+      ;; "きょう" using kg + p (拗音 + 二重母音)
+      (should (equal (nskk-convert-romaji "kgp") "きょう"))
+      ;; "きょうと" using 拗音二重母音 + と
+      (should (equal (nskk-convert-romaji "kgpto") "きょうと"))
+      ;; "とうきょう" using tp + きょう
+      (should (equal (nskk-convert-romaji "tpkyo") "とうきょ"))
+      ;; "さんぽ" using さん + ぽ
+      (should (equal (nskk-convert-romaji "szpo") "さんぽ"))))
 
-(ert-deftest nskk-azik-integration-mixed-input ()
-  "Test mixed standard and AZIK input."
-  (nskk-with-azik-style
-    ;; Mix standard and AZIK rules
-    (should (equal (nskk-convert-romaji "kakz") "かかん"))
-    (should (equal (nskk-convert-romaji "sask") "さしん"))
-    ;; Note: tatq = ta + tq = た + たい (not たちたい)
-    (should (equal (nskk-convert-romaji "tatq") "たたい"))
-    ;; For たちたい, use ta + chi + tq
-    (should (equal (nskk-convert-romaji "tachitq") "たちたい"))))
+  (nskk-it "mixed standard and AZIK input converts correctly"
+    (nskk-with-azik-style
+      ;; Mix standard and AZIK rules
+      (should (equal (nskk-convert-romaji "kakz") "かかん"))
+      (should (equal (nskk-convert-romaji "sask") "さしん"))
+      ;; Note: tatq = ta + tq = た + たい (not たちたい)
+      (should (equal (nskk-convert-romaji "tatq") "たたい"))
+      ;; For たちたい, use ta + chi + tq
+      (should (equal (nskk-convert-romaji "tachitq") "たちたい")))))
 
 
 ;;;;
 ;;;; Regression Tests
 ;;;;
 
-(ert-deftest nskk-azik-regression-kz-not-kan ()
-  "Regression test: kz should produce かん, not かn."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji "kz") "かん"))
-    (should-not (equal (nskk-convert-romaji "kz") "かn"))))
+(nskk-describe "AZIK regression tests"
+  (nskk-it "kz produces かん not かn"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "kz") "かん"))
+      (should-not (equal (nskk-convert-romaji "kz") "かn"))))
 
-(ert-deftest nskk-azik-regression-semi-colon-tsu ()
-  "Regression test: semicolon should produce small tsu."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji ";") "っ"))
-    ;; In context: ;ka -> っか
-    (should (equal (nskk-convert-romaji ";ka") "っか"))))
+  (nskk-it "semicolon produces small tsu and works in context"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji ";") "っ"))
+      ;; In context: ;ka -> っか
+      (should (equal (nskk-convert-romaji ";ka") "っか"))))
 
-(ert-deftest nskk-azik-regression-colon-chouon ()
-  "Regression test: colon should produce chouon."
-  (nskk-with-azik-style
-    (should (equal (nskk-convert-romaji ":") "ー"))))
+  (nskk-it "colon produces chouon"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji ":") "ー")))))
 
 
 ;;;;
 ;;;; 10. Prolog-level Tests
 ;;;;
 
-(ert-deftest nskk-azik-prolog-azik-rule-queryable ()
-  "Test that azik-rule/2 facts are directly queryable via Prolog.
-This verifies the core architecture: rules live in Prolog, not just
-in the hash table."
-  (nskk-with-azik-style
-    ;; Special key: ; → っ
-    (let ((results (nskk-prolog-query '(azik-rule ";" \?k))))
-      (should results)
-      (should (equal (nskk-prolog-walk '\?k (car results)) "っ")))
-    ;; Hatsuon extension: kz → かん
-    (let ((results (nskk-prolog-query '(azik-rule "kz" \?k))))
-      (should results)
-      (should (equal (nskk-prolog-walk '\?k (car results)) "かん")))
-    ;; Double vowel: kq → かい
-    (let ((results (nskk-prolog-query '(azik-rule "kq" \?k))))
-      (should results)
-      (should (equal (nskk-prolog-walk '\?k (car results)) "かい")))))
+(nskk-describe "AZIK Prolog-level rules"
+  (nskk-it "azik-rule/2 facts are directly queryable via Prolog"
+    (nskk-with-azik-style
+      ;; Special key: ; → っ
+      (let ((results (nskk-prolog-query '(azik-rule ";" \?k))))
+        (should results)
+        (should (equal (nskk-prolog-walk '\?k (car results)) "っ")))
+      ;; Hatsuon extension: kz → かん
+      (let ((results (nskk-prolog-query '(azik-rule "kz" \?k))))
+        (should results)
+        (should (equal (nskk-prolog-walk '\?k (car results)) "かん")))
+      ;; Double vowel: kq → かい
+      (let ((results (nskk-prolog-query '(azik-rule "kq" \?k))))
+        (should results)
+        (should (equal (nskk-prolog-walk '\?k (car results)) "かい")))))
 
-(ert-deftest nskk-azik-prolog-bridge-rule ()
-  "Test that the bridge rule (romaji-to-kana ?r ?k) :- (azik-rule ?r ?k)
-makes azik-rule/2 facts accessible via romaji-to-kana/2 enumeration.
+  (nskk-it "bridge rule makes azik-rule/2 facts accessible via romaji-to-kana/2 enumeration"
+    (nskk-with-azik-style
+      ;; Variable query enumerates all romaji-to-kana mappings including
+      ;; AZIK rules reached via the bridge rule
+      (let ((all-romajis (nskk-prolog-query-all-values
+                          '(romaji-to-kana \?r \?k) '\?r)))
+        (should all-romajis)
+        ;; AZIK-specific keys must appear via bridge rule traversal
+        (should (member ";" all-romajis))
+        (should (member "kz" all-romajis))
+        (should (member "kq" all-romajis)))))
 
-Note: ground queries on romaji-to-kana/2 use hash indexing and bypass
-the bridge rule (the rule head has a variable first arg, so it is not
-indexed by hash key).  Variable queries use the full clause list and
-traverse the bridge rule to enumerate AZIK facts."
-  (nskk-with-azik-style
-    ;; Variable query enumerates all romaji-to-kana mappings including
-    ;; AZIK rules reached via the bridge rule
-    (let ((all-romajis (nskk-prolog-query-all-values
-                        '(romaji-to-kana \?r \?k) '\?r)))
-      (should all-romajis)
-      ;; AZIK-specific keys must appear via bridge rule traversal
-      (should (member ";" all-romajis))
-      (should (member "kz" all-romajis))
-      (should (member "kq" all-romajis)))))
+  (nskk-it "azik-rule/2 contains a substantial number of facts (at least 200)"
+    (nskk-with-azik-style
+      (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
+        (should results)
+        ;; 2 special + 10 compat + 14*9 extensions + 8*13 youon + 7 same-finger
+        ;; + 27 shortcuts + 5 foreign = at least 200 rules
+        (should (>= (length results) 200)))))
 
-(ert-deftest nskk-azik-prolog-rule-count ()
-  "Test that azik-rule/2 contains a substantial number of facts.
-Verifies all rule categories were asserted (not silently dropped)."
-  (nskk-with-azik-style
-    (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
-      (should results)
-      ;; 2 special + 10 compat + 14*9 extensions + 8*13 youon + 7 same-finger
-      ;; + 27 shortcuts + 5 foreign = at least 200 rules
-      (should (>= (length results) 200)))))
+  (nskk-it "switching to standard style resets the hot-path hash cache"
+    (nskk-with-azik-style
+      ;; AZIK style: azik-rule/2 is populated
+      (should (nskk-prolog-query '(azik-rule "kz" \?k)))
+      ;; Hot-path lookup finds AZIK rules
+      (should (equal (nskk-converter-lookup "kz") "かん")))
+    ;; After switching to standard: hash cache is reset
+    (nskk-with-standard-style
+      ;; AZIK-specific keys are gone from the hot-path (hash-based) lookup
+      (should-not (nskk-converter-lookup "kz"))
+      ;; Standard romaji rules are still accessible
+      (should (equal (nskk-convert-romaji "ka") "か"))))
 
-(ert-deftest nskk-azik-prolog-style-isolation ()
-  "Test that switching to standard style resets the hot-path hash cache.
-
-Note: azik-rule/2 itself persists across style switches (there is no
-cleanup mechanism for AZIK-specific predicates in the standard init).
-The observable isolation is via the hash cache and romaji-to-kana/2:
-AZIK-specific keys are absent from nskk-converter-lookup after switching."
-  (nskk-with-azik-style
-    ;; AZIK style: azik-rule/2 is populated
-    (should (nskk-prolog-query '(azik-rule "kz" \?k)))
-    ;; Hot-path lookup finds AZIK rules
-    (should (equal (nskk-converter-lookup "kz") "かん")))
-  ;; After switching to standard: hash cache is reset
-  (nskk-with-standard-style
-    ;; AZIK-specific keys are gone from the hot-path (hash-based) lookup
-    (should-not (nskk-converter-lookup "kz"))
-    ;; Standard romaji rules are still accessible
-    (should (equal (nskk-convert-romaji "ka") "か"))))
-
-(ert-deftest nskk-azik-prolog-youon-prefix-incomplete ()
-  "Test that 2-char youon prefixes produce :incomplete in the hash table.
-The Prolog-derived partial marker computation must cover not only single
-consonants (\"k\", \"h\") but also 2-char youon prefixes like \"kg\", \"hg\".
-These are proper prefixes of romaji keys like \"kga\", \"kgz\" etc."
-  (nskk-with-azik-style
-    ;; Single-char consonant prefixes
-    (should (eq (nskk-converter-lookup "k") :incomplete))
-    (should (eq (nskk-converter-lookup "h") :incomplete))
-    (should (eq (nskk-converter-lookup "m") :incomplete))
-    ;; 2-char youon prefixes (derived from azik-rule/2, not hardcoded)
-    (should (eq (nskk-converter-lookup "kg") :incomplete))
-    (should (eq (nskk-converter-lookup "hg") :incomplete))
-    (should (eq (nskk-converter-lookup "mg") :incomplete))
-    (should (eq (nskk-converter-lookup "rg") :incomplete))
-    (should (eq (nskk-converter-lookup "jg") :incomplete))))
+  (nskk-it "2-char youon prefixes produce :incomplete in the hash table"
+    (nskk-with-azik-style
+      ;; Single-char consonant prefixes
+      (should (eq (nskk-converter-lookup "k") :incomplete))
+      (should (eq (nskk-converter-lookup "h") :incomplete))
+      (should (eq (nskk-converter-lookup "m") :incomplete))
+      ;; 2-char youon prefixes (derived from azik-rule/2, not hardcoded)
+      (should (eq (nskk-converter-lookup "kg") :incomplete))
+      (should (eq (nskk-converter-lookup "hg") :incomplete))
+      (should (eq (nskk-converter-lookup "mg") :incomplete))
+      (should (eq (nskk-converter-lookup "rg") :incomplete))
+      (should (eq (nskk-converter-lookup "jg") :incomplete)))))
 
 
 ;;;;
@@ -982,32 +925,32 @@ These are proper prefixes of romaji keys like \"kga\", \"kgz\" etc."
 (defun nskk-azik-test-run-all ()
   "Run all AZIK tests."
   (interactive)
-  (ert-run-tests-batch "^nskk-azik-"))
+  (ert-run-tests-batch "^nskk-azik-\\|^nskk-it/azik"))
 
 (defun nskk-azik-test-run-style ()
   "Run AZIK style switching tests."
   (interactive)
-  (ert-run-tests-batch "^nskk-azik-load\\|^nskk-azik-style-"))
+  (ert-run-tests-batch "^nskk-it/azik-style-switching"))
 
 (defun nskk-azik-test-run-hatsuon ()
   "Run AZIK 撥音拡張 tests."
   (interactive)
-  (ert-run-tests-batch "^nskk-azik-hatsuon-"))
+  (ert-run-tests-batch "^nskk-it/azik-hatsuon"))
 
 (defun nskk-azik-test-run-diphthong ()
   "Run AZIK 二重母音拡張 tests."
   (interactive)
-  (ert-run-tests-batch "^nskk-azik-diphthong-"))
+  (ert-run-tests-batch "^nskk-it/azik-diphthong"))
 
 (defun nskk-azik-test-run-youon ()
   "Run AZIK 拗音互換キー tests."
   (interactive)
-  (ert-run-tests-batch "^nskk-azik-youon-"))
+  (ert-run-tests-batch "^nskk-it/azik-youon"))
 
 (defun nskk-azik-test-run-compatibility ()
   "Run AZIK compatibility tests."
   (interactive)
-  (ert-run-tests-batch "^nskk-azik-standard\\|^nskk-azik-compatibility"))
+  (ert-run-tests-batch "^nskk-it/azik-compatibility"))
 
 
 (provide 'nskk-azik-test)

@@ -845,17 +845,17 @@ collapses multiple hyphens, and strips leading/trailing hyphens."
          (stripped (replace-regexp-in-string "^-+\\|-+$" "" replaced)))
     stripped))
 
-(defmacro nskk-given (setup)
-  "Document SETUP phase of a test.  Evaluates SETUP with no additional wrapping.
+(defmacro nskk-given (&rest setups)
+  "Document SETUP phase of a test.  Evaluates SETUPS sequentially.
 Use inside `nskk-it' to clarify test preconditions."
   (declare (indent 0))
-  setup)
+  `(progn ,@setups))
 
-(defmacro nskk-when (action)
-  "Document ACTION phase of a test.  Evaluates ACTION with no additional wrapping.
+(defmacro nskk-when (&rest actions)
+  "Document ACTION phase of a test.  Evaluates ACTIONS sequentially.
 Use inside `nskk-it' to clarify the operation under test."
   (declare (indent 0))
-  action)
+  `(progn ,@actions))
 
 (defmacro nskk-then (&rest assertions)
   "Document and execute ASSERTIONS phase of a test.

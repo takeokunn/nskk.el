@@ -23,6 +23,7 @@
 (require 'nskk-state)
 (require 'nskk-converter)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
 
 ;;;
 ;;; Helper Macros
@@ -45,311 +46,297 @@
     (nskk-self-insert 1)))
 
 ;;;
-;;; End-to-End Input Lifecycle Tests
+;;; Hiragana Input Lifecycle Tests
 ;;;
 
-(nskk-deftest-integration hiragana-vowel-input
-  "Test typing a single vowel in hiragana mode."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "あ" (buffer-string))))
+(nskk-describe "hiragana input lifecycle"
 
-(nskk-deftest-integration hiragana-consonant-vowel
-  "Test typing consonant + vowel produces kana."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?k)
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "か" (buffer-string))))
+  (nskk-deftest-table hiragana-single-vowels
+    :description "Single vowels produce correct hiragana"
+    :columns (char expected)
+    :rows ((?a "あ") (?i "い") (?u "う") (?e "え") (?o "お"))
+    :body (nskk-integration-with-session 'hiragana
+            (nskk-integration--type-char char)
+            (nskk-should-equal expected (buffer-string))))
 
-(nskk-deftest-integration hiragana-word-sakura
-  "Test typing a multi-syllable word: sakura → さくら."
-  (nskk-integration-with-session 'hiragana
-    (dolist (c '(?s ?a ?k ?u ?r ?a))
-      (nskk-integration--type-char c))
-    (nskk-should-equal "さくら" (buffer-string))))
+  (nskk-it "typing consonant + vowel produces か"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when (progn
+                   (nskk-integration--type-char ?k)
+                   (nskk-integration--type-char ?a)))
+      (nskk-then (nskk-should-equal "か" (buffer-string)))))
 
-(nskk-deftest-integration hiragana-word-kanjini
-  "Test typing kanji → かんじ (n+consonant rule)."
-  (nskk-integration-with-session 'hiragana
-    (dolist (c '(?k ?a ?n ?j ?i))
-      (nskk-integration--type-char c))
-    (nskk-should-equal "かんじ" (buffer-string))))
+  (nskk-it "typing sakura produces さくら"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when (dolist (c '(?s ?a ?k ?u ?r ?a))
+                   (nskk-integration--type-char c)))
+      (nskk-then (nskk-should-equal "さくら" (buffer-string)))))
 
-(nskk-deftest-integration hiragana-word-kitte
-  "Test typing kitte → きって (sokuon rule)."
-  (nskk-integration-with-session 'hiragana
-    (dolist (c '(?k ?i ?t ?t ?e))
-      (nskk-integration--type-char c))
-    (nskk-should-equal "きって" (buffer-string))))
+  (nskk-it "typing kanji produces かんじ via n+consonant rule"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when (dolist (c '(?k ?a ?n ?j ?i))
+                   (nskk-integration--type-char c)))
+      (nskk-then (nskk-should-equal "かんじ" (buffer-string)))))
 
-(nskk-deftest-integration katakana-vowel-input
-  "Test typing a vowel in katakana mode produces katakana."
-  (nskk-integration-with-session 'katakana
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "ア" (buffer-string))))
+  (nskk-it "typing kitte produces きって via sokuon rule"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when (dolist (c '(?k ?i ?t ?t ?e))
+                   (nskk-integration--type-char c)))
+      (nskk-then (nskk-should-equal "きって" (buffer-string))))))
 
-(nskk-deftest-integration katakana-word
-  "Test typing a word in katakana mode."
-  (nskk-integration-with-session 'katakana
-    (dolist (c '(?k ?a ?t ?a ?k ?a ?n ?a))
-      (nskk-integration--type-char c))
-    (nskk-should-equal "カタカナ" (buffer-string))))
+;;;
+;;; Katakana Input Lifecycle Tests
+;;;
 
-(nskk-deftest-integration latin-mode-passthrough
-  "Test that latin mode passes characters through."
-  (nskk-integration-with-session 'latin
-    (nskk-integration--type-char ?h)
-    (nskk-integration--type-char ?i)
-    (nskk-should-equal "hi" (buffer-string))))
+(nskk-describe "katakana input lifecycle"
 
-(nskk-deftest-integration ascii-mode-passthrough
-  "Test that ascii mode passes characters through."
-  (nskk-integration-with-session 'ascii
-    (nskk-integration--type-char ?A)
-    (nskk-integration--type-char ?B)
-    (nskk-should-equal "AB" (buffer-string))))
+  (nskk-it "typing 'a' in katakana mode produces ア"
+    (nskk-integration-with-session 'katakana
+      (nskk-given (nskk-should-mode 'katakana))
+      (nskk-when  (nskk-integration--type-char ?a))
+      (nskk-then  (nskk-should-equal "ア" (buffer-string)))))
+
+  (nskk-it "typing katakana in katakana mode produces カタカナ"
+    (nskk-integration-with-session 'katakana
+      (nskk-given (nskk-should-mode 'katakana))
+      (nskk-when  (dolist (c '(?k ?a ?t ?a ?k ?a ?n ?a))
+                    (nskk-integration--type-char c)))
+      (nskk-then  (nskk-should-equal "カタカナ" (buffer-string))))))
+
+;;;
+;;; Latin and ASCII Passthrough Tests
+;;;
+
+(nskk-describe "latin and ascii passthrough"
+
+  (nskk-it "latin mode passes characters through as-is"
+    (nskk-integration-with-session 'latin
+      (nskk-when (progn
+                   (nskk-integration--type-char ?h)
+                   (nskk-integration--type-char ?i)))
+      (nskk-then (nskk-should-equal "hi" (buffer-string)))))
+
+  (nskk-it "ascii mode passes characters through as-is"
+    (nskk-integration-with-session 'ascii
+      (nskk-when (progn
+                   (nskk-integration--type-char ?A)
+                   (nskk-integration--type-char ?B)))
+      (nskk-then (nskk-should-equal "AB" (buffer-string))))))
 
 ;;;
 ;;; Mode Transition Flow Tests
 ;;;
 
-(nskk-deftest-integration mode-hiragana-to-katakana-via-q
-  "Test q key toggles hiragana to katakana."
-  (nskk-integration-with-session 'hiragana
-    (nskk-handle-q)
-    (should (eq (nskk-state-mode nskk-current-state) 'katakana))
-    ;; Type in katakana mode
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "ア" (buffer-string))))
+(nskk-describe "mode transition flow"
 
-(nskk-deftest-integration mode-katakana-to-hiragana-via-q
-  "Test q key toggles katakana to hiragana."
-  (nskk-integration-with-session 'katakana
-    (nskk-handle-q)
-    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    ;; Type in hiragana mode
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "あ" (buffer-string))))
+  (nskk-it "q key toggles hiragana to katakana and types ア"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when  (nskk-handle-q))
+      (nskk-then  (should (eq (nskk-state-mode nskk-current-state) 'katakana)))
+      (nskk-when  (nskk-integration--type-char ?a))
+      (nskk-then  (nskk-should-equal "ア" (buffer-string)))))
 
-(nskk-deftest-integration mode-hiragana-to-latin-via-l
-  "Test l key enters latin mode from hiragana."
-  (nskk-integration-with-session 'hiragana
-    (nskk-handle-l)
-    (should (eq (nskk-state-mode nskk-current-state) 'latin))
-    ;; Type in latin mode
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "a" (buffer-string))))
+  (nskk-it "q key toggles katakana to hiragana and types あ"
+    (nskk-integration-with-session 'katakana
+      (nskk-when  (nskk-handle-q))
+      (nskk-then  (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))
+      (nskk-when  (nskk-integration--type-char ?a))
+      (nskk-then  (nskk-should-equal "あ" (buffer-string)))))
 
-(nskk-deftest-integration mode-q-in-ascii-inserts-q
-  "Test q key inserts literal q in ascii mode."
-  (nskk-integration-with-session 'ascii
-    (let ((last-command-event ?q))
-      (nskk-handle-q))
-    (nskk-should-equal "q" (buffer-string))))
+  (nskk-it "l key enters latin mode from hiragana and types a"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when  (nskk-handle-l))
+      (nskk-then  (should (eq (nskk-state-mode nskk-current-state) 'latin)))
+      (nskk-when  (nskk-integration--type-char ?a))
+      (nskk-then  (nskk-should-equal "a" (buffer-string)))))
 
-(nskk-deftest-integration mode-l-in-ascii-inserts-l
-  "Test l key inserts literal l in ascii mode."
-  (nskk-integration-with-session 'ascii
-    (let ((last-command-event ?l))
-      (nskk-handle-l))
-    (nskk-should-equal "l" (buffer-string))))
+  (nskk-it "q key inserts literal q in ascii mode"
+    (nskk-integration-with-session 'ascii
+      (nskk-when (let ((last-command-event ?q))
+                   (nskk-handle-q)))
+      (nskk-then (nskk-should-equal "q" (buffer-string)))))
 
-(nskk-deftest-integration mode-roundtrip-with-input
-  "Test full mode roundtrip with input at each stage."
-  (nskk-integration-with-session 'hiragana
-    ;; Type in hiragana
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "あ" (buffer-string))
-    ;; Toggle to katakana
-    (nskk-handle-q)
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "あア" (buffer-string))
-    ;; Enter latin mode
-    (nskk-handle-l)
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "あアa" (buffer-string))))
+  (nskk-it "l key inserts literal l in ascii mode"
+    (nskk-integration-with-session 'ascii
+      (nskk-when (let ((last-command-event ?l))
+                   (nskk-handle-l)))
+      (nskk-then (nskk-should-equal "l" (buffer-string)))))
+
+  (nskk-it "full mode roundtrip produces あアa"
+    (nskk-integration-with-session 'hiragana
+      ;; Type in hiragana
+      (nskk-integration--type-char ?a)
+      (nskk-should-equal "あ" (buffer-string))
+      ;; Toggle to katakana
+      (nskk-handle-q)
+      (nskk-integration--type-char ?a)
+      (nskk-should-equal "あア" (buffer-string))
+      ;; Enter latin mode
+      (nskk-handle-l)
+      (nskk-integration--type-char ?a)
+      (nskk-should-equal "あアa" (buffer-string)))))
 
 ;;;
-;;; Uppercase Henkan Start Flow Tests
+;;; Uppercase Henkan Start Tests
 ;;;
 
-(nskk-deftest-integration uppercase-sets-marker-and-inserts
-  "Test uppercase letter sets marker and inserts kana with ▽ marker."
-  (nskk-integration-with-session 'hiragana
-    ;; Uppercase 'A' should set marker, insert ▽ marker, then あ
-    (nskk-integration--type-char ?A)
-    (should (nskk--conversion-start-active-p))
-    (nskk-should-equal "▽あ" (buffer-string))))
+(nskk-describe "uppercase henkan start"
 
-(nskk-deftest-integration uppercase-consonant-vowel-sequence
-  "Test uppercase consonant then vowel sets marker with ▽."
-  (nskk-integration-with-session 'hiragana
-    ;; Uppercase 'K' sets marker and inserts ▽, then 'a' produces か
-    (nskk-integration--type-char ?K)
-    (should (nskk--conversion-start-active-p))
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "▽か" (buffer-string))))
+  (nskk-it "typing A starts henkan with ▽あ"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when  (nskk-integration--type-char ?A))
+      (nskk-then  (should (nskk--conversion-start-active-p))
+                  (nskk-should-equal "▽あ" (buffer-string)))))
+
+  (nskk-it "typing K then a starts henkan with ▽か"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when  (nskk-integration--type-char ?K))
+      (nskk-then  (should (nskk--conversion-start-active-p)))
+      (nskk-when  (nskk-integration--type-char ?a))
+      (nskk-then  (nskk-should-equal "▽か" (buffer-string))))))
 
 ;;;
 ;;; Conversion Pipeline Tests
 ;;;
 
-(nskk-deftest-integration conversion-with-mock-dictionary
-  "Test full conversion pipeline with mocked dictionary."
-  (nskk-integration-with-session 'hiragana
-    ;; Type uppercase to start henkan
-    (nskk-integration--type-char ?A)
-    (should (nskk--conversion-start-active-p))
-    ;; Mock dictionary search
-    (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("亜" "阿"))))
-      ;; Space starts conversion
-      (let ((last-command-event ? ))
-        (nskk-handle-space))
-      ;; Should be in conversion mode
-      (should (nskk-converting-p))
-      ;; Commit with return (no newline in converting mode)
-      (nskk-handle-return)
-      ;; Should have committed the first candidate
-      (should-not (nskk-converting-p))
-      ;; nskk handle-return commits only (no newline in converting mode)
-      (nskk-should-equal "亜" (buffer-string)))))
+(nskk-describe "conversion pipeline"
 
-(nskk-deftest-integration conversion-cancel-restores-preedit
-  "Test that canceling conversion restores preedit text."
-  (nskk-integration-with-session 'hiragana
-    ;; Type text with henkan start
-    (nskk-integration--type-char ?A)
-    (let ((preedit (buffer-string)))
-      ;; Mock dictionary and start conversion
+  (nskk-it "SPC after preedit triggers conversion and commits first candidate"
+    (nskk-integration-with-session 'hiragana
+      (nskk-when  (nskk-integration--type-char ?A))
+      (nskk-then  (should (nskk--conversion-start-active-p)))
+      (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("亜" "阿"))))
+        (nskk-when (let ((last-command-event ? ))
+                     (nskk-handle-space)))
+        (nskk-then (should (nskk-converting-p)))
+        (nskk-when (nskk-handle-return))
+        (nskk-then (should-not (nskk-converting-p))
+                   (nskk-should-equal "亜" (buffer-string))))))
+
+  (nskk-it "canceling conversion exits converting state"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?A)
       (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("result"))))
         (let ((last-command-event ? ))
           (nskk-handle-space)))
-      (should (nskk-converting-p))
-      ;; Cancel
-      (nskk-cancel-conversion)
-      (should-not (nskk-converting-p)))))
+      (nskk-then (should (nskk-converting-p)))
+      (nskk-when (nskk-cancel-conversion))
+      (nskk-then (should-not (nskk-converting-p)))))
 
-(nskk-deftest-integration space-without-preedit-inserts-space
-  "Test SPC inserts literal space when no preedit."
-  (nskk-integration-with-session 'hiragana
-    ;; Type something without uppercase (no marker)
-    (nskk-integration--type-char ?a)
-    (let ((last-command-event ? ))
-      (nskk-handle-space))
-    ;; Should have inserted space after the kana
-    (nskk-should-equal "あ " (buffer-string))))
+  (nskk-it "SPC without preedit inserts literal space"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?a)
+      (nskk-when (let ((last-command-event ? ))
+                   (nskk-handle-space)))
+      (nskk-then (nskk-should-equal "あ " (buffer-string)))))
 
-(nskk-deftest-integration return-without-conversion-inserts-newline
-  "Test RET inserts newline when not converting."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?a)
-    (nskk-handle-return)
-    (nskk-should-equal "あ\n" (buffer-string))))
+  (nskk-it "RET without conversion inserts newline"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?a)
+      (nskk-when  (nskk-handle-return))
+      (nskk-then  (nskk-should-equal "あ\n" (buffer-string))))))
 
 ;;;
 ;;; State Cleanup Tests
 ;;;
 
-(nskk-deftest-integration commit-clears-all-state
-  "Test commit clears marker, overlay, candidates, romaji."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?A)
-    (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("result"))))
-      (let ((last-command-event ? ))
-        (nskk-handle-space)))
-    (should (nskk-converting-p))
-    (nskk-handle-return)
-    ;; All state should be clear
-    (should-not (nskk-converting-p))
-    (should-not (nskk--conversion-start-active-p))
-    (nskk-should-equal "" nskk--romaji-buffer)
-    (should (null (nskk-state-candidates nskk-current-state)))))
+(nskk-describe "state cleanup after commit"
 
-(nskk-deftest-integration mode-switch-clears-romaji
-  "Test mode switch clears romaji buffer."
-  (nskk-integration-with-session 'hiragana
-    ;; Type incomplete romaji
-    (nskk-integration--type-char ?k)
-    (nskk-should-equal "k" nskk--romaji-buffer)
-    ;; Switch mode clears romaji
-    (nskk-handle-q)
-    (nskk-should-equal "" nskk--romaji-buffer)))
+  (nskk-it "commit clears marker, overlay, candidates, and romaji buffer"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?A)
+      (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("result"))))
+        (let ((last-command-event ? ))
+          (nskk-handle-space)))
+      (nskk-then (should (nskk-converting-p)))
+      (nskk-when (nskk-handle-return))
+      (nskk-then (should-not (nskk-converting-p))
+                 (should-not (nskk--conversion-start-active-p))
+                 (nskk-should-equal "" nskk--romaji-buffer)
+                 (should (null (nskk-state-candidates nskk-current-state))))))
+
+  (nskk-it "mode switch clears romaji buffer"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?k)
+      (nskk-then (nskk-should-equal "k" nskk--romaji-buffer))
+      (nskk-when (nskk-handle-q))
+      (nskk-then (nskk-should-equal "" nskk--romaji-buffer)))))
 
 ;;;
-;;; Backspace / DEL Handler Tests
+;;; Backspace Handling Tests
 ;;;
 
-(nskk-deftest-integration backspace-in-preedit-deletes-char
-  "Test DEL in preedit state deletes last character."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?K)
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "▽か" (buffer-string))
-    (nskk-handle-backspace)
-    (should (nskk--conversion-start-active-p))
-    (should-not (string-suffix-p "か" (buffer-string)))
-    (nskk-should-equal "▽" (buffer-string))))
+(nskk-describe "backspace handling"
 
-(nskk-deftest-integration backspace-on-empty-preedit-cancels
-  "Test DEL on empty preedit (▽ with no chars) cancels preedit."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?A)
-    (nskk-should-equal "▽あ" (buffer-string))
-    ;; First DEL: deletes "あ", leaving empty preedit
-    (nskk-handle-backspace)
-    (nskk-should-equal "▽" (buffer-string))
-    ;; Second DEL: empty preedit → cancel preedit
-    (nskk-handle-backspace)
-    (should-not (nskk--conversion-start-active-p))
-    (nskk-should-equal "" (buffer-string))))
+  (nskk-it "DEL in preedit deletes last kana character leaving ▽"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?K)
+      (nskk-integration--type-char ?a)
+      (nskk-then  (nskk-should-equal "▽か" (buffer-string)))
+      (nskk-when  (nskk-handle-backspace))
+      (nskk-then  (should (nskk--conversion-start-active-p))
+                  (should-not (string-suffix-p "か" (buffer-string)))
+                  (nskk-should-equal "▽" (buffer-string)))))
 
-(nskk-deftest-integration backspace-in-normal-mode
-  "Test DEL in normal mode calls backward-delete-char."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?a)
-    (nskk-should-equal "あ" (buffer-string))
-    (nskk-handle-backspace)
-    (nskk-should-equal "" (buffer-string))))
+  (nskk-it "DEL on empty preedit cancels preedit entirely"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?A)
+      (nskk-then  (nskk-should-equal "▽あ" (buffer-string)))
+      ;; First DEL: deletes "あ", leaving empty preedit
+      (nskk-when  (nskk-handle-backspace))
+      (nskk-then  (nskk-should-equal "▽" (buffer-string)))
+      ;; Second DEL: empty preedit → cancel preedit
+      (nskk-when  (nskk-handle-backspace))
+      (nskk-then  (should-not (nskk--conversion-start-active-p))
+                  (nskk-should-equal "" (buffer-string)))))
+
+  (nskk-it "DEL in normal mode deletes the preceding character"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?a)
+      (nskk-then  (nskk-should-equal "あ" (buffer-string)))
+      (nskk-when  (nskk-handle-backspace))
+      (nskk-then  (nskk-should-equal "" (buffer-string))))))
 
 ;;;
 ;;; Cancel Handler Tests
 ;;;
 
-(nskk-deftest-integration cancel-in-preedit-clears-preedit
-  "Test C-g in preedit state clears preedit text and marker."
-  (nskk-integration-with-session 'hiragana
-    (nskk-integration--type-char ?A)
-    (nskk-should-equal "▽あ" (buffer-string))
-    (should (nskk--conversion-start-active-p))
-    (nskk-handle-cancel)
-    (should-not (nskk--conversion-start-active-p))
-    (nskk-should-equal "" (buffer-string))))
+(nskk-describe "cancel handler"
+
+  (nskk-it "C-g in preedit clears preedit text and marker"
+    (nskk-integration-with-session 'hiragana
+      (nskk-integration--type-char ?A)
+      (nskk-then  (nskk-should-equal "▽あ" (buffer-string))
+                  (should (nskk--conversion-start-active-p)))
+      (nskk-when  (nskk-handle-cancel))
+      (nskk-then  (should-not (nskk--conversion-start-active-p))
+                  (nskk-should-equal "" (buffer-string))))))
 
 ;;;
-;;; Ctrl-N/Ctrl-P in Normal Mode Tests
+;;; Ctrl-N/Ctrl-P Fallthrough Tests
 ;;;
 
-(nskk-deftest-integration ctrl-n-in-normal-mode-fallthrough
-  "Test C-n in normal mode falls through to next-line (no error)."
-  (nskk-integration-with-session 'hiragana
-    (insert "line1\nline2\n")
-    (goto-char (point-min))
-    (condition-case nil
-        (nskk-handle-ctrl-n)
-      (beginning-of-buffer nil)
-      (end-of-buffer nil))
-    (should (> (point) (point-min)))))
+(nskk-describe "ctrl-n/ctrl-p fallthrough"
 
-(nskk-deftest-integration ctrl-p-in-normal-mode-fallthrough
-  "Test C-p in normal mode falls through to previous-line (no error)."
-  (nskk-integration-with-session 'hiragana
-    (insert "line1\nline2\n")
-    (goto-char (point-max))
-    (condition-case nil
-        (nskk-handle-ctrl-p)
-      (beginning-of-buffer nil)
-      (end-of-buffer nil))
-    (should (< (point) (point-max)))))
+  (nskk-it "C-n in normal mode falls through to next-line without error"
+    (nskk-integration-with-session 'hiragana
+      (insert "line1\nline2\n")
+      (goto-char (point-min))
+      (condition-case nil
+          (nskk-handle-ctrl-n)
+        (beginning-of-buffer nil)
+        (end-of-buffer nil))
+      (should (> (point) (point-min)))))
+
+  (nskk-it "C-p in normal mode falls through to previous-line without error"
+    (nskk-integration-with-session 'hiragana
+      (insert "line1\nline2\n")
+      (goto-char (point-max))
+      (condition-case nil
+          (nskk-handle-ctrl-p)
+        (beginning-of-buffer nil)
+        (end-of-buffer nil))
+      (should (< (point) (point-max))))))
 
 (provide 'nskk-integration-test)
 
