@@ -58,7 +58,8 @@
 ;; - `nskk-prolog-query-values'    -- query and extract multiple bindings
 ;; - `nskk-prolog-query-all-values' -- query and extract all bindings for var
 ;; - `nskk-prolog-trie-prefix-search' -- prefix search via trie index
-;; - `nskk-prolog-holds-p'       -- test if a goal has any solution
+;; - `nskk-prolog-holds-p'         -- test if a goal has any solution
+;; - `nskk-when-prolog-holds'      -- guard macro: run body when query holds
 ;; - `nskk-prolog-variable-p'     -- test for Prolog variable symbol
 ;; - `nskk-prolog-ground-p'       -- test for ground (variable-free) term
 ;; - `nskk-prolog-unify'          -- unify two terms
@@ -509,6 +510,161 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
        (t (error "Unknown arithmetic operator: %S" op)))))
    (t (error "Cannot evaluate arithmetic expression: %S" expr))))
 
+;;;; Built-in Goal Handler Registry
+
+(defvar nskk-prolog--goal-handlers nil
+  "Ordered alist of registered built-in Prolog goal handlers.
+Each entry is a list (NAME MATCH-FN BODY-FN) where:
+  NAME     -- handler identifier symbol (used for deduplication on reload)
+  MATCH-FN -- (lambda (goal)) returning non-nil when this handler applies
+  BODY-FN  -- (lambda (goal rest-goals subst on-solution)) executing the handler
+
+Handlers are tried in registration order; the first matching handler runs.
+Re-registering a handler with the same NAME updates the existing entry in place,
+preserving registration order (idempotent on file reload).")
+
+(defmacro nskk-define-goal-handler (name args &rest plist)
+  "Define and register a built-in Prolog goal handler.
+NAME is a symbol identifying this handler (used for deduplication).
+ARGS is a parameter list: (GOAL REST-GOALS SUBST ON-SOLUTION).
+ARGS must contain exactly 4 symbols in positional order: GOAL, REST-GOALS,
+SUBST, ON-SOLUTION.  :match takes exactly ONE form; :body takes ONE OR MORE
+forms (spliced into the handler lambda body).
+PLIST must contain:
+  :match FORM     -- evaluated with GOAL bound; non-nil means this handler
+                     applies
+  :body  FORM...  -- handler body forms evaluated with ARGS bound
+
+Handlers are tried in registration order; first match wins.
+Re-defining a handler with the same NAME replaces it in place (idempotent).
+
+The BODY may call `nskk-prolog--prove-internal' directly for recursive goals.
+`catch'/`throw' tags (`nskk-prolog-cut', `nskk-prolog-naf') propagate
+correctly through handler dispatch because Emacs Lisp catch/throw is dynamic."
+  (declare (indent 2) (debug t))
+  (let* ((g-new-entry (make-symbol "new-entry"))
+         (g-existing  (make-symbol "existing"))
+         (match-form (cadr (memq :match plist)))
+         (body-forms (cdr (memq :body plist)))
+         (goal-arg   (nth 0 args))
+         (rest-arg   (nth 1 args))
+         (subst-arg  (nth 2 args))
+         (k-arg      (nth 3 args)))
+    `(let ((,g-new-entry (list ',name
+                               (lambda (,goal-arg) ,match-form)
+                               (lambda (,goal-arg ,rest-arg ,subst-arg ,k-arg)
+                                 ,@body-forms))))
+       (let ((,g-existing (assq ',name nskk-prolog--goal-handlers)))
+         (if ,g-existing
+             (progn (setcar (cdr ,g-existing)   (nth 1 ,g-new-entry))
+                    (setcar (cddr ,g-existing)  (nth 2 ,g-new-entry)))
+           (setq nskk-prolog--goal-handlers
+                 (append nskk-prolog--goal-handlers (list ,g-new-entry))))))))
+
+(defun nskk-prolog--dispatch-goal (goal rest-goals subst on-solution)
+  "Dispatch GOAL to the first matching built-in handler.
+Tries each handler in `nskk-prolog--goal-handlers' in registration order.
+Calls the matching handler's body with GOAL, REST-GOALS, SUBST, ON-SOLUTION.
+Exits immediately after the first matching handler via throw, making dispatch
+O(number-of-handlers-before-match).
+Signals an error if no handler matches (should never happen with the `normal'
+catch-all handler registered last)."
+  (unless (catch 'nskk-prolog--handler-matched
+            (dolist (entry nskk-prolog--goal-handlers)
+              (when (funcall (nth 1 entry) goal)
+                (funcall (nth 2 entry) goal rest-goals subst on-solution)
+                (throw 'nskk-prolog--handler-matched t)))
+            nil)
+    (error "No handler matched goal: %S" goal)))
+
+;; Register built-in goal handlers in dispatch priority order.
+;; The `normal' handler is last (catch-all).
+
+;; cut (!): prunes remaining alternatives in the CURRENT clause body only.
+(nskk-define-goal-handler cut (goal rest subst k)
+  :match (eq goal '!)
+  :body
+  (ignore goal)
+  (let ((found nil))
+    (catch 'nskk-prolog-cut
+      (nskk-prolog--prove-internal rest subst
+        (lambda (s) (setq found t) (funcall k s))))
+    (when found
+      (throw 'nskk-prolog-cut nil))))
+
+;; negation-as-failure (NAF): succeeds iff the negated goal has no solution.
+(nskk-define-goal-handler negation (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) 'not))
+  :body
+  (unless (catch 'nskk-prolog-naf
+            (nskk-prolog--prove-internal
+             (list (cadr goal)) subst
+             (lambda (_) (throw 'nskk-prolog-naf t)))
+            nil)
+    (nskk-prolog--prove-internal rest subst k)))
+
+;; assertz: dynamically adds a new fact/rule to the Prolog database at runtime.
+(nskk-define-goal-handler assertz (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) 'assertz))
+  :body
+  (nskk-prolog-assert
+   (list (nskk-prolog-substitute (cadr goal) subst)))
+  (nskk-prolog--prove-internal rest subst k))
+
+;; retract: removes the first matching fact/rule from the Prolog database.
+(nskk-define-goal-handler retract (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) 'retract))
+  :body
+  (when (nskk-prolog-retract
+         (nskk-prolog-substitute (cadr goal) subst))
+    (nskk-prolog--prove-internal rest subst k)))
+
+;; arith-compare: arithmetic ordering (<, >, =<, >=); both args must be ground numbers.
+(nskk-define-goal-handler arith-compare (goal rest subst k)
+  :match (and (consp goal) (memq (car goal) '(>= <= > <)))
+  :body
+  (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
+        (b (nskk-prolog--eval-arith (caddr goal) subst)))
+    (when (funcall (car goal) a b)
+      (nskk-prolog--prove-internal rest subst k))))
+
+;; arith-eq (=:=, =\=): arithmetic equality/inequality; both args must evaluate to numbers.
+(nskk-define-goal-handler arith-eq (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) '=:=))
+  :body
+  (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
+        (b (nskk-prolog--eval-arith (caddr goal) subst)))
+    (when (= a b)
+      (nskk-prolog--prove-internal rest subst k))))
+
+;; arith-is (is/2): evaluates right-hand expression and unifies result with left-hand variable.
+(nskk-define-goal-handler arith-is (goal rest subst k)
+  :match (and (consp goal) (eq (car goal) 'is))
+  :body
+  (let* ((new-subst (nskk-prolog-unify
+                     (cadr goal)
+                     (nskk-prolog--eval-arith (caddr goal) subst)
+                     subst)))
+    (unless (nskk-prolog--fail-p new-subst)
+      (nskk-prolog--prove-internal rest new-subst k))))
+
+;; normal (catch-all): standard clause resolution — variable rename, unify head, prove body.
+(nskk-define-goal-handler normal (goal rest subst k)
+  :match (progn goal t)
+  :body
+  (let* ((predicate (car goal))
+         (args (cdr goal))
+         (clauses (nskk-prolog--get-clauses predicate args subst)))
+    (dolist (clause clauses)
+      (let* ((counter (cl-incf nskk-prolog--var-counter))
+             (renamed (nskk-prolog--rename-variables clause counter))
+             (new-subst (nskk-prolog-unify goal (car renamed) subst)))
+        (unless (nskk-prolog--fail-p new-subst)
+          (catch 'nskk-prolog-cut
+            (nskk-prolog--prove-internal
+             (append (cdr renamed) rest)
+             new-subst k)))))))
+
 ;;;; Prove Engine
 
 (defun nskk-prolog--prove-internal (goals subst on-solution)
@@ -536,69 +692,8 @@ cut prevents only the goals *after* cut in the current clause body from
 being retried.  This differs from standard Prolog cut."
   (if (null goals)
       (funcall on-solution subst)
-    (let* ((goal (car goals))
-           (rest-goals (cdr goals)))
-      (cond
-       ;; Cut: prove remaining goals, then abort alternative clauses
-       ((eq goal '!)
-        (let ((found nil))
-          (catch 'nskk-prolog-cut
-            (nskk-prolog--prove-internal rest-goals subst
-              (lambda (s) (setq found t) (funcall on-solution s))))
-          (when found
-            (throw 'nskk-prolog-cut nil))))
-       ;; Negation-as-failure: succeed iff inner goal has no solution
-       ((and (consp goal) (eq (car goal) 'not))
-        (unless (catch 'nskk-prolog-naf
-                  (nskk-prolog--prove-internal
-                   (list (cadr goal)) subst
-                   (lambda (_) (throw 'nskk-prolog-naf t)))
-                  nil)
-          (nskk-prolog--prove-internal rest-goals subst on-solution)))
-       ;; assertz: assert a ground fact as a side-effect, then continue
-       ((and (consp goal) (eq (car goal) 'assertz))
-        (nskk-prolog-assert
-         (list (nskk-prolog-substitute (cadr goal) subst)))
-        (nskk-prolog--prove-internal rest-goals subst on-solution))
-       ;; retract: remove first matching clause as a side-effect, then continue
-       ((and (consp goal) (eq (car goal) 'retract))
-        (when (nskk-prolog-retract
-               (nskk-prolog-substitute (cadr goal) subst))
-          (nskk-prolog--prove-internal rest-goals subst on-solution)))
-       ;; Arithmetic comparisons: >=, <=, >, <
-       ((and (consp goal) (memq (car goal) '(>= <= > <)))
-        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
-              (b (nskk-prolog--eval-arith (caddr goal) subst)))
-          (when (funcall (car goal) a b)
-            (nskk-prolog--prove-internal rest-goals subst on-solution))))
-       ;; Arithmetic equality: =:=
-       ((and (consp goal) (eq (car goal) '=:=))
-        (let ((a (nskk-prolog--eval-arith (cadr goal) subst))
-              (b (nskk-prolog--eval-arith (caddr goal) subst)))
-          (when (= a b)
-            (nskk-prolog--prove-internal rest-goals subst on-solution))))
-       ;; Arithmetic assignment: (is ?var expr)
-       ((and (consp goal) (eq (car goal) 'is))
-        (let* ((new-subst (nskk-prolog-unify
-                           (cadr goal)
-                           (nskk-prolog--eval-arith (caddr goal) subst)
-                           subst)))
-          (unless (nskk-prolog--fail-p new-subst)
-            (nskk-prolog--prove-internal rest-goals new-subst on-solution))))
-       ;; Normal goal: retrieve candidate clauses and try each
-       (t
-        (let* ((predicate (car goal))
-               (args (cdr goal))
-               (clauses (nskk-prolog--get-clauses predicate args subst)))
-          (dolist (clause clauses)
-            (let* ((counter (cl-incf nskk-prolog--var-counter))
-                   (renamed (nskk-prolog--rename-variables clause counter))
-                   (new-subst (nskk-prolog-unify goal (car renamed) subst)))
-              (unless (nskk-prolog--fail-p new-subst)
-                (catch 'nskk-prolog-cut
-                  (nskk-prolog--prove-internal
-                   (append (cdr renamed) rest-goals)
-                   new-subst on-solution)))))))))))
+    (nskk-prolog--dispatch-goal
+     (car goals) (cdr goals) subst on-solution)))
 
 (defun nskk-prolog-prove (goals subst)
   "Prove GOALS under substitution SUBST using depth-first backtracking.
@@ -907,6 +1002,31 @@ Examples:
     `(nskk-prolog-assert
       (list ',head ,@(mapcar (lambda (g) `',g) real-body)))))
 
+(defmacro nskk-prolog-deffacts (predicate &rest fact-rows)
+  "Assert multiple Prolog facts for PREDICATE in a single declaration.
+PREDICATE is the predicate name symbol (not quoted).
+FACT-ROWS is a list of argument lists; each row becomes one fact.
+
+Each row (ARG...) expands to (nskk-prolog-<- (PREDICATE ARG...)).
+Facts are asserted in listing order, which determines first-match
+priority for hash- and list-indexed predicates.
+
+The caller must call `nskk-prolog-set-index' BEFORE this macro.
+Without it, the predicate falls back to O(N) list scan, which
+violates the <20μs query performance target.
+
+Example:
+  (nskk-prolog-set-index \\='key-action 3 :hash)
+  (nskk-prolog-deffacts key-action
+    (space converting next-candidate)
+    (space preedit   start-conversion)
+    (space normal    self-insert))"
+  (declare (indent 1) (debug t))
+  `(progn
+     ,@(mapcar (lambda (row)
+                 `(nskk-prolog-<- (,predicate ,@row)))
+               fact-rows)))
+
 (defmacro nskk-prolog-?- (goal)
   "Query the Prolog database and return the first solution.
 GOAL is (predicate arg1 ...) -- not quoted.
@@ -916,6 +1036,15 @@ Example:
   ;; => substitution alist for first solution"
   (declare (indent 0) (debug t))
   `(nskk-prolog-query-one ',goal))
+
+(defmacro nskk-when-prolog-holds (query &rest body)
+  "Execute BODY when Prolog QUERY has at least one solution.
+QUERY is a Prolog goal list (not quoted), e.g. `(valid-mode ,mode).
+Uses `nskk-prolog-query' (not `nskk-prolog-query-one') to avoid nil
+ambiguity for ground queries."
+  (declare (indent 1) (debug t))
+  `(when (nskk-prolog-query ,query)
+     ,@body))
 
 (provide 'nskk-prolog)
 

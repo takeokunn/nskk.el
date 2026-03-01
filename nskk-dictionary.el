@@ -66,6 +66,8 @@
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
 
+(defvar nskk-jisyo-files)
+
 (defgroup nskk-dictionary nil
   "Dictionary and search settings."
   :prefix "nskk-dict-"
@@ -467,7 +469,8 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
   (interactive)
   ;; Allow manual retry: retract previous initialization marker
   (nskk-prolog-retract-all 'dict-initialized 0)
-  (let ((dict-files (or nskk-dict-system-dictionary-files
+  (let ((dict-files (or nskk-jisyo-files
+                        nskk-dict-system-dictionary-files
                         (nskk-dict--detect-system-dictionaries))))
     (when dict-files
       (let ((nskk-dict-system-dictionary-files dict-files))

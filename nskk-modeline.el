@@ -29,7 +29,7 @@
 ;; Architecture:
 ;; - All mode display data (strings, faces, help text, cursor colors) is stored
 ;;   as unified `mode-properties/5' Prolog facts in nskk-state.el:
-;;     (mode-properties MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-COLOR-VAR)
+;;     (mode-properties MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-FACE)
 ;; - This module queries `mode-properties/5' at display time; it does not
 ;;   maintain its own separate Prolog predicates for mode data.
 ;; - The `nskk-define-mode-entry' macro defines only the face for each mode;
@@ -51,7 +51,7 @@
 ;; Customization:
 ;; - `nskk-modeline-format': Control the format string (%m = mode name).
 ;; - `nskk-use-color-cursor': Enable/disable cursor color changes.
-;; - `nskk-cursor-*-color': Cursor color per mode (defined in nskk-custom.el).
+;; - `nskk-cursor-*' faces: Cursor color per mode (defined in nskk-custom.el).
 
 ;;; Code:
 
@@ -170,17 +170,18 @@ Only calls `set-cursor-color' when the color actually changes."
   "Return cursor color string for input MODE, or nil if none is registered.
 MODE is a mode symbol such as `hiragana' or `ascii'.
 
-Looks up `mode-properties/5' for MODE to get the cursor color variable
-name (e.g. `nskk-cursor-hiragana-color').  That variable is then
-dereferenced via `symbol-value' so that runtime customization of
-`nskk-cursor-*-color' variables is picked up without reloading.
+Looks up `mode-properties/5' for MODE to get the cursor face symbol
+(e.g. `nskk-cursor-hiragana').  The face's :background attribute is
+then read via `face-attribute' with inheritance enabled.
 
-Returns nil when no `mode-properties/5' fact exists for MODE or when
-the resolved cursor-color variable is not bound."
-  (let ((color-var (nskk-prolog-query-value
-                    `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?c)))
-    (when (and color-var (boundp color-var))
-      (symbol-value color-var))))
+Returns nil when no `mode-properties/5' fact exists for MODE, when the
+face is not defined, or when the face's :background is `unspecified'."
+  (let ((cursor-face (nskk-prolog-query-value
+                      `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?c)))
+    (when (and cursor-face (facep cursor-face))
+      (let ((color (face-attribute cursor-face :background nil t)))
+        (unless (memq color '(nil unspecified))
+          color)))))
 
 (provide 'nskk-modeline)
 

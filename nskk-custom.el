@@ -41,6 +41,7 @@
 ;;   ├── nskk-state      (default mode, undo limit)
 ;;   ├── nskk-converter  (romaji style, sokuon, n-processing)
 ;;   ├── nskk-search     (sort method, fuzzy threshold, learning file)
+;;   ├── nskk-server     (host, port, coding-system, timeout) [defined in nskk-server.el]
 ;;   ├── nskk-cache      (strategy, capacity)  [defined in nskk-cache.el]
 ;;   ├── nskk-kana       (kana classification settings) [defined in nskk-kana.el]
 ;;   ├── nskk-dictionary (dict files, cache enable) [defined in nskk-dictionary.el]
@@ -51,13 +52,13 @@
 ;;       ├── nskk-candidate-window
 ;;       └── nskk-debug          (enabled, max-entries)
 ;;
-;; Cursor color variables (defined in this module):
+;; Cursor color faces (defined in this module):
 ;; - `nskk-use-color-cursor'
-;; - `nskk-cursor-hiragana-color'
-;; - `nskk-cursor-katakana-color'
-;; - `nskk-cursor-latin-color'
-;; - `nskk-cursor-jisx0208-latin-color'
-;; - `nskk-cursor-abbrev-color'
+;; - `nskk-cursor-hiragana'
+;; - `nskk-cursor-katakana'
+;; - `nskk-cursor-latin'
+;; - `nskk-cursor-jisx0208-latin'
+;; - `nskk-cursor-abbrev'
 
 ;;; Code:
 
@@ -87,11 +88,13 @@
                  (const :tag "Hiragana" hiragana)
                  (const :tag "Katakana" katakana)
                  (const :tag "Full-width Latin" jisx0208-latin))
+  :safe #'symbolp
   :group 'nskk-state)
 
 (defcustom nskk-state-undo-limit 100
   "Maximum number of undo operations to keep in history."
   :type 'integer
+  :safe #'integerp
   :group 'nskk-state)
 
 ;;;; Converter Settings
@@ -106,6 +109,7 @@
 (defcustom nskk-converter-use-sokuon t
   "Whether to enable automatic sokuon (small tsu) conversion."
   :type 'boolean
+  :safe #'booleanp
   :group 'nskk-converter)
 
 (defcustom nskk-converter-n-processing-mode 'smart
@@ -116,11 +120,13 @@
   :type '(choice (const :tag "Smart (auto)" smart)
                  (const :tag "Strict (nn required)" strict)
                  (const :tag "Loose (single n ok)" loose))
+  :safe #'symbolp
   :group 'nskk-converter)
 
 (defcustom nskk-converter-auto-start-henkan t
   "Whether to automatically start conversion on uppercase input."
   :type 'boolean
+  :safe #'booleanp
   :group 'nskk-converter)
 
 (defcustom nskk-converter-romaji-style 'standard
@@ -129,6 +135,7 @@
 \\='azik     - AZIK extended romaji with efficiency shortcuts"
   :type '(choice (const :tag "Standard SKK" standard)
                  (const :tag "AZIK" azik))
+  :safe #'symbolp
   :group 'nskk-converter)
 
 ;;;; Search Settings
@@ -145,31 +152,54 @@
   :type '(choice (const :tag "Frequency order" frequency)
                  (const :tag "Kana order" kana)
                  (const :tag "No sorting" none))
+  :safe #'symbolp
   :group 'nskk-search)
 
 (defcustom nskk-search-fuzzy-threshold 3
   "Maximum Levenshtein distance threshold for fuzzy search."
   :type 'integer
+  :safe #'integerp
   :group 'nskk-search)
 
 (defcustom nskk-search-enable-cache t
   "Enable search result caching when non-nil."
   :type 'boolean
+  :safe #'booleanp
   :group 'nskk-search)
 
 (defcustom nskk-search-learning-file "~/.emacs.d/nskk/learning.dat"
   "File path for persisting learning data."
   :type 'file
+  :safe #'stringp
   :group 'nskk-search)
 
 (defcustom nskk-search-auto-save t
   "When non-nil, automatically save learning data periodically."
   :type 'boolean
+  :safe #'booleanp
   :group 'nskk-search)
 
 (defcustom nskk-search-auto-save-interval 300
   "Auto-save interval in seconds for learning data."
   :type 'integer
+  :safe #'integerp
+  :group 'nskk-search)
+
+;;;; Multiple Jisyo (Dictionary Files) Settings
+
+(defcustom nskk-jisyo-files nil
+  "List of SKK dictionary file paths to load, in priority order.
+When non-nil, these files are loaded as system dictionaries in addition
+to any auto-detected dictionaries.  Each file should be a valid path to
+an SKK-format dictionary file (e.g. SKK-JISYO.L).
+
+Example configuration:
+  (setq nskk-jisyo-files
+        (list \"/path/to/SKK-JISYO.L\"
+              \"/path/to/SKK-JISYO.jinmei\"))
+
+DDSKK equivalent: skk-search-prog-list with multiple jisyo entries."
+  :type '(repeat file)
   :group 'nskk-search)
 
 ;;;; UI / Modeline Settings
@@ -179,43 +209,52 @@
   :prefix "nskk-modeline-"
   :group 'nskk-ui)
 
-(defcustom nskk-modeline-format "[%m]"
+(defcustom nskk-modeline-format " %m"
   "Modeline format string.
-%m is replaced with the mode name."
+%m is replaced with the mode name.
+The leading space follows the Emacs minor-mode lighter convention,
+separating the indicator from adjacent mode indicators in the mode line."
   :type 'string
+  :safe #'stringp
   :group 'nskk-modeline)
 
 (defcustom nskk-use-color-cursor t
   "Whether to change cursor color based on input mode."
   :type 'boolean
+  :safe #'booleanp
   :group 'nskk-ui)
 
-(defcustom nskk-cursor-hiragana-color
-  (if (eq (frame-parameter nil 'background-mode) 'dark) "coral4" "pink")
-  "Cursor color for hiragana mode."
-  :type 'color
+(defface nskk-cursor-hiragana
+  '((((background dark)) (:background "coral4"))
+    (t (:background "pink")))
+  "Cursor color face for hiragana mode.
+The :background attribute is used as the cursor color via `face-attribute'."
   :group 'nskk-ui)
 
-(defcustom nskk-cursor-katakana-color
-  (if (eq (frame-parameter nil 'background-mode) 'dark) "forestgreen" "green")
-  "Cursor color for katakana mode."
-  :type 'color
+(defface nskk-cursor-katakana
+  '((((background dark)) (:background "forestgreen"))
+    (t (:background "green")))
+  "Cursor color face for katakana mode.
+The :background attribute is used as the cursor color via `face-attribute'."
   :group 'nskk-ui)
 
-(defcustom nskk-cursor-latin-color
-  (if (eq (frame-parameter nil 'background-mode) 'dark) "ivory4" "gray")
-  "Cursor color for ASCII/latin mode."
-  :type 'color
+(defface nskk-cursor-latin
+  '((((background dark)) (:background "ivory4"))
+    (t (:background "gray")))
+  "Cursor color face for ASCII/latin mode.
+The :background attribute is used as the cursor color via `face-attribute'."
   :group 'nskk-ui)
 
-(defcustom nskk-cursor-jisx0208-latin-color "gold"
-  "Cursor color for full-width latin mode."
-  :type 'color
+(defface nskk-cursor-jisx0208-latin
+  '((t (:background "gold")))
+  "Cursor color face for full-width latin mode.
+The :background attribute is used as the cursor color via `face-attribute'."
   :group 'nskk-ui)
 
-(defcustom nskk-cursor-abbrev-color "royalblue"
-  "Cursor color for abbrev mode."
-  :type 'color
+(defface nskk-cursor-abbrev
+  '((t (:background "royalblue")))
+  "Cursor color face for abbrev mode.
+The :background attribute is used as the cursor color via `face-attribute'."
   :group 'nskk-ui)
 
 ;;;; Henkan (Conversion) Settings
@@ -227,20 +266,23 @@
 
 (defcustom nskk-henkan-show-candidates-nth 5
   "Number of SPC presses before showing candidate list.
-After this many candidates shown one-by-one, switch to echo area
-candidate list display with selection keys."
+After this many candidates shown one-by-one, switch to overlay
+candidate list display below the conversion region."
   :type 'integer
+  :safe #'integerp
   :group 'nskk-henkan)
 
 (defcustom nskk-henkan-number-to-display-candidates 7
   "Number of candidates to display per page in candidate list."
   :type 'integer
+  :safe #'integerp
   :group 'nskk-henkan)
 
 (defcustom nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l)
   "Selection keys for candidate list display.
-These keys allow direct candidate selection in the echo area list."
+These keys allow direct candidate selection in the overlay candidate list."
   :type '(repeat character)
+  :safe (lambda (v) (and (listp v) (cl-every #'characterp v)))
   :group 'nskk-henkan)
 
 ;;;; Candidate Window Settings
@@ -259,13 +301,17 @@ These keys allow direct candidate selection in the echo area list."
 
 (defcustom nskk-debug-enabled nil
   "Whether NSKK debug mode is enabled.
-When enabled, debug messages are logged to the *NSKK Debug* buffer."
+When enabled, debug messages are logged to the *NSKK Debug* buffer.
+Note: enabling this records individual keystrokes and dictionary query
+terms in the debug buffer for diagnostic purposes."
   :type 'boolean
+  :safe #'booleanp
   :group 'nskk-debug)
 
 (defcustom nskk-debug-max-entries 1000
   "Maximum number of log entries before trimming the debug buffer."
   :type 'integer
+  :safe #'integerp
   :group 'nskk-debug)
 
 (provide 'nskk-custom)

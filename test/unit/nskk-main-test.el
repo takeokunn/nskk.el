@@ -23,310 +23,180 @@
 (require 'nskk)
 (require 'nskk-test-framework)
 
-;;;
-;;; Minor Mode Tests
-;;;
+(nskk-describe "nskk-mode definition"
+  (nskk-it "is defined as a function"
+    (should (fboundp 'nskk-mode)))
 
-(nskk-deftest-unit main-nskk-mode-defined
-  "Test that nskk-mode is defined."
-  (should (fboundp 'nskk-mode)))
+  (nskk-it "is an interactive command"
+    (should (commandp 'nskk-mode)))
 
-(nskk-deftest-unit main-nskk-mode-is-command
-  "Test that nskk-mode is an interactive command."
-  (should (commandp 'nskk-mode)))
+  (nskk-it "enables nskk-mode in a buffer"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (should nskk-mode)))
 
-(nskk-deftest-unit main-nskk-mode-enable
-  "Test enabling nskk-mode in a buffer."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (should nskk-mode)))
+  (nskk-it "disables nskk-mode in a buffer"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (nskk-mode -1)
+      (should (not nskk-mode))))
 
-(nskk-deftest-unit main-nskk-mode-disable
-  "Test disabling nskk-mode in a buffer."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-mode -1)
-    (should (not nskk-mode))))
+  (nskk-it "toggles nskk-mode on and off"
+    (with-temp-buffer
+      (should (not nskk-mode))
+      (nskk-mode 1)
+      (should nskk-mode)
+      (nskk-mode 0)
+      (should (not nskk-mode)))))
 
-(nskk-deftest-unit main-nskk-mode-toggle-on-off
-  "Test toggling nskk-mode."
-  (with-temp-buffer
-    (should (not nskk-mode))
-    (nskk-mode 1)
-    (should nskk-mode)
-    (nskk-mode 0)
-    (should (not nskk-mode))))
+(nskk-describe "nskk-global-mode definition"
+  (nskk-it "is defined as a function"
+    (should (fboundp 'nskk-global-mode)))
 
-;;;
-;;; Global Mode Tests
-;;;
+  (nskk-it "is an interactive command"
+    (should (commandp 'nskk-global-mode))))
 
-(nskk-deftest-unit main-global-mode-defined
-  "Test that nskk-global-mode is defined."
-  (should (fboundp 'nskk-global-mode)))
+(nskk-describe "nskk-mode-map keymap"
+  (nskk-it "is defined as a keymap"
+    (should (keymapp nskk-mode-map)))
 
-(nskk-deftest-unit main-global-mode-is-command
-  "Test that nskk-global-mode is an interactive command."
-  (should (commandp 'nskk-global-mode)))
+  (nskk-it "has C-x C-j binding"
+    (should (lookup-key nskk-mode-map (kbd "C-x C-j"))))
 
-;;;
-;;; Keymap Tests
-;;;
+  (nskk-it "has C-j binding"
+    (should (lookup-key nskk-mode-map (kbd "C-j")))))
 
-(nskk-deftest-unit main-mode-map-defined
-  "Test that nskk-mode-map is defined."
-  (should (keymapp nskk-mode-map)))
+(nskk-deftest-table main-keymap-bindings
+  :columns (key expected-command)
+  :rows (("C-x C-j" nskk-toggle-mode)
+         ("C-j"     nskk-kakutei)
+         ("L"       nskk-handle-upper-l)
+         ("/"       nskk-handle-slash)
+         ("x"       nskk-handle-x)
+         ("C-g"     nskk-handle-cancel))
+  :body (should (eq expected-command (lookup-key nskk-mode-map (kbd key)))))
 
-(nskk-deftest-unit main-mode-map-has-toggle
-  "Test that mode map has C-x C-j binding."
-  (should (lookup-key nskk-mode-map (kbd "C-x C-j"))))
+(nskk-deftest-table main-command-existence
+  :columns (fn)
+  :rows ((nskk-toggle-mode)
+         (nskk-kakutei))
+  :body (progn
+          (should (fboundp fn))
+          (should (commandp fn))))
 
-(nskk-deftest-unit main-mode-map-has-kakutei
-  "Test that mode map has C-j binding."
-  (should (lookup-key nskk-mode-map (kbd "C-j"))))
+(nskk-describe "buffer-local state"
+  (nskk-it "creates state when enabling mode"
+    (nskk-with-test-buffer nil
+      (should nskk-current-state)
+      (should (nskk-state-p nskk-current-state))))
 
-(nskk-deftest-unit main-toggle-mode-bound
-  "Test that C-x C-j is bound to nskk-toggle-mode."
-  (should (eq (lookup-key nskk-mode-map (kbd "C-x C-j")) 'nskk-toggle-mode)))
+  (nskk-it "initializes state with default mode"
+    (nskk-with-test-buffer nil
+      (should (eq (nskk-state-mode nskk-current-state) nskk-state-default-mode)))))
 
-(nskk-deftest-unit main-kakutei-bound
-  "Test that C-j is bound to nskk-kakutei."
-  (should (eq (lookup-key nskk-mode-map (kbd "C-j")) 'nskk-kakutei)))
+(nskk-deftest-table main-internal-functions-exist
+  :columns (fn)
+  :rows ((nskk--enable)
+         (nskk--disable)
+         (nskk--turn-on-mode)
+         (nskk--setup-buffer)
+         (nskk--cleanup-buffer)
+         (nskk--post-command-handler))
+  :body (should (fboundp fn)))
 
-(nskk-deftest-unit main-upper-l-bound
-  "Test that L is bound to nskk-handle-upper-l."
-  (should (eq (lookup-key nskk-mode-map (kbd "L")) 'nskk-handle-upper-l)))
+(nskk-describe "nskk--turn-on-mode"
+  (nskk-it "skips minibuffers (function is callable)"
+    ;; nskk--turn-on-mode should skip minibuffers
+    ;; We just verify the function exists and is callable
+    (should (fboundp 'nskk--turn-on-mode))))
 
-(nskk-deftest-unit main-slash-bound
-  "Test that / is bound to nskk-handle-slash."
-  (should (eq (lookup-key nskk-mode-map (kbd "/")) 'nskk-handle-slash)))
+(nskk-deftest-table main-kakutei-to-hiragana-transitions
+  :description "C-j (kakutei) switches various modes to hiragana"
+  :columns (initial-mode)
+  :rows ((nil)
+         (latin)
+         (jisx0208-latin)
+         (abbrev))
+  :body (nskk-with-test-buffer initial-mode
+          (nskk-when  (nskk-kakutei))
+          (nskk-then  (nskk-should-mode 'hiragana))))
 
-(nskk-deftest-unit main-x-bound
-  "Test that x is bound to nskk-handle-x."
-  (should (eq (lookup-key nskk-mode-map (kbd "x")) 'nskk-handle-x)))
-
-(nskk-deftest-unit main-c-g-bound
-  "Test that C-g is bound to nskk-handle-cancel."
-  (should (eq (lookup-key nskk-mode-map (kbd "C-g")) 'nskk-handle-cancel)))
-
-;;;
-;;; Command Tests
-;;;
-
-(nskk-deftest-unit main-toggle-mode-exists
-  "Test that nskk-toggle-mode function exists."
-  (should (fboundp 'nskk-toggle-mode))
-  (should (commandp 'nskk-toggle-mode)))
-
-(nskk-deftest-unit main-kakutei-exists
-  "Test that nskk-kakutei function exists."
-  (should (fboundp 'nskk-kakutei))
-  (should (commandp 'nskk-kakutei)))
-
-;;;
-;;; Buffer State Tests
-;;;
-
-(nskk-deftest-unit main-enable-creates-state
-  "Test that enabling mode creates buffer-local state."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (should nskk-current-state)
-    (should (nskk-state-p nskk-current-state))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-state-has-default-mode
-  "Test that state starts with default mode."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (should (eq (nskk-state-mode nskk-current-state) nskk-state-default-mode))
-    (nskk-mode -1)))
-
-;;;
-;;; Internal Function Tests
-;;;
-
-(nskk-deftest-unit main-enable-function-exists
-  "Test that nskk--enable function exists."
-  (should (fboundp 'nskk--enable)))
-
-(nskk-deftest-unit main-disable-function-exists
-  "Test that nskk--disable function exists."
-  (should (fboundp 'nskk--disable)))
-
-(nskk-deftest-unit main-turn-on-mode-exists
-  "Test that nskk--turn-on-mode function exists."
-  (should (fboundp 'nskk--turn-on-mode)))
-
-(nskk-deftest-unit main-turn-on-mode-skips-minibuffer
-  "Test that turn-on-mode skips minibuffers."
-  ;; nskk--turn-on-mode should skip minibuffers
-  ;; We just verify the function exists and is callable
-  (should (fboundp 'nskk--turn-on-mode)))
-
-(nskk-deftest-unit main-setup-buffer-exists
-  "Test that nskk--setup-buffer function exists."
-  (should (fboundp 'nskk--setup-buffer)))
-
-(nskk-deftest-unit main-cleanup-buffer-exists
-  "Test that nskk--cleanup-buffer function exists."
-  (should (fboundp 'nskk--cleanup-buffer)))
-
-(nskk-deftest-unit main-post-command-handler-exists
-  "Test that nskk--post-command-handler function exists."
-  (should (fboundp 'nskk--post-command-handler)))
-
-;;;
-;;; Kakutei (Commit) Tests
-;;;
-
-(nskk-deftest-unit main-kakutei-enters-hiragana-from-ascii
-  "Test C-j (kakutei) switches to hiragana from ascii mode."
-  (with-temp-buffer
-    (nskk-mode 1)
-    ;; Default mode is ascii
-    (should (eq (nskk-state-mode nskk-current-state) 'ascii))
-    (nskk-kakutei)
-    ;; Should switch to hiragana
-    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-enters-hiragana-from-latin
-  "Test C-j (kakutei) switches to hiragana from latin mode."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-set-mode-latin)
-    (should (eq (nskk-state-mode nskk-current-state) 'latin))
-    (nskk-kakutei)
-    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-inserts-newline-in-hiragana
-  "Test C-j (kakutei) inserts a newline when already in hiragana with no preedit."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (electric-indent-local-mode -1)
-    (nskk-set-mode-hiragana)
-    (nskk-kakutei)
-    ;; Should stay in hiragana and insert a newline
-    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (should (string= (buffer-string) "\n"))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-inserts-newline-in-katakana
-  "Test C-j (kakutei) inserts a newline when in katakana with no preedit."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (electric-indent-local-mode -1)
-    (nskk-set-mode-katakana)
-    (nskk-kakutei)
-    ;; Should stay in katakana and insert a newline
-    (should (eq (nskk-state-mode nskk-current-state) 'katakana))
-    (should (string= (buffer-string) "\n"))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-inserts-newline-in-katakana-半角
-  "Test C-j (kakutei) inserts a newline when in katakana-半角 with no preedit."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (electric-indent-local-mode -1)
-    ;; No nskk-set-mode-katakana-半角 exists; use nskk-state-transition directly.
-    (nskk-state-transition nskk-current-state (nskk-state-mode nskk-current-state) 'katakana-半角)
-    ;; Verify the transition succeeded before testing kakutei behavior
-    (should (eq (nskk-state-mode nskk-current-state) 'katakana-半角))
-    (nskk-kakutei)
-    ;; Should stay in katakana-半角 and insert a newline
-    (should (eq (nskk-state-mode nskk-current-state) 'katakana-半角))
-    (should (string= (buffer-string) "\n"))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-enters-hiragana-from-jisx0208-latin
-  "Test C-j (kakutei) switches to hiragana from jisx0208-latin mode."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-set-mode-jisx0208-latin)
-    (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin))
-    (nskk-kakutei)
-    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-enters-hiragana-from-abbrev
-  "Test C-j (kakutei) switches to hiragana from abbrev mode."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-set-mode-abbrev)
-    (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
-    (nskk-kakutei)
-    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-clears-romaji-in-japanese-mode
-  "Test C-j (kakutei) clears pending romaji buffer when in hiragana."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-set-mode-hiragana)
-    (setq nskk--romaji-buffer "k")
-    (nskk-kakutei)
-    ;; Should clear the romaji buffer and stay in hiragana
-    (should (string= nskk--romaji-buffer ""))
-    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (nskk-mode -1)))
-
-(nskk-deftest-unit main-kakutei-commits-candidate-when-converting
-  "Test C-j (kakutei) commits the current candidate when in converting (▼) state."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-set-mode-hiragana)
-    ;; Simulate converting state by mocking nskk-converting-p
-    (cl-letf (((symbol-function 'nskk-converting-p) (lambda () t))
-              ((symbol-function 'nskk-commit-current) (lambda () (insert "確定"))))
+(nskk-describe "kakutei behavior"
+  (nskk-it "inserts a newline when already in hiragana with no preedit"
+    (nskk-with-test-buffer 'hiragana
+      (electric-indent-local-mode -1)
       (nskk-kakutei)
-      (should (string= (buffer-string) "確定")))
-    (nskk-mode -1)))
+      (nskk-should-mode 'hiragana)
+      (nskk-should-buffer "\n")))
 
-(nskk-deftest-unit main-kakutei-commits-preedit-when-in-preedit
-  "Test C-j (kakutei) commits preedit text when in preedit (▽) state."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-set-mode-hiragana)
-    ;; Simulate preedit state
-    (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
-              ((symbol-function 'nskk--has-preedit) (lambda () t))
-              ((symbol-function 'nskk-henkan-kakutei) (lambda () (insert "変換"))))
-      (nskk-kakutei)
-      (should (string= (buffer-string) "変換")))
-    (nskk-mode -1)))
+  (nskk-it "switches katakana to hiragana with no preedit"
+    (nskk-with-test-buffer 'katakana
+      (nskk-when  (nskk-kakutei))
+      (nskk-then  (nskk-should-mode 'hiragana))
+      (nskk-should-buffer "")))
 
-;;;
-;;; Toggle Mode Tests
-;;;
+  (nskk-it "switches katakana-半角 to hiragana with no preedit"
+    (nskk-with-test-buffer nil
+      ;; No nskk-set-mode-katakana-半角 exists; use nskk-state-transition directly.
+      (nskk-state-transition nskk-current-state (nskk-state-mode nskk-current-state) 'katakana-半角)
+      (nskk-given (nskk-should-mode 'katakana-半角))
+      (nskk-when  (nskk-kakutei))
+      (nskk-then  (nskk-should-mode 'hiragana))
+      (nskk-should-buffer "")))
 
-(nskk-deftest-unit main-toggle-mode-enables
-  "Test toggle-mode enables when off."
-  (with-temp-buffer
-    (nskk-mode -1)
-    (nskk-toggle-mode)
-    (should nskk-mode)
-    (nskk-mode -1)))
+  (nskk-it "clears pending romaji buffer in hiragana and stays in hiragana"
+    (nskk-with-test-buffer 'hiragana
+      (nskk-given (setq nskk--romaji-buffer "k"))
+      (nskk-when  (nskk-kakutei))
+      (nskk-then
+       (should (string= nskk--romaji-buffer ""))
+       (nskk-should-mode 'hiragana))))
 
-(nskk-deftest-unit main-toggle-mode-disables
-  "Test toggle-mode disables when on."
-  (with-temp-buffer
-    (nskk-mode 1)
-    (nskk-toggle-mode)
-    (should (not nskk-mode))))
+  (nskk-it "clears pending romaji buffer in katakana and stays in katakana"
+    ;; romaji-pending has higher priority than katakana-idle in the state classifier,
+    ;; so C-j with pending romaji does NOT switch mode to hiragana.
+    (nskk-with-test-buffer 'katakana
+      (nskk-given (setq nskk--romaji-buffer "k"))
+      (nskk-when  (nskk-kakutei))
+      (nskk-then
+       (should (string= nskk--romaji-buffer ""))
+       (nskk-should-mode 'katakana))))
 
-;;;
-;;; Module Feature Tests
-;;;
+  (nskk-it "commits current candidate when in converting state"
+    (nskk-with-test-buffer 'hiragana
+      (nskk-with-mocks ((nskk-converting-p (lambda () t))
+                        (nskk-commit-current (lambda () (insert "確定"))))
+        (nskk-kakutei)
+        (nskk-should-buffer "確定"))))
 
-(nskk-deftest-unit main-provides-feature
-  "Test that nskk provides its feature."
-  (should (featurep 'nskk)))
+  (nskk-it "commits preedit text when in preedit state"
+    (nskk-with-test-buffer 'hiragana
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk-henkan-kakutei (lambda () (insert "変換"))))
+        (nskk-kakutei)
+        (nskk-should-buffer "変換")))))
 
-(nskk-deftest-unit main-requires-state
-  "Test that nskk-state is loaded."
-  (should (featurep 'nskk-state)))
+(nskk-describe "nskk-toggle-mode"
+  (nskk-it "enables nskk-mode when off"
+    (with-temp-buffer
+      (nskk-mode -1)
+      (nskk-toggle-mode)
+      (should nskk-mode)
+      (nskk-mode -1)))
+
+  (nskk-it "disables nskk-mode when on"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (nskk-toggle-mode)
+      (should (not nskk-mode)))))
+
+(nskk-describe "module features"
+  (nskk-it "nskk provides its feature"
+    (should (featurep 'nskk)))
+
+  (nskk-it "nskk-state is loaded"
+    (should (featurep 'nskk-state))))
 
 (provide 'nskk-main-test)
 

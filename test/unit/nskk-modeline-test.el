@@ -15,7 +15,8 @@
 ;; - Indicator suffix text per mode (hiragana, katakana, abbrev, ascii, latin, jisx0208-latin)
 ;; - Face text-property per mode
 ;; - Prolog mode-properties/5 facts for all 6 modes (direct is not a valid mode)
-;; - nskk-cursor--mode-color returns non-nil for each mode
+;; - nskk-cursor--mode-color returns non-nil string for each mode
+;; - Cursor color faces (nskk-cursor-*) are defined and return valid colors
 ;; - nskk-modeline-format customization
 ;; - nskk-modeline-update callable without error
 ;; - Face definitions (facep)
@@ -56,51 +57,22 @@
 ;;; TR-003 — Indicator suffix matches expected text per mode
 ;;;
 
-(nskk-deftest-unit modeline-indicator-hiragana-suffix
-  "Test that hiragana mode indicator contains the expected suffix."
-  (let* ((nskk-current-state (nskk-state-create 'hiragana))
-         (indicator (nskk-modeline-indicator)))
-    (should (stringp indicator))
-    (should (string-suffix-p "]" indicator))
-    (should (string-match-p "かな" indicator))))
-
-(nskk-deftest-unit modeline-indicator-katakana-suffix
-  "Test that katakana mode indicator contains the expected suffix."
-  (let* ((nskk-current-state (nskk-state-create 'katakana))
-         (indicator (nskk-modeline-indicator)))
-    (should (stringp indicator))
-    (should (string-match-p "カナ" indicator))))
-
-(nskk-deftest-unit modeline-indicator-abbrev-suffix
-  "Test that abbrev mode indicator contains the expected suffix."
-  (let* ((nskk-current-state (nskk-state-create 'abbrev))
-         (indicator (nskk-modeline-indicator)))
-    (should (stringp indicator))
-    (should (string-match-p "aA" indicator))))
-
-(nskk-deftest-unit modeline-indicator-ascii-suffix
-  "Test that ascii mode indicator contains the expected suffix."
-  (let* ((nskk-current-state (nskk-state-create 'ascii))
-         (indicator (nskk-modeline-indicator)))
-    (should (stringp indicator))
-    (should (string-match-p "SKK" indicator))))
-
-(nskk-deftest-unit modeline-indicator-latin-suffix
-  "Test that latin mode indicator contains the expected suffix."
-  (let* ((nskk-current-state (nskk-state-create 'latin))
-         (indicator (nskk-modeline-indicator)))
-    (should (stringp indicator))
-    (should (string-match-p "SKK" indicator))))
-
-(nskk-deftest-unit modeline-indicator-jisx0208-latin-suffix
-  "Test that jisx0208-latin mode indicator contains the expected suffix."
-  (let* ((nskk-current-state (nskk-state-create 'jisx0208-latin))
-         (indicator (nskk-modeline-indicator)))
-    (should (stringp indicator))
-    (should (string-match-p "全英" indicator))))
+(nskk-deftest-table modeline-indicator-suffix
+  :columns (mode expected-pattern)
+  :rows ((hiragana "かな")
+         (katakana "カナ")
+         (abbrev "aA")
+         (ascii "SKK")
+         (latin "SKK")
+         (jisx0208-latin "全英"))
+  :body (nskk-with-state mode
+          (let ((indicator (nskk-modeline-indicator)))
+            (should (stringp indicator))
+            (should (string-prefix-p " " indicator))
+            (should (string-match-p expected-pattern indicator)))))
 
 ;;;
-;;; TR-003b — Indicator wraps in default format brackets
+;;; TR-003b — Indicator with explicit bracket format override
 ;;;
 
 (nskk-deftest-unit modeline-indicator-hiragana-bracket-format
@@ -125,79 +97,56 @@
 
 (nskk-deftest-unit modeline-indicator-hiragana-face
   "Test that hiragana indicator carries nskk-modeline-hiragana-face."
-  (let* ((nskk-current-state (nskk-state-create 'hiragana))
-         (indicator (nskk-modeline-indicator))
-         (face (get-text-property 0 'face indicator)))
-    (should (eq face 'nskk-modeline-hiragana-face))))
+  (nskk-with-state 'hiragana
+    (let* ((indicator (nskk-modeline-indicator))
+           (face (get-text-property 0 'face indicator)))
+      (should (eq face 'nskk-modeline-hiragana-face)))))
 
 (nskk-deftest-unit modeline-indicator-katakana-face
   "Test that katakana indicator carries nskk-modeline-katakana-face."
-  (let* ((nskk-current-state (nskk-state-create 'katakana))
-         (indicator (nskk-modeline-indicator))
-         (face (get-text-property 0 'face indicator)))
-    (should (eq face 'nskk-modeline-katakana-face))))
+  (nskk-with-state 'katakana
+    (let* ((indicator (nskk-modeline-indicator))
+           (face (get-text-property 0 'face indicator)))
+      (should (eq face 'nskk-modeline-katakana-face)))))
 
 (nskk-deftest-unit modeline-indicator-abbrev-face
   "Test that abbrev indicator carries nskk-modeline-abbrev-face."
-  (let* ((nskk-current-state (nskk-state-create 'abbrev))
-         (indicator (nskk-modeline-indicator))
-         (face (get-text-property 0 'face indicator)))
-    (should (eq face 'nskk-modeline-abbrev-face))))
+  (nskk-with-state 'abbrev
+    (let* ((indicator (nskk-modeline-indicator))
+           (face (get-text-property 0 'face indicator)))
+      (should (eq face 'nskk-modeline-abbrev-face)))))
 
 (nskk-deftest-unit modeline-indicator-jisx0208-latin-face
   "Test that jisx0208-latin indicator carries nskk-modeline-jisx0208-latin-face."
-  (let* ((nskk-current-state (nskk-state-create 'jisx0208-latin))
-         (indicator (nskk-modeline-indicator))
-         (face (get-text-property 0 'face indicator)))
-    (should (eq face 'nskk-modeline-jisx0208-latin-face))))
+  (nskk-with-state 'jisx0208-latin
+    (let* ((indicator (nskk-modeline-indicator))
+           (face (get-text-property 0 'face indicator)))
+      (should (eq face 'nskk-modeline-jisx0208-latin-face)))))
 
 (nskk-deftest-unit modeline-indicator-ascii-direct-face
   "Test that ascii indicator carries nskk-modeline-direct-face."
-  (let* ((nskk-current-state (nskk-state-create 'ascii))
-         (indicator (nskk-modeline-indicator))
-         (face (get-text-property 0 'face indicator)))
-    (should (eq face 'nskk-modeline-direct-face))))
+  (nskk-with-state 'ascii
+    (let* ((indicator (nskk-modeline-indicator))
+           (face (get-text-property 0 'face indicator)))
+      (should (eq face 'nskk-modeline-direct-face)))))
 
 (nskk-deftest-unit modeline-indicator-latin-direct-face
   "Test that latin indicator carries nskk-modeline-direct-face."
-  (let* ((nskk-current-state (nskk-state-create 'latin))
-         (indicator (nskk-modeline-indicator))
-         (face (get-text-property 0 'face indicator)))
-    (should (eq face 'nskk-modeline-direct-face))))
+  (nskk-with-state 'latin
+    (let* ((indicator (nskk-modeline-indicator))
+           (face (get-text-property 0 'face indicator)))
+      (should (eq face 'nskk-modeline-direct-face)))))
 
 ;;;
 ;;; TR-005 — Prolog mode-properties/5 has facts for all 6 modes
 ;;;
 
-(nskk-deftest-unit modeline-prolog-mode-info-hiragana
-  "Test that mode-properties/5 has a fact for hiragana."
-  (let ((result (nskk-prolog-query-one '(mode-properties hiragana \?s \?f \?h \?c))))
-    (should result)))
-
-(nskk-deftest-unit modeline-prolog-mode-info-katakana
-  "Test that mode-properties/5 has a fact for katakana."
-  (let ((result (nskk-prolog-query-one '(mode-properties katakana \?s \?f \?h \?c))))
-    (should result)))
-
-(nskk-deftest-unit modeline-prolog-mode-info-abbrev
-  "Test that mode-properties/5 has a fact for abbrev."
-  (let ((result (nskk-prolog-query-one '(mode-properties abbrev \?s \?f \?h \?c))))
-    (should result)))
-
-(nskk-deftest-unit modeline-prolog-mode-info-ascii
-  "Test that mode-properties/5 has a fact for ascii."
-  (let ((result (nskk-prolog-query-one '(mode-properties ascii \?s \?f \?h \?c))))
-    (should result)))
-
-(nskk-deftest-unit modeline-prolog-mode-info-latin
-  "Test that mode-properties/5 has a fact for latin."
-  (let ((result (nskk-prolog-query-one '(mode-properties latin \?s \?f \?h \?c))))
-    (should result)))
-
-(nskk-deftest-unit modeline-prolog-mode-info-jisx0208-latin
-  "Test that mode-properties/5 has a fact for jisx0208-latin."
-  (let ((result (nskk-prolog-query-one '(mode-properties jisx0208-latin \?s \?f \?h \?c))))
-    (should result)))
+(nskk-deftest-table modeline-prolog-mode-properties-exist
+  :columns (mode)
+  :rows ((hiragana) (katakana) (abbrev) (ascii) (latin) (jisx0208-latin))
+  :body (let ((result (nskk-prolog-query-one
+                       `(mode-properties ,mode \?s \?f \?h \?c))))
+          (should result)))
 
 (nskk-deftest-unit modeline-prolog-mode-info-direct
   "Test that `direct' is handled as an alias of ascii (no separate mode-properties fact)."
@@ -211,70 +160,27 @@
 ;;; TR-005 — Prolog mode-properties/5 returns correct strings per mode
 ;;;
 
-(nskk-deftest-unit modeline-prolog-mode-info-hiragana-string
-  "Test that mode-properties/5 returns the hiragana display string."
-  (let ((s (nskk-prolog-query-value '(mode-properties hiragana \?s \?f \?h \?c) '\?s)))
-    (should (string= s "かな"))))
-
-(nskk-deftest-unit modeline-prolog-mode-info-katakana-string
-  "Test that mode-properties/5 returns the katakana display string."
-  (let ((s (nskk-prolog-query-value '(mode-properties katakana \?s \?f \?h \?c) '\?s)))
-    (should (string= s "カナ"))))
-
-(nskk-deftest-unit modeline-prolog-mode-info-abbrev-string
-  "Test that mode-properties/5 returns the abbrev display string."
-  (let ((s (nskk-prolog-query-value '(mode-properties abbrev \?s \?f \?h \?c) '\?s)))
-    (should (string= s "aA"))))
-
-(nskk-deftest-unit modeline-prolog-mode-info-jisx0208-latin-string
-  "Test that mode-properties/5 returns the jisx0208-latin display string."
-  (let ((s (nskk-prolog-query-value '(mode-properties jisx0208-latin \?s \?f \?h \?c) '\?s)))
-    (should (string= s "全英"))))
-
-(nskk-deftest-unit modeline-prolog-mode-info-ascii-string
-  "Test that mode-properties/5 returns the ascii display string."
-  (let ((s (nskk-prolog-query-value '(mode-properties ascii \?s \?f \?h \?c) '\?s)))
-    (should (string= s "SKK"))))
+(nskk-deftest-table modeline-prolog-mode-display-string
+  :columns (mode expected-string)
+  :rows ((hiragana "かな")
+         (katakana "カナ")
+         (abbrev "aA")
+         (jisx0208-latin "全英")
+         (ascii "SKK"))
+  :body (let ((s (nskk-prolog-query-value
+                  `(mode-properties ,mode \?s \?f \?h \?c) '\?s)))
+          (should (string= s expected-string))))
 
 ;;;
 ;;; TR-006 — nskk-cursor--mode-color returns non-nil for each mode
 ;;;
 
-(nskk-deftest-unit modeline-cursor-color-hiragana
-  "Test that nskk-cursor--mode-color returns non-nil for hiragana."
-  (let ((color (nskk-cursor--mode-color 'hiragana)))
-    (should (stringp color))
-    (should (> (length color) 0))))
-
-(nskk-deftest-unit modeline-cursor-color-katakana
-  "Test that nskk-cursor--mode-color returns non-nil for katakana."
-  (let ((color (nskk-cursor--mode-color 'katakana)))
-    (should (stringp color))
-    (should (> (length color) 0))))
-
-(nskk-deftest-unit modeline-cursor-color-ascii
-  "Test that nskk-cursor--mode-color returns non-nil for ascii."
-  (let ((color (nskk-cursor--mode-color 'ascii)))
-    (should (stringp color))
-    (should (> (length color) 0))))
-
-(nskk-deftest-unit modeline-cursor-color-latin
-  "Test that nskk-cursor--mode-color returns non-nil for latin."
-  (let ((color (nskk-cursor--mode-color 'latin)))
-    (should (stringp color))
-    (should (> (length color) 0))))
-
-(nskk-deftest-unit modeline-cursor-color-jisx0208-latin
-  "Test that nskk-cursor--mode-color returns non-nil for jisx0208-latin."
-  (let ((color (nskk-cursor--mode-color 'jisx0208-latin)))
-    (should (stringp color))
-    (should (> (length color) 0))))
-
-(nskk-deftest-unit modeline-cursor-color-abbrev
-  "Test that nskk-cursor--mode-color returns non-nil for abbrev."
-  (let ((color (nskk-cursor--mode-color 'abbrev)))
-    (should (stringp color))
-    (should (> (length color) 0))))
+(nskk-deftest-table modeline-cursor-color-per-mode
+  :columns (mode)
+  :rows ((hiragana) (katakana) (ascii) (latin) (jisx0208-latin) (abbrev))
+  :body (let ((color (nskk-cursor--mode-color mode)))
+          (should (stringp color))
+          (should (> (length color) 0))))
 
 (nskk-deftest-unit modeline-cursor-color-direct
   "Test that nskk-cursor--mode-color returns nil for direct (no standalone mode-properties fact)."
@@ -288,8 +194,8 @@
 ;;;
 
 (nskk-deftest-unit modeline-format-default
-  "Test that the default nskk-modeline-format is \"[%m]\"."
-  (should (string= nskk-modeline-format "[%m]")))
+  "Test that the default nskk-modeline-format is \" %m\" (ddskk-compatible)."
+  (should (string= nskk-modeline-format " %m")))
 
 (nskk-deftest-unit modeline-format-custom-parens
   "Test that setting nskk-modeline-format to \"(%m)\" changes the indicator."
@@ -328,11 +234,11 @@
 
 (nskk-deftest-unit modeline-update-callable-with-state
   "Test that nskk-modeline-update does not error when nskk-current-state is set."
-  (let ((nskk-current-state (nskk-state-create 'hiragana))
-        (nskk--last-cursor-color nil))
-    (should-not (condition-case err
-                    (progn (nskk-modeline-update) nil)
-                  (error err)))))
+  (nskk-with-state 'hiragana
+    (let ((nskk--last-cursor-color nil))
+      (should-not (condition-case err
+                      (progn (nskk-modeline-update) nil)
+                    (error err))))))
 
 ;;;
 ;;; TR-009 — Face definitions
@@ -384,12 +290,12 @@
 
 (nskk-deftest-unit modeline-cursor-update-no-op-when-disabled
   "Test that nskk-cursor-update does nothing when nskk-use-color-cursor is nil."
-  (let ((nskk-use-color-cursor nil)
-        (nskk-current-state (nskk-state-create 'hiragana))
-        (nskk--last-cursor-color "initial"))
-    ;; Should return without error and without modifying nskk--last-cursor-color
-    (nskk-cursor-update)
-    (should (string= nskk--last-cursor-color "initial"))))
+  (nskk-with-state 'hiragana
+    (let ((nskk-use-color-cursor nil)
+          (nskk--last-cursor-color "initial"))
+      ;; Should return without error and without modifying nskk--last-cursor-color
+      (nskk-cursor-update)
+      (should (string= nskk--last-cursor-color "initial")))))
 
 ;;;
 ;;; TR-012 — nskk-modeline-indicator unknown mode fallback
@@ -397,7 +303,7 @@
 
 (nskk-deftest-unit modeline-indicator-unknown-mode-returns-string
   "Test that nskk-modeline-indicator returns a non-empty string for an unknown mode."
-  (let ((nskk-current-state (nskk-state-create 'hiragana)))
+  (nskk-with-state 'hiragana
     ;; Temporarily set state to a non-registered mode struct by mutating mode slot
     ;; We test the fallback via nskk-prolog-query-value returning nil for an unknown mode.
     (let ((result (nskk-prolog-query-value
@@ -472,6 +378,46 @@
                (indicator (nskk-modeline-indicator))
                (actual-face (get-text-property 0 'face indicator)))
           (should (eq actual-face expected-face))))
+
+;;;
+;;; TR-013 — Cursor color faces are defined with :background attributes
+;;;
+
+(nskk-deftest-unit modeline-cursor-face-hiragana-defined
+  "Test that nskk-cursor-hiragana face is defined."
+  (should (facep 'nskk-cursor-hiragana)))
+
+(nskk-deftest-unit modeline-cursor-face-katakana-defined
+  "Test that nskk-cursor-katakana face is defined."
+  (should (facep 'nskk-cursor-katakana)))
+
+(nskk-deftest-unit modeline-cursor-face-latin-defined
+  "Test that nskk-cursor-latin face is defined."
+  (should (facep 'nskk-cursor-latin)))
+
+(nskk-deftest-unit modeline-cursor-face-jisx0208-latin-defined
+  "Test that nskk-cursor-jisx0208-latin face is defined."
+  (should (facep 'nskk-cursor-jisx0208-latin)))
+
+(nskk-deftest-unit modeline-cursor-face-abbrev-defined
+  "Test that nskk-cursor-abbrev face is defined."
+  (should (facep 'nskk-cursor-abbrev)))
+
+(nskk-deftest-unit modeline-cursor-face-attribute-is-string
+  "Test that face-attribute on cursor faces returns a color string, not unspecified."
+  (dolist (face '(nskk-cursor-hiragana nskk-cursor-katakana
+                  nskk-cursor-latin nskk-cursor-jisx0208-latin
+                  nskk-cursor-abbrev))
+    (let ((color (face-attribute face :background nil t)))
+      (should (stringp color))
+      (should (not (memq color '(nil unspecified)))))))
+
+(nskk-deftest-unit modeline-cursor-mode-color-uses-face-attribute
+  "Test that nskk-cursor--mode-color returns face :background value for hiragana."
+  (let ((color (nskk-cursor--mode-color 'hiragana))
+        (face-color (face-attribute 'nskk-cursor-hiragana :background nil t)))
+    (should (stringp color))
+    (should (string= color face-color))))
 
 (provide 'nskk-modeline-test)
 

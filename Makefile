@@ -7,7 +7,7 @@ LOAD_PATH = -L . -L test -L test/integration -L test/unit -L test/e2e
 SRC = nskk.el nskk-custom.el nskk-state.el \
        nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
        nskk-converter.el nskk-debug.el \
-       nskk-search.el nskk-cache.el nskk-kana.el \
+       nskk-server.el nskk-search.el nskk-cache.el nskk-kana.el \
        nskk-henkan.el nskk-input.el \
        nskk-dictionary.el \
        nskk-azik.el nskk-prolog.el
@@ -27,13 +27,21 @@ INTEGRATION_SRC = test/integration/nskk-integration-test.el \
                   test/integration/nskk-dictionary-integration-pbt-test.el \
                   test/integration/nskk-okurigana-pbt-test.el \
                   test/integration/nskk-multi-buffer-pbt-test.el \
-                  test/integration/nskk-error-recovery-pbt-test.el
+                  test/integration/nskk-error-recovery-pbt-test.el \
+                  test/integration/nskk-henkan-pipeline-integration-test.el \
+                  test/integration/nskk-azik-integration-test.el \
+                  test/integration/nskk-search-cache-integration-test.el \
+                  test/integration/nskk-dict-registration-integration-test.el \
+                  test/integration/nskk-server-integration-test.el
 
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
 E2E_SRC = test/e2e/nskk-buffer-e2e-test.el \
            test/e2e/nskk-mode-transition-e2e-test.el \
            test/e2e/nskk-modeline-e2e-test.el \
-           test/e2e/nskk-registration-e2e-test.el
+           test/e2e/nskk-registration-e2e-test.el \
+           test/e2e/nskk-backspace-e2e-test.el \
+           test/e2e/nskk-navigation-e2e-test.el \
+           test/e2e/nskk-romaji-edge-e2e-test.el
 
 .PHONY: all compile test test-integration test-unit test-e2e lint lint-checkdoc lint-elsa package-lint clean
 

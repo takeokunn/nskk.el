@@ -61,249 +61,230 @@
 ;;;; C-j (nskk-kakutei) Tests
 ;;;;
 
-(nskk-deftest-e2e mode-cj-ascii-to-hiragana
-  "C-j from ascii mode → enters hiragana (direct-idle → enter-hiragana)."
-  (nskk-e2e-with-buffer nil nil
-    (nskk-e2e-assert-mode 'ascii)
-    (nskk-e2e-type "C-j")
-    (nskk-e2e-assert-mode 'hiragana)))
+(nskk-describe "C-j key transitions"
+  (nskk-it "switches from ascii to hiragana"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-assert-mode 'ascii)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana)))
 
-(nskk-deftest-e2e mode-cj-hiragana-idle-newline
-  "C-j from hiragana idle → inserts newline (japanese-idle → insert-newline)."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-assert-mode 'hiragana)
-    (nskk-e2e-type "C-j")
-    ;; Mode stays hiragana, a newline is inserted in buffer
-    (nskk-e2e-assert-mode 'hiragana)
-    (nskk-e2e-assert-buffer "\n")))
+  (nskk-it "inserts newline from hiragana idle"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "\n")))
 
-(nskk-deftest-e2e mode-cj-converting-commits
-  "C-j from converting (▼) commits the candidate without newline."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "Kanji")
-    (nskk-e2e-type "SPC")
-    (nskk-e2e-assert-converting)
-    ;; C-j in converting state → commit-candidate
-    (nskk-e2e-type "C-j")
-    (nskk-e2e-assert-not-converting)
-    (nskk-e2e-assert-buffer "漢字")))
+  (nskk-it "switches from katakana idle to hiragana"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-assert-mode 'katakana)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "")))
 
-(nskk-deftest-e2e mode-cj-latin-to-hiragana
-  "C-j from latin mode → enters hiragana."
-  (nskk-e2e-with-buffer 'latin nil
-    (nskk-e2e-assert-mode 'latin)
-    (nskk-e2e-type "C-j")
-    (nskk-e2e-assert-mode 'hiragana)))
+  (nskk-it "switches from hankaku-katakana idle to hiragana"
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (nskk-e2e-assert-mode 'katakana-半角)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "")))
+
+  (nskk-it "commits converting candidate without newline"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "漢字")))
+
+  (nskk-it "switches from latin to hiragana"
+    (nskk-e2e-with-buffer 'latin nil
+      (nskk-e2e-assert-mode 'latin)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana))))
 
 ;;;;
 ;;;; q Key (nskk-handle-q / nskk-toggle-japanese-mode) Tests
 ;;;;
 
-(nskk-deftest-e2e mode-q-hiragana-to-katakana
-  "q key from hiragana mode → switches to katakana."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-assert-mode 'hiragana)
-    (nskk-e2e-type "q")
-    (nskk-e2e-assert-mode 'katakana)))
+(nskk-describe "q key transitions"
+  (nskk-it "switches from hiragana to katakana"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-mode 'katakana)))
 
-(nskk-deftest-e2e mode-q-katakana-to-hiragana
-  "q key from katakana mode → switches to hiragana."
-  (nskk-e2e-with-buffer 'katakana nil
-    (nskk-e2e-assert-mode 'katakana)
-    (nskk-e2e-type "q")
-    (nskk-e2e-assert-mode 'hiragana)))
+  (nskk-it "switches from katakana to hiragana"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-assert-mode 'katakana)
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-mode 'hiragana)))
 
-(nskk-deftest-e2e mode-q-katakana-hankaku-to-hiragana
-  "q key from katakana-半角 mode → switches to hiragana.
-This verifies the bug fix: toggle-mode(katakana-半角, hiragana) Prolog rule."
-  (nskk-e2e-with-buffer 'katakana-半角 nil
-    (nskk-e2e-assert-mode 'katakana-半角)
-    (nskk-e2e-type "q")
-    (nskk-e2e-assert-mode 'hiragana)))
+  (nskk-it "switches from hankaku-katakana to hiragana"
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (nskk-e2e-assert-mode 'katakana-半角)
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-mode 'hiragana)))
 
-(nskk-deftest-e2e mode-q-ascii-self-insert
-  "q key from ascii mode → falls through to self-insert (inserts 'q')."
-  (nskk-e2e-with-buffer nil nil
-    (nskk-e2e-assert-mode 'ascii)
-    (nskk-e2e-type "q")
-    ;; In ascii mode, q is NOT a mode switch; it's self-inserted
-    (nskk-e2e-assert-mode 'ascii)
-    (nskk-e2e-assert-buffer "q")))
+  (nskk-it "self-inserts q in ascii mode"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-assert-mode 'ascii)
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-mode 'ascii)
+      (nskk-e2e-assert-buffer "q")))
 
-(nskk-deftest-e2e mode-q-toggle-idempotent
-  "q key twice: hiragana → katakana → hiragana (toggle idempotency)."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "q")
-    (nskk-e2e-assert-mode 'katakana)
-    (nskk-e2e-type "q")
-    (nskk-e2e-assert-mode 'hiragana)))
+  (nskk-it "toggles hiragana katakana hiragana idempotently"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-mode 'katakana)
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-mode 'hiragana)))
 
-(nskk-deftest-e2e mode-q-katakana-hankaku-input-works
-  "katakana-半角 mode: input routing works (bug fix: input-route rule added).
-Typing romaji in katakana-半角 mode should process via process-japanese."
-  (nskk-e2e-with-buffer 'katakana-半角 nil
-    ;; The input-route(katakana-半角, process-japanese) rule is now present.
-    ;; Typing 'a' should be routed through process-japanese.
-    ;; It produces hiragana kana (full half-width katakana conversion not yet implemented)
-    ;; but importantly it should NOT crash.
-    (condition-case err
-        (nskk-e2e-type "a")
-      (error
-       (ert-fail (format "katakana-半角 typing crashed: %s"
-                         (error-message-string err)))))
-    ;; Mode should still be katakana-半角
-    (nskk-e2e-assert-mode 'katakana-半角)))
+  (nskk-it "routes input correctly in katakana-半角 mode"
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (condition-case err
+          (nskk-e2e-type "a")
+        (error
+         (ert-fail (format "katakana-半角 typing crashed: %s"
+                           (error-message-string err)))))
+      (nskk-e2e-assert-mode 'katakana-半角))))
 
 ;;;;
 ;;;; l Key (nskk-handle-l) Tests
 ;;;;
 
-(nskk-deftest-e2e mode-l-hiragana-to-latin
-  "l key from hiragana mode → switches to latin/ascii mode."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-assert-mode 'hiragana)
-    (nskk-e2e-type "l")
-    ;; l triggers nskk-set-mode-latin in Japanese mode
-    (nskk-e2e-assert-mode 'latin)))
+(nskk-describe "l key transitions"
+  (nskk-it "switches from hiragana to latin"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-type "l")
+      (nskk-e2e-assert-mode 'latin)))
 
-(nskk-deftest-e2e mode-l-katakana-to-latin
-  "l key from katakana mode → switches to latin mode."
-  (nskk-e2e-with-buffer 'katakana nil
-    (nskk-e2e-type "l")
-    (nskk-e2e-assert-mode 'latin)))
+  (nskk-it "switches from katakana to latin"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-type "l")
+      (nskk-e2e-assert-mode 'latin)))
 
-(nskk-deftest-e2e mode-l-ascii-self-insert
-  "l key from ascii mode → falls through to self-insert."
-  (nskk-e2e-with-buffer nil nil
-    (nskk-e2e-type "l")
-    (nskk-e2e-assert-mode 'ascii)
-    (nskk-e2e-assert-buffer "l")))
+  (nskk-it "self-inserts l in ascii mode"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-type "l")
+      (nskk-e2e-assert-mode 'ascii)
+      (nskk-e2e-assert-buffer "l")))
 
-(nskk-deftest-e2e mode-l-latin-self-insert
-  "l key from latin mode → self-insert (inserts 'l')."
-  (nskk-e2e-with-buffer 'latin nil
-    (nskk-e2e-type "l")
-    ;; In latin mode, nskk-with-japanese-mode falls through to self-insert
-    (nskk-e2e-assert-buffer "l")))
+  (nskk-it "self-inserts l in latin mode"
+    (nskk-e2e-with-buffer 'latin nil
+      (nskk-e2e-type "l")
+      (nskk-e2e-assert-buffer "l"))))
 
 ;;;;
 ;;;; L Key (nskk-handle-upper-l) Tests
 ;;;;
 
-(nskk-deftest-e2e mode-upper-l-hiragana-to-jisx0208
-  "L key from hiragana mode → switches to jisx0208-latin mode."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "L")
-    (nskk-e2e-assert-mode 'jisx0208-latin)))
+(nskk-describe "shift-L key transitions"
+  (nskk-it "switches from hiragana to jisx0208-latin"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "L")
+      (nskk-e2e-assert-mode 'jisx0208-latin)))
 
-(nskk-deftest-e2e mode-upper-l-katakana-to-jisx0208
-  "L key from katakana mode → switches to jisx0208-latin mode."
-  (nskk-e2e-with-buffer 'katakana nil
-    (nskk-e2e-type "L")
-    (nskk-e2e-assert-mode 'jisx0208-latin)))
+  (nskk-it "switches from katakana to jisx0208-latin"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-type "L")
+      (nskk-e2e-assert-mode 'jisx0208-latin)))
 
-(nskk-deftest-e2e mode-upper-l-ascii-self-insert
-  "L key from ascii mode → self-insert."
-  (nskk-e2e-with-buffer nil nil
-    (nskk-e2e-type "L")
-    (nskk-e2e-assert-buffer "L")))
+  (nskk-it "self-inserts L in ascii mode"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-type "L")
+      (nskk-e2e-assert-buffer "L"))))
 
 ;;;;
 ;;;; / Key (nskk-handle-slash) Tests
 ;;;;
 
-(nskk-deftest-e2e mode-slash-hiragana-to-abbrev
-  "/ key from hiragana mode → switches to abbrev mode."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "/")
-    (nskk-e2e-assert-mode 'abbrev)))
+(nskk-describe "/ key transitions"
+  (nskk-it "switches from hiragana to abbrev"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)))
 
-(nskk-deftest-e2e mode-slash-ascii-self-insert
-  "/ key from ascii mode → self-insert."
-  (nskk-e2e-with-buffer nil nil
-    (nskk-e2e-type "/")
-    (nskk-e2e-assert-buffer "/")))
+  (nskk-it "self-inserts / in ascii mode"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-buffer "/"))))
 
 ;;;;
 ;;;; Complete Mode Transition Matrix
 ;;;;
 
-(nskk-deftest-e2e mode-transition-matrix
-  "Test all key-to-mode transitions from each Japanese mode."
-  ;; Test: from each mode, pressing each transition key → expected mode
-  (let ((transitions
-         '(;; From hiragana
-           (hiragana "q"   katakana)
-           (hiragana "l"   latin)
-           (hiragana "L"   jisx0208-latin)
-           (hiragana "/"   abbrev)
-           ;; From katakana
-           (katakana "q"   hiragana)
-           (katakana "l"   latin)
-           (katakana "L"   jisx0208-latin)
-           (katakana "/"   abbrev)
-           ;; From katakana-半角 (verifies bug fix)
-           (katakana-半角 "q" hiragana))))
-    (dolist (tc transitions)
-      (let ((from-mode (nth 0 tc))
-            (key       (nth 1 tc))
-            (to-mode   (nth 2 tc)))
-        (nskk-e2e-with-buffer from-mode nil
-          (nskk-e2e-type key)
-          (nskk-e2e-assert-mode to-mode
-                                (format "Transition: %S + %S → %S failed"
-                                        from-mode key to-mode)))))))
+(nskk-describe "mode transition matrix"
+  (nskk-it "covers all key-to-mode transitions from each Japanese mode"
+    (let ((transitions
+           '(;; From hiragana
+             (hiragana "q"   katakana)
+             (hiragana "l"   latin)
+             (hiragana "L"   jisx0208-latin)
+             (hiragana "/"   abbrev)
+             ;; From katakana
+             (katakana "q"   hiragana)
+             (katakana "l"   latin)
+             (katakana "L"   jisx0208-latin)
+             (katakana "/"   abbrev)
+             ;; From katakana-半角 (verifies bug fix)
+             (katakana-半角 "q" hiragana))))
+      (dolist (tc transitions)
+        (let ((from-mode (nth 0 tc))
+              (key       (nth 1 tc))
+              (to-mode   (nth 2 tc)))
+          (nskk-e2e-with-buffer from-mode nil
+            (nskk-e2e-type key)
+            (nskk-e2e-assert-mode to-mode
+                                  (format "Transition: %S + %S → %S failed"
+                                          from-mode key to-mode))))))))
 
 ;;;;
 ;;;; Mode After Conversion (Implicit Commit)
 ;;;;
 
-(nskk-deftest-e2e mode-q-during-conversion-commits-first
-  "q key from converting (▼) → commit current candidate, THEN toggle."
-  ;; nskk-with-japanese-mode checks (nskk-converting-p): commits first, then acts
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "Kanji")
-    (nskk-e2e-type "SPC")
-    (nskk-e2e-assert-converting)
-    ;; q during conversion → implicit commit, then toggle hiragana→katakana
-    (nskk-e2e-type "q")
-    (nskk-e2e-assert-not-converting)
-    ;; After implicit commit + toggle, should be in katakana
-    (nskk-e2e-assert-mode 'katakana)
-    ;; Buffer should contain committed text (漢字)
-    (nskk-e2e-assert-buffer "漢字")))
+(nskk-describe "implicit commit before mode switch from converting"
+  (nskk-it "q commits candidate first then toggles to katakana"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-mode 'katakana)
+      (nskk-e2e-assert-buffer "漢字")))
 
-(nskk-deftest-e2e mode-l-during-conversion-commits-first
-  "l key from converting (▼) → commit current candidate, THEN switch to latin."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "Kanji")
-    (nskk-e2e-type "SPC")
-    (nskk-e2e-assert-converting)
-    (nskk-e2e-type "l")
-    (nskk-e2e-assert-not-converting)
-    (nskk-e2e-assert-mode 'latin)
-    (nskk-e2e-assert-buffer "漢字")))
+  (nskk-it "l commits candidate first then switches to latin"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "l")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-mode 'latin)
+      (nskk-e2e-assert-buffer "漢字"))))
 
 ;;;;
 ;;;; RET in Various States
 ;;;;
 
-(nskk-deftest-e2e mode-ret-normal-inserts-newline
-  "RET in normal (non-converting) state inserts a newline."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "a")
-    (nskk-e2e-type "RET")
-    (nskk-e2e-assert-buffer "あ\n")))
+(nskk-describe "RET key behavior"
+  (nskk-it "inserts newline in normal non-converting state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "a")
+      (nskk-e2e-type "RET")
+      (nskk-e2e-assert-buffer "あ\n")))
 
-(nskk-deftest-e2e mode-ret-converting-commits-no-newline
-  "RET in converting (▼) state commits candidate without inserting newline."
-  (nskk-e2e-with-buffer 'hiragana nil
-    (nskk-e2e-type "Kanji")
-    (nskk-e2e-type "SPC")
-    (nskk-e2e-assert-converting)
-    (nskk-e2e-type "RET")
-    (nskk-e2e-assert-not-converting)
-    (nskk-e2e-assert-buffer "漢字")))
+  (nskk-it "commits candidate without newline from converting state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "RET")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "漢字"))))
 
 ;;;;
 ;;;; Property-Based Tests (PBT)

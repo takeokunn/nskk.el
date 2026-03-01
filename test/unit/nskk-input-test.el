@@ -801,15 +801,15 @@ Ensures the standard romaji table is loaded regardless of prior test state."
       (should-not (nskk--conversion-start-active-p)))))
 
 (nskk-deftest-unit input-commands-rollback-clears-marker
-  "Test that rollback clears the conversion start marker."
+  "Test that rollback keeps the start marker active (returns to preedit state)."
   (with-temp-buffer
     (nskk-input-test-with-state 'hiragana
       (nskk--set-conversion-start-marker (point-min))
       (insert "test")
       (nskk-state-force-henkan-phase nskk-current-state 'active)
       (nskk-rollback-conversion)
-      ;; Marker should be cleared
-      (should-not (nskk--conversion-start-active-p)))))
+      ;; Marker remains active: user is now back in preedit (▽) state
+      (should (nskk--conversion-start-active-p)))))
 
 ;;;
 ;;; Start Conversion Tests (Phase 2B)
@@ -1008,15 +1008,16 @@ When registration is cancelled (empty input), preedit is left as-is."
       (should (null (nskk-state-henkan-phase nskk-current-state))))))
 
 (nskk-deftest-unit input-commands-rollback-removes-on-marker
-  "Test that rollback removes the ▽ marker from buffer."
+  "Test that rollback from preedit (▽) state is a no-op for buffer content."
   (with-temp-buffer
     (nskk-input-test-with-state 'hiragana
       (nskk--set-conversion-start-marker (point-min))
       (insert "\u25BDtest")
-      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      ;; 'on (preedit) phase: nskk-converting-p returns nil, rollback is a no-op
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-rollback-conversion)
-      ;; ▽ marker should be removed
-      (should-not (string-match-p "\u25BD" (buffer-string))))))
+      ;; ▽ marker remains (rollback does not affect preedit state)
+      (should (string-match-p "\u25BD" (buffer-string))))))
 
 ;;;
 ;;; Okurigana Detection Tests

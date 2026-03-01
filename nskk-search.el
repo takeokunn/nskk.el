@@ -82,8 +82,10 @@
 (require 'nskk-cache)
 (require 'nskk-prolog)
 (require 'nskk-custom)
+(require 'nskk-debug nil t)
 
 (declare-function nskk-dict--entry-count "nskk-dictionary")
+(declare-function nskk-dict--struct-entry-count "nskk-dictionary")
 
 (defvar nskk-search-jisyo-hook nil
   "Hook run during dictionary search.
@@ -143,6 +145,7 @@ LIMIT is the maximum number of results."
 
   ;; 検索タイプのデフォルト値
   (setq search-type (or search-type 'exact))
+  (nskk-debug-log "[SEARCH] search: query=%s type=%s" query search-type)
 
   ;; Validate search type
   (unless (memq search-type '(exact prefix partial fuzzy))
@@ -177,14 +180,29 @@ OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
          (candidates (when pred
                        (nskk-prolog-query-value
                         `(,pred ,query \?candidates) '\?candidates))))
+    (nskk-debug-log "[SEARCH] exact: query=%s found=%s" query (if candidates t nil))
     (when candidates
       (let ((entry (make-nskk-dict-entry :key query :candidates candidates)))
-        (if (null okuri-type)
-            entry
-          (when (nskk-search--match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry))
-            entry))))))
+        (when (nskk-search--match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry))
+          entry)))))
 
 ;;; 前方一致検索
+
+(defsubst nskk-search--post-process-results (results okuri-type limit)
+  "Apply standard post-processing to RESULTS.
+Filters by OKURI-TYPE, removes duplicates, applies LIMIT, and sorts by
+`nskk-search-sort-method'.  Returns the processed result list."
+  (when okuri-type
+    (setq results
+          (cl-remove-if-not
+           (lambda (result)
+             (nskk-search--match-okuri-type-p
+              okuri-type (nskk-dict-entry-okuri (cdr result))))
+           results)))
+  (setq results (nskk-search--remove-duplicates results))
+  (when (and limit (> (length results) limit))
+    (setq results (seq-take results limit)))
+  (nskk-search--sort-results results))
 
 (defun nskk-search-prefix (index query okuri-type limit)
   "Perform prefix match search in INDEX for QUERY.
@@ -199,21 +217,8 @@ LIMIT is the maximum number of results."
                                    :key (car pair)
                                    :candidates (cdr pair))))
                           raw-results)))
-    ;; Filter by okuri-type if specified
-    (when okuri-type
-      (setq results
-            (cl-remove-if-not
-             (lambda (result)
-               (nskk-search--match-okuri-type-p
-                okuri-type (nskk-dict-entry-okuri (cdr result))))
-             results)))
-    ;; Remove duplicates
-    (setq results (nskk-search--remove-duplicates results))
-    ;; Apply limit
-    (when (and limit (> (length results) limit))
-      (setq results (seq-take results limit)))
-    ;; Sort
-    (nskk-search--sort-results results)))
+    (nskk-debug-log "[SEARCH] prefix: query=%s results=%d" query (length results))
+    (nskk-search--post-process-results results okuri-type limit)))
 
 (defun nskk-search--remove-duplicates (results)
   "Remove duplicate entries from RESULTS."
@@ -243,9 +248,8 @@ LIMIT is the maximum number of results."
                    (candidates (nskk-prolog-walk '\?candidates sol)))
               (when (string-match-p (regexp-quote query) key)
                 (let ((entry (make-nskk-dict-entry :key key :candidates candidates)))
-                  (when (or (null okuri-type)
-                            (nskk-search--match-okuri-type-p
-                             okuri-type (nskk-dict-entry-okuri entry)))
+                  (when (nskk-search--match-okuri-type-p
+                         okuri-type (nskk-dict-entry-okuri entry))
                     (push (cons key entry) results)
                     (cl-incf count)
                     (when (and limit (>= count limit))
@@ -411,7 +415,7 @@ LIMIT is the maximum number of results."
             (dolist (entry data)
               (when (= (length entry) 3)
                 (nskk-prolog-assert
-                 (list (cons 'learning-score entry)))))))))
+                 (list (cons 'learning-score entry)))))))))))
 
 ;;;###autoload
 (defun nskk-search-save-learning-data ()
@@ -447,6 +451,7 @@ Stores learning score as a Prolog learning-score/3 fact."
                        `(learning-score ,query ,word \?s) '\?s)))
          (new-score (1+ (or old-score 0))))
     (when word
+      (nskk-debug-log "[SEARCH] learn: query=%s word=%s new-score=%d" query word new-score)
       (when old-score
         (nskk-prolog-retract `(learning-score ,query ,word ,old-score)))
       (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score)))
@@ -481,7 +486,7 @@ Stores learning score as a Prolog learning-score/3 fact."
 OKURI-TYPE specifies okurigana filtering."
   (if (null search-type)
       ;; 全エントリ数
-      (nskk-dict--entry-count index okuri-type)
+      (nskk-dict--struct-entry-count index okuri-type)
     ;; 検索実行してカウント
     (let ((results (nskk-search index query search-type okuri-type nil)))
       (if (nskk-dict-entry-p results)
@@ -505,11 +510,16 @@ SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to `nskk-search'."
     (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
 
   (let ((cache-key (nskk-search--cache-key query search-type okuri-type)))
-    (or (nskk-cache-get cache cache-key)
+    (let ((cached (nskk-cache-get cache cache-key)))
+      (if cached
+          (progn
+            (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
+            cached)
+        (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
         (let ((result (nskk-search index query search-type okuri-type limit)))
           (when result
             (nskk-cache-put cache cache-key result))
-          result))))
+          result)))))
 
 (provide 'nskk-search)
 

@@ -26,16 +26,25 @@
 
 ;; Candidate display UI for NSKK (Layer 5: Presentation).
 ;;
-;; Layer position: L5 (Presentation) -- depends on nskk-prolog, nskk-henkan,
-;;   and nskk-custom.  Wired into the henkan pipeline via hooks in nskk.el.
+;; Layer position: L5 (Presentation) -- depends on nskk-prolog and nskk-custom.
+;;   Wired into the henkan pipeline via hooks in nskk.el.
 ;;
 ;; Implements ddskk-compatible candidate display:
 ;; - First N-1 candidates shown inline one-by-one with a ▼ marker
-;; - After the Nth SPC press, switches to echo area list with home-row
-;;   selection keys (a s d f j k l)
+;; - After the Nth SPC press, switches to overlay list display below
+;;   the conversion region with home-row selection keys (a s d f j k l)
 ;; - Shows [残り N] count for remaining candidates
 ;; - Supports page navigation (SPC = next page, x = prev page)
 ;; - Direct selection by pressing the corresponding key
+;;
+;; Display mechanism:
+;; - Uses an overlay `after-string' on a zero-length overlay anchored at the
+;;   end of `nskk--conversion-overlay'.  The after-string begins with \n so
+;;   the candidate list appears on the line below the preedit text.
+;; - Works on both terminal (TUI) and graphical (GUI) displays.
+;; - Zero external dependencies; uses Emacs built-in overlay API.
+;; - The overlay variable `nskk--candidate-overlay' is declared in
+;;   nskk-state.el (project convention: all overlay vars live there).
 ;;
 ;; Prolog predicates maintained by this module:
 ;; - `candidate-selection-key'/2: (candidate-selection-key KEY POSITION)
@@ -45,9 +54,9 @@
 ;;   key dispatch during candidate selection.
 ;;
 ;; Key public API:
-;; - `nskk-candidate-show-list'         Display a page of candidates in echo area
-;; - `nskk-candidate-hide-list'         Clear the echo area candidate display
-;; - `nskk-candidate-list-active-p'     Non-nil when candidate list is visible
+;; - `nskk-candidate-show-list'         Display a page of candidates via overlay
+;; - `nskk-candidate-hide-list'         Delete the candidate overlay
+;; - `nskk-candidate-list-active-p'     Non-nil when candidate overlay is visible
 ;; - `nskk-candidate-list-select-by-key' Return absolute index for a key press
 ;;
 ;; Hook integration:
@@ -61,21 +70,30 @@
 
 (require 'cl-lib)
 (require 'nskk-prolog)
-(require 'nskk-henkan)
 (require 'nskk-custom)
 
+(defvar nskk--conversion-overlay)  ;; defined in nskk-state.el
+(defvar nskk--candidate-overlay)   ;; defined in nskk-state.el
+
 ;;;; Prolog Candidate Key Selection Facts
+
+(defvar nskk--candidate-key-facts-initialized nil
+  "Non-nil when `candidate-selection-key'/2 Prolog facts have been asserted.
+Guards against duplicate assertions on file reload (e.g. `eval-buffer').")
 
 (defun nskk--candidate-init-key-facts ()
   "Initialize Prolog facts for `candidate-selection-key'/2.
 Source: `nskk-henkan-show-candidates-keys'.
 Maps each selection key character to its 0-based page position.
-Uses hash indexing for O(1) key dispatch during candidate selection."
-  (nskk-prolog-set-index 'candidate-selection-key 2 :hash)
-  (let ((i 0))
-    (dolist (k nskk-henkan-show-candidates-keys)
-      (nskk-prolog-assert `((candidate-selection-key ,k ,i)))
-      (cl-incf i))))
+Uses hash indexing for O(1) key dispatch during candidate selection.
+Idempotent: safe to call multiple times."
+  (unless nskk--candidate-key-facts-initialized
+    (nskk-prolog-set-index 'candidate-selection-key 2 :hash)
+    (let ((i 0))
+      (dolist (k nskk-henkan-show-candidates-keys)
+        (nskk-prolog-assert `((candidate-selection-key ,k ,i)))
+        (cl-incf i)))
+    (setq nskk--candidate-key-facts-initialized t)))
 
 (nskk--candidate-init-key-facts)
 
@@ -93,10 +111,42 @@ Uses hash indexing for O(1) key dispatch during candidate selection."
   "Current page in candidate list display (0-indexed).")
 
 (defvar-local nskk--candidate-list-active nil
-  "Non-nil when the echo area candidate list is active.")
+  "Non-nil when the candidate list overlay is currently displayed.")
+
+;;;; Overlay Display Helpers
+
+(defun nskk--candidate-build-string (page-candidates keys remaining)
+  "Build the overlay after-string for PAGE-CANDIDATES.
+KEYS is the list of selection key characters.
+REMAINING is the count of candidates beyond the current page.
+Returns a string starting with \\n to appear below the preedit line."
+  (let ((parts nil))
+    (cl-loop for cand in page-candidates
+             for key in keys
+             do (push (concat
+                       (propertize (format "%c:" key)
+                                   'face 'nskk-candidate-key-face)
+                       (propertize cand
+                                   'face 'nskk-candidate-face))
+                      parts))
+    (let ((display-str (string-join (nreverse parts) " ")))
+      (when (> remaining 0)
+        (setq display-str
+              (concat display-str (format " [残り %d]" remaining))))
+      (concat "\n" display-str))))
+
+(defun nskk--candidate-overlay-anchor ()
+  "Return the buffer position to anchor the candidate overlay.
+Uses the end of `nskk--conversion-overlay' when available,
+falling back to point when the conversion overlay is absent or deleted."
+  (or (and (overlayp nskk--conversion-overlay)
+           (overlay-end nskk--conversion-overlay))
+      (point)))
+
+;;;; Public API
 
 (defun nskk-candidate-show-list (candidates current-index)
-  "Display CANDIDATES in echo area starting at CURRENT-INDEX.
+  "Display CANDIDATES via overlay starting at CURRENT-INDEX.
 Shows candidates with home-row selection keys and a [残り N] remaining
 count when more candidates exist beyond the current page.
 Returns the page candidates (a sublist of CANDIDATES) for key mapping."
@@ -107,23 +157,14 @@ Returns the page candidates (a sublist of CANDIDATES) for key mapping."
          (page-end (min (+ page-start per-page) (length candidates)))
          (page-candidates (cl-subseq candidates page-start page-end))
          (remaining (- (length candidates) page-end))
-         (parts nil))
-    ;; Build the display string
-    (cl-loop for cand in page-candidates
-             for key in keys
-             do (push (concat
-                       (propertize (format "%c:" key) 'face 'nskk-candidate-key-face)
-                       (propertize cand 'face 'nskk-candidate-face))
-                      parts))
-    (let ((display-str (string-join (nreverse parts) " ")))
-      ;; Add remaining count
-      (when (> remaining 0)
-        (setq display-str
-              (concat display-str
-                      (format " [残り %d]" remaining))))
-      ;; Show in echo area (suppress *Messages* logging)
-      (let ((message-log-max nil))
-        (message "%s" display-str)))
+         (after-str (nskk--candidate-build-string page-candidates keys remaining))
+         (anchor (nskk--candidate-overlay-anchor)))
+    ;; Create or reuse the candidate overlay
+    (unless (overlayp nskk--candidate-overlay)
+      (setq nskk--candidate-overlay
+            (make-overlay anchor anchor nil t nil)))
+    (move-overlay nskk--candidate-overlay anchor anchor (current-buffer))
+    (overlay-put nskk--candidate-overlay 'after-string after-str)
     ;; Store state
     (setq nskk--candidate-list-active t)
     (setq nskk--candidate-list-page (/ current-index per-page))
@@ -131,15 +172,17 @@ Returns the page candidates (a sublist of CANDIDATES) for key mapping."
     page-candidates))
 
 (defun nskk-candidate-list-active-p ()
-  "Return non-nil if the echo area candidate list is currently displayed."
+  "Return non-nil if the candidate list overlay is currently displayed."
   nskk--candidate-list-active)
 
 (defun nskk-candidate-hide-list ()
-  "Hide the echo area candidate list."
+  "Hide the candidate list by deleting its overlay."
   (when nskk--candidate-list-active
+    (when (overlayp nskk--candidate-overlay)
+      (delete-overlay nskk--candidate-overlay)
+      (setq nskk--candidate-overlay nil))
     (setq nskk--candidate-list-active nil)
-    (setq nskk--candidate-list-page 0)
-    (message nil)))
+    (setq nskk--candidate-list-page 0)))
 
 (defun nskk-candidate-list-select-by-key (key candidates current-index)
   "Return the absolute index of the candidate selected by KEY.

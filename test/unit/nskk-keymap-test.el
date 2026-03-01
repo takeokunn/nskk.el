@@ -302,13 +302,18 @@
       (nskk-handle-slash)
       (should (equal (buffer-string) "/")))))
 
-(nskk-deftest-unit keymap-handle-x-inserts-when-not-converting
-  "Test handle-x self-inserts when not converting."
-  (with-temp-buffer
-    (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (last-command-event ?x))
+(nskk-deftest-unit keymap-handle-x-accumulates-romaji-when-not-converting
+  "Test handle-x routes through romaji processor when not converting.
+In hiragana idle, x is a romaji prefix for small kana (xa→ぁ, xi→ぃ, etc.),
+so it must be processed via nskk-self-insert rather than self-insert-command.
+After pressing x alone, the romaji buffer holds \"x\" and buffer is empty."
+  (nskk-with-test-buffer 'hiragana
+    (let ((last-command-event ?x))
       (nskk-handle-x)
-      (should (equal (buffer-string) "x")))))
+      ;; x alone is an incomplete romaji prefix; it accumulates in romaji buffer
+      (should (equal nskk--romaji-buffer "x"))
+      ;; Nothing is inserted into the buffer yet
+      (should (equal (buffer-string) "")))))
 
 (nskk-deftest-unit keymap-handle-cancel-keyboard-quit-when-not-converting
   "Test handle-cancel calls keyboard-quit when not converting."
@@ -353,7 +358,9 @@
         (should next-candidate-called)))))
 
 (nskk-deftest-unit keymap-handle-cancel-cancels-when-converting
-  "Test handle-cancel calls nskk-cancel-conversion when converting."
+  "Test handle-cancel calls nskk-cancel-conversion-to-reading when converting.
+C-g from conversion state uses nskk-cancel-conversion-to-reading to fully
+cancel (no ▽ marker restored), unlike the old rollback-to-preedit behavior."
   (with-temp-buffer
     (let ((nskk-current-state (nskk-state-create 'hiragana))
           (cancel-called nil))
@@ -362,7 +369,7 @@
       (setf (nskk-state-candidates nskk-current-state) '("result"))
       (setf (nskk-state-current-index nskk-current-state) 0)
       (nskk-state-force-henkan-phase nskk-current-state 'active)
-      (cl-letf (((symbol-function 'nskk-cancel-conversion)
+      (cl-letf (((symbol-function 'nskk-cancel-conversion-to-reading)
                  (lambda () (setq cancel-called t))))
         (nskk-handle-cancel)
         (should cancel-called)))))
@@ -393,6 +400,65 @@
       ;; Should have committed and entered latin
       (should-not (nskk-converting-p))
       (should (eq (nskk-state-mode nskk-current-state) 'latin)))))
+
+;;;
+;;; Abbrev Mode Regression Tests
+;;;
+
+(nskk-deftest-unit keymap-handle-l-inserts-in-abbrev-with-preedit
+  "Test handle-l self-inserts when in abbrev mode even with active preedit.
+Regression: 'l' in /email must not trigger latin mode switch.
+Before the fix, nskk--has-preedit fired branch 2 of nskk-with-japanese-mode
+regardless of mode, causing nskk-set-mode-latin to execute."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'abbrev))
+          (last-command-event ?l))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "\u25BDemai")
+      (nskk-state-set-henkan-phase nskk-current-state 'on)
+      (nskk-handle-l)
+      (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+      (should (string-suffix-p "l" (buffer-string))))))
+
+(nskk-deftest-unit keymap-handle-upper-l-inserts-in-abbrev-with-preedit
+  "Test handle-upper-l self-inserts when in abbrev mode with active preedit.
+Regression: 'L' in /email must not trigger jisx0208-latin mode switch."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'abbrev))
+          (last-command-event ?L))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "\u25BDemai")
+      (nskk-state-set-henkan-phase nskk-current-state 'on)
+      (nskk-handle-upper-l)
+      (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+      (should (string-suffix-p "L" (buffer-string))))))
+
+(nskk-deftest-unit keymap-handle-q-inserts-in-abbrev-with-preedit
+  "Test handle-q self-inserts when in abbrev mode with active preedit.
+Regression: 'q' in abbrev preedit must not trigger katakana toggle."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'abbrev))
+          (last-command-event ?q))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "\u25BDemai")
+      (nskk-state-set-henkan-phase nskk-current-state 'on)
+      (nskk-handle-q)
+      (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+      (should (string-suffix-p "q" (buffer-string))))))
+
+(nskk-deftest-unit keymap-handle-slash-inserts-in-abbrev-with-preedit
+  "Test handle-slash self-inserts when in abbrev mode with active preedit.
+Regression: '/' typed mid-word in abbrev preedit (e.g. /http://) must not
+re-enter abbrev mode or commit the partial preedit."
+  (with-temp-buffer
+    (let ((nskk-current-state (nskk-state-create 'abbrev))
+          (last-command-event ?/))
+      (nskk--set-conversion-start-marker (point-min))
+      (insert "\u25BDhttp:")
+      (nskk-state-set-henkan-phase nskk-current-state 'on)
+      (nskk-handle-slash)
+      (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+      (should (string-suffix-p "/" (buffer-string))))))
 
 ;;;
 ;;; Handler Function Existence Tests
@@ -461,29 +527,29 @@
     (let ((nskk--romaji-buffer "k"))
       (should (eq (nskk--current-kakutei-state) 'romaji-pending)))))
 
-(nskk-deftest-unit keymap-kakutei-state-japanese-idle
-  "Test nskk--current-kakutei-state returns japanese-idle in hiragana mode with no pending input."
+(nskk-deftest-unit keymap-kakutei-state-hiragana-idle
+  "Test nskk--current-kakutei-state returns hiragana-idle in hiragana mode with no pending input."
   (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
             ((symbol-function 'nskk--has-preedit) (lambda () nil)))
     (let ((nskk-current-state (nskk-state-create 'hiragana))
           (nskk--romaji-buffer ""))
-      (should (eq (nskk--current-kakutei-state) 'japanese-idle)))))
+      (should (eq (nskk--current-kakutei-state) 'hiragana-idle)))))
 
-(nskk-deftest-unit keymap-kakutei-state-japanese-idle-katakana
-  "Test nskk--current-kakutei-state returns japanese-idle in katakana mode."
+(nskk-deftest-unit keymap-kakutei-state-katakana-idle
+  "Test nskk--current-kakutei-state returns katakana-idle in katakana mode."
   (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
             ((symbol-function 'nskk--has-preedit) (lambda () nil)))
     (let ((nskk-current-state (nskk-state-create 'katakana))
           (nskk--romaji-buffer ""))
-      (should (eq (nskk--current-kakutei-state) 'japanese-idle)))))
+      (should (eq (nskk--current-kakutei-state) 'katakana-idle)))))
 
-(nskk-deftest-unit keymap-kakutei-state-japanese-idle-katakana-半角
-  "Test nskk--current-kakutei-state returns japanese-idle in katakana-半角 mode."
+(nskk-deftest-unit keymap-kakutei-state-katakana-idle-半角
+  "Test nskk--current-kakutei-state returns katakana-idle in katakana-半角 mode."
   (cl-letf (((symbol-function 'nskk-converting-p) (lambda () nil))
             ((symbol-function 'nskk--has-preedit) (lambda () nil)))
     (let ((nskk-current-state (nskk-state-create 'katakana-半角))
           (nskk--romaji-buffer ""))
-      (should (eq (nskk--current-kakutei-state) 'japanese-idle)))))
+      (should (eq (nskk--current-kakutei-state) 'katakana-idle)))))
 
 (nskk-deftest-unit keymap-kakutei-state-direct-idle
   "Test nskk--current-kakutei-state returns direct-idle in ascii mode with no pending input."

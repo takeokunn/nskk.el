@@ -53,6 +53,11 @@
 ;;
 ;;   M-x nskk-debug-show          ;; View the debug buffer
 ;;   M-x nskk-debug-clear         ;; Clear the debug buffer
+;;
+;; Log messages from other modules use a bracketed category prefix:
+;;   [INPUT]  -- nskk-input.el  (mode switching, romaji routing, kana conversion)
+;;   [HENKAN] -- nskk-henkan.el (candidate search, commit, registration)
+;;   [SEARCH] -- nskk-search.el (dictionary lookup, cache, learning)
 
 ;;; Code:
 
@@ -79,7 +84,9 @@ Safe to call even if nskk-debug module has issues."
     (condition-case err
         (nskk-debug--append (apply #'format format-string args))
       (error
-       (message "[NSKK-DEBUG-ERROR] %s" err)))))
+       (display-warning 'nskk
+                        (format "Debug logging error: %s" err)
+                        :warning)))))
 
 ;;;; Buffer Management
 

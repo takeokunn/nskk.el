@@ -49,7 +49,7 @@
 ;;
 ;; Prolog predicates provided by this module:
 ;; - `mode-properties/5'         -- unified mode descriptor
-;;     (mode display-string face help-text cursor-color-var)
+;;     (mode display-string face help-text cursor-face)
 ;;     Single source of truth for all mode display data.
 ;; - `valid-mode/1'              -- derived rule: succeeds iff mode has
 ;;     a mode-properties/5 fact; used as a guard in transition rules.
@@ -215,7 +215,7 @@ Slot defaults are sourced from state-slot-default Prolog facts."
 (defun nskk-state-valid-mode-p (mode)
   "Check if MODE is a valid NSKK mode."
   (and (symbolp mode)
-       (not (null (nskk-prolog-query `(valid-mode ,mode))))))
+       (nskk-prolog-query-one `(valid-mode ,mode))))
 
 (defun nskk-state-in-henkan-mode-p (state)
   "Check if STATE is currently in conversion mode.
@@ -225,7 +225,7 @@ Note: nil phase (the common case) short-circuits before the query."
   (nskk-with-state state
     (let ((phase (nskk-state-henkan-phase state)))
       (and phase
-           (not (null (nskk-prolog-query-one `(henkan-mode-phase ,phase))))))))
+           (nskk-prolog-query-one `(henkan-mode-phase ,phase))))))
 
 (defun nskk-state-henkan-on-p (state)
   "Check if STATE is in henkan-on phase (▽)."
@@ -358,6 +358,20 @@ Returns current candidate or nil if no candidates."
            (nskk-state-candidates state)))))
 
 ;; Metadata helpers
+(defmacro nskk-define-metadata-setter (field &optional docstring)
+  "Define `nskk-state-set-FIELD' as a metadata setter for FIELD.
+FIELD is a symbol naming the metadata key and the suffix of the generated function name.
+Optional DOCSTRING overrides the default documentation string.
+Generated function signature: (nskk-state-set-FIELD state value)"
+  (declare (indent 1) (debug t))
+  (let* ((fname (intern (format "nskk-state-set-%s" field)))
+         (doc (or docstring
+                  (format "Set %s in STATE metadata to VALUE." field))))
+    `(defun ,fname (state value)
+       ,doc
+       (nskk-with-state state
+         (nskk-state-put-metadata state ',field value)))))
+
 (defun nskk-state-get-metadata (state key)
   "Get metadata KEY from STATE."
   (nskk-with-state state
@@ -370,26 +384,12 @@ Returns current candidate or nil if no candidates."
           (plist-put (nskk-state-metadata state) key value))))
 
 ;; Additional state setters for layer integration
-(defun nskk-state-set-remaining-romaji (state value)
-  "Set remaining romaji in STATE metadata to VALUE."
-  (nskk-with-state state
-    (nskk-state-put-metadata state 'remaining-romaji value)))
-
-(defun nskk-state-set-kana-type (state value)
-  "Set kana type in STATE metadata to VALUE."
-  (nskk-with-state state
-    (nskk-state-put-metadata state 'kana-type value)))
-
-(defun nskk-state-set-width-type (state value)
-  "Set width type in STATE metadata to VALUE."
-  (nskk-with-state state
-    (nskk-state-put-metadata state 'width-type value)))
-
-(defun nskk-state-set-okurigana (state value)
+(nskk-define-metadata-setter remaining-romaji)
+(nskk-define-metadata-setter kana-type)
+(nskk-define-metadata-setter width-type)
+(nskk-define-metadata-setter okurigana
   "Set okurigana in STATE metadata to VALUE.
-VALUE should be the okurigana consonant (e.g., \\='k\\=' for \\='く\\=')."
-  (nskk-with-state state
-    (nskk-state-put-metadata state 'okurigana value)))
+VALUE should be the okurigana consonant (e.g., \\='k\\=' for \\='く\\=').")
 
 (defun nskk-state-get-okurigana (state)
   "Get okurigana from STATE metadata."
@@ -443,6 +443,14 @@ Unlike `nskk--conversion-overlay' which uses the \\='display property on a
 real buffer range, this overlay uses \\='after-string on a zero-length overlay
 at point -- no buffer text exists yet for the incomplete romaji sequence.")
 
+(defvar-local nskk--candidate-overlay nil
+  "Overlay for candidate list display (Phase 2: list selection mode).
+Zero-length overlay anchored at the end of the conversion overlay.
+Managed by `nskk-candidate-window.el'; declared here following the
+project convention that all buffer-local overlay variables live in
+nskk-state.el alongside `nskk--conversion-overlay' and
+`nskk--pending-romaji-overlay'.")
+
 (defvar-local nskk--henkan-count 0
   "Number of times SPC has been pressed during current conversion.")
 
@@ -458,27 +466,27 @@ Idempotent: subsequent calls are no-ops.
 Distinct from `nskk-state-initialize', which sets up buffer-local state."
   (unless nskk--state-prolog-initialized
     ;; Unified mode properties
-    ;; mode-properties/5: (MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-COLOR-VAR)
+    ;; mode-properties/5: (MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-FACE)
     ;; NOTE: Faces (nskk-modeline-*-face) are defined in nskk-modeline.el, which
     ;; is loaded after nskk-state.el.  Prolog facts store the face symbols as
     ;; data—they are not evaluated at assertion time, so forward references are safe.
-    ;; Similarly, cursor color variables are stored as symbols and dereferenced via
-    ;; `symbol-value' at runtime (see `nskk-cursor--mode-color' in nskk-modeline.el).
+    ;; Similarly, cursor face symbols are stored as data and dereferenced via
+    ;; `face-attribute' at runtime (see `nskk-cursor--mode-color' in nskk-modeline.el).
     (nskk-prolog-set-index 'mode-properties 5 :hash)
     (nskk-prolog-<- (mode-properties hiragana "かな" nskk-modeline-hiragana-face
-                                     "Hiragana input mode" nskk-cursor-hiragana-color))
+                                     "Hiragana input mode" nskk-cursor-hiragana))
     (nskk-prolog-<- (mode-properties katakana "カナ" nskk-modeline-katakana-face
-                                     "Katakana input mode" nskk-cursor-katakana-color))
+                                     "Katakana input mode" nskk-cursor-katakana))
     (nskk-prolog-<- (mode-properties katakana-半角 "ｶﾅ" nskk-modeline-katakana-face
-                                     "Half-width katakana input mode" nskk-cursor-katakana-color))
+                                     "Half-width katakana input mode" nskk-cursor-katakana))
     (nskk-prolog-<- (mode-properties abbrev "aA" nskk-modeline-abbrev-face
-                                     "Abbreviation mode" nskk-cursor-abbrev-color))
+                                     "Abbreviation mode" nskk-cursor-abbrev))
     (nskk-prolog-<- (mode-properties ascii "SKK" nskk-modeline-direct-face
-                                     "Direct/ASCII input mode" nskk-cursor-latin-color))
+                                     "Direct/ASCII input mode" nskk-cursor-latin))
     (nskk-prolog-<- (mode-properties latin "SKK" nskk-modeline-direct-face
-                                     "Direct/ASCII input mode" nskk-cursor-latin-color))
+                                     "Direct/ASCII input mode" nskk-cursor-latin))
     (nskk-prolog-<- (mode-properties jisx0208-latin "全英" nskk-modeline-jisx0208-latin-face
-                                     "Full-width latin input mode" nskk-cursor-jisx0208-latin-color))
+                                     "Full-width latin input mode" nskk-cursor-jisx0208-latin))
 
     ;; valid-mode/1: derived rule — a symbol is a valid mode iff it has a mode-properties fact.
     ;; Uses distinct variable names (?disp, ?face, ?help, ?cur) to avoid

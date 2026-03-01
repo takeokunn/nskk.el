@@ -377,14 +377,16 @@
     (ert-run-tests-batch test-selector)))
 
 (defun nskk-test-run-unit ()
-  "Run unit tests only."
+  "Run unit tests only.
+Matches both legacy nskk-deftest-unit names and BDD-style nskk-describe/nskk-it names."
   (interactive)
-  (nskk-test-run-all "^nskk-unit-"))
+  (nskk-test-run-all "^nskk-unit-\\|^nskk-it/"))
 
 (defun nskk-test-run-integration ()
-  "Run integration tests only."
+  "Run integration tests only.
+Matches legacy nskk-deftest-integration, property tests, and BDD-style names."
   (interactive)
-  (nskk-test-run-all "^nskk-integration-"))
+  (nskk-test-run-all "^nskk-integration-\\|^nskk-property-\\|^nskk-it/"))
 
 (defun nskk-test-run-performance ()
   "Run performance tests only."
@@ -481,7 +483,11 @@ Saves and restores the global database so tests don't leak."
 (defun nskk-test-create-mock-dict (&optional entries)
   "Create a mock dictionary index with ENTRIES via Prolog facts.
 ENTRIES is an alist of (key . candidates-list).
-If nil, uses a default set of common Japanese words."
+If nil, uses a default set of common Japanese words.
+
+WARNING: This function asserts facts under the production predicate
+`user-dict-entry'.  Always call within `nskk-prolog-test-with-isolated-db'
+or `nskk-with-mock-dict' to prevent Prolog database pollution."
   (let ((default-entries
          '(("かんじ" . ("漢字" "感じ" "幹事"))
            ("にほんご" . ("日本語"))
@@ -496,7 +502,7 @@ If nil, uses a default set of common Japanese words."
            ("かわ" . ("川" "河"))
            ("はな" . ("花" "鼻"))
            ("あめ" . ("雨" "飴"))))
-        (pred 'mock-dict-entry))
+        (pred 'user-dict-entry))
     (nskk-prolog-retract-all pred 2)
     (nskk-prolog-set-index pred 1 :trie)
     (dolist (entry (or entries default-entries))
@@ -520,6 +526,106 @@ initialized."
        ;; Assert dict-initialized so Prolog-based init guards pass
        (nskk-prolog-assert '((dict-initialized)))
        ,@body)))
+
+;;;;
+;;;; Convenience Test Macros
+;;;;
+
+(defmacro nskk-with-test-buffer (mode &rest body)
+  "Execute BODY in a temp buffer with `nskk-mode' enabled.
+MODE is an optional initial mode symbol such as \\='hiragana, \\='katakana,
+or \\='ascii.  When non-nil the corresponding `nskk-set-mode-MODE' function
+is called immediately after enabling the mode.  Pass nil to keep the
+default (ascii) mode that `nskk-mode' starts in.
+
+`nskk-mode' is always disabled in an `unwind-protect' clause so that
+test failures do not leave the buffer in a broken state."
+  (declare (indent 1))
+  `(with-temp-buffer
+     (nskk-mode 1)
+     (when ,mode
+       (let ((setter (intern (format "nskk-set-mode-%s" (symbol-name ,mode)))))
+         (funcall setter)))
+     (unwind-protect
+         (progn ,@body)
+       (nskk-mode -1))))
+
+(defmacro nskk-with-state (mode &rest body)
+  "Execute BODY with `nskk-current-state' bound to a fresh state for MODE.
+Unlike `nskk-with-test-buffer', this does not open a buffer or enable
+`nskk-mode'; it is intended for pure-functional tests that only need a
+state struct (e.g., modeline, cursor colour).  When MODE is nil,
+`nskk-current-state' is bound to nil."
+  (declare (indent 1))
+  `(let ((nskk-current-state (when ,mode (nskk-state-create ,mode))))
+     ,@body))
+
+(defmacro nskk-with-mocks (bindings &rest body)
+  "Execute BODY with function mocks defined by BINDINGS.
+BINDINGS is a list of (FUNCTION-SYMBOL MOCK-FORM) pairs.  Each binding
+temporarily replaces the named function with MOCK-FORM (which may be a
+lambda or any other callable), then automatically restores the original
+definition when BODY exits — even on error.
+
+Example:
+  (nskk-with-mocks ((nskk-converting-p (lambda () t))
+                    (nskk-commit-current (lambda () (insert \"確定\"))))
+    (nskk-kakutei)
+    (should (string= (buffer-string) \"確定\")))"
+  (declare (indent 1))
+  `(cl-letf ,(mapcar (lambda (b)
+                       `((symbol-function ',(car b)) ,(cadr b)))
+                     bindings)
+     ,@body))
+
+(defmacro nskk-with-prolog-entries (entries &rest body)
+  "Execute BODY in an isolated Prolog database pre-loaded with ENTRIES.
+ENTRIES is a list of (PREDICATE KEY VALUES) triples where PREDICATE is an
+unquoted symbol, KEY is a string, and VALUES is a list.  The database is
+snapshot-copied and restored after BODY, so no test facts leak.
+
+Example:
+  (nskk-with-prolog-entries ((user-dict-entry \"かんじ\" (\"漢字\" \"感じ\"))
+                             (user-dict-entry \"さくら\" (\"桜\")))
+    (let ((idx (make-nskk-dict-index :predicate \\='user-dict-entry)))
+      (should (nskk-search idx \"かんじ\" \\='exact))))"
+  (declare (indent 1))
+  `(nskk-prolog-test-with-isolated-db
+     ,@(mapcar (lambda (e)
+                 `(progn
+                    (nskk-prolog-set-index ',(nth 0 e) 2 :trie)
+                    (nskk-prolog-assert (list (list ',(nth 0 e)
+                                                   ,(nth 1 e)
+                                                   ',(nth 2 e))))))
+               entries)
+     ,@body))
+
+
+;;;;
+;;;; Domain-Specific Assertions
+;;;;
+
+(defmacro nskk-should-mode (expected-mode)
+  "Assert that the current nskk mode equals EXPECTED-MODE.
+Reads `nskk-current-state' and compares with `nskk-state-mode'."
+  `(should (eq (nskk-state-mode nskk-current-state) ,expected-mode)))
+
+(defmacro nskk-should-buffer (expected)
+  "Assert that the current buffer's entire content equals the EXPECTED string."
+  `(should (string= (buffer-string) ,expected)))
+
+(defmacro nskk-should-equal (expected actual)
+  "Assert that EXPECTED and ACTUAL are `equal'."
+  `(should (equal ,expected ,actual)))
+
+(defmacro nskk-should-candidates (expected result)
+  "Assert that RESULT is a `nskk-dict-entry' whose candidates list equals EXPECTED.
+EXPECTED is a list of candidate strings; RESULT is the value returned by a
+search function such as `nskk-search'."
+  `(progn
+     (should (nskk-dict-entry-p ,result))
+     (should (equal (nskk-dict-entry-candidates ,result) ,expected))))
+
 
 (provide 'nskk-test-framework)
 

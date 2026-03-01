@@ -101,7 +101,24 @@
     ("に"      . ("荷" "二" "似"))
     ("ぬ"      . ("ぬ"))
     ("ね"      . ("根" "値" "寝"))
-    ("の"      . ("野" "乃" "農")))
+    ("の"      . ("野" "乃" "農"))
+    ;; Okurigana (okuri-ari) entries: key = hiragana-stem + lowercase-consonant
+    ;; Candidates contain only the kanji stem; the okurigana kana is appended by
+    ;; the input pipeline from the okurigana buffer.
+    ("できr"  . ("出来"))
+    ("みr"    . ("見"))
+    ("かk"    . ("書"))
+    ("おくr"  . ("送"))
+    ("はしr"  . ("走"))
+    ("よm"    . ("読"))
+    ("きk"    . ("聞"))
+    ("いk"    . ("行"))
+    ("くr"    . ("来"))
+    ("おもw"  . ("思"))
+    ("はなs"  . ("話"))
+    ("とr"    . ("取"))
+    ("たべr"  . ("食"))
+    ("はびこr" . ("蔓延")))
   "Default mock dictionary for E2E tests.
 Uses alist of (reading . candidates-list).
 Entries are asserted as user-dict-entry facts, which are visible to

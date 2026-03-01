@@ -59,7 +59,12 @@
 ;;   abbrev, jisx0208-latin.
 ;;
 ;; Dictionary configuration:
-;;   (setq nskk-dict-file "/path/to/SKK-JISYO.L")
+;;   (setq nskk-jisyo-files
+;;         (list "/path/to/SKK-JISYO.L" "/path/to/SKK-JISYO.jinmei"))
+;;
+;; SKK server (skkserv) configuration (optional):
+;;   (setq nskk-server-enable t)
+;;   (setq nskk-server-host "localhost")
 
 ;;; Code:
 
@@ -79,6 +84,7 @@
 
 ;; Optional
 (require 'nskk-debug nil t)
+(require 'nskk-server nil t)
 
 (declare-function nskk-set-mode-hiragana "nskk-input")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
@@ -86,6 +92,11 @@
 (declare-function nskk--current-kakutei-state "nskk-keymap")
 (declare-function nskk--maybe-load-azik-style "nskk-input")
 (declare-function nskk-dict--maybe-save "nskk-dictionary")
+(declare-function nskk-handle-ctrl-a "nskk-keymap")
+(declare-function nskk-handle-ctrl-e "nskk-keymap")
+(declare-function nskk-converting-p "nskk-henkan")
+(declare-function nskk--get-conversion-start "nskk-henkan")
+(declare-function nskk-commit-current "nskk-henkan")
 
 (defvar nskk-mode-hook nil
   "Hook run when NSKK mode is enabled.
@@ -126,6 +137,10 @@ DDSKK equivalent: skk-input-mode-hook")
   "<left>"  #'nskk-handle-ctrl-b
   "<down>"  #'nskk-handle-ctrl-n
   "<up>"    #'nskk-handle-ctrl-p
+  "C-a"     #'nskk-handle-ctrl-a
+  "<home>"  #'nskk-handle-ctrl-a
+  "C-e"     #'nskk-handle-ctrl-e
+  "<end>"   #'nskk-handle-ctrl-e
   "C-g"     #'nskk-handle-cancel
   "DEL"     #'nskk-handle-backspace)
 
@@ -190,6 +205,9 @@ This provides global bindings that work even when nskk-mode is not yet active."
   "Disable NSKK in current buffer."
   (run-hooks 'nskk-mode-off-hook)
   (nskk--cleanup-buffer)
+  (remove-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
+  (remove-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
+  (setq nskk-henkan-select-candidate-by-key-function nil)
   (setq nskk-current-state nil))
 
 (defun nskk--turn-on-mode ()
@@ -207,8 +225,27 @@ This provides global bindings that work even when nskk-mode is not yet active."
   (remove-hook 'post-command-hook #'nskk--post-command-handler t))
 
 (defun nskk--post-command-handler ()
-  "Handle post-command hook for NSKK state update."
+  "Handle post-command hook for NSKK state update.
+Also guards against point escaping the conversion region (▼) due to
+unmapped cursor-movement commands (mouse clicks, C-a, scroll, etc.).
+When point drifts outside [conversion-start .. overlay-end] while
+converting, performs an implicit kakutei (確定) identical to DDSKK
+behaviour.  Named nskk handlers (C-f, C-b, etc.) already call
+`nskk-commit-current' explicitly before moving, so by the time this
+hook fires for them, `nskk-converting-p' is already nil and this guard
+is a no-op."
   (when (and nskk-mode nskk-current-state)
+    ;; Point-escape guard: if converting and point moved outside the
+    ;; conversion region, commit the current candidate (implicit kakutei).
+    (when (nskk-converting-p)
+      (let* ((conv-start (nskk--get-conversion-start))
+             (overlay-end (when (and (boundp 'nskk--conversion-overlay)
+                                     (overlayp nskk--conversion-overlay))
+                            (overlay-end nskk--conversion-overlay))))
+        (when (and conv-start overlay-end
+                   (or (< (point) conv-start)
+                       (> (point) overlay-end)))
+          (nskk-commit-current))))
     (nskk-modeline-update)))
 
 ;; User commands
@@ -229,7 +266,8 @@ Dispatches via the `kakutei-action/2' Prolog predicate based on state:
 - converting (▼): commit current candidate
 - preedit (▽): commit preedit text as-is
 - romaji-pending: flush incomplete romaji buffer
-- japanese-idle (hiragana/katakana/katakana-半角): insert newline
+- hiragana-idle (hiragana): insert newline
+- katakana-idle (katakana/katakana-半角): switch to hiragana
 - direct-idle (ascii/latin/jisx0208-latin/abbrev): switch to hiragana"
   (interactive)
   (let* ((state (nskk--current-kakutei-state))

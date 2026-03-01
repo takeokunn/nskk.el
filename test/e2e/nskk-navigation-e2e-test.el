@@ -1,0 +1,214 @@
+;;; nskk-navigation-e2e-test.el --- E2E navigation key tests for NSKK  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2026 NSKK Contributors
+
+;; Author: takeokunn <bararararatty@gmail.com>
+;; Maintainer: takeokunn <bararararatty@gmail.com>
+;; URL: https://github.com/takeokunn/nskk.el
+;; Keywords: i18n, testing
+
+;; This file is NOT part of GNU Emacs.
+
+;; This program is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; E2E navigation key tests for NSKK.
+;;
+;; Tests C-f (nskk-handle-ctrl-f) and C-b (nskk-handle-ctrl-b) via
+;; actual key dispatch, covering all three dispatch states:
+;;   converting (▼) -- kakutei-then-forward / kakutei-then-backward
+;;   preedit (▽)    -- plain forward-char / backward-char
+;;   normal          -- plain forward-char / backward-char
+;;
+;; Sections:
+;;   1. C-f in converting (▼) state -- kakutei-then-forward
+;;   2. C-b in converting (▼) state -- kakutei-then-backward
+;;   3. C-f in preedit and normal states -- plain forward-char
+;;   4. C-b in preedit and normal states -- plain backward-char
+;;   5. C-f / C-b sequence tests
+
+;;; Code:
+
+(require 'ert)
+(require 'nskk-e2e-helpers)
+(require 'nskk-test-macros)
+(eval-when-compile (require 'cl-lib))
+
+;;;;
+;;;; Section 1: C-f in converting (▼) state -- kakutei-then-forward
+;;;;
+
+(nskk-describe "C-f in converting state"
+  (nskk-it "commits candidate and moves point forward"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Type "Kanji" → enter ▽ preedit (かんじ), then SPC → enter ▼ converting
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      ;; C-f: kakutei-then-forward -- commit 漢字, then forward-char
+      (nskk-e2e-type "C-f")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "漢字")
+      ;; nskk-commit-current replaces ▼かんじ (pos 1-5) with 漢字 (pos 1-3).
+      ;; forward-char at end-of-buffer is silently swallowed; point stays at end.
+      (should (= (point) (point-max)))))
+
+  (nskk-it "leaves point at end of buffer after commit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-type "C-f")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "漢字")
+      ;; After committing "漢字" (2 chars) and calling forward-char at end-of-buffer,
+      ;; point should be at point-max (end-of-buffer is silently swallowed)
+      (should (= (point) (point-max)))))
+
+  (nskk-it "commits the second candidate when on 2nd candidate"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; SPC → first candidate (漢字), SPC again → second candidate (感じ)
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-type "SPC")
+      ;; Now on second candidate
+      (nskk-e2e-assert-converting)
+      ;; C-f commits whichever candidate is current
+      (nskk-e2e-type "C-f")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "感じ"))))
+
+;;;;
+;;;; Section 2: C-b in converting (▼) state -- kakutei-then-backward
+;;;;
+
+(nskk-describe "C-b in converting state"
+  (nskk-it "commits candidate and moves point backward"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Insert あ first so there is a character before the conversion
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "あ")
+      ;; Now enter conversion: かんじ → ▼ converting
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (let ((point-before (point)))
+        ;; C-b: kakutei-then-backward -- commit 漢字, then backward-char
+        (nskk-e2e-type "C-b")
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-henkan-phase nil)
+        (nskk-e2e-assert-buffer "あ漢字")
+        ;; Point must have moved backward after commit
+        (should (< (point) point-before)))))
+
+  (nskk-it "moves point one char back from end after commit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Commit "漢字" via C-b; buffer will be "漢字", point moves back one char
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-type "C-b")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "漢字")
+      ;; "漢字" is 2 chars; point-max = 3.  backward-char from 3 → point = 2.
+      ;; So point should be strictly less than point-max (moved back from end).
+      (should (< (point) (point-max))))))
+
+;;;;
+;;;; Section 3: C-f in preedit and normal states -- plain forward-char
+;;;;
+
+(nskk-describe "C-f in preedit and normal state"
+  (nskk-it "is plain forward-char in normal hiragana state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Type two kana characters: あい
+      (nskk-e2e-type "a")
+      (nskk-e2e-type "i")
+      (nskk-e2e-assert-buffer "あい")
+      ;; Move to beginning
+      (goto-char (point-min))
+      (should (= (point) 1))
+      ;; C-f should move forward one character
+      (nskk-e2e-type "C-f")
+      (should (= (point) 2))
+      ;; Buffer is unchanged
+      (nskk-e2e-assert-buffer "あい")))
+
+  (nskk-it "is plain forward-char in ascii mode"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-type "abc")
+      (goto-char (point-min))
+      (nskk-e2e-type "C-f")
+      (should (= (point) 2))))
+
+  (nskk-it "does not signal error at end of buffer"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-type "a")
+      ;; Point is now at end (position 2)
+      (should (= (point) 2))
+      ;; C-f at end-of-buffer: condition-case swallows the error
+      (nskk-e2e-type "C-f")
+      ;; Point must not have moved beyond end
+      (should (= (point) 2)))))
+
+;;;;
+;;;; Section 4: C-b in preedit and normal states -- plain backward-char
+;;;;
+
+(nskk-describe "C-b in preedit and normal state"
+  (nskk-it "moves point backward one character in normal hiragana state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Insert あい; point is at end (position 3)
+      (nskk-e2e-type "a")
+      (nskk-e2e-type "i")
+      (nskk-e2e-assert-buffer "あい")
+      ;; C-b should move backward one character
+      (nskk-e2e-type "C-b")
+      (should (= (point) 2))
+      ;; Buffer is unchanged
+      (nskk-e2e-assert-buffer "あい")))
+
+  (nskk-it "does not signal error at beginning of buffer"
+    (nskk-e2e-with-buffer nil nil
+      ;; Empty buffer; point is at position 1 (beginning)
+      (should (= (point) 1))
+      ;; C-b at beginning: condition-case swallows the error
+      (nskk-e2e-type "C-b")
+      ;; Buffer still empty, point still at 1
+      (nskk-e2e-assert-buffer "")
+      (should (= (point) 1)))))
+
+;;;;
+;;;; Section 5: C-f / C-b sequence tests
+;;;;
+
+(nskk-describe "C-f and C-b sequences"
+  (nskk-it "commit by C-f then C-b in normal state moves point backward"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Enter ▼ converting
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      ;; C-f: commits 漢字, moves point forward (stays at end-of-buffer)
+      (nskk-e2e-type "C-f")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "漢字")
+      ;; Now in normal state: C-b is plain backward-char
+      (nskk-e2e-type "C-b")
+      ;; Buffer unchanged
+      (nskk-e2e-assert-buffer "漢字"))))
+
+(provide 'nskk-navigation-e2e-test)
+
+;;; nskk-navigation-e2e-test.el ends here

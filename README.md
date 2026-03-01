@@ -255,7 +255,7 @@ The table below covers the most commonly adjusted variables.
 
 | Variable                | Default   | Description                                   |
 |-------------------------|-----------|-----------------------------------------------|
-| `nskk-modeline-format`  | `"[%m]"` | Mode-line format (`%m` = mode display string) |
+| `nskk-modeline-format`  | `" %m"`  | Mode-line format (`%m` = mode display string) |
 | `nskk-use-color-cursor` | `t`       | Change cursor color to reflect current mode   |
 
 ### Example configuration
