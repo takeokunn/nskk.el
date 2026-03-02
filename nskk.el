@@ -7,7 +7,7 @@
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1"))
-;; Keywords: i18n
+;; Keywords: i18n japanese input method skk convenience
 
 ;; This file is NOT part of GNU Emacs.
 

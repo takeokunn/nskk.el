@@ -1,0 +1,569 @@
+#+title: NSKK — Next-generation SKK for Emacs
+#+subtitle: A modern, zero-dependency Japanese input method
+#+author: takeokunn
+#+language: en
+#+options: toc:2 num:nil ^:nil
+#+html: <div align="center">
+
+[[https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml][file:https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml/badge.svg]]
+[[https://melpa.org/#/nskk][file:https://melpa.org/packages/nskk-badge.svg]]
+[[https://stable.melpa.org/#/nskk][file:https://stable.melpa.org/packages/nskk-badge.svg]]
+[[file:COPYING][https://img.shields.io/badge/License-GPL%20v3-blue.svg]]
+
+#+html: </div>
+#+toc: headlines 2
+* Overview
+
+NSKK is a modern, zero-dependency Japanese input method for Emacs built on
+[[https://skk-dev.github.io/ddskk/][SKK]] (Simple Kana to Kanji) principles. It delivers:
+
+- **Instant response** — < 1ms key processing, < 10ms dictionary lookup
+- **Clean architecture** — 7-layer modular design with full lexical-binding
+- **DDSKK compatibility** — Familiar keybindings and behavior
+- **Extensible** — Embedded Prolog engine for customizable conversion logic
+
+#+begin_quote
+NSKK = Next-generation SKK = 次世代 SKK
+#+end_quote
+
+* Features
+
+** Zero Dependencies
+
+Only Emacs 29.1+ built-in packages:
+- =cl-lib= (Emacs 24.3+)
+- =subr-x= (Emacs 24.4+)
+
+No external ELPA packages required.
+
+** Modern Architecture
+
+| Component         | Description                              |
+|-------------------+------------------------------------------|
+| Lexical binding   | All 17 modules use =lexical-binding: t=  |
+| Prolog engine     | Conversion rules as facts/queries        |
+| Layer separation  | 7 strict layers, zero circular deps      |
+| Test coverage     | 3500+ unit/integration/E2E tests         |
+
+** Performance Targets
+
+| Operation              | Target  | Implementation          |
+|------------------------+---------+-------------------------|
+| Key press to display   | < 1ms   | Inline hot paths        |
+| Dictionary search      | < 10ms  | Hash + Trie indexes     |
+| Mode switch            | < 0.1ms | State struct access     |
+| Candidate pagination   | < 5ms   | Lazy evaluation         |
+
+** DDSKK Compatibility
+
+- Same keybindings (=C-j=, =SPC=, =x=, =q=, =l=, etc.)
+- Same mode indicators (かな, カナ, SKK, 全英, aA)
+- Same dictionary format (SKK-JISYO)
+- Same conversion markers (▽ for preedit, ▼ for conversion)
+
+* Installation
+
+** MELPA (Recommended)
+
+#+begin_src elisp
+;; Add MELPA if not already configured
+(require 'package)
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+(package-initialize)
+(package-refresh-contents)
+
+;; Install
+(package-install 'nskk)
+#+end_src
+
+*** With use-package
+
+#+begin_src elisp
+(use-package nskk
+  :ensure t
+  :custom
+  (nskk-dict-system-dictionary-files
+   '("/usr/share/skk/SKK-JISYO.L"))
+  :config
+  (nskk-global-mode 1))
+#+end_src
+
+*** With leaf
+
+#+begin_src elisp
+(leaf nskk
+  :ensure t
+  :custom
+  (nskk-dict-system-dictionary-files . '("/usr/share/skk/SKK-JISYO.L"))
+  :config
+  (nskk-global-mode 1))
+#+end_src
+
+** straight.el
+
+#+begin_src elisp
+(use-package nskk
+  :straight (nskk :type git :host github :repo "takeokunn/nskk.el")
+  :config
+  (nskk-global-mode 1))
+#+end_src
+
+** elpaca
+
+#+begin_src elisp
+(use-package nskk
+  :elpaca (nskk :host github :repo "takeokunn/nskk.el")
+  :config
+  (nskk-global-mode 1))
+#+end_src
+
+** Manual / Development
+
+#+begin_src bash
+git clone https://github.com/takeokunn/nskk.el.git ~/src/nskk.el
+#+end_src
+
+#+begin_src elisp
+(add-to-list 'load-path "~/src/nskk.el")
+(require 'nskk)
+(nskk-global-mode 1)
+#+end_src
+
+* Quick Start
+
+** Minimal Configuration
+
+#+begin_src elisp
+(require 'nskk)
+(nskk-global-mode 1)
+
+;; Toggle in current buffer
+;; C-x C-j  → activate/deactivate nskk-mode
+#+end_src
+
+** With System Dictionary
+
+#+begin_src elisp
+;; Debian/Ubuntu: apt install skktools
+;; macOS: brew install skk-jisyo
+;; NixOS: environment.systemPackages = [ skk-jisyo ];
+
+(setq nskk-dict-system-dictionary-files
+      '("/usr/share/skk/SKK-JISYO.L"
+        "/usr/share/skk/SKK-JISYO.jinmei"
+        "/usr/share/skk/SKK-JISYO.geo"))
+(nskk-global-mode 1)
+#+end_src
+
+** Recommended Configuration
+
+#+begin_src elisp
+(use-package nskk
+  :ensure t
+  :bind (("C-x C-j" . nskk-toggle-mode)
+         :map nskk-mode-map
+         ("C-j" . nskk-kakutei))
+  :custom
+  ;; Start in hiragana mode (optional, default is ascii)
+  (nskk-state-default-mode 'hiragana)
+
+  ;; System dictionaries
+  (nskk-dict-system-dictionary-files
+   '("/usr/share/skk/SKK-JISYO.L"))
+
+  ;; User dictionary location
+  (nskk-dict-user-dictionary-file "~/.nskk/jisyo")
+
+  ;; Show candidate list after 2nd SPC (default: 5)
+  (nskk-henkan-show-candidates-nth 2)
+
+  ;; Enable dictionary caching
+  (nskk-dict-cache-enabled t)
+
+  ;; AZIK romaji style (optional)
+  ;; (nskk-converter-romaji-style 'azik)
+
+  :config
+  ;; Enable globally
+  (nskk-global-mode 1)
+
+  ;; Mode-line customization
+  (setq nskk-modeline-format " [%m]"))
+#+end_src
+
+* Usage
+
+** Mode Switching
+
+| From     | Key     | To         | Indicator |
+|----------+---------+------------+-----------|
+| Any      | =C-x C-j= | Toggle     | —         |
+| ascii    | =C-j=     | hiragana   | かな      |
+| hiragana | =q=       | katakana   | カナ      |
+| hiragana | =l=       | ascii      | SKK       |
+| hiragana | =L=       | full-width | 全英      |
+| hiragana | =/=       | abbrev     | aA        |
+
+** Conversion Flow
+
+#+begin_example
+[ASCII] ──C-j──> [▽ひらがな] ──SPC──> [▼変換] ──RET──> [確定済み]
+                      │                │
+                      └──DEL──> cancel ─┴──C-g──> cancel
+#+end_example
+
+** Key Bindings
+
+*** Mode Control
+
+| Key       | Command               | Description                                    |
+|-----------+-----------------------+------------------------------------------------|
+| =C-x C-j= | =nskk-toggle-mode=    | Toggle NSKK in current buffer                  |
+| =C-j=     | =nskk-kakutei=        | Commit / enter hiragana / newline              |
+| =q=       | =nskk-handle-q=       | Toggle hiragana ↔ katakana                     |
+| =l=       | =nskk-handle-l=       | Switch to ASCII mode                           |
+| =L=       | =nskk-handle-upper-l= | Switch to full-width latin (JIS X 0208)        |
+| =/=       | =nskk-handle-slash=   | Enter abbrev mode                              |
+
+*** Conversion (Henkan)
+
+| Key     | Command                | Description                            |
+|---------+------------------------+----------------------------------------|
+| =SPC=   | =nskk-handle-space=    | Start conversion / next candidate      |
+| =x=     | =nskk-handle-x=        | Previous candidate                     |
+| =RET=   | =nskk-handle-return=   | Commit candidate + newline             |
+| =C-g=   | =nskk-handle-cancel=   | Cancel conversion or preedit           |
+| =a=–=l= | direct select          | Select candidate in list mode          |
+| =C-n=   | =nskk-handle-ctrl-n=   | Next candidate OR next line            |
+| =C-p=   | =nskk-handle-ctrl-p=   | Prev candidate OR previous line        |
+
+*** Cursor Movement (in Conversion Mode)
+
+| Key        | Behavior                                    |
+|------------+---------------------------------------------|
+| =↑ / C-p=  | Commit candidate + move to previous line    |
+| =↓ / C-n=  | Commit candidate + move to next line        |
+| =← / C-b=  | Commit candidate + move backward            |
+| =→ / C-f=  | Commit candidate + move forward             |
+
+** Input Modes
+
+| Mode             | Indicator | Description                        |
+|------------------+-----------+------------------------------------|
+| =ascii=          | SKK       | Direct ASCII input (pass-through)  |
+| =hiragana=       | かな      | Hiragana input                     |
+| =katakana=       | カナ      | Katakana input                     |
+| =jisx0208-latin= | 全英      | Full-width latin (JIS X 0208)      |
+| =abbrev=         | aA        | Abbreviation expansion             |
+
+* Configuration
+
+** Customization Group
+
+#+begin_example
+M-x customize-group RET nskk RET
+#+end_example
+
+** Input Behavior
+
+| Variable                              | Default    | Description                                   |
+|---------------------------------------+------------+-----------------------------------------------|
+| =nskk-state-default-mode=             | =ascii=    | Initial input mode                            |
+| =nskk-converter-romaji-style=         | =standard= | Romaji style: =standard=, =azik=, or custom  |
+| =nskk-converter-auto-start-henkan=    | =t=        | Uppercase auto-starts conversion              |
+| =nskk-converter-n-processing-mode=    | =smart=    | =ん= detection: =smart=, =strict=, =loose=  |
+| =nskk-converter-use-sokuon=           | =t=        | Enable =っ= from repeated consonants          |
+
+** Dictionary Settings
+
+| Variable                               | Default          | Description                           |
+|----------------------------------------+------------------+---------------------------------------|
+| =nskk-dict-user-dictionary-file=       | =~/.nskk/jisyo=  | User dictionary path                  |
+| =nskk-dict-system-dictionary-files=    | =nil=            | System dictionary file list           |
+| =nskk-dict-cache-enabled=              | =t=              | Enable in-memory cache                |
+
+** Candidate Display
+
+| Variable                                      | Default                   | Description                  |
+|-----------------------------------------------+---------------------------+------------------------------|
+| =nskk-henkan-show-candidates-nth=             | =5=                       | Show list after Nth SPC      |
+| =nskk-henkan-number-to-display-candidates=    | =7=                       | Candidates per page          |
+| =nskk-henkan-show-candidates-keys=            | =(?a ?s ?d ?f ?j ?k ?l)=  | Selection keys               |
+
+** UI Settings
+
+| Variable                 | Default  | Description                         |
+|--------------------------+----------+-------------------------------------|
+| =nskk-modeline-format=   | =" %m"=  | Mode-line format string             |
+| =nskk-use-color-cursor=  | =t=      | Change cursor color by mode         |
+
+** SKK Server (Optional)
+
+#+begin_src elisp
+(setq nskk-server-enable t
+      nskk-server-host "localhost"
+      nskk-server-port 1178)
+#+end_src
+
+* Advanced Topics
+
+** Custom Romaji Rules
+
+#+begin_src elisp
+;; Add single rule
+(nskk-converter-add-rule "thi" "てぃ")
+
+;; Define custom style
+(nskk-converter-define-style my-romaji
+  "My custom romaji style."
+  ("thi" "てぃ")
+  ("dhi" "でぃ")
+  ("wi" "うぃ"))
+
+(setq nskk-converter-romaji-style 'my-romaji)
+#+end_src
+
+** Hooks
+
+#+begin_src elisp
+;; Run when nskk-mode is enabled in a buffer
+(add-hook 'nskk-mode-hook #'my-nskk-setup)
+
+;; Run when global mode is toggled
+(add-hook 'nskk-global-mode-hook #'my-global-nskk-setup)
+#+end_src
+
+** Programmatic Control
+
+#+begin_src elisp
+;; Check if in conversion mode
+(when (nskk-converting-p)
+  (message "Currently converting"))
+
+;; Get current mode
+(nskk-state-current-mode)  ; => 'hiragana, 'katakana, etc.
+
+;; Force mode change
+(nskk-set-mode 'hiragana)
+#+end_src
+
+* Architecture
+
+NSKK implements a strict 7-layer architecture with zero circular dependencies:
+
+#+begin_example
+┌─────────────────────────────────────────────────────────────┐
+│ L6 Entry Point                                              │
+│   nskk.el                                                   │
+├─────────────────────────────────────────────────────────────┤
+│ L5 Presentation                                             │
+│   nskk-keymap.el      nskk-modeline.el                      │
+│   nskk-candidate-window.el                                  │
+├─────────────────────────────────────────────────────────────┤
+│ L4 Input Layer                                              │
+│   nskk-input.el                                             │
+├─────────────────────────────────────────────────────────────┤
+│ L3 Application                                              │
+│   nskk-henkan.el      nskk-azik.el (optional)               │
+├─────────────────────────────────────────────────────────────┤
+│ L2 Domain                                                   │
+│   nskk-state.el       nskk-converter.el   nskk-search.el    │
+├─────────────────────────────────────────────────────────────┤
+│ L1 Core Engine                                              │
+│   nskk-kana.el        nskk-dictionary.el  nskk-cache.el     │
+├─────────────────────────────────────────────────────────────┤
+│ L0 Foundation                                               │
+│   nskk-prolog.el      nskk-custom.el      nskk-debug.el     │
+└─────────────────────────────────────────────────────────────┘
+#+end_example
+
+** Embedded Prolog Engine
+
+Conversion and routing logic is expressed as Prolog facts and rules:
+
+#+begin_src elisp
+;; Example: Mode transition rule (internal)
+(nskk-prolog-define-rule
+ (mode-transition ascii hiragana key-press)
+ (key-is ?key #x6a)  ; C-j
+ (current-mode ascii))
+#+end_src
+
+This eliminates deep =cond= nesting and enables hot-swappable logic.
+
+* Comparison
+
+| Feature              | NSKK                    | ddskk               | skk-mode            |
+|----------------------+-------------------------+---------------------+---------------------|
+| Dependencies         | Zero                    | ccc, cdb, etc.      | ddskk + more        |
+| Minimum Emacs        | 29.1                    | 24.x                | 24.x                |
+| Lexical binding      | Full                    | Partial             | Partial             |
+| Architecture         | 7-layer modular         | Monolithic          | Extension           |
+| Conversion engine    | Prolog rules            | Imperative          | Inherits ddskk      |
+| Test suite           | 3500+ tests             | Limited             | Limited             |
+| Performance focus    | Explicit targets        | —                   | —                   |
+| XEmacs support       | No                      | Yes                 | Yes                 |
+
+* FAQ
+
+** Q: Why another SKK implementation?
+
+A: NSKK was created to provide:
+1. Zero external dependencies for easier installation
+2. Modern Emacs features (lexical binding, cl-lib)
+3. Testable architecture with comprehensive coverage
+4. Customizable conversion logic via Prolog
+
+** Q: Can I use my existing SKK dictionary?
+
+A: Yes. NSKK uses standard SKK-JISYO format:
+
+#+begin_src elisp
+(setq nskk-dict-user-dictionary-file "~/.skk-jisyo")
+#+end_src
+
+** Q: Does NSKK support SKK server?
+
+A: Yes. Configure with:
+
+#+begin_src elisp
+(setq nskk-server-enable t
+      nskk-server-host "localhost"
+      nskk-server-port 1178)
+#+end_src
+
+** Q: How do I migrate from ddskk?
+
+A: Most configurations translate directly:
+
+| ddskk                    | NSKK                                  |
+|--------------------------+---------------------------------------|
+| =skk-user-directory=     | =nskk-dict-user-dictionary-file=      |
+| =skk-large-jisyo=        | =nskk-dict-system-dictionary-files=   |
+| =skk-romaji-*-rules=     | =nskk-converter-add-rule=             |
+| =skk-use-azik=           | =(nskk-converter-romaji-style 'azik)= |
+
+** Q: Why Prolog for conversion logic?
+
+A: Prolog provides:
+- Declarative rule specification
+- Built-in backtracking for candidate search
+- Hot-swappable dispatch tables
+- Separation of /what/ from /how/
+
+* Troubleshooting
+
+** Dictionary not found
+
+#+begin_example
+Error: Cannot find dictionary file
+#+end_example
+
+Solution: Set system dictionary path explicitly:
+
+#+begin_src elisp
+(setq nskk-dict-system-dictionary-files
+      '("/usr/share/skk/SKK-JISYO.L"))
+#+end_src
+
+** Mode not switching
+
+Check if =nskk-mode= is active in the buffer:
+
+#+begin_src elisp
+M-: nskk-mode  ; should return t
+#+end_src
+
+** Slow dictionary loading
+
+Enable caching:
+
+#+begin_src elisp
+(setq nskk-dict-cache-enabled t)
+#+end_src
+
+** Debug logging
+
+#+begin_src elisp
+(setq nskk-debug-enable t)
+;; View with: M-x nskk-debug-show-buffer
+#+end_src
+
+* Development
+
+** Setup
+
+#+begin_src bash
+# Clone
+git clone https://github.com/takeokunn/nskk.el.git
+cd nskk.el
+
+# Nix development shell (recommended)
+nix develop
+
+# Or manually
+make compile
+make test
+#+end_src
+
+** Commands
+
+| Command                | Description                              |
+|------------------------+------------------------------------------|
+| =make compile=         | Byte-compile with =byte-compile-error-on-warn= |
+| =make test=            | Run all tests (unit + integration + E2E) |
+| =make test-unit=       | Run unit tests only                      |
+| =make lint=            | Run checkdoc                             |
+| =make package-lint=    | Run package-lint                         |
+| =make clean=           | Remove *.elc files                       |
+| =nix flake check=      | Full CI in Nix sandbox                   |
+
+** Test Structure
+
+#+begin_example
+test/
+├── unit/           # Unit tests (mocked dependencies)
+├── integration/    # Integration tests (real modules)
+├── e2e/            # End-to-end tests (simulated user input)
+├── fixtures/       # Test dictionaries
+└── nskk-test-*.el  # Test utilities
+#+end_example
+
+* Changelog
+
+See [[file:CHANGELOG.md][CHANGELOG.md]].
+
+* Contributing
+
+1. Fork the repository
+2. Create a feature branch (=git checkout -b feature/my-feature=)
+3. Add tests for new functionality
+4. Ensure all tests pass (=make test=)
+5. Commit with conventional commits format
+6. Push and create a pull request
+
+** Code Style
+
+- Use =nskk-= prefix for public symbols
+- Use =nskk--= prefix for internal symbols
+- All files must have =lexical-binding: t=
+- Run =make lint= before committing
+
+* License
+
+[[file:COPYING][GPL-3.0-or-later]]
+
+#+begin_quote
+Copyright (C) 2026 NSKK Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+#+end_quote
+
+* Acknowledgments
+
+- [[https://github.com/skk-dev/ddskk][DDSKK]] — The original SKK implementation
+- [[https://github.com/ncaq/ddskk][ddskk (ncaq fork)]] — Modern ddskk maintenance
+- All SKK dictionary contributors

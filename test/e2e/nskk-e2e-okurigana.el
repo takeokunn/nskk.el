@@ -879,6 +879,73 @@
         (nskk-e2e-assert-buffer "勝ッタ")
         (nskk-e2e-assert-henkan-phase nil)))))
 
+;;;;
+;;;; Regression Tests: Uppercase Consonant Okurigana
+;;;;
+;;
+;; Bug (fixed): uppercase consonants (K, S, T, etc.) were not being treated as
+;; okurigana markers.  After the fix:
+;;   - Uppercase consonants (K, S, T, etc.): treated as okurigana markers
+;;   - Uppercase vowels (A, I, U, E, O): normalized to lowercase and processed
+;;     as reading continuation
+
+(nskk-describe "uppercase consonant okurigana regression"
+  (nskk-it "KaK enters okurigana mode (uppercase consonant not normalized)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Ka")
+      (nskk-e2e-type "K")  ; 大文字子音 → 送り仮名マーカー
+      (should (eq (nskk-state-get-okurigana nskk-current-state) ?k))
+      (nskk-e2e-assert-henkan-phase 'on)))
+
+  (nskk-it "KaKu triggers conversion with okurigana"
+    (let ((dict '(("かk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")  ; 大文字子音 → 送り仮名マーカー
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書"))))
+
+  (nskk-it "KaKu commits to 書く"
+    (let ((dict '(("かk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "KaKu")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "書く"))))
+
+  (nskk-it "MiRu commits to 見る with uppercase consonant"
+    (let ((dict '(("みr" . ("見")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "MiR")
+        (nskk-e2e-type "u")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "見る"))))
+
+  (nskk-it "H O produces ▽ほ (uppercase vowel normalized to lowercase)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "H")
+      (nskk-e2e-type "O")  ; 大文字母音 → 小文字化して読みとして処理
+      (nskk-e2e-assert-henkan-phase 'on)
+      ;; 送り仮名状態ではないことを確認
+      (should (null (nskk-state-get-okurigana nskk-current-state)))
+      (nskk-e2e-assert-buffer-matches "\u25BD\u307B")))  ; ▽ほ
+
+  (nskk-it "K A produces ▽か (uppercase vowel normalized to lowercase)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "K")
+      (nskk-e2e-type "A")  ; 大文字母音 → 小文字化
+      (nskk-e2e-assert-henkan-phase 'on)
+      (should (null (nskk-state-get-okurigana nskk-current-state)))
+      (nskk-e2e-assert-buffer-matches "\u25BD\u304B")))  ; ▽か
+
+  (nskk-it "mixed: KaKiKu with dict converts correctly"
+    (let ((dict '(("かきk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "KaKiK")  ; KiK: iは読み、Kは送り仮名
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")))))
+
 (provide 'nskk-e2e-okurigana)
 
 ;;; nskk-e2e-okurigana.el ends here

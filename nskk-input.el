@@ -384,28 +384,32 @@ lowercase version of the letter as normal romaji input."
                                  (<= ?A char) (<= char ?Z)
                                  nskk-converter-auto-start-henkan
                                  (not (nskk--conversion-start-active-p))))
-           ;; Normalize uppercase to lowercase during preedit (conversion-start active)
+           ;; Normalize uppercase vowels to lowercase during preedit (conversion-start active)
            ;; to fix bug where "H O" produced "oお" instead of "▽ほ".
-           ;; This ensures all uppercase letters are treated as romaji input,
-           ;; not as okurigana triggers, during the preedit phase.
+           ;; This ensures uppercase vowels (A, I, U, E, O) are treated as romaji input,
+           ;; while uppercase consonants (K, S, T, N, etc.) function as
+           ;; okurigana markers per DDSKK behavior.
            (effective-char (if (and (characterp char)
-                                    (<= ?A char) (<= char ?Z)
-                                    (nskk--conversion-start-active-p))
-                               (downcase char)
-                             (if is-henkan-start (downcase char) char))))
+                                     (<= ?A char) (<= char ?Z)
+                                     (nskk--conversion-start-active-p)
+                                     (memq char '(?A ?I ?U ?E ?O)))
+                                (downcase char)
+                              (if is-henkan-start (downcase char) char))))
       (when is-henkan-start
         (nskk--setup-henkan-start-marker char))
       ;; Okurigana path: when the char is consumed as okurigana input,
       ;; there is nothing more to do.  Henkan-start chars are never
       ;; routed through okurigana (the condition mirrors the original
       ;; `if (and (not is-henkan-start) ...)' guard exactly).
-      ;; During preedit, uppercase vowels are normalized to lowercase
-      ;; and should NOT trigger okurigana - they are romaji input.
-      (when (and (not is-henkan-start)
-                 (not (and (characterp char)
-                           (<= ?A char) (<= char ?Z)
-                           (nskk--conversion-start-active-p)))
-                 (nskk-process-okurigana-input char))
+       ;; During preedit, uppercase vowels are normalized to lowercase
+       ;; and should NOT trigger okurigana - they are romaji input.
+       ;; Uppercase consonants are allowed to trigger okurigana.
+       (when (and (not is-henkan-start)
+                  (not (and (characterp char)
+                            (<= ?A char) (<= char ?Z)
+                            (nskk--conversion-start-active-p)
+                            (memq char '(?A ?I ?U ?E ?O))))
+                  (nskk-process-okurigana-input char))
         (nskk-debug-log "[INPUT] okurigana-processed: char=%c" char)
         (cl-return-from nskk-process-japanese-input))
       ;; Main romaji-to-kana path.
