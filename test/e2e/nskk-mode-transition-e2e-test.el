@@ -410,6 +410,167 @@
                         (length errors) test-seed
                         (cl-subseq errors 0 (min 3 (length errors))))))))
 
+;;;;
+;;;; Section A: L and / During Converting State (Implicit Commit)
+;;;;
+
+(nskk-describe "shift-L and / commit during converting"
+  (nskk-it "L commits candidate then switches to jisx0208-latin"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "L")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-mode 'jisx0208-latin)
+      (nskk-e2e-assert-buffer "漢字")))
+
+  (nskk-it "/ commits candidate then enters abbrev mode"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-mode 'abbrev)
+      ;; The committed candidate precedes the ▽ marker inserted by abbrev setup
+      (nskk-e2e-assert-buffer-matches "漢字"))))
+
+;;;;
+;;;; Section B: C-j with Pending Romaji (romaji-pending state)
+;;;;
+
+(nskk-describe "C-j clears pending romaji"
+  (nskk-it "clears single pending romaji consonant"
+    ;; Typing "k" in hiragana mode leaves "k" pending in nskk--romaji-buffer
+    ;; (no kana emitted yet — incomplete sequence).
+    ;; C-j dispatches to clear-romaji action via kakutei-action/2,
+    ;; which resets nskk--romaji-buffer to "" and stays in hiragana.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "k")
+      ;; After "k": pending romaji, buffer still empty (shown via overlay only)
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-type "C-j")
+      ;; C-j clears the romaji buffer; mode remains hiragana
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "")))
+
+  (nskk-it "clears incomplete compound romaji sequence"
+    ;; "sh" is an incomplete compound — "sh" alone has no kana mapping,
+    ;; so nskk--romaji-buffer holds "sh".
+    ;; C-j clears it; mode stays hiragana; buffer remains empty.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "sh")
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "")))
+
+  (nskk-it "does not insert newline when clearing pending romaji"
+    ;; Distinguishes romaji-pending from hiragana-idle:
+    ;; hiragana-idle + C-j → newline; romaji-pending + C-j → clear only.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "k")
+      (nskk-e2e-type "C-j")
+      ;; No newline inserted — buffer stays empty
+      (nskk-e2e-assert-buffer ""))))
+
+;;;;
+;;;; Section C: Abbrev Preedit Fall-Through for Mode-Switch Keys
+;;;;
+
+(nskk-describe "mode-switch keys self-insert in abbrev preedit"
+  ;; In abbrev mode, nskk-with-japanese-mode checks japanese-mode/1,
+  ;; which covers hiragana/katakana/katakana-半角 only — NOT abbrev.
+  ;; So mode-switch handlers (q, l, L, /) fall through to self-insert-command.
+  ;; This is DDSKK-compatible: abbrev preedit bypasses mode-switch logic.
+
+  (nskk-it "q self-inserts in abbrev preedit"
+    ;; "/" enters abbrev mode and sets up ▽ preedit marker.
+    ;; Typing "q" after that: nskk-handle-q → nskk-with-japanese-mode →
+    ;; not japanese-mode → self-insert-command → inserts "q".
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-assert-henkan-phase 'on "After /: should be in ▽ preedit")
+      (nskk-e2e-type "q")
+      ;; Mode stays abbrev; "q" appended after the ▽ marker
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-assert-buffer-matches "q")))
+
+  (nskk-it "l self-inserts in abbrev preedit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "l")
+      ;; nskk-handle-l → nskk-with-japanese-mode → not japanese-mode →
+      ;; self-insert-command → inserts "l"
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-assert-buffer-matches "l")))
+
+  (nskk-it "shift-L self-inserts in abbrev preedit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "L")
+      ;; nskk-handle-upper-l → nskk-with-japanese-mode → not japanese-mode →
+      ;; self-insert-command → inserts "L"
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-assert-buffer-matches "L"))))
+
+;;;;
+;;;; Section D: katakana-半角 Preedit and Basic Conversion
+;;;;
+
+(nskk-describe "katakana-半角 preedit and basic input"
+  ;; In katakana-半角 mode, an uppercase letter triggers the preedit (▽)
+  ;; path via nskk-process-japanese-input: is-henkan-start becomes t,
+  ;; the ▽ marker is inserted, and the downcased letter begins romaji
+  ;; accumulation.  The resulting kana is converted to half-width katakana
+  ;; via nskk-kana-zenkaku-to-hankaku.
+
+  (nskk-it "uppercase letter enters preedit in katakana-半角 mode"
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (nskk-e2e-type "Ka")
+      ;; "K" triggers preedit start → henkan-phase 'on; "a" completes "ka" → ｶ
+      (nskk-e2e-assert-henkan-phase 'on
+        "After 'Ka' in katakana-半角: should be in ▽ preedit")
+      (nskk-e2e-assert-mode 'katakana-半角)))
+
+  (nskk-it "SPC from katakana-半角 preedit enters converting state"
+    ;; DDSKK: SPC in katakana-半角 preedit triggers conversion.
+    ;; Fix: nskk-start-conversion now converts half-width katakana preedit text
+    ;; to hiragana before the dict lookup, so "ｶﾝｼﾞ" finds "かんじ" in the dict.
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      ;; "Kanji" in katakana-半角 mode → half-width katakana preedit ▽ｶﾝｼﾞ
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-assert-henkan-phase 'on)
+      ;; SPC → start-conversion → dict lookup using hiragana "かんじ" → 漢字
+      (nskk-e2e-type "SPC")
+      ;; Conversion (▼) phase must be active with a candidate.
+      (nskk-e2e-assert-henkan-phase 'active)))
+
+  (nskk-it "C-g from katakana-半角 preedit state cancels preedit"
+    ;; Test C-g from ▽ preedit (not converting) in katakana-半角 mode.
+    ;; C-g from preedit should cancel and clear the buffer.
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (nskk-e2e-type "Ka")
+      (nskk-e2e-assert-henkan-phase 'on
+        "After 'Ka': should be in ▽ preedit before C-g")
+      (nskk-e2e-type "C-g")
+      ;; C-g from ▽ preedit: cancel-conversion action → clears preedit, phase=nil
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-mode 'katakana-半角)))
+
+  (nskk-it "C-j from katakana-半角 idle switches to hiragana"
+    ;; Regression: C-j from katakana-半角 idle must use katakana-idle dispatch
+    ;; (enter-hiragana action), not direct-idle.  Already covered in the main
+    ;; C-j section but confirmed here in context.
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (nskk-e2e-assert-mode 'katakana-半角)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana))))
+
 (provide 'nskk-mode-transition-e2e-test)
 
 ;;; nskk-mode-transition-e2e-test.el ends here

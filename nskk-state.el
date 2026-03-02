@@ -507,8 +507,7 @@ Distinct from `nskk-state-initialize', which sets up buffer-local state."
     ;; data—they are not evaluated at assertion time, so forward references are safe.
     ;; Similarly, cursor face symbols are stored as data and dereferenced via
     ;; `face-attribute' at runtime (see `nskk-cursor--mode-color' in nskk-modeline.el).
-    (nskk-prolog-set-index 'mode-properties 5 :hash)
-    (nskk-prolog-deffacts mode-properties
+    (nskk-prolog-define-fact-table mode-properties (:arity 5 :index :hash)
       (hiragana "かな" nskk-modeline-hiragana-face
                 "Hiragana input mode" nskk-cursor-hiragana)
       (katakana "カナ" nskk-modeline-katakana-face
@@ -531,24 +530,25 @@ Distinct from `nskk-state-initialize', which sets up buffer-local state."
       (mode-properties \?m \?disp \?face \?help \?cur))
 
     ;; Japanese input mode classification
-    (nskk-prolog-set-index 'japanese-mode 1 :hash)
-    (nskk-prolog-deffacts japanese-mode
+    (nskk-prolog-define-fact-table japanese-mode (:arity 1 :index :hash)
       (hiragana)
       (katakana)
       (katakana-半角))
 
     ;; Valid henkan phases (derived from nskk-state-henkan-phases defconst)
-    (nskk-prolog-set-index 'valid-henkan-phase 1 :hash)
-    (dolist (p nskk-state-henkan-phases)
-      (nskk-prolog-assert (list (list 'valid-henkan-phase p))))
+    (nskk-prolog-define-fact-table valid-henkan-phase (:arity 1 :index :hash)
+      (nil)
+      (on)
+      (active)
+      (list)
+      (registration))
 
     ;; Transition rules: any valid mode can transition to any other valid mode
     (nskk-prolog-<- (can-transition \?from \?to)
       (valid-mode \?from) (valid-mode \?to))
 
     ;; Henkan phase transition graph
-    (nskk-prolog-set-index 'valid-henkan-transition 2 :hash)
-    (nskk-prolog-deffacts valid-henkan-transition
+    (nskk-prolog-define-fact-table valid-henkan-transition (:arity 2 :index :hash)
       (nil on)
       (on active)
       (on registration)
@@ -561,8 +561,7 @@ Distinct from `nskk-state-initialize', which sets up buffer-local state."
       (registration list))
 
     ;; Henkan mode phase classification
-    (nskk-prolog-set-index 'henkan-mode-phase 1 :hash)
-    (nskk-prolog-deffacts henkan-mode-phase
+    (nskk-prolog-define-fact-table henkan-mode-phase (:arity 1 :index :hash)
       (on)
       (active)
       (list)
@@ -571,21 +570,18 @@ Distinct from `nskk-state-initialize', which sets up buffer-local state."
     ;; Preedit phase classification
     ;; Phases in which the user is building preedit text (▽ marker visible)
     ;; but no dictionary search has started yet.
-    (nskk-prolog-set-index 'preedit-phase 1 :hash)
-    (nskk-prolog-deffacts preedit-phase
+    (nskk-prolog-define-fact-table preedit-phase (:arity 1 :index :hash)
       (normal)
       (preedit))
 
     ;; Registration phase classification
     ;; Phases related to dictionary registration (active nesting).
-    (nskk-prolog-set-index 'registration-phase 1 :hash)
-    (nskk-prolog-deffacts registration-phase
+    (nskk-prolog-define-fact-table registration-phase (:arity 1 :index :hash)
       (active)
       (list))
 
     ;; State slot defaults
-    (nskk-prolog-set-index 'state-slot-default 2 :hash)
-    (nskk-prolog-deffacts state-slot-default
+    (nskk-prolog-define-fact-table state-slot-default (:arity 2 :index :hash)
       (input-buffer "")
       (converted-buffer "")
       (candidates nil)
@@ -599,7 +595,6 @@ Distinct from `nskk-state-initialize', which sets up buffer-local state."
 
     ;; Resettable fields: derived rule — any slot with a default is resettable.
     ;; Eliminates the need to list the same 10 slots twice.
-    (nskk-prolog-set-index 'resettable-field 1 :hash)
     (nskk-prolog-<- (resettable-field \?slot)
       (state-slot-default \?slot \?_))
 

@@ -810,6 +810,18 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "与え"))))
 
+  (nskk-it "converts AU to 買う and commits"
+    ;; Vowel okurigana with U: reading "あ" + okurigana vowel "u".
+    ;; A starts preedit (reading = "あ"), U triggers vowel okurigana "u".
+    ;; Dict key "あu" (hiragana reading + vowel char).  Okurigana kana = "う".
+    (let ((dict '(("あu" . ("買")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "A")
+        (nskk-e2e-type "U")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "買う"))))
+
   (nskk-it "cancels AI conversion with C-g without stale state"
     (let ((dict '(("あi" . ("愛")))))
       (nskk-e2e-with-buffer 'hiragana dict
@@ -844,6 +856,84 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "書く愛い")))))
+
+;;;; Regression Tests: Pending Romaji Discard on Okurigana Trigger
+;;
+;; Bug (fixed in nskk-henkan.el lines 733-754): when a pending incomplete
+;; romaji consonant (e.g. "k", "sh") was in nskk--romaji-buffer at the moment
+;; an okurigana trigger (uppercase letter) arrived, the raw consonant was
+;; inserted into the buffer before the * okurigana marker, producing
+;; e.g. "▽かk*" instead of "▽か*".
+;;
+;; The fix discards :incomplete romaji results (consonants like "k", "sh") and
+;; only emits fully-converted kana or the standalone "n" → "ん" exception.
+;;
+;; Input sequence for T-E1 (KAkKu):
+;;   K   → starts henkan (▽), romaji buffer = ""
+;;   A   → romaji "a" completes → "あ" appended to preedit (▽あ), romaji buffer = ""
+;;   k   → romaji buffer = "k" (pending incomplete consonant)
+;;   K   → okurigana trigger: "k" must be DISCARDED (not inserted before *),
+;;          * marker inserted, romaji buffer = "k" (for new okurigana consonant)
+;;   u   → romaji "ku" → "く", triggers conversion (▼ state)
+;;
+;; Input sequence for T-E2 (KAnKu):
+;;   K   → starts henkan (▽), romaji buffer = ""
+;;   A   → romaji "a" → "あ" in preedit, romaji buffer = ""
+;;   n   → romaji buffer = "n" (pending n — special case: converts to ん)
+;;   K   → okurigana trigger: "n" must be FLUSHED as "ん" before *, then * inserted
+;;   u   → romaji "ku" → "く", triggers conversion (▼ state)
+
+(nskk-describe "okurigana pending romaji discard regression"
+  (nskk-it "KAkKu: pending k is discarded before okurigana marker, conversion succeeds"
+    ;; T-E1: the lowercase k pending in the romaji buffer when uppercase K fires
+    ;; must NOT appear before * in the buffer.  After completing ku → く, the
+    ;; conversion should trigger normally (entering active/converting state).
+    (let ((dict '(("あk" . ("開")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        ;; K starts preedit
+        (nskk-e2e-type "K")
+        ;; A completes romaji "a" → あ, preedit is now ▽あ
+        (nskk-e2e-type "A")
+        ;; Lowercase k → pending incomplete consonant in romaji buffer
+        (nskk-e2e-type "k")
+        ;; Uppercase K fires okurigana trigger while "k" is pending.
+        ;; BUG: used to insert raw "k" before *, giving ▽あk*.
+        ;; FIX: "k" is discarded (incomplete), giving ▽あ*.
+        (nskk-e2e-type "K")
+        ;; The buffer content must NOT contain "k" before the * marker.
+        ;; After the okurigana trigger the pending-romaji display may briefly
+        ;; show "k" for the NEW okurigana consonant, but the buffer proper
+        ;; should have no "k" ASCII character adjacent to *.
+        (let ((content (buffer-string)))
+          (should-not (string-match-p "k\\*" content)))
+        ;; Now type u to complete the okurigana ku → く and trigger conversion.
+        (nskk-e2e-type "u")
+        ;; We should now be in converting (▼) state — conversion was triggered.
+        (nskk-e2e-assert-converting)
+        ;; The buffer string must not contain a double "k" or "kk" artifact.
+        (should-not (string-match-p "kk" (buffer-string))))))
+
+  (nskk-it "KAnKu: pending n is flushed as ん before okurigana marker"
+    ;; T-E2: the lowercase n pending when uppercase K fires must be converted
+    ;; to ん (the word-boundary n exception) and inserted before *.
+    (let ((dict '(("あんk" . ("暗")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        ;; K starts preedit
+        (nskk-e2e-type "K")
+        ;; A completes romaji "a" → あ
+        (nskk-e2e-type "A")
+        ;; Lowercase n → pending in romaji buffer (not yet ん)
+        (nskk-e2e-type "n")
+        ;; Uppercase K fires okurigana trigger while "n" is pending.
+        ;; The n exception: standalone "n" at word boundary → ん, inserted before *.
+        (nskk-e2e-type "K")
+        ;; ん must appear in the buffer content (flushed before * marker)
+        (let ((content (buffer-string)))
+          (should (string-match-p "\u3093" content)))
+        ;; Complete the okurigana ku → く and trigger conversion
+        (nskk-e2e-type "u")
+        ;; Conversion should trigger normally
+        (nskk-e2e-assert-converting)))))
 
 ;;;; C-j During Preedit Tests
 ;;
@@ -1208,6 +1298,361 @@
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-buffer "")
       (nskk-e2e-assert-not-converting))))
+
+;;;; 5. q and L in abbrev preedit self-insert
+
+(nskk-describe "abbrev mode self-insert for mode-switch keys"
+  ;; q, l, L, and / are bound to nskk-handle-q / nskk-handle-l / nskk-handle-upper-l /
+  ;; nskk-handle-slash in the mode map.  Each uses nskk-with-japanese-mode which
+  ;; checks japanese-mode/1; abbrev is NOT a Japanese mode, so the macro falls
+  ;; through to (self-insert-command 1).  The character therefore lands in the
+  ;; buffer verbatim via Emacs's built-in self-insert, bypassing nskk-self-insert.
+  (nskk-it "q in abbrev preedit self-inserts q into preedit text"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "q")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-assert-buffer "▽q")))
+
+  (nskk-it "L in abbrev preedit self-inserts L into preedit text"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "L")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-assert-buffer "▽L"))))
+
+;;;; 6. C-j from abbrev idle (no preedit) returns to hiragana
+
+(nskk-describe "abbrev mode C-j from idle"
+  ;; When abbrev mode is entered directly (no preedit marker set),
+  ;; the kakutei state is direct-idle.  kakutei-action maps direct-idle →
+  ;; enter-hiragana, so C-j switches to hiragana and leaves an empty buffer.
+  (nskk-it "C-j from abbrev idle returns to hiragana"
+    (nskk-e2e-with-buffer 'abbrev nil
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it "buffer is empty after C-j from abbrev idle"
+    (nskk-e2e-with-buffer 'abbrev nil
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-buffer ""))))
+
+;;;; 7. Abbrev mode conversion via RET and SPC cycling
+
+(nskk-describe "abbrev mode conversion via RET"
+  ;; / + "test" + SPC triggers dictionary conversion.
+  ;; RET (commit-candidate) commits the first candidate without a newline.
+  (nskk-it "commits first candidate with RET after SPC conversion"
+    (let ((dict '(("test" . ("テスト" "Test")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "/")
+        (nskk-e2e-type "test")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "RET")
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-buffer "テスト"))))
+
+  (nskk-it "cycles to second candidate with SPC then commits with C-j"
+    (let ((dict '(("test" . ("テスト" "Test")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "/")
+        (nskk-e2e-type "test")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-buffer "Test")))))
+
+;;;; 8. C-g during abbrev conversion cancels back to preedit
+
+(nskk-describe "abbrev mode C-g during conversion"
+  ;; After / + "test" + SPC enters conversion (▼), C-g should cancel conversion
+  ;; and restore the preedit reading text to the buffer.
+  (nskk-it "cancels conversion and restores reading text"
+    (let ((dict '(("test" . ("テスト")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "/")
+        (nskk-e2e-type "test")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-g")
+        (nskk-e2e-assert-not-converting)))))
+
+;;;;
+;;;; Katakana Mode Okurigana (カタカナ送り仮名) E2E Tests
+;;;;
+;;
+;; In katakana mode the preedit reading accumulates as KATAKANA because
+;; nskk-input.el applies nskk-kana-string-hiragana-to-katakana before inserting.
+;; Dict lookup keys therefore use katakana + consonant (e.g. "カk", not "あk").
+;; After commit the okurigana kana appended is also katakana (ク, イ, ン …).
+;;
+;; Input sequences follow DDSKK katakana mode conventions:
+;;   Ka → preedit reading "カ" (romaji ka → か → katakana → カ)
+;;   K  → okurigana trigger; pending romaji "k" registered as okuri char
+
+(nskk-describe "katakana mode okurigana triggers conversion"
+  (nskk-it "triggers conversion on KaKu in katakana mode"
+    ;; Ka: K starts preedit (uppercase = henkan-start), a completes "ca" → "か" → "カ".
+    ;; K (second, uppercase): okurigana trigger; pending romaji "k" → dict key "カk".
+    ;; u completes "ku" → "く" → "ク" (appended as okurigana kana).
+    ;; Conversion is triggered with reading "カ", okuri char "k".
+    (let ((dict '(("カk" . ("書")))))
+      (nskk-e2e-with-buffer 'katakana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書"))))
+
+  (nskk-it "commits KaKu to 書ク in katakana mode"
+    ;; Same sequence as above; C-j commits the first candidate.
+    ;; Result: kanji 書 replaces the reading "カ", okurigana kana "ク" is appended.
+    (let ((dict '(("カk" . ("書")))))
+      (nskk-e2e-with-buffer 'katakana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "書ク"))))
+
+  (nskk-it "commits vowel okurigana AI to 愛イ in katakana mode"
+    ;; A (uppercase in katakana mode): starts preedit with reading "ア" (vowel henkan-start).
+    ;; I (uppercase): okurigana trigger for vowel "i"; okurigana kana "イ" appended.
+    ;; Dict key "アi" (katakana reading + vowel char).
+    (let ((dict '(("アi" . ("愛")))))
+      (nskk-e2e-with-buffer 'katakana dict
+        (nskk-e2e-type "A")
+        (nskk-e2e-type "I")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "愛イ"))))
+
+  (nskk-it "discards pending consonant before okurigana marker in katakana mode (T-E1 analogue)"
+    ;; T-E1 katakana analogue: K A k K u
+    ;; K (uppercase, empty reading) + A (vowel okurigana with empty reading) →
+    ;;   failed conversion (no dict entry for key "a"), cancel; buffer has "ア" reading.
+    ;; k (lowercase): accumulates romaji; K (uppercase): okurigana trigger.
+    ;; u completes "ku" → okurigana kana "ク"; conversion with dict key "アk".
+    ;; Crucially, no stray "k" appears between "ア" and "*" in the preedit display.
+    (let ((dict '(("アk" . ("開")))))
+      (nskk-e2e-with-buffer 'katakana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "A")
+        (nskk-e2e-type "k")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting))))
+
+  (nskk-it "flushes pending n as ン before okurigana marker in katakana mode (T-E2 analogue)"
+    ;; T-E2 katakana analogue: K A n K u
+    ;; K + A → reading "ア" (failed vowel okurigana → cancel, reading = "ア").
+    ;; n (lowercase): romaji buffer = "n"; K (uppercase): pending "n" flushed as "ン",
+    ;;   then okurigana trigger; dict key "アンk".  u → okurigana kana "ク".
+    (let ((dict '(("アンk" . ("暗")))))
+      (nskk-e2e-with-buffer 'katakana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "A")
+        (nskk-e2e-type "n")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)))))
+
+;;;;
+;;;; Sokuon in Okurigana (促音送り仮名) E2E Tests
+;;;;
+;;
+;; Sokuon (っ) appears as the first character of okurigana kana in words like
+;; 勝った (katta) and 打った (utta).
+;;
+;; Mechanism (two-phase):
+;;   1. Uppercase T is the okurigana trigger; romaji buffer = "t".
+;;   2. Input "ta": first 't' + buffered 't' → sokuon pattern → emits っ → fires
+;;      conversion with the accumulated reading and okuri char "t".
+;;   3. Remaining 'a' → romaji "ta" → emits "た" into the buffer after っ.
+;;   4. C-j commits: kanji replaces the reading, "った" (っ + た) is appended.
+
+(nskk-describe "sokuon in okurigana"
+  (nskk-it "commits KaTTa sequence to 勝った"
+    ;; Ka: reading = "か" (K starts preedit, a completes romaji).
+    ;; T (uppercase): okurigana trigger; romaji buffer = "t".
+    ;; t: romaji "t"+"t" → sokuon → emits っ → triggers conversion (key "かt").
+    ;; a: romaji "ta" → emits "た" (appended after っ).
+    ;; C-j: commits first candidate; buffer = kanji + "った".
+    (let ((dict '(("かt" . ("勝")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "T")
+        (nskk-e2e-type "ta")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "勝った"))))
+
+  (nskk-it "commits UTTa sequence to 打った"
+    ;; U (uppercase): vowel okurigana start; reading = "う".
+    ;; T (uppercase): okurigana trigger; romaji buffer = "t".
+    ;; t: romaji "t"+"t" → sokuon → emits っ → triggers conversion (key "うt").
+    ;; a: romaji "ta" → emits "た".
+    ;; C-j: commits; buffer = kanji + "った".
+    (let ((dict '(("うt" . ("打")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "U")
+        (nskk-e2e-type "T")
+        (nskk-e2e-type "ta")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "打った")))))
+
+;;;;
+;;;; Half-width Katakana (katakana-半角) Character Output Tests
+;;;;
+
+(nskk-deftest-table buffer-hankaku-katakana-vowels
+  :columns (input expected)
+  :rows (("a" "ｱ") ("i" "ｲ") ("u" "ｳ") ("e" "ｴ") ("o" "ｵ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-ka-row
+  :columns (input expected)
+  :rows (("ka" "ｶ") ("ki" "ｷ") ("ku" "ｸ") ("ke" "ｹ") ("ko" "ｺ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-sa-row
+  :columns (input expected)
+  :rows (("sa" "ｻ") ("shi" "ｼ") ("su" "ｽ") ("se" "ｾ") ("so" "ｿ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-ta-row
+  :columns (input expected)
+  :rows (("ta" "ﾀ") ("chi" "ﾁ") ("tsu" "ﾂ") ("te" "ﾃ") ("to" "ﾄ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-na-row
+  :columns (input expected)
+  :rows (("na" "ﾅ") ("ni" "ﾆ") ("nu" "ﾇ") ("ne" "ﾈ") ("no" "ﾉ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-ha-row
+  :columns (input expected)
+  :rows (("ha" "ﾊ") ("hi" "ﾋ") ("fu" "ﾌ") ("he" "ﾍ") ("ho" "ﾎ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-ma-row
+  :columns (input expected)
+  :rows (("ma" "ﾏ") ("mi" "ﾐ") ("mu" "ﾑ") ("me" "ﾒ") ("mo" "ﾓ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-ya-row
+  :columns (input expected)
+  :rows (("ya" "ﾔ") ("yu" "ﾕ") ("yo" "ﾖ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-ra-row
+  :columns (input expected)
+  :rows (("ra" "ﾗ") ("ri" "ﾘ") ("ru" "ﾙ") ("re" "ﾚ") ("ro" "ﾛ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-deftest-table buffer-hankaku-katakana-wa-n
+  :columns (input expected)
+  :rows (("wa" "ﾜ") ("nn" "ﾝ"))
+  :body (nskk-e2e-with-buffer 'katakana-半角 nil
+          (nskk-e2e-type input)
+          (nskk-e2e-assert-buffer expected)))
+
+(nskk-describe "half-width katakana (katakana-半角) character output"
+  (nskk-it "converts all vowels in sequence to hankaku katakana"
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (nskk-e2e-type "aiueo")
+      (nskk-e2e-assert-buffer "ｱｲｳｴｵ")))
+
+  (nskk-it "converts sokuon (doubled consonant) to ｯ + consonant kana"
+    (nskk-e2e-with-buffer 'katakana-半角 nil
+      (nskk-e2e-type "kka")
+      (nskk-e2e-assert-buffer "ｯｶ"))))
+
+;;;;
+;;;; Sentence-Level: Consecutive Conversions
+;;;;
+;;
+;; Two kanji words converted back-to-back in the same buffer.
+;; Default dict has ("かんじ" . ("漢字" ...)) and ("へんかん" . ("変換")).
+
+(nskk-describe "consecutive conversions in same buffer"
+  (nskk-it "produces 漢字変換 from two sequential henkan words"
+    ;; Kanji → SPC → C-j commits 漢字; Henkan → SPC → C-j commits 変換.
+    ;; Both conversions happen in the same buffer with no mode switch.
+    (let ((dict '(("かんじ"  . ("漢字"))
+                  ("へんかん" . ("変換")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "n")
+        (nskk-e2e-type "ji")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "漢字")
+        (nskk-e2e-type "He")
+        (nskk-e2e-type "n")
+        (nskk-e2e-type "ka")
+        (nskk-e2e-type "n")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "漢字変換")))))
+
+;;;;
+;;;; Sentence-Level: Long Reading Conversion
+;;;;
+;;
+;; Readings of 5+ kana using entries already present in the default dict:
+;;   ("ひらがな" . ("平仮名"))
+;;   ("にほんご" . ("日本語"))
+
+(nskk-describe "long reading conversion"
+  (nskk-it "converts hiragana reading to 平仮名"
+    ;; "Hiragana" romaji → ▽ひらがな → SPC → C-j → 平仮名
+    ;; The default dict already has ("ひらがな" . ("平仮名")).
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Hi")
+      (nskk-e2e-type "ra")
+      (nskk-e2e-type "ga")
+      (nskk-e2e-type "na")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-buffer "平仮名")))
+
+  (nskk-it "converts nihongo reading to 日本語"
+    ;; "Nihongo" romaji → ▽にほんご → SPC → C-j → 日本語
+    ;; The default dict already has ("にほんご" . ("日本語")).
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Ni")
+      (nskk-e2e-type "ho")
+      (nskk-e2e-type "n")
+      (nskk-e2e-type "go")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-buffer "日本語"))))
 
 (provide 'nskk-buffer-e2e-test)
 

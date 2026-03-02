@@ -76,6 +76,10 @@
 (declare-function nskk-set-mode-abbrev "nskk-input")
 (declare-function nskk-set-mode-jisx0208-latin "nskk-input")
 (declare-function nskk-self-insert "nskk-input")
+(declare-function nskk-handle-q-key "nskk-input")
+(declare-function nskk--azik-complete-match-p "nskk-input")
+(declare-function nskk-process-japanese-input "nskk-input")
+(defvar nskk-converter-romaji-style)
 ;; Functions in nskk-henkan.el
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--has-preedit "nskk-henkan")
@@ -88,6 +92,8 @@
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
+(declare-function nskk-dynamic-complete "nskk-henkan")
+(declare-function nskk-set-mode-numeric "nskk-input")
 (defvar nskk-henkan-on-marker)
 
 (defvar nskk-annotate-mode-map-hook nil
@@ -100,10 +106,9 @@ DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
 
 ;;;; Prolog Key-Action Rules
 
-(nskk-prolog-set-index 'key-action 3 :hash)
 ;; Key dispatch rules: (key-action KEY STATE ACTION)
 ;; Order matters within each key: first match wins.
-(nskk-prolog-deffacts key-action
+(nskk-prolog-define-fact-table key-action (:arity 3 :index :hash)
   ;; Space
   (space converting next-candidate)
   (space preedit   start-conversion)
@@ -145,14 +150,17 @@ DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
   ;; Backspace
   (backspace preedit    delete-preedit-char)
   (backspace converting cancel-conversion)
-  (backspace normal     backward-delete))
+  (backspace normal     backward-delete)
+  ;; Tab (dynamic completion)
+  (tab preedit    dynamic-complete)
+  (tab converting pass-through)
+  (tab normal     pass-through))
 
 ;;;; Preedit Marker Mode Rules
 ;; Modes where a set conversion-start marker indicates preedit state:
 ;; abbrev, hiragana, katakana, katakana-半角.
 ;; Ground facts allow O(1) hash lookup (avoids variable-head rule limitations).
-(nskk-prolog-set-index 'preedit-marker-mode 1 :hash)
-(nskk-prolog-deffacts preedit-marker-mode
+(nskk-prolog-define-fact-table preedit-marker-mode (:arity 1 :index :hash)
   (abbrev)
   (hiragana)
   (katakana)
@@ -222,6 +230,14 @@ States (in priority order):
 
 ;;;; Internal Macros
 
+(defun nskk--japanese-mode-active-p ()
+  "Return non-nil if the current NSKK mode is a Japanese input mode.
+Queries the `japanese-mode/1' Prolog predicate for the mode stored in
+`nskk-current-state'.  Returns nil when state is unset."
+  (and nskk-current-state
+       (nskk-prolog-query-one
+        `(japanese-mode ,(nskk-state-mode nskk-current-state)))))
+
 (defmacro nskk-with-japanese-mode (action &rest fallback)
   "Execute ACTION if currently in Japanese input mode.
 Performs implicit kakutei (確定) if input state is active:
@@ -242,14 +258,10 @@ Otherwise execute FALLBACK forms (typically `self-insert-command')."
      (nskk-commit-current)
      ,action)
     ((and (nskk--has-preedit)
-          nskk-current-state
-          (nskk-prolog-query-one
-           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+          (nskk--japanese-mode-active-p))
      (nskk-henkan-kakutei)
      ,action)
-    ((and nskk-current-state
-          (nskk-prolog-query-one
-           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+    ((nskk--japanese-mode-active-p)
      ,action)
     (t ,@fallback)))
 
@@ -289,22 +301,34 @@ dispatches masking missing rules."
            ,@clauses)))))
 
 (defun nskk-handle-q ()
-  "Handle q key: toggle between hiragana and katakana.
+  "Handle q key: toggle between hiragana and katakana (or AZIK romaji dispatch).
 In henkan-active mode (▼), perform implicit kakutei first.
+When AZIK is active and pending-romaji+q is a complete hash match
+\(e.g. kq→かい), delegates to `nskk-handle-q-key' to fire the AZIK rule.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
-  (nskk-with-japanese-mode (nskk-toggle-japanese-mode)
+  (nskk-with-japanese-mode (nskk-handle-q-key)
     (self-insert-command 1)))
 
 (defun nskk-handle-l ()
-  "Handle l key: switch to ASCII mode.
+  "Handle l key: switch to ASCII mode (or AZIK romaji dispatch).
 In henkan-active mode (▼), perform implicit kakutei first.
+When AZIK is active and pending-romaji+l is a complete hash match
+\(e.g. hl→ほん), fires the AZIK rule via `nskk-process-japanese-input'
+instead of switching to latin mode.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
-  (nskk-with-japanese-mode (nskk-set-mode-latin)
-    (self-insert-command 1)))
+  (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+         (buf-state (if (nskk--azik-complete-match-p ?l) 'azik-complete 'other))
+         (action (nskk-prolog-query-value
+                  `(l-key-action ,style ,buf-state ,'\?a) '\?a)))
+    (pcase action
+      ('fire-romaji (nskk-process-japanese-input ?l 1))
+      ('latin-mode  (nskk-with-japanese-mode (nskk-set-mode-latin)
+                      (self-insert-command 1)))
+      (_            (self-insert-command 1)))))
 
 (defun nskk-handle-upper-l ()
   "Handle L key: switch to full-width latin (jisx0208-latin) mode.
@@ -427,6 +451,23 @@ beginning-of-buffer errors so DEL on an empty buffer is a no-op."
        (nskk-cancel-preedit))))
   ('cancel-conversion (nskk-cancel-conversion-to-reading))
   (_ (ignore-errors (delete-char -1))))
+
+(nskk-define-key-handler tab
+  "Handle TAB key: dynamic completion in preedit, otherwise pass through.
+In preedit mode (\u25bd), searches the dictionary for keys matching the
+current reading prefix and completes inline.  Repeated TAB cycles.
+In other modes, delegates to `indent-for-tab-command'."
+  ('dynamic-complete (nskk-dynamic-complete))
+  (_ (indent-for-tab-command)))
+
+(defun nskk-handle-hash ()
+  "Handle # key: enter numeric input mode in Japanese mode.
+In henkan-active mode (\u25bc), perform implicit kakutei first.
+In ASCII mode or when NSKK state is inactive, fall through to
+`self-insert-command'."
+  (interactive)
+  (nskk-with-japanese-mode (nskk-set-mode-numeric)
+    (self-insert-command 1)))
 
 (provide 'nskk-keymap)
 

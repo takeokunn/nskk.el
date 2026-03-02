@@ -17,31 +17,39 @@ UNIT_SRC = $(wildcard test/unit/*-test.el)
 
 # Integration test files (with PBT)
 INTEGRATION_SRC = test/integration/nskk-integration-test.el \
-                  test/integration/nskk-state-machine-mode-test.el \
-                  test/integration/nskk-state-machine-buffer-test.el \
-                  test/integration/nskk-state-machine-candidate-test.el \
                   test/integration/nskk-sequence-test.el \
-                  test/integration/nskk-layer-state-pbt-test.el \
                   test/integration/nskk-input-routing-pbt-test.el \
                   test/integration/nskk-conversion-flow-pbt-test.el \
                   test/integration/nskk-dictionary-integration-pbt-test.el \
                   test/integration/nskk-okurigana-pbt-test.el \
-                  test/integration/nskk-multi-buffer-pbt-test.el \
-                  test/integration/nskk-error-recovery-pbt-test.el \
                   test/integration/nskk-henkan-pipeline-integration-test.el \
                   test/integration/nskk-azik-integration-test.el \
                   test/integration/nskk-search-cache-integration-test.el \
                   test/integration/nskk-dict-registration-integration-test.el \
-                  test/integration/nskk-server-integration-test.el
+                  test/integration/nskk-server-integration-test.el \
+                  test/integration/nskk-modeline-state-integration-test.el \
+                  test/integration/nskk-candidate-window-integration-test.el \
+                  test/integration/nskk-server-henkan-integration-test.el \
+                  test/integration/nskk-search-strategy-integration-test.el \
+                  test/integration/nskk-initialization-integration-test.el
 
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
-E2E_SRC = test/e2e/nskk-buffer-e2e-test.el \
-           test/e2e/nskk-mode-transition-e2e-test.el \
-           test/e2e/nskk-modeline-e2e-test.el \
-           test/e2e/nskk-registration-e2e-test.el \
-           test/e2e/nskk-backspace-e2e-test.el \
+# E2E test files — non-overlapping old files + reorganized new files
+# Old files kept (no overlap with new): mode-transition, navigation, azik, registration
+# Old files removed (subsumed by new): buffer, modeline, backspace, romaji-edge,
+#   candidate-list, point, okuri-extended, pending-features
+E2E_SRC = test/e2e/nskk-mode-transition-e2e-test.el \
            test/e2e/nskk-navigation-e2e-test.el \
-           test/e2e/nskk-romaji-edge-e2e-test.el
+           test/e2e/nskk-azik-e2e-test.el \
+           test/e2e/nskk-registration-e2e-test.el \
+           test/e2e/nskk-e2e-kana-input.el \
+           test/e2e/nskk-e2e-henkan.el \
+           test/e2e/nskk-e2e-okurigana.el \
+           test/e2e/nskk-e2e-abbrev.el \
+           test/e2e/nskk-e2e-modeline.el \
+           test/e2e/nskk-e2e-sticky.el \
+           test/e2e/nskk-e2e-numeric.el \
+           test/e2e/nskk-e2e-dcomp.el
 
 .PHONY: all compile test test-integration test-unit test-e2e lint lint-checkdoc lint-elsa package-lint clean
 
@@ -79,6 +87,8 @@ test-unit:
 	$(BATCH) $(LOAD_PATH) \
 	  -l test/nskk-test-macros.el \
 	  -l test/nskk-test-framework.el \
+	  -l test/nskk-pbt-generators.el \
+	  -l test/nskk-pbt-shrink.el \
 	  $(foreach f,$(UNIT_SRC),-l $(f)) \
 	  -f ert-run-tests-batch-and-exit
 

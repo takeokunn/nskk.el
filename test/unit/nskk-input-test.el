@@ -17,6 +17,9 @@
 ;; Comprehensive tests for nskk-input.el and nskk-henkan.el covering:
 ;; - Character insertion in latin mode
 ;; - Input conversion to kana
+;; - Full-width character mapping (nskk--fullwidth-char-table)
+;; - Toggle-mode Prolog rules
+;; - Input-route Prolog rules
 ;; - Mode-aware command dispatch
 ;; - Conversion state helpers
 ;; - Overlay management
@@ -147,20 +150,6 @@ Ensures the standard romaji table is loaded regardless of prior test state."
     :rows ((hiragana) (katakana) (latin) (abbrev))
     :body (nskk-input-test-with-state mode
             (should (eq (nskk-state-get-mode) mode)))))
-
-;;;
-;;; Converting-p Tests
-;;;
-
-(nskk-describe "nskk-converting-p behavior"
-  (nskk-it "returns nil when not in conversion"
-    (nskk-input-test-with-state 'hiragana
-      (nskk-then (should-not (nskk-converting-p)))))
-
-  (nskk-it "returns non-nil when henkan-phase is active"
-    (nskk-input-test-with-state 'hiragana
-      (nskk-given (nskk-state-force-henkan-phase nskk-current-state 'active))
-      (nskk-then  (should (nskk-converting-p))))))
 
 ;;;
 ;;; State Candidate Accessor Tests
@@ -378,19 +367,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 
   (nskk-it "nskk-state-get-mode returns nil safely"
     (let ((nskk-current-state nil))
-      (nskk-then (should (null (nskk-state-get-mode))))))
-
-  (nskk-it "nskk-converting-p returns nil safely"
-    (let ((nskk-current-state nil))
-      (nskk-then (should (not (nskk-converting-p))))))
-
-  (nskk-it "nskk-converting-p correctly reflects henkan-phase transitions"
-    (nskk-input-test-with-state 'hiragana
-      (should (not (nskk-converting-p)))
-      (nskk-state-force-henkan-phase nskk-current-state 'active)
-      (should (nskk-converting-p))
-      (nskk-state-force-henkan-phase nskk-current-state nil)
-      (should (not (nskk-converting-p))))))
+      (nskk-then (should (null (nskk-state-get-mode)))))))
 
 ;;;
 ;;; Error Handling: Overlay Management
@@ -833,31 +810,13 @@ Ensures the standard romaji table is loaded regardless of prior test state."
         (nskk-then  (should (string-match-p "\u25BD" (buffer-string))))))))
 
 ;;;
-;;; Okurigana Detection Tests
-;;;
-
-(nskk-describe "nskk-detect-okurigana-char behavior"
-  (nskk-it "returns lowercase for uppercase consonant"
-    (should (eq (nskk-detect-okurigana-char ?K) ?k))
-    (should (eq (nskk-detect-okurigana-char ?T) ?t))
-    (should (eq (nskk-detect-okurigana-char ?S) ?s)))
-
-  (nskk-it "returns nil for lowercase letters"
-    (should (null (nskk-detect-okurigana-char ?k)))
-    (should (null (nskk-detect-okurigana-char ?a))))
-
-  (nskk-it "returns nil for non-alphabetic characters"
-    (should (null (nskk-detect-okurigana-char ?1)))
-    (should (null (nskk-detect-okurigana-char ? )))))
-
-;;;
 ;;; Property-Based Tests
 ;;;
 
 ;; Input never crashes: processing any romaji character in hiragana mode
 ;; raises no error. The generator always produces non-empty romaji strings,
 ;; so (> (length input) 0) is always true; we return t on success and nil on error.
-(nskk-property-test input-pbt-romaji-char-no-crash-hiragana-mode
+(nskk-property-test-seeded input-pbt-romaji-char-no-crash-hiragana-mode
   ((input romaji-string))
   (if (> (length input) 0)
       (let ((char (aref input 0)))
@@ -867,11 +826,11 @@ Ensures the standard romaji table is loaded regardless of prior test state."
               t)
           (error nil)))
     t)  ; empty string is vacuously ok
-  100)
+  100 3001)
 
 ;; Mode is preserved after non-mode-switch input: inserting a regular ASCII
 ;; character in hiragana mode does not change the current mode.
-(nskk-property-test input-pbt-mode-preserved-after-insert
+(nskk-property-test-seeded input-pbt-mode-preserved-after-insert
   ((input romaji-string))
   (let ((nskk-current-state (nskk-state-create 'hiragana)))
     (with-temp-buffer
@@ -879,7 +838,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
             (last-command-event ?a))
         (nskk-self-insert 1)
         (eq (nskk-state-mode nskk-current-state) mode-before))))
-  50)
+  50 3002)
 
 ;; Table-driven mode creation tests: nskk-state-create with each valid mode
 ;; produces a state that reports that same mode.
@@ -895,10 +854,44 @@ Ensures the standard romaji table is loaded regardless of prior test state."
           (should (eq (nskk-state-mode state) expected))))
 
 ;;;
+;;; nskk--classify-romaji-input Tests
+;;;
+
+(nskk-describe "nskk--classify-romaji-input"
+  (nskk-it "returns nn-double when last and new char are both n"
+    (should (eq (nskk--classify-romaji-input ?n ?n nil)
+                'nn-double)))
+
+  (nskk-it "nn-double takes priority over match when result is also a string pair"
+    ;; Priority: nn-double must beat match (clause 1 before clause 2)
+    (should (eq (nskk--classify-romaji-input ?n ?n '("ん" . ""))
+                'nn-double)))
+
+  (nskk-it "returns match when converter returned a kana string"
+    (should (eq (nskk--classify-romaji-input ?a nil '("あ" . ""))
+                'match)))
+
+  (nskk-it "returns n-consonant when last is n and new char is not a hatsuon-blocker"
+    (should (eq (nskk--classify-romaji-input ?k ?n nil)
+                'n-consonant)))
+
+  (nskk-it "returns sokuon when same eligible consonant is doubled"
+    (should (eq (nskk--classify-romaji-input ?k ?k nil)
+                'sokuon)))
+
+  (nskk-it "returns incomplete when converter returned :incomplete"
+    (should (eq (nskk--classify-romaji-input ?k nil '(:incomplete . "k"))
+                'incomplete)))
+
+  (nskk-it "returns no-match as fallback"
+    (should (eq (nskk--classify-romaji-input ?! nil nil)
+                'no-match))))
+
+;;;
 ;;; Fullwidth-Char Prolog Table Tests
 ;;;
 
-(nskk-describe "fullwidth-char Prolog table"
+(nskk-describe "nskk--fullwidth-char-table mappings"
   (nskk-deftest-table input-fullwidth-char-mappings
     :description "ASCII characters map to their fullwidth Unicode equivalents"
     :columns (char expected)
@@ -907,8 +900,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
            (?~  ?\uFF5E)
            (?A  ?\uFF21)
            (?a  ?\uFF41))
-    :body (should (eq (nskk-prolog-query-value
-                       `(fullwidth-char ,char ,'\?fw) '\?fw)
+    :body (should (eq (gethash char nskk--fullwidth-char-table)
                       expected)))
 
   (nskk-it "non-ASCII character passes through unchanged"

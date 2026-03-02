@@ -64,21 +64,46 @@
                    (progn (nskk-server-close) nil)
                  (error t)))))
 
-;;;; Live skkserv tests (requires NSKK_TEST_SKKSERV env var)
+;;;; Mock skkserv helper
 
-(defun nskk-server--integration-live-p ()
-  "Return non-nil if live skkserv tests should run."
-  (getenv "NSKK_TEST_SKKSERV"))
+(defun nskk-server--start-mock-server (responses)
+  "Start an in-process mock skkserv and return (server-proc . port).
+RESPONSES is an alist of (KEY . RESPONSE-STRING) pairs.
+For keys not in RESPONSES the server sends a not-found \\='4...\\=' reply."
+  (let ((srv (make-network-process
+              :name " nskk-mock-skkserv"
+              :buffer nil
+              :service t
+              :server t
+              :noquery t
+              :coding nskk-server-coding-system
+              :filter
+              (lambda (client string)
+                (when (> (length string) 0)
+                  (let ((cmd (aref string 0)))
+                    (cond
+                     ((= cmd ?0)
+                      (delete-process client))
+                     ((= cmd ?1)
+                      (let* ((rest (substring string 1))
+                             (space-pos (string-search " " rest))
+                             (key (if space-pos
+                                      (substring rest 0 space-pos)
+                                    rest))
+                             (response (or (cdr (assoc key responses))
+                                          (concat "4" key " \n"))))
+                        (process-send-string client response))))))))))
+    (cons srv (process-contact srv :service))))
+
+;;;; Protocol tests using in-process mock skkserv
 
 (ert-deftest nskk-server-integration-live-connect-and-lookup ()
-  "Connect to a live skkserv and look up a basic reading."
-  (skip-unless (nskk-server--integration-live-p))
-  (let* ((spec (getenv "NSKK_TEST_SKKSERV"))
-         (parts (split-string spec ":"))
-         (host (car parts))
-         (port (if (cadr parts) (string-to-number (cadr parts)) 1178))
+  "Connect to an in-process mock skkserv and look up a basic reading."
+  (let* ((mock (nskk-server--start-mock-server '(("あ" . "1/亜/阿/唖/\n"))))
+         (server-proc (car mock))
+         (port (cdr mock))
          (nskk-server-enable t)
-         (nskk-server-host host)
+         (nskk-server-host "127.0.0.1")
          (nskk-server-portnum port)
          (nskk-server--process nil)
          (nskk-server--kill-emacs-hook-registered nil))
@@ -86,30 +111,29 @@
         (progn
           (should (nskk-server-open))
           (should (nskk-server-live-p))
-          ;; "あ" should return at least one candidate from any skkserv
           (let ((result (nskk-server-lookup "あ")))
-            (should (listp result))))
-      (nskk-server-close))))
+            (should (listp result))
+            (should result)))
+      (nskk-server-close)
+      (delete-process server-proc))))
 
 (ert-deftest nskk-server-integration-live-not-found-returns-nil ()
-  "skkserv returns nil for keys not in the dictionary."
-  (skip-unless (nskk-server--integration-live-p))
-  (let* ((spec (getenv "NSKK_TEST_SKKSERV"))
-         (parts (split-string spec ":"))
-         (host (car parts))
-         (port (if (cadr parts) (string-to-number (cadr parts)) 1178))
+  "In-process mock skkserv returns nil for keys not in the dictionary."
+  (let* ((mock (nskk-server--start-mock-server '(("あ" . "1/亜/阿/唖/\n"))))
+         (server-proc (car mock))
+         (port (cdr mock))
          (nskk-server-enable t)
-         (nskk-server-host host)
+         (nskk-server-host "127.0.0.1")
          (nskk-server-portnum port)
          (nskk-server--process nil)
          (nskk-server--kill-emacs-hook-registered nil))
     (unwind-protect
         (progn
           (should (nskk-server-open))
-          ;; Nonsense key should return nil (server sends "4...")
           (let ((result (nskk-server-lookup "zzzzzzzzzzzzz")))
             (should (null result))))
-      (nskk-server-close))))
+      (nskk-server-close)
+      (delete-process server-proc))))
 
 (provide 'nskk-server-integration-test)
 

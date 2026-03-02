@@ -150,7 +150,7 @@ Initialization order:
      ;; Step 2: Set up mock user-dict-entry facts.
      ;; Must use user-dict-entry (NOT mock-dict-entry) so dict-entry/2 bridge works.
      (nskk-prolog-retract-all 'user-dict-entry 2)
-     (nskk-prolog-set-index 'user-dict-entry 1 :trie)
+     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
      (let ((nskk-e2e--entries (or ,dict-entries nskk-e2e--default-dict)))
        (dolist (entry nskk-e2e--entries)
          (nskk-prolog-assert

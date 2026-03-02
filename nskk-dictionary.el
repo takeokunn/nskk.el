@@ -108,9 +108,9 @@ DDSKK equivalent: skk-jisyo-update-hook")
 
 ;; Dictionary source facts: (dict-source source-symbol predicate-name)
 ;; These map source symbols to their Prolog predicate names
-(nskk-prolog-set-index 'dict-source 2 :hash)
-(nskk-prolog-<- (dict-source user user-dict-entry))
-(nskk-prolog-<- (dict-source system system-dict-entry))
+(nskk-prolog-define-fact-table dict-source (:arity 2 :index :hash)
+  (user user-dict-entry)
+  (system system-dict-entry))
 
 ;; Bridge rule: unified lookup across all dictionary sources
 ;; User dictionary has priority (first clause wins on first solution)
@@ -148,6 +148,8 @@ DDSKK equivalent: skk-jisyo-update-hook")
 ;; or :parse as fallback.  ELisp caller passes boolean atoms (t or nil).
 ;; Use nskk-prolog-query-value for first-solution semantics (first clause wins).
 ;; Index must be :list so the fallback clause is always reachable.
+;; (nskk-prolog-<- used directly: second clause uses variable arguments — not ground facts,
+;;  and nskk-prolog-define-fact-table cannot emit :list-indexed tables)
 ;; (dict-load-strategy CacheEnabled MtimeValid ?Strategy)
 (nskk-prolog-set-index 'dict-load-strategy 3 :list)
 (nskk-prolog-<- (dict-load-strategy t t :cache))
@@ -157,10 +159,10 @@ DDSKK equivalent: skk-jisyo-update-hook")
 ;; ELisp catches errors, maps them to a reason atom, then queries this predicate
 ;; to obtain the declarative recovery action.
 ;; (dict-load-fallback Reason ?Action)
-(nskk-prolog-set-index 'dict-load-fallback 2 :hash)
-(nskk-prolog-<- (dict-load-fallback cache-read-failed :reparse))
-(nskk-prolog-<- (dict-load-fallback source-unreadable :skip))
-(nskk-prolog-<- (dict-load-fallback no-files-found :warn-and-nil))
+(nskk-prolog-define-fact-table dict-load-fallback (:arity 2 :index :hash)
+  (cache-read-failed :reparse)
+  (source-unreadable :skip)
+  (no-files-found :warn-and-nil))
 
 ;;; Section 3: Data structures
 

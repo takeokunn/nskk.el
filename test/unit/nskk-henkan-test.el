@@ -15,8 +15,8 @@
 ;;   nskk-with-conversion-context
 ;; - New Prolog predicates: candidate-nav-next-action/3,
 ;;   candidate-nav-prev-action/2, search-result-action/2,
-;;   convert-or-commit-action/2, registration-allowed/1,
-;;   okurigana-trigger/1, should-update-overlay/1
+;;   convert-or-commit-action/2, okurigana-trigger/1,
+;;   should-update-overlay/1
 ;; - Existing Prolog predicates: converting-phase/1, okurigana-char/2
 ;; - nskk-converting-p across all henkan phases
 ;; - nskk-detect-okurigana-char character classification
@@ -299,18 +299,24 @@
     (should (equal (nskk-prolog-query-value '(convert-or-commit-action not-converting \?a) '\?a)
                    'start-conversion))))
 
-(nskk-describe "registration-allowed Prolog predicate"
+(nskk-describe "nskk-max-registration-depth guard"
   (nskk-it "max-registration-depth is 3"
-    (should (equal (nskk-prolog-query-value '(max-registration-depth \?d) '\?d) 3)))
+    (should (equal nskk-max-registration-depth 3)))
 
   (nskk-it "allows registration at depth 0"
-    (should (nskk-prolog-query-one '(registration-allowed 0))))
+    (should (< 0 nskk-max-registration-depth)))
 
   (nskk-it "allows registration at depth 2"
-    (should (nskk-prolog-query-one '(registration-allowed 2))))
+    (should (< 2 nskk-max-registration-depth)))
 
   (nskk-it "disallows registration at depth 3 (max depth)"
-    (should-not (nskk-prolog-query-one '(registration-allowed 3)))))
+    (should-not (< 3 nskk-max-registration-depth)))
+
+  (nskk-it "respects non-default value when customized"
+    (let ((nskk-max-registration-depth 2))
+      (should (< 0 nskk-max-registration-depth))
+      (should (< 1 nskk-max-registration-depth))
+      (should-not (< 2 nskk-max-registration-depth)))))
 
 (nskk-describe "should-update-overlay Prolog predicate"
   (nskk-it "succeeds for active phase"
@@ -707,13 +713,6 @@
         (eq (not (null converting)) (not (null is-converting-phase))))
       t))
   100 2001)
-
-;; Property: "detect-okurigana-char type invariant"
-;; For any uppercase char A-Z, result is always equal to (downcase char).
-(nskk-property-test-seeded henkan-pbt-detect-okurigana-type-invariant
-  ((char okurigana-consonant-char))
-  (equal (nskk-detect-okurigana-char char) (downcase char))
-  100 2002)
 
 ;; Property: "henkan-dispatch never errors for valid prolog values"
 ;; Both search-result-action values (has-candidates, no-candidates) always

@@ -289,7 +289,7 @@ DDSKK equivalent: skk-search-server-1"
                       (< (- (float-time) start-time) nskk-server-timeout)
                       (or (null response)
                           (not (string-match-p "\n" response))))
-            (accept-process-output nskk-server--process 0.1 nil t)
+            (accept-process-output nskk-server--process 0.1)
             (when (buffer-live-p buf)
               (setq response
                     (with-current-buffer buf

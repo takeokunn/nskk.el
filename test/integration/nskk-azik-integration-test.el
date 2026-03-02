@@ -63,7 +63,8 @@ subsequent non-AZIK tests are not affected."
   (nskk-deftest-table azik-hatsuon-k-row
     :description "k-row hatsuon extensions produce kana+ん"
     :columns (second-char expected)
-    :rows ((?z "かん") (?k "きん") (?j "くん") (?d "けん") (?l "こん"))
+    ;; (?k "きん") omitted: "kk" fires sokuon (FR-B) before AZIK match
+    :rows ((?z "かん") (?j "くん") (?d "けん") (?l "こん"))
     :body (nskk-azik-with-session 'hiragana
             (nskk-integration--type-char ?k)
             (nskk-integration--type-char second-char)

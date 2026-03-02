@@ -1,6 +1,6 @@
 ;;; nskk-main-test.el --- Tests for nskk.el (main entry point) -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2026 NSKK Authors
 
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
@@ -20,8 +20,10 @@
 ;;; Code:
 
 (require 'ert)
+(require 'cl-lib)
 (require 'nskk)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
 
 (nskk-describe "nskk-mode definition"
   (nskk-it "is defined as a function"
@@ -197,6 +199,70 @@
 
   (nskk-it "nskk-state is loaded"
     (should (featurep 'nskk-state))))
+
+(nskk-describe "nskk--setup-buffer behavior"
+  (nskk-it "adds nskk--post-command-handler to buffer-local post-command-hook"
+    (with-temp-buffer
+      (nskk-given (nskk--setup-buffer))
+      (nskk-then
+       (should (memq 'nskk--post-command-handler
+                     (buffer-local-value 'post-command-hook (current-buffer)))))))
+
+  (nskk-it "is idempotent when called twice"
+    (with-temp-buffer
+      (nskk--setup-buffer)
+      (nskk--setup-buffer)
+      (should (= 1 (cl-count 'nskk--post-command-handler
+                              (buffer-local-value 'post-command-hook (current-buffer))))))))
+
+(nskk-describe "nskk--cleanup-buffer behavior"
+  (nskk-it "removes nskk--post-command-handler from buffer-local post-command-hook"
+    (with-temp-buffer
+      (nskk-given (nskk--setup-buffer))
+      (nskk-when  (nskk--cleanup-buffer))
+      (nskk-then
+       (should-not (memq 'nskk--post-command-handler
+                         (buffer-local-value 'post-command-hook (current-buffer)))))))
+
+  (nskk-it "is safe to call when hook is not set"
+    (with-temp-buffer
+      (nskk-then (should-not (nskk--cleanup-buffer))))))
+
+(nskk-describe "nskk--enable and nskk--disable behavior"
+  (nskk-it "nskk--enable creates nskk-current-state when nil"
+    (with-temp-buffer
+      (let ((nskk-current-state nil))
+        (nskk-with-mocks ((nskk-modeline-update (lambda () nil))
+                          (nskk-candidate-show-list (lambda () nil))
+                          (nskk-candidate-hide-list (lambda () nil)))
+          (nskk-given (nskk--enable))
+          (nskk-then (should (nskk-state-p nskk-current-state)))))))
+
+  (nskk-it "nskk--disable sets nskk-current-state to nil"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (nskk-given (nskk--disable))
+      (nskk-then (should (null nskk-current-state))))))
+
+(nskk-describe "nskk--post-command-handler behavior"
+  (nskk-it "is a no-op when nskk-mode is nil"
+    (with-temp-buffer
+      (let ((nskk-mode nil)
+            (commit-called nil))
+        (cl-letf (((symbol-function 'nskk-commit-current)
+                   (lambda () (setq commit-called t))))
+          (nskk--post-command-handler)
+          (should-not commit-called)))))
+
+  (nskk-it "calls nskk-modeline-update when nskk-mode is active"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (let ((update-called nil))
+        (cl-letf (((symbol-function 'nskk-modeline-update)
+                   (lambda () (setq update-called t))))
+          (nskk--post-command-handler)
+          (should update-called)))
+      (nskk-mode -1))))
 
 (provide 'nskk-main-test)
 

@@ -299,18 +299,20 @@
         (should (equal (nskk-convert-romaji "kp") "こう")))))
 
   (nskk-context "s-row diphthong"
-    (nskk-it "sq sh sw sp convert to さい すう せい そう"
+    (nskk-it "sq sw sp convert to さい せい そう; sh demoted to :incomplete"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "sq") "さい"))
-        (should (equal (nskk-convert-romaji "sh") "すう"))
+        ;; "sh" is demoted to :incomplete: standard romaji has sha/shi/shu/she/sho
+        (should (eq (nskk-converter-lookup "sh") :incomplete))
         (should (equal (nskk-convert-romaji "sw") "せい"))
         (should (equal (nskk-convert-romaji "sp") "そう")))))
 
   (nskk-context "t-row diphthong"
-    (nskk-it "tq th tw tp convert to たい つう てい とう"
+    (nskk-it "tq tw tp convert to たい てい とう; th demoted to :incomplete"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "tq") "たい"))
-        (should (equal (nskk-convert-romaji "th") "つう"))
+        ;; "th" is demoted to :incomplete: standard romaji has tha/thi/thu/the/tho
+        (should (eq (nskk-converter-lookup "th") :incomplete))
         (should (equal (nskk-convert-romaji "tw") "てい"))
         (should (equal (nskk-convert-romaji "tp") "とう")))))
 
@@ -361,16 +363,16 @@
         (should (equal (nskk-convert-romaji "rp") "ろう")))))
 
   (nskk-context "w-row diphthong"
-    (nskk-it "wq wh wp convert to わい うう うぉう and lookup table is complete"
+    (nskk-it "wq wp convert to わい うぉう; wh demoted to :incomplete"
       (nskk-with-azik-style
         ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "wq") "わい"))
-        (should (equal (nskk-converter-lookup "wh") "うう"))
+        ;; "wh" is demoted to :incomplete: standard romaji has wha/whi/whu/whe/who
+        (should (eq (nskk-converter-lookup "wh") :incomplete))
         (should (equal (nskk-converter-lookup "ww") "うぇい"))
         (should (equal (nskk-converter-lookup "wp") "うぉう"))
-        ;; wq, wh, wp should work in conversion
+        ;; wq, wp should work in conversion
         (should (equal (nskk-convert-romaji "wq") "わい"))
-        (should (equal (nskk-convert-romaji "wh") "うう"))
         (should (equal (nskk-convert-romaji "wp") "うぉう")))))
 
   (nskk-context "g-row diphthong"
@@ -390,10 +392,11 @@
         (should (equal (nskk-convert-romaji "zp") "ぞう")))))
 
   (nskk-context "d-row diphthong"
-    (nskk-it "dq dh dw dp convert to だい づう でい どう"
+    (nskk-it "dq dw dp convert to だい でい どう; dh demoted to :incomplete"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "dq") "だい"))
-        (should (equal (nskk-convert-romaji "dh") "づう"))
+        ;; "dh" is demoted to :incomplete: standard romaji has dha/dhi/dhu/dhe/dho
+        (should (eq (nskk-converter-lookup "dh") :incomplete))
         (should (equal (nskk-convert-romaji "dw") "でい"))
         (should (equal (nskk-convert-romaji "dp") "どう")))))
 

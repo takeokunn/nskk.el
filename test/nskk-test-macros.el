@@ -1146,6 +1146,18 @@ Example:
 
 
 ;;;;
+;;;; Candidate State Setup Macros
+;;;;
+
+(defmacro nskk-test-set-candidates (candidates &optional index)
+  "Set CANDIDATES on `nskk-current-state', with INDEX (default 0)."
+  (declare (indent 0) (debug t))
+  `(progn
+     (setf (nskk-state-candidates nskk-current-state) ,candidates)
+     (setf (nskk-state-current-index nskk-current-state) (or ,index 0))))
+
+
+;;;;
 ;;;; Henkan State Assertion Macros
 ;;;;
 

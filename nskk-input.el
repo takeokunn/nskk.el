@@ -39,8 +39,9 @@
 ;;   q-key-action/4         -- q key dispatch (style, behavior, buf-state, action)
 ;;   semicolon-key-action/2 -- semicolon key dispatch (style, action)
 ;;   kakutei-action/2       -- C-j dispatch (state, action)
-;;   fullwidth-char/2       -- ASCII to JIS X0208 full-width character table
-;;   romaji-input-action/2    -- romaji input state to action dispatch table
+;;
+;; Full-width character mapping is handled by `nskk--fullwidth-char-table'
+;; (a plain hash table defvar), not a Prolog predicate.
 ;;
 ;; Key public API:
 ;;   `nskk-self-insert'              -- main entry point for character input
@@ -73,6 +74,7 @@
 (declare-function nskk-converter-load-style "nskk-converter")
 (declare-function nskk-converter-convert "nskk-converter")
 (declare-function nskk-kana-string-hiragana-to-katakana "nskk-kana")
+(declare-function nskk-kana-zenkaku-to-hankaku "nskk-kana")
 ;; From nskk-henkan.el:
 (declare-function nskk-commit-current "nskk-henkan")
 (declare-function nskk--trigger-okuri-conversion "nskk-henkan")
@@ -94,6 +96,14 @@
 (defvar nskk-henkan-select-candidate-by-key-function)
 (defvar nskk-converter-romaji-style)
 (defvar nskk-azik-q-behavior)
+(defvar nskk--hatsuon-blockers)
+(defvar nskk--sokuon-blockers)
+
+(defvar-local nskk--sticky-shift-pending nil
+  "Non-nil when sticky shift is pending (next char treated as uppercase).")
+
+(defvar-local nskk--numeric-mode nil
+  "Non-nil when in numeric input mode for SKK numeric conversion.")
 
 ;;;; Mode Setter Macro
 
@@ -134,6 +144,23 @@ This is DDSKK-compatible: /word SPC → dictionary lookup → candidate."
   (nskk--insert-marker nskk-henkan-on-marker)
   (nskk-with-current-state
     (nskk-state-set-henkan-phase nskk-current-state 'on))
+  (when (fboundp 'nskk-modeline-update)
+    (nskk-modeline-update)))
+
+;;;###autoload
+(defun nskk-set-mode-numeric ()
+  "Switch to numeric input mode for SKK numeric conversion.
+Reuses abbrev mode mechanics (literal character input) with an additional
+`nskk--numeric-mode' flag that triggers candidate post-processing in
+`nskk-start-conversion'.  Inserts \\=# as the first preedit character."
+  (interactive)
+  (nskk--set-mode 'abbrev)
+  (nskk--set-conversion-start-marker (point))
+  (nskk--insert-marker nskk-henkan-on-marker)
+  (nskk-with-current-state
+    (nskk-state-set-henkan-phase nskk-current-state 'on))
+  (setq nskk--numeric-mode t)
+  (insert "#")
   (when (fboundp 'nskk-modeline-update)
     (nskk-modeline-update)))
 
@@ -182,38 +209,63 @@ Returns a mode symbol such as `hiragana', `katakana', `ascii',
 (defun nskk-handle-q-key ()
   "Handle q key press based on current romaji style and configuration.
 In AZIK mode with context-aware behavior:
-  - If there is pending romaji input, produce \u3093
+  - If pending-romaji+q is a complete AZIK hash match (e.g. kq→かい),
+    fire the AZIK rule via `nskk-process-japanese-input'.
+  - If there is other pending romaji input, produce \u3093
   - Otherwise, toggle hiragana/katakana mode
 In always-n mode: always produce \u3093
 In toggle-only mode: toggle mode regardless of context
 In standard mode: toggle mode (default SKK behavior)."
   (interactive)
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+         (combined (concat nskk--romaji-buffer "q"))
+         (buf-state (cond
+                     ;; azik-complete: pending+q is a complete AZIK match
+                     ((and (eq style 'azik)
+                           (stringp (gethash combined nskk--romaji-table)))
+                      'azik-complete)
+                     ((string-empty-p nskk--romaji-buffer) 'empty)
+                     (t 'pending)))
          (behavior (if (featurep 'nskk-azik) nskk-azik-q-behavior 'context-aware))
-         (buf-state (if (string-empty-p nskk--romaji-buffer) 'empty 'pending))
          (action (nskk-prolog-query-value
                   `(q-key-action ,style ,behavior ,buf-state ,'\?action)
                   '\?action)))
     (nskk-debug-log "[INPUT] q-key: style=%s behavior=%s buf-state=%s action=%s" style behavior buf-state action)
     (pcase action
-      ('toggle-mode (nskk-toggle-japanese-mode))
-      ('insert-n    (insert "\u3093"))
-      (_            nil))))
+      ('toggle-mode  (nskk-toggle-japanese-mode))
+      ('insert-n     (insert "\u3093"))
+      ('fire-romaji  (nskk-process-japanese-input ?q 1))
+      (_             nil))))
 
 ;;;###autoload
 (defun nskk-handle-semicolon-key ()
   "Handle semicolon key press.
 In AZIK mode: produce small tsu (\u3063).
-In standard mode: self-insert (pass through to `nskk-self-insert')."
+In standard mode + Japanese mode: sticky shift (next char is uppercase).
+Double semicolon in sticky-shift state: cancel sticky, insert literal \";\".
+In standard mode + non-Japanese mode: self-insert."
   (interactive)
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
          (action (nskk-prolog-query-value
                   `(semicolon-key-action ,style ,'\?action) '\?action)))
     (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
     (pcase action
-      ('insert-small-tsu (insert "\u3063"))
-      ('self-insert      (nskk-self-insert 1))
-      (_                 nil))))
+      ('insert-small-tsu (nskk-process-japanese-input ?\; 1))
+      ('sticky-shift
+       (cond
+        ;; Double semicolon: cancel sticky, insert literal ";"
+        (nskk--sticky-shift-pending
+         (setq nskk--sticky-shift-pending nil)
+         (insert ";"))
+        ;; Japanese mode: enter sticky shift pending state
+        ((and nskk-current-state
+              (nskk-prolog-query-one
+               `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+         (setq nskk--sticky-shift-pending t))
+        ;; Non-Japanese mode: self-insert
+        (t (self-insert-command 1))))
+      ('self-insert (nskk-self-insert 1))
+      (_            nil))))
 
 ;;;; Input Processing
 
@@ -255,15 +307,24 @@ N is the command prefix argument."
     (dotimes (_ n)
       (insert char))))
 
+(defvar nskk--fullwidth-char-table
+  (let ((h (make-hash-table :test 'eq :size 96)))
+    (puthash ?\s ?\u3000 h)
+    (cl-loop for c from ?! to ?~
+             do (puthash c (+ c #xFEE0) h))
+    h)
+  "Hash table mapping ASCII characters to JIS X 0208 full-width equivalents.
+Space maps to ideographic space U+3000; printable ASCII (! through ~) maps
+to the full-width range FF01-FF5E via offset +#xFEE0.")
+
 (defun nskk-insert-fullwidth-char (char &optional n)
   "Insert full-width version of ASCII CHAR N times.
 Converts ASCII characters (SPC and !-~) to their JIS X 0208 full-width
-equivalents using the fullwidth-char/2 Prolog table.
+equivalents using `nskk--fullwidth-char-table'.
 Space (SPC) maps to ideographic space (U+3000); printable ASCII
 characters (! through ~) map to FF01-FF5E via offset +#xFEE0."
   (let* ((n (or n 1))
-         (fw-char (or (nskk-prolog-query-value
-                       `(fullwidth-char ,char ,'\?fw) '\?fw)
+         (fw-char (or (gethash char nskk--fullwidth-char-table)
                       char)))             ; non-ASCII: pass through
     (dotimes (_ n)
       (insert fw-char))))
@@ -318,6 +379,11 @@ When CHAR is uppercase and `nskk-converter-auto-start-henkan' is non-nil,
 set the conversion start marker at the current point and process the
 lowercase version of the letter as normal romaji input."
   (cl-block nskk-process-japanese-input
+    ;; Sticky shift: treat next character as uppercase
+    (when nskk--sticky-shift-pending
+      (setq nskk--sticky-shift-pending nil)
+      (when (and (characterp char) (<= ?a char) (<= char ?z))
+        (setq char (upcase char))))
     (let* ((is-henkan-start (and (characterp char)
                                  (<= ?A char) (<= char ?Z)
                                  nskk-converter-auto-start-henkan
@@ -339,6 +405,9 @@ lowercase version of the letter as normal romaji input."
                          ((string-empty-p kana) nil)
                          ((eq mode 'katakana)
                           (nskk-kana-string-hiragana-to-katakana kana))
+                         ((eq mode 'katakana-半角)
+                          (nskk-kana-zenkaku-to-hankaku
+                           (nskk-kana-string-hiragana-to-katakana kana)))
                          (t kana))))
         (if (string-empty-p kana)
             (nskk--show-pending-romaji nskk--romaji-buffer)
@@ -392,12 +461,30 @@ LAST-BUF-CHAR is the last character in `nskk--romaji-buffer', or nil if empty.
 RESULT is the return value of `nskk-converter-convert' on the full input.
 
 Returns one of: `nn-double', `match', `n-consonant', `sokuon',
-`incomplete', or `no-match'.  Classification delegates to the
-`romaji-class/4' Prolog predicate; clause order encodes priority."
-  (or (nskk-prolog-query-value
-       `(romaji-class ,char ,last-buf-char ,result \?class)
-       '\?class)
-      'no-match))
+`incomplete', or `no-match'.  Classification uses a priority-ordered
+`cond' expression; clause order encodes priority."
+  (cond
+    ;; nn-double: n + n sequence (highest priority)
+    ((and (eql last-buf-char ?n) (eql char ?n))
+     'nn-double)
+    ;; sokuon: same eligible consonant doubled (checked before match so that
+    ;; standard sokuon "kka"→っか takes priority over AZIK two-char rules
+    ;; like "kk"→きん that would otherwise shadow doubled consonants).
+    ((and (eql last-buf-char char)
+          (not (memq char nskk--sokuon-blockers)))
+     'sokuon)
+    ;; match: converter returned a kana string
+    ((and (consp result) (stringp (car result)))
+     'match)
+    ;; n-consonant: n followed by a consonant not in hatsuon-blockers
+    ((and (eql last-buf-char ?n)
+          (not (memq char nskk--hatsuon-blockers)))
+     'n-consonant)
+    ;; incomplete: converter returned :incomplete
+    ((and (consp result) (eq (car result) :incomplete))
+     'incomplete)
+    ;; no-match: fallback
+    (t 'no-match)))
 
 (defun nskk-convert-input-to-kana (char)
   "Convert input CHAR to kana using the romaji-to-kana converter.
@@ -425,7 +512,16 @@ is still incomplete (waiting for more characters)."
          kana))
       ('n-consonant
        (nskk-debug-log "[INPUT] romaji-hatsuon-n+consonant: input=%s char=%c" input char)
-       (nskk--emit-hatsuon-prefix (char-to-string char)))
+       ;; Flush ん for the pending n, leaving char in romaji buffer.
+       ;; Then immediately check if char itself is a complete match (e.g. AZIK
+       ;; ";"→っ): if so, emit it now and clear the buffer so it is not lost.
+       (let* ((hatsuon-kana (nskk--emit-hatsuon-prefix (char-to-string char)))
+              (char-result (nskk-converter-convert (char-to-string char))))
+         (if (and (consp char-result) (stringp (car char-result)))
+             (progn
+               (setq nskk--romaji-buffer "")
+               (concat hatsuon-kana (car char-result)))
+           hatsuon-kana)))
       ('sokuon
        (nskk-debug-log "[INPUT] romaji-sokuon: input=%s" input)
        (setq nskk--romaji-buffer (char-to-string char))
@@ -442,104 +538,91 @@ is still incomplete (waiting for more characters)."
 (defvar nskk--input-initialized nil
   "Non-nil when input routing Prolog predicates have been initialized.")
 
+;;;; Private per-family Prolog initializers
+
+(defun nskk--init-input-routing-rules ()
+  "Assert input-route/2 facts.
+Note: abbrev mode is NOT listed here — in abbrev mode, `nskk-self-insert'
+short-circuits to `nskk-process-abbrev-input' before consulting Prolog,
+mirroring DDSKK's `skk-abbrev-mode-map' direct binding approach."
+  (nskk-prolog-define-fact-table input-route (:arity 2 :index :hash)
+    (ascii        insert-direct)
+    (latin        insert-direct)
+    (jisx0208-latin insert-fullwidth)
+    (hiragana     process-japanese)
+    (katakana     process-japanese)
+    (katakana-半角 process-japanese)))
+
+(defun nskk--init-toggle-rules ()
+  "Assert toggle-mode/2 facts."
+  (nskk-prolog-define-fact-table toggle-mode (:arity 2 :index :hash)
+    (hiragana    katakana)
+    (katakana    hiragana)
+    (katakana-半角 hiragana)))
+
+(defun nskk--init-q-key-rules ()
+  "Assert q-key-action/4 facts.
+Non-AZIK: always toggle (behavior and buffer-state don't matter).
+AZIK: behavior-driven dispatch.
+
+The `azik-complete' buf-state is set when pending-romaji+q forms a complete
+AZIK hash match (e.g. kq→かい).  Only `context-aware' mode fires the AZIK
+rule; `always-n' and `toggle-only' preserve their unconditional semantics."
+  (nskk-prolog-define-fact-table q-key-action (:arity 4 :index :hash)
+    (standard \?behavior \?buf toggle-mode)
+    ;; context-aware + azik-complete: fire the AZIK romaji rule (e.g. kq→かい)
+    (azik context-aware azik-complete fire-romaji)
+    (azik always-n    \?buf    insert-n)
+    (azik toggle-only \?buf    toggle-mode)
+    (azik context-aware empty  toggle-mode)
+    (azik context-aware pending insert-n)))
+
+(defun nskk--init-l-key-rules ()
+  "Assert l-key-action/3 facts.
+In AZIK mode with `azik-complete' buf-state (pending-romaji+l is a complete
+hash match, e.g. hl→ほん), fire the AZIK rule instead of switching to latin.
+In all other cases switch to latin mode."
+  (nskk-prolog-define-fact-table l-key-action (:arity 3 :index :hash)
+    (azik azik-complete fire-romaji)
+    (azik other         latin-mode)
+    (standard \?buf     latin-mode)))
+
+(defun nskk--init-semicolon-rules ()
+  "Assert semicolon-key-action/2 facts.
+Standard mode uses sticky-shift (virtual Shift via semicolon key)."
+  (nskk-prolog-define-fact-table semicolon-key-action (:arity 2 :index :hash)
+    (azik     insert-small-tsu)
+    (standard sticky-shift)))
+
+(defun nskk--init-kakutei-rules ()
+  "Assert kakutei-action/2 facts for C-j dispatch."
+  (nskk-prolog-define-fact-table kakutei-action (:arity 2 :index :hash)
+    (converting     commit-candidate)
+    (preedit        commit-preedit)
+    (romaji-pending clear-romaji)
+    (hiragana-idle  insert-newline)
+    (katakana-idle  enter-hiragana)
+    (direct-idle    enter-hiragana)))
+
+(defun nskk--azik-complete-match-p (char)
+  "Return non-nil when AZIK is active and pending-romaji+CHAR is a complete match.
+Checks `nskk--romaji-table' for a string value at the key formed by
+concatenating `nskk--romaji-buffer' with the string representation of CHAR.
+Used by AZIK-aware key handlers (l, q) to detect multi-char AZIK rules."
+  (and (eq nskk-converter-romaji-style 'azik)
+       (stringp (gethash (concat nskk--romaji-buffer (char-to-string char))
+                         nskk--romaji-table))))
+
 (defun nskk-input-initialize ()
   "Initialize input routing and fullwidth character Prolog predicates.
 Idempotent: subsequent calls are no-ops."
   (unless nskk--input-initialized
-    ;; Input routing rules.
-    ;; Note: abbrev mode is NOT listed here — in abbrev mode, `nskk-self-insert'
-    ;; short-circuits to `nskk-process-abbrev-input' before consulting Prolog,
-    ;; mirroring DDSKK's `skk-abbrev-mode-map' direct binding approach.
-    (nskk-prolog-set-index 'input-route 2 :hash)
-    (nskk-prolog-<- (input-route ascii insert-direct))
-    (nskk-prolog-<- (input-route latin insert-direct))
-    (nskk-prolog-<- (input-route jisx0208-latin insert-fullwidth))
-    (nskk-prolog-<- (input-route hiragana process-japanese))
-    (nskk-prolog-<- (input-route katakana process-japanese))
-    (nskk-prolog-<- (input-route katakana-半角 process-japanese))
-
-    ;; Mode toggle rules
-    (nskk-prolog-set-index 'toggle-mode 2 :hash)
-    (nskk-prolog-<- (toggle-mode hiragana katakana))
-    (nskk-prolog-<- (toggle-mode katakana hiragana))
-    (nskk-prolog-<- (toggle-mode katakana-半角 hiragana))
-
-    ;; Key behavior rules
-    (nskk-prolog-set-index 'q-key-action 4 :hash)
-    ;; Non-AZIK: always toggle (behavior and buffer-state don't matter)
-    (nskk-prolog-<- (q-key-action standard \?behavior \?buf toggle-mode))
-    ;; AZIK: behavior-driven dispatch
-    (nskk-prolog-<- (q-key-action azik always-n \?buf insert-n))
-    (nskk-prolog-<- (q-key-action azik toggle-only \?buf toggle-mode))
-    (nskk-prolog-<- (q-key-action azik context-aware empty toggle-mode))
-    (nskk-prolog-<- (q-key-action azik context-aware pending insert-n))
-
-    (nskk-prolog-set-index 'semicolon-key-action 2 :hash)
-    (nskk-prolog-<- (semicolon-key-action azik insert-small-tsu))
-    (nskk-prolog-<- (semicolon-key-action standard self-insert))
-
-    ;; C-j (kakutei) dispatch rules
-    (nskk-prolog-set-index 'kakutei-action 2 :hash)
-    (nskk-prolog-<- (kakutei-action converting     commit-candidate))
-    (nskk-prolog-<- (kakutei-action preedit        commit-preedit))
-    (nskk-prolog-<- (kakutei-action romaji-pending clear-romaji))
-    (nskk-prolog-<- (kakutei-action hiragana-idle  insert-newline))
-    (nskk-prolog-<- (kakutei-action katakana-idle  enter-hiragana))
-    (nskk-prolog-<- (kakutei-action direct-idle    enter-hiragana))
-
-    ;; Full-width character table
-    (nskk-prolog-set-index 'fullwidth-char 2 :hash)
-    ;; Space maps to ideographic space (special case)
-    (nskk-prolog-assert '((fullwidth-char ?\s ?\u3000)))
-    ;; ASCII printable range (! 0x21 to ~ 0x7E) maps to FF01-FF5E (offset +#xFEE0)
-    (cl-loop for c from ?! to ?~
-             do (nskk-prolog-assert `((fullwidth-char ,c ,(+ c #xFEE0)))))
-
-    ;; Romaji input dispatch table (documentation + queryable registry)
-    ;; Maps classified input state to action symbol for `nskk-convert-input-to-kana'.
-    (nskk-prolog-set-index 'romaji-input-action 2 :hash)
-    (nskk-prolog-deffacts romaji-input-action
-      (nn-double   emit-nn-hatsuon)
-      (match       apply-match)
-      (n-consonant emit-n-hatsuon)
-      (sokuon      emit-sokuon)
-      (incomplete  buffer-input)
-      (no-match    flush-buffer))
-
-    ;; Romaji input classifier rules.
-    ;; Clause order encodes priority — first matching clause wins.
-    ;; This replaces the order-dependent cond in `nskk--classify-romaji-input'.
-    ;; Goal handlers char-eql/2, string-pair-p/1, incomplete-pair-p/1 are
-    ;; defined in nskk-converter.el.
-    ;;
-    ;; Query form: (romaji-class CHAR LAST-CHAR RESULT ?class)
-    ;;   CHAR       — new input character (integer)
-    ;;   LAST-CHAR  — last char in romaji buffer (integer or nil)
-    ;;   RESULT     — return value of nskk-converter-convert (cons or nil)
-    ;;   ?class     — output: one of nn-double, match, n-consonant,
-    ;;                         sokuon, incomplete, no-match
-    ;; nn-double: n + n sequence (highest priority — must precede match
-    ;;   because "nn" maps to ん in the romaji table)
-    (nskk-prolog-<- (romaji-class \?char \?last \?result nn-double)
-      (char-eql \?last 110)
-      (char-eql \?char 110))
-    ;; match: converter returned a kana string
-    (nskk-prolog-<- (romaji-class \?char \?last \?result match)
-      (string-pair-p \?result))
-    ;; n-consonant: n followed by a hatsuon-trigger consonant
-    (nskk-prolog-<- (romaji-class \?char \?last \?result n-consonant)
-      (char-eql \?last 110)
-      (hatsuon-trigger \?char))
-    ;; sokuon: same eligible consonant doubled
-    (nskk-prolog-<- (romaji-class \?char \?last \?result sokuon)
-      (char-eql \?last \?char)
-      (sokuon-eligible \?char))
-    ;; incomplete: converter returned :incomplete (partial prefix)
-    (nskk-prolog-<- (romaji-class \?char \?last \?result incomplete)
-      (incomplete-pair-p \?result))
-    ;; no-match: fallback — flush the romaji buffer
-    (nskk-prolog-<- (romaji-class \?_ \?_ \?_ no-match))
-
+    (nskk--init-input-routing-rules)
+    (nskk--init-toggle-rules)
+    (nskk--init-q-key-rules)
+    (nskk--init-l-key-rules)
+    (nskk--init-semicolon-rules)
+    (nskk--init-kakutei-rules)
     (setq nskk--input-initialized t)))
 
 (provide 'nskk-input)

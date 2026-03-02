@@ -458,7 +458,7 @@
         (nskk-prolog-clear-database)
         (nskk-prolog-<- (test-wphold-flag active))
         (let ((ran nil))
-          (nskk-when-prolog-holds (test-wphold-flag active)
+          (nskk-when-prolog-holds '(test-wphold-flag active)
             (setq ran t))
           (should ran))))
 
@@ -466,7 +466,7 @@
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (let ((ran nil))
-          (nskk-when-prolog-holds (test-wphold-no-such-pred x)
+          (nskk-when-prolog-holds '(test-wphold-no-such-pred x)
             (setq ran t))
           (should-not ran))))
 
@@ -487,7 +487,7 @@
           (should (listp result)))
         ;; And nskk-when-prolog-holds correctly executes its body.
         (let ((ran nil))
-          (nskk-when-prolog-holds (converting-phase active)
+          (nskk-when-prolog-holds '(converting-phase active)
             (setq ran t))
           (should ran))))))
 
@@ -636,14 +636,14 @@
 
   (nskk-it "filters entries by okuri-type"
     (nskk-prolog-test-with-isolated-db
-      (let* ((e-ari  (make-nskk-dict-entry :key "か" :candidates '("書") :okuri 'okuri-ari))
-             (e-nasi (make-nskk-dict-entry :key "か" :candidates '("花") :okuri 'okuri-nasi))
+      (let* ((e-ari  (make-nskk-dict-entry :key "か" :candidates '("書") :okuri "k"))
+             (e-nasi (make-nskk-dict-entry :key "か" :candidates '("花")))
              (results `(("か-ari"  . ,e-ari)
                         ("か-nasi" . ,e-nasi)))
              (processed (nskk-search--post-process-results results 'okuri-ari nil)))
         ;; Only the okuri-ari entry should survive
         (should (= (length processed) 1))
-        (should (eq (nskk-dict-entry-okuri (cdar processed)) 'okuri-ari))))))
+        (should (equal (nskk-dict-entry-okuri (cdar processed)) "k"))))))
 
 ;;;
 ;;; nskk-process-japanese-input early-return refactoring Tests

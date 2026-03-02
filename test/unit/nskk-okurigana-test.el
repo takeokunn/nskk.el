@@ -378,6 +378,90 @@
     (should (fboundp 'nskk-state-get-okurigana))))
 
 ;;;
+;;; Regression Tests: Pending Romaji Discard on Okurigana Trigger
+;;;
+;;
+;; Bug (fixed in nskk-henkan.el): when a pending incomplete romaji consonant
+;; (e.g. "k", "sh") was in nskk--romaji-buffer when an okurigana trigger
+;; (uppercase letter) arrived, the raw consonant was inserted into the buffer
+;; before the * okurigana marker, producing e.g. "▽かk*" instead of "▽か*".
+;;
+;; The fix discards :incomplete romaji (anything where nskk-converter-convert
+;; returns (:incomplete . ...) or nil) and only emits successfully-converted kana
+;; or a standalone "n" (→ "ん" at word boundary).
+
+(nskk-describe "okurigana input flush behaviour"
+  (nskk-context "pending consonant is discarded (not inserted)"
+    (nskk-it "pending k is discarded: buffer does not contain k before the * marker"
+      ;; T-U1: "k" in romaji buffer + uppercase K trigger → "k" must NOT appear before *
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          ;; Insert preedit reading so far: ▽か
+          (insert "\u25BD\u304B")
+          ;; Set conversion-start marker at buffer start (as henkan-on does)
+          (nskk--set-conversion-start-marker (point-min))
+          ;; Put the state into henkan-on phase (reading in progress)
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; Simulate a pending incomplete romaji consonant "k"
+          (setq nskk--romaji-buffer "k")
+          ;; Fire okurigana trigger (uppercase K)
+          (nskk-process-okurigana-input ?K)
+          ;; The buffer should NOT contain "k" adjacent to the "*" marker.
+          ;; Check both orderings: "k*" (consonant before marker, the actual bug)
+          ;; and "*k" (consonant after marker), to catch both insertion orders.
+          (let ((content (buffer-string)))
+            (should-not (string-match-p "k\\*\\|\\*k" content))
+            ;; The * okurigana marker must be present
+            (should (string-match-p "\\*" content))))))
+
+    (nskk-it "pending multi-char sh is discarded: buffer does not contain sh before *"
+      ;; T-U2: "sh" (multi-char incomplete) + uppercase K → "sh" must NOT appear before *
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          (insert "\u25BD\u304B")
+          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; "sh" is an incomplete romaji prefix (needs vowel to complete shi/sha/shu etc.)
+          (setq nskk--romaji-buffer "sh")
+          (nskk-process-okurigana-input ?K)
+          (let ((content (buffer-string)))
+            (should-not (string-match-p "sh" content))
+            (should (string-match-p "\\*" content))))))
+
+    (nskk-it "pending n is converted to ん and inserted before *"
+      ;; T-U3: "n" (standalone n at word boundary) + uppercase K → "ん" IS inserted before *
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          (insert "\u25BD\u304B")
+          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; "n" alone is the ん exception: it should flush as ん before the marker
+          (setq nskk--romaji-buffer "n")
+          (nskk-process-okurigana-input ?K)
+          (let ((content (buffer-string)))
+            ;; ん must appear in the buffer before the * marker
+            (should (string-match-p "\u3093" content))
+            (should (string-match-p "\\*" content))
+            ;; And the raw "n" character must NOT appear as ASCII
+            (should-not (string-match-p "[nN]\\*\\|\\*[nN]" content))))))
+
+    (nskk-it "empty romaji buffer with uppercase K trigger inserts no extra char before *"
+      ;; T-U4: empty romaji buffer + uppercase K → only * inserted, no spurious chars
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          (insert "\u25BD\u304B")
+          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; No pending romaji
+          (setq nskk--romaji-buffer "")
+          (nskk-process-okurigana-input ?K)
+          (let ((content (buffer-string)))
+            ;; * marker must be present
+            (should (string-match-p "\\*" content))
+            ;; No raw ASCII consonant should appear adjacent to *
+            (should-not (string-match-p "[a-z]\\*\\|\\*[a-z]" content))))))))
+
+;;;
 ;;; Test Runner
 ;;;
 

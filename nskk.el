@@ -94,6 +94,9 @@
 (declare-function nskk-dict--maybe-save "nskk-dictionary")
 (declare-function nskk-handle-ctrl-a "nskk-keymap")
 (declare-function nskk-handle-ctrl-e "nskk-keymap")
+(declare-function nskk-handle-tab "nskk-keymap")
+(declare-function nskk-handle-hash "nskk-keymap")
+(declare-function nskk-handle-semicolon-key "nskk-input")
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--get-conversion-start "nskk-henkan")
 (declare-function nskk-commit-current "nskk-henkan")
@@ -142,7 +145,11 @@ DDSKK equivalent: skk-input-mode-hook")
   "C-e"     #'nskk-handle-ctrl-e
   "<end>"   #'nskk-handle-ctrl-e
   "C-g"     #'nskk-handle-cancel
-  "DEL"     #'nskk-handle-backspace)
+  "DEL"     #'nskk-handle-backspace
+  ;; Sticky shift, dynamic completion, numeric input
+  ";"       #'nskk-handle-semicolon-key
+  "TAB"     #'nskk-handle-tab
+  "#"       #'nskk-handle-hash)
 
 ;;;###autoload
 (define-minor-mode nskk-mode

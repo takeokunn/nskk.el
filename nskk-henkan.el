@@ -48,8 +48,6 @@
 ;;   candidate-nav-prev-action/2 -- (list-state action) prev-key dispatch
 ;;   search-result-action/2      -- (has/no candidates) post-search dispatch
 ;;   convert-or-commit-action/2  -- (converting state) SPC-without-preedit dispatch
-;;   max-registration-depth/1    -- maximum recursive registration nesting
-;;   registration-allowed/1      -- true if nesting depth is within limit
 ;;   should-update-overlay/1     -- phases that require overlay display
 ;;
 ;; Key public functions:
@@ -101,6 +99,20 @@
 (declare-function nskk-server-ensure-open "nskk-server")
 (declare-function nskk-server-live-p "nskk-server")
 (declare-function nskk-server-lookup "nskk-server")
+
+;; From nskk-input.el (loaded after nskk-henkan.el)
+(defvar nskk--numeric-mode)
+
+;;;; Dynamic Completion State
+
+(defvar-local nskk--dcomp-prefix nil
+  "The original preedit prefix used for dynamic completion search.")
+
+(defvar-local nskk--dcomp-candidates nil
+  "List of reading strings matching `nskk--dcomp-prefix'.")
+
+(defvar-local nskk--dcomp-index 0
+  "Current cycling index into `nskk--dcomp-candidates'.")
 
 ;;;; Conversion State Macros
 
@@ -352,6 +364,15 @@ Returns the marker position as an integer, or nil if no marker is set."
              (marker-position nskk--conversion-start-marker))
     (marker-position nskk--conversion-start-marker)))
 
+(defun nskk-preedit-string ()
+  "Return the current preedit text (excluding the \u25bd marker).
+Returns nil if no preedit is active."
+  (let ((start (nskk--get-conversion-start)))
+    (when start
+      (let ((text-start (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
+        (when (> (point) text-start)
+          (buffer-substring-no-properties text-start (point)))))))
+
 (defun nskk--skip-marker-pos (pos marker-regexp)
   "Return position after marker at POS, or POS if no marker is present.
 Performs a non-destructive `looking-at' check at POS via `save-excursion'.
@@ -411,6 +432,15 @@ start marker, and romaji buffer."
     (nskk-when-bound nskk--pending-romaji-overlay
       (nskk--clear-pending-romaji))
     (setq nskk--romaji-buffer ""))
+  ;; Clear dynamic completion state
+  (setq nskk--dcomp-candidates nil
+        nskk--dcomp-prefix nil
+        nskk--dcomp-index 0)
+  ;; Clear numeric mode and sticky shift from nskk-input.el
+  (nskk-when-bound nskk--numeric-mode
+    (setq nskk--numeric-mode nil))
+  (nskk-when-bound nskk--sticky-shift-pending
+    (setq nskk--sticky-shift-pending nil))
   (nskk-with-current-state
     (nskk-reset-henkan-state)))
 
@@ -732,10 +762,33 @@ okurigana cycle (e.g. AII producing ▽あ*い* instead of converting)."
     (when (and okuri-char
                (nskk--conversion-start-active-p))
       (nskk-with-current-state
-        ;; Flush any pending romaji before okurigana
-        (let ((pending (nskk-convert-input-to-kana-final)))
-          (when (and (stringp pending) (not (string-empty-p pending)))
-            (insert pending)))
+        ;; Flush pending romaji before okurigana.
+        ;; ddskk behaviour: incomplete consonants (e.g. "k", "sh") are discarded
+        ;; rather than inserted into the buffer as raw ASCII.  Only a standalone
+        ;; "n" (→ ん at word boundary) and fully-converted kana are inserted.
+        ;; Detection uses nskk-converter-convert directly so that :incomplete
+        ;; results are distinguished from successful conversions.
+        (unless (string-empty-p nskk--romaji-buffer)
+          (let* ((buf nskk--romaji-buffer)
+                 (kana (cond
+                        ;; Standalone n at word boundary → ん.
+                        ;; Checked before the :incomplete test so that "nK" emits
+                        ;; ん and is not silently discarded.
+                        ((and (= (length buf) 1) (= (aref buf 0) ?n)) "ん")
+                        ;; Complete romaji: converter returns (kana . rest).
+                        (t (let ((result (nskk-converter-convert buf)))
+                             (when (and result (stringp (car result)))
+                               (car result)))))))
+            ;; Insert only when conversion succeeded.  (:incomplete . romaji) and
+            ;; nil results are silently dropped, matching ddskk behaviour.
+            ;; Apply hiragana→katakana conversion when in katakana mode, mirroring
+            ;; the vowel-okurigana path at lines 766-769.
+            (when kana
+              (insert (if (eq (nskk-state-mode nskk-current-state) 'katakana)
+                          (nskk-kana-string-hiragana-to-katakana kana)
+                        kana))))
+          (nskk--clear-pending-romaji)
+          (setq nskk--romaji-buffer ""))
         ;; Insert okurigana boundary marker
         (nskk--insert-marker nskk-okurigana-marker)
         ;; Store okurigana consonant in state
@@ -806,6 +859,16 @@ marker for the preedit region.  Handles \u25bd marker in preedit text."
           (nskk-with-current-state
             (nskk-set-active-candidates candidates)))))))
 
+(defun nskk--remove-okuri-marker (search-start preedit-end)
+  "Remove the okurigana boundary marker (*) from the buffer.
+Searches forward from SEARCH-START up to PREEDIT-END and deletes the
+marker character when found.  Buffer position is preserved via
+`save-excursion'."
+  (save-excursion
+    (goto-char search-start)
+    (when (search-forward nskk-okurigana-marker preedit-end t)
+      (delete-char (- (length nskk-okurigana-marker))))))
+
 (defun nskk--trigger-okuri-conversion (okuri-char preedit-end)
   "Trigger conversion with okurigana OKURI-CHAR ending at PREEDIT-END.
 PREEDIT-END is the buffer position before the okurigana kana was inserted.
@@ -831,10 +894,7 @@ found.  When no candidates are found, falls back to dictionary registration."
             (progn
               ;; Candidates found: now perform buffer mutations.
               ;; Remove the * marker from the buffer.
-              (save-excursion
-                (goto-char (or text-start start))
-                (when (search-forward nskk-okurigana-marker preedit-end t)
-                  (delete-char (- (length nskk-okurigana-marker)))))
+              (nskk--remove-okuri-marker (or text-start start) preedit-end)
               ;; Replace ▽ with ▼
               (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
               ;; The overlay covers only the READING portion (not the okurigana kana).
@@ -848,16 +908,13 @@ found.  When no candidates are found, falls back to dictionary registration."
                 (nskk-set-active-candidates candidates)))
           ;; No candidates found: remove * marker from buffer (the okurigana kana
           ;; that was inserted by the caller remains at point), then offer registration.
-          (save-excursion
-            (goto-char (or text-start start))
-            (when (search-forward nskk-okurigana-marker preedit-end t)
-              (delete-char (- (length nskk-okurigana-marker)))))
+          (nskk--remove-okuri-marker (or text-start start) preedit-end)
           (let ((registered (nskk-start-registration query)))
             (when registered
               (delete-region start (point))
               (goto-char start)
               (insert registered)
-              (nskk-henkan-do-reset))))))
+              (nskk-henkan-do-reset))))))))
 
 ;;;; Conversion Pipeline
 
@@ -886,13 +943,30 @@ before the dictionary lookup."
            (text (when (> end text-start)
                    (buffer-substring-no-properties text-start end))))
       (when (and text (not (string-empty-p text)))
-        (let* ((candidates (nskk-core-search text))
+        (let* (;; In katakana-半角 mode the preedit text is half-width katakana,
+               ;; but the dictionary stores hiragana keys.  Convert to hiragana
+               ;; for lookup so that e.g. "ｶﾝｼﾞ" finds the "かんじ" entry.
+               (lookup-text (if (eq (nskk-state-get-mode) 'katakana-半角)
+                                (nskk-kana-string-katakana-to-hiragana
+                                 (nskk-kana-hankaku-to-zenkaku text))
+                              text))
+               ;; Numeric mode: extract number, use base key for lookup
+               (numeric-info (when (and (boundp 'nskk--numeric-mode)
+                                        nskk--numeric-mode)
+                               (nskk--numeric-parse-reading lookup-text)))
+               (search-key (if numeric-info (cdr numeric-info) lookup-text))
+               (raw-candidates (nskk-core-search search-key))
+               ;; Numeric mode: post-process #N patterns in candidates
+               (candidates (if (and raw-candidates numeric-info)
+                               (nskk--numeric-process-candidates
+                                raw-candidates (car numeric-info))
+                             raw-candidates))
                (result-sym (if candidates 'has-candidates 'no-candidates)))
           (nskk-henkan-dispatch action
               (nskk-prolog-query-value
                `(search-result-action ,result-sym ,'\?a) '\?a)
             (show-overlay
-             (nskk-debug-log "[HENKAN] candidates-found: key=%s count=%d" text (length candidates))
+             (nskk-debug-log "[HENKAN] candidates-found: key=%s count=%d" lookup-text (length candidates))
              (setq nskk--henkan-count 1)
              ;; Replace ▽ with ▼
              (nskk--replace-marker-at start nskk-henkan-on-marker-regexp
@@ -919,13 +993,12 @@ before the dictionary lookup."
   "Start dictionary registration for READING.
 Opens a minibuffer prompt for the user to enter the desired text.
 READING is the headword that could not be converted.
-Supports recursive registration up to `max-registration-depth' levels:
+Supports recursive registration up to `nskk-max-registration-depth' levels:
 depth 1 shows [辞書登録], depth 2 shows [[辞書登録]], etc.
 Returns the registered word on success, or nil if the user cancels
-or if the maximum nesting depth (as defined by Prolog `registration-allowed/1')
-has been reached."
+or if the maximum nesting depth has been reached."
   (nskk-debug-log "[HENKAN] start-registration: reading=%s" reading)
-  (nskk-when-prolog-holds `(registration-allowed ,nskk--registration-depth)
+  (when (< nskk--registration-depth nskk-max-registration-depth)
     (let ((prev-phase (nskk-state-henkan-phase nskk-current-state)))
       (nskk-with-current-state
         (nskk-state-force-henkan-phase nskk-current-state 'registration))
@@ -972,6 +1045,120 @@ If the user cancels, wrap around to the first candidate in list display."
         (run-hook-with-args 'nskk-henkan-show-candidates-functions candidates 0)
         (setq nskk-henkan--candidate-list-active t)))))
 
+;;;; Dynamic Completion (動的補完)
+
+(defun nskk--dcomp-search-prefix (prefix)
+  "Search for dictionary keys matching PREFIX for dynamic completion.
+Returns a sorted list of reading strings that start with PREFIX."
+  (let ((keys nil))
+    ;; Search user-dict-entry via Prolog trie
+    (dolist (pair (nskk-prolog-trie-prefix-search 'user-dict-entry 2 prefix))
+      (let ((key (car pair)))
+        (when (and key (not (equal key prefix)))
+          (push key keys))))
+    ;; Search system-dict-entry via Prolog trie if available
+    (dolist (pair (nskk-prolog-trie-prefix-search 'system-dict-entry 2 prefix))
+      (let ((key (car pair)))
+        (when (and key (not (equal key prefix)) (not (member key keys)))
+          (push key keys))))
+    (sort keys #'string<)))
+
+(defun nskk--dcomp-replace-preedit (new-text)
+  "Replace the current preedit text with NEW-TEXT for dynamic completion."
+  (let ((start (nskk--get-conversion-start)))
+    (when start
+      (let ((text-start (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
+        (delete-region text-start (point))
+        (goto-char text-start)
+        (insert new-text)))))
+
+(defun nskk-dynamic-complete ()
+  "Complete the preedit reading from dictionary prefix matches.
+Called when Tab is pressed in preedit (\u25bd) phase.  Searches
+for dict keys that start with the current reading and replaces
+the preedit with the first match.  Subsequent calls cycle through
+all matches."
+  (let ((preedit (nskk-preedit-string)))
+    (when (and preedit (not (string-empty-p preedit)))
+      (cond
+       ;; Cycling: current preedit is the original prefix or a completion
+       ((and nskk--dcomp-candidates
+             (or (equal preedit nskk--dcomp-prefix)
+                 (member preedit nskk--dcomp-candidates)))
+        (setq nskk--dcomp-index
+              (mod (1+ nskk--dcomp-index)
+                   (length nskk--dcomp-candidates)))
+        (nskk--dcomp-replace-preedit
+         (nth nskk--dcomp-index nskk--dcomp-candidates)))
+       ;; Fresh search
+       (t
+        (let ((matches (nskk--dcomp-search-prefix preedit)))
+          (when matches
+            (setq nskk--dcomp-prefix preedit
+                  nskk--dcomp-candidates matches
+                  nskk--dcomp-index 0)
+            (nskk--dcomp-replace-preedit (car matches)))))))))
+
+;;;; SKK Numeric Conversion (数値変換)
+
+(defconst nskk--kanji-digits
+  ["〇" "一" "二" "三" "四" "五" "六" "七" "八" "九"]
+  "Kanji digit characters indexed by numeric value.")
+
+(defun nskk--numeric-parse-reading (reading)
+  "Parse numeric READING like \"#1ko\" into (NUM-STR . BASE-KEY).
+Extracts the digit(s) after '#' and returns the number string
+and the base dictionary key with '#' prefix.
+Example: \"#1ko\" → (\"1\" . \"#ko\"), \"#123ji\" → (\"123\" . \"#ji\")."
+  (when (string-match "^#\\([0-9]+\\)\\(.*\\)$" reading)
+    (cons (match-string 1 reading)
+          (concat "#" (match-string 2 reading)))))
+
+(defun nskk--numeric-to-kanji (num-str)
+  "Convert NUM-STR to kanji numerals digit-by-digit (漢数字).
+Each digit is independently converted: \"12\" → \"一二\"."
+  (mapconcat (lambda (c)
+               (aref nskk--kanji-digits (- c ?0)))
+             num-str ""))
+
+(defun nskk--numeric-to-fullwidth (num-str)
+  "Convert NUM-STR to full-width Arabic digits.
+Each digit is shifted to the full-width Unicode range: \"1\" → \"１\"."
+  (mapconcat (lambda (c)
+               (char-to-string (+ c #xFEE0)))
+             num-str ""))
+
+(defun nskk--numeric-convert (num-str type)
+  "Convert numeric string NUM-STR according to DDSKK-standard TYPE.
+TYPE is an integer:
+  0 = literal (no change)
+  1 = full-width Arabic (全角数字)
+  2 = kanji digit-by-digit (漢数字)
+  3 = kanji with place values (漢数字位取り)
+  4 = positional (序数)
+  8 = comma-grouped decimal"
+  (pcase type
+    (0 num-str)                              ; literal
+    (1 (nskk--numeric-to-fullwidth num-str)) ; full-width
+    ((or 2 3 4) (nskk--numeric-to-kanji num-str)) ; kanji
+    (_ num-str)))
+
+(defun nskk--numeric-process-candidate (candidate num-str)
+  "Process CANDIDATE by replacing #N patterns with converted NUM-STR.
+Each #N in CANDIDATE is replaced with `nskk--numeric-convert' applied
+to NUM-STR with conversion type N."
+  (let ((result candidate))
+    (while (string-match "#\\([0-9]\\)" result)
+      (let* ((type (string-to-number (match-string 1 result)))
+             (converted (nskk--numeric-convert num-str type)))
+        (setq result (replace-match converted t t result))))
+    result))
+
+(defun nskk--numeric-process-candidates (candidates num-str)
+  "Process CANDIDATES by replacing #N patterns with converted NUM-STR."
+  (mapcar (lambda (c) (nskk--numeric-process-candidate c num-str))
+          candidates))
+
 (defvar nskk--henkan-initialized nil
   "Non-nil when henkan Prolog predicates have been initialized.")
 
@@ -980,15 +1167,13 @@ If the user cancels, wrap around to the first candidate in list display."
 Idempotent: subsequent calls are no-ops."
   (unless nskk--henkan-initialized
     ;; Core search type mapping
-    (nskk-prolog-set-index 'core-search-type 2 :hash)
-    (nskk-prolog-deffacts core-search-type
+    (nskk-prolog-define-fact-table core-search-type (:arity 2 :index :hash)
       (:exact  dict-lookup)
       (:prefix prefix-search)
       (:regex  partial-search))
 
     ;; Converting phase facts
-    (nskk-prolog-set-index 'converting-phase 1 :hash)
-    (nskk-prolog-deffacts converting-phase
+    (nskk-prolog-define-fact-table converting-phase (:arity 1 :index :hash)
       (active)
       (list)
       (registration))
@@ -1009,34 +1194,22 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-<- (candidate-nav-next-action \?count \?threshold show-list-next)
       (>= \?count \?threshold))
 
-    (nskk-prolog-set-index 'candidate-nav-prev-action 2 :hash)
-    (nskk-prolog-deffacts candidate-nav-prev-action
+    (nskk-prolog-define-fact-table candidate-nav-prev-action (:arity 2 :index :hash)
       (list-active show-list-prev)
       (not-active  select-prev))
 
     ;; Search result action dispatch
-    (nskk-prolog-set-index 'search-result-action 2 :hash)
-    (nskk-prolog-deffacts search-result-action
+    (nskk-prolog-define-fact-table search-result-action (:arity 2 :index :hash)
       (has-candidates show-overlay)
       (no-candidates  start-registration))
 
     ;; Convert-or-commit action dispatch
-    (nskk-prolog-set-index 'convert-or-commit-action 2 :hash)
-    (nskk-prolog-deffacts convert-or-commit-action
+    (nskk-prolog-define-fact-table convert-or-commit-action (:arity 2 :index :hash)
       (converting     commit-current)
       (not-converting start-conversion))
 
-    ;; Registration depth guard
-    (nskk-prolog-set-index 'max-registration-depth 1 :hash)
-    (nskk-prolog-deffacts max-registration-depth
-      (3))
-    (nskk-prolog-<- (registration-allowed \?depth)
-      (max-registration-depth \?max)
-      (< \?depth \?max))
-
     ;; Overlay update phase guard
-    (nskk-prolog-set-index 'should-update-overlay 1 :hash)
-    (nskk-prolog-deffacts should-update-overlay
+    (nskk-prolog-define-fact-table should-update-overlay (:arity 1 :index :hash)
       (active)
       (list))
 

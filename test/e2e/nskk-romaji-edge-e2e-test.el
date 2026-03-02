@@ -180,6 +180,72 @@
       (nskk-e2e-assert-buffer "ー"
                               "romaji \"-\" → \"ー\" failed in katakana mode"))))
 
+;;;;
+;;;; Section 6: Mode Switch Clears Pending Romaji
+;;;;
+
+(nskk-describe "mode switch clears pending romaji input"
+
+  (nskk-it "C-j with single pending consonant clears romaji buffer"
+    ;; Type "k" -> nskk-convert-input-to-kana receives 'k', converter returns
+    ;; :incomplete (no vowel yet), so nskk--romaji-buffer = "k" and nothing is
+    ;; inserted into the buffer.
+    ;;
+    ;; C-j dispatches nskk-kakutei, which calls nskk--current-kakutei-state.
+    ;; Since nskk--romaji-buffer is non-empty and there is no active ▼/▽,
+    ;; the state is 'romaji-pending.  kakutei-action/2 maps:
+    ;;   (romaji-pending clear-romaji)
+    ;; The clear-romaji action calls nskk--clear-pending-romaji and sets
+    ;; nskk--romaji-buffer to "".  No kana is output.  Mode stays hiragana.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "k")
+      ;; "k" is pending -- no kana committed to the buffer yet.
+      (nskk-e2e-assert-buffer "")
+      (nskk-e2e-type "C-j")
+      ;; C-j in romaji-pending -> clear-romaji: romaji buffer flushed silently.
+      (nskk-e2e-assert-buffer "")
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it "C-j with two-char incomplete romaji clears romaji buffer"
+    ;; Type "s" then "h": converter accumulates "sh" as incomplete (waiting
+    ;; for i/a/u/e/o to complete "shi"/"sha"/etc.).  nskk--romaji-buffer = "sh".
+    ;; Nothing is inserted into the buffer.
+    ;;
+    ;; C-j -> nskk-kakutei -> state = 'romaji-pending -> action = 'clear-romaji
+    ;; -> nskk--romaji-buffer = "".  Buffer stays empty, mode stays hiragana.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "s")
+      (nskk-e2e-type "h")
+      ;; "sh" is incomplete -- waiting for a vowel to complete the compound.
+      (nskk-e2e-assert-buffer "")
+      (nskk-e2e-type "C-j")
+      ;; clear-romaji flushes the buffer without emitting any character.
+      (nskk-e2e-assert-buffer "")
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it "l mode switch clears pending romaji and switches to latin"
+    ;; Type "k" -> nskk--romaji-buffer = "k", buffer empty (no kana yet).
+    ;;
+    ;; Press "l": nskk-handle-l calls (nskk-with-japanese-mode (nskk-set-mode-latin)).
+    ;; Dispatch order inside the macro:
+    ;;   1. (nskk-converting-p)                        -- no (no ▼ active)
+    ;;   2. (and (nskk--has-preedit) japanese-mode-p)  -- no (no ▽ marker set)
+    ;;   3. (nskk--japanese-mode-active-p)             -- yes (hiragana is japanese)
+    ;; Branch 3 fires: calls (nskk-set-mode-latin) directly.
+    ;; nskk-set-mode-latin -> nskk--set-mode 'latin -> nskk--clear-conversion-context
+    ;; nskk--clear-conversion-context explicitly does:
+    ;;   (setq nskk--romaji-buffer "")  ; discards "k" silently
+    ;; The pending "k" is dropped (not output) as a side effect of the mode switch.
+    ;; Result: buffer empty, mode = latin.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "k")
+      ;; "k" is pending in nskk--romaji-buffer; buffer is empty.
+      (nskk-e2e-assert-buffer "")
+      (nskk-e2e-type "l")
+      ;; nskk-set-mode-latin -> nskk--clear-conversion-context discards "k".
+      (nskk-e2e-assert-buffer "")
+      (nskk-e2e-assert-mode 'latin))))
+
 (provide 'nskk-romaji-edge-e2e-test)
 
 ;;; nskk-romaji-edge-e2e-test.el ends here

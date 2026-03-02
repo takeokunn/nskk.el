@@ -808,6 +808,198 @@
            (should-not prolog-called)
            (should (> (buffer-size) 0))))))))
 
+;;;
+;;; nskk-handle-ctrl-a behavior
+;;;
+
+(nskk-describe "nskk-handle-ctrl-a behavior"
+  (nskk-it "is defined and interactive"
+    (should (fboundp 'nskk-handle-ctrl-a))
+    (should (commandp 'nskk-handle-ctrl-a)))
+
+  (nskk-it "C-a is bound in nskk-mode-map"
+    (let ((binding (lookup-key nskk-mode-map (kbd "C-a"))))
+      (should (eq binding 'nskk-handle-ctrl-a))))
+
+  (nskk-it "[home] is bound to nskk-handle-ctrl-a in nskk-mode-map"
+    (let ((binding (lookup-key nskk-mode-map [home])))
+      (should (eq binding 'nskk-handle-ctrl-a))))
+
+  (nskk-it "commits then moves to beginning-of-line when converting"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (commit-called nil)
+            (bol-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (cl-letf (((symbol-function 'nskk-commit-current)
+                   (lambda () (setq commit-called t)))
+                  ((symbol-function 'beginning-of-line)
+                   (lambda (&rest _) (interactive) (setq bol-called t))))
+          (nskk-when (nskk-handle-ctrl-a))
+          (nskk-then
+           (should commit-called)
+           (should bol-called))))))
+
+  (nskk-it "calls beginning-of-line when not converting"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (called nil))
+        (cl-letf (((symbol-function 'beginning-of-line)
+                   (lambda (&rest _) (interactive) (setq called t))))
+          (nskk-when (nskk-handle-ctrl-a))
+          (nskk-then (should called))))))
+
+  (nskk-it "calls beginning-of-line when nskk-current-state is nil"
+    (with-temp-buffer
+      (let ((nskk-current-state nil)
+            (called nil))
+        (cl-letf (((symbol-function 'beginning-of-line)
+                   (lambda (&rest _) (interactive) (setq called t))))
+          (nskk-when (nskk-handle-ctrl-a))
+          (nskk-then (should called))))))
+
+  (nskk-it "calls beginning-of-line in preedit state without committing"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (commit-called nil)
+            (bol-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "▽ka")
+        (cl-letf (((symbol-function 'nskk-commit-current)
+                   (lambda () (setq commit-called t)))
+                  ((symbol-function 'beginning-of-line)
+                   (lambda (&rest _) (interactive) (setq bol-called t))))
+          (nskk-when (nskk-handle-ctrl-a))
+          (nskk-then
+           (should-not commit-called)
+           (should bol-called)))))))
+
+;;;
+;;; nskk-handle-ctrl-e behavior
+;;;
+
+(nskk-describe "nskk-handle-ctrl-e behavior"
+  (nskk-it "is defined and interactive"
+    (should (fboundp 'nskk-handle-ctrl-e))
+    (should (commandp 'nskk-handle-ctrl-e)))
+
+  (nskk-it "C-e is bound in nskk-mode-map"
+    (let ((binding (lookup-key nskk-mode-map (kbd "C-e"))))
+      (should (eq binding 'nskk-handle-ctrl-e))))
+
+  (nskk-it "[end] is bound to nskk-handle-ctrl-e in nskk-mode-map"
+    (let ((binding (lookup-key nskk-mode-map [end])))
+      (should (eq binding 'nskk-handle-ctrl-e))))
+
+  (nskk-it "commits then moves to end-of-line when converting"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (commit-called nil)
+            (eol-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (cl-letf (((symbol-function 'nskk-commit-current)
+                   (lambda () (setq commit-called t)))
+                  ((symbol-function 'end-of-line)
+                   (lambda (&rest _) (interactive) (setq eol-called t))))
+          (nskk-when (nskk-handle-ctrl-e))
+          (nskk-then
+           (should commit-called)
+           (should eol-called))))))
+
+  (nskk-it "calls end-of-line when not converting"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (called nil))
+        (cl-letf (((symbol-function 'end-of-line)
+                   (lambda (&rest _) (interactive) (setq called t))))
+          (nskk-when (nskk-handle-ctrl-e))
+          (nskk-then (should called))))))
+
+  (nskk-it "calls end-of-line when nskk-current-state is nil"
+    (with-temp-buffer
+      (let ((nskk-current-state nil)
+            (called nil))
+        (cl-letf (((symbol-function 'end-of-line)
+                   (lambda (&rest _) (interactive) (setq called t))))
+          (nskk-when (nskk-handle-ctrl-e))
+          (nskk-then (should called))))))
+
+  (nskk-it "calls end-of-line in preedit state without committing"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (commit-called nil)
+            (eol-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "▽ka")
+        (cl-letf (((symbol-function 'nskk-commit-current)
+                   (lambda () (setq commit-called t)))
+                  ((symbol-function 'end-of-line)
+                   (lambda (&rest _) (interactive) (setq eol-called t))))
+          (nskk-when (nskk-handle-ctrl-e))
+          (nskk-then
+           (should-not commit-called)
+           (should eol-called)))))))
+
+;;;
+;;; nskk-handle-backspace behavior
+;;;
+
+(nskk-describe "nskk-handle-backspace behavior"
+  (nskk-it "is defined and interactive"
+    (should (fboundp 'nskk-handle-backspace))
+    (should (commandp 'nskk-handle-backspace)))
+
+  (nskk-it "DEL is bound in nskk-mode-map"
+    (let ((binding (lookup-key nskk-mode-map (kbd "DEL"))))
+      (should (eq binding 'nskk-handle-backspace))))
+
+  (nskk-it "deletes last character when preedit has content"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana)))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "▽ka")
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
+        (nskk-when (nskk-handle-backspace))
+        (nskk-then (should-not (string-suffix-p "a" (buffer-string)))))))
+
+  (nskk-it "calls nskk-cancel-preedit when preedit is empty"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (cancel-preedit-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "▽")
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
+        (cl-letf (((symbol-function 'nskk-cancel-preedit)
+                   (lambda () (setq cancel-preedit-called t))))
+          (nskk-when (nskk-handle-backspace))
+          (nskk-then (should cancel-preedit-called))))))
+
+  (nskk-it "calls nskk-cancel-conversion-to-reading when converting"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (cancel-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (cl-letf (((symbol-function 'nskk-cancel-conversion-to-reading)
+                   (lambda () (setq cancel-called t))))
+          (nskk-when (nskk-handle-backspace))
+          (nskk-then (should cancel-called))))))
+
+  (nskk-it "deletes backward char when no preedit (normal state)"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'ascii)))
+        (insert "abc")
+        (nskk-when (nskk-handle-backspace))
+        (nskk-then (should (equal (buffer-string) "ab")))))))
+
 (provide 'nskk-keymap-test)
 
 ;;; nskk-keymap-test.el ends here

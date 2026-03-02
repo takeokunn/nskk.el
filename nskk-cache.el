@@ -102,20 +102,17 @@
 ;;; Prolog Facts
 
 ;; Cache type validation: (cache-type TYPE)
-(nskk-prolog-set-index 'cache-type 1 :hash)
-(nskk-prolog-deffacts cache-type
+(nskk-prolog-define-fact-table cache-type (:arity 1 :index :hash)
   (lru)
   (lfu))
 
 ;; Cache eviction policy documentation: (cache-eviction-policy TYPE POLICY)
-(nskk-prolog-set-index 'cache-eviction-policy 2 :hash)
-(nskk-prolog-deffacts cache-eviction-policy
+(nskk-prolog-define-fact-table cache-eviction-policy (:arity 2 :index :hash)
   (lru least-recently-used)
   (lfu least-frequently-used))
 
 ;; Cache operation dispatch table: (cache-dispatch-fn TYPE OP FN)
-(nskk-prolog-set-index 'cache-dispatch-fn 3 :hash)
-(nskk-prolog-deffacts cache-dispatch-fn
+(nskk-prolog-define-fact-table cache-dispatch-fn (:arity 3 :index :hash)
   (lru get  nskk-cache-lru-get)
   (lru put  nskk-cache-lru-put)
   (lru invalidate nskk-cache-lru-invalidate)
@@ -128,8 +125,7 @@
   (lfu size       nskk-cache-lfu-size))
 
 ;; Cache field accessor table: (cache-field-fn TYPE FIELD ACCESSOR-FN)
-(nskk-prolog-set-index 'cache-field-fn 3 :hash)
-(nskk-prolog-deffacts cache-field-fn
+(nskk-prolog-define-fact-table cache-field-fn (:arity 3 :index :hash)
   (lru capacity nskk-cache-lru-capacity)
   (lru size     nskk-cache-lru-size)
   (lru hits     nskk-cache-lru-hits)

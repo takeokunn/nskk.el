@@ -56,23 +56,9 @@
 ;;   ~192 facts; populated by `nskk--initialize-romaji-table'.
 ;;   Example: (romaji-to-kana "ka" "か")
 ;;
-;; `hatsuon-blocker/1' --- (hatsuon-blocker CHAR)
-;;   Integer character codes that do NOT produce ん after `n'.
-;;   Blocked set: ?a ?i ?u ?e ?o ?y ?n ?\'.
-;;   Indexed with :hash for O(1) membership tests.
-;;
-;; `sokuon-blocker/1' --- (sokuon-blocker CHAR)
-;;   Integer character codes that cannot be doubled to produce っ.
-;;   Blocked set: ?a ?i ?u ?e ?o ?n.
-;;   Indexed with :hash for O(1) membership tests.
-;;
-;; `hatsuon-trigger/1' --- (hatsuon-trigger ?C) :- (not (hatsuon-blocker ?C))
-;;   Rule: character C produces ん when it is NOT a hatsuon-blocker.
-;;   Queried by `nskk-convert-n--internal' for context-sensitive ん insertion.
-;;
-;; `sokuon-eligible/1' --- (sokuon-eligible ?C) :- (not (sokuon-blocker ?C))
-;;   Rule: character C is eligible for っ doubling when NOT a sokuon-blocker.
-;;   Queried by `nskk-convert-romaji--internal' for double-consonant detection.
+;; Character classification for hatsuon and sokuon is handled by the
+;; `nskk--hatsuon-blockers' and `nskk--sokuon-blockers' defconsts (plain
+;; Emacs Lisp lists), not Prolog predicates.
 
 ;;; Code:
 
@@ -89,20 +75,35 @@
 (defvar nskk--style-registry '((standard . nskk--initialize-romaji-table))
   "Registry mapping style symbols to their initialization functions.")
 
-(defconst nskk--sokuon-blockers '(?a ?i ?u ?e ?o ?n)
-  "Characters that cannot be doubled to produce っ (small tsu).")
-
 (defconst nskk--hatsuon-blockers '(?a ?i ?u ?e ?o ?y ?n ?')
-  "Characters after n that do NOT trigger ん conversion.")
+  "Characters after n that do not trigger ん insertion.
+When the char following n is in this list, n stays in the buffer.")
+
+(defconst nskk--sokuon-blockers '(?a ?i ?u ?e ?o ?n)
+  "Characters that cannot be doubled to produce っ.
+Vowels and n are excluded; other consonants trigger sokuon.")
+
+(defmacro nskk-converter-define-rules (&rest rule-pairs)
+  "Define multiple romaji-to-kana rules at once.
+Each element of RULE-PAIRS must be a list (ROMAJI KANA) where ROMAJI and
+KANA are string literals.  Expands to a `progn' with one
+`nskk-converter-add-rule' call per pair.
+
+Example:
+  (nskk-converter-define-rules
+    (\"a\" \"あ\")
+    (\"i\" \"い\")
+    (\"u\" \"う\"))"
+  (declare (indent 0) (debug t))
+  `(progn
+     ,@(mapcar (lambda (pair)
+                 `(nskk-converter-add-rule ,(car pair) ,(cadr pair)))
+               rule-pairs)))
 
 (defun nskk--initialize-romaji-table ()
   "Initialize the romaji conversion table as Prolog facts."
   ;; Clear existing romaji rules
   (nskk-prolog-retract-all 'romaji-to-kana 2)
-  (nskk-prolog-retract-all 'hatsuon-blocker 1)
-  (nskk-prolog-retract-all 'sokuon-blocker 1)
-  (nskk-prolog-retract-all 'hatsuon-trigger 1)
-  (nskk-prolog-retract-all 'sokuon-eligible 1)
 
   ;; Also clear the hash table for backward compat
   (clrhash nskk--romaji-table)
@@ -111,271 +112,104 @@
   (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
 
   ;; Vowels
-  (nskk-converter-add-rule "a" "あ")
-  (nskk-converter-add-rule "i" "い")
-  (nskk-converter-add-rule "u" "う")
-  (nskk-converter-add-rule "e" "え")
-  (nskk-converter-add-rule "o" "お")
+  (nskk-converter-define-rules
+    ("a" "あ") ("i" "い") ("u" "う") ("e" "え") ("o" "お"))
 
   ;; K row
-  (nskk-converter-add-rule "ka" "か")
-  (nskk-converter-add-rule "ki" "き")
-  (nskk-converter-add-rule "ku" "く")
-  (nskk-converter-add-rule "ke" "け")
-  (nskk-converter-add-rule "ko" "こ")
+  (nskk-converter-define-rules
+    ("ka" "か") ("ki" "き") ("ku" "く") ("ke" "け") ("ko" "こ")
+    ("kya" "きゃ") ("kyu" "きゅ") ("kye" "きぇ") ("kyo" "きょ"))
 
   ;; G row
-  (nskk-converter-add-rule "ga" "が")
-  (nskk-converter-add-rule "gi" "ぎ")
-  (nskk-converter-add-rule "gu" "ぐ")
-  (nskk-converter-add-rule "ge" "げ")
-  (nskk-converter-add-rule "go" "ご")
+  (nskk-converter-define-rules
+    ("ga" "が") ("gi" "ぎ") ("gu" "ぐ") ("ge" "げ") ("go" "ご")
+    ("gya" "ぎゃ") ("gyu" "ぎゅ") ("gye" "ぎぇ") ("gyo" "ぎょ"))
 
   ;; S row
-  (nskk-converter-add-rule "sa" "さ")
-  (nskk-converter-add-rule "shi" "し")
-  (nskk-converter-add-rule "si" "し")
-  (nskk-converter-add-rule "su" "す")
-  (nskk-converter-add-rule "se" "せ")
-  (nskk-converter-add-rule "so" "そ")
+  (nskk-converter-define-rules
+    ("sa" "さ") ("shi" "し") ("si" "し") ("su" "す") ("se" "せ") ("so" "そ")
+    ("sha" "しゃ") ("shu" "しゅ") ("she" "しぇ") ("sho" "しょ")
+    ("sya" "しゃ") ("syu" "しゅ") ("sye" "しぇ") ("syo" "しょ"))
 
   ;; Z row
-  (nskk-converter-add-rule "za" "ざ")
-  (nskk-converter-add-rule "ji" "じ")
-  (nskk-converter-add-rule "zi" "じ")
-  (nskk-converter-add-rule "zu" "ず")
-  (nskk-converter-add-rule "ze" "ぜ")
-  (nskk-converter-add-rule "zo" "ぞ")
+  (nskk-converter-define-rules
+    ("za" "ざ") ("ji" "じ") ("zi" "じ") ("zu" "ず") ("ze" "ぜ") ("zo" "ぞ")
+    ("ja" "じゃ") ("ju" "じゅ") ("je" "じぇ") ("jo" "じょ")
+    ("zya" "じゃ") ("zyu" "じゅ") ("zye" "じぇ") ("zyo" "じょ")
+    ("jya" "じゃ") ("jyu" "じゅ") ("jye" "じぇ") ("jyo" "じょ"))
 
   ;; T row
-  (nskk-converter-add-rule "ta" "た")
-  (nskk-converter-add-rule "chi" "ち")
-  (nskk-converter-add-rule "ti" "ち")
-  (nskk-converter-add-rule "tsu" "つ")
-  (nskk-converter-add-rule "tu" "つ")
-  (nskk-converter-add-rule "te" "て")
-  (nskk-converter-add-rule "to" "と")
+  (nskk-converter-define-rules
+    ("ta" "た") ("chi" "ち") ("ti" "ち") ("tsu" "つ") ("tu" "つ") ("te" "て") ("to" "と")
+    ("cha" "ちゃ") ("chu" "ちゅ") ("che" "ちぇ") ("cho" "ちょ")
+    ("tya" "ちゃ") ("tyu" "ちゅ") ("tye" "ちぇ") ("tyo" "ちょ")
+    ("tsa" "つぁ") ("tsi" "つぃ") ("tse" "つぇ") ("tso" "つぉ")
+    ("tha" "てぁ") ("thi" "てぃ") ("thu" "てゅ") ("the" "てぇ") ("tho" "てょ"))
 
   ;; D row
-  (nskk-converter-add-rule "da" "だ")
-  (nskk-converter-add-rule "di" "ぢ")
-  (nskk-converter-add-rule "du" "づ")
-  (nskk-converter-add-rule "de" "で")
-  (nskk-converter-add-rule "do" "ど")
+  (nskk-converter-define-rules
+    ("da" "だ") ("di" "ぢ") ("du" "づ") ("de" "で") ("do" "ど")
+    ("dya" "ぢゃ") ("dyu" "ぢゅ") ("dye" "ぢぇ") ("dyo" "ぢょ")
+    ("dha" "でぁ") ("dhi" "でぃ") ("dhu" "でゅ") ("dhe" "でぇ") ("dho" "でょ"))
 
   ;; N row
-  (nskk-converter-add-rule "na" "な")
-  (nskk-converter-add-rule "ni" "に")
-  (nskk-converter-add-rule "nu" "ぬ")
-  (nskk-converter-add-rule "ne" "ね")
-  (nskk-converter-add-rule "no" "の")
-  (nskk-converter-add-rule "n'" "ん")
-  (nskk-converter-add-rule "nn" "ん")
+  (nskk-converter-define-rules
+    ("na" "な") ("ni" "に") ("nu" "ぬ") ("ne" "ね") ("no" "の")
+    ("n'" "ん") ("nn" "ん")
+    ("nya" "にゃ") ("nyu" "にゅ") ("nye" "にぇ") ("nyo" "にょ"))
 
   ;; H row
-  (nskk-converter-add-rule "ha" "は")
-  (nskk-converter-add-rule "hi" "ひ")
-  (nskk-converter-add-rule "fu" "ふ")
-  (nskk-converter-add-rule "hu" "ふ")
-  (nskk-converter-add-rule "he" "へ")
-  (nskk-converter-add-rule "ho" "ほ")
+  (nskk-converter-define-rules
+    ("ha" "は") ("hi" "ひ") ("fu" "ふ") ("hu" "ふ") ("he" "へ") ("ho" "ほ")
+    ("hya" "ひゃ") ("hyu" "ひゅ") ("hye" "ひぇ") ("hyo" "ひょ")
+    ("fa" "ふぁ") ("fi" "ふぃ") ("fe" "ふぇ") ("fo" "ふぉ"))
 
   ;; B row
-  (nskk-converter-add-rule "ba" "ば")
-  (nskk-converter-add-rule "bi" "び")
-  (nskk-converter-add-rule "bu" "ぶ")
-  (nskk-converter-add-rule "be" "べ")
-  (nskk-converter-add-rule "bo" "ぼ")
+  (nskk-converter-define-rules
+    ("ba" "ば") ("bi" "び") ("bu" "ぶ") ("be" "べ") ("bo" "ぼ")
+    ("bya" "びゃ") ("byu" "びゅ") ("bye" "びぇ") ("byo" "びょ"))
 
   ;; P row
-  (nskk-converter-add-rule "pa" "ぱ")
-  (nskk-converter-add-rule "pi" "ぴ")
-  (nskk-converter-add-rule "pu" "ぷ")
-  (nskk-converter-add-rule "pe" "ぺ")
-  (nskk-converter-add-rule "po" "ぽ")
+  (nskk-converter-define-rules
+    ("pa" "ぱ") ("pi" "ぴ") ("pu" "ぷ") ("pe" "ぺ") ("po" "ぽ")
+    ("pya" "ぴゃ") ("pyu" "ぴゅ") ("pye" "ぴぇ") ("pyo" "ぴょ"))
 
   ;; M row
-  (nskk-converter-add-rule "ma" "ま")
-  (nskk-converter-add-rule "mi" "み")
-  (nskk-converter-add-rule "mu" "む")
-  (nskk-converter-add-rule "me" "め")
-  (nskk-converter-add-rule "mo" "も")
+  (nskk-converter-define-rules
+    ("ma" "ま") ("mi" "み") ("mu" "む") ("me" "め") ("mo" "も")
+    ("mya" "みゃ") ("myu" "みゅ") ("mye" "みぇ") ("myo" "みょ"))
 
   ;; Y row
-  (nskk-converter-add-rule "ya" "や")
-  (nskk-converter-add-rule "yu" "ゆ")
-  (nskk-converter-add-rule "yo" "よ")
+  (nskk-converter-define-rules
+    ("ya" "や") ("yu" "ゆ") ("yo" "よ"))
 
   ;; R row
-  (nskk-converter-add-rule "ra" "ら")
-  (nskk-converter-add-rule "ri" "り")
-  (nskk-converter-add-rule "ru" "る")
-  (nskk-converter-add-rule "re" "れ")
-  (nskk-converter-add-rule "ro" "ろ")
+  (nskk-converter-define-rules
+    ("ra" "ら") ("ri" "り") ("ru" "る") ("re" "れ") ("ro" "ろ")
+    ("rya" "りゃ") ("ryu" "りゅ") ("rye" "りぇ") ("ryo" "りょ"))
 
   ;; W row
-  (nskk-converter-add-rule "wa" "わ")
-  (nskk-converter-add-rule "wo" "を")
-
-  ;; Special combinations
-  (nskk-converter-add-rule "sha" "しゃ")
-  (nskk-converter-add-rule "shu" "しゅ")
-  (nskk-converter-add-rule "she" "しぇ")
-  (nskk-converter-add-rule "sho" "しょ")
-  (nskk-converter-add-rule "tsa" "つぁ")
-  (nskk-converter-add-rule "tsi" "つぃ")
-  (nskk-converter-add-rule "tse" "つぇ")
-  (nskk-converter-add-rule "tso" "つぉ")
-  (nskk-converter-add-rule "fa" "ふぁ")
-  (nskk-converter-add-rule "fi" "ふぃ")
-  (nskk-converter-add-rule "fe" "ふぇ")
-  (nskk-converter-add-rule "fo" "ふぉ")
-
-  ;; Digraphs
-  (nskk-converter-add-rule "kya" "きゃ")
-  (nskk-converter-add-rule "kyu" "きゅ")
-  (nskk-converter-add-rule "kyo" "きょ")
-  (nskk-converter-add-rule "gya" "ぎゃ")
-  (nskk-converter-add-rule "gyu" "ぎゅ")
-  (nskk-converter-add-rule "gyo" "ぎょ")
-  (nskk-converter-add-rule "ja" "じゃ")
-  (nskk-converter-add-rule "ju" "じゅ")
-  (nskk-converter-add-rule "je" "じぇ")
-  (nskk-converter-add-rule "jo" "じょ")
-  (nskk-converter-add-rule "cha" "ちゃ")
-  (nskk-converter-add-rule "chu" "ちゅ")
-  (nskk-converter-add-rule "che" "ちぇ")
-  (nskk-converter-add-rule "cho" "ちょ")
-  (nskk-converter-add-rule "nya" "にゃ")
-  (nskk-converter-add-rule "nyu" "にゅ")
-  (nskk-converter-add-rule "nyo" "にょ")
-  (nskk-converter-add-rule "hya" "ひゃ")
-  (nskk-converter-add-rule "hyu" "ひゅ")
-  (nskk-converter-add-rule "hyo" "ひょ")
-  (nskk-converter-add-rule "bya" "びゃ")
-  (nskk-converter-add-rule "byu" "びゅ")
-  (nskk-converter-add-rule "byo" "びょ")
-  (nskk-converter-add-rule "pya" "ぴゃ")
-  (nskk-converter-add-rule "pyu" "ぴゅ")
-  (nskk-converter-add-rule "pyo" "ぴょ")
-  (nskk-converter-add-rule "mya" "みゃ")
-  (nskk-converter-add-rule "myu" "みゅ")
-  (nskk-converter-add-rule "myo" "みょ")
-  (nskk-converter-add-rule "rya" "りゃ")
-  (nskk-converter-add-rule "ryu" "りゅ")
-  (nskk-converter-add-rule "ryo" "りょ")
-
-  ;; Small kana
-  (nskk-converter-add-rule "la" "ぁ")
-  (nskk-converter-add-rule "li" "ぃ")
-  (nskk-converter-add-rule "lu" "ぅ")
-  (nskk-converter-add-rule "le" "ぇ")
-  (nskk-converter-add-rule "lo" "ぉ")
-  (nskk-converter-add-rule "xa" "ぁ")
-  (nskk-converter-add-rule "xi" "ぃ")
-  (nskk-converter-add-rule "xu" "ぅ")
-  (nskk-converter-add-rule "xe" "ぇ")
-  (nskk-converter-add-rule "xo" "ぉ")
-  (nskk-converter-add-rule "xya" "ゃ")
-  (nskk-converter-add-rule "xyu" "ゅ")
-  (nskk-converter-add-rule "xyo" "ょ")
-  (nskk-converter-add-rule "lya" "ゃ")
-  (nskk-converter-add-rule "lyu" "ゅ")
-  (nskk-converter-add-rule "lyo" "ょ")
-  (nskk-converter-add-rule "xtsu" "っ")
-  (nskk-converter-add-rule "xtu" "っ")
-  (nskk-converter-add-rule "ltsu" "っ")
-  (nskk-converter-add-rule "ltu" "っ")
+  (nskk-converter-define-rules
+    ("wa" "わ") ("wo" "を") ("wi" "ゐ") ("we" "ゑ")
+    ("wha" "うぁ") ("whi" "うぃ") ("whu" "う") ("whe" "うぇ") ("who" "うぉ"))
 
   ;; V row
-  (nskk-converter-add-rule "va" "ゔぁ")
-  (nskk-converter-add-rule "vi" "ゔぃ")
-  (nskk-converter-add-rule "vu" "ゔ")
-  (nskk-converter-add-rule "ve" "ゔぇ")
-  (nskk-converter-add-rule "vo" "ゔぉ")
-  (nskk-converter-add-rule "vya" "ゔゃ")
-  (nskk-converter-add-rule "vyu" "ゔゅ")
-  (nskk-converter-add-rule "vyo" "ゔょ")
+  (nskk-converter-define-rules
+    ("va" "ゔぁ") ("vi" "ゔぃ") ("vu" "ゔ") ("ve" "ゔぇ") ("vo" "ゔぉ")
+    ("vya" "ゔゃ") ("vyu" "ゔゅ") ("vyo" "ゔょ"))
 
-  ;; Additional digraphs
-  (nskk-converter-add-rule "dya" "ぢゃ")
-  (nskk-converter-add-rule "dyu" "ぢゅ")
-  (nskk-converter-add-rule "dyo" "ぢょ")
-
-  ;; Alternative rows
-  (nskk-converter-add-rule "zya" "じゃ")
-  (nskk-converter-add-rule "zyu" "じゅ")
-  (nskk-converter-add-rule "zyo" "じょ")
-  (nskk-converter-add-rule "tya" "ちゃ")
-  (nskk-converter-add-rule "tyu" "ちゅ")
-  (nskk-converter-add-rule "tyo" "ちょ")
-  (nskk-converter-add-rule "sya" "しゃ")
-  (nskk-converter-add-rule "syu" "しゅ")
-  (nskk-converter-add-rule "sye" "しぇ")
-  (nskk-converter-add-rule "syo" "しょ")
-  (nskk-converter-add-rule "jya" "じゃ")
-  (nskk-converter-add-rule "jyu" "じゅ")
-  (nskk-converter-add-rule "jye" "じぇ")
-  (nskk-converter-add-rule "jyo" "じょ")
-
-  ;; -ye extensions
-  (nskk-converter-add-rule "tye" "ちぇ")
-  (nskk-converter-add-rule "zye" "じぇ")
-  (nskk-converter-add-rule "dye" "ぢぇ")
-  (nskk-converter-add-rule "gye" "ぎぇ")
-  (nskk-converter-add-rule "kye" "きぇ")
-  (nskk-converter-add-rule "nye" "にぇ")
-  (nskk-converter-add-rule "hye" "ひぇ")
-  (nskk-converter-add-rule "bye" "びぇ")
-  (nskk-converter-add-rule "pye" "ぴぇ")
-  (nskk-converter-add-rule "mye" "みぇ")
-  (nskk-converter-add-rule "rye" "りぇ")
-
-  ;; Th/Dh/Wh rows
-  (nskk-converter-add-rule "tha" "てぁ")
-  (nskk-converter-add-rule "thi" "てぃ")
-  (nskk-converter-add-rule "thu" "てゅ")
-  (nskk-converter-add-rule "the" "てぇ")
-  (nskk-converter-add-rule "tho" "てょ")
-  (nskk-converter-add-rule "dha" "でぁ")
-  (nskk-converter-add-rule "dhi" "でぃ")
-  (nskk-converter-add-rule "dhu" "でゅ")
-  (nskk-converter-add-rule "dhe" "でぇ")
-  (nskk-converter-add-rule "dho" "でょ")
-  (nskk-converter-add-rule "wha" "うぁ")
-  (nskk-converter-add-rule "whi" "うぃ")
-  (nskk-converter-add-rule "whu" "う")
-  (nskk-converter-add-rule "whe" "うぇ")
-  (nskk-converter-add-rule "who" "うぉ")
-  (nskk-converter-add-rule "wi" "ゐ")
-  (nskk-converter-add-rule "we" "ゑ")
-
-  ;; Small wa, ka, ke
-  (nskk-converter-add-rule "xwa" "ゎ")
-  (nskk-converter-add-rule "xka" "ゕ")
-  (nskk-converter-add-rule "xke" "ゖ")
+  ;; Small kana
+  (nskk-converter-define-rules
+    ("la" "ぁ") ("li" "ぃ") ("lu" "ぅ") ("le" "ぇ") ("lo" "ぉ")
+    ("xa" "ぁ") ("xi" "ぃ") ("xu" "ぅ") ("xe" "ぇ") ("xo" "ぉ")
+    ("xya" "ゃ") ("xyu" "ゅ") ("xyo" "ょ")
+    ("lya" "ゃ") ("lyu" "ゅ") ("lyo" "ょ")
+    ("xtsu" "っ") ("xtu" "っ") ("ltsu" "っ") ("ltu" "っ")
+    ("xwa" "ゎ") ("xka" "ゕ") ("xke" "ゖ"))
 
   ;; Long vowel mark
-  (nskk-converter-add-rule "-" "ー")
-
-  ;; Character classification for hatsuon/sokuon rules
-  ;; Hatsuon blockers: chars after 'n' that do NOT trigger ん
-  (nskk-prolog-set-index 'hatsuon-blocker 1 :hash)
-  (dolist (c '(?a ?i ?u ?e ?o ?y ?n ?'))
-    (nskk-prolog-assert (list (list 'hatsuon-blocker c))))
-
-  ;; Sokuon blockers: chars that cannot be doubled for っ
-  (nskk-prolog-set-index 'sokuon-blocker 1 :hash)
-  (dolist (c '(?a ?i ?u ?e ?o ?n))
-    (nskk-prolog-assert (list (list 'sokuon-blocker c))))
-
-  ;; Hatsuon trigger: n followed by this char produces ん
-  (nskk-prolog-<- (hatsuon-trigger \?c)
-    (not (hatsuon-blocker \?c)))
-
-  ;; Sokuon eligible: doubled char produces っ
-  (nskk-prolog-<- (sokuon-eligible \?c)
-    (not (sokuon-blocker \?c)))
+  (nskk-converter-define-rules
+    ("-" "ー"))
 
   ;; Auto-derive incomplete markers from populated hash table
   (nskk-converter--populate-incomplete-markers))
@@ -394,41 +228,6 @@ This eliminates manual maintenance of prefix lists when adding new rules."
             (unless (gethash prefix nskk--romaji-table)
               (puthash prefix :incomplete nskk--romaji-table))))))))
 
-;;;; Prolog Goal Handlers for Romaji Classification
-
-;; char-eql: succeed if C1 and C2 are equal integer character codes.
-(nskk-define-goal-handler char-eql (goal rest subst k)
-  :match (and (consp goal) (eq (car goal) 'char-eql))
-  :body
-  (let ((c1 (nskk-prolog-walk (cadr goal) subst))
-        (c2 (nskk-prolog-walk (caddr goal) subst)))
-    (when (and (integerp c1) (integerp c2) (= c1 c2))
-      (nskk-prolog--prove-internal rest subst k))))
-
-;; string-pair-p: succeed if PAIR is a cons with a string car (converter match result).
-(nskk-define-goal-handler string-pair-p (goal rest subst k)
-  :match (and (consp goal) (eq (car goal) 'string-pair-p))
-  :body
-  (let ((pair (nskk-prolog-walk (cadr goal) subst)))
-    (when (and (consp pair) (stringp (car pair)))
-      (nskk-prolog--prove-internal rest subst k))))
-
-;; incomplete-pair-p: succeed if PAIR is a cons with :incomplete car (partial match result).
-(nskk-define-goal-handler incomplete-pair-p (goal rest subst k)
-  :match (and (consp goal) (eq (car goal) 'incomplete-pair-p))
-  :body
-  (let ((pair (nskk-prolog-walk (cadr goal) subst)))
-    (when (and (consp pair) (eq (car pair) :incomplete))
-      (nskk-prolog--prove-internal rest subst k))))
-
-;; Ensure custom handlers above run before the `normal' catch-all.
-;; `nskk-define-goal-handler' appends new handlers, so `normal' (registered
-;; in nskk-prolog.el) sits before these custom handlers.  Move it to the end.
-(let ((normal-entry (assq 'normal nskk-prolog--goal-handlers)))
-  (when normal-entry
-    (setq nskk-prolog--goal-handlers
-          (append (delq normal-entry nskk-prolog--goal-handlers)
-                  (list normal-entry)))))
 
 (define-inline nskk-converter-lookup (romaji)
   "Look up ROMAJI in conversion table.

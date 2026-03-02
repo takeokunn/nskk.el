@@ -285,6 +285,14 @@ These keys allow direct candidate selection in the overlay candidate list."
   :safe (lambda (v) (and (listp v) (cl-every #'characterp v)))
   :group 'nskk-henkan)
 
+(defcustom nskk-max-registration-depth 3
+  "Maximum nesting depth for recursive word registration.
+When `nskk--registration-depth' reaches this value, further
+registration attempts are silently ignored."
+  :type 'integer
+  :safe #'natnump
+  :group 'nskk-henkan)
+
 ;;;; Candidate Window Settings
 
 (defgroup nskk-candidate-window nil

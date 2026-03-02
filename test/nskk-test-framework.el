@@ -443,38 +443,96 @@ Matches legacy nskk-deftest-integration, property tests, and BDD-style names."
 ;;;; Prolog Test Isolation
 ;;;;
 
+(defun nskk-prolog-test--copy-trie-node (node)
+  "Return a deep copy of trie NODE and all its descendants.
+Recursively copies the children hash-table so mutations in one test
+do not bleed into the saved copy."
+  (let ((new (nskk-prolog--trie-node--create
+              :char    (nskk-prolog--trie-node-char node)
+              :is-end  (nskk-prolog--trie-node-is-end node)
+              :value   (nskk-prolog--trie-node-value node)
+              :count   (nskk-prolog--trie-node-count node))))
+    (when-let ((children (nskk-prolog--trie-node-children node)))
+      (let ((new-children (make-hash-table :test 'eq
+                                           :size (hash-table-count children))))
+        (maphash (lambda (ch child)
+                   (puthash ch (nskk-prolog-test--copy-trie-node child)
+                            new-children))
+                 children)
+        (setf (nskk-prolog--trie-node-children new) new-children)))
+    new))
+
+(defun nskk-prolog-test--copy-trie (trie)
+  "Return a deep copy of TRIE.
+The root node and all descendant nodes are recursively duplicated so
+that `nskk-prolog--trie-insert' and `nskk-prolog--trie-delete' in the
+test body cannot mutate the saved snapshot."
+  (nskk-prolog--trie--create-internal
+   :root     (nskk-prolog-test--copy-trie-node (nskk-prolog--trie-root trie))
+   :size     (nskk-prolog--trie-size trie)
+   :metadata (copy-sequence (nskk-prolog--trie-metadata trie))))
+
 (defun nskk-prolog-test--copy-hash-table (ht)
-  "Deep-copy hash table HT."
+  "Deep-copy hash table HT for test isolation.
+Lists are shallow-copied with `copy-sequence'.  Trie structures are
+recursively deep-copied so that in-place mutations in the test body
+do not persist through restoration.  All other values are shared
+by reference."
   (let ((new (make-hash-table :test (hash-table-test ht)
                               :size (hash-table-size ht))))
     (maphash (lambda (k v)
-               (puthash k (if (sequencep v) (copy-sequence v) v) new))
+               (puthash k (cond
+                           ((nskk-prolog--trie-p v)
+                            (nskk-prolog-test--copy-trie v))
+                           ((sequencep v)
+                            (copy-sequence v))
+                           (t v))
+                        new))
              ht)
     new))
 
 (defmacro nskk-prolog-test-with-isolated-db (&rest body)
   "Execute BODY with an isolated Prolog database.
-Saves and restores the global database so tests don't leak."
+Saves and restores the global database so tests don't leak.
+
+After restoration `nskk-prolog--database-tails' is re-derived from
+the actual last cons cells of the restored database rather than from
+a saved shallow copy.  This maintains the O(1)-append head/tail
+invariant: `copy-sequence' creates a new list spine, so a separately
+saved tail copy would point to cons cells that are no longer the
+true end of the chain, causing silent append failures.
+
+`nskk--user-dict-index' and `nskk--system-dict-index' are also saved
+and restored because `nskk-dict-register-word' sets them as a side
+effect via `setq', and the change would otherwise persist globally
+after the test ends."
   (declare (indent 0))
-  `(let ((saved-db (nskk-prolog-test--copy-hash-table
-                    nskk-prolog--database))
-         (saved-tails (nskk-prolog-test--copy-hash-table
-                       nskk-prolog--database-tails))
-         (saved-idx (nskk-prolog-test--copy-hash-table
-                     nskk-prolog--index-config))
-         (saved-hash (nskk-prolog-test--copy-hash-table
-                      nskk-prolog--hash-indices))
-         (saved-trie (nskk-prolog-test--copy-hash-table
-                      nskk-prolog--trie-indices))
-         (saved-counter nskk-prolog--var-counter))
+  `(let ((saved-db           (nskk-prolog-test--copy-hash-table nskk-prolog--database))
+         (saved-idx          (nskk-prolog-test--copy-hash-table nskk-prolog--index-config))
+         (saved-hash         (nskk-prolog-test--copy-hash-table nskk-prolog--hash-indices))
+         (saved-trie         (nskk-prolog-test--copy-hash-table nskk-prolog--trie-indices))
+         (saved-counter      nskk-prolog--var-counter)
+         (saved-user-dict    nskk--user-dict-index)
+         (saved-system-dict  nskk--system-dict-index))
      (unwind-protect
          (progn ,@body)
-       (setq nskk-prolog--database saved-db
-             nskk-prolog--database-tails saved-tails
+       (setq nskk-prolog--database    saved-db
              nskk-prolog--index-config saved-idx
              nskk-prolog--hash-indices saved-hash
              nskk-prolog--trie-indices saved-trie
-             nskk-prolog--var-counter saved-counter))))
+             nskk-prolog--var-counter  saved-counter
+             nskk--user-dict-index     saved-user-dict
+             nskk--system-dict-index   saved-system-dict)
+       ;; Re-derive database-tails from the now-restored database.
+       ;; `copy-sequence' on a list creates a new cons-cell spine, so any
+       ;; separately saved tail would point to cells that are not the actual
+       ;; end of the restored chain.  Walking to (last v) guarantees the
+       ;; tail pointer stays consistent with the head pointer.
+       (let ((new-tails (make-hash-table :test 'equal :size 128)))
+         (maphash (lambda (k v)
+                    (when v (puthash k (last v) new-tails)))
+                  nskk-prolog--database)
+         (setq nskk-prolog--database-tails new-tails)))))
 
 ;;;;
 ;;;; Mock Dictionary Helpers
@@ -504,7 +562,7 @@ or `nskk-with-mock-dict' to prevent Prolog database pollution."
            ("あめ" . ("雨" "飴"))))
         (pred 'user-dict-entry))
     (nskk-prolog-retract-all pred 2)
-    (nskk-prolog-set-index pred 1 :trie)
+    (nskk-prolog-set-index pred 2 :trie)
     (dolist (entry (or entries default-entries))
       (nskk-prolog-assert (list (list pred (car entry) (cdr entry)))))
     (make-nskk-dict-index

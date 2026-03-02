@@ -1027,6 +1027,37 @@ Example:
                  `(nskk-prolog-<- (,predicate ,@row)))
                fact-rows)))
 
+(defmacro nskk-prolog-define-fact-table (name options &rest fact-tuples)
+  "Define a Prolog fact table for NAME with OPTIONS and FACT-TUPLES.
+NAME is the predicate symbol (not quoted).
+OPTIONS is a plist with :arity (integer) and :index (keyword, e.g. :hash).
+FACT-TUPLES is a list of argument lists WITHOUT the predicate name prefix;
+each tuple becomes one fact row.
+
+This macro expands to a call to `nskk-prolog-set-index' followed by
+`nskk-prolog-deffacts', combining both into a single declaration.
+
+Example:
+  (nskk-prolog-define-fact-table valid-mode (:arity 1 :index :hash)
+    (hiragana) (katakana) (latin))
+
+  expands to:
+  (nskk-prolog-set-index \\='valid-mode 1 :hash)
+  (nskk-prolog-deffacts valid-mode
+    (hiragana)
+    (katakana)
+    (latin))
+
+Note: tuples are passed WITHOUT the predicate name prefix.
+`nskk-prolog-deffacts' prepends NAME internally to each row."
+  (declare (indent 2) (debug t))
+  (let ((arity (plist-get options :arity))
+        (index (plist-get options :index)))
+    `(progn
+       (nskk-prolog-set-index ',name ,arity ,index)
+       (nskk-prolog-deffacts ,name
+         ,@fact-tuples))))
+
 (defmacro nskk-prolog-?- (goal)
   "Query the Prolog database and return the first solution.
 GOAL is (predicate arg1 ...) -- not quoted.

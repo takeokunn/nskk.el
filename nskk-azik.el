@@ -229,6 +229,81 @@ Runtime equivalent of `nskk-azik-youon' for use with `apply'."
   (nskk-prolog-assert (list (list 'azik-rule (concat prefix "o") o)))
   (nskk-azik--fn-extensions prefix a i u e o))
 
+(defun nskk--azik-sync-to-romaji-hash ()
+  "Populate the romaji hash table from azik-rule/2 for hot-path lookups.
+Called after all azik-rule/2 facts have been asserted.
+
+nskk-converter-lookup reads from hash only (inline function),
+so we must sync all azik-rule facts into the hash.
+AZIK entries override any conflicting standard entries (e.g. xa).
+
+We use puthash directly into nskk--romaji-table rather than
+nskk-converter-add-rule because the Prolog facts already exist
+(nskk-converter-add-rule would double-assert them).  This step is
+purely a hash-cache sync from the Prolog truth source."
+  (dolist (subst (nskk-prolog-query '(azik-rule \?r \?k)))
+    (let ((romaji (nskk-prolog-walk '\?r subst))
+          (kana (nskk-prolog-walk '\?k subst)))
+      (when (and (stringp romaji) (stringp kana))
+        (puthash romaji kana nskk--romaji-table)))))
+
+(defun nskk--azik-register-partial-prefixes ()
+  "Register :incomplete markers for all proper prefixes of AZIK romaji keys.
+Called after `nskk--azik-sync-to-romaji-hash' has populated the hash.
+
+Partial match markers are derived from azik-rule/2, hash only.
+:incomplete is not a string so it stays out of azik-rule/2.
+Scan all romaji keys of length > 1 and compute every proper
+prefix; these become :incomplete entries so the converter
+knows to keep accumulating input.  This automatically covers
+single-char consonants (k, g, ...) and 2-char youon prefixes
+(kg, hg, ...) without a hand-maintained list."
+  (let ((partials (make-hash-table :test 'equal)))
+    (dolist (subst (nskk-prolog-query '(azik-rule \?r \?_)))
+      (let* ((romaji (nskk-prolog-walk '\?r subst))
+             (len (and (stringp romaji) (length romaji))))
+        (when (and len (> len 1))
+          (dotimes (i (1- len))
+            (puthash (substring romaji 0 (1+ i)) t partials)))))
+    (maphash (lambda (prefix _)
+               (unless (gethash prefix nskk--romaji-table)
+                 (nskk-converter-add-rule prefix :incomplete)))
+             partials)))
+
+(defun nskk--azik-restore-standard-prefixes ()
+  "Demote AZIK complete rules that are proper prefixes of longer hash entries.
+Called after `nskk--azik-sync-to-romaji-hash' and
+`nskk--azik-register-partial-prefixes'.
+
+Problem: `nskk-azik-double-vowel' generates rules like \"sh\"→\"すう\" which
+overwrite the standard romaji `:incomplete' marker for \"sh\".  But the
+standard romaji table retains \"sha\"→\"しゃ\", \"shi\"→\"し\", etc.  When the
+user types \"sha\", the hash returns \"すう\" at \"sh\" (a complete match) and
+\"sha\" is never reached — the engine emits \"すう\" and then \"あ\" instead
+of \"しゃ\".
+
+Fix: after AZIK sync, scan all hash entries.  For each key K with a
+string value (a complete rule), if any strictly longer key K\\=' in the
+hash starts with K, demote K back to `:incomplete'.  This restores the
+standard-romaji prefix semantics so that multi-char standard rules like
+\"sha\" remain reachable."
+  (let (keys-to-check)
+    ;; Collect all complete (string-valued) entries.
+    (maphash (lambda (k v)
+               (when (and (stringp k) (stringp v))
+                 (push k keys-to-check)))
+             nskk--romaji-table)
+    ;; For each, check whether it is a proper prefix of some longer entry.
+    (dolist (k keys-to-check)
+      (let ((klen (length k))
+            (is-prefix nil))
+        (maphash (lambda (k2 _)
+                   (when (and (> (length k2) klen) (string-prefix-p k k2))
+                     (setq is-prefix t)))
+                 nskk--romaji-table)
+        (when is-prefix
+          (puthash k :incomplete nskk--romaji-table))))))
+
 (defun nskk--init-azik-rules ()
   "Initialize AZIK romaji rules.
 Sets up standard romaji as base, then asserts AZIK-specific rules
@@ -321,41 +396,23 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
 
   ;; ============================================================
   ;; Step 4: Populate hash table from azik-rule/2 for hot-path.
-  ;; nskk-converter-lookup reads from hash only (inline function),
-  ;; so we must sync all azik-rule facts into the hash.
-  ;; AZIK entries override any conflicting standard entries (e.g. xa).
-  ;;
-  ;; We use puthash directly into nskk--romaji-table rather than
-  ;; nskk-converter-add-rule because the Prolog facts already exist
-  ;; (nskk-converter-add-rule would double-assert them).  This step is
-  ;; purely a hash-cache sync from the Prolog truth source.
   ;; ============================================================
-  (dolist (subst (nskk-prolog-query '(azik-rule \?r \?k)))
-    (let ((romaji (nskk-prolog-walk '\?r subst))
-          (kana (nskk-prolog-walk '\?k subst)))
-      (when (and (stringp romaji) (stringp kana))
-        (puthash romaji kana nskk--romaji-table))))
+  (nskk--azik-sync-to-romaji-hash)
 
   ;; ============================================================
   ;; Partial match markers — derived from azik-rule/2, hash only.
-  ;; :incomplete is not a string so it stays out of azik-rule/2.
-  ;; Scan all romaji keys of length > 1 and compute every proper
-  ;; prefix; these become :incomplete entries so the converter
-  ;; knows to keep accumulating input.  This automatically covers
-  ;; single-char consonants (k, g, ...) and 2-char youon prefixes
-  ;; (kg, hg, ...) without a hand-maintained list.
   ;; ============================================================
-  (let ((partials (make-hash-table :test 'equal)))
-    (dolist (subst (nskk-prolog-query '(azik-rule \?r \?_)))
-      (let* ((romaji (nskk-prolog-walk '\?r subst))
-             (len (and (stringp romaji) (length romaji))))
-        (when (and len (> len 1))
-          (dotimes (i (1- len))
-            (puthash (substring romaji 0 (1+ i)) t partials)))))
-    (maphash (lambda (prefix _)
-               (unless (gethash prefix nskk--romaji-table)
-                 (nskk-converter-add-rule prefix :incomplete)))
-             partials)))
+  (nskk--azik-register-partial-prefixes)
+
+  ;; ============================================================
+  ;; Step 5: Restore standard-romaji prefix semantics.
+  ;; AZIK sync may have overwritten standard `:incomplete' markers
+  ;; with complete AZIK rules (e.g. "sh"→"すう") that shadow longer
+  ;; standard-romaji entries ("sha"→"しゃ").  Demote any such key
+  ;; back to `:incomplete' so multi-char standard rules remain
+  ;; reachable.
+  ;; ============================================================
+  (nskk--azik-restore-standard-prefixes))
 
 ;; Register AZIK style
 (nskk-converter-register-style 'azik #'nskk--init-azik-rules)

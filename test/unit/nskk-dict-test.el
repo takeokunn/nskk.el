@@ -10,7 +10,8 @@
 ;;; Commentary:
 
 ;; Tests for nskk-dictionary.el covering:
-;; - Error types defined in nskk-search.el
+;; - Error type hierarchy (nskk-dict-error root in nskk-dictionary.el;
+;;   search sub-errors in nskk-search.el)
 ;; - nskk-dict-entry struct: creation, accessors, predicates
 ;; - nskk-dict-index struct: creation, accessors, predicates
 ;; - nskk-dict--struct-entry-count function

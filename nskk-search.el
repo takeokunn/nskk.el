@@ -120,11 +120,11 @@ DDSKK equivalent: skk-save-history-hook")
 ;;;; Prolog Search Strategy Facts
 
 ;; Search type dispatch rules
-(nskk-prolog-set-index 'search-strategy 1 :hash)
-(nskk-prolog-<- (search-strategy exact))
-(nskk-prolog-<- (search-strategy prefix))
-(nskk-prolog-<- (search-strategy partial))
-(nskk-prolog-<- (search-strategy fuzzy))
+(nskk-prolog-define-fact-table search-strategy (:arity 1 :index :hash)
+  (exact)
+  (prefix)
+  (partial)
+  (fuzzy))
 
 ;; Learning score facts: (learning-score reading candidate score)
 ;; Hash-indexed on first arg (reading) for O(1) lookup by reading
