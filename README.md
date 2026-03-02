@@ -167,6 +167,19 @@ All bindings are active inside `nskk-mode`. They follow ddskk conventions.
 | `C-g`       | `nskk-handle-cancel`         | Cancel conversion or preedit             |
 | `a`–`l`     | (candidate list keys)        | Select candidate directly in list mode   |
 
+#### Cursor Key Behavior in Conversion Mode
+
+In conversion mode (▼), cursor keys commit the current candidate before moving:
+
+- **SPC**: Next candidate (ddskk standard)
+- **x**: Previous candidate (ddskk standard)
+- **↑ / C-p**: Commit candidate and move to previous line
+- **↓ / C-n**: Commit candidate and move to next line
+- **← / C-b**: Commit candidate and move backward
+- **→ / C-f**: Commit candidate and move forward
+
+This aligns with ddskk's approach of separating candidate navigation (SPC/x) from cursor movement.
+
 ### Input Modes
 
 | Mode             | Display | Description                       |

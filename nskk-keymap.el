@@ -95,6 +95,8 @@
 (declare-function nskk-dynamic-complete "nskk-henkan")
 (declare-function nskk-set-mode-numeric "nskk-input")
 (defvar nskk-henkan-on-marker)
+;; Variables in nskk-azik.el
+(defvar nskk-azik-keyboard-type)
 
 (defvar nskk-annotate-mode-map-hook nil
   "Hook run when annotating mode map.
@@ -124,11 +126,11 @@ DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
   (x converting previous-candidate)
   (x normal    self-insert)
   ;; C-n
-  (ctrl-n converting next-candidate)
+  (ctrl-n converting kakutei-then-next-line)
   (ctrl-n preedit    next-line)
   (ctrl-n normal     next-line)
   ;; C-p
-  (ctrl-p converting previous-candidate)
+  (ctrl-p converting kakutei-then-previous-line)
   (ctrl-p preedit    previous-line)
   (ctrl-p normal     previous-line)
   ;; C-f / right-arrow
@@ -376,18 +378,20 @@ unconditionally (preedit text is left in place)."
   (_ (newline)))
 
 (nskk-define-key-handler ctrl-n
-  "Handle C-n key: select next candidate when converting, else next-line.
-In conversion mode (▼), advances to the next conversion candidate.
+  "Handle C-n/down-arrow: commit conversion then move to next line.
+In conversion mode (▼), commits the current candidate then moves to next line.
 In preedit mode (▽) or normal mode, delegates to \\[next-line]."
-  ('next-candidate (nskk-next-candidate))
-  ('next-line      (nskk--safe-nav-command #'next-line end-of-buffer)))
+  ('kakutei-then-next-line (nskk-commit-current)
+                           (nskk--safe-nav-command #'next-line end-of-buffer))
+  ('next-line              (nskk--safe-nav-command #'next-line end-of-buffer)))
 
 (nskk-define-key-handler ctrl-p
-  "Handle C-p key: select previous candidate when converting, else previous-line.
-In conversion mode (▼), moves to the previous conversion candidate.
-In preedit mode (▽) or normal mode, delegates to \\[previous-line]."
-  ('previous-candidate (nskk-previous-candidate))
-  ('previous-line      (nskk--safe-nav-command #'previous-line beginning-of-buffer)))
+  "Handle C-p/up-arrow: commit conversion then move to previous line.
+In conversion mode (▼), commits the current candidate then moves to previous
+line.  In preedit mode (▽) or normal mode, delegates to \\[previous-line]."
+  ('kakutei-then-previous-line (nskk-commit-current)
+                               (nskk--safe-nav-command #'previous-line beginning-of-buffer))
+  ('previous-line              (nskk--safe-nav-command #'previous-line beginning-of-buffer)))
 
 (nskk-define-key-handler ctrl-f
   "Handle C-f/right-arrow: commit conversion then move forward, else forward-char.
@@ -468,6 +472,21 @@ In ASCII mode or when NSKK state is inactive, fall through to
   (interactive)
   (nskk-with-japanese-mode (nskk-set-mode-numeric)
     (self-insert-command 1)))
+
+;;;; AZIK Toggle Key Setup
+
+(defun nskk--setup-azik-toggle-key ()
+  "Set up AZIK toggle key binding based on keyboard type.
+Binds @ for jp106 keyboard or [ for us101 keyboard to
+`nskk-toggle-japanese-mode' in `nskk-mode-map'.
+Does nothing if `nskk-azik-keyboard-type' is not bound (AZIK not loaded)."
+  (when (and (boundp 'nskk-mode-map)
+             (boundp 'nskk-azik-keyboard-type))
+    (let ((key (pcase nskk-azik-keyboard-type
+                 ('jp106 "@")
+                 ('us101 "[")
+                 (_ "@"))))
+      (define-key nskk-mode-map (kbd key) #'nskk-toggle-japanese-mode))))
 
 (provide 'nskk-keymap)
 

@@ -25,7 +25,8 @@
 ;;; Commentary:
 
 ;; E2E tests for AZIK extended romaji input style.
-;; Tests q-key behavior (context-aware, always-n, toggle-only),
+;; Tests q-key behavior (context-aware only),
+;; toggle key behavior (@ for jp106, [ for us101),
 ;; semicolon as っ, colon as ー, and other AZIK-specific rules.
 ;;
 ;; AZIK must be activated per test via nskk-e2e-with-azik-buffer macro.
@@ -255,13 +256,18 @@ This ensures:
       (nskk-e2e-assert-buffer "こうか"))))
 
 ;;;;
-;;;; Section 5: AZIK Q-Key Behavior — Context-Aware (Default)
+;;;; Section 5: AZIK Q-Key Behavior — Context-Aware Mode
 ;;;;
 ;;
 ;; NOTE: In the standard nskk-mode-map, "q" is bound to nskk-handle-q
 ;; (which always toggles mode via nskk-toggle-japanese-mode).  The AZIK-aware
 ;; nskk-handle-q-key (which queries q-key-action/4) is a separate function.
 ;; These tests call nskk-handle-q-key directly to exercise AZIK q dispatch.
+;;
+;; Context-aware q-key behavior (now the only mode):
+;; - Empty buffer + q → toggle mode
+;; - Pending romaji + q where AZIK match exists → fire AZIK rule (e.g., kq → かい)
+;; - Pending romaji + q where no AZIK match → insert ん
 
 (nskk-describe "AZIK q context-aware mode (default)"
 
@@ -270,139 +276,125 @@ This ensures:
     ;; nskk--romaji-buffer is "" (cleared by nskk-e2e-with-azik-buffer setup),
     ;; so the q-key-action query returns toggle-mode.
     (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'context-aware))
-        (nskk-e2e-assert-mode 'hiragana)
-        (nskk-handle-q-key)
-        (nskk-e2e-assert-mode 'katakana))))
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-handle-q-key)
+      (nskk-e2e-assert-mode 'katakana)))
 
   (nskk-it "q with empty romaji buffer toggles katakana to hiragana"
     ;; context-aware + empty buffer -> toggle-mode action (reverse).
     (nskk-e2e-with-azik-buffer 'katakana nil
-      (let ((nskk-azik-q-behavior 'context-aware))
-        (nskk-e2e-assert-mode 'katakana)
-        (nskk-handle-q-key)
-        (nskk-e2e-assert-mode 'hiragana))))
+      (nskk-e2e-assert-mode 'katakana)
+      (nskk-handle-q-key)
+      (nskk-e2e-assert-mode 'hiragana)))
 
   (nskk-it "q completing an AZIK double-vowel rule produces the kana (not ん)"
     ;; context-aware: when pending-romaji+q forms a complete AZIK hash match,
     ;; the AZIK rule fires (fire-romaji action) instead of inserting ん.
     ;; "k" pending + "q" = "kq" → "かい" (AZIK double-vowel: k-row, q-position).
     (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'context-aware))
-        ;; Type "k" to put an incomplete romaji prefix in the buffer.
-        (nskk-e2e-type "k")
-        (nskk-e2e-assert-mode 'hiragana)
-        ;; q-key: "kq" is in hash → azik-complete buf-state → fire-romaji.
-        (nskk-handle-q-key)
-        ;; Mode should NOT have changed.
-        (nskk-e2e-assert-mode 'hiragana)
-        ;; "kq" fired as AZIK double-vowel rule → "かい" in buffer.
-        (nskk-e2e-assert-buffer "かい"))))
+      ;; Type "k" to put an incomplete romaji prefix in the buffer.
+      (nskk-e2e-type "k")
+      (nskk-e2e-assert-mode 'hiragana)
+      ;; q-key: "kq" is in hash → azik-complete buf-state → fire-romaji.
+      (nskk-handle-q-key)
+      ;; Mode should NOT have changed.
+      (nskk-e2e-assert-mode 'hiragana)
+      ;; "kq" fired as AZIK double-vowel rule → "かい" in buffer.
+      (nskk-e2e-assert-buffer "かい")))
 
   (nskk-it "q with pending n romaji produces ない (AZIK nq rule)"
     ;; "n" in romaji buffer + "q" = "nq" → "ない" (AZIK double-vowel: n-row).
     ;; context-aware + azik-complete → fire-romaji → "ない".
     (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'context-aware))
-        ;; Type "n" to put "n" in the romaji buffer.
-        (nskk-e2e-type "n")
-        ;; "nq" is an AZIK rule → buf-state=azik-complete → fire-romaji.
-        (nskk-handle-q-key)
-        ;; Mode should NOT have changed.
-        (nskk-e2e-assert-mode 'hiragana)
-        (nskk-e2e-assert-buffer "ない")))))
+      ;; Type "n" to put "n" in the romaji buffer.
+      (nskk-e2e-type "n")
+      ;; "nq" is an AZIK rule → buf-state=azik-complete → fire-romaji.
+      (nskk-handle-q-key)
+      ;; Mode should NOT have changed.
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "ない")))
+
+  (nskk-it "q with pending non-AZIK romaji produces ん"
+    ;; When pending romaji + q does NOT form an AZIK rule, q inserts ん.
+    ;; Example: "f" + "q" has no AZIK rule, so q acts as standalone ん.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      ;; Type "f" to put "f" in the romaji buffer (no fq AZIK rule).
+      (nskk-e2e-type "f")
+      (nskk-handle-q-key)
+      ;; Mode should NOT have changed.
+      (nskk-e2e-assert-mode 'hiragana)
+      ;; "f" is discarded, q produces ん.
+      (nskk-e2e-assert-buffer "ん"))))
 
 ;;;;
-;;;; Section 6: AZIK Q-Key Behavior — Always-N Mode
+;;;; Section 6: AZIK Toggle Key Behavior (@ and [)
 ;;;;
 
-(nskk-describe "AZIK q always-n mode"
+(nskk-describe "AZIK toggle key behavior"
 
-  (nskk-it "q with empty romaji buffer produces ん (not toggle)"
-    ;; always-n: q always inserts ん regardless of romaji buffer state.
+  (nskk-it "@ key toggles hiragana to katakana (jp106 keyboard)"
+    ;; On jp106 keyboard, @ is the toggle key.
+    ;; It should toggle mode regardless of AZIK state.
     (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'always-n))
-        (nskk-e2e-assert-mode 'hiragana)
-        (nskk-handle-q-key)
-        ;; Mode should NOT have changed (no toggle).
-        (nskk-e2e-assert-mode 'hiragana)
-        ;; ん should be in the buffer.
-        (nskk-e2e-assert-buffer "ん"))))
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-mode 'katakana)))
 
-  (nskk-it "q with pending romaji produces ん in always-n mode"
-    ;; always-n: q inserts ん even when romaji buffer is non-empty.
-    (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'always-n))
-        ;; Leave "k" pending in romaji buffer.
-        (nskk-e2e-type "k")
-        (nskk-handle-q-key)
-        ;; Mode should still be hiragana.
-        (nskk-e2e-assert-mode 'hiragana)
-        ;; ん should be in the buffer.
-        (nskk-e2e-assert-buffer "ん"))))
-
-  (nskk-it "multiple q presses in always-n mode produce multiple ん"
-    ;; Each q call inserts ん; no mode toggle occurs.
-    (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'always-n))
-        (nskk-handle-q-key)
-        (nskk-handle-q-key)
-        (nskk-handle-q-key)
-        (nskk-e2e-assert-mode 'hiragana)
-        (nskk-e2e-assert-buffer "んんん"))))
-
-  (nskk-it "q in katakana always-n mode produces ん"
-    ;; always-n works in katakana mode too (no toggle to hiragana).
+  (nskk-it "@ key toggles katakana to hiragana (jp106 keyboard)"
+    ;; Toggle should work in both directions.
     (nskk-e2e-with-azik-buffer 'katakana nil
-      (let ((nskk-azik-q-behavior 'always-n))
-        (nskk-e2e-assert-mode 'katakana)
-        (nskk-handle-q-key)
-        ;; Mode should remain katakana.
-        (nskk-e2e-assert-mode 'katakana)
-        ;; ん is inserted (not ン, because insert is literal \u3093).
-        (nskk-e2e-assert-buffer "ん")))))
+      (nskk-e2e-assert-mode 'katakana)
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-mode 'hiragana)))
 
-;;;;
-;;;; Section 7: AZIK Q-Key Behavior — Toggle-Only Mode
-;;;;
-
-(nskk-describe "AZIK q toggle-only mode"
-
-  (nskk-it "q with empty romaji buffer toggles hiragana to katakana"
-    ;; toggle-only: q always toggles mode, like standard SKK.
-    (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'toggle-only))
+  (nskk-it "[ key toggles hiragana to katakana (us101 keyboard)"
+    ;; On us101 keyboard, [ is the toggle key.
+    ;; It should toggle mode regardless of AZIK state.
+    ;; NOTE: Must set nskk-azik-keyboard-type to 'us101 and rebind toggle key.
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk--setup-azik-toggle-key)
+      (nskk-e2e-with-azik-buffer 'hiragana nil
         (nskk-e2e-assert-mode 'hiragana)
-        (nskk-handle-q-key)
+        (nskk-e2e-type "[")
         (nskk-e2e-assert-mode 'katakana))))
 
-  (nskk-it "q with pending romaji toggles mode in toggle-only mode"
-    ;; toggle-only: q toggles even when there is pending romaji.
-    ;; The romaji buffer state is ignored; mode toggle always fires.
-    (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'toggle-only))
-        ;; Leave "k" pending in romaji buffer.
-        (nskk-e2e-type "k")
-        ;; Mode is still hiragana (k is an incomplete prefix).
-        (nskk-e2e-assert-mode 'hiragana)
-        ;; q in toggle-only mode: toggles to katakana regardless.
-        (nskk-handle-q-key)
+  (nskk-it "[ key toggles katakana to hiragana (us101 keyboard)"
+    ;; Toggle should work in both directions.
+    ;; NOTE: Must set nskk-azik-keyboard-type to 'us101 and rebind toggle key.
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk--setup-azik-toggle-key)
+      (nskk-e2e-with-azik-buffer 'katakana nil
         (nskk-e2e-assert-mode 'katakana)
-        ;; Nothing was inserted in the buffer (no ん, no は).
-        ;; The pending "k" romaji was cleared by mode switch.
-        (nskk-e2e-assert-buffer ""))))
+        (nskk-e2e-type "[")
+        (nskk-e2e-assert-mode 'hiragana))))
 
-  (nskk-it "double q in toggle-only mode returns to original mode"
-    ;; Two toggles return to the starting mode: hiragana -> katakana -> hiragana.
+  (nskk-it "@ toggle on jp106 clears pending romaji and toggles mode"
+    ;; When there is pending romaji, @ toggle key should still toggle mode
+    ;; and clear the pending romaji buffer.
     (nskk-e2e-with-azik-buffer 'hiragana nil
-      (let ((nskk-azik-q-behavior 'toggle-only))
-        (nskk-handle-q-key)
+      (nskk-e2e-type "k")  ; pending romaji
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-mode 'katakana)
+      ;; Pending "k" should be cleared
+      (nskk-e2e-assert-buffer "")))
+
+  (nskk-it "bracket toggle on us101 clears pending romaji and toggles mode"
+    ;; When there is pending romaji, [ toggle key should still toggle mode
+    ;; and clear the pending romaji buffer.
+    ;; NOTE: Must set nskk-azik-keyboard-type to 'us101 and rebind toggle key.
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk--setup-azik-toggle-key)
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "k")  ; pending romaji
+        (nskk-e2e-assert-mode 'hiragana)
+        (nskk-e2e-type "[")
         (nskk-e2e-assert-mode 'katakana)
-        (nskk-handle-q-key)
-        (nskk-e2e-assert-mode 'hiragana)))))
+        ;; Pending "k" should be cleared
+        (nskk-e2e-assert-buffer "")))))
 
 ;;;;
-;;;; Section 8: AZIK Standard Romaji Compatibility in E2E Buffer
+;;;; Section 7: AZIK Standard Romaji Compatibility in E2E Buffer
 ;;;;
 
 (nskk-describe "AZIK standard romaji compatibility via key dispatch"
@@ -442,7 +434,7 @@ This ensures:
       (nskk-e2e-assert-buffer "っか"))))
 
 ;;;;
-;;;; Section 9: AZIK Youon Compatibility via Key Dispatch
+;;;; Section 8: AZIK Youon Compatibility via Key Dispatch
 ;;;;
 
 (nskk-describe "AZIK youon (g substitutes for y) via key dispatch"
@@ -471,7 +463,7 @@ This ensures:
       (nskk-e2e-assert-buffer "きょう"))))
 
 ;;;;
-;;;; Section 10: AZIK Word Shortcuts via Key Dispatch
+;;;; Section 9: AZIK Word Shortcuts via Key Dispatch
 ;;;;
 
 (nskk-describe "AZIK word shortcuts via key dispatch"
@@ -501,7 +493,7 @@ This ensures:
       (nskk-e2e-assert-buffer "こと"))))
 
 ;;;;
-;;;; Section 11: AZIK Same-Finger Alternatives via Key Dispatch
+;;;; Section 10: AZIK Same-Finger Alternatives via Key Dispatch
 ;;;;
 
 (nskk-describe "AZIK same-finger alternatives via key dispatch"
@@ -525,7 +517,7 @@ This ensures:
       (nskk-e2e-assert-buffer "ゆ"))))
 
 ;;;;
-;;;; Section 12: AZIK Mixed Sequence Integration
+;;;; Section 11: AZIK Mixed Sequence Integration
 ;;;;
 
 (nskk-describe "AZIK mixed sequence integration"

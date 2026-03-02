@@ -523,7 +523,23 @@ Ensures the standard romaji table is loaded regardless of prior test state."
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?n)))
         (should (equal result "ん"))
-        (should-not (equal result "っ"))))))
+        (should-not (equal result "っ")))))
+
+  (nskk-it "nn clears buffer after emitting ん (ddskk compatibility)"
+    (nskk-input-test-with-romaji
+      (nskk-convert-input-to-kana ?n)
+      (let ((result (nskk-convert-input-to-kana ?n)))
+        (should (equal result "ん"))
+        (should (equal nskk--romaji-buffer "")))))
+
+  (nskk-it "nna converts to んあ with buffer cleared between"
+    (nskk-input-test-with-romaji
+      (nskk-convert-input-to-kana ?n)
+      (let ((result1 (nskk-convert-input-to-kana ?n)))
+        (should (equal result1 "ん"))
+        (should (equal nskk--romaji-buffer "")))
+      (let ((result2 (nskk-convert-input-to-kana ?a)))
+        (should (equal result2 "あ"))))))
 
 ;;;
 ;;; Standalone n at word boundary

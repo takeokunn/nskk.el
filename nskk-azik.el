@@ -64,27 +64,32 @@
 ;; 6. Same-finger alternatives (f suffix)
 ;; 7. Word shortcuts
 ;; 8. Foreign word extensions
+;;
+;; X/C Prefix Extensions:
+;; The x and c prefixes provide compatibility rows for sha/shu/sho and cha/chu/cho:
+;; - x prefix: sha(しゃ) shi(し) shu(しゅ) she(しぇ) sho(しょ)
+;; - c prefix: cha(ちゃ) chi(ち) chu(ちゅ) che(ちぇ) cho(ちょ)
+;;
+;; Both prefixes support all AZIK extension keys:
+;; - Hatsuon (+ん): xz(しゃん) xj(しゅん) cz(ちゃん) cj(ちゅん) etc.
+;; - Double vowel: xh(しゅう) xp(しょう) cp(ちょう) etc.
+;;
+;; Example compound sequences:
+;; - xhka → しゅうか (shuuka - collection/number of days)
+;; - xhkak -> しゅうかく (shuukaku - harvest)
+;; - xhkaq -> しゅうかい (shuukai - meeting)
+;; - cpka -> ちょうか (chouka - surplus/over)
 
 ;;; Code:
 
 (require 'nskk-converter)
+(require 'nskk-keymap)
 (require 'nskk-prolog)
 
 (defgroup nskk-azik nil
   "AZIK extended romaji input settings."
   :prefix "nskk-azik-"
   :group 'nskk-converter)
-
-(defcustom nskk-azik-q-behavior 'context-aware
-  "Behavior of q key when AZIK style is active.
-\\='context-aware - Produce ん when there is pending romaji input,
-                 otherwise toggle hiragana/katakana mode (recommended)
-\\='always-n      - Always produce ん (AZIK purist)
-\\='toggle-only   - Keep standard SKK toggle behavior (use nn for ん)"
-  :type '(choice (const :tag "Context-aware (Recommended)" context-aware)
-                 (const :tag "Always produce ん" always-n)
-                 (const :tag "Toggle only" toggle-only))
-  :group 'nskk-azik)
 
 (defcustom nskk-azik-keyboard-type 'jp106
   "Keyboard layout for AZIK mappings.
@@ -173,10 +178,19 @@ Expands at compile time into individual nskk-prolog-<- calls."
     ("z" "ざ" "じ" "ず" "ぜ" "ぞ")
     ("d" "だ" "ぢ" "づ" "で" "ど")
     ("b" "ば" "び" "ぶ" "べ" "ぼ")
-    ("p" "ぱ" "ぴ" "ぷ" "ぺ" "ぽ"))
+    ("p" "ぱ" "ぴ" "ぷ" "ぺ" "ぽ")
+    ("x" "しゃ" "し" "しゅ" "しぇ" "しょ")
+    ("c" "ちゃ" "ち" "ちゅ" "ちぇ" "ちょ"))
   "Consonant rows for AZIK hatsuon + double-vowel extension rules.
 Each entry is (PREFIX A I U E O) passed to `nskk-azik-extensions'.
-The w-row has 7 elements: the extra element is the DV-O override (うぉ).")
+
+Special rows:
+- The w-row has 7 elements: the extra element is the DV-O override (うぉ).
+- The x-row provides sha/shu/sho compatibility (しゃ/し/しゅ/しぇ/しょ).
+- The c-row provides cha/chu/cho compatibility (ちゃ/ち/ちゅ/ちぇ/ちょ).
+
+The x and c rows support all extension keys (z/k/j/d/l for hatsuon,
+q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
 
 (defconst nskk-azik--youon-rows
   '(("kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
@@ -412,7 +426,12 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;; back to `:incomplete' so multi-char standard rules remain
   ;; reachable.
   ;; ============================================================
-  (nskk--azik-restore-standard-prefixes))
+  (nskk--azik-restore-standard-prefixes)
+
+  ;; ============================================================
+  ;; Step 6: Set up AZIK toggle key binding.
+  ;; ============================================================
+  (nskk--setup-azik-toggle-key))
 
 ;; Register AZIK style
 (nskk-converter-register-style 'azik #'nskk--init-azik-rules)

@@ -285,15 +285,18 @@ the O(n²) string allocation of repeated `concat' calls in a loop."
       (let* ((c0 (aref remaining 0))
              (n-result (when (= c0 ?n) (nskk-convert-n--internal remaining))))
         (cond
-         ;; Double consonant (sokuon): same ASCII consonant repeated, not vowel/n.
-         ;; The (< c0 128) guard ensures kana characters (e.g. "かか") never
-         ;; accidentally trigger sokuon, keeping nskk-convert-romaji idempotent.
-         ((and (> len 1)
-               (< c0 128)
-               (= c0 (aref remaining 1))
-               (not (memq c0 nskk--sokuon-blockers)))
-          (push "っ" parts)
-          (setq remaining (substring remaining 1)))
+          ;; Double consonant (sokuon): same ASCII consonant repeated, not vowel/n.
+          ;; The (< c0 128) guard ensures kana characters (e.g. "かか") never
+          ;; accidentally trigger sokuon, keeping nskk-convert-romaji idempotent.
+          ;; Only apply sokuon if the doubled pattern is NOT a complete rule.
+          ;; This allows AZIK hatsuon rules (e.g., "kk" → "きん") to take priority.
+          ((and (> len 1)
+                (< c0 128)
+                (= c0 (aref remaining 1))
+                (not (memq c0 nskk--sokuon-blockers))
+                (not (stringp (nskk-converter-lookup (substring remaining 0 2)))))
+           (push "っ" parts)
+           (setq remaining (substring remaining 1)))
 
          ;; n-prefix producing ん (falls through to table if n-result is nil)
          ((and (= c0 ?n) n-result)

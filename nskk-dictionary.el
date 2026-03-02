@@ -489,18 +489,50 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
   (nskk-prolog-assert '((dict-initialized)))
   (message "NSKK: Dictionary initialization complete"))
 
+;;; Okurigana consonants used in SKK dictionary (14 standard consonants)
+(defconst nskk-dict--okuri-consonants
+  '(?k ?s ?t ?n ?h ?m ?y ?r ?w ?g ?z ?d ?b ?p)
+  "List of lowercase consonants used as okurigana markers in SKK dictionary.")
+
+(defun nskk-dict--lookup-okuri-ari (key)
+  "Look up KEY for okuri-ari entries (reading + okurigana consonant).
+Returns combined candidates from all possible okuri-ari variants.
+This is used when no explicit okurigana marker is present in the input."
+  (let ((all-candidates nil))
+    (dolist (okuri-char nskk-dict--okuri-consonants)
+      (let* ((okuri-key (concat key (string okuri-char)))
+             (solutions (nskk-prolog-query `(dict-entry ,okuri-key \?c))))
+        (when solutions
+          (dolist (sol solutions)
+            (let ((cands (nskk-prolog-walk '\?c sol)))
+              (when cands
+                (setq all-candidates
+                      (cl-union all-candidates cands :test #'equal))))))))
+    all-candidates))
+
 (defun nskk-dict-lookup (key)
   "Look up KEY in loaded dictionaries via Prolog bridge rule.
 Returns list of candidates or nil.
-User dictionary results take priority via clause ordering."
-  (let* ((solutions (nskk-prolog-query `(dict-entry ,key \?c)))
-         (all-candidate-lists
-          (mapcar (lambda (sol) (nskk-prolog-walk '\?c sol))
-                  solutions)))
-    (when all-candidate-lists
-      (cl-reduce (lambda (acc lst) (cl-union acc lst :test #'equal))
-                 all-candidate-lists
-                 :initial-value nil))))
+User dictionary results take priority via clause ordering.
+
+When KEY has no explicit okurigana marker (no trailing lowercase consonant),
+also searches for okuri-ari entries by trying all possible okurigana
+consonants appended to KEY.  Results from both searches are combined."
+  (let* ((okuri-nasi-solutions (nskk-prolog-query `(dict-entry ,key \?c)))
+         (okuri-nasi-candidates
+          (when okuri-nasi-solutions
+            (cl-reduce (lambda (acc lst) (cl-union acc lst :test #'equal))
+                       (mapcar (lambda (sol) (nskk-prolog-walk '\?c sol))
+                               okuri-nasi-solutions)
+                       :initial-value nil))))
+    ;; Also search for okuri-ari entries when key length > 1
+    ;; (we only look for okuri-ari if there's a potential okurigana)
+    (if (> (length key) 1)
+        (let ((okuri-ari-candidates (nskk-dict--lookup-okuri-ari key)))
+          ;; Combine both results, with okuri-nasi appearing first
+          (when (or okuri-nasi-candidates okuri-ari-candidates)
+            (cl-union okuri-nasi-candidates okuri-ari-candidates :test #'equal)))
+      okuri-nasi-candidates)))
 
 ;;; User Dictionary Modification
 

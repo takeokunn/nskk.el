@@ -70,7 +70,6 @@ Debug commands in Emacs:
 
 AZIK usage:
   (setq nskk-converter-romaji-style 'azik)  ; Enable AZIK input
-  (setq nskk-azik-q-behavior 'context-aware) ; q-key: ん or toggle
 
 Key bindings (after nskk-global-mode is enabled):
   C-x C-j          Toggle NSKK mode

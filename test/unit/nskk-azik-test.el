@@ -140,7 +140,7 @@
 
 (nskk-describe "AZIK hatsuon (撥音拡張) rules"
   (nskk-context "k-row hatsuon"
-    (nskk-it "kz kj kd kl convert to かん くん けん こん"
+    (nskk-it "kz kk kj kd kl convert to かん きん くん けん こん"
       (nskk-with-azik-style
         ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "kz") "かん"))
@@ -148,8 +148,9 @@
         (should (equal (nskk-converter-lookup "kj") "くん"))
         (should (equal (nskk-converter-lookup "kd") "けん"))
         (should (equal (nskk-converter-lookup "kl") "こん"))
-        ;; kz, kj, kd, kl should work in conversion
+        ;; kz, kk, kj, kd, kl should work in conversion
         (should (equal (nskk-convert-romaji "kz") "かん"))
+        (should (equal (nskk-convert-romaji "kk") "きん"))
         (should (equal (nskk-convert-romaji "kj") "くん"))
         (should (equal (nskk-convert-romaji "kd") "けん"))
         (should (equal (nskk-convert-romaji "kl") "こん")))))
@@ -282,7 +283,46 @@
         (should (equal (nskk-convert-romaji "pk") "ぴん"))
         (should (equal (nskk-convert-romaji "pj") "ぷん"))
         (should (equal (nskk-convert-romaji "pd") "ぺん"))
-        (should (equal (nskk-convert-romaji "pl") "ぽん"))))))
+        (should (equal (nskk-convert-romaji "pl") "ぽん")))))
+
+  (nskk-context "x-row hatsuon extensions"
+    (nskk-it "xz xk xj xd xl convert to しゃん しん しゅん しぇん しょん; xk demoted to :incomplete"
+      (nskk-with-azik-style
+        ;; "xk" is demoted to :incomplete: standard romaji has xka/xke
+        (should (eq (nskk-converter-lookup "xk") :incomplete))
+        ;; Other rules should exist in the table
+        (should (equal (nskk-converter-lookup "xz") "しゃん"))
+        (should (equal (nskk-converter-lookup "xj") "しゅん"))
+        (should (equal (nskk-converter-lookup "xd") "しぇん"))
+        (should (equal (nskk-converter-lookup "xl") "しょん"))
+        ;; Conversion should work (except xk which is demoted)
+        (should (equal (nskk-convert-romaji "xz") "しゃん"))
+        (should (equal (nskk-convert-romaji "xj") "しゅん"))
+        (should (equal (nskk-convert-romaji "xd") "しぇん"))
+        (should (equal (nskk-convert-romaji "xl") "しょん"))
+        ;; Negative tests - should not equal incorrect values
+        (should-not (equal (nskk-convert-romaji "xz") "しゃ"))
+        (should-not (equal (nskk-convert-romaji "xj") "しゅ")))))
+
+  (nskk-context "c-row hatsuon extensions"
+    (nskk-it "cz ck cj cd cl convert to ちゃん ちん ちゅん ちぇん ちょん"
+      (nskk-with-azik-style
+        ;; Verify rules exist in the table
+        (should (equal (nskk-converter-lookup "cz") "ちゃん"))
+        (should (equal (nskk-converter-lookup "ck") "ちん"))
+        (should (equal (nskk-converter-lookup "cj") "ちゅん"))
+        (should (equal (nskk-converter-lookup "cd") "ちぇん"))
+        (should (equal (nskk-converter-lookup "cl") "ちょん"))
+        ;; Conversion should work
+        (should (equal (nskk-convert-romaji "cz") "ちゃん"))
+        (should (equal (nskk-convert-romaji "ck") "ちん"))
+        (should (equal (nskk-convert-romaji "cj") "ちゅん"))
+        (should (equal (nskk-convert-romaji "cd") "ちぇん"))
+        (should (equal (nskk-convert-romaji "cl") "ちょん"))
+        ;; Negative tests - should not equal incorrect values
+        (should-not (equal (nskk-convert-romaji "cz") "ちゃ"))
+        (should-not (equal (nskk-convert-romaji "ck") "ちんん"))
+        (should-not (equal (nskk-convert-romaji "cj") "ちゅ"))))))
 
 
 ;;;;
@@ -419,7 +459,40 @@
         ;; pq, ph, pw should work in conversion
         (should (equal (nskk-convert-romaji "pq") "ぱい"))
         (should (equal (nskk-convert-romaji "ph") "ぷう"))
-        (should (equal (nskk-convert-romaji "pw") "ぺい"))))))
+        (should (equal (nskk-convert-romaji "pw") "ぺい")))))
+
+  (nskk-context "x-row diphthong extensions"
+    (nskk-it "xq xh xp convert to しゃい しゅう しょう; xw demoted to :incomplete"
+      (nskk-with-azik-style
+        ;; "xw" is demoted to :incomplete: standard romaji has xwa
+        (should (eq (nskk-converter-lookup "xw") :incomplete))
+        ;; xq, xh, xp should work in lookup
+        (should (equal (nskk-converter-lookup "xq") "しゃい"))
+        (should (equal (nskk-converter-lookup "xh") "しゅう"))
+        (should (equal (nskk-converter-lookup "xp") "しょう"))
+        ;; Conversion should work for all (except xw which is demoted to :incomplete)
+        (should (equal (nskk-convert-romaji "xq") "しゃい"))
+        (should (equal (nskk-convert-romaji "xh") "しゅう"))
+        (should (equal (nskk-convert-romaji "xp") "しょう"))
+        ;; KEY TEST CASE from bug report: xh should produce しゅう
+        (should (equal (nskk-convert-romaji "xh") "しゅう"))
+        ;; Negative tests - should not equal incorrect values
+        (should-not (equal (nskk-convert-romaji "xh") "しゅ"))
+        (should-not (equal (nskk-convert-romaji "xh") "しゅうう")))))
+
+  (nskk-context "c-row diphthong extensions"
+    (nskk-it "cq cw cp convert to ちゃい ちぇい ちょう; ch demoted to :incomplete"
+      (nskk-with-azik-style
+        ;; "ch" is demoted to :incomplete: standard romaji has cha/chi/chu/che/cho
+        (should (eq (nskk-converter-lookup "ch") :incomplete))
+        ;; cq, cw, cp should work in lookup
+        (should (equal (nskk-converter-lookup "cq") "ちゃい"))
+        (should (equal (nskk-converter-lookup "cw") "ちぇい"))
+        (should (equal (nskk-converter-lookup "cp") "ちょう"))
+        ;; Conversion should work for all (except ch which is demoted to :incomplete)
+        (should (equal (nskk-convert-romaji "cq") "ちゃい"))
+        (should (equal (nskk-convert-romaji "cw") "ちぇい"))
+        (should (equal (nskk-convert-romaji "cp") "ちょう"))))))
 
 
 ;;;;
@@ -830,7 +903,39 @@
       ;; Note: tatq = ta + tq = た + たい (not たちたい)
       (should (equal (nskk-convert-romaji "tatq") "たたい"))
       ;; For たちたい, use ta + chi + tq
-      (should (equal (nskk-convert-romaji "tachitq") "たちたい")))))
+      (should (equal (nskk-convert-romaji "tachitq") "たちたい"))))
+
+  (nskk-context "x/c prefix compound sequences"
+    (nskk-it "x prefix compounds with extension keys work correctly"
+      (nskk-with-azik-style
+        ;; xh + ka = しゅう + か = しゅうか (shuuka)
+        (should (equal (nskk-convert-romaji "xhka") "しゅうか"))
+        ;; xh + kak = しゅう + かく = しゅうかく (shuukaku)
+        (should (equal (nskk-convert-romaji "xhkak") "しゅうかく"))
+        ;; xh + kaq = しゅう + かい = しゅうかい (shuukai)
+        (should (equal (nskk-convert-romaji "xhkaq") "しゅうかい"))
+        ;; xp + to = しょう + と = しょうと
+        (should (equal (nskk-convert-romaji "xpto") "しょうと"))
+        ;; xz + ka = しゃん + か = しゃんか
+        (should (equal (nskk-convert-romaji "xzka") "しゃんか"))))
+
+    (nskk-it "c prefix compounds with extension keys work correctly"
+      (nskk-with-azik-style
+        ;; cp + ka = ちょう + か = ちょうか (chouka)
+        (should (equal (nskk-convert-romaji "cpka") "ちょうか"))
+        ;; cp + to = ちょう + と = ちょうと
+        (should (equal (nskk-convert-romaji "cpto") "ちょうと"))
+        ;; cz + ka = ちゃん + か = ちゃんか
+        (should (equal (nskk-convert-romaji "czka") "ちゃんか"))
+        ;; cj + ka = ちゅん + か = ちゅんか
+        (should (equal (nskk-convert-romaji "cjka") "ちゅんか"))))
+
+    (nskk-it "x/c prefixes in longer compound words"
+      (nskk-with-azik-style
+        ;; shuukakuki (しゅうかくき - harvest machine)
+        (should (equal (nskk-convert-romaji "xhkakki") "しゅうかくき"))
+        ;; choukahi (ちょうかひ - over-cost)
+        (should (equal (nskk-convert-romaji "cpkahi") "ちょうかひ"))))))
 
 
 ;;;;

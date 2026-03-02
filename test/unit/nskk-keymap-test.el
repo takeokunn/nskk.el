@@ -502,19 +502,6 @@
     (let ((binding (lookup-key nskk-mode-map [down])))
       (should (eq binding 'nskk-handle-ctrl-n))))
 
-  (nskk-it "calls nskk-next-candidate when converting"
-    (with-temp-buffer
-      (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (called nil))
-        (nskk--set-conversion-start-marker (point-min))
-        (insert "preedit")
-        (nskk-state-set-candidates nskk-current-state '("result"))
-        (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (cl-letf (((symbol-function 'nskk-next-candidate)
-                   (lambda () (setq called t))))
-          (nskk-when (nskk-handle-ctrl-n))
-          (nskk-then (should called))))))
-
   (nskk-it "calls next-line when not in conversion mode"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
@@ -576,6 +563,98 @@
                    (lambda (&rest _) (interactive) (setq called t))))
           (nskk-when (nskk-handle-ctrl-p))
           (nskk-then (should called)))))))
+
+;;;
+;;; Helper Function for Cursor Key Tests
+;;;
+
+(defun nskk-test-setup-converting (preedit candidate)
+  "Setup converting mode for PREEDIT text with CANDIDATE.
+PREEDIT should already be in buffer starting at point.
+Sets conversion-start-marker at point, advances past PREEDIT, and configures state."
+  (nskk--set-conversion-start-marker (point))
+  (forward-char (length preedit))
+  (nskk-state-set-candidates nskk-current-state (list candidate))
+  (nskk-state-force-henkan-phase nskk-current-state 'active))
+
+;;;
+;;; Cursor Key Behavior Changes - Commit Then Move (▼ converting mode)
+;;;
+
+(nskk-describe "cursor key commit-then-move behavior"
+  (nskk-it "C-n commits candidate and moves to next line in converting mode"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--romaji-buffer ""))
+        (insert "あいうえお\nかきくけこ")
+        (goto-char (point-min))
+        (nskk-test-setup-converting "あい" "愛")
+        (nskk-when (nskk-handle-ctrl-n))
+        (nskk-then
+         (should (string= (buffer-string) "愛うえお\nかきくけこ"))
+         (should (= (line-number-at-pos) 2))))))
+
+  (nskk-it "C-p commits candidate and moves to previous line in converting mode"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--romaji-buffer ""))
+        (insert "あいうえお\nかきくけこ")
+        (goto-char (point-min))
+        (forward-line 1)
+        (nskk-test-setup-converting "か" "書")
+        (nskk-when (nskk-handle-ctrl-p))
+        (nskk-then
+         (should (string= (buffer-string) "あいうえお\n書きくけこ"))
+         (should (= (line-number-at-pos) 1))))))
+
+  (nskk-it "[down] commits candidate and moves to next line in converting mode"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--romaji-buffer ""))
+        (insert "あいうえお\nかきくけこ")
+        (goto-char (point-min))
+        (nskk-test-setup-converting "あい" "愛")
+        (nskk-when (nskk-handle-ctrl-n))  ;; Use handler directly (arrow keys map to same handler)
+        (nskk-then
+         (should (string= (buffer-string) "愛うえお\nかきくけこ"))
+         (should (= (line-number-at-pos) 2))))))
+
+  (nskk-it "[up] commits candidate and moves to previous line in converting mode"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--romaji-buffer ""))
+        (insert "あいうえお\nかきくけこ")
+        (goto-char (point-min))
+        (forward-line 1)
+        (nskk-test-setup-converting "か" "書")
+        (nskk-when (nskk-handle-ctrl-p))  ;; Use handler directly (arrow keys map to same handler)
+        (nskk-then
+         (should (string= (buffer-string) "あいうえお\n書きくけこ"))
+         (should (= (line-number-at-pos) 1))))))
+
+  (nskk-it "C-n at buffer end during conversion silently ignores end-of-buffer"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--romaji-buffer ""))
+        (insert "あい")
+        (goto-char (point-min))
+        (nskk-test-setup-converting "あい" "愛")
+        (nskk-when (nskk-handle-ctrl-n))
+        (nskk-then
+         (should (string= (buffer-string) "愛"))
+         (should (= (point) (point-max)))))))
+
+  (nskk-it "C-p at buffer beginning during conversion silently ignores beginning-of-buffer"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--romaji-buffer ""))
+        (insert "あい")
+        (goto-char (point-min))
+        (nskk-test-setup-converting "あい" "愛")
+        (nskk-when (nskk-handle-ctrl-p))
+        (nskk-then
+         (should (string= (buffer-string) "愛"))
+         (should (= (point) (point-min))))))))
 
 ;;;
 ;;; C-f and C-b Handler Tests

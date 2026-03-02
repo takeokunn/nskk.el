@@ -207,30 +207,26 @@ Returns a mode symbol such as `hiragana', `katakana', `ascii',
 
 ;;;###autoload
 (defun nskk-handle-q-key ()
-  "Handle q key press based on current romaji style and configuration.
-In AZIK mode with context-aware behavior:
+  "Handle q key press based on current romaji style.
+In AZIK mode:
   - If pending-romaji+q is a complete AZIK hash match (e.g. kq→かい),
     fire the AZIK rule via `nskk-process-japanese-input'.
   - If there is other pending romaji input, produce \u3093
   - Otherwise, toggle hiragana/katakana mode
-In always-n mode: always produce \u3093
-In toggle-only mode: toggle mode regardless of context
 In standard mode: toggle mode (default SKK behavior)."
   (interactive)
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
          (combined (concat nskk--romaji-buffer "q"))
          (buf-state (cond
-                     ;; azik-complete: pending+q is a complete AZIK match
                      ((and (eq style 'azik)
                            (stringp (gethash combined nskk--romaji-table)))
                       'azik-complete)
                      ((string-empty-p nskk--romaji-buffer) 'empty)
                      (t 'pending)))
-         (behavior (if (featurep 'nskk-azik) nskk-azik-q-behavior 'context-aware))
          (action (nskk-prolog-query-value
-                  `(q-key-action ,style ,behavior ,buf-state ,'\?action)
+                  `(q-key-action ,style ,buf-state ,'\?action)
                   '\?action)))
-    (nskk-debug-log "[INPUT] q-key: style=%s behavior=%s buf-state=%s action=%s" style behavior buf-state action)
+    (nskk-debug-log "[INPUT] q-key: style=%s buf-state=%s action=%s" style buf-state action)
     (pcase action
       ('toggle-mode  (nskk-toggle-japanese-mode))
       ('insert-n     (insert "\u3093"))
@@ -388,14 +384,28 @@ lowercase version of the letter as normal romaji input."
                                  (<= ?A char) (<= char ?Z)
                                  nskk-converter-auto-start-henkan
                                  (not (nskk--conversion-start-active-p))))
-           (effective-char (if is-henkan-start (downcase char) char)))
+           ;; Normalize uppercase to lowercase during preedit (conversion-start active)
+           ;; to fix bug where "H O" produced "oお" instead of "▽ほ".
+           ;; This ensures all uppercase letters are treated as romaji input,
+           ;; not as okurigana triggers, during the preedit phase.
+           (effective-char (if (and (characterp char)
+                                    (<= ?A char) (<= char ?Z)
+                                    (nskk--conversion-start-active-p))
+                               (downcase char)
+                             (if is-henkan-start (downcase char) char))))
       (when is-henkan-start
         (nskk--setup-henkan-start-marker char))
       ;; Okurigana path: when the char is consumed as okurigana input,
       ;; there is nothing more to do.  Henkan-start chars are never
       ;; routed through okurigana (the condition mirrors the original
       ;; `if (and (not is-henkan-start) ...)' guard exactly).
-      (when (and (not is-henkan-start) (nskk-process-okurigana-input char))
+      ;; During preedit, uppercase vowels are normalized to lowercase
+      ;; and should NOT trigger okurigana - they are romaji input.
+      (when (and (not is-henkan-start)
+                 (not (and (characterp char)
+                           (<= ?A char) (<= char ?Z)
+                           (nskk--conversion-start-active-p)))
+                 (nskk-process-okurigana-input char))
         (nskk-debug-log "[INPUT] okurigana-processed: char=%c" char)
         (cl-return-from nskk-process-japanese-input))
       ;; Main romaji-to-kana path.
@@ -500,7 +510,7 @@ is still incomplete (waiting for more characters)."
     (pcase (nskk--classify-romaji-input char last-buf-char result)
       ('nn-double
        (nskk-debug-log "[INPUT] romaji-hatsuon-nn: input=%s" input)
-       (nskk--emit-hatsuon-prefix "n"))
+       (nskk--emit-hatsuon-prefix ""))
       ('match
        (let ((kana (car result))
              (remaining (cdr result)))
@@ -561,21 +571,17 @@ mirroring DDSKK's `skk-abbrev-mode-map' direct binding approach."
     (katakana-半角 hiragana)))
 
 (defun nskk--init-q-key-rules ()
-  "Assert q-key-action/4 facts.
-Non-AZIK: always toggle (behavior and buffer-state don't matter).
-AZIK: behavior-driven dispatch.
-
-The `azik-complete' buf-state is set when pending-romaji+q forms a complete
-AZIK hash match (e.g. kq→かい).  Only `context-aware' mode fires the AZIK
-rule; `always-n' and `toggle-only' preserve their unconditional semantics."
-  (nskk-prolog-define-fact-table q-key-action (:arity 4 :index :hash)
-    (standard \?behavior \?buf toggle-mode)
-    ;; context-aware + azik-complete: fire the AZIK romaji rule (e.g. kq→かい)
-    (azik context-aware azik-complete fire-romaji)
-    (azik always-n    \?buf    insert-n)
-    (azik toggle-only \?buf    toggle-mode)
-    (azik context-aware empty  toggle-mode)
-    (azik context-aware pending insert-n)))
+  "Assert q-key-action/3 facts.
+Simplified context-aware q-key handling:
+- standard: always toggle mode
+- azik + azik-complete: fire the AZIK romaji rule (e.g. kq→かい)
+- azik + pending: insert ん
+- azik + empty: toggle mode"
+  (nskk-prolog-define-fact-table q-key-action (:arity 3 :index :hash)
+    (standard \?buf toggle-mode)
+    (azik azik-complete fire-romaji)
+    (azik pending insert-n)
+    (azik empty toggle-mode)))
 
 (defun nskk--init-l-key-rules ()
   "Assert l-key-action/3 facts.
