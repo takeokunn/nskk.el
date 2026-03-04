@@ -436,11 +436,13 @@ start marker, and romaji buffer."
   (setq nskk--dcomp-candidates nil
         nskk--dcomp-prefix nil
         nskk--dcomp-index 0)
-  ;; Clear numeric mode and sticky shift from nskk-input.el
+  ;; Clear numeric mode, sticky shift, and deferred AZIK state from nskk-input.el
   (nskk-when-bound nskk--numeric-mode
     (setq nskk--numeric-mode nil))
   (nskk-when-bound nskk--sticky-shift-pending
     (setq nskk--sticky-shift-pending nil))
+  (nskk-when-bound nskk--deferred-azik-state
+    (setq nskk--deferred-azik-state nil))
   (nskk-with-current-state
     (nskk-reset-henkan-state)))
 

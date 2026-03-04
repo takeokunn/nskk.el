@@ -76,27 +76,6 @@
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-buffer "漢字")))
 
-  (nskk-it "advances to next candidate with C-n"
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-assert-converting)
-      (nskk-e2e-type "C-n")
-      (nskk-e2e-assert-converting)
-      (nskk-e2e-type "C-j")
-      (nskk-e2e-assert-buffer "感じ")))
-
-  (nskk-it "returns to previous candidate with C-p"
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "C-n")
-      (nskk-e2e-assert-converting)
-      (nskk-e2e-type "C-p")
-      (nskk-e2e-assert-converting)
-      (nskk-e2e-type "C-j")
-      (nskk-e2e-assert-buffer "漢字")))
-
   (nskk-it "does not enter converting when C-n is used outside conversion"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "a")

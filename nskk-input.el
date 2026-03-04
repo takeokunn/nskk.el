@@ -102,6 +102,16 @@
 (defvar-local nskk--sticky-shift-pending nil
   "Non-nil when sticky shift is pending (next char treated as uppercase).")
 
+(defvar-local nskk--deferred-azik-state nil
+  "Non-nil when an AZIK two-char rule was tentatively emitted.
+Value is a cons (CONSONANT-CHAR . KANA-STRING).  CONSONANT-CHAR is the
+doubled character (e.g. ?k) and KANA-STRING is the tentatively emitted
+kana (e.g. \"きん\").  On the next input:
+  - Vowel: delete tentative kana, insert っ, reset romaji buffer to
+    CONSONANT-CHAR, then process consonant+vowel normally (sokuon).
+  - Non-vowel: clear deferred state without retroactive correction.
+Satisfies kk→きん (AZIK hatsuon) and kka→っか (standard sokuon).")
+
 (defvar-local nskk--numeric-mode nil
   "Non-nil when in numeric input mode for SKK numeric conversion.")
 
@@ -384,15 +394,17 @@ lowercase version of the letter as normal romaji input."
                                  (<= ?A char) (<= char ?Z)
                                  nskk-converter-auto-start-henkan
                                  (not (nskk--conversion-start-active-p))))
-           ;; Normalize uppercase vowels to lowercase during preedit (conversion-start active)
-           ;; to fix bug where "H O" produced "oお" instead of "▽ほ".
-           ;; This ensures uppercase vowels (A, I, U, E, O) are treated as romaji input,
-           ;; while uppercase consonants (K, S, T, N, etc.) function as
-           ;; okurigana markers per DDSKK behavior.
+           ;; Normalize uppercase vowels to lowercase during preedit only when the romaji
+           ;; buffer has an incomplete consonant (e.g. pending "h" before "O" → "ho" → "ほ").
+           ;; This fixes the "H O" → "oお" bug while preserving DDSKK vowel okurigana:
+           ;; when the buffer is empty, uppercase vowels (A, I, U, E, O) trigger
+           ;; okurigana normally.  Uppercase consonants always function as okurigana
+           ;; markers per DDSKK behavior.
            (effective-char (if (and (characterp char)
                                      (<= ?A char) (<= char ?Z)
                                      (nskk--conversion-start-active-p)
-                                     (memq char '(?A ?I ?U ?E ?O)))
+                                     (memq char '(?A ?I ?U ?E ?O))
+                                     (not (string-empty-p nskk--romaji-buffer)))
                                 (downcase char)
                               (if is-henkan-start (downcase char) char))))
       (when is-henkan-start
@@ -401,14 +413,15 @@ lowercase version of the letter as normal romaji input."
       ;; there is nothing more to do.  Henkan-start chars are never
       ;; routed through okurigana (the condition mirrors the original
       ;; `if (and (not is-henkan-start) ...)' guard exactly).
-       ;; During preedit, uppercase vowels are normalized to lowercase
-       ;; and should NOT trigger okurigana - they are romaji input.
-       ;; Uppercase consonants are allowed to trigger okurigana.
+       ;; Uppercase vowels trigger okurigana unless the romaji buffer has an
+       ;; incomplete consonant (in which case they complete the romaji pair).
+       ;; Uppercase consonants always trigger okurigana.
        (when (and (not is-henkan-start)
                   (not (and (characterp char)
                             (<= ?A char) (<= char ?Z)
                             (nskk--conversion-start-active-p)
-                            (memq char '(?A ?I ?U ?E ?O))))
+                            (memq char '(?A ?I ?U ?E ?O))
+                            (not (string-empty-p nskk--romaji-buffer))))
                   (nskk-process-okurigana-input char))
         (nskk-debug-log "[INPUT] okurigana-processed: char=%c" char)
         (cl-return-from nskk-process-japanese-input))
@@ -474,16 +487,24 @@ CHAR is the new input character (integer).
 LAST-BUF-CHAR is the last character in `nskk--romaji-buffer', or nil if empty.
 RESULT is the return value of `nskk-converter-convert' on the full input.
 
-Returns one of: `nn-double', `match', `n-consonant', `sokuon',
-`incomplete', or `no-match'.  Classification uses a priority-ordered
-`cond' expression; clause order encodes priority."
+Returns one of: `nn-double', `azik-deferred', `match', `n-consonant',
+`sokuon', `incomplete', or `no-match'.  Classification uses a
+priority-ordered `cond' expression; clause order encodes priority."
   (cond
     ;; nn-double: n + n sequence (highest priority)
     ((and (eql last-buf-char ?n) (eql char ?n))
      'nn-double)
-    ;; sokuon: same eligible consonant doubled (checked before match so that
-    ;; standard sokuon "kka"→っか takes priority over AZIK two-char rules
-    ;; like "kk"→きん that would otherwise shadow doubled consonants).
+    ;; azik-deferred: doubled consonant that is also a complete AZIK rule.
+    ;; Emit the AZIK kana tentatively; if the next character is a vowel the
+    ;; emission is retroactively corrected to sokuon (っ + consonant+vowel).
+    ;; Checked before sokuon so that kk→きん is reachable; retroactive
+    ;; correction in `nskk-convert-input-to-kana' restores kka→っか.
+    ((and (eql last-buf-char char)
+          (not (memq char nskk--sokuon-blockers))
+          (consp result)
+          (stringp (car result)))
+     'azik-deferred)
+    ;; sokuon: same eligible consonant doubled, no complete AZIK rule.
     ((and (eql last-buf-char char)
           (not (memq char nskk--sokuon-blockers)))
      'sokuon)
@@ -505,7 +526,31 @@ Returns one of: `nn-double', `match', `n-consonant', `sokuon',
 Accumulates romaji characters in `nskk--romaji-buffer' and converts
 to kana when a complete romaji sequence is recognized.
 Returns the converted kana string, or an empty string if the input
-is still incomplete (waiting for more characters)."
+is still incomplete (waiting for more characters).
+
+When `nskk--deferred-azik-state' is set (a tentative AZIK emission is
+pending), a leading vowel triggers retroactive sokuon correction: the
+tentative kana is deleted from the buffer, っ is inserted in its place,
+and the romaji buffer is reset to the consonant so that consonant+vowel
+is processed normally.  A non-vowel clears the deferred state without
+retroactive correction."
+  ;; Retroactive AZIK/sokuon correction.
+  ;; When the previous call emitted AZIK kana tentatively (azik-deferred),
+  ;; a following vowel means the user actually typed a sokuon sequence
+  ;; (e.g. kka → っか).  Delete the tentative kana, insert っ, reset the
+  ;; romaji buffer to the consonant, and fall through to normal processing.
+  (when nskk--deferred-azik-state
+    (let ((deferred-cons (car nskk--deferred-azik-state))
+          (deferred-kana (cdr nskk--deferred-azik-state)))
+      (setq nskk--deferred-azik-state nil)
+      (when (memq char '(?a ?i ?u ?e ?o))
+        (nskk-debug-log "[INPUT] azik-deferred-correction: cons=%c kana=%s" deferred-cons deferred-kana)
+        ;; Delete the tentatively emitted kana from the buffer.
+        (delete-char (- (length deferred-kana)))
+        ;; Insert っ for the doubled consonant (sokuon).
+        (insert "\u3063")
+        ;; Reset romaji buffer to the consonant so consonant+vowel is processed.
+        (setq nskk--romaji-buffer (char-to-string deferred-cons)))))
   (let* ((input (concat nskk--romaji-buffer (char-to-string char)))
          (result (nskk-converter-convert input))
          (buf-len (length nskk--romaji-buffer))
@@ -514,7 +559,16 @@ is still incomplete (waiting for more characters)."
     (pcase (nskk--classify-romaji-input char last-buf-char result)
       ('nn-double
        (nskk-debug-log "[INPUT] romaji-hatsuon-nn: input=%s" input)
-       (nskk--emit-hatsuon-prefix ""))
+       (nskk--emit-hatsuon-prefix "n"))
+      ('azik-deferred
+       ;; Emit the AZIK kana tentatively and record the deferred state.
+       ;; If the next character is a vowel, retroactive correction (above)
+       ;; will undo this emission and produce sokuon instead.
+       (let ((kana (car result)))
+         (nskk-debug-log "[INPUT] azik-deferred-emit: input=%s kana=%s" input kana)
+         (setq nskk--deferred-azik-state (cons (aref input 0) kana))
+         (setq nskk--romaji-buffer "")
+         kana))
       ('match
        (let ((kana (car result))
              (remaining (cdr result)))

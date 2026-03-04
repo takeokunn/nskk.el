@@ -429,7 +429,23 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (nskk--azik-restore-standard-prefixes)
 
   ;; ============================================================
-  ;; Step 6: Set up AZIK toggle key binding.
+  ;; Step 6: Compound rules added after prefix restore.
+  ;; These rules must be inserted after Step 5 so that the restore
+  ;; pass does not demote their 2-char prefixes (e.g. "ka") back to
+  ;; :incomplete.  Adding them post-restore lets the batch converter
+  ;; (longest-match) find "kak" before "ka", enabling compound
+  ;; sequences like xhkak → しゅうかく.
+  ;;
+  ;; "kakz" → "かかん" must be added alongside "kak" → "かく" so
+  ;; that the greedy 4→1 scan finds "kakz" before "kak" when the
+  ;; input is "kakz", preserving the parse ka + kz = か + かん.
+  ;; ============================================================
+  (puthash "kak" "かく" nskk--romaji-table)
+  (puthash "kaq" "かい" nskk--romaji-table)
+  (puthash "kakz" "かかん" nskk--romaji-table)
+
+  ;; ============================================================
+  ;; Step 7: Set up AZIK toggle key binding.
   ;; ============================================================
   (nskk--setup-azik-toggle-key))
 

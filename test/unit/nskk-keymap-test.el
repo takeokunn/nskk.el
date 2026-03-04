@@ -533,7 +533,7 @@
     (let ((binding (lookup-key nskk-mode-map [up])))
       (should (eq binding 'nskk-handle-ctrl-p))))
 
-  (nskk-it "calls nskk-previous-candidate when converting"
+  (nskk-it "commits candidate and calls previous-line when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (called nil))
@@ -541,7 +541,7 @@
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (cl-letf (((symbol-function 'nskk-previous-candidate)
+        (cl-letf (((symbol-function 'nskk-commit-current)
                    (lambda () (setq called t))))
           (nskk-when (nskk-handle-ctrl-p))
           (nskk-then (should called))))))

@@ -321,11 +321,11 @@
     ;; T-E1: the lowercase k pending in the romaji buffer when uppercase K fires
     ;; must NOT appear before * in the buffer.  After completing ku → く, the
     ;; conversion should trigger normally (entering active/converting state).
-    (let ((dict '(("あk" . ("開")))))
+    (let ((dict '(("かk" . ("開")))))
       (nskk-e2e-with-buffer 'hiragana dict
-        ;; K starts preedit
+        ;; K starts preedit (buffer="k"), A completes "ka"→"か", preedit is now ▽か
         (nskk-e2e-type "K")
-        ;; A completes romaji "a" → あ, preedit is now ▽あ
+        ;; A with non-empty romaji buffer "k" → normalized to "a" → "ka" → "か"
         (nskk-e2e-type "A")
         ;; Lowercase k → pending incomplete consonant in romaji buffer
         (nskk-e2e-type "k")
@@ -349,11 +349,11 @@
   (nskk-it "KAnKu: pending n is flushed as ん before okurigana marker"
     ;; T-E2: the lowercase n pending when uppercase K fires must be converted
     ;; to ん (the word-boundary n exception) and inserted before *.
-    (let ((dict '(("あんk" . ("暗")))))
+    (let ((dict '(("かんk" . ("暗")))))
       (nskk-e2e-with-buffer 'hiragana dict
-        ;; K starts preedit
+        ;; K starts preedit (buffer="k"), A completes "ka"→"か"
         (nskk-e2e-type "K")
-        ;; A completes romaji "a" → あ
+        ;; A with non-empty romaji buffer "k" → normalized to "a" → "ka" → "か"
         (nskk-e2e-type "A")
         ;; Lowercase n → pending in romaji buffer (not yet ん)
         (nskk-e2e-type "n")
@@ -419,12 +419,12 @@
 
   (nskk-it "discards pending consonant before okurigana marker in katakana mode (T-E1 analogue)"
     ;; T-E1 katakana analogue: K A k K u
-    ;; K (uppercase, empty reading) + A (vowel okurigana with empty reading) →
-    ;;   failed conversion (no dict entry for key "a"), cancel; buffer has "ア" reading.
+    ;; K starts preedit (buffer="k"); A with non-empty buffer "k" → normalized
+    ;; to "a" → "ka" → "か" → katakana → "カ"; reading = "カ".
     ;; k (lowercase): accumulates romaji; K (uppercase): okurigana trigger.
-    ;; u completes "ku" → okurigana kana "ク"; conversion with dict key "アk".
-    ;; Crucially, no stray "k" appears between "ア" and "*" in the preedit display.
-    (let ((dict '(("アk" . ("開")))))
+    ;; u completes "ku" → okurigana kana "ク"; conversion with dict key "カk".
+    ;; Crucially, no stray "k" appears between "カ" and "*" in the preedit display.
+    (let ((dict '(("カk" . ("開")))))
       (nskk-e2e-with-buffer 'katakana dict
         (nskk-e2e-type "K")
         (nskk-e2e-type "A")
@@ -435,10 +435,10 @@
 
   (nskk-it "flushes pending n as ン before okurigana marker in katakana mode (T-E2 analogue)"
     ;; T-E2 katakana analogue: K A n K u
-    ;; K + A → reading "ア" (failed vowel okurigana → cancel, reading = "ア").
+    ;; K + A → reading "カ" ("ka"→"か"→"カ").
     ;; n (lowercase): romaji buffer = "n"; K (uppercase): pending "n" flushed as "ン",
-    ;;   then okurigana trigger; dict key "アンk".  u → okurigana kana "ク".
-    (let ((dict '(("アンk" . ("暗")))))
+    ;;   then okurigana trigger; dict key "カンk".  u → okurigana kana "ク".
+    (let ((dict '(("カンk" . ("暗")))))
       (nskk-e2e-with-buffer 'katakana dict
         (nskk-e2e-type "K")
         (nskk-e2e-type "A")

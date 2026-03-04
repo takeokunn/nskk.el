@@ -525,39 +525,40 @@ Ensures the standard romaji table is loaded regardless of prior test state."
         (should (equal result "ん"))
         (should-not (equal result "っ")))))
 
-  (nskk-it "nn clears buffer after emitting ん (ddskk compatibility)"
+  (nskk-it "nn keeps second n in buffer after emitting ん (ddskk compatibility)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?n)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "")))))
+        (should (equal nskk--romaji-buffer "n")))))
 
-  (nskk-it "nna converts to んあ with buffer cleared between"
+  (nskk-it "nna converts to んな (second n kept, na completes)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result1 (nskk-convert-input-to-kana ?n)))
         (should (equal result1 "ん"))
-        (should (equal nskk--romaji-buffer "")))
+        (should (equal nskk--romaji-buffer "n")))
       (let ((result2 (nskk-convert-input-to-kana ?a)))
-        (should (equal result2 "あ"))))))
+        (should (equal result2 "な"))))))
 
-  (nskk-it "nni converts to んい with buffer cleared between"
+  (nskk-it "nni converts to んに (second n kept, ni completes)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result1 (nskk-convert-input-to-kana ?n)))
         (should (equal result1 "ん"))
-        (should (equal nskk--romaji-buffer "")))
+        (should (equal nskk--romaji-buffer "n")))
       (let ((result2 (nskk-convert-input-to-kana ?i)))
-        (should (equal result2 "い")))))
+        (should (equal result2 "に")))))
 
-  (nskk-it "nnk emits ん then starts fresh k sequence"
+  (nskk-it "nnk emits ん then n+k triggers ん then k starts fresh"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?n)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "")))
-      (should (equal (nskk-convert-input-to-kana ?k) ""))
-      (should (equal nskk--romaji-buffer "k"))))
+        (should (equal nskk--romaji-buffer "n")))
+      (let ((result2 (nskk-convert-input-to-kana ?k)))
+        (should (equal result2 "ん"))
+        (should (equal nskk--romaji-buffer "k")))))
 
   (nskk-it "nnn produces んん (triple-n edge case)"
     (nskk-input-test-with-romaji
