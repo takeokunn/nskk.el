@@ -8,7 +8,7 @@
 * Overview
 
 NSKK is a modern, zero-dependency Japanese input method for Emacs built on
-[[https://skk-dev.github.io/ddskk/][SKK]] (Simple Kana to Kanji) principles. It delivers:
+SKK (Simple Kana to Kanji) principles. It delivers:
 
 - Clean architecture — 7-layer modular design with full lexical-binding
 - DDSKK compatibility — Familiar keybindings and behavior
