@@ -10,9 +10,9 @@
 NSKK is a modern, zero-dependency Japanese input method for Emacs built on
 [[https://skk-dev.github.io/ddskk/][SKK]] (Simple Kana to Kanji) principles. It delivers:
 
-- **Clean architecture** — 7-layer modular design with full lexical-binding
-- **DDSKK compatibility** — Familiar keybindings and behavior
-- **Extensible** — Embedded Prolog engine for customizable conversion logic
+- Clean architecture — 7-layer modular design with full lexical-binding
+- DDSKK compatibility — Familiar keybindings and behavior
+- Extensible — Embedded Prolog engine for customizable conversion logic
 
 #+begin_quote
 NSKK = Next-generation SKK = 次世代 SKK
@@ -21,8 +21,8 @@ NSKK = Next-generation SKK = 次世代 SKK
 ** Zero Dependencies
 
 Only Emacs 29.1+ built-in packages:
-- =cl-lib= (Emacs 24.3+)
-- =subr-x= (Emacs 24.4+)
+- cl-lib (Emacs 24.3+)
+- subr-x (Emacs 24.4+)
 
 No external ELPA packages required.
 
@@ -44,7 +44,6 @@ No external ELPA packages required.
 
 * Installation
 ** use-package
-
 #+begin_src elisp
 (use-package nskk
   :ensure t
@@ -54,9 +53,7 @@ No external ELPA packages required.
   :config
   (nskk-global-mode 1))
 #+end_src
-
 ** leaf
-
 #+begin_src elisp
 (leaf nskk
   :ensure t
@@ -65,7 +62,6 @@ No external ELPA packages required.
   :config
   (nskk-global-mode 1))
 #+end_src
-
 * Quick Start
 ** Minimal Configuration
 #+begin_src elisp
@@ -134,7 +130,6 @@ No external ELPA packages required.
 | hiragana | =/=       | abbrev     | aA        |
 
 ** Conversion Flow
-
 #+begin_src mermaid
 stateDiagram-v2
     [*] --> ASCII: C-x C-j (toggle)
@@ -169,30 +164,29 @@ stateDiagram-v2
     Abbrev --> ASCII: C-j / l / C-g
     Abbrev --> Conversion: SPC
 #+end_src
-
 ** Key Bindings
 *** Mode Control
 
-| Key       | Command               | Description                             |
-|-----------+-----------------------+-----------------------------------------|
-| =C-x C-j= | =nskk-toggle-mode=    | Toggle NSKK in current buffer           |
+| Key       | Command               | Description                                          |
+|-----------+-----------------------+------------------------------------------------------|
+| =C-x C-j= | =nskk-toggle-mode=    | Toggle NSKK in current buffer                        |
 | =C-j=     | =nskk-kakutei=        | Commit (hiragana) / enter hiragana (ascii) / newline |
-| =q=       | =nskk-handle-q=       | Toggle hiragana ↔ katakana              |
-| =l=       | =nskk-handle-l=       | Switch to ASCII mode                    |
-| =L=       | =nskk-handle-upper-l= | Switch to full-width latin (JIS X 0208) |
-| =/=       | =nskk-handle-slash=   | Enter abbrev mode                       |
+| =q=       | =nskk-handle-q=       | Toggle hiragana ↔ katakana                           |
+| =l=       | =nskk-handle-l=       | Switch to ASCII mode                                 |
+| =L=       | =nskk-handle-upper-l= | Switch to full-width latin (JIS X 0208)              |
+| =/=       | =nskk-handle-slash=   | Enter abbrev mode                                    |
 
 *** Conversion (Henkan)
 
-| Key     | Command                | Description                            |
-|---------+------------------------+----------------------------------------|
-| =SPC=   | =nskk-handle-space=    | Start conversion / next candidate      |
-| =x=     | =nskk-handle-x=        | Previous candidate                     |
-| =RET=   | =nskk-handle-return=   | Commit candidate + newline             |
-| =C-g=   | =nskk-handle-cancel=   | Cancel conversion or preedit           |
-| =a=–=l= | direct select          | Select candidate in list mode          |
-| =C-n=   | =nskk-handle-ctrl-n=   | Next candidate OR next line            |
-| =C-p=   | =nskk-handle-ctrl-p=   | Prev candidate OR previous line        |
+| Key     | Command              | Description                       |
+|---------+----------------------+-----------------------------------|
+| =SPC=   | =nskk-handle-space=  | Start conversion / next candidate |
+| =x=     | =nskk-handle-x=      | Previous candidate                |
+| =RET=   | =nskk-handle-return= | Commit candidate + newline        |
+| =C-g=   | =nskk-handle-cancel= | Cancel conversion or preedit      |
+| =a=–=l= | direct select        | Select candidate in list mode     |
+| =C-n=   | =nskk-handle-ctrl-n= | Next candidate OR next line       |
+| =C-p=   | =nskk-handle-ctrl-p= | Prev candidate OR previous line   |
 
 *** Cursor Movement (in Conversion Mode)
 
@@ -205,17 +199,17 @@ stateDiagram-v2
 
 *** Line Navigation
 
-| Key     | Behavior                             |
-|---------+--------------------------------------|
-| =C-a=   | Commit candidate (if converting) / go to beginning of line |
-| =C-e=   | Commit candidate (if converting) / go to end of line         |
+| Key   | Behavior                                                   |
+|-------+------------------------------------------------------------|
+| =C-a= | Commit candidate (if converting) / go to beginning of line |
+| =C-e= | Commit candidate (if converting) / go to end of line       |
 
 *** Other Keys
 
-| Key | Command                | Description                        |
-|------+------------------------+------------------------------------|
-| =DEL= | =nskk-handle-backspace= | Delete last preedit char / cancel conversion |
-| =TAB= | =nskk-handle-tab=     | Dynamic completion (preedit) / indent-for-tab-command |
+| Key   | Command                 | Description                                           |
+|-------+-------------------------+-------------------------------------------------------|
+| =DEL= | =nskk-handle-backspace= | Delete last preedit char / cancel conversion          |
+| =TAB= | =nskk-handle-tab=       | Dynamic completion (preedit) / indent-for-tab-command |
 
 ** Input Modes
 
@@ -245,14 +239,11 @@ stateDiagram-v2
 (setq nskk-henkan-number-to-display-candidates 7)
 #+end_src
 ** Customization Group
-
 #+begin_example
 M-x customize-group RET nskk RET
 #+end_example
-
 * Development
 ** Setup
-
 #+begin_src bash
 git clone https://github.com/takeokunn/nskk.el.git
 cd nskk.el
