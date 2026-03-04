@@ -1,15 +1,10 @@
 #+title: NSKK — Next-generation SKK for Emacs
 #+subtitle: A modern, zero-dependency Japanese input method
 #+author: takeokunn
-#+language: en
-#+options: toc:2 num:nil ^:nil
-#+html: <div align="center">
 
 [[https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml][file:https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml/badge.svg]]
 [[file:COPYING][https://img.shields.io/badge/License-GPL%20v3-blue.svg]]
 
-#+html: </div>
-#+toc: headlines 2
 * Overview
 
 NSKK is a modern, zero-dependency Japanese input method for Emacs built on
