@@ -29,13 +29,6 @@ jobs:
       - uses: purcell/setup-emacs@8415786a52b3a84babd7ffc92a802b06e3780c17 # master
         with:
           version: ${{ matrix.emacs_version }}
-      - name: Cache Emacs packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.emacs.d/elpa
-          key: ${{ runner.os }}-emacs-${{ matrix.emacs_version }}-${{ hashFiles('Makefile') }}
-          restore-keys: |
-            ${{ runner.os }}-emacs-${{ matrix.emacs_version }}-
       - name: Install Elsa
         run: |
           emacs -Q --batch \
