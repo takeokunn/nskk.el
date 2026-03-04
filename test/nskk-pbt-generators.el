@@ -115,10 +115,9 @@ Uses seeded generation if seed is set, otherwise uses system random."
 
 (defun nskk-pbt--random-string (chars length)
   "Generate a random string from CHARS with specified LENGTH."
-  (let ((result (make-string length ?\0)))
-    (dotimes (i length)
-      (aset result i (nskk-pbt--random-choice chars)))
-    result))
+  (apply #'string
+         (cl-loop repeat length
+                  collect (nskk-pbt--random-choice chars))))
 
 ;;;;
 ;;;; Size Parameter Helper

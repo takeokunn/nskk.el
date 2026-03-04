@@ -281,11 +281,7 @@ Returns the converted character code, or CHAR unchanged if not katakana."
   "Apply CONVERTER to each character in STRING, returning a new string.
 Returns nil if STRING is not a string."
   (when (stringp string)
-    (let ((result (make-string (length string) ?\0)))
-      (set-multibyte result t)
-      (dotimes (i (length string))
-        (aset result i (funcall converter (aref string i))))
-      result)))
+    (apply #'string (mapcar converter (string-to-list string)))))
 
 (defun nskk-kana-string-hiragana-to-katakana (string)
   "Convert all hiragana characters in STRING to katakana."
@@ -309,28 +305,18 @@ hankaku string equivalent, or a one-character string if unrecognized."
 
 (defun nskk-kana--zenkaku-string-to-hankaku (string)
   "Convert zenkaku katakana in STRING to hankaku.
-Unrecognized characters are passed through unchanged.
-Uses a pre-allocated buffer for O(n) performance."
+Unrecognized characters are passed through unchanged."
   (when (stringp string)
-    (let* ((len (length string))
-           ;; Worst case: each zenkaku char expands to 2 hankaku chars.
-           (result-vec (make-string (* len 2) ?\0))
-           (set-multibyte result-vec t)
-           (result-pos 0)
-           (i 0))
+    (let ((parts nil)
+          (len (length string))
+          (i 0))
       (while (< i len)
         (let* ((char (aref string i))
                (hankaku (gethash (char-to-string char)
                                  nskk-kana--zenkaku-to-hankaku-table)))
-          (if hankaku
-              (let ((hlen (length hankaku)))
-                (dotimes (j hlen)
-                  (aset result-vec (+ result-pos j) (aref hankaku j)))
-                (setq result-pos (+ result-pos hlen)))
-            (aset result-vec result-pos char)
-            (setq result-pos (1+ result-pos))))
+          (push (or hankaku (char-to-string char)) parts))
         (setq i (1+ i)))
-      (substring result-vec 0 result-pos))))
+      (apply #'concat (nreverse parts)))))
 
 (defun nskk-kana-hankaku-to-zenkaku (string-or-char)
   "Convert hankaku katakana STRING-OR-CHAR to zenkaku.
@@ -346,12 +332,9 @@ Unrecognized characters are passed through unchanged."
 Handles two-character dakuten/handakuten sequences (e.g., \"ｶﾞ\" -> \"ガ\").
 Unrecognized characters are passed through unchanged."
   (when (stringp string)
-    (let* ((len (length string))
-           ;; Output is never longer than input in character count.
-           (result-vec (make-string len ?\0))
-           (set-multibyte result-vec t)
-           (result-pos 0)
-           (i 0))
+    (let ((parts nil)
+          (len (length string))
+          (i 0))
       (while (< i len)
         (if (< (1+ i) len)
             ;; Try two-character sequence first (dakuten combinations).
@@ -360,24 +343,19 @@ Unrecognized characters are passed through unchanged."
                    (zen2 (gethash two nskk-kana--hankaku-to-zenkaku-table)))
               (if zen2
                   (progn
-                    (let ((zlen (length zen2)))
-                      (dotimes (j zlen)
-                        (aset result-vec (+ result-pos j) (aref zen2 j)))
-                      (setq result-pos (+ result-pos zlen)))
+                    (push zen2 parts)
                     (setq i (+ i 2)))
-                ;; Fall back to single-character lookup.
+                ;; Single character fallback.
                 (let* ((one (char-to-string (aref string i)))
                        (zen1 (gethash one nskk-kana--hankaku-to-zenkaku-table)))
-                  (aset result-vec result-pos (aref (or zen1 one) 0))
-                  (setq result-pos (1+ result-pos))
+                  (push (or zen1 one) parts)
                   (setq i (1+ i)))))
-          ;; Last character: single-character lookup only.
+          ;; Last character (no pair possible).
           (let* ((one (char-to-string (aref string i)))
                  (zen1 (gethash one nskk-kana--hankaku-to-zenkaku-table)))
-            (aset result-vec result-pos (aref (or zen1 one) 0))
-            (setq result-pos (1+ result-pos))
+            (push (or zen1 one) parts)
             (setq i (1+ i)))))
-      (substring result-vec 0 result-pos))))
+      (apply #'concat (nreverse parts)))))
 
 (defvar nskk--kana-initialized nil
   "Non-nil when kana Prolog predicates have been initialized.")
