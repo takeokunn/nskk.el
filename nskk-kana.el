@@ -314,6 +314,7 @@ Uses a pre-allocated buffer for O(n) performance."
     (let* ((len (length string))
            ;; Worst case: each zenkaku char expands to 2 hankaku chars.
            (result-vec (make-string (* len 2) ?\0))
+           (set-multibyte result-vec t)
            (result-pos 0)
            (i 0))
       (while (< i len)
@@ -347,6 +348,7 @@ Unrecognized characters are passed through unchanged."
     (let* ((len (length string))
            ;; Output is never longer than input in character count.
            (result-vec (make-string len ?\0))
+           (set-multibyte result-vec t)
            (result-pos 0)
            (i 0))
       (while (< i len)
