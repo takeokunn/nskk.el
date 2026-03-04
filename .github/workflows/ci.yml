@@ -29,14 +29,6 @@ jobs:
       - uses: purcell/setup-emacs@8415786a52b3a84babd7ffc92a802b06e3780c17 # master
         with:
           version: ${{ matrix.emacs_version }}
-      - name: Install Elsa
-        run: |
-          emacs -Q --batch \
-            --eval "(require 'package)" \
-            --eval "(add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t)" \
-            --eval "(package-initialize)" \
-            --eval "(package-refresh-contents)" \
-            --eval "(package-install 'elsa)"
       - name: Byte compile
         run: make compile
       - name: Run tests
