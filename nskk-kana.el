@@ -282,6 +282,7 @@ Returns the converted character code, or CHAR unchanged if not katakana."
 Returns nil if STRING is not a string."
   (when (stringp string)
     (let ((result (make-string (length string) ?\0)))
+      (set-multibyte result t)
       (dotimes (i (length string))
         (aset result i (funcall converter (aref string i))))
       result)))

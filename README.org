@@ -132,36 +132,37 @@ No external ELPA packages required.
 ** Conversion Flow
 #+begin_src mermaid
 stateDiagram-v2
-    [*] --> ASCII: C-x C-j toggle
-    ASCII --> ASCII: C-j commit line
+    [*] --> ASCII: toggle
+    ASCII --> ASCII: commit line
     ASCII --> Hiragana: C-j
-    ASCII --> Full-width: L
+    ASCII --> FullWidth: L
     ASCII --> Abbrev: slash
 
     Hiragana --> Conversion: SPC
     Hiragana --> Katakana: q
     Hiragana --> ASCII: l
-    Hiragana --> Full-width: L
+    Hiragana --> FullWidth: L
     Hiragana --> Abbrev: slash
-    Hiragana --> ASCII: C-g cancel
+    Hiragana --> ASCII: C-g
 
-    Conversion --> Conversion: SPC next or x prev
-    Conversion --> Conversion: a-l direct select
-    Conversion --> ASCII: RET commit newline
-    Conversion --> ASCII: C-g cancel
-    Conversion --> ASCII: arrow keys commit move
-    Conversion --> ASCII: C-a line start
-    Conversion --> ASCII: C-e line end
+    Conversion --> Conversion: SPC
+    Conversion --> Conversion: x
+    Conversion --> Conversion: a-l
+    Conversion --> ASCII: RET
+    Conversion --> ASCII: C-g
+    Conversion --> ASCII: arrow
+    Conversion --> ASCII: C-a
+    Conversion --> ASCII: C-e
 
     Katakana --> Hiragana: q
     Katakana --> Conversion: SPC
     Katakana --> ASCII: l
-    Katakana --> ASCII: C-g cancel
+    Katakana --> ASCII: C-g
 
-    Full-width --> ASCII: C-j or l or C-g
-    Full-width --> Hiragana: C-j
+    FullWidth --> ASCII: exit
+    FullWidth --> Hiragana: C-j
 
-    Abbrev --> ASCII: C-j or l or C-g
+    Abbrev --> ASCII: exit
     Abbrev --> Conversion: SPC
 #+end_src
 ** Key Bindings
