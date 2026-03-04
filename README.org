@@ -136,12 +136,38 @@ No external ELPA packages required.
 ** Conversion Flow
 
 #+begin_src mermaid
-graph LR
-    A[ASCII] -->|C-j| B[▽ひらがな]
-    B -->|SPC| C[▼変換]
-    C -->|RET| D[確定済み]
-    B -->|DEL| E[cancel]
-    C -->|C-g| E
+stateDiagram-v2
+    [*] --> ASCII: C-x C-j (toggle)
+    ASCII --> ASCII: C-j (commit line)
+    ASCII --> Hiragana: C-j
+    ASCII --> Full-width: L
+    ASCII --> Abbrev: /
+
+    Hiragana --> Conversion: SPC
+    Hiragana --> Katakana: q
+    Hiragana --> ASCII: l
+    Hiragana --> Full-width: L
+    Hiragana --> Abbrev: /
+    Hiragana --> ASCII: C-g (cancel)
+
+    Conversion --> Conversion: SPC (next) / x (prev)
+    Conversion --> Conversion: a-l (direct select)
+    Conversion --> ASCII: RET (commit + newline)
+    Conversion --> ASCII: C-g (cancel)
+    Conversion --> ASCII: ← → ↑ ↓ (commit + move)
+    Conversion --> ASCII: C-a (go to line start)
+    Conversion --> ASCII: C-e (go to line end)
+
+    Katakana --> Hiragana: q
+    Katakana --> Conversion: SPC
+    Katakana --> ASCII: l
+    Katakana --> ASCII: C-g (cancel)
+
+    Full-width --> ASCII: C-j / l / C-g
+    Full-width --> Hiragana: C-j
+
+    Abbrev --> ASCII: C-j / l / C-g
+    Abbrev --> Conversion: SPC
 #+end_src
 
 ** Key Bindings
@@ -271,7 +297,7 @@ See [[file:CHANGELOG.md][CHANGELOG.md]].
 
 * License
 
-[[file:COPYING][GPL-3.0-or-later]]
+[[file:LICENSE][GPL-3.0-or-later]]
 
 #+begin_quote
 Copyright (C) 2026 NSKK Contributors
