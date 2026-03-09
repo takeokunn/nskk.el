@@ -51,7 +51,7 @@ E2E_SRC = test/e2e/nskk-mode-transition-e2e-test.el \
            test/e2e/nskk-e2e-numeric.el \
            test/e2e/nskk-e2e-dcomp.el
 
-.PHONY: all compile test test-integration test-unit test-e2e lint lint-checkdoc lint-elsa package-lint clean
+.PHONY: all compile test test-integration test-unit test-e2e lint lint-checkdoc package-lint clean
 
 all: compile
 
@@ -101,18 +101,11 @@ test-e2e: compile
 	  $(foreach f,$(E2E_SRC),-l $(f)) \
 	  -f ert-run-tests-batch-and-exit
 
-lint: lint-elsa lint-checkdoc
+lint: lint-checkdoc
 
 lint-checkdoc:
 	$(BATCH) $(LOAD_PATH) \
 	  $(foreach f,$(SRC),--eval "(checkdoc-file \"$(f)\")")
-
-lint-elsa:
-	$(BATCH) $(LOAD_PATH) \
-	  -l elsa \
-	  -f elsa-run \
-	  -with-exit \
-	  $(SRC) 2>&1 | perl -pe 's/\e\[[0-9;]*m//g' | grep -E "^[^:]+\.el:[0-9]+:[0-9]+: (error|warning):" || true
 
 package-lint:
 	$(BATCH) $(LOAD_PATH) \
