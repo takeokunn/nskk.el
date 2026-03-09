@@ -62,6 +62,7 @@
 (require 'ert)
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 (require 'nskk-input)
 (require 'nskk-azik)
 (require 'nskk-converter)
@@ -90,12 +91,33 @@ This ensures:
   - Standard romaji table is restored after the test, preventing cross-test
     contamination."
   (declare (indent 2) (debug t))
-  `(let ((nskk-converter-romaji-style 'azik))
+  `(let* ((nskk-converter-romaji-style 'azik)
+          ;; Save @/[ binding before AZIK init modifies nskk-mode-map.
+          ;; The toggle key is determined by nskk-azik-keyboard-type (default "@").
+          (nskk--azik-e2e-toggle-key
+           (if (and (boundp 'nskk-azik-keyboard-type)
+                    (eq nskk-azik-keyboard-type 'us101)) "[" "@"))
+          (nskk--azik-e2e-saved-binding
+           (when (boundp 'nskk-mode-map)
+             (lookup-key nskk-mode-map nskk--azik-e2e-toggle-key))))
      (nskk-converter-load-style 'azik)
      (unwind-protect
          (nskk-e2e-with-buffer ,initial-mode ,dict-entries
            ,@body)
-       (nskk-converter-load-style 'standard))))
+       (nskk-converter-load-style 'standard)
+       ;; Retract azik-rule/2 facts explicitly.  nskk-converter-load-style only
+       ;; retracts romaji-to-kana/2; azik-rule/2 facts persist if not cleared.
+       ;; Without this, the global Prolog DB retains AZIK facts after teardown,
+       ;; polluting subsequent unit tests that expect an empty azik-rule/2 table.
+       (nskk-prolog-retract-all 'azik-rule 2)
+       ;; Restore the AZIK toggle key binding to prevent cross-test contamination.
+       ;; Without this, @ remains bound to nskk-toggle-japanese-mode globally,
+       ;; causing subsequent non-AZIK tests to drop @ characters.
+       (when (boundp 'nskk-mode-map)
+         (if nskk--azik-e2e-saved-binding
+             (keymap-set nskk-mode-map nskk--azik-e2e-toggle-key
+                         nskk--azik-e2e-saved-binding)
+           (keymap-unset nskk-mode-map nskk--azik-e2e-toggle-key t))))))
 
 ;;;;
 ;;;; Section 1: AZIK Semicolon as っ
@@ -556,6 +578,65 @@ This ensures:
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-buffer "か"))))
+
+;;;;
+;;;; Property-Based Tests: AZIK Hatsuon Known Pairs
+;;;;
+
+(nskk-deftest-cases azik-hatsuon-pairs
+  (("kz" . "かん")
+   ("sz" . "さん")
+   ("tz" . "たん"))
+  :body
+  (nskk-e2e-with-azik-buffer 'hiragana nil
+    (nskk-e2e-type input)
+    (nskk-e2e-assert-buffer expected)))
+
+;;;;
+;;;; Property-Based Tests: AZIK Double-Vowel Rules Table
+;;;;
+
+;; Double-vowel input in AZIK uses standard romaji vowel keys pressed twice.
+;; Extension keys (q/h/w/p) act as consonant suffixes for diphthongs, not
+;; standalone vowel triggers.
+(nskk-deftest-table azik-double-vowel-rules
+  :columns (pattern expected)
+  :rows (("aa" "ああ")
+         ("ii" "いい")
+         ("uu" "うう"))
+  :body
+  (nskk-e2e-with-azik-buffer 'hiragana nil
+    (nskk-e2e-type pattern)
+    (nskk-e2e-assert-buffer expected)))
+
+;;;;
+;;;; Property-Based Tests: AZIK Any Rule Does Not Crash
+;;;;
+
+(nskk-property-test azik-e2e-any-rule-does-not-crash
+    ((rule azik-rule))
+  (progn
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (condition-case err
+          (nskk-e2e-type rule)
+        (error (ert-fail (format "AZIK rule %S raised error: %s"
+                                 rule (error-message-string err))))))
+    t)
+  30)
+
+;;;;
+;;;; Property-Based Tests: AZIK Consistent Romaji Dispatch
+;;;;
+
+(nskk-describe "AZIK property: consistent romaji dispatch"
+
+  (nskk-it "basic romaji sequences produce non-empty buffer in hiragana"
+    (dotimes (_ 20)
+      (nskk-for-all ((r romaji-basic))
+        (nskk-e2e-with-azik-buffer 'hiragana nil
+          (nskk-e2e-type r)
+          (nskk-e2e-type "C-j")
+          (should (> (length (buffer-string)) 0)))))))
 
 (provide 'nskk-azik-e2e-test)
 

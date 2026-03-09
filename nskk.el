@@ -7,7 +7,7 @@
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1"))
-;; Keywords: i18n japanese input method skk convenience
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -153,7 +153,7 @@ DDSKK equivalent: skk-input-mode-hook")
 
 ;;;###autoload
 (define-minor-mode nskk-mode
-  "Minor mode for NSKK (Next-generation SKK) input method.
+  "Enable NSKK (Next-generation SKK) Japanese input method in current buffer.
 
 The mode-line indicator is generated dynamically by `nskk-modeline-indicator'.
 Use `nskk-modeline-format' to customize its format, and `nskk-use-color-cursor'
@@ -234,13 +234,12 @@ This provides global bindings that work even when nskk-mode is not yet active."
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update.
 Also guards against point escaping the conversion region (▼) due to
-unmapped cursor-movement commands (mouse clicks, C-a, scroll, etc.).
+unmapped cursor-movement commands (mouse clicks, scroll, etc.).
 When point drifts outside [conversion-start .. overlay-end] while
 converting, performs an implicit kakutei (確定) identical to DDSKK
-behaviour.  Named nskk handlers (C-f, C-b, etc.) already call
-`nskk-commit-current' explicitly before moving, so by the time this
-hook fires for them, `nskk-converting-p' is already nil and this guard
-is a no-op."
+behaviour.  Handlers bound in nskk keymaps call `nskk-commit-current'
+explicitly before moving, so by the time this hook fires for them,
+`nskk-converting-p' is already nil and this guard is a no-op."
   (when (and nskk-mode nskk-current-state)
     ;; Point-escape guard: if converting and point moved outside the
     ;; conversion region, commit the current candidate (implicit kakutei).

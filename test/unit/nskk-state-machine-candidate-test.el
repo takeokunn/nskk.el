@@ -439,6 +439,98 @@ COUNT defaults to 0-10 if not specified."
     (should (string= (nskk-state-current-candidate state) "candidate-1"))))
 
 
+;;;;
+;;;; PBT: Candidate navigation invariants
+;;;;
+
+(nskk-property-test candidate-index-always-valid
+  ((data candidates-with-valid-index))
+  (let* ((state (nskk-state-create 'hiragana))
+         (candidates (plist-get data :candidates))
+         (index (plist-get data :index)))
+    (nskk-state-set-candidates state candidates)
+    ;; Navigate to the given index by calling next that many times
+    (dotimes (_ index)
+      (nskk-state-next-candidate state))
+    ;; Index must always be in bounds
+    (let ((cur-idx (nskk-state-current-index state))
+          (cand-len (length (nskk-state-candidates state))))
+      (and (>= cur-idx 0)
+           (< cur-idx cand-len))))
+  100)
+
+
+(nskk-property-test-with-shrinking current-candidate-in-list
+  ((data candidates-with-valid-index))
+  (let* ((state (nskk-state-create 'hiragana))
+         (candidates (plist-get data :candidates)))
+    (nskk-state-set-candidates state candidates)
+    ;; Navigate randomly
+    (dotimes (_ (nskk-pbt--random-int 0 (length candidates)))
+      (nskk-state-next-candidate state))
+    ;; Current candidate must be in the list
+    (let ((current (nskk-state-current-candidate state)))
+      (or (null current)
+          (member current candidates))))
+  50)
+
+
+;;;;
+;;;; Data-Provider: Known candidate navigation results
+;;;;
+
+(nskk-deftest-cases candidate-navigation-known
+  ((0 . "漢字")
+   (1 . "感じ")
+   (2 . "幹事"))
+  :description "Navigating to index N yields the Nth candidate"
+  :body (let* ((state (nskk-state-create 'hiragana))
+               (candidates '("漢字" "感じ" "幹事")))
+          (nskk-state-set-candidates state candidates)
+          (dotimes (_ input)
+            (nskk-state-next-candidate state))
+          (should (string= expected (nskk-state-current-candidate state)))))
+
+
+;;;;
+;;;; BDD: Candidate navigation properties
+;;;;
+
+(nskk-describe "Candidate navigation properties"
+  (nskk-it "setting empty candidates leaves current-candidate nil"
+    (nskk-for-all ((mode valid-mode))
+      (let ((state (nskk-state-create mode)))
+        (nskk-state-set-candidates state nil)
+        (should (null (nskk-state-current-candidate state))))))
+
+  (nskk-it "next wraps around after exhausting all candidates"
+    (nskk-given
+      (let* ((state (nskk-state-create 'hiragana))
+             (candidates '("a" "b" "c")))
+        (nskk-state-set-candidates state candidates)
+        (nskk-when
+          ;; Navigate past the end
+          (dotimes (_ (length candidates))
+            (nskk-state-next-candidate state)))
+        (nskk-then
+          ;; Should have wrapped to index 0
+          (should (= 0 (nskk-state-current-index state)))))))
+
+  (nskk-it "for-all: index is always in bounds after any navigation sequence"
+    (nskk-for-all ((data candidates-with-valid-index))
+      (let* ((state (nskk-state-create 'hiragana))
+             (candidates (plist-get data :candidates)))
+        (nskk-state-set-candidates state candidates)
+        (dotimes (_ 20)
+          (if (nskk-pbt--random-bool)
+              (nskk-state-next-candidate state)
+            (nskk-state-previous-candidate state)))
+        (let ((idx (nskk-state-current-index state))
+              (len (length (nskk-state-candidates state))))
+          (or (= len 0)
+              (and (>= idx 0) (< idx len))))))))
+
+
 (provide 'nskk-state-machine-candidate-test)
 
 ;;; nskk-state-machine-candidate-test.el ends here

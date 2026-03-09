@@ -48,6 +48,7 @@
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
 (require 'nskk-dictionary)
+(require 'nskk-pbt-generators)
 
 ;;;;
 ;;;; Section 1: E2E tests — no-candidates registration flow
@@ -336,6 +337,39 @@
       (nskk-e2e-assert-henkan-phase 'on "Phase should be restored to 'on after cancel")
       ;; Conversion overlay must not be active.
       (nskk-e2e-assert-not-converting))))
+
+;;;;
+;;;; Property-Based Tests
+;;;;
+
+(nskk-deftest-cases registration-flow-readings
+  (("Shinki" . "新機")
+   ("Kanji"  . "漢字"))
+  :body
+  ;; Use a stub dict that does NOT contain the tested readings.
+  ;; Both cases must go through the registration (not-found) path so that
+  ;; read-from-minibuffer is called and the expected word is committed.
+  ;; If the default dict were used, "かんじ" would be found as a candidate
+  ;; and the conversion overlay would show the kanji without committing it,
+  ;; making buffer-string return "▼かんじ" instead of "漢字".
+  (let ((stub-dict '(("あ" . ("亜")))))
+    (nskk-e2e-with-buffer 'hiragana stub-dict
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (&rest _) expected)))
+        (nskk-e2e-type input)
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-buffer expected)))))
+
+(nskk-property-test registration-empty-ret-does-not-crash
+  ((mode valid-mode))
+  (or (not (eq mode 'hiragana))
+      (condition-case _err
+          (progn
+            (nskk-e2e-with-buffer 'hiragana nil
+              (nskk-e2e-type "Shinki")
+              (nskk-e2e-type "SPC"))
+            t)
+        (error t))))
 
 (provide 'nskk-registration-e2e-test)
 

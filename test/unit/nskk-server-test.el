@@ -23,78 +23,192 @@
 ;;; Commentary:
 
 ;; Unit tests for nskk-server.el covering:
-;; - Response parsing (pure function, no network)
-;; - nskk-server-live-p guard logic
-;; - nskk-server-ensure-open guard logic
-;; - nskk-server-lookup guard conditions (no network)
+;; - nskk-server--strip-annotation: annotation removal from candidates
+;; - nskk-server--parse-response: protocol response parsing (pure)
+;; - nskk-server--lookup-guards-p: composite guard predicate
+;; - nskk-server-live-p: process status check
+;; - nskk-server-open: connection setup (mocked)
+;; - nskk-server-close: disconnect and cleanup (mocked)
+;; - nskk-server-ensure-open: reconnect logic (mocked)
+;; - nskk-server-lookup: guard conditions (no network)
+;; - PBT: parse invariants (all-strings, no-annotation, non-1-returns-nil)
 
 ;;; Code:
 
 (require 'ert)
 (require 'nskk-server)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server--strip-annotation
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-server--strip-annotation"
+  (nskk-context "annotated candidates"
+    (nskk-it "strips annotation from a word;note pair"
+      (nskk-deftest-table strip-annotation-cases
+        :columns (input expected)
+        :rows (("漢字;注釈"      "漢字")
+               ("感じ;note"      "感じ")
+               ("幹事;long note" "幹事")
+               ("a;b"            "a"))
+        :body (should (equal (nskk-server--strip-annotation input) expected))))
+
+    (nskk-it "strips only up to the first semicolon when multiple exist"
+      (should (equal (nskk-server--strip-annotation "a;b;c") "a"))))
+
+  (nskk-context "plain candidates without annotation"
+    (nskk-it "returns the string unchanged when no semicolon is present"
+      (nskk-deftest-table strip-annotation-plain-cases
+        :columns (input)
+        :rows (("漢字") ("感じ") ("幹事") ("") ("a"))
+        :body (should (equal (nskk-server--strip-annotation input) input))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server--parse-response: successful parsing
+;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "nskk-server--parse-response successful parsing"
-  (nskk-it "parses a response with multiple candidates"
-    (let ((result (nskk-server--parse-response "1/漢字/感じ/幹事/\n")))
-      (should (equal result '("漢字" "感じ" "幹事")))))
+  (nskk-context "candidate count"
+    (nskk-it "parses responses with one, two, and three candidates"
+      (nskk-deftest-table parse-candidate-counts
+        :columns (response expected)
+        :rows (("1/漢字/\n"             ("漢字"))
+               ("1/漢字/感じ/\n"        ("漢字" "感じ"))
+               ("1/漢字/感じ/幹事/\n"   ("漢字" "感じ" "幹事")))
+        :body (should (equal (nskk-server--parse-response response) expected)))))
 
-  (nskk-it "parses a response with two candidates"
-    (let ((result (nskk-server--parse-response "1/漢字/感じ/\n")))
-      (should (equal result '("漢字" "感じ")))))
+  (nskk-context "response format variants"
+    (nskk-it "parses a response without trailing slash"
+      (should (equal (nskk-server--parse-response "1/漢字/感じ\n")
+                     '("漢字" "感じ"))))
 
-  (nskk-it "parses a response with a single candidate"
-    (let ((result (nskk-server--parse-response "1/漢字/\n")))
-      (should (equal result '("漢字")))))
+    (nskk-it "strips CRLF line endings correctly"
+      (should (equal (nskk-server--parse-response "1/漢字/\r\n")
+                     '("漢字"))))
 
-  (nskk-it "returns a list on successful parse"
-    (let ((result (nskk-server--parse-response "1/漢字/\n")))
-      (should (listp result))))
+    (nskk-it "trims whitespace around candidates"
+      (should (equal (nskk-server--parse-response "1/ 漢字 /\n")
+                     '("漢字")))))
 
-  (nskk-it "returns only strings in the candidate list"
-    (let ((result (nskk-server--parse-response "1/漢字/感じ/幹事/\n")))
-      (should (cl-every #'stringp result))))
+  (nskk-context "return type"
+    (nskk-it "returns a list on successful parse"
+      (should (listp (nskk-server--parse-response "1/漢字/\n"))))
 
-  (nskk-it "parses a response without trailing slash"
-    (let ((result (nskk-server--parse-response "1/漢字/感じ\n")))
-      (should (equal result '("漢字" "感じ"))))))
+    (nskk-it "returns only strings in the candidate list"
+      (let ((result (nskk-server--parse-response "1/漢字/感じ/幹事/\n")))
+        (should (cl-every #'stringp result)))))
 
-(nskk-deftest-table server-parse-response-nil-cases
-  :description "nskk-server--parse-response returns nil for non-match inputs"
-  :columns (input)
-  :rows (("4かんじ \n")
-         ("4\n")
-         ("2\n")
-         ("")
-         (nil))
-  :body (let ((result (nskk-server--parse-response input)))
-          (should (null result))))
+  (nskk-context "annotation stripping"
+    (nskk-it "strips annotations from all annotated candidates"
+      (nskk-deftest-table parse-annotation-stripping
+        :columns (response expected)
+        :rows (("1/漢字;注釈/感じ/\n"             ("漢字" "感じ"))
+               ("1/漢字;n1/感じ;n2/幹事;n3/\n"   ("漢字" "感じ" "幹事"))
+               ("1/漢字;注釈/感じ/幹事;別注/\n"   ("漢字" "感じ" "幹事")))
+        :body (should (equal (nskk-server--parse-response response) expected))))))
 
-(nskk-describe "nskk-server--parse-response non-string inputs"
-  (nskk-it "returns nil for a non-string integer value"
-    (should (null (nskk-server--parse-response 42))))
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server--parse-response: nil cases
+;;; ─────────────────────────────────────────────────────────────────────────
 
-  (nskk-it "returns nil for a non-string list value"
-    (should (null (nskk-server--parse-response '("1/漢字/\n"))))))
+(nskk-describe "nskk-server--parse-response nil cases"
+  (nskk-context "protocol not-found, error responses, and invalid inputs"
+    (nskk-it "returns nil for all non-starting-with-1 and invalid inputs"
+      (nskk-deftest-table parse-nil-all-cases
+        :columns (input)
+        :rows (("4かんじ \n")
+               ("4\n")
+               ("2\n")
+               ("0")
+               ("")
+               (nil)
+               (42)
+               (("1/漢字/\n")))
+        :body (should (null (nskk-server--parse-response input))))))
 
-(nskk-describe "nskk-server--parse-response annotation stripping"
-  (nskk-it "strips annotations from a single annotated candidate"
-    (let ((result (nskk-server--parse-response "1/漢字;注釈/感じ/\n")))
-      (should (equal result '("漢字" "感じ")))))
+  (nskk-context "empty candidates body"
+    (nskk-it "returns nil or empty list for a response with no candidates"
+      ;; "1/\n" splits on "/" with omit-nulls=t giving no parts
+      (let ((result (nskk-server--parse-response "1/\n")))
+        (should (or (null result) (equal result '()))))))
 
-  (nskk-it "strips annotations from all annotated candidates"
-    (let ((result (nskk-server--parse-response "1/漢字;note1/感じ;note2/幹事;note3/\n")))
-      (should (equal result '("漢字" "感じ" "幹事")))))
+  (nskk-context "boundary: leading character"
+    (nskk-it "returns nil for any response not starting with the found byte"
+      ;; Characters other than '1' should always yield nil
+      (dolist (ch '(?0 ?2 ?3 ?4 ?5 ?9 ?a ?A))
+        (let ((resp (concat (list ch) "/漢字/\n")))
+          (should (null (nskk-server--parse-response resp))))))))
 
-  (nskk-it "strips only annotated candidates and leaves plain ones intact"
-    (let ((result (nskk-server--parse-response "1/漢字;注釈/感じ/幹事;別注/\n")))
-      (should (equal result '("漢字" "感じ" "幹事"))))))
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; PBT: nskk-server--parse-response invariants
+;;; ─────────────────────────────────────────────────────────────────────────
 
-(nskk-describe "nskk-server--parse-response empty candidates list"
-  (nskk-it "returns nil or empty list for a response with empty candidates"
-    ;; "1/\n" splits on "/" with omit-nulls=t giving no parts, so result is nil or ()
-    (let ((result (nskk-server--parse-response "1/\n")))
-      (should (or (null result) (equal result '()))))))
+(nskk-property-test server-candidates-are-strings
+  ((word kanji-string))
+  (let* ((resp   (concat "1/" word "/\n"))
+         (result (nskk-server--parse-response resp)))
+    (or (null result) (cl-every #'stringp result)))
+  30)
+
+(nskk-property-test server-no-semicolon-in-output
+  ((word kanji-string)
+   (note romaji-string))
+  (let* ((resp   (concat "1/" word ";" note "/\n"))
+         (result (nskk-server--parse-response resp)))
+    (or (null result)
+        (not (cl-some (lambda (s) (string-search ";" s)) result))))
+  30)
+
+(nskk-property-test server-non-found-byte-returns-nil
+  ((word kanji-string))
+  ;; Prepend '4' (not-found byte) — must always return nil
+  (null (nskk-server--parse-response (concat "4" word " \n")))
+  30)
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server--lookup-guards-p
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-server--lookup-guards-p"
+  (nskk-it "returns nil when server is disabled"
+    (let ((nskk-server-enable nil)
+          (nskk-server--process nil))
+      (should (null (nskk-server--lookup-guards-p "かんじ")))))
+
+  (nskk-it "returns nil for nil key"
+    (let ((nskk-server-enable t)
+          (nskk-server--process 'mock-proc))
+      (nskk-with-mocks ((process-status (lambda (_) 'open)))
+        (should (null (nskk-server--lookup-guards-p nil))))))
+
+  (nskk-it "returns nil for empty string key"
+    (let ((nskk-server-enable t)
+          (nskk-server--process 'mock-proc))
+      (nskk-with-mocks ((process-status (lambda (_) 'open)))
+        (should (null (nskk-server--lookup-guards-p ""))))))
+
+  (nskk-it "returns nil for non-string key"
+    (let ((nskk-server-enable t)
+          (nskk-server--process 'mock-proc))
+      (nskk-with-mocks ((process-status (lambda (_) 'open)))
+        (should (null (nskk-server--lookup-guards-p 42))))))
+
+  (nskk-it "returns nil when connection is not live"
+    (let ((nskk-server-enable t)
+          (nskk-server--process nil))
+      (should (null (nskk-server--lookup-guards-p "かんじ")))))
+
+  (nskk-it "returns non-nil when all guards pass"
+    (let ((nskk-server-enable t)
+          (nskk-server--process 'mock-proc))
+      (nskk-with-mocks ((process-status (lambda (_) 'open)))
+        (should (nskk-server--lookup-guards-p "かんじ"))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server-live-p
+;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "nskk-server-live-p"
   (nskk-it "returns nil when process is nil"
@@ -103,45 +217,160 @@
 
   (nskk-it "returns non-nil when process status is open"
     (let ((nskk-server--process 'mock-proc))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'open)))
+      (nskk-with-mocks ((process-status (lambda (_) 'open)))
         (should (nskk-server-live-p)))))
 
-  (nskk-it "returns nil when process status is closed"
+  (nskk-it "returns nil for non-open process statuses"
     (let ((nskk-server--process 'mock-proc))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'closed)))
-        (should (null (nskk-server-live-p))))))
-
-  (nskk-it "returns nil when process status is exit"
-    (let ((nskk-server--process 'mock-proc))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'exit)))
-        (should (null (nskk-server-live-p))))))
-
-  (nskk-it "returns nil when process status is signal"
-    (let ((nskk-server--process 'mock-proc))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'signal)))
-        (should (null (nskk-server-live-p))))))
+      (dolist (status '(closed exit signal stop))
+        (nskk-with-mocks ((process-status (lambda (_) status)))
+          (should (null (nskk-server-live-p)))))))
 
   (nskk-it "passes the stored process object to process-status"
     (let ((nskk-server--process 'my-proc)
           (received-proc nil))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (proc)
-                   (setq received-proc proc)
-                   'open)))
+      (nskk-with-mocks ((process-status (lambda (proc) (setq received-proc proc) 'open)))
         (nskk-server-live-p)
         (should (eq received-proc 'my-proc))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server-open
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-server-open"
+  (nskk-it "returns nil immediately when server is disabled"
+    (let ((nskk-server-enable nil)
+          (nskk-server--process nil)
+          (open-called nil))
+      (nskk-with-mocks ((open-network-stream (lambda (&rest _) (setq open-called t) 'mock-proc)))
+        (nskk-given (should (null nskk-server-enable)))
+        (nskk-when  (let ((result (nskk-server-open)))
+                      (nskk-then
+                       (should (null result))
+                       (should (null open-called))))))))
+
+  (nskk-it "calls open-network-stream with configured host and port"
+    (let ((nskk-server-enable t)
+          (nskk-server-host "test-host")
+          (nskk-server-portnum 9999)
+          (nskk-server--process nil)
+          (nskk-server--kill-emacs-hook-registered t)
+          (received-host nil)
+          (received-port nil))
+      (nskk-with-mocks ((open-network-stream
+                         (lambda (_name _buf host port &rest _)
+                           (setq received-host host received-port port)
+                           'mock-proc))
+                        (set-process-query-on-exit-flag (lambda (&rest _) nil))
+                        (process-buffer (lambda (_) nil)))
+        (nskk-server-open)
+        (should (equal received-host "test-host"))
+        (should (= received-port 9999)))))
+
+  (nskk-it "sets nskk-server--process on successful connection"
+    (let ((nskk-server-enable t)
+          (nskk-server--process nil)
+          (nskk-server--kill-emacs-hook-registered t))
+      (nskk-with-mocks ((open-network-stream (lambda (&rest _) 'new-proc))
+                        (set-process-query-on-exit-flag (lambda (&rest _) nil))
+                        (process-buffer (lambda (_) nil)))
+        (nskk-when  (nskk-server-open))
+        (nskk-then  (should (eq nskk-server--process 'new-proc))))))
+
+  (nskk-it "returns nil and clears process on connection failure"
+    (let ((nskk-server-enable t)
+          (nskk-server--process nil)
+          (nskk-server--kill-emacs-hook-registered t))
+      (nskk-with-mocks ((open-network-stream (lambda (&rest _) (error "connection refused"))))
+        (let ((result (nskk-server-open)))
+          (should (null result))
+          (should (null nskk-server--process))))))
+
+  (nskk-it "registers kill-emacs-hook only once (idempotent)"
+    (let ((nskk-server-enable t)
+          (nskk-server--process nil)
+          (nskk-server--kill-emacs-hook-registered nil)
+          (add-hook-count 0))
+      (nskk-with-mocks ((open-network-stream (lambda (&rest _) 'mock-proc))
+                        (set-process-query-on-exit-flag (lambda (&rest _) nil))
+                        (add-hook (lambda (&rest _) (cl-incf add-hook-count)))
+                        (process-buffer (lambda (_) nil)))
+        (nskk-server-open)
+        (setq nskk-server--process nil)
+        (nskk-server-open)
+        (should (= add-hook-count 1))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server-close
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-server-close"
+  (nskk-it "is a no-op when already disconnected (idempotent)"
+    (let ((nskk-server--process nil)
+          (send-called nil))
+      (nskk-with-mocks ((process-send-string (lambda (&rest _) (setq send-called t))))
+        (nskk-server-close)
+        (should (null send-called))
+        (should (null nskk-server--process)))))
+
+  (nskk-it "sends '0' disconnect command when connection is live"
+    (let ((nskk-server--process 'mock-proc)
+          (sent-string nil))
+      (nskk-with-mocks ((process-status (lambda (_) 'open))
+                        (process-send-string (lambda (_ s) (setq sent-string s)))
+                        (delete-process (lambda (_) nil))
+                        (get-buffer (lambda (_) nil)))
+        (nskk-server-close)
+        (should (equal sent-string "0")))))
+
+  (nskk-it "does not send '0' when process is not live"
+    (let ((nskk-server--process 'mock-proc)
+          (send-called nil))
+      (nskk-with-mocks ((process-status (lambda (_) 'closed))
+                        (process-send-string (lambda (&rest _) (setq send-called t)))
+                        (delete-process (lambda (_) nil))
+                        (get-buffer (lambda (_) nil)))
+        (nskk-server-close)
+        (should (null send-called)))))
+
+  (nskk-it "calls delete-process to tear down the process"
+    (let ((nskk-server--process 'mock-proc)
+          (delete-called nil))
+      (nskk-with-mocks ((process-status (lambda (_) 'closed))
+                        (process-send-string (lambda (&rest _) nil))
+                        (delete-process (lambda (_) (setq delete-called t)))
+                        (get-buffer (lambda (_) nil)))
+        (nskk-server-close)
+        (should delete-called))))
+
+  (nskk-it "sets nskk-server--process to nil after closing"
+    (let ((nskk-server--process 'mock-proc))
+      (nskk-with-mocks ((process-status (lambda (_) 'closed))
+                        (process-send-string (lambda (&rest _) nil))
+                        (delete-process (lambda (_) nil))
+                        (get-buffer (lambda (_) nil)))
+        (nskk-when  (nskk-server-close))
+        (nskk-then  (should (null nskk-server--process))))))
+
+  (nskk-it "kills the working buffer when it exists"
+    (let ((nskk-server--process nil)
+          (fake-buf (list 'fake-buffer))
+          (killed-buf nil))
+      (nskk-with-mocks ((get-buffer (lambda (_) fake-buf))
+                        (kill-buffer (lambda (b) (setq killed-buf b))))
+        (nskk-server-close)
+        (should (eq killed-buf fake-buf))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server-ensure-open
+;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "nskk-server-ensure-open"
   (nskk-it "returns nil without calling open when server is disabled"
     (let ((nskk-server-enable nil)
           (nskk-server--process nil)
           (open-called nil))
-      (cl-letf (((symbol-function 'nskk-server-open)
-                 (lambda () (setq open-called t) 'mock-proc)))
+      (nskk-with-mocks ((nskk-server-open (lambda () (setq open-called t) 'mock-proc)))
         (nskk-given (should (null nskk-server-enable)))
         (nskk-when  (let ((result (nskk-server-ensure-open)))
                       (nskk-then
@@ -152,10 +381,8 @@
     (let ((nskk-server-enable t)
           (nskk-server--process 'mock-proc)
           (open-called nil))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'open))
-                ((symbol-function 'nskk-server-open)
-                 (lambda () (setq open-called t) 'mock-proc)))
+      (nskk-with-mocks ((process-status (lambda (_) 'open))
+                        (nskk-server-open (lambda () (setq open-called t) 'mock-proc)))
         (let ((result (nskk-server-ensure-open)))
           (should (eq result t))
           (should (null open-called))))))
@@ -164,99 +391,214 @@
     (let ((nskk-server-enable t)
           (nskk-server--process nil)
           (open-called nil))
-      (cl-letf (((symbol-function 'nskk-server-open)
-                 (lambda ()
-                   (setq open-called t)
-                   'new-proc)))
+      (nskk-with-mocks ((nskk-server-open (lambda () (setq open-called t) 'new-proc)))
         (nskk-when  (nskk-server-ensure-open))
         (nskk-then  (should open-called)))))
 
   (nskk-it "returns t when reconnect succeeds"
     (let ((nskk-server-enable t)
           (nskk-server--process nil))
-      (cl-letf (((symbol-function 'nskk-server-open)
-                 (lambda () 'new-proc)))
-        (let ((result (nskk-server-ensure-open)))
-          (should (eq result t))))))
+      (nskk-with-mocks ((nskk-server-open (lambda () 'new-proc)))
+        (should (eq (nskk-server-ensure-open) t)))))
 
   (nskk-it "returns nil when nskk-server-open fails"
     (let ((nskk-server-enable t)
           (nskk-server--process nil))
-      (cl-letf (((symbol-function 'nskk-server-open)
-                 (lambda () nil)))
-        (let ((result (nskk-server-ensure-open)))
-          (should (null result)))))))
+      (nskk-with-mocks ((nskk-server-open (lambda () nil)))
+        (should (null (nskk-server-ensure-open)))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server-lookup guard conditions
+;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "nskk-server-lookup guard conditions"
-  (nskk-it "returns nil without sending when server is disabled"
-    (let ((nskk-server-enable nil)
-          (nskk-server--process nil)
-          (send-called nil))
-      (cl-letf (((symbol-function 'process-send-string)
-                 (lambda (&rest _) (setq send-called t))))
-        (nskk-given (should (null nskk-server-enable)))
-        (nskk-when  (let ((result (nskk-server-lookup "かんじ")))
-                      (nskk-then
-                       (should (null result))
-                       (should (null send-called))))))))
-
-  (nskk-it "returns nil for a nil key"
-    (let ((nskk-server-enable t)
-          (nskk-server--process 'mock-proc)
-          (send-called nil))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'open))
-                ((symbol-function 'process-send-string)
-                 (lambda (&rest _) (setq send-called t))))
-        (let ((result (nskk-server-lookup nil)))
-          (should (null result))
-          (should (null send-called))))))
-
-  (nskk-it "returns nil for an empty string key"
-    (let ((nskk-server-enable t)
-          (nskk-server--process 'mock-proc)
-          (send-called nil))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'open))
-                ((symbol-function 'process-send-string)
-                 (lambda (&rest _) (setq send-called t))))
-        (let ((result (nskk-server-lookup "")))
-          (should (null result))
-          (should (null send-called))))))
-
-  (nskk-it "returns nil when connection is not live"
-    (let ((nskk-server-enable t)
-          (nskk-server--process nil)
-          (send-called nil))
-      (cl-letf (((symbol-function 'process-send-string)
-                 (lambda (&rest _) (setq send-called t))))
-        (let ((result (nskk-server-lookup "かんじ")))
-          (should (null result))
-          (should (null send-called))))))
+  (nskk-it "returns nil without sending when any guard fails"
+    (nskk-deftest-table lookup-guard-failures
+      :columns (enable process key)
+      :rows ((nil  nil        "かんじ")   ; disabled, no process
+             (t    nil        "かんじ")   ; enabled, no connection
+             (t    mock-proc  nil)         ; enabled, live, nil key
+             (t    mock-proc  "")          ; enabled, live, empty key
+             (t    mock-proc  42))         ; enabled, live, non-string key
+      :body
+      (let ((nskk-server-enable enable)
+            (nskk-server--process process)
+            (send-called nil))
+        (nskk-with-mocks ((process-status (lambda (_) 'open))
+                          (process-send-string (lambda (&rest _) (setq send-called t))))
+          (let ((result (nskk-server-lookup key)))
+            (should (null result))
+            (should (null send-called)))))))
 
   (nskk-it "returns nil even when a process exists but server is disabled"
     (let ((nskk-server-enable nil)
           (nskk-server--process 'mock-proc)
           (send-called nil))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'open))
-                ((symbol-function 'process-send-string)
-                 (lambda (&rest _) (setq send-called t))))
-        (let ((result (nskk-server-lookup "かんじ")))
-          (should (null result))
-          (should (null send-called))))))
+      (nskk-with-mocks ((process-status (lambda (_) 'open))
+                        (process-send-string (lambda (&rest _) (setq send-called t))))
+        (should (null (nskk-server-lookup "かんじ")))
+        (should (null send-called))))))
 
-  (nskk-it "returns nil for a non-string integer key"
-    (let ((nskk-server-enable t)
-          (nskk-server--process 'mock-proc)
-          (send-called nil))
-      (cl-letf (((symbol-function 'process-status)
-                 (lambda (_proc) 'open))
-                ((symbol-function 'process-send-string)
-                 (lambda (&rest _) (setq send-called t))))
-        (let ((result (nskk-server-lookup 42)))
-          (should (null result))
-          (should (null send-called)))))))
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-server-lookup/k: CPS variant
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-server-lookup/k"
+  (nskk-context "on-found branch"
+    (nskk-it "calls on-found with the candidate list when lookup returns results"
+      (let* ((expected '("漢字" "感じ"))
+             (found-arg nil)
+             (not-found-called nil))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) expected)))
+          (nskk-server-lookup/k "かんじ"
+            (lambda (cands) (setq found-arg cands))
+            (lambda () (setq not-found-called t)))
+          (should (equal found-arg expected))
+          (should (null not-found-called)))))
+
+    (nskk-it "does NOT call on-not-found when lookup returns results"
+      (let ((not-found-called nil))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) '("結果"))))
+          (nskk-server-lookup/k "てすと"
+            (lambda (_cands) nil)
+            (lambda () (setq not-found-called t)))
+          (should (null not-found-called)))))
+
+    (nskk-it "passes the full candidates list (not just first element) to on-found"
+      (let ((found-arg nil))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) '("A" "B" "C"))))
+          (nskk-server-lookup/k "key"
+            (lambda (cands) (setq found-arg cands))
+            #'ignore)
+          (should (equal found-arg '("A" "B" "C")))))))
+
+  (nskk-context "on-not-found branch"
+    (nskk-it "calls on-not-found with no arguments when lookup returns nil"
+      (let ((not-found-called nil)
+            (found-called nil))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) nil)))
+          (nskk-server-lookup/k "みつからない"
+            (lambda (_cands) (setq found-called t))
+            (lambda () (setq not-found-called t)))
+          (should not-found-called)
+          (should (null found-called)))))
+
+    (nskk-it "does NOT call on-found when lookup returns nil"
+      (let ((found-called nil))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) nil)))
+          (nskk-server-lookup/k "nonexistent"
+            (lambda (_cands) (setq found-called t))
+            #'ignore)
+          (should (null found-called))))))
+
+  (nskk-context "exactly-one-continuation invariant"
+    (nskk-it "calls exactly one continuation when lookup returns a list"
+      (let ((call-count 0))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) '("候補"))))
+          (nskk-server-lookup/k "key"
+            (lambda (_cands) (cl-incf call-count))
+            (lambda () (cl-incf call-count)))
+          (should (= call-count 1)))))
+
+    (nskk-it "calls exactly one continuation when lookup returns nil"
+      (let ((call-count 0))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) nil)))
+          (nskk-server-lookup/k "key"
+            (lambda (_cands) (cl-incf call-count))
+            (lambda () (cl-incf call-count)))
+          (should (= call-count 1)))))
+
+    (nskk-deftest-table server-lookup/k-exactly-one-continuation
+      :description "Exactly one continuation called for each lookup outcome"
+      :columns (mock-result)
+      :rows ((nil)
+             (("漢字"))
+             (("A" "B" "C")))
+      :body
+      (let ((call-count 0))
+        (nskk-with-mocks ((nskk-server-lookup (lambda (_key) mock-result)))
+          (nskk-server-lookup/k "test"
+            (lambda (_cands) (cl-incf call-count))
+            (lambda () (cl-incf call-count)))
+          (should (= call-count 1)))))))
+
+;;;
+;;; nskk-server--await-response
+;;;
+
+(nskk-describe "nskk-server--await-response"
+  (nskk-it "returns the buffer contents when they contain a newline"
+    (with-temp-buffer
+      (let* ((buf (current-buffer))
+             (proc 'mock-proc)
+             (deadline (+ (float-time) 10)))
+        (nskk-with-mocks
+            ((nskk-server-live-p (lambda () t))
+             (accept-process-output (lambda (_p _t)
+                                      (with-current-buffer buf
+                                        (insert "4/候補/\n")))))
+          (let ((result (nskk-server--await-response proc buf deadline)))
+            (should (stringp result))
+            (should (string-match-p "\n" result)))))))
+
+  (nskk-it "returns nil when deadline has already passed"
+    (with-temp-buffer
+      (let* ((buf (current-buffer))
+             (proc 'mock-proc)
+             (deadline (- (float-time) 1)))  ; already past
+        (nskk-with-mocks
+            ((nskk-server-live-p (lambda () t))
+             (accept-process-output (lambda (&rest _) nil)))
+          (should (null (nskk-server--await-response proc buf deadline)))))))
+
+  (nskk-it "returns nil immediately when server is not live"
+    (with-temp-buffer
+      (let* ((buf (current-buffer))
+             (proc 'mock-proc)
+             (deadline (+ (float-time) 10)))
+        (nskk-with-mocks
+            ((nskk-server-live-p (lambda () nil))
+             (accept-process-output (lambda (&rest _) nil)))
+          (should (null (nskk-server--await-response proc buf deadline))))))))
+
+;;;
+;;; nskk-server--with-response
+;;;
+
+(nskk-describe "nskk-server--with-response"
+  (nskk-it "sends command 1 + key and passes response to cont"
+    (let ((sent-cmd nil)
+          (cont-arg :unset))
+      (with-temp-buffer
+        (let* ((buf (current-buffer))
+               (proc 'mock-proc))
+          (nskk-with-mocks
+              ((process-buffer (lambda (_) buf))
+               (process-send-string (lambda (_p cmd) (setq sent-cmd cmd)))
+               (nskk-server--await-response (lambda (_p _b _d) "4/漢字/\n")))
+            (let ((nskk-server--process proc)
+                  (nskk-server-timeout 5.0)
+                  (nskk-server-report-response nil))
+              (nskk-server--with-response "かんじ"
+                (lambda (resp) (setq cont-arg resp)))))))
+      (should (equal sent-cmd "1かんじ "))
+      (should (equal cont-arg "4/漢字/\n"))))
+
+  (nskk-it "passes nil to cont when await-response returns nil"
+    (let ((cont-arg :unset))
+      (with-temp-buffer
+        (let* ((buf (current-buffer))
+               (proc 'mock-proc))
+          (nskk-with-mocks
+              ((process-buffer (lambda (_) buf))
+               (process-send-string (lambda (&rest _) nil))
+               (nskk-server--await-response (lambda (&rest _) nil)))
+            (let ((nskk-server--process proc)
+                  (nskk-server-timeout 5.0)
+                  (nskk-server-report-response nil))
+              (nskk-server--with-response "key"
+                (lambda (resp) (setq cont-arg resp)))))))
+      (should (null cont-arg)))))
 
 (provide 'nskk-server-test)
 

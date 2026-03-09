@@ -5,6 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -45,24 +46,42 @@
 ;; Performance target: single query < 20us with hash indexing.
 ;;
 ;; Key public API:
-;; - `nskk-prolog-<-'              -- assert a fact or rule (DSL macro)
-;; - `nskk-prolog-?-'              -- query for first solution (DSL macro)
-;; - `nskk-prolog-set-index'       -- configure index strategy
-;; - `nskk-prolog-assert'          -- assert a clause
-;; - `nskk-prolog-retract'         -- retract first matching clause
-;; - `nskk-prolog-retract-all'     -- retract all clauses for a predicate
-;; - `nskk-prolog-clear-database'  -- reset the entire database
-;; - `nskk-prolog-query'           -- query, return all solutions
-;; - `nskk-prolog-query-one'       -- query, return first solution
-;; - `nskk-prolog-query-value'     -- query and extract one variable binding
-;; - `nskk-prolog-query-values'    -- query and extract multiple bindings
+;;
+;; Assert / retract:
+;; - `nskk-prolog-<-'               -- assert a fact or rule (DSL macro)
+;; - `nskk-prolog-deffacts'         -- assert multiple facts in one declaration
+;; - `nskk-prolog-define-fact-table' -- set-index + deffacts in one declaration
+;; - `nskk-prolog-bulk-facts'       -- assert facts from a runtime list (defconst-friendly)
+;; - `nskk-prolog-assert'           -- assert a clause (low-level)
+;; - `nskk-prolog-retract'          -- retract first matching clause
+;; - `nskk-prolog-retract-all'      -- retract all clauses for a predicate
+;; - `nskk-prolog-clear-database'   -- reset the entire database
+;; - `nskk-prolog-trie-bulk-assert' -- bulk-load a large fact table into a trie
+;;
+;; Query:
+;; - `nskk-prolog-?-'               -- query for first solution (DSL macro)
+;; - `nskk-prolog-query'            -- query, return all solution substitutions
+;; - `nskk-prolog-query-one'        -- query, return first solution substitution
+;; - `nskk-prolog-query-value'      -- query and extract one variable binding
+;; - `nskk-prolog-query-values'     -- query and extract multiple bindings
 ;; - `nskk-prolog-query-all-values' -- query and extract all bindings for var
+;; - `nskk-prolog-holds-p'          -- test if a goal has any solution (boolean)
+;; - `nskk-when-prolog-holds'       -- guard macro: run body when query holds
+;;
+;; Prove (lower-level query):
+;; - `nskk-prolog-prove'            -- prove goals list, return all substitutions
+;; - `nskk-prolog-prove-one'        -- prove goals list, return first substitution
+;;
+;; Indexing:
+;; - `nskk-prolog-set-index'        -- configure index strategy (:hash/:trie/:list)
 ;; - `nskk-prolog-trie-prefix-search' -- prefix search via trie index
-;; - `nskk-prolog-holds-p'         -- test if a goal has any solution
-;; - `nskk-when-prolog-holds'      -- guard macro: run body when query holds
-;; - `nskk-prolog-variable-p'     -- test for Prolog variable symbol
-;; - `nskk-prolog-ground-p'       -- test for ground (variable-free) term
-;; - `nskk-prolog-unify'          -- unify two terms
+;;
+;; Term inspection:
+;; - `nskk-prolog-variable-p'       -- test for Prolog variable symbol
+;; - `nskk-prolog-ground-p'         -- test for ground (variable-free) term
+;; - `nskk-prolog-walk'             -- dereference a variable in a substitution
+;; - `nskk-prolog-substitute'       -- apply substitution to any term
+;; - `nskk-prolog-unify'            -- unify two terms under a substitution
 ;;
 ;; Usage:
 ;;
@@ -225,19 +244,16 @@ Slots:
                (:copier nil))
   "Private trie structure for nskk-prolog internal use.
 Slots:
-  root     - root node
-  size     - total number of stored keys
-  metadata - metadata plist"
+  root  - root node
+  size  - total number of stored keys"
   (root nil :type nskk-prolog--trie-node)
-  (size 0 :type integer)
-  (metadata nil :type list))
+  (size 0 :type integer))
 
 (defun nskk-prolog--trie-create ()
   "Create and return a new empty private trie."
   (nskk-prolog--trie--create-internal
    :root (nskk-prolog--trie-node--create)
-   :size 0
-   :metadata nil))
+   :size 0))
 
 (defun nskk-prolog--trie-insert (trie key value)
   "Insert KEY with VALUE into private TRIE.
@@ -336,22 +352,23 @@ Optional LIMIT caps the number of results."
 
 (defun nskk-prolog--trie--collect-all (node prefix limit collected-count)
   "Collect all (key . value) pairs reachable from NODE with PREFIX.
-LIMIT caps results; COLLECTED-COUNT tracks how many have been gathered."
-  (let ((results nil)
-        (count collected-count))
+LIMIT caps results; COLLECTED-COUNT tracks how many have been gathered.
+Uses depth-first traversal; each terminal node calls an on-result continuation
+that accumulates (key . value) pairs and throws when LIMIT is reached."
+  (let (results (count collected-count))
     (catch 'limit-reached
-      (cl-labels ((dfs-collect (node prefix)
-                    (when (nskk-prolog--trie-node-is-end node)
-                      (push (cons prefix (nskk-prolog--trie-node-value node)) results)
-                      (cl-incf count)
-                      (when (and limit (>= count limit))
-                        (throw 'limit-reached nil)))
-                    (when (nskk-prolog--trie-node-children node)
-                      (maphash (lambda (char child-node)
-                                 (let ((new-prefix (concat prefix (char-to-string char))))
-                                   (dfs-collect child-node new-prefix)))
-                               (nskk-prolog--trie-node-children node)))))
-        (dfs-collect node prefix)))
+      (cl-labels
+          ((dfs (node prefix)
+             (when (nskk-prolog--trie-node-is-end node)
+               (push (cons prefix (nskk-prolog--trie-node-value node)) results)
+               (cl-incf count)
+               (when (and limit (>= count limit))
+                 (throw 'limit-reached nil)))
+             (when-let* ((children (nskk-prolog--trie-node-children node)))
+               (maphash (lambda (char child)
+                          (dfs child (concat prefix (char-to-string char))))
+                        children))))
+        (dfs node prefix)))
     (nreverse results)))
 
 ;;;; Indexing
@@ -650,7 +667,7 @@ catch-all handler registered last)."
 
 ;; normal (catch-all): standard clause resolution — variable rename, unify head, prove body.
 (nskk-define-goal-handler normal (goal rest subst k)
-  :match (progn goal t)
+  :match (and goal t)
   :body
   (let* ((predicate (car goal))
          (args (cdr goal))
@@ -674,7 +691,7 @@ SUBST is the current variable-binding alist.
 ON-SOLUTION is a unary function called with each solution substitution.
 
 This is the single implementation shared by `nskk-prolog-prove' (which
-collects all solutions) and `nskk-prolog-prove-first' (which stops at the
+collects all solutions) and `nskk-prolog--prove-first' (which stops at the
 first solution).  Do not call this function directly; use the public API.
 
 Built-in goals handled in addition to user-defined predicates:
@@ -710,7 +727,7 @@ For single-solution efficiency, prefer `nskk-prolog-prove-one'."
       (lambda (s) (push s results)))
     (nreverse results)))
 
-(defun nskk-prolog-prove-first (goals subst)
+(defun nskk-prolog--prove-first (goals subst)
   "Like `nskk-prolog-prove' but throw on the first matching solution.
 GOALS is a list of Prolog goals to satisfy.
 SUBST is the current variable substitution alist.
@@ -731,7 +748,7 @@ GOALS is a list of Prolog goals to satisfy.
 SUBST is the current variable substitution alist.
 Returns the first successful substitution, or nil if none.
 
-Uses `nskk-prolog-prove-first' internally for early termination:
+Uses `nskk-prolog--prove-first' internally for early termination:
 stops backtracking as soon as one solution is found.
 
 For ground queries (no Prolog variables), returns t on success
@@ -739,7 +756,7 @@ and nil when no solution exists, so callers can distinguish the two
 cases.  Use `nskk-prolog-prove' when you need the actual substitution
 alist for a ground query."
   (let ((result (catch 'nskk-prolog-first-solution
-                  (nskk-prolog-prove-first goals subst)
+                  (nskk-prolog--prove-first goals subst)
                   :nskk-no-solution)))
     (if (eq result :nskk-no-solution)
         nil
@@ -778,28 +795,24 @@ HEAD-PATTERN is matched against clause heads using unification.
 Returns t if a clause was removed, nil otherwise."
   (let* ((key (nskk-prolog--head-key head-pattern))
          (clauses (gethash key nskk-prolog--database))
-         (found nil))
-    (when clauses
-      (catch 'done
-        (dolist (clause clauses)
-          (unless (nskk-prolog--fail-p
-                   (nskk-prolog-unify
-                    head-pattern (car clause) nil))
-            (setq found clause)
-            (throw 'done nil))))
-      (when found
-        (let ((new-list (cl-remove found clauses :test #'equal :count 1)))
-          (if new-list
-              (progn
-                (puthash key new-list nskk-prolog--database)
-                (puthash key (last new-list) nskk-prolog--database-tails))
-            (remhash key nskk-prolog--database)
-            (remhash key nskk-prolog--database-tails)))
-        (nskk-prolog--index-remove key found)
-        t))))
+         (found (cl-find-if
+                 (lambda (clause)
+                   (not (nskk-prolog--fail-p
+                         (nskk-prolog-unify head-pattern (car clause) nil))))
+                 clauses)))
+    (when found
+      (let ((new-list (cl-remove found clauses :test #'equal :count 1)))
+        (if new-list
+            (progn
+              (puthash key new-list nskk-prolog--database)
+              (puthash key (last new-list) nskk-prolog--database-tails))
+          (remhash key nskk-prolog--database)
+          (remhash key nskk-prolog--database-tails)))
+      (nskk-prolog--index-remove key found)
+      t)))
 
 (defun nskk-prolog-retract-all (predicate arity)
-  "Remove all clauses for PREDICATE with ARITY.
+  "Remove all clauses for PREDICATE with ARITY from the database.
 Also clears any associated indices."
   (let ((key (nskk-prolog--clause-key predicate arity)))
     (remhash key nskk-prolog--database)
@@ -812,7 +825,7 @@ Also clears any associated indices."
                         nskk-prolog--trie-indices))))))
 
 (defun nskk-prolog-clear-database ()
-  "Reset the entire Prolog database, indices, and variable counter."
+  "Reset the entire Prolog database, clearing indices and variable counter."
   (clrhash nskk-prolog--database)
   (clrhash nskk-prolog--database-tails)
   (clrhash nskk-prolog--index-config)
@@ -926,18 +939,10 @@ Returns nil if no trie index exists or PREFIX matches nothing."
   (let* ((key (nskk-prolog--clause-key predicate arity))
          (trie (gethash key nskk-prolog--trie-indices)))
     (when trie
-      (let ((raw-results (nskk-prolog--trie-prefix-search trie prefix)))
-        (delq nil
-              (mapcar (lambda (entry)
-                        (let* ((index-key (car entry))
-                               (clauses (cdr entry))
-                               (first-clause (car clauses))
-                               (head (when first-clause (car first-clause)))
-                               (value (when (and head (>= (length head) 3))
-                                        (nth 2 head))))
-                          (when value
-                            (cons index-key value))))
-                      raw-results))))))
+      (cl-loop for (index-key . clauses) in (nskk-prolog--trie-prefix-search trie prefix)
+               for head = (caar clauses)
+               when (and head (>= (length head) 3))
+               collect (cons index-key (nth 2 head))))))
 
 (defun nskk-prolog-trie-bulk-assert (predicate arity kana-candidates-pairs)
   "Bulk-assert dictionary entries directly into the trie index.
@@ -971,7 +976,7 @@ Requires the predicate to have a :trie index configured via
 GOAL is a Prolog term (predicate arg1 arg2 ...).
 Returns t if GOAL has at least one solution, nil otherwise.
 
-Convenience wrapper around `nskk-prolog-query-one\\=' for boolean
+Convenience wrapper around `nskk-prolog-query-one' for boolean
 holds-checking.  Particularly useful for testing zero-arity facts
 like \\='(dict-initialized).
 
@@ -1058,6 +1063,23 @@ Note: tuples are passed WITHOUT the predicate name prefix.
        (nskk-prolog-deffacts ,name
          ,@fact-tuples))))
 
+(defmacro nskk-prolog-bulk-facts (predicate rules)
+  "Assert all entries in RULES as Prolog facts for PREDICATE.
+PREDICATE is an unquoted symbol naming the Prolog predicate (e.g.,
+`romaji-to-kana').  RULES is a variable or expression evaluated at load
+time, producing a list of argument lists (one per fact).  Unlike
+`nskk-prolog-deffacts', RULES is not expanded at compile time, allowing
+data stored in a `defconst' to be used as the fact source.
+For trie-indexed predicates, prefer `nskk-prolog-trie-bulk-assert' which
+inserts directly into the trie index without rebuilding it per fact.
+
+Example:
+  (defconst my-rules \\='((\"a\" \"あ\") (\"i\" \"い\")))
+  (nskk-prolog-bulk-facts romaji-to-kana my-rules)"
+  (declare (indent 1) (debug t))
+  `(dolist (rule ,rules)
+     (nskk-prolog-assert (list (cons ',predicate rule)))))
+
 (defmacro nskk-prolog-?- (goal)
   "Query the Prolog database and return the first solution.
 GOAL is (predicate arg1 ...) -- not quoted.
@@ -1070,9 +1092,12 @@ Example:
 
 (defmacro nskk-when-prolog-holds (query &rest body)
   "Execute BODY when Prolog QUERY has at least one solution.
-QUERY is a Prolog goal list (not quoted), e.g. `(valid-mode ,mode).
-Uses `nskk-prolog-query' (not `nskk-prolog-query-one') to avoid nil
-ambiguity for ground queries."
+QUERY is a runtime-evaluated list such as \\=`(valid-mode ,mode) -- it is
+NOT auto-quoted by this macro (unlike `nskk-prolog-?-').  Use a quoted
+literal \\='(pred arg) or a backquoted form \\=`(pred ,var) as appropriate.
+BODY is one or more forms evaluated when QUERY succeeds.
+Uses `nskk-prolog-query' rather than `nskk-prolog-query-one' to avoid nil
+ambiguity: ground queries return (nil) on success vs nil on failure."
   (declare (indent 1) (debug t))
   `(when (nskk-prolog-query ,query)
      ,@body))

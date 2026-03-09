@@ -41,6 +41,7 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
+(require 'nskk-pbt-shrink)
 (require 'nskk-state)
 (require 'nskk-input)
 

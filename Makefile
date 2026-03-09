@@ -4,13 +4,13 @@ BATCH = $(EMACS) -Q --batch
 LOAD_PATH = -L . -L test -L test/integration -L test/unit -L test/e2e
 
 # All source files
-SRC = nskk.el nskk-custom.el nskk-state.el \
+SRC = nskk-cps-macros.el nskk-prolog.el \
+       nskk-custom.el nskk-debug.el \
+       nskk-kana.el nskk-converter.el nskk-cache.el nskk-dictionary.el nskk-search.el \
+       nskk-state.el nskk-henkan.el nskk-input.el \
        nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-converter.el nskk-debug.el \
-       nskk-server.el nskk-search.el nskk-cache.el nskk-kana.el \
-       nskk-henkan.el nskk-input.el \
-       nskk-dictionary.el \
-       nskk-azik.el nskk-prolog.el
+       nskk-server.el nskk-azik.el \
+       nskk.el
 
 # Unit test files
 UNIT_SRC = $(wildcard test/unit/*-test.el)

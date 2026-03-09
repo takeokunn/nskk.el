@@ -41,10 +41,12 @@
 ;;        "カk"  → ("書")  triggers 書ク    (katakana reading + consonant)
 ;;
 ;; Sections:
-;;   1. Standard consonant okurigana (baseline)
-;;   2. Sokuon okurigana (促音送り仮名): っ in the okurigana suffix
-;;   3. Multi-character vowel okurigana: uppercase vowel + continuation kana
-;;   4. Katakana mode okurigana
+;;   1. Katakana mode okurigana
+;;   2. Property-based tests
+;;
+;; NOTE: Standard consonant okurigana (baseline), sokuon, and multi-character
+;; vowel okurigana are covered in nskk-e2e-okurigana.el.  This file adds the
+;; katakana-mode variants and property-based tests only.
 
 ;;; Code:
 
@@ -52,283 +54,7 @@
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
 (eval-when-compile (require 'cl-lib))
-
-;;;;
-;;;; Section 1: Standard Consonant Okurigana (Baseline)
-;;;;
-;;
-;; These tests establish the baseline consonant okurigana pattern used throughout
-;; all sections.  The key format is: hiragana-reading + lowercase-consonant.
-;;
-;; Input mechanics:
-;;   KaKu: K starts preedit (▽), "a" completes "か"; second K is the okurigana
-;;         trigger (uppercase in preedit context); "u" completes "ku"→"く", which
-;;         fires conversion with key "かk".  C-j commits the first candidate.
-;;
-
-(nskk-describe "standard consonant okurigana (baseline)"
-  (nskk-it "shows converting state on KaKu with dict entry"
-    ;; KaKu: ▽か + K (okurigana trigger, consonant=k) + u → key "かk" → overlay 書
-    (let ((dict '(("かk" . ("書")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "K")
-        (nskk-e2e-type "u")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "書"))))
-
-  (nskk-it "commits KaKu to 書く via C-j"
-    ;; Standard commit: kanji replaces the reading, okurigana kana "く" is appended.
-    (let ((dict '(("かk" . ("書")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "K")
-        (nskk-e2e-type "u")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "書く")
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "commits MiRu to 見る via C-j"
-    ;; MiRu: M starts preedit, "i" completes "み"; R is okurigana trigger (r);
-    ;; "u" completes "ru"→"る".  Key "みr" → candidate "見"; result 見る.
-    (let ((dict '(("みr" . ("見")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Mi")
-        (nskk-e2e-type "R")
-        (nskk-e2e-type "u")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "見る")
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "commits YoMu to 読む via C-j"
-    ;; YoMu: Y starts preedit, "o" completes "よ"; M is okurigana trigger (m);
-    ;; "u" completes "mu"→"む".  Key "よm" → candidate "読"; result 読む.
-    (let ((dict '(("よm" . ("読")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Yo")
-        (nskk-e2e-type "M")
-        (nskk-e2e-type "u")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "読む")
-        (nskk-e2e-assert-henkan-phase nil)))))
-
-;;;;
-;;;; Section 2: Sokuon Okurigana (促音送り仮名)
-;;;;
-;;
-;; Sokuon in okurigana arises when the okurigana suffix starts with っ, as in
-;; 勝った (katta) and 打った (utta).
-;;
-;; Mechanism (single okurigana trigger + sokuon):
-;;   Ka  → ▽か  (K starts preedit, a completes か)
-;;   T   → okurigana trigger: stores okuri=t, romaji-buffer="t", inserts * marker
-;;   t   → romaji "t"+"t" → sokuon classification → emits っ → fires conversion
-;;          with key "かt" (reading extracted up to * + okurigana char t)
-;;   a   → romaji "ta" → "た" is appended after っ
-;;   C-j → commits first candidate; buffer = kanji + "った"
-;;
-;; IMPORTANT: The dict key uses a SINGLE "t" (not "tt").  The sokuon っ is
-;; produced by the doubled-consonant romaji rule, not by the dict key format.
-;; The dict key records only the okurigana consonant that the user pressed as
-;; the uppercase okurigana trigger.
-;;
-
-(nskk-describe "sokuon okurigana (促音送り仮名)"
-  (nskk-it "triggers conversion on KaTt showing 勝"
-    ;; After T (okurigana trigger) and t (sokuon), conversion fires automatically.
-    ;; The overlay displays the first candidate before C-j is pressed.
-    (let ((dict '(("かt" . ("勝")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "T")
-        (nskk-e2e-type "t")
-        ;; At this point っ has been emitted and conversion triggered.
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "勝"))))
-
-  (nskk-it "commits KaTta to 勝った via C-j"
-    ;; Full sequence: Ka + T + ta → 勝った.
-    ;; Key "かt" (single t): the conversion fires when the sokuon っ is emitted.
-    ;; After conversion is triggered, "a" completes "ta"→"た" which is appended.
-    (let ((dict '(("かt" . ("勝")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "T")
-        (nskk-e2e-type "ta")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "勝った")
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "commits UTta to 打った via C-j"
-    ;; U starts preedit as a vowel (reading = "う").
-    ;; T is the okurigana trigger; romaji buffer = "t".
-    ;; t: "t"+"t" → sokuon → emits っ → triggers conversion with key "うt".
-    ;; a: "ta" → "た" appended after っ.
-    ;; C-j commits: buffer = 打 + "った".
-    (let ((dict '(("うt" . ("打")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "U")
-        (nskk-e2e-type "T")
-        (nskk-e2e-type "ta")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "打った")
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "sokuon okurigana henkan phase is nil after commit"
-    ;; Verifies that the conversion state is fully cleared after a sokuon
-    ;; okurigana commit.  No residual henkan phase should remain.
-    (let ((dict '(("かt" . ("勝")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "T")
-        (nskk-e2e-type "ta")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "allows continued input after sokuon okurigana commit"
-    ;; After committing 勝った, the user should be able to continue typing.
-    (let ((dict '(("かt" . ("勝")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "T")
-        (nskk-e2e-type "ta")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "勝った")
-        ;; Continue typing hiragana after the committed word.
-        (nskk-e2e-type "no")
-        (nskk-e2e-assert-buffer "勝ったの")))))
-
-;;;;
-;;;; Section 3: Multi-Character Vowel Okurigana
-;;;;
-;;
-;; Vowel okurigana occurs when the okurigana trigger is an uppercase vowel
-;; (A, I, U, E, O).  The vowel immediately produces a kana character and triggers
-;; conversion -- no following character is needed to complete the kana.
-;;
-;; "Multi-character" in this section means the total okurigana suffix has more
-;; than one kana.  The vowel okurigana produces the FIRST kana; subsequent
-;; lowercase input produces additional kana that accumulate after conversion.
-;;
-;; Examples:
-;;   KaEru: Ka → ▽か, E → vowel okurigana e → emits "え", triggers conversion
-;;           with key "かe"; then "ru" → "る" is appended in the buffer.
-;;           C-j commits: buffer = 変 + "える"  (2-char okurigana)
-;;
-;;   OmoU: Omo → ▽おも, U → vowel okurigana u → emits "う", triggers conversion
-;;          with key "おもu".  C-j commits: buffer = 思 + "う" (1-char okurigana).
-;;
-;; Dict key format for vowel okurigana:
-;;   hiragana-reading + lowercase vowel char
-;;   "かe" → ("変")   for 変える
-;;   "おもu" → ("思") for 思う
-;;
-
-(nskk-describe "multi-character vowel okurigana"
-  (nskk-it "triggers conversion on KaE with dict entry かe"
-    ;; Ka → ▽か; E (uppercase vowel) is okurigana trigger.
-    ;; Vowel okurigana path: immediately emits "え" and fires conversion with key "かe".
-    (let ((dict '(("かe" . ("変")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "E")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "変"))))
-
-  (nskk-it "commits KaEru to 変える via C-j"
-    ;; Full 変える sequence.  After E triggers conversion (key "かe", candidate "変"),
-    ;; "ru" → "る" is appended as continuation kana in the buffer.
-    ;; C-j commits: replaces the reading with the candidate and leaves "える".
-    (let ((dict '(("かe" . ("変")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "E")
-        (nskk-e2e-type "ru")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "変える")
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "commits OmoU to 思う via C-j"
-    ;; Omo → ▽おも; U (uppercase vowel) is okurigana trigger.
-    ;; Vowel okurigana: emits "う", fires conversion with key "おもu".
-    ;; C-j commits: buffer = 思 + "う".
-    (let ((dict '(("おもu" . ("思")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Omo")
-        (nskk-e2e-type "U")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "思う")
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "commits NaGaReru to 流れる via C-j (3-mora reading + vowel okurigana)"
-    ;; NaGa → ▽なが; R is consonant okurigana trigger (r).
-    ;; Wait -- R followed by "eru": R triggers okurigana with consonant r,
-    ;; then "e" completes "re"→"れ", which fires conversion.
-    ;; "ru" → "る" is appended continuation.
-    ;; Dict key: "ながr" (reading "なが" + consonant "r").
-    ;; C-j commits: 流 + "れる".
-    (let ((dict '(("ながr" . ("流")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Naga")
-        (nskk-e2e-type "R")
-        (nskk-e2e-type "e")
-        ;; "re" completes romaji → "れ" inserted, conversion triggered with key "ながr"
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "ru")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "流れる")
-        (nskk-e2e-assert-henkan-phase nil))))
-
-  (nskk-it "commits KaEru and allows continued input after"
-    ;; After committing 変える, verify that continued typing works correctly.
-    (let ((dict '(("かe" . ("変")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Ka")
-        (nskk-e2e-type "E")
-        (nskk-e2e-type "ru")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "変える")
-        (nskk-e2e-type "no")
-        (nskk-e2e-assert-buffer "変えるの"))))
-
-  (nskk-it "commits ArataMeru to 改める via C-j (5-mora reading + vowel okurigana)"
-    ;; ArataMeru: A starts preedit, "rata" → "らた" → reading "あらた";
-    ;; M is okurigana consonant trigger (m); "e" completes "me"→"め", fires conversion.
-    ;; "ru" is appended as continuation.
-    ;; Dict key: "あらたm" → candidate "改"; result 改める.
-    (let ((dict '(("あらたm" . ("改")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "Arata")
-        (nskk-e2e-type "M")
-        (nskk-e2e-type "e")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "ru")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "改める")
-        (nskk-e2e-assert-henkan-phase nil)))))
-
-;;;;
-;;;; Section 4: Katakana Mode Okurigana
-;;;;
-;;
-;; In katakana mode the reading accumulates as KATAKANA because
-;; nskk-input.el applies nskk-kana-string-hiragana-to-katakana before inserting.
-;; Dict lookup keys therefore use katakana + lowercase consonant (e.g. "カk").
-;; After commit, the okurigana kana appended is also KATAKANA (ク, エル, etc.).
-;;
-;; Comparison with hiragana mode:
-;;   Hiragana: "Ka"+"K"+"u" → dict key "かk" → 書く  (hiragana okurigana)
-;;   Katakana: "Ka"+"K"+"u" → dict key "カk" → 書ク  (katakana okurigana)
-;;
-;; This section verifies that okurigana conversion functions correctly in
-;; katakana mode and that both the reading lookup key and the appended kana
-;; suffix use katakana.
-;;
+(require 'nskk-pbt-generators)
 
 (nskk-describe "katakana mode okurigana"
   (nskk-it "triggers conversion on KaKu in katakana mode (dict key カk)"
@@ -413,6 +139,46 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "勝ッタ")
         (nskk-e2e-assert-henkan-phase nil)))))
+
+;;;;
+;;;; Property-Based Tests
+;;;;
+
+(nskk-deftest-cases okuri-extended-known-patterns
+  ((?k . "k") (?t . "t") (?r . "r") (?s . "s") (?n . "n"))
+  :description "Each okurigana consonant is a valid single character"
+  :body (should (characterp (car item))))
+
+(nskk-property-test okuri-extended-okurigana-consonant-is-char
+  ((c okurigana-consonant))
+  (should (stringp c))
+  50)
+
+(nskk-property-test okuri-extended-pattern-is-string
+  ((p okurigana-pattern))
+  (should (stringp p))
+  50)
+
+(nskk-property-test okuri-extended-pattern-does-not-crash-e2e
+  ((p okurigana-pattern))
+  (nskk-e2e-with-buffer 'hiragana nil
+    (condition-case err
+        (nskk-e2e-type p)
+      (error (ert-fail (format "okurigana pattern %s crashed: %s"
+                               p (error-message-string err)))))
+    t)
+  30)
+
+(nskk-describe "Okurigana extended property: consonant variety"
+  (nskk-it "any okurigana consonant combined with Ka prefix does not crash"
+    (dotimes (_ 25)
+      (nskk-for-all ((c okurigana-consonant))
+        (nskk-e2e-with-buffer 'hiragana nil
+          (condition-case err
+              (nskk-e2e-type (concat "Ka" c))
+            (error (ert-fail (format "Ka+%s crashed: %s"
+                                     c (error-message-string err)))))
+          t)))))
 
 (provide 'nskk-okuri-extended-e2e-test)
 

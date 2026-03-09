@@ -41,6 +41,7 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
+(require 'nskk-pbt-shrink)
 (require 'nskk-state)
 (require 'nskk-converter)
 (require 'nskk-henkan)
@@ -395,6 +396,118 @@
             (should (stringp converted))
             (should (> (length converted) 0))
             (should (nskk-state-p state))))))))
+
+
+;;;;
+;;;; CPS Tests: /k suffix function calling convention
+;;;;
+
+(nskk-describe "CPS: nskk-converter-convert/k dispatch invariants"
+
+  (nskk-it "calls exactly one branch for any romaji input"
+    (let ((failures nil))
+      (dotimes (_ 100)
+        (let* ((pattern (nskk-generate 'romaji-pattern))
+               (branch-called nil))
+          (condition-case nil
+              (nskk-converter-convert/k
+               pattern
+               (lambda (kana _remaining) (setq branch-called 'match) kana)
+               (lambda (prefix) (setq branch-called 'incomplete) prefix)
+               (lambda () (setq branch-called 'fail)))
+            (error (setq branch-called 'error)))
+          (unless (memq branch-called '(match incomplete fail))
+            (push (list :input pattern :branch branch-called) failures))))
+      (when failures
+        (ert-fail (format "CPS dispatch failed for %d cases:\n%S"
+                          (length failures) (seq-take failures 3))))))
+
+  (nskk-it "on-match continuation receives a non-empty string as first arg"
+    (let ((failures nil))
+      (dolist (romaji '("ka" "ki" "a" "i" "u" "sha" "chi" "tsu"))
+        (let ((result-value nil)
+              (branch-called nil))
+          (nskk-converter-convert/k
+           romaji
+           (lambda (kana _remaining)
+             (setq branch-called 'match result-value kana) kana)
+           (lambda (p) (setq branch-called 'incomplete) p)
+           (lambda () (setq branch-called 'fail)))
+          (when (eq branch-called 'match)
+            (unless (and (stringp result-value)
+                         (> (length result-value) 0))
+              (push (list :romaji romaji :result result-value) failures)))))
+      (when failures
+        (ert-fail (format "on-match received non-string for %d cases:\n%S"
+                          (length failures) failures))))))
+
+(nskk-property-test converter-convert/k-exactly-one-branch
+  ((pattern romaji-pattern))
+  (let ((call-count 0)
+        (branch nil))
+    (condition-case nil
+        (nskk-converter-convert/k
+         pattern
+         (lambda (_kana _remaining) (cl-incf call-count) (setq branch 'match))
+         (lambda (_prefix) (cl-incf call-count) (setq branch 'incomplete))
+         (lambda () (cl-incf call-count) (setq branch 'fail)))
+      (error (setq branch 'error call-count 1)))
+    ;; Exactly one branch called, exactly one time
+    (and (= call-count 1)
+         (memq branch '(match incomplete fail))))
+  100)
+
+;;;;
+;;;; CPS Tests: nskk-convert-romaji/k result type
+;;;;
+
+(nskk-describe "CPS: nskk-convert-romaji/k result type"
+
+  (nskk-it "on-result receives a string for any romaji input"
+    (let ((failures nil))
+      (dotimes (_ 50)
+        (let* ((pattern (nskk-generate 'romaji-basic))
+               (result-type nil))
+          (nskk-convert-romaji/k
+           pattern
+           (lambda (r) (setq result-type (type-of r))))
+          (unless (eq result-type 'string)
+            (push (list :input pattern :type result-type) failures))))
+      (when failures
+        (ert-fail (format "nskk-convert-romaji/k on-result type wrong for %d cases:\n%S"
+                          (length failures) failures))))))
+
+(nskk-property-test convert-romaji/k-result-is-string
+  ((pattern romaji-basic))
+  (let ((result-type nil))
+    (nskk-convert-romaji/k
+     pattern
+     (lambda (r) (setq result-type (type-of r))))
+    (eq result-type 'string))
+  50)
+
+;;;;
+;;;; CPS Tests: nskk-dict-lookup/k mutual exclusion
+;;;;
+
+(nskk-describe "CPS: nskk-dict-lookup/k mutual exclusion"
+
+  (nskk-it "calls exactly one of on-found or on-not-found"
+    (nskk-with-mock-dict nil
+      (let ((failures nil))
+        (dolist (key '("かんじ" "にほん" "nonexistent-xyz" "さくら" "does-not-exist"))
+          (let ((found-called nil)
+                (not-found-called nil))
+            (nskk-dict-lookup/k
+             key
+             (lambda (entry) (setq found-called t) entry)
+             (lambda () (setq not-found-called t)))
+            (when (and found-called not-found-called)
+              (push (list :key key :both-called t) failures))
+            (when (and (not found-called) (not not-found-called))
+              (push (list :key key :neither-called t) failures))))
+        (when failures
+          (ert-fail (format "dict-lookup/k branch exclusion failed:\n%S" failures)))))))
 
 
 (provide 'nskk-conversion-flow-pbt-test)

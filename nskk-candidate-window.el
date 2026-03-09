@@ -5,6 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -76,6 +77,8 @@
 (defvar nskk--conversion-overlay)  ;; defined in nskk-state.el
 (defvar nskk--candidate-overlay)   ;; defined in nskk-state.el
 
+;;;; Custom Group
+
 ;;;; Prolog Candidate Key Selection Facts
 
 (defvar nskk--candidate-key-facts-initialized nil
@@ -90,10 +93,9 @@ Uses hash indexing for O(1) key dispatch during candidate selection.
 Idempotent: safe to call multiple times."
   (unless nskk--candidate-key-facts-initialized
     (nskk-prolog-set-index 'candidate-selection-key 2 :hash)
-    (let ((i 0))
-      (dolist (k nskk-henkan-show-candidates-keys)
-        (nskk-prolog-assert `((candidate-selection-key ,k ,i)))
-        (cl-incf i)))
+    (cl-loop for k in nskk-henkan-show-candidates-keys
+             for i from 0
+             do (nskk-prolog-assert `((candidate-selection-key ,k ,i))))
     (setq nskk--candidate-key-facts-initialized t)))
 
 (nskk--candidate-init-key-facts)
@@ -121,20 +123,16 @@ Idempotent: safe to call multiple times."
 KEYS is the list of selection key characters.
 REMAINING is the count of candidates beyond the current page.
 Returns a string starting with \\n to appear below the preedit line."
-  (let ((parts nil))
-    (cl-loop for cand in page-candidates
-             for key in keys
-             do (push (concat
-                       (propertize (format "%c:" key)
-                                   'face 'nskk-candidate-key-face)
-                       (propertize cand
-                                   'face 'nskk-candidate-face))
-                      parts))
-    (let ((display-str (string-join (nreverse parts) " ")))
-      (when (> remaining 0)
-        (setq display-str
-              (concat display-str (format " [残り %d]" remaining))))
-      (concat "\n" display-str))))
+  (let* ((entries (cl-loop for cand in page-candidates
+                           for key  in keys
+                           collect (concat
+                                    (propertize (format "%c:" key)
+                                                'face 'nskk-candidate-key-face)
+                                    (propertize cand
+                                                'face 'nskk-candidate-face))))
+         (body   (string-join entries " "))
+         (suffix (when (> remaining 0) (format " [残り %d]" remaining))))
+    (concat "\n" body suffix)))
 
 (defun nskk--candidate-overlay-anchor ()
   "Return the buffer position to anchor the candidate overlay.

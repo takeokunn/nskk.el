@@ -19,12 +19,14 @@
 (require 'ert)
 (require 'nskk-test-macros)
 (require 'nskk-test-framework)
+(require 'nskk-pbt-generators)
 (require 'nskk-prolog)
 (require 'nskk-state)
 (require 'nskk-input)
 (require 'nskk-keymap)
 (require 'nskk-henkan)
 (require 'nskk-search)
+(require 'nskk)
 (eval-when-compile (require 'cl-lib))
 
 ;;;
@@ -682,6 +684,62 @@
             (nskk-process-japanese-input ?a 1)
             (should (string= (buffer-string) "あ")))
         (nskk-mode -1)))))
+
+;;;;
+;;;; Data-Provider: nskk-prolog-deffacts call count verification
+;;;;
+
+(nskk-deftest-table prolog-deffacts-call-count
+  :columns (fact-count expansion-args description)
+  :rows    ((0 ()                                       "empty fact list → zero nskk-prolog-<- calls")
+            (1 ((a b c))                               "single row → exactly one call")
+            (3 ((k1 v1) (k2 v2) (k3 v3))              "three rows → three calls"))
+  :description "nskk-prolog-deffacts expands to exactly N nskk-prolog-<- calls"
+  :body (let* ((form `(nskk-prolog-deffacts test-pred ,@expansion-args))
+               (expansion (macroexpand form))
+               (calls (cdr expansion)))
+          (should (eq (car expansion) 'progn))
+          (should (= fact-count (length calls)))))
+
+;;;;
+;;;; Property: nskk-prolog-deffacts always produces valid progn form
+;;;;
+
+(ert-deftest nskk-refactoring-prolog-deffacts-always-progn ()
+  "nskk-prolog-deffacts always expands to a progn form regardless of row count."
+  (dolist (n '(0 1 2 5 10))
+    (let* ((rows (cl-loop repeat n collect '(key value)))
+           (form `(nskk-prolog-deffacts test-pred ,@rows))
+           (expansion (macroexpand form)))
+      (should (eq (car expansion) 'progn))
+      (should (= n (length (cdr expansion)))))))
+
+;;;;
+;;;; Property: nskk-define-goal-handler registration is idempotent across modes
+;;;;
+
+(ert-deftest nskk-refactoring-goal-handler-count-stable-under-reload ()
+  "Re-registering a handler with the same name never increases the handler count."
+  (nskk-for-all ((mode valid-mode))
+    (let ((saved-handlers nskk-prolog--goal-handlers)
+          (handler-name (intern (format "test-reload-handler-for-%s" mode))))
+      (unwind-protect
+          (progn
+            (nskk-define-goal-handler test-reload-stable-handler (goal rest subst k)
+              :match (and (consp goal) (eq (car goal) 'test-reload-stable-sentinel))
+              :body (funcall k subst))
+            (let ((count-1 (length (cl-remove-if-not
+                                    (lambda (e) (eq (car e) 'test-reload-stable-handler))
+                                    nskk-prolog--goal-handlers))))
+              (nskk-define-goal-handler test-reload-stable-handler (goal rest subst k)
+                :match (and (consp goal) (eq (car goal) 'test-reload-stable-sentinel))
+                :body (funcall k subst))
+              (let ((count-2 (length (cl-remove-if-not
+                                      (lambda (e) (eq (car e) 'test-reload-stable-handler))
+                                      nskk-prolog--goal-handlers))))
+                (should (= count-1 count-2)))))
+        (ignore handler-name)
+        (setq nskk-prolog--goal-handlers saved-handlers)))))
 
 (provide 'nskk-refactoring-test)
 

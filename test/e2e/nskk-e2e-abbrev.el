@@ -33,6 +33,7 @@
 (require 'ert)
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 (eval-when-compile (require 'cl-lib))
 
 ;;;; Abbrev Mode Tests
@@ -264,6 +265,40 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "C-g")
         (nskk-e2e-assert-not-converting)))))
+
+;;;;
+;;;; Property-Based Tests
+;;;;
+
+(nskk-deftest-cases abbrev-ascii-sequences
+  (("test"  . "▽test")
+   ("hello" . "▽hello")
+   ("abc"   . "▽abc"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "/")
+    (nskk-e2e-type input)
+    (nskk-e2e-assert-buffer expected)))
+
+(nskk-describe "Abbrev mode property"
+  (nskk-it "/ entry does not crash in any mode"
+    (dotimes (_ 20)
+      (nskk-for-all ((mode valid-mode))
+        (nskk-e2e-with-buffer mode nil
+          (condition-case err
+              (nskk-e2e-type "/")
+            (error (ert-fail (format "Abbrev entry / crashed in mode %s: %s"
+                                     mode (error-message-string err))))))))))
+
+
+(nskk-describe "Abbrev property: ASCII bypass"
+  (nskk-it "any ASCII sequence in abbrev shows ▽prefix"
+    (dotimes (_ 20)
+      (nskk-for-all ((r romaji-basic))
+        (nskk-e2e-with-buffer 'hiragana nil
+          (nskk-e2e-type "/")
+          (nskk-e2e-type r)
+          (should (string-prefix-p "▽" (buffer-string))))))))
 
 (provide 'nskk-e2e-abbrev)
 

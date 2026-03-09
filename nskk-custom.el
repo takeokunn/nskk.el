@@ -5,6 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -62,6 +63,8 @@
 
 ;;; Code:
 
+(require 'cl-lib)
+
 ;;;; Top-Level Groups
 
 (defgroup nskk nil
@@ -93,8 +96,8 @@
 
 (defcustom nskk-state-undo-limit 100
   "Maximum number of undo operations to keep in history."
-  :type 'integer
-  :safe #'integerp
+  :type 'natnum
+  :safe #'natnump
   :group 'nskk-state)
 
 ;;;; Converter Settings
@@ -156,9 +159,10 @@
   :group 'nskk-search)
 
 (defcustom nskk-search-fuzzy-threshold 3
-  "Maximum Levenshtein distance threshold for fuzzy search."
-  :type 'integer
-  :safe #'integerp
+  "Maximum Levenshtein distance threshold for fuzzy search.
+Zero disables fuzzy matching."
+  :type 'natnum
+  :safe #'natnump
   :group 'nskk-search)
 
 (defcustom nskk-search-enable-cache t
@@ -180,12 +184,11 @@
   :group 'nskk-search)
 
 (defcustom nskk-search-auto-save-interval 300
-  "Auto-save interval in seconds for learning data."
-  :type 'integer
-  :safe #'integerp
+  "Auto-save interval in seconds for learning data.
+Zero means save on every update."
+  :type 'natnum
+  :safe #'natnump
   :group 'nskk-search)
-
-;;;; Multiple Jisyo (Dictionary Files) Settings
 
 (defcustom nskk-jisyo-files nil
   "List of SKK dictionary file paths to load, in priority order.
@@ -200,6 +203,7 @@ Example configuration:
 
 DDSKK equivalent: skk-search-prog-list with multiple jisyo entries."
   :type '(repeat file)
+  :safe (lambda (v) (and (listp v) (cl-every #'stringp v)))
   :group 'nskk-search)
 
 ;;;; UI / Modeline Settings
@@ -210,8 +214,11 @@ DDSKK equivalent: skk-search-prog-list with multiple jisyo entries."
   :group 'nskk-ui)
 
 (defcustom nskk-modeline-format " %m"
-  "Modeline format string.
-%m is replaced with the mode name.
+  "NSKK lighter format string.
+\\=%m\\= is an NSKK-specific placeholder replaced with the current input-mode
+indicator string (e.g. \"あ\", \"ア\", \"_\").  This placeholder is expanded
+internally by NSKK and is distinct from the standard Emacs mode-line \\=%m\\=
+construct (which expands to the major-mode name).
 The leading space follows the Emacs minor-mode lighter convention,
 separating the indicator from adjacent mode indicators in the mode line."
   :type 'string
@@ -267,15 +274,18 @@ The :background attribute is used as the cursor color via `face-attribute'."
 (defcustom nskk-henkan-show-candidates-nth 5
   "Number of SPC presses before showing candidate list.
 After this many candidates shown one-by-one, switch to overlay
-candidate list display below the conversion region."
-  :type 'integer
-  :safe #'integerp
+candidate list display below the conversion region.
+Zero means always show the list immediately."
+  :type 'natnum
+  :safe #'natnump
   :group 'nskk-henkan)
 
 (defcustom nskk-henkan-number-to-display-candidates 7
-  "Number of candidates to display per page in candidate list."
-  :type 'integer
-  :safe #'integerp
+  "Number of candidates to display per page in candidate list.
+Must be at least 1; should match the number of selection keys in
+`nskk-henkan-show-candidates-keys'."
+  :type 'natnum
+  :safe #'natnump
   :group 'nskk-henkan)
 
 (defcustom nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l)
@@ -289,7 +299,7 @@ These keys allow direct candidate selection in the overlay candidate list."
   "Maximum nesting depth for recursive word registration.
 When `nskk--registration-depth' reaches this value, further
 registration attempts are silently ignored."
-  :type 'integer
+  :type 'natnum
   :safe #'natnump
   :group 'nskk-henkan)
 
@@ -317,9 +327,11 @@ terms in the debug buffer for diagnostic purposes."
   :group 'nskk-debug)
 
 (defcustom nskk-debug-max-entries 1000
-  "Maximum number of log entries before trimming the debug buffer."
-  :type 'integer
-  :safe #'integerp
+  "Maximum number of log entries before trimming the debug buffer.
+A value of zero causes `nskk-debug--trim' to clear the buffer on
+every append (effectively disabling the buffer log)."
+  :type 'natnum
+  :safe #'natnump
   :group 'nskk-debug)
 
 (provide 'nskk-custom)

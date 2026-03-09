@@ -42,6 +42,7 @@
 (require 'ert)
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 
 ;;;;
 ;;;; Section 1: Point after preedit input (▽ state)
@@ -276,6 +277,37 @@
       ;; During converting state, point must be within buffer bounds.
       (should (<= (point-min) (point)))
       (should (>= (point-max) (point))))))
+
+;;;;
+;;;; Property-Based Tests
+;;;;
+
+(nskk-deftest-cases point-after-operations
+  (("K" . point-max)
+   ("a" . point-max))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type input)
+    (should (= (point) (point-max)))))
+
+(nskk-property-test point-at-max-after-any-char-insert
+  ((mode valid-mode))
+  (dotimes (_ 20)
+    (nskk-for-all ((mode valid-mode))
+      (nskk-e2e-with-buffer mode nil
+        (nskk-e2e-type "a")
+        (should (= (point) (point-max)))))))
+
+(nskk-describe "Point property: invariant during input"
+  (nskk-it "point never goes below point-min after C-j commit"
+    (dotimes (_ 20)
+      (nskk-for-all ((mode valid-mode))
+        (nskk-e2e-with-buffer mode nil
+          (nskk-e2e-type "a")
+          (condition-case nil
+              (nskk-e2e-type "C-j")
+            (error nil))
+          (should (>= (point) (point-min))))))))
 
 (provide 'nskk-point-e2e-test)
 

@@ -46,6 +46,7 @@
 (require 'ert)
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 (eval-when-compile (require 'cl-lib))
 
 ;;;;
@@ -342,6 +343,50 @@
       (nskk-e2e-type "C-e")
       (should (= (point) (point-max)))
       (nskk-e2e-assert-not-converting))))
+
+;;;;
+;;;; Property-Based Tests: Navigation Point Invariants
+;;;;
+
+(nskk-deftest-cases navigation-point-invariants
+  (("C-f" . "forward")
+   ("C-b" . "backward"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type "a")
+    (nskk-e2e-type input)
+    (should (>= (point) (point-min)))))
+
+;;;;
+;;;; Property-Based Tests: C-f in Normal Does Not Crash
+;;;;
+
+(nskk-property-test navigation-cf-in-normal-does-not-crash
+    ((mode valid-mode))
+  (progn
+    (nskk-e2e-with-buffer mode nil
+      (condition-case err
+          (nskk-e2e-type "C-f")
+        (error (ert-fail (format "C-f in mode %s raised error: %s"
+                                 mode (error-message-string err)))))
+      t))
+  30)
+
+;;;;
+;;;; Property-Based Tests: Navigation Point Stability
+;;;;
+
+(nskk-describe "Navigation property: point stability"
+
+  (nskk-it "C-f/C-b in any mode keeps point within buffer bounds"
+    (dotimes (_ 25)
+      (nskk-for-all ((mode valid-mode))
+        (nskk-e2e-with-buffer mode nil
+          (nskk-e2e-type "a")
+          (nskk-e2e-type "C-f")
+          (should (and (>= (point) (point-min)) (<= (point) (point-max))))
+          (nskk-e2e-type "C-b")
+          (should (and (>= (point) (point-min)) (<= (point) (point-max)))))))))
 
 (provide 'nskk-navigation-e2e-test)
 

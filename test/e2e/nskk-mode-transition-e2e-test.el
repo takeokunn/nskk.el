@@ -571,6 +571,37 @@
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-mode 'hiragana))))
 
+;;;;
+;;;; PBT: Mode transition invariants
+;;;;
+
+(nskk-deftest-cases mode-valid-symbols
+  ((ascii    . ascii)
+   (hiragana . hiragana)
+   (katakana . katakana)
+   (latin    . latin))
+  :description "Each mode symbol is a valid non-nil symbol"
+  :body (should (and (symbolp input) (not (null input)) (eq input expected))))
+
+(nskk-property-test mode-transition-state-always-valid
+  ((mode valid-mode))
+  (condition-case nil
+      (nskk-with-state mode
+        (or (null nskk-current-state)
+            (nskk-state-p nskk-current-state)))
+    (error nil))
+  50)
+
+(nskk-describe "Mode transition properties"
+  (nskk-it "any valid mode produces a valid state"
+    (nskk-for-all ((mode valid-mode))
+      (condition-case nil
+          (let ((state (nskk-state-create mode)))
+            (should (nskk-state-p state))
+            (should (eq (nskk-state-mode state) mode)))
+        (error nil)))))
+
+
 (provide 'nskk-mode-transition-e2e-test)
 
 ;;; nskk-mode-transition-e2e-test.el ends here

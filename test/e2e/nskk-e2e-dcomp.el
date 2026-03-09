@@ -25,7 +25,6 @@
 ;;; Commentary:
 
 ;; E2E tests for dynamic completion via TAB key (DDSKK §5.3).
-;; Currently ert-skip; implementation pending (FR-001).
 
 ;;; Code:
 

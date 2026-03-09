@@ -254,6 +254,54 @@
           (should (null result)))))))
 
 
+;;;
+;;; Property-Based Tests
+;;;
+
+(require 'nskk-pbt-generators)
+
+(nskk-deftest-cases dict-registration-readings
+  (("てすと" . "テスト")
+   ("さくら" . "桜")
+   ("やま"   . "山"))
+  :body
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk--user-dict-index 'user)
+          (nskk-dict-modified nil))
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-dict-register-word input expected)
+      (should (member expected (nskk-dict-lookup input))))))
+
+(nskk-property-test dict-registration-lookup-roundtrip
+  ((q search-query))
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk--user-dict-index 'user)
+          (nskk-dict-modified nil))
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let ((word "テスト"))
+        (nskk-dict-register-word q word)
+        (should (member word (nskk-dict-lookup q))))))
+  30)
+
+(nskk-property-test dict-lookup-unknown-reading-returns-nil
+  ((q search-query))
+  (nskk-prolog-test-with-isolated-db
+    ;; Fresh empty DB; any random query should return nil (not in dict)
+    (should (null (nskk-dict-lookup q))))
+  30)
+
+(nskk-describe "Dict registration property: modified flag"
+  (nskk-it "nskk-dict-modified is set after any registration"
+    (dotimes (_ 20)
+      (nskk-for-all ((q search-query))
+        (nskk-prolog-test-with-isolated-db
+          (let ((nskk--user-dict-index 'user)
+                (nskk-dict-modified nil))
+            (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+            (nskk-dict-register-word q "テスト")
+            (should nskk-dict-modified)))))))
+
+
 (provide 'nskk-dict-registration-integration-test)
 
 ;;; nskk-dict-registration-integration-test.el ends here

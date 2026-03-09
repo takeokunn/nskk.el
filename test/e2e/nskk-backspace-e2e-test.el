@@ -31,7 +31,7 @@
 ;;
 ;; Key handler being tested (nskk-handle-backspace):
 ;;   In preedit (▽) state:   delete last char, or cancel preedit if empty
-;;   In converting (▼) state: cancel conversion (rollback to kana reading)
+;;   In converting (▼) state: rollback to ▽ preedit (DDSKK-compatible)
 ;;   In normal state:          delegate to backward-delete-char
 ;;
 ;; Sections:
@@ -45,6 +45,7 @@
 (require 'ert)
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 (eval-when-compile (require 'cl-lib))
 
 ;;;;
@@ -52,21 +53,21 @@
 ;;;;
 
 (nskk-describe "DEL in converting state"
-  (nskk-it "cancels to preedit and restores kana reading"
+  (nskk-it "rolls back to ▽ preedit (DDSKK-compatible)"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       ;; Verify we are in converting state before DEL
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "DEL")
-      ;; After cancel: no longer converting
+      ;; After rollback: no longer converting (▽ preedit, not ▼)
       (nskk-e2e-assert-not-converting)
-      ;; henkan-phase is nil after rollback (nskk-rollback-conversion resets it)
-      (nskk-e2e-assert-henkan-phase nil "DEL from ▼ state: henkan-phase should be nil")
-      ;; Buffer retains the kana reading without the ▼ marker
-      (nskk-e2e-assert-buffer "かんじ" "DEL from ▼ state: buffer should contain kana reading")))
+      ;; henkan-phase is 'on after rollback (restored to ▽ preedit -- DDSKK-compatible)
+      (nskk-e2e-assert-henkan-phase 'on "DEL from ▼ state: henkan-phase should be 'on (▽ preedit)")
+      ;; Buffer shows ▽ + kana reading (marker restored, not stripped)
+      (nskk-e2e-assert-buffer "▽かんじ" "DEL from ▼ state: buffer should show ▽ preedit with kana reading")))
 
-  (nskk-it "cancels from 2nd candidate back to kana reading"
+  (nskk-it "rolls back from 2nd candidate to ▽ preedit"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
@@ -76,12 +77,12 @@
       ;; Still in converting state
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "DEL")
-      ;; After cancel: no longer converting
+      ;; After rollback: no longer converting
       (nskk-e2e-assert-not-converting)
-      ;; henkan-phase is nil after rollback
-      (nskk-e2e-assert-henkan-phase nil "DEL from ▼ 2nd candidate: henkan-phase should be nil")
-      ;; Buffer retains the kana reading
-      (nskk-e2e-assert-buffer "かんじ" "DEL from ▼ 2nd candidate: buffer should contain kana reading"))))
+      ;; henkan-phase is 'on after rollback
+      (nskk-e2e-assert-henkan-phase 'on "DEL from ▼ 2nd candidate: henkan-phase should be 'on (▽ preedit)")
+      ;; Buffer shows ▽ + kana reading
+      (nskk-e2e-assert-buffer "▽かんじ" "DEL from ▼ 2nd candidate: buffer should show ▽ preedit with kana reading"))))
 
 ;;;;
 ;;;; Section 2: DEL in hiragana preedit (▽) state (non-abbrev)
@@ -164,20 +165,66 @@
 ;;;;
 
 (nskk-describe "DEL cancel and resume behavior"
-  (nskk-it "cancels conversion and allows re-entry after DEL"
+  (nskk-it "rolls back to ▽ preedit and allows re-conversion after DEL"
     (nskk-e2e-with-buffer 'hiragana nil
       ;; Enter converting state
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; DEL: cancel conversion → kana reading restored, phase nil
+      ;; DEL: rollback to ▽ preedit (DDSKK-compatible)
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-not-converting)
-      (nskk-e2e-assert-henkan-phase nil "After DEL cancel: henkan-phase should be nil")
-      ;; After rollback the kana reading is in the buffer.
-      ;; We cannot re-enter conversion from the rolled-back text because the ▽
-      ;; marker is gone and henkan-phase is nil.  Verify buffer shows reading.
-      (nskk-e2e-assert-buffer "かんじ" "After DEL cancel: buffer contains kana reading"))))
+      (nskk-e2e-assert-henkan-phase 'on "After DEL rollback: henkan-phase should be 'on (▽ preedit)")
+      ;; After rollback, ▽ marker is restored and kana reading is editable.
+      ;; The user can edit the reading or press SPC to re-convert.
+      (nskk-e2e-assert-buffer "▽かんじ" "After DEL rollback: buffer shows ▽ preedit with kana reading")
+      ;; C-g from ▽ preedit cancels preedit entirely (second press behavior)
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-henkan-phase nil "After C-g from ▽: preedit cancelled, henkan-phase nil")
+      (nskk-e2e-assert-buffer "" "After C-g from ▽: buffer is empty"))))
+
+;;;;
+;;;; Property-Based Tests: Backspace State Entry Sequences
+;;;;
+
+(nskk-deftest-cases backspace-state-entry-sequences
+  (("Ka" . on)
+   ("a" . nil)
+   ("Kanji" . on))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type input)
+    (nskk-e2e-assert-henkan-phase expected)))
+
+;;;;
+;;;; Property-Based Tests: DEL on Normal State Does Not Crash
+;;;;
+
+(nskk-property-test backspace-del-on-normal-does-not-crash
+    ((mode valid-mode))
+  (progn
+    (nskk-e2e-with-buffer mode nil
+      (condition-case err
+          (nskk-e2e-type "DEL")
+        (error (ert-fail (format "DEL crashed in mode %s: %s"
+                                 mode (error-message-string err)))))
+      t))
+  30)
+
+;;;;
+;;;; Property-Based Tests: DEL Buffer Consistency
+;;;;
+
+(nskk-describe "DEL property: buffer consistency"
+
+  (nskk-it "DEL on non-empty normal buffer decrements buffer length"
+    (dotimes (_ 20)
+      (nskk-for-all ((mode valid-mode))
+        (nskk-e2e-with-buffer mode nil
+          (nskk-e2e-type "a")
+          (let ((len-before (length (buffer-string))))
+            (nskk-e2e-type "DEL")
+            (should (<= (length (buffer-string)) len-before))))))))
 
 (provide 'nskk-backspace-e2e-test)
 

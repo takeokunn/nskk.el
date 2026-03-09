@@ -58,57 +58,14 @@
             (should (string-prefix-p " " indicator))
             (should (string-match-p expected-pattern indicator)))))
 
-(nskk-describe "nskk-modeline-indicator bracket format"
-  (nskk-it "hiragana indicator uses the [%m] format"
-    (let* ((nskk-modeline-format "[%m]")
-           (nskk-current-state (nskk-state-create 'hiragana))
-           (indicator (nskk-modeline-indicator)))
-      (should (string-prefix-p "[" indicator))
-      (should (string-suffix-p "]" indicator))))
-
-  (nskk-it "ascii indicator uses the [%m] format"
-    (let* ((nskk-modeline-format "[%m]")
-           (nskk-current-state (nskk-state-create 'ascii))
-           (indicator (nskk-modeline-indicator)))
-      (should (string-prefix-p "[" indicator))
-      (should (string-suffix-p "]" indicator)))))
-
-(nskk-describe "nskk-modeline-indicator face text-property"
-  (nskk-it "hiragana indicator carries nskk-modeline-hiragana-face"
-    (nskk-with-state 'hiragana
-      (let* ((indicator (nskk-modeline-indicator))
-             (face (get-text-property 0 'face indicator)))
-        (should (eq face 'nskk-modeline-hiragana-face)))))
-
-  (nskk-it "katakana indicator carries nskk-modeline-katakana-face"
-    (nskk-with-state 'katakana
-      (let* ((indicator (nskk-modeline-indicator))
-             (face (get-text-property 0 'face indicator)))
-        (should (eq face 'nskk-modeline-katakana-face)))))
-
-  (nskk-it "abbrev indicator carries nskk-modeline-abbrev-face"
-    (nskk-with-state 'abbrev
-      (let* ((indicator (nskk-modeline-indicator))
-             (face (get-text-property 0 'face indicator)))
-        (should (eq face 'nskk-modeline-abbrev-face)))))
-
-  (nskk-it "jisx0208-latin indicator carries nskk-modeline-jisx0208-latin-face"
-    (nskk-with-state 'jisx0208-latin
-      (let* ((indicator (nskk-modeline-indicator))
-             (face (get-text-property 0 'face indicator)))
-        (should (eq face 'nskk-modeline-jisx0208-latin-face)))))
-
-  (nskk-it "ascii indicator carries nskk-modeline-direct-face"
-    (nskk-with-state 'ascii
-      (let* ((indicator (nskk-modeline-indicator))
-             (face (get-text-property 0 'face indicator)))
-        (should (eq face 'nskk-modeline-direct-face)))))
-
-  (nskk-it "latin indicator carries nskk-modeline-direct-face"
-    (nskk-with-state 'latin
-      (let* ((indicator (nskk-modeline-indicator))
-             (face (get-text-property 0 'face indicator)))
-        (should (eq face 'nskk-modeline-direct-face))))))
+(nskk-deftest-table modeline-bracket-format
+  :columns (mode)
+  :rows ((hiragana) (ascii))
+  :body (let* ((nskk-modeline-format "[%m]")
+               (nskk-current-state (nskk-state-create mode))
+               (indicator (nskk-modeline-indicator)))
+          (should (string-prefix-p "[" indicator))
+          (should (string-suffix-p "]" indicator))))
 
 (nskk-deftest-table modeline-prolog-mode-properties-exist
   :columns (mode)
@@ -172,6 +129,21 @@
       (should (string-suffix-p "!" indicator))
       (should (string-match-p "SKK" indicator)))))
 
+(nskk-describe "nskk-modeline--clear-cache"
+  (nskk-it "is defined as a function"
+    (should (fboundp 'nskk-modeline--clear-cache)))
+
+  (nskk-it "resets a populated cache to nil"
+    (let ((nskk--modeline-indicator-cache '(hiragana "かな" nskk-modeline-hiragana-face "Hiragana")))
+      (nskk-modeline--clear-cache)
+      (should (null nskk--modeline-indicator-cache))))
+
+  (nskk-it "is idempotent when cache is already nil"
+    (let ((nskk--modeline-indicator-cache nil))
+      (should-not (condition-case err
+                      (progn (nskk-modeline--clear-cache) nil)
+                    (error err))))))
+
 (nskk-describe "nskk-modeline-update"
   (nskk-it "is defined as a function"
     (should (fboundp 'nskk-modeline-update)))
@@ -187,23 +159,23 @@
       (let ((nskk--last-cursor-color nil))
         (should-not (condition-case err
                         (progn (nskk-modeline-update) nil)
-                      (error err)))))))
+                      (error err))))))
 
-(nskk-describe "modeline face definitions"
-  (nskk-it "nskk-modeline-hiragana-face is defined"
-    (should (facep 'nskk-modeline-hiragana-face)))
+  (nskk-it "invalidates the indicator cache"
+    (nskk-with-state 'hiragana
+      (nskk-modeline-indicator)  ; populate cache
+      (should (consp nskk--modeline-indicator-cache))
+      (nskk-modeline-update)
+      (should (null nskk--modeline-indicator-cache)))))
 
-  (nskk-it "nskk-modeline-katakana-face is defined"
-    (should (facep 'nskk-modeline-katakana-face)))
-
-  (nskk-it "nskk-modeline-abbrev-face is defined"
-    (should (facep 'nskk-modeline-abbrev-face)))
-
-  (nskk-it "nskk-modeline-jisx0208-latin-face is defined"
-    (should (facep 'nskk-modeline-jisx0208-latin-face)))
-
-  (nskk-it "nskk-modeline-direct-face is defined"
-    (should (facep 'nskk-modeline-direct-face))))
+(nskk-deftest-table modeline-faces-defined
+  :columns (face-sym)
+  :rows ((nskk-modeline-hiragana-face)
+         (nskk-modeline-katakana-face)
+         (nskk-modeline-abbrev-face)
+         (nskk-modeline-jisx0208-latin-face)
+         (nskk-modeline-direct-face))
+  :body (should (facep face-sym)))
 
 (nskk-describe "nskk-define-mode-entry macro"
   (nskk-it "is defined as a function"
@@ -268,16 +240,15 @@
 (nskk-property-test-seeded modeline-format-bracket-invariant
   ((mode valid-mode))
   (let* ((nskk-modeline-format "[%m]")
-         (nskk-current-state (if (memq mode '(hiragana katakana ascii latin jisx0208-latin abbrev))
-                                 (nskk-state-create mode)
-                               (nskk-state-create 'hiragana)))
+         (nskk-current-state (nskk-state-create
+                              (if (memq mode '(hiragana katakana ascii latin jisx0208-latin abbrev))
+                                  mode
+                                'hiragana)))
          (indicator (nskk-modeline-indicator)))
-    ;; When state is set and format is "[%m]", indicator must start with "[" and end with "]"
-    (if (null nskk-current-state)
-        t
-      (and (stringp indicator)
-           (string-prefix-p "[" indicator)
-           (string-suffix-p "]" indicator))))
+    ;; When format is "[%m]", indicator must start with "[" and end with "]"
+    (and (stringp indicator)
+         (string-prefix-p "[" indicator)
+         (string-suffix-p "]" indicator)))
   50
   42)
 
@@ -298,35 +269,102 @@
                (actual-face (get-text-property 0 'face indicator)))
           (should (eq actual-face expected-face))))
 
-(nskk-describe "cursor color faces"
-  (nskk-it "nskk-cursor-hiragana face is defined"
-    (should (facep 'nskk-cursor-hiragana)))
+(nskk-deftest-table cursor-faces-defined
+  :columns (face-sym)
+  :rows ((nskk-cursor-hiragana)
+         (nskk-cursor-katakana)
+         (nskk-cursor-latin)
+         (nskk-cursor-jisx0208-latin)
+         (nskk-cursor-abbrev))
+  :body (should (facep face-sym)))
 
-  (nskk-it "nskk-cursor-katakana face is defined"
-    (should (facep 'nskk-cursor-katakana)))
+(nskk-deftest-table cursor-faces-have-background-color
+  :columns (face-sym)
+  :rows ((nskk-cursor-hiragana)
+         (nskk-cursor-katakana)
+         (nskk-cursor-latin)
+         (nskk-cursor-jisx0208-latin)
+         (nskk-cursor-abbrev))
+  :body (let ((color (face-attribute face-sym :background nil t)))
+          (should (stringp color))
+          (should (not (memq color '(nil unspecified))))))
 
-  (nskk-it "nskk-cursor-latin face is defined"
-    (should (facep 'nskk-cursor-latin)))
-
-  (nskk-it "nskk-cursor-jisx0208-latin face is defined"
-    (should (facep 'nskk-cursor-jisx0208-latin)))
-
-  (nskk-it "nskk-cursor-abbrev face is defined"
-    (should (facep 'nskk-cursor-abbrev)))
-
-  (nskk-it "cursor face :background attributes return a color string"
-    (dolist (face '(nskk-cursor-hiragana nskk-cursor-katakana
-                    nskk-cursor-latin nskk-cursor-jisx0208-latin
-                    nskk-cursor-abbrev))
-      (let ((color (face-attribute face :background nil t)))
-        (should (stringp color))
-        (should (not (memq color '(nil unspecified)))))))
-
-  (nskk-it "nskk-cursor--mode-color returns face :background value for hiragana"
+(nskk-describe "cursor color face consistency"
+  (nskk-it "nskk-cursor--mode-color for hiragana matches nskk-cursor-hiragana :background"
     (let ((color (nskk-cursor--mode-color 'hiragana))
           (face-color (face-attribute 'nskk-cursor-hiragana :background nil t)))
       (should (stringp color))
       (should (string= color face-color)))))
+
+;;;
+;;; nskk-modeline--with-data cache behavior
+;;;
+
+(nskk-describe "nskk-modeline--with-data"
+  (nskk-it "calls continuation with (display face help) list for hiragana"
+    (let (received)
+      (nskk-modeline--with-data
+       'hiragana
+       (lambda (data) (setq received data)))
+      (should (listp received))
+      (should (= (length received) 3))
+      (should (stringp (nth 0 received)))
+      (should (symbolp (nth 1 received)))))
+
+  (nskk-it "memoizes: second call with same mode reuses cache without re-querying Prolog"
+    (let ((call-count 0))
+      (nskk-modeline--clear-cache)
+      ;; First call — hits Prolog and caches the result
+      (nskk-modeline--with-data
+       'hiragana
+       (lambda (_) (cl-incf call-count)))
+      ;; Force the cache to appear valid (same mode key) and count
+      (nskk-modeline--with-data
+       'hiragana
+       (lambda (_) (cl-incf call-count)))
+      ;; Both calls succeed; count should be 2 (continuation ran each time)
+      (should (= call-count 2))
+      ;; Cache should now be set for hiragana
+      (should (eq (car nskk--modeline-indicator-cache) 'hiragana))))
+
+  (nskk-it "invalidates cache when mode changes"
+    (nskk-modeline--clear-cache)
+    (nskk-modeline--with-data 'hiragana #'ignore)
+    (should (eq (car nskk--modeline-indicator-cache) 'hiragana))
+    (nskk-modeline--with-data 'katakana #'ignore)
+    ;; After querying a different mode the cache key must change
+    (should (eq (car nskk--modeline-indicator-cache) 'katakana))))
+
+;;;
+;;; nskk-cursor--with-color CPS helper
+;;;
+
+(nskk-describe "nskk-cursor--with-color"
+  (nskk-it "calls continuation with a color string for hiragana"
+    (let (received)
+      (nskk-cursor--with-color
+       'hiragana
+       (lambda (color) (setq received color)))
+      (should (stringp received))
+      (should (> (length received) 0))))
+
+  (nskk-it "calls continuation with a color string for katakana"
+    (let (received)
+      (nskk-cursor--with-color
+       'katakana
+       (lambda (color) (setq received color)))
+      (should (stringp received))))
+
+  (nskk-it "does not call continuation for an unregistered mode"
+    (let (called)
+      (nskk-cursor--with-color
+       'nonexistent-mode
+       (lambda (_) (setq called t)))
+      (should-not called)))
+
+  (nskk-it "returned value is identity of color when continuation is identity"
+    (let ((color (nskk-cursor--with-color 'hiragana #'identity)))
+      (should (stringp color)))))
 
 (provide 'nskk-modeline-test)
 

@@ -205,7 +205,9 @@
     (nskk-integration-with-session 'hiragana
       (nskk-when  (nskk-integration--type-char ?A))
       (nskk-then  (should (nskk--conversion-start-active-p)))
-      (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("亜" "阿"))))
+      (nskk-with-mocks ((nskk-core-search/k
+                         (lambda (_k _t _l on-found _on-not-found)
+                           (funcall on-found '("亜" "阿")))))
         (nskk-when (let ((last-command-event ? ))
                      (nskk-handle-space)))
         (nskk-then (should (nskk-converting-p)))
@@ -216,7 +218,9 @@
   (nskk-it "canceling conversion exits converting state"
     (nskk-integration-with-session 'hiragana
       (nskk-integration--type-char ?A)
-      (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("result"))))
+      (nskk-with-mocks ((nskk-core-search/k
+                         (lambda (_k _t _l on-found _on-not-found)
+                           (funcall on-found '("result")))))
         (let ((last-command-event ? ))
           (nskk-handle-space)))
       (nskk-then (should (nskk-converting-p)))
@@ -245,7 +249,9 @@
   (nskk-it "commit clears marker, overlay, candidates, and romaji buffer"
     (nskk-integration-with-session 'hiragana
       (nskk-integration--type-char ?A)
-      (nskk-with-mocks ((nskk-core-search (lambda (_k &optional _t _l) '("result"))))
+      (nskk-with-mocks ((nskk-core-search/k
+                         (lambda (_k _t _l on-found _on-not-found)
+                           (funcall on-found '("result")))))
         (let ((last-command-event ? ))
           (nskk-handle-space)))
       (nskk-then (should (nskk-converting-p)))

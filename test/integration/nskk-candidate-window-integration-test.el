@@ -151,6 +151,53 @@
         (should (= 0 (funcall nskk-henkan-select-candidate-by-key-function
                               ?a candidates 0)))))))
 
+;;;
+;;; Property-Based Tests
+;;;
+
+(require 'nskk-pbt-generators)
+
+(nskk-deftest-table candidate-key-selection
+  :columns (key-char expected-index)
+  :rows ((?a 0) (?s 1) (?d 2) (?f 3) (?j 4) (?k 5) (?l 6))
+  :body
+  (with-temp-buffer
+    (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+          (nskk-henkan-number-to-display-candidates 7)
+          (candidates '("a" "b" "c" "d" "e" "f" "g")))
+      (nskk-candidate-show-list candidates 0)
+      (let ((result (nskk-candidate-list-select-by-key key-char candidates 0)))
+        (nskk-candidate-hide-list)
+        (should (= result expected-index))))))
+
+(nskk-property-test candidate-show-hide-active-p-consistency
+  ((cv candidates-with-valid-index))
+  (with-temp-buffer
+    (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+          (nskk-henkan-number-to-display-candidates 7)
+          (candidates (plist-get cv :candidates))
+          (idx (plist-get cv :index)))
+      (nskk-candidate-show-list candidates idx)
+      (should (nskk-candidate-list-active-p))
+      (nskk-candidate-hide-list)
+      (should (null (nskk-candidate-list-active-p)))))
+  30)
+
+(nskk-describe "Candidate window property: show/hide cycle"
+  (nskk-it "repeated show/hide cycles always end inactive"
+    (dotimes (_ 20)
+      (nskk-for-all ((cv candidates-with-valid-index))
+        (with-temp-buffer
+          (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+                (nskk-henkan-number-to-display-candidates 7)
+                (candidates (plist-get cv :candidates))
+                (idx (plist-get cv :index)))
+            (dotimes (_ 3)
+              (nskk-candidate-show-list candidates idx)
+              (nskk-candidate-hide-list))
+            (should-not (nskk-candidate-list-active-p))))))))
+
+
 (provide 'nskk-candidate-window-integration-test)
 
 ;;; nskk-candidate-window-integration-test.el ends here

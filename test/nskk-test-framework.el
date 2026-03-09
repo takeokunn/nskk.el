@@ -3,7 +3,7 @@
 ;; Copyright (C) 2025 NSKK Authors
 
 ;; Author: takeokunn <bararararatty@gmail.com>
-;; Keywords: Japanese, input, method, test, framework
+;; Keywords: i18n
 ;; Homepage: https://github.com/takeokunn/nskk.el
 
 ;; This file is part of NSKK.
@@ -24,17 +24,15 @@
 ;;; Commentary:
 
 ;; This file provides a comprehensive test framework for NSKK using ERT
-;; (Emacs Lisp Regression Testing). It includes test helpers, fixtures,
-;; and utilities to support TDD (Test-Driven Development) and PBT
-;; (Property-Based Testing) strategies.
+;; (Emacs Lisp Regression Testing). It includes test helpers and utilities
+;; to support TDD (Test-Driven Development) and PBT (Property-Based
+;; Testing) strategies.
 ;;
 ;; Features:
 ;; - ERT-based test framework
 ;; - Test environment setup/teardown
-;; - Mock objects and fixtures
 ;; - Property-based testing support
 ;; - Performance benchmarking
-;; - Coverage measurement integration
 
 ;;; Code:
 
@@ -93,21 +91,11 @@
 (defvar nskk--test-state nil
   "Current test state information.")
 
-(defvar nskk--test-fixtures nil
-  "Active test fixtures.")
-
-(defvar nskk--test-mocks nil
-  "Active mock objects.")
-
 (cl-defstruct nskk-test-state
   "Test state container."
   (name nil :read-only t)
   (start-time nil)
-  (end-time nil)
-  (result nil)
-  (error nil)
-  (coverage nil)
-  (metadata nil :type hash-table))
+  (end-time nil))
 
 
 ;;;;
@@ -119,11 +107,7 @@
   (setq nskk--test-mode t
         nskk--test-state (make-nskk-test-state
                          :name (or (ert-running-test) 'unknown)
-                         :start-time (current-time)
-                         :metadata (make-hash-table :test 'equal))
-        nskk--test-fixtures nil
-        nskk--test-mocks nil)
-
+                         :start-time (current-time)))
   (when nskk-test-verbose
     (message "[NSKK Test] Setup: %s" (ert-test-name (ert-running-test)))))
 
@@ -131,18 +115,6 @@
   "Cleanup test environment after each test."
   (when nskk--test-state
     (setf (nskk-test-state-end-time nskk--test-state) (current-time)))
-
-  ;; Cleanup fixtures
-  (dolist (fixture nskk--test-fixtures)
-    (nskk--fixture-cleanup fixture))
-
-  ;; Cleanup mocks
-  (dolist (mock nskk--test-mocks)
-    (nskk--mock-restore mock))
-
-  (setq nskk--test-fixtures nil
-        nskk--test-mocks nil)
-
   (when nskk-test-verbose
     (message "[NSKK Test] Teardown: %s" (ert-test-name (ert-running-test)))))
 
@@ -241,77 +213,6 @@
 
 
 ;;;;
-;;;; Test Fixtures
-;;;;
-
-(cl-defstruct nskk-fixture
-  "Test fixture structure."
-  name
-  data
-  cleanup-fn)
-
-(defun nskk--fixture-create (name data cleanup-fn)
-  "Create a test fixture."
-  (let ((fixture (make-nskk-fixture
-                  :name name
-                  :data data
-                  :cleanup-fn cleanup-fn)))
-    (push fixture nskk--test-fixtures)
-    fixture))
-
-(defun nskk--fixture-cleanup (fixture)
-  "Cleanup a test fixture."
-  (when (and fixture (nskk-fixture-cleanup-fn fixture))
-    (funcall (nskk-fixture-cleanup-fn fixture))))
-
-(defmacro nskk-with-fixture (name &rest body)
-  "Execute BODY with fixture NAME."
-  (declare (indent 1))
-  `(let ((fixture (nskk--get-fixture ',name)))
-     (unwind-protect
-         (progn ,@body)
-       (nskk--fixture-cleanup fixture))))
-
-
-;;;;
-;;;; Mock Objects
-;;;;
-
-(cl-defstruct nskk-mock
-  "Mock object structure."
-  symbol
-  original-value
-  mocked-value)
-
-(defun nskk-mock-function (symbol mock-function)
-  "Mock FUNCTION with MOCK-FUNCTION for testing."
-  (let ((mock (make-nskk-mock
-               :symbol symbol
-               :original-value (symbol-function symbol)
-               :mocked-value mock-function)))
-    (push mock nskk--test-mocks)
-    (fset symbol mock-function)
-    mock))
-
-(defun nskk-mock-variable (symbol mock-value)
-  "Mock VARIABLE with MOCK-VALUE for testing."
-  (let ((mock (make-nskk-mock
-               :symbol symbol
-               :original-value (symbol-value symbol)
-               :mocked-value mock-value)))
-    (push mock nskk--test-mocks)
-    (set symbol mock-value)
-    mock))
-
-(defun nskk--mock-restore (mock)
-  "Restore original value from MOCK."
-  (when (nskk-mock-symbol mock)
-    (if (functionp (nskk-mock-original-value mock))
-        (fset (nskk-mock-symbol mock) (nskk-mock-original-value mock))
-      (set (nskk-mock-symbol mock) (nskk-mock-original-value mock)))))
-
-
-;;;;
 ;;;; Test Data Generators
 ;;;;
 
@@ -404,42 +305,6 @@ Matches legacy nskk-deftest-integration, property tests, and BDD-style names."
 
 
 ;;;;
-;;;; Test Result Reporting
-;;;;
-
-(defun nskk-test-report ()
-  "Generate test report."
-  (interactive)
-  (let ((stats (nskk--test-gather-stats)))
-    (with-output-to-temp-buffer "*NSKK Test Report*"
-      (princ "NSKK Test Report\n")
-      (princ "----------------\n\n")
-      (princ (format "Total tests:  %d\n" (plist-get stats :total)))
-      (princ (format "Passed:       %d\n" (plist-get stats :passed)))
-      (princ (format "Failed:       %d\n" (plist-get stats :failed)))
-      (princ (format "Skipped:      %d\n" (plist-get stats :skipped)))
-      (princ (format "Success rate: %.1f%%\n"
-                     (* 100 (/ (float (plist-get stats :passed))
-                              (plist-get stats :total))))))))
-
-(defun nskk--test-gather-stats ()
-  "Gather test statistics."
-  (let ((tests (ert-select-tests "^nskk" nil))
-        (passed 0)
-        (failed 0)
-        (skipped 0))
-    (dolist (test tests)
-      (let ((result (ert-test-result test)))
-        (pcase (car result)
-          ('passed (cl-incf passed))
-          ('failed (cl-incf failed))
-          ('_ (cl-incf skipped)))))
-    (list :total (length tests)
-          :passed passed
-          :failed failed
-          :skipped skipped)))
-
-;;;;
 ;;;; Prolog Test Isolation
 ;;;;
 
@@ -452,7 +317,7 @@ do not bleed into the saved copy."
               :is-end  (nskk-prolog--trie-node-is-end node)
               :value   (nskk-prolog--trie-node-value node)
               :count   (nskk-prolog--trie-node-count node))))
-    (when-let ((children (nskk-prolog--trie-node-children node)))
+    (when-let* ((children (nskk-prolog--trie-node-children node)))
       (let ((new-children (make-hash-table :test 'eq
                                            :size (hash-table-count children))))
         (maphash (lambda (ch child)
@@ -468,9 +333,8 @@ The root node and all descendant nodes are recursively duplicated so
 that `nskk-prolog--trie-insert' and `nskk-prolog--trie-delete' in the
 test body cannot mutate the saved snapshot."
   (nskk-prolog--trie--create-internal
-   :root     (nskk-prolog-test--copy-trie-node (nskk-prolog--trie-root trie))
-   :size     (nskk-prolog--trie-size trie)
-   :metadata (copy-sequence (nskk-prolog--trie-metadata trie))))
+   :root (nskk-prolog-test--copy-trie-node (nskk-prolog--trie-root trie))
+   :size (nskk-prolog--trie-size trie)))
 
 (defun nskk-prolog-test--copy-hash-table (ht)
   "Deep-copy hash table HT for test isolation.
@@ -507,13 +371,42 @@ and restored because `nskk-dict-register-word' sets them as a side
 effect via `setq', and the change would otherwise persist globally
 after the test ends."
   (declare (indent 0))
-  `(let ((saved-db           (nskk-prolog-test--copy-hash-table nskk-prolog--database))
-         (saved-idx          (nskk-prolog-test--copy-hash-table nskk-prolog--index-config))
-         (saved-hash         (nskk-prolog-test--copy-hash-table nskk-prolog--hash-indices))
-         (saved-trie         (nskk-prolog-test--copy-hash-table nskk-prolog--trie-indices))
-         (saved-counter      nskk-prolog--var-counter)
-         (saved-user-dict    nskk--user-dict-index)
-         (saved-system-dict  nskk--system-dict-index))
+  `(let ((saved-db              (nskk-prolog-test--copy-hash-table nskk-prolog--database))
+         (saved-idx             (nskk-prolog-test--copy-hash-table nskk-prolog--index-config))
+         (saved-hash            (nskk-prolog-test--copy-hash-table nskk-prolog--hash-indices))
+         (saved-trie            (nskk-prolog-test--copy-hash-table nskk-prolog--trie-indices))
+         (saved-counter         nskk-prolog--var-counter)
+         (saved-user-dict       nskk--user-dict-index)
+         (saved-system-dict     nskk--system-dict-index)
+         ;; Save all *-initialized flags so each isolated DB gets fresh Prolog
+         ;; fact table initialization.  Without this, after the first test
+         ;; restores the Prolog DB all fact-populating functions are skipped
+         ;; because their idempotency guard remains t, leaving the fresh DB
+         ;; empty of those facts (e.g. semicolon-key-action, japanese-mode).
+         (saved-input-init      (and (boundp 'nskk--input-initialized)
+                                     nskk--input-initialized))
+         (saved-state-init      (and (boundp 'nskk--state-prolog-initialized)
+                                     nskk--state-prolog-initialized))
+         (saved-henkan-init     (and (boundp 'nskk--henkan-initialized)
+                                     nskk--henkan-initialized))
+         (saved-kana-init       (and (boundp 'nskk-kana--initialized)
+                                     nskk-kana--initialized))
+         (saved-converter-init  (and (boundp 'nskk--converter-initialized)
+                                     nskk--converter-initialized))
+         (saved-cand-init       (and (boundp 'nskk--candidate-key-facts-initialized)
+                                     nskk--candidate-key-facts-initialized)))
+     (when (boundp 'nskk--input-initialized)
+       (setq nskk--input-initialized nil))
+     (when (boundp 'nskk--state-prolog-initialized)
+       (setq nskk--state-prolog-initialized nil))
+     (when (boundp 'nskk--henkan-initialized)
+       (setq nskk--henkan-initialized nil))
+     (when (boundp 'nskk-kana--initialized)
+       (setq nskk-kana--initialized nil))
+     (when (boundp 'nskk--converter-initialized)
+       (setq nskk--converter-initialized nil))
+     (when (boundp 'nskk--candidate-key-facts-initialized)
+       (setq nskk--candidate-key-facts-initialized nil))
      (unwind-protect
          (progn ,@body)
        (setq nskk-prolog--database    saved-db
@@ -523,6 +416,18 @@ after the test ends."
              nskk-prolog--var-counter  saved-counter
              nskk--user-dict-index     saved-user-dict
              nskk--system-dict-index   saved-system-dict)
+       (when (boundp 'nskk--input-initialized)
+         (setq nskk--input-initialized saved-input-init))
+       (when (boundp 'nskk--state-prolog-initialized)
+         (setq nskk--state-prolog-initialized saved-state-init))
+       (when (boundp 'nskk--henkan-initialized)
+         (setq nskk--henkan-initialized saved-henkan-init))
+       (when (boundp 'nskk-kana--initialized)
+         (setq nskk-kana--initialized saved-kana-init))
+       (when (boundp 'nskk--converter-initialized)
+         (setq nskk--converter-initialized saved-converter-init))
+       (when (boundp 'nskk--candidate-key-facts-initialized)
+         (setq nskk--candidate-key-facts-initialized saved-cand-init))
        ;; Re-derive database-tails from the now-restored database.
        ;; `copy-sequence' on a list creates a new cons-cell spine, so any
        ;; separately saved tail would point to cells that are not the actual

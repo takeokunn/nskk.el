@@ -796,8 +796,6 @@
 ;;;; Property-Based Tests
 ;;;;
 
-(require 'nskk-test-macros)
-
 ;; Table-driven atom unification cases using multi-column nskk-deftest-table.
 (nskk-deftest-table prolog-pbt-atom-unification
   :columns (a b should-succeed)
@@ -856,47 +854,44 @@ the database in the same state as before the assertion."
 ;;;; Arithmetic Built-in Tests
 ;;;;
 
-(nskk-describe "Prolog arithmetic built-ins"
-  (nskk-context "comparison goals"
-    (nskk-it ">= succeeds when left is greater than or equal to right"
-      (should (nskk-prolog-query-one '(>= 10 5)))
-      (should (nskk-prolog-query-one '(>= 5 5)))
-      (should (not (nskk-prolog-query-one '(>= 3 5)))))
+;; Table-driven comparison operator tests: (op a b) should succeed or fail.
+(nskk-deftest-table prolog-arith-compare
+  :columns (op a b should-succeed)
+  :rows    ((>= 10 5 t)
+            (>= 5  5 t)
+            (>= 3  5 nil)
+            (<= 3  5 t)
+            (<= 5  5 t)
+            (<= 10 5 nil)
+            (>  10 5 t)
+            (>  5  5 nil)
+            (>  3  5 nil)
+            (<  3  5 t)
+            (<  5  5 nil)
+            (<  10 5 nil)
+            (=:= 5  5 t)
+            (=:= 5  6 nil))
+  :description "Arithmetic comparison built-in: (op a b) produces expected boolean result"
+  :body (let ((result (nskk-prolog-query-one (list op a b))))
+          (if should-succeed
+              (should result)
+            (should-not result))))
 
-    (nskk-it "<= succeeds when left is less than or equal to right"
-      (should (nskk-prolog-query-one '(<= 3 5)))
-      (should (nskk-prolog-query-one '(<= 5 5)))
-      (should (not (nskk-prolog-query-one '(<= 10 5)))))
+;; Table-driven is/2 tests: variable is bound to evaluated arithmetic result.
+(nskk-deftest-table prolog-arith-is
+  :columns (expr expected)
+  :rows    (((+ 3 5)   8)
+            ((- 100 4) 96)
+            ((*  3 7)  21)
+            ((/  12 4) 3))
+  :description "Arithmetic is/2: variable is unified with the evaluated expression result"
+  :body (let ((result (nskk-prolog-query-one (list 'is '\?x expr))))
+          (should result)
+          (should (listp result))
+          (should (= (nskk-prolog-walk '\?x result) expected))))
 
-    (nskk-it "> succeeds only when left is strictly greater than right"
-      (should (nskk-prolog-query-one '(> 10 5)))
-      (should (not (nskk-prolog-query-one '(> 5 5))))
-      (should (not (nskk-prolog-query-one '(> 3 5)))))
-
-    (nskk-it "< succeeds only when left is strictly less than right"
-      (should (nskk-prolog-query-one '(< 3 5)))
-      (should (not (nskk-prolog-query-one '(< 5 5))))
-      (should (not (nskk-prolog-query-one '(< 10 5)))))
-
-    (nskk-it "=:= tests arithmetic equality"
-      (should (nskk-prolog-query-one (list (intern "=:=") 5 5)))
-      (should (not (nskk-prolog-query-one (list (intern "=:=") 5 6))))))
-
-  (nskk-context "is/2 assignment"
-    (nskk-it "evaluates arithmetic expressions and binds the result to a variable"
-      (let ((result (nskk-prolog-query-one '(is \?x (+ 3 5)))))
-        (should result)
-        (should (listp result))
-        (should (= (nskk-prolog-walk '\?x result) 8)))
-      (let ((result (nskk-prolog-query-one '(is \?x (- 100 4)))))
-        (should result)
-        (should (listp result))
-        (should (= (nskk-prolog-walk '\?x result) 96)))
-      (let ((result (nskk-prolog-query-one '(is \?x (* 3 7)))))
-        (should result)
-        (should (listp result))
-        (should (= (nskk-prolog-walk '\?x result) 21))))
-
+(nskk-describe "Prolog arithmetic in rule bodies"
+  (nskk-context "is/2 within a rule"
     (nskk-it "arithmetic goals work correctly within rule bodies"
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-retract-all 'arith-test-double 2)
@@ -906,6 +901,734 @@ the database in the same state as before the assertion."
           (should result)
           (should (listp result))
           (should (= (nskk-prolog-walk '\?y result) 10)))))))
+
+;;;;
+;;;; Property-Based Tests: Walk invariants
+;;;;
+
+;; Walk of a non-variable term always returns the term unchanged.
+(nskk-deftest-table prolog-pbt-walk-identity
+  :columns (term)
+  :rows    ((hello)
+            (42)
+            ("str")
+            (nil)
+            ((a b c)))
+  :description "Walk identity: non-variable terms return themselves under any substitution"
+  :body (should (equal (nskk-prolog-walk term nil) term)))
+
+;; Walk with an empty substitution returns the same result as walk with no binding.
+(nskk-deftest-unit prolog-pbt-walk-empty-subst
+  "Walk with no binding and with empty substitution both return the variable itself."
+  (let ((var '\?x))
+    (should (eq (nskk-prolog-walk var nil)
+                (nskk-prolog-walk var '((\?y . 42)))))))
+
+;;;;
+;;;; 13. holds-p and When-Holds Guard Macro
+;;;;
+
+(nskk-describe "Prolog holds-p and nskk-when-prolog-holds"
+  (nskk-context "nskk-prolog-holds-p"
+    (nskk-it "returns t when the goal has at least one solution"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((holds-fact)))
+        (should (nskk-prolog-holds-p '(holds-fact)))))
+
+    (nskk-it "returns nil when the goal has no solution"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (should-not (nskk-prolog-holds-p '(absent-fact)))))
+
+    (nskk-it "works with variable-containing goals"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((color blue)))
+        (should (nskk-prolog-holds-p '(color \?x)))
+        (should-not (nskk-prolog-holds-p '(shape \?x))))))
+
+  (nskk-context "nskk-when-prolog-holds"
+    (nskk-it "executes body when the query has a solution"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((flag enabled)))
+        (let (ran)
+          (nskk-when-prolog-holds '(flag enabled)
+            (setq ran t))
+          (should ran))))
+
+    (nskk-it "skips body when the query has no solution"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (let (ran)
+          (nskk-when-prolog-holds '(nonexistent-flag x)
+            (setq ran t))
+          (should-not ran))))
+
+    (nskk-it "accepts a runtime-composed query via backquote"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((mode hiragana)))
+        (let ((mode 'hiragana)
+              ran)
+          (nskk-when-prolog-holds `(mode ,mode)
+            (setq ran t))
+          (should ran))))))
+
+;;;;
+;;;; 14. DSL Macro Extensions: deffacts and define-fact-table
+;;;;
+
+(nskk-describe "Prolog deffacts and define-fact-table macros"
+  (nskk-context "nskk-prolog-deffacts"
+    (nskk-it "asserts multiple facts for a predicate in insertion order"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-deffacts deffact-fruit
+          (apple)
+          (banana)
+          (cherry))
+        (let ((results (nskk-prolog-query '(deffact-fruit \?f))))
+          (should (= (length results) 3))
+          (let ((fruits (mapcar (lambda (s) (nskk-prolog-walk '\?f s)) results)))
+            (should (equal fruits '(apple banana cherry)))))))
+
+    (nskk-it "each deffacts row is independently queryable as a ground fact"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-deffacts deffact-num
+          (1)
+          (2)
+          (3))
+        (should (nskk-prolog-query '(deffact-num 1)))
+        (should (nskk-prolog-query '(deffact-num 2)))
+        (should (nskk-prolog-query '(deffact-num 3)))
+        (should-not (nskk-prolog-query '(deffact-num 4))))))
+
+  (nskk-context "nskk-prolog-define-fact-table"
+    (nskk-it "configures the index and asserts all rows in one declaration"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-define-fact-table dft-valid-mode (:arity 1 :index :hash)
+          (hiragana)
+          (katakana)
+          (latin))
+        (should (nskk-prolog-query-one '(dft-valid-mode hiragana)))
+        (should (nskk-prolog-query-one '(dft-valid-mode katakana)))
+        (should (nskk-prolog-query-one '(dft-valid-mode latin)))
+        (should-not (nskk-prolog-query-one '(dft-valid-mode ascii)))))
+
+    (nskk-it "multi-column fact table is queryable by first argument via hash index"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-define-fact-table dft-key-action (:arity 2 :index :hash)
+          (space self-insert)
+          (return newline)
+          (backspace delete))
+        (let ((result (nskk-prolog-query-value
+                       '(dft-key-action space \?action) '\?action)))
+          (should (eq result 'self-insert)))
+        (let ((result (nskk-prolog-query-value
+                       '(dft-key-action return \?action) '\?action)))
+          (should (eq result 'newline)))))))
+
+;;;;
+;;;; 15. Trie Prefix Search (public API)
+;;;;
+
+(nskk-describe "Prolog trie prefix search"
+  (nskk-context "nskk-prolog-trie-prefix-search"
+    (nskk-it "returns (key . value) pairs for all keys starting with the prefix"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'pfx-word 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'pfx-word 2
+                                      '(("hello" . "greeting")
+                                        ("help"  . "assistance")
+                                        ("world" . "noun")))
+        (let ((results (nskk-prolog-trie-prefix-search 'pfx-word 2 "hel")))
+          (should results)
+          (should (= (length results) 2))
+          (should (assoc "hello" results))
+          (should (assoc "help" results))
+          (should-not (assoc "world" results)))))
+
+    (nskk-it "exact key lookup returns a single (key . value) pair"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'pfx-kana 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'pfx-kana 2
+                                      '(("か" . ("花" "家"))
+                                        ("き" . ("木" "気"))))
+        (let ((results (nskk-prolog-trie-prefix-search 'pfx-kana 2 "か")))
+          (should (= (length results) 1))
+          (should (equal (cdr (assoc "か" results)) '("花" "家"))))))
+
+    (nskk-it "returns nil when no key matches the given prefix"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'pfx-empty 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'pfx-empty 2
+                                      '(("alpha" . "a")))
+        (should-not (nskk-prolog-trie-prefix-search 'pfx-empty 2 "beta"))))
+
+    (nskk-it "returns nil when no trie index is configured for the predicate"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (should-not (nskk-prolog-trie-prefix-search 'no-such-pred 2 "x"))))))
+
+;;;;
+;;;; 16. Built-in Goal Handlers: assertz and retract
+;;;;
+
+(nskk-describe "Prolog built-in assertz and retract goals"
+  (nskk-context "assertz/1 in a rule body"
+    (nskk-it "asserting a fact via assertz goal makes it subsequently queryable"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-prove '((assertz (dynamic-fact hello))) nil)
+        (should (nskk-prolog-query '(dynamic-fact hello)))))
+
+    (nskk-it "assertz within a rule body adds the fact after the rule fires"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-<- (add-greeting \?x)
+          (assertz (greeted \?x)))
+        (nskk-prolog-prove '((add-greeting world)) nil)
+        (should (nskk-prolog-query '(greeted world))))))
+
+  (nskk-context "retract/1 in a rule body"
+    (nskk-it "retracting a fact via retract goal removes it from the database"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((temp-fact x)))
+        (nskk-prolog-prove '((retract (temp-fact x))) nil)
+        (should-not (nskk-prolog-query '(temp-fact x)))))))
+
+;;;;
+;;;; Property-Based Test: Trie/Hash Index Equivalence
+;;;;
+
+;; PBT — nskk-unit-prolog-trie-hash-index-equivalence-pbt
+;;
+;; Invariant: for any set of facts asserted under a predicate, querying via
+;; a :hash index and querying via a :trie index return the same set of
+;; results (as sorted lists, since order may differ between index types).
+;;
+;; Method:
+;;   1. Load three facts under a unique predicate with :hash index, query,
+;;      collect result set.
+;;   2. Retract all, switch to :trie index, re-assert the same facts, query,
+;;      collect result set.
+;;   3. Compare both sets (sorted) for equality.
+;;
+;; The :hash index is used for O(1) ground first-argument lookup; the :trie
+;; index is used for prefix search.  Both must return the same entries when
+;; the first argument is a variable (full scan fallback).
+(nskk-deftest-unit prolog-trie-hash-index-equivalence-pbt
+  "Trie and hash indices return equivalent result sets for the same asserted facts."
+  (nskk-property-test-seeded prolog-trie-hash-index-equivalence
+    ((k1 search-query)
+     (k2 search-query)
+     (k3 search-query))
+    (nskk-prolog-test-with-isolated-db
+      (let* ((pred (intern (format "idx-equiv-test-%d" (abs (random)))))
+             (facts (list (list k1 "v1")
+                          (list k2 "v2")
+                          (list k3 "v3"))))
+
+        ;; --- Hash index pass ---
+        (nskk-prolog-retract-all pred 2)
+        (nskk-prolog-set-index pred 2 :hash)
+        (dolist (f facts)
+          (nskk-prolog-assert (list (cons pred f))))
+        (let* ((hash-solutions (nskk-prolog-query `(,pred \?k \?v)))
+               (hash-set (sort
+                          (mapcar (lambda (s)
+                                    (cons (nskk-prolog-walk '\?k s)
+                                          (nskk-prolog-walk '\?v s)))
+                                  hash-solutions)
+                          (lambda (a b) (string< (car a) (car b))))))
+
+          ;; --- Trie index pass ---
+          (nskk-prolog-retract-all pred 2)
+          (nskk-prolog-set-index pred 2 :trie)
+          (dolist (f facts)
+            (nskk-prolog-assert (list (cons pred f))))
+          (let* ((trie-solutions (nskk-prolog-query `(,pred \?k \?v)))
+                 (trie-set (sort
+                            (mapcar (lambda (s)
+                                      (cons (nskk-prolog-walk '\?k s)
+                                            (nskk-prolog-walk '\?v s)))
+                                    trie-solutions)
+                            (lambda (a b) (string< (car a) (car b))))))
+
+            ;; Both index types must produce the same (key . value) pairs.
+            (equal hash-set trie-set)))))
+    30
+    41))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-prolog-bulk-facts macro
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-prolog-bulk-facts"
+  (nskk-context "basic fact assertion from a list"
+    (nskk-it "asserts all facts and makes them queryable"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'bulk-test-color 1)
+        (nskk-prolog-set-index 'bulk-test-color 1 :list)
+        (let ((rules '(("red") ("green") ("blue"))))
+          (nskk-prolog-bulk-facts bulk-test-color rules)
+          (should (nskk-prolog-holds-p '(bulk-test-color "red")))
+          (should (nskk-prolog-holds-p '(bulk-test-color "green")))
+          (should (nskk-prolog-holds-p '(bulk-test-color "blue"))))))
+
+    (nskk-it "asserts multi-argument facts correctly"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'bulk-test-pair 2)
+        (nskk-prolog-set-index 'bulk-test-pair 2 :hash)
+        (let ((rules '(("a" 1) ("b" 2) ("c" 3))))
+          (nskk-prolog-bulk-facts bulk-test-pair rules)
+          (should (equal (nskk-prolog-query-value
+                          '(bulk-test-pair "a" \?v) '\?v) 1))
+          (should (equal (nskk-prolog-query-value
+                          '(bulk-test-pair "b" \?v) '\?v) 2))
+          (should (equal (nskk-prolog-query-value
+                          '(bulk-test-pair "c" \?v) '\?v) 3)))))
+
+    (nskk-it "asserts the correct number of facts"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'bulk-test-count 1)
+        (nskk-prolog-set-index 'bulk-test-count 1 :list)
+        (let ((rules '(("one") ("two") ("three") ("four") ("five"))))
+          (nskk-prolog-bulk-facts bulk-test-count rules)
+          (should (= 5 (length (nskk-prolog-query '(bulk-test-count \?x))))))))
+
+    (nskk-it "evaluates RULES at runtime from a let-bound variable"
+      ;; Unlike nskk-prolog-deffacts which expands at compile time,
+      ;; bulk-facts evaluates RULES at runtime — enabling defconst data sources.
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'bulk-test-runtime 1)
+        (nskk-prolog-set-index 'bulk-test-runtime 1 :list)
+        (let ((runtime-data (list (list "dynamic"))))
+          (nskk-prolog-bulk-facts bulk-test-runtime runtime-data)
+          (should (nskk-prolog-holds-p '(bulk-test-runtime "dynamic")))))))
+
+  (nskk-context "empty rules list"
+    (nskk-it "asserts nothing when rules list is empty"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'bulk-test-empty 1)
+        (nskk-prolog-set-index 'bulk-test-empty 1 :list)
+        (let ((rules '()))
+          (nskk-prolog-bulk-facts bulk-test-empty rules)
+          (should (null (nskk-prolog-query '(bulk-test-empty \?x)))))))
+
+    (nskk-it "does not signal an error on an empty rules list"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'bulk-test-no-error 1)
+        (should-not (condition-case nil
+                        (progn (nskk-prolog-bulk-facts bulk-test-no-error '()) nil)
+                      (error t))))))
+
+  (nskk-context "equivalence with nskk-prolog-deffacts"
+    (nskk-it "produces the same queryable facts as nskk-prolog-deffacts for identical data"
+      ;; deffacts expands at compile time; bulk-facts evaluates RULES at
+      ;; runtime.  Both must produce the same queryable fact set.
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'bulk-cmp-a 2)
+        (nskk-prolog-retract-all 'bulk-cmp-b 2)
+        (nskk-prolog-set-index 'bulk-cmp-a 2 :list)
+        (nskk-prolog-set-index 'bulk-cmp-b 2 :list)
+        (nskk-prolog-deffacts bulk-cmp-a
+          ("x" "X")
+          ("y" "Y"))
+        (nskk-prolog-bulk-facts bulk-cmp-b '(("x" "X") ("y" "Y")))
+        (let ((results-a (sort (mapcar (lambda (s)
+                                         (list (nskk-prolog-walk '\?k s)
+                                               (nskk-prolog-walk '\?v s)))
+                                       (nskk-prolog-query '(bulk-cmp-a \?k \?v)))
+                               (lambda (a b) (string< (car a) (car b)))))
+              (results-b (sort (mapcar (lambda (s)
+                                         (list (nskk-prolog-walk '\?k s)
+                                               (nskk-prolog-walk '\?v s)))
+                                       (nskk-prolog-query '(bulk-cmp-b \?k \?v)))
+                               (lambda (a b) (string< (car a) (car b))))))
+          (should (equal results-a results-b)))))))
+
+;;;
+;;; nskk-define-goal-handler
+;;;
+
+(nskk-describe "nskk-define-goal-handler"
+  (nskk-it "appends a new handler entry to nskk-prolog--goal-handlers"
+    (let ((nskk-prolog--goal-handlers (copy-sequence nskk-prolog--goal-handlers)))
+      (let ((count-before (length nskk-prolog--goal-handlers)))
+        (nskk-define-goal-handler test-new-handler
+            (goal _rest _subst on-solution)
+          :match (eq (car goal) 'test-new-handler)
+          :body  (funcall on-solution nil))
+        (should (= (length nskk-prolog--goal-handlers) (1+ count-before)))
+        (should (assq 'test-new-handler nskk-prolog--goal-handlers)))))
+
+  (nskk-it "re-defining a handler with the same name replaces it in place"
+    (let ((nskk-prolog--goal-handlers (copy-sequence nskk-prolog--goal-handlers)))
+      (let ((count-before (length nskk-prolog--goal-handlers)))
+        (nskk-define-goal-handler test-idempotent-handler
+            (goal _rest _subst on-solution)
+          :match (eq (car goal) 'test-idempotent-handler)
+          :body  (funcall on-solution nil))
+        (nskk-define-goal-handler test-idempotent-handler
+            (goal _rest _subst on-solution)
+          :match (eq (car goal) 'test-idempotent-handler)
+          :body  (funcall on-solution nil))
+        ;; Re-definition MUST NOT add a second entry — count stays 1+before
+        (should (= (length nskk-prolog--goal-handlers) (1+ count-before))))))
+
+  (nskk-it "handler entry has (name match-fn body-fn) structure"
+    (let ((nskk-prolog--goal-handlers (copy-sequence nskk-prolog--goal-handlers)))
+      (nskk-define-goal-handler test-structure-check
+          (goal _rest _subst on-solution)
+        :match (eq (car goal) 'test-structure-check)
+        :body  (funcall on-solution nil))
+      (let ((entry (assq 'test-structure-check nskk-prolog--goal-handlers)))
+        (should entry)
+        (should (functionp (nth 1 entry)))   ; match function
+        (should (functionp (nth 2 entry)))))))  ; body function
+
+;;;
+;;; Private trie operations (nskk-prolog--trie-*)
+;;;
+
+(nskk-describe "nskk-prolog--trie internal operations"
+  (nskk-it "trie-create produces a trie with size 0"
+    (let ((trie (nskk-prolog--trie-create)))
+      (should (= (nskk-prolog--trie-size trie) 0))))
+
+  (nskk-it "trie-insert stores a key-value pair"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "hello" "world")
+      (should (= (nskk-prolog--trie-size trie) 1))))
+
+  (nskk-it "trie-lookup returns (value . t) for an inserted key"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "hello" "world")
+      (let ((result (nskk-prolog--trie-lookup trie "hello")))
+        (should (equal (car result) "world"))
+        (should (cdr result)))))
+
+  (nskk-it "trie-lookup returns (nil . nil) for a missing key"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "hello" "world")
+      (let ((result (nskk-prolog--trie-lookup trie "xyz")))
+        (should (null (car result)))
+        (should (null (cdr result))))))
+
+  (nskk-it "trie-delete removes a key and returns t"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "hello" "world")
+      (should (nskk-prolog--trie-delete trie "hello"))
+      (should (= (nskk-prolog--trie-size trie) 0))
+      ;; After deletion, lookup should miss
+      (let ((result (nskk-prolog--trie-lookup trie "hello")))
+        (should (null (cdr result))))))
+
+  (nskk-it "trie-delete returns nil for a non-existent key"
+    (let ((trie (nskk-prolog--trie-create)))
+      (should (null (nskk-prolog--trie-delete trie "missing")))))
+
+  (nskk-it "trie supports Japanese string keys"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "かんじ" '("漢字"))
+      (nskk-prolog--trie-insert trie "かんたん" '("簡単"))
+      (let ((r1 (nskk-prolog--trie-lookup trie "かんじ"))
+            (r2 (nskk-prolog--trie-lookup trie "かんたん")))
+        (should (equal (car r1) '("漢字")))
+        (should (equal (car r2) '("簡単")))))))
+
+;;;
+;;; nskk-prolog--trie--find-node
+;;;
+
+(nskk-describe "nskk-prolog--trie--find-node"
+  (nskk-it "returns the terminal node for an inserted key"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "abc" "value")
+      (let ((node (nskk-prolog--trie--find-node trie "abc")))
+        (should node)
+        (should (nskk-prolog--trie-node-is-end node)))))
+
+  (nskk-it "returns nil for a key that was not inserted"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "abc" "value")
+      (should-not (nskk-prolog--trie--find-node trie "xyz"))))
+
+  (nskk-it "returns a non-terminal node for a prefix of an existing key"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "abc" "value")
+      ;; "ab" is a prefix but not a terminal node
+      (let ((node (nskk-prolog--trie--find-node trie "ab")))
+        (should node)
+        (should-not (nskk-prolog--trie-node-is-end node)))))
+
+  (nskk-it "returns nil for any key in an empty trie"
+    (let ((trie (nskk-prolog--trie-create)))
+      (should-not (nskk-prolog--trie--find-node trie "abc")))))
+
+;;;
+;;; nskk-prolog--trie-prefix-search
+;;;
+
+(nskk-describe "nskk-prolog--trie-prefix-search"
+  (nskk-it "returns all (key . value) pairs with the given prefix"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "abc" "v1")
+      (nskk-prolog--trie-insert trie "abd" "v2")
+      (nskk-prolog--trie-insert trie "xyz" "v3")
+      (let ((results (nskk-prolog--trie-prefix-search trie "ab")))
+        (should (= (length results) 2))
+        (should (assoc "abc" results))
+        (should (assoc "abd" results))
+        (should-not (assoc "xyz" results)))))
+
+  (nskk-it "returns empty list when no keys match prefix"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "abc" "val")
+      (should (null (nskk-prolog--trie-prefix-search trie "xyz")))))
+
+  (nskk-it "limits results with the optional limit parameter"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "aa" "v1")
+      (nskk-prolog--trie-insert trie "ab" "v2")
+      (nskk-prolog--trie-insert trie "ac" "v3")
+      (let ((results (nskk-prolog--trie-prefix-search trie "a" 2)))
+        (should (= (length results) 2)))))
+
+  (nskk-it "returns all keys when prefix is empty string"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "a" "v1")
+      (nskk-prolog--trie-insert trie "b" "v2")
+      (let ((results (nskk-prolog--trie-prefix-search trie "")))
+        (should (= (length results) 2))))))
+
+;;;
+;;; nskk-prolog--trie--collect-all
+;;;
+
+(nskk-describe "nskk-prolog--trie--collect-all"
+  (nskk-it "collects all key/value pairs from a trie rooted at node"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "ab" "v1")
+      (nskk-prolog--trie-insert trie "ac" "v2")
+      (let* ((root (nskk-prolog--trie-root trie))
+             (results (nskk-prolog--trie--collect-all root "" nil 0)))
+        (should (= (length results) 2))
+        (should (assoc "ab" results))
+        (should (assoc "ac" results)))))
+
+  (nskk-it "returns empty list for an empty trie root"
+    (let* ((trie (nskk-prolog--trie-create))
+           (root (nskk-prolog--trie-root trie))
+           (results (nskk-prolog--trie--collect-all root "" nil 0)))
+      (should (null results))))
+
+  (nskk-it "stops at limit when limit is specified"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "a" "v1")
+      (nskk-prolog--trie-insert trie "b" "v2")
+      (nskk-prolog--trie-insert trie "c" "v3")
+      (let* ((root (nskk-prolog--trie-root trie))
+             (results (nskk-prolog--trie--collect-all root "" 2 0)))
+        (should (= (length results) 2)))))
+
+  (nskk-it "uses prefix as key prefix for collected entries"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "ab" "val")
+      (let* ((root (nskk-prolog--trie-root trie))
+             (results (nskk-prolog--trie--collect-all root "" nil 0)))
+        ;; Key should be the full path from the root prefix
+        (should (equal (car (car results)) "ab"))))))
+
+;;;
+;;; nskk-prolog--trie--cleanup-path
+;;;
+
+(nskk-describe "nskk-prolog--trie--cleanup-path"
+  (nskk-it "removes leaf nodes that are no longer needed after deletion"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "ab" "val")
+      (nskk-prolog--trie-delete trie "ab")
+      ;; After delete + cleanup (trie-delete calls cleanup-path internally),
+      ;; the path should be gone — lookup returns (nil . nil) for missing keys
+      (should-not (cdr (nskk-prolog--trie-lookup trie "ab")))))
+
+  (nskk-it "does not remove shared nodes when two keys share a prefix"
+    (let ((trie (nskk-prolog--trie-create)))
+      (nskk-prolog--trie-insert trie "abc" "v1")
+      (nskk-prolog--trie-insert trie "abd" "v2")
+      ;; Delete one key; the shared "ab" prefix node must remain
+      (nskk-prolog--trie-delete trie "abc")
+      ;; "abd" should still be accessible
+      (should (nskk-prolog--trie-lookup trie "abd")))))
+
+;;;
+;;; nskk-prolog--index-add / nskk-prolog--index-remove
+;;;
+
+(nskk-describe "nskk-prolog--index-add"
+  (nskk-it "completes without error for a predicate with no index config"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((clause '((test-noindex-pred "a" "b")))
+             (key (nskk-prolog--head-key (car clause))))
+        ;; Calling directly with a key that has no index config is a no-op
+        (should (null (nskk-prolog--index-add key clause))))))
+
+  (nskk-it "is called implicitly during assert and enables query to succeed"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((test-index-add-fact "x" "y")))
+      (should (nskk-prolog-query '(test-index-add-fact "x" "y"))))))
+
+(nskk-describe "nskk-prolog--index-remove"
+  (nskk-it "completes without error for a predicate with no index config"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((clause '((test-remove-noindex "a" "b")))
+             (key (nskk-prolog--head-key (car clause))))
+        (should (null (nskk-prolog--index-remove key clause))))))
+
+  (nskk-it "is called implicitly during retract and removes the fact"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((test-remove-fact "x" "y")))
+      ;; retract takes a head-pattern, not a clause
+      (nskk-prolog-retract '(test-remove-fact "x" "y"))
+      (should-not (nskk-prolog-query '(test-remove-fact "x" "y"))))))
+
+;;;
+;;; nskk-prolog--get-clauses
+;;;
+
+(nskk-describe "nskk-prolog--get-clauses"
+  (nskk-it "returns clauses for a predicate after assertion"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((test-get-clauses-pred "a" "b")))
+      (let ((clauses (nskk-prolog--get-clauses 'test-get-clauses-pred '("a" "b") nil)))
+        (should clauses))))
+
+  (nskk-it "returns nil for a predicate with no clauses"
+    (nskk-prolog-test-with-isolated-db
+      (should-not (nskk-prolog--get-clauses 'nonexistent-pred-xyz '() nil)))))
+
+;;;
+;;; nskk-prolog--prove-internal
+;;;
+
+(nskk-describe "nskk-prolog--prove-internal"
+  (nskk-it "calls on-solution when goals is nil (trivially true)"
+    (let (solutions)
+      (nskk-prolog--prove-internal nil nil
+        (lambda (s) (push s solutions)))
+      (should (= (length solutions) 1))))
+
+  (nskk-it "proves a simple ground fact in an isolated DB"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((test-prove-fact)))
+      (let (solutions)
+        (nskk-prolog--prove-internal '((test-prove-fact)) nil
+          (lambda (s) (push s solutions)))
+        (should (= (length solutions) 1)))))
+
+  (nskk-it "returns no solutions when goal fails"
+    (nskk-prolog-test-with-isolated-db
+      (let (solutions)
+        (nskk-prolog--prove-internal '((nonexistent-prove-xyz)) nil
+          (lambda (s) (push s solutions)))
+        (should (null solutions))))))
+
+;;;
+;;; nskk-prolog--prove-first
+;;;
+
+(nskk-describe "nskk-prolog--prove-first"
+  (nskk-it "throws first-solution tag when a matching fact is found"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((test-first-fact)))
+      (let ((result (catch 'nskk-prolog-first-solution
+                      (nskk-prolog--prove-first '((test-first-fact)) nil)
+                      'no-solution)))
+        (should (listp result)))))
+
+  (nskk-it "returns without throwing when no solution is found"
+    (nskk-prolog-test-with-isolated-db
+      (let ((result (catch 'nskk-prolog-first-solution
+                      (nskk-prolog--prove-first '((nonexistent-first-xyz)) nil)
+                      'no-solution)))
+        (should (eq result 'no-solution))))))
+
+;;;
+;;; nskk-prolog--clause-key
+;;;
+
+(nskk-describe "nskk-prolog--clause-key"
+  (nskk-it "formats predicate and arity as 'pred/arity' string"
+    (should (equal (nskk-prolog--clause-key 'foo 2) "foo/2")))
+
+  (nskk-it "works with arity 0"
+    (should (equal (nskk-prolog--clause-key 'bar 0) "bar/0")))
+
+  (nskk-it "works with arity 3"
+    (should (equal (nskk-prolog--clause-key 'my-pred 3) "my-pred/3")))
+
+  (nskk-it "works with string predicate name"
+    (should (equal (nskk-prolog--clause-key "pred" 1) "pred/1"))))
+
+;;;
+;;; nskk-prolog--head-key
+;;;
+
+(nskk-describe "nskk-prolog--head-key"
+  (nskk-it "returns key for a zero-arity clause head"
+    ;; (foo) → functor=foo, arity=1-1=0
+    (should (equal (nskk-prolog--head-key '(foo)) "foo/0")))
+
+  (nskk-it "returns key for a unary clause head"
+    ;; (foo arg1) → functor=foo, arity=2-1=1
+    (should (equal (nskk-prolog--head-key '(foo arg1)) "foo/1")))
+
+  (nskk-it "returns key for a binary clause head"
+    ;; (foo a b) → functor=foo, arity=3-1=2
+    (should (equal (nskk-prolog--head-key '(foo a b)) "foo/2"))))
+
+;;;
+;;; nskk-prolog--eval-arith
+;;;
+
+(nskk-describe "nskk-prolog--eval-arith"
+  (nskk-it "evaluates a number literal to itself"
+    (should (= (nskk-prolog--eval-arith 42 nil) 42)))
+
+  (nskk-it "evaluates zero"
+    (should (= (nskk-prolog--eval-arith 0 nil) 0)))
+
+  (nskk-it "evaluates addition"
+    (should (= (nskk-prolog--eval-arith '(+ 3 4) nil) 7)))
+
+  (nskk-it "evaluates subtraction"
+    (should (= (nskk-prolog--eval-arith '(- 10 3) nil) 7)))
+
+  (nskk-it "evaluates multiplication"
+    (should (= (nskk-prolog--eval-arith '(* 6 7) nil) 42)))
+
+  (nskk-it "evaluates integer division"
+    (should (= (nskk-prolog--eval-arith '(/ 10 2) nil) 5)))
+
+  (nskk-it "evaluates nested arithmetic expressions"
+    (should (= (nskk-prolog--eval-arith '(+ (* 2 3) 4) nil) 10)))
+
+  (nskk-it "signals error for unknown arithmetic operator"
+    (should-error (nskk-prolog--eval-arith '(% 10 3) nil)))
+
+  (nskk-it "signals error for a non-number non-compound expression"
+    (should-error (nskk-prolog--eval-arith "not-a-number" nil))))
 
 (provide 'nskk-prolog-test)
 

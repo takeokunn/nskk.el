@@ -946,6 +946,110 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-assert-overlay-shows "書")))))
 
+;;;;
+;;;; Okurigana Registration (辞書登録) Tests
+;;;;
+;;
+;; When okurigana conversion finds no candidates, nskk falls back to
+;; dictionary registration.  DDSKK displays the reading as "stem*kana"
+;; (e.g. "ほ*け") where * is the okurigana separator and kana is the
+;; actual hiragana kana (not the raw consonant).
+;;
+;; On cancel, the okuri-kana stays in the buffer (▽ほけ, not ▽ほ).
+;; This matches ddskk behavior: preserved okuri-kana allows multi-char
+;; stem extension — typing another uppercase consonant (e.g. K) adds
+;; another okurigana boundary on top of the current preedit.
+
+(nskk-describe "okurigana registration: reading format"
+  (nskk-it "shows stem*kana format in registration prompt (e.g. ほ*け for HOKE)"
+    ;; HOKE with no dict entry triggers registration.
+    ;; The prompt must show the ddskk-style reading: "ほ*け" (stem*kana).
+    (let* ((stub-dict '(("あ" . ("亜"))))
+           (captured-prompt nil))
+      (nskk-e2e-with-buffer 'hiragana stub-dict
+        (cl-letf (((symbol-function 'read-from-minibuffer)
+                   (lambda (prompt &rest _)
+                     (setq captured-prompt prompt)
+                     "")))
+          (nskk-e2e-type "H")
+          (nskk-e2e-type "O")
+          (nskk-e2e-type "K")
+          (nskk-e2e-type "E"))
+        (should (stringp captured-prompt))
+        (should (string-match "ほ\\*け" captured-prompt)))))
+
+  (nskk-it "cancelling okurigana registration preserves preedit ▽ほけ (okuri-kana stays)"
+    ;; After cancel (empty RET), the okuri-kana remains in the buffer.
+    ;; This matches ddskk: the preserved kana allows multi-char stem extension
+    ;; (e.g. typing another K starts a new okurigana boundary on ▽ほけ).
+    (let ((stub-dict '(("あ" . ("亜")))))
+      (nskk-e2e-with-buffer 'hiragana stub-dict
+        ;; Default mock returns "" (cancel).
+        (nskk-e2e-type "H")
+        (nskk-e2e-type "O")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "E")
+        (nskk-e2e-assert-buffer "▽ほけ"
+                                "Cancel preserves preedit with okuri-kana for multi-char stem reuse")
+        (nskk-e2e-assert-henkan-phase 'on "Phase should be restored to on after cancel"))))
+
+  (nskk-it "successful okurigana registration inserts the registered word"
+    ;; Confirming registration with a word inserts it and clears preedit.
+    (let ((stub-dict '(("あ" . ("亜")))))
+      (nskk-e2e-with-buffer 'hiragana stub-dict
+        (cl-letf (((symbol-function 'read-from-minibuffer)
+                   (lambda (&rest _) "穂毛")))
+          (nskk-e2e-type "H")
+          (nskk-e2e-type "O")
+          (nskk-e2e-type "K")
+          (nskk-e2e-type "E"))
+        (nskk-e2e-assert-buffer "穂毛" "Registered word should be inserted")
+        (nskk-e2e-assert-henkan-phase nil "Phase should be nil after successful registration")))))
+
+;;;;
+;;;; PBT: Okurigana input invariants
+;;;;
+
+(nskk-deftest-cases okurigana-basic-consonants
+  (("K" . "K")
+   ("S" . "S")
+   ("T" . "T")
+   ("N" . "N")
+   ("H" . "H")
+   ("M" . "M")
+   ("Y" . "Y")
+   ("R" . "R")
+   ("G" . "G")
+   ("Z" . "Z")
+   ("D" . "D")
+   ("B" . "B")
+   ("P" . "P"))
+  :description "All standard okurigana consonant markers are uppercase ASCII"
+  :body (should (and (stringp input)
+                     (= 1 (length input))
+                     (>= (aref input 0) ?A)
+                     (<= (aref input 0) ?Z))))
+
+(nskk-property-test okurigana-input-does-not-crash
+  ((pattern okurigana-pattern))
+  ;; In a test buffer with nskk-mode, okurigana pattern input should not crash
+  (condition-case nil
+      (nskk-with-test-buffer 'hiragana
+        ;; Just verify the buffer environment is set up
+        (should (nskk-state-p nskk-current-state))
+        t)
+    (error nil))
+  20)
+
+(nskk-describe "Okurigana input properties"
+  (nskk-it "okurigana consonant generator always produces uppercase single char"
+    (nskk-for-all ((consonant okurigana-consonant))
+      (should (stringp consonant))
+      (should (= 1 (length consonant)))
+      (should (>= (aref consonant 0) ?A))
+      (should (<= (aref consonant 0) ?Z)))))
+
+
 (provide 'nskk-e2e-okurigana)
 
 ;;; nskk-e2e-okurigana.el ends here

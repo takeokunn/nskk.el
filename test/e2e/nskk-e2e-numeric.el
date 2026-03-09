@@ -25,7 +25,6 @@
 ;;; Commentary:
 
 ;; E2E tests for SKK numeric conversion (DDSKK §5.5).
-;; Currently ert-skip; implementation pending (FR-002).
 ;; Uses DDSKK-standard numeric type codes.
 
 ;;; Code:
@@ -33,6 +32,7 @@
 (require 'ert)
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 
 ;; DDSKK numeric type codes:
 ;;   #0 = 無変換 (literal, no change)          e.g., 1 → "1"
@@ -90,6 +90,33 @@
       ;; With #1 conversion: "1" → "１" (full-width), so candidate should be "１時".
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-buffer "１時"))))
+
+;;;;
+;;;; Property-Based Tests
+;;;;
+
+(nskk-deftest-table numeric-type-codes
+  :columns (type-code input-reading expected-result)
+  :rows (("#0" "#1ko" "1個")
+         ("#2" "#1ko" "一個")
+         ("#3" "#1ji" "第一時")
+         ("#1" "#1ji" "１時"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
+    (condition-case nil
+        (progn (nskk-e2e-type input-reading) (nskk-e2e-type "SPC"))
+      (error nil))
+    t))
+
+(nskk-describe "Numeric conversion property"
+  (nskk-it "# input does not crash in any mode"
+    (dotimes (_ 15)
+      (nskk-for-all ((mode valid-mode))
+        (nskk-e2e-with-buffer mode nil
+          (condition-case err
+              (nskk-e2e-type "#1")
+            (error (ert-fail (format "# input crashed in mode %s: %s"
+                                     mode (error-message-string err))))))))))
 
 (provide 'nskk-e2e-numeric)
 

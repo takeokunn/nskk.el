@@ -5,6 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -90,6 +91,7 @@
 (declare-function nskk-previous-candidate "nskk-henkan")
 (declare-function nskk-cancel-conversion "nskk-henkan")
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
+(declare-function nskk-rollback-conversion "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
@@ -97,14 +99,6 @@
 (defvar nskk-henkan-on-marker)
 ;; Variables in nskk-azik.el
 (defvar nskk-azik-keyboard-type)
-
-(defvar nskk-annotate-mode-map-hook nil
-  "Hook run when annotating mode map.
-DDSKK equivalent to `skk-annotate-mode-map-hook'.")
-
-(defvar nskk-annotate-minibuffer-map-hook nil
-  "Hook run when annotating minibuffer map.
-DDSKK equivalent to `skk-annotate-minibuffer-map-hook'.")
 
 ;;;; Prolog Key-Action Rules
 
@@ -203,7 +197,7 @@ directly to `skk-start-henkan' with no runtime text-presence check."
       ;; Japanese modes (hiragana/katakana) — DDSKK-compatible.
       (when (and nskk-current-state
                  (nskk--get-conversion-start)
-                 (nskk-prolog-query-one
+                 (nskk-prolog-holds-p
                   `(preedit-marker-mode ,(nskk-state-mode nskk-current-state))))
         'preedit)
       'normal))
@@ -217,18 +211,19 @@ States (in priority order):
   `hiragana-idle'  -- hiragana mode, no pending input
   `katakana-idle'  -- katakana/katakana-半角 mode, no pending input
   `direct-idle'    -- ascii/latin/jisx0208-latin/abbrev, no pending input"
-  (or (nskk--key-state-base)
-      (and (boundp 'nskk--romaji-buffer)
-           (not (string-empty-p nskk--romaji-buffer))
-           'romaji-pending)
-      (and nskk-current-state
-           (eq (nskk-state-mode nskk-current-state) 'hiragana)
-           'hiragana-idle)
-      (and nskk-current-state
-           (nskk-prolog-query-one
-            `(japanese-mode ,(nskk-state-mode nskk-current-state)))
-           'katakana-idle)
-      'direct-idle))
+  (cond
+   ((nskk--key-state-base))
+   ((and (boundp 'nskk--romaji-buffer)
+         (not (string-empty-p nskk--romaji-buffer)))
+    'romaji-pending)
+   ((and nskk-current-state
+         (eq (nskk-state-mode nskk-current-state) 'hiragana))
+    'hiragana-idle)
+   ((and nskk-current-state
+         (nskk-prolog-holds-p
+          `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+    'katakana-idle)
+   (t 'direct-idle)))
 
 ;;;; Internal Macros
 
@@ -237,7 +232,7 @@ States (in priority order):
 Queries the `japanese-mode/1' Prolog predicate for the mode stored in
 `nskk-current-state'.  Returns nil when state is unset."
   (and nskk-current-state
-       (nskk-prolog-query-one
+       (nskk-prolog-holds-p
         `(japanese-mode ,(nskk-state-mode nskk-current-state)))))
 
 (defmacro nskk-with-japanese-mode (action &rest fallback)
@@ -428,10 +423,10 @@ In preedit mode (▽) or normal mode, delegates to \\[end-of-line]."
   ('end-of-line (call-interactively #'end-of-line)))
 
 (nskk-define-key-handler cancel
-  "Handle C-g: cancel current conversion or preedit.
-In conversion mode (▼), cancels conversion and restores kana reading to
-buffer without re-entering preedit (▽) state.
-In preedit mode (▽), discards preedit text and resets state.
+  "Handle C-g: cancel current conversion or preedit (DDSKK-compatible).
+In conversion mode (▼), rolls back to preedit (▽) state so the user
+can edit the reading or re-convert.
+In preedit mode (▽), discards preedit text and resets state entirely.
 Otherwise calls `keyboard-quit'."
   ('cancel-conversion (nskk-cancel-conversion-to-reading))
   ('cancel-preedit (nskk-cancel-preedit))
@@ -442,8 +437,8 @@ Otherwise calls `keyboard-quit'."
 In preedit mode (▽), deletes the last accumulated character from preedit.
 If ▽ is present with no accumulated chars, cancels preedit entirely via
 `nskk-cancel-preedit' (clears marker and resets all state).
-In conversion mode (▼), cancels conversion and restores kana reading to
-buffer without re-entering preedit (▽) state.
+In conversion mode (▼), rolls back to preedit (▽) state (DDSKK-compatible)
+so the user can edit the reading and re-convert.
 Otherwise delegates to `delete-char', silently ignoring
 beginning-of-buffer errors so DEL on an empty buffer is a no-op."
   ('delete-preedit-char
@@ -458,7 +453,7 @@ beginning-of-buffer errors so DEL on an empty buffer is a no-op."
 
 (nskk-define-key-handler tab
   "Handle TAB key: dynamic completion in preedit, otherwise pass through.
-In preedit mode (\u25bd), searches the dictionary for keys matching the
+In preedit mode (▽), searches the dictionary for keys matching the
 current reading prefix and completes inline.  Repeated TAB cycles.
 In other modes, delegates to `indent-for-tab-command'."
   ('dynamic-complete (nskk-dynamic-complete))
@@ -466,7 +461,7 @@ In other modes, delegates to `indent-for-tab-command'."
 
 (defun nskk-handle-hash ()
   "Handle # key: enter numeric input mode in Japanese mode.
-In henkan-active mode (\u25bc), perform implicit kakutei first.
+In henkan-active mode (▼), perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (interactive)
@@ -486,7 +481,7 @@ Does nothing if `nskk-azik-keyboard-type' is not bound (AZIK not loaded)."
                  ('jp106 "@")
                  ('us101 "[")
                  (_ "@"))))
-      (define-key nskk-mode-map (kbd key) #'nskk-toggle-japanese-mode))))
+      (keymap-set nskk-mode-map key #'nskk-toggle-japanese-mode))))
 
 (provide 'nskk-keymap)
 

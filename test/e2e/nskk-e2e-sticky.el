@@ -25,13 +25,13 @@
 ;;; Commentary:
 
 ;; E2E tests for sticky shift (DDSKK skk-sticky).
-;; Currently ert-skip; implementation pending (FR-003).
 
 ;;; Code:
 
 (require 'ert)
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 
 ;; In ddskk, sticky-shift mode allows typing ";" to act as a Shift key for
 ;; the immediately following character.  This lets users enter uppercase
@@ -74,6 +74,28 @@
         (nskk-e2e-type "a")
         ;; Conversion (▼) phase must be active.
         (nskk-e2e-assert-henkan-phase 'active)))))
+
+;;;;
+;;;; Property-Based Tests
+;;;;
+
+(nskk-deftest-cases sticky-double-semicolon-cases
+  (( ";;" . ";"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type input)
+    (nskk-e2e-assert-buffer expected)))
+
+(nskk-describe "Sticky mode property"
+  (nskk-it "double semicolon does not crash in any mode"
+    (dotimes (_ 20)
+      (nskk-for-all ((mode valid-mode))
+        (nskk-e2e-with-buffer mode nil
+          (condition-case err
+              (progn (nskk-e2e-type ";") (nskk-e2e-type ";"))
+            (error (ert-fail (format "Sticky ;; crashed in mode %s: %s"
+                                     mode (error-message-string err))))))))))
+
 
 (provide 'nskk-e2e-sticky)
 

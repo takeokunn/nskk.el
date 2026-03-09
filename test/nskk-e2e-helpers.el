@@ -213,10 +213,22 @@ KEYS is a key sequence string understood by `kbd', e.g. \"ka\", \"C-j\", \"SPC\"
 
 Unlike `execute-kbd-macro', this dispatches each event individually
 via `key-binding' + `call-interactively', which avoids the
-batch-mode event queue contamination that `execute-kbd-macro' causes."
-  `(let ((key-vec (kbd ,keys)))
-     (cl-loop for i from 0 below (length key-vec)
-              do (nskk-e2e--dispatch-event (aref key-vec i)))))
+batch-mode event queue contamination that `execute-kbd-macro' causes.
+
+When `kbd' returns an empty sequence for a non-empty string (e.g.,
+\";;\" is parsed as a comment delimiter by `kbd'), falls back to
+dispatching raw character codes directly from the string."
+  `(let* ((keys-val ,keys)
+          (key-vec  (kbd keys-val)))
+     (if (and (stringp keys-val)
+              (> (length keys-val) 0)
+              (zerop (length key-vec)))
+         ;; Fallback: kbd parsed the string as empty (e.g., ";;" is a comment).
+         ;; Dispatch each character code directly.
+         (cl-loop for ch across keys-val
+                  do (nskk-e2e--dispatch-event ch))
+       (cl-loop for i from 0 below (length key-vec)
+                do (nskk-e2e--dispatch-event (aref key-vec i))))))
 
 ;;;;
 ;;;; Test Definition Macro

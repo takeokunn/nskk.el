@@ -284,6 +284,35 @@
                         (take 5 failures))))))
 
 
+;;;
+;;; Property-Based Tests (nskk-property-test / nskk-deftest-cases)
+;;;
+
+(nskk-property-test dict-lookup-returns-list-or-nil
+  ((q search-query))
+  (nskk-with-mock-dict nil
+    (let ((result (nskk-dict-lookup q)))
+      (should (or (null result) (listp result)))))
+  40)
+
+(nskk-property-test dict-lookup-known-key-returns-non-nil
+  ((q search-query))
+  ;; Register the reading first, then look it up — always returns the registered word
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk--user-dict-index 'user)
+          (nskk-dict-modified nil))
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-dict-register-word q "テスト")
+      (should (member "テスト" (nskk-dict-lookup q)))))
+  20)
+
+(nskk-deftest-cases dict-known-entries
+  (("かんじ" . "漢字")
+   ("うみ"   . "海"))
+  :body (nskk-with-mock-dict (list (cons input (list expected)))
+          (should (member expected (nskk-dict-lookup input)))))
+
+
 (provide 'nskk-dictionary-integration-pbt-test)
 
 ;;; nskk-dictionary-integration-pbt-test.el ends here

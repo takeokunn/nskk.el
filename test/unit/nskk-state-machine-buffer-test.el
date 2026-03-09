@@ -395,6 +395,97 @@
     (message "Completed %d buffer operations" operations)))
 
 
+;;;;
+;;;; PBT: Buffer never-nil property (with shrinking)
+;;;;
+
+(nskk-property-test-with-shrinking buffer-string-never-nil
+  ((mode valid-mode))
+  (let ((state (nskk-state-create mode)))
+    ;; Perform random ops
+    (dotimes (_ 10)
+      (let ((op (nskk-pbt--random-int 0 3)))
+        (pcase op
+          (0 (nskk-state-append-input state (nskk-sm--random-char)))
+          (1 (nskk-state-delete-last-char state))
+          (2 (nskk-state-clear-input state))
+          (3 (nskk-state-set state 'input-buffer "")))))
+    (and (stringp (nskk-state-input-buffer state))
+         (stringp (nskk-state-converted-buffer state))))
+  50)
+
+
+;;;;
+;;;; PBT: Append-then-delete length invariant (nskk-for-all inline)
+;;;;
+
+(ert-deftest nskk-state-machine-buffer-append-delete-length-invariant ()
+  "Appending then deleting returns to original length."
+  (let ((failures nil))
+    (dotimes (_ 50)
+      (nskk-for-all ((mode valid-mode))
+        (let* ((state (nskk-state-create mode))
+               (init-len (length (nskk-state-input-buffer state))))
+          ;; Append N chars then delete N chars
+          (let ((n (nskk-pbt--random-int 1 10)))
+            (dotimes (_ n)
+              (nskk-state-append-input state (nskk-sm--random-char)))
+            (dotimes (_ n)
+              (nskk-state-delete-last-char state)))
+          (let ((final-len (length (nskk-state-input-buffer state))))
+            (unless (= init-len final-len)
+              (push (list :initial init-len :final final-len :mode mode)
+                    failures))))))
+    (when failures
+      (ert-fail (format "Length invariant failed for %d cases:\n%S"
+                        (length failures) (seq-take failures 3))))))
+
+
+;;;;
+;;;; Data-Provider: Buffer clear is idempotent
+;;;;
+
+(nskk-deftest-cases buffer-clear-idempotent
+  ((hiragana . "")
+   (katakana . "")
+   (ascii    . "")
+   (latin    . ""))
+  :description "Clearing an already-empty buffer is a no-op for any mode"
+  :body (let ((state (nskk-state-create input)))
+          (nskk-state-clear-input state)
+          (nskk-state-clear-input state)
+          (should (string= expected (nskk-state-input-buffer state)))))
+
+
+;;;;
+;;;; BDD: Buffer state lifecycle
+;;;;
+
+(nskk-describe "Buffer state lifecycle"
+  (nskk-it "empty buffer has length zero for any mode"
+    (let ((failures nil))
+      (dotimes (_ 20)
+        (nskk-for-all ((mode valid-mode))
+          (let ((state (nskk-state-create mode)))
+            (unless (= 0 (length (nskk-state-input-buffer state)))
+              (push (list :mode mode) failures)))))
+      (when failures
+        (ert-fail (format "Empty buffer not zero for modes: %S" failures)))))
+
+  (nskk-it "clear after append always produces empty buffer"
+    (let ((failures nil))
+      (dotimes (_ 20)
+        (nskk-for-all ((mode valid-mode))
+          (let ((state (nskk-state-create mode)))
+            (dotimes (_ 5)
+              (nskk-state-append-input state (nskk-sm--random-char)))
+            (nskk-state-clear-input state)
+            (unless (string= "" (nskk-state-input-buffer state))
+              (push (list :mode mode) failures)))))
+      (when failures
+        (ert-fail (format "Clear after append not empty for modes: %S" failures))))))
+
+
 (provide 'nskk-state-machine-buffer-test)
 
 ;;; nskk-state-machine-buffer-test.el ends here

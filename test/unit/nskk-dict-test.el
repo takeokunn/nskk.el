@@ -312,15 +312,6 @@
 
 ;;; Section 3: I/O tests
 
-(nskk-describe "dict-io module loading"
-  (nskk-it "provides nskk-dictionary feature"
-    (should (featurep 'nskk-dictionary)))
-
-  (nskk-it "can be required multiple times safely"
-    (require 'nskk-dictionary)
-    (require 'nskk-dictionary)
-    (should (featurep 'nskk-dictionary))))
-
 (nskk-describe "Prolog dictionary I/O"
   (nskk-it "asserts dict entries and looks them up via Prolog"
     (nskk-with-prolog-entries ((io-test-dict "かんじ" ("漢字")))
@@ -360,8 +351,11 @@
             (let ((restored (with-temp-buffer
                               (insert-file-contents temp-file)
                               (read (current-buffer)))))
-              ;; cl-defstruct records produce readable output
-              (should (file-exists-p temp-file))))
+              ;; cl-defstruct records produce readable output; verify structural equality.
+              (should (nskk-dict-entry-p restored))
+              (should (equal (nskk-dict-entry-key restored) (nskk-dict-entry-key entry)))
+              (should (equal (nskk-dict-entry-candidates restored)
+                             (nskk-dict-entry-candidates entry)))))
         (when (file-exists-p temp-file)
           (delete-file temp-file))))))
 
@@ -386,69 +380,61 @@
 
 (nskk-describe "dictionary auto-detection"
   (nskk-it "returns empty list when no dictionary files exist"
-    (cl-letf (((symbol-function 'file-readable-p) (lambda (_f) nil)))
+    (nskk-with-mocks ((file-readable-p (lambda (_f) nil)))
       (let ((result (nskk-dict--detect-system-dictionaries)))
         (should (listp result))
         (should (null result)))))
 
   (nskk-it "finds dictionary in nix profile"
-    (cl-letf (((symbol-function 'file-readable-p)
-               (lambda (f) (string-match-p "nix-profile" f))))
+    (nskk-with-mocks ((file-readable-p (lambda (f) (string-match-p "nix-profile" f))))
       (let ((result (nskk-dict--detect-system-dictionaries)))
         (should result)
         (should (cl-some (lambda (p) (string-match-p "nix-profile" p)) result)))))
 
   (nskk-it "finds dictionary in standard system path"
-    (cl-letf (((symbol-function 'file-readable-p)
-               (lambda (f) (string= f "/usr/share/skk/SKK-JISYO.L"))))
+    (nskk-with-mocks ((file-readable-p (lambda (f) (string= f "/usr/share/skk/SKK-JISYO.L"))))
       (let ((result (nskk-dict--detect-system-dictionaries)))
         (should result)
         (should (member "/usr/share/skk/SKK-JISYO.L" result)))))
 
   (nskk-it "includes nskk-large-dictionary when set"
     (let ((nskk-large-dictionary "/tmp/test-large-dict"))
-      (cl-letf (((symbol-function 'file-readable-p)
-                 (lambda (f) (string= f "/tmp/test-large-dict"))))
+      (nskk-with-mocks ((file-readable-p (lambda (f) (string= f "/tmp/test-large-dict"))))
         (let ((result (nskk-dict--detect-system-dictionaries)))
           (should result)
           (should (member "/tmp/test-large-dict" result))))))
 
   (nskk-it "uses NIX_PROFILES environment variable"
-    (cl-letf (((symbol-function 'getenv)
-               (lambda (var) (when (string= var "NIX_PROFILES")
-                               "/nix/var/nix/profiles/default /home/user/.nix-profile")))
-              ((symbol-function 'file-readable-p)
-               (lambda (f) (string-match-p "/nix/var/nix/profiles/default/share/skk" f))))
+    (nskk-with-mocks ((getenv (lambda (var) (when (string= var "NIX_PROFILES")
+                                              "/nix/var/nix/profiles/default /home/user/.nix-profile")))
+                      (file-readable-p (lambda (f) (string-match-p "/nix/var/nix/profiles/default/share/skk" f))))
       (let ((result (nskk-dict--detect-system-dictionaries)))
         (should result)
         (should (cl-some (lambda (p) (string-match-p "profiles/default" p)) result))))))
 
 (nskk-describe "dict-initialize"
   (nskk-it "uses auto-detection when config is nil"
-    (let ((nskk-dict-system-dictionary-files nil)
+    (let ((nskk-jisyo-files nil)
+          (nskk-dict-system-dictionary-files nil)
           (nskk-dict-user-dictionary-file nil)
           (nskk--system-dict-index nil)
           (nskk--user-dict-index nil)
           (detect-called nil))
-      (cl-letf (((symbol-function 'nskk-dict--detect-system-dictionaries)
-                 (lambda () (setq detect-called t) nil))
-                ((symbol-function 'nskk-dict-load-user-dictionary)
-                 (lambda () nil)))
+      (nskk-with-mocks ((nskk-dict--detect-system-dictionaries (lambda () (setq detect-called t) nil))
+                        (nskk-dict-load-user-dictionary (lambda () nil)))
         (nskk-dict-initialize)
         (should detect-called))))
 
   (nskk-it "skips auto-detection when files are configured"
-    (let ((nskk-dict-system-dictionary-files '("/some/path"))
+    (let ((nskk-jisyo-files nil)
+          (nskk-dict-system-dictionary-files '("/some/path"))
           (nskk-dict-user-dictionary-file nil)
           (nskk--system-dict-index nil)
           (nskk--user-dict-index nil)
           (detect-called nil))
-      (cl-letf (((symbol-function 'nskk-dict--detect-system-dictionaries)
-                 (lambda () (setq detect-called t) nil))
-                ((symbol-function 'nskk-dict-load-system-dictionaries)
-                 (lambda () nil))
-                ((symbol-function 'nskk-dict-load-user-dictionary)
-                 (lambda () nil)))
+      (nskk-with-mocks ((nskk-dict--detect-system-dictionaries (lambda () (setq detect-called t) nil))
+                        (nskk-dict-load-system-dictionaries (lambda () nil))
+                        (nskk-dict-load-user-dictionary (lambda () nil)))
         (nskk-dict-initialize)
         (should-not detect-called)))))
 
@@ -485,6 +471,563 @@
         (let ((result (nskk-prolog-query-value
                        '(user-dict-entry "ぜったいにそんざいしないきー" \?c) '\?c)))
           (should (null result)))))))
+
+;;; Section 4: nskk-dict-parse-line tests
+
+(nskk-describe "nskk-dict-parse-line"
+  (nskk-it "parses basic SKK dictionary lines"
+    (nskk-deftest-table parse-line-basic
+      :columns (input expected-key expected-candidates)
+      :rows    (("あ /ア/"              "あ"     ("ア"))
+                ("かんじ /漢字/感じ/"   "かんじ" ("漢字" "感じ"))
+                ("うごk /動く/蠢く/"    "うごk"  ("動く" "蠢く")))
+      :body
+      (let* ((result (nskk-dict-parse-line input))
+             (key (car result))
+             (candidates (cdr result)))
+        (should (consp result))
+        (should (equal key expected-key))
+        (should (equal candidates expected-candidates)))))
+
+  (nskk-it "returns nil for comment lines"
+    (nskk-deftest-table parse-line-comments
+      :columns (input)
+      :rows    ((";;") (";; comment") (";; -*- mode: fundamental -*-"))
+      :body
+      (should (null (nskk-dict-parse-line input)))))
+
+  (nskk-it "returns nil for invalid lines"
+    (nskk-deftest-table parse-line-invalid
+      :columns (input)
+      :rows    (("no-slash-at-all") ("missing-space/"))
+      :body
+      (should (null (nskk-dict-parse-line input)))))
+
+  (nskk-it "strips annotations (semicolon suffix) from candidates"
+    (let* ((result (nskk-dict-parse-line "かんじ /漢字;訓読み/感じ;okurigana/"))
+           (candidates (cdr result)))
+      (should (equal candidates '("漢字" "感じ")))))
+
+  (nskk-it "returns nil for nil input"
+    (should (null (nskk-dict-parse-line nil))))
+
+  (nskk-it "returns nil for empty string input"
+    (should (null (nskk-dict-parse-line "")))))
+
+;;; Section 5: nskk-dict--parse-candidates tests
+
+(nskk-describe "nskk-dict--parse-candidates"
+  (nskk-it "parses candidate strings correctly"
+    (nskk-deftest-table parse-candidates-valid
+      :columns (input expected)
+      :rows    (("/ア/"        ("ア"))
+                ("/漢字/感じ/" ("漢字" "感じ"))
+                ("/a/b/c/"     ("a" "b" "c")))
+      :body
+      (should (equal (nskk-dict--parse-candidates input) expected))))
+
+  (nskk-it "returns nil for invalid inputs"
+    (nskk-deftest-table parse-candidates-nil
+      :columns (input)
+      :rows    ((nil) ("") ("no-slash") ("漢字"))
+      :body
+      (should (null (nskk-dict--parse-candidates input))))))
+
+;;; Section 6: nskk-dict-lookup tests
+
+(nskk-describe "nskk-dict-lookup"
+  (nskk-it "returns candidates for a known reading"
+    (nskk-with-mock-dict '(("かんじ" . ("漢字" "感じ")))
+      (let ((result (nskk-dict-lookup "かんじ")))
+        (should result)
+        (should (member "漢字" result)))))
+
+  (nskk-it "returns nil for an unknown reading"
+    (nskk-with-mock-dict '(("かんじ" . ("漢字")))
+      (let ((result (nskk-dict-lookup "ぜんぜんない")))
+        (should (null result)))))
+
+  (nskk-it "returns nil for an empty key"
+    (nskk-with-mock-dict nil
+      (let ((result (nskk-dict-lookup "")))
+        (should (null result)))))
+
+  (nskk-it "finds okuri-ari entries when key is appended with consonant"
+    (nskk-with-prolog-entries ((user-dict-entry "うごk" ("動く" "蠢く")))
+      (let ((result (nskk-dict-lookup "うご")))
+        (should result)
+        (should (member "動く" result))))))
+
+;;; Section 7: nskk-dict-register-word tests
+
+(nskk-describe "nskk-dict-register-word"
+  (nskk-it "registers a new word and makes it retrievable"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let ((nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        (nskk-dict-register-word "てすと" "テスト")
+        (let ((result (nskk-dict-lookup "てすと")))
+          (should result)
+          (should (member "テスト" result)))
+        (should nskk-dict-modified))))
+
+  (nskk-it "returns nil silently for empty reading"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        (should (null (nskk-dict-register-word "" "テスト")))
+        (should-not nskk-dict-modified))))
+
+  (nskk-it "returns nil silently for empty word"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        (should (null (nskk-dict-register-word "てすと" "")))
+        (should-not nskk-dict-modified))))
+
+  (nskk-it "registers additional words to an existing entry"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let ((nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        (nskk-dict-register-word "かんじ" "漢字")
+        (nskk-dict-register-word "かんじ" "感じ")
+        (let ((result (nskk-dict-lookup "かんじ")))
+          (should (member "漢字" result))
+          (should (member "感じ" result)))
+        (should nskk-dict-modified))))
+
+  (nskk-it "runs nskk-jisyo-update-hook after successful registration"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let* ((hook-called nil)
+             (nskk--user-dict-index nil)
+             (nskk-dict-modified nil)
+             (nskk-jisyo-update-hook (list (lambda () (setq hook-called t)))))
+        (nskk-dict-register-word "てすと" "テスト")
+        (should hook-called)))))
+
+;;; Section 8: CPS /k variant tests
+
+(nskk-describe "nskk-dict-lookup/k"
+  (nskk-it "calls on-found with candidates when reading exists"
+    (nskk-with-mock-dict '(("かんじ" . ("漢字" "感じ")))
+      (let ((found-result nil)
+            (not-found-called nil))
+        (nskk-dict-lookup/k "かんじ"
+                            (lambda (cands) (setq found-result cands))
+                            (lambda () (setq not-found-called t)))
+        (should found-result)
+        (should-not not-found-called)
+        (should (member "漢字" found-result)))))
+
+  (nskk-it "calls on-not-found when reading is absent"
+    (nskk-with-mock-dict '(("かんじ" . ("漢字")))
+      (let ((found-called nil)
+            (not-found-called nil))
+        (nskk-dict-lookup/k "ない"
+                            (lambda (_c) (setq found-called t))
+                            (lambda () (setq not-found-called t)))
+        (should-not found-called)
+        (should not-found-called))))
+
+  (nskk-it "sync wrapper nskk-dict-lookup is equivalent to calling /k with #'identity"
+    (nskk-with-mock-dict '(("かんじ" . ("漢字")))
+      (let ((sync-result (nskk-dict-lookup "かんじ"))
+            (cps-result (nskk-dict-lookup/k "かんじ" #'identity (lambda () nil))))
+        (should (equal sync-result cps-result))))))
+
+(nskk-describe "nskk-dict-register-word/k"
+  (nskk-it "calls on-done after successful registration"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let ((done-called nil)
+            (nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        (nskk-dict-register-word/k "てすと" "テスト"
+                                   (lambda () (setq done-called t)))
+        (should done-called))))
+
+  (nskk-it "does not call on-done for invalid empty reading"
+    (nskk-prolog-test-with-isolated-db
+      (let ((done-called nil)
+            (nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        (nskk-dict-register-word/k "" "テスト"
+                                   (lambda () (setq done-called t)))
+        (should-not done-called)))))
+
+;;; Section 9: cache function tests
+
+(nskk-describe "nskk-dict--cache-valid-p"
+  (nskk-it "returns nil when dict-files is nil"
+    (should (null (nskk-dict--cache-valid-p nil))))
+
+  (nskk-it "returns nil when cache file does not exist"
+    (nskk-with-mocks ((file-attributes (lambda (_f) nil)))
+      (should (null (nskk-dict--cache-valid-p '("/some/dict.el"))))))
+
+  (nskk-it "returns non-nil when cache is newer than all source files"
+    (let ((cache-mtime '(0 200 0 0))
+          (source-mtime '(0 100 0 0)))
+      (nskk-with-mocks ((file-attributes
+                         (lambda (f)
+                           ;; file-attribute-modification-time reads index 5 (mtime slot).
+                           (if (string-suffix-p "dict-cache.eld" f)
+                               (list nil nil nil nil nil cache-mtime nil nil nil nil nil)
+                             (list nil nil nil nil nil source-mtime nil nil nil nil nil))))
+                        (file-readable-p (lambda (_f) t)))
+        (should (nskk-dict--cache-valid-p '("/some/dict.el")))))))
+
+(nskk-describe "nskk-dict--load-system-dict-from-cache"
+  (nskk-it "returns nil when cache file is unreadable"
+    (nskk-with-mocks ((insert-file-contents (lambda (_f) (error "File not found"))))
+      (should (null (nskk-dict--load-system-dict-from-cache)))))
+
+  (nskk-it "returns nil when cache data is not a list (type guard)"
+    (nskk-with-mocks ((insert-file-contents (lambda (_f) (insert "42"))))
+      (should (null (nskk-dict--load-system-dict-from-cache))))))
+
+;;; Section 10: register-lookup invariants (table-driven PBT)
+
+(nskk-deftest-cases dict-register-lookup-invariant
+  (("てすと"   . "テスト")
+   ("かんじ"   . "漢字")
+   ("さくら"   . "桜")
+   ("にほんご" . "日本語"))
+  :description "register-then-lookup invariant: registered word is always retrievable"
+  :body
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+    (let ((nskk--user-dict-index nil)
+          (nskk-dict-modified nil))
+      (nskk-dict-register-word input expected)
+      (let ((result (nskk-dict-lookup input)))
+        (should result)
+        (should (member expected result))))))
+
+(nskk-deftest-cases dict-register-idempotency
+  (("てすと" . "テスト")
+   ("かんじ" . "漢字"))
+  :description "register-idempotency: registering same word twice is safe and appears exactly once"
+  :body
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+    (let ((nskk--user-dict-index nil)
+          (nskk-dict-modified nil))
+      (nskk-dict-register-word input expected)
+      (nskk-dict-register-word input expected)
+      (let ((result (nskk-dict-lookup input)))
+        (should result)
+        (should (= (cl-count expected result :test #'equal) 1))))))
+
+(nskk-describe "nskk-dict--file-older-than"
+  (nskk-it "returns nil when file does not exist"
+    (should-not (nskk-dict--file-older-than "/nonexistent/path/file.el"
+                                            (current-time))))
+
+  (nskk-it "returns nil when file mtime equals cache-mtime"
+    (let* ((tmpfile (make-temp-file "nskk-test-"))
+           (mtime (file-attribute-modification-time (file-attributes tmpfile))))
+      (unwind-protect
+          (should-not (nskk-dict--file-older-than tmpfile mtime))
+        (delete-file tmpfile))))
+
+  (nskk-it "returns non-nil when file is older than cache-mtime"
+    (let* ((tmpfile (make-temp-file "nskk-test-"))
+           (file-mtime (file-attribute-modification-time (file-attributes tmpfile)))
+           ;; A future time is "newer" than the file, so file is "older"
+           (future-time (time-add file-mtime 100)))
+      (unwind-protect
+          (should (nskk-dict--file-older-than tmpfile future-time))
+        (delete-file tmpfile))))
+
+  (nskk-it "returns nil when file is newer than cache-mtime"
+    (let* ((tmpfile (make-temp-file "nskk-test-"))
+           (file-mtime (file-attribute-modification-time (file-attributes tmpfile)))
+           ;; A past time is "older" than the file, so file is "newer"
+           (past-time (time-subtract file-mtime 100)))
+      (unwind-protect
+          (should-not (nskk-dict--file-older-than tmpfile past-time))
+        (delete-file tmpfile)))))
+
+(nskk-describe "nskk-dict--parse-file-to-entries"
+  (nskk-it "returns nil for a non-existent file"
+    (should-not (nskk-dict--parse-file-to-entries "/no/such/file.el")))
+
+  (nskk-it "returns nil for a non-string argument"
+    (should-not (nskk-dict--parse-file-to-entries nil))
+    (should-not (nskk-dict--parse-file-to-entries 42)))
+
+  (nskk-it "parses a minimal SKK dictionary file into entries"
+    (let ((tmpfile (make-temp-file "nskk-dict-test-" nil ".skk")))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (insert ";; SKK-JISYO.S -*- coding: utf-8 -*-\n")
+              (insert ";; okuri-ari entries\n")
+              (insert ";; okuri-nasi entries\n")
+              (insert "かんじ /漢字/感じ/幹事/\n")
+              (insert "さくら /桜/\n")
+              (insert ";; another comment\n")
+              (insert "にほん /日本/二本/\n"))
+            (let ((entries (nskk-dict--parse-file-to-entries tmpfile)))
+              (should (listp entries))
+              (should (= (length entries) 3))
+              (should (assoc "かんじ" entries))
+              (should (assoc "さくら" entries))
+              (should (assoc "にほん" entries))
+              (should (equal (cdr (assoc "さくら" entries)) '("桜")))))
+        (delete-file tmpfile))))
+
+  (nskk-it "skips comment lines and blank lines"
+    (let ((tmpfile (make-temp-file "nskk-dict-test-" nil ".skk")))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (insert ";; comment\n")
+              (insert "\n")
+              (insert "てすと /テスト/\n")
+              (insert ";; another comment\n"))
+            (let ((entries (nskk-dict--parse-file-to-entries tmpfile)))
+              (should (= (length entries) 1))
+              (should (assoc "てすと" entries))))
+        (delete-file tmpfile))))
+
+  (nskk-it "returns nil for an empty file"
+    (let ((tmpfile (make-temp-file "nskk-dict-test-" nil ".skk")))
+      (unwind-protect
+          (should-not (nskk-dict--parse-file-to-entries tmpfile))
+        (delete-file tmpfile)))))
+
+(nskk-describe "nskk-dict--save-system-dict-cache and nskk-dict--load-system-dict-from-cache"
+  (nskk-it "roundtrip: saved entries can be loaded back"
+    (let* ((tmpfile (make-temp-file "nskk-cache-test-" nil ".eld"))
+           (entries '(("かんじ" . ("漢字" "感じ"))
+                      ("さくら" . ("桜"))))
+           (dict-files '("/fake/dict1.skk" "/fake/dict2.skk"))
+           (nskk-dict-system-dictionary-files dict-files))
+      (unwind-protect
+          (nskk-with-mocks ((nskk-dict--cache-file-path (lambda () tmpfile)))
+            (nskk-dict--save-system-dict-cache entries dict-files)
+            (nskk-prolog-test-with-isolated-db
+              ;; dict-cache-source-valid/2 is a reflexive Prolog rule already loaded.
+              ;; With identical sorted lists the rule succeeds automatically.
+              (let ((loaded (nskk-dict--load-system-dict-from-cache)))
+                (should (listp loaded))
+                (should (= (length loaded) 2))
+                (should (assoc "かんじ" loaded))
+                (should (equal (cdr (assoc "さくら" loaded)) '("桜"))))))
+        (when (file-exists-p tmpfile)
+          (delete-file tmpfile)))))
+
+  (nskk-it "save creates the cache directory if it does not exist"
+    (let* ((tmpdir (make-temp-file "nskk-cachedir-" t))
+           (cache-path (expand-file-name "sub/dir/cache.eld" tmpdir)))
+      (unwind-protect
+          (nskk-with-mocks ((nskk-dict--cache-file-path (lambda () cache-path)))
+            (nskk-dict--save-system-dict-cache '() '())
+            (should (file-exists-p cache-path)))
+        (delete-directory tmpdir t)))))
+
+;;;
+;;; nskk-dict--lookup-okuri-ari
+;;;
+
+(nskk-describe "nskk-dict--lookup-okuri-ari"
+  (nskk-it "finds candidates when an okuri-ari entry exists in the database"
+    (nskk-with-mock-dict '(("かんk" . ("感k")))
+      (let ((result (nskk-dict--lookup-okuri-ari "かん")))
+        (should (listp result))
+        (should (member "感k" result)))))
+
+  (nskk-it "returns nil when no okuri-ari entry matches the key"
+    (nskk-with-mock-dict '(("あい" . ("愛")))
+      (let ((result (nskk-dict--lookup-okuri-ari "xyz")))
+        (should (null result)))))
+
+  (nskk-it "combines candidates from multiple okuri consonants"
+    (nskk-with-mock-dict '(("かんk" . ("感k")) ("かんg" . ("感g")))
+      (let ((result (nskk-dict--lookup-okuri-ari "かん")))
+        (should (member "感k" result))
+        (should (member "感g" result)))))
+
+  (nskk-it "deduplicates candidates that appear under multiple okuri keys"
+    (nskk-with-mock-dict '(("かんk" . ("漢字")) ("かんg" . ("漢字")))
+      (let ((result (nskk-dict--lookup-okuri-ari "かん")))
+        ;; cl-union removes duplicates
+        (should (= (length (cl-remove-duplicates result :test #'equal))
+                   (length result)))))))
+
+;;;
+;;; nskk-dict-save-user-dictionary and nskk-dict--maybe-save
+;;;
+
+(nskk-describe "nskk-dict-save-user-dictionary"
+  (nskk-it "saves user dictionary to a temp file in SKK format"
+    (nskk-with-mock-dict '(("てすと" . ("テスト")))
+      (let* ((tmpfile (make-temp-file "nskk-user-dict-" nil ".skk"))
+             (nskk-dict-user-dictionary-file tmpfile))
+        (unwind-protect
+            (progn
+              ;; Register a word so the user dict is populated
+              (nskk-dict-register-word "てすと" "テスト")
+              (setq nskk-dict-modified t)
+              (nskk-dict-save-user-dictionary)
+              (let ((saved (with-temp-buffer
+                             (insert-file-contents tmpfile)
+                             (buffer-string))))
+                (should (string-match-p "てすと" saved))
+                ;; File should contain the candidate in SKK format (word/...)
+                (should (string-match-p "テスト" saved))
+                ;; Modified flag should be cleared after save
+                (should-not nskk-dict-modified)))
+          (when (file-exists-p tmpfile)
+            (delete-file tmpfile))))))
+
+  (nskk-it "does nothing when nskk-dict-user-dictionary-file is nil"
+    (nskk-with-mock-dict nil
+      (let ((nskk-dict-user-dictionary-file nil)
+            (nskk-dict-modified t))
+        (nskk-dict-save-user-dictionary)
+        ;; Modified flag should remain unchanged
+        (should nskk-dict-modified)))))
+
+(nskk-describe "nskk-dict--maybe-save"
+  (nskk-it "calls nskk-dict-save-user-dictionary when nskk-dict-modified is non-nil"
+    (let ((save-called nil))
+      (nskk-with-mocks ((nskk-dict-save-user-dictionary
+                         (lambda () (setq save-called t))))
+        (let ((nskk-dict-modified t))
+          (nskk-dict--maybe-save)
+          (should save-called)))))
+
+  (nskk-it "does not call nskk-dict-save-user-dictionary when not modified"
+    (let ((save-called nil))
+      (nskk-with-mocks ((nskk-dict-save-user-dictionary
+                         (lambda () (setq save-called t))))
+        (let ((nskk-dict-modified nil))
+          (nskk-dict--maybe-save)
+          (should-not save-called)))))
+
+  (nskk-it "silently handles errors from save without propagating them"
+    (nskk-with-mocks ((nskk-dict-save-user-dictionary
+                       (lambda () (error "Simulated save failure"))))
+      (let ((nskk-dict-modified t))
+        ;; Should not signal an error
+        (nskk-dict--maybe-save)))))
+
+;;;
+;;; nskk-dict-load-file
+;;;
+
+(nskk-describe "nskk-dict-load-file"
+  (nskk-it "returns nil for a non-existent file"
+    (nskk-prolog-test-with-isolated-db
+      (should (null (nskk-dict-load-file "/nonexistent/path/to/dict.skk")))))
+
+  (nskk-it "returns nil for a non-string argument"
+    (nskk-prolog-test-with-isolated-db
+      (should (null (nskk-dict-load-file nil)))
+      (should (null (nskk-dict-load-file 42)))))
+
+  (nskk-it "loads entries from a valid SKK dictionary file"
+    (nskk-prolog-test-with-isolated-db
+      (let ((tmpfile (make-temp-file "nskk-load-file-" nil ".skk")))
+        (unwind-protect
+            (progn
+              (with-temp-file tmpfile
+                (insert ";; NSKK test dictionary\n")
+                (insert ";; okuri-nasi entries.\n")
+                (insert "てすと /テスト/試す/\n")
+                (insert "かんじ /漢字/感じ/\n"))
+              (let ((result (nskk-dict-load-file tmpfile)))
+                (should (symbolp result))
+                ;; After loading, the entries should be queryable
+                (should (nskk-prolog-holds-p '(system-dict-entry "てすと" \?c)))
+                (should (nskk-prolog-holds-p '(system-dict-entry "かんじ" \?c)))))
+          (when (file-exists-p tmpfile)
+            (delete-file tmpfile))))))
+
+  (nskk-it "uses a custom predicate name when provided"
+    (nskk-prolog-test-with-isolated-db
+      (let ((tmpfile (make-temp-file "nskk-load-file-" nil ".skk")))
+        (unwind-protect
+            (progn
+              (with-temp-file tmpfile
+                (insert ";; okuri-nasi entries.\n")
+                (insert "てすと /テスト/\n"))
+              (nskk-dict-load-file tmpfile nil 'custom-test-pred)
+              ;; Should be under the custom predicate, not system-dict-entry
+              (should (nskk-prolog-holds-p '(custom-test-pred "てすと" \?c)))
+              (should-not (nskk-prolog-holds-p '(system-dict-entry "てすと" \?c))))
+          (when (file-exists-p tmpfile)
+            (delete-file tmpfile))))))
+
+  (nskk-it "skips comment and blank lines in the dictionary file"
+    (nskk-prolog-test-with-isolated-db
+      (let ((tmpfile (make-temp-file "nskk-load-file-" nil ".skk")))
+        (unwind-protect
+            (progn
+              (with-temp-file tmpfile
+                (insert ";; comment line\n")
+                (insert "\n")
+                (insert "てすと /テスト/\n")
+                (insert ";; another comment\n")
+                (insert "\n"))
+              (nskk-dict-load-file tmpfile)
+              ;; Only the real entry should be loaded
+              (let ((solutions (nskk-prolog-query '(system-dict-entry \?k \?c))))
+                (should (= (length solutions) 1))
+                (should (equal (nskk-prolog-walk '\?k (car solutions)) "てすと"))))
+          (when (file-exists-p tmpfile)
+            (delete-file tmpfile))))))
+
+  (nskk-it "returns nil for a comment-only file with no valid entries"
+    ;; A file that parses to zero valid entries signals that no dictionary
+    ;; was loaded: callers like nskk-dict-load-user-dictionary treat the
+    ;; return value as a loaded/not-loaded indicator.
+    (nskk-prolog-test-with-isolated-db
+      (let ((tmpfile (make-temp-file "nskk-load-file-" nil ".skk")))
+        (unwind-protect
+            (progn
+              (with-temp-file tmpfile
+                (insert ";; NSKK user dictionary\n")
+                (insert ";; okuri-nasi entries.\n")
+                (insert "\n"))
+              (should (null (nskk-dict-load-file tmpfile))))
+          (when (file-exists-p tmpfile)
+            (delete-file tmpfile)))))))
+
+
+;;;
+;;; nskk-dict--struct-lookup Tests
+;;;
+
+(nskk-describe "nskk-dict--struct-lookup"
+  (nskk-it "returns an nskk-dict-entry when the key is found in Prolog"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-with-prolog-entries ((struct-lookup-test "かんじ" ("漢字" "感じ")))
+        (let* ((index (make-nskk-dict-index :predicate 'struct-lookup-test))
+               (result (nskk-dict--struct-lookup index "かんじ")))
+          (should (nskk-dict-entry-p result))
+          (should (equal (nskk-dict-entry-key result) "かんじ"))
+          (should (equal (nskk-dict-entry-candidates result) '("漢字" "感じ")))))))
+
+  (nskk-it "returns nil when key is absent from Prolog"
+    (nskk-prolog-test-with-isolated-db
+      (let ((index (make-nskk-dict-index :predicate 'struct-lookup-absent-test)))
+        (should-not (nskk-dict--struct-lookup index "ないきのう")))))
+
+  (nskk-it "returns nil when index is not a dict-index struct"
+    (should-not (nskk-dict--struct-lookup nil "かんじ")))
+
+  (nskk-it "returns nil when query is not a string"
+    (nskk-prolog-test-with-isolated-db
+      (let ((index (make-nskk-dict-index :predicate 'struct-lookup-test2)))
+        (should-not (nskk-dict--struct-lookup index nil))
+        (should-not (nskk-dict--struct-lookup index 42))))))
 
 (provide 'nskk-dict-test)
 

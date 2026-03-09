@@ -5,6 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -63,6 +64,7 @@
 
 (require 'cl-lib)
 (require 'nskk-prolog)
+(require 'nskk-cps-macros)
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
 
@@ -75,8 +77,9 @@
 
 (defcustom nskk-dict-user-dictionary-file
   (expand-file-name "~/.nskk/jisyo")
-  "Path to the user dictionary file."
+  "Path to the user dictionary file for storing registered words."
   :type 'file
+  :safe #'stringp
   :group 'nskk-dictionary)
 
 (defcustom nskk-dict-system-dictionary-files nil
@@ -84,16 +87,19 @@
 When nil, NSKK auto-detects dictionary paths from nix profiles
 and common system locations."
   :type '(repeat file)
+  :safe (lambda (v) (and (listp v) (cl-every #'stringp v)))
   :group 'nskk-dictionary)
 
 (defcustom nskk-dict-cache-enabled t
-  "Whether to enable dictionary caching."
+  "When non-nil, enable on-disk caching for system dictionaries."
   :type 'boolean
+  :safe #'booleanp
   :group 'nskk-dictionary)
 
 (defcustom nskk-large-dictionary nil
-  "Path to large SKK dictionary file."
+  "Path to large SKK dictionary file, or nil to disable."
   :type '(choice file (const nil))
+  :safe (lambda (v) (or (null v) (stringp v)))
   :group 'nskk-dictionary)
 
 (defvar nskk-jisyo-update-hook nil
@@ -198,21 +204,6 @@ Returns `nskk-dict-entry' or nil if not found."
         (length (gethash (format "%s/2" pred) nskk-prolog--database))
       0)))
 
-(defun nskk-dict-source-p (source)
-  "Return non-nil if SOURCE is a valid dictionary source symbol."
-  (not (null (nskk-prolog-query-one `(dict-source ,source \?_)))))
-
-(defun nskk-dict--entry-count (source _okuri-type)
-  "Return count of entries for dictionary SOURCE."
-  (let* ((pred (nskk-prolog-query-value `(dict-source ,source \?pred) '\?pred))
-         (key (when pred (nskk-prolog--clause-key pred 2)))
-         (trie (when key (gethash key nskk-prolog--trie-indices))))
-    (cond
-     ((null pred) 0)
-     (trie (nskk-prolog--trie-size trie))
-     (key (length (gethash key nskk-prolog--database)))
-     (t 0))))
-
 ;;; Section 4: I/O and lifecycle
 
 ;;; Dictionary Parsing
@@ -272,27 +263,24 @@ Does not modify the Prolog database."
   "Load SKK dictionary from FILE into Prolog as PREDICATE-NAME/2 facts.
 PREDICATE-NAME defaults to \\='system-dict-entry.
 CODING-SYSTEM defaults to nil which lets Emacs auto-detect encoding.
-Returns PREDICATE-NAME symbol on success, or nil on failure."
+
+Uses `nskk-prolog-assert' per entry (not bulk-assert) so that the flat
+clause database is also populated.  This is required for variable-key
+enumeration (e.g. `nskk-dict-save-user-dictionary' queries
+\\='(user-dict-entry ?k ?c)') to work correctly.  For large read-only
+system dictionaries, use `nskk-prolog-trie-bulk-assert' directly after
+`nskk-dict--parse-file-to-entries'.
+
+Returns PREDICATE-NAME symbol on success, or nil when FILE has no valid
+entries or cannot be read."
   (when (and (stringp file) (file-readable-p file))
     (let* ((pred (or predicate-name 'system-dict-entry))
-           (coding coding-system))
-      ;; Set up trie index for this predicate (arity 2: key + candidates)
-      (nskk-prolog-set-index pred 2 :trie)
-      (with-temp-buffer
-        (let ((coding-system-for-read coding))
-          (insert-file-contents file))
-        (goto-char (point-min))
-        (while (not (eobp))
-          (let* ((line (buffer-substring-no-properties
-                        (line-beginning-position) (line-end-position)))
-                 (parsed (nskk-dict-parse-line line)))
-            (when parsed
-              (let ((key (car parsed))
-                    (candidates (cdr parsed)))
-                (nskk-prolog-assert (list (list pred key candidates))))))
-          (forward-line 1)))
-      ;; Return predicate symbol indicating successful load
-      pred)))
+           (entries (nskk-dict--parse-file-to-entries file coding-system)))
+      (when entries
+        (nskk-prolog-set-index pred 2 :trie)
+        (dolist (entry entries)
+          (nskk-prolog-assert (list (list pred (car entry) (cdr entry)))))
+        pred))))
 
 (defun nskk-dict-load-system-dictionaries ()
   "Load all system dictionaries configured in `nskk-dict-system-dictionary-files'.
@@ -510,8 +498,8 @@ This is used when no explicit okurigana marker is present in the input."
                       (cl-union all-candidates cands :test #'equal))))))))
     all-candidates))
 
-(defun nskk-dict-lookup (key)
-  "Look up KEY in loaded dictionaries via Prolog bridge rule.
+(defun nskk-dict--do-lookup (key)
+  "Internal: perform the actual Prolog lookup for KEY.
 Returns list of candidates or nil.
 User dictionary results take priority via clause ordering.
 
@@ -534,15 +522,34 @@ consonants appended to KEY.  Results from both searches are combined."
             (cl-union okuri-nasi-candidates okuri-ari-candidates :test #'equal)))
       okuri-nasi-candidates)))
 
+;;;###autoload
+(defun/k nskk-dict-lookup (key)
+  "Look up KEY in loaded dictionaries via Prolog bridge rule.
+Returns list of candidates or nil.
+User dictionary results take priority via clause ordering.
+
+When KEY has no explicit okurigana marker (no trailing lowercase consonant),
+also searches for okuri-ari entries by trying all possible okurigana
+consonants appended to KEY.  Results from both searches are combined."
+  (let ((result (nskk-dict--do-lookup key)))
+    (if result (succeed result) (fail))))
+
 ;;; User Dictionary Modification
 
 (defvar nskk-dict-modified nil
   "Non-nil when the user dictionary has unsaved modifications.")
 
+;;;###autoload
+;; Hand-written pair: nskk-dict-register-word/k uses a no-arg on-done
+;; callback (called on success only, NOT called on invalid input or failure).
+;; defun/done always calls on-done and defun/k has 2 continuations, so
+;; neither macro fits this pattern.
 (defun nskk-dict-register-word (reading word)
   "Register WORD as a conversion candidate for READING in user dictionary.
 Uses the Prolog dict-register rule which handles both new entries
-and updates to existing entries via assertz/retract builtins."
+and updates to existing entries via assertz/retract builtins.
+Returns non-nil on success; nil when READING or WORD are empty/invalid
+or when the Prolog registration query fails."
   (when (and (stringp reading) (stringp word)
              (not (string-empty-p reading))
              (not (string-empty-p word)))
@@ -550,12 +557,23 @@ and updates to existing entries via assertz/retract builtins."
     (unless nskk--user-dict-index
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
       (setq nskk--user-dict-index 'user))
-    (when (nskk-prolog-query-one `(dict-register ,reading ,word))
+    (nskk-when-prolog-holds `(dict-register ,reading ,word)
       (setq nskk-dict-modified t)
       (condition-case err
           (run-hooks 'nskk-jisyo-update-hook)
         (error (message "NSKK: jisyo-update-hook error: %s" (error-message-string err))))
-      (message "NSKK: Registered %s -> %s" reading word))))
+      (message "NSKK: Registered %s -> %s" reading word)
+      t)))
+
+(defun nskk-dict-register-word/k (reading word on-done)
+  "CPS wrapper for `nskk-dict-register-word'.
+Calls ON-DONE (no arguments) on successful registration.
+Does nothing — ON-DONE is NOT called — on invalid input or registration failure.
+ON-DONE must be a callable function; nil is not accepted. [CPS]"
+  (unless (functionp on-done)
+    (signal 'wrong-type-argument (list 'functionp on-done)))
+  (when (nskk-dict-register-word reading word)
+    (funcall on-done)))
 
 ;;; User Dictionary Save
 

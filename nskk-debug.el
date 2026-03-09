@@ -5,6 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
+;; Version: 0.1.0
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -29,8 +30,9 @@
 ;; Layer position: L0 (Foundation) -- depends only on nskk-custom.
 ;;
 ;; Provides centralized debug logging to the *NSKK Debug* buffer with
-;; zero overhead when disabled.  The `nskk-debug-log' macro expands to
-;; nothing when `nskk-debug-enabled' is nil at compile time; the
+;; near-zero runtime overhead when disabled.  The `nskk-debug-log' macro
+;; expands to a `when' guard; when `nskk-debug-enabled' is nil the guard
+;; short-circuits and arguments are never evaluated.  The
 ;; `nskk-debug-message' function provides a safe runtime variant.
 ;;
 ;; No Prolog predicates are maintained by this module.
@@ -61,69 +63,85 @@
 
 ;;; Code:
 
-(require 'cl-lib)
 (require 'nskk-custom)
+
+;;;; Data
+
+(defconst nskk-debug--buffer-name "*NSKK Debug*"
+  "Name of the NSKK debug buffer.")
+
+(defconst nskk-debug--timestamp-format "%H:%M:%S.%3N"
+  "Format string for debug log timestamps.")
+
+(defconst nskk-debug--message-format "[%s] %s\n"
+  "Format string for a complete debug log entry.
+The first %s is the timestamp, the second %s is the message text.")
 
 ;;;; Logging Macro
 
 (defmacro nskk-debug-log (format-string &rest args)
-  "Log message if debug enabled.  Zero overhead when disabled.
+  "Log message with a timestamp if debug is enabled.
 FORMAT-STRING is passed to `format' with ARGS.
+Expands to a runtime `when' guard; overhead when disabled is one
+`bound-and-true-p' test per call site.
 Usage: (nskk-debug-log \"Processing: %s\" value)"
   (declare (indent 0) (debug t))
   `(when (bound-and-true-p nskk-debug-enabled)
      (nskk-debug--append (format ,format-string ,@args))))
 
-;;;; Convenience function for use outside macro context
+;;;; Convenience Function
 
 (defun nskk-debug-message (format-string &rest args)
-  "Log a debug message.
+  "Log a debug message, safe for use in all contexts.
 FORMAT-STRING and ARGS are passed to `format'.
-Safe to call even if nskk-debug module has issues."
+Unlike `nskk-debug-log', this is a first-class function: it can be
+stored, passed to `apply', or called from inside `condition-case' forms
+where signaling a secondary error must be avoided.  A `condition-case'
+handler absorbs any format error and issues a warning instead.
+Note: unlike the macro, arguments are always evaluated even when
+debug is disabled — avoid this function on hot paths."
   (when (bound-and-true-p nskk-debug-enabled)
-    (condition-case err
-        (nskk-debug--append (apply #'format format-string args))
-      (error
-       (display-warning 'nskk
-                        (format "Debug logging error: %s" err)
-                        :warning)))))
+    (let ((msg (condition-case err
+                   (apply #'format format-string args)
+                 (error
+                  (display-warning 'nskk
+                                   (format "Debug logging error: %s" (error-message-string err))
+                                   :warning)
+                  nil))))
+      (when msg (nskk-debug--append msg)))))
 
 ;;;; Buffer Management
-
-(defconst nskk-debug--buffer-name "*NSKK Debug*"
-  "Name of the NSKK debug buffer.")
 
 (defun nskk-debug--buffer ()
   "Get or create the NSKK debug buffer."
   (or (get-buffer nskk-debug--buffer-name)
       (let ((buffer (get-buffer-create nskk-debug--buffer-name)))
         (with-current-buffer buffer
-          (setq buffer-read-only t)
           (special-mode))
         buffer)))
 
 (defun nskk-debug--append (message)
-  "Append MESSAGE to the debug buffer with timestamp."
-  (let ((buffer (nskk-debug--buffer))
-        (timestamp (format-time-string "%H:%M:%S.%3N")))
-    (with-current-buffer buffer
-      (let ((inhibit-read-only t))
-        (goto-char (point-max))
-        (insert (format "[%s] %s\n" timestamp message)))
+  "Append MESSAGE to the debug buffer with a timestamp prefix."
+  (with-current-buffer (nskk-debug--buffer)
+    (let ((inhibit-read-only t))
+      (goto-char (point-max))
+      (insert (format nskk-debug--message-format
+                      (format-time-string nskk-debug--timestamp-format)
+                      message))
       (nskk-debug--trim))))
 
 (defun nskk-debug--trim ()
-  "Trim debug buffer if it exceeds `nskk-debug-max-entries'.
+  "Trim the debug buffer to at most `nskk-debug-max-entries' lines.
 Must be called with the debug buffer current.
-Uses O(1) backward iteration from buffer end instead of O(2n) full scan."
-  (let ((max-entries nskk-debug-max-entries))
-    (when (> (buffer-size) 0)
-      (save-excursion
-        (goto-char (point-max))
-        (forward-line (- max-entries))
-        (when (> (point) (point-min))
-          (let ((inhibit-read-only t))
-            (delete-region (point-min) (point))))))))
+Positions point at `point-max', steps backward by max-entries newlines,
+then deletes everything before that position."
+  (when (> (buffer-size) 0)
+    (save-excursion
+      (goto-char (point-max))
+      (forward-line (- nskk-debug-max-entries))
+      (when (> (point) (point-min))
+        (let ((inhibit-read-only t))
+          (delete-region (point-min) (point)))))))
 
 ;;;; Interactive Commands
 
@@ -132,9 +150,8 @@ Uses O(1) backward iteration from buffer end instead of O(2n) full scan."
   "Toggle NSKK debug mode."
   (interactive)
   (setq nskk-debug-enabled (not nskk-debug-enabled))
-  (if nskk-debug-enabled
-      (message "NSKK debug mode enabled")
-    (message "NSKK debug mode disabled")))
+  (message "NSKK debug mode %s"
+           (if nskk-debug-enabled "enabled" "disabled")))
 
 ;;;###autoload
 (defun nskk-debug-show ()
@@ -146,18 +163,16 @@ Uses O(1) backward iteration from buffer end instead of O(2n) full scan."
 (defun nskk-debug-clear ()
   "Clear the NSKK debug buffer."
   (interactive)
-  (let ((buffer (get-buffer nskk-debug--buffer-name)))
-    (when buffer
-      (with-current-buffer buffer
-        (let ((inhibit-read-only t))
-          (erase-buffer)))))
+  (when-let* ((buffer (get-buffer nskk-debug--buffer-name)))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer))))
   (message "NSKK debug buffer cleared"))
 
 ;;;; Provide
 
-;; Handle case where nskk-debug-enabled was set before module loaded
-(when (bound-and-true-p nskk-debug-enabled)
-  (nskk-debug--append "NSKK debug module loaded (debug was pre-enabled)"))
+;; Log a startup message when debug was pre-enabled before this module loaded.
+(nskk-debug-log "NSKK debug module loaded (debug was pre-enabled)")
 
 (provide 'nskk-debug)
 
