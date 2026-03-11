@@ -85,6 +85,7 @@
 ;; Optional
 (require 'nskk-debug nil t)
 (require 'nskk-server nil t)
+(require 'nskk-program-dictionary nil t)
 
 (declare-function nskk-set-mode-hiragana "nskk-input")
 (declare-function nskk-henkan-kakutei "nskk-henkan")

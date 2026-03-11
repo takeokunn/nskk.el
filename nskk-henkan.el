@@ -114,8 +114,8 @@
 (declare-function nskk-server-lookup "nskk-server")
 (declare-function nskk-server-lookup/k "nskk-server")
 
-(declare-function nskk-program-dict-lookup "nskk-program-dict")
-(declare-function nskk-program-dict-lookup/k "nskk-program-dict")
+(declare-function nskk-program-dict-lookup "nskk-program-dictionary")
+(declare-function nskk-program-dict-lookup/k "nskk-program-dictionary")
 (declare-function nskk-state-force-henkan-phase "nskk-state")
 (declare-function nskk-state-get-mode "nskk-state")
 (declare-function nskk-kana-string-katakana-to-hiragana "nskk-kana")
@@ -174,8 +174,7 @@ Clears: conversion-start-marker, pending-romaji overlay, romaji-buffer,
 henkan-count, candidate list display, and all state fields (candidates,
 okurigana, phase) via `nskk-reset-henkan-state'."
   (nskk--clear-conversion-start-marker)
-  (nskk--clear-pending-romaji)
-  (setq nskk--romaji-buffer "")
+  (nskk--reset-romaji-buffer)
   (setq nskk--henkan-count 0)
   (nskk--dismiss-candidate-list)
   (nskk-with-current-state
@@ -278,6 +277,25 @@ Returns the selected candidate index, or nil if KEY is not valid.")
 ;; Callers that want to try multiple strategies must chain them manually via
 ;; the on-not-found continuation, calling nskk-core-search/k again with a
 ;; different type.
+;;
+;; Optional-backend adapters: these wrappers guard on `fboundp' so that
+;; nskk-server.el and nskk-program-dictionary.el remain truly optional.
+;; Each backend's own /k function also checks the enable flag internally.
+
+(defun nskk--optional-server-lookup/k (key on-found on-not-found)
+  "Attempt skkserv lookup; call ON-NOT-FOUND if absent, disabled, or unreachable."
+  (if (and (fboundp 'nskk-server-lookup/k)
+           (boundp 'nskk-server-enable)
+           nskk-server-enable
+           (nskk-server-ensure-open))
+      (nskk-server-lookup/k key on-found on-not-found)
+    (funcall on-not-found)))
+
+(defun nskk--optional-program-dict-lookup/k (key on-found on-not-found)
+  "Attempt program-dict lookup; call ON-NOT-FOUND if module not loaded."
+  (if (fboundp 'nskk-program-dict-lookup/k)
+      (nskk-program-dict-lookup/k key on-found on-not-found)
+    (funcall on-not-found)))
 
 (defun/k nskk-core-search (key &optional type limit)
   "Search the dictionary for KEY and return a list of candidates.
@@ -300,27 +318,16 @@ always pass both continuation arguments explicitly."
       (nskk-debug-log "[HENKAN] search: key=%s type=%s" key (or type 'exact))
       (pcase action
         ('dict-lookup
+         ;; Flat fallback chain: local dict → skkserv → program-dict.
+         ;; Enable-flag guards live inside each backend's own /k function.
+         ;; fboundp guards in the optional-* wrappers handle unloaded modules.
          (<-or result nskk-dict-lookup key
            :found (succeed result)
-           :fail  (if (and (boundp 'nskk-server-enable) nskk-server-enable
-                           (nskk-server-ensure-open))
-                      ;; skkserv fallback: try server when local dict returns nil.
-                      ;; boundp guards against nskk-server.el not being loaded.
-                      (<-or r nskk-server-lookup key
-                        :found (succeed r)
-                        :fail  ;; program-dict fallback after skkserv miss.
-                               ;; fboundp guards against nskk-program-dict.el not loaded.
-                               (if (fboundp 'nskk-program-dict-lookup)
-                                   (<-or p nskk-program-dict-lookup key
-                                     :found (succeed p)
-                                     :fail  (fail))
-                                 (fail)))
-                    ;; skkserv disabled: try program-dict directly.
-                    (if (fboundp 'nskk-program-dict-lookup)
-                        (<-or p nskk-program-dict-lookup key
-                          :found (succeed p)
-                          :fail  (fail))
-                      (fail)))))
+           :fail  (<-or r nskk--optional-server-lookup key
+             :found (succeed r)
+             :fail  (<-or p nskk--optional-program-dict-lookup key
+               :found (succeed p)
+               :fail  (fail)))))
         ('prefix-search
          (if nskk--system-dict-index
              (<-or r nskk-search-prefix nskk--system-dict-index key nil limit
@@ -401,6 +408,11 @@ the characters are buffered in `nskk--romaji-buffer', not yet committed."
 Safe to call even when no overlay is active (idempotent)."
   (nskk-delete-overlay nskk--pending-romaji-overlay))
 
+(defun nskk--reset-romaji-buffer ()
+  "Clear pending romaji overlay and reset the romaji buffer to empty."
+  (nskk--clear-pending-romaji)
+  (setq nskk--romaji-buffer ""))
+
 ;;;; Conversion State Helpers
 
 (defun/k nskk-converting-p ()
@@ -469,9 +481,8 @@ Creates a new marker if one does not already exist."
 Clears the conversion overlay, pending romaji overlay,
 start marker, and romaji buffer."
   (nskk-delete-overlay nskk--conversion-overlay)
-  (nskk--clear-pending-romaji)
   (nskk--clear-conversion-start-marker)
-  (setq nskk--romaji-buffer ""))
+  (nskk--reset-romaji-buffer))
 
 ;;;; Clear Conversion Context
 
@@ -494,9 +505,7 @@ start marker, and romaji buffer."
   (nskk-when-bound-and nskk--conversion-start-marker markerp
     (set-marker nskk--conversion-start-marker nil))
   (nskk-when-bound nskk--romaji-buffer
-    (nskk-when-bound nskk--pending-romaji-overlay
-      (nskk--clear-pending-romaji))
-    (setq nskk--romaji-buffer ""))
+    (nskk--reset-romaji-buffer))
   ;; Clear dynamic completion state
   (setq nskk--dcomp-candidates nil
         nskk--dcomp-prefix nil
@@ -521,8 +530,7 @@ resets the romaji buffer, and clears the henkan phase."
     (when start
       (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)))
   (nskk--clear-conversion-start-marker)
-  (nskk--clear-pending-romaji)
-  (setq nskk--romaji-buffer "")
+  (nskk--reset-romaji-buffer)
   (nskk-with-current-state
     (nskk-state-set-henkan-phase nskk-current-state nil)))
 
@@ -571,8 +579,7 @@ Used by the DEL key handler."
             (delete-region start (match-end 0)))))
       ;; Clear all conversion state
       (nskk--clear-conversion-start-marker)
-      (nskk--clear-pending-romaji)
-      (setq nskk--romaji-buffer "")
+      (nskk--reset-romaji-buffer)
       (setq nskk--henkan-count 0)
       (nskk--dismiss-candidate-list)
       (nskk-with-current-state
@@ -618,8 +625,7 @@ Japanese input mode via `nskk--restore-abbrev-mode'."
       (goto-char start))
     ;; Reset all preedit state
     (nskk--clear-conversion-start-marker)
-    (nskk--clear-pending-romaji)
-    (setq nskk--romaji-buffer "")
+    (nskk--reset-romaji-buffer)
     (setq nskk--henkan-count 0)
     (nskk-with-current-state
       (nskk-state-set-henkan-phase nskk-current-state nil))
@@ -649,8 +655,7 @@ of the preedit reading text so that `nskk--has-preedit' returns t."
                                    nskk-henkan-on-marker))
         ;; Clear candidate overlay (don't clear start marker — we're back in preedit)
         (nskk-delete-overlay nskk--conversion-overlay)
-        (nskk--clear-pending-romaji)
-        (setq nskk--romaji-buffer "")
+        (nskk--reset-romaji-buffer)
         (setq nskk--henkan-count 0)
         (nskk--dismiss-candidate-list)
         ;; Restore to preedit (on) phase -- DDSKK-compatible: C-g/DEL from ▼ returns to ▽
@@ -870,8 +875,7 @@ Must be called inside `nskk-with-current-state'."
         (insert (if (eq (nskk-state-mode nskk-current-state) 'katakana)
                     (nskk-kana-string-hiragana-to-katakana kana)
                   kana)))))
-  (nskk--clear-pending-romaji)
-  (setq nskk--romaji-buffer ""))
+  (nskk--reset-romaji-buffer))
 
 (defun/done nskk--handle-vowel-okuri (okuri-char)
   "Handle vowel okurigana OKURI-CHAR.
@@ -909,66 +913,73 @@ OKURI-CHAR in state.  Must be called inside `nskk-with-current-state'."
   (nskk--insert-marker nskk-okurigana-marker)
   (nskk-state-set-okurigana nskk-current-state okuri-char))
 
-(defun/k nskk-process-okurigana-input (char)
+(defun nskk-process-okurigana-input (char)
   "Process CHAR as potential okurigana marker.
 If CHAR is uppercase and the conversion start marker is active,
 store okurigana context, insert * boundary marker, and put the
 consonant into the romaji buffer for deferred kana accumulation.
+Returns t when CHAR was handled as okurigana; nil otherwise.
+[CPS]"
+  (let (result)
+    (nskk-process-okurigana-input/k char
+      (lambda (v) (setq result v))
+      #'ignore)
+    result))
 
-For vowel okurigana (A, I, U, E, O), the romaji is immediately
-complete -- no following character is needed to produce kana.  In
-this case, the kana is inserted and conversion is triggered at once,
-preventing a second uppercase vowel from creating a spurious second
-okurigana cycle (e.g. AII producing ▽あ*い* instead of converting).
-Calls on-found with t when CHAR was handled as okurigana; sync returns t.
-Calls on-not-found when CHAR is not okurigana (sync wrapper returns nil)."
+(defun nskk-process-okurigana-input/k (char on-found on-not-found)
+  "Process CHAR as potential okurigana marker.
+Calls ON-FOUND with t when CHAR was handled as okurigana.
+Calls ON-NOT-FOUND when CHAR is not okurigana.
+[CPS]"
   (let ((okuri-char (nskk-detect-okurigana-char char)))
     (if (and okuri-char (nskk--conversion-start-active-p))
-        (call/cc
-         (lambda (k-found)
-           ;; k-found IS the on-found continuation; (funcall k-found t) is
-           ;; equivalent to (succeed t) but works inside explicit lambdas.
-           (nskk-with-current-state
-             (nskk--setup-okurigana-context okuri-char)
-             (if (nskk-prolog-holds-p `(vowel-okurigana-char ,okuri-char))
-                 (nskk--handle-vowel-okuri/k okuri-char (lambda () (funcall k-found t)))
-               (nskk--handle-consonant-okuri okuri-char (lambda () (funcall k-found t)))))))
-      (fail))))
+        (nskk-with-current-state
+          (nskk--setup-okurigana-context okuri-char)
+          ;; on-found accessible by name here (explicit pair), so lambdas
+          ;; can call it directly without call/cc.
+          (if (nskk-prolog-holds-p `(vowel-okurigana-char ,okuri-char))
+              (nskk--handle-vowel-okuri/k okuri-char (lambda () (funcall on-found t)))
+            (nskk--handle-consonant-okuri okuri-char (lambda () (funcall on-found t)))))
+      (funcall on-not-found))))
 
-(defun/k nskk-convert-input-to-kana-final ()
+(defun nskk-convert-input-to-kana-final ()
   "Convert remaining romaji buffer to kana and clear buffer.
 Handles trailing standalone `n' as \u3093 (hatsuon at end of input),
 mirroring ddskk behaviour where `n' at word boundary emits \u3093.
-Returns the converted kana string, or \"\" when the buffer is empty."
-  ;; call/cc captures the on-found continuation as `emit', allowing it to be
-  ;; passed directly into nskk-converter-convert/k's three-continuation
-  ;; lambdas which cannot be walked by the CPS transformer.
-  (call/cc
-   (lambda (emit)
-     (cond
-      ((string-empty-p nskk--romaji-buffer)
-       (nskk--clear-pending-romaji)
-       (setq nskk--romaji-buffer "")
-       (succeed ""))
-      ;; Standalone 'n' — the incremental converter returns :incomplete for
-      ;; "n" (awaiting "na"/"nn"/etc.), but at conversion time it means \u3093.
-      ((and (= (length nskk--romaji-buffer) 1)
-            (= (aref nskk--romaji-buffer 0) ?n))
-       (nskk--clear-pending-romaji)
-       (setq nskk--romaji-buffer "")
-       (succeed "\u3093"))
-      ;; General: use CPS converter; fall back to raw buffer string on failure.
-      ;; `emit' (= on-found) is captured here via closure so the three
-      ;; hand-written continuation lambdas can call it directly without
-      ;; using `succeed' (which cannot be transformed inside lambda literals).
-      (t
-       (let ((buf nskk--romaji-buffer))
-         (nskk--clear-pending-romaji)
-         (setq nskk--romaji-buffer "")
-         (nskk-converter-convert/k buf
-           (lambda (kana _remaining) (funcall emit kana))
-           (lambda (_romaji) (funcall emit buf))
-           (lambda () (funcall emit buf)))))))))
+Returns the converted kana string, or \"\" when the buffer is empty.
+[CPS]"
+  (let (result)
+    (nskk-convert-input-to-kana-final/k
+      (lambda (v) (setq result v))
+      #'ignore)
+    (or result "")))
+
+(defun nskk-convert-input-to-kana-final/k (on-found _on-not-found)
+  "Convert remaining romaji buffer to kana and call ON-FOUND with the result.
+Handles trailing standalone `n' as \u3093 (hatsuon at end of input).
+Always calls ON-FOUND: with \"\" when buffer is empty, with \u3093 for
+standalone n, or with the converted kana (falling back to raw buffer).
+[CPS]"
+  (cond
+   ((string-empty-p nskk--romaji-buffer)
+    (nskk--reset-romaji-buffer)
+    (funcall on-found ""))
+   ;; Standalone 'n' — the incremental converter returns :incomplete for
+   ;; "n" (awaiting "na"/"nn"/etc.), but at conversion time it means \u3093.
+   ((and (= (length nskk--romaji-buffer) 1)
+         (= (aref nskk--romaji-buffer 0) ?n))
+    (nskk--reset-romaji-buffer)
+    (funcall on-found "\u3093"))
+   ;; General: use CPS converter; fall back to raw buffer string on failure.
+   ;; on-found is accessible by name here (explicit pair), so lambdas can
+   ;; call it directly without call/cc.
+   (t
+    (let ((buf nskk--romaji-buffer))
+      (nskk--reset-romaji-buffer)
+      (nskk-converter-convert/k buf
+        (lambda (kana _remaining) (funcall on-found kana))
+        (lambda (_romaji) (funcall on-found buf))
+        (lambda () (funcall on-found buf)))))))
 
 (defun/done nskk-start-conversion-with-okuri (okuri-char)
   "Start conversion with okurigana context OKURI-CHAR.
@@ -1170,6 +1181,51 @@ See `nskk-start-conversion/k' for the full conversion logic."
 
 ;;;; Dictionary Registration
 
+(defun nskk--registration-prompt (depth reading)
+  "Build the minibuffer prompt string for registration at nesting DEPTH.
+DEPTH 1 → \"[辞書登録] READING: \", DEPTH 2 → \"[[辞書登録]] READING: \", etc."
+  (let ((open  (make-string depth ?\[))
+        (close (make-string depth ?\])))
+    (format "%s辞書登録%s %s: " open close reading)))
+
+(defun nskk--run-registration-session (reading)
+  "Open the minibuffer for registering READING; return the entered string or nil.
+Manages `nskk--registration-depth' and restores the henkan-phase via
+`unwind-protect', so depth and phase are always consistent on exit.
+
+`unwind-protect' is mandatory here because the user can abort at any time
+via C-g (keyboard-quit) or if an error is signalled inside
+`read-from-minibuffer'.  Without the cleanup form the depth counter would
+remain incremented, blocking future registration attempts.
+
+`nskk--registration-depth' tracks nested (recursive) registration: each
+call increments it before opening the minibuffer and decrements it in the
+cleanup form, regardless of how the minibuffer session ends.  This allows
+the user to register a word for an unknown reading that itself appeared
+during registration (e.g. registering \"かんじ\" → user types \"漢字\" →
+\"漢\" is unknown → nested call for \"かん\"), up to
+`nskk-max-registration-depth' levels.
+
+The cleanup form guarantees two invariants on exit:
+  1. `nskk--registration-depth' is decremented (preventing leaks).
+  2. The henkan-phase is restored to its value before registration."
+  (when (< nskk--registration-depth nskk-max-registration-depth)
+    (let ((prev-phase (nskk-state-henkan-phase nskk-current-state))
+          (result nil))
+      (nskk-with-current-state
+        (nskk-state-force-henkan-phase nskk-current-state 'registration))
+      (cl-incf nskk--registration-depth)
+      (unwind-protect
+          (let ((entry (read-from-minibuffer
+                        (nskk--registration-prompt nskk--registration-depth reading))))
+            (when (not (string-empty-p entry))
+              (setq result entry)
+              (nskk-dict-register-word reading entry)))
+        (cl-decf nskk--registration-depth)
+        (nskk-with-current-state
+          (nskk-state-force-henkan-phase nskk-current-state prev-phase)))
+      result)))
+
 (defun/k nskk-start-registration (reading)
   "Start dictionary registration for READING.
 Opens a minibuffer prompt for the user to enter the desired text.
@@ -1179,50 +1235,11 @@ depth 1 shows [辞書登録], depth 2 shows [[辞書登録]], etc.
 Returns the registered word on success, or nil if the user cancels
 or if the maximum nesting depth has been reached."
   (nskk-debug-log "[HENKAN] start-registration: reading=%s" reading)
-  (let ((result nil))
-    (when (< nskk--registration-depth nskk-max-registration-depth)
-      (let ((prev-phase (nskk-state-henkan-phase nskk-current-state)))
-        (nskk-with-current-state
-          (nskk-state-force-henkan-phase nskk-current-state 'registration))
-        (cl-incf nskk--registration-depth)
-        (let* ((depth-brackets (make-string nskk--registration-depth ?\[))
-               (depth-close (make-string nskk--registration-depth ?\]))
-               (prompt (format "%s辞書登録%s %s: "
-                               depth-brackets depth-close reading)))
-          ;; `unwind-protect' is mandatory here because the user can abort at
-          ;; any time via C-g (keyboard-quit) or if an error is signalled inside
-          ;; `read-from-minibuffer'.  Without the cleanup form the depth counter
-          ;; would remain incremented, blocking future registration attempts.
-          ;;
-          ;; `nskk--registration-depth' tracks nested (recursive) registration:
-          ;; each call to `nskk-start-registration' increments it before opening
-          ;; the minibuffer and decrements it in the cleanup form, regardless of
-          ;; how the minibuffer session ends.  This allows the user to register a
-          ;; word for an unknown reading that itself appeared during registration
-          ;; (e.g. registering "かんじ" → user types "漢字" → "漢" is unknown →
-          ;; nested call for "かん"), up to `nskk-max-registration-depth' levels.
-          ;;
-          ;; The cleanup form guarantees two invariants on exit:
-          ;;   1. `nskk--registration-depth' is decremented (preventing leaks).
-          ;;   2. The henkan-phase is restored to its value before registration,
-          ;;      so the outer conversion context is not left in `registration'
-          ;;      phase when the inner session exits (whether normally or via C-g).
-          (unwind-protect
-              (progn
-                (setq result (read-from-minibuffer prompt))
-                (when (and result (not (string-empty-p result)))
-                  (nskk-dict-register-word reading result)))
-            (cl-decf nskk--registration-depth)
-            (nskk-with-current-state
-              (nskk-state-force-henkan-phase nskk-current-state prev-phase))))))
-    ;; Normalize: succeed with nil when cancelled (empty string), so
-    ;; callbacks can use `(if registered ...)' without treating "" as success.
-    (let ((normalized (and (stringp result)
-                           (not (string-empty-p result))
-                           result)))
-      (if normalized
-          (succeed normalized)
-        (succeed nil)))))
+  ;; Normalize: succeed with nil when cancelled (empty string), so
+  ;; callbacks can use `(if registered ...)' without treating "" as success.
+  (let* ((result     (nskk--run-registration-session reading))
+         (normalized (and (stringp result) (not (string-empty-p result)) result)))
+    (succeed normalized)))
 
 (defun nskk--wrap-to-first-candidate ()
   "Reset candidate display to the first page.
@@ -1312,8 +1329,7 @@ all matches."
         (nskk--dcomp-replace-preedit
          (nth nskk--dcomp-index nskk--dcomp-candidates))
         ;; Discard pending romaji — the completed reading supersedes it.
-        (nskk--clear-pending-romaji)
-        (setq nskk--romaji-buffer ""))
+        (nskk--reset-romaji-buffer))
        ;; Fresh search
        (t
         (let ((matches (nskk--dcomp-search-prefix preedit)))
@@ -1323,8 +1339,7 @@ all matches."
                   nskk--dcomp-index 0)
             (nskk--dcomp-replace-preedit (car matches))
             ;; Discard pending romaji — the completed reading supersedes it.
-            (nskk--clear-pending-romaji)
-            (setq nskk--romaji-buffer ""))))))))
+            (nskk--reset-romaji-buffer))))))))
 
 ;;;; SKK Numeric Conversion (数値変換)
 
@@ -1429,6 +1444,12 @@ Idempotent: subsequent calls are no-ops."
       (:exact   dict-lookup)
       (:prefix  prefix-search)
       (:partial partial-search))
+
+    ;; dict-lookup backend order (declarative; actual dispatch uses nskk--optional-*-lookup/k)
+    (nskk-prolog-define-fact-table search-backend (:arity 2 :index :hash)
+      (1 dict-lookup)
+      (2 skkserv-lookup)
+      (3 program-dict-lookup))
 
     ;; Converting phase facts
     (nskk-prolog-define-fact-table converting-phase (:arity 1 :index :hash)

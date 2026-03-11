@@ -3,7 +3,7 @@
 #+author: takeokunn
 
 [[https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml][file:https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml/badge.svg]]
-[[file:COPYING][https://img.shields.io/badge/License-GPL%20v3-blue.svg]]
+[[file:LICENSE][https://img.shields.io/badge/License-GPL%20v3-blue.svg]]
 
 * Overview
 
@@ -13,6 +13,7 @@ SKK (Simple Kana to Kanji) principles. It delivers:
 - Clean architecture — 7-layer modular design with full lexical-binding
 - DDSKK compatibility — Familiar keybindings and behavior
 - Extensible — Embedded Prolog engine for customizable conversion logic
+- Performance — < 1ms key response, < 10ms dictionary search
 
 #+begin_quote
 NSKK = Next-generation SKK = 次世代 SKK
@@ -30,10 +31,10 @@ No external ELPA packages required.
 
 | Component        | Description                             |
 |------------------+-----------------------------------------|
-| Lexical binding  | All 17 modules use =lexical-binding: t= |
+| Lexical binding  | All 18 modules use =lexical-binding: t= |
 | Prolog engine    | Conversion rules as facts/queries       |
 | Layer separation | 7 strict layers, zero circular deps     |
-| Test coverage    | 3500+ unit/integration/E2E tests        |
+| Test coverage    | 3,000+ unit/integration/E2E tests       |
 
 ** DDSKK Compatibility
 
@@ -111,11 +112,7 @@ No external ELPA packages required.
   ;; (nskk-converter-romaji-style 'azik)
 
   :config
-  ;; Enable globally
-  (nskk-global-mode 1)
-
-  ;; Mode-line customization
-  (setq nskk-modeline-format " [%m]"))
+  (nskk-global-mode 1))
 #+end_src
 * Usage
 ** Mode Switching
@@ -191,19 +188,19 @@ stateDiagram-v2
 
 *** Cursor Movement (in Conversion Mode)
 
-| Key       | Behavior                                 |
-|-----------+------------------------------------------|
-| =↑ / C-p= | Commit candidate + move to previous line |
-| =↓ / C-n= | Commit candidate + move to next line     |
-| =← / C-b= | Commit candidate + move backward         |
-| =→ / C-f= | Commit candidate + move forward          |
+| Key        | Behavior                                 |
+|------------+------------------------------------------|
+| =↑ / C-p=  | Commit candidate + move to previous line |
+| =↓ / C-n=  | Commit candidate + move to next line     |
+| =← / C-b=  | Commit candidate + move backward         |
+| =→ / C-f=  | Commit candidate + move forward          |
 
 *** Line Navigation
 
-| Key   | Behavior                                                   |
-|-------+------------------------------------------------------------|
-| =C-a= | Commit candidate (if converting) / go to beginning of line |
-| =C-e= | Commit candidate (if converting) / go to end of line       |
+| Key             | Behavior                                                    |
+|-----------------+-------------------------------------------------------------|
+| =C-a / <home>=  | Commit candidate (if converting) / go to beginning of line |
+| =C-e / <end>=   | Commit candidate (if converting) / go to end of line       |
 
 *** Other Keys
 
@@ -239,6 +236,26 @@ stateDiagram-v2
 (setq nskk-henkan-show-candidates-nth 2)
 (setq nskk-henkan-number-to-display-candidates 7)
 #+end_src
+** SKK Server (skkserv)
+#+begin_src elisp
+;; Connect to a running skkserv for extended dictionary lookup
+(setq nskk-server-enable t)
+(setq nskk-server-host "localhost")
+(setq nskk-server-port 1178)
+#+end_src
+** Hooks
+#+begin_src elisp
+;; Run when NSKK is enabled in a buffer
+(add-hook 'nskk-mode-hook
+          (lambda () (message "NSKK activated")))
+
+;; Run when NSKK is disabled
+(add-hook 'nskk-mode-off-hook
+          (lambda () (message "NSKK deactivated")))
+
+;; Run on every input-mode change (ascii → hiragana, etc.)
+(add-hook 'nskk-input-mode-hook #'my-nskk-mode-change-handler)
+#+end_src
 ** Customization Group
 #+begin_example
 M-x customize-group RET nskk RET
@@ -264,12 +281,15 @@ The project includes =flake.nix= for reproducible development environments.
 
 ** Commands
 
-| Command        | Description        |
-|----------------+--------------------|
-| =make compile= | Byte-compile       |
-| =make test=    | Run tests          |
-| =make lint=    | Run checkdoc       |
-| =make clean=   | Remove *.elc files |
+| Command                 | Description                |
+|-------------------------+----------------------------|
+| =make compile=          | Byte-compile all modules   |
+| =make test=             | Run all tests              |
+| =make test-unit=        | Run unit tests only        |
+| =make test-integration= | Run integration tests only |
+| =make test-e2e=         | Run end-to-end tests only  |
+| =make lint=             | Run checkdoc               |
+| =make clean=            | Remove =*.elc= files       |
 
 * Changelog
 

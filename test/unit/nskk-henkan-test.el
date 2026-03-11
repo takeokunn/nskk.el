@@ -3157,6 +3157,166 @@
             ;; No raw ASCII consonant should appear adjacent to *
             (should-not (string-match-p "[a-z]\\*\\|\\*[a-z]" content))))))))
 
+;;;
+;;; nskk--reset-romaji-buffer Tests
+;;;
+
+(nskk-describe "nskk--reset-romaji-buffer"
+  (nskk-it "sets nskk--romaji-buffer to empty string"
+    (with-temp-buffer
+      (let ((nskk--romaji-buffer "ka")
+            (nskk--pending-romaji-overlay nil))
+        (nskk--reset-romaji-buffer)
+        (should (equal nskk--romaji-buffer "")))))
+
+  (nskk-it "calls nskk--clear-pending-romaji"
+    (let ((cleared nil)
+          (nskk--romaji-buffer ""))
+      (nskk-with-mocks ((nskk--clear-pending-romaji (lambda () (setq cleared t))))
+        (nskk--reset-romaji-buffer))
+      (should cleared)))
+
+  (nskk-it "is idempotent when buffer is already empty"
+    (with-temp-buffer
+      (let ((nskk--romaji-buffer "")
+            (nskk--pending-romaji-overlay nil))
+        (nskk--reset-romaji-buffer)
+        (nskk--reset-romaji-buffer)
+        (should (equal nskk--romaji-buffer ""))))))
+
+;;;
+;;; nskk--registration-prompt Tests
+;;;
+
+(nskk-describe "nskk--registration-prompt"
+  (nskk-it "builds depth-1 prompt with single brackets"
+    (should (equal (nskk--registration-prompt 1 "てすと")
+                   "[辞書登録] てすと: ")))
+
+  (nskk-it "builds depth-2 prompt with double brackets"
+    (should (equal (nskk--registration-prompt 2 "かんじ")
+                   "[[辞書登録]] かんじ: ")))
+
+  (nskk-it "builds depth-3 prompt with triple brackets"
+    (should (equal (nskk--registration-prompt 3 "abc")
+                   "[[[辞書登録]]] abc: "))))
+
+;;;
+;;; nskk--run-registration-session Tests
+;;;
+
+(nskk-describe "nskk--run-registration-session"
+  (nskk-it "returns nil when depth is at maximum"
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--registration-depth 3))
+      (should-not (nskk--run-registration-session "てすと"))))
+
+  (nskk-it "returns nil when user enters empty string"
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--registration-depth 0))
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
+      (nskk-with-mocks ((read-from-minibuffer (lambda (_p) ""))
+                        (nskk-dict-register-word #'ignore))
+        (should-not (nskk--run-registration-session "てすと")))))
+
+  (nskk-it "returns the entered word when user provides input"
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--registration-depth 0))
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
+      (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "漢字"))
+                        (nskk-dict-register-word #'ignore))
+        (should (equal (nskk--run-registration-session "かんじ") "漢字")))))
+
+  (nskk-it "increments and decrements depth atomically"
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--registration-depth 0)
+          depth-during)
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
+      (nskk-with-mocks ((read-from-minibuffer
+                         (lambda (_p) (setq depth-during nskk--registration-depth) ""))
+                        (nskk-dict-register-word #'ignore))
+        (nskk--run-registration-session "てすと"))
+      (should (= depth-during 1))
+      (should (= nskk--registration-depth 0)))))
+
+;;;
+;;; nskk--optional-server-lookup/k Tests
+;;;
+
+(nskk-describe "nskk--optional-server-lookup/k"
+  (nskk-it "calls on-not-found when nskk-server-lookup/k is not defined"
+    (let ((not-found-called nil)
+          (saved-fn (and (fboundp 'nskk-server-lookup/k)
+                         (symbol-function 'nskk-server-lookup/k))))
+      (fmakunbound 'nskk-server-lookup/k)
+      (unwind-protect
+          (progn
+            (nskk--optional-server-lookup/k "かんじ"
+              #'ignore
+              (lambda () (setq not-found-called t)))
+            (should not-found-called))
+        (when saved-fn (fset 'nskk-server-lookup/k saved-fn)))))
+
+  (nskk-it "calls on-not-found when nskk-server-enable is nil"
+    (let ((not-found-called nil)
+          (nskk-server-enable nil))
+      (nskk--optional-server-lookup/k "かんじ"
+        #'ignore
+        (lambda () (setq not-found-called t)))
+      (should not-found-called)))
+
+  (nskk-it "delegates to nskk-server-lookup/k when it is defined"
+    (let ((delegated-key nil)
+          (nskk-server-enable t))
+      (nskk-with-mocks ((nskk-server-ensure-open (lambda () t))
+                        (nskk-server-lookup/k
+                         (lambda (key on-found _on-not-found)
+                           (setq delegated-key key)
+                           (funcall on-found '("結果")))))
+        (nskk--optional-server-lookup/k "てすと" #'ignore #'ignore))
+      (should (equal delegated-key "てすと")))))
+
+;;;
+;;; nskk--optional-program-dict-lookup/k Tests
+;;;
+
+(nskk-describe "nskk--optional-program-dict-lookup/k"
+  (nskk-it "calls on-not-found when nskk-program-dict-lookup/k is not defined"
+    (let ((not-found-called nil)
+          (saved-fn (and (fboundp 'nskk-program-dict-lookup/k)
+                         (symbol-function 'nskk-program-dict-lookup/k))))
+      (fmakunbound 'nskk-program-dict-lookup/k)
+      (unwind-protect
+          (progn
+            (nskk--optional-program-dict-lookup/k "かんじ"
+              #'ignore
+              (lambda () (setq not-found-called t)))
+            (should not-found-called))
+        (when saved-fn (fset 'nskk-program-dict-lookup/k saved-fn)))))
+
+  (nskk-it "delegates to nskk-program-dict-lookup/k when it is defined"
+    (let ((delegated-key nil))
+      (nskk-with-mocks ((nskk-program-dict-lookup/k
+                         (lambda (key on-found _on-not-found)
+                           (setq delegated-key key)
+                           (funcall on-found '("結果")))))
+        (nskk--optional-program-dict-lookup/k "てすと" #'ignore #'ignore))
+      (should (equal delegated-key "てすと")))))
+
+;;;
+;;; search-backend/2 Prolog Facts Tests
+;;;
+
+(nskk-describe "search-backend/2 Prolog facts"
+  (nskk-it "defines backend order: dict-lookup is first"
+    (should (nskk-prolog-query '(search-backend 1 dict-lookup))))
+
+  (nskk-it "defines backend order: skkserv-lookup is second"
+    (should (nskk-prolog-query '(search-backend 2 skkserv-lookup))))
+
+  (nskk-it "defines backend order: program-dict-lookup is third"
+    (should (nskk-prolog-query '(search-backend 3 program-dict-lookup)))))
+
 (provide 'nskk-henkan-test)
 
 ;;; nskk-henkan-test.el ends here
