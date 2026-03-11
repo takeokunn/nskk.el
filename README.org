@@ -10,10 +10,9 @@
 NSKK is a modern, zero-dependency Japanese input method for Emacs built on
 SKK (Simple Kana to Kanji) principles. It delivers:
 
-- Clean architecture — 7-layer modular design with full lexical-binding
+- Clean architecture — 6-layer modular design with full lexical-binding
 - DDSKK compatibility — Familiar keybindings and behavior
 - Extensible — Embedded Prolog engine for customizable conversion logic
-- Performance — < 1ms key response, < 10ms dictionary search
 
 #+begin_quote
 NSKK = Next-generation SKK = 次世代 SKK
@@ -31,9 +30,9 @@ No external ELPA packages required.
 
 | Component        | Description                             |
 |------------------+-----------------------------------------|
-| Lexical binding  | All 18 modules use =lexical-binding: t= |
+| Lexical binding  | All 19 modules use =lexical-binding: t= |
 | Prolog engine    | Conversion rules as facts/queries       |
-| Layer separation | 7 strict layers, zero circular deps     |
+| Layer separation | 6 strict layers, zero circular deps     |
 | Test coverage    | 3,000+ unit/integration/E2E tests       |
 
 ** DDSKK Compatibility

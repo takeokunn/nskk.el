@@ -25,7 +25,7 @@
 
 ;;; Commentary:
 
-;; Mode line indicator showing current input mode (Layer 5: Presentation Layer).
+;; Mode line indicator showing current input mode (Layer 5: Presentation).
 ;;
 ;; Architecture:
 ;; - All mode display data (strings, faces, help text, cursor colors) is stored

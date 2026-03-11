@@ -26,14 +26,14 @@
 
 ;;; Commentary:
 
-;; Input processing and mode switching for NSKK (Layer 4: Input).
+;; Input processing and mode switching for NSKK (Layer 5: Presentation).
 ;;
-;; Layer position: L4 (Input) -- depends on nskk-henkan, nskk-kana,
-;;   nskk-state, nskk-converter, nskk-prolog.  Optionally loads nskk-azik.
+;; Layer position: L5 (Presentation) -- depends on nskk-henkan, nskk-kana,
+;;   nskk-state, nskk-converter, nskk-prolog; optionally loads nskk-azik.
 ;;
 ;; Handles character routing, romaji-to-kana accumulation, mode switching,
-;; and AZIK-aware key handlers.  This layer bridges keymap events (L5) and
-;; the henkan conversion pipeline (L3).
+;; and AZIK-aware key handlers.  Bridges keymap events and the henkan
+;; conversion pipeline (L3).
 ;;
 ;; Prolog predicates registered by this module:
 ;;   input-route/2          -- maps input mode to routing action (katakana-半角 → process-japanese)

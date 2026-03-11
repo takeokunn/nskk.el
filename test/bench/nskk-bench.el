@@ -17,15 +17,19 @@
 ;; Comprehensive performance benchmarks covering all hot paths in the NSKK
 ;; input method, organized by architecture layer:
 ;;
-;;   L0 : Prolog engine            (nskk-prolog.el)
-;;   L1 : Romaji converter         (nskk-converter.el)
-;;   L2a: State management         (nskk-state.el)
-;;   L2b: Kana utilities           (nskk-kana.el)
-;;   L2c: Cache layer              (nskk-cache.el)
-;;   L3 : Dictionary search        (nskk-search.el)
-;;   L4a: Input processing         (nskk-input.el)
-;;   L4b: Henkan pipeline          (nskk-henkan.el)
+;;   L0 : Prolog engine            (nskk-prolog.el)       [L0 Foundation]
+;;   L1 : Romaji converter         (nskk-converter.el)   [L2 Domain]
+;;   L2a: State management         (nskk-state.el)       [L2 Domain]
+;;   L2b: Kana utilities           (nskk-kana.el)        [L1 Core Engine]
+;;   L2c: Cache layer              (nskk-cache.el)       [L1 Core Engine]
+;;   L3 : Dictionary search        (nskk-search.el)      [L2 Domain]
+;;   L4a: Input processing         (nskk-input.el)       [L5 Presentation]
+;;   L4b: Henkan pipeline          (nskk-henkan.el)      [L3 Application]
 ;;   E2E: Keystroke simulation     (full stack)
+;;
+;; Note: L0-L4 labels above are bench group names (for report column width).
+;; Architecture layers: L0 Foundation, L1 Core Engine, L2 Domain,
+;;   L3 Application, L5 Presentation (L4 is intentionally unoccupied).
 ;;
 ;; Usage:
 ;;   make bench

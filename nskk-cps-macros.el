@@ -26,6 +26,11 @@
 
 ;;; Commentary:
 
+;; CPS macro definitions for NSKK (Layer 0: Foundation).
+;;
+;; Layer position: L0 (Foundation) -- no nskk-* runtime dependencies.
+;; Compile-time only: macros expand away before runtime.
+;;
 ;; This module provides compile-time CPS (Continuation-Passing Style) transformation
 ;; macros for nskk.el.  It implements:
 ;;
@@ -34,8 +39,6 @@
 ;;   `defun/3k'   — Pattern D (3-continuation: user-named, no CPS transform)
 ;;   `nskk-<-'    — Standalone pipeline-bind (on-found only; for defun/3k contexts)
 ;;   `nskk-<-or'  — Standalone pipeline-bind (both continuations; for defun/3k contexts)
-;;
-;; L0 Foundation layer.  No dependencies on other nskk modules.
 ;;
 ;; The macros allow writing functions once in a natural direct style using the
 ;; special forms `succeed', `fail', and `<-' (CPS bind), which are then

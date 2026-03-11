@@ -26,11 +26,11 @@
 
 ;;; Commentary:
 
-;; AZIK extended romaji input for NSKK (Layer 3: Application).
+;; AZIK extended romaji input for NSKK (Layer 5: Presentation).
 ;;
-;; Layer position: L3 (Application) -- depends on nskk-converter and
-;;   nskk-prolog.  Loaded optionally by nskk-input.el when
-;;   `nskk-converter-romaji-style' is set to \\='azik.
+;; Layer position: L5 (Presentation) -- depends on nskk-converter,
+;;   nskk-keymap, nskk-prolog, nskk-cps-macros.  Loaded optionally by
+;;   nskk-input.el when `nskk-converter-romaji-style' is set to \\='azik.
 ;;
 ;; Implements the AZIK specification for efficient Japanese input.  AZIK
 ;; reduces keystrokes compared to standard romaji by using consonant suffix

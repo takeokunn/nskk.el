@@ -68,21 +68,23 @@
 
 ;;; Code:
 
-;; Foundation modules
+;; L0: Foundation
 (require 'nskk-custom)
 (require 'nskk-prolog)
+
+;; L2: Domain
 (require 'nskk-state)
 
-;; Core modules
+;; L3: Application
 (require 'nskk-henkan)
-(require 'nskk-input)
 
-;; UI modules
+;; L5: Presentation
+(require 'nskk-input)
 (require 'nskk-keymap)
 (require 'nskk-candidate-window)
 (require 'nskk-modeline)
 
-;; Optional
+;; Optional (L0, L2)
 (require 'nskk-debug nil t)
 (require 'nskk-server nil t)
 (require 'nskk-program-dictionary nil t)
