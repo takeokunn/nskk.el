@@ -1285,6 +1285,13 @@ Called when Tab is pressed in preedit (\u25bd) phase.  Searches
 for dict keys that start with the current reading and replaces
 the preedit with the first match.  Subsequent calls cycle through
 all matches."
+  ;; Flush any pending romaji (e.g., trailing 'n' → ん) before capturing
+  ;; the prefix, so the prefix is a pure kana string matchable against the
+  ;; dict trie.  Mirror the same flush-before-capture pattern used in
+  ;; `nskk-start-conversion'.
+  (let ((pending (nskk-convert-input-to-kana-final)))
+    (when (and (stringp pending) (not (string-empty-p pending)))
+      (insert pending)))
   (let ((preedit (nskk-preedit-string)))
     (when (and preedit (not (string-empty-p preedit)))
       (cond
@@ -1335,6 +1342,36 @@ Each digit is shifted to the full-width Unicode range: \"1\" → \"１\"."
                (char-to-string (+ c #xFEE0)))
              num-str ""))
 
+(defun nskk--n-to-kanji-place (n)
+  "Recursively convert positive integer N to kanji with place values.
+Leading 一 is dropped for 十, 百, 千 (e.g. 1000 → 千, not 一千),
+but kept for 万 and higher (e.g. 10000 → 一万)."
+  (cond
+   ((>= n 10000)
+    (let* ((q (/ n 10000)) (r (% n 10000)))
+      (concat (nskk--n-to-kanji-place q) "万"
+              (if (= r 0) "" (nskk--n-to-kanji-place r)))))
+   ((>= n 1000)
+    (let* ((q (/ n 1000)) (r (% n 1000)))
+      (concat (if (= q 1) "" (aref nskk--kanji-digits q)) "千"
+              (if (= r 0) "" (nskk--n-to-kanji-place r)))))
+   ((>= n 100)
+    (let* ((q (/ n 100)) (r (% n 100)))
+      (concat (if (= q 1) "" (aref nskk--kanji-digits q)) "百"
+              (if (= r 0) "" (nskk--n-to-kanji-place r)))))
+   ((>= n 10)
+    (let* ((q (/ n 10)) (r (% n 10)))
+      (concat (if (= q 1) "" (aref nskk--kanji-digits q)) "十"
+              (if (= r 0) "" (aref nskk--kanji-digits r)))))
+   (t (aref nskk--kanji-digits n))))
+
+(defun nskk--numeric-to-place-values (num-str)
+  "Convert NUM-STR to kanji numerals with place values (漢数字位取り).
+Examples: \"10\" → \"十\", \"100\" → \"百\", \"1024\" → \"千二十四\"."
+  (let ((n (string-to-number num-str)))
+    (if (= n 0) "〇"
+      (nskk--n-to-kanji-place n))))
+
 (defun nskk--numeric-convert (num-str type)
   "Convert numeric string NUM-STR according to DDSKK-standard TYPE.
 TYPE is an integer:
@@ -1345,9 +1382,10 @@ TYPE is an integer:
   4 = positional (序数)
   8 = comma-grouped decimal"
   (pcase type
-    (0 num-str)                              ; literal
-    (1 (nskk--numeric-to-fullwidth num-str)) ; full-width
-    ((or 2 3 4) (nskk--numeric-to-kanji num-str)) ; kanji
+    (0 num-str)                                    ; literal
+    (1 (nskk--numeric-to-fullwidth num-str))       ; full-width
+    ((or 2 4) (nskk--numeric-to-kanji num-str))   ; kanji digit-by-digit
+    (3 (nskk--numeric-to-place-values num-str))    ; kanji with place values
     (_ num-str)))
 
 (defun nskk--numeric-process-candidate (candidate num-str)

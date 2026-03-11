@@ -128,13 +128,13 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 ;; (nskk-deftest-table quotes all row values via ',val, so an alist constant
 ;; cannot be a column — the body would receive the quoted symbol, not the list).
 
-;; かん-cluster dict: "Ka" → min 3 chars; "Kan" → min 4 chars (e.g., かんしゃ).
+;; かん-cluster dict: "Ka" → min 3 chars; "Kan" → min 3 chars (TAB flushes 'n' → ん first).
 (nskk-deftest-table dcomp-prefix-extends-reading-kan
   :columns (romaji-prefix min-expected-length)
-  :rows (;; "Ka" → ▽かん → Tab → extended to 3+ chars (e.g., かんじ).
+  :rows (;; "Ka" → ▽か → Tab → extended to 3+ chars (e.g., かんじ).
          ("Ka"  3)
-         ;; "Kan" → ▽かん → Tab → extended to 4+ chars (e.g., かんしゃ).
-         ("Kan" 4))
+         ;; "Kan" → Tab flushes 'n' → ▽かん → extended to 3+ chars (e.g., かんが).
+         ("Kan" 3))
   :body
   (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
     (nskk-e2e-type romaji-prefix)
@@ -318,11 +318,14 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
                          romaji (error-message-string err))))))
   30)
 
-;; PBT 2: After any romaji input + TAB, nskk-preedit-string returns a string.
-;; This guards against nil returns from the completion path.
+;; PBT 2: After preedit is started and any romaji is typed + TAB,
+;; nskk-preedit-string returns a string (never nil).
+;; "Ka" is prepended to activate preedit (uppercase K) and commit at least
+;; one kana (か) so preedit text is non-empty before TAB fires.
 (nskk-property-test-seeded dcomp-preedit-always-string
   ((romaji romaji-basic))
   (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
+    (nskk-e2e-type "Ka")
     (nskk-e2e-type romaji)
     (nskk-e2e-type "TAB")
     (stringp (nskk-preedit-string)))
