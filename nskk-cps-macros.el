@@ -195,6 +195,14 @@ Binding expressions are not transformed; only the body tail is."
     `(let* ,bindings
        ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym))))
 
+(defun nskk--cps-transform-pcase-let* (form on-found-sym on-not-found-sym)
+  "CPS-transform a (pcase-let* BINDINGS BODY...) FORM.
+Binding patterns and expressions are not transformed; only the body tail is."
+  (let ((bindings (cadr form))
+        (body     (cddr form)))
+    `(pcase-let* ,bindings
+       ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym))))
+
 (defun nskk--cps-transform-pcase (form on-found-sym on-not-found-sym)
   "CPS-transform a (pcase EXPR CLAUSES...) FORM.
 Each clause body is transformed; patterns and EXPR pass through unchanged."
@@ -273,7 +281,8 @@ An empty (or) passes through unchanged."
             (cons 'progn   #'nskk--cps-transform-progn)
             (cons 'let     #'nskk--cps-transform-let)
             (cons 'let*    #'nskk--cps-transform-let*)
-            (cons 'pcase   #'nskk--cps-transform-pcase)
+            (cons 'pcase        #'nskk--cps-transform-pcase)
+            (cons 'pcase-let*  #'nskk--cps-transform-pcase-let*)
             (cons 'call/cc #'nskk--cps-transform-call/cc)
             (cons 'escape  #'nskk--cps-transform-escape)
             (cons 'and     #'nskk--cps-transform-and)

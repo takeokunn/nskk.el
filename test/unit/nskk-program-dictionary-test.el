@@ -315,7 +315,8 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
       (let ((found-arg nil))
         (nskk-with-mocks
             ((call-process-region
-              (lambda (_beg _end _prog _del _out _disp &rest _args)
+              (lambda (beg end _prog _del _out _disp &rest _args)
+                (delete-region beg end)
                 (insert "/漢字/\n")
                 0)))
           (nskk--program-dict-exec-stdin/k "my-dict" "かんじ" nil

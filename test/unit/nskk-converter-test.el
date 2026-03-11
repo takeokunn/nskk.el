@@ -50,6 +50,7 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-converter)  ; Assumes converter implementation exists
+(require 'nskk-kana)
 (require 'nskk-pbt-generators)
 (require 'cl-lib)
 
@@ -280,6 +281,40 @@
      (dotimes (_ 1000)
        (nskk-convert-romaji test-string)))))
 
+
+(nskk-describe "ddskk punctuation rules"
+  (nskk-deftest-cases converter-basic-punctuation
+    (("."  . "。")
+     (","  . "、")
+     ("["  . "「")
+     ("]"  . "」"))
+    :description "Basic punctuation keys convert to Japanese punctuation"
+    :body (should (equal expected (nskk-convert-romaji input))))
+
+  (nskk-deftest-cases converter-z-prefix-symbols
+    (("z-" . "〜")
+     ("z." . "…")
+     ("z," . "‥")
+     ("z[" . "『")
+     ("z]" . "』")
+     ("z/" . "・")
+     ("zh" . "←")
+     ("zj" . "↓")
+     ("zk" . "↑")
+     ("zl" . "→")
+     ("z " . "　"))
+    :description "z-prefix key sequences convert to Japanese symbols"
+    :body (should (equal expected (nskk-convert-romaji input))))
+
+  (nskk-it "katakana-passthrough: symbols produced by punctuation rules are not altered by hiragana-to-katakana conversion"
+    ;; nskk-kana-string-hiragana-to-katakana leaves non-hiragana characters unchanged.
+    ;; This confirms punctuation rules behave identically in hiragana and katakana modes.
+    (dolist (pair '(("。" . "。") ("、" . "、") ("「" . "「") ("」" . "」")
+                    ("〜" . "〜") ("…" . "…") ("‥" . "‥") ("『" . "『") ("』" . "』")
+                    ("・" . "・") ("←" . "←") ("↓" . "↓") ("↑" . "↑") ("→" . "→")
+                    ("　" . "　")))
+      (should (equal (cdr pair)
+                     (nskk-kana-string-hiragana-to-katakana (car pair)))))))
 
 (nskk-describe "regression: double consonant"
   (nskk-it "correctly converts double consonants (double-consonant-001)"
@@ -904,6 +939,37 @@
     (let ((entry (assoc "-" nskk--standard-romaji-rules)))
       (should entry)
       (should (equal (cadr entry) "ー"))))
+
+  (nskk-deftest-table standard-romaji-rules-basic-punctuation
+    :description "Standard rules contain ddskk-compatible basic punctuation"
+    :columns (romaji expected-kana)
+    :rows (("." "。")
+           ("," "、")
+           ("[" "「")
+           ("]" "」"))
+    :body
+    (let ((entry (assoc romaji nskk--standard-romaji-rules)))
+      (should entry)
+      (should (equal (cadr entry) expected-kana))))
+
+  (nskk-deftest-table standard-romaji-rules-z-prefix-symbols
+    :description "Standard rules contain ddskk-compatible z-prefix symbols"
+    :columns (romaji expected-kana)
+    :rows (("z-" "〜")
+           ("z." "…")
+           ("z," "‥")
+           ("z[" "『")
+           ("z]" "』")
+           ("z/" "・")
+           ("zh" "←")
+           ("zj" "↓")
+           ("zk" "↑")
+           ("zl" "→")
+           ("z " "　"))
+    :body
+    (let ((entry (assoc romaji nskk--standard-romaji-rules)))
+      (should entry)
+      (should (equal (cadr entry) expected-kana))))
 
   (nskk-it "has no duplicate romaji keys"
     ;; Each romaji string should appear at most once as the first element.

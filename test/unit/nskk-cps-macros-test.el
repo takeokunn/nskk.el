@@ -1352,10 +1352,10 @@ that the second element is a symbol with the given name."
       (should (fboundp 'nskk--cps-transform-form))))
 
   (nskk-context "dispatch table"
-    (nskk-it "nskk--cps-form-dispatch is a list containing all 12 expected form heads"
+    (nskk-it "nskk--cps-form-dispatch is a list containing all 13 expected form heads"
       (should (listp nskk--cps-form-dispatch))
-      (should (= (length nskk--cps-form-dispatch) 12))
-      (dolist (expected-key '(if cond when unless progn let let* pcase
+      (should (= (length nskk--cps-form-dispatch) 13))
+      (dolist (expected-key '(if cond when unless progn let let* pcase pcase-let*
                                  call/cc escape and or))
         (let ((entry (assq expected-key nskk--cps-form-dispatch)))
           (should entry)

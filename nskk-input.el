@@ -870,6 +870,16 @@ Used by AZIK-aware key handlers (l, q) to detect multi-char AZIK rules."
        (stringp (gethash (concat nskk--romaji-buffer (char-to-string char))
                          nskk--romaji-table))))
 
+(defun nskk--romaji-has-match-p (char)
+  "Return non-nil when pending-romaji+CHAR is a complete conversion rule.
+Checks the romaji conversion table for a string value at the key formed by
+concatenating `nskk--romaji-buffer' with the string representation of CHAR.
+Unlike `nskk--azik-complete-match-p', this works in any romaji style and
+is used by key handlers that need to check for z-prefix or other rules."
+  (and (not (string-empty-p nskk--romaji-buffer))
+       (stringp (nskk-converter-lookup
+                 (concat nskk--romaji-buffer (char-to-string char))))))
+
 (defun/done nskk-input-initialize ()
   "Initialize input routing Prolog predicates for all key dispatch tables.
 Idempotent: subsequent calls are no-ops."

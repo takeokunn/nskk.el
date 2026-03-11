@@ -67,7 +67,7 @@ Restores server-state to closed in an unwind-protect."
 (nskk-describe "nskk--server-strip-annotation"
   (nskk-context "annotated candidates"
     (nskk-it "strips annotation from a word;note pair"
-      (nskk-deftest-table strip-annotation-cases
+      (nskk-deftest-table server-strip-annotation-cases
         :columns (input expected)
         :rows (("漢字;注釈"      "漢字")
                ("感じ;note"      "感じ")
@@ -80,7 +80,7 @@ Restores server-state to closed in an unwind-protect."
 
   (nskk-context "plain candidates without annotation"
     (nskk-it "returns the string unchanged when no semicolon is present"
-      (nskk-deftest-table strip-annotation-plain-cases
+      (nskk-deftest-table server-strip-annotation-plain-cases
         :columns (input)
         :rows (("漢字") ("感じ") ("幹事") ("") ("a"))
         :body (should (equal (nskk--server-strip-annotation input) input))))))

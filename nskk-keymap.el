@@ -96,6 +96,7 @@
 (declare-function nskk-self-insert "nskk-input")
 (declare-function nskk-handle-q-key "nskk-input")
 (declare-function nskk--azik-complete-match-p "nskk-input")
+(declare-function nskk--romaji-has-match-p "nskk-input")
 (declare-function nskk-process-japanese-input "nskk-input")
 (declare-function nskk-set-mode-numeric "nskk-input")
 (defvar nskk-converter-romaji-style)
@@ -411,23 +412,20 @@ Used by `nskk-handle-l' to query `l-key-action/3'."
             'other))))
 
 (defun/done nskk-handle-l ()
-  "Handle l key: switch to ASCII mode (or AZIK romaji dispatch).
-In henkan-active mode, perform implicit kakutei first.
-When AZIK is active and pending-romaji+l is a complete hash match
-\(e.g. hl->hon), fires the AZIK rule via `nskk-process-japanese-input'
-instead of switching to latin mode.
+  "Handle l key: switch to ASCII mode, or fire romaji rule when pending.
+When pending romaji combined with l forms a complete conversion rule
+\(e.g. \"zl\" → \"→\" in standard mode, or AZIK multi-char rules),
+fires the romaji processor instead of switching to latin mode.
+In henkan-active mode, perform implicit kakutei first when not routing
+to romaji.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   :interactive t
-  (let* ((state (nskk--l-key-dispatch-state))
-         (action (nskk-prolog-query-value
-                  `(l-key-action ,(car state) ,(cdr state) ,'\?a) '\?a)))
-    (pcase action
-      ('fire-romaji (nskk-process-japanese-input ?l 1))
-      ('latin-mode  (nskk--with-japanese-mode/k
-                     (lambda (_) (nskk-set-mode-latin))
-                     (lambda () (self-insert-command 1))))
-      (_            (self-insert-command 1)))))
+  (if (nskk--romaji-has-match-p ?l)
+      (nskk-process-japanese-input ?l 1)
+    (nskk--with-japanese-mode/k
+     (lambda (_) (nskk-set-mode-latin))
+     (lambda () (self-insert-command 1)))))
 
 (nskk-define-mode-switch-handler upper-l
   "Handle L key: switch to full-width latin (jisx0208-latin) mode.
@@ -436,12 +434,20 @@ In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   (nskk-set-mode-jisx0208-latin))
 
-(nskk-define-mode-switch-handler slash
-  "Handle / key: enter abbrev mode from Japanese mode.
-In henkan-active mode, perform implicit kakutei first.
+(defun/done nskk-handle-slash ()
+  "Handle / key: enter abbrev mode, or fire romaji rule when pending.
+When pending romaji combined with / forms a complete conversion rule
+\(e.g. \"z\" + \"/\" → \"・\"), fires the romaji processor instead.
+In henkan-active mode, perform implicit kakutei first when not routing
+to romaji.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
-  (nskk-set-mode-abbrev))
+  :interactive t
+  (if (nskk--romaji-has-match-p ?/)
+      (nskk-process-japanese-input ?/ 1)
+    (nskk--with-japanese-mode/k
+     (lambda (_) (nskk-set-mode-abbrev))
+     (lambda () (self-insert-command 1)))))
 
 (nskk-define-key-handler x
   "Handle x key: select previous candidate.

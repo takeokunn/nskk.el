@@ -165,7 +165,15 @@ Vowels and n are excluded; other consonants trigger sokuon.")
     ("xtsu" "っ") ("xtu" "っ") ("ltsu" "っ") ("ltu" "っ")
     ("xwa" "ゎ") ("xka" "ゕ") ("xke" "ゖ")
     ;; Long vowel mark
-    ("-" "ー"))
+    ("-" "ー")
+    ;; Basic punctuation (ddskk-compatible)
+    ("." "。") ("," "、")
+    ("[" "「") ("]" "」")
+    ;; z-prefix symbols (ddskk-compatible)
+    ("z-" "〜") ("z." "…") ("z," "‥")
+    ("z[" "『") ("z]" "』") ("z/" "・")
+    ("zh" "←") ("zj" "↓") ("zk" "↑") ("zl" "→")
+    ("z " "　"))
   "Standard SKK romaji-to-kana conversion rules.
 Each entry is (ROMAJI KANA) where both are strings.
 This data constant is used by `nskk--initialize-romaji-table' to populate
