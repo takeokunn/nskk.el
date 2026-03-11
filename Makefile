@@ -60,7 +60,7 @@ E2E_SRC = test/e2e/nskk-mode-transition-e2e-test.el \
            test/e2e/nskk-e2e-numeric.el \
            test/e2e/nskk-e2e-dcomp.el
 
-.PHONY: all compile test test-integration test-unit test-e2e lint lint-checkdoc package-lint clean
+.PHONY: all compile test test-integration test-unit test-e2e bench lint lint-checkdoc package-lint clean
 
 all: compile
 
@@ -109,6 +109,14 @@ test-e2e: compile
 	  -l test/nskk-e2e-helpers.el \
 	  $(foreach f,$(E2E_SRC),-l $(f)) \
 	  -f ert-run-tests-batch-and-exit
+
+bench: compile
+	@echo "Running benchmarks..."
+	$(BATCH) $(LOAD_PATH) -L test/bench \
+	  -l test/nskk-test-macros.el \
+	  -l test/nskk-test-framework.el \
+	  -l test/nskk-e2e-helpers.el \
+	  -l test/bench/nskk-bench.el
 
 lint: lint-checkdoc
 

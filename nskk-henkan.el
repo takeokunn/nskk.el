@@ -415,13 +415,18 @@ Safe to call even when no overlay is active (idempotent)."
 
 ;;;; Conversion State Helpers
 
+(defconst nskk--converting-phases '(active list registration)
+  "Henkan phases where a candidate conversion is in progress.
+Mirrors `converting-phase/1' Prolog facts; must be kept in sync manually.")
+
 (defun/k nskk-converting-p ()
-  "Return non-nil if currently converting (▼ or list display phase)."
+  "Return non-nil if currently converting (▼ or list display phase).
+Uses `memq' on `nskk--converting-phases' instead of a Prolog query."
   (if (and (boundp 'nskk-current-state)
            nskk-current-state
            (nskk-state-p nskk-current-state)
-           (let ((phase (nskk-state-henkan-phase nskk-current-state)))
-             (nskk-prolog-holds-p `(converting-phase ,phase))))
+           (memq (nskk-state-henkan-phase nskk-current-state)
+                 nskk--converting-phases))
       (succeed t)
     (fail)))
 
@@ -1451,11 +1456,11 @@ Idempotent: subsequent calls are no-ops."
       (2 skkserv-lookup)
       (3 program-dict-lookup))
 
-    ;; Converting phase facts
-    (nskk-prolog-define-fact-table converting-phase (:arity 1 :index :hash)
-      (active)
-      (list)
-      (registration))
+    ;; Converting phase facts — derived from nskk--converting-phases defconst
+    ;; so that the Prolog DB and the Elisp memq check stay in sync.
+    (nskk-prolog-set-index 'converting-phase 1 :hash)
+    (dolist (ph nskk--converting-phases)
+      (nskk-prolog-assert `((converting-phase ,ph))))
 
     ;; Okurigana character classification
     (nskk-prolog-set-index 'okurigana-char 2 :hash)

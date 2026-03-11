@@ -135,6 +135,37 @@ Falls through to nil if no slot matches."
   '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
   "List of valid NSKK modes.")
 
+(defconst nskk-state-henkan-phases '(nil on active list registration)
+  "List of valid henkan phases.")
+
+(defconst nskk--henkan-mode-phases '(on active list registration)
+  "Henkan phases that represent an active conversion.
+Mirrors `henkan-mode-phase/1' Prolog facts.")
+
+(defconst nskk--valid-henkan-transitions
+  '((nil          . (on))
+    (on           . (active registration nil))
+    (active       . (on nil list))
+    (list         . (on nil registration))
+    (registration . (nil list)))
+  "Valid henkan phase transitions as an alist of (from . (to...)).
+Mirrors `valid-henkan-transition/2' Prolog facts; must be kept in sync.")
+
+(defconst nskk--state-slot-defaults
+  '((input-buffer     . "")
+    (converted-buffer . "")
+    (candidates       . nil)
+    (current-index    . 0)
+    (henkan-position  . nil)
+    (marker-position  . nil)
+    (undo-stack       . nil)
+    (redo-stack       . nil)
+    (henkan-phase     . nil)
+    (metadata         . nil))
+  "Default values for nskk-state struct slots.
+Mirrors `state-slot-default/2' Prolog facts; must be kept in sync manually.
+Used by `nskk-state-create' and `nskk-state-reset' to avoid Prolog queries.")
+
 ;; Main state structure
 (cl-defstruct nskk-state
   "Core state structure for NSKK input."
@@ -204,10 +235,11 @@ Applies validation for mode and henkan-phase changes."
                         undo-stack redo-stack metadata)))))))
     (if result (succeed result) (fail))))
 
-;; Internal helper to get default value from Prolog
+;; Internal helper to get default value from nskk--state-slot-defaults
 (defun nskk--state-get-default (slot)
-  "Get default value for SLOT from state-slot-default Prolog facts."
-  (nskk-prolog-query-value `(state-slot-default ,slot ,'\?v) '\?v))
+  "Return the default value for SLOT from `nskk--state-slot-defaults'.
+Avoids a runtime Prolog query by using the compile-time constant alist."
+  (cdr (assq slot nskk--state-slot-defaults)))
 
 ;; State creation functions
 (defun/k nskk-state-create (&optional initial-mode)
@@ -240,20 +272,19 @@ always pass both continuation arguments explicitly."
 
 ;; State validation functions
 (defun/k nskk-state-valid-mode-p (mode)
-  "Return non-nil if MODE is a valid NSKK input mode symbol."
-  (if (and (symbolp mode)
-           (nskk-prolog-holds-p `(valid-mode ,mode)))
+  "Return non-nil if MODE is a valid NSKK input mode symbol.
+Uses `memq' on `nskk-state-modes' instead of a Prolog query."
+  (if (memq mode nskk-state-modes)
       (succeed t)
     (fail)))
 
 (defun/k nskk-state-in-henkan-mode-p (state)
   "Check if STATE is currently in conversion mode.
-Queries the henkan-mode-phase Prolog predicate.
-Note: nil phase (the common case) short-circuits before the Prolog query."
+Uses `memq' on `nskk--henkan-mode-phases' instead of a Prolog query.
+The nil phase (common case) fails the memq test without any function call
+overhead beyond the slot access."
   (if (and (nskk-state-p state)
-           (let ((phase (nskk-state-henkan-phase state)))
-             (and phase
-                  (nskk-prolog-holds-p `(henkan-mode-phase ,phase)))))
+           (memq (nskk-state-henkan-phase state) nskk--henkan-mode-phases))
       (succeed t)
     (fail)))
 
@@ -271,25 +302,22 @@ Note: nil phase (the common case) short-circuits before the Prolog query."
       (succeed t)
     (fail)))
 
-(defconst nskk-state-henkan-phases '(nil on active list registration)
-  "List of valid henkan phases.")
-
 (defun/k nskk-state-set-henkan-phase (state phase)
   "Set henkan PHASE in STATE with transition validation.
 PHASE must be nil, on, active, list, or registration.
 Validates that the transition from the current phase to PHASE
-follows the valid-henkan-transition graph.
+follows the `nskk--valid-henkan-transitions' graph.
 Same-phase transitions (no-op) are always allowed.
 Calls on-found with t on success; on-not-found on invalid transition."
   (let ((ok (condition-case _err
                  (progn
                    (nskk-with-state state
-                     (unless (nskk-prolog-holds-p `(valid-henkan-phase ,phase))
+                     (unless (memq phase nskk-state-henkan-phases)
                        (error "Invalid henkan phase: %s. Valid phases: %s"
                               phase nskk-state-henkan-phases))
                      (let ((current (nskk-state-henkan-phase state)))
                        (unless (or (eq current phase)
-                                   (nskk-prolog-holds-p `(valid-henkan-transition ,current ,phase)))
+                                   (memq phase (cdr (assq current nskk--valid-henkan-transitions))))
                          (error "Invalid henkan phase transition: %s -> %s" current phase)))
                      (setf (nskk-state-henkan-phase state) phase))
                    t)
@@ -313,43 +341,68 @@ rather than silently returning nil."
      state phase
      #'ignore
      (lambda ()
-       (if (not (nskk-prolog-holds-p `(valid-henkan-phase ,phase)))
+       (if (not (memq phase nskk-state-henkan-phases))
            (error "Invalid henkan phase: %s. Valid phases: %s"
                   phase nskk-state-henkan-phases)
          (error "Invalid henkan phase transition: %s -> %s" current phase)))))))
 
 (defun/done nskk-state-force-henkan-phase (state phase)
   "Force set henkan PHASE in STATE, bypassing transition validation.
-Only validates that PHASE is a valid henkan phase.
+Only validates that PHASE is a member of `nskk-state-henkan-phases'.
 Use for test setup or emergency reset."
   (nskk-with-state state
-    (unless (nskk-prolog-holds-p `(valid-henkan-phase ,phase))
+    (unless (memq phase nskk-state-henkan-phases)
       (error "Invalid henkan phase: %s. Valid phases: %s" phase nskk-state-henkan-phases))
     (setf (nskk-state-henkan-phase state) phase)))
+
+;; Fast-path sync wrapper overrides for boolean predicates (CPS-2 pattern).
+;; These bypass the defun/k-generated sync wrapper (which routes through /k
+;; machinery with #'identity #'ignore continuations) for the common case
+;; where the caller only needs a boolean result, not a CPS callback.
+;; The /k variants remain available for CPS callers.
+(with-no-warnings
+(defun nskk-state-valid-mode-p (mode)
+  "Return non-nil if MODE is a valid NSKK input mode symbol.  [fast-path override]
+Bypasses CPS machinery; use `nskk-state-valid-mode-p/k' for CPS callers."
+  (not (null (memq mode nskk-state-modes)))))
+
+(with-no-warnings
+(defun nskk-state-in-henkan-mode-p (state)
+  "Return non-nil if STATE is currently in an active conversion phase.  [fast-path override]
+Bypasses CPS machinery; use `nskk-state-in-henkan-mode-p/k' for CPS callers."
+  (and (nskk-state-p state)
+       (not (null (memq (nskk-state-henkan-phase state) nskk--henkan-mode-phases))))))
 
 ;; State transition functions
 (defun/k nskk-state-transition (state from-mode to-mode)
   "Transition STATE from FROM-MODE to TO-MODE.
-Uses can-transition Prolog rule for validation.
-Calls on-found with t on success; on-not-found on failure."
+Validates that TO-MODE is a member of `nskk-state-modes' (same semantics
+as the `can-transition/2' Prolog rule: any valid mode → any valid mode).
+Calls on-found with t on success; on-not-found on failure.
+Uses direct `setf' on struct slots to avoid defun/k dispatch overhead."
   (let ((ok (nskk-with-state state
                (when (and (eq (nskk-state-mode state) from-mode)
-                          (nskk-prolog-holds-p `(can-transition ,from-mode ,to-mode)))
-                 (nskk-state-set state 'mode to-mode)
+                          (memq to-mode nskk-state-modes))
+                 (setf (nskk-state-previous-mode state) from-mode
+                       (nskk-state-mode state)          to-mode)
                  t))))
     (if ok (succeed t) (fail))))
 
 (defun/done nskk-state-reset (state)
-  "Reset STATE to initial state (preserves mode).
-Iterates resettable-field Prolog facts and restores each
-to its state-slot-default value.
-Returns nil (side-effect function)."
+  "Reset STATE to initial state (preserves mode and previous-mode).
+Uses multi-`setf' on struct slots directly to avoid defun/k dispatch overhead.
+Henkan phase is reset via `nskk-state-force-henkan-phase'."
   (nskk-with-state state
-    (dolist (slot (nskk-prolog-query-all-values '(resettable-field \?s) '\?s))
-      (let ((default (nskk--state-get-default slot)))
-        (if (eq slot 'henkan-phase)
-            (nskk-state-force-henkan-phase state default)
-          (nskk-state-set state slot default))))))
+    (setf (nskk-state-input-buffer state)     ""
+          (nskk-state-converted-buffer state) ""
+          (nskk-state-candidates state)       nil
+          (nskk-state-current-index state)    0
+          (nskk-state-henkan-position state)  nil
+          (nskk-state-marker-position state)  nil
+          (nskk-state-undo-stack state)       nil
+          (nskk-state-redo-stack state)       nil
+          (nskk-state-metadata state)         nil)
+    (nskk-state-force-henkan-phase state nil)))
 
 ;; Buffer management helpers
 (defun/k nskk-state-append-input (state char)
