@@ -113,6 +113,9 @@
 (declare-function nskk-server-ensure-open "nskk-server")
 (declare-function nskk-server-lookup "nskk-server")
 (declare-function nskk-server-lookup/k "nskk-server")
+
+(declare-function nskk-program-dict-lookup "nskk-program-dict")
+(declare-function nskk-program-dict-lookup/k "nskk-program-dict")
 (declare-function nskk-state-force-henkan-phase "nskk-state")
 (declare-function nskk-state-get-mode "nskk-state")
 (declare-function nskk-kana-string-katakana-to-hiragana "nskk-kana")
@@ -305,8 +308,19 @@ always pass both continuation arguments explicitly."
                       ;; boundp guards against nskk-server.el not being loaded.
                       (<-or r nskk-server-lookup key
                         :found (succeed r)
-                        :fail  (fail))
-                    (fail))))
+                        :fail  ;; program-dict fallback after skkserv miss.
+                               ;; fboundp guards against nskk-program-dict.el not loaded.
+                               (if (fboundp 'nskk-program-dict-lookup)
+                                   (<-or p nskk-program-dict-lookup key
+                                     :found (succeed p)
+                                     :fail  (fail))
+                                 (fail)))
+                    ;; skkserv disabled: try program-dict directly.
+                    (if (fboundp 'nskk-program-dict-lookup)
+                        (<-or p nskk-program-dict-lookup key
+                          :found (succeed p)
+                          :fail  (fail))
+                      (fail)))))
         ('prefix-search
          (if nskk--system-dict-index
              (<-or r nskk-search-prefix nskk--system-dict-index key nil limit
@@ -1310,7 +1324,7 @@ all matches."
             (nskk--dcomp-replace-preedit (car matches))
             ;; Discard pending romaji — the completed reading supersedes it.
             (nskk--clear-pending-romaji)
-            (setq nskk--romaji-buffer ""))))))
+            (setq nskk--romaji-buffer ""))))))))
 
 ;;;; SKK Numeric Conversion (数値変換)
 
