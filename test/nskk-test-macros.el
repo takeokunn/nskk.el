@@ -1174,14 +1174,14 @@ Example:
 (defmacro nskk-with-henkan-state (phase candidates &rest body)
   "Execute BODY with henkan state set to PHASE with CANDIDATES.
 Provides bindings: `nskk-current-state', `nskk--conversion-start-marker',
-`nskk--romaji-buffer', `nskk--henkan-count', `nskk-henkan--candidate-list-active'."
+`nskk--romaji-buffer', `nskk--henkan-count', `nskk--henkan-candidate-list-active'."
   (declare (indent 2))
   `(with-temp-buffer
      (let ((nskk-current-state (nskk-state-create 'hiragana))
            (nskk--conversion-start-marker (make-marker))
            (nskk--romaji-buffer "")
            (nskk--henkan-count 0)
-           (nskk-henkan--candidate-list-active nil))
+           (nskk--henkan-candidate-list-active nil))
        (set-marker nskk--conversion-start-marker (point-min))
        (insert "preedit")
        (when ,candidates

@@ -48,163 +48,83 @@
 
 
 ;;;;
-;;;; Helper Data
-;;;;
-
-(defconst nskk-pbt--uppercase-chars
-  (string-to-list "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-  "All uppercase ASCII letters.")
-
-(defconst nskk-pbt--lowercase-chars
-  (string-to-list "abcdefghijklmnopqrstuvwxyz")
-  "All lowercase ASCII letters.")
-
-(defconst nskk-pbt--non-alpha-chars
-  (append (string-to-list "0123456789")
-          (string-to-list "!@#$%^&*()-=[]{}|;':\",./<>?")
-          (list ?\t ?\n ?\s))
-  "Non-alphabetic characters for testing.")
-
-
-;;;;
 ;;;; Property 1: Uppercase Characters Detected as Okurigana
 ;;;;
 
-(ert-deftest nskk-state-machine-okurigana-uppercase-detected ()
-  "All uppercase A-Z are detected as okurigana markers."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((char (nskk-pbt--random-choice nskk-pbt--uppercase-chars))
-             (result (nskk-detect-okurigana-char char)))
-        (unless (and result
-                     (characterp result)
-                     (= result (downcase char)))
-          (push (list :char char
-                      :char-name (char-to-string char)
-                      :result result
-                      :expected (downcase char))
-                failures))))
-    (when failures
-      (ert-fail (format "Uppercase okurigana detection failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-state-machine-okurigana-uppercase-detected
+  ((ch uppercase-char))
+  (let* ((char (string-to-char ch))
+         (result (nskk-detect-okurigana-char char)))
+    (and result
+         (characterp result)
+         (= result (downcase char))))
+  50)
 
 
 ;;;;
 ;;;; Property 2: Lowercase Characters Not Detected as Okurigana
 ;;;;
 
-(ert-deftest nskk-state-machine-okurigana-lowercase-not-detected ()
-  "Lowercase a-z are not detected as okurigana markers."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((char (nskk-pbt--random-choice nskk-pbt--lowercase-chars))
-             (result (nskk-detect-okurigana-char char)))
-        (when result
-          (push (list :char char
-                      :char-name (char-to-string char)
-                      :result result)
-                failures))))
-    (when failures
-      (ert-fail (format "Lowercase chars incorrectly detected for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-state-machine-okurigana-lowercase-not-detected
+  ((ch lowercase-char))
+  (let* ((char (string-to-char ch))
+         (result (nskk-detect-okurigana-char char)))
+    (not result))
+  50)
 
 
 ;;;;
 ;;;; Property 3: Non-Alpha Characters Not Detected as Okurigana
 ;;;;
 
-(ert-deftest nskk-state-machine-okurigana-non-alpha-not-detected ()
-  "Numbers, symbols, and other non-alpha characters return nil."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((char (nskk-pbt--random-choice nskk-pbt--non-alpha-chars))
-             (result (nskk-detect-okurigana-char char)))
-        (when result
-          (push (list :char char
-                      :result result)
-                failures))))
-    (when failures
-      (ert-fail (format "Non-alpha chars incorrectly detected for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-state-machine-okurigana-non-alpha-not-detected
+  ((ch non-alpha-char))
+  (let* ((char (string-to-char ch))
+         (result (nskk-detect-okurigana-char char)))
+    (not result))
+  50)
 
 
 ;;;;
 ;;;; Property 4: Okurigana State Set-Get Roundtrip
 ;;;;
 
-(ert-deftest nskk-state-machine-okurigana-state-set-get-roundtrip ()
-  "Setting and getting okurigana in state is consistent."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (okuri-char (nskk-pbt--random-choice nskk-pbt--lowercase-chars)))
-        ;; Set okurigana
-        (nskk-state-set-okurigana state okuri-char)
-        ;; Get okurigana
-        (let ((retrieved (nskk-state-get-okurigana state)))
-          (unless (equal retrieved okuri-char)
-            (push (list :set okuri-char
-                        :retrieved retrieved)
-                  failures)))))
-    (when failures
-      (ert-fail (format "Okurigana set-get roundtrip failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-state-machine-okurigana-state-set-get-roundtrip
+  ((ch lowercase-char))
+  (let* ((state (nskk-state-create 'hiragana))
+         (okuri-char (string-to-char ch)))
+    (nskk-state-set-okurigana state okuri-char)
+    (equal (nskk-state-get-okurigana state) okuri-char))
+  50)
 
 
 ;;;;
 ;;;; Additional Property: Okurigana Detection Determinism
 ;;;;
 
-(ert-deftest nskk-state-machine-okurigana-detection-deterministic ()
-  "Calling okurigana detection twice on the same char gives the same result."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((all-chars (append nskk-pbt--uppercase-chars
-                                nskk-pbt--lowercase-chars
-                                nskk-pbt--non-alpha-chars))
-             (char (nskk-pbt--random-choice all-chars))
-             (result1 (nskk-detect-okurigana-char char))
-             (result2 (nskk-detect-okurigana-char char)))
-        (unless (equal result1 result2)
-          (push (list :char char :result1 result1 :result2 result2)
-                failures))))
-    (when failures
-      (ert-fail (format "Okurigana detection not deterministic for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-state-machine-okurigana-detection-deterministic
+  ((ch any-char))
+  (let* ((char (string-to-char ch))
+         (result1 (nskk-detect-okurigana-char char))
+         (result2 (nskk-detect-okurigana-char char)))
+    (equal result1 result2))
+  50)
 
 
 ;;;;
 ;;;; Additional Property: Okurigana Nil State Safety
 ;;;;
 
-(ert-deftest nskk-state-machine-okurigana-nil-state-safe ()
-  "Okurigana operations on nil state do not crash."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (condition-case err
-          (progn
-            ;; These should return nil without crash
-            (nskk-state-set-okurigana nil (nskk-pbt--random-choice nskk-pbt--lowercase-chars))
-            (nskk-state-get-okurigana nil)
-            ;; Also test detect on nil
-            (nskk-detect-okurigana-char nil))
-        (error
-         (push (list :error err) failures))))
-    (when failures
-      (ert-fail (format "Nil state safety failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-state-machine-okurigana-nil-state-safe
+  ((ch lowercase-char))
+  (let ((okuri-char (string-to-char ch)))
+    ;; These should return nil without crash
+    (nskk-state-set-okurigana nil okuri-char)
+    (nskk-state-get-okurigana nil)
+    ;; Also test detect on nil
+    (nskk-detect-okurigana-char nil)
+    t)
+  50)
 
 
 ;;;;

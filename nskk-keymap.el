@@ -37,39 +37,56 @@
 ;; or `keyboard-quit' when NSKK is in ASCII mode or state is inactive.
 ;;
 ;; Prolog predicates maintained by this module:
-;; - `key-action/3'  -- (key state action) dispatch rules for x, SPC, RET, C-g, C-n, C-p, C-f, C-b
+;; - `key-action/3'            -- (key state action) dispatch rules
+;; - `mode-switch-preaction/2' -- (class pre-action) implicit kakutei before mode-switch
+;; - `preedit-marker-mode/1'   -- modes where marker set implies preedit state
+;; - `l-key-action/3'          -- AZIK-aware dispatch for the l key
+;; - `kakutei-idle-state/2'    -- mode -> kakutei idle-state classification
+;; - `azik-toggle-key/2'       -- keyboard type -> AZIK toggle key string
 ;;
 ;; Key architecture:
-;; - `nskk-define-key-handler' -- macro that generates Prolog-dispatched
+;; - `nskk-define-key-handler'       -- macro that generates Prolog-dispatched
 ;;     interactive commands.  Queries `key-action/3' to decide the action
 ;;     based on the current dispatch state (converting, preedit, normal).
-;; - `nskk-with-japanese-mode' -- macro for q/l/L// handlers.  Performs
-;;     implicit kakutei (確定) first if in converting (▼) or preedit (▽)
-;;     state, then executes the mode-switch action.  Uses `japanese-mode/1'
-;;     (defined in nskk-state.el) to guard the idle Japanese-mode case.
-;; - `nskk--current-key-state' -- returns `converting', `preedit', or
+;; - `nskk-define-mode-switch-handler' -- macro for q/L// handlers.  Calls
+;;     `nskk--with-japanese-mode/k' which performs implicit kakutei (kakutei)
+;;     first via `mode-switch-preaction/2', then executes the mode action.
+;;     Falls through to `self-insert-command' when not in a Japanese mode.
+;; - `nskk--current-key-state'   -- returns `converting', `preedit', or
 ;;     `normal' for use by the dispatch system.
+;; - `nskk--japanese-mode-class' -- returns `converting', `preedit-japanese',
+;;     `idle-japanese', or `other' for use by mode-switch dispatch.
 ;;
 ;; Key public API (all interactive):
+;;
+;; Mode-switch handlers (via `nskk-define-mode-switch-handler'):
 ;; - `nskk-handle-q'       -- toggle hiragana/katakana
-;; - `nskk-handle-l'       -- switch to ASCII mode
 ;; - `nskk-handle-upper-l' -- switch to full-width latin mode
 ;; - `nskk-handle-slash'   -- enter abbrev mode
+;; - `nskk-handle-hash'    -- enter numeric input mode
+;;
+;; Manually defined handler (AZIK-aware Prolog dispatch):
+;; - `nskk-handle-l'       -- switch to ASCII mode (l-key-action/3 dispatch)
+;;
+;; Prolog-dispatched handlers (via `nskk-define-key-handler'):
 ;; - `nskk-handle-x'       -- previous candidate
 ;; - `nskk-handle-space'   -- start conversion / next candidate
 ;; - `nskk-handle-return'  -- commit candidate (no newline) / insert newline
-;; - `nskk-handle-cancel'  -- cancel conversion / preedit / keyboard-quit
 ;; - `nskk-handle-ctrl-n'  -- commit then next-line / next-line fallthrough
 ;; - `nskk-handle-ctrl-p'  -- commit then prev-line / previous-line fallthrough
 ;; - `nskk-handle-ctrl-f'  -- commit then forward-char / forward-char fallthrough
 ;; - `nskk-handle-ctrl-b'  -- commit then backward-char / backward-char fallthrough
 ;; - `nskk-handle-ctrl-a'  -- commit then beginning-of-line / beginning-of-line fallthrough
 ;; - `nskk-handle-ctrl-e'  -- commit then end-of-line / end-of-line fallthrough
+;; - `nskk-handle-cancel'  -- cancel conversion / preedit / keyboard-quit
+;; - `nskk-handle-backspace' -- delete preedit char / rollback conversion / backward-delete
+;; - `nskk-handle-tab'     -- dynamic completion in preedit / pass-through
 
 ;;; Code:
 
 (require 'nskk-state)
 (require 'nskk-prolog)
+(require 'nskk-cps-macros)
 
 ;; Functions in nskk-input.el
 (declare-function nskk-toggle-japanese-mode "nskk-input")
@@ -80,6 +97,7 @@
 (declare-function nskk-handle-q-key "nskk-input")
 (declare-function nskk--azik-complete-match-p "nskk-input")
 (declare-function nskk-process-japanese-input "nskk-input")
+(declare-function nskk-set-mode-numeric "nskk-input")
 (defvar nskk-converter-romaji-style)
 ;; Functions in nskk-henkan.el
 (declare-function nskk-converting-p "nskk-henkan")
@@ -95,7 +113,6 @@
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
-(declare-function nskk-set-mode-numeric "nskk-input")
 (defvar nskk-henkan-on-marker)
 ;; Variables in nskk-azik.el
 (defvar nskk-azik-keyboard-type)
@@ -112,8 +129,10 @@
   ;; Return
   (return converting commit-candidate)
   (return normal   newline)
+  ;; Note: no (return preedit ...) row -- the wildcard `_' in nskk-handle-return
+  ;; fires for preedit, calling (newline).  This is intentional (DDSKK-compatible).
   ;; Cancel
-  (cancel converting cancel-conversion)
+  (cancel converting rollback-to-reading)
   (cancel preedit   cancel-preedit)
   (cancel normal    keyboard-quit)
   ;; X
@@ -145,7 +164,7 @@
   (ctrl-e normal     end-of-line)
   ;; Backspace
   (backspace preedit    delete-preedit-char)
-  (backspace converting cancel-conversion)
+  (backspace converting rollback-to-reading)
   (backspace normal     backward-delete)
   ;; Tab (dynamic completion)
   (tab preedit    dynamic-complete)
@@ -154,13 +173,54 @@
 
 ;;;; Preedit Marker Mode Rules
 ;; Modes where a set conversion-start marker indicates preedit state:
-;; abbrev, hiragana, katakana, katakana-半角.
+;; abbrev, hiragana, katakana, katakana-han.
 ;; Ground facts allow O(1) hash lookup (avoids variable-head rule limitations).
 (nskk-prolog-define-fact-table preedit-marker-mode (:arity 1 :index :hash)
   (abbrev)
   (hiragana)
   (katakana)
   (katakana-半角))
+
+;;;; L-Key Dispatch Rules
+
+;; l-key-action/3: AZIK-aware dispatch for the l key.
+;; (l-key-action STYLE BUF-STATE ACTION)
+;; STYLE is `azik' or `standard' (from nskk-converter-romaji-style).
+;; BUF-STATE is `azik-complete' when pending-romaji+l is a complete AZIK hash
+;; match; `other' otherwise.  Standard mode uses a wildcard variable so any
+;; buf-state maps to latin-mode.
+(nskk-prolog-define-fact-table l-key-action (:arity 3 :index :hash)
+  (azik azik-complete fire-romaji)
+  (azik other         latin-mode)
+  (standard \?buf     latin-mode))
+
+;;;; Kakutei Idle-State Classification Rules
+
+;; kakutei-idle-state/2: (MODE IDLE-STATE)
+;; Maps a Japanese/direct mode symbol to its kakutei idle-state keyword.
+;; Used by `nskk--current-kakutei-state' to classify the idle arm via a
+;; single O(1) hash lookup instead of a 3-branch cond.
+(nskk-prolog-define-fact-table kakutei-idle-state (:arity 2 :index :hash)
+  (hiragana       hiragana-idle)
+  (katakana       katakana-idle)
+  (katakana-半角  katakana-idle)
+  (ascii          direct-idle)
+  (latin          direct-idle)
+  (jisx0208-latin direct-idle)
+  (abbrev         direct-idle)
+  (numeric        direct-idle))
+
+;;;; Mode-Switch Pre-Action Rules
+
+;; mode-switch-preaction/2: (CLASS PRE-ACTION)
+;; Maps a japanese-mode class (from `nskk--japanese-mode-class') to the
+;; implicit kakutei pre-action to perform before a mode-switch key (q, l, L, /, #).
+;; Queried by `nskk--with-japanese-mode/k'.
+(nskk-prolog-define-fact-table mode-switch-preaction (:arity 2 :index :hash)
+  (converting       commit-current)
+  (preedit-japanese henkan-kakutei)
+  (idle-japanese    noop)
+  (other            fallback))
 
 ;;;; State Detection
 
@@ -182,11 +242,11 @@ Returns one of the symbols `converting', `preedit', or `normal'.
 
 `preedit' means the preedit phase is active, NOT necessarily that
 there is non-empty preedit text.  Specifically:
-- Standard preedit (hiragana/katakana ▽): `nskk--has-preedit' is true,
-  i.e. there is at least one character between the ▽ marker and point.
+- Standard preedit (hiragana/katakana): `nskk--has-preedit' is true,
+  i.e. there is at least one character between the marker and point.
 - Abbrev preedit: returned whenever mode is `abbrev' and the conversion
   start marker is set.
-- Japanese preedit (hiragana/katakana ▽): returned when marker is set,
+- Japanese preedit (hiragana/katakana): returned when marker is set,
   even if no characters have been typed yet.
 Both cases use the `preedit-marker-mode/1' Prolog predicate.
 
@@ -194,7 +254,7 @@ This distinction mirrors DDSKK: in `skk-abbrev-mode-map', SPC is bound
 directly to `skk-start-henkan' with no runtime text-presence check."
   (or (nskk--key-state-base)
       ;; Mode with marker set: preedit-marker-mode/1 covers abbrev and
-      ;; Japanese modes (hiragana/katakana) — DDSKK-compatible.
+      ;; Japanese modes (hiragana/katakana) -- DDSKK-compatible.
       (when (and nskk-current-state
                  (nskk--get-conversion-start)
                  (nskk-prolog-holds-p
@@ -202,30 +262,29 @@ directly to `skk-start-henkan' with no runtime text-presence check."
         'preedit)
       'normal))
 
-(defun nskk--current-kakutei-state ()
+(defun/k nskk--current-kakutei-state ()
   "Return kakutei dispatch state for `kakutei-action/2' Prolog query.
 States (in priority order):
   `converting'     -- henkan-active (▼ phase)
   `preedit'        -- henkan-on (▽ phase)
   `romaji-pending' -- incomplete romaji in `nskk--romaji-buffer'
   `hiragana-idle'  -- hiragana mode, no pending input
-  `katakana-idle'  -- katakana/katakana-半角 mode, no pending input
+  `katakana-idle'  -- katakana/katakana-han mode, no pending input
   `direct-idle'    -- ascii/latin/jisx0208-latin/abbrev, no pending input"
-  (cond
-   ((nskk--key-state-base))
-   ((and (boundp 'nskk--romaji-buffer)
-         (not (string-empty-p nskk--romaji-buffer)))
-    'romaji-pending)
-   ((and nskk-current-state
-         (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    'hiragana-idle)
-   ((and nskk-current-state
-         (nskk-prolog-holds-p
-          `(japanese-mode ,(nskk-state-mode nskk-current-state))))
-    'katakana-idle)
-   (t 'direct-idle)))
-
-;;;; Internal Macros
+  (let ((base (nskk--key-state-base)))
+    (cond
+     (base (succeed base))
+     ((and (boundp 'nskk--romaji-buffer)
+           (not (string-empty-p nskk--romaji-buffer)))
+      (succeed 'romaji-pending))
+     (t
+      ;; Idle arm: classify by mode via `kakutei-idle-state/2' Prolog query.
+      ;; Falls back to `direct-idle' when no fact matches (unknown mode).
+      (succeed (or (and nskk-current-state
+                        (nskk-prolog-query-value
+                         `(kakutei-idle-state ,(nskk-state-mode nskk-current-state) \?s)
+                         '\?s))
+                   'direct-idle))))))
 
 (defun nskk--japanese-mode-active-p ()
   "Return non-nil if the current NSKK mode is a Japanese input mode.
@@ -235,32 +294,46 @@ Queries the `japanese-mode/1' Prolog predicate for the mode stored in
        (nskk-prolog-holds-p
         `(japanese-mode ,(nskk-state-mode nskk-current-state)))))
 
-(defmacro nskk-with-japanese-mode (action &rest fallback)
-  "Execute ACTION if currently in Japanese input mode.
-Performs implicit kakutei (確定) if input state is active:
-- If converting (▼ active): commit the current candidate first.
-- If preedit (▽ active) in a Japanese mode (hiragana, katakana or
-  katakana-半角): commit preedit kana as-is via `nskk-henkan-kakutei',
-  then execute ACTION.  This matches ddskk behaviour where pressing a
-  mode-switch key (l, L, /, q) during preedit commits the kana and
-  exits preedit before switching modes.  In abbrev mode the preedit
-  buffer holds raw ASCII, not kana, so mode-switch keys fall through
-  to FALLBACK (typically `self-insert-command').
-- If in a Japanese mode (hiragana or katakana) but idle: execute
-  ACTION directly.
-Otherwise execute FALLBACK forms (typically `self-insert-command')."
-  (declare (indent 1) (debug t))
-  `(cond
-    ((nskk-converting-p)
-     (nskk-commit-current)
-     ,action)
-    ((and (nskk--has-preedit)
-          (nskk--japanese-mode-active-p))
-     (nskk-henkan-kakutei)
-     ,action)
-    ((nskk--japanese-mode-active-p)
-     ,action)
-    (t ,@fallback)))
+(defun nskk--japanese-mode-class ()
+  "Return mode classification for mode-switch key dispatch.
+Returns one of:
+  `converting'       -- henkan-active (▼ phase)
+  `preedit-japanese' -- preedit active in a Japanese mode (hiragana/katakana)
+  `idle-japanese'    -- Japanese mode (hiragana/katakana), no active preedit
+  `other'            -- ASCII/latin/abbrev mode, or no state
+
+Note: abbrev preedit maps to `other', not `preedit-japanese', because
+abbrev preedit holds raw ASCII -- mode-switch keys fall through to
+`self-insert-command' in that state."
+  (let ((base (nskk--key-state-base)))
+    (cond
+     ((eq base 'converting) 'converting)
+     ((and (eq base 'preedit) (nskk--japanese-mode-active-p)) 'preedit-japanese)
+     ((nskk--japanese-mode-active-p) 'idle-japanese)
+     (t 'other))))
+
+;;;; Internal Macros
+
+(defun nskk--execute-preaction (preact)
+  "Execute the implicit kakutei pre-action PREACT before a mode-switch.
+PREACT is one of: `commit-current' (commit candidate),
+`henkan-kakutei' (commit preedit kana as-is), `noop' (no pre-action)."
+  (pcase preact
+    ('commit-current (nskk-commit-current))
+    ('henkan-kakutei (nskk-henkan-kakutei))
+    ('noop           nil)))
+
+(defun/k nskk--with-japanese-mode ()
+  "Dispatch mode-switch based on current Japanese mode class.
+Queries `mode-switch-preaction/2' to determine the implicit kakutei
+pre-action for the current mode class, executes it, then calls succeed.
+Calls fail when not in a Japanese mode (`other' class maps to `fallback')."
+  (let* ((class (nskk--japanese-mode-class))
+         (preact (nskk-prolog-query-value
+                  `(mode-switch-preaction ,class \?a) '\?a)))
+    (pcase preact
+      ('fallback (fail))
+      (_ (nskk--execute-preaction preact) (succeed nil)))))
 
 (defmacro nskk--safe-nav-command (cmd error-type)
   "Call CMD interactively, silently ignoring ERROR-TYPE signals.
@@ -297,66 +370,91 @@ dispatches masking missing rules."
          (pcase action
            ,@clauses)))))
 
-(defun nskk-handle-q ()
+(defmacro nskk-define-mode-switch-handler (key docstring action)
+  "Define an interactive mode-switch key handler for KEY.
+DOCSTRING is the function documentation string.
+ACTION is the Elisp form to execute after the implicit kakutei pre-action.
+
+The generated function is named `nskk-handle-KEY' and is interactive.
+It uses `nskk--with-japanese-mode/k' to perform implicit kakutei
+as needed based on `mode-switch-preaction/2', then executes ACTION.
+Falls through to `self-insert-command' when not in a Japanese input mode."
+  (declare (indent 2) (debug t))
+  (let ((fn-name (intern (format "nskk-handle-%s" key))))
+    `(defun/done ,fn-name ()
+       ,docstring
+       :interactive t
+       (nskk--with-japanese-mode/k
+        (lambda (_) ,action)
+        (lambda () (self-insert-command 1))))))
+
+(nskk-define-mode-switch-handler q
   "Handle q key: toggle between hiragana and katakana (or AZIK romaji dispatch).
-In henkan-active mode (▼), perform implicit kakutei first.
+In henkan-active mode, perform implicit kakutei first.
 When AZIK is active and pending-romaji+q is a complete hash match
-\(e.g. kq→かい), delegates to `nskk-handle-q-key' to fire the AZIK rule.
+\(e.g. kq->kai), delegates to `nskk-handle-q-key' to fire the AZIK rule.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
-  (interactive)
-  (nskk-with-japanese-mode (nskk-handle-q-key)
-    (self-insert-command 1)))
+  (nskk-handle-q-key))
 
-(defun nskk-handle-l ()
+(defun nskk--l-key-dispatch-state ()
+  "Return (STYLE . BUF-STATE) cons for l-key Prolog dispatch.
+STYLE is `azik' if `nskk-converter-romaji-style' is `azik', else
+`standard'.  BUF-STATE is `azik-complete' when STYLE is `azik' and
+the current pending-romaji+l sequence is a complete AZIK hash match
+\(via `nskk--azik-complete-match-p'); `other' otherwise.
+Used by `nskk-handle-l' to query `l-key-action/3'."
+  (let ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard)))
+    (cons style
+          (if (and (eq style 'azik) (nskk--azik-complete-match-p ?l))
+              'azik-complete
+            'other))))
+
+(defun/done nskk-handle-l ()
   "Handle l key: switch to ASCII mode (or AZIK romaji dispatch).
-In henkan-active mode (▼), perform implicit kakutei first.
+In henkan-active mode, perform implicit kakutei first.
 When AZIK is active and pending-romaji+l is a complete hash match
-\(e.g. hl→ほん), fires the AZIK rule via `nskk-process-japanese-input'
+\(e.g. hl->hon), fires the AZIK rule via `nskk-process-japanese-input'
 instead of switching to latin mode.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
-  (interactive)
-  (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
-         (buf-state (if (nskk--azik-complete-match-p ?l) 'azik-complete 'other))
+  :interactive t
+  (let* ((state (nskk--l-key-dispatch-state))
          (action (nskk-prolog-query-value
-                  `(l-key-action ,style ,buf-state ,'\?a) '\?a)))
+                  `(l-key-action ,(car state) ,(cdr state) ,'\?a) '\?a)))
     (pcase action
       ('fire-romaji (nskk-process-japanese-input ?l 1))
-      ('latin-mode  (nskk-with-japanese-mode (nskk-set-mode-latin)
-                      (self-insert-command 1)))
+      ('latin-mode  (nskk--with-japanese-mode/k
+                     (lambda (_) (nskk-set-mode-latin))
+                     (lambda () (self-insert-command 1))))
       (_            (self-insert-command 1)))))
 
-(defun nskk-handle-upper-l ()
+(nskk-define-mode-switch-handler upper-l
   "Handle L key: switch to full-width latin (jisx0208-latin) mode.
-In henkan-active mode (▼), perform implicit kakutei first.
+In henkan-active mode, perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
-  (interactive)
-  (nskk-with-japanese-mode (nskk-set-mode-jisx0208-latin)
-    (self-insert-command 1)))
+  (nskk-set-mode-jisx0208-latin))
 
-(defun nskk-handle-slash ()
+(nskk-define-mode-switch-handler slash
   "Handle / key: enter abbrev mode from Japanese mode.
-In henkan-active mode (▼), perform implicit kakutei first.
+In henkan-active mode, perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
-  (interactive)
-  (nskk-with-japanese-mode (nskk-set-mode-abbrev)
-    (self-insert-command 1)))
+  (nskk-set-mode-abbrev))
 
 (nskk-define-key-handler x
   "Handle x key: select previous candidate.
-In conversion mode (▼), moves to the previous candidate.
+In conversion mode, moves to the previous candidate.
 Otherwise delegates to `nskk-self-insert' so that romaji multi-char
-sequences (e.g. xa → ぁ) are handled correctly in Japanese modes."
+sequences (e.g. xa -> small-a) are handled correctly in Japanese modes."
   ('previous-candidate (nskk-previous-candidate))
   (_ (nskk-self-insert 1)))
 
 (nskk-define-key-handler space
   "Handle SPC key: start conversion or select next candidate.
-In conversion mode (▼), moves to the next candidate.
-In preedit mode (▽), initiates dictionary conversion.
+In conversion mode, moves to the next candidate.
+In preedit mode, initiates dictionary conversion.
 Otherwise delegates to `nskk-self-insert' so that mode-based routing
 applies: jisx0208-latin produces ideographic space (U+3000); all other
 modes insert a literal ASCII space."
@@ -366,48 +464,48 @@ modes insert a literal ASCII space."
 
 (nskk-define-key-handler return
   "Handle RET key: commit current conversion or insert newline.
-In conversion mode (▼), commits the selected candidate without inserting
-a newline.  In preedit mode (▽) or normal mode, inserts a newline
+In conversion mode, commits the selected candidate without inserting
+a newline.  In preedit mode or normal mode, inserts a newline
 unconditionally (preedit text is left in place)."
   ('commit-candidate (nskk-commit-current))
   (_ (newline)))
 
 (nskk-define-key-handler ctrl-n
   "Handle C-n/down-arrow: commit conversion then move to next line.
-In conversion mode (▼), commits the current candidate then moves down.
-In preedit mode (▽) or normal mode, delegates to \\[next-line]."
+In conversion mode, commits the current candidate then moves down.
+In preedit mode or normal mode, delegates to \\[next-line]."
   ('kakutei-then-next-line (nskk-commit-current)
                            (nskk--safe-nav-command #'next-line end-of-buffer))
   ('next-line      (nskk--safe-nav-command #'next-line end-of-buffer)))
 
 (nskk-define-key-handler ctrl-p
   "Handle C-p/up-arrow: commit conversion then move to previous line.
-In conversion mode (▼), commits the current candidate then moves up.
-In preedit mode (▽) or normal mode, delegates to \\[previous-line]."
+In conversion mode, commits the current candidate then moves up.
+In preedit mode or normal mode, delegates to \\[previous-line]."
   ('kakutei-then-previous-line (nskk-commit-current)
                                (nskk--safe-nav-command #'previous-line beginning-of-buffer))
   ('previous-line      (nskk--safe-nav-command #'previous-line beginning-of-buffer)))
 
 (nskk-define-key-handler ctrl-f
   "Handle C-f/right-arrow: commit conversion then move forward, else forward-char.
-In conversion mode (▼), commits the current candidate then moves point forward.
-In preedit mode (▽) or normal mode, delegates to \\[forward-char]."
+In conversion mode, commits the current candidate then moves point forward.
+In preedit mode or normal mode, delegates to \\[forward-char]."
   ('kakutei-then-forward (nskk-commit-current)
                          (nskk--safe-nav-command #'forward-char end-of-buffer))
   ('forward-char (nskk--safe-nav-command #'forward-char end-of-buffer)))
 
 (nskk-define-key-handler ctrl-b
   "Handle C-b/left-arrow: commit conversion then move backward, else backward-char.
-In conversion mode (▼), commits the current candidate then moves point backward.
-In preedit mode (▽) or normal mode, delegates to \\[backward-char]."
+In conversion mode, commits the current candidate then moves point backward.
+In preedit mode or normal mode, delegates to \\[backward-char]."
   ('kakutei-then-backward (nskk-commit-current)
                           (nskk--safe-nav-command #'backward-char beginning-of-buffer))
   ('backward-char (nskk--safe-nav-command #'backward-char beginning-of-buffer)))
 
 (nskk-define-key-handler ctrl-a
   "Handle C-a/Home: commit then go to beginning of line.
-In conversion mode (▼), commits the current candidate then moves to BOL.
-In preedit mode (▽) or normal mode, delegates to \\[beginning-of-line]."
+In conversion mode, commits the current candidate then moves to BOL.
+In preedit mode or normal mode, delegates to \\[beginning-of-line]."
   ('kakutei-then-bol (nskk-commit-current)
                      (call-interactively #'beginning-of-line))
   ;; beginning-of-line does not signal beginning-of-buffer; no error suppression needed
@@ -415,8 +513,8 @@ In preedit mode (▽) or normal mode, delegates to \\[beginning-of-line]."
 
 (nskk-define-key-handler ctrl-e
   "Handle C-e/End: commit then go to end of line.
-In conversion mode (▼), commits the current candidate then moves to EOL.
-In preedit mode (▽) or normal mode, delegates to \\[end-of-line]."
+In conversion mode, commits the current candidate then moves to EOL.
+In preedit mode or normal mode, delegates to \\[end-of-line]."
   ('kakutei-then-eol (nskk-commit-current)
                      (call-interactively #'end-of-line))
   ;; end-of-line does not signal end-of-buffer; no error suppression needed
@@ -424,63 +522,75 @@ In preedit mode (▽) or normal mode, delegates to \\[end-of-line]."
 
 (nskk-define-key-handler cancel
   "Handle C-g: cancel current conversion or preedit (DDSKK-compatible).
-In conversion mode (▼), rolls back to preedit (▽) state so the user
+In conversion mode, rolls back to preedit state so the user
 can edit the reading or re-convert.
-In preedit mode (▽), discards preedit text and resets state entirely.
+In preedit mode, discards preedit text and resets state entirely.
 Otherwise calls `keyboard-quit'."
-  ('cancel-conversion (nskk-cancel-conversion-to-reading))
+  ('rollback-to-reading (nskk-cancel-conversion-to-reading))
   ('cancel-preedit (nskk-cancel-preedit))
   (_ (keyboard-quit)))
 
+(defun nskk--backspace-in-preedit ()
+  "Delete the last preedit character, or cancel preedit if empty.
+Called when backspace is pressed in preedit state.
+If point is beyond the marker content area, deletes one character
+backward with `delete-char'.  If the preedit area is empty (marker in
+buffer but no characters typed yet), cancels the entire preedit via
+`nskk-cancel-preedit'."
+  (let ((start (nskk--get-conversion-start)))
+    (if (and start (> (point) (+ start (length nskk-henkan-on-marker))))
+        (delete-char -1)
+      (nskk-cancel-preedit))))
+
 (nskk-define-key-handler backspace
   "Handle DEL key: delete last preedit char or backward-delete-char.
-In preedit mode (▽), deletes the last accumulated character from preedit.
-If ▽ is present with no accumulated chars, cancels preedit entirely via
+In preedit mode, deletes the last accumulated character from preedit.
+If the marker is present with no accumulated chars, cancels preedit entirely via
 `nskk-cancel-preedit' (clears marker and resets all state).
-In conversion mode (▼), rolls back to preedit (▽) state (DDSKK-compatible)
+In conversion mode, rolls back to preedit state (DDSKK-compatible)
 so the user can edit the reading and re-convert.
 Otherwise delegates to `delete-char', silently ignoring
 beginning-of-buffer errors so DEL on an empty buffer is a no-op."
-  ('delete-preedit-char
-   (let ((start (nskk--get-conversion-start)))
-     (if (and start (> (point) (+ start (length nskk-henkan-on-marker))))
-         (delete-char -1)
-       ;; Empty preedit (▽ in buffer but no content after it).
-       ;; Cancel the preedit entirely, clearing the marker and all state.
-       (nskk-cancel-preedit))))
-  ('cancel-conversion (nskk-cancel-conversion-to-reading))
+  ('delete-preedit-char (nskk--backspace-in-preedit))
+  ('rollback-to-reading (nskk-cancel-conversion-to-reading))
   (_ (ignore-errors (delete-char -1))))
 
 (nskk-define-key-handler tab
   "Handle TAB key: dynamic completion in preedit, otherwise pass through.
-In preedit mode (▽), searches the dictionary for keys matching the
+In preedit mode, searches the dictionary for keys matching the
 current reading prefix and completes inline.  Repeated TAB cycles.
 In other modes, delegates to `indent-for-tab-command'."
   ('dynamic-complete (nskk-dynamic-complete))
   (_ (indent-for-tab-command)))
 
-(defun nskk-handle-hash ()
+(nskk-define-mode-switch-handler hash
   "Handle # key: enter numeric input mode in Japanese mode.
-In henkan-active mode (▼), perform implicit kakutei first.
+In henkan-active mode, perform implicit kakutei first.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
-  (interactive)
-  (nskk-with-japanese-mode (nskk-set-mode-numeric)
-    (self-insert-command 1)))
+  (nskk-set-mode-numeric))
 
 ;;;; AZIK Toggle Key Setup
+
+;; azik-toggle-key/2: (KEYBOARD-TYPE KEY-STRING)
+;; Maps keyboard type symbol to the toggle key string for AZIK mode.
+;; Only jp106 and us101 are enumerated; unrecognized types fall back to "@"
+;; at the Elisp level (no fact is asserted for them).
+(nskk-prolog-define-fact-table azik-toggle-key (:arity 2 :index :hash)
+  (jp106 "@")
+  (us101 "["))
 
 (defun nskk--setup-azik-toggle-key ()
   "Set up AZIK toggle key binding based on keyboard type.
 Binds @ for jp106 keyboard or [ for us101 keyboard to
 `nskk-toggle-japanese-mode' in `nskk-mode-map'.
+Falls back to `@' for unrecognized keyboard types.
 Does nothing if `nskk-azik-keyboard-type' is not bound (AZIK not loaded)."
   (when (and (boundp 'nskk-mode-map)
              (boundp 'nskk-azik-keyboard-type))
-    (let ((key (pcase nskk-azik-keyboard-type
-                 ('jp106 "@")
-                 ('us101 "[")
-                 (_ "@"))))
+    (let ((key (or (nskk-prolog-query-value
+                    `(azik-toggle-key ,nskk-azik-keyboard-type \?k) '\?k)
+                   "@")))
       (keymap-set nskk-mode-map key #'nskk-toggle-japanese-mode))))
 
 (provide 'nskk-keymap)

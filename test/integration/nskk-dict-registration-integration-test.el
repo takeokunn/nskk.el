@@ -53,6 +53,7 @@
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--user-dict-index 'user)
             (nskk-dict-modified nil))
+        (nskk-prolog-retract-all 'user-dict-entry 2)
         (nskk-prolog-set-index 'user-dict-entry 2 :trie)
         (nskk-given (nskk-prolog-assert '((user-dict-entry "かんじ" ("漢字" "感じ")))))
         (nskk-when  (nskk-dict-register-word "かんじ" "幹事"))

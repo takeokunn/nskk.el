@@ -19,8 +19,8 @@
 ;; These tests exercise this two-module interaction using a dual-mock strategy:
 ;; - A mock dictionary (nskk-with-mock-dict) that does NOT contain the target key,
 ;;   causing nskk-dict-lookup to return nil and triggering the server path.
-;; - An in-process Elisp TCP mock skkserv (nskk-server--start-mock-server from
-;;   nskk-server-integration-test.el) that responds with pre-defined candidates.
+;; - An in-process Elisp TCP mock skkserv (nskk--server-start-mock-server from
+;;   nskk-test-framework.el) that responds with pre-defined candidates.
 ;;
 ;; Tests verify:
 ;; - When server is disabled, nskk-core-search does not attempt network I/O.
@@ -38,7 +38,6 @@
 (require 'nskk-custom)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
-(require 'nskk-server-integration-test)
 
 ;;;; Helper: dict that does not contain the test key "てすと"
 
@@ -55,7 +54,7 @@
   (nskk-it "nskk-core-search returns nil when server disabled and dict misses"
     (nskk-with-mock-dict nskk-server-henkan--dict-without-test-key
       (let ((nskk-server-enable nil)
-            (nskk-server--process nil))
+            (nskk--server-process nil))
         (should (null (nskk-core-search "てすと"))))))
 
   (nskk-it "nskk-core-search returns nil for a non-string key"
@@ -66,9 +65,11 @@
   (nskk-it "nskk-server-lookup is not called when server disabled"
     (nskk-with-mock-dict nskk-server-henkan--dict-without-test-key
       (let ((nskk-server-enable nil)
-            (nskk-server--process nil)
+            (nskk--server-process nil)
             (lookup-called nil))
-        (nskk-with-mocks ((nskk-server-lookup (lambda (_k) (setq lookup-called t) nil)))
+        (nskk-with-mocks ((nskk-server-lookup/k
+                           (lambda (_key _on-found _on-not-found)
+                             (setq lookup-called t))))
           (nskk-core-search "てすと"))
         (should-not lookup-called)))))
 
@@ -78,15 +79,15 @@
 
   (nskk-it "nskk-core-search falls through to server when dict misses"
     (nskk-with-mock-dict nskk-server-henkan--dict-without-test-key
-      (let* ((mock (nskk-server--start-mock-server
+      (let* ((mock (nskk--server-start-mock-server
                     '(("てすと" . "1/テスト/\n"))))
              (server-proc (car mock))
              (port         (cdr mock))
              (nskk-server-enable t)
              (nskk-server-host "127.0.0.1")
              (nskk-server-portnum port)
-             (nskk-server--process nil)
-             (nskk-server--kill-emacs-hook-registered nil))
+             (nskk--server-process nil)
+             (nskk--server-kill-emacs-hook-registered nil))
         (unwind-protect
             (progn
               (should (nskk-server-open))
@@ -100,15 +101,15 @@
 
   (nskk-it "nskk-core-search returns nil when key unknown to both dict and server"
     (nskk-with-mock-dict nskk-server-henkan--dict-without-test-key
-      (let* ((mock (nskk-server--start-mock-server
+      (let* ((mock (nskk--server-start-mock-server
                     '(("てすと" . "1/テスト/\n"))))
              (server-proc (car mock))
              (port         (cdr mock))
              (nskk-server-enable t)
              (nskk-server-host "127.0.0.1")
              (nskk-server-portnum port)
-             (nskk-server--process nil)
-             (nskk-server--kill-emacs-hook-registered nil))
+             (nskk--server-process nil)
+             (nskk--server-kill-emacs-hook-registered nil))
         (unwind-protect
             (progn
               (should (nskk-server-open))
@@ -122,15 +123,15 @@
     ;; Mock server also has "てすと" with a different answer
     ;; nskk-core-search must return the dict result, not the server result.
     (nskk-with-mock-dict '(("てすと" . ("辞書の結果")))
-      (let* ((mock (nskk-server--start-mock-server
+      (let* ((mock (nskk--server-start-mock-server
                     '(("てすと" . "1/サーバの結果/\n"))))
              (server-proc (car mock))
              (port         (cdr mock))
              (nskk-server-enable t)
              (nskk-server-host "127.0.0.1")
              (nskk-server-portnum port)
-             (nskk-server--process nil)
-             (nskk-server--kill-emacs-hook-registered nil))
+             (nskk--server-process nil)
+             (nskk--server-kill-emacs-hook-registered nil))
         (unwind-protect
             (progn
               (should (nskk-server-open))

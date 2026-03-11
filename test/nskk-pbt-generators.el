@@ -64,34 +64,34 @@
 ;;;; Seed-Based Random Control
 ;;;;
 
-(defvar nskk-pbt--current-seed nil
+(defvar nskk--pbt-current-seed nil
   "Current random seed for deterministic generation.
 When nil, uses system random.")
 
-(defvar nskk-pbt--seed-state nil
+(defvar nskk--pbt-seed-state nil
   "Internal state for seeded random generation.")
 
 (defun nskk-pbt-set-seed (seed)
   "Set the random SEED for deterministic generation.
 SEED should be an integer. Use nil to reset to system random."
-  (setq nskk-pbt--current-seed seed)
+  (setq nskk--pbt-current-seed seed)
   (when seed
     ;; Initialize linear congruential generator state
-    (setq nskk-pbt--seed-state (mod seed (expt 2 31)))))
+    (setq nskk--pbt-seed-state (mod seed (expt 2 31)))))
 
 (defun nskk-pbt-get-seed ()
   "Get the current random seed.
 Returns nil if using system random."
-  nskk-pbt--current-seed)
+  nskk--pbt-current-seed)
 
-(defun nskk-pbt--random (&optional limit)
+(defun nskk--pbt-random (&optional limit)
   "Generate a random number with optional LIMIT.
 Uses seeded generation if seed is set, otherwise uses system random."
-  (if nskk-pbt--current-seed
+  (if nskk--pbt-current-seed
       ;; Linear congruential generator (same algorithm as many languages)
-      (let ((new-state (mod (+ (* 1103515245 nskk-pbt--seed-state) 12345)
+      (let ((new-state (mod (+ (* 1103515245 nskk--pbt-seed-state) 12345)
                             (expt 2 31))))
-        (setq nskk-pbt--seed-state new-state)
+        (setq nskk--pbt-seed-state new-state)
         (if limit
             (mod new-state limit)
           new-state))
@@ -100,30 +100,30 @@ Uses seeded generation if seed is set, otherwise uses system random."
         (random limit)
       (random))))
 
-(defun nskk-pbt--random-choice (list)
+(defun nskk--pbt-random-choice (list)
   "Choose a random element from LIST."
   (when list
-    (nth (nskk-pbt--random (length list)) list)))
+    (nth (nskk--pbt-random (length list)) list)))
 
-(defun nskk-pbt--random-bool ()
+(defun nskk--pbt-random-bool ()
   "Generate a random boolean value."
-  (= (nskk-pbt--random 2) 0))
+  (= (nskk--pbt-random 2) 0))
 
-(defun nskk-pbt--random-int (min max)
+(defun nskk--pbt-random-int (min max)
   "Generate a random integer between MIN and MAX (inclusive)."
-  (+ min (nskk-pbt--random (1+ (- max min)))))
+  (+ min (nskk--pbt-random (1+ (- max min)))))
 
-(defun nskk-pbt--random-string (chars length)
+(defun nskk--pbt-random-string (chars length)
   "Generate a random string from CHARS with specified LENGTH."
   (apply #'string
          (cl-loop repeat length
-                  collect (nskk-pbt--random-choice chars))))
+                  collect (nskk--pbt-random-choice chars))))
 
 ;;;;
 ;;;; Size Parameter Helper
 ;;;;
 
-(defun nskk-pbt--resolve-size (&optional size default)
+(defun nskk--pbt-resolve-size (&optional size default)
   "Resolve SIZE parameter, using DEFAULT if nil.
 DEFAULT defaults to 5 if not specified."
   (or size default 5))
@@ -132,164 +132,164 @@ DEFAULT defaults to 5 if not specified."
 ;;;; Generator 1: Keypress Sequence Generator
 ;;;;
 
-(defconst nskk-pbt--lowercase-letters
+(defconst nskk--pbt-lowercase-letters
   (string-to-list "abcdefghijklmnopqrstuvwxyz")
   "List of lowercase letter characters.")
 
-(defconst nskk-pbt--uppercase-letters
+(defconst nskk--pbt-uppercase-letters
   (string-to-list "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
   "List of uppercase letter characters.")
 
-(defconst nskk-pbt--mode-switch-keys
+(defconst nskk--pbt-mode-switch-keys
   '(("C-j" . hiragana)
     ("q" . katakana)
     ("l" . latin)
     (";" . abbrev))
   "Mode switch key sequences with their target modes.")
 
-(cl-defun nskk-pbt--generate-key-char (&key include-special include-uppercase)
+(cl-defun nskk--pbt-generate-key-char (&key include-special include-uppercase)
   "Generate a single key character.
 When INCLUDE-SPECIAL is non-nil, may generate special keys.
 When INCLUDE-UPPERCASE is non-nil, may generate uppercase letters."
-  (let ((choices (append nskk-pbt--lowercase-letters
-                        (when include-uppercase nskk-pbt--uppercase-letters))))
-    (if (and include-special (nskk-pbt--random-bool))
+  (let ((choices (append nskk--pbt-lowercase-letters
+                        (when include-uppercase nskk--pbt-uppercase-letters))))
+    (if (and include-special (nskk--pbt-random-bool))
         ;; Generate special key (represented as string)
-        (nskk-pbt--random-choice (mapcar #'car nskk-pbt--mode-switch-keys))
+        (nskk--pbt-random-choice (mapcar #'car nskk--pbt-mode-switch-keys))
       ;; Generate regular character
-      (string (nskk-pbt--random-choice choices)))))
+      (string (nskk--pbt-random-choice choices)))))
 
-(defun nskk-pbt--generate-key-sequence (&optional length)
+(defun nskk--pbt-generate-key-sequence (&optional length)
   "Generate a sequence of key presses with optional LENGTH.
 Default length is 1-20 characters if not specified."
-  (let* ((len (or length (nskk-pbt--random-int 1 20)))
+  (let* ((len (or length (nskk--pbt-random-int 1 20)))
          (result nil))
     (dotimes (_ len)
-      (push (nskk-pbt--generate-key-char
-             :include-special (nskk-pbt--random-bool)
-             :include-uppercase (nskk-pbt--random-bool))
+      (push (nskk--pbt-generate-key-char
+             :include-special (nskk--pbt-random-bool)
+             :include-uppercase (nskk--pbt-random-bool))
             result))
     (nreverse result)))
 
 (nskk-register-generator 'key-sequence
   (lambda (&rest args)
-    (apply #'nskk-pbt--generate-key-sequence args)))
+    (apply #'nskk--pbt-generate-key-sequence args)))
 
 ;; Composable key sequence with length parameter
 (nskk-register-generator 'key-sequence-of-length
   (lambda (length)
-    (nskk-pbt--generate-key-sequence length)))
+    (nskk--pbt-generate-key-sequence length)))
 
 ;; Key sequence with only lowercase letters
 (nskk-register-generator 'lowercase-key-sequence
   (lambda (&optional length)
-    (let* ((len (or length (nskk-pbt--random-int 1 20))))
+    (let* ((len (or length (nskk--pbt-random-int 1 20))))
       (cl-loop repeat len
-               collect (string (nskk-pbt--random-choice nskk-pbt--lowercase-letters))))))
+               collect (string (nskk--pbt-random-choice nskk--pbt-lowercase-letters))))))
 
 ;; Key sequence with only lowercase letters (excluding mode-switch keys: q, l, ;)
-(defconst nskk-pbt--typing-letters
+(defconst nskk--pbt-typing-letters
   (cl-remove-if (lambda (c) (memq c '(?q ?l ?\;)))
                 (string-to-list "abcdefghijklmnopqrstuvwxyz"))
   "List of lowercase letter characters excluding mode-switch keys.")
 
 (nskk-register-generator 'typing-key-sequence
   (lambda (&optional length)
-    (let* ((len (or length (nskk-pbt--random-int 1 20))))
+    (let* ((len (or length (nskk--pbt-random-int 1 20))))
       (cl-loop repeat len
-               collect (string (nskk-pbt--random-choice nskk-pbt--typing-letters))))))
+               collect (string (nskk--pbt-random-choice nskk--pbt-typing-letters))))))
 
 ;; Key sequence for okurigana input (with uppercase consonant)
 (nskk-register-generator 'okurigana-key-sequence
   (lambda (&optional length)
-    (let* ((len (or length (nskk-pbt--random-int 2 10)))
+    (let* ((len (or length (nskk--pbt-random-int 2 10)))
            (result nil)
-           (okurigana-pos (nskk-pbt--random-int 1 (1- len))))
+           (okurigana-pos (nskk--pbt-random-int 1 (1- len))))
       (dotimes (i len)
         (if (= i okurigana-pos)
             ;; Insert uppercase consonant for okurigana
-            (push (string (nskk-pbt--random-choice nskk-pbt--uppercase-letters)) result)
-          (push (string (nskk-pbt--random-choice nskk-pbt--lowercase-letters)) result)))
+            (push (string (nskk--pbt-random-choice nskk--pbt-uppercase-letters)) result)
+          (push (string (nskk--pbt-random-choice nskk--pbt-lowercase-letters)) result)))
       (nreverse result))))
 
 ;;;;
 ;;;; Generator 2: Valid Mode Generator
 ;;;;
 
-(defconst nskk-pbt--valid-modes
+(defconst nskk--pbt-valid-modes
   '(ascii hiragana katakana katakana-半角 abbrev latin)
   "List of valid NSKK modes.")
 
-(defun nskk-pbt--generate-valid-mode ()
+(defun nskk--pbt-generate-valid-mode ()
   "Generate a random valid NSKK mode."
-  (nskk-pbt--random-choice nskk-pbt--valid-modes))
+  (nskk--pbt-random-choice nskk--pbt-valid-modes))
 
 (nskk-register-generator 'valid-mode
   (lambda (&rest _args)
-    (nskk-pbt--generate-valid-mode)))
+    (nskk--pbt-generate-valid-mode)))
 
 ;; Mode with transition context
 (nskk-register-generator 'mode-transition
   (lambda (&rest _args)
-    (let ((from-mode (nskk-pbt--generate-valid-mode))
-          (to-mode (nskk-pbt--generate-valid-mode)))
+    (let ((from-mode (nskk--pbt-generate-valid-mode))
+          (to-mode (nskk--pbt-generate-valid-mode)))
       (cons from-mode to-mode))))
 
 ;;;;
 ;;;; Generator 3: State Object Generator
 ;;;;
 
-(defun nskk-pbt--generate-input-buffer (&optional max-length)
+(defun nskk--pbt-generate-input-buffer (&optional max-length)
   "Generate a random input buffer string.
 MAX-LENGTH defaults to 20 if not specified."
-  (let* ((len (nskk-pbt--random-int 0 (or max-length 20)))
-         (chars (append nskk-pbt--lowercase-letters
+  (let* ((len (nskk--pbt-random-int 0 (or max-length 20)))
+         (chars (append nskk--pbt-lowercase-letters
                        (string-to-list "aeiou"))))
     (if (= len 0)
         ""
-      (nskk-pbt--random-string chars len))))
+      (nskk--pbt-random-string chars len))))
 
-(defun nskk-pbt--generate-candidates (&optional count)
+(defun nskk--pbt-generate-candidates (&optional count)
   "Generate a list of random conversion candidates.
 COUNT defaults to 0-10 if not specified."
-  (let* ((num (or count (nskk-pbt--random-int 0 10)))
+  (let* ((num (or count (nskk--pbt-random-int 0 10)))
          (hiragana-chars '("あ" "い" "う" "え" "お" "か" "き" "く" "け" "こ"
                            "さ" "し" "す" "せ" "そ" "た" "ち" "つ" "て" "と"))
          (kanji-chars '("漢" "字" "変" "換" "日" "本" "語" "入" "力")))
     (cl-loop repeat num
-             collect (let ((candidate-type (nskk-pbt--random 3)))
+             collect (let ((candidate-type (nskk--pbt-random 3)))
                        (cond
                         ((= candidate-type 0)
                          ;; Hiragana candidate
                          (mapconcat #'identity
-                                   (cl-loop repeat (nskk-pbt--random-int 1 5)
-                                            collect (nskk-pbt--random-choice hiragana-chars))
+                                   (cl-loop repeat (nskk--pbt-random-int 1 5)
+                                            collect (nskk--pbt-random-choice hiragana-chars))
                                    ""))
                         ((= candidate-type 1)
                          ;; Kanji candidate
                          (mapconcat #'identity
-                                   (cl-loop repeat (nskk-pbt--random-int 1 3)
-                                            collect (nskk-pbt--random-choice kanji-chars))
+                                   (cl-loop repeat (nskk--pbt-random-int 1 3)
+                                            collect (nskk--pbt-random-choice kanji-chars))
                                    ""))
                         (t
                          ;; Mixed candidate
-                         (concat (nskk-pbt--random-choice hiragana-chars)
-                                (nskk-pbt--random-choice kanji-chars))))))))
+                         (concat (nskk--pbt-random-choice hiragana-chars)
+                                (nskk--pbt-random-choice kanji-chars))))))))
 
-(defun nskk-pbt--generate-state-object (&optional size)
+(defun nskk--pbt-generate-state-object (&optional size)
   "Generate a random but valid nskk-state object.
 SIZE controls the complexity of generated state."
-  (let* ((sz (nskk-pbt--resolve-size size 5))
-         (mode (nskk-pbt--generate-valid-mode))
-         (input-buffer (nskk-pbt--generate-input-buffer (* sz 4)))
-         (candidates (nskk-pbt--generate-candidates sz))
+  (let* ((sz (nskk--pbt-resolve-size size 5))
+         (mode (nskk--pbt-generate-valid-mode))
+         (input-buffer (nskk--pbt-generate-input-buffer (* sz 4)))
+         (candidates (nskk--pbt-generate-candidates sz))
          (num-candidates (length candidates))
          (current-index (if (> num-candidates 0)
-                            (nskk-pbt--random-int 0 (1- num-candidates))
+                            (nskk--pbt-random-int 0 (1- num-candidates))
                           0))
          (henkan-position (if (and (> num-candidates 0)
-                                   (nskk-pbt--random-bool))
-                              (nskk-pbt--random-int 0 (length input-buffer))
+                                   (nskk--pbt-random-bool))
+                              (nskk--pbt-random-int 0 (length input-buffer))
                             nil)))
     ;; Return a plist representing the state
     ;; (Cannot create actual nskk-state struct without loading nskk-state)
@@ -307,20 +307,20 @@ SIZE controls the complexity of generated state."
 
 (nskk-register-generator 'state-object
   (lambda (&rest args)
-    (apply #'nskk-pbt--generate-state-object args)))
+    (apply #'nskk--pbt-generate-state-object args)))
 
 ;; State with specific mode
 (nskk-register-generator 'state-in-mode
   (lambda (mode &optional size)
-    (let ((state (nskk-pbt--generate-state-object size)))
+    (let ((state (nskk--pbt-generate-state-object size)))
       (plist-put state :mode mode))))
 
 ;; State in henkan mode (with candidates)
 (nskk-register-generator 'henkan-state
   (lambda (&optional size)
-    (let* ((sz (nskk-pbt--resolve-size size 5))
-           (state (nskk-pbt--generate-state-object sz)))
-      (plist-put state :candidates (nskk-pbt--generate-candidates (max 1 sz)))
+    (let* ((sz (nskk--pbt-resolve-size size 5))
+           (state (nskk--pbt-generate-state-object sz)))
+      (plist-put state :candidates (nskk--pbt-generate-candidates (max 1 sz)))
       (plist-put state :henkan-position 0)
       state)))
 
@@ -328,11 +328,11 @@ SIZE controls the complexity of generated state."
 ;;;; Generator 4: Romaji Pattern Generator
 ;;;;
 
-(defconst nskk-pbt--basic-vowels
+(defconst nskk--pbt-basic-vowels
   '("a" "i" "u" "e" "o")
   "Basic vowel patterns.")
 
-(defconst nskk-pbt--consonant-vowel-basic
+(defconst nskk--pbt-consonant-vowel-basic
   '("ka" "ki" "ku" "ke" "ko"
     "sa" "shi" "su" "se" "so"
     "ta" "chi" "tsu" "te" "to"
@@ -344,7 +344,7 @@ SIZE controls the complexity of generated state."
     "wa" "wo" "n")
   "Basic consonant+vowel combinations.")
 
-(defconst nskk-pbt--consonant-vowel-dakuon
+(defconst nskk--pbt-consonant-vowel-dakuon
   '("ga" "gi" "gu" "ge" "go"
     "za" "ji" "zu" "ze" "zo"
     "da" "ji" "zu" "de" "do"
@@ -352,7 +352,7 @@ SIZE controls the complexity of generated state."
     "pa" "pi" "pu" "pe" "po")
   "Dakuon (voiced) consonant+vowel combinations.")
 
-(defconst nskk-pbt--special-patterns
+(defconst nskk--pbt-special-patterns
   '("sha" "shu" "she" "sho"
     "cha" "chu" "che" "cho"
     "ja" "ju" "je" "jo"
@@ -367,83 +367,83 @@ SIZE controls the complexity of generated state."
     "fa" "fi" "fe" "fo")
   "Special romaji patterns (yōon, etc.).")
 
-(defconst nskk-pbt--incomplete-patterns
+(defconst nskk--pbt-incomplete-patterns
   '("k" "ky" "g" "gy" "s" "sh" "sy"
     "z" "j" "t" "ts" "ch" "ty" "d"
     "n" "ny" "h" "hy" "f" "b" "by"
     "p" "py" "m" "my" "y" "r" "ry" "w")
   "Incomplete romaji patterns (awaiting more input).")
 
-(defun nskk-pbt--generate-romaji-pattern (&optional size type)
+(defun nskk--pbt-generate-romaji-pattern (&optional size type)
   "Generate a romaji pattern with optional SIZE and TYPE.
 TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
-  (let* ((sz (nskk-pbt--resolve-size size 3))
+  (let* ((sz (nskk--pbt-resolve-size size 3))
          (pattern-type (or type
-                          (nskk-pbt--random-choice '(basic extended mixed incomplete)))))
+                          (nskk--pbt-random-choice '(basic extended mixed incomplete)))))
     (cl-case pattern-type
       (basic
        ;; Basic patterns only
        (mapconcat #'identity
                   (cl-loop repeat sz
-                           collect (nskk-pbt--random-choice
-                                    (append nskk-pbt--basic-vowels
-                                            nskk-pbt--consonant-vowel-basic)))
+                           collect (nskk--pbt-random-choice
+                                    (append nskk--pbt-basic-vowels
+                                            nskk--pbt-consonant-vowel-basic)))
                   ""))
       (extended
        ;; Extended patterns including special
        (mapconcat #'identity
                   (cl-loop repeat sz
-                           collect (nskk-pbt--random-choice
-                                    (append nskk-pbt--consonant-vowel-basic
-                                            nskk-pbt--consonant-vowel-dakuon
-                                            nskk-pbt--special-patterns)))
+                           collect (nskk--pbt-random-choice
+                                    (append nskk--pbt-consonant-vowel-basic
+                                            nskk--pbt-consonant-vowel-dakuon
+                                            nskk--pbt-special-patterns)))
                   ""))
       (incomplete
        ;; Incomplete pattern
-       (if (nskk-pbt--random-bool)
-           (nskk-pbt--random-choice nskk-pbt--incomplete-patterns)
+       (if (nskk--pbt-random-bool)
+           (nskk--pbt-random-choice nskk--pbt-incomplete-patterns)
          ;; Mixed: complete syllables + incomplete ending
          (concat (mapconcat #'identity
                            (cl-loop repeat (max 0 (1- sz))
-                                    collect (nskk-pbt--random-choice
-                                             (append nskk-pbt--consonant-vowel-basic
-                                                     nskk-pbt--special-patterns)))
+                                    collect (nskk--pbt-random-choice
+                                             (append nskk--pbt-consonant-vowel-basic
+                                                     nskk--pbt-special-patterns)))
                            "")
-                 (nskk-pbt--random-choice nskk-pbt--incomplete-patterns))))
+                 (nskk--pbt-random-choice nskk--pbt-incomplete-patterns))))
       (t
        ;; Mixed: all types
        (mapconcat #'identity
                   (cl-loop repeat sz
-                           collect (nskk-pbt--random-choice
-                                    (append nskk-pbt--basic-vowels
-                                            nskk-pbt--consonant-vowel-basic
-                                            nskk-pbt--consonant-vowel-dakuon
-                                            nskk-pbt--special-patterns)))
+                           collect (nskk--pbt-random-choice
+                                    (append nskk--pbt-basic-vowels
+                                            nskk--pbt-consonant-vowel-basic
+                                            nskk--pbt-consonant-vowel-dakuon
+                                            nskk--pbt-special-patterns)))
                   "")))))
 
 (nskk-register-generator 'romaji-pattern
   (lambda (&rest args)
-    (apply #'nskk-pbt--generate-romaji-pattern args)))
+    (apply #'nskk--pbt-generate-romaji-pattern args)))
 
 ;; Specific romaji pattern types
 (nskk-register-generator 'romaji-basic
   (lambda (&optional size)
-    (nskk-pbt--generate-romaji-pattern size 'basic)))
+    (nskk--pbt-generate-romaji-pattern size 'basic)))
 
 (nskk-register-generator 'romaji-extended
   (lambda (&optional size)
-    (nskk-pbt--generate-romaji-pattern size 'extended)))
+    (nskk--pbt-generate-romaji-pattern size 'extended)))
 
 (nskk-register-generator 'romaji-incomplete
   (lambda (&optional size)
-    (nskk-pbt--generate-romaji-pattern size 'incomplete)))
+    (nskk--pbt-generate-romaji-pattern size 'incomplete)))
 
 ;;;;
 ;;;; Generator 5: AZIK Rule Generator
 ;;;;
 
 ;; AZIK rule categories for stratified sampling
-(defconst nskk-pbt--azik-categories
+(defconst nskk--pbt-azik-categories
   '((basic-vowels . ("a" "i" "u" "e" "o"))
     (special-keys . (";" ":"))
     (compatibility-x . ("xa" "xi" "xu" "xe" "xo"))
@@ -463,17 +463,20 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
     (hatsuon-b . ("bz" "bk" "bj" "bd" "bl"))
     (hatsuon-p . ("pz" "pk" "pj" "pd" "pl"))
     (diphthong-k . ("kq" "kh" "kw" "kp"))
-    (diphthong-s . ("sq" "sh" "sw" "sp"))
-    (diphthong-t . ("tq" "th" "tw" "tp"))
+    ;; "sh", "th", "dh", "wh" are demoted to :incomplete by
+    ;; nskk-azik-demote-shadow-keys (they shadow standard romaji prefixes).
+    ;; They are excluded here to keep only patterns that produce real output.
+    (diphthong-s . ("sq" "sw" "sp"))
+    (diphthong-t . ("tq" "tw" "tp"))
     (diphthong-n . ("nq" "nh" "nw" "np"))
     (diphthong-h . ("hq" "hh" "hw" "hp"))
     (diphthong-m . ("mq" "mh" "mw" "mp"))
     (diphthong-y . ("yq" "yh" "yw" "yp"))
     (diphthong-r . ("rq" "rh" "rw" "rp"))
-    (diphthong-w . ("wq" "wh" "ww" "wp"))
+    (diphthong-w . ("wq" "ww" "wp"))
     (diphthong-g . ("gq" "gh" "gw" "gp"))
     (diphthong-z . ("zq" "zh" "zw" "zp"))
-    (diphthong-d . ("dq" "dh" "dw" "dp"))
+    (diphthong-d . ("dq" "dw" "dp"))
     (diphthong-b . ("bq" "bh" "bw" "bp"))
     (diphthong-p . ("pq" "ph" "pw" "pp"))
     (youon-kg . ("kga" "kgu" "kge" "kgo" "kgz" "kgk" "kgj" "kgd" "kgl" "kgq" "kgh" "kgw" "kgp"))
@@ -511,55 +514,55 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
     (small-chars . ("la" "li" "lu" "le" "lo" "lya" "lyu" "lyo" "ltu" "ltsu" "xtu" "xtsu")))
   "AZIK rule categories with their patterns for stratified sampling.")
 
-(defun nskk-pbt--get-all-azik-patterns ()
+(defun nskk--pbt-get-all-azik-patterns ()
   "Get all AZIK patterns as a flat list."
-  (apply #'append (mapcar #'cdr nskk-pbt--azik-categories)))
+  (apply #'append (mapcar #'cdr nskk--pbt-azik-categories)))
 
-(defun nskk-pbt--generate-azik-rule (&optional category)
+(defun nskk--pbt-generate-azik-rule (&optional category)
   "Generate an AZIK rule test case.
 If CATEGORY is specified, sample from that category only.
 Uses stratified sampling for efficiency when CATEGORY is nil."
   (if category
       ;; Sample from specific category
-      (let ((cat-patterns (cdr (assoc category nskk-pbt--azik-categories))))
+      (let ((cat-patterns (cdr (assoc category nskk--pbt-azik-categories))))
         (if cat-patterns
-            (nskk-pbt--random-choice cat-patterns)
+            (nskk--pbt-random-choice cat-patterns)
           (error "Unknown AZIK category: %s" category)))
     ;; Stratified sampling across all categories
-    (let* ((selected-category (nskk-pbt--random-choice nskk-pbt--azik-categories))
+    (let* ((selected-category (nskk--pbt-random-choice nskk--pbt-azik-categories))
            (patterns (cdr selected-category)))
-      (nskk-pbt--random-choice patterns))))
+      (nskk--pbt-random-choice patterns))))
 
 (nskk-register-generator 'azik-rule
   (lambda (&rest args)
-    (apply #'nskk-pbt--generate-azik-rule args)))
+    (apply #'nskk--pbt-generate-azik-rule args)))
 
 ;; AZIK rule with expected output
 (nskk-register-generator 'azik-rule-with-expected
   (lambda (&optional category)
-    (let ((rule (nskk-pbt--generate-azik-rule category)))
+    (let ((rule (nskk--pbt-generate-azik-rule category)))
       ;; Return cons cell (rule . category-name) for lookup
       (cons rule category))))
 
 ;; All AZIK patterns for exhaustive testing
 (nskk-register-generator 'azik-all-patterns
   (lambda (&rest _args)
-    (nskk-pbt--get-all-azik-patterns)))
+    (nskk--pbt-get-all-azik-patterns)))
 
 ;; AZIK category list
 (nskk-register-generator 'azik-categories
   (lambda (&rest _args)
-    (mapcar #'car nskk-pbt--azik-categories)))
+    (mapcar #'car nskk--pbt-azik-categories)))
 
 ;;;;
 ;;;; Generator 6: Okurigana Pattern Generator
 ;;;;
 
-(defconst nskk-pbt--okurigana-consonants
+(defconst nskk--pbt-okurigana-consonants
   '("K" "S" "T" "N" "H" "M" "Y" "R" "W" "G" "Z" "D" "B" "P")
   "Valid uppercase consonant markers for okurigana.")
 
-(defconst nskk-pbt--okurigana-mapping
+(defconst nskk--pbt-okurigana-mapping
   '(("K" . "k")
     ("S" . "s")
     ("T" . "t")
@@ -576,39 +579,39 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
     ("P" . "p"))
   "Mapping from okurigana consonants to lowercase equivalents.")
 
-(defun nskk-pbt--generate-okurigana-consonant ()
+(defun nskk--pbt-generate-okurigana-consonant ()
   "Generate a random okurigana consonant marker."
-  (nskk-pbt--random-choice nskk-pbt--okurigana-consonants))
+  (nskk--pbt-random-choice nskk--pbt-okurigana-consonants))
 
 (nskk-register-generator 'okurigana-consonant
   (lambda (&rest _args)
-    (nskk-pbt--generate-okurigana-consonant)))
+    (nskk--pbt-generate-okurigana-consonant)))
 
 ;; Okurigana pattern with romaji prefix
 (nskk-register-generator 'okurigana-pattern
   (lambda (&optional prefix-length)
-    (let* ((prefix-len (or prefix-length (nskk-pbt--random-int 1 5)))
+    (let* ((prefix-len (or prefix-length (nskk--pbt-random-int 1 5)))
            (prefix (mapconcat #'identity
                              (cl-loop repeat prefix-len
-                                      collect (nskk-pbt--random-choice
-                                               (append nskk-pbt--basic-vowels
-                                                       nskk-pbt--consonant-vowel-basic)))
+                                      collect (nskk--pbt-random-choice
+                                               (append nskk--pbt-basic-vowels
+                                                       nskk--pbt-consonant-vowel-basic)))
                              ""))
-           (consonant (nskk-pbt--generate-okurigana-consonant)))
+           (consonant (nskk--pbt-generate-okurigana-consonant)))
       (concat prefix consonant))))
 
 ;; Okurigana pattern with expected output
 (nskk-register-generator 'okurigana-with-expected
   (lambda (&optional prefix-length)
-    (let* ((prefix-len (or prefix-length (nskk-pbt--random-int 1 5)))
+    (let* ((prefix-len (or prefix-length (nskk--pbt-random-int 1 5)))
            (prefix (mapconcat #'identity
                              (cl-loop repeat prefix-len
-                                      collect (nskk-pbt--random-choice
-                                               (append nskk-pbt--basic-vowels
-                                                       nskk-pbt--consonant-vowel-basic)))
+                                      collect (nskk--pbt-random-choice
+                                               (append nskk--pbt-basic-vowels
+                                                       nskk--pbt-consonant-vowel-basic)))
                              ""))
-           (consonant (nskk-pbt--generate-okurigana-consonant))
-           (lower-consonant (cdr (assoc consonant nskk-pbt--okurigana-mapping))))
+           (consonant (nskk--pbt-generate-okurigana-consonant))
+           (lower-consonant (cdr (assoc consonant nskk--pbt-okurigana-mapping))))
       (list :input (concat prefix consonant)
             :prefix prefix
             :consonant consonant
@@ -618,15 +621,15 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
 ;;;; Generator 7: Search Query Generator
 ;;;;
 
-(defconst nskk-pbt--search-types
+(defconst nskk--pbt-search-types
   '(exact prefix partial fuzzy)
   "Valid search types for dictionary queries.")
 
-(defconst nskk-pbt--okuri-types
+(defconst nskk--pbt-okuri-types
   '(okuri-ari okuri-nasi nil)
   "Valid okurigana types for dictionary queries.")
 
-(defconst nskk-pbt--hiragana-chars
+(defconst nskk--pbt-hiragana-chars
   '("あ" "い" "う" "え" "お" "か" "き" "く" "け" "こ"
     "さ" "し" "す" "せ" "そ" "た" "ち" "つ" "て" "と"
     "な" "に" "ぬ" "ね" "の" "は" "ひ" "ふ" "へ" "ほ"
@@ -634,7 +637,7 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
     "ら" "り" "る" "れ" "ろ" "わ" "を" "ん")
   "Hiragana characters for dictionary query generation.")
 
-(defconst nskk-pbt--katakana-chars
+(defconst nskk--pbt-katakana-chars
   '("ア" "イ" "ウ" "エ" "オ" "カ" "キ" "ク" "ケ" "コ"
     "サ" "シ" "ス" "セ" "ソ" "タ" "チ" "ツ" "テ" "ト"
     "ナ" "ニ" "ヌ" "ネ" "ノ" "ハ" "ヒ" "フ" "ヘ" "ホ"
@@ -642,47 +645,47 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
     "ラ" "リ" "ル" "レ" "ロ" "ワ" "ヲ" "ン")
   "Katakana characters for dictionary query generation.")
 
-(defun nskk-pbt--generate-search-query (&optional size)
+(defun nskk--pbt-generate-search-query (&optional size)
   "Generate a dictionary search query string.
 SIZE controls the length of the query."
-  (let* ((sz (nskk-pbt--resolve-size size 3))
-         (query-type (nskk-pbt--random 4)))
+  (let* ((sz (nskk--pbt-resolve-size size 3))
+         (query-type (nskk--pbt-random 4)))
     (cl-case query-type
       (0 ;; Hiragana only
        (mapconcat #'identity
                   (cl-loop repeat sz
-                           collect (nskk-pbt--random-choice nskk-pbt--hiragana-chars))
+                           collect (nskk--pbt-random-choice nskk--pbt-hiragana-chars))
                   ""))
       (1 ;; Katakana only
        (mapconcat #'identity
                   (cl-loop repeat sz
-                           collect (nskk-pbt--random-choice nskk-pbt--katakana-chars))
+                           collect (nskk--pbt-random-choice nskk--pbt-katakana-chars))
                   ""))
       (2 ;; Mixed hiragana/katakana
        (mapconcat #'identity
                   (cl-loop repeat sz
-                           collect (if (nskk-pbt--random-bool)
-                                       (nskk-pbt--random-choice nskk-pbt--hiragana-chars)
-                                     (nskk-pbt--random-choice nskk-pbt--katakana-chars)))
+                           collect (if (nskk--pbt-random-bool)
+                                       (nskk--pbt-random-choice nskk--pbt-hiragana-chars)
+                                     (nskk--pbt-random-choice nskk--pbt-katakana-chars)))
                   ""))
       (t ;; With okurigana marker
        (let ((base (mapconcat #'identity
                              (cl-loop repeat (1- sz)
-                                      collect (nskk-pbt--random-choice nskk-pbt--hiragana-chars))
+                                      collect (nskk--pbt-random-choice nskk--pbt-hiragana-chars))
                              "")))
-         (concat base (nskk-pbt--random-choice '("か" "き" "く" "け" "こ"
+         (concat base (nskk--pbt-random-choice '("か" "き" "く" "け" "こ"
                                                   "さ" "し" "す" "せ" "そ"))))))))
 
 (nskk-register-generator 'search-query
   (lambda (&rest args)
-    (apply #'nskk-pbt--generate-search-query args)))
+    (apply #'nskk--pbt-generate-search-query args)))
 
 ;; Search query with type
 (nskk-register-generator 'search-query-with-type
   (lambda (&optional size)
-    (let ((query (nskk-pbt--generate-search-query size))
-          (search-type (nskk-pbt--random-choice nskk-pbt--search-types))
-          (okuri-type (nskk-pbt--random-choice nskk-pbt--okuri-types)))
+    (let ((query (nskk--pbt-generate-search-query size))
+          (search-type (nskk--pbt-random-choice nskk--pbt-search-types))
+          (okuri-type (nskk--pbt-random-choice nskk--pbt-okuri-types)))
       (list :query query
             :search-type search-type
             :okuri-type okuri-type))))
@@ -690,11 +693,11 @@ SIZE controls the length of the query."
 ;; Search parameters (query, type, limit)
 (nskk-register-generator 'search-params
   (lambda (&optional size)
-    (let ((sz (nskk-pbt--resolve-size size 3)))
-      (list :query (nskk-pbt--generate-search-query sz)
-            :search-type (nskk-pbt--random-choice nskk-pbt--search-types)
-            :okuri-type (nskk-pbt--random-choice nskk-pbt--okuri-types)
-            :limit (nskk-pbt--random-int 1 100)))))
+    (let ((sz (nskk--pbt-resolve-size size 3)))
+      (list :query (nskk--pbt-generate-search-query sz)
+            :search-type (nskk--pbt-random-choice nskk--pbt-search-types)
+            :okuri-type (nskk--pbt-random-choice nskk--pbt-okuri-types)
+            :limit (nskk--pbt-random-int 1 100)))))
 
 ;;;;
 ;;;; Composite Generators
@@ -703,9 +706,9 @@ SIZE controls the length of the query."
 ;; Generate a complete input scenario
 (nskk-register-generator 'input-scenario
   (lambda (&optional size)
-    (let* ((sz (nskk-pbt--resolve-size size 5))
-           (mode (nskk-pbt--generate-valid-mode))
-           (key-sequence (nskk-pbt--generate-key-sequence sz)))
+    (let* ((sz (nskk--pbt-resolve-size size 5))
+           (mode (nskk--pbt-generate-valid-mode))
+           (key-sequence (nskk--pbt-generate-key-sequence sz)))
       (list :mode mode
             :key-sequence key-sequence
             :expected-length (length key-sequence)))))
@@ -713,19 +716,19 @@ SIZE controls the length of the query."
 ;; Generate conversion scenario (input to conversion)
 (nskk-register-generator 'conversion-scenario
   (lambda (&optional size)
-    (let* ((sz (nskk-pbt--resolve-size size 3))
-           (romaji (nskk-pbt--generate-romaji-pattern sz 'basic))
-           (mode (if (nskk-pbt--random-bool) 'hiragana 'katakana)))
+    (let* ((sz (nskk--pbt-resolve-size size 3))
+           (romaji (nskk--pbt-generate-romaji-pattern sz 'basic))
+           (mode (if (nskk--pbt-random-bool) 'hiragana 'katakana)))
       (list :romaji-input romaji
             :mode mode
-            :has-okurigana (nskk-pbt--random-bool)))))
+            :has-okurigana (nskk--pbt-random-bool)))))
 
 ;; Generate mode switch scenario
 (nskk-register-generator 'mode-switch-scenario
   (lambda (&rest _args)
-    (let* ((initial-mode (nskk-pbt--generate-valid-mode))
-           (target-mode (nskk-pbt--generate-valid-mode))
-           (trigger-key (car (rassoc target-mode nskk-pbt--mode-switch-keys))))
+    (let* ((initial-mode (nskk--pbt-generate-valid-mode))
+           (target-mode (nskk--pbt-generate-valid-mode))
+           (trigger-key (car (rassoc target-mode nskk--pbt-mode-switch-keys))))
       (list :initial-mode initial-mode
             :target-mode target-mode
             :trigger-key (or trigger-key "C-j")))))
@@ -737,12 +740,12 @@ SIZE controls the length of the query."
 ;; Generate any valid (or nil) henkan phase
 (nskk-register-generator 'henkan-phase
   (lambda (&rest _)
-    (nskk-pbt--random-choice '(nil on active list registration))))
+    (nskk--pbt-random-choice '(nil on active list registration))))
 
 ;; Generate a converting phase only (excludes nil and on)
 (nskk-register-generator 'converting-phase
   (lambda (&rest _)
-    (nskk-pbt--random-choice '(active list registration))))
+    (nskk--pbt-random-choice '(active list registration))))
 
 
 ;;;;
@@ -752,9 +755,9 @@ SIZE controls the length of the query."
 ;; Generate a romaji prefix + uppercase consonant marker (full okurigana input)
 (nskk-register-generator 'okurigana-full-pattern
   (lambda (&optional size)
-    (let* ((sz (nskk-pbt--resolve-size size 3))
-           (prefix (nskk-pbt--generate-romaji-pattern sz 'basic))
-           (consonant (nskk-pbt--random-choice
+    (let* ((sz (nskk--pbt-resolve-size size 3))
+           (prefix (nskk--pbt-generate-romaji-pattern sz 'basic))
+           (consonant (nskk--pbt-random-choice
                        '(?K ?S ?T ?N ?H ?M ?Y ?R ?W ?G ?Z ?D ?B ?P))))
       (list :prefix prefix
             :consonant consonant
@@ -763,7 +766,7 @@ SIZE controls the length of the query."
 ;; Generate only the uppercase consonant character
 (nskk-register-generator 'okurigana-consonant-char
   (lambda (&rest _)
-    (nskk-pbt--random-choice '(?K ?S ?T ?N ?H ?M ?Y ?R ?W ?G ?Z ?D ?B ?P))))
+    (nskk--pbt-random-choice '(?K ?S ?T ?N ?H ?M ?Y ?R ?W ?G ?Z ?D ?B ?P))))
 
 
 ;;;;
@@ -773,17 +776,17 @@ SIZE controls the length of the query."
 ;; Generate a valid zero-based index into a candidate list of given size
 (nskk-register-generator 'candidate-index
   (lambda (&optional size)
-    (let ((n (max 1 (or size (1+ (nskk-pbt--random-int 0 9))))))
-      (nskk-pbt--random-int 0 (1- n)))))
+    (let ((n (max 1 (or size (1+ (nskk--pbt-random-int 0 9))))))
+      (nskk--pbt-random-int 0 (1- n)))))
 
 ;; Generate (candidates . index) pair where index is valid for candidates
 (nskk-register-generator 'candidates-with-valid-index
   (lambda (&optional size)
     (let* ((pool '("漢字" "感じ" "幹事" "日本" "二本" "変換" "桜" "山" "川"))
-           (n (max 1 (nskk-pbt--resolve-size size 3)))
+           (n (max 1 (nskk--pbt-resolve-size size 3)))
            (candidates (cl-loop repeat n
-                                collect (nskk-pbt--random-choice pool)))
-           (index (nskk-pbt--random-int 0 (1- n))))
+                                collect (nskk--pbt-random-choice pool)))
+           (index (nskk--pbt-random-int 0 (1- n))))
       (list :candidates candidates :index index))))
 
 
@@ -794,10 +797,10 @@ SIZE controls the length of the query."
 ;; Generate independent state descriptors for multiple buffers
 (nskk-register-generator 'multi-buffer-scenario
   (lambda (&optional size)
-    (let ((n (max 2 (nskk-pbt--resolve-size size 3))))
+    (let ((n (max 2 (nskk--pbt-resolve-size size 3))))
       (cl-loop repeat n
-               collect (list :mode (nskk-pbt--generate-valid-mode)
-                             :input (nskk-pbt--generate-romaji-pattern 3 'basic)
+               collect (list :mode (nskk--pbt-generate-valid-mode)
+                             :input (nskk--pbt-generate-romaji-pattern 3 'basic)
                              :henkan-phase nil)))))
 
 
@@ -843,9 +846,9 @@ TYPE specifies the classification type."
       (t 'unknown)))
     ('romaji
      (cond
-      ((member value nskk-pbt--basic-vowels) 'vowel)
-      ((member value nskk-pbt--incomplete-patterns) 'incomplete)
-      ((member value nskk-pbt--special-patterns) 'special)
+      ((member value nskk--pbt-basic-vowels) 'vowel)
+      ((member value nskk--pbt-incomplete-patterns) 'incomplete)
+      ((member value nskk--pbt-special-patterns) 'special)
       (t 'standard)))
     ('search-type
      value)
@@ -866,28 +869,126 @@ TYPE specifies the classification type."
 ;;;; Statistics and Debugging
 ;;;;
 
-(defvar nskk-pbt--generation-stats nil
+(defvar nskk--pbt-generation-stats nil
   "Statistics about generated values.")
 
 (defun nskk-pbt-reset-stats ()
   "Reset generation statistics."
-  (setq nskk-pbt--generation-stats
+  (setq nskk--pbt-generation-stats
         (make-hash-table :test 'equal)))
 
 (defun nskk-pbt-record-generation (generator-name value)
   "Record generation of VALUE by GENERATOR-NAME for statistics."
   (let* ((key (cons generator-name (nskk-pbt-classify value)))
-         (count (gethash key nskk-pbt--generation-stats 0)))
-    (puthash key (1+ count) nskk-pbt--generation-stats)))
+         (count (gethash key nskk--pbt-generation-stats 0)))
+    (puthash key (1+ count) nskk--pbt-generation-stats)))
 
 (defun nskk-pbt-get-stats ()
   "Get current generation statistics."
-  (when nskk-pbt--generation-stats
+  (when nskk--pbt-generation-stats
     (let ((result nil))
       (maphash (lambda (key count)
                  (push (cons key count) result))
-               nskk-pbt--generation-stats)
+               nskk--pbt-generation-stats)
       result)))
+
+;;;;
+;;;; Character Generators
+;;;;
+
+(nskk-register-generator 'uppercase-char
+  (lambda ()
+    ;; A random uppercase ASCII letter A-Z.
+    (let ((letters (string-to-list "ABCDEFGHIJKLMNOPQRSTUVWXYZ")))
+      (string (nth (random (length letters)) letters)))))
+
+(nskk-register-generator 'lowercase-char
+  (lambda ()
+    ;; A random lowercase ASCII letter a-z.
+    (let ((letters (string-to-list "abcdefghijklmnopqrstuvwxyz")))
+      (string (nth (random (length letters)) letters)))))
+
+(nskk-register-generator 'non-alpha-char
+  (lambda ()
+    ;; A random non-alphabetic printable ASCII character.
+    (let ((chars (string-to-list "0123456789!@#$%^&*()-_=+[]{}|;':\",./<>?")))
+      (string (nth (random (length chars)) chars)))))
+
+(nskk-register-generator 'any-char
+  (lambda ()
+    ;; A random printable ASCII character (upper, lower, or non-alpha).
+    (let* ((all (string-to-list "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{}|;':\",./<>?"))
+           (idx (random (length all))))
+      (string (nth idx all)))))
+
+(nskk-register-generator 'ascii-lowercase-char
+  (lambda ()
+    ;; A random lowercase ASCII letter (alias for lowercase-char).
+    (let ((letters (string-to-list "abcdefghijklmnopqrstuvwxyz")))
+      (string (nth (random (length letters)) letters)))))
+
+(nskk-register-generator 'hiragana-char
+  (lambda ()
+    ;; A random hiragana character string.
+    (nth (random (length nskk--pbt-hiragana-chars)) nskk--pbt-hiragana-chars)))
+
+
+;;;;
+;;;; Kana Mapping Generators
+;;;;
+
+(nskk-register-generator 'vowel-char-pair
+  (lambda ()
+    ;; A cons of (vowel-char . expected-hiragana-string) for simple vowel → kana mapping.
+    (let ((pairs '((?a . "あ") (?i . "い") (?u . "う") (?e . "え") (?o . "お"))))
+      (nth (random (length pairs)) pairs))))
+
+
+;;;;
+;;;; Dictionary Generators
+;;;;
+
+(nskk-register-generator 'known-dict-key
+  (lambda ()
+    ;; A random key that is known to exist in the mock dictionary.
+    (let ((keys '("かんじ" "さくら" "うみ" "そら" "やま" "かわ")))
+      (nth (random (length keys)) keys))))
+
+(nskk-register-generator 'unknown-dict-key
+  (lambda ()
+    ;; A random string that is not a valid dictionary key.
+    (let ((prefix "zzz-unknown-")
+          (suffix (number-to-string (random 10000))))
+      (concat prefix suffix))))
+
+(nskk-register-generator 'candidate-list
+  (lambda ()
+    ;; A random non-empty list of kanji candidate strings.
+    (let* ((pool '("漢字" "感じ" "桜" "海" "空" "山" "川" "花" "星" "月"))
+           (n (1+ (random (min 5 (length pool)))))
+           (result nil))
+      (dotimes (i n result)
+        (push (nth i pool) result)))))
+
+
+;;;;
+;;;; SKK Dictionary Line Generators
+;;;;
+
+(nskk-register-generator 'valid-skk-line
+  (lambda ()
+    ;; A syntactically valid SKK dictionary entry line.
+    (let* ((keys   '("かんじ" "さくら" "うみ" "そら"))
+           (cands  '("漢字/感じ" "桜" "海" "空"))
+           (idx    (random (length keys))))
+      (format "%s /%s/" (nth idx keys) (nth idx cands)))))
+
+(nskk-register-generator 'invalid-skk-line
+  (lambda ()
+    ;; A comment or malformed SKK dictionary line.
+    (let ((bad '(";; comment line" "" "not-a-valid-line" "かんじ" "/no-reading/")))
+      (nth (random (length bad)) bad))))
+
 
 (provide 'nskk-pbt-generators)
 

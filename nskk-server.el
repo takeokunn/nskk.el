@@ -27,7 +27,7 @@
 
 ;; SKK server (skkserv) TCP client for NSKK (Layer 2: Domain).
 ;;
-;; Layer position: L2 (Domain) -- depends only on nskk-custom.
+;; Layer position: L2 (Domain) -- depends only on nskk-custom and nskk-prolog.
 ;;
 ;; Implements the SKK server protocol (skkserv) for remote dictionary
 ;; lookup.  This module connects to a running skkserv instance over TCP
@@ -46,16 +46,28 @@
 ;; The connection is persistent (kept alive across multiple lookups).
 ;; `nskk-server-ensure-open' reconnects automatically if the connection drops.
 ;;
-;; CPS I/O pipeline used in `nskk-server-lookup':
+;; CPS pipeline:
 ;;
-;;   nskk-server-lookup
-;;     -> nskk-server--lookup-guards-p   (pure guard predicate)
-;;     -> nskk-server--with-response     (CPS I/O layer: send + await + report)
-;;         -> nskk-server--await-response (polling helper)
-;;         -> nskk-server--parse-response (continuation / pure parser)
-;;             -> nskk-server--strip-annotation (pure string helper)
+;;   nskk-server-lookup/k
+;;     <- nskk--server-lookup-guards-p/k  (guard: enable flag + key validity)
+;;         <- nskk-server-live-p/k        (guard: Prolog state + process status)
+;;     <- nskk--server-with-response/k    (I/O: send + await response)
+;;         <- nskk--server-await-response/k  (polling: wait for newline)
+;;     <- nskk--server-parse-response/k   (parse: Prolog response-type dispatch)
+;;         -> nskk--server-strip-annotation/k (pure string helper)
 ;;
-;; Prolog predicates maintained by this module: none.
+;; Prolog predicates maintained by this module:
+;;
+;;   server-response-type/2
+;;     Maps the first byte of a skkserv response to a type atom.
+;;     Indexed by :hash on arg-1 (the prefix string).
+;;     Facts: ("1" found), ("4" miss)
+;;
+;;   server-state/1
+;;     Tracks connection state as a dynamic fact.
+;;     Indexed by :hash on arg-1.
+;;     Values: (open) when connected, (closed) when disconnected.
+;;     Updated atomically by nskk-server-open and nskk-server-close.
 ;;
 ;; Key public API:
 ;; - `nskk-server-open'         -- establish connection to skkserv
@@ -72,6 +84,8 @@
 ;;; Code:
 
 (require 'nskk-custom)
+(require 'nskk-prolog)
+(require 'nskk-cps-macros)
 (require 'nskk-debug nil t)
 
 (declare-function nskk-debug-message "nskk-debug" (fmt &rest args))
@@ -145,173 +159,219 @@ DDSKK equivalent: skk-server-report-response"
 
 ;;;; Internal State
 
-(defvar nskk-server--process nil
+(defvar nskk--server-process nil
   "Active skkserv network process object, or nil when disconnected.
 Managed by `nskk-server-open' and `nskk-server-close'.")
 
-(defconst nskk-server--buffer-name " *nskk-server*"
+(defconst nskk--server-buffer-name " *nskk-server*"
   "Name of the working buffer for skkserv I/O.")
 
-(defvar nskk-server--kill-emacs-hook-registered nil
+(defvar nskk--server-kill-emacs-hook-registered nil
   "Non-nil when `nskk-server-close' is registered on `kill-emacs-hook'.
 Used to avoid duplicate registrations (idempotent guard).")
 
-;;;; Protocol Constants
-;; Separate protocol data from dispatch logic per data/logic separation.
+;;;; Prolog Facts
+;; Per the index-before-assert invariant, `nskk-prolog-set-index' is called
+;; before any fact is added for each predicate.
 
-(defconst nskk-server--response-found ?1
-  "First character of a successful skkserv lookup response.")
+;; server-response-type/2 — maps response prefix string to type symbol.
+;; Hash-indexed on the first argument for O(1) lookup.
+(nskk-prolog-set-index 'server-response-type 2 :hash)
+(nskk-prolog-<- (server-response-type "1" found))
+(nskk-prolog-<- (server-response-type "4" miss))
+
+;; server-state/1 — dynamic connection state fact.
+;; Hash-indexed; updated atomically by open/close.  Initialized to closed.
+(nskk-prolog-set-index 'server-state 1 :hash)
+(nskk-prolog-assert '((server-state closed)))
 
 ;;;; Core Functions
 
-(defun nskk-server-live-p ()
+(defun/k nskk-server-live-p ()
   "Return non-nil if the skkserv connection is active.
-Checks the Emacs process status for `nskk-server--process'.
-Returns nil when not connected, `nskk-server-enable' is nil,
-or when `nskk-server--process' is nil."
-  (and nskk-server--process
-       (eq (process-status nskk-server--process) 'open)))
+Checks both the Emacs process status and the Prolog server-state/1 fact.
+Returns nil when not connected or when `nskk--server-process' is nil."
+  (if (and nskk--server-process
+           (eq (process-status nskk--server-process) 'open)
+           (nskk-prolog-holds-p '(server-state open)))
+      (succeed t)
+    (fail)))
 
-(defun nskk-server-open ()
-  "Open a TCP connection to the configured skkserv instance.
-Connects to `nskk-server-host':`nskk-server-portnum' and sets the
-process coding system to `nskk-server-coding-system' on both read and
-write directions.  Sets `query-on-exit-flag' to nil on the process so
-Emacs exits cleanly without prompting about the open connection.
-
-Registers `nskk-server-close' on `kill-emacs-hook' (idempotent).
-
+(defun nskk--server-make-connection ()
+  "Open a raw TCP connection to the configured skkserv instance.
 Returns the process object on success, or nil if the connection fails.
-On failure, silently returns nil without signalling."
-  (when nskk-server-enable
-    (condition-case err
-        (when-let* ((proc (let ((coding-system-for-read  nskk-server-coding-system)
-                               (coding-system-for-write nskk-server-coding-system))
-                            (open-network-stream
-                             "nskk-server"
-                             (get-buffer-create nskk-server--buffer-name)
-                             nskk-server-host
-                             nskk-server-portnum
-                             :type 'plain))))
-          (set-process-query-on-exit-flag proc nil)
-          (setq nskk-server--process proc)
-          (unless nskk-server--kill-emacs-hook-registered
-            (add-hook 'kill-emacs-hook #'nskk-server-close)
-            (setq nskk-server--kill-emacs-hook-registered t))
-          (nskk-debug-message "nskk-server-open: connected to %s:%d"
-                              nskk-server-host nskk-server-portnum)
-          proc)
-      (error
-       (nskk-debug-message "nskk-server-open: connection failed: %s"
-                           (error-message-string err))
-       (setq nskk-server--process nil)
-       nil))))
+Binds coding system for both read and write directions."
+  (condition-case err
+      (let ((coding-system-for-read  nskk-server-coding-system)
+            (coding-system-for-write nskk-server-coding-system))
+        (open-network-stream
+         "nskk-server"
+         (get-buffer-create nskk--server-buffer-name)
+         nskk-server-host
+         nskk-server-portnum
+         :type 'plain))
+    (error
+     (nskk-debug-message "nskk-server-open: connection failed: %s"
+                         (error-message-string err))
+     nil)))
 
-(defun nskk-server-close ()
+(defun/done nskk--server-configure-process (proc)
+  "Configure PROC after a successful connection.
+Sets the query-on-exit flag, records the process, registers the
+kill-emacs hook (idempotent), and updates the Prolog server-state/1
+fact to \\='open."
+  (set-process-query-on-exit-flag proc nil)
+  (setq nskk--server-process proc)
+  (unless nskk--server-kill-emacs-hook-registered
+    (add-hook 'kill-emacs-hook #'nskk-server-close)
+    (setq nskk--server-kill-emacs-hook-registered t))
+  (nskk-prolog-retract-all 'server-state 1)
+  (nskk-prolog-assert '((server-state open)))
+  (nskk-debug-message "nskk-server-open: connected to %s:%d"
+                      nskk-server-host nskk-server-portnum))
+
+(defun/k nskk-server-open ()
+  "Open a TCP connection to the configured skkserv instance.
+Connects to `nskk-server-host':`nskk-server-portnum'.  On success,
+calls `nskk--server-configure-process' to set up the connection and
+update Prolog state, then succeeds with the process object.
+Returns nil (via sync wrapper) or fails if disabled or connection fails.
+DDSKK equivalent: skk-open-server (connection part)"
+  (if (not nskk-server-enable)
+      (fail)
+    (let ((proc (nskk--server-make-connection)))
+      (if proc
+          (progn
+            (nskk--server-configure-process proc)
+            (succeed proc))
+        (fail)))))
+
+(defun/done nskk-server-close ()
   "Send disconnect command to skkserv and clean up the connection.
-Sends the protocol command \\='0\\=' to ask the server to terminate the
-session cleanly, then kills the process and working buffer.
+Sends the protocol command \\='0\\=' to terminate the session cleanly,
+kills the process and working buffer, and updates the Prolog
+server-state/1 fact to \\='closed.
 Safe to call when not connected (idempotent).
 DDSKK equivalent: skk-disconnect-server"
   (when (nskk-server-live-p)
-    (ignore-errors (process-send-string nskk-server--process "0")))
-  (when nskk-server--process
-    (ignore-errors (delete-process nskk-server--process))
-    (setq nskk-server--process nil))
-  (when-let* ((buf (get-buffer nskk-server--buffer-name)))
+    (ignore-errors (process-send-string nskk--server-process "0")))
+  (when nskk--server-process
+    (ignore-errors (delete-process nskk--server-process))
+    (setq nskk--server-process nil))
+  (when-let* ((buf (get-buffer nskk--server-buffer-name)))
     (kill-buffer buf))
+  (nskk-prolog-retract-all 'server-state 1)
+  (nskk-prolog-assert '((server-state closed)))
   (nskk-debug-message "nskk-server-close: disconnected"))
 
-(defun nskk-server-ensure-open ()
+(defun/k nskk-server-ensure-open ()
   "Ensure the skkserv connection is live, reconnecting if needed.
-Returns non-nil if the connection is live after this call, nil otherwise.
-When `nskk-server-enable' is nil, returns nil immediately without
-attempting any connection.
+Succeeds with t if the connection is live after this call.
+Fails immediately when `nskk-server-enable' is nil.
+Fails when `nskk-server-enable' is non-nil but the connection cannot
+be established.
 DDSKK equivalent: skk-open-server"
-  (when nskk-server-enable
+  (if (not nskk-server-enable)
+      (fail)
     (if (nskk-server-live-p)
-        t
+        (succeed t)
       (nskk-debug-message "nskk-server-ensure-open: reconnecting...")
-      (when (nskk-server-open)
-        t))))
+      (<- _open-proc nskk-server-open)
+      (succeed t))))
 
 ;;;; Protocol Implementation
 
-(defun nskk-server--lookup-guards-p (key)
-  "Return non-nil when KEY can be sent to skkserv.
-All five conditions must hold: `nskk-server-enable' is non-nil, KEY is
-a non-empty string, KEY contains no whitespace or control characters
-\(which would cause protocol desync since skkserv uses a trailing space
-as the request delimiter), and the connection is currently live."
-  (and nskk-server-enable
-       (stringp key)
-       (> (length key) 0)
-       (not (string-match-p "[\x00-\x1F\x7F ]" key))
-       (nskk-server-live-p)))
+(defun/k nskk--server-lookup-guards-p (key)
+  "Succeed when KEY is safe to send to skkserv, fail otherwise.
+String conditions checked synchronously: `nskk-server-enable' is non-nil,
+KEY is a non-empty string, and KEY contains no whitespace or control
+characters (which would cause protocol desync).
+Then chains to `nskk-server-live-p/k' for connection liveness."
+  (if (and nskk-server-enable
+           (stringp key)
+           (> (length key) 0)
+           (not (string-match-p "[\x00-\x1F\x7F ]" key)))
+      (<- live-check nskk-server-live-p)
+    (fail)))
 
-(defun nskk-server--strip-annotation (s)
-  "Strip a SKK dictionary annotation from candidate string S.
-SKK annotations follow a semicolon: \\\"word;annotation\\\" => \\\"word\\\".
-Returns S unchanged if no semicolon is present."
+(defun/k nskk--server-strip-annotation (s)
+  "Succeed with S with any SKK annotation removed.
+SKK annotations follow a semicolon: \"word;annotation\" => \"word\".
+Succeeds with S unchanged if no semicolon is present."
   (let ((semi (string-search ";" s)))
-    (if semi (substring s 0 semi) s)))
+    (succeed (if semi (substring s 0 semi) s))))
 
-(defun nskk-server--parse-response (response)
-  "Parse a skkserv command-1 RESPONSE string into a list of candidate strings.
-Expected formats:
-  Found:     \"1/cand1/cand2/.../\\n\"  => (\"cand1\" \"cand2\" ...)
-  Not found: \"4...\\n\"               => nil
-  Other:     anything else           => nil
+(defun/k nskk--server-parse-response (response)
+  "Parse a skkserv command-1 RESPONSE string into a candidate list.
+Uses the Prolog server-response-type/2 predicate to dispatch on the
+response prefix: \\='found\\=' prefix (\\\"1\\\") yields candidates,
+any other prefix fails.
 
 Strips annotations (\\\"word;note\\\" -> \\\"word\\\") via
-`nskk-server--strip-annotation'."
-  (when (and (stringp response)
-             (> (length response) 0)
-             (= (aref response 0) nskk-server--response-found))
-    (let* ((body  (string-trim-right (substring response 1) "[\r\n]+"))
-           (parts (split-string body "/" t)))
-      (delq nil
-            (mapcar (lambda (s)
-                      (let ((trimmed (string-trim s)))
-                        (when (> (length trimmed) 0)
-                          (nskk-server--strip-annotation trimmed))))
-                    parts)))))
+`nskk--server-strip-annotation'.
 
-(defun nskk-server--await-response (proc buf deadline)
+Succeeds with the candidate list when at least one candidate is found.
+Fails for not-found responses, empty responses, or non-string inputs."
+  (if (and (stringp response)
+           (> (length response) 0)
+           (nskk-prolog-holds-p
+            `(server-response-type ,(substring response 0 1) found)))
+      (let* ((body  (string-trim-right (substring response 1) "[\r\n]+"))
+             (parts (split-string body "/" t))
+             (candidates
+              (delq nil
+                    (mapcar (lambda (s)
+                              (let ((trimmed (string-trim s)))
+                                (when (> (length trimmed) 0)
+                                  (nskk--server-strip-annotation trimmed))))
+                            parts))))
+        (if candidates (succeed candidates) (fail)))
+    (fail)))
+
+(defun/k nskk--server-await-response (proc buf deadline)
   "Poll PROC via BUF for a complete skkserv response line until DEADLINE.
 Polls at 0.1-second intervals using `accept-process-output'.
-Returns the accumulated response string (containing a newline) or nil
-on timeout or disconnection."
+Succeeds with the accumulated response string (containing a newline).
+Fails on timeout or disconnection."
   (let (response)
     (while (and (nskk-server-live-p)
                 (< (float-time) deadline)
                 (not (and response (string-search "\n" response))))
       (accept-process-output proc 0.1)
       (setq response (with-current-buffer buf (buffer-string))))
-    response))
+    (if (and response (string-search "\n" response))
+        (succeed response)
+      (fail))))
 
-(defun nskk-server--with-response (key cont)
-  "Send skkserv command 1 for KEY, await the response, then call CONT.
-CONT is a function of one argument -- the raw response string (or nil
-on timeout or disconnection) -- whose return value is returned to the
-caller.  This is the CPS I/O layer; CONT is typically
-`nskk-server--parse-response'.
+(defun/k nskk--server-with-response (key)
+  "Send skkserv command 1 for KEY, await the response.
+Erases the I/O buffer, sends the protocol request \"1KEY \", then
+delegates to `nskk--server-await-response/k' to poll for the reply.
 
-When `nskk-server-report-response' is non-nil, logs elapsed time to
-the NSKK debug buffer."
-  (let* ((proc       nskk-server--process)
-         (buf        (process-buffer proc))
-         (start-time (float-time))
-         (deadline   (+ start-time nskk-server-timeout)))
-    (with-current-buffer buf (erase-buffer))
-    (process-send-string proc (concat "1" key " "))
-    (let ((response (nskk-server--await-response proc buf deadline)))
-      (when nskk-server-report-response
-        (nskk-debug-message "nskk-server-lookup: key=%s elapsed=%.3fms"
-                            key (* 1000 (- (float-time) start-time))))
-      (funcall cont response))))
+When `nskk-server-report-response' is non-nil, logs elapsed time.
 
-(defun nskk-server-lookup (key)
+Succeeds with the raw response string.
+Fails on network error or timeout."
+  (let ((resp (condition-case err
+                  (let* ((proc       nskk--server-process)
+                         (buf        (process-buffer proc))
+                         (start-time (float-time))
+                         (deadline   (+ start-time nskk-server-timeout)))
+                    (with-current-buffer buf (erase-buffer))
+                    (process-send-string proc (concat "1" key " "))
+                    (let ((r (nskk--server-await-response proc buf deadline)))
+                      (when nskk-server-report-response
+                        (nskk-debug-message
+                         "nskk-server-lookup: key=%s elapsed=%.3fms"
+                         key (* 1000 (- (float-time) start-time))))
+                      r))
+                (error
+                 (nskk-debug-message "nskk-server-lookup: error for key=%s: %s"
+                                     key (error-message-string err))
+                 nil))))
+    (if resp (succeed resp) (fail))))
+
+(defun/k nskk-server-lookup (key)
   "Look up KEY in the skkserv dictionary using command 1.
 Returns a list of candidate strings on success (e.g., (\"漢字\" \"感じ\")),
 or nil when the key is not found, the server is unreachable, or any
@@ -320,25 +380,13 @@ network error occurs.  Never signals an error to the caller.
 OKURI-ARI keys should be passed in their standard SKK format (e.g.,
 \"かんじk\" for okurigana words); the server handles them natively.
 
-DDSKK equivalent: skk-search-server-1"
-  (when (nskk-server--lookup-guards-p key)
-    (condition-case err
-        (nskk-server--with-response key #'nskk-server--parse-response)
-      (error
-       (nskk-debug-message "nskk-server-lookup: error for key=%s: %s"
-                           key (error-message-string err))
-       nil))))
+CPS pipeline: guard -> I/O -> parse.
 
-(defun nskk-server-lookup/k (key on-found on-not-found)
-  "CPS variant of `nskk-server-lookup'.
-Look up KEY via skkserv and call ON-FOUND with the candidates list, or
-ON-NOT-FOUND with no arguments when no candidates are found.
-If KEY is not a string, neither ON-FOUND nor ON-NOT-FOUND is called.
-Returns the return value of ON-FOUND or ON-NOT-FOUND."
-  (let ((result (nskk-server-lookup key)))
-    (if result
-        (funcall on-found result)
-      (funcall on-not-found))))
+DDSKK equivalent: skk-search-server-1"
+  (<- _guard nskk--server-lookup-guards-p key)
+  (<- resp nskk--server-with-response key)
+  (<- result nskk--server-parse-response resp)
+  (succeed result))
 
 (provide 'nskk-server)
 

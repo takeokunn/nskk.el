@@ -91,7 +91,7 @@
 (declare-function nskk--clear-pending-romaji "nskk-henkan" ())
 (declare-function nskk--current-kakutei-state "nskk-keymap")
 (declare-function nskk--maybe-load-azik-style "nskk-input")
-(declare-function nskk-dict--maybe-save "nskk-dictionary")
+(declare-function nskk--dict-maybe-save "nskk-dictionary")
 (declare-function nskk-handle-ctrl-a "nskk-keymap")
 (declare-function nskk-handle-ctrl-e "nskk-keymap")
 (declare-function nskk-handle-tab "nskk-keymap")
@@ -204,7 +204,7 @@ This provides global bindings that work even when nskk-mode is not yet active."
   ;; Load AZIK style if configured
   (nskk--maybe-load-azik-style)
   ;; Register save-on-exit hook; add-hook deduplicates same symbol safely
-  (add-hook 'kill-emacs-hook #'nskk-dict--maybe-save)
+  (add-hook 'kill-emacs-hook #'nskk--dict-maybe-save)
   (nskk--setup-buffer)
   (nskk-modeline-update))
 

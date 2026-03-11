@@ -72,7 +72,7 @@
 ;;; Helper Functions
 ;;;
 
-(defun nskk-pbt--state-valid-p (state)
+(defun nskk--pbt-state-valid-p (state)
   "Check if STATE is a valid nskk-state structure."
   (and (nskk-state-p state)
        (nskk-state-valid-mode-p (nskk-state-mode state))
@@ -84,7 +84,7 @@
        (listp (nskk-state-undo-stack state))
        (listp (nskk-state-redo-stack state))))
 
-(defun nskk-pbt--copy-state (state)
+(defun nskk--pbt-copy-state (state)
   "Create a copy of STATE for comparison."
   (when (nskk-state-p state)
     (let ((copy (nskk-state-create (nskk-state-mode state))))
@@ -98,7 +98,7 @@
       (nskk-state-set copy 'redo-stack (nskk-state-redo-stack state))
       copy)))
 
-(defun nskk-pbt--states-equal-p (state1 state2 &rest ignore-slots)
+(defun nskk--pbt-states-equal-p (state1 state2 &rest ignore-slots)
   "Check if STATE1 and STATE2 are equal, ignoring IGNORE-SLOTS."
   (and (nskk-state-p state1)
        (nskk-state-p state2)

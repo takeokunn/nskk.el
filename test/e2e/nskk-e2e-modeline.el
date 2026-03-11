@@ -72,23 +72,19 @@
 ;;;; Complete Mode-to-Indicator Table Test
 ;;;;
 
-(nskk-describe "modeline all modes table"
-  (nskk-it "all modes produce correct ddskk-compatible modeline strings"
-    (let ((expected-indicators
-           '((ascii         . "SKK")
-             (latin         . "SKK")
-             (hiragana      . "かな")
-             (katakana      . "カナ")
-             (katakana-半角  . "ｶﾅ")
-             (abbrev        . "aA")
-             (jisx0208-latin . "全英"))))
-      (dolist (tc expected-indicators)
-        (let ((mode (car tc))
-              (expected (cdr tc)))
-          (nskk-e2e-with-buffer mode nil
-            (nskk-e2e-assert-modeline-contains
-             expected
-             (format "Mode %S should show %S in modeline" mode expected))))))))
+(nskk-deftest-cases modeline-mode-indicator-table
+  ((ascii          . "SKK")
+   (latin          . "SKK")
+   (hiragana       . "かな")
+   (katakana       . "カナ")
+   (katakana-半角   . "ｶﾅ")
+   (abbrev         . "aA")
+   (jisx0208-latin . "全英"))
+  :body
+  (nskk-e2e-with-buffer input nil
+    (nskk-e2e-assert-modeline-contains
+     expected
+     (format "Mode %S should show %S in modeline" input expected))))
 
 ;;;;
 ;;;; Modeline Update on Mode Switch Tests
@@ -258,6 +254,27 @@
     (nskk-e2e-with-buffer 'jisx0208-latin nil
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-buffer "\u3000"))))
+
+;;;;
+;;;; Full-width Latin Character Conversion Table
+;;;;
+
+(nskk-deftest-table jisx0208-latin-character-table
+  :columns (ascii-char fullwidth-char)
+  ;; Note: 'l' and 'q' are excluded — they are bound to mode-switch
+  ;; handlers (nskk-handle-l, nskk-handle-q) in nskk-mode-map and
+  ;; may switch mode rather than self-insert in some states.
+  :rows (("a" "\uFF41") ("b" "\uFF42") ("c" "\uFF43") ("d" "\uFF44")
+         ("e" "\uFF45") ("f" "\uFF46") ("g" "\uFF47") ("h" "\uFF48")
+         ("i" "\uFF49") ("j" "\uFF4A") ("k" "\uFF4B") ("m" "\uFF4D")
+         ("n" "\uFF4E") ("o" "\uFF4F") ("p" "\uFF50") ("r" "\uFF52")
+         ("s" "\uFF53") ("t" "\uFF54") ("u" "\uFF55") ("v" "\uFF56")
+         ("w" "\uFF57") ("x" "\uFF58") ("y" "\uFF59") ("z" "\uFF5A"))
+  :body
+  (nskk-e2e-with-buffer 'jisx0208-latin nil
+    (nskk-e2e-type ascii-char)
+    (nskk-e2e-assert-buffer fullwidth-char
+                             (format "jisx0208-latin: %S → %S" ascii-char fullwidth-char))))
 
 ;;;;
 ;;;; Point position during preedit (▽ state)

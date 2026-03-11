@@ -1,4 +1,4 @@
-;;; nskk-main-test.el --- Tests for nskk.el (main entry point) -*- lexical-binding: t; -*-
+;;; nskk-test.el --- Tests for nskk.el (main entry point) -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Authors
 
@@ -249,8 +249,8 @@
     (with-temp-buffer
       (let ((nskk-mode nil)
             (commit-called nil))
-        (cl-letf (((symbol-function 'nskk-commit-current)
-                   (lambda () (setq commit-called t))))
+        (nskk-with-mocks ((nskk-commit-current
+                           (lambda () (setq commit-called t))))
           (nskk--post-command-handler)
           (should-not commit-called)))))
 
@@ -258,12 +258,12 @@
     (with-temp-buffer
       (nskk-mode 1)
       (let ((update-called nil))
-        (cl-letf (((symbol-function 'nskk-modeline-update)
-                   (lambda () (setq update-called t))))
+        (nskk-with-mocks ((nskk-modeline-update
+                           (lambda () (setq update-called t))))
           (nskk--post-command-handler)
           (should update-called)))
       (nskk-mode -1))))
 
-(provide 'nskk-main-test)
+(provide 'nskk-test)
 
-;;; nskk-main-test.el ends here
+;;; nskk-test.el ends here

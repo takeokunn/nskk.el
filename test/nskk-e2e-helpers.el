@@ -48,7 +48,7 @@
 ;; - Must use user-dict-entry (NOT mock-dict-entry) for SPC conversion to work
 ;;   because dict-entry/2 bridge only queries user-dict-entry and system-dict-entry
 ;; - read-from-minibuffer must be mocked to prevent batch-mode blocking
-;; - nskk-henkan--candidate-list-active is NOT buffer-local; always reset in teardown
+;; - nskk--henkan-candidate-list-active is NOT buffer-local; always reset in teardown
 ;; - overlay-get for 'display during ▼ phase (buffer-string won't show overlay content)
 
 ;;; Code:
@@ -184,7 +184,7 @@ Initialization order:
            ;; Clear any events we produced, so the next test starts clean.
            (setq unread-command-events nil)
            ;; Reset non-buffer-local globals that leak between tests.
-           (setq nskk-henkan--candidate-list-active nil)
+           (setq nskk--henkan-candidate-list-active nil)
            (remove-hook 'nskk-henkan-show-candidates-functions
                         #'nskk-candidate-show-list)
            (remove-hook 'nskk-henkan-hide-candidates-functions

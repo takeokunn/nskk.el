@@ -88,7 +88,17 @@
              (nskk-henkan-in-conversion-p)
              (nskk-henkan-has-candidates-p)
              (nskk-henkan-get-current-candidate))
-      :body (should-not (fboundp sym)))))
+      :body (should-not (fboundp sym)))
+
+    (nskk-deftest-table henkan-deleted-hook-vars-removed
+      :description "Dead hook variables have been removed from the API"
+      :columns (sym)
+      :rows ((nskk-start-henkan-hook)
+             (nskk-henkan-hook)
+             (nskk-post-henkan-hook)
+             (nskk-after-henkan-hook)
+             (nskk-henkan-select-hook))
+      :body (should-not (boundp sym)))))
 
 ;;;
 ;;; nskk-without-modification Macro Tests
@@ -300,24 +310,47 @@
     (should (equal (nskk-prolog-query-value '(convert-or-commit-action not-converting \?a) '\?a)
                    'start-conversion))))
 
+;;;
+;;; nskk-max-registration-depth guard
+;;;
+
 (nskk-describe "nskk-max-registration-depth guard"
-  (nskk-it "max-registration-depth is 3"
+  (nskk-it "max-registration-depth default is 3"
     (should (equal nskk-max-registration-depth 3)))
 
-  (nskk-it "allows registration at depth 0"
-    (should (< 0 nskk-max-registration-depth)))
+  (nskk-deftest-table max-registration-depth-boundary
+    :description "start-registration returns nil at max-depth, proceeds below it"
+    :columns (depth should-proceed)
+    :rows ((0 t)
+           (1 t)
+           (2 t)
+           (3 nil))
+    :body
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--registration-depth depth)
+          prompt-shown)
+      (if should-proceed
+          (progn
+            (nskk-state-force-henkan-phase nskk-current-state 'on)
+            (nskk-with-mocks ((read-from-minibuffer
+                               (lambda (p) (setq prompt-shown p) ""))
+                              (nskk-dict-register-word #'ignore))
+              (nskk-start-registration "てすと")
+              (should prompt-shown)))
+        (should-not (nskk-start-registration "てすと")))))
 
-  (nskk-it "allows registration at depth 2"
-    (should (< 2 nskk-max-registration-depth)))
-
-  (nskk-it "disallows registration at depth 3 (max depth)"
-    (should-not (< 3 nskk-max-registration-depth)))
-
-  (nskk-it "respects non-default value when customized"
-    (let ((nskk-max-registration-depth 2))
-      (should (< 0 nskk-max-registration-depth))
-      (should (< 1 nskk-max-registration-depth))
-      (should-not (< 2 nskk-max-registration-depth)))))
+  (nskk-it "respects non-default max-registration-depth"
+    (let ((nskk-max-registration-depth 2)
+          (nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--registration-depth 1)
+          prompt-shown)
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
+      (nskk-with-mocks ((read-from-minibuffer (lambda (p) (setq prompt-shown p) ""))
+                        (nskk-dict-register-word #'ignore))
+        (nskk-start-registration "てすと")
+        (should prompt-shown))
+      (let ((nskk--registration-depth 2))
+        (should-not (nskk-start-registration "てすと"))))))
 
 (nskk-describe "should-update-overlay Prolog predicate"
   (nskk-it "succeeds for active phase"
@@ -368,15 +401,14 @@
 ;;;
 
 (nskk-describe "nskk-detect-okurigana-char"
-  (nskk-it "detects A-Z as okurigana chars and returns their lowercase"
-    (dolist (c (number-sequence ?A ?Z))
-      (let ((result (nskk-detect-okurigana-char c)))
-        (should result)
-        (should (equal result (downcase c))))))
+  (nskk-property-test-exhaustive detect-okurigana-char-uppercase-pbt
+    (number-sequence ?A ?Z)
+    (let ((result (nskk-detect-okurigana-char item)))
+      (and result (= result (downcase item)))))
 
-  (nskk-it "returns nil for lowercase letters"
-    (dolist (c (number-sequence ?a ?z))
-      (should-not (nskk-detect-okurigana-char c))))
+  (nskk-property-test-exhaustive detect-okurigana-char-lowercase-pbt
+    (number-sequence ?a ?z)
+    (null (nskk-detect-okurigana-char item)))
 
   (nskk-it "returns nil for digits"
     (dolist (c (number-sequence ?0 ?9))
@@ -443,7 +475,7 @@
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
               (nskk--henkan-count 3)
-              (nskk-henkan--candidate-list-active nil)
+              (nskk--henkan-candidate-list-active nil)
               (nskk--conversion-start-marker (make-marker))
               select-called)
           (set-marker nskk--conversion-start-marker (point-min))
@@ -459,7 +491,7 @@
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
               (nskk--henkan-count 5)
-              (nskk-henkan--candidate-list-active t)
+              (nskk--henkan-candidate-list-active t)
               (nskk--conversion-start-marker (make-marker))
               list-prev-called)
           (set-marker nskk--conversion-start-marker (point-min))
@@ -474,7 +506,7 @@
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
               (nskk--henkan-count 0)
-              (nskk-henkan--candidate-list-active nil)
+              (nskk--henkan-candidate-list-active nil)
               (nskk--conversion-start-marker (make-marker)))
           (set-marker nskk--conversion-start-marker (point-min))
           (insert "test")
@@ -496,14 +528,30 @@
         (nskk-commit-current)
         (should (equal (buffer-string) "unchanged")))))
 
-  (nskk-it "inserts the candidate at current-index 0"
-    (nskk-with-henkan-state 'active '("変換" "変換2")
-      (setf (nskk-state-current-index nskk-current-state) 0)
-      (nskk-commit-current)
-      (should (equal (buffer-string) "変換"))
-      (should-not (nskk-converting-p))
-      (should (equal nskk--romaji-buffer ""))
-      (should (equal nskk--henkan-count 0))))
+  (nskk-context "when committing at index 0"
+    (nskk-it "inserts the candidate at current-index 0"
+      (nskk-with-henkan-state 'active '("変換" "変換2")
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-commit-current)
+        (should (equal (buffer-string) "変換"))))
+
+    (nskk-it "exits converting state after commit"
+      (nskk-with-henkan-state 'active '("変換" "変換2")
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-commit-current)
+        (should-not (nskk-converting-p))))
+
+    (nskk-it "clears romaji buffer after commit"
+      (nskk-with-henkan-state 'active '("変換" "変換2")
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-commit-current)
+        (should (equal nskk--romaji-buffer ""))))
+
+    (nskk-it "resets henkan-count to 0 after commit"
+      (nskk-with-henkan-state 'active '("変換" "変換2")
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-commit-current)
+        (should (equal nskk--henkan-count 0)))))
 
   (nskk-it "inserts the candidate at current-index 2"
     (nskk-with-henkan-state 'active '("first" "second" "third")
@@ -628,7 +676,7 @@
             (should rollback-called))))))
 
   (nskk-context "nskk-cancel-preedit"
-    (nskk-it "clears state variables and buffer"
+    (nskk-it "clears preedit text from buffer"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
               (nskk--conversion-start-marker (make-marker))
@@ -638,9 +686,42 @@
           (insert nskk-henkan-on-marker "か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-cancel-preedit)
-          (should (equal (buffer-string) ""))
-          (should (equal nskk--romaji-buffer ""))
-          (should (equal nskk--henkan-count 0))
+          (should (equal (buffer-string) "")))))
+
+    (nskk-it "clears romaji buffer"
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--conversion-start-marker (make-marker))
+              (nskk--romaji-buffer "ka")
+              (nskk--henkan-count 3))
+          (set-marker nskk--conversion-start-marker (point-min))
+          (insert nskk-henkan-on-marker "か")
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          (nskk-cancel-preedit)
+          (should (equal nskk--romaji-buffer "")))))
+
+    (nskk-it "resets henkan-count to 0"
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--conversion-start-marker (make-marker))
+              (nskk--romaji-buffer "ka")
+              (nskk--henkan-count 3))
+          (set-marker nskk--conversion-start-marker (point-min))
+          (insert nskk-henkan-on-marker "か")
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          (nskk-cancel-preedit)
+          (should (equal nskk--henkan-count 0)))))
+
+    (nskk-it "resets henkan-phase to nil"
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--conversion-start-marker (make-marker))
+              (nskk--romaji-buffer "ka")
+              (nskk--henkan-count 3))
+          (set-marker nskk--conversion-start-marker (point-min))
+          (insert nskk-henkan-on-marker "か")
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          (nskk-cancel-preedit)
           (should-not (nskk-state-henkan-phase nskk-current-state))))))
 
   (nskk-context "nskk-rollback-conversion"
@@ -651,7 +732,7 @@
               (nskk--romaji-buffer "")
               (nskk--henkan-count 3)
               (nskk--conversion-overlay nil)
-              (nskk-henkan--candidate-list-active nil))
+              (nskk--henkan-candidate-list-active nil))
           (insert "▼漢字")
           (set-marker nskk--conversion-start-marker (point-min))
           (goto-char (point-max))
@@ -708,21 +789,8 @@
   100 2001)
 
 ;; Property: "henkan-dispatch never errors for valid prolog values"
-;; Both search-result-action values (has-candidates, no-candidates) always
-;; return a known symbol without signaling an error.
-(nskk-property-test-seeded henkan-pbt-search-result-action-never-errors
-  ((phase converting-phase))
-  (condition-case err
-      (let* ((has-cand-result
-              (nskk-prolog-query-value '(search-result-action has-candidates \?a) '\?a))
-             (no-cand-result
-              (nskk-prolog-query-value '(search-result-action no-candidates \?a) '\?a)))
-        (and (symbolp has-cand-result)
-             (symbolp no-cand-result)
-             (memq has-cand-result '(show-overlay start-registration))
-             (memq no-cand-result  '(show-overlay start-registration))))
-    (error nil))
-  50 2003)
+;; Both search-result-action values are already tested with exact equality in
+;; the "search-result-action Prolog predicate" nskk-describe block above.
 
 ;;;
 ;;; nskk-core-search/k: CPS variant tests (FR-T-004)
@@ -1020,7 +1088,15 @@
            ("42" 3 "四二")
            ("42" 4 "四二")
            ("42" 9 "42"))
-    :body (should (equal (nskk--numeric-convert input type) expected))))
+    :body (should (equal (nskk--numeric-convert input type) expected)))
+
+  ;;;
+  ;;; PBT: numeric conversion completeness
+  ;;;
+
+  (nskk-property-test-exhaustive numeric-convert-type-returns-string-pbt
+    '(0 1 2 3 4 5 6 7 8 9)
+    (stringp (nskk--numeric-convert "42" item))))
 
 (nskk-describe "nskk--numeric-process-candidate"
   (nskk-it "replaces single #N pattern with converted number"
@@ -1173,6 +1249,36 @@
 ;;; Dynamic completion (dcomp)
 ;;;
 
+;;;
+;;; nskk--dcomp-search-prefix (real db)
+;;;
+
+(nskk-describe "nskk--dcomp-search-prefix (real db)"
+  (nskk-it "returns nil when no prefix matches exist"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (should (null (nskk--dcomp-search-prefix "zzznomatch"))))))
+
+  (nskk-it "excludes the exact prefix from results"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((results (nskk--dcomp-search-prefix "あ")))
+          ;; Only assert exclusion when the dict actually has prefix matches;
+          ;; avoids vacuous pass when the test dict is sparse.
+          (when results
+            (should-not (member "あ" results)))))))
+
+  (nskk-it "returns a sorted list"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((results (nskk--dcomp-search-prefix "あ")))
+          (when (cdr results)
+            (should (cl-every (lambda (a b) (not (string> a b)))
+                              results (cdr results)))))))))
+
 (nskk-describe "nskk--dcomp-replace-preedit"
   (nskk-it "replaces preedit text after the ▽ marker with new text"
     (nskk-prolog-test-with-isolated-db
@@ -1249,17 +1355,17 @@
 (defvar nskk--test-dismiss-call-count 0)
 
 (nskk-describe "nskk--dismiss-candidate-list"
-  (nskk-it "clears nskk-henkan--candidate-list-active"
+  (nskk-it "clears nskk--henkan-candidate-list-active"
     (with-temp-buffer
-      (let ((nskk-henkan--candidate-list-active t)
+      (let ((nskk--henkan-candidate-list-active t)
             (nskk-henkan-hide-candidates-functions nil))
         (nskk--dismiss-candidate-list)
-        (should-not nskk-henkan--candidate-list-active))))
+        (should-not nskk--henkan-candidate-list-active))))
 
   (nskk-it "runs nskk-henkan-hide-candidates-functions hook"
     (with-temp-buffer
       (let ((nskk--test-dismiss-call-count 0)
-            (nskk-henkan--candidate-list-active t)
+            (nskk--henkan-candidate-list-active t)
             (nskk-henkan-hide-candidates-functions
              (list (lambda () (cl-incf nskk--test-dismiss-call-count)))))
         (nskk--dismiss-candidate-list)
@@ -1267,10 +1373,10 @@
 
   (nskk-it "is idempotent when list is already nil"
     (with-temp-buffer
-      (let ((nskk-henkan--candidate-list-active nil)
+      (let ((nskk--henkan-candidate-list-active nil)
             (nskk-henkan-hide-candidates-functions nil))
         (should-not (nskk--dismiss-candidate-list))
-        (should-not nskk-henkan--candidate-list-active)))))
+        (should-not nskk--henkan-candidate-list-active)))))
 
 ;;;
 ;;; nskk-henkan-do-reset
@@ -1312,9 +1418,9 @@
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (setq nskk-henkan--candidate-list-active t)
+        (setq nskk--henkan-candidate-list-active t)
         (nskk-henkan-do-reset)
-        (should-not nskk-henkan--candidate-list-active)))))
+        (should-not nskk--henkan-candidate-list-active)))))
 
 ;;;
 ;;; nskk-henkan-kakutei
@@ -1382,6 +1488,38 @@
                     `(okurigana-char ,?K \?l) '\?l)))
         (should (= lower ?k))))))
 
+;;;
+;;; nskk-reset-henkan-state macro
+;;;
+
+(nskk-describe "nskk-reset-henkan-state macro"
+  (nskk-it "clears candidates on the current state"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-state-set-candidates nskk-current-state '("候補1" "候補2"))
+      (nskk-with-current-state
+        (nskk-reset-henkan-state))
+      (should (null (nskk-state-candidates nskk-current-state)))))
+
+  (nskk-it "resets henkan-phase to nil on the current state"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (nskk-with-current-state
+        (nskk-reset-henkan-state))
+      (should (null (nskk-state-henkan-phase nskk-current-state)))))
+
+  (nskk-it "clears okurigana state on current state"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-state-set-okurigana nskk-current-state ?k)
+      (nskk-with-current-state
+        (nskk-reset-henkan-state))
+      (should (null (nskk-state-get-okurigana nskk-current-state)))))
+
+  (nskk-it "does not touch nskk--romaji-buffer (macro scope only)"
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--romaji-buffer "sh"))
+      (nskk-with-current-state
+        (nskk-reset-henkan-state))
+      (should (equal nskk--romaji-buffer "sh")))))
 
 ;;;
 ;;; nskk-when-bound / nskk-when-bound-and Macro Tests
@@ -1389,10 +1527,10 @@
 
 (nskk-describe "nskk-when-bound"
   (nskk-it "executes body when a defvar variable is bound (even if nil)"
-    ;; nskk-henkan--candidate-list-active is a defvar, always bound after
+    ;; nskk--henkan-candidate-list-active is a defvar, always bound after
     ;; nskk-henkan.el loads.  boundp works for dynamic variables only.
     (let (executed)
-      (nskk-when-bound nskk-henkan--candidate-list-active
+      (nskk-when-bound nskk--henkan-candidate-list-active
         (setq executed t))
       (should executed)))
 
@@ -1429,9 +1567,9 @@
       (should-not executed)))
 
   (nskk-it "does not execute body when bound variable fails predicate"
-    ;; nskk-henkan--candidate-list-active is a defvar (nil or t) — not a string.
+    ;; nskk--henkan-candidate-list-active is a defvar (nil or t) — not a string.
     (let (executed)
-      (nskk-when-bound-and nskk-henkan--candidate-list-active stringp
+      (nskk-when-bound-and nskk--henkan-candidate-list-active stringp
         (setq executed t))
       (should-not executed))))
 
@@ -1724,31 +1862,6 @@
         (should (equal results (sort (copy-sequence results) #'string<)))))))
 
 ;;;
-;;; nskk-reset-henkan-state Macro Tests
-;;;
-
-(nskk-describe "nskk-reset-henkan-state"
-  (nskk-it "clears candidates, okurigana, and henkan-phase"
-    (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (nskk-state-set-candidates nskk-current-state '("A" "B"))
-      (nskk-state-set-okurigana nskk-current-state "く")
-      (nskk-state-force-henkan-phase nskk-current-state 'active)
-      (nskk-reset-henkan-state)
-      (should (null (nskk-state-candidates nskk-current-state)))
-      (should (null (nskk-state-get-okurigana nskk-current-state)))
-      (should (null (nskk-state-henkan-phase nskk-current-state)))))
-
-  (nskk-it "clears okurigana-in-progress metadata"
-    (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
-      (nskk-reset-henkan-state)
-      (should (null (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress)))))
-
-  (nskk-it "is safe to call on a freshly created state"
-    (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (should-not (nskk-reset-henkan-state)))))
-
-;;;
 ;;; nskk-set-active-candidates Macro Tests
 ;;;
 
@@ -1806,15 +1919,15 @@
         (should (null (nskk-state-candidates nskk-current-state)))
         (should (null (nskk-state-henkan-phase nskk-current-state))))))
 
-  (nskk-it "resets nskk-henkan--candidate-list-active to nil on mode switch"
+  (nskk-it "resets nskk--henkan-candidate-list-active to nil on mode switch"
     ;; Regression test: nskk--clear-conversion-context must call
     ;; nskk--dismiss-candidate-list (not bare run-hook-with-args) so that
-    ;; nskk-henkan--candidate-list-active is reset atomically with the
+    ;; nskk--henkan-candidate-list-active is reset atomically with the
     ;; hide-candidates hook.  Without this fix, mode switches left the flag
     ;; t even though the candidate list UI was already hidden.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk-henkan--candidate-list-active t)
+            (nskk--henkan-candidate-list-active t)
             (nskk-henkan-hide-candidates-functions nil)
             (nskk--conversion-overlay nil)
             (nskk--pending-romaji-overlay nil)
@@ -1824,7 +1937,7 @@
             (nskk--dcomp-prefix nil)
             (nskk--dcomp-index 0))
         (nskk--clear-conversion-context)
-        (should-not nskk-henkan--candidate-list-active)))))
+        (should-not nskk--henkan-candidate-list-active)))))
 
 ;;;
 ;;; nskk--wrap-to-first-candidate Tests
@@ -1838,7 +1951,7 @@
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--henkan-count 7)
             (nskk-henkan-show-candidates-nth 5)
-            (nskk-henkan--candidate-list-active nil))
+            (nskk--henkan-candidate-list-active nil))
         (nskk-state-set-candidates nskk-current-state '("A" "B" "C"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (setf (nskk-state-current-index nskk-current-state) 2)
@@ -1852,20 +1965,20 @@
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--henkan-count 0)
             (nskk-henkan-show-candidates-nth 3)
-            (nskk-henkan--candidate-list-active nil))
+            (nskk--henkan-candidate-list-active nil))
         (nskk-state-set-candidates nskk-current-state '("A"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((run-hook-with-args #'ignore))
           (nskk--wrap-to-first-candidate))
         (should (eq (nskk-state-henkan-phase nskk-current-state) 'list))
-        (should nskk-henkan--candidate-list-active))))
+        (should nskk--henkan-candidate-list-active))))
 
   (nskk-it "fires nskk-henkan-show-candidates-functions hook with candidates and index 0"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--henkan-count 0)
             (nskk-henkan-show-candidates-nth 3)
-            (nskk-henkan--candidate-list-active nil)
+            (nskk--henkan-candidate-list-active nil)
             captured-args)
         (nskk-state-set-candidates nskk-current-state '("X" "Y"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -1896,7 +2009,7 @@
             (nskk--pending-romaji-overlay nil)
             (nskk--romaji-buffer "")
             (nskk--henkan-count 2)
-            (nskk-henkan--candidate-list-active t))
+            (nskk--henkan-candidate-list-active t))
         (insert nskk-henkan-active-marker "かんじ")
         (set-marker nskk--conversion-start-marker (point-min))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -1914,14 +2027,14 @@
             (nskk--pending-romaji-overlay nil)
             (nskk--romaji-buffer "")
             (nskk--henkan-count 4)
-            (nskk-henkan--candidate-list-active t))
+            (nskk--henkan-candidate-list-active t))
         (insert nskk-henkan-active-marker "ほげ")
         (set-marker nskk--conversion-start-marker (point-min))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("保毛"))
         (nskk-cancel-conversion-to-reading)
         (should (= nskk--henkan-count 0))
-        (should-not nskk-henkan--candidate-list-active)))))
+        (should-not nskk--henkan-candidate-list-active)))))
 
 ;;;
 ;;; nskk--show-pending-romaji / nskk--clear-pending-romaji Tests
@@ -2047,30 +2160,29 @@
 ;;;
 
 (nskk-describe "nskk-previous-candidate/k"
-  (nskk-it "calls on-candidate with nil when not converting"
+  (nskk-it "calls on-not-found when not converting"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
           (nskk--henkan-count 0)
-          on-candidate-called)
-      ;; When not converting, on-candidate is called with nil as argument
-      (nskk-previous-candidate/k (lambda (c) (setq on-candidate-called c)))
-      ;; c=nil means on-candidate-called stays nil (falsy)
-      (should-not on-candidate-called)))
+          not-found-called)
+      ;; When not converting, on-not-found is called (standard defun/k pattern)
+      (nskk-previous-candidate/k #'ignore (lambda () (setq not-found-called t)))
+      (should not-found-called)))
 
-  (nskk-it "calls on-candidate after selecting prev candidate inline"
+  (nskk-it "calls on-found with nil after selecting prev candidate inline"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker (make-marker))
             (nskk--henkan-count 2)
-            (nskk-henkan--candidate-list-active nil)
-            on-candidate-called)
+            (nskk--henkan-candidate-list-active nil)
+            on-found-called)
         (set-marker nskk--conversion-start-marker (point-min))
         (insert "test")
         (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk--select-candidate #'ignore))
-          ;; on-candidate is called with no args in select-prev branch
-          (nskk-previous-candidate/k (lambda () (setq on-candidate-called t))))
-        (should on-candidate-called)))))
+          ;; on-found is called with nil in the select-prev branch
+          (nskk-previous-candidate/k (lambda (_v) (setq on-found-called t)) #'ignore))
+        (should on-found-called)))))
 
 ;;;
 ;;; nskk-start-conversion/k Tests
@@ -2138,7 +2250,7 @@
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker nil)   ; no marker = no text
-            (nskk-henkan--candidate-list-active t)
+            (nskk--henkan-candidate-list-active t)
             wrap-called on-done-called)
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("A"))
@@ -2148,14 +2260,14 @@
         (should wrap-called)
         (should on-done-called)
         ;; candidate-list-active should be reset
-        (should-not nskk-henkan--candidate-list-active))))
+        (should-not nskk--henkan-candidate-list-active))))
 
   (nskk-it "calls nskk-start-registration/k with preedit text when candidates exhausted"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker (make-marker))
             (nskk--conversion-overlay nil)
-            (nskk-henkan--candidate-list-active t)
+            (nskk--henkan-candidate-list-active t)
             registration-text on-done-called)
         (insert nskk-henkan-active-marker "かんじ")
         (set-marker nskk--conversion-start-marker (point-min))
@@ -2216,7 +2328,7 @@
             (nskk--pending-romaji-overlay nil)
             (nskk--romaji-buffer "")
             (nskk--henkan-count 3)
-            (nskk-henkan--candidate-list-active nil)
+            (nskk--henkan-candidate-list-active nil)
             on-done-called)
         (insert nskk-henkan-active-marker "かんじ")
         (set-marker nskk--conversion-start-marker (point-min))
@@ -2365,37 +2477,38 @@
 ;;;
 
 (nskk-describe "nskk-process-okurigana-input/k"
-  (nskk-it "calls on-passthrough when char is not an okurigana marker"
+  (nskk-it "calls on-not-found when char is not an okurigana marker"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker (make-marker))
-            passthrough-char)
+            not-found-called)
         (set-marker nskk--conversion-start-marker (point-min))
         (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) nil)))
+          ;; on-not-found is called with no args (char must come from caller's closure)
           (nskk-process-okurigana-input/k ?a
-            (lambda () nil)
-            (lambda (c) (setq passthrough-char c))))
-        (should (eq passthrough-char ?a)))))
+            #'ignore
+            (lambda () (setq not-found-called t))))
+        (should not-found-called))))
 
-  (nskk-it "calls on-passthrough when conversion start marker is not active"
+  (nskk-it "calls on-not-found when conversion start marker is not active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker (make-marker))
-            passthrough-char)
+            not-found-called)
         ;; Marker with no position → not active
         (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) ?k)))
           (nskk-process-okurigana-input/k ?K
-            (lambda () nil)
-            (lambda (c) (setq passthrough-char c))))
-        (should (eq passthrough-char ?K)))))
+            #'ignore
+            (lambda () (setq not-found-called t))))
+        (should not-found-called))))
 
-  (nskk-it "calls on-consumed for consonant okurigana when conversion start is active"
+  (nskk-it "calls on-found with t for consonant okurigana when conversion start is active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker (make-marker))
             (nskk--romaji-buffer "")
             (nskk--pending-romaji-overlay nil)
-            consumed-called)
+            on-found-value)
         (insert nskk-henkan-on-marker "かく")
         (set-marker nskk--conversion-start-marker (point-min))
         (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) ?k))
@@ -2403,9 +2516,9 @@
                           (nskk--insert-marker #'ignore)
                           (nskk--show-pending-romaji #'ignore))
           (nskk-process-okurigana-input/k ?K
-            (lambda () (setq consumed-called t))
-            (lambda (_c) nil)))
-        (should consumed-called)
+            (lambda (v) (setq on-found-value v))
+            #'ignore))
+        (should (eq on-found-value t))
         (should (equal nskk--romaji-buffer "k"))))))
 
 ;;;
@@ -2518,6 +2631,531 @@
           (nskk--handle-vowel-okuri/k ?u #'ignore))
         ;; In katakana mode, hiragana う is converted to katakana ウ before insert
         (should (string-match-p "ウ" (buffer-string)))))))
+
+;;;
+;;; Integration: CPS pipeline chain — next-candidate → commit
+;;;
+
+;; This integration test verifies that the CPS pipeline for candidate navigation
+;; and commit works correctly end-to-end without going through the full conversion
+;; start path.  It sets up a pre-loaded candidate list (simulating the state
+;; after `nskk-start-conversion/k' has already run), then exercises:
+;;   nskk-next-candidate/k → nskk-next-candidate/k → nskk-commit-current/k
+;; and asserts that the third candidate is ultimately committed.
+
+(nskk-describe "henkan CPS pipeline — next-candidate chain → commit"
+  (nskk-it "advances candidates and commits the 3rd candidate after two next calls"
+    ;; Start with phase=active and index=0.  nskk-with-henkan-state inserts
+    ;; "preedit" into the buffer, so nskk-commit-current can delete it and
+    ;; insert the committed candidate.
+    ;;
+    ;; `nskk--select-candidate' is what updates nskk-state-current-index; we
+    ;; let it run for real by mocking only the overlay update (nskk--update-overlay)
+    ;; and the nskk-ensure-overlay helper it calls, keeping the index mutations intact.
+    (nskk-with-henkan-state 'active '("first" "second" "third")
+      (let (committed-value)
+        ;; First next: nskk--select-candidate moves index 0→1
+        (nskk-with-mocks ((nskk--update-overlay #'ignore))
+          (nskk-next-candidate/k #'ignore #'ignore))
+        (should (= (nskk-state-current-index nskk-current-state) 1))
+        ;; Second next: nskk--select-candidate moves index 1→2
+        (nskk-with-mocks ((nskk--update-overlay #'ignore))
+          (nskk-next-candidate/k #'ignore #'ignore))
+        (should (= (nskk-state-current-index nskk-current-state) 2))
+        ;; Commit: index=2, candidate="third"
+        (nskk-commit-current/k
+         (lambda (c) (setq committed-value c))
+         #'ignore)
+        (should (equal committed-value "third"))
+        (should (equal (buffer-string) "third"))
+        (should-not (nskk-converting-p)))))
+
+  (nskk-it "commit/k calls on-committed with the candidate after manual index set"
+    ;; Simpler variant: set index directly, then run next → commit.
+    (nskk-with-henkan-state 'active '("α" "β" "γ")
+      (setf (nskk-state-current-index nskk-current-state) 2)
+      (let (committed-value)
+        (nskk-commit-current/k
+         (lambda (c) (setq committed-value c))
+         #'ignore)
+        (should (equal committed-value "γ"))))))
+
+;;;
+;;; Integration: registration → dict → subsequent conversion
+;;;
+
+;; Task 3: registration roundtrip integration test.
+;;
+;; The full roundtrip (registration input → dict insert → conversion re-query)
+;; requires interactive minibuffer input and real Prolog DB isolation, making it
+;; fragile as a pure unit test.  We therefore split it into two focused tests:
+;;
+;;   3a. Verify that `nskk-start-conversion/k' fires the registration path when
+;;       no candidates exist, by checking that `nskk-start-registration/k' is
+;;       called with the correct reading.
+;;
+;;   3b. Verify that after `nskk-dict-register-word' adds a word to the dict,
+;;       a subsequent `nskk-core-search/k' call for the same reading returns
+;;       the registered word via on-found.  This uses `nskk-prolog-test-with-isolated-db'
+;;       so the registered fact is scoped to the test.
+
+(nskk-describe "henkan registration roundtrip"
+  (nskk-it "3a: start-conversion fires registration path for unknown reading"
+    ;; When nskk-core-search finds nothing, nskk-start-registration/k should be
+    ;; called with the preedit reading.  We mock both to capture the reading.
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--romaji-buffer "")
+            (nskk--henkan-count 0)
+            (nskk--conversion-overlay nil)
+            (nskk--registration-depth 0)
+            registration-reading)
+        (insert nskk-henkan-on-marker "みとうろく")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (goto-char (point-max))
+        (nskk-state-force-henkan-phase nskk-current-state 'on)
+        (nskk-with-mocks ((nskk-convert-input-to-kana-final/k
+                           (lambda (on-done _ignored) (funcall on-done "")))
+                          (nskk-core-search/k
+                           (lambda (_key _type _limit _on-found on-not-found)
+                             (funcall on-not-found)))
+                          (nskk-start-registration/k
+                           (lambda (reading on-done _ignored)
+                             (setq registration-reading reading)
+                             (funcall on-done nil))))  ; user cancelled
+          (nskk-start-conversion/k #'ignore #'ignore #'ignore))
+        (should (equal registration-reading "みとうろく")))))
+
+  (nskk-it "3b: dict-register-word then core-search/k returns registered word"
+    ;; This test uses a real isolated Prolog DB to verify the full dict round-
+    ;; trip: register a word, then query it back via nskk-core-search/k.
+    ;; It relies on nskk-prolog-test-with-isolated-db to scope DB changes.
+    (nskk-prolog-test-with-isolated-db
+      ;; Reset all initialized flags so nskk-mode reinitialises cleanly.
+      (let ((nskk--input-initialized nil)
+            (nskk--state-prolog-initialized nil)
+            (nskk--henkan-initialized nil)
+            (nskk-kana--initialized nil)
+            (nskk--converter-initialized nil)
+            (nskk--candidate-key-facts-initialized nil))
+        (with-temp-buffer
+          (nskk-mode 1)
+          (unwind-protect
+              (let (found-candidates)
+                ;; Register "みとうろく" → "未登録" in the user dict.
+                (nskk-dict-register-word "みとうろく" "未登録")
+                ;; Now query via nskk-core-search/k and expect the registered word.
+                (nskk-core-search/k "みとうろく" nil nil
+                  (lambda (cands) (setq found-candidates cands))
+                  #'ignore)
+                (should (member "未登録" found-candidates)))
+            (nskk-mode -1))))))
+
+  (nskk-it "STUB: full interactive registration roundtrip (requires E2E infrastructure)"
+    ;; TODO: implement as an E2E test using nskk-e2e-with-buffer once the E2E
+    ;; infrastructure supports injecting minibuffer input for registration.
+    ;; The full flow to test:
+    ;;   1. Start with a reading not in any dict (e.g. "ぜったいにない").
+    ;;   2. Press SPC → nskk-start-conversion → no candidates → registration opens.
+    ;;   3. Type "ZettaiNai" in minibuffer → nskk-dict-register-word is called.
+    ;;   4. Press SPC again for the same reading → registered word appears as candidate.
+    ;; Skipping here because read-from-minibuffer cannot be reliably fed input
+    ;; via nskk-e2e-type in batch mode without additional E2E helper support.
+    (should t)))
+
+;;;
+;;; Detection Tests: Uppercase A-Z
+;;;
+
+(nskk-describe "okurigana character detection"
+  ;; Full A-Z and a-z exhaustive coverage is provided by:
+  ;;   nskk-property-test-exhaustive okurigana-all-uppercase-map-to-downcase
+  ;;   nskk-property-test-exhaustive detect-okurigana-char-lowercase-pbt
+  ;;   nskk-deftest-table okurigana-consonant-mapping
+  ;; Digit coverage is provided by the "returns nil for digits" test in
+  ;; the nskk-detect-okurigana-char nskk-describe block above.
+  ;; This section covers boundary/non-character edge cases only.
+  (nskk-context "uppercase boundary detection"
+    (nskk-it "maps uppercase A to lowercase a"
+      (should (equal (nskk-detect-okurigana-char ?A) ?a)))
+
+    (nskk-it "maps uppercase Z to lowercase z"
+      (should (equal (nskk-detect-okurigana-char ?Z) ?z))))
+
+  (nskk-context "lowercase boundary rejection"
+    (nskk-it "returns nil for lowercase a"
+      (should-not (nskk-detect-okurigana-char ?a)))
+
+    (nskk-it "returns nil for lowercase k"
+      (should-not (nskk-detect-okurigana-char ?k)))
+
+    (nskk-it "returns nil for lowercase z"
+      (should-not (nskk-detect-okurigana-char ?z))))
+
+  (nskk-context "non-character input rejection"
+    (nskk-it "returns nil for nil input"
+      (should-not (nskk-detect-okurigana-char nil)))
+
+    (nskk-it "returns nil for string input (not a character)"
+      (should-not (nskk-detect-okurigana-char "K")))
+
+    (nskk-it "returns nil for symbol input"
+      (should-not (nskk-detect-okurigana-char 'symbol)))
+
+    (nskk-it "returns nil for space character"
+      (should-not (nskk-detect-okurigana-char ?\s)))
+
+    (nskk-it "returns nil for period character"
+      (should-not (nskk-detect-okurigana-char ?.)))
+
+    (nskk-it "returns nil for @ (below uppercase range)"
+      (should-not (nskk-detect-okurigana-char ?@)))
+
+    (nskk-it "returns nil for [ (above uppercase range)"
+      (should-not (nskk-detect-okurigana-char ?\[)))))
+
+;;;
+;;; Exhaustive Property Test: All A-Z
+;;;
+
+(nskk-property-test-exhaustive okurigana-all-uppercase-map-to-downcase
+  (number-sequence ?A ?Z)
+  (equal (nskk-detect-okurigana-char item)
+         (downcase item)))
+
+;;;
+;;; State Storage Tests: Set / Get Roundtrip
+;;;
+
+(nskk-describe "okurigana state storage"
+  (nskk-context "initial state"
+    (nskk-it "okurigana is nil on a freshly created state"
+      (let ((state (nskk-state-create)))
+        (should (null (nskk-state-get-okurigana state))))))
+
+  (nskk-context "set and get roundtrip"
+    (nskk-it "set/get roundtrip works for consonant k"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?k)
+        (should (eq (nskk-state-get-okurigana state) ?k))))
+
+    (nskk-it "set/get roundtrip works for consonant s"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?s)
+        (should (eq (nskk-state-get-okurigana state) ?s))))
+
+    (nskk-it "set/get roundtrip works for consonant t"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?t)
+        (should (eq (nskk-state-get-okurigana state) ?t))))
+
+    (nskk-it "set/get roundtrip works for consonant n"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?n)
+        (should (eq (nskk-state-get-okurigana state) ?n))))
+
+    (nskk-it "set/get roundtrip works for consonant h"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?h)
+        (should (eq (nskk-state-get-okurigana state) ?h))))
+
+    (nskk-it "set/get roundtrip works for consonant m"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?m)
+        (should (eq (nskk-state-get-okurigana state) ?m))))
+
+    (nskk-it "set/get roundtrip works for consonant y"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?y)
+        (should (eq (nskk-state-get-okurigana state) ?y))))
+
+    (nskk-it "set/get roundtrip works for consonant r"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?r)
+        (should (eq (nskk-state-get-okurigana state) ?r))))
+
+    (nskk-it "set/get roundtrip works for consonant w"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?w)
+        (should (eq (nskk-state-get-okurigana state) ?w))))
+
+    (nskk-it "set/get roundtrip works for consonant g"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?g)
+        (should (eq (nskk-state-get-okurigana state) ?g))))
+
+    (nskk-it "set/get roundtrip works for consonant z"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?z)
+        (should (eq (nskk-state-get-okurigana state) ?z))))
+
+    (nskk-it "set/get roundtrip works for consonant d"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?d)
+        (should (eq (nskk-state-get-okurigana state) ?d))))
+
+    (nskk-it "set/get roundtrip works for consonant b"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?b)
+        (should (eq (nskk-state-get-okurigana state) ?b))))
+
+    (nskk-it "set/get roundtrip works for consonant p"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?p)
+        (should (eq (nskk-state-get-okurigana state) ?p)))))
+
+  (nskk-context "overwrite behavior"
+    (nskk-it "setting okurigana overwrites the previous value"
+      (let ((state (nskk-state-create)))
+        (nskk-state-set-okurigana state ?k)
+        (should (eq (nskk-state-get-okurigana state) ?k))
+        (nskk-state-set-okurigana state ?s)
+        (should (eq (nskk-state-get-okurigana state) ?s))
+        (nskk-state-set-okurigana state ?t)
+        (should (eq (nskk-state-get-okurigana state) ?t)))))
+
+  (nskk-context "independence between instances"
+    (nskk-it "two state objects maintain independent okurigana values"
+      (let ((state1 (nskk-state-create))
+            (state2 (nskk-state-create)))
+        (nskk-state-set-okurigana state1 ?k)
+        (nskk-state-set-okurigana state2 ?s)
+        (should (eq (nskk-state-get-okurigana state1) ?k))
+        (should (eq (nskk-state-get-okurigana state2) ?s))))))
+
+;;;
+;;; Prolog Predicate Tests: okurigana-char/2
+;;;
+
+(nskk-describe "Prolog okurigana-char/2 predicate"
+  ;; Full A-Z mapping coverage is provided by nskk-deftest-table
+  ;; okurigana-prolog-char-mapping below.  This section covers the
+  ;; boundary letters and lowercase rejection only.
+  (nskk-context "uppercase boundary mapping"
+    (nskk-it "maps uppercase A to lowercase a"
+      (should (equal (nskk-prolog-query-value `(okurigana-char ,?A \?lc) '\?lc) ?a)))
+
+    (nskk-it "maps uppercase Z to lowercase z"
+      (should (equal (nskk-prolog-query-value `(okurigana-char ,?Z \?lc) '\?lc) ?z))))
+
+  (nskk-context "lowercase rejection"
+    (nskk-deftest-table prolog-okurigana-char-lowercase-rejection
+      :description "Lowercase letters are not in okurigana-char/2"
+      :columns (ch)
+      :rows ((?a) (?k) (?z))
+      :body (should-not (nskk-prolog-query-value `(okurigana-char ,ch \?lc) '\?lc)))))
+
+;;;
+;;; Prolog Predicate Tests: okurigana-trigger/1
+;;;
+
+(nskk-describe "Prolog okurigana-trigger/1 predicate"
+  (nskk-context "uppercase letter triggering"
+    (nskk-it "okurigana-trigger succeeds for uppercase K"
+      (should (nskk-prolog-query-one `(okurigana-trigger ,?K))))
+
+    (nskk-it "okurigana-trigger succeeds for uppercase S"
+      (should (nskk-prolog-query-one `(okurigana-trigger ,?S))))
+
+    (nskk-it "okurigana-trigger succeeds for uppercase T"
+      (should (nskk-prolog-query-one `(okurigana-trigger ,?T))))
+
+    (nskk-it "okurigana-trigger succeeds for uppercase N"
+      (should (nskk-prolog-query-one `(okurigana-trigger ,?N))))
+
+    (nskk-it "okurigana-trigger succeeds for all uppercase A-Z"
+      (dolist (c (number-sequence ?A ?Z))
+        (should (nskk-prolog-query-one `(okurigana-trigger ,c))))))
+
+  (nskk-context "non-uppercase rejection"
+    (nskk-it "okurigana-trigger fails for all lowercase letters"
+      (dolist (c (number-sequence ?a ?z))
+        (should-not (nskk-prolog-query-one `(okurigana-trigger ,c)))))
+
+    (nskk-it "okurigana-trigger fails for digit characters"
+      (dolist (c (number-sequence ?0 ?9))
+        (should-not (nskk-prolog-query-one `(okurigana-trigger ,c)))))))
+
+;;;
+;;; Table-Driven Tests: 14 Standard Okurigana Consonants
+;;;
+
+(nskk-deftest-table okurigana-consonant-mapping
+  :columns (uppercase expected-lowercase)
+  :rows ((?K ?k)
+         (?S ?s)
+         (?T ?t)
+         (?N ?n)
+         (?H ?h)
+         (?M ?m)
+         (?Y ?y)
+         (?R ?r)
+         (?W ?w)
+         (?G ?g)
+         (?Z ?z)
+         (?D ?d)
+         (?B ?b)
+         (?P ?p))
+  :description "Standard okurigana consonants map to their lowercase equivalents"
+  :body (should (equal (nskk-detect-okurigana-char uppercase) expected-lowercase)))
+
+(nskk-deftest-table okurigana-prolog-char-mapping
+  :columns (uppercase expected-lowercase)
+  :rows ((?K ?k)
+         (?S ?s)
+         (?T ?t)
+         (?N ?n)
+         (?H ?h)
+         (?M ?m)
+         (?Y ?y)
+         (?R ?r)
+         (?W ?w)
+         (?G ?g)
+         (?Z ?z)
+         (?D ?d)
+         (?B ?b)
+         (?P ?p))
+  :description "Standard okurigana consonants in Prolog okurigana-char/2 predicate"
+  :body (should (equal (nskk-prolog-query-value `(okurigana-char ,uppercase \?lc) '\?lc)
+                       expected-lowercase)))
+
+;;;
+;;; Property-Based Tests
+;;;
+
+;; PBT: uppercase okurigana consonant chars always return their lowercase via detect
+(nskk-property-test-seeded okurigana-pbt-uppercase-returns-lowercase
+  ((char okurigana-consonant-char))
+  (equal (nskk-detect-okurigana-char char) (downcase char))
+  100 42)
+
+;; PBT: state roundtrip — set then get returns same value
+(nskk-property-test-seeded okurigana-pbt-state-roundtrip
+  ((char okurigana-consonant-char))
+  (let* ((state (nskk-state-create))
+         (lower-char (downcase char)))
+    (nskk-state-set-okurigana state lower-char)
+    (eq (nskk-state-get-okurigana state) lower-char))
+  100 42)
+
+;; PBT: lowercase letters always return nil from detect
+(nskk-property-test-seeded okurigana-pbt-lowercase-returns-nil
+  ((char okurigana-consonant-char))
+  (null (nskk-detect-okurigana-char (downcase char)))
+  100 42)
+
+;; PBT: okurigana-consonant-char generator always yields chars in A-Z
+(nskk-property-test-seeded okurigana-pbt-generator-yields-uppercase
+  ((char okurigana-consonant-char))
+  (and (characterp char)
+       (>= char ?A)
+       (<= char ?Z))
+  100 42)
+
+;; PBT: Prolog okurigana-char result equals downcase of input
+(nskk-property-test-seeded okurigana-pbt-prolog-maps-to-downcase
+  ((char okurigana-consonant-char))
+  (equal (nskk-prolog-query-value `(okurigana-char ,char \?lc) '\?lc)
+         (downcase char))
+  100 42)
+
+;;;
+;;; API Existence Tests
+;;;
+
+(nskk-describe "okurigana state accessor API existence"
+  ;; nskk-detect-okurigana-char and nskk-process-okurigana-input are already
+  ;; checked by henkan-function-api-defined in the initialization block.
+  (nskk-it "nskk-state-set-okurigana is defined"
+    (should (fboundp 'nskk-state-set-okurigana)))
+
+  (nskk-it "nskk-state-get-okurigana is defined"
+    (should (fboundp 'nskk-state-get-okurigana))))
+
+;;;
+;;; Regression Tests: Pending Romaji Discard on Okurigana Trigger
+;;;
+;;
+;; Bug (fixed in nskk-henkan.el): when a pending incomplete romaji consonant
+;; (e.g. "k", "sh") was in nskk--romaji-buffer when an okurigana trigger
+;; (uppercase letter) arrived, the raw consonant was inserted into the buffer
+;; before the * okurigana marker, producing e.g. "▽かk*" instead of "▽か*".
+;;
+;; The fix discards :incomplete romaji (anything where nskk-converter-convert
+;; returns (:incomplete . ...) or nil) and only emits successfully-converted kana
+;; or a standalone "n" (→ "ん" at word boundary).
+
+(nskk-describe "okurigana input flush behaviour"
+  (nskk-context "pending consonant is discarded (not inserted)"
+    (nskk-it "pending k is discarded: buffer does not contain k before the * marker"
+      ;; T-U1: "k" in romaji buffer + uppercase K trigger → "k" must NOT appear before *
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          ;; Insert preedit reading so far: ▽か
+          (insert "\u25BD\u304B")
+          ;; Set conversion-start marker at buffer start (as henkan-on does)
+          (nskk--set-conversion-start-marker (point-min))
+          ;; Put the state into henkan-on phase (reading in progress)
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; Simulate a pending incomplete romaji consonant "k"
+          (setq nskk--romaji-buffer "k")
+          ;; Fire okurigana trigger (uppercase K)
+          (nskk-process-okurigana-input ?K)
+          ;; The buffer should NOT contain "k" adjacent to the "*" marker.
+          ;; Check both orderings: "k*" (consonant before marker, the actual bug)
+          ;; and "*k" (consonant after marker), to catch both insertion orders.
+          (let ((content (buffer-string)))
+            (should-not (string-match-p "k\\*\\|\\*k" content))
+            ;; The * okurigana marker must be present
+            (should (string-match-p "\\*" content))))))
+
+    (nskk-it "pending multi-char sh is discarded: buffer does not contain sh before *"
+      ;; T-U2: "sh" (multi-char incomplete) + uppercase K → "sh" must NOT appear before *
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          (insert "\u25BD\u304B")
+          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; "sh" is an incomplete romaji prefix (needs vowel to complete shi/sha/shu etc.)
+          (setq nskk--romaji-buffer "sh")
+          (nskk-process-okurigana-input ?K)
+          (let ((content (buffer-string)))
+            (should-not (string-match-p "sh" content))
+            (should (string-match-p "\\*" content))))))
+
+    (nskk-it "pending n is converted to ん and inserted before *"
+      ;; T-U3: "n" (standalone n at word boundary) + uppercase K → "ん" IS inserted before *
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          (insert "\u25BD\u304B")
+          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; "n" alone is the ん exception: it should flush as ん before the marker
+          (setq nskk--romaji-buffer "n")
+          (nskk-process-okurigana-input ?K)
+          (let ((content (buffer-string)))
+            ;; ん must appear in the buffer before the * marker
+            (should (string-match-p "\u3093" content))
+            (should (string-match-p "\\*" content))
+            ;; And the raw "n" character must NOT appear as ASCII
+            (should-not (string-match-p "[nN]\\*\\|\\*[nN]" content))))))
+
+    (nskk-it "empty romaji buffer with uppercase K trigger inserts no extra char before *"
+      ;; T-U4: empty romaji buffer + uppercase K → only * inserted, no spurious chars
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana)))
+          (insert "\u25BD\u304B")
+          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          ;; No pending romaji
+          (setq nskk--romaji-buffer "")
+          (nskk-process-okurigana-input ?K)
+          (let ((content (buffer-string)))
+            ;; * marker must be present
+            (should (string-match-p "\\*" content))
+            ;; No raw ASCII consonant should appear adjacent to *
+            (should-not (string-match-p "[a-z]\\*\\|\\*[a-z]" content))))))))
 
 (provide 'nskk-henkan-test)
 

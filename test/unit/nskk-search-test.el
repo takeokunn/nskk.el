@@ -49,10 +49,6 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
         (nskk-prolog-assert (list (list pred key val)))))
     (make-nskk-dict-index :predicate pred)))
 
-(defun nskk-search-test--make-entry (key candidates)
-  "Create a test dict-entry with KEY and CANDIDATES."
-  (make-nskk-dict-entry :key key :candidates candidates))
-
 ;;;
 ;;; nskk-search exact match
 ;;;
@@ -207,13 +203,13 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   (nskk-context "dedupe-fuzzy"
     (nskk-it "returns all entries when no duplicates"
       (let ((results `(("a" entry1 . 0) ("b" entry2 . 1) ("c" entry3 . 2))))
-        (should (= (length (nskk-search--dedupe-fuzzy results)) 3))))
+        (should (= (length (nskk--search-dedupe-fuzzy results)) 3))))
 
     (nskk-it "keeps the entry with the smallest distance"
       (let* ((far   `("漢字" entry-far  . 3))
              (close `("漢字" entry-close . 1))
              (results (list far close)))
-        (let ((deduped (nskk-search--dedupe-fuzzy results)))
+        (let ((deduped (nskk--search-dedupe-fuzzy results)))
           (should (= (length deduped) 1))
           ;; The entry with smaller distance should be kept
           (should (= (cddr (car deduped)) 1)))))
@@ -222,11 +218,11 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
       (let* ((first  `("同じ" entry-first  . 2))
              (second `("同じ" entry-second . 2))
              (results (list first second)))
-        (let ((deduped (nskk-search--dedupe-fuzzy results)))
+        (let ((deduped (nskk--search-dedupe-fuzzy results)))
           (should (= (length deduped) 1)))))
 
     (nskk-it "returns nil for empty input"
-      (should (null (nskk-search--dedupe-fuzzy nil))))))
+      (should (null (nskk--search-dedupe-fuzzy nil))))))
 
 ;;;
 ;;; Levenshtein Distance Tests
@@ -246,7 +242,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
          ("かんじ" "かんじ"   0  "identical Japanese")
          ("かんじ" "かんき"   1  "Japanese single substitution")
          ("にほん" "にほんご" 1  "Japanese single insertion"))
-  :body (should (= (nskk-search--levenshtein-distance s1 s2) expected)))
+  :body (should (= (nskk--search-levenshtein-distance s1 s2) expected)))
 
 ;;;
 ;;; CPS variant direct tests
@@ -308,8 +304,8 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
          (nil        "し"  t   "nil filter: matches any okuri")
          (nil        nil   t   "nil filter: matches nil okuri"))
   :body (if matches-p
-            (should (nskk-search--match-okuri-type-p okuri-type entry-okuri))
-          (should-not (nskk-search--match-okuri-type-p okuri-type entry-okuri))))
+            (should (nskk--search-match-okuri-type-p okuri-type entry-okuri))
+          (should-not (nskk--search-match-okuri-type-p okuri-type entry-okuri))))
 
 ;;;
 ;;; nskk-search empty/nil handling
@@ -354,19 +350,19 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   (nskk-context "duplicate removal"
     (nskk-it "returns all entries when there are no duplicates"
       (let ((results '(("a" . 1) ("b" . 2) ("c" . 3))))
-        (let ((unique (nskk-search--remove-duplicates results)))
+        (let ((unique (nskk--search-remove-duplicates results)))
           (should (= (length unique) 3)))))
 
     (nskk-it "deduplicates keeping the first occurrence"
       (let ((results '(("a" . 1) ("b" . 2) ("a" . 3) ("c" . 4) ("b" . 5))))
-        (let ((unique (nskk-search--remove-duplicates results)))
+        (let ((unique (nskk--search-remove-duplicates results)))
           (should (= (length unique) 3))
           ;; First occurrence should be kept
           (should (equal (cdr (assoc "a" unique)) 1))
           (should (equal (cdr (assoc "b" unique)) 2)))))
 
     (nskk-it "returns nil for empty input"
-      (should (null (nskk-search--remove-duplicates nil))))))
+      (should (null (nskk--search-remove-duplicates nil))))))
 
 ;;;
 ;;; Sort Tests
@@ -389,31 +385,87 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
              (e-a (make-nskk-dict-entry :key "あ" :candidates '("亜")))
              (e-k (make-nskk-dict-entry :key "か" :candidates '("家")))
              (results `(("あ" . ,e-a) ("か" . ,e-k)))
-             (sorted (nskk-search--sort-results results)))
+             (sorted (nskk--search-sort-results results)))
         ;; Higher score (か=10) should come before lower score (あ=1)
         (should (equal (car (car sorted)) "か")))))
 
   (nskk-it "sort method 'none' returns results unchanged"
     (let ((nskk-search-sort-method 'none)
           (results '(("c" . 3) ("a" . 1) ("b" . 2))))
-      (let ((sorted (nskk-search--sort-results results)))
+      (let ((sorted (nskk--search-sort-results results)))
         (should (equal sorted results)))))
 
   (nskk-it "sort method 'kana' sorts results"
     (let ((nskk-search-sort-method 'kana)
           (results '(("さ" . 3) ("あ" . 1) ("か" . 2))))
-      (let ((sorted (nskk-search--sort-results results)))
-        (should (equal (car (nth 0 sorted)) "あ"))))))
+      (let ((sorted (nskk--search-sort-results results)))
+        (should (equal (car (nth 0 sorted)) "あ")))))
+
+  (nskk-it "sort-by-kana-order returns nil for empty input"
+    (should (null (nskk-search-sort-by-kana-order nil)))))
+
+;;;
+;;; nskk--search-post-process-results direct tests
+;;;
+
+(nskk-describe "nskk--search-post-process-results"
+  (nskk-it "deduplicates results keeping first occurrence"
+    (let* ((e1 (make-nskk-dict-entry :key "a" :candidates '("v1")))
+           (e2 (make-nskk-dict-entry :key "b" :candidates '("v2")))
+           (e3 (make-nskk-dict-entry :key "a" :candidates '("v3")))
+           (results (list (cons "a" e1) (cons "b" e2) (cons "a" e3)))
+           (processed (nskk--search-post-process-results results nil nil)))
+      (should (= (length processed) 2))
+      (should (assoc "a" processed))
+      (should (assoc "b" processed))))
+
+  (nskk-it "applies limit after deduplication"
+    (let* ((entries (mapcar (lambda (k)
+                              (cons k (make-nskk-dict-entry :key k :candidates (list k))))
+                            '("a" "b" "c" "d" "e")))
+           (processed (nskk--search-post-process-results entries nil 3)))
+      (should (= (length processed) 3))))
+
+  (nskk-it "returns all results when limit is nil"
+    (let* ((entries (mapcar (lambda (k)
+                              (cons k (make-nskk-dict-entry :key k :candidates (list k))))
+                            '("a" "b" "c")))
+           (processed (nskk--search-post-process-results entries nil nil)))
+      (should (= (length processed) 3))))
+
+  (nskk-it "filters by okuri-nasi type"
+    (let* ((e-plain (make-nskk-dict-entry :key "a" :candidates '("v1")))
+           (e-okuri (make-nskk-dict-entry :key "b" :candidates '("v2") :okuri "し"))
+           (results (list (cons "a" e-plain) (cons "b" e-okuri)))
+           (processed (nskk--search-post-process-results results 'okuri-nasi nil)))
+      (should (= (length processed) 1))
+      (should (assoc "a" processed))))
+
+  (nskk-it "returns nil for empty input"
+    (should (null (nskk--search-post-process-results nil nil nil)))))
 
 ;;;
 ;;; Cache Key Generation Tests
 ;;;
 
-(nskk-describe "nskk-search--cache-key"
+(defconst nskk-search-test--all-cache-key-queries
+  '(("query1" exact   nil)
+    ("query1" prefix  nil)
+    ("query1" exact   okuri-ari)
+    ("query1" exact   okuri-nasi)
+    ("query2" exact   nil)
+    ("query1" fuzzy   nil)
+    ("query1" partial okuri-ari))
+  "All (QUERY TYPE OKURI-TYPE) triples used by PBT-004 to verify cache key
+uniqueness.  Each triple represents a distinct parameter combination; the
+test asserts that every triple produces a key different from all others
+in this list.")
+
+(nskk-describe "nskk--search-cache-key"
   (nskk-it "generates distinct string keys for different parameter combinations"
-    (let ((key1 (nskk-search--cache-key "query" 'exact nil))
-          (key2 (nskk-search--cache-key "query" 'prefix nil))
-          (key3 (nskk-search--cache-key "query" 'exact 'okuri-ari)))
+    (let ((key1 (nskk--search-cache-key "query" 'exact nil))
+          (key2 (nskk--search-cache-key "query" 'prefix nil))
+          (key3 (nskk--search-cache-key "query" 'exact 'okuri-ari)))
       (should (stringp key1))
       (should (stringp key2))
       (should (stringp key3))
@@ -422,7 +474,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
       (should (not (equal key1 key3)))))
 
   (nskk-it "generates a string containing 'exact' and 'none' for nil parameters"
-    (let ((key (nskk-search--cache-key "query" nil nil)))
+    (let ((key (nskk--search-cache-key "query" nil nil)))
       (should (stringp key))
       (should (string-match-p "exact" key))
       (should (string-match-p "none" key))))
@@ -437,24 +489,16 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
            ("query2" exact   nil         "different-query")
            ("query1" fuzzy   nil         "fuzzy-no-okuri")
            ("query1" partial okuri-ari   "partial-okuri-ari"))
-    :body (let* ((all-queries '(("query1" exact   nil)
-                                ("query1" prefix  nil)
-                                ("query1" exact   okuri-ari)
-                                ("query1" exact   okuri-nasi)
-                                ("query2" exact   nil)
-                                ("query1" fuzzy   nil)
-                                ("query1" partial okuri-ari)))
-                 (this-key (nskk-search--cache-key query type okuri))
+    :body (let* ((this-key (nskk--search-cache-key query type okuri))
                  (other-keys (mapcar (lambda (row)
-                                       (nskk-search--cache-key (nth 0 row)
+                                       (nskk--search-cache-key (nth 0 row)
                                                                 (nth 1 row)
                                                                 (nth 2 row)))
                                      (cl-remove-if (lambda (row)
                                                      (and (equal (nth 0 row) query)
                                                           (eq (nth 1 row) type)
                                                           (eq (nth 2 row) okuri)))
-                                                   all-queries))))
-            ;; This key must be a string and must differ from all other combinations
+                                                   nskk-search-test--all-cache-key-queries))))
             (should (stringp this-key))
             (dolist (other other-keys)
               (should (not (equal this-key other)))))))
@@ -506,58 +550,58 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 ;;; Candidate Word Extraction Tests
 ;;;
 
-(nskk-describe "nskk-search--candidate-word"
+(nskk-describe "nskk--search-candidate-word"
   (nskk-it "returns a string candidate as-is"
-    (should (equal (nskk-search--candidate-word "漢字") "漢字")))
+    (should (equal (nskk--search-candidate-word "漢字") "漢字")))
 
   (nskk-it "extracts the car of a cons cell candidate"
-    (should (equal (nskk-search--candidate-word '("漢字" . "okurigana")) "漢字")))
+    (should (equal (nskk--search-candidate-word '("漢字" . "okurigana")) "漢字")))
 
   (nskk-it "returns nil for non-string, non-cons values"
     (nskk-then
-      (should (null (nskk-search--candidate-word 42)))
-      (should (null (nskk-search--candidate-word nil)))
-      (should (null (nskk-search--candidate-word '(42 . "x")))))))
+      (should (null (nskk--search-candidate-word 42)))
+      (should (null (nskk--search-candidate-word nil)))
+      (should (null (nskk--search-candidate-word '(42 . "x")))))))
 
 ;;;
 ;;; Candidate Score Tests
 ;;;
 
-(nskk-describe "nskk-search--candidate-score"
+(nskk-describe "nskk--search-candidate-score"
   (nskk-it "returns 0 when no learning data exists"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (should (= (nskk-search--candidate-score "かんじ" "漢字") 0))))
+      (should (= (nskk--search-candidate-score "かんじ" "漢字") 0))))
 
   (nskk-it "returns value from Prolog learning-score/3"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
       (nskk-prolog-assert '((learning-score "かんじ" "漢字" 5)))
-      (should (= (nskk-search--candidate-score "かんじ" "漢字") 5))))
+      (should (= (nskk--search-candidate-score "かんじ" "漢字") 5))))
 
   (nskk-it "works with cons cell candidates"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
       (nskk-prolog-assert '((learning-score "かんじ" "漢字" 3)))
-      (should (= (nskk-search--candidate-score "かんじ" '("漢字" . "ji")) 3))))
+      (should (= (nskk--search-candidate-score "かんじ" '("漢字" . "ji")) 3))))
 
   (nskk-it "is reading-specific (different readings return different scores)"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
       (nskk-prolog-assert '((learning-score "かんじ" "漢字" 10)))
       (nskk-prolog-assert '((learning-score "もじ" "漢字" 2)))
-      (should (= (nskk-search--candidate-score "かんじ" "漢字") 10))
-      (should (= (nskk-search--candidate-score "もじ" "漢字") 2)))))
+      (should (= (nskk--search-candidate-score "かんじ" "漢字") 10))
+      (should (= (nskk--search-candidate-score "もじ" "漢字") 2)))))
 
 ;;;
 ;;; Reading Score Tests
 ;;;
 
-(nskk-describe "nskk-search--reading-score"
+(nskk-describe "nskk--search-reading-score"
   (nskk-it "returns 0 for a non-entry value"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (should (= (nskk-search--reading-score "かんじ" "not-an-entry") 0))))
+      (should (= (nskk--search-reading-score "かんじ" "not-an-entry") 0))))
 
   (nskk-it "returns maximum score across all candidates"
     (nskk-prolog-test-with-isolated-db
@@ -565,26 +609,26 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
       (nskk-prolog-assert '((learning-score "かんじ" "漢字" 3)))
       (nskk-prolog-assert '((learning-score "かんじ" "感じ" 7)))
       (let ((entry (make-nskk-dict-entry :key "かんじ" :candidates '("漢字" "感じ"))))
-        (should (= (nskk-search--reading-score "かんじ" entry) 7)))))
+        (should (= (nskk--search-reading-score "かんじ" entry) 7)))))
 
   (nskk-it "returns 0 when no learning data exists for any candidate"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
       (let ((entry (make-nskk-dict-entry :key "かんじ" :candidates '("漢字" "感じ"))))
-        (should (= (nskk-search--reading-score "かんじ" entry) 0))))))
+        (should (= (nskk--search-reading-score "かんじ" entry) 0))))))
 
 ;;;
 ;;; Sort Entry by Learning Tests
 ;;;
 
-(nskk-describe "nskk-search--sort-entry-by-learning"
+(nskk-describe "nskk--search-sort-entry-by-learning"
   (nskk-it "reorders candidates by Prolog score descending"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
       (nskk-prolog-assert '((learning-score "かんじ" "漢字" 1)))
       (nskk-prolog-assert '((learning-score "かんじ" "感じ" 5)))
       (let ((entry (make-nskk-dict-entry :key "かんじ" :candidates '("漢字" "感じ"))))
-        (nskk-search--sort-entry-by-learning entry)
+        (nskk--search-sort-entry-by-learning entry)
         ;; Higher score (感じ=5) should come first
         (should (equal (car (nskk-dict-entry-candidates entry)) "感じ")))))
 
@@ -592,7 +636,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
       (let ((entry (make-nskk-dict-entry :key "かんじ" :candidates '("漢字" "感じ"))))
-        (let ((result (nskk-search--sort-entry-by-learning entry)))
+        (let ((result (nskk--search-sort-entry-by-learning entry)))
           ;; Returns the entry itself
           (should (eq result entry))
           ;; All candidates still present
@@ -601,13 +645,13 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   (nskk-it "returns nil gracefully for nil input"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (should (null (nskk-search--sort-entry-by-learning nil))))))
+      (should (null (nskk--search-sort-entry-by-learning nil))))))
 
 ;;;
 ;;; Sort Prefix Results Tests
 ;;;
 
-(nskk-describe "nskk-search--sort-prefix-results"
+(nskk-describe "nskk--search-sort-prefix-results"
   (nskk-it "orders entries by maximum learning score descending"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
@@ -616,14 +660,14 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
       (let* ((entry-a (make-nskk-dict-entry :key "あ" :candidates '("亜")))
              (entry-k (make-nskk-dict-entry :key "か" :candidates '("家")))
              (results `(("あ" . ,entry-a) ("か" . ,entry-k))))
-        (let ((sorted (nskk-search--sort-prefix-results results)))
+        (let ((sorted (nskk--search-sort-prefix-results results)))
           ;; Higher score entry (か=10) should come first
           (should (equal (car (car sorted)) "か"))))))
 
   (nskk-it "handles an empty list"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (should (null (nskk-search--sort-prefix-results nil)))))
+      (should (null (nskk--search-sort-prefix-results nil)))))
 
   (nskk-it "returns all results when no learning data exists"
     (nskk-prolog-test-with-isolated-db
@@ -632,39 +676,9 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
              (e2 (make-nskk-dict-entry :key "い" :candidates '("意")))
              (results `(("あ" . ,e1) ("い" . ,e2))))
         ;; All scores are 0, so original order is preserved by stable sort
-        (let ((sorted (nskk-search--sort-prefix-results results)))
+        (let ((sorted (nskk--search-sort-prefix-results results)))
           (should (= (length sorted) 2)))))))
 
-;;;
-;;; Search Entry Count Tests
-;;;
-
-(nskk-describe "nskk-search-entry-count"
-  (nskk-it "returns total entry count without search type"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'learning-score 3)
-      (let ((index (nskk-search-test--make-index
-                    '(("a" . ("1")) ("b" . ("2")) ("c" . ("3"))))))
-        (should (= (nskk-search-entry-count index) 3)))))
-
-  (nskk-it "returns 1 for exact search on an existing key"
-    (nskk-prolog-test-with-isolated-db
-      (let ((index (nskk-search-test--make-index
-                    '(("かんじ" . ("漢字")) ("かんたん" . ("簡単"))))))
-        (should (= (nskk-search-entry-count index 'exact "かんじ" nil) 1)))))
-
-  (nskk-it "returns 0 for exact search on a missing key"
-    (nskk-prolog-test-with-isolated-db
-      (let ((index (nskk-search-test--make-index
-                    '(("かんじ" . ("漢字"))))))
-        (should (= (nskk-search-entry-count index 'exact "みつからない" nil) 0)))))
-
-  (nskk-it "returns count of all prefix matches"
-    (nskk-prolog-test-with-isolated-db
-      (let ((index (nskk-search-test--make-index
-                    nil
-                    '(("かん" . ("缶")) ("かんじ" . ("漢字")) ("かんたん" . ("簡単"))))))
-        (should (>= (nskk-search-entry-count index 'prefix "かん" nil) 3))))))
 
 ;;;
 ;;; Learning Data: nskk-search-learn Tests
@@ -674,13 +688,13 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   (nskk-it "initializes score to 1 for a new candidate"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (let ((nskk-search--dirty-flag nil))
+      (let ((nskk--search-dirty-flag nil))
         (nskk-search-learn "かんじ" "漢字")
         (should (= (nskk-prolog-query-value
                     '(learning-score "かんじ" "漢字" \?s) '\?s)
                    1))
         ;; Dirty flag must be set
-        (should nskk-search--dirty-flag))))
+        (should nskk--search-dirty-flag))))
 
   (nskk-it "increments an existing score by 1"
     (nskk-prolog-test-with-isolated-db
@@ -702,13 +716,13 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   (nskk-it "does nothing when candidate is nil"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (let ((nskk-search--dirty-flag nil))
+      (let ((nskk--search-dirty-flag nil))
         (nskk-search-learn "かんじ" nil)
         ;; No learning-score fact should be created
         (should-not (nskk-prolog-query-value
                      '(learning-score "かんじ" \?c \?s) '\?s))
         ;; Dirty flag must remain unset
-        (should-not nskk-search--dirty-flag))))
+        (should-not nskk--search-dirty-flag))))
 
   (nskk-it "retracts old score before asserting new one (no duplicates)"
     (nskk-prolog-test-with-isolated-db
@@ -726,132 +740,31 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 ;;;
 
 (nskk-describe "nskk-search learning data persistence"
-  (nskk-it "save followed by load restores all learning-score facts"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'learning-score 3)
-      (let* ((tmp-file (make-temp-file "nskk-learning-test" nil ".dat"))
-             (nskk-search-learning-file tmp-file))
-        (unwind-protect
-            (progn
-              ;; Arrange: assert two learning scores
-              (nskk-prolog-assert '((learning-score "かんじ" "漢字" 3)))
-              (nskk-prolog-assert '((learning-score "かんじ" "感じ" 7)))
-              ;; Act: save
-              (nskk-search-save-learning-data)
-              ;; Clear and reload
-              (nskk-prolog-retract-all 'learning-score 3)
-              (nskk-prolog-set-index 'learning-score 3 :hash)
-              (nskk-search--load-learning-data)
-              ;; Assert: both facts restored
-              (should (= (nskk-prolog-query-value
-                          '(learning-score "かんじ" "漢字" \?s) '\?s) 3))
-              (should (= (nskk-prolog-query-value
-                          '(learning-score "かんじ" "感じ" \?s) '\?s) 7)))
-          (when (file-exists-p tmp-file)
-            (delete-file tmp-file))))))
-
-  (nskk-it "save sets nskk-search--dirty-flag to nil"
+  (nskk-it "save sets nskk--search-dirty-flag to nil"
     (nskk-prolog-test-with-isolated-db
       (let* ((tmp-file (make-temp-file "nskk-learning-test" nil ".dat"))
              (nskk-search-learning-file tmp-file)
-             (nskk-search--dirty-flag t))
+             (nskk--search-dirty-flag t))
         (unwind-protect
             (progn
               (nskk-search-save-learning-data)
-              (should-not nskk-search--dirty-flag))
+              (should-not nskk--search-dirty-flag))
           (when (file-exists-p tmp-file)
             (delete-file tmp-file))))))
 
-  (nskk-it "loading a nonexistent file silently loads nothing"
+  (nskk-it "handles write errors gracefully without signaling"
     (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'learning-score 3)
-      (let ((nskk-search-learning-file "/nonexistent/nskk-test-learning.dat"))
-        (nskk-search--load-learning-data)
-        ;; No facts should be loaded
-        (should-not (nskk-prolog-query '(learning-score \?r \?c \?s))))))
+      (let* ((nskk-search-learning-file "/nonexistent/dir/learning.dat")
+             (messages nil))
+        (nskk-with-mocks ((message (lambda (fmt &rest args)
+                                     (push (apply #'format fmt args) messages))))
+          ;; Should NOT signal an error
+          (should-not (condition-case _err
+                          (progn (nskk-search-save-learning-data) nil)
+                        (error t)))
+          ;; Should have emitted a failure message
+          (should (cl-some (lambda (m) (string-match-p "Failed" m)) messages)))))))
 
-  (nskk-it "load retracts existing facts before loading (replace, not merge)"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'learning-score 3)
-      (let* ((tmp-file (make-temp-file "nskk-learning-test" nil ".dat"))
-             (nskk-search-learning-file tmp-file))
-        (unwind-protect
-            (progn
-              ;; Write just one fact to disk
-              (nskk-prolog-assert '((learning-score "あ" "亜" 1)))
-              (nskk-search-save-learning-data)
-              ;; Now add a DIFFERENT fact to the DB (stale)
-              (nskk-prolog-retract-all 'learning-score 3)
-              (nskk-prolog-set-index 'learning-score 3 :hash)
-              (nskk-prolog-assert '((learning-score "stale" "stale" 99)))
-              ;; Load should replace, not merge
-              (nskk-search--load-learning-data)
-              ;; Stale fact should be gone
-              (should-not (nskk-prolog-query-value
-                           '(learning-score "stale" "stale" \?s) '\?s))
-              ;; Original fact should be present
-              (should (= (nskk-prolog-query-value
-                          '(learning-score "あ" "亜" \?s) '\?s) 1)))
-          (when (file-exists-p tmp-file)
-            (delete-file tmp-file)))))))
-
-;;;
-;;; Auto-Save Timer Tests
-;;;
-
-(nskk-describe "nskk-search auto-save timer"
-  (nskk-it "start-auto-save creates a repeating timer via run-with-timer"
-    (let ((nskk-search--auto-save-timer nil)
-          (nskk-search-auto-save-interval 300)
-          (created-args nil))
-      (nskk-with-mocks ((run-with-timer (lambda (delay repeat fn)
-                                          (setq created-args (list delay repeat fn))
-                                          'mock-timer)))
-        (nskk-search--start-auto-save)
-        (should (eq nskk-search--auto-save-timer 'mock-timer))
-        (should (= (nth 0 created-args) 300))
-        (should (= (nth 1 created-args) 300))
-        (should (eq (nth 2 created-args) #'nskk-search--auto-save-handler)))))
-
-  (nskk-it "start-auto-save cancels an existing timer before creating a new one"
-    (let ((nskk-search--auto-save-timer 'old-timer)
-          (nskk-search-auto-save-interval 300)
-          (cancelled nil))
-      (nskk-with-mocks ((cancel-timer (lambda (timer) (setq cancelled timer)))
-                        (run-with-timer (lambda (&rest _) 'new-timer)))
-        (nskk-search--start-auto-save)
-        (should (eq cancelled 'old-timer))
-        (should (eq nskk-search--auto-save-timer 'new-timer)))))
-
-  (nskk-it "stop-auto-save cancels the timer and sets the variable to nil"
-    (let ((nskk-search--auto-save-timer 'active-timer)
-          (cancelled nil))
-      (nskk-with-mocks ((cancel-timer (lambda (timer) (setq cancelled timer))))
-        (nskk-search--stop-auto-save)
-        (should (eq cancelled 'active-timer))
-        (should (null nskk-search--auto-save-timer)))))
-
-  (nskk-it "stop-auto-save does nothing when no timer is active"
-    (let ((nskk-search--auto-save-timer nil)
-          (cancelled nil))
-      (nskk-with-mocks ((cancel-timer (lambda (timer) (setq cancelled timer))))
-        (nskk-search--stop-auto-save)
-        ;; cancel-timer must NOT have been called
-        (should (null cancelled)))))
-
-  (nskk-it "auto-save handler calls nskk-search-save-learning-data when dirty"
-    (let ((nskk-search--dirty-flag t)
-          (saved nil))
-      (nskk-with-mocks ((nskk-search-save-learning-data (lambda () (setq saved t))))
-        (nskk-search--auto-save-handler)
-        (should saved))))
-
-  (nskk-it "auto-save handler does not call save when dirty flag is nil"
-    (let ((nskk-search--dirty-flag nil)
-          (saved nil))
-      (nskk-with-mocks ((nskk-search-save-learning-data (lambda () (setq saved t))))
-        (nskk-search--auto-save-handler)
-        (should-not saved)))))
 
 ;;;
 ;;; nskk-core-search integration
@@ -885,15 +798,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
               (results (nskk-search index "かんじ" 'fuzzy)))
           (should (> (length results) 0))))))
 
-  (nskk-it "counts all entries and okuri-ari entries in a dict index"
-    (nskk-with-prolog-entries ((entry-count-dict "a" ("v1"))
-                               (entry-count-dict "b" ("v2"))
-                               (entry-count-dict "c" ("v3"))
-                               (entry-count-dict "d" ("v4"))
-                               (entry-count-dict "e" ("v5")))
-      (let ((index (make-nskk-dict-index :predicate 'entry-count-dict)))
-        (should (= (nskk-dict--struct-entry-count index nil) 5))
-        (should (= (nskk-dict--struct-entry-count index 'okuri-ari) 5))))))
+)
 
 ;;;
 ;;; Property-Based Tests
@@ -903,15 +808,15 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 (nskk-property-test-seeded search-levenshtein-symmetry
   ((a romaji-basic)
    (b romaji-basic))
-  (= (nskk-search--levenshtein-distance a b)
-     (nskk-search--levenshtein-distance b a))
+  (= (nskk--search-levenshtein-distance a b)
+     (nskk--search-levenshtein-distance b a))
   50
   7)
 
 ;; PBT-002 — Levenshtein identity (seeded PBT, 50 runs)
 (nskk-property-test-seeded search-levenshtein-identity
   ((input romaji-basic))
-  (= (nskk-search--levenshtein-distance input input) 0)
+  (= (nskk--search-levenshtein-distance input input) 0)
   50
   13)
 
@@ -920,9 +825,9 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   ((a romaji-basic)
    (b romaji-basic)
    (c romaji-basic))
-  (<= (nskk-search--levenshtein-distance a c)
-      (+ (nskk-search--levenshtein-distance a b)
-         (nskk-search--levenshtein-distance b c)))
+  (<= (nskk--search-levenshtein-distance a c)
+      (+ (nskk--search-levenshtein-distance a b)
+         (nskk--search-levenshtein-distance b c)))
   30
   17)
 
@@ -932,8 +837,8 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
    (b romaji-basic)
    (c romaji-basic))
   (let* ((items (list (cons a 1) (cons b 2) (cons c 3) (cons a 4)))
-         (once  (nskk-search--remove-duplicates items))
-         (twice (nskk-search--remove-duplicates once)))
+         (once  (nskk--search-remove-duplicates items))
+         (twice (nskk--search-remove-duplicates once)))
     (equal once twice))
   30
   23)
@@ -943,7 +848,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   ((a romaji-basic)
    (b romaji-basic))
   (let* ((items (list (cons a 1) (cons b 2) (cons a 3)))
-         (result (nskk-search--remove-duplicates items)))
+         (result (nskk--search-remove-duplicates items)))
     (<= (length result) (length items)))
   30
   29)
@@ -952,41 +857,41 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 ;;; Additional Property-Based Tests
 ;;;
 
-;; 1. Table-driven: nskk-search--candidate-word for known inputs
+;; 1. Table-driven: nskk--search-candidate-word for known inputs
 (nskk-deftest-cases search-candidate-word-known
   (("漢字"          . "漢字")
     (("漢字" . "ji") . "漢字")
     (nil             . nil)
     (42              . nil))
-  :description "nskk-search--candidate-word extracts word string"
-  :body (should (equal expected (nskk-search--candidate-word input))))
+  :description "nskk--search-candidate-word extracts word string"
+  :body (should (equal expected (nskk--search-candidate-word input))))
 
 ;; PBT-007 — Levenshtein distance is always non-negative
 (nskk-property-test search-levenshtein-non-negative
   ((a romaji-basic)
    (b romaji-basic))
-  (>= (nskk-search--levenshtein-distance a b) 0)
+  (>= (nskk--search-levenshtein-distance a b) 0)
   50)
 
 ;; PBT-008 — Levenshtein distance <= max(len(a), len(b))
 (nskk-property-test search-levenshtein-bounded-by-max-length
   ((a romaji-basic)
    (b romaji-basic))
-  (<= (nskk-search--levenshtein-distance a b)
+  (<= (nskk--search-levenshtein-distance a b)
       (max (length a) (length b)))
   50)
 
 ;; PBT-009 — cache key is always a non-empty string for any query
 (nskk-property-test search-cache-key-always-string
   ((q search-query))
-  (let ((key (nskk-search--cache-key q 'exact nil)))
+  (let ((key (nskk--search-cache-key q 'exact nil)))
     (and (stringp key) (> (length key) 0)))
   30)
 
 ;; PBT-010 — cache key contains the query string
 (nskk-property-test search-cache-key-contains-query
   ((q search-query))
-  (let ((key (nskk-search--cache-key q 'exact nil)))
+  (let ((key (nskk--search-cache-key q 'exact nil)))
     (string-match-p (regexp-quote q) key))
   30)
 
@@ -1009,9 +914,9 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
   ((q search-query))
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-retract-all 'learning-score 3)
-    (let ((nskk-search--dirty-flag nil))
+    (let ((nskk--search-dirty-flag nil))
       (nskk-search-learn q "テスト")
-      nskk-search--dirty-flag))
+      nskk--search-dirty-flag))
   20)
 
 ;; PBT-013 — nskk-search/k calls exactly one callback (mutual exclusion)
@@ -1046,7 +951,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
     (dotimes (_ 20)
       (nskk-for-all ((q search-query))
         (let ((keys (mapcar (lambda (type)
-                              (nskk-search--cache-key q type nil))
+                              (nskk--search-cache-key q type nil))
                             '(exact prefix partial fuzzy))))
           (should (= (length keys) (length (cl-remove-duplicates keys :test #'equal)))))))))
 
@@ -1379,43 +1284,55 @@ of keys under `string<' regardless of the input order."
           (should (cl-every #'<= distances (cdr distances))))))))
 
 (nskk-describe "nskk-search-with-cache/k"
-  (nskk-it "calls on-miss on cache miss and on-hit on subsequent hit"
+  (nskk-it "calls on-found on cache miss and on cache hit"
     (nskk-with-prolog-entries ((cps-cache-test "かんじ" ("漢字" "感じ")))
       (let ((index (make-nskk-dict-index :predicate 'cps-cache-test))
             (cache (nskk-cache-create :lru 10))
-            miss-called hit-called)
-        ;; First lookup — cache miss
+            first-result second-result)
+        ;; First lookup — cache miss, but result found; on-found fires
         (nskk-search-with-cache/k cache index "かんじ" 'exact nil nil
-                                  (lambda (_r) (setq hit-called t))
-                                  (lambda (r) (setq miss-called r)))
-        (should miss-called)
-        (should-not hit-called)
-        ;; Second lookup — cache hit
-        (setq hit-called nil miss-called nil)
+                                  (lambda (r) (setq first-result r))
+                                  (lambda () (should nil)))
+        (should first-result)
+        ;; Second lookup — cache hit; on-found fires with cached result
         (nskk-search-with-cache/k cache index "かんじ" 'exact nil nil
-                                  (lambda (r) (setq hit-called r))
-                                  (lambda (_r) (setq miss-called t)))
-        (should hit-called)
-        (should-not miss-called))))
+                                  (lambda (r) (setq second-result r))
+                                  (lambda () (should nil)))
+        (should second-result)
+        (should (equal first-result second-result)))))
 
-  (nskk-it "on-miss receives nil when key is absent"
+  (nskk-it "calls on-not-found when key is absent"
     (nskk-with-prolog-entries ((cps-cache-miss-test "かんじ" ("漢字")))
       (let ((index (make-nskk-dict-index :predicate 'cps-cache-miss-test))
             (cache (nskk-cache-create :lru 10))
-            miss-result)
+            not-found-called)
         (nskk-search-with-cache/k cache index "ない" 'exact nil nil
                                   (lambda (_r) (should nil))
-                                  (lambda (r) (setq miss-result r)))
-        (should (null miss-result)))))
+                                  (lambda () (setq not-found-called t)))
+        (should not-found-called))))
 
   (nskk-it "signals wrong-type-argument for an invalid cache object"
     (nskk-with-prolog-entries ((cps-cache-err-test "かんじ" ("漢字")))
       (let ((index (make-nskk-dict-index :predicate 'cps-cache-err-test)))
         (should-error
          (nskk-search-with-cache/k "not-a-cache" index "かんじ" 'exact nil nil
-                                   #'identity #'identity)
+                                   #'identity #'ignore)
          :type 'wrong-type-argument)))))
 
+;; PBT-015 — nskk-search-with-cache/k calls exactly one callback per invocation
+(nskk-property-test search-cache-k-mutual-exclusion
+  ((q search-query))
+  (nskk-prolog-test-with-isolated-db
+    (let* ((index (nskk-search-test--make-index '(("かんじ" . ("漢字")))))
+           (cache (nskk-cache-create :lru 10))
+           (found-count 0)
+           (not-found-count 0))
+      (nskk-search-with-cache/k cache index q 'exact nil nil
+                                (lambda (_r) (cl-incf found-count))
+                                (lambda () (cl-incf not-found-count)))
+      ;; Exactly one callback must have fired
+      (= 1 (+ found-count not-found-count))))
+  30)
 
 (provide 'nskk-search-test)
 

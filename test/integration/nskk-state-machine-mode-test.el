@@ -50,53 +50,53 @@
 ;;;; Helper Functions for Mode Transitions
 ;;;;
 
-(defun nskk-sm--transition-mode (state _trigger)
+(defun nskk--sm-transition-mode (state _trigger)
   "Transition STATE to a new random mode based on TRIGGER.
 TRIGGER is ignored; a random valid mode is chosen."
-  (let ((new-mode (nskk-pbt--generate-valid-mode)))
+  (let ((new-mode (nskk--pbt-generate-valid-mode)))
     (nskk-state-set state 'mode new-mode)
     state))
 
-(defun nskk-sm--transition-with-context (state _trigger)
+(defun nskk--sm-transition-with-context (state _trigger)
   "Transition STATE to a new mode and clear conversion context.
 TRIGGER is ignored; a random valid mode is chosen."
-  (let ((new-mode (nskk-pbt--generate-valid-mode)))
+  (let ((new-mode (nskk--pbt-generate-valid-mode)))
     (nskk-state-set state 'mode new-mode)
     ;; Simulate clearing context on mode switch
     (nskk-state-reset state)
     state))
 
-(defun nskk-sm--roundtrip-hiragana-katakana (state _trigger)
+(defun nskk--sm-roundtrip-hiragana-katakana (state _trigger)
   "Perform hiragana -> katakana -> hiragana roundtrip on STATE."
   (nskk-state-set state 'mode 'katakana)
   (nskk-state-set state 'mode 'hiragana)
   state)
 
-(defun nskk-sm--roundtrip-hiragana-latin (state _trigger)
+(defun nskk--sm-roundtrip-hiragana-latin (state _trigger)
   "Perform hiragana -> latin -> hiragana roundtrip on STATE."
   (nskk-state-set state 'mode 'latin)
   (nskk-state-set state 'mode 'hiragana)
   state)
 
-(defun nskk-sm--track-previous-mode (state _trigger)
+(defun nskk--sm-track-previous-mode (state _trigger)
   "Transition STATE and return it. Previous mode should be tracked."
   (let ((old-mode (nskk-state-mode state))
-        (new-mode (nskk-pbt--generate-valid-mode)))
+        (new-mode (nskk--pbt-generate-valid-mode)))
     ;; Keep trying until we get a different mode
     (while (eq new-mode old-mode)
-      (setq new-mode (nskk-pbt--generate-valid-mode)))
+      (setq new-mode (nskk--pbt-generate-valid-mode)))
     (nskk-state-set state 'mode new-mode)
     state))
 
-(defun nskk-sm--mode-switch-with-reset (state _trigger)
+(defun nskk--sm-mode-switch-with-reset (state _trigger)
   "Switch mode and reset context in STATE."
-  (let ((new-mode (nskk-pbt--generate-valid-mode)))
+  (let ((new-mode (nskk--pbt-generate-valid-mode)))
     (unless (eq (nskk-state-mode state) new-mode)
       (nskk-state-set state 'mode new-mode)
       (nskk-state-reset state))
     state))
 
-(defun nskk-sm--cycle-all-modes (state _trigger)
+(defun nskk--sm-cycle-all-modes (state _trigger)
   "Cycle STATE through all modes sequentially."
   (let* ((modes '(ascii hiragana katakana latin))
          (current (nskk-state-mode state))
@@ -106,9 +106,9 @@ TRIGGER is ignored; a random valid mode is chosen."
     (nskk-state-set state 'mode next-mode)
     state))
 
-(defun nskk-sm--random-transition (state _trigger)
+(defun nskk--sm-random-transition (state _trigger)
   "Apply random transition to STATE."
-  (let ((new-mode (nskk-pbt--generate-valid-mode)))
+  (let ((new-mode (nskk--pbt-generate-valid-mode)))
     (nskk-state-set state 'mode new-mode)
     state))
 
@@ -118,10 +118,10 @@ TRIGGER is ignored; a random valid mode is chosen."
 ;;;;
 
 (nskk-state-machine-test mode-transition-valid
-  (nskk-state-create (nskk-pbt--generate-valid-mode))
-  ((any nskk-sm--transition-mode)
-   (any nskk-sm--transition-mode)
-   (any nskk-sm--transition-mode))
+  (nskk-state-create (nskk--pbt-generate-valid-mode))
+  ((any nskk--sm-transition-mode)
+   (any nskk--sm-transition-mode)
+   (any nskk--sm-transition-mode))
   (lambda (state)
     (and (nskk-state-p state)
          (nskk-state-valid-mode-p (nskk-state-mode state))))
@@ -137,11 +137,11 @@ TRIGGER is ignored; a random valid mode is chosen."
 ;;;;
 
 (nskk-state-machine-test mode-transition-previous-mode
-  (let ((initial-mode (nskk-pbt--random-choice '(hiragana katakana latin ascii))))
+  (let ((initial-mode (nskk--pbt-random-choice '(hiragana katakana latin ascii))))
     (nskk-state-create initial-mode))
-  ((switch nskk-sm--track-previous-mode)
-   (switch nskk-sm--track-previous-mode)
-   (switch nskk-sm--track-previous-mode))
+  ((switch nskk--sm-track-previous-mode)
+   (switch nskk--sm-track-previous-mode)
+   (switch nskk--sm-track-previous-mode))
   (lambda (state)
     (and (nskk-state-p state)
          (nskk-state-valid-mode-p (nskk-state-mode state))
@@ -163,9 +163,9 @@ TRIGGER is ignored; a random valid mode is chosen."
     (nskk-state-set state 'candidates '("a" "b" "c"))
     (nskk-state-set state 'henkan-position 0)
     state)
-  ((switch nskk-sm--mode-switch-with-reset)
-   (switch nskk-sm--mode-switch-with-reset)
-   (switch nskk-sm--mode-switch-with-reset))
+  ((switch nskk--sm-mode-switch-with-reset)
+   (switch nskk--sm-mode-switch-with-reset)
+   (switch nskk--sm-mode-switch-with-reset))
   (lambda (state)
     (and (nskk-state-p state)
          (nskk-state-valid-mode-p (nskk-state-mode state))))
@@ -182,7 +182,7 @@ TRIGGER is ignored; a random valid mode is chosen."
 
 (nskk-state-machine-test mode-roundtrip-hiragana-katakana
   (nskk-state-create 'hiragana)
-  ((roundtrip nskk-sm--roundtrip-hiragana-katakana))
+  ((roundtrip nskk--sm-roundtrip-hiragana-katakana))
   (lambda (state)
     (and (nskk-state-p state)
          (eq (nskk-state-mode state) 'hiragana)))
@@ -199,7 +199,7 @@ TRIGGER is ignored; a random valid mode is chosen."
 
 (nskk-state-machine-test mode-roundtrip-hiragana-latin
   (nskk-state-create 'hiragana)
-  ((roundtrip nskk-sm--roundtrip-hiragana-latin))
+  ((roundtrip nskk--sm-roundtrip-hiragana-latin))
   (lambda (state)
     (and (nskk-state-p state)
          (eq (nskk-state-mode state) 'hiragana)))
@@ -222,7 +222,7 @@ TRIGGER is ignored; a random valid mode is chosen."
                          random-symbol another-invalid)))
     (dotimes (_ runs)
       (let ((state (nskk-state-create 'hiragana))
-            (invalid-mode (nskk-pbt--random-choice invalid-modes)))
+            (invalid-mode (nskk--pbt-random-choice invalid-modes)))
         ;; Try to set an invalid mode - should raise error
         (condition-case err
             (nskk-state-set state 'mode invalid-mode)
@@ -251,10 +251,10 @@ TRIGGER is ignored; a random valid mode is chosen."
 
 (nskk-state-machine-test mode-cycle-through-all
   (nskk-state-create 'ascii)
-  ((cycle nskk-sm--cycle-all-modes)
-   (cycle nskk-sm--cycle-all-modes)
-   (cycle nskk-sm--cycle-all-modes)
-   (cycle nskk-sm--cycle-all-modes))
+  ((cycle nskk--sm-cycle-all-modes)
+   (cycle nskk--sm-cycle-all-modes)
+   (cycle nskk--sm-cycle-all-modes)
+   (cycle nskk--sm-cycle-all-modes))
   (lambda (state)
     (and (nskk-state-p state)
          (nskk-state-valid-mode-p (nskk-state-mode state))))
@@ -270,12 +270,12 @@ TRIGGER is ignored; a random valid mode is chosen."
 ;;;;
 
 (nskk-state-machine-test mode-transition-preserves-integrity
-  (nskk-state-create (nskk-pbt--generate-valid-mode))
-  ((t1 nskk-sm--random-transition)
-   (t2 nskk-sm--random-transition)
-   (t3 nskk-sm--random-transition)
-   (t4 nskk-sm--random-transition)
-   (t5 nskk-sm--random-transition))
+  (nskk-state-create (nskk--pbt-generate-valid-mode))
+  ((t1 nskk--sm-random-transition)
+   (t2 nskk--sm-random-transition)
+   (t3 nskk--sm-random-transition)
+   (t4 nskk--sm-random-transition)
+   (t5 nskk--sm-random-transition))
   (lambda (state)
     (and (nskk-state-p state)
          ;; All slots should be accessible
@@ -348,10 +348,10 @@ TRIGGER is ignored; a random valid mode is chosen."
   (let* ((initial-mode (plist-get scenario :initial-mode))
          (target-mode  (plist-get scenario :target-mode))
          (state        (nskk-state-create initial-mode))
-         (transitions  (nskk-pbt--random-int 3 15)))
+         (transitions  (nskk--pbt-random-int 3 15)))
     ;; Drive a random sequence of valid mode transitions
     (dotimes (_ transitions)
-      (let ((next-mode (nskk-pbt--generate-valid-mode)))
+      (let ((next-mode (nskk--pbt-generate-valid-mode)))
         (nskk-state-set state 'mode next-mode)))
     ;; Finally apply the scenario's explicit target transition
     (nskk-state-set state 'mode target-mode)

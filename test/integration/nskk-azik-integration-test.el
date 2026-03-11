@@ -23,6 +23,7 @@
 (require 'nskk-azik)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 (require 'nskk-integration-test)
 
 ;;;
@@ -51,7 +52,7 @@ subsequent non-AZIK tests are not affected."
     :columns (char expected)
     :rows ((?\; "っ") (?:  "ー"))
     :body (nskk-azik-with-session 'hiragana
-            (nskk-integration--type-char char)
+            (nskk--integration-type-char char)
             (nskk-should-equal expected (buffer-string)))))
 
 ;;;
@@ -65,8 +66,8 @@ subsequent non-AZIK tests are not affected."
     :columns (second-char expected)
     :rows ((?k "きん") (?z "かん") (?j "くん") (?d "けん") (?l "こん"))
     :body (nskk-azik-with-session 'hiragana
-            (nskk-integration--type-char ?k)
-            (nskk-integration--type-char second-char)
+            (nskk--integration-type-char ?k)
+            (nskk--integration-type-char second-char)
             (nskk-should-equal expected (buffer-string)))))
 
 ;;;
@@ -80,8 +81,8 @@ subsequent non-AZIK tests are not affected."
     :columns (second-char expected)
     :rows ((?q "かい") (?h "くう") (?w "けい") (?p "こう"))
     :body (nskk-azik-with-session 'hiragana
-            (nskk-integration--type-char ?k)
-            (nskk-integration--type-char second-char)
+            (nskk--integration-type-char ?k)
+            (nskk--integration-type-char second-char)
             (nskk-should-equal expected (buffer-string)))))
 
 ;;;
@@ -95,9 +96,9 @@ subsequent non-AZIK tests are not affected."
     :columns (vowel-char expected)
     :rows ((?a "きゃ") (?u "きゅ") (?e "きぇ") (?o "きょ"))
     :body (nskk-azik-with-session 'hiragana
-            (nskk-integration--type-char ?k)
-            (nskk-integration--type-char ?g)
-            (nskk-integration--type-char vowel-char)
+            (nskk--integration-type-char ?k)
+            (nskk--integration-type-char ?g)
+            (nskk--integration-type-char vowel-char)
             (nskk-should-equal expected (buffer-string)))))
 
 ;;;
@@ -111,8 +112,8 @@ subsequent non-AZIK tests are not affected."
     :columns (first-char second-char expected)
     :rows ((?s ?r "する") (?m ?s "ます") (?m ?t "また") (?m ?n "もの"))
     :body (nskk-azik-with-session 'hiragana
-            (nskk-integration--type-char first-char)
-            (nskk-integration--type-char second-char)
+            (nskk--integration-type-char first-char)
+            (nskk--integration-type-char second-char)
             (nskk-should-equal expected (buffer-string)))))
 
 ;;;
@@ -126,8 +127,8 @@ subsequent non-AZIK tests are not affected."
     :columns (first-char second-char expected)
     :rows ((?k ?f "き") (?r ?f "る") (?y ?f "ゆ"))
     :body (nskk-azik-with-session 'hiragana
-            (nskk-integration--type-char first-char)
-            (nskk-integration--type-char second-char)
+            (nskk--integration-type-char first-char)
+            (nskk--integration-type-char second-char)
             (nskk-should-equal expected (buffer-string)))))
 
 ;;;
@@ -139,13 +140,13 @@ subsequent non-AZIK tests are not affected."
   (nskk-it "standard ka still produces か in AZIK mode"
     (nskk-azik-with-session 'hiragana
       (nskk-when (progn
-                   (nskk-integration--type-char ?k)
-                   (nskk-integration--type-char ?a)))
+                   (nskk--integration-type-char ?k)
+                   (nskk--integration-type-char ?a)))
       (nskk-then (nskk-should-equal "か" (buffer-string)))))
 
   (nskk-it "vowel a still produces あ in AZIK mode"
     (nskk-azik-with-session 'hiragana
-      (nskk-when (nskk-integration--type-char ?a))
+      (nskk-when (nskk--integration-type-char ?a))
       (nskk-then (nskk-should-equal "あ" (buffer-string))))))
 
 ;;;
@@ -156,17 +157,70 @@ subsequent non-AZIK tests are not affected."
 
   (nskk-it "uppercase S in AZIK mode sets the preedit marker"
     (nskk-azik-with-session 'hiragana
-      (nskk-when (nskk-integration--type-char ?S))
+      (nskk-when (nskk--integration-type-char ?S))
       (nskk-then (should (nskk--conversion-start-active-p))
                  (should (string-prefix-p "▽" (buffer-string))))))
 
   (nskk-it "uppercase S followed by r produces ▽する in preedit"
     (nskk-azik-with-session 'hiragana
       (nskk-when (progn
-                   (nskk-integration--type-char ?S)
-                   (nskk-integration--type-char ?r)))
+                   (nskk--integration-type-char ?S)
+                   (nskk--integration-type-char ?r)))
       (nskk-then (should (nskk--conversion-start-active-p))
                  (nskk-should-equal "▽する" (buffer-string))))))
+
+;;;
+;;; Group 9: AZIK Rules (PBT)
+;;;
+
+(nskk-describe "AZIK rules (PBT)"
+
+  ;; Property A: Every registered AZIK pattern produces non-empty output.
+  ;; Opens ONE AZIK session and iterates all ~391 patterns inside it, resetting
+  ;; buffer state between each pattern.  This avoids 391 Prolog table swaps
+  ;; (nskk-converter-load-style 'azik / 'standard pairs), which previously took
+  ;; 100-400 seconds.
+  (nskk-it "every registered AZIK pattern produces non-empty output (all patterns)"
+    (nskk-given "an AZIK input session")
+    (nskk-when "typing each of the registered AZIK patterns in sequence")
+    (nskk-then "every pattern produces non-empty kana output"
+      (let ((failures nil)
+            (all-patterns (nskk--pbt-get-all-azik-patterns)))
+        (nskk-azik-with-session 'hiragana
+          (dolist (pattern all-patterns)
+            ;; Reset all input state before each pattern.
+            (erase-buffer)
+            (setq nskk--romaji-buffer "")
+            (nskk-state-clear-input nskk-current-state)
+            ;; Type each character of the pattern.
+            (condition-case err
+                (progn
+                  (cl-loop for ch across pattern
+                           do (nskk--integration-type-char ch))
+                  (unless (and (stringp (buffer-string))
+                               (> (length (buffer-string)) 0))
+                    (push pattern failures)))
+              (error (push (list :error pattern err) failures)))))
+        (when failures
+          (ert-fail (format "AZIK patterns produced empty output for %d/%d patterns:\n%S"
+                            (length failures)
+                            (length all-patterns)
+                            (seq-take failures 10)))))))
+
+  ;; Property B: Randomly sampled AZIK rules produce non-empty string output.
+  ;; `azik-rule-with-expected' yields (cons input-string category-or-nil).
+  ;; We verify the buffer is non-empty after typing each character of the
+  ;; input; detailed kana-class validation is covered by the table tests above.
+  (nskk-property-test azik-rule-produces-string-output
+    ((rule azik-rule-with-expected))
+    ;; `rule' is (INPUT-STRING . CATEGORY-OR-NIL)
+    (let ((input-str (car rule)))
+      (nskk-azik-with-session 'hiragana
+        (cl-loop for ch across input-str
+                 do (nskk--integration-type-char ch))
+        (and (stringp (buffer-string))
+             (> (length (buffer-string)) 0))))
+    30))
 
 (provide 'nskk-azik-integration-test)
 

@@ -18,6 +18,8 @@
 ;; - Page state management (show/hide)
 ;; - Custom variable defaults and custom group
 ;; - Face definitions
+;; - Page-slice pure function
+;; - CPS /k variants
 
 ;;; Code:
 
@@ -27,33 +29,95 @@
 (require 'nskk-prolog)
 (require 'nskk-state)
 (require 'nskk-test-framework)
+(require 'nskk-test-macros)
+
+;;;
+;;; FR-T-010 — Face definitions (extended with attribute assertions)
+;;;
 
 (nskk-describe "face definitions"
-  (nskk-it "candidate key face is defined"
+  (nskk-it "nskk-candidate-key-face is defined"
     (should (facep 'nskk-candidate-key-face)))
 
-  (nskk-it "candidate face is defined"
-    (should (facep 'nskk-candidate-face))))
+  (nskk-it "nskk-candidate-face is defined"
+    (should (facep 'nskk-candidate-face)))
 
-(nskk-describe "build-string helper"
-  (nskk-it "starts with a newline"
-    (let ((result (nskk--candidate-build-string '("漢字") '(?a) 0)))
-      (should (string-prefix-p "\n" result))))
+  (nskk-it "nskk-candidate-key-face has bold weight"
+    (should (eq (face-attribute 'nskk-candidate-key-face :weight nil t) 'bold)))
 
-  (nskk-it "formats each candidate as KEY:CAND pairs joined by spaces"
-    (let ((result (nskk--candidate-build-string '("漢字" "感じ") '(?a ?s) 0)))
-      (should (string-match-p "a:漢字" result))
-      (should (string-match-p "s:感じ" result))))
+  (nskk-it "nskk-candidate-key-face inherits from a base face"
+    (let ((inherit (face-attribute 'nskk-candidate-key-face :inherit nil t)))
+      (should (symbolp inherit))
+      (should (facep inherit)))))
 
-  (nskk-it "omits [残り N] when remaining is 0"
-    (let ((result (nskk--candidate-build-string '("漢字") '(?a) 0)))
-      (should-not (string-match-p "残り" result))))
+;;;
+;;; FR-T-001 — build-string content (table-driven)
+;;;
 
-  (nskk-it "appends [残り N] when remaining is positive"
-    (let ((result (nskk--candidate-build-string '("漢字") '(?a) 3)))
-      (should (string-match-p "残り 3" result)))))
+(nskk-deftest-table candidate-build-string-content-cases
+  :columns (page-candidates keys remaining check-present check-absent)
+  :rows ((("漢字")        (?a)     0  "a:漢字"   "残り")
+         (("漢字" "感じ") (?a ?s)  0  "s:感じ"   "残り")
+         (("漢字")        (?a)     3  "残り 3"   nil)
+         (("漢字")        (?a)     1  "残り 1"   nil))
+  :body
+  (let ((result (nskk--candidate-build-string page-candidates keys remaining)))
+    (should (string-prefix-p "\n" result))
+    (when check-present
+      (should (string-match-p (regexp-quote check-present) result)))
+    (when check-absent
+      (should-not (string-match-p check-absent result)))))
+
+;;;
+;;; FR-T-002 — build-string text properties
+;;;
+
+(nskk-describe "build-string text properties"
+  (nskk-it "key portion carries nskk-candidate-key-face"
+    (let* ((result (nskk--candidate-build-string '("漢字") '(?a) 0))
+           ;; Strip the leading newline, then find the key char at position 0
+           (body (substring result 1))
+           (face (get-text-property 0 'face body)))
+      (should (eq face 'nskk-candidate-key-face))))
+
+  (nskk-it "candidate portion carries nskk-candidate-face"
+    (let* ((result (nskk--candidate-build-string '("漢字") '(?a) 0))
+           (body (substring result 1))
+           ;; "a:" is 2 chars; candidate starts at position 2
+           (face (get-text-property 2 'face body)))
+      (should (eq face 'nskk-candidate-face)))))
+
+;;;
+;;; FR-T-003 / PBT-004 — Build-string always starts with newline
+;;;
+
+(nskk-property-test-exhaustive candidate-build-string-starts-with-newline
+  '(0 1 2 5 10 100)
+  ;; item = remaining count
+  (let ((result (nskk--candidate-build-string '("候補") '(?a) item)))
+    (should (string-prefix-p "\n" result))))
+
+;;;
+;;; FR-T-003 / PBT-005 — [残り N] present iff remaining > 0
+;;;
+
+(nskk-property-test-exhaustive candidate-build-string-remaining-iff-positive
+  '(0 1 2 5 10 100)
+  ;; Use (should (not ...)) rather than (should-not ...) so the property
+  ;; returns t on success — required by nskk-property-test-exhaustive's
+  ;; (unless ,property ...) check (should-not returns nil on success).
+  (let ((result (nskk--candidate-build-string '("候補") '(?a) item)))
+    (if (> item 0)
+        (should (string-match-p "残り" result))
+      (should (not (string-match-p "残り" result))))))
+
+;;;
+;;; FR-T-009 — Custom group
+;;;
 
 (nskk-describe "custom group"
+  ;; The nskk-candidate-window group is defined in nskk-custom.el.
+  ;; This test verifies the dependency chain is correctly established.
   (nskk-it "nskk-candidate-window custom group exists"
     (should (get 'nskk-candidate-window 'custom-group))))
 
@@ -307,16 +371,14 @@
                        key candidates current-index))))
 
 ;;;
-;;; PBT-001 — Pagination invariant (seeded PBT with manual random generation)
+;;; FR-T-004+005 / PBT-001 — Pagination invariant (exhaustive domain)
 ;;;
 
-(require 'nskk-test-macros)
-
 (nskk-property-test-exhaustive candidate-pagination-invariant
-  '(3 4 5 6 7)
-  ;; item = page-size; exhaustively test each page size in {3,4,5,6,7}
-  (let* ((pg-size item)
-         (n-candidates (+ 1 (random 20)))
+  '((3 . 1) (3 . 3) (3 . 7) (4 . 1) (4 . 4) (5 . 5) (5 . 10) (7 . 7) (7 . 20))
+  ;; item = (pg-size . n-candidates)
+  (let* ((pg-size (car item))
+         (n-candidates (cdr item))
          (all-candidates (cl-loop repeat n-candidates
                                   for i from 0
                                   collect (format "candidate-%d" i)))
@@ -324,10 +386,9 @@
           (cl-subseq '(?a ?s ?d ?f ?j ?k ?l) 0 (min pg-size 7)))
          (nskk-henkan-number-to-display-candidates pg-size))
     (with-temp-buffer
-      ;; First page must return min(pg-size, n-candidates) elements
       (let* ((result (nskk-candidate-show-list all-candidates 0))
              (expected-count (min pg-size n-candidates)))
-        (= (length result) expected-count)))))
+        (should (= (length result) expected-count))))))
 
 ;;;
 ;;; PBT-002 — Selection key exhaustive test for all 7 default keys
@@ -338,6 +399,8 @@
   (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
         (candidates '("a" "b" "c" "d" "e" "f" "g")))
     (let ((result (nskk-candidate-list-select-by-key item candidates 0)))
+      ;; NOTE: nskk-property-test-exhaustive uses the body form as a predicate —
+      ;; the return value signals pass (truthy) or fail (nil).  No `should' needed.
       ;; Each key must return a number in [0, 6]
       (and (numberp result)
            (>= result 0)
@@ -382,6 +445,30 @@
       (should (= pos 0)))))
 
 ;;;
+;;; FR-T-006 — nskk--candidate-init-key-facts with custom keys (isolated DB)
+;;;
+
+(nskk-describe "nskk--candidate-init-key-facts with custom keys"
+  (nskk-it "initializes facts for a non-default key list in isolated DB"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-henkan-show-candidates-keys '(?q ?w ?e))
+            (nskk--candidate-key-facts-initialized nil))
+        (nskk--candidate-init-key-facts)
+        ;; Custom keys should be queryable at expected positions
+        (should (= (nskk-prolog-query-value
+                    `(candidate-selection-key ,?q \?pos) '\?pos)
+                   0))
+        (should (= (nskk-prolog-query-value
+                    `(candidate-selection-key ,?w \?pos) '\?pos)
+                   1))
+        (should (= (nskk-prolog-query-value
+                    `(candidate-selection-key ,?e \?pos) '\?pos)
+                   2))
+        ;; Default key ?a should NOT be present in this isolated DB
+        (should (null (nskk-prolog-query-one
+                       `(candidate-selection-key ,?a \?pos))))))))
+
+;;;
 ;;; nskk--candidate-overlay-anchor
 ;;;
 
@@ -410,6 +497,92 @@
         (delete-overlay ov)
         ;; After deletion, overlay is no longer live so falls back to point
         (should (= (nskk--candidate-overlay-anchor) 4))))))
+
+;;;
+;;; FR-T-008 — nskk--candidate-page-slice
+;;;
+
+(nskk-describe "nskk--candidate-page-slice"
+  (nskk-it "returns correct slice and remaining as plist"
+    (let ((result (nskk--candidate-page-slice '("a" "b" "c" "d" "e") 0 3)))
+      (should (equal (plist-get result :slice) '("a" "b" "c")))
+      (should (= (plist-get result :remaining) 2)))))
+
+(nskk-deftest-table candidate-page-slice-cases
+  :columns (candidates start-index per-page expected-slice expected-remaining)
+  :rows ((("a" "b" "c" "d" "e")  0  3  ("a" "b" "c")  2)
+         (("a" "b" "c" "d" "e")  3  3  ("d" "e")       0)
+         (("a")                   0  7  ("a")            0)
+         (("a" "b" "c")           0  3  ("a" "b" "c")   0)
+         (("a" "b" "c" "d" "e")  0  7  ("a" "b" "c" "d" "e")  0))
+  :body
+  (let ((result (nskk--candidate-page-slice candidates start-index per-page)))
+    (should (equal (plist-get result :slice) expected-slice))
+    (should (= (plist-get result :remaining) expected-remaining))))
+
+;;;
+;;; FR-T-007 — CPS /k variants
+;;;
+
+(nskk-describe "CPS /k variants"
+  (nskk-it "nskk-candidate-show-list/k calls on-done with page candidates"
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+            (nskk-henkan-number-to-display-candidates 3)
+            (received nil))
+        (nskk-candidate-show-list/k '("一" "二" "三" "四") 0
+                                    (lambda (result) (setq received result))
+                                    #'ignore)
+        (should (equal received '("一" "二" "三"))))))
+
+  (nskk-it "nskk-candidate-hide-list/k calls on-done after hiding"
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+            (nskk-henkan-number-to-display-candidates 3)
+            (called nil))
+        (nskk-candidate-show-list '("test") 0)
+        (nskk-candidate-hide-list/k (lambda () (setq called t)))
+        (should called)
+        (should-not nskk--candidate-list-active))))
+
+  (nskk-it "nskk-candidate-list-active-p/k calls on-done with active state"
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+            (nskk-henkan-number-to-display-candidates 3)
+            (received :unset))
+        ;; When active
+        (nskk-candidate-show-list '("test") 0)
+        (nskk-candidate-list-active-p/k (lambda (v) (setq received v)) #'ignore)
+        (should received)
+        ;; When not active
+        (nskk-candidate-hide-list)
+        (nskk-candidate-list-active-p/k (lambda (v) (setq received v)) #'ignore)
+        (should-not received))))
+
+  (nskk-it "nskk-candidate-list-select-by-key/k calls on-found with index"
+    (let ((result :unset))
+      (nskk-candidate-list-select-by-key/k
+       ?a '("一" "二" "三") 0
+       (lambda (idx) (setq result idx))
+       (lambda () (setq result nil)))
+      (should (= result 0))))
+
+  (nskk-it "nskk-candidate-list-select-by-key/k passes absolute index including offset"
+    ;; key ?a is position 0; current-index 7 → absolute 7
+    (let ((result :unset))
+      (nskk-candidate-list-select-by-key/k
+       ?a '("一" "二" "三" "四" "五" "六" "七" "八") 7
+       (lambda (idx) (setq result idx))
+       (lambda () (setq result nil)))
+      (should (= result 7))))
+
+  (nskk-it "nskk-candidate-list-select-by-key/k calls on-not-found for invalid key"
+    (let ((not-found-called nil))
+      (nskk-candidate-list-select-by-key/k
+       ?z '("一" "二") 0
+       (lambda (_idx) nil)
+       (lambda () (setq not-found-called t)))
+      (should not-found-called))))
 
 (provide 'nskk-candidate-window-test)
 

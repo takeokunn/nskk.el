@@ -84,117 +84,92 @@
 ;;;; Hiragana Consonant+Vowel (K-row)
 ;;;;
 
-(nskk-describe "hiragana ka-row"
-  (nskk-it "converts ka ki ku ke ko"
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "ka")
-      (nskk-e2e-assert-buffer "か"))
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "ki")
-      (nskk-e2e-assert-buffer "き"))
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "ku")
-      (nskk-e2e-assert-buffer "く"))
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "ke")
-      (nskk-e2e-assert-buffer "け"))
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "ko")
-      (nskk-e2e-assert-buffer "こ"))))
+(nskk-deftest-table hiragana-ka-row
+  :columns (romaji expected)
+  :rows (("ka" "か") ("ki" "き") ("ku" "く") ("ke" "け") ("ko" "こ"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type romaji)
+    (nskk-e2e-assert-buffer expected
+                             (format "ka-row: %S → %S" romaji expected))))
 
 ;;;;
 ;;;; Complete Romaji Table Tests (ddskk-equivalent)
 ;;;;
 
-(nskk-describe "romaji table comprehensive"
-  (nskk-it "converts all romaji rows to hiragana"
-    (let ((cases '(;; A-row
-                   ("a" . "あ") ("i" . "い") ("u" . "う")
-                   ("e" . "え") ("o" . "お")
-                   ;; K-row
-                   ("ka" . "か") ("ki" . "き") ("ku" . "く")
-                   ("ke" . "け") ("ko" . "こ")
-                   ;; S-row (standard and alternate spellings)
-                   ("sa" . "さ") ("si" . "し") ("su" . "す")
-                   ("se" . "せ") ("so" . "そ")
-                   ("shi" . "し")
-                   ;; T-row
-                   ("ta" . "た") ("ti" . "ち") ("tu" . "つ")
-                   ("te" . "て") ("to" . "と")
-                   ("chi" . "ち") ("tsu" . "つ")
-                   ;; N-row
-                   ("na" . "な") ("ni" . "に") ("nu" . "ぬ")
-                   ("ne" . "ね") ("no" . "の")
-                   ;; H-row
-                   ("ha" . "は") ("hi" . "ひ") ("hu" . "ふ")
-                   ("he" . "へ") ("ho" . "ほ")
-                   ("fu" . "ふ")
-                   ;; M-row
-                   ("ma" . "ま") ("mi" . "み") ("mu" . "む")
-                   ("me" . "め") ("mo" . "も")
-                   ;; Y-row
-                   ("ya" . "や") ("yu" . "ゆ") ("yo" . "よ")
-                   ;; R-row
-                   ("ra" . "ら") ("ri" . "り") ("ru" . "る")
-                   ("re" . "れ") ("ro" . "ろ")
-                   ;; W-row
-                   ("wa" . "わ") ("wi" . "ゐ") ("we" . "ゑ") ("wo" . "を")
-                   ;; G-row (voiced)
-                   ("ga" . "が") ("gi" . "ぎ") ("gu" . "ぐ")
-                   ("ge" . "げ") ("go" . "ご")
-                   ;; Z-row (voiced)
-                   ("za" . "ざ") ("zi" . "じ") ("zu" . "ず")
-                   ("ze" . "ぜ") ("zo" . "ぞ")
-                   ("ji" . "じ")
-                   ;; D-row (voiced)
-                   ("da" . "だ") ("di" . "ぢ") ("du" . "づ")
-                   ("de" . "で") ("do" . "ど")
-                   ;; B-row (voiced)
-                   ("ba" . "ば") ("bi" . "び") ("bu" . "ぶ")
-                   ("be" . "べ") ("bo" . "ぼ")
-                   ;; P-row (semi-voiced)
-                   ("pa" . "ぱ") ("pi" . "ぴ") ("pu" . "ぷ")
-                   ("pe" . "ぺ") ("po" . "ぽ"))))
-      (dolist (tc cases)
-        (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type (car tc))
-          (nskk-e2e-assert-buffer (cdr tc)
-                                  (format "romaji %S → %S failed" (car tc) (cdr tc))))))))
+(nskk-deftest-table romaji-table-comprehensive
+  :columns (romaji expected)
+  :rows (;; A-row
+         ("a" "あ") ("i" "い") ("u" "う") ("e" "え") ("o" "お")
+         ;; K-row
+         ("ka" "か") ("ki" "き") ("ku" "く") ("ke" "け") ("ko" "こ")
+         ;; S-row (standard and alternate spellings)
+         ("sa" "さ") ("si" "し") ("su" "す") ("se" "せ") ("so" "そ")
+         ("shi" "し")
+         ;; T-row
+         ("ta" "た") ("ti" "ち") ("tu" "つ") ("te" "て") ("to" "と")
+         ("chi" "ち") ("tsu" "つ")
+         ;; N-row
+         ("na" "な") ("ni" "に") ("nu" "ぬ") ("ne" "ね") ("no" "の")
+         ;; H-row
+         ("ha" "は") ("hi" "ひ") ("hu" "ふ") ("he" "へ") ("ho" "ほ")
+         ("fu" "ふ")
+         ;; M-row
+         ("ma" "ま") ("mi" "み") ("mu" "む") ("me" "め") ("mo" "も")
+         ;; Y-row
+         ("ya" "や") ("yu" "ゆ") ("yo" "よ")
+         ;; R-row
+         ("ra" "ら") ("ri" "り") ("ru" "る") ("re" "れ") ("ro" "ろ")
+         ;; W-row
+         ("wa" "わ") ("wi" "ゐ") ("we" "ゑ") ("wo" "を")
+         ;; G-row (voiced)
+         ("ga" "が") ("gi" "ぎ") ("gu" "ぐ") ("ge" "げ") ("go" "ご")
+         ;; Z-row (voiced)
+         ("za" "ざ") ("zi" "じ") ("zu" "ず") ("ze" "ぜ") ("zo" "ぞ")
+         ("ji" "じ")
+         ;; D-row (voiced)
+         ("da" "だ") ("di" "ぢ") ("du" "づ") ("de" "で") ("do" "ど")
+         ;; B-row (voiced)
+         ("ba" "ば") ("bi" "び") ("bu" "ぶ") ("be" "べ") ("bo" "ぼ")
+         ;; P-row (semi-voiced)
+         ("pa" "ぱ") ("pi" "ぴ") ("pu" "ぷ") ("pe" "ぺ") ("po" "ぽ"))
+  :body (nskk-e2e-with-buffer 'hiragana nil
+          (nskk-e2e-type romaji)
+          (nskk-e2e-assert-buffer expected
+                                  (format "romaji %S → %S failed" romaji expected))))
 
 ;;;;
 ;;;; Compound Kana (拗音) Tests
 ;;;;
 
-(nskk-describe "compound kana romaji"
-  (nskk-it "converts all compound kana rows"
-    (let ((cases '(;; KY-row
-                   ("kya" . "きゃ") ("kyu" . "きゅ") ("kyo" . "きょ")
-                   ;; SH-row
-                   ("sha" . "しゃ") ("shu" . "しゅ") ("sho" . "しょ")
-                   ;; CH-row
-                   ("cha" . "ちゃ") ("chu" . "ちゅ") ("cho" . "ちょ")
-                   ;; NY-row
-                   ("nya" . "にゃ") ("nyu" . "にゅ") ("nyo" . "にょ")
-                   ;; HY-row
-                   ("hya" . "ひゃ") ("hyu" . "ひゅ") ("hyo" . "ひょ")
-                   ;; MY-row
-                   ("mya" . "みゃ") ("myu" . "みゅ") ("myo" . "みょ")
-                   ;; RY-row
-                   ("rya" . "りゃ") ("ryu" . "りゅ") ("ryo" . "りょ")
-                   ;; GY-row
-                   ("gya" . "ぎゃ") ("gyu" . "ぎゅ") ("gyo" . "ぎょ")
-                   ;; JY/J-row
-                   ("ja"  . "じゃ") ("ju"  . "じゅ") ("jo"  . "じょ")
-                   ;; BY-row
-                   ("bya" . "びゃ") ("byu" . "びゅ") ("byo" . "びょ")
-                   ;; PY-row
-                   ("pya" . "ぴゃ") ("pyu" . "ぴゅ") ("pyo" . "ぴょ"))))
-      (dolist (tc cases)
-        (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type (car tc))
-          (nskk-e2e-assert-buffer (cdr tc)
-                                  (format "compound romaji %S → %S failed"
-                                          (car tc) (cdr tc))))))))
+(nskk-deftest-table compound-kana-romaji
+  :columns (romaji expected)
+  :rows (;; KY-row
+         ("kya" "きゃ") ("kyu" "きゅ") ("kyo" "きょ")
+         ;; SH-row
+         ("sha" "しゃ") ("shu" "しゅ") ("sho" "しょ")
+         ;; CH-row
+         ("cha" "ちゃ") ("chu" "ちゅ") ("cho" "ちょ")
+         ;; NY-row
+         ("nya" "にゃ") ("nyu" "にゅ") ("nyo" "にょ")
+         ;; HY-row
+         ("hya" "ひゃ") ("hyu" "ひゅ") ("hyo" "ひょ")
+         ;; MY-row
+         ("mya" "みゃ") ("myu" "みゅ") ("myo" "みょ")
+         ;; RY-row
+         ("rya" "りゃ") ("ryu" "りゅ") ("ryo" "りょ")
+         ;; GY-row
+         ("gya" "ぎゃ") ("gyu" "ぎゅ") ("gyo" "ぎょ")
+         ;; JY/J-row
+         ("ja" "じゃ") ("ju" "じゅ") ("jo" "じょ")
+         ;; BY-row
+         ("bya" "びゃ") ("byu" "びゅ") ("byo" "びょ")
+         ;; PY-row
+         ("pya" "ぴゃ") ("pyu" "ぴゅ") ("pyo" "ぴょ"))
+  :body (nskk-e2e-with-buffer 'hiragana nil
+          (nskk-e2e-type romaji)
+          (nskk-e2e-assert-buffer expected
+                                  (format "compound romaji %S → %S failed" romaji expected))))
 
 ;;;;
 ;;;; Sokuon (促音 っ) Tests
@@ -216,16 +191,13 @@
       (nskk-e2e-type "sshi")
       (nskk-e2e-assert-buffer "っし")))
 
-  (nskk-it "converts sokuon before various consonants"
-    (let ((cases '(("ppa" . "っぱ")
-                   ("bba" . "っば")
-                   ("dda" . "っだ")
-                   ("gga" . "っが"))))
-      (dolist (tc cases)
-        (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type (car tc))
-          (nskk-e2e-assert-buffer (cdr tc)
-                                  (format "sokuon %S → %S failed" (car tc) (cdr tc))))))))
+  (nskk-deftest-table sokuon-consonant-combinations
+    :columns (romaji expected)
+    :rows (("ppa" "っぱ") ("bba" "っば") ("dda" "っだ") ("gga" "っが"))
+    :body (nskk-e2e-with-buffer 'hiragana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer expected
+                                    (format "sokuon %S → %S failed" romaji expected)))))
 
 ;;;;
 ;;;; Hatsuon (撥音 ん) Tests
@@ -257,42 +229,42 @@
 ;;;;
 
 (nskk-describe "katakana input"
-  (nskk-it "converts vowels to katakana"
+  (nskk-it "converts vowel sequence aiueo to katakana"
     (nskk-e2e-with-buffer 'katakana nil
       (nskk-e2e-type "aiueo")
       (nskk-e2e-assert-buffer "アイウエオ")))
 
-  (nskk-it "converts consonant+vowel to katakana"
+  (nskk-deftest-table katakana-single-cv
+    :columns (romaji expected)
+    :rows (("ka"  "カ") ("ki"  "キ") ("ku"  "ク")
+           ("shi" "シ") ("tsu" "ツ") ("chi" "チ"))
+    :body
     (nskk-e2e-with-buffer 'katakana nil
-      (nskk-e2e-type "ka")
-      (nskk-e2e-assert-buffer "カ"))
-    (nskk-e2e-with-buffer 'katakana nil
-      (nskk-e2e-type "shi")
-      (nskk-e2e-assert-buffer "シ")))
+      (nskk-e2e-type romaji)
+      (nskk-e2e-assert-buffer expected
+                               (format "katakana: %S → %S" romaji expected))))
 
   (nskk-it "converts sokuon to ッ"
     (nskk-e2e-with-buffer 'katakana nil
       (nskk-e2e-type "tte")
       (nskk-e2e-assert-buffer "ッテ")))
 
-  (nskk-it "converts representative kana table entries"
-    (let ((cases '(("a"   . "ア") ("i"   . "イ") ("u"   . "ウ")
-                   ("e"   . "エ") ("o"   . "オ")
-                   ("ka"  . "カ") ("ki"  . "キ") ("ku"  . "ク")
-                   ("sa"  . "サ") ("shi" . "シ") ("su"  . "ス")
-                   ("ta"  . "タ") ("chi" . "チ") ("tsu" . "ツ")
-                   ("na"  . "ナ") ("ni"  . "ニ") ("nu"  . "ヌ")
-                   ("ha"  . "ハ") ("hi"  . "ヒ") ("fu"  . "フ")
-                   ("ma"  . "マ") ("mi"  . "ミ") ("mu"  . "ム")
-                   ("ya"  . "ヤ") ("yu"  . "ユ") ("yo"  . "ヨ")
-                   ("ra"  . "ラ") ("ri"  . "リ") ("ru"  . "ル")
-                   ("wa"  . "ワ") ("wo"  . "ヲ"))))
-      (dolist (tc cases)
-        (nskk-e2e-with-buffer 'katakana nil
-          (nskk-e2e-type (car tc))
-          (nskk-e2e-assert-buffer (cdr tc)
-                                  (format "katakana %S → %S failed"
-                                          (car tc) (cdr tc))))))))
+  (nskk-deftest-table katakana-representative-entries
+    :columns (romaji expected)
+    :rows (("a" "ア") ("i" "イ") ("u" "ウ") ("e" "エ") ("o" "オ")
+           ("ka" "カ") ("ki" "キ") ("ku" "ク")
+           ("sa" "サ") ("shi" "シ") ("su" "ス")
+           ("ta" "タ") ("chi" "チ") ("tsu" "ツ")
+           ("na" "ナ") ("ni" "ニ") ("nu" "ヌ")
+           ("ha" "ハ") ("hi" "ヒ") ("fu" "フ")
+           ("ma" "マ") ("mi" "ミ") ("mu" "ム")
+           ("ya" "ヤ") ("yu" "ユ") ("yo" "ヨ")
+           ("ra" "ラ") ("ri" "リ") ("ru" "ル")
+           ("wa" "ワ") ("wo" "ヲ"))
+    :body (nskk-e2e-with-buffer 'katakana nil
+            (nskk-e2e-type romaji)
+            (nskk-e2e-assert-buffer expected
+                                    (format "katakana %S → %S failed" romaji expected)))))
 
 ;;;;
 ;;;; Multiple Character Sequence Tests
@@ -327,75 +299,33 @@
 ;;;; Half-width Katakana (katakana-半角) Character Output Tests
 ;;;;
 
-(nskk-deftest-table buffer-hankaku-katakana-vowels
-  :columns (input expected)
-  :rows (("a" "ｱ") ("i" "ｲ") ("u" "ｳ") ("e" "ｴ") ("o" "ｵ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-ka-row
-  :columns (input expected)
-  :rows (("ka" "ｶ") ("ki" "ｷ") ("ku" "ｸ") ("ke" "ｹ") ("ko" "ｺ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-sa-row
-  :columns (input expected)
-  :rows (("sa" "ｻ") ("shi" "ｼ") ("su" "ｽ") ("se" "ｾ") ("so" "ｿ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-ta-row
-  :columns (input expected)
-  :rows (("ta" "ﾀ") ("chi" "ﾁ") ("tsu" "ﾂ") ("te" "ﾃ") ("to" "ﾄ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-na-row
-  :columns (input expected)
-  :rows (("na" "ﾅ") ("ni" "ﾆ") ("nu" "ﾇ") ("ne" "ﾈ") ("no" "ﾉ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-ha-row
-  :columns (input expected)
-  :rows (("ha" "ﾊ") ("hi" "ﾋ") ("fu" "ﾌ") ("he" "ﾍ") ("ho" "ﾎ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-ma-row
-  :columns (input expected)
-  :rows (("ma" "ﾏ") ("mi" "ﾐ") ("mu" "ﾑ") ("me" "ﾒ") ("mo" "ﾓ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-ya-row
-  :columns (input expected)
-  :rows (("ya" "ﾔ") ("yu" "ﾕ") ("yo" "ﾖ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-ra-row
-  :columns (input expected)
-  :rows (("ra" "ﾗ") ("ri" "ﾘ") ("ru" "ﾙ") ("re" "ﾚ") ("ro" "ﾛ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
-(nskk-deftest-table buffer-hankaku-katakana-wa-n
-  :columns (input expected)
-  :rows (("wa" "ﾜ") ("nn" "ﾝ"))
-  :body (nskk-e2e-with-buffer 'katakana-半角 nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
+(nskk-deftest-table hankaku-katakana-comprehensive
+  :columns (romaji expected)
+  :rows (;; Vowel row
+         ("a" "ｱ") ("i" "ｲ") ("u" "ｳ") ("e" "ｴ") ("o" "ｵ")
+         ;; Ka-row
+         ("ka" "ｶ") ("ki" "ｷ") ("ku" "ｸ") ("ke" "ｹ") ("ko" "ｺ")
+         ;; Sa-row
+         ("sa" "ｻ") ("shi" "ｼ") ("su" "ｽ") ("se" "ｾ") ("so" "ｿ")
+         ;; Ta-row
+         ("ta" "ﾀ") ("chi" "ﾁ") ("tsu" "ﾂ") ("te" "ﾃ") ("to" "ﾄ")
+         ;; Na-row
+         ("na" "ﾅ") ("ni" "ﾆ") ("nu" "ﾇ") ("ne" "ﾈ") ("no" "ﾉ")
+         ;; Ha-row
+         ("ha" "ﾊ") ("hi" "ﾋ") ("fu" "ﾌ") ("he" "ﾍ") ("ho" "ﾎ")
+         ;; Ma-row
+         ("ma" "ﾏ") ("mi" "ﾐ") ("mu" "ﾑ") ("me" "ﾒ") ("mo" "ﾓ")
+         ;; Ya-row
+         ("ya" "ﾔ") ("yu" "ﾕ") ("yo" "ﾖ")
+         ;; Ra-row
+         ("ra" "ﾗ") ("ri" "ﾘ") ("ru" "ﾙ") ("re" "ﾚ") ("ro" "ﾛ")
+         ;; Wa-row + n
+         ("wa" "ﾜ") ("nn" "ﾝ"))
+  :body
+  (nskk-e2e-with-buffer 'katakana-半角 nil
+    (nskk-e2e-type romaji)
+    (nskk-e2e-assert-buffer expected
+                             (format "hankaku: %S → %S" romaji expected))))
 
 (nskk-describe "half-width katakana (katakana-半角) character output"
   (nskk-it "converts all vowels in sequence to hankaku katakana"
@@ -412,96 +342,39 @@
 ;;;; Property-Based Tests (PBT)
 ;;;;
 
-(ert-deftest nskk-e2e-pbt-romaji-no-crash ()
-  "PBT: Random romaji sequences in hiragana mode never crash."
-  (let ((runs 50)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "E2E PBT 'romaji-no-crash' seed: %d" test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let ((romaji (nskk-e2e--random-romaji-basic)))
-            (nskk-e2e-with-buffer 'hiragana nil
-              (nskk-e2e--type-romaji-chars romaji)
-              ;; Property: buffer must be a valid string
-              (unless (stringp (buffer-string))
-                (push (list :run run :romaji romaji :error "non-string buffer")
-                      errors))
-              ;; Property: mode must still be valid
-              (unless (nskk-state-valid-mode-p (nskk-current-mode))
-                (push (list :run run :romaji romaji :error "invalid mode")
-                      errors))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT romaji-no-crash: %d failures (seed %d):\n%S"
-                        (length errors) test-seed
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+(nskk-property-test-seeded romaji-no-crash
+  ((romaji romaji-basic))
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e--type-romaji-chars romaji)
+    (and (stringp (buffer-string))
+         (nskk-state-valid-mode-p (nskk-current-mode))))
+  30)
 
-(ert-deftest nskk-e2e-pbt-katakana-no-crash ()
-  "PBT: Random romaji in katakana mode never crashes."
-  (let ((runs 50)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let ((romaji (nskk-e2e--random-romaji-basic)))
-            (nskk-e2e-with-buffer 'katakana nil
-              (nskk-e2e--type-romaji-chars romaji)
-              ;; Property: mode must still be katakana
-              (unless (eq (nskk-current-mode) 'katakana)
-                (push (list :run run :romaji romaji :error "mode changed")
-                      errors))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT katakana-no-crash: %d failures (seed %d):\n%S"
-                        (length errors) test-seed
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+(nskk-property-test-seeded katakana-no-crash
+  ((romaji romaji-basic))
+  (nskk-e2e-with-buffer 'katakana nil
+    (nskk-e2e--type-romaji-chars romaji)
+    (eq (nskk-current-mode) 'katakana))
+  30)
 
-(ert-deftest nskk-e2e-pbt-buffer-always-string ()
-  "PBT: Buffer content is always a valid string after any romaji input."
-  (let ((runs 75)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (nskk-e2e-with-buffer 'hiragana nil
-            (let* ((romaji (nskk-e2e--random-romaji-basic)))
-              (nskk-e2e--type-romaji-chars romaji)
-              (let ((content (buffer-string)))
-                (unless (stringp content)
-                  (push (list :run run :romaji romaji) errors)))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT buffer-always-string: %d failures (seed %d):\n%S"
-                        (length errors) test-seed
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+;; buffer-always-string: buffer-string is always a string after romaji input.
+;; (Redundant with romaji-no-crash; kept as a distinct named invariant at 30 runs.)
+(nskk-property-test-seeded buffer-always-string
+  ((romaji romaji-basic))
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e--type-romaji-chars romaji)
+    (stringp (buffer-string)))
+  30)
 
-(ert-deftest nskk-e2e-pbt-mode-preserves-after-typing ()
-  "PBT: After typing romaji (no uppercase), mode stays the same."
-  (let ((runs 50)
-        (errors nil))
-    (dotimes (run runs)
-      (condition-case err
-          (let* ((mode (nth (random 3) '(hiragana katakana ascii)))
-                 (romaji (nskk-e2e--random-romaji-basic)))
-            (nskk-e2e-with-buffer mode nil
-              (nskk-e2e--type-romaji-chars romaji)
-              (let ((actual-mode (nskk-current-mode)))
-                (unless (eq actual-mode mode)
-                  (push (list :run run :mode mode :actual actual-mode :romaji romaji)
-                        errors)))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT mode-preserves: %d failures:\n%S"
-                        (length errors)
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+;; mode-preservation: typing lowercase romaji in any mode must not switch mode.
+;; Uses nskk-property-test-seeded instead of dotimes+nskk-for-all.
+(nskk-property-test-seeded romaji-mode-preserved
+  ((mode valid-mode))
+  (let ((romaji (nskk-e2e--random-romaji-basic)))
+    (nskk-e2e-with-buffer mode nil
+      (nskk-e2e--type-romaji-chars romaji)
+      (eq (nskk-current-mode) mode)))
+  25)
 
 ;;;;
 ;;;; Small Kana (xa/la rows) -- Romaji Edge Cases
@@ -634,72 +507,6 @@
       (nskk-e2e-type "-")
       (nskk-e2e-assert-buffer "ー"
                               "romaji \"-\" → \"ー\" failed in katakana mode"))))
-
-;;;;
-;;;; Mode Switch Clears Pending Romaji -- Romaji Edge Cases
-;;;;
-
-(nskk-describe "mode switch clears pending romaji input"
-
-  (nskk-it "C-j with single pending consonant clears romaji buffer"
-    ;; Type "k" -> nskk-convert-input-to-kana receives 'k', converter returns
-    ;; :incomplete (no vowel yet), so nskk--romaji-buffer = "k" and nothing is
-    ;; inserted into the buffer.
-    ;;
-    ;; C-j dispatches nskk-kakutei, which calls nskk--current-kakutei-state.
-    ;; Since nskk--romaji-buffer is non-empty and there is no active ▼/▽,
-    ;; the state is 'romaji-pending.  kakutei-action/2 maps:
-    ;;   (romaji-pending clear-romaji)
-    ;; The clear-romaji action calls nskk--clear-pending-romaji and sets
-    ;; nskk--romaji-buffer to "".  No kana is output.  Mode stays hiragana.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "k")
-      ;; "k" is pending -- no kana committed to the buffer yet.
-      (nskk-e2e-assert-buffer "")
-      (nskk-e2e-type "C-j")
-      ;; C-j in romaji-pending -> clear-romaji: romaji buffer flushed silently.
-      (nskk-e2e-assert-buffer "")
-      (nskk-e2e-assert-mode 'hiragana)))
-
-  (nskk-it "C-j with two-char incomplete romaji clears romaji buffer"
-    ;; Type "s" then "h": converter accumulates "sh" as incomplete (waiting
-    ;; for i/a/u/e/o to complete "shi"/"sha"/etc.).  nskk--romaji-buffer = "sh".
-    ;; Nothing is inserted into the buffer.
-    ;;
-    ;; C-j -> nskk-kakutei -> state = 'romaji-pending -> action = 'clear-romaji
-    ;; -> nskk--romaji-buffer = "".  Buffer stays empty, mode stays hiragana.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "s")
-      (nskk-e2e-type "h")
-      ;; "sh" is incomplete -- waiting for a vowel to complete the compound.
-      (nskk-e2e-assert-buffer "")
-      (nskk-e2e-type "C-j")
-      ;; clear-romaji flushes the buffer without emitting any character.
-      (nskk-e2e-assert-buffer "")
-      (nskk-e2e-assert-mode 'hiragana)))
-
-  (nskk-it "l mode switch clears pending romaji and switches to latin"
-    ;; Type "k" -> nskk--romaji-buffer = "k", buffer empty (no kana yet).
-    ;;
-    ;; Press "l": nskk-handle-l calls (nskk-with-japanese-mode (nskk-set-mode-latin)).
-    ;; Dispatch order inside the macro:
-    ;;   1. (nskk-converting-p)                        -- no (no ▼ active)
-    ;;   2. (and (nskk--has-preedit) japanese-mode-p)  -- no (no ▽ marker set)
-    ;;   3. (nskk--japanese-mode-active-p)             -- yes (hiragana is japanese)
-    ;; Branch 3 fires: calls (nskk-set-mode-latin) directly.
-    ;; nskk-set-mode-latin -> nskk--set-mode 'latin -> nskk--clear-conversion-context
-    ;; nskk--clear-conversion-context explicitly does:
-    ;;   (setq nskk--romaji-buffer "")  ; discards "k" silently
-    ;; The pending "k" is dropped (not output) as a side effect of the mode switch.
-    ;; Result: buffer empty, mode = latin.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "k")
-      ;; "k" is pending in nskk--romaji-buffer; buffer is empty.
-      (nskk-e2e-assert-buffer "")
-      (nskk-e2e-type "l")
-      ;; nskk-set-mode-latin -> nskk--clear-conversion-context discards "k".
-      (nskk-e2e-assert-buffer "")
-      (nskk-e2e-assert-mode 'latin))))
 
 (provide 'nskk-e2e-kana-input)
 

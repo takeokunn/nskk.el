@@ -6,6 +6,7 @@
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -37,11 +38,11 @@
 ;;
 ;; Architecture:
 ;; - Rule data is stored in `defconst' tables for data/logic separation.
-;;   See `nskk-azik--special-keys', `nskk-azik--extension-rows', etc.
+;;   See `nskk--azik-special-keys', `nskk--azik-extension-rows', etc.
 ;; - Core macros (`nskk-azik-hatsuon', `nskk-azik-double-vowel', etc.)
 ;;   generate azik-rule/2 Prolog facts from literal arguments.
-;; - Meta-macros (`nskk-azik--init-extension-rows',
-;;   `nskk-azik--init-youon-rows') expand entire rule tables at compile
+;; - Meta-macros (`nskk--azik-init-extension-rows',
+;;   `nskk--azik-init-youon-rows') expand entire rule tables at compile
 ;;   time by iterating the defconst data, eliminating runtime iteration
 ;;   and the need for separate runtime-equivalent functions.
 ;; - A bridge rule (romaji-to-kana ?r ?k) :- (azik-rule ?r ?k) connects
@@ -75,6 +76,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'nskk-cps-macros)
 (require 'nskk-converter)
 (require 'nskk-keymap)
@@ -148,18 +150,18 @@ Hatsuon and double vowel extensions are generated for all positions."
 
 ;;;; Static Rule Data
 
-(defconst nskk-azik--special-keys
+(defconst nskk--azik-special-keys
   '((";" "っ") (":" "ー"))
   "Special keys: semicolon → っ (geminate stop), colon → ー (prolonged sound).")
 
-(defconst nskk-azik--consonant-compat-rules
+(defconst nskk--azik-consonant-compat-rules
   '(("xa" "しゃ") ("xi" "し") ("xu" "しゅ") ("xe" "しぇ") ("xo" "しょ")
-    ("ca" "ちゃ") ("ci" "ち") ("cu" "ちゅ") ("ce" "しぇ") ("co" "ちょ"))
+    ("ca" "ちゃ") ("ci" "ち") ("cu" "ちゅ") ("ce" "ちぇ") ("co" "ちょ"))
   "Consonant compatibility rules.
 x-prefix: しゃ行 (overrides standard small-kana xa=ぁ).
 c-prefix: ちゃ行.")
 
-(defconst nskk-azik--extension-rows
+(defconst nskk--azik-extension-rows
   '(("k" "か" "き" "く" "け" "こ")
     ("s" "さ" "し" "す" "せ" "そ")
     ("t" "た" "ち" "つ" "て" "と")
@@ -188,7 +190,7 @@ Special rows:
 The x and c rows support all extension keys (z/k/j/d/l for hatsuon,
 q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
 
-(defconst nskk-azik--youon-rows
+(defconst nskk--azik-youon-rows
   '(("kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
     ("hg" "ひゃ" "ひぃ" "ひゅ" "ひぇ" "ひょ")
     ("mg" "みゃ" "みぃ" "みゅ" "みぇ" "みょ")
@@ -200,12 +202,12 @@ q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
   "Youon (拗音) rows for AZIK rules.
 Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.")
 
-(defconst nskk-azik--same-finger-rules
+(defconst nskk--azik-same-finger-rules
   '(("kf" "き") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
     ("pf" "ぷ") ("rf" "る") ("yf" "ゆ"))
   "Same-finger alternative rules (f suffix for ring-finger consonants).")
 
-(defconst nskk-azik--word-shortcuts
+(defconst nskk--azik-word-shortcuts
   '(("km" "かも") ("kr" "から") ("gr" "がら") ("kt" "こと") ("gt" "ごと")
     ("zr" "ざる") ("st" "した") ("sr" "する") ("tt" "たち") ("dt" "だち")
     ("tb" "たび") ("tm" "ため") ("tr" "たら") ("ds" "です") ("dm" "でも")
@@ -214,39 +216,46 @@ Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.")
     ("rr" "られ") ("wt" "わた") ("wr" "われ"))
   "Word shortcut rules for common Japanese words and particles.")
 
-(defconst nskk-azik--foreign-extensions
+(defconst nskk--azik-foreign-extensions
   '(("tgi" "てぃ") ("tgu" "とぅ") ("dci" "でぃ") ("dcu" "どぅ") ("wso" "うぉ"))
   "Foreign word extension rules for non-native Japanese sounds.")
 
-(defconst nskk-azik--compound-rules
+(defconst nskk--azik-compound-rules
   '(("kak" "かく") ("kaq" "かい") ("kakz" "かかん"))
-  "Compound rules inserted into the hash table after prefix-restore.
-These are NOT asserted into azik-rule/2 to avoid the prefix-restore step
-demoting their 2-char prefixes (e.g. \"ka\") back to :incomplete.
-Adding them post-restore lets the greedy longest-match finder discover
-\"kak\" before \"ka\", enabling sequences like xhkak → しゅうかく.")
+  "Compound rules inserted into the hash table after the prefix-restore pass.
+
+These rules are NOT asserted into azik-rule/2 to avoid the prefix-restore
+step demoting their 2-char prefixes (e.g., \"ka\") back to :incomplete.
+Adding them after the restore pass lets the greedy longest-match finder
+discover e.g. \"kak\" before \"ka\", enabling compound input like
+xhkak → しゅうかく (shuukaku).
+
+Format: each entry is (ROMAJI KANA) where ROMAJI is the full key string
+and KANA is the output string.")
 
 ;;;; Meta-macros (compile-time table expansion)
 
-(defmacro nskk-azik--init-extension-rows ()
+(defmacro nskk--azik-init-extension-rows ()
   "Assert hatsuon + double-vowel rules for all rows at compile time.
-Iterates `nskk-azik--extension-rows' at macro-expansion time, producing
+Iterates `nskk--azik-extension-rows' at macro-expansion time, producing
 one `nskk-azik-extensions' call per row without any runtime iteration."
+  (declare (indent 0) (debug t))
   `(progn
      ,@(mapcar (lambda (row) `(nskk-azik-extensions ,@row))
-               nskk-azik--extension-rows)))
+               nskk--azik-extension-rows)))
 
-(defmacro nskk-azik--init-youon-rows ()
+(defmacro nskk--azik-init-youon-rows ()
   "Assert youon rules for all rows at compile time.
-Iterates `nskk-azik--youon-rows' at macro-expansion time, producing
+Iterates `nskk--azik-youon-rows' at macro-expansion time, producing
 one `nskk-azik-youon' call per row without any runtime iteration."
+  (declare (indent 0) (debug t))
   `(progn
      ,@(mapcar (lambda (row) `(nskk-azik-youon ,@row))
-               nskk-azik--youon-rows)))
+               nskk--azik-youon-rows)))
 
 ;;;; Runtime Helpers
 
-(defun/done nskk-azik--assert-rules (rules)
+(defun/done nskk--azik-assert-rules (rules)
   "Assert RULES as azik-rule/2 Prolog facts at runtime.
 RULES is a list of (ROMAJI KANA) string pairs."
   (dolist (rule rules)
@@ -291,17 +300,12 @@ hand-maintained list."
                  (nskk-converter-add-rule prefix :incomplete)))
              partials)))
 
-(defun/k nskk--azik-is-prefix-of-longer-p (key)
-  "Return non-nil if KEY is a proper prefix of a longer entry in the romaji hash.
-Used by `nskk--azik-restore-standard-prefixes' to detect shadowing."
-  (let ((key-len (length key))
-        (found   nil))
-    (maphash (lambda (k _)
-               (when (and (> (length k) key-len)
-                          (string-prefix-p key k))
-                 (setq found t)))
-             nskk--romaji-table)
-    (if found (succeed t) (fail))))
+(defun nskk--azik-is-prefix-of-longer-p (key)
+  "Return non-nil if KEY is a proper prefix of a longer entry in the romaji hash."
+  (let ((key-len (length key)))
+    (cl-loop for k being the hash-keys of nskk--romaji-table
+             thereis (and (> (length k) key-len)
+                          (string-prefix-p key k)))))
 
 (defun/done nskk--azik-restore-standard-prefixes ()
   "Demote AZIK complete rules that are proper prefixes of longer hash entries.
@@ -315,17 +319,17 @@ user types \"sha\", the hash returns \"すう\" at \"sh\" (a complete match) and
 \"sha\" is never reached — the engine emits \"すう\" then
 \"あ\" instead of \"しゃ\".
 
-Fix: collect all complete (string-valued) keys, then use
-`nskk--azik-is-prefix-of-longer-p' to demote any key that is a proper
-prefix of some longer entry back to `:incomplete'."
-  (let (complete-keys)
-    (maphash (lambda (k v)
-               (when (and (stringp k) (stringp v))
-                 (push k complete-keys)))
-             nskk--romaji-table)
-    (dolist (k complete-keys)
-      (when (nskk--azik-is-prefix-of-longer-p k)
-        (puthash k :incomplete nskk--romaji-table)))))
+Fix: scan all complete (string-valued) key/value pairs in a single pass;
+demote any key that is a proper prefix of some longer entry back to
+`:incomplete' so multi-char standard rules remain reachable."
+  ;; Safety: `puthash' here only updates the value of an existing key (k came
+  ;; from the maphash iteration itself), never inserts a new key.  Updating
+  ;; existing keys during `maphash' is documented-safe in Emacs Lisp.
+  (maphash (lambda (k v)
+              (when (and (stringp k) (stringp v)
+                         (nskk--azik-is-prefix-of-longer-p k))
+                (puthash k :incomplete nskk--romaji-table)))
+            nskk--romaji-table))
 
 ;;;; Main Initialization
 
@@ -348,28 +352,28 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;; Step 3: Assert all AZIK rule categories.
 
   ;; 3a. Special keys (; → っ, : → ー)
-  (nskk-azik--assert-rules nskk-azik--special-keys)
+  (nskk--azik-assert-rules nskk--azik-special-keys)
 
   ;; 3b. Consonant compatibility (x=しゃ行, c=ちゃ行)
-  (nskk-azik--assert-rules nskk-azik--consonant-compat-rules)
+  (nskk--azik-assert-rules nskk--azik-consonant-compat-rules)
 
   ;; 3c. Hatsuon (撥音) + double vowel (二重母音) extensions.
   ;;     Extension keys: z=a+ん, k=i+ん, j=u+ん, d=e+ん, l=o+ん
   ;;                     q=a+い, h=u+う, w=e+い, p=o+う
-  (nskk-azik--init-extension-rows)
+  (nskk--azik-init-extension-rows)
 
   ;; 3d. Youon (拗音) compatibility — g substitutes for y.
   ;;     Each row: base (a/u/e/o) + hatsuon (5) + double vowel (4)
-  (nskk-azik--init-youon-rows)
+  (nskk--azik-init-youon-rows)
 
   ;; 3e. Same-finger alternatives (f suffix)
-  (nskk-azik--assert-rules nskk-azik--same-finger-rules)
+  (nskk--azik-assert-rules nskk--azik-same-finger-rules)
 
   ;; 3f. Word shortcuts
-  (nskk-azik--assert-rules nskk-azik--word-shortcuts)
+  (nskk--azik-assert-rules nskk--azik-word-shortcuts)
 
   ;; 3g. Foreign word extensions
-  (nskk-azik--assert-rules nskk-azik--foreign-extensions)
+  (nskk--azik-assert-rules nskk--azik-foreign-extensions)
 
   ;; Step 4: Bridge rule — AZIK rules are also romaji-to-kana.
   ;; Placed after all azik-rule/2 facts so Prolog queries on
@@ -396,14 +400,15 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;; Step 7: Compound rules added after prefix restore.
   ;; Inserting after the restore pass ensures 2-char prefixes like "ka"
   ;; remain complete, enabling sequences like xhkak → しゅうかく.
-  (dolist (rule nskk-azik--compound-rules)
+  (dolist (rule nskk--azik-compound-rules)
     (puthash (car rule) (cadr rule) nskk--romaji-table))
 
   ;; Step 8: Set up AZIK toggle key binding.
   (nskk--setup-azik-toggle-key))
 
 ;; Register AZIK style
-(nskk-converter-register-style 'azik #'nskk--init-azik-rules)
+;;;###autoload
+(nskk-converter-register-style 'azik 'nskk--init-azik-rules)
 
 (provide 'nskk-azik)
 

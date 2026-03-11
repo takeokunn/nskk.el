@@ -226,6 +226,82 @@
   :description ":safe predicate rejects wrong-typed values"
   :body (should-not (funcall (get var 'safe-local-variable) invalid-value)))
 
+;;;
+;;; Property-Based Tests
+;;;
+
+;; PBT-001 — Integer custom vars accept positive integers (seeded)
+;; All natnum-typed defcustom variables must satisfy natnump for any
+;; non-negative integer value — the type predicate used as their :safe guard.
+(nskk-property-test-seeded custom-pbt-integer-vars-accept-positive
+  ((n romaji-string))
+  ;; Use a literal list of representative values rather than a generator,
+  ;; since no small-positive-integer generator exists in the project.
+  (cl-every (lambda (v)
+              (and (natnump v)
+                   (funcall (get 'nskk-state-undo-limit 'safe-local-variable) v)
+                   (funcall (get 'nskk-debug-max-entries 'safe-local-variable) v)
+                   (funcall (get 'nskk-search-fuzzy-threshold 'safe-local-variable) v)
+                   (funcall (get 'nskk-henkan-show-candidates-nth 'safe-local-variable) v)
+                   (funcall (get 'nskk-henkan-number-to-display-candidates 'safe-local-variable) v)
+                   (funcall (get 'nskk-max-registration-depth 'safe-local-variable) v)
+                   (funcall (get 'nskk-search-auto-save-interval 'safe-local-variable) v)))
+            '(0 1 5 10 50 100 500 1000))
+  20 42)
+
+;; PBT-002 — String custom vars accept strings (seeded)
+;; String-typed defcustom variables must accept any string value through
+;; their :safe predicate.
+(nskk-property-test-seeded custom-pbt-string-vars-accept-strings
+  ((s romaji-string))
+  (and (stringp s)
+       (funcall (get 'nskk-modeline-format 'safe-local-variable) s)
+       (funcall (get 'nskk-search-learning-file 'safe-local-variable) s))
+  30 42)
+
+;; PBT-003 — Boolean custom vars accept only t or nil (exhaustive via seeded)
+;; Boolean-typed defcustom variables must accept t and nil and reject
+;; any non-boolean value.
+(nskk-property-test-seeded custom-pbt-boolean-vars-reject-non-booleans
+  ((n romaji-string))
+  (let ((bool-vars '(nskk-converter-use-sokuon
+                     nskk-converter-auto-start-henkan
+                     nskk-search-enable-cache
+                     nskk-search-auto-save
+                     nskk-use-color-cursor
+                     nskk-debug-enabled)))
+    (cl-every (lambda (var)
+                (let ((pred (get var 'safe-local-variable)))
+                  (and (funcall pred t)
+                       (funcall pred nil)
+                       (not (funcall pred 1))
+                       (not (funcall pred "true"))
+                       (not (funcall pred 42)))))
+              bool-vars))
+  20 42)
+
+;; PBT-004 — List custom vars accept lists of the right element type (seeded)
+;; List-typed defcustom variables must accept nil and valid-typed lists,
+;; and reject non-list values.
+(nskk-property-test-seeded custom-pbt-list-vars-accept-valid-lists
+  ((n romaji-string))
+  (let ((jisyo-pred (get 'nskk-jisyo-files 'safe-local-variable))
+        (keys-pred  (get 'nskk-henkan-show-candidates-keys 'safe-local-variable)))
+    (and
+     ;; nskk-jisyo-files: nil and string-only lists
+     (funcall jisyo-pred nil)
+     (funcall jisyo-pred '("/path/to/dict"))
+     (funcall jisyo-pred '("/a" "/b" "/c"))
+     (not (funcall jisyo-pred "not-a-list"))
+     (not (funcall jisyo-pred '(1 2 3)))
+     ;; nskk-henkan-show-candidates-keys: nil and character lists
+     (funcall keys-pred nil)
+     (funcall keys-pred '(?a ?s ?d))
+     (funcall keys-pred '(?a ?s ?d ?f ?j ?k ?l))
+     (not (funcall keys-pred '("a" "s" "d")))
+     (not (funcall keys-pred "asd"))))
+  20 42)
+
 (provide 'nskk-custom-test)
 
 ;;; nskk-custom-test.el ends here

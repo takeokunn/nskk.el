@@ -236,9 +236,9 @@
   (nskk-it "learning sets the dirty flag so auto-save knows data changed"
     (nskk-prolog-test-with-isolated-db
       (nskk-with-mock-dict nil
-        (nskk-given (setq nskk-search--dirty-flag nil))
+        (nskk-given (setq nskk--search-dirty-flag nil))
         (nskk-when  (nskk-search-learn "にほん" "日本"))
-        (nskk-then  (should (eq nskk-search--dirty-flag t)))))))
+        (nskk-then  (should (eq nskk--search-dirty-flag t)))))))
 
 
 ;;;
@@ -345,6 +345,95 @@
         (should-error
          (nskk-search-with-cache "not-a-cache" nskk--system-dict-index "かんじ")
          :type 'wrong-type-argument)))))
+
+
+;;;
+;;; Group 6: Cache Invariants (PBT)
+;;;
+
+(nskk-describe "cache invariants (PBT)"
+
+  ;; Property A: Hit-rate is monotonically non-decreasing as hits accumulate.
+  ;;
+  ;; Setup: create an LRU cache; perform N random put operations; then perform
+  ;; M get operations on keys that are guaranteed to be present (hits); after
+  ;; each hit, verify that the hit-rate is >= the previous hit-rate.
+  (nskk-property-test cache-hit-rate-monotonically-non-decreasing
+    ((key   search-query)
+     (value candidate-list))
+    (let* ((cache    (nskk-cache-create 'lru 50))
+           (num-puts (+ 3 (random 8)))   ; 3..10 random puts
+           (num-hits (+ 2 (random 8)))   ; 2..9 guaranteed hits
+           ;; Collect a pool of keys actually inserted so we can hit them.
+           (put-keys nil))
+      ;; Put phase: insert num-puts entries; accumulate the keys used.
+      (dotimes (i num-puts)
+        (let ((k (format "%s-%d" key i))
+              (v (nskk-generate 'candidate-list)))
+          (push k put-keys)
+          (nskk-cache-put cache k v)))
+      ;; Hit phase: read from put-keys; after each read verify monotonicity.
+      (let ((prev-rate 0.0)
+            (ok t))
+        (dotimes (j num-hits)
+          (let ((hit-key (nth (mod j (length put-keys)) put-keys)))
+            (nskk-cache-get cache hit-key)
+            (let ((rate (nskk-cache-hit-rate cache)))
+              (when (< rate (- prev-rate 1e-10))
+                (setq ok nil))
+              (setq prev-rate rate))))
+        ok))
+    20)
+
+  ;; Property B: LRU cache capacity is never exceeded.
+  ;;
+  ;; Setup: create an LRU cache with a small fixed capacity K=3; perform N>K
+  ;; puts (using distinct keys so every put is a genuine new entry); after each
+  ;; put verify that nskk-cache-size never exceeds K.
+  (nskk-property-test cache-lru-capacity-never-exceeded
+    ((key search-query))
+    (let* ((capacity 3)
+           (cache    (nskk-cache-create 'lru capacity))
+           (num-puts (+ 4 (random 10)))  ; 4..13, always > capacity
+           (ok t))
+      (dotimes (i num-puts)
+        (let ((k (format "%s-%d" key i)))
+          (nskk-cache-put cache k (list k))
+          (when (> (nskk-cache-size cache) capacity)
+            (setq ok nil))))
+      ok)
+    20)
+
+  ;; Property C: LFU eviction removes the least-frequently-used entry.
+  ;;
+  ;; Setup: create an LFU cache with capacity 3; insert three entries A, B, C;
+  ;; access A once (freq=1), B twice (freq=2), C three times (freq=3); then
+  ;; insert a fourth entry D which must trigger eviction of A (lowest freq).
+  (nskk-property-test cache-lfu-evicts-least-frequently-used
+    ((key search-query))
+    (let* ((cache (nskk-cache-create 'lfu 3))
+           (k-a   (format "%s-a" key))
+           (k-b   (format "%s-b" key))
+           (k-c   (format "%s-c" key))
+           (k-d   (format "%s-d" key)))
+      ;; Insert all three entries.
+      (nskk-cache-put cache k-a "val-a")
+      (nskk-cache-put cache k-b "val-b")
+      (nskk-cache-put cache k-c "val-c")
+      ;; Access A once (inserted with freq 1, no extra reads).
+      ;; Access B twice (one extra read on top of insertion read-count).
+      (nskk-cache-get cache k-b)
+      ;; Access C three times (two extra reads).
+      (nskk-cache-get cache k-c)
+      (nskk-cache-get cache k-c)
+      ;; Now insert D — must evict A (lowest frequency).
+      (nskk-cache-put cache k-d "val-d")
+      ;; A should be gone; B, C, D should still be present.
+      (and (null  (nskk-cache-get cache k-a))
+           (equal "val-b" (nskk-cache-get cache k-b))
+           (equal "val-c" (nskk-cache-get cache k-c))
+           (equal "val-d" (nskk-cache-get cache k-d))))
+    20))
 
 
 (provide 'nskk-search-cache-integration-test)

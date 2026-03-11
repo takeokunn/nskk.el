@@ -39,7 +39,8 @@
 (require 'nskk-prolog)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
-(require 'nskk-integration-test) ; for nskk-integration-with-session, nskk-integration--type-char
+(require 'nskk-pbt-generators)
+(require 'nskk-integration-test) ; for nskk-integration-with-session, nskk--integration-type-char
 
 ;;;; Post-initialization predicate availability (nskk-state-initialize-prolog)
 
@@ -146,12 +147,12 @@
     ;;            nskk-state-initialize-prolog (mode-properties) +
     ;;            nskk-input-initialize (routing rules)
     (nskk-integration-with-session 'hiragana
-      (nskk-integration--type-char ?a)
+      (nskk--integration-type-char ?a)
       (should (string= "あ" (buffer-string)))))
 
   (nskk-it "initialized system processes katakana input correctly"
     (nskk-integration-with-session 'katakana
-      (nskk-integration--type-char ?a)
+      (nskk--integration-type-char ?a)
       (should (string= "ア" (buffer-string)))))
 
   (nskk-it "state-init and henkan-init Prolog predicates coexist"
@@ -163,6 +164,55 @@
   (nskk-it "kana-init and henkan-init predicates coexist"
     (should (nskk-prolog-holds-p `(kana-hiragana ,?あ)))
     (should (nskk-prolog-holds-p '(converting-phase list)))))
+
+;;;; Initialization idempotency (PBT)
+
+(nskk-describe "initialization idempotency (PBT)"
+
+  ;; Property: calling all 5 init functions N times (N between 2 and 5) leaves
+  ;; the Prolog DB in the same queryable state as calling them once.
+  ;;
+  ;; After N calls we verify that a representative set of predicates — one from
+  ;; each init function — still resolves to the expected values.  All Prolog
+  ;; state is isolated so the repeated calls run against a fresh DB on each run.
+  ;;
+  ;; Predicates verified:
+  ;;   valid-mode/1          (nskk-state-initialize-prolog)
+  ;;   kana-hiragana/1       (nskk-kana-initialize)
+  ;;   converting-phase/1    (nskk-henkan-initialize)
+  ;;   core-search-type/2    (nskk-henkan-initialize)
+  (nskk-property-test-seeded n-times-init-leaves-db-consistent
+    ()
+    (let ((n (+ 2 (random 4))))     ; N in [2, 5]
+      (nskk-prolog-test-with-isolated-db
+        ;; Call all 5 init functions N times; idempotency guards (the
+        ;; *-initialized flags) are reset by nskk-prolog-test-with-isolated-db
+        ;; at the start of each iteration, so the first call in the loop
+        ;; actually populates the fresh DB and subsequent calls are no-ops.
+        (dotimes (_ n)
+          (nskk-state-initialize-prolog)
+          (nskk-kana-initialize)
+          (nskk-henkan-initialize)
+          (nskk-input-initialize)
+          (nskk-converter-initialize))
+        ;; Verify predicates from nskk-state-initialize-prolog
+        (and
+         (nskk-prolog-holds-p '(valid-mode hiragana))
+         (nskk-prolog-holds-p '(valid-mode katakana))
+         (nskk-prolog-holds-p '(valid-mode ascii))
+         ;; Verify predicate from nskk-kana-initialize
+         (nskk-prolog-holds-p `(kana-hiragana ,?あ))
+         (nskk-prolog-holds-p `(kana-katakana ,?ア))
+         ;; Verify predicates from nskk-henkan-initialize
+         (nskk-prolog-holds-p '(converting-phase active))
+         (nskk-prolog-holds-p '(converting-phase list))
+         (nskk-prolog-holds-p '(converting-phase registration))
+         (let ((action (nskk-prolog-query-value
+                        '(core-search-type :exact \?a) '\?a)))
+           (eq action 'dict-lookup)))))
+    40
+    42))
+
 
 (provide 'nskk-initialization-integration-test)
 

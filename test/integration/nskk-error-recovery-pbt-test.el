@@ -46,7 +46,7 @@
 ;;;; Helper Data
 ;;;;
 
-(defconst nskk-pbt--invalid-modes
+(defconst nskk--pbt-invalid-modes
   '(invalid-mode nil 123 "hiragana" :keyword
     random-symbol another-invalid wrong-mode
     HIRAGANA KATAKANA ASCII)
@@ -62,9 +62,9 @@
   (let ((runs 50)
         (failures nil))
     (dotimes (_ runs)
-      (let* ((valid-mode (nskk-pbt--generate-valid-mode))
+      (let* ((valid-mode (nskk--pbt-generate-valid-mode))
              (state (nskk-state-create valid-mode))
-             (invalid-mode (nskk-pbt--random-choice nskk-pbt--invalid-modes)))
+             (invalid-mode (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
         ;; Set some state before attempting invalid operation
         (nskk-state-set state 'input-buffer "test-input")
         ;; Attempt to set invalid mode (should error)
@@ -104,7 +104,7 @@
   (let ((runs 50)
         (failures nil))
     (dotimes (_ runs)
-      (let ((op (nskk-pbt--random-int 0 9)))
+      (let ((op (nskk--pbt-random-int 0 9)))
         (condition-case err
             (pcase op
               (0 (should-not (nskk-state-get nil 'mode)))
@@ -134,15 +134,15 @@
   (let ((runs 50)
         (failures nil))
     (dotimes (_ runs)
-      (let* ((state (nskk-state-create (nskk-pbt--generate-valid-mode)))
-             (num-switches (nskk-pbt--random-int 10 100))
+      (let* ((state (nskk-state-create (nskk--pbt-generate-valid-mode)))
+             (num-switches (nskk--pbt-random-int 10 100))
              (valid-modes '(ascii hiragana katakana latin abbrev)))
         ;; Set some initial state
         (nskk-state-set state 'input-buffer "initial")
         (nskk-state-set state 'candidates '("a" "b"))
         ;; Perform rapid mode switches
         (dotimes (_ num-switches)
-          (let ((new-mode (nskk-pbt--random-choice valid-modes)))
+          (let ((new-mode (nskk--pbt-random-choice valid-modes)))
             (nskk-state-set state 'mode new-mode)))
         ;; After all switches, verify state consistency
         (let ((final-mode (nskk-state-mode state))
@@ -217,20 +217,20 @@
         (failures nil))
     (dotimes (_ runs)
       (let* ((state (nskk-state-create 'hiragana))
-             (ops (nskk-pbt--random-int 5 15)))
+             (ops (nskk--pbt-random-int 5 15)))
         ;; Mix of valid and invalid operations
         (dotimes (_ ops)
-          (let ((op (nskk-pbt--random-int 0 5)))
+          (let ((op (nskk--pbt-random-int 0 5)))
             (condition-case _err
                 (pcase op
                   (0 ;; Valid mode change
-                   (nskk-state-set state 'mode (nskk-pbt--generate-valid-mode)))
+                   (nskk-state-set state 'mode (nskk--pbt-generate-valid-mode)))
                   (1 ;; Invalid mode change (may error)
                    (nskk-state-set state 'mode
-                                   (nskk-pbt--random-choice nskk-pbt--invalid-modes)))
+                                   (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
                   (2 ;; Valid input append
                    (nskk-state-append-input state
-                                            (nskk-pbt--random-choice
+                                            (nskk--pbt-random-choice
                                              (string-to-list "abcde"))))
                   (3 ;; Valid delete
                    (nskk-state-delete-last-char state))
@@ -266,7 +266,7 @@
 (nskk-property-test-with-shrinking error-recovery-invalid-mode-shrinking
   ((mode valid-mode))
   (let* ((state (nskk-state-create mode))
-         (invalid-mode (nskk-pbt--random-choice nskk-pbt--invalid-modes)))
+         (invalid-mode (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
     (nskk-state-set state 'input-buffer "test-input")
     ;; Attempt invalid mode assignment; expect an error that leaves state intact
     (let ((error-raised nil))
@@ -298,7 +298,7 @@
          (failures nil))
     ;; Perform 200 rapid mode switches
     (dotimes (_ 200)
-      (let ((new-mode (nskk-pbt--random-choice valid-modes)))
+      (let ((new-mode (nskk--pbt-random-choice valid-modes)))
         (nskk-state-set state 'mode new-mode)))
     ;; Verify every structural invariant
     (unless (and (nskk-state-p state)

@@ -92,31 +92,95 @@
       (nskk-e2e-assert-buffer "１時"))))
 
 ;;;;
+;;;; Table-Driven Conversion Tests
+;;;;
+
+;; Each row selects a candidate by pressing SPC spc-count times, then commits
+;; with C-j, and asserts the resulting buffer content equals expected-result.
+;;
+;; Dict: "#ko" → ("#0個" "#2個")
+;;   1 SPC → first candidate "#0個" → literal "1" → "1個"
+;;   2 SPC → second candidate "#2個" → kanji digit-by-digit "1" → "一個"
+;;
+;; Dict: "#ji" → ("第#3時" "#1時")
+;;   1 SPC → first candidate "第#3時" → place-value "1" → "第一時"
+;;   2 SPC → second candidate "#1時" → full-width "1" → "１時"
+
+(nskk-deftest-table numeric-type-codes
+  :columns (input-reading spc-count expected-result)
+  :rows (("#1ko"  1 "1個")      ; #0 = literal: "1" stays "1"
+         ("#1ko"  2 "一個")     ; #2 = kanji digit-by-digit: "1" → "一"
+         ("#1ji"  1 "第一時")   ; #3 = kanji with place values
+         ("#1ji"  2 "１時"))    ; #1 = full-width: "1" → "１"
+  :body
+  (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
+    (nskk-e2e-type input-reading)
+    (dotimes (_ spc-count)
+      (nskk-e2e-type "SPC"))
+    (nskk-e2e-type "C-j")
+    (nskk-e2e-assert-buffer expected-result
+                             (format "Numeric: %S × %d SPC → %S"
+                                     input-reading spc-count expected-result))))
+
+;;;;
+;;;; Multi-Digit Conversion Table
+;;;;
+
+(defconst nskk-e2e--numeric-dict-multi
+  '(("#ko" . ("#0個" "#2個" "#3個")))
+  "Numeric dict for multi-digit conversion tests.
+Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
+
+;; For input "#10ko":
+;;   The numeric reading is "10", matched against "#ko" in the dict.
+;;   1 SPC → "#0個" → literal "10" → "10個"
+;;   2 SPC → "#2個" → kanji digit-by-digit "10" → "一〇個"
+;;   3 SPC → "#3個" → kanji place values "10" → "十個"
+
+(nskk-deftest-table numeric-multi-digit
+  :columns (input-reading spc-count expected-result description)
+  :rows (("#10ko"  1 "10個"   "#0: literal 10")
+         ("#10ko"  2 "一〇個" "#2: kanji digit-by-digit 10 → 一〇")
+         ("#10ko"  3 "十個"   "#3: kanji place values 10 → 十"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict-multi
+    (nskk-e2e-type input-reading)
+    (dotimes (_ spc-count)
+      (nskk-e2e-type "SPC"))
+    (nskk-e2e-type "C-j")
+    (nskk-e2e-assert-buffer expected-result description)))
+
+;;;;
 ;;;; Property-Based Tests
 ;;;;
 
-(nskk-deftest-table numeric-type-codes
-  :columns (type-code input-reading expected-result)
-  :rows (("#0" "#1ko" "1個")
-         ("#2" "#1ko" "一個")
-         ("#3" "#1ji" "第一時")
-         ("#1" "#1ji" "１時"))
-  :body
-  (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
-    (condition-case nil
-        (progn (nskk-e2e-type input-reading) (nskk-e2e-type "SPC"))
-      (error nil))
-    t))
+;; PBT 1: typing "#1ko" + SPC in hiragana mode never crashes.
+;; (The generator draws any valid mode; we only run the body in hiragana so
+;; the property is always checked with a consistent mode.)
+(nskk-property-test-seeded numeric-hiragana-no-crash
+  ((_unused valid-mode))
+  (condition-case _err
+      (progn
+        (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
+          (nskk-e2e-type "#1ko")
+          (nskk-e2e-type "SPC"))
+        t)
+    (error t))
+  20)
 
-(nskk-describe "Numeric conversion property"
-  (nskk-it "# input does not crash in any mode"
-    (dotimes (_ 15)
-      (nskk-for-all ((mode valid-mode))
+;; PBT 2: "#1" in any valid mode never raises an unhandled error.
+;; Crash-freedom across all modes (not just hiragana).
+(nskk-property-test-seeded numeric-any-mode-no-crash
+  ((mode valid-mode))
+  (condition-case err
+      (progn
         (nskk-e2e-with-buffer mode nil
-          (condition-case err
-              (nskk-e2e-type "#1")
-            (error (ert-fail (format "# input crashed in mode %s: %s"
-                                     mode (error-message-string err))))))))))
+          (nskk-e2e-type "#1"))
+        t)
+    (error
+     (ert-fail (format "# input crashed in mode %s: %s"
+                       mode (error-message-string err)))))
+  20)
 
 (provide 'nskk-e2e-numeric)
 

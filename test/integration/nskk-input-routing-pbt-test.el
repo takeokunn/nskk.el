@@ -62,162 +62,113 @@
 
 (nskk-register-generator 'direct-insert-mode
   (lambda (&rest _args)
-    (nskk-pbt--random-choice '(ascii latin))))
+    (nskk--pbt-random-choice '(ascii latin))))
 
 ;;;;
 ;;;; Property 1: Direct-Insert Modes Insert Characters Directly
 ;;;;
 
-(ert-deftest nskk-pbt-ascii-mode-direct-insert ()
-  "Property: In ASCII mode, characters are inserted directly without conversion."
-  (let ((runs 50)
-        (failures nil)
-        (test-chars '(?a ?b ?c ?d ?e ?f ?g ?h ?i ?j ?k ?l ?m ?n ?o ?p ?q ?r ?s ?t ?u ?v ?w ?x ?y ?z)))
-    (dotimes (_ runs)
-      (let ((char (nskk-pbt--random-choice test-chars)))
-        (nskk-input-routing-test-with-state 'ascii
-          (with-temp-buffer
-            (setq last-command-event char)
-            (nskk-self-insert 1)
-            (let ((result (buffer-string)))
-              ;; Should insert the character directly, not convert to kana
-              (unless (string= result (char-to-string char))
-                (push (list :char char :expected (char-to-string char) :actual result)
-                      failures)))))))
-    (when failures
-      (ert-fail (format "ASCII mode direct-insert failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-pbt-ascii-mode-direct-insert
+  ((char lowercase-char))
+  ;; Property: In ASCII mode, characters are inserted directly without conversion.
+  (let ((char-val (string-to-char char)))
+    (nskk-input-routing-test-with-state 'ascii
+      (with-temp-buffer
+        (setq last-command-event char-val)
+        (nskk-self-insert 1)
+        ;; Should insert the character directly, not convert to kana
+        (should (string= (buffer-string) char)))))
+  50)
 
-(ert-deftest nskk-pbt-latin-mode-direct-insert ()
-  "Property: In Latin mode, characters are inserted directly without conversion."
-  (let ((runs 50)
-        (failures nil)
-        (test-chars '(?a ?b ?c ?d ?e ?f ?g ?h ?i ?j ?k ?l ?m ?n ?o ?p ?q ?r ?s ?t ?u ?v ?w ?x ?y ?z)))
-    (dotimes (_ runs)
-      (let ((char (nskk-pbt--random-choice test-chars)))
-        (nskk-input-routing-test-with-state 'latin
-          (with-temp-buffer
-            (setq last-command-event char)
-            (nskk-self-insert 1)
-            (let ((result (buffer-string)))
-              ;; Should insert the character directly, not convert to kana
-              (unless (string= result (char-to-string char))
-                (push (list :char char :expected (char-to-string char) :actual result)
-                      failures)))))))
-    (when failures
-      (ert-fail (format "Latin mode direct-insert failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-pbt-latin-mode-direct-insert
+  ((char lowercase-char))
+  ;; Property: In Latin mode, characters are inserted directly without conversion.
+  (let ((char-val (string-to-char char)))
+    (nskk-input-routing-test-with-state 'latin
+      (with-temp-buffer
+        (setq last-command-event char-val)
+        (nskk-self-insert 1)
+        ;; Should insert the character directly, not convert to kana
+        (should (string= (buffer-string) char)))))
+  50)
 
 ;;;;
 ;;;; Property 2: ASCII and Latin Modes Are Equivalent for Input Routing
 ;;;;
 
-(ert-deftest nskk-pbt-ascii-latin-equivalent ()
-  "Property: ASCII and Latin modes produce identical output for the same input."
-  (let ((runs 50)
-        (failures nil)
-        (test-chars '(?a ?b ?c ?d ?e ?f ?g ?h ?i ?j ?k ?l ?m ?n ?o ?p ?q ?r ?s ?t ?u ?v ?w ?x ?y ?z)))
-    (dotimes (_ runs)
-      (let ((char (nskk-pbt--random-choice test-chars)))
-        ;; Test ASCII mode
-        (let (ascii-result latin-result)
-          (nskk-input-routing-test-with-state 'ascii
-            (with-temp-buffer
-              (setq last-command-event char)
-              (nskk-self-insert 1)
-              (setq ascii-result (buffer-string))))
-          ;; Test Latin mode
-          (nskk-input-routing-test-with-state 'latin
-            (with-temp-buffer
-              (setq last-command-event char)
-              (nskk-self-insert 1)
-              (setq latin-result (buffer-string))))
-          ;; Results should be identical
-          (unless (string= ascii-result latin-result)
-            (push (list :char char :ascii ascii-result :latin latin-result)
-                  failures)))))
-    (when failures
-      (ert-fail (format "ASCII/Latin equivalence failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-pbt-ascii-latin-equivalent
+  ((char lowercase-char))
+  ;; Property: ASCII and Latin modes produce identical output for the same input.
+  (let ((char-val (string-to-char char))
+        ascii-result latin-result)
+    (nskk-input-routing-test-with-state 'ascii
+      (with-temp-buffer
+        (setq last-command-event char-val)
+        (nskk-self-insert 1)
+        (setq ascii-result (buffer-string))))
+    (nskk-input-routing-test-with-state 'latin
+      (with-temp-buffer
+        (setq last-command-event char-val)
+        (nskk-self-insert 1)
+        (setq latin-result (buffer-string))))
+    ;; Results should be identical
+    (should (string= ascii-result latin-result)))
+  50)
 
 ;;;;
 ;;;; Property 3: Japanese Modes Convert Romaji to Kana
 ;;;;
 
-(ert-deftest nskk-pbt-hiragana-mode-converts ()
-  "Property: In Hiragana mode, vowels are converted to hiragana."
-  (let ((runs 30)
-        (failures nil)
-        (vowel-map '((?a . "あ") (?i . "い") (?u . "う") (?e . "え") (?o . "お"))))
-    (dolist (_ (number-sequence 1 runs))
-      (let* ((pair (nskk-pbt--random-choice vowel-map))
-             (char (car pair))
-             (expected (cdr pair)))
-        (nskk-input-routing-test-with-state 'hiragana
-          (with-temp-buffer
-            (setq last-command-event char)
-            (nskk-self-insert 1)
-            (let ((result (buffer-string)))
-              (unless (string= result expected)
-                (push (list :char char :expected expected :actual result)
-                      failures)))))))
-    (when failures
-      (ert-fail (format "Hiragana mode conversion failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-pbt-hiragana-mode-converts
+  ((_dummy lowercase-char))
+  ;; Property: In Hiragana mode, vowels are converted to hiragana.
+  (let* ((vowel-map '((?a . "あ") (?i . "い") (?u . "う") (?e . "え") (?o . "お")))
+         (pair (nskk--pbt-random-choice vowel-map))
+         (char (car pair))
+         (expected (cdr pair)))
+    (nskk-input-routing-test-with-state 'hiragana
+      (with-temp-buffer
+        (setq last-command-event char)
+        (nskk-self-insert 1)
+        (should (string= (buffer-string) expected)))))
+  30)
 
-(ert-deftest nskk-pbt-katakana-mode-converts ()
-  "Property: In Katakana mode, vowels are converted to katakana."
-  (let ((runs 30)
-        (failures nil)
-        (vowel-map '((?a . "ア") (?i . "イ") (?u . "ウ") (?e . "エ") (?o . "オ"))))
-    (dolist (_ (number-sequence 1 runs))
-      (let* ((pair (nskk-pbt--random-choice vowel-map))
-             (char (car pair))
-             (expected (cdr pair)))
-        (nskk-input-routing-test-with-state 'katakana
-          (with-temp-buffer
-            (setq last-command-event char)
-            (nskk-self-insert 1)
-            (let ((result (buffer-string)))
-              (unless (string= result expected)
-                (push (list :char char :expected expected :actual result)
-                      failures)))))))
-    (when failures
-      (ert-fail (format "Katakana mode conversion failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-property-test nskk-pbt-katakana-mode-converts
+  ((_dummy lowercase-char))
+  ;; Property: In Katakana mode, vowels are converted to katakana.
+  (let* ((vowel-map '((?a . "ア") (?i . "イ") (?u . "ウ") (?e . "エ") (?o . "オ")))
+         (pair (nskk--pbt-random-choice vowel-map))
+         (char (car pair))
+         (expected (cdr pair)))
+    (nskk-input-routing-test-with-state 'katakana
+      (with-temp-buffer
+        (setq last-command-event char)
+        (nskk-self-insert 1)
+        (should (string= (buffer-string) expected)))))
+  30)
 
 ;;;;
 ;;;; Property 4: Mode Routing Invariant
 ;;;;
 
-(ert-deftest nskk-pbt-mode-routing-invariant ()
-  "Property: All valid modes route input correctly without error."
-  (let ((runs 60)
-        (failures nil)
-        (modes '(ascii latin hiragana katakana abbrev))
+(nskk-property-test nskk-pbt-mode-routing-invariant
+  ((char any-char))
+  ;; Property: All valid modes route input correctly without error.
+  (let ((modes '(ascii latin hiragana katakana abbrev))
         (test-chars '(?a ?k ?s ?t ?n)))
-    (dotimes (_ runs)
-      (let ((mode (nskk-pbt--random-choice modes))
-            (char (nskk-pbt--random-choice test-chars)))
-        (condition-case err
-            (nskk-input-routing-test-with-state mode
-              (with-temp-buffer
-                (setq last-command-event char)
-                (nskk-self-insert 1)
-                ;; Should complete without error
-                t))
-          (error
-           (push (list :mode mode :char char :error err)
-                 failures)))))
-    (when failures
-      (ert-fail (format "Mode routing invariant failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+    (let ((mode (nskk--pbt-random-choice modes))
+          (ch (nskk--pbt-random-choice test-chars)))
+      (condition-case err
+          (nskk-input-routing-test-with-state mode
+            (with-temp-buffer
+              (setq last-command-event ch)
+              (nskk-self-insert 1)
+              ;; Should complete without error
+              t))
+        (error
+         (ert-fail (format "Mode routing error for mode=%s char=%c: %S"
+                           mode ch err))))))
+  60)
 
 ;;;;
 ;;;; Regression Test: ASCII Mode Bug Detection

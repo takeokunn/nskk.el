@@ -216,30 +216,26 @@
 ;;;; Complete Mode Transition Matrix
 ;;;;
 
-(nskk-describe "mode transition matrix"
-  (nskk-it "covers all key-to-mode transitions from each Japanese mode"
-    (let ((transitions
-           '(;; From hiragana
-             (hiragana "q"   katakana)
-             (hiragana "l"   latin)
-             (hiragana "L"   jisx0208-latin)
-             (hiragana "/"   abbrev)
-             ;; From katakana
-             (katakana "q"   hiragana)
-             (katakana "l"   latin)
-             (katakana "L"   jisx0208-latin)
-             (katakana "/"   abbrev)
-             ;; From katakana-半角 (verifies bug fix)
-             (katakana-半角 "q" hiragana))))
-      (dolist (tc transitions)
-        (let ((from-mode (nth 0 tc))
-              (key       (nth 1 tc))
-              (to-mode   (nth 2 tc)))
-          (nskk-e2e-with-buffer from-mode nil
-            (nskk-e2e-type key)
-            (nskk-e2e-assert-mode to-mode
-                                  (format "Transition: %S + %S → %S failed"
-                                          from-mode key to-mode))))))))
+(nskk-deftest-table mode-transition-matrix
+  :columns (from-mode key to-mode)
+  :rows (;; From hiragana
+         (hiragana "q"   katakana)
+         (hiragana "l"   latin)
+         (hiragana "L"   jisx0208-latin)
+         (hiragana "/"   abbrev)
+         ;; From katakana
+         (katakana "q"   hiragana)
+         (katakana "l"   latin)
+         (katakana "L"   jisx0208-latin)
+         (katakana "/"   abbrev)
+         ;; From katakana-半角 (verifies bug fix)
+         (katakana-半角 "q" hiragana))
+  :body
+  (nskk-e2e-with-buffer from-mode nil
+    (nskk-e2e-type key)
+    (nskk-e2e-assert-mode to-mode
+                          (format "Transition: %S + %S → %S failed"
+                                  from-mode key to-mode))))
 
 ;;;;
 ;;;; Mode After Conversion (Implicit Commit)
@@ -290,125 +286,52 @@
 ;;;; Property-Based Tests (PBT)
 ;;;;
 
-(ert-deftest nskk-e2e-pbt-mode-always-valid ()
-  "PBT: After any mode-switch key sequence, the mode is always valid."
+(nskk-property-test-seeded mode-always-valid
+  ((start-mode valid-mode))
   (let ((mode-keys '("q" "l" "L" "/"))
-        (runs 75)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "E2E PBT 'mode-always-valid' seed: %d" test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let* ((start-mode (nth (random 3) '(hiragana katakana ascii)))
-                 (key-count (+ 1 (random 5)))
-                 (keys (cl-loop repeat key-count
-                                collect (nth (random (length mode-keys)) mode-keys))))
-            (nskk-e2e-with-buffer start-mode nil
-              (dolist (key keys)
-                (ignore-errors (nskk-e2e-type key)))
-              (let ((final-mode (nskk-current-mode)))
-                (unless (nskk-state-valid-mode-p final-mode)
-                  (push (list :run run
-                              :start-mode start-mode
-                              :keys keys
-                              :final-mode final-mode)
-                        errors)))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT mode-always-valid: %d failures (seed %d):\n%S"
-                        (length errors) test-seed
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+        (key-count (+ 1 (random 5))))
+    (nskk-e2e-with-buffer start-mode nil
+      (dotimes (_ key-count)
+        (ignore-errors (nskk-e2e-type (nth (random (length mode-keys)) mode-keys))))
+      (nskk-state-valid-mode-p (nskk-current-mode))))
+  30)
 
-(ert-deftest nskk-e2e-pbt-hiragana-katakana-toggle-idempotent ()
-  "PBT: Pressing q twice from hiragana/katakana returns to original mode."
-  (let ((runs 75)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "E2E PBT 'toggle-idempotent' seed: %d" test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let* ((start-mode (nth (random 2) '(hiragana katakana))))
-            (nskk-e2e-with-buffer start-mode nil
-              (nskk-e2e-type "q")
-              (nskk-e2e-type "q")
-              (let ((final-mode (nskk-current-mode)))
-                (unless (eq final-mode start-mode)
-                  (push (list :run run
-                              :start-mode start-mode
-                              :final-mode final-mode)
-                        errors)))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT toggle-idempotent: %d failures (seed %d):\n%S"
-                        (length errors) test-seed
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+(nskk-property-test-exhaustive hiragana-katakana-toggle-idempotent
+  '(hiragana katakana)
+  ;; Property: pressing q twice returns to the original mode.
+  (nskk-e2e-with-buffer item nil
+    (nskk-e2e-type "q")
+    (nskk-e2e-type "q")
+    (eq (nskk-current-mode) item)))
 
-(ert-deftest nskk-e2e-pbt-cj-from-direct-always-hiragana ()
-  "PBT: C-j from any direct-idle mode always enters hiragana."
-  (let ((direct-modes '(ascii latin jisx0208-latin abbrev))
-        (runs 50)
-        (errors nil))
-    (dolist (mode direct-modes)
-      (dotimes (run runs)
-        (condition-case err
-            (nskk-e2e-with-buffer mode nil
-              (nskk-e2e-type "C-j")
-              (let ((actual (nskk-current-mode)))
-                (unless (eq actual 'hiragana)
-                  (push (list :mode mode :actual actual) errors))))
-          (error
-           (push (list :mode mode :error (error-message-string err)) errors)))))
-    (when errors
-      (ert-fail (format "E2E PBT cj-always-hiragana: %d failures:\n%S"
-                        (length errors)
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+(nskk-property-test-exhaustive cj-from-direct-always-hiragana
+  '(ascii latin jisx0208-latin abbrev)
+  ;; Property: C-j from any direct mode always enters hiragana.
+  (nskk-e2e-with-buffer item nil
+    (nskk-e2e-type "C-j")
+    (eq (nskk-current-mode) 'hiragana)))
 
-(ert-deftest nskk-e2e-pbt-katakana-hankaku-q-always-hiragana ()
-  "PBT: q key from katakana-半角 always transitions to hiragana (bug fix verification)."
-  (let ((runs 25)
-        (errors nil))
-    (dotimes (run runs)
-      (condition-case err
-          (nskk-e2e-with-buffer 'katakana-半角 nil
-            (nskk-e2e-type "q")
-            (let ((actual (nskk-current-mode)))
-              (unless (eq actual 'hiragana)
-                (push (list :run run :actual actual) errors))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT katakana-hankaku-q: %d failures:\n%S"
-                        (length errors) errors)))))
+(nskk-describe "katakana-半角 q transition (bug fix verification)"
+  (nskk-it "q key from katakana-半角 always transitions to hiragana"
+    (dotimes (_ 25)
+      (nskk-e2e-with-buffer 'katakana-半角 nil
+        (nskk-e2e-type "q")
+        (should (eq (nskk-current-mode) 'hiragana))))))
 
-(ert-deftest nskk-e2e-pbt-mode-sequence-no-crash ()
-  "PBT: Arbitrary mode-switch + typing sequences never crash."
-  (let ((all-keys '("q" "l" "L" "/" "C-j" "a" "k" "s" "t"))
-        (runs 50)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let* ((key-count (+ 2 (random 8)))
-                 (keys (cl-loop repeat key-count
-                                collect (nth (random (length all-keys)) all-keys))))
-            (nskk-e2e-with-buffer 'hiragana nil
-              (dolist (key keys)
-                (ignore-errors (nskk-e2e-type key)))
-              ;; Property: state should still be valid
-              (unless (nskk-state-valid-mode-p (nskk-current-mode))
-                (push (list :run run :keys keys :mode (nskk-current-mode))
-                      errors))))
-        (error
-         (push (list :run run :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT mode-sequence-no-crash: %d failures (seed %d):\n%S"
-                        (length errors) test-seed
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+;; Arbitrary key-sequence crash-freedom: any combination of mode-switch and
+;; typing keys must leave the mode in a valid state.  Uses nskk-property-test-seeded
+;; instead of the legacy dotimes+nskk-for-all pattern.
+(nskk-property-test-seeded mode-sequence-no-crash
+  ((start-mode valid-mode))
+  (let* ((all-keys '("q" "l" "L" "/" "C-j" "a" "k" "s" "t"))
+         (key-count (+ 2 (random 8)))
+         (keys (cl-loop repeat key-count
+                        collect (nth (random (length all-keys)) all-keys))))
+    (nskk-e2e-with-buffer start-mode nil
+      (dolist (key keys)
+        (ignore-errors (nskk-e2e-type key)))
+      (nskk-state-valid-mode-p (nskk-current-mode))))
+  25)
 
 ;;;;
 ;;;; Section A: L and / During Converting State (Implicit Commit)
@@ -601,6 +524,26 @@
             (should (eq (nskk-state-mode state) mode)))
         (error nil)))))
 
+
+
+;;;;
+;;;; Property: Mode Isolation Across Buffers
+;;;;
+
+;; Property: mode state is buffer-local.  Switching mode in an inner
+;; nskk-e2e-with-buffer context must not contaminate the outer buffer's mode.
+;; (nskk-e2e-with-buffer saves and restores nskk-current-state per call.)
+(nskk-property-test-seeded mode-isolation-across-buffers
+  ((mode-a valid-mode)
+   (mode-b valid-mode))
+  (nskk-e2e-with-buffer mode-a nil
+    (nskk-e2e-with-buffer mode-b nil
+      ;; Switch inner buffer via q; outer buffer context is saved/restored.
+      (ignore-errors (nskk-e2e-type "q"))
+      t)
+    ;; After inner teardown, outer state is restored → must be a valid mode.
+    (nskk-state-valid-mode-p (nskk-current-mode)))
+  20)
 
 (provide 'nskk-mode-transition-e2e-test)
 

@@ -52,8 +52,9 @@
 ;; `nskk-search-learning-file'.
 ;;
 ;; Prolog predicates maintained by this module:
-;; - `search-strategy/1'  -- valid search type membership
-;; - `learning-score/3'   -- (reading candidate score) usage frequency
+;; - `search-strategy/1'      -- valid search type membership
+;; - `learning-score/3'       -- (reading candidate score) usage frequency
+;; - `okuri-type-matches/2'   -- (filter-type entry-type) okurigana match rules
 ;;
 ;; Key public API:
 ;; - `nskk-search'              -- unified search dispatcher
@@ -64,6 +65,8 @@
 ;; - `nskk-search-with-cache'   -- cache-backed search
 ;; - `nskk-search-learn'        -- record candidate selection for learning
 ;; - `nskk-search-save-learning-data' -- persist learning data to file
+;; - `nskk-search-jisyo-hook'         -- hook run after each successful search
+;; - `nskk-save-history-hook'         -- hook run after each successful save
 ;;
 ;; Usage examples:
 ;;   (nskk-search index "かんじ" 'exact)
@@ -73,7 +76,7 @@
 ;;   ;; => (("かん" . entry1) ("かんじ" . entry2) ...)
 ;;
 ;;   (nskk-search index "かんじ" 'fuzzy nil 5)
-;;   ;; => (("かんじ" . entry1 . 0) ("かんき" . entry2 . 1) ...)
+;;   ;; => (("かんじ" entry1 . 0) ("かんき" entry2 . 1) ...)
 
 ;;; Code:
 
@@ -86,23 +89,27 @@
 (require 'nskk-custom)
 (require 'nskk-debug nil t)
 
-(declare-function nskk-dict--struct-entry-count "nskk-dictionary")
-
 (defvar nskk-search-jisyo-hook nil
-  "Hook run during dictionary search.
+  "Hook run after a successful dictionary search via `nskk-search'.
+Each function is called with no arguments.  The hook fires only on
+success (when a result is found); failed searches and direct calls to
+`nskk-search-exact', `nskk-search-prefix', etc. do not trigger it.
+The hook does not fire on cache hits via `nskk-search-with-cache'.
+Hook functions must not signal errors; errors are silently suppressed
+to protect the CPS continuation chain.
 DDSKK equivalent: skk-search-jisyo-hook")
 
 (defvar nskk-save-history-hook nil
-  "Hook run when history is saved.
+  "Hook run after learning data is successfully saved by
+`nskk-search-save-learning-data'.  Each function is called with no
+arguments.  The hook fires only on successful save; I/O errors
+suppress both the save and this hook.
 DDSKK equivalent: skk-save-history-hook")
 
 ;;; Internal variables for learning data
 
-(defvar nskk-search--dirty-flag nil
+(defvar nskk--search-dirty-flag nil
   "Non-nil means learning data has been modified since last save.")
-
-(defvar nskk-search--auto-save-timer nil
-  "Timer for periodic auto-save of learning data.")
 
 ;;; Error definitions
 
@@ -131,7 +138,23 @@ DDSKK equivalent: skk-save-history-hook")
 ;; Hash-indexed on first arg (reading) for O(1) lookup by reading
 (nskk-prolog-set-index 'learning-score 3 :hash)
 
+;; Okuri-type matching rules: (okuri-type-matches filter-type entry-okuri-type)
+;; okuri-ari matches only entries that have okurigana.
+;; okuri-nasi matches only entries without okurigana.
+;; any (nil caller-side) matches all entry types.
+(nskk-prolog-define-fact-table okuri-type-matches (:arity 2 :index :hash)
+  (okuri-ari  okuri-ari)
+  (okuri-nasi okuri-nasi)
+  (any        okuri-ari)
+  (any        okuri-nasi))
+
 ;;; Unified search interface
+
+(defun nskk--search-run-post-hook ()
+  "Fire `nskk-search-jisyo-hook' after a successful search.
+Errors in hook functions are suppressed to protect the CPS chain."
+  (when nskk-search-jisyo-hook
+    (ignore-errors (run-hooks 'nskk-search-jisyo-hook))))
 
 ;;;###autoload
 (defun/k nskk-search (index query &optional search-type okuri-type limit)
@@ -158,30 +181,28 @@ because Emacs Lisp `&optional' applies to all parameters after the first."
     (signal 'nskk-dict-search-invalid-query
             (list (format "Unknown search type: %s" search-type))))
 
-  ;; Dispatch by search type
-  (pcase search-type
-    ('exact (<-or r nskk-search-exact index query okuri-type
-               :found (succeed r)
-               :fail  (fail)))
-    ('prefix (<-or r nskk-search-prefix index query okuri-type limit
-               :found (succeed r)
-               :fail  (fail)))
-    ('partial (<-or r nskk-search-partial index query okuri-type limit
-               :found (succeed r)
-               :fail  (fail)))
-    ('fuzzy (<-or r nskk-search-fuzzy index query okuri-type limit
-               :found (succeed r)
-               :fail  (fail)))))
+  ;; Dispatch via sync wrappers (bindings are not CPS-transformed, so succeed/fail
+  ;; appears exactly once below, eliminating the 4-branch duplication).
+  (let ((result (pcase search-type
+                  ('exact   (nskk-search-exact   index query okuri-type))
+                  ('prefix  (nskk-search-prefix  index query okuri-type limit))
+                  ('partial (nskk-search-partial index query okuri-type limit))
+                  ('fuzzy   (nskk-search-fuzzy   index query okuri-type limit)))))
+    (if result
+        (progn (nskk--search-run-post-hook) (succeed result))
+      (fail))))
 
 ;;; Okuri-type filtering
 
-(defsubst nskk-search--match-okuri-type-p (okuri-type entry-okuri)
+(defun nskk--search-match-okuri-type-p (okuri-type entry-okuri)
   "Return non-nil if ENTRY-OKURI matches OKURI-TYPE filter.
-OKURI-TYPE is \\='okuri-ari, \\='okuri-nasi, or nil (match all)."
-  (cond
-   ((eq okuri-type 'okuri-ari) entry-okuri)
-   ((eq okuri-type 'okuri-nasi) (or (null entry-okuri) (string= entry-okuri "")))
-   (t t)))
+OKURI-TYPE is \\='okuri-ari, \\='okuri-nasi, or nil (match all).
+Delegates to the Prolog `okuri-type-matches/2' fact table."
+  (let ((filter (or okuri-type 'any))
+        (entry-sym (if (and entry-okuri (not (string= entry-okuri "")))
+                       'okuri-ari
+                     'okuri-nasi)))
+    (nskk-prolog-holds-p `(okuri-type-matches ,filter ,entry-sym))))
 
 ;;; Exact match search
 
@@ -195,29 +216,29 @@ OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
     (nskk-debug-log "[SEARCH] exact: query=%s found=%s" query (if candidates t nil))
     (if candidates
         (let ((entry (make-nskk-dict-entry :key query :candidates candidates)))
-          (if (nskk-search--match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry))
+          (if (nskk--search-match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry))
               (succeed entry)
             (fail)))
       (fail))))
 
 ;;; Prefix match search
 
-(defun nskk-search--post-process-results (results okuri-type limit)
+(defun nskk--search-post-process-results (results okuri-type limit)
   "Apply standard post-processing to RESULTS.
 Filters by OKURI-TYPE, removes duplicates, applies LIMIT, and sorts by
 `nskk-search-sort-method'.  Returns the processed result list."
   (let* ((filtered (if okuri-type
                        (cl-remove-if-not
                         (lambda (result)
-                          (nskk-search--match-okuri-type-p
+                          (nskk--search-match-okuri-type-p
                            okuri-type (nskk-dict-entry-okuri (cdr result))))
                         results)
                      results))
-         (unique (nskk-search--remove-duplicates filtered))
+         (unique (nskk--search-remove-duplicates filtered))
          (limited (if (and limit (> (length unique) limit))
                       (seq-take unique limit)
                     unique)))
-    (nskk-search--sort-results limited)))
+    (nskk--search-sort-results limited)))
 
 (defun/k nskk-search-prefix (index query okuri-type limit)
   "Perform prefix match search in INDEX for QUERY.
@@ -232,13 +253,13 @@ LIMIT is the maximum number of results."
                                    :key (car pair)
                                    :candidates (cdr pair))))
                           raw-results))
-         (processed (nskk-search--post-process-results results okuri-type limit)))
+         (processed (nskk--search-post-process-results results okuri-type limit)))
     (nskk-debug-log "[SEARCH] prefix: query=%s results=%d" query (length results))
     (if processed
         (succeed processed)
       (fail))))
 
-(defun nskk-search--remove-duplicates (results)
+(defun nskk--search-remove-duplicates (results)
   "Remove duplicate entries from RESULTS."
   (let ((seen (make-hash-table :test 'equal))
         (unique nil))
@@ -256,32 +277,27 @@ LIMIT is the maximum number of results."
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
 LIMIT is the maximum number of results."
   (let* ((pred (nskk-dict-index-predicate index))
-         (results nil)
-         (count 0))
-    (when pred
-      (let ((all-solutions (nskk-prolog-query `(,pred \?k \?candidates))))
-        (catch 'limit-reached
-          (dolist (sol all-solutions)
-            (let* ((key (nskk-prolog-walk '\?k sol))
-                   (candidates (nskk-prolog-walk '\?candidates sol)))
-              (when (string-search query key)
-                (let ((entry (make-nskk-dict-entry :key key :candidates candidates)))
-                  (when (nskk-search--match-okuri-type-p
-                         okuri-type (nskk-dict-entry-okuri entry))
-                    (push (cons key entry) results)
-                    (cl-incf count)
-                    (when (and limit (>= count limit))
-                      (throw 'limit-reached nil))))))))))
-    (let ((sorted (nskk-search--sort-results results)))
-      (if sorted
-          (succeed sorted)
-        (fail)))))
+         (results
+          (when pred
+            ;; cl-loop replaces the nested catch/dolist/when/push structure.
+            ;; Okuri filtering is applied inline; post-process receives nil for
+            ;; okuri-type to avoid a redundant second filter pass.
+            (cl-loop for sol   in (nskk-prolog-query `(,pred \?k \?candidates))
+                     for key    = (nskk-prolog-walk '\?k sol)
+                     for cands  = (nskk-prolog-walk '\?candidates sol)
+                     for entry  = (make-nskk-dict-entry :key key :candidates cands)
+                     when (and (string-search query key)
+                               (nskk--search-match-okuri-type-p
+                                okuri-type (nskk-dict-entry-okuri entry)))
+                       collect (cons key entry))))
+         (processed (nskk--search-post-process-results results nil limit)))
+    (if processed (succeed processed) (fail))))
 
 ;;; Fuzzy search
 
 (defun/k nskk-search-fuzzy (index query okuri-type limit)
   "Perform fuzzy search in INDEX for QUERY using Levenshtein distance.
-OKURI-TYPE is accepted for API compatibility but not yet applied.
+OKURI-TYPE is accepted for API compatibility but not yet applied; pass nil.
 LIMIT is the maximum number of results.
 
 Each element in the results list has the shape (KEY ENTRY . DISTANCE)
@@ -289,30 +305,28 @@ where KEY is a string, ENTRY is an `nskk-dict-entry', and DISTANCE is
 the integer Levenshtein distance from QUERY."
   ;; okuri-type is accepted for API compatibility with other search functions
   ;; but is not yet applied to fuzzy search logic.
+  ;; TODO: apply okuri-type filtering once fuzzy search matures
   (ignore okuri-type)
   (let* ((pred (nskk-dict-index-predicate index))
-         (results nil))
-    (when pred
-      (let ((all-solutions (nskk-prolog-query `(,pred \?k \?candidates))))
-        (dolist (sol all-solutions)
-          (let* ((key (nskk-prolog-walk '\?k sol))
-                 (candidates (nskk-prolog-walk '\?candidates sol))
-                 (distance (nskk-search--levenshtein-distance query key)))
-            (when (<= distance nskk-search-fuzzy-threshold)
-              (let ((entry (make-nskk-dict-entry :key key :candidates candidates)))
-                (push (cons key (cons entry distance)) results)))))))
-    ;; Deduplicate: keep only the closest match per key
-    (setq results (nskk-search--dedupe-fuzzy results))
-    ;; Sort by distance (ascending)
-    (setq results (sort results (lambda (a b) (< (cddr a) (cddr b)))))
-    ;; Apply limit
-    (when (and limit (> (length results) limit))
-      (setq results (seq-take results limit)))
-    (if results
-        (succeed results)
-      (fail))))
+         (raw
+          (when pred
+            (cl-loop for sol      in (nskk-prolog-query `(,pred \?k \?candidates))
+                     for key       = (nskk-prolog-walk '\?k sol)
+                     for cands     = (nskk-prolog-walk '\?candidates sol)
+                     for distance  = (nskk--search-levenshtein-distance query key)
+                     when (<= distance nskk-search-fuzzy-threshold)
+                       collect (cons key (cons (make-nskk-dict-entry
+                                                :key key :candidates cands)
+                                               distance)))))
+         ;; Pipeline: deduplicate → sort by distance → apply limit
+         (deduped  (nskk--search-dedupe-fuzzy raw))
+         (sorted   (sort deduped (lambda (a b) (< (cddr a) (cddr b)))))
+         (results  (if (and limit (> (length sorted) limit))
+                       (seq-take sorted limit)
+                     sorted)))
+    (if results (succeed results) (fail))))
 
-(defun nskk-search--levenshtein-distance (s1 s2)
+(defun nskk--search-levenshtein-distance (s1 s2)
   "Compute Levenshtein distance between S1 and S2."
   (let* ((len1 (length s1))
          (len2 (length s2))
@@ -344,14 +358,15 @@ the integer Levenshtein distance from QUERY."
 
 ;;; Sort functions
 
-(defun nskk-search--sort-results (results)
+(defun/k nskk--search-sort-results (results)
   "Sort search RESULTS according to `nskk-search-sort-method'."
-  (unless (memq nskk-search-sort-method '(frequency kana none))
-    (setopt nskk-search-sort-method 'none))
-  (pcase nskk-search-sort-method
-    ('frequency (nskk-search--sort-prefix-results results))
-    ('kana (nskk-search-sort-by-kana-order results))
-    (_ results)))
+  (let ((method (if (memq nskk-search-sort-method '(frequency kana none))
+                    nskk-search-sort-method
+                  'none)))
+    (pcase method
+      ('frequency (succeed (nskk--search-sort-prefix-results results)))
+      ('kana      (succeed (nskk-search-sort-by-kana-order results)))
+      (_          (succeed results)))))
 
 (defun nskk-search-sort-by-kana-order (results)
   "Sort RESULTS in Japanese kana order."
@@ -361,42 +376,42 @@ the integer Levenshtein distance from QUERY."
 
 ;;; Learning-based sorting
 
-(defun nskk-search--sort-entry-by-learning (entry)
+(defun nskk--search-sort-entry-by-learning (entry)
   "Sort candidates within ENTRY by Prolog learning scores."
   (when (nskk-dict-entry-p entry)
     (let ((reading (nskk-dict-entry-key entry)))
       (setf (nskk-dict-entry-candidates entry)
             (sort (copy-sequence (nskk-dict-entry-candidates entry))
                   (lambda (a b)
-                    (> (nskk-search--candidate-score reading a)
-                       (nskk-search--candidate-score reading b))))))
+                    (> (nskk--search-candidate-score reading a)
+                       (nskk--search-candidate-score reading b))))))
     entry))
 
-(defun nskk-search--sort-prefix-results (results)
+(defun nskk--search-sort-prefix-results (results)
   "Sort prefix search RESULTS by learning scores in descending order."
   (let ((scored (mapcar (lambda (item)
-                          (cons (nskk-search--reading-score (car item) (cdr item))
+                          (cons (nskk--search-reading-score (car item) (cdr item))
                                 item))
                         results)))
     (mapcar #'cdr
             (sort scored (lambda (a b)
                            (> (car a) (car b)))))))
 
-(defun nskk-search--reading-score (reading entry)
+(defun nskk--search-reading-score (reading entry)
   "Return the maximum learning score for READING and ENTRY."
   (if (nskk-dict-entry-p entry)
       (cl-loop for cand in (nskk-dict-entry-candidates entry)
-               maximize (nskk-search--candidate-score reading cand))
+               maximize (nskk--search-candidate-score reading cand))
     0))
 
-(defun nskk-search--candidate-score (reading candidate)
+(defun nskk--search-candidate-score (reading candidate)
   "Return learning score for CANDIDATE given READING from Prolog database."
-  (let ((word (nskk-search--candidate-word candidate)))
+  (let ((word (nskk--search-candidate-word candidate)))
     (or (and word (nskk-prolog-query-value
                    `(learning-score ,reading ,word \?s) '\?s))
         0)))
 
-(defun nskk-search--candidate-word (candidate)
+(defun nskk--search-candidate-word (candidate)
   "Extract the word string from CANDIDATE."
   (cond
    ((stringp candidate) candidate)
@@ -407,7 +422,7 @@ the integer Levenshtein distance from QUERY."
 
 ;;; Deduplication
 
-(defun nskk-search--dedupe-fuzzy (results)
+(defun nskk--search-dedupe-fuzzy (results)
   "Remove duplicate entries from fuzzy search RESULTS, keeping closest match."
   (let ((seen (make-hash-table :test 'equal))
         (acc '()))
@@ -426,50 +441,37 @@ the integer Levenshtein distance from QUERY."
 
 ;;; Learning data management
 
-(defun nskk-search--load-learning-data ()
-  "Load learning data from `nskk-search-learning-file' into Prolog facts."
-  (nskk-prolog-retract-all 'learning-score 3)
-  (nskk-prolog-set-index 'learning-score 3 :hash)
-  (when (file-readable-p nskk-search-learning-file)
-    (ignore-errors
-      (with-temp-buffer
-        (insert-file-contents nskk-search-learning-file)
-        (let ((data (read (current-buffer))))
-          ;; data is a list of (reading candidate score) tuples
-          (when (listp data)
-            (dolist (entry data)
-              (when (= (length entry) 3)
-                (nskk-prolog-assert
-                 (list (cons 'learning-score entry)))))))))))
-
 ;;;###autoload
 (defun nskk-search-save-learning-data ()
   "Save learning data from Prolog facts to `nskk-search-learning-file'."
   (interactive)
-  (let ((dir (file-name-directory nskk-search-learning-file)))
-    (unless (file-directory-p dir)
-      (make-directory dir t)))
   (condition-case err
-      (with-temp-file nskk-search-learning-file
-        ;; Query all learning scores and serialize as (reading candidate score) tuples
-        (let ((solutions (nskk-prolog-query '(learning-score \?r \?c \?s))))
-          (prin1
-           (mapcar (lambda (sol)
-                     (list (nskk-prolog-walk '\?r sol)
-                           (nskk-prolog-walk '\?c sol)
-                           (nskk-prolog-walk '\?s sol)))
-                   solutions)
-           (current-buffer)))
-        (setq nskk-search--dirty-flag nil)
-        (message "Learning data saved"))
+      (progn
+        (let ((dir (file-name-directory nskk-search-learning-file)))
+          (unless (file-directory-p dir)
+            (make-directory dir t)))
+        (with-temp-file nskk-search-learning-file
+          ;; Query all learning scores and serialize as (reading candidate score) tuples
+          (let ((solutions (nskk-prolog-query '(learning-score \?r \?c \?s))))
+            (prin1
+             (mapcar (lambda (sol)
+                       (list (nskk-prolog-walk '\?r sol)
+                             (nskk-prolog-walk '\?c sol)
+                             (nskk-prolog-walk '\?s sol)))
+                     solutions)
+             (current-buffer)))
+          (setq nskk--search-dirty-flag nil)
+          (message "Learning data saved")
+          (run-hooks 'nskk-save-history-hook)))
     (error
-     (message "Failed to save learning data: %s" err))))
+     (message "Failed to save learning data: %s" (error-message-string err)))))
 
 ;;;###autoload
-(defun nskk-search-learn (query candidate &optional _context)
+(defun/done nskk-search-learn (query candidate &optional context)
   "Record that CANDIDATE was selected for QUERY.
 _CONTEXT is reserved for future use.
 Stores learning score as a Prolog learning-score/3 fact."
+  (ignore context)
   (let* ((word (if (stringp candidate) candidate (car candidate)))
          (old-score (when word
                       (nskk-prolog-query-value
@@ -480,47 +482,11 @@ Stores learning score as a Prolog learning-score/3 fact."
       (when old-score
         (nskk-prolog-retract `(learning-score ,query ,word ,old-score)))
       (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score)))
-      (setq nskk-search--dirty-flag t))))
-
-;;; Auto-save
-
-(defun nskk-search--start-auto-save ()
-  "Start the auto-save timer for learning data."
-  (when nskk-search--auto-save-timer
-    (cancel-timer nskk-search--auto-save-timer))
-  (setq nskk-search--auto-save-timer
-        (run-with-timer nskk-search-auto-save-interval
-                        nskk-search-auto-save-interval
-                        #'nskk-search--auto-save-handler)))
-
-(defun nskk-search--stop-auto-save ()
-  "Stop the auto-save timer for learning data."
-  (when nskk-search--auto-save-timer
-    (cancel-timer nskk-search--auto-save-timer)
-    (setq nskk-search--auto-save-timer nil)))
-
-(defun nskk-search--auto-save-handler ()
-  "Handler called by the auto-save timer."
-  (when nskk-search--dirty-flag
-    (nskk-search-save-learning-data)))
-
-;;; Utility functions
-
-(defun nskk-search-entry-count (index &optional search-type query okuri-type)
-  "Count entries in INDEX matching SEARCH-TYPE and QUERY.
-OKURI-TYPE specifies okurigana filtering."
-  (if (null search-type)
-      ;; Total entry count with no search filter
-      (nskk-dict--struct-entry-count index okuri-type)
-    ;; Run search and count matching results
-    (let ((results (nskk-search index query search-type okuri-type nil)))
-      (if (nskk-dict-entry-p results)
-          1
-        (length results)))))
+      (setq nskk--search-dirty-flag t))))
 
 ;;; Cache-backed search
 
-(defun nskk-search--cache-key (query search-type okuri-type)
+(defun nskk--search-cache-key (query search-type okuri-type)
   "Generate cache key string from QUERY, SEARCH-TYPE, and OKURI-TYPE."
   (format "%s:%s:%s"
           query
@@ -528,50 +494,27 @@ OKURI-TYPE specifies okurigana filtering."
           (or okuri-type 'none)))
 
 ;;;###autoload
-;;
-;; Hand-written pair: nskk-search-with-cache/k uses non-standard CPS semantics
-;; where on-found = cache HIT and on-not-found = cache MISS (receives fresh
-;; result or nil), rather than the standard found/not-found semantics.
-(defun nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
+(defun/k nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
   "Search INDEX for QUERY using CACHE for result caching.
-Returns the result list on dict hit, nil on miss.
-SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to `nskk-search'."
+Returns the cached or fresh result via ON-FOUND when candidates exist,
+or calls ON-NOT-FOUND when no candidates are found.
+SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to `nskk-search' on cache miss.
+Note: `nskk-search-jisyo-hook' is NOT run on cache hits, since `nskk-search'
+is bypassed; fires only on cache misses (when `nskk-search' is called)."
   (unless (nskk-cache-p cache)
     (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
-  (let* ((cache-key (nskk-search--cache-key query search-type okuri-type))
+  (let* ((cache-key (nskk--search-cache-key query search-type okuri-type))
          (cached (nskk-cache-get cache cache-key)))
     (if cached
         (progn
           (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
-          cached)
+          (succeed cached))
       (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
-      (let ((result (nskk-search index query search-type okuri-type limit)))
-        (when result
-          (nskk-cache-put cache cache-key result))
-        result))))
-
-(defun nskk-search-with-cache/k (cache index query search-type okuri-type limit
-                                  on-hit on-miss)
-  "Search INDEX for QUERY using CACHE in CPS style.
-ON-HIT is called with the cached result on cache hit.
-ON-MISS is called with the fresh dict result (or nil) on cache miss.
-
-NOTE: This function uses non-standard continuation names (ON-HIT / ON-MISS)
-instead of the conventional ON-FOUND / ON-NOT-FOUND.  It is NOT compatible
-with the `<-' or `<-or' CPS bind macros.  Call it directly. [CPS]"
-  (unless (nskk-cache-p cache)
-    (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
-  (let* ((cache-key (nskk-search--cache-key query search-type okuri-type))
-         (cached (nskk-cache-get cache cache-key)))
-    (if cached
-        (progn
-          (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
-          (funcall on-hit cached))
-      (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
-      (let ((result (nskk-search index query search-type okuri-type limit)))
-        (when result
-          (nskk-cache-put cache cache-key result))
-        (funcall on-miss result)))))
+      (<-or result nskk-search index query search-type okuri-type limit
+        :found (progn
+                 (nskk-cache-put cache cache-key result)
+                 (succeed result))
+        :fail  (fail)))))
 
 (provide 'nskk-search)
 

@@ -49,6 +49,12 @@
 (require 'nskk-henkan)
 (require 'nskk-input)
 (require 'nskk-converter)
+
+;; NOTE: The initialization calls below are guarded by idempotency flags
+;; (e.g., `nskk--state-prolog-initialized').  If you `eval-buffer' this
+;; file after editing, those flags will prevent re-initialization unless
+;; you first reset them manually.  See `nskk-prolog-test-with-isolated-db'
+;; in this file for the complete list of flags to reset.
 (nskk-state-initialize-prolog)
 (nskk-kana-initialize)
 (nskk-henkan-initialize)
@@ -312,29 +318,29 @@ Matches legacy nskk-deftest-integration, property tests, and BDD-style names."
   "Return a deep copy of trie NODE and all its descendants.
 Recursively copies the children hash-table so mutations in one test
 do not bleed into the saved copy."
-  (let ((new (nskk-prolog--trie-node--create
-              :char    (nskk-prolog--trie-node-char node)
-              :is-end  (nskk-prolog--trie-node-is-end node)
-              :value   (nskk-prolog--trie-node-value node)
-              :count   (nskk-prolog--trie-node-count node))))
-    (when-let* ((children (nskk-prolog--trie-node-children node)))
+  (let ((new (nskk--prolog-trie-node--create
+              :char    (nskk--prolog-trie-node-char node)
+              :is-end  (nskk--prolog-trie-node-is-end node)
+              :value   (nskk--prolog-trie-node-value node)
+              :count   (nskk--prolog-trie-node-count node))))
+    (when-let* ((children (nskk--prolog-trie-node-children node)))
       (let ((new-children (make-hash-table :test 'eq
                                            :size (hash-table-count children))))
         (maphash (lambda (ch child)
                    (puthash ch (nskk-prolog-test--copy-trie-node child)
                             new-children))
                  children)
-        (setf (nskk-prolog--trie-node-children new) new-children)))
+        (setf (nskk--prolog-trie-node-children new) new-children)))
     new))
 
 (defun nskk-prolog-test--copy-trie (trie)
   "Return a deep copy of TRIE.
 The root node and all descendant nodes are recursively duplicated so
-that `nskk-prolog--trie-insert' and `nskk-prolog--trie-delete' in the
+that `nskk--prolog-trie-insert' and `nskk--prolog-trie-delete' in the
 test body cannot mutate the saved snapshot."
-  (nskk-prolog--trie--create-internal
-   :root (nskk-prolog-test--copy-trie-node (nskk-prolog--trie-root trie))
-   :size (nskk-prolog--trie-size trie)))
+  (nskk--prolog-trie--create-internal
+   :root (nskk-prolog-test--copy-trie-node (nskk--prolog-trie-root trie))
+   :size (nskk--prolog-trie-size trie)))
 
 (defun nskk-prolog-test--copy-hash-table (ht)
   "Deep-copy hash table HT for test isolation.
@@ -346,7 +352,7 @@ by reference."
                               :size (hash-table-size ht))))
     (maphash (lambda (k v)
                (puthash k (cond
-                           ((nskk-prolog--trie-p v)
+                           ((nskk--prolog-trie-p v)
                             (nskk-prolog-test--copy-trie v))
                            ((sequencep v)
                             (copy-sequence v))
@@ -359,7 +365,7 @@ by reference."
   "Execute BODY with an isolated Prolog database.
 Saves and restores the global database so tests don't leak.
 
-After restoration `nskk-prolog--database-tails' is re-derived from
+After restoration `nskk--prolog-database-tails' is re-derived from
 the actual last cons cells of the restored database rather than from
 a saved shallow copy.  This maintains the O(1)-append head/tail
 invariant: `copy-sequence' creates a new list spine, so a separately
@@ -371,11 +377,11 @@ and restored because `nskk-dict-register-word' sets them as a side
 effect via `setq', and the change would otherwise persist globally
 after the test ends."
   (declare (indent 0))
-  `(let ((saved-db              (nskk-prolog-test--copy-hash-table nskk-prolog--database))
-         (saved-idx             (nskk-prolog-test--copy-hash-table nskk-prolog--index-config))
-         (saved-hash            (nskk-prolog-test--copy-hash-table nskk-prolog--hash-indices))
-         (saved-trie            (nskk-prolog-test--copy-hash-table nskk-prolog--trie-indices))
-         (saved-counter         nskk-prolog--var-counter)
+  `(let ((saved-db              (nskk-prolog-test--copy-hash-table nskk--prolog-database))
+         (saved-idx             (nskk-prolog-test--copy-hash-table nskk--prolog-index-config))
+         (saved-hash            (nskk-prolog-test--copy-hash-table nskk--prolog-hash-indices))
+         (saved-trie            (nskk-prolog-test--copy-hash-table nskk--prolog-trie-indices))
+         (saved-counter         nskk--prolog-var-counter)
          (saved-user-dict       nskk--user-dict-index)
          (saved-system-dict     nskk--system-dict-index)
          ;; Save all *-initialized flags so each isolated DB gets fresh Prolog
@@ -389,8 +395,8 @@ after the test ends."
                                      nskk--state-prolog-initialized))
          (saved-henkan-init     (and (boundp 'nskk--henkan-initialized)
                                      nskk--henkan-initialized))
-         (saved-kana-init       (and (boundp 'nskk-kana--initialized)
-                                     nskk-kana--initialized))
+         (saved-kana-init       (and (boundp 'nskk--kana-initialized)
+                                     nskk--kana-initialized))
          (saved-converter-init  (and (boundp 'nskk--converter-initialized)
                                      nskk--converter-initialized))
          (saved-cand-init       (and (boundp 'nskk--candidate-key-facts-initialized)
@@ -401,19 +407,19 @@ after the test ends."
        (setq nskk--state-prolog-initialized nil))
      (when (boundp 'nskk--henkan-initialized)
        (setq nskk--henkan-initialized nil))
-     (when (boundp 'nskk-kana--initialized)
-       (setq nskk-kana--initialized nil))
+     (when (boundp 'nskk--kana-initialized)
+       (setq nskk--kana-initialized nil))
      (when (boundp 'nskk--converter-initialized)
        (setq nskk--converter-initialized nil))
      (when (boundp 'nskk--candidate-key-facts-initialized)
        (setq nskk--candidate-key-facts-initialized nil))
      (unwind-protect
          (progn ,@body)
-       (setq nskk-prolog--database    saved-db
-             nskk-prolog--index-config saved-idx
-             nskk-prolog--hash-indices saved-hash
-             nskk-prolog--trie-indices saved-trie
-             nskk-prolog--var-counter  saved-counter
+       (setq nskk--prolog-database    saved-db
+             nskk--prolog-index-config saved-idx
+             nskk--prolog-hash-indices saved-hash
+             nskk--prolog-trie-indices saved-trie
+             nskk--prolog-var-counter  saved-counter
              nskk--user-dict-index     saved-user-dict
              nskk--system-dict-index   saved-system-dict)
        (when (boundp 'nskk--input-initialized)
@@ -422,8 +428,8 @@ after the test ends."
          (setq nskk--state-prolog-initialized saved-state-init))
        (when (boundp 'nskk--henkan-initialized)
          (setq nskk--henkan-initialized saved-henkan-init))
-       (when (boundp 'nskk-kana--initialized)
-         (setq nskk-kana--initialized saved-kana-init))
+       (when (boundp 'nskk--kana-initialized)
+         (setq nskk--kana-initialized saved-kana-init))
        (when (boundp 'nskk--converter-initialized)
          (setq nskk--converter-initialized saved-converter-init))
        (when (boundp 'nskk--candidate-key-facts-initialized)
@@ -436,8 +442,16 @@ after the test ends."
        (let ((new-tails (make-hash-table :test 'equal :size 128)))
          (maphash (lambda (k v)
                     (when v (puthash k (last v) new-tails)))
-                  nskk-prolog--database)
-         (setq nskk-prolog--database-tails new-tails)))))
+                  nskk--prolog-database)
+         (setq nskk--prolog-database-tails new-tails)))))
+
+;;;;
+;;;; Shared Test Fixtures
+;;;;
+
+(defconst nskk--test-minimal-dict '(("あ" . ("亜")))
+  "Minimal stub dictionary for E2E tests that don't need specific readings.")
+
 
 ;;;;
 ;;;; Mock Dictionary Helpers
@@ -588,6 +602,50 @@ search function such as `nskk-search'."
   `(progn
      (should (nskk-dict-entry-p ,result))
      (should (equal (nskk-dict-entry-candidates ,result) ,expected))))
+
+
+;;;;
+;;;; Mock skkserv Helper
+;;;;
+
+;; `nskk-server-coding-system' is defined in nskk-server.el.
+;; Load it here so the mock helper below can reference that variable.
+(require 'nskk-server)
+
+(defun nskk--server-start-mock-server (responses)
+  "Start an in-process mock skkserv and return (server-proc . port).
+RESPONSES is an alist of (KEY . RESPONSE-STRING) pairs.
+For keys not in RESPONSES the server sends a not-found \\='4...\\=' reply.
+
+This helper is shared by both `nskk-server-integration-test' and
+`nskk-server-henkan-integration-test'.  Always call in an
+`unwind-protect' that deletes the returned server process."
+  (let ((srv (make-network-process
+              :name " nskk-mock-skkserv"
+              :buffer nil
+              :family 'ipv4
+              :host "127.0.0.1"
+              :service t
+              :server t
+              :noquery t
+              :coding nskk-server-coding-system
+              :filter
+              (lambda (client string)
+                (when (> (length string) 0)
+                  (let ((cmd (aref string 0)))
+                    (cond
+                     ((= cmd ?0)
+                      (delete-process client))
+                     ((= cmd ?1)
+                      (let* ((rest (substring string 1))
+                             (space-pos (string-search " " rest))
+                             (key (if space-pos
+                                      (substring rest 0 space-pos)
+                                    rest))
+                             (response (or (cdr (assoc key responses))
+                                          (concat "4" key " \n"))))
+                        (process-send-string client response))))))))))
+    (cons srv (process-contact srv :service))))
 
 
 (provide 'nskk-test-framework)

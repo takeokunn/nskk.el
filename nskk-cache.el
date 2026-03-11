@@ -27,7 +27,7 @@
 
 ;; Caching layer for the NSKK dictionary search engine (Layer 1: Core Engine).
 ;;
-;; Layer position: L1 (Core Engine) -- depends only on nskk-prolog.
+;; Layer position: L1 (Core Engine) -- depends on nskk-prolog and nskk-cps-macros.
 ;;
 ;; Provides LRU and LFU cache implementations with O(1) get/put operations,
 ;; automatic eviction, and hit-rate statistics.  Cache type validation and
@@ -38,9 +38,11 @@
 ;; - LRU (Least Recently Used): doubly-linked list + hash table
 ;; - LFU (Least Frequently Used): frequency buckets + hash table
 ;;
-;; Both algorithms provide O(1) get and put.  Capacity is managed by entry
-;; count with automatic eviction.  Hit-rate statistics are collected and
-;; accessible via `nskk-cache-stats'.
+;; Both algorithms provide amortized O(1) get and put.  The LFU frequency
+;; bucket uses a list per frequency level; promotion is O(k) where k is the
+;; bucket occupancy, which is O(1) in the common case of spread frequencies.
+;; Capacity is managed by entry count with automatic eviction.  Hit-rate
+;; statistics are collected and accessible via `nskk-cache-stats'.
 ;;
 ;; Prolog predicates maintained by this module:
 ;; - `cache-type/1'            -- valid cache type membership (lru, lfu)
@@ -91,6 +93,7 @@
 (defcustom nskk-cache-default-capacity 1000
   "Default cache capacity for LRU/LFU caches."
   :type 'integer
+  :package-version '("nskk" . "0.1.0")
   :group 'nskk-cache)
 
 (defcustom nskk-cache-strategy 'lru
@@ -99,6 +102,7 @@
 \\='lfu means Least Frequently Used."
   :type '(choice (const :tag "LRU" lru)
                  (const :tag "LFU" lfu))
+  :package-version '("nskk" . "0.1.0")
   :group 'nskk-cache)
 
 ;;; Prolog Facts
@@ -141,7 +145,7 @@
 
 ;;; Cache Type Dispatch
 
-(defun nskk-cache--type-of (cache)
+(defun nskk--cache-type-of (cache)
   "Return the cache type symbol for CACHE.
 Returns the symbol `lru' or `lfu'.  Signals an error for invalid CACHE."
   (cond
@@ -153,15 +157,27 @@ Returns the symbol `lru' or `lfu'.  Signals an error for invalid CACHE."
   "Dispatch OP on CACHE via the Prolog cache-dispatch-fn/3 table.
 OP is a literal symbol (unquoted) naming the operation (e.g., get, put).
 ARGS are passed through to the dispatched implementation function.
-The dispatch function is resolved at runtime via Prolog hash-indexed lookup."
-  (declare (indent 2) (debug t))
-  `(nskk-cache--dispatch-prolog ,cache ',op ,@args))
+The dispatch function is resolved at runtime via Prolog hash-indexed lookup.
 
-(defun nskk-cache--dispatch-prolog (cache op &rest args)
+Design note — why there is no per-instance cache-type/2 Prolog fact:
+The LRU and LFU structs have no unique identity slot (no ID field).
+Asserting a per-instance fact such as (cache-type ID lru) would require
+either a globally unique integer counter (mutable global state) or a
+gensym, and would demand a matching retract on cache destruction — but
+Emacs Lisp has no finalizers, so the retract would never fire and the
+Prolog DB would accumulate stale facts indefinitely.  The struct-field
+approach via `nskk--cache-type-of' (which calls `nskk-cache-lru-p' /
+`nskk-cache-lfu-p') is O(1), allocation-free, and leak-free, so it is
+retained.  The global cache-dispatch-fn/3 table already provides the
+declarative, Prolog-queryable dispatch that the architecture requires."
+  (declare (indent 2) (debug t))
+  `(nskk--cache-dispatch-prolog ,cache ',op ,@args))
+
+(defun nskk--cache-dispatch-prolog (cache op &rest args)
   "Internal Prolog-backed dispatcher for OP on CACHE.
 Queries cache-dispatch-fn/3 with (TYPE OP ?FN) and applies FN to CACHE
 and ARGS."
-  (let* ((type (nskk-cache--type-of cache))
+  (let* ((type (nskk--cache-type-of cache))
          (fn   (nskk-prolog-query-value
                 `(cache-dispatch-fn ,type ,op \?fn) '\?fn)))
     (unless fn
@@ -174,12 +190,12 @@ FIELD is a literal symbol naming the struct slot (e.g., capacity, size).
 DEFAULT is returned when no accessor is found (defaults to 0).
 The accessor function is resolved at runtime via Prolog hash-indexed lookup."
   (declare (indent 0) (debug t))
-  `(nskk-cache--field-prolog ,cache ',field ,(or default 0)))
+  `(nskk--cache-field-prolog ,cache ',field ,(or default 0)))
 
-(defun nskk-cache--field-prolog (cache field default)
+(defun nskk--cache-field-prolog (cache field default)
   "Internal Prolog-backed field accessor for FIELD on CACHE.
 Queries cache-field-fn/3 with (TYPE FIELD ?FN) and calls FN with CACHE."
-  (let* ((type (nskk-cache--type-of cache))
+  (let* ((type (nskk--cache-type-of cache))
          (fn   (nskk-prolog-query-value
                 `(cache-field-fn ,type ,field \?fn) '\?fn)))
     (if fn (funcall fn cache) default)))
@@ -463,13 +479,32 @@ Returns t if KEY was found and removed, nil otherwise."
 
 ;;; Unified Interface
 
-;;;###autoload
-(defun/k nskk-cache-create (&rest args)
+(defun nskk-cache-create--impl (&rest args)
   "Create a cache, returning an LRU or LFU cache structure.
-ARGS can be positional (TYPE CAPACITY) or keyword (:type TYPE :capacity CAP).
-TYPE defaults to `nskk-cache-strategy'; CAPACITY defaults to
-`nskk-cache-default-capacity'.
-Signals an error if TYPE is not a registered cache type."
+
+ARGS supports three calling conventions:
+
+  Positional:  (TYPE CAPACITY)
+    TYPE     -- cache algorithm symbol, either \\='lru or \\='lfu
+    CAPACITY -- maximum number of entries (positive integer)
+
+  Keyword:     (:type TYPE :capacity CAP)
+    :type     -- cache algorithm symbol, either \\='lru or \\='lfu
+    :capacity -- maximum number of entries (positive integer)
+    :size     -- alias for :capacity; overrides :capacity when both present
+
+  No arguments: uses defaults from `nskk-cache-strategy' and
+    `nskk-cache-default-capacity'.
+
+When both :capacity and :size appear in a keyword call, :size takes
+precedence because it is applied after :capacity.  In practice, pass
+only one of the two.
+
+TYPE defaults to `nskk-cache-strategy' (customizable, default \\='lru).
+CAPACITY defaults to `nskk-cache-default-capacity' (customizable, default 1000).
+
+Signals a `user-error' if TYPE is not a Prolog-registered cache type
+(i.e., not a fact in cache-type/1).  Valid types are: lru, lfu."
   (let ((cache-type     nskk-cache-strategy)
         (cache-capacity nskk-cache-default-capacity))
     (cond
@@ -486,40 +521,48 @@ Signals an error if TYPE is not a registered cache type."
       (setq cache-type (car args))
       (when (cdr args)
         (setq cache-capacity (cadr args)))))
-    ;; Validate via Prolog before constructing
+    ;; Validate via Prolog before constructing.  An unrecognized TYPE causes
+    ;; nskk-prolog-holds-p to return nil, and the unless branch signals
+    ;; user-error.  The pcase below is therefore exhaustive over valid types:
+    ;; it will never reach an unmatched arm because the validation above
+    ;; already rejects anything outside {lru, lfu}.
     (unless (nskk-prolog-holds-p `(cache-type ,cache-type))
       (user-error "Unknown cache type: %s; valid types: lru, lfu" cache-type))
-    (succeed
-     (pcase cache-type
-       ('lru (nskk-cache-lru-create cache-capacity))
-       ('lfu (nskk-cache-lfu-create cache-capacity))))))
+    (pcase cache-type
+      ('lru (nskk-cache-lru-create cache-capacity))
+      ('lfu (nskk-cache-lfu-create cache-capacity)))))
 
 ;;;###autoload
-(defun nskk-cache-get (cache key)
-  "Get the value for KEY from CACHE.
-Returns the cached value on hit, or nil on miss.
-Use `nskk-cache-get/k' to distinguish a stored nil from a miss. [sync]"
-  (nskk-cache-get/k #'identity (lambda () nil) cache key))
+(defun/k nskk-cache-create (&rest args)
+  "Create a new NSKK cache of the specified type and capacity.
+Calls on-found with the created cache object.  Always succeeds.
+
+ARGS supports three calling conventions (see `nskk-cache-create--impl').
+
+NOTE: Because `&rest args' cannot follow the continuations in the generated
+`/k' signature, the generated `nskk-cache-create/k' has signature
+  (on-found on-not-found &rest args)
+where continuations come before the data arguments.  Use it directly;
+it is not compatible with `<-' or `<-or'."
+  (succeed (apply #'nskk-cache-create--impl args)))
 
 ;;;###autoload
-(defun nskk-cache-get/k (on-found on-not-found cache key)
+(defun/k nskk-cache-get (cache key)
   "Get the value for KEY from CACHE in CPS style.
-Calls ON-FOUND with the cached value on hit.
-Calls ON-NOT-FOUND (no arguments) on miss.
+Calls on-found with the cached value on hit.
+Calls on-not-found with no arguments on miss.
 
 Unlike the sync `nskk-cache-get', this correctly distinguishes a stored
 falsy value (nil, 0, \"\") from a cache miss, because it delegates to the
 underlying type-specific /k implementation which tests for key presence
-rather than value truthiness.
-
-NOTE: This function is NOT compatible with the `<-' or `<-or' CPS bind
-macros (it does not follow the `defun/k' convention for argument order).
-Call it directly. [CPS]"
-  (pcase (nskk-cache--type-of cache)
-    ;; `defun/k' generates /k with original args first, then continuations:
-    ;;   (nskk-cache-lru-get/k cache key on-found on-not-found)
-    ('lru (nskk-cache-lru-get/k cache key on-found on-not-found))
-    ('lfu (nskk-cache-lfu-get/k cache key on-found on-not-found))))
+rather than value truthiness."
+  (if (eq (nskk--cache-type-of cache) 'lru)
+      (<-or val nskk-cache-lru-get cache key
+            :found (succeed val)
+            :fail (fail))
+    (<-or val nskk-cache-lfu-get cache key
+          :found (succeed val)
+          :fail (fail))))
 
 ;;;###autoload
 (defun/done nskk-cache-put (cache key value)
@@ -573,7 +616,7 @@ literal regexp string from source code, never from user input."
 (defun nskk-cache-stats (cache)
   "Return a statistics plist for CACHE.
 The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
-  (let* ((type     (nskk-cache--type-of cache))
+  (let* ((type     (nskk--cache-type-of cache))
          (capacity (nskk-cache-field cache capacity))
          (size     (nskk-cache-field cache size))
          (hits     (nskk-cache-field cache hits))
@@ -588,15 +631,9 @@ The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
           :hit-rate hit-rate)))
 
 ;;;###autoload
-(defun nskk-cache-hit-rate (cache)
+(defun/k nskk-cache-hit-rate (cache)
   "Return the hit rate for CACHE as a float between 0.0 and 1.0."
-  (plist-get (nskk-cache-stats cache) :hit-rate))
-
-(defun nskk-cache-hit-rate/k (cache on-done &optional _on-not-found)
-  "CPS wrapper for `nskk-cache-hit-rate'.
-Calls ON-DONE with the hit rate float.  Always succeeds.
-_ON-NOT-FOUND is accepted for `<-' macro compatibility. [CPS]"
-  (funcall on-done (nskk-cache-hit-rate cache)))
+  (succeed (plist-get (nskk-cache-stats cache) :hit-rate)))
 
 ;;;###autoload
 (defun nskk-cache-size (cache)

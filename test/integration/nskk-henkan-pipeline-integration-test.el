@@ -35,11 +35,11 @@
 
 (defun nskk-henkan-pipeline--setup-kanji-preedit ()
   "Type K-a-n-j-i to produce ▽かんじ preedit in the current session."
-  (nskk-integration--type-char ?K)
-  (nskk-integration--type-char ?a)
-  (nskk-integration--type-char ?n)
-  (nskk-integration--type-char ?j)
-  (nskk-integration--type-char ?i))
+  (nskk--integration-type-char ?K)
+  (nskk--integration-type-char ?a)
+  (nskk--integration-type-char ?n)
+  (nskk--integration-type-char ?j)
+  (nskk--integration-type-char ?i))
 
 ;;;
 ;;; Henkan Pipeline Tests
@@ -128,7 +128,7 @@
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         (nskk-given (dolist (c '(?S ?a ?k ?u ?r ?a))
-                      (nskk-integration--type-char c)))
+                      (nskk--integration-type-char c)))
         (nskk-when
           (let ((last-command-event ? ))
             (nskk-handle-space)))
@@ -163,7 +163,7 @@
   (nskk-with-mock-dict nil
     (nskk-integration-with-session 'hiragana
       (dolist (ch (string-to-list input))
-        (nskk-integration--type-char ch))
+        (nskk--integration-type-char ch))
       ;; After typing, buffer-string should be non-empty (▽ + kana)
       (should (> (length (buffer-string)) 0)))))
 
@@ -173,7 +173,7 @@
     (nskk-integration-with-session 'hiragana
       (condition-case err
           (dolist (ch (string-to-list r))
-            (nskk-integration--type-char ch))
+            (nskk--integration-type-char ch))
         (error (ert-fail (format "Pipeline crashed on %s: %s" r (error-message-string err)))))
       t))
   30)
@@ -211,8 +211,8 @@
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         ;; Type "Ka" → preedit ▽か
-        (nskk-given (nskk-integration--type-char ?K)
-                    (nskk-integration--type-char ?a))
+        (nskk-given (nskk--integration-type-char ?K)
+                    (nskk--integration-type-char ?a))
         (nskk-then  (should (nskk--conversion-start-active-p)))
         ;; Tab triggers dynamic completion from preedit "か"
         (nskk-when  (nskk-dynamic-complete))
@@ -225,8 +225,8 @@
   (nskk-it "calling dynamic-complete twice cycles to the next candidate"
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
-        (nskk-given (nskk-integration--type-char ?K)
-                    (nskk-integration--type-char ?a))
+        (nskk-given (nskk--integration-type-char ?K)
+                    (nskk--integration-type-char ?a))
         ;; First Tab: establishes prefix search and shows first match
         (nskk-when (nskk-dynamic-complete))
         (let ((first-preedit (nskk-preedit-string)))
@@ -242,7 +242,7 @@
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         ;; Type only "K" → marker set but no kana yet
-        (nskk-given (nskk-integration--type-char ?K))
+        (nskk-given (nskk--integration-type-char ?K))
         (let ((before (buffer-string)))
           (nskk-when (nskk-dynamic-complete))
           (nskk-then

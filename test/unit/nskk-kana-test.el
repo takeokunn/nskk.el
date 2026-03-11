@@ -144,11 +144,18 @@
       (should (nskk-kana-han-p ?力))))
 
   (nskk-context "range boundary detection"
-    (nskk-it "accepts characters at the start and end of the han unicode range"
-      (should (nskk-kana-han-p #x4E00))           ; Start of CJK range
-      (should (nskk-kana-han-p #x9FFF))           ; End of CJK range
-      (should (not (nskk-kana-han-p #x4DFF)))     ; Just before
-      (should (not (nskk-kana-han-p #xA000)))))   ; Just after
+    (nskk-it "accepts characters at the start and end of both CJK and Extension A ranges"
+      ;; Main CJK Unified Ideographs: U+4E00-U+9FFF
+      (should (nskk-kana-han-p #x4E00))            ; Start of main CJK range
+      (should (nskk-kana-han-p #x9FFF))            ; End of main CJK range
+      (should (not (nskk-kana-han-p #xA000)))      ; Just after main CJK range
+      ;; CJK Unified Ideographs Extension A: U+3400-U+4DBF
+      (should (nskk-kana-han-p #x3400))            ; Start of Extension A
+      (should (nskk-kana-han-p #x4DBF))            ; End of Extension A
+      (should (not (nskk-kana-han-p #x33FF)))      ; Just before Extension A
+      (should (not (nskk-kana-han-p #x4DC0)))      ; Just after Extension A (tight boundary)
+      ;; Gap between Extension A and main CJK
+      (should (not (nskk-kana-han-p #x4DFF)))))     ; Midpoint in gap
 
   (nskk-context "non-han rejection"
     (nskk-it "rejects hiragana, katakana, ascii, and non-integers"
@@ -358,7 +365,11 @@
   (nskk-context "edge cases"
     (nskk-it "returns nil for non-string input"
       (should (null (nskk-kana-string-katakana-to-hiragana nil)))
-      (should (null (nskk-kana-string-katakana-to-hiragana 42))))))
+      (should (null (nskk-kana-string-katakana-to-hiragana 42))))
+    (nskk-it "returns an empty string for empty string input"
+      (nskk-assert-strings-equal
+       (nskk-kana-string-katakana-to-hiragana "")
+       ""))))
 
 ;;;
 ;;; CPS Variant Tests
@@ -463,6 +474,144 @@
          #'ignore)
         (nskk-assert-strings-equal result "ア")))))
 
+(nskk-describe "CPS hiragana-to-katakana/k"
+  (nskk-context "always-succeeding conversion"
+    (nskk-it "calls on-done with katakana character for hiragana input"
+      (let ((result nil))
+        (nskk-kana-hiragana-to-katakana/k
+         ?あ
+         (lambda (c) (setq result c))
+         #'ignore)
+        (should (= result ?ア))))
+
+    (nskk-it "calls on-done with unchanged character for non-hiragana input"
+      (let ((result nil))
+        (nskk-kana-hiragana-to-katakana/k
+         ?a
+         (lambda (c) (setq result c))
+         #'ignore)
+        (should (= result ?a))))
+
+    (nskk-it "never invokes on-not-found"
+      (let ((not-found-called nil))
+        (nskk-kana-hiragana-to-katakana/k
+         ?あ
+         #'ignore
+         (lambda () (setq not-found-called t)))
+        (should (null not-found-called))))))
+
+(nskk-describe "CPS katakana-to-hiragana/k"
+  (nskk-context "always-succeeding conversion"
+    (nskk-it "calls on-done with hiragana character for katakana input"
+      (let ((result nil))
+        (nskk-kana-katakana-to-hiragana/k
+         ?ア
+         (lambda (c) (setq result c))
+         #'ignore)
+        (should (= result ?あ))))
+
+    (nskk-it "calls on-done with unchanged character for non-katakana input"
+      (let ((result nil))
+        (nskk-kana-katakana-to-hiragana/k
+         ?a
+         (lambda (c) (setq result c))
+         #'ignore)
+        (should (= result ?a))))
+
+    (nskk-it "never invokes on-not-found"
+      (let ((not-found-called nil))
+        (nskk-kana-katakana-to-hiragana/k
+         ?ア
+         #'ignore
+         (lambda () (setq not-found-called t)))
+        (should (null not-found-called))))))
+
+(nskk-describe "CPS han-p/k"
+  (nskk-context "success path"
+    (nskk-it "calls on-found with t for kanji characters"
+      (let ((result nil))
+        (nskk-kana-han-p/k
+         ?漢
+         (lambda (v) (setq result v))
+         (lambda () (setq result 'fail)))
+        (should (eq result t))))
+
+    (nskk-it "calls on-found with t for Extension A characters"
+      (let ((result nil))
+        (nskk-kana-han-p/k
+         #x3400
+         (lambda (v) (setq result v))
+         (lambda () (setq result 'fail)))
+        (should (eq result t)))))
+
+  (nskk-context "failure path"
+    (nskk-it "calls on-not-found for hiragana characters"
+      (let ((failed nil))
+        (nskk-kana-han-p/k
+         ?あ
+         (lambda (_) nil)
+         (lambda () (setq failed t)))
+        (should failed)))
+
+    (nskk-it "calls on-not-found for ascii characters"
+      (let ((failed nil))
+        (nskk-kana-han-p/k
+         ?a
+         (lambda (_) nil)
+         (lambda () (setq failed t)))
+        (should failed)))))
+
+(nskk-describe "CPS japanese-p/k"
+  (nskk-context "success path"
+    (nskk-it "calls on-found with t for hiragana"
+      (let ((result nil))
+        (nskk-kana-japanese-p/k
+         ?あ
+         (lambda (v) (setq result v))
+         (lambda () (setq result 'fail)))
+        (should (eq result t))))
+
+    (nskk-it "calls on-found with t for katakana"
+      (let ((result nil))
+        (nskk-kana-japanese-p/k
+         ?ア
+         (lambda (v) (setq result v))
+         (lambda () (setq result 'fail)))
+        (should (eq result t))))
+
+    (nskk-it "calls on-found with t for kanji"
+      (let ((result nil))
+        (nskk-kana-japanese-p/k
+         ?漢
+         (lambda (v) (setq result v))
+         (lambda () (setq result 'fail)))
+        (should (eq result t))))
+
+    (nskk-it "calls on-found with t for hankaku katakana"
+      (let ((result nil))
+        (nskk-kana-japanese-p/k
+         ?ｱ
+         (lambda (v) (setq result v))
+         (lambda () (setq result 'fail)))
+        (should (eq result t)))))
+
+  (nskk-context "failure path"
+    (nskk-it "calls on-not-found for ascii letters"
+      (let ((failed nil))
+        (nskk-kana-japanese-p/k
+         ?a
+         (lambda (_) nil)
+         (lambda () (setq failed t)))
+        (should failed)))
+
+    (nskk-it "calls on-not-found for nil"
+      (let ((failed nil))
+        (nskk-kana-japanese-p/k
+         nil
+         (lambda (_) nil)
+         (lambda () (setq failed t)))
+        (should failed)))))
+
 ;;;
 ;;; Hankaku/Zenkaku Conversion Tests
 ;;;
@@ -484,7 +633,8 @@
          ("ザ" "ｻﾞ")
          ("ジ" "ｼﾞ")
          ("バ" "ﾊﾞ")
-         ("パ" "ﾊﾟ"))
+         ("パ" "ﾊﾟ")
+         ("ヴ" "ｳﾞ"))
   :description "Zenkaku voiced/semi-voiced katakana converts to hankaku with dakuten"
   :body (nskk-assert-strings-equal (nskk-kana-zenkaku-to-hankaku input) expected))
 
@@ -494,7 +644,11 @@
          ("ィ" "ｨ")
          ("ゥ" "ｩ")
          ("ェ" "ｪ")
-         ("ォ" "ｫ"))
+         ("ォ" "ｫ")
+         ("ッ" "ｯ")
+         ("ャ" "ｬ")
+         ("ュ" "ｭ")
+         ("ョ" "ｮ"))
   :description "Small zenkaku katakana converts to hankaku small forms"
   :body (nskk-assert-strings-equal (nskk-kana-zenkaku-to-hankaku input) expected))
 
@@ -503,8 +657,10 @@
   :rows (("。" "｡")
          ("、" "､")
          ("・" "･")
-         ("ー" "ｰ"))
-  :description "Zenkaku Japanese punctuation converts to hankaku"
+         ("ー" "ｰ")
+         ("゛" "ﾞ")
+         ("゜" "ﾟ"))
+  :description "Zenkaku Japanese punctuation and combining marks convert to hankaku"
   :body (nskk-assert-strings-equal (nskk-kana-zenkaku-to-hankaku input) expected))
 
 (nskk-describe "zenkaku to hankaku string conversion"
@@ -544,7 +700,8 @@
          ("ｻﾞ" "ザ")
          ("ｼﾞ" "ジ")
          ("ﾊﾞ" "バ")
-         ("ﾊﾟ" "パ"))
+         ("ﾊﾟ" "パ")
+         ("ｳﾞ" "ヴ"))
   :description "Hankaku katakana with dakuten converts to zenkaku voiced forms"
   :body (nskk-assert-strings-equal (nskk-kana-hankaku-to-zenkaku input) expected))
 
@@ -556,6 +713,15 @@
          ("ｪ" "ェ")
          ("ｫ" "ォ"))
   :description "Small hankaku katakana converts to zenkaku small forms"
+  :body (nskk-assert-strings-equal (nskk-kana-hankaku-to-zenkaku input) expected))
+
+(nskk-deftest-table kana-hankaku-to-zenkaku-punctuation
+  :columns (input expected)
+  :rows (("｡" "。")
+         ("､" "、")
+         ("･" "・")
+         ("ｰ" "ー"))
+  :description "Hankaku Japanese punctuation converts to zenkaku"
   :body (nskk-assert-strings-equal (nskk-kana-hankaku-to-zenkaku input) expected))
 
 (nskk-describe "hankaku to zenkaku string conversion"
@@ -630,7 +796,7 @@ Note: Prolog-backed classification costs ~200-300us per character."
     (let ((elapsed (float-time (time-subtract (current-time) start-time))))
       ;; Prolog-based classification via kana-japanese rule; ~200-300us/char
       (should (< elapsed 1.0))
-      (message "[Performance] 80 classifications: %.3fms" (* 1000 elapsed)))))
+      (message "[Performance] 208 classifications: %.3fms" (* 1000 elapsed)))))
 
 ;;;
 ;;; Integration Tests
@@ -686,49 +852,22 @@ Note: Prolog-backed classification costs ~200-300us per character."
   100)
 
 ;; Roundtrip invariant (reverse direction): katakana->hiragana->katakana is identity.
-;; Generate a katakana string by converting a random hiragana string, then verify
-;; that katakana->hiragana->katakana returns the original katakana string.
-(nskk-deftest-unit kana-katakana-hiragana-roundtrip-pbt
-  "Property: katakana->hiragana->katakana is identity for pure katakana strings.
-Seeded PBT: generates random katakana strings via the hiragana generator and
-verifies the reverse roundtrip holds for 100 random inputs."
-  (let ((test-seed 42)
-        (runs 100)
-        (failures nil))
-    (random (format "nskk-kana-pbt-%d" test-seed))
-    (dotimes (_ runs)
-      (let* ((hiragana (nskk-generate 'hiragana-string))
-             (katakana (nskk-kana-string-hiragana-to-katakana hiragana))
-             (roundtripped (nskk-kana-string-hiragana-to-katakana
-                            (nskk-kana-string-katakana-to-hiragana katakana))))
-        (unless (equal katakana roundtripped)
-          (push (list :katakana katakana :roundtripped roundtripped) failures))))
-    (when failures
-      (ert-fail (format "katakana->hiragana->katakana roundtrip failed for %d cases:\n%S"
-                        (length failures) (take 5 failures))))))
+(nskk-property-test kana-pbt-katakana-hiragana-roundtrip
+  ((hiragana hiragana-string))
+  (let* ((katakana (nskk-kana-string-hiragana-to-katakana hiragana))
+         (roundtripped (nskk-kana-string-hiragana-to-katakana
+                        (nskk-kana-string-katakana-to-hiragana katakana))))
+    (equal katakana roundtripped))
+  100)
 
 ;; Roundtrip invariant: zenkaku->hankaku->zenkaku is identity for pure katakana strings.
-;; Uses the hiragana generator to produce inputs, converts to katakana (zenkaku), then
-;; verifies the zenkaku->hankaku->zenkaku roundtrip holds.
-(nskk-deftest-unit kana-zenkaku-hankaku-roundtrip-pbt
-  "Property: zenkaku->hankaku->zenkaku is identity for pure zenkaku katakana strings.
-Seeded PBT: generates random zenkaku katakana strings via the hiragana generator
-and verifies the roundtrip holds for 100 random inputs."
-  (let ((test-seed 137)
-        (runs 100)
-        (failures nil))
-    (random (format "nskk-kana-pbt-%d" test-seed))
-    (dotimes (_ runs)
-      (let* ((hiragana (nskk-generate 'hiragana-string))
-             (zenkaku (nskk-kana-string-hiragana-to-katakana hiragana))
-             (hankaku (nskk-kana-zenkaku-to-hankaku zenkaku))
-             (roundtripped (nskk-kana-hankaku-to-zenkaku hankaku)))
-        (unless (equal zenkaku roundtripped)
-          (push (list :zenkaku zenkaku :hankaku hankaku :roundtripped roundtripped)
-                failures))))
-    (when failures
-      (ert-fail (format "zenkaku->hankaku->zenkaku roundtrip failed for %d cases:\n%S"
-                        (length failures) (take 5 failures))))))
+(nskk-property-test kana-pbt-zenkaku-hankaku-roundtrip
+  ((hiragana hiragana-string))
+  (let* ((zenkaku (nskk-kana-string-hiragana-to-katakana hiragana))
+         (hankaku (nskk-kana-zenkaku-to-hankaku zenkaku))
+         (roundtripped (nskk-kana-hankaku-to-zenkaku hankaku)))
+    (equal zenkaku roundtripped))
+  100)
 
 ;;;
 ;;; Prolog Database Integration Tests
@@ -763,12 +902,12 @@ and verifies the roundtrip holds for 100 random inputs."
       (should (nskk-prolog-query (list 'hankaku-to-zenkaku "ｱ" '\?z))))))
 
 ;;;
-;;; nskk-kana--define-range-predicate
+;;; nskk--kana-define-range-predicate
 ;;;
 
-(nskk-describe "nskk-kana--define-range-predicate"
+(nskk-describe "nskk--kana-define-range-predicate"
   (nskk-it "is a macro (not a plain function)"
-    (should (macrop 'nskk-kana--define-range-predicate)))
+    (should (macrop 'nskk--kana-define-range-predicate)))
 
   (nskk-it "generated ELisp predicate returns non-nil for chars in range"
     ;; nskk-kana-hiragana-p is generated by the macro
@@ -792,9 +931,16 @@ and verifies the roundtrip holds for 100 random inputs."
 ;;;
 
 (nskk-describe "nskk-kana-initialize"
-  (nskk-it "is idempotent: calling twice does not error"
-    ;; nskk-kana-initialize is already called at module load; second call is no-op
-    (should (progn (nskk-kana-initialize) t)))
+  (nskk-it "is idempotent: calling multiple times does not re-assert facts or error"
+    ;; Reset the flag to test initialization from scratch, then restore it.
+    (let ((was-initialized nskk--kana-initialized))
+      (unwind-protect
+          (progn
+            (setq nskk--kana-initialized nil)
+            (nskk-kana-initialize)   ; first call: populates facts
+            (nskk-kana-initialize)   ; second call: no-op (idempotency guard)
+            (should nskk--kana-initialized))
+        (setq nskk--kana-initialized was-initialized))))
 
   (nskk-it "populates zenkaku-to-hankaku Prolog facts so conversions work"
     (let ((result (nskk-prolog-query-value
@@ -809,46 +955,53 @@ and verifies the roundtrip holds for 100 random inputs."
       (should (string= result "ア")))))
 
 ;;;
-;;; nskk-kana--map-string-chars/k Tests
+;;; nskk--kana-map-string-chars/k Tests
 ;;;
 
-(nskk-describe "nskk-kana--map-string-chars/k"
+(nskk-describe "nskk--kana-map-string-chars/k"
   (nskk-it "calls on-result with converted string when input is a string"
     (let (result-val)
-      (nskk-kana--map-string-chars/k "アイウ" #'nskk-kana-katakana-to-hiragana
+      (nskk--kana-map-string-chars/k "アイウ" #'nskk-kana-katakana-to-hiragana
                                      (lambda (s) (setq result-val s))
                                      #'ignore)
       (should (equal result-val "あいう"))))
 
   (nskk-it "calls on-fail when input is not a string"
     (let (fail-called)
-      (nskk-kana--map-string-chars/k 42 #'identity
+      (nskk--kana-map-string-chars/k 42 #'identity
                                      #'ignore
                                      (lambda () (setq fail-called t)))
       (should fail-called)))
 
   (nskk-it "calls on-fail when input is nil"
     (let (fail-called)
-      (nskk-kana--map-string-chars/k nil #'identity
+      (nskk--kana-map-string-chars/k nil #'identity
                                      #'ignore
                                      (lambda () (setq fail-called t)))
       (should fail-called)))
 
   (nskk-it "applies converter to every character in the string"
     (let (result-val)
-      (nskk-kana--map-string-chars/k "あいう" #'nskk-kana-hiragana-to-katakana
+      (nskk--kana-map-string-chars/k "あいう" #'nskk-kana-hiragana-to-katakana
                                      (lambda (s) (setq result-val s))
                                      #'ignore)
-      (should (equal result-val "アイウ")))))
+      (should (equal result-val "アイウ"))))
+
+  (nskk-it "calls on-result with empty string for empty string input"
+    (let (result-val)
+      (nskk--kana-map-string-chars/k "" #'identity
+                                     (lambda (s) (setq result-val s))
+                                     #'ignore)
+      (should (equal result-val "")))))
 
 ;;;
-;;; nskk-kana--zenkaku-string-to-hankaku/k
+;;; nskk--kana-zenkaku-string-to-hankaku/k
 ;;;
 
-(nskk-describe "nskk-kana--zenkaku-string-to-hankaku/k"
+(nskk-describe "nskk--kana-zenkaku-string-to-hankaku/k"
   (nskk-it "calls on-result with hankaku string for a zenkaku katakana string"
     (let (result-val)
-      (nskk-kana--zenkaku-string-to-hankaku/k "ア"
+      (nskk--kana-zenkaku-string-to-hankaku/k "ア"
         (lambda (s) (setq result-val s))
         #'ignore)
       (should (equal result-val "ｱ"))))
@@ -856,33 +1009,33 @@ and verifies the roundtrip holds for 100 random inputs."
   (nskk-it "passes through characters not in the zenkaku table unchanged"
     (let (result-val)
       ;; Hiragana あ is not in the zenkaku-to-hankaku table
-      (nskk-kana--zenkaku-string-to-hankaku/k "あ"
+      (nskk--kana-zenkaku-string-to-hankaku/k "あ"
         (lambda (s) (setq result-val s))
         #'ignore)
       (should (equal result-val "あ"))))
 
   (nskk-it "calls on-fail when input is not a string"
     (let (fail-called)
-      (nskk-kana--zenkaku-string-to-hankaku/k 42
+      (nskk--kana-zenkaku-string-to-hankaku/k 42
         #'ignore
         (lambda () (setq fail-called t)))
       (should fail-called)))
 
   (nskk-it "calls on-fail when input is nil"
     (let (fail-called)
-      (nskk-kana--zenkaku-string-to-hankaku/k nil
+      (nskk--kana-zenkaku-string-to-hankaku/k nil
         #'ignore
         (lambda () (setq fail-called t)))
       (should fail-called))))
 
 ;;;
-;;; nskk-kana--hankaku-string-to-zenkaku/k
+;;; nskk--kana-hankaku-string-to-zenkaku/k
 ;;;
 
-(nskk-describe "nskk-kana--hankaku-string-to-zenkaku/k"
+(nskk-describe "nskk--kana-hankaku-string-to-zenkaku/k"
   (nskk-it "calls on-result with zenkaku string for a hankaku katakana string"
     (let (result-val)
-      (nskk-kana--hankaku-string-to-zenkaku/k "ｱ"
+      (nskk--kana-hankaku-string-to-zenkaku/k "ｱ"
         (lambda (s) (setq result-val s))
         #'ignore)
       (should (equal result-val "ア"))))
@@ -890,36 +1043,36 @@ and verifies the roundtrip holds for 100 random inputs."
   (nskk-it "handles two-character dakuten combinations"
     (let (result-val)
       ;; ｶ + ﾞ (dakuten) → ガ
-      (nskk-kana--hankaku-string-to-zenkaku/k "ｶﾞ"
+      (nskk--kana-hankaku-string-to-zenkaku/k "ｶﾞ"
         (lambda (s) (setq result-val s))
         #'ignore)
       (should (equal result-val "ガ"))))
 
   (nskk-it "calls on-fail when input is not a string"
     (let (fail-called)
-      (nskk-kana--hankaku-string-to-zenkaku/k 42
+      (nskk--kana-hankaku-string-to-zenkaku/k 42
         #'ignore
         (lambda () (setq fail-called t)))
       (should fail-called)))
 
   (nskk-it "calls on-fail when input is nil"
     (let (fail-called)
-      (nskk-kana--hankaku-string-to-zenkaku/k nil
+      (nskk--kana-hankaku-string-to-zenkaku/k nil
         #'ignore
         (lambda () (setq fail-called t)))
       (should fail-called))))
 
 ;;;
-;;; nskk-kana--fill-hash-table
+;;; nskk--kana-fill-hash-table
 ;;;
 
-(nskk-describe "nskk-kana--fill-hash-table"
+(nskk-describe "nskk--kana-fill-hash-table"
   (nskk-it "is a macro"
-    (should (macrop 'nskk-kana--fill-hash-table)))
+    (should (macrop 'nskk--kana-fill-hash-table)))
 
   (nskk-it "inserts all specified key-value pairs into the hash table"
     (let ((tbl (make-hash-table :test 'equal)))
-      (nskk-kana--fill-hash-table tbl
+      (nskk--kana-fill-hash-table tbl
         ("a" "あ")
         ("i" "い")
         ("u" "う"))
@@ -929,12 +1082,12 @@ and verifies the roundtrip holds for 100 random inputs."
 
   (nskk-it "returns the table itself"
     (let ((tbl (make-hash-table :test 'equal)))
-      (should (eq (nskk-kana--fill-hash-table tbl ("k" "v")) tbl))))
+      (should (eq (nskk--kana-fill-hash-table tbl ("k" "v")) tbl))))
 
   (nskk-it "overwrites existing entries with new values"
     (let ((tbl (make-hash-table :test 'equal)))
       (puthash "key" "old" tbl)
-      (nskk-kana--fill-hash-table tbl ("key" "new"))
+      (nskk--kana-fill-hash-table tbl ("key" "new"))
       (should (equal (gethash "key" tbl) "new")))))
 
 (provide 'nskk-kana-test)

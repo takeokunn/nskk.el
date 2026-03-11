@@ -92,12 +92,14 @@
                  (const :tag "Katakana" katakana)
                  (const :tag "Full-width Latin" jisx0208-latin))
   :safe #'symbolp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-state)
 
 (defcustom nskk-state-undo-limit 100
   "Maximum number of undo operations to keep in history."
   :type 'natnum
   :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-state)
 
 ;;;; Converter Settings
@@ -113,6 +115,7 @@
   "Whether to enable automatic sokuon (small tsu) conversion."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-converter)
 
 (defcustom nskk-converter-n-processing-mode 'smart
@@ -124,12 +127,14 @@
                  (const :tag "Strict (nn required)" strict)
                  (const :tag "Loose (single n ok)" loose))
   :safe #'symbolp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-converter)
 
 (defcustom nskk-converter-auto-start-henkan t
   "Whether to automatically start conversion on uppercase input."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-converter)
 
 (defcustom nskk-converter-romaji-style 'standard
@@ -139,6 +144,7 @@
   :type '(choice (const :tag "Standard SKK" standard)
                  (const :tag "AZIK" azik))
   :safe #'symbolp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-converter)
 
 ;;;; Search Settings
@@ -156,6 +162,7 @@
                  (const :tag "Kana order" kana)
                  (const :tag "No sorting" none))
   :safe #'symbolp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
 (defcustom nskk-search-fuzzy-threshold 3
@@ -163,24 +170,28 @@
 Zero disables fuzzy matching."
   :type 'natnum
   :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
 (defcustom nskk-search-enable-cache t
   "Enable search result caching when non-nil."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
 (defcustom nskk-search-learning-file "~/.emacs.d/nskk/learning.dat"
   "File path for persisting learning data."
   :type 'file
   :safe #'stringp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
 (defcustom nskk-search-auto-save t
   "When non-nil, automatically save learning data periodically."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
 (defcustom nskk-search-auto-save-interval 300
@@ -188,6 +199,7 @@ Zero disables fuzzy matching."
 Zero means save on every update."
   :type 'natnum
   :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
 (defcustom nskk-jisyo-files nil
@@ -204,6 +216,7 @@ Example configuration:
 DDSKK equivalent: skk-search-prog-list with multiple jisyo entries."
   :type '(repeat file)
   :safe (lambda (v) (and (listp v) (cl-every #'stringp v)))
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
 ;;;; UI / Modeline Settings
@@ -223,12 +236,14 @@ The leading space follows the Emacs minor-mode lighter convention,
 separating the indicator from adjacent mode indicators in the mode line."
   :type 'string
   :safe #'stringp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-modeline)
 
 (defcustom nskk-use-color-cursor t
   "Whether to change cursor color based on input mode."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-ui)
 
 (defface nskk-cursor-hiragana
@@ -278,6 +293,7 @@ candidate list display below the conversion region.
 Zero means always show the list immediately."
   :type 'natnum
   :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-henkan)
 
 (defcustom nskk-henkan-number-to-display-candidates 7
@@ -286,6 +302,7 @@ Must be at least 1; should match the number of selection keys in
 `nskk-henkan-show-candidates-keys'."
   :type 'natnum
   :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-henkan)
 
 (defcustom nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l)
@@ -293,6 +310,7 @@ Must be at least 1; should match the number of selection keys in
 These keys allow direct candidate selection in the overlay candidate list."
   :type '(repeat character)
   :safe (lambda (v) (and (listp v) (cl-every #'characterp v)))
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-henkan)
 
 (defcustom nskk-max-registration-depth 3
@@ -301,6 +319,7 @@ When `nskk--registration-depth' reaches this value, further
 registration attempts are silently ignored."
   :type 'natnum
   :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-henkan)
 
 ;;;; Candidate Window Settings
@@ -324,14 +343,16 @@ Note: enabling this records individual keystrokes and dictionary query
 terms in the debug buffer for diagnostic purposes."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-debug)
 
 (defcustom nskk-debug-max-entries 1000
   "Maximum number of log entries before trimming the debug buffer.
-A value of zero causes `nskk-debug--trim' to clear the buffer on
+A value of zero causes `nskk--debug-trim' to clear the buffer on
 every append (effectively disabling the buffer log)."
   :type 'natnum
   :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-debug)
 
 (provide 'nskk-custom)

@@ -6,6 +6,7 @@
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
+;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -40,6 +41,7 @@
 ;;   q-key-action/3         -- q key dispatch (style, buf-state, action)
 ;;   semicolon-key-action/2 -- semicolon key dispatch (style, action)
 ;;   kakutei-action/2       -- C-j dispatch (state, action)
+;;   romaji-classify/3      -- romaji input classification (class, doubled-eligible, result-type)
 ;;
 ;; Full-width character mapping is handled by `nskk--fullwidth-char-table'
 ;; (a plain hash table defvar), not a Prolog predicate.
@@ -90,18 +92,18 @@
 (declare-function nskk--clear-conversion-context "nskk-henkan")
 (declare-function nskk--show-pending-romaji "nskk-henkan" (text))
 (declare-function nskk--clear-pending-romaji "nskk-henkan" ())
-(defvar nskk--romaji-buffer)
-(defvar nskk-henkan-on-marker)
-(defvar nskk--conversion-start-marker)
-(defvar nskk--conversion-overlay)
-(defvar nskk--pending-romaji-overlay)
-(defvar nskk--henkan-count)
-(defvar nskk-henkan--candidate-list-active)
-(defvar nskk-henkan-select-candidate-by-key-function)
-(defvar nskk-converter-romaji-style)
-(defvar nskk-azik-q-behavior)
-(defvar nskk--hatsuon-blockers)
-(defvar nskk--sokuon-blockers)
+(defvar nskk--romaji-buffer)                         ;; Forward declaration from nskk-henkan.el
+(defvar nskk-henkan-on-marker)                        ;; Forward declaration from nskk-henkan.el
+(defvar nskk--conversion-start-marker)               ;; Forward declaration from nskk-henkan.el
+(defvar nskk--conversion-overlay)                    ;; Forward declaration from nskk-henkan.el
+(defvar nskk--pending-romaji-overlay)                ;; Forward declaration from nskk-henkan.el
+(defvar nskk--henkan-count)                          ;; Forward declaration from nskk-henkan.el
+(defvar nskk--henkan-candidate-list-active)          ;; Forward declaration from nskk-henkan.el
+(defvar nskk-henkan-select-candidate-by-key-function) ;; Forward declaration from nskk-henkan.el
+(defvar nskk-converter-romaji-style)                 ;; Forward declaration from nskk-converter.el
+(defvar nskk-azik-q-behavior)                        ;; Forward declaration from nskk-azik.el
+(defvar nskk--hatsuon-blockers)                      ;; Forward declaration from nskk-converter.el
+(defvar nskk--sokuon-blockers)                       ;; Forward declaration from nskk-converter.el
 
 (defvar-local nskk--sticky-shift-pending nil
   "Non-nil when sticky shift is pending (next char treated as uppercase).")
@@ -217,8 +219,11 @@ Returns a mode symbol such as `hiragana', `katakana', `ascii',
 
 ;;;; AZIK Style Initialization
 
-(defun nskk--maybe-load-azik-style ()
-  "Load AZIK style if configured and not already loaded."
+(defun/done nskk--maybe-load-azik-style ()
+  "Load AZIK romaji style when both conditions hold:
+1. The `nskk-azik' feature is loaded (checked with `featurep').
+2. `nskk-converter-romaji-style' is the symbol `azik'.
+Side effect: calls `nskk-converter-load-style' with `azik'."
   (when (and (featurep 'nskk-azik)
              (eq nskk-converter-romaji-style 'azik))
     (nskk-converter-load-style 'azik)))
@@ -226,7 +231,7 @@ Returns a mode symbol such as `hiragana', `katakana', `ascii',
 ;;;; AZIK-specific Key Handlers
 
 ;;;###autoload
-(defun nskk-handle-q-key ()
+(defun/done nskk-handle-q-key ()
   "Handle q key press based on current romaji style.
 In AZIK mode:
   - If pending-romaji+q is a complete AZIK hash match (e.g. kq→かい),
@@ -234,7 +239,7 @@ In AZIK mode:
   - If there is other pending romaji input, produce \u3093
   - Otherwise, toggle hiragana/katakana mode
 In standard mode: toggle mode (default SKK behavior)."
-  (interactive)
+  :interactive t
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
          (combined (concat nskk--romaji-buffer "q"))
          (buf-state (cond
@@ -253,38 +258,78 @@ In standard mode: toggle mode (default SKK behavior)."
       ('fire-romaji  (nskk-process-japanese-input ?q 1))
       (_             nil))))
 
+(defun nskk--sticky-shift-dispatch ()
+  "Execute the sticky-shift sub-dispatch for semicolon in standard mode.
+Three arms in priority order:
+  1. Already pending: double-semicolon cancels sticky shift and inserts \";\".
+  2. Japanese mode active: arm the sticky-shift pending flag.
+  3. Non-Japanese mode: fall through to self-insert.
+Returns non-nil when the sticky-shift action was consumed (arms 1 or 2),
+nil when falling through to self-insert (arm 3)."
+  (cond
+   ;; Arm 1 — double semicolon: cancel sticky shift, insert literal ";"
+   (nskk--sticky-shift-pending
+    (setq nskk--sticky-shift-pending nil)
+    (insert ";")
+    t)
+   ;; Arm 2 — Japanese mode: arm the sticky-shift pending flag
+   ((and nskk-current-state
+         (nskk-prolog-holds-p
+          `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+    (setq nskk--sticky-shift-pending t)
+    t)
+   ;; Arm 3 — non-Japanese mode: caller should fall through to self-insert
+   (t nil)))
+
 ;;;###autoload
-(defun nskk-handle-semicolon-key ()
+(defun/k nskk-handle-semicolon-key ()
   "Handle semicolon key press.
 In AZIK mode: produce small tsu (\u3063).
 In standard mode + Japanese mode: sticky shift (next char is uppercase).
 Double semicolon in sticky-shift state: cancel sticky, insert literal \";\".
-In standard mode + non-Japanese mode: self-insert."
-  (interactive)
+In standard mode + non-Japanese mode: self-insert (on-not-found path).
+
+`on-found' is called (with t) when the key was consumed as a Japanese action:
+  AZIK small-tsu insertion, sticky-shift armed, or sticky-shift cancelled.
+`on-not-found' is called when key is not consumed (self-insert path)."
+  :interactive t
+  ;; Outer arm 1 — AZIK style: insert small tsu via romaji processor
+  ;; Outer arm 2 — standard style: delegate to sticky-shift sub-dispatch
+  ;;               (on-found when consumed, on-not-found when non-Japanese)
+  ;; Outer arm 3 — self-insert mode (e.g. abbrev/latin): pass through
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
          (action (nskk-prolog-query-value
                   `(semicolon-key-action ,style ,'\?action) '\?action)))
     (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
     (pcase action
-      ('insert-small-tsu (nskk-process-japanese-input ?\; 1))
+      ;; Outer arm 1: AZIK — fire the romaji rule for ";" → っ
+      ('insert-small-tsu
+       (nskk-process-japanese-input ?\; 1)
+       (succeed t))
+      ;; Outer arm 2: standard sticky-shift sub-dispatch
       ('sticky-shift
-       (cond
-        ;; Double semicolon: cancel sticky, insert literal ";"
-        (nskk--sticky-shift-pending
-         (setq nskk--sticky-shift-pending nil)
-         (insert ";"))
-        ;; Japanese mode: enter sticky shift pending state
-        ((and nskk-current-state
-              (nskk-prolog-holds-p
-               `(japanese-mode ,(nskk-state-mode nskk-current-state))))
-         (setq nskk--sticky-shift-pending t))
-        ;; Non-Japanese mode: self-insert
-        (t (self-insert-command 1))))
-      ('self-insert (nskk-self-insert 1))
-      (_            nil))))
+       (if (nskk--sticky-shift-dispatch)
+           (succeed t)
+         (fail)))
+      ;; Outer arm 3: explicit self-insert (latin/abbrev style routes here)
+      ('self-insert
+       (nskk-self-insert 1)
+       (fail))
+      (_ (fail)))))
 
 ;;;; Input Processing
 
+(defun nskk--implicit-kakutei-needed-p ()
+  "Return non-nil when implicit kakutei should fire before inserting a new char.
+True when converting (▼ active), the candidate list is not showing, and
+okurigana is not currently being built."
+  (and (nskk-converting-p)
+       (not nskk--henkan-candidate-list-active)
+       (not (and (eq (nskk-state-henkan-phase nskk-current-state) 'active)
+                 (nskk-state-get-metadata nskk-current-state
+                                          'okurigana-in-progress)))))
+
+;;;###autoload
 (defun/done nskk-self-insert (n)
   "Process self-insert input, routing the typed character based on current mode.
 N is the prefix repeat count from `last-command-event'."
@@ -294,46 +339,26 @@ N is the prefix repeat count from `last-command-event'."
                 (aref last-command-event 0)))
         (current-mode (or (nskk-state-get-mode) 'ascii)))
     (nskk-debug-log "[INPUT] self-insert: char=%c mode=%s" char current-mode)
-    ;; Priority 1: candidate selection (special case, not mode-based)
-    (unless (and nskk-henkan--candidate-list-active
-                 (progn
-                   (nskk-debug-log "[INPUT] candidate-selection: char=%c" char)
-                   (nskk--try-candidate-selection char)))
-      ;; Priority 1.5: implicit kakutei (確定) -- DDSKK-compatible.
-      ;; When in ▼ conversion phase (non-okurigana) and the character was not
-      ;; consumed as a candidate selection key, commit the current candidate
-      ;; before processing the character.
-      ;; Exception: okurigana-triggered active conversion.  After okurigana
-      ;; fires (e.g. KaTta → 勝った, KaEru → 変える), subsequent romaji input
-      ;; completes the okurigana suffix and must reach nskk-process-japanese-input
-      ;; directly.  The okurigana-in-progress metadata flag (set in
-      ;; nskk--trigger-okuri-conversion/k, cleared in nskk-reset-henkan-state)
-      ;; distinguishes okurigana-triggered from SPC-triggered active phase.
-      ;; In list phase (nskk-henkan--candidate-list-active = t), implicit kakutei
-      ;; is suppressed so out-of-range selection keys don't commit the candidate.
-      (when (and (nskk-converting-p)
-                 (not nskk-henkan--candidate-list-active)
-                 (not (and (eq (nskk-state-henkan-phase nskk-current-state) 'active)
-                           (nskk-state-get-metadata nskk-current-state
-                                                    'okurigana-in-progress))))
+    ;; P1: candidate selection — short-circuits when key matches a candidate.
+    (unless (nskk--try-candidate-selection char)
+      ;; P2: implicit kakutei (確定) — DDSKK-compatible commit before new char.
+      (when (nskk--implicit-kakutei-needed-p)
         (nskk-debug-log "[INPUT] implicit-kakutei: char=%c" char)
         (nskk-commit-current))
-      ;; Priority 2: abbrev mode - direct insertion (DDSKK-compatible).
+      ;; P3: abbrev mode — direct insertion, bypassing Prolog routing.
       ;; In DDSKK, skk-abbrev-mode-map binds all ASCII to skk-abbrev-insert
       ;; = self-insert-command, bypassing all romaji/kana routing.
-      ;; We replicate this by short-circuiting Prolog routing in abbrev mode.
       (if (eq current-mode 'abbrev)
           (progn
             (nskk-debug-log "[INPUT] abbrev-input: char=%c" char)
             (nskk-process-abbrev-input char))
-        ;; Priority 3: mode-based routing via Prolog
+        ;; P4–P5: mode-based routing via Prolog.
         (let ((route (nskk-prolog-query-value
                       `(input-route ,current-mode ,'\?action) '\?action)))
           (nskk-debug-log "[INPUT] route: mode=%s route=%s" current-mode route)
           (pcase route
             ('insert-direct    (nskk-insert-char char n))
             ('insert-fullwidth (nskk-insert-fullwidth-char char n))
-            ('process-japanese (nskk-process-japanese-input char n))
             (_                 (nskk-process-japanese-input char n))))))))
 
 (defun/done nskk-insert-char (char &optional n)
@@ -364,24 +389,29 @@ characters (! through ~) map to FF01-FF5E via offset +#xFEE0."
 
 (defun/k nskk--try-candidate-selection (char)
   "Try to select a candidate using CHAR as a selection key.
-Calls on-found with t if CHAR was a valid selection key and the candidate
-was selected.  Calls on-not-found if CHAR did not match any selection key."
-  (let ((index (when nskk-henkan-select-candidate-by-key-function
-                 (funcall nskk-henkan-select-candidate-by-key-function
-                          char
-                          (nskk-state-candidates nskk-current-state)
-                          (nskk-state-current-index nskk-current-state)))))
-    (if index
-        (progn
-          ;; Select and commit the candidate
-          (setf (nskk-state-current-index nskk-current-state) index)
-          (nskk-commit-current)
-          (succeed t))
-      (fail))))
+Calls on-found with t if the candidate list is active, CHAR was a valid
+selection key, and the candidate was committed.
+Calls on-not-found when the list is not active or CHAR did not match."
+  (cond
+   ((not nskk--henkan-candidate-list-active)
+    (fail))
+   (t
+    (nskk-debug-log "[INPUT] candidate-selection: char=%c" char)
+    (let ((index (when nskk-henkan-select-candidate-by-key-function
+                   (funcall nskk-henkan-select-candidate-by-key-function
+                            char
+                            (nskk-state-candidates nskk-current-state)
+                            (nskk-state-current-index nskk-current-state)))))
+      (if index
+          (progn
+            (setf (nskk-state-current-index nskk-current-state) index)
+            (nskk-commit-current)
+            (succeed t))
+        (fail))))))
 
 ;;;; Japanese Input Processing
 
-(defun nskk--setup-henkan-start-marker (char)
+(defun/done nskk--setup-henkan-start-marker (char)
   "Set up conversion start marker for CHAR as a henkan start.
 Inserts the ▽ marker, sets conversion start position at point,
 and marks henkan phase to `on'.
@@ -428,14 +458,44 @@ and side effects."
                        (nskk-kana-string-hiragana-to-katakana kana)))
                      (t kana))))
     (nskk--clear-pending-romaji)
-    (if converted
-        (progn
-          (nskk-debug-log "[INPUT] kana-emitted: kana=%s mode=%s" converted mode)
-          (nskk--emit-converted-kana converted n)
-          (unless (string-empty-p nskk--romaji-buffer)
-            (nskk--show-pending-romaji nskk--romaji-buffer)))
-      (unless (string-empty-p nskk--romaji-buffer)
-        (nskk--show-pending-romaji nskk--romaji-buffer)))))
+    (when converted
+      (nskk-debug-log "[INPUT] kana-emitted: kana=%s mode=%s" converted mode)
+      (nskk--emit-converted-kana converted n))
+    (unless (string-empty-p nskk--romaji-buffer)
+      (nskk--show-pending-romaji nskk--romaji-buffer))))
+
+(defun/k nskk--compute-effective-char (char)
+  "Compute effective character and classification flags for CHAR in Japanese input.
+Returns a list (EFFECTIVE-CHAR IS-HENKAN-START NORMALIZE-VOWEL-P).
+
+EFFECTIVE-CHAR is (downcase CHAR) when IS-HENKAN-START or NORMALIZE-VOWEL-P
+is non-nil; otherwise CHAR itself is returned unchanged.
+
+IS-HENKAN-START is non-nil when all of the following hold:
+  - CHAR is an uppercase ASCII letter (A-Z)
+  - `nskk-converter-auto-start-henkan' is non-nil
+  - No conversion is currently active (see `nskk--conversion-start-active-p')
+
+NORMALIZE-VOWEL-P is non-nil when CHAR is an uppercase vowel (A I U E O),
+a conversion is already active, and the romaji buffer is non-empty.
+This handles the case where a pending consonant (e.g. \"h\") should be
+completed by the vowel (\"O\" → \"o\" → \"ほ\") rather than starting
+okurigana.  Uppercase consonants always function as okurigana markers per
+DDSKK behavior; the empty-buffer case for vowels also triggers okurigana."
+  (let* ((is-henkan-start (and (characterp char)
+                               (<= ?A char) (<= char ?Z)
+                               nskk-converter-auto-start-henkan
+                               (not (nskk--conversion-start-active-p))))
+         (normalize-vowel-p
+          (and (characterp char)
+               (<= ?A char) (<= char ?Z)
+               (nskk--conversion-start-active-p)
+               (memq char '(?A ?I ?U ?E ?O))
+               (not (string-empty-p nskk--romaji-buffer))))
+         (effective-char (if (or normalize-vowel-p is-henkan-start)
+                             (downcase char)
+                           char)))
+    (succeed (list effective-char is-henkan-start normalize-vowel-p))))
 
 (defun/done nskk-process-japanese-input (char n)
   "Process input in Japanese mode (hiragana/katakana), then call on-done.
@@ -452,25 +512,8 @@ lowercase version of the letter as normal romaji input."
     (setq nskk--sticky-shift-pending nil)
     (when (and (characterp char) (<= ?a char) (<= char ?z))
       (setq char (upcase char))))
-  (let* ((is-henkan-start (and (characterp char)
-                               (<= ?A char) (<= char ?Z)
-                               nskk-converter-auto-start-henkan
-                               (not (nskk--conversion-start-active-p))))
-         ;; Normalize uppercase vowels to lowercase during preedit only when the romaji
-         ;; buffer has an incomplete consonant (e.g. pending "h" before "O" → "ho" → "ほ").
-         ;; This fixes the "H O" → "oお" bug while preserving DDSKK vowel okurigana:
-         ;; when the buffer is empty, uppercase vowels (A, I, U, E, O) trigger
-         ;; okurigana normally.  Uppercase consonants always function as okurigana
-         ;; markers per DDSKK behavior.
-         (normalize-vowel-p
-          (and (characterp char)
-               (<= ?A char) (<= char ?Z)
-               (nskk--conversion-start-active-p)
-               (memq char '(?A ?I ?U ?E ?O))
-               (not (string-empty-p nskk--romaji-buffer))))
-         (effective-char (if normalize-vowel-p
-                             (downcase char)
-                           (if is-henkan-start (downcase char) char))))
+  (cl-destructuring-bind (effective-char is-henkan-start normalize-vowel-p)
+      (nskk--compute-effective-char char)
     (when is-henkan-start
       (nskk--setup-henkan-start-marker char))
     ;; Okurigana path: when the char is consumed as okurigana input,
@@ -478,8 +521,8 @@ lowercase version of the letter as normal romaji input."
     ;; routed through okurigana (the condition mirrors the original
     ;; `if (and (not is-henkan-start) ...)' guard exactly).
     ;; Uppercase vowels trigger okurigana unless the romaji buffer has an
-    ;; incomplete consonant (in which case they complete the romaji pair).
-    ;; Uppercase consonants always trigger okurigana.
+    ;; incomplete consonant (normalize-vowel-p), in which case they
+    ;; complete the romaji pair.  Uppercase consonants always trigger okurigana.
     (if (and (not is-henkan-start)
              (not normalize-vowel-p)
              (nskk-process-okurigana-input char))
@@ -528,6 +571,74 @@ NEW-BUFFER-VALUE is the string to leave in the buffer after emission
     (setq nskk--romaji-buffer new-buffer-value)
     (succeed (concat prefix-kana "\u3093"))))
 
+(defun nskk--romaji-result-type (result)
+  "Pre-classify RESULT from `nskk-converter-convert' into a symbol.
+Returns `match' when RESULT is a cons with a string car,
+`incomplete' when RESULT is a cons with :incomplete car,
+or `no-result' otherwise."
+  (cond
+   ((and (consp result) (stringp (car result))) 'match)
+   ((and (consp result) (eq (car result) :incomplete)) 'incomplete)
+   (t 'no-result)))
+
+(defvar nskk--romaji-classify-cache
+  (make-hash-table :test 'equal :size 16)
+  "Memoization cache for `nskk--classify-romaji-input'.
+Keys are (DOUBLED-ELIGIBLE . RESULT-TYPE) cons cells; values are the
+classification symbol returned by the romaji-classify/3 Prolog query.
+At most 15 entries (5 doubled-eligible × 3 result-type combinations).
+Cleared whenever `nskk--init-romaji-classify-rules' reasserts the table.")
+
+(defun/done nskk--init-romaji-classify-rules ()
+  "Assert romaji-classify/3 facts for romaji input classification.
+Facts encode the priority-ordered dispatch table for
+`nskk--classify-romaji-input'.  The 3 arguments are:
+
+  CLASS            -- the classification symbol to return; one of:
+                       `nn-double'      (n+n → emit ん, keep \"n\" in buffer)
+                       `azik-deferred'  (doubled consonant, AZIK match, emit
+                                         kana tentatively for sokuon correction)
+                       `sokuon'         (doubled consonant, no AZIK match →
+                                         emit っ)
+                       `n-consonant'    (n+consonant → emit ん, keep consonant)
+                       `match'          (converter produced a kana string)
+                       `incomplete'     (converter needs more input)
+                       `no-match'       (no rule; pass through as-is)
+
+  DOUBLED-ELIGIBLE -- pre-computed doubling context symbol:
+                       `nn'             (last=n AND char=n)
+                       `eligible-match' (same doubled, not blocked,
+                                         result=match)
+                       `eligible-other' (same doubled, not blocked,
+                                         result≠match)
+                       `n-consonant'    (last=n, char not a hatsuon-blocker)
+                       `not-eligible'   (all other cases)
+
+  RESULT-TYPE      -- pre-computed result symbol:
+                       `match', `incomplete', `no-result'
+
+Facts are asserted in priority order (nn-double > azik-deferred > sokuon >
+n-consonant > match > incomplete > no-match).  Also clears
+`nskk--romaji-classify-cache' so stale memoized lookups are evicted."
+  (clrhash nskk--romaji-classify-cache)
+  (nskk-prolog-define-fact-table romaji-classify (:arity 3 :index :list)
+    ;; nn-double: highest priority — n+n sequence
+    (nn-double      nn             \?result-type)
+    ;; azik-deferred: doubled eligible consonant with a complete match
+    (azik-deferred  eligible-match \?result-type)
+    ;; sokuon: doubled eligible consonant, no complete match
+    (sokuon         eligible-other \?result-type)
+    ;; n-consonant: last=n and char is not a hatsuon-blocker (any result-type).
+    ;; Must precede the generic ?doubled rows so the concrete n-consonant value
+    ;; is matched before the ?doubled wildcard fires.
+    (n-consonant    n-consonant    \?result-type)
+    ;; match: converter returned a kana string
+    (match          \?doubled      match)
+    ;; incomplete: converter returned :incomplete
+    (incomplete     \?doubled      incomplete)
+    ;; no-match: fallback
+    (no-match       \?doubled      no-result)))
+
 (defun nskk--classify-romaji-input (char last-buf-char result)
   "Classify romaji input into a dispatch state symbol.
 CHAR is the new input character (integer).
@@ -535,82 +646,106 @@ LAST-BUF-CHAR is the last character in `nskk--romaji-buffer', or nil if empty.
 RESULT is the return value of `nskk-converter-convert' on the full input.
 
 Returns one of: `nn-double', `azik-deferred', `match', `n-consonant',
-`sokuon', `incomplete', or `no-match'.  Classification uses a
-priority-ordered `cond' expression; clause order encodes priority."
-  (cond
-    ;; nn-double: n + n sequence (highest priority)
-    ((and (eql last-buf-char ?n) (eql char ?n))
-     'nn-double)
-    ;; azik-deferred: doubled consonant that is also a complete AZIK rule.
-    ;; Emit the AZIK kana tentatively; if the next character is a vowel the
-    ;; emission is retroactively corrected to sokuon (っ + consonant+vowel).
-    ;; Checked before sokuon so that kk→きん is reachable; retroactive
-    ;; correction in `nskk-convert-input-to-kana' restores kka→っか.
-    ((and (eql last-buf-char char)
-          (not (memq char nskk--sokuon-blockers))
-          (consp result)
-          (stringp (car result)))
-     'azik-deferred)
-    ;; sokuon: same eligible consonant doubled, no complete AZIK rule.
-    ((and (eql last-buf-char char)
-          (not (memq char nskk--sokuon-blockers)))
-     'sokuon)
-    ;; match: converter returned a kana string
-    ((and (consp result) (stringp (car result)))
-     'match)
-    ;; n-consonant: n followed by a consonant not in hatsuon-blockers
-    ((and (eql last-buf-char ?n)
-          (not (memq char nskk--hatsuon-blockers)))
-     'n-consonant)
-    ;; incomplete: converter returned :incomplete
-    ((and (consp result) (eq (car result) :incomplete))
-     'incomplete)
-    ;; no-match: fallback
-    (t 'no-match)))
+`sokuon', `incomplete', or `no-match'.
 
-(defun/k nskk-convert-input-to-kana (char)
-  "Convert input CHAR to kana, calling on-found or on-not-found when done.
-Accumulates romaji characters in `nskk--romaji-buffer' and converts
-to kana when a complete romaji sequence is recognized.
+Pre-computes Elisp boolean values (blocker membership) then queries the
+`romaji-classify/3' Prolog table for the classification.  Priority order
+is encoded in fact assertion order: nn-double > azik-deferred > sokuon >
+n-consonant > match > incomplete > no-match."
+  (let* ((result-type (nskk--romaji-result-type result))
+         (same-doubled (eql last-buf-char char))
+         (not-sokuon-blocked (not (memq char nskk--sokuon-blockers)))
+         (doubled-eligible
+          (cond
+           ;; nn takes priority over other doubled checks
+           ((and (eql last-buf-char ?n) (eql char ?n))
+            'nn)
+           ;; n followed by non-hatsuon-blocker: n-consonant case.
+           ;; Yield to `match' when the combined input has a complete AZIK rule
+           ;; (e.g. "nq"→"ない", "nk"→"にん") so AZIK takes priority over ん-emit.
+           ((and (eql last-buf-char ?n)
+                 (not (memq char nskk--hatsuon-blockers))
+                 (not (eq result-type 'match)))
+            'n-consonant)
+           ;; same eligible consonant doubled with a complete match
+           ((and same-doubled not-sokuon-blocked (eq result-type 'match))
+            'eligible-match)
+           ;; same eligible consonant doubled without a complete match
+           ((and same-doubled not-sokuon-blocked)
+            'eligible-other)
+           ;; fallback
+           (t 'not-eligible))))
+    (let ((cache-key (cons doubled-eligible result-type)))
+      (or (gethash cache-key nskk--romaji-classify-cache)
+          (let ((class (or (nskk-prolog-query-value
+                            `(romaji-classify ,'\?class ,doubled-eligible ,result-type)
+                            '\?class)
+                           'no-match)))
+            (puthash cache-key class nskk--romaji-classify-cache)
+            class)))))
 
-on-found is called with a kana string when a kana string is produced
-(including non-empty strings from no-match passthrough).
-on-not-found is called with no arguments when the romaji buffer is still
-incomplete (waiting for more characters to complete a sequence).
+;; Classification taxonomy for `nskk-convert-input-to-kana/k':
+;;
+;;  Priority  Class           Trigger condition
+;;  --------  --------------  ---------------------------------------------------
+;;  1         nn-double       last=n AND char=n → emit ん, keep "n" in buffer
+;;  2         azik-deferred   same doubled consonant, AZIK match → emit kana
+;;                            tentatively; may be retroactively corrected to っ
+;;                            on the next vowel input
+;;  3         sokuon          same doubled consonant, no AZIK match → emit っ
+;;  4         n-consonant     last=n AND char is not a hatsuon-blocker AND
+;;                            no complete match exists for the combined input.
+;;                            emit ん for the pending n, then process char.
+;;                            Yields to `match' when an AZIK rule matches
+;;                            (e.g. "nq"→"ない", "nk"→"にん" in AZIK mode).
+;;  5         match           converter returned a kana string → emit kana
+;;  6         incomplete      converter returned :incomplete → accumulate
+;;  7         no-match        no rule applies → pass input through as-is
 
-When `nskk--deferred-azik-state' is set (a tentative AZIK emission is
-pending), a leading vowel triggers retroactive sokuon correction: the
-tentative kana is deleted from the buffer, っ is inserted in its place,
-and the romaji buffer is reset to the consonant so that consonant+vowel
-is processed normally.  A non-vowel clears the deferred state without
-retroactive correction."
-  ;; Retroactive AZIK/sokuon correction.
-  ;; When the previous call emitted AZIK kana tentatively (azik-deferred),
-  ;; a following vowel means the user actually typed a sokuon sequence
-  ;; (e.g. kka → っか).  Delete the tentative kana, insert っ, reset the
-  ;; romaji buffer to the consonant, and fall through to normal processing.
+(defun/done nskk--apply-deferred-azik-correction (char)
+  "Apply retroactive sokuon correction when a deferred AZIK state is pending.
+When CHAR is a vowel and `nskk--deferred-azik-state' is set, deletes the
+tentatively emitted kana, inserts っ, and resets the romaji buffer to the
+consonant so that consonant+vowel is processed normally as sokuon.
+A non-vowel CHAR merely clears the deferred state without correction."
   (when nskk--deferred-azik-state
     (let ((deferred-cons (car nskk--deferred-azik-state))
           (deferred-kana (cdr nskk--deferred-azik-state)))
       (setq nskk--deferred-azik-state nil)
       (when (memq char '(?a ?i ?u ?e ?o))
-        (nskk-debug-log "[INPUT] azik-deferred-correction: cons=%c kana=%s" deferred-cons deferred-kana)
-        ;; Delete the tentatively emitted kana from the buffer.
+        (nskk-debug-log "[INPUT] azik-deferred-correction: cons=%c kana=%s"
+                        deferred-cons deferred-kana)
         (delete-char (- (length deferred-kana)))
-        ;; Insert っ for the doubled consonant (sokuon).
         (insert "\u3063")
-        ;; Reset romaji buffer to the consonant so consonant+vowel is processed.
-        (setq nskk--romaji-buffer (char-to-string deferred-cons)))))
+        (setq nskk--romaji-buffer (char-to-string deferred-cons))))))
+
+(defun/k nskk-convert-input-to-kana (char)
+  "Convert input CHAR to kana, calling ON-FOUND or ON-NOT-FOUND when done.
+Accumulates romaji characters in `nskk--romaji-buffer' and converts
+to kana when a complete romaji sequence is recognized.
+
+ON-FOUND is called with a kana string when a kana string is produced
+(including non-empty strings from no-match passthrough).
+ON-NOT-FOUND is called with no arguments when the romaji buffer is still
+incomplete (waiting for more characters to complete a sequence).
+
+When `nskk--deferred-azik-state' is set, calls
+`nskk--apply-deferred-azik-correction' first: a vowel triggers retroactive
+sokuon correction; a non-vowel merely clears the state."
+  (nskk--apply-deferred-azik-correction char)
   (let* ((input (concat nskk--romaji-buffer (char-to-string char)))
          (result (nskk-converter-convert input))
          (buf-len (length nskk--romaji-buffer))
          (last-buf-char (and (> buf-len 0)
                              (aref nskk--romaji-buffer (1- buf-len)))))
     (pcase (nskk--classify-romaji-input char last-buf-char result)
+      ;; Priority 1: n+n → emit ん, leave "n" in buffer for next consonant.
+      ;; Checked before `n-consonant' because nn is the most specific n-prefix rule.
       ('nn-double
        (nskk-debug-log "[INPUT] romaji-hatsuon-nn: input=%s" input)
        (<- hatsuon-kana nskk--emit-hatsuon-prefix "n")
        (succeed hatsuon-kana))
+
       ('azik-deferred
        ;; Emit the AZIK kana tentatively and record the deferred state.
        ;; If the next character is a vowel, retroactive correction (above)
@@ -629,6 +764,12 @@ retroactive correction."
                    remaining
                  ""))
          (succeed kana)))
+      ;; Priority 4: n+consonant → emit ん for pending n, then try char alone.
+      ;; Precedes `match' in priority so that e.g. "nk" reliably emits ん
+      ;; even if the full string "nk" happened to have a converter match.
+      ;; After emitting ん, the single char is checked: if it is itself a
+      ;; complete match (e.g. AZIK ";"→っ), emit it immediately rather than
+      ;; leaving it stranded in the buffer.
       ('n-consonant
        (nskk-debug-log "[INPUT] romaji-hatsuon-n+consonant: input=%s char=%c" input char)
        ;; Flush ん for the pending n, leaving char in romaji buffer.
@@ -654,45 +795,43 @@ retroactive correction."
        (setq nskk--romaji-buffer "")
        (succeed input)))))
 
-;; Override the defun/k-generated sync wrapper: return "" instead of nil on
-;; incomplete input (fail).  The generated wrapper uses #'ignore → nil, but
-;; callers expect "" when the romaji buffer is still accumulating.
-;; with-no-warnings suppresses the byte-compiler's "defined multiple times"
-;; diagnostic for this intentional shadow.
+;; Override the sync wrapper generated by `defun/k' to return "" instead of
+;; nil on incomplete romaji (failure path).  Callers and tests rely on ""
+;; as the sentinel for "still accumulating", not nil.
 (with-no-warnings
-  (defun nskk-convert-input-to-kana (char)
-    "Convert input CHAR to kana.
+(defun nskk-convert-input-to-kana (char)
+  "Convert input CHAR to kana.
 Returns the kana string produced, or \"\" if the romaji buffer is still
-incomplete (waiting for more characters).  See `nskk-convert-input-to-kana/k'
-for the CPS variant with explicit continuations."
-    (nskk-convert-input-to-kana/k char #'identity (lambda () ""))))
+incomplete (waiting for more characters to complete a sequence).
+See `nskk-convert-input-to-kana/k' for the CPS variant with explicit
+continuations."
+  (or (nskk-convert-input-to-kana/k char #'identity #'ignore) "")))
 
 (defvar nskk--input-initialized nil
   "Non-nil when input routing Prolog predicates have been initialized.")
 
 ;;;; Private per-family Prolog initializers
 
-(defun nskk--init-input-routing-rules ()
+(defun/done nskk--init-input-routing-rules ()
   "Assert input-route/2 facts.
-Note: abbrev mode is NOT listed here — in abbrev mode, `nskk-self-insert'
-short-circuits to `nskk-process-abbrev-input' before consulting Prolog,
-mirroring DDSKK's `skk-abbrev-mode-map' direct binding approach."
+All input modes are covered here, including abbrev (process-abbrev)."
   (nskk-prolog-define-fact-table input-route (:arity 2 :index :hash)
-    (ascii        insert-direct)
-    (latin        insert-direct)
+    (ascii          insert-direct)
+    (latin          insert-direct)
     (jisx0208-latin insert-fullwidth)
-    (hiragana     process-japanese)
-    (katakana     process-japanese)
-    (katakana-半角 process-japanese)))
+    (abbrev         process-abbrev)
+    (hiragana       process-japanese)
+    (katakana       process-japanese)
+    (katakana-半角   process-japanese)))
 
-(defun nskk--init-toggle-rules ()
+(defun/done nskk--init-toggle-rules ()
   "Assert toggle-mode/2 facts."
   (nskk-prolog-define-fact-table toggle-mode (:arity 2 :index :hash)
     (hiragana    katakana)
     (katakana    hiragana)
     (katakana-半角 hiragana)))
 
-(defun nskk--init-q-key-rules ()
+(defun/done nskk--init-q-key-rules ()
   "Assert q-key-action/3 facts.
 Simplified context-aware q-key handling:
 - standard: always toggle mode
@@ -705,24 +844,14 @@ Simplified context-aware q-key handling:
     (azik pending insert-n)
     (azik empty toggle-mode)))
 
-(defun nskk--init-l-key-rules ()
-  "Assert l-key-action/3 facts.
-In AZIK mode with `azik-complete' buf-state (pending-romaji+l is a complete
-hash match, e.g. hl→ほん), fire the AZIK rule instead of switching to latin.
-In all other cases switch to latin mode."
-  (nskk-prolog-define-fact-table l-key-action (:arity 3 :index :hash)
-    (azik azik-complete fire-romaji)
-    (azik other         latin-mode)
-    (standard \?buf     latin-mode)))
-
-(defun nskk--init-semicolon-rules ()
+(defun/done nskk--init-semicolon-rules ()
   "Assert semicolon-key-action/2 facts.
 Standard mode uses sticky-shift (virtual Shift via semicolon key)."
   (nskk-prolog-define-fact-table semicolon-key-action (:arity 2 :index :hash)
     (azik     insert-small-tsu)
     (standard sticky-shift)))
 
-(defun nskk--init-kakutei-rules ()
+(defun/done nskk--init-kakutei-rules ()
   "Assert kakutei-action/2 facts for kakutei key dispatch."
   (nskk-prolog-define-fact-table kakutei-action (:arity 2 :index :hash)
     (converting     commit-candidate)
@@ -748,9 +877,9 @@ Idempotent: subsequent calls are no-ops."
     (nskk--init-input-routing-rules)
     (nskk--init-toggle-rules)
     (nskk--init-q-key-rules)
-    (nskk--init-l-key-rules)
     (nskk--init-semicolon-rules)
     (nskk--init-kakutei-rules)
+    (nskk--init-romaji-classify-rules)
     (setq nskk--input-initialized t)))
 
 (provide 'nskk-input)

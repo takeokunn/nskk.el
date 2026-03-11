@@ -50,35 +50,35 @@
 ;;;; Helper Functions for Candidate Operations
 ;;;;
 
-(defun nskk-sm--generate-candidates (&optional count)
+(defun nskk--sm-generate-candidates (&optional count)
   "Generate a list of random candidates.
 COUNT defaults to 0-10 if not specified."
-  (nskk-pbt--generate-candidates count))
+  (nskk--pbt-generate-candidates count))
 
-(defun nskk-sm--set-random-candidates (state _trigger)
+(defun nskk--sm-set-random-candidates (state _trigger)
   "Set random candidates in STATE."
-  (let ((candidates (nskk-sm--generate-candidates)))
+  (let ((candidates (nskk--sm-generate-candidates)))
     (nskk-state-set-candidates state candidates))
   state)
 
-(defun nskk-sm--navigate-next (state _trigger)
+(defun nskk--sm-navigate-next (state _trigger)
   "Navigate to next candidate in STATE."
   (nskk-state-next-candidate state)
   state)
 
-(defun nskk-sm--navigate-previous (state _trigger)
+(defun nskk--sm-navigate-previous (state _trigger)
   "Navigate to previous candidate in STATE."
   (nskk-state-previous-candidate state)
   state)
 
-(defun nskk-sm--clear-candidates (state _trigger)
+(defun nskk--sm-clear-candidates (state _trigger)
   "Clear candidates in STATE."
   (nskk-state-set-candidates state nil)
   state)
 
-(defun nskk-sm--safe-candidate-ops (state _trigger)
+(defun nskk--sm-safe-candidate-ops (state _trigger)
   "Perform safe candidate operations on STATE even with empty list."
-  (let ((op (nskk-pbt--random-int 0 3)))
+  (let ((op (nskk--pbt-random-int 0 3)))
     (pcase op
       (0 (nskk-state-next-candidate state))
       (1 (nskk-state-previous-candidate state))
@@ -86,9 +86,9 @@ COUNT defaults to 0-10 if not specified."
       (3 (nskk-state-set-candidates state nil))))
   state)
 
-(defun nskk-sm--replace-candidates (state _trigger)
+(defun nskk--sm-replace-candidates (state _trigger)
   "Replace candidates with a new random list."
-  (let ((new-candidates (nskk-sm--generate-candidates (nskk-pbt--random-int 0 10))))
+  (let ((new-candidates (nskk--sm-generate-candidates (nskk--pbt-random-int 0 10))))
     (nskk-state-set-candidates state new-candidates))
   state)
 
@@ -99,12 +99,12 @@ COUNT defaults to 0-10 if not specified."
 
 (nskk-state-machine-test candidate-index-bounds
   (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-candidates state (nskk-sm--generate-candidates 5))
+    (nskk-state-set-candidates state (nskk--sm-generate-candidates 5))
     state)
-  ((nav nskk-sm--navigate-next)
-   (nav nskk-sm--navigate-next)
-   (nav nskk-sm--navigate-next)
-   (nav nskk-sm--navigate-next))
+  ((nav nskk--sm-navigate-next)
+   (nav nskk--sm-navigate-next)
+   (nav nskk--sm-navigate-next)
+   (nav nskk--sm-navigate-next))
   (lambda (state)
     (let ((candidates (nskk-state-candidates state))
           (index (nskk-state-current-index state)))
@@ -115,7 +115,14 @@ COUNT defaults to 0-10 if not specified."
 
 (ert-deftest nskk-state-machine-candidate-index-bounds-description ()
   "current-index is always < length(candidates) when candidates non-nil."
-  (message "Testing: candidate-index-bounds property"))
+  (let* ((state (nskk-state-create 'hiragana))
+         (candidates '("a" "b" "c" "d" "e")))
+    (nskk-state-set-candidates state candidates)
+    (dotimes (_ 3)
+      (nskk-state-next-candidate state))
+    (let ((idx (nskk-state-current-index state)))
+      (should (>= idx 0))
+      (should (< idx (length candidates))))))
 
 
 ;;;;
@@ -183,11 +190,11 @@ COUNT defaults to 0-10 if not specified."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set-candidates state '("first" "second" "third" "fourth"))
     state)
-  ((nav nskk-sm--navigate-next)
-   (nav nskk-sm--navigate-next)
-   (nav nskk-sm--navigate-previous)
-   (nav nskk-sm--navigate-next)
-   (nav nskk-sm--navigate-next))
+  ((nav nskk--sm-navigate-next)
+   (nav nskk--sm-navigate-next)
+   (nav nskk--sm-navigate-previous)
+   (nav nskk--sm-navigate-next)
+   (nav nskk--sm-navigate-next))
   (lambda (state)
     (let ((candidates (nskk-state-candidates state))
           (current (nskk-state-current-candidate state)))
@@ -197,7 +204,14 @@ COUNT defaults to 0-10 if not specified."
 
 (ert-deftest nskk-state-machine-candidate-current-valid-description ()
   "Current candidate is always in the list."
-  (message "Testing: candidate-current-valid property"))
+  (let* ((state (nskk-state-create 'hiragana))
+         (candidates '("first" "second" "third")))
+    (nskk-state-set-candidates state candidates)
+    (should (member (nskk-state-current-candidate state) candidates))
+    (nskk-state-next-candidate state)
+    (should (member (nskk-state-current-candidate state) candidates))
+    (nskk-state-previous-candidate state)
+    (should (member (nskk-state-current-candidate state) candidates))))
 
 
 ;;;;
@@ -236,11 +250,11 @@ COUNT defaults to 0-10 if not specified."
 
 (nskk-state-machine-test candidate-empty-list-safe
   (nskk-state-create 'hiragana)
-  ((op nskk-sm--safe-candidate-ops)
-   (op nskk-sm--safe-candidate-ops)
-   (op nskk-sm--safe-candidate-ops)
-   (op nskk-sm--safe-candidate-ops)
-   (op nskk-sm--safe-candidate-ops))
+  ((op nskk--sm-safe-candidate-ops)
+   (op nskk--sm-safe-candidate-ops)
+   (op nskk--sm-safe-candidate-ops)
+   (op nskk--sm-safe-candidate-ops)
+   (op nskk--sm-safe-candidate-ops))
   (lambda (state)
     (and (nskk-state-p state)
          (>= (nskk-state-current-index state) 0)
@@ -249,7 +263,13 @@ COUNT defaults to 0-10 if not specified."
 
 (ert-deftest nskk-state-machine-candidate-empty-list-safe-description ()
   "Empty candidate list doesn't crash."
-  (message "Testing: candidate-empty-list-safe property"))
+  (let ((state (nskk-state-create 'hiragana)))
+    (nskk-state-set-candidates state nil)
+    (should (null (nskk-state-current-candidate state)))
+    (nskk-state-next-candidate state)
+    (should (>= (nskk-state-current-index state) 0))
+    (nskk-state-previous-candidate state)
+    (should (>= (nskk-state-current-index state) 0))))
 
 
 ;;;;
@@ -260,10 +280,10 @@ COUNT defaults to 0-10 if not specified."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set-candidates state '("a" "b" "c" "d" "e"))
     state)
-  ((next nskk-sm--navigate-next)
-   (next nskk-sm--navigate-next)
-   (prev nskk-sm--navigate-previous)
-   (prev nskk-sm--navigate-previous))
+  ((next nskk--sm-navigate-next)
+   (next nskk--sm-navigate-next)
+   (prev nskk--sm-navigate-previous)
+   (prev nskk--sm-navigate-previous))
   (lambda (state)
     (let ((index (nskk-state-current-index state)))
       (>= index 0)))
@@ -271,7 +291,16 @@ COUNT defaults to 0-10 if not specified."
 
 (ert-deftest nskk-state-machine-candidate-navigation-cycle-description ()
   "Navigating forward and backward should maintain consistency."
-  (message "Testing: candidate-navigation-cycle property"))
+  (let* ((state (nskk-state-create 'hiragana))
+         (candidates '("a" "b" "c" "d" "e")))
+    (nskk-state-set-candidates state candidates)
+    ;; Go forward 2, then backward 2 — must return to index 0
+    (nskk-state-next-candidate state)
+    (nskk-state-next-candidate state)
+    (nskk-state-previous-candidate state)
+    (nskk-state-previous-candidate state)
+    (should (= 0 (nskk-state-current-index state)))
+    (should (string= "a" (nskk-state-current-candidate state)))))
 
 
 ;;;;
@@ -299,11 +328,11 @@ COUNT defaults to 0-10 if not specified."
   (let ((state (nskk-state-create 'hiragana)))
     (nskk-state-set-candidates state '("initial"))
     state)
-  ((replace nskk-sm--replace-candidates)
-   (replace nskk-sm--replace-candidates)
-   (replace nskk-sm--replace-candidates)
-   (nav nskk-sm--navigate-next)
-   (replace nskk-sm--replace-candidates))
+  ((replace nskk--sm-replace-candidates)
+   (replace nskk--sm-replace-candidates)
+   (replace nskk--sm-replace-candidates)
+   (nav nskk--sm-navigate-next)
+   (replace nskk--sm-replace-candidates))
   (lambda (state)
     (let ((candidates (nskk-state-candidates state))
           (index (nskk-state-current-index state)))
@@ -315,7 +344,15 @@ COUNT defaults to 0-10 if not specified."
 
 (ert-deftest nskk-state-machine-candidate-replacement-safe-description ()
   "Replacing candidate list should always result in valid state."
-  (message "Testing: candidate-replacement-safe property"))
+  (let* ((state (nskk-state-create 'hiragana))
+         (first-list '("a" "b" "c"))
+         (second-list '("x" "y")))
+    (nskk-state-set-candidates state first-list)
+    (nskk-state-next-candidate state)
+    (nskk-state-set-candidates state second-list)
+    (should (listp (nskk-state-candidates state)))
+    (should (>= (nskk-state-current-index state) 0))
+    (should (< (nskk-state-current-index state) (length second-list)))))
 
 
 ;;;;
@@ -407,7 +444,7 @@ COUNT defaults to 0-10 if not specified."
     ;; Perform 1000 random navigation operations
     (dotimes (_ 1000)
       (cl-incf operations)
-      (let ((op (nskk-pbt--random-int 0 1)))
+      (let ((op (nskk--pbt-random-int 0 1)))
         (pcase op
           (0 (nskk-state-next-candidate state))
           (1 (nskk-state-previous-candidate state))))
@@ -466,7 +503,7 @@ COUNT defaults to 0-10 if not specified."
          (candidates (plist-get data :candidates)))
     (nskk-state-set-candidates state candidates)
     ;; Navigate randomly
-    (dotimes (_ (nskk-pbt--random-int 0 (length candidates)))
+    (dotimes (_ (nskk--pbt-random-int 0 (length candidates)))
       (nskk-state-next-candidate state))
     ;; Current candidate must be in the list
     (let ((current (nskk-state-current-candidate state)))
@@ -522,7 +559,7 @@ COUNT defaults to 0-10 if not specified."
              (candidates (plist-get data :candidates)))
         (nskk-state-set-candidates state candidates)
         (dotimes (_ 20)
-          (if (nskk-pbt--random-bool)
+          (if (nskk--pbt-random-bool)
               (nskk-state-next-candidate state)
             (nskk-state-previous-candidate state)))
         (let ((idx (nskk-state-current-index state))

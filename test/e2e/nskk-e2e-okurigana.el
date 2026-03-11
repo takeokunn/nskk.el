@@ -164,32 +164,27 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "蔓延る")))))
 
-(ert-deftest nskk-e2e-pbt-okurigana-no-crash ()
-  "PBT: Okurigana input sequences (CvC pattern) never crash."
-  ;; Tests reading+okurigana patterns like KaKu, MiRu, KiKu, SuRu, etc.
-  (let ((patterns '(("Ka" "K" "u")     ;; KaKu (書く)
-                    ("Mi" "R" "u")     ;; MiRu (見る)
-                    ("Ki" "K" "u")     ;; KiKu (聞く)
-                    ("Su" "R" "u")     ;; SuRu (する)
-                    ("Ha" "N" "a")     ;; HaNa (花な)
-                    ("No" "M" "u")     ;; NoMu (飲む)
-                    ("Ka" "E" "ru")))  ;; KaEru (変える)
-        (errors nil))
-    (dolist (pat patterns)
-      (condition-case err
-          (nskk-e2e-with-buffer 'hiragana nil
-            (dolist (key pat)
-              (nskk-e2e-type key))
-            ;; Property: buffer must be a string, mode must remain hiragana
-            (unless (stringp (buffer-string))
-              (push (list :pattern pat :error "non-string buffer") errors))
-            (unless (memq (nskk-current-mode) '(hiragana ascii))
-              (push (list :pattern pat :mode (nskk-current-mode)) errors)))
-        (error
-         (push (list :pattern pat :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT okurigana-no-crash: %d failures:\n%S"
-                        (length errors) errors)))))
+;;;;
+;;;; Table: Okurigana no-crash (CvC patterns)
+;;;;
+
+(nskk-deftest-table okurigana-no-crash
+  ;; Property: typing a CvC okurigana sequence never crashes, and the mode
+  ;; remains in a japanese mode (hiragana or ascii fallback) after the sequence.
+  :columns (reading okuri-trigger okuri-suffix)
+  :rows (("Ka" "K" "u")     ;; KaKu (書く)
+         ("Mi" "R" "u")     ;; MiRu (見る)
+         ("Ki" "K" "u")     ;; KiKu (聞く)
+         ("Su" "R" "u")     ;; SuRu (する)
+         ("Ha" "N" "a")     ;; HaNa (花な)
+         ("No" "M" "u")     ;; NoMu (飲む)
+         ("Ka" "E" "ru"))   ;; KaEru (変える)
+  :body (nskk-e2e-with-buffer 'hiragana nil
+          (nskk-e2e-type reading)
+          (nskk-e2e-type okuri-trigger)
+          (nskk-e2e-type okuri-suffix)
+          (should (stringp (buffer-string)))
+          (should (memq (nskk-current-mode) '(hiragana ascii)))))
 
 ;;;; Vowel Okurigana (母音送り仮名) E2E Tests
 ;;
@@ -964,9 +959,8 @@
   (nskk-it "shows stem*kana format in registration prompt (e.g. ほ*け for HOKE)"
     ;; HOKE with no dict entry triggers registration.
     ;; The prompt must show the ddskk-style reading: "ほ*け" (stem*kana).
-    (let* ((stub-dict '(("あ" . ("亜"))))
-           (captured-prompt nil))
-      (nskk-e2e-with-buffer 'hiragana stub-dict
+    (let* ((captured-prompt nil))
+      (nskk-e2e-with-buffer 'hiragana nskk--test-minimal-dict
         (cl-letf (((symbol-function 'read-from-minibuffer)
                    (lambda (prompt &rest _)
                      (setq captured-prompt prompt)
@@ -982,29 +976,27 @@
     ;; After cancel (empty RET), the okuri-kana remains in the buffer.
     ;; This matches ddskk: the preserved kana allows multi-char stem extension
     ;; (e.g. typing another K starts a new okurigana boundary on ▽ほけ).
-    (let ((stub-dict '(("あ" . ("亜")))))
-      (nskk-e2e-with-buffer 'hiragana stub-dict
-        ;; Default mock returns "" (cancel).
-        (nskk-e2e-type "H")
-        (nskk-e2e-type "O")
-        (nskk-e2e-type "K")
-        (nskk-e2e-type "E")
-        (nskk-e2e-assert-buffer "▽ほけ"
-                                "Cancel preserves preedit with okuri-kana for multi-char stem reuse")
-        (nskk-e2e-assert-henkan-phase 'on "Phase should be restored to on after cancel"))))
+    (nskk-e2e-with-buffer 'hiragana nskk--test-minimal-dict
+      ;; Default mock returns "" (cancel).
+      (nskk-e2e-type "H")
+      (nskk-e2e-type "O")
+      (nskk-e2e-type "K")
+      (nskk-e2e-type "E")
+      (nskk-e2e-assert-buffer "▽ほけ"
+                              "Cancel preserves preedit with okuri-kana for multi-char stem reuse")
+            (nskk-e2e-assert-henkan-phase 'on "Phase should be restored to on after cancel")))
 
   (nskk-it "successful okurigana registration inserts the registered word"
     ;; Confirming registration with a word inserts it and clears preedit.
-    (let ((stub-dict '(("あ" . ("亜")))))
-      (nskk-e2e-with-buffer 'hiragana stub-dict
-        (cl-letf (((symbol-function 'read-from-minibuffer)
-                   (lambda (&rest _) "穂毛")))
-          (nskk-e2e-type "H")
-          (nskk-e2e-type "O")
-          (nskk-e2e-type "K")
-          (nskk-e2e-type "E"))
-        (nskk-e2e-assert-buffer "穂毛" "Registered word should be inserted")
-        (nskk-e2e-assert-henkan-phase nil "Phase should be nil after successful registration")))))
+    (nskk-e2e-with-buffer 'hiragana nskk--test-minimal-dict
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (&rest _) "穂毛")))
+        (nskk-e2e-type "H")
+        (nskk-e2e-type "O")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "E"))
+      (nskk-e2e-assert-buffer "穂毛" "Registered word should be inserted")
+      (nskk-e2e-assert-henkan-phase nil "Phase should be nil after successful registration"))))
 
 ;;;;
 ;;;; PBT: Okurigana input invariants
@@ -1049,6 +1041,30 @@
       (should (>= (aref consonant 0) ?A))
       (should (<= (aref consonant 0) ?Z)))))
 
+
+;;;;
+;;;; Property: Post-Commit Okurigana Buffer Content
+;;;;
+
+(nskk-deftest-table okurigana-post-commit-content
+  ;; Property: after okurigana conversion + commit, buffer contains exactly
+  ;; kanji + okurigana kana suffix (no preedit markers or residual state).
+  :columns (reading okuri-trigger okuri-suffix dict-key kanji expected)
+  :rows (("Ka" "K" "u"  "かk" "書" "書く")
+         ("Mi" "R" "u"  "みr" "見" "見る")
+         ("Ki" "K" "u"  "きk" "聞" "聞く")
+         ("No" "M" "u"  "のm" "飲" "飲む")
+         ("Ha" "N" "a"  "はn" "話" "話な"))
+  :body (nskk-e2e-with-buffer 'hiragana (list (cons dict-key (list kanji)))
+          (nskk-e2e-type reading)
+          (nskk-e2e-type okuri-trigger)
+          (nskk-e2e-type okuri-suffix)
+          (nskk-e2e-assert-converting)
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-henkan-phase nil)
+          (nskk-e2e-assert-buffer expected
+                                  (format "okurigana commit %S+%S+%S → %S failed"
+                                          reading okuri-trigger okuri-suffix expected))))
 
 (provide 'nskk-e2e-okurigana)
 

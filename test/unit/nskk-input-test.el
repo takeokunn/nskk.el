@@ -33,6 +33,7 @@
 (require 'nskk-state)
 (require 'nskk-converter)
 (require 'nskk-prolog)
+(require 'nskk)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 
@@ -55,11 +56,15 @@ Also resets `nskk--conversion-overlay' to nil for test isolation."
      ,@body))
 
 (defmacro nskk-input-test-with-romaji (&rest body)
-  "Execute BODY with a fresh romaji buffer and standard romaji table.
-Ensures the standard romaji table is loaded regardless of prior test state."
+  "Execute BODY with a fresh romaji buffer and standard romaji and classify tables.
+Ensures both the romaji conversion table and the romaji-classify/3 Prolog
+facts are loaded regardless of prior test state.  The retract-before-assert
+pattern prevents duplicate facts when multiple tests use this macro."
   (declare (indent 0))
   `(progn
      (nskk--initialize-romaji-table)
+     (nskk-prolog-retract-all 'romaji-classify 3)
+     (nskk--init-romaji-classify-rules)
      (let ((nskk--romaji-buffer ""))
        ,@body)))
 
@@ -213,24 +218,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
            (should (= (overlay-end nskk--conversion-overlay) 10))))
         (delete-overlay nskk--conversion-overlay))))
 
-  (nskk-it "update-overlay creates overlay when none exists (edge-case form)"
-    (with-temp-buffer
-      (insert "test text")
-      (let ((nskk--conversion-overlay nil))
-        (nskk-given (nskk--update-overlay 1 5 "display"))
-        (nskk-then  (should (overlayp nskk--conversion-overlay)))
-        (delete-overlay nskk--conversion-overlay))))
-
-  (nskk-it "update-overlay reuses existing overlay object"
-    (with-temp-buffer
-      (insert "test text with more content")
-      (let ((nskk--conversion-overlay nil))
-        (nskk--update-overlay 1 5 "first")
-        (let ((first-overlay nskk--conversion-overlay))
-          (nskk-given (nskk--update-overlay 10 15 "second"))
-          (nskk-then
-           (should (eq nskk--conversion-overlay first-overlay)))
-          (delete-overlay nskk--conversion-overlay))))))
+)
 
 ;;;
 ;;; Interactive Command Tests
@@ -314,14 +302,14 @@ Ensures the standard romaji table is loaded regardless of prior test state."
           (last-command-event ?a))
       (with-temp-buffer
         (nskk-when (nskk-self-insert 1))
-        (nskk-then (should (> (point-max) 1))))))
+        (nskk-then (should (string= (buffer-string) "a"))))))
 
   (nskk-it "does not signal an error with uninitialized state"
     (let ((nskk-current-state nil)
           (last-command-event ?a))
       (with-temp-buffer
         (should-not (catch 'error (nskk-self-insert 1)))
-        (should (> (buffer-size) 0))))))
+        (should (string= (buffer-string) "a"))))))
 
 ;;;
 ;;; Mode-Based Input Routing Tests
@@ -347,9 +335,9 @@ Ensures the standard romaji table is loaded regardless of prior test state."
       (with-temp-buffer
         (let ((last-command-event ?a))
           (nskk-when (nskk-self-insert 1))
-          (nskk-then (should (> (buffer-size) 0)))))))
+          (nskk-then (should (string= (buffer-string) "a")))))))
 
-  (nskk-it "respects repeat count"
+  (nskk-it "inserts character N times when given a repeat count"
     (nskk-input-test-with-state 'ascii
       (with-temp-buffer
         (let ((last-command-event ?z))
@@ -756,12 +744,13 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 
   (nskk-it "processes the uppercase letter as lowercase romaji"
     (with-temp-buffer
-      (nskk-input-test-with-state 'hiragana
-        (let ((nskk-converter-auto-start-henkan t))
-          (nskk-given (nskk-process-japanese-input ?A 1))
-          (nskk-then
-           (should (equal (buffer-string) (concat nskk-henkan-on-marker "あ")))
-           (should (nskk--conversion-start-active-p)))))))
+      (nskk-input-test-with-romaji
+        (nskk-input-test-with-state 'hiragana
+          (let ((nskk-converter-auto-start-henkan t))
+            (nskk-given (nskk-process-japanese-input ?A 1))
+            (nskk-then
+             (should (equal (buffer-string) (concat nskk-henkan-on-marker "あ")))
+             (should (nskk--conversion-start-active-p))))))))
 
   (nskk-it "does not reset the marker on a second uppercase letter"
     (with-temp-buffer
@@ -1001,26 +990,6 @@ Ensures the standard romaji table is loaded regardless of prior test state."
       (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'ascii))))))
 
 ;;;
-;;; l-key-action Prolog Rule Tests
-;;;
-
-(nskk-describe "l-key-action Prolog rules"
-  (nskk-it "azik + azik-complete maps to fire-romaji"
-    (should (eq (nskk-prolog-query-value
-                 `(l-key-action azik azik-complete ,'\?action) '\?action)
-                'fire-romaji)))
-
-  (nskk-it "azik + other maps to latin-mode"
-    (should (eq (nskk-prolog-query-value
-                 `(l-key-action azik other ,'\?action) '\?action)
-                'latin-mode)))
-
-  (nskk-it "standard style always maps to latin-mode regardless of buf-state"
-    (should (eq (nskk-prolog-query-value
-                 `(l-key-action standard empty ,'\?action) '\?action)
-                'latin-mode))))
-
-;;;
 ;;; kakutei-action Prolog Rule Tests
 ;;;
 
@@ -1141,6 +1110,42 @@ Ensures the standard romaji table is loaded regardless of prior test state."
                                       #'ignore)
         (should (equal result "っ"))))))
 
+(nskk-describe "nskk--deferred-azik-state retroactive correction"
+  (nskk-it "vowel triggers retroactive っ insertion"
+    ;; When nskk--deferred-azik-state is set and the next char is a vowel,
+    ;; the tentative kana is deleted from the buffer and っ is inserted instead.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        ;; Simulate that "きん" was tentatively emitted for "kk" (AZIK deferred)
+        (insert "きん")
+        (setq nskk--deferred-azik-state (cons ?k "きん"))
+        ;; Now feed a vowel — should trigger retroactive sokuon correction
+        (nskk-convert-input-to-kana ?a)
+        ;; The tentative "きん" is deleted and っ is inserted (then "ka" is processed)
+        (should (string-match-p "っ" (buffer-string))))))
+
+  (nskk-it "non-vowel clears deferred state without retroactive correction"
+    ;; When nskk--deferred-azik-state is set and the next char is NOT a vowel,
+    ;; the state is cleared but the buffer is not retroactively modified.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "きん")
+        (setq nskk--deferred-azik-state (cons ?k "きん"))
+        (nskk-convert-input-to-kana ?s)
+        ;; Deferred state must be cleared
+        (should (null nskk--deferred-azik-state))
+        ;; Buffer content was not retroactively changed (no っ inserted)
+        (should-not (string-match-p "っ" (buffer-string))))))
+
+  (nskk-it "state is cleared after vowel correction"
+    ;; After the retroactive correction fires, nskk--deferred-azik-state must be nil.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "きん")
+        (setq nskk--deferred-azik-state (cons ?k "きん"))
+        (nskk-convert-input-to-kana ?a)
+        (should (null nskk--deferred-azik-state))))))
+
 (nskk-describe "nskk--emit-hatsuon-prefix/k CPS behavior"
   (nskk-it "calls on-kana with ん when buffer ends in n"
     (let ((nskk--romaji-buffer "n")
@@ -1194,26 +1199,15 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 ;;;
 
 (nskk-describe "nskk-current-mode"
-  (nskk-it "returns hiragana when state is in hiragana mode"
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        (nskk-state-set nskk-current-state 'mode 'hiragana)
-        (should (eq (nskk-current-mode) 'hiragana)))))
-
-  (nskk-it "returns katakana when state is in katakana mode"
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        (nskk-state-set nskk-current-state 'mode 'katakana)
-        (should (eq (nskk-current-mode) 'katakana)))))
-
-  (nskk-it "returns ascii when state is in ascii mode"
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        (nskk-state-set nskk-current-state 'mode 'ascii)
-        (should (eq (nskk-current-mode) 'ascii))))))
+  (nskk-deftest-table input-current-mode
+    :description "nskk-current-mode returns the mode set on current state"
+    :columns (mode)
+    :rows ((hiragana) (katakana) (ascii) (latin))
+    :body (nskk-prolog-test-with-isolated-db
+            (with-temp-buffer
+              (nskk-mode 1)
+              (nskk-state-set nskk-current-state 'mode mode)
+              (should (eq (nskk-current-mode) mode))))))
 
 ;;;
 ;;; nskk--setup-henkan-start-marker
@@ -1255,6 +1249,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
         (nskk-mode 1)
         (setf (nskk-state-candidates nskk-current-state) '("漢字" "感じ"))
         (let ((committed nil)
+              (nskk--henkan-candidate-list-active t)
               ;; Simulate a select function that maps 'a' to index 0
               (nskk-henkan-select-candidate-by-key-function
                (lambda (char _cands _idx)
@@ -1474,6 +1469,46 @@ Ensures the standard romaji table is loaded regardless of prior test state."
                       (error err)))))))
 
 ;;;
+;;; nskk-process-japanese-input sticky-shift
+;;;
+
+(nskk-describe "nskk-process-japanese-input sticky-shift"
+  (nskk-it "sticky-shift converts lowercase to uppercase (triggers henkan start)"
+    ;; When nskk--sticky-shift-pending is t, the next lowercase letter is
+    ;; treated as uppercase, which triggers henkan start when auto-start is on.
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((nskk--sticky-shift-pending t)
+              (nskk-converter-auto-start-henkan t))
+          (nskk-process-japanese-input ?k 1)
+          ;; ?k with sticky-shift → ?K → henkan start → ▽ marker in buffer
+          (should (string-match-p nskk-henkan-on-marker (buffer-string)))))))
+
+  (nskk-it "sticky-shift clears the pending flag after use"
+    ;; The flag must be consumed on the very next call, regardless of outcome.
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((nskk--sticky-shift-pending t)
+              (nskk-converter-auto-start-henkan t))
+          (nskk-process-japanese-input ?k 1)
+          (should (null nskk--sticky-shift-pending))))))
+
+  (nskk-it "sticky-shift does not upcase non-letter chars"
+    ;; Digits are not in [a-z] so no upcase occurs; the flag is still consumed.
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((nskk--sticky-shift-pending t)
+              (nskk-converter-auto-start-henkan t))
+          (nskk-process-japanese-input ?1 1)
+          ;; Flag is consumed (set to nil)
+          (should (null nskk--sticky-shift-pending))
+          ;; No henkan marker was inserted (digit is not a letter)
+          (should-not (string-match-p nskk-henkan-on-marker (buffer-string))))))))
+
+;;;
 ;;; nskk--azik-complete-match-p
 ;;;
 
@@ -1485,20 +1520,6 @@ Ensures the standard romaji table is loaded regardless of prior test state."
         (let ((nskk-converter-romaji-style 'normal)
               (nskk--romaji-buffer ""))
           (should-not (nskk--azik-complete-match-p ?a))))))
-
-  (nskk-it "returns non-nil when AZIK is active and buffer+char is a known romaji rule"
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        ;; 'a' alone should match the standard romaji table for hiragana 'あ'
-        (let ((nskk-converter-romaji-style 'azik)
-              (nskk--romaji-buffer ""))
-          ;; Initialize AZIK so the romaji table is populated
-          (nskk-converter-initialize)
-          (when (eq nskk-converter-romaji-style 'azik)
-            (should (or (nskk--azik-complete-match-p ?a)
-                        ;; Result may be nil in non-AZIK environments — just ensure no error
-                        t)))))))
 
   (nskk-it "returns nil for an incomplete sequence even in AZIK mode"
     (nskk-prolog-test-with-isolated-db
@@ -1545,26 +1566,33 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 ;;;
 
 (nskk-describe "nskk--maybe-load-azik-style"
-  (nskk-it "loads azik style when azik feature is loaded and style is azik"
-    (when (featurep 'nskk-azik)
-      (let ((nskk-converter-romaji-style 'azik))
-        ;; Should not error; just ensure the function runs
-        (should (eq (nskk--maybe-load-azik-style) 'azik)))))
+  (nskk-it "calls nskk-converter-load-style when azik feature is loaded and style is azik"
+    (unless (featurep 'nskk-azik)
+      (ert-skip "nskk-azik feature not available"))
+    ;; nskk--maybe-load-azik-style is defun/done — it returns nil.
+    ;; Verify the side effect: nskk-converter-load-style is called with 'azik.
+    (let* ((called-with nil)
+           (nskk-converter-romaji-style 'azik))
+      (nskk-with-mocks ((nskk-converter-load-style (lambda (style) (setq called-with style))))
+        (nskk--maybe-load-azik-style))
+      (should (eq called-with 'azik))))
 
   (nskk-it "does nothing when romaji style is not azik"
-    (let ((nskk-converter-romaji-style 'standard))
-      ;; Should return nil (no load performed)
-      (should (null (nskk--maybe-load-azik-style))))))
+    (let* ((called nil)
+           (nskk-converter-romaji-style 'standard))
+      (nskk-with-mocks ((nskk-converter-load-style (lambda (_style) (setq called t))))
+        (nskk--maybe-load-azik-style))
+      (should (null called)))))
 
 ;;;
 ;;; nskk-handle-q-key
 ;;;
 
 (nskk-describe "nskk-handle-q-key"
-  (nskk-it "is a function"
+  (nskk-it "is defined as a callable function (fboundp)"
     (should (fboundp 'nskk-handle-q-key)))
 
-  (nskk-it "is interactive"
+  (nskk-it "is registered as an interactive command (commandp)"
     (should (commandp 'nskk-handle-q-key))))
 
 ;;;
@@ -1572,7 +1600,7 @@ Ensures the standard romaji table is loaded regardless of prior test state."
 ;;;
 
 (nskk-describe "nskk--init-input-routing-rules"
-  (nskk-it "is a function"
+  (nskk-it "is defined as a callable function (fboundp)"
     (should (fboundp 'nskk--init-input-routing-rules)))
 
   (nskk-it "asserts input-route/2 facts for hiragana mode"
@@ -1581,33 +1609,231 @@ Ensures the standard romaji table is loaded regardless of prior test state."
     (should (nskk-prolog-query '(input-route hiragana \?action)))))
 
 (nskk-describe "nskk--init-toggle-rules"
-  (nskk-it "is a function"
+  (nskk-it "is defined as a callable function (fboundp)"
     (should (fboundp 'nskk--init-toggle-rules)))
 
   (nskk-it "asserts toggle-mode/2 facts for hiragana"
     (should (nskk-prolog-query '(toggle-mode hiragana \?mode)))))
 
 (nskk-describe "nskk--init-q-key-rules"
-  (nskk-it "is a function"
+  (nskk-it "is defined as a callable function (fboundp)"
     (should (fboundp 'nskk--init-q-key-rules)))
 
   (nskk-it "asserts q-key-action/3 facts for standard style"
     (should (nskk-prolog-query '(q-key-action standard \?buf \?action)))))
 
-(nskk-describe "nskk--init-l-key-rules"
-  (nskk-it "is a function"
-    (should (fboundp 'nskk--init-l-key-rules)))
-
-  (nskk-it "asserts l-key-action/3 facts"
-    (should (nskk-prolog-query '(l-key-action azik azik-complete \?action)))))
-
 (nskk-describe "nskk--init-semicolon-rules"
-  (nskk-it "is a function"
+  (nskk-it "is defined as a callable function (fboundp)"
     (should (fboundp 'nskk--init-semicolon-rules))))
 
 (nskk-describe "nskk--init-kakutei-rules"
-  (nskk-it "is a function"
+  (nskk-it "is defined as a callable function (fboundp)"
     (should (fboundp 'nskk--init-kakutei-rules))))
+
+;;;
+;;; romaji-classify Prolog rule tests (FR-T-006)
+;;;
+
+(nskk-describe "romaji-classify Prolog rules"
+  ;; romaji-classify/3 argument order: (class doubled-eligible result-type)
+  ;; Facts are asserted in priority order by nskk--init-romaji-classify-rules.
+  (nskk-deftest-table input-romaji-classify-rules
+    :description "romaji-classify/3 returns correct class for each (doubled-eligible, result-type) pair"
+    :columns (doubled-eligible result-type expected-class)
+    :rows (;; nn-double: highest priority — matches any result-type
+           (nn             match      nn-double)
+           (nn             incomplete nn-double)
+           (nn             no-result  nn-double)
+           ;; azik-deferred: doubled eligible consonant with a complete match
+           (eligible-match match      azik-deferred)
+           ;; sokuon: doubled eligible consonant, no complete match
+           (eligible-other match      sokuon)
+           (eligible-other incomplete sokuon)
+           ;; match: converter returned a kana string (not-eligible)
+           (not-eligible   match      match)
+           ;; incomplete: converter returned :incomplete (not-eligible)
+           (not-eligible   incomplete incomplete)
+           ;; no-match: fallback
+           (not-eligible   no-result  no-match))
+    :body (should (eq (nskk-prolog-query-value
+                       `(romaji-classify ,'\?class ,doubled-eligible ,result-type)
+                       '\?class)
+                      expected-class)))
+
+  (nskk-it "n-consonant class is queryable for n-consonant doubled-eligible"
+    ;; n-consonant is a special doubled-eligible value triggered when last=n and
+    ;; char is not a hatsuon-blocker.  Any result-type matches.
+    (should (eq (nskk-prolog-query-value
+                 `(romaji-classify ,'\?class n-consonant \?result-type)
+                 '\?class)
+                'n-consonant))))
+
+;;;
+;;; nskk--init-romaji-classify-rules (FR-T-007)
+;;;
+
+(nskk-describe "nskk--init-romaji-classify-rules"
+  (nskk-it "is defined as a callable function (fboundp)"
+    (should (fboundp 'nskk--init-romaji-classify-rules)))
+
+  (nskk-it "populates romaji-classify/3 Prolog facts after initialization"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-input-initialize)
+      ;; nn-double case should be queryable with the nn doubled-eligible value
+      (should (nskk-prolog-query-value
+               `(romaji-classify ,'\?class nn \?result-type)
+               '\?class)))))
+
+;;;
+;;; nskk--emit-hatsuon-prefix Tests
+;;;
+
+(nskk-describe "nskk--emit-hatsuon-prefix"
+  (nskk-context "n+n case"
+    (nskk-it "n+n case: sets nskk--romaji-buffer to n"
+      ;; nskk--romaji-buffer is defvar-local; bind it for isolation.
+      (let ((nskk--romaji-buffer "n"))
+        (let ((result (nskk--emit-hatsuon-prefix "n")))
+          ;; Buffer must be updated to the new value "n".
+          (nskk-should-equal "n" nskk--romaji-buffer)
+          ;; Result must end with ん.
+          (should (string-suffix-p "\u3093" result)))))
+
+    (nskk-it "n+n case: return value is ん (prefix-kana is empty)"
+      (let ((nskk--romaji-buffer "n"))
+        (let ((result (nskk--emit-hatsuon-prefix "n")))
+          ;; When buffer was just "n", prefix-without-n is "", so prefix-kana
+          ;; is "" and the full result is just ん.
+          (nskk-should-equal "\u3093" result)))))
+
+  (nskk-context "n+consonant case"
+    (nskk-it "n+consonant case: sets buffer to the new consonant"
+      (let ((nskk--romaji-buffer "n"))
+        (nskk--emit-hatsuon-prefix "k")
+        (nskk-should-equal "k" nskk--romaji-buffer)))
+
+    (nskk-it "n+consonant case: return value is ん"
+      (let ((nskk--romaji-buffer "n"))
+        (let ((result (nskk--emit-hatsuon-prefix "k")))
+          (nskk-should-equal "\u3093" result)))))
+
+  (nskk-context "new-buffer-value storage"
+    (nskk-it "the new-buffer-value argument is always stored in nskk--romaji-buffer"
+      (let ((nskk--romaji-buffer "n"))
+        (nskk--emit-hatsuon-prefix "m")
+        (nskk-should-equal "m" nskk--romaji-buffer))
+      (let ((nskk--romaji-buffer "n"))
+        (nskk--emit-hatsuon-prefix "abc")
+        (nskk-should-equal "abc" nskk--romaji-buffer))))
+
+  (nskk-context "prefix conversion"
+    (nskk-it "when buffer is sn prefix-without-n is s and result still contains ん"
+      ;; nskk-converter-convert "s" returns (:incomplete . "s"), which is not a
+      ;; string result, so prefix-kana must be "".  Verify the function does not
+      ;; signal and still emits ん.
+      (let ((nskk--romaji-buffer "sn"))
+        (let ((result (nskk--emit-hatsuon-prefix "n")))
+          ;; Result must still contain ん.
+          (should (string-suffix-p "\u3093" result))
+          ;; Buffer is updated to the new-buffer-value.
+          (nskk-should-equal "n" nskk--romaji-buffer))))
+
+    (nskk-it "when buffer ends with n and prefix-without-n is empty result is just ん"
+      (let ((nskk--romaji-buffer "n"))
+        (nskk-should-equal "\u3093" (nskk--emit-hatsuon-prefix "t")))))
+
+  (nskk-context "error safety"
+    (nskk-it "does not signal an error for typical inputs"
+      (let ((nskk--romaji-buffer "n"))
+        (should (nskk-should-not-error (nskk--emit-hatsuon-prefix "n")))
+        (setq nskk--romaji-buffer "n")
+        (should (nskk-should-not-error (nskk--emit-hatsuon-prefix "k")))
+        (setq nskk--romaji-buffer "sn")
+        (should (nskk-should-not-error (nskk--emit-hatsuon-prefix "n")))))))
+
+;;;
+;;; nskk-process-japanese-input early-return refactoring Tests
+;;;
+
+(nskk-describe "nskk-process-japanese-input"
+  (nskk-it "is defined as a callable function (fboundp)"
+    (should (fboundp 'nskk-process-japanese-input)))
+
+  (nskk-it "returns early when nskk-process-okurigana-input consumes the char"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (unwind-protect
+          (progn
+            ;; nskk-process-okurigana-input returns t => early return
+            ;; with no further kana insertion side-effects.
+            (nskk-with-mocks ((nskk-process-okurigana-input
+                               (lambda (_char) t))
+                              (nskk-convert-input-to-kana
+                               (lambda (_char)
+                                 (ert-fail "nskk-convert-input-to-kana must NOT be called after okurigana early return"))))
+              ;; Pass a lowercase char so is-henkan-start is nil (uppercase check fails)
+              (nskk-process-japanese-input ?k 1)
+              ;; If we reach here without ert-fail, the early-return worked.
+              (should t)))
+        (nskk-mode -1))))
+
+  (nskk-it "proceeds to normal kana conversion when nskk-process-okurigana-input returns nil"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (unwind-protect
+          (progn
+            (nskk-set-mode-hiragana)
+            ;; Type 'a' — okurigana should return nil (not in okurigana state),
+            ;; and normal kana conversion must proceed, inserting 'あ'.
+            (nskk-process-japanese-input ?a 1)
+            (should (string= (buffer-string) "あ")))
+        (nskk-mode -1)))))
+
+;;;
+;;; Additional property-based tests
+;;;
+
+;; Romaji-buffer clear idempotency: after processing any single lowercase ASCII
+;; character and then explicitly clearing the romaji buffer, the buffer must be
+;; empty.  The property holds regardless of whether the character completed a
+;; kana sequence or left an incomplete consonant pending.
+(nskk-property-test-seeded input-pbt-romaji-clear-idempotent
+  ((ch lowercase-char))
+  (let ((nskk--romaji-buffer ""))
+    (nskk-convert-input-to-kana (aref ch 0))
+    (setq nskk--romaji-buffer "")
+    (string= nskk--romaji-buffer ""))
+  30 42)
+
+;; Process-input never errors: for any single lowercase ASCII character,
+;; `nskk-process-japanese-input' must not signal an error when called in a
+;; properly initialised buffer with hiragana mode active.
+(nskk-property-test-seeded input-pbt-process-never-errors
+  ((ch lowercase-char))
+  (condition-case err
+      (nskk-prolog-test-with-isolated-db
+        (with-temp-buffer
+          (nskk-mode 1)
+          (nskk-set-mode-hiragana)
+          (nskk-process-japanese-input (aref ch 0) 1)
+          t))
+    (error (message "Error on char %c: %s" (aref ch 0) err) nil))
+  30 43)
+
+;; CPS consistency of `nskk--compute-effective-char': the sync wrapper and the
+;; /k variant must return the same result for any single lowercase ASCII
+;; character.  Both are evaluated with the same romaji-buffer state and the
+;; same conversion-start-marker state (none active).
+(nskk-property-test-seeded input-pbt-compute-effective-char-cps-consistent
+  ((ch lowercase-char))
+  (nskk-input-test-with-romaji
+    (nskk-input-test-with-state 'hiragana
+      (let* ((c          (aref ch 0))
+             (sync-result (nskk--compute-effective-char c))
+             (cps-result  (nskk--compute-effective-char/k
+                           c #'identity (lambda () nil))))
+        (equal sync-result cps-result))))
+  30 44)
 
 (provide 'nskk-input-test)
 

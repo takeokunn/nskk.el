@@ -59,6 +59,7 @@
 (require 'nskk-state)
 (require 'nskk-prolog)
 (require 'nskk-custom)
+(require 'nskk-cps-macros)
 
 (defvar-local nskk--last-cursor-color nil
   "Last cursor color applied, to avoid redundant `set-cursor-color' calls.")
@@ -104,9 +105,7 @@ FACE-OR-SPEC is either:
   "Face for direct (ASCII/latin) mode indicator."
   :group 'nskk-modeline)
 
-(nskk-define-mode-entry ascii  "SKK" nskk-modeline-direct-face "Direct/ASCII input mode")
-(nskk-define-mode-entry latin  "SKK" nskk-modeline-direct-face "Direct/ASCII input mode")
-(nskk-define-mode-entry direct "SKK" nskk-modeline-direct-face "Direct/ASCII input mode")
+;; ascii, latin, and direct modes share `nskk-modeline-direct-face', defined above.
 
 ;;;; Modeline Indicator
 
@@ -114,87 +113,87 @@ FACE-OR-SPEC is either:
   "Memoized modeline data as (MODE . (DISPLAY-STRING FACE HELP-TEXT)) or nil.
 Invalidated when the current NSKK mode changes.")
 
-(defun nskk-modeline--with-data (mode k)
-  "Fetch display data for MODE (via cache or Prolog) and call K with it.
-K is called with a list (DISPLAY-STRING FACE HELP-TEXT).  The result
-is memoized in `nskk--modeline-indicator-cache' keyed by MODE so the
-Prolog engine is only queried when the mode actually changes."
-  (let ((data (if (and nskk--modeline-indicator-cache
-                       (eq (car nskk--modeline-indicator-cache) mode))
-                  (cdr nskk--modeline-indicator-cache)
-                (let ((info (nskk-prolog-query-values
-                             `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c)
-                             '(\?s \?f \?h))))
-                  (setq nskk--modeline-indicator-cache (cons mode info))
-                  info))))
-    (funcall k data)))
+(defun/k nskk--modeline-with-data (mode)
+  "Fetch display data for MODE from cache or Prolog.
+on-found is called with a list (DISPLAY-STRING FACE HELP-TEXT).
+The result is memoized in `nskk--modeline-indicator-cache' keyed by
+MODE so the Prolog engine is only queried when the mode changes.
+Calls on-not-found when MODE has no `mode-properties/5' fact."
+  (if (and nskk--modeline-indicator-cache
+           (eq (car nskk--modeline-indicator-cache) mode))
+      (succeed (cdr nskk--modeline-indicator-cache))
+    (let ((info (nskk-prolog-query-values
+                 `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c)
+                 '(\?s \?f \?h))))
+      (if info
+          (progn (setq nskk--modeline-indicator-cache (cons mode info))
+                 (succeed info))
+        (fail)))))
 
 (defun nskk-modeline-indicator ()
   "Return mode-line indicator string for the current NSKK input mode.
 Queries `mode-properties/5' for the display string, face, and
-help-echo text via `nskk-modeline--with-data'.  The string is
+help-echo text via `nskk--modeline-with-data'.  The string is
 formatted via `nskk-modeline-format'.
 
-Returns an empty string when `nskk-current-state' is nil or unbound."
+Falls back to \"NSKK\" with `default' face when the current mode has
+no `mode-properties/5' fact.  Returns an empty string when
+`nskk-current-state' is nil or unbound."
   (if (and (boundp 'nskk-current-state) nskk-current-state)
-      (let ((mode (nskk-state-mode nskk-current-state)))
-        (nskk-modeline--with-data
-         mode
-         (lambda (data)
-           (let ((name (or (nth 0 data) "NSKK"))
-                 (face (or (nth 1 data) 'default))
-                 (help (or (nth 2 data) "NSKK input method")))
-             (propertize (format-spec nskk-modeline-format `((?m . ,name)))
-                         'face face 'help-echo help)))))
+      (let* ((mode (nskk-state-mode nskk-current-state))
+             (data (nskk--modeline-with-data mode)))
+        (if data
+            (propertize (format-spec nskk-modeline-format
+                                     `((?m . ,(nth 0 data))))
+                        'face (nth 1 data)
+                        'help-echo (nth 2 data))
+          (propertize (format-spec nskk-modeline-format '((?m . "NSKK")))
+                      'face 'default
+                      'help-echo "NSKK input method")))
     ""))
 
-(defun nskk-modeline--clear-cache ()
+(defun nskk--modeline-clear-cache ()
   "Clear the memoized modeline indicator cache.
 Call this after any mode change to ensure the next redisplay
 re-queries the Prolog database for the new mode's display data."
   (setq nskk--modeline-indicator-cache nil))
 
-(defun nskk-modeline-update ()
-  "Update the modeline and cursor color to reflect current NSKK state."
-  (nskk-modeline--clear-cache)
+(defun/done nskk-modeline-update ()
+  "Update the mode line and cursor color to reflect the current NSKK state.
+Clears the memoized indicator cache, updates the cursor color, and
+forces a mode-line redisplay."
+  (nskk--modeline-clear-cache)
   (nskk-cursor-update)
   (force-mode-line-update))
 
 ;;;; Cursor Color
 
-(defun nskk-cursor--with-color (mode k)
-  "Fetch the cursor color for MODE and call K with it, or return nil.
-Looks up `mode-properties/5' for the cursor face symbol, reads its
-:background attribute, and calls K only when a valid color is found.
-Returns nil when MODE has no fact, the face is unbound, or :background
-is `unspecified'."
+(defun nskk--cursor-with-color (mode)
+  "Return cursor color string for input MODE, or nil if none is registered.
+MODE is a mode symbol such as `hiragana' or `ascii'.
+Returns nil when MODE has no `mode-properties/5' fact, the cursor
+face is not defined, or its :background attribute is `unspecified'."
   (when-let* ((face (nskk-prolog-query-value
                      `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?c))
               (_ (facep face))
               (color (face-attribute face :background nil t))
               (_ (not (memq color '(nil unspecified)))))
-    (funcall k color)))
+    color))
 
-(defun nskk-cursor-update ()
-  "Update cursor color to reflect current NSKK mode.
-Only calls `set-cursor-color' when the color actually changes."
+(defun/done nskk-cursor-update ()
+  "Update cursor color to reflect the current NSKK mode.
+Calls `set-cursor-color' only when the color differs from the last
+applied color (`nskk--last-cursor-color').
+Does nothing when `nskk-use-color-cursor' is nil or `nskk-current-state'
+is unbound."
   (when (and nskk-use-color-cursor
              (boundp 'nskk-current-state)
              nskk-current-state)
     (when-let* ((mode (nskk-state-mode nskk-current-state))
-                (color (nskk-cursor--mode-color mode))
+                (color (nskk--cursor-with-color mode))
                 (_ (not (equal color nskk--last-cursor-color))))
       (set-cursor-color color)
       (setq nskk--last-cursor-color color))))
-
-(defun nskk-cursor--mode-color (mode)
-  "Return cursor color string for input MODE, or nil if none is registered.
-MODE is a mode symbol such as `hiragana' or `ascii'.
-
-Delegates to `nskk-cursor--with-color', passing `identity' as the
-continuation.  Returns nil when no fact exists for MODE, the face is
-not defined, or its :background is `unspecified'."
-  (nskk-cursor--with-color mode #'identity))
 
 (provide 'nskk-modeline)
 

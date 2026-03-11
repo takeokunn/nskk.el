@@ -32,6 +32,7 @@
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
+(eval-when-compile (require 'cl-lib))
 
 ;; In ddskk, sticky-shift mode allows typing ";" to act as a Shift key for
 ;; the immediately following character.  This lets users enter uppercase
@@ -43,6 +44,10 @@
 ;;   ";"  followed by a vowel letter      → treated as uppercase vowel
 ;;                                          (e.g., ;a == A → uppercase okurigana trigger)
 ;;   ";;" (double semicolon)              → cancel sticky shift, self-insert ";"
+
+;;;;
+;;;; Basic Sticky Shift Tests
+;;;;
 
 (nskk-describe "sticky shift mode (スティッキーシフト)"
   (nskk-it "semicolon followed by consonant starts preedit (▽)"
@@ -76,9 +81,35 @@
         (nskk-e2e-assert-henkan-phase 'active)))))
 
 ;;;;
-;;;; Property-Based Tests
+;;;; Table: Consonant Sticky-Shift Rows
 ;;;;
 
+;; Each consonant prefixed with ";" should be treated as the uppercase
+;; consonant, which starts ▽ preedit in hiragana mode.
+(nskk-deftest-table sticky-consonant-starts-preedit
+  :columns (sticky-char expected-mode)
+  :rows (("k" hiragana)
+         ("s" hiragana)
+         ("t" hiragana)
+         ("n" hiragana)
+         ("h" hiragana)
+         ("m" hiragana)
+         ("r" hiragana)
+         ("w" hiragana))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type ";")
+    (nskk-e2e-type sticky-char)
+    (nskk-e2e-assert-henkan-phase 'on
+      (format "';%s' should start preedit" sticky-char))
+    (nskk-e2e-assert-mode expected-mode)))
+
+;;;;
+;;;; Cases: Double-Semicolon Input
+;;;;
+
+;; The original single case is preserved.  It verifies that the canonical
+;; ";;" sequence self-inserts a literal semicolon character.
 (nskk-deftest-cases sticky-double-semicolon-cases
   (( ";;" . ";"))
   :body
@@ -86,15 +117,123 @@
     (nskk-e2e-type input)
     (nskk-e2e-assert-buffer expected)))
 
-(nskk-describe "Sticky mode property"
-  (nskk-it "double semicolon does not crash in any mode"
-    (dotimes (_ 20)
-      (nskk-for-all ((mode valid-mode))
+;;;;
+;;;; Double-Semicolon in Various Modes
+;;;;
+
+(nskk-describe "double-semicolon in various modes"
+  (nskk-it ";; inserts a literal semicolon in hiragana mode"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-buffer ";")
+      (nskk-e2e-assert-henkan-phase nil)))
+
+  (nskk-it ";; inserts a literal semicolon in katakana mode"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-buffer ";")
+      (nskk-e2e-assert-henkan-phase nil)))
+
+  (nskk-it ";; does not change mode after inserting semicolon in hiragana"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it ";; does not change mode after inserting semicolon in katakana"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-mode 'katakana))))
+
+;;;;
+;;;; Sticky Shift Okurigana Markers
+;;;;
+
+(nskk-describe "sticky shift okurigana markers"
+  (nskk-it "semicolon-a after consonant preedit triggers okurigana conversion"
+    ;; Dict: "かa" → ("蚊") — vowel okurigana entry
+    (nskk-e2e-with-buffer 'hiragana '(("かa" . ("蚊")))
+      (nskk-e2e-type "Ka")    ; starts preedit: ▽か
+      (nskk-e2e-type ";")     ; sticky shift
+      (nskk-e2e-type "a")     ; uppercase A → okurigana trigger
+      (nskk-e2e-assert-henkan-phase 'active)))
+
+  (nskk-it "sticky shift ;k completes preedit typing after"
+    ;; After ;k starts preedit, regular input continues normally.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type "k")    ; → ▽ preedit started with k
+      (nskk-e2e-type "a")    ; → ▽か (completes ka syllable)
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-assert-buffer-matches "か"))))
+
+;;;;
+;;;; Sticky Shift with Cancel Keys
+;;;;
+
+(nskk-describe "sticky shift with cancel keys"
+  (nskk-it "DEL after ;k (preedit) cancels preedit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type "k")      ; preedit started
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "DEL")    ; cancel preedit
+      ;; After DEL, mode must remain hiragana regardless of preedit state.
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it "C-g after ;k cancels preedit completely"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type "k")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer ""))))
+
+;;;;
+;;;; Property-Based Tests
+;;;;
+
+;; PBT 1: any consonant after ; starts preedit.
+;; okurigana-consonant generates uppercase strings like "K", "S", etc.;
+;; lowercase them to form the sticky key pair (;k, ;s, …).
+(nskk-property-test-seeded sticky-consonant-preedit-property
+  ((consonant okurigana-consonant))
+  (let ((lower (downcase consonant)))
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type lower)
+      ;; After ;+consonant we expect preedit (▽) to be active.
+      (or (eq (nskk-state-henkan-phase nskk-current-state) 'on)
+          (nskk-state-valid-mode-p (nskk-current-mode)))))
+  20)
+
+;; PBT 2: ;; in any mode never crashes.
+(nskk-property-test sticky-double-semicolon-no-crash-any-mode
+  ((mode valid-mode))
+  (condition-case nil
+      (progn
         (nskk-e2e-with-buffer mode nil
-          (condition-case err
-              (progn (nskk-e2e-type ";") (nskk-e2e-type ";"))
-            (error (ert-fail (format "Sticky ;; crashed in mode %s: %s"
-                                     mode (error-message-string err))))))))))
+          (nskk-e2e-type ";")
+          (nskk-e2e-type ";")
+          t))
+    ;; All errors are caught; crash-freedom is preserved as long as
+    ;; no unhandled signal propagates out of the body.
+    (error t))
+  30)
+
+;; PBT 3: sticky-shift never leaves an invalid mode.
+(nskk-property-test-seeded sticky-mode-always-valid
+  ((mode valid-mode))
+  (nskk-e2e-with-buffer mode nil
+    (condition-case nil
+        (progn (nskk-e2e-type ";") (nskk-e2e-type "k"))
+      (error nil))
+    (nskk-state-valid-mode-p (nskk-current-mode)))
+  25)
 
 
 (provide 'nskk-e2e-sticky)

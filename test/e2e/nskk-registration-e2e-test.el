@@ -127,7 +127,7 @@
           (remove-hook 'nskk-jisyo-update-hook hook-fn))))))
 
 (nskk-describe "kill-emacs hook"
-  (nskk-it "nskk--enable adds nskk-dict--maybe-save to kill-emacs-hook"
+  (nskk-it "nskk--enable adds nskk--dict-maybe-save to kill-emacs-hook"
     ;; Verifies the persistence hook is wired up when nskk-mode activates.
     (nskk-prolog-test-with-isolated-db
       ;; Ensure dict-initialized so nskk-dict-initialize is skipped
@@ -136,20 +136,20 @@
         (unwind-protect
             (progn
               (nskk-mode 1)
-              (should (memq #'nskk-dict--maybe-save kill-emacs-hook)))
+              (should (memq #'nskk--dict-maybe-save kill-emacs-hook)))
           (ignore-errors (nskk-mode -1)))))))
 
 ;;;;
-;;;; Section 4: Unit tests — nskk-dict--maybe-save persistence
+;;;; Section 4: Unit tests — nskk--dict-maybe-save persistence
 ;;;;
 
-(nskk-describe "nskk-dict--maybe-save"
+(nskk-describe "nskk--dict-maybe-save"
   (nskk-it "calls nskk-dict-save-user-dictionary when modified flag is t"
     (let ((save-called nil))
       (cl-letf (((symbol-function 'nskk-dict-save-user-dictionary)
                  (lambda () (setq save-called t))))
         (let ((nskk-dict-modified t))
-          (nskk-dict--maybe-save)
+          (nskk--dict-maybe-save)
           (should save-called)))))
 
   (nskk-it "skips save when modified flag is nil"
@@ -157,7 +157,7 @@
       (cl-letf (((symbol-function 'nskk-dict-save-user-dictionary)
                  (lambda () (setq save-called t))))
         (let ((nskk-dict-modified nil))
-          (nskk-dict--maybe-save)
+          (nskk--dict-maybe-save)
           (should-not save-called)))))
 
   (nskk-it "nskk-dict-save-user-dictionary resets modified flag to nil after saving"
@@ -352,13 +352,12 @@
   ;; If the default dict were used, "かんじ" would be found as a candidate
   ;; and the conversion overlay would show the kanji without committing it,
   ;; making buffer-string return "▼かんじ" instead of "漢字".
-  (let ((stub-dict '(("あ" . ("亜")))))
-    (nskk-e2e-with-buffer 'hiragana stub-dict
-      (cl-letf (((symbol-function 'read-from-minibuffer)
-                 (lambda (&rest _) expected)))
-        (nskk-e2e-type input)
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-buffer expected)))))
+  (nskk-e2e-with-buffer 'hiragana nskk--test-minimal-dict
+    (cl-letf (((symbol-function 'read-from-minibuffer)
+               (lambda (&rest _) expected)))
+      (nskk-e2e-type input)
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-buffer expected))))
 
 (nskk-property-test registration-empty-ret-does-not-crash
   ((mode valid-mode))

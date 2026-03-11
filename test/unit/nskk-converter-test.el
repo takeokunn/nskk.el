@@ -24,15 +24,25 @@
 ;;; Commentary:
 
 ;; This file provides unit tests for the NSKK converter component.
-;; It covers unit tests, integration tests, and property-based tests
-;; for the conversion engine.
 ;;
 ;; Test categories:
-;; - Unit tests for basic conversion
-;; - Integration tests for full conversion flow
-;; - Property-based tests for conversion properties
-;; - Performance tests for conversion speed
-;; - Edge case tests
+;; - Basic conversion: vowels, consonant rows, palatal, special sequences
+;; - Edge cases: nil/empty input, case insensitivity, boundary conditions
+;; - Integration: full kana row conversion
+;; - CPS variants: nskk-converter-convert/k, nskk-convert-romaji/k,
+;;     nskk-convert-n--internal/k, nskk-convert-romaji--internal/k,
+;;     nskk-converter-load-style/k (on-found/on-not-found),
+;;     defun/done /k forms (remove-rule/k, register-style/k, initialize/k)
+;; - Internal functions: nskk-convert-romaji--internal, nskk-convert-n--internal,
+;;     nskk--converter-populate-incomplete-markers
+;; - Rule management: add, remove, override, get (with Prolog DB isolation)
+;; - Style system: register, load, define-style macro (with registry isolation)
+;; - Data validation: nskk--standard-romaji-rules content and structure
+;; - Macro validation: nskk-converter-define-rules, nskk-converter-define-style
+;; - Property-based tests: determinism, string output, compression ratio, CPS/sync consistency
+;; - Seeded PBTs: convert/k, romaji/k, get-rule/k, completions/k, n-internal invariant
+;; - Regression tests: double consonant, n-conversion, palatal, long strings, fallback path
+;; - Performance tests: basic, complex, batch, long-input
 
 ;;; Code:
 
@@ -41,7 +51,7 @@
 (require 'nskk-test-macros)
 (require 'nskk-converter)  ; Assumes converter implementation exists
 (require 'nskk-pbt-generators)
-(eval-when-compile (require 'cl-lib))
+(require 'cl-lib)
 
 
 (nskk-describe "romaji basic conversion"
@@ -198,16 +208,12 @@
 ;; TR-004: nskk-converter-initialize idempotency
 (nskk-describe "converter-initialize"
   (nskk-it "is idempotent: subsequent calls are no-ops"
-    (let ((was-initialized nskk--converter-initialized))
-      (unwind-protect
-          (progn
-            ;; Table should still work after multiple initialize calls
-            (nskk-converter-initialize)
-            (nskk-converter-initialize)
-            (should (equal (nskk-converter-get-rule "ka") "か"))
-            (should (equal (nskk-convert-romaji "ka") "か")))
-        ;; Restore previous initialization state
-        (setq nskk--converter-initialized was-initialized)))))
+    (nskk-prolog-test-with-isolated-db
+      ;; Table should still work after multiple initialize calls
+      (nskk-converter-initialize)
+      (nskk-converter-initialize)
+      (should (equal (nskk-converter-get-rule "ka") "か"))
+      (should (equal (nskk-convert-romaji "ka") "か")))))
 
 
 ;;;;
@@ -266,12 +272,13 @@
        (dolist (s test-strings)
          (nskk-convert-romaji s))))))
 
-(nskk-deftest-performance conversion-memory-performance
-  "Memory usage during conversion stays within time budget."
-  (nskk-should-be-fast
-   memory-conversion 5000
-   (dotimes (_ 1000)
-     (nskk-convert-romaji "konnichiwa"))))
+(nskk-deftest-performance conversion-long-input-performance
+  "Long-string romaji-to-kana conversion completes within time budget."
+  (let ((test-string "kakikukekokakikukekokakikukekokakikukeko"))
+    (nskk-should-be-fast
+     long-input-conversion 5000
+     (dotimes (_ 1000)
+       (nskk-convert-romaji test-string)))))
 
 
 (nskk-describe "regression: double consonant"
@@ -314,14 +321,6 @@
     (should (equal (nskk-convert-romaji "kak") "かk"))))
 
 
-(nskk-describe "custom assertion helpers"
-  (nskk-it "works with all custom assertion types"
-    (nskk-assert-approx-equal 1.0 1.001 0.01)
-    (nskk-assert-strings-equal "test" "test")
-    (nskk-assert-length '(1 2 3) 3)
-    (nskk-assert-member 'b '(a b c))
-    (nskk-assert-type "string" #'stringp)))
-
 
 ;;;;
 ;;;; Test Suite Organization
@@ -331,11 +330,11 @@
   nskk-performance-conversion-basic-performance
   nskk-performance-conversion-complex-performance
   nskk-performance-conversion-batch-performance
-  nskk-performance-conversion-memory-performance)
+  nskk-performance-conversion-long-input-performance)
 
 
 (nskk-describe "converter-convert function"
-  (nskk-it "converts basic input"
+  (nskk-it "returns kana and empty remainder for a complete romaji match"
     (let ((result (nskk-converter-convert "ka")))
       (should result)
       (should (equal (car result) "か"))
@@ -352,7 +351,7 @@
   (nskk-it "returns nil for empty input"
     (should-not (nskk-converter-convert "")))
 
-  (nskk-it "converts multi-char match"
+  (nskk-it "returns kana and empty remainder for a three-character digraph match"
     (let ((result (nskk-converter-convert "sha")))
       (should result)
       (should (equal (car result) "しゃ"))
@@ -450,18 +449,18 @@
 (nskk-describe "nskk-convert-romaji/k CPS variant"
   (nskk-it "calls continuation with converted kana"
     (let (result)
-      (nskk-convert-romaji/k "ka" (lambda (kana) (setq result kana)))
+      (nskk-convert-romaji/k "ka" (lambda (kana) (setq result kana)) #'ignore)
       (should (equal result "か"))))
 
   (nskk-it "calls continuation with nil for nil input"
     (let (result called)
-      (nskk-convert-romaji/k nil (lambda (kana) (setq result kana called t)))
+      (nskk-convert-romaji/k nil (lambda (kana) (setq result kana called t)) #'ignore)
       (should called)
       (should-not result)))
 
   (nskk-it "calls continuation with empty string for empty input"
     (let (result)
-      (nskk-convert-romaji/k "" (lambda (kana) (setq result kana)))
+      (nskk-convert-romaji/k "" (lambda (kana) (setq result kana)) #'ignore)
       (should (equal result ""))))
 
   (nskk-deftest-cases romaji/k-full-conversion
@@ -471,40 +470,48 @@
     :description "nskk-convert-romaji/k produces same output as sync wrapper"
     :body
     (let (result)
-      (nskk-convert-romaji/k input (lambda (kana) (setq result kana)))
+      (nskk-convert-romaji/k input (lambda (kana) (setq result kana)) #'ignore)
       (should (equal result expected)))))
 
 (nskk-describe "nskk-convert-n--internal/k CPS variant"
-  (nskk-it "calls on-hatsuon for standalone n"
-    (let (got-kana got-rest)
+  (nskk-it "calls on-found for standalone n"
+    (let (got-result)
       (nskk-convert-n--internal/k "n"
-        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (result) (setq got-result result))
         (lambda () (should nil)))
-      (should (equal got-kana "ん"))
-      (should-not got-rest)))
+      (should (equal (car got-result) "ん"))
+      (should-not (cdr got-result))))
 
-  (nskk-it "calls on-hatsuon for n before consonant"
-    (let (got-kana got-rest)
+  (nskk-it "calls on-found for n before consonant"
+    (let (got-result)
       (nskk-convert-n--internal/k "nb"
-        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (result) (setq got-result result))
         (lambda () (should nil)))
-      (should (equal got-kana "ん"))
-      (should (equal got-rest "b"))))
+      (should (equal (car got-result) "ん"))
+      (should (equal (cdr got-result) "b"))))
 
-  (nskk-it "calls on-fallthrough for n before vowel"
+  (nskk-it "calls on-not-found for n before vowel"
     (let (fallthrough-called)
       (nskk-convert-n--internal/k "na"
-        (lambda (_k _r) (should nil))
+        (lambda (_result) (should nil))
         (lambda () (setq fallthrough-called t)))
       (should fallthrough-called)))
 
-  (nskk-it "calls on-hatsuon for n-quote sequence"
-    (let (got-kana got-rest)
+  (nskk-it "calls on-found for n-quote sequence"
+    (let (got-result)
       (nskk-convert-n--internal/k "n'"
-        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (result) (setq got-result result))
         (lambda () (should nil)))
-      (should (equal got-kana "ん"))
-      (should-not got-rest))))
+      (should (equal (car got-result) "ん"))
+      (should-not (cdr got-result))))
+
+  (nskk-it "calls on-found for nn with remainder"
+    (let (got-result)
+      (nskk-convert-n--internal/k "nnk"
+        (lambda (result) (setq got-result result))
+        (lambda () (should nil)))
+      (should (equal (car got-result) "ん"))
+      (should (equal (cdr got-result) "nk")))))
 
 (nskk-describe "possible completions"
   (nskk-it "returns completions for a basic prefix"
@@ -522,24 +529,18 @@
 
 (nskk-describe "rule management"
   (nskk-it "adds a conversion rule"
-    (let ((original (nskk-converter-get-rule "testkey")))
-      (unwind-protect
-          (progn
-            (nskk-converter-add-rule "testkey" "テスト")
-            (should (equal (nskk-converter-get-rule "testkey") "テスト")))
-        ;; Cleanup
-        (if original
-            (nskk-converter-add-rule "testkey" original)
-          (nskk-converter-remove-rule "testkey")))))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-converter-add-rule "testkey" "テスト")
+      (should (equal (nskk-converter-get-rule "testkey") "テスト"))))
 
   (nskk-it "removes a conversion rule"
-    (unwind-protect
-        (progn
-          (nskk-converter-add-rule "tempkey" "テンプ")
-          (should (nskk-converter-get-rule "tempkey"))
-          (nskk-converter-remove-rule "tempkey")
-          (should-not (nskk-converter-get-rule "tempkey")))
-      (nskk-converter-remove-rule "tempkey")))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-converter-add-rule "tempkey" "テンプ")
+      (should (nskk-converter-get-rule "tempkey"))
+      (nskk-converter-remove-rule "tempkey")
+      (should-not (nskk-converter-get-rule "tempkey"))))
 
   (nskk-it "gets an existing rule"
     (should (equal (nskk-converter-get-rule "ka") "か")))
@@ -548,74 +549,84 @@
     (should-not (nskk-converter-get-rule "nonexistent-romaji-key")))
 
   (nskk-it "overrides an existing rule"
-    (let ((original (nskk-converter-get-rule "ka")))
-      (unwind-protect
-          (progn
-            (nskk-converter-add-rule "ka" "カ")
-            (should (equal (nskk-converter-get-rule "ka") "カ")))
-        ;; Restore original
-        (nskk-converter-add-rule "ka" original)))))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-converter-add-rule "ka" "カ")
+      (should (equal (nskk-converter-get-rule "ka") "カ")))))
 
 (nskk-describe "style system"
   (nskk-it "registers and loads a new style"
-    (let ((test-style-called nil))
-      (nskk-converter-register-style 'test-style
-        (lambda () (setq test-style-called t)))
-      (unwind-protect
-          (progn
-            (nskk-converter-load-style 'test-style)
-            (should test-style-called))
-        ;; Restore standard style
-        (nskk-converter-load-style 'standard))))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (let ((nskk--style-registry nskk--style-registry)
+            (test-style-called nil))
+        (nskk-converter-register-style 'test-style
+          (lambda () (setq test-style-called t)))
+        (nskk-converter-load-style 'test-style)
+        (should test-style-called))))
 
   (nskk-it "loads the standard style"
-    (should (eq (nskk-converter-load-style 'standard) 'standard))
-    ;; Verify basic rules still work
-    (should (equal (nskk-converter-get-rule "ka") "か")))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (eq (nskk-converter-load-style 'standard) 'standard))
+      ;; Verify basic rules still work
+      (should (equal (nskk-converter-get-rule "ka") "か"))))
 
-  (nskk-it "raises user-error for unknown style"
-    (should-error (nskk-converter-load-style 'nonexistent-style) :type 'user-error))
+  (nskk-it "calls on-not-found for unknown style"
+    (let (not-found-called)
+      (nskk-converter-load-style/k 'nonexistent-style
+        (lambda (_s) (should nil))
+        (lambda () (setq not-found-called t)))
+      (should not-found-called)))
+
+  (nskk-it "calls on-found with style symbol on success"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (let (got-style)
+        (nskk-converter-load-style/k 'standard
+          (lambda (s) (setq got-style s))
+          (lambda () (should nil)))
+        (should (eq got-style 'standard)))))
 
   (nskk-it "clears and replaces the table when loading a style"
-    (nskk-converter-register-style 'minimal-test
-      (lambda ()
-        (nskk-converter-add-rule "x" "エックス")))
-    (unwind-protect
-        (progn
-          (nskk-converter-load-style 'minimal-test)
-          (should (equal (nskk-converter-get-rule "x") "エックス"))
-          ;; Standard rules should be gone
-          (should-not (equal (nskk-converter-get-rule "ka") "か")))
-      ;; Restore standard
-      (nskk-converter-load-style 'standard))))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (let ((nskk--style-registry nskk--style-registry))
+        (nskk-converter-register-style 'minimal-test
+          (lambda ()
+            (nskk-converter-add-rule "x" "エックス")))
+        (nskk-converter-load-style 'minimal-test)
+        (should (equal (nskk-converter-get-rule "x") "エックス"))
+        ;; Standard rules should be gone
+        (should-not (equal (nskk-converter-get-rule "ka") "か"))))))
 
 ;; TR-005: nskk-converter-define-style macro tests
 (nskk-describe "nskk-converter-define-style macro"
   (nskk-it "generates an init function and registers the style"
-    (nskk-converter-define-style test-define-macro-style
-      "Temporary style for macro validation test."
-      ("zz" "zzテスト"))
-    (unwind-protect
-        (progn
-          (nskk-converter-load-style 'test-define-macro-style)
-          ;; The macro-generated init function should have asserted this rule
-          (should (equal (nskk-converter-get-rule "zz") "zzテスト"))
-          ;; Standard rules should not be present
-          (should-not (equal (nskk-converter-get-rule "ka") "か")))
-      ;; Always restore standard style
-      (nskk-converter-load-style 'standard)))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (let ((nskk--style-registry nskk--style-registry))
+        (nskk-converter-define-style test-define-macro-style
+          "Temporary style for macro validation test."
+          ("zz" "zzテスト"))
+        (nskk-converter-load-style 'test-define-macro-style)
+        ;; The macro-generated init function should have asserted this rule
+        (should (equal (nskk-converter-get-rule "zz") "zzテスト"))
+        ;; Standard rules should not be present
+        (should-not (equal (nskk-converter-get-rule "ka") "か")))))
 
   (nskk-it "loads and unloads cleanly"
-    (nskk-converter-define-style test-define-clean-style
-      "Temporary style for cleanup test."
-      ("qq" "クリーン"))
-    (unwind-protect
-        (progn
-          (nskk-converter-load-style 'test-define-clean-style)
-          (should (nskk-converter-get-rule "qq")))
-      (nskk-converter-load-style 'standard))
-    ;; After restoring standard, "qq" should be gone
-    (should-not (nskk-converter-get-rule "qq"))))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (let ((nskk--style-registry nskk--style-registry))
+        (nskk-converter-define-style test-define-clean-style
+          "Temporary style for cleanup test."
+          ("qq" "クリーン"))
+        (nskk-converter-load-style 'test-define-clean-style)
+        (should (nskk-converter-get-rule "qq"))
+        (nskk-converter-load-style 'standard)
+        ;; After loading standard, "qq" should be gone
+        (should-not (nskk-converter-get-rule "qq"))))))
 
 (nskk-describe "internal conversion"
   (nskk-it "converts simple input"
@@ -703,9 +714,9 @@
     (stringp result))
   100)
 
-;; Empty string: converting empty string returns empty string or nil gracefully
-;; (no error). Use a fixed empty string — the generator drives the loop.
-(nskk-property-test conversion-pbt-empty-string-no-crash
+;; Crash safety: nskk-convert-romaji never signals for any random romaji input.
+;; The generator drives varied inputs; this property verifies no-exception contract.
+(nskk-property-test conversion-pbt-no-crash-on-arbitrary-input
   ((input romaji-string))
   (condition-case nil
       (progn (nskk-convert-romaji input) t)
@@ -738,11 +749,13 @@
                  (eq (car result) :incomplete)))))
   100 1001)
 
-;; Property: nskk-converter-get-possible-completions for "k" always returns a list.
-(nskk-property-test-seeded converter-pbt-completions-k-prefix-returns-list
+;; Property: nskk-converter-get-possible-completions returns nil or a list of cons pairs.
+(nskk-property-test-seeded converter-pbt-completions-returns-list-or-nil
   ((input romaji-basic))
-  (let ((completions (nskk-converter-get-possible-completions "k")))
-    (listp completions))
+  (let ((completions (nskk-converter-get-possible-completions input)))
+    (or (null completions)
+        (and (listp completions)
+             (cl-every #'consp completions))))
   50 1002)
 
 ;; Property: convert-is-deterministic — same input always gives same result (seeded).
@@ -770,8 +783,35 @@
 (nskk-property-test-seeded romaji/k-pbt-consistent-with-sync
   ((input romaji-string))
   (equal (nskk-convert-romaji input)
-         (nskk-convert-romaji/k input #'identity))
+         (nskk-convert-romaji/k input #'identity (lambda () nil)))
   50 2002)
+
+;; Property: nskk-converter-get-rule/k is consistent with its sync wrapper.
+(nskk-property-test-seeded get-rule/k-pbt-consistent-with-sync
+  ((input romaji-basic))
+  (equal (nskk-converter-get-rule input)
+         (nskk-converter-get-rule/k input #'identity (lambda () nil)))
+  50 3001)
+
+;; Property: nskk-converter-get-possible-completions/k is consistent with its sync wrapper.
+(nskk-property-test-seeded get-possible-completions/k-pbt-consistent-with-sync
+  ((input romaji-basic))
+  (equal (nskk-converter-get-possible-completions input)
+         (nskk-converter-get-possible-completions/k input #'identity (lambda () nil)))
+  50 3002)
+
+;; Property: for any string starting with ?n, nskk-convert-n--internal returns
+;; nil or a cons whose car is "ん" and whose cdr is nil or a string.
+(nskk-property-test-seeded n-internal-pbt-returns-cons-or-nil
+  ((input romaji-basic))
+  (let ((s (concat "n" input)))
+    (let ((result (nskk-convert-n--internal s)))
+      (or (null result)
+          (and (consp result)
+               (equal (car result) "ん")
+               (or (null (cdr result))
+                   (stringp (cdr result)))))))
+  100 3003)
 
 ;;;
 ;;; Table-driven tests using nskk-should-convert-to
@@ -926,13 +966,15 @@
   (nskk-it "calls on-done with the converted kana string"
     (let (result)
       (nskk-convert-romaji--internal/k "ka"
-                                       (lambda (s) (setq result s)))
+                                       (lambda (s) (setq result s))
+                                       #'ignore)
       (should (equal result "か"))))
 
   (nskk-it "on-done receives a string for multi-syllable input"
     (let (result)
       (nskk-convert-romaji--internal/k "kana"
-                                       (lambda (s) (setq result s)))
+                                       (lambda (s) (setq result s))
+                                       #'ignore)
       (should (stringp result))
       (should (string-match-p "か" result))
       (should (string-match-p "な" result))))
@@ -943,21 +985,55 @@
       :rows (("ka") ("shi") ("tsu") ("kka"))
       :body (let (cps-result)
               (nskk-convert-romaji--internal/k romaji
-                                               (lambda (s) (setq cps-result s)))
+                                               (lambda (s) (setq cps-result s))
+                                               #'ignore)
               (should (equal cps-result
                              (nskk-convert-romaji--internal romaji))))))
 
   (nskk-it "calls on-done exactly once"
     (let ((count 0))
       (nskk-convert-romaji--internal/k "ka"
-                                       (lambda (_) (cl-incf count)))
+                                       (lambda (_) (cl-incf count))
+                                       #'ignore)
       (should (= count 1)))))
 
 ;;;
-;;; nskk-converter--populate-incomplete-markers
+;;; defun/done /k variant tests
 ;;;
 
-(nskk-describe "nskk-converter--populate-incomplete-markers"
+(nskk-describe "defun/done /k variants"
+  (nskk-it "nskk-converter-remove-rule/k calls on-done with no arguments"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-converter-add-rule "tempkey/k" "テンプ")
+      (let (done-called)
+        (nskk-converter-remove-rule/k "tempkey/k"
+          (lambda () (setq done-called t)))
+        (should done-called)
+        (should-not (nskk-converter-get-rule "tempkey/k")))))
+
+  (nskk-it "nskk-converter-register-style/k calls on-done with no arguments"
+    (let ((nskk--style-registry nskk--style-registry)
+          (done-called nil))
+      (nskk-converter-register-style/k 'test-register-style/k
+        (lambda () t)
+        (lambda () (setq done-called t)))
+      (should done-called)))
+
+  (nskk-it "nskk-converter-initialize/k calls on-done with no arguments"
+    (nskk-prolog-test-with-isolated-db
+      (let (done-called)
+        (nskk-converter-initialize/k
+          (lambda () (setq done-called t)))
+        (should done-called)
+        ;; Table should be populated after initialization
+        (should (equal (nskk-converter-get-rule "ka") "か"))))))
+
+;;;
+;;; nskk--converter-populate-incomplete-markers
+;;;
+
+(nskk-describe "nskk--converter-populate-incomplete-markers"
   (nskk-it "marks romaji prefixes as :incomplete in the conversion table"
     ;; After initialization, prefixes like \"k\", \"sh\", \"ts\" must be :incomplete.
     ;; These are auto-derived from complete entries like \"ka\" -> \"か\".

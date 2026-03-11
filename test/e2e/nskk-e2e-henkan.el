@@ -115,74 +115,35 @@
       (nskk-e2e-assert-buffer "日本"))))
 
 ;;;;
-;;;; PBT: Conversion Roundtrip
+;;;; Conversion Roundtrip Cases
 ;;;;
 
-(ert-deftest nskk-e2e-pbt-conversion-roundtrip ()
-  "PBT: Conversion flow never corrupts buffer (commit or cancel)."
-  ;; For each entry in the default dict, verify that:
-  ;; 1. Starting preedit → SPC → candidate appears → C-j → correct text
-  (let ((dict-entries '(("かんじ" . ("漢字" "感じ"))
-                        ("へんかん" . ("変換"))
-                        ("にほん"  . ("日本" "二本"))))
-        (errors nil))
-    (dolist (entry dict-entries)
-      (let ((reading (car entry))
-            (first-cand (car (cdr entry))))
-        (condition-case err
-            ;; Convert reading to romaji for typing.
-            ;; We type the kana directly via nskk-start-conversion bypass.
-            ;; Instead, we use with-temp-buffer and direct function calls.
-            ;; Since E2E needs real key events, we test specific known mappings.
-            (let ((romaji-map '(("かんじ" . "Kanji")
-                                ("へんかん" . "Henkan")
-                                ("にほん"  . "Nihon")))
-                  (typed nil))
-              (setq typed (cdr (assoc reading romaji-map)))
-              (when typed
-                (nskk-e2e-with-buffer 'hiragana (list entry)
-                  (nskk-e2e-type typed)
-                  (nskk-e2e-type "SPC")
-                  (nskk-e2e-type "C-j")
-                  (let ((actual (buffer-string)))
-                    (unless (equal actual first-cand)
-                      (push (list :reading reading
-                                  :typed typed
-                                  :expected first-cand
-                                  :actual actual)
-                            errors))))))
-          (error
-           (push (list :reading reading :error (error-message-string err))
-                 errors)))))
-    (when errors
-      (ert-fail (format "E2E PBT conversion-roundtrip: %d failures:\n%S"
-                        (length errors)
-                        (cl-subseq errors 0 (min 3 (length errors))))))))
+(nskk-deftest-table conversion-roundtrip
+  :columns (reading romaji first-cand)
+  :rows (("かんじ"   "Kanji"  "漢字")
+         ("へんかん" "Henkan" "変換")
+         ("にほん"   "Nihon"  "日本"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana (list (cons reading (list first-cand)))
+    (nskk-e2e-type romaji)
+    (nskk-e2e-type "SPC")
+    (nskk-e2e-type "C-j")
+    (nskk-e2e-assert-buffer first-cand
+                            (format "conversion %S → %S failed" romaji first-cand))))
 
 ;;;;
-;;;; PBT: Henkan Phase Nil After Commit
+;;;; Henkan Phase Nil After Commit Cases
 ;;;;
 
-(ert-deftest nskk-e2e-pbt-henkan-phase-nil-after-commit ()
-  "PBT: After SPC+C-j (conversion commit), henkan phase is nil."
-  (let ((known-conversions '(("Kanji" . "漢字")
-                             ("Henkan" . "変換")
-                             ("Nihon" . "日本")))
-        (errors nil))
-    (dolist (conv known-conversions)
-      (condition-case err
-          (nskk-e2e-with-buffer 'hiragana nil
-            (nskk-e2e-type (car conv))
-            (nskk-e2e-type "SPC")
-            (nskk-e2e-type "C-j")
-            (let ((phase (nskk-state-henkan-phase nskk-current-state)))
-              (unless (null phase)
-                (push (list :typed (car conv) :phase phase) errors))))
-        (error
-         (push (list :typed (car conv) :error (error-message-string err)) errors))))
-    (when errors
-      (ert-fail (format "E2E PBT henkan-nil-after-commit: %d failures:\n%S"
-                        (length errors) errors)))))
+(nskk-deftest-table henkan-phase-nil-after-commit
+  :columns (romaji)
+  :rows (("Kanji") ("Henkan") ("Nihon"))
+  :body
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type romaji)
+    (nskk-e2e-type "SPC")
+    (nskk-e2e-type "C-j")
+    (should (null (nskk-state-henkan-phase nskk-current-state)))))
 
 ;;;;
 ;;;; C-j During Preedit Tests
@@ -463,7 +424,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-then
         (nskk-e2e-assert-henkan-phase 'list "Phase must be 'list after SPC x5"))))
 
-  (nskk-it "sets nskk-henkan--candidate-list-active to non-nil"
+  (nskk-it "sets nskk--henkan-candidate-list-active to non-nil"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-given
         (nskk-e2e-type "Kanji"))
@@ -474,7 +435,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
         (nskk-e2e-type "SPC")
         (nskk-e2e-type "SPC"))
       (nskk-then
-        (should nskk-henkan--candidate-list-active))))
+        (should nskk--henkan-candidate-list-active))))
 
   (nskk-it "is still in converting state while in list phase"
     ;; nskk-converting-p returns t for all henkan phases including 'list.
@@ -503,7 +464,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
           (nskk-e2e-type "SPC")) ; SPC#4: select-next (count=4 < 5)
         (nskk-then
           (nskk-e2e-assert-henkan-phase 'active "Phase must be 'active before SPC x5")
-          (should-not nskk-henkan--candidate-list-active))))))
+          (should-not nskk--henkan-candidate-list-active))))))
 
 ;;;;
 ;;;; Key Selection in List Phase
@@ -536,11 +497,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; 's' → pos=1 → absolute = 3 + 1 = 4 → "貫地"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "s")
       (nskk-e2e-assert-not-converting)
@@ -550,11 +507,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; 'd' → pos=2 → absolute = 3 + 2 = 5 → "刊事"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "d")
       (nskk-e2e-assert-not-converting)
@@ -564,11 +517,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; 'f' → pos=3 → absolute = 3 + 3 = 6 → "肝事"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "f")
       (nskk-e2e-assert-not-converting)
@@ -581,11 +530,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; romaji self-insert (じ in hiragana mode), not a commit.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       ;; 'j' is out-of-range; conversion must still be active
       (nskk-e2e-type "j")
@@ -594,11 +539,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
   (nskk-it "key selection clears conversion state (phase → nil)"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-type "a")
       (nskk-e2e-assert-henkan-phase nil "After key selection phase must be nil"))))
 
@@ -627,11 +568,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
   (nskk-it "remains in converting state after x"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "x")
       (nskk-e2e-assert-converting)))
@@ -643,11 +580,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; 'a' → pos=0 → absolute = 0 + 0 = 0 → "漢字"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "x")
       (nskk-e2e-assert-henkan-phase 'list)
@@ -663,7 +596,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
 
 (nskk-describe "C-g in list phase"
   (nskk-it "cancels conversion and resets henkan-phase to nil"
-    ;; C-g → nskk-handle-cancel → 'cancel-conversion → nskk-cancel-conversion-to-reading.
+    ;; C-g → nskk-handle-cancel → 'rollback-to-reading → nskk-cancel-conversion-to-reading.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-given
         (nskk-e2e-type "Kanji"))
@@ -685,29 +618,21 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; for the input "Kanji" → "かんじ".
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-not-converting)
       ;; Buffer should contain the bare kana "かんじ" (no ▽ or ▼ marker).
       (nskk-e2e-assert-buffer "かんじ" "C-g must restore kana reading to buffer")))
 
-  (nskk-it "clears nskk-henkan--candidate-list-active after cancel"
+  (nskk-it "clears nskk--henkan-candidate-list-active after cancel"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
-      (should nskk-henkan--candidate-list-active)
+      (should nskk--henkan-candidate-list-active)
       (nskk-e2e-type "C-g")
-      (should-not nskk-henkan--candidate-list-active))))
+      (should-not nskk--henkan-candidate-list-active))))
 
 ;;;;
 ;;;; RET in List Phase (Commit Current Candidate)
@@ -738,11 +663,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
   (nskk-it "ends conversion state after RET"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "RET")
       (nskk-e2e-assert-not-converting)))
@@ -750,11 +671,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
   (nskk-it "does not insert a newline (buffer contains only the committed candidate)"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "RET")
       ;; No trailing newline: buffer-string is exactly the committed kanji.
@@ -775,11 +692,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; item = one of the valid selection keys that maps to an in-range candidate.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       ;; Dispatch the selection key as a character event
       (nskk-e2e--dispatch-event item)
       ;; After a valid selection key, conversion must have ended
@@ -799,11 +712,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; nskk-candidate-list-select-by-key returns nil → no commit → still converting.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e--dispatch-event item)
       ;; Out-of-range key: conversion must still be active
       (nskk-converting-p))))
@@ -813,14 +722,14 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
 ;;;;
 
 (nskk-describe "DEL key in list phase"
-  ;; DEL in list phase is bound to `cancel-conversion' in nskk-keymap.el:
-  ;;   (backspace converting cancel-conversion)
+  ;; DEL in list phase is bound to `rollback-to-reading' in nskk-keymap.el:
+  ;;   (backspace converting rollback-to-reading)
   ;; This is identical in effect to C-g: it calls nskk-cancel-conversion-to-reading,
   ;; which restores the kana reading, resets henkan-phase to nil, and clears
-  ;; nskk-henkan--candidate-list-active.
+  ;; nskk--henkan-candidate-list-active.
 
   (nskk-it "cancels conversion and resets henkan-phase to nil"
-    ;; DEL → cancel-conversion → nskk-cancel-conversion-to-reading → phase = nil.
+    ;; DEL → rollback-to-reading → nskk-cancel-conversion-to-reading → phase = nil.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-given
         (nskk-e2e-type "Kanji"))
@@ -841,30 +750,22 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
     ;; nskk-cancel-conversion-to-reading restores bare kana for "Kanji" → "かんじ".
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-not-converting)
       ;; Buffer must contain the bare kana "かんじ" with no ▽/▼ markers.
       (nskk-e2e-assert-buffer "かんじ" "DEL must restore kana reading to buffer")))
 
-  (nskk-it "clears nskk-henkan--candidate-list-active"
+  (nskk-it "clears nskk--henkan-candidate-list-active"
     ;; After cancel, the list-active flag must be nil (matching C-g behavior).
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-type "SPC")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
-      (should nskk-henkan--candidate-list-active)
+      (should nskk--henkan-candidate-list-active)
       (nskk-e2e-type "DEL")
-      (should-not nskk-henkan--candidate-list-active))))
+      (should-not nskk--henkan-candidate-list-active))))
 
 ;;;;
 ;;;; SPC in List Phase (Next Page)
@@ -926,7 +827,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (nskk-e2e-assert-buffer "漢字"
           "After exhaustion cancel wrap, 'a' must commit index 0 = 漢字")))
 
-    (nskk-it "after registration cancel nskk-henkan--candidate-list-active is t"
+    (nskk-it "after registration cancel nskk--henkan-candidate-list-active is t"
       ;; Cancel path in nskk--exhaust-candidates sets candidate-list-active = t.
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
         (nskk-e2e-type "Kanji")
@@ -937,7 +838,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (nskk-e2e-type "SPC")  ; SPC#5 → list phase
         (nskk-e2e-type "SPC")  ; SPC#6 → exhaust → cancel → candidate-list-active=t
         (nskk-e2e-assert-henkan-phase 'list)
-        (should nskk-henkan--candidate-list-active))))
+        (should nskk--henkan-candidate-list-active))))
 
   ;; Strategy B (11-cand dict): SPC#6 goes to page 2 without exhaustion.
   ;; per-page = min(7, 7) = 7; current-index=3 after SPC#5.
@@ -1065,7 +966,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (nskk-e2e-assert-buffer "漢字"
           "x at page-0 boundary then 'a' must commit 漢字 (index 0)"))))
 
-  (nskk-it "nskk-henkan--candidate-list-active remains t after x at page-0"
+  (nskk-it "nskk--henkan-candidate-list-active remains t after x at page-0"
     ;; x in list phase keeps candidate-list-active = t regardless of page boundary.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
@@ -1074,10 +975,10 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC")  ; list phase
-      (should nskk-henkan--candidate-list-active)
+      (should nskk--henkan-candidate-list-active)
       (nskk-e2e-type "x")    ; prev page at page-0
       (nskk-e2e-type "x")    ; again at page-0
-      (should nskk-henkan--candidate-list-active))))
+      (should nskk--henkan-candidate-list-active))))
 
 ;;;;
 ;;;; SPC Exhaustion → Registration (and Cancel Wraps Back)
@@ -1143,9 +1044,9 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (nskk-e2e-assert-buffer "漢字"
           "After exhaustion cancel, 'a' must commit 漢字 (index 0)"))))
 
-  (nskk-it "nskk-henkan--candidate-list-active is t after registration cancel"
+  (nskk-it "nskk--henkan-candidate-list-active is t after registration cancel"
     ;; Cancel path in nskk--exhaust-candidates:
-    ;;   (setq nskk-henkan--candidate-list-active t)
+    ;;   (setq nskk--henkan-candidate-list-active t)
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
@@ -1155,7 +1056,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-type "SPC")  ; SPC#5 → list
       (nskk-e2e-type "SPC")  ; SPC#6 → exhaust → cancel → active=t
       (nskk-e2e-assert-henkan-phase 'list)
-      (should nskk-henkan--candidate-list-active)))
+      (should nskk--henkan-candidate-list-active)))
 
   (nskk-it "two successive exhaustion cycles both wrap back to list phase"
     ;; SPC#6 → exhaust → cancel → index=0, list phase.
@@ -1349,6 +1250,21 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-assert-buffer "か▽")
       (nskk-e2e-assert-mode 'abbrev))))
+
+;;;;
+;;;; Property: Post-Commit Buffer Non-Empty
+;;;;
+
+(nskk-property-test-exhaustive henkan-post-commit-buffer-non-empty
+  '(("Kanji" . "漢字") ("Henkan" . "変換") ("Nihon" . "日本"))
+  ;; Property: after successful conversion + commit, buffer is non-empty
+  ;; and contains exactly the expected kanji candidate.
+  (nskk-e2e-with-buffer 'hiragana nil
+    (nskk-e2e-type (car item))
+    (nskk-e2e-type "SPC")
+    (nskk-e2e-type "C-j")
+    (and (not (string-empty-p (buffer-string)))
+         (equal (buffer-string) (cdr item)))))
 
 (provide 'nskk-e2e-henkan)
 
