@@ -161,6 +161,7 @@ Hatsuon and double vowel extensions are generated for all positions."
 x-prefix: しゃ行 (overrides standard small-kana xa=ぁ).
 c-prefix: ちゃ行.")
 
+(eval-and-compile
 (defconst nskk--azik-extension-rows
   '(("k" "か" "き" "く" "け" "こ")
     ("s" "さ" "し" "す" "せ" "そ")
@@ -201,6 +202,7 @@ q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
     ("pg" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ"))
   "Youon (拗音) rows for AZIK rules.
 Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.")
+)
 
 (defconst nskk--azik-same-finger-rules
   '(("kf" "き") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
