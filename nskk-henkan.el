@@ -1285,13 +1285,6 @@ Called when Tab is pressed in preedit (\u25bd) phase.  Searches
 for dict keys that start with the current reading and replaces
 the preedit with the first match.  Subsequent calls cycle through
 all matches."
-  ;; Flush any pending romaji (e.g., trailing 'n' → ん) before capturing
-  ;; the prefix, so the prefix is a pure kana string matchable against the
-  ;; dict trie.  Mirror the same flush-before-capture pattern used in
-  ;; `nskk-start-conversion'.
-  (let ((pending (nskk-convert-input-to-kana-final)))
-    (when (and (stringp pending) (not (string-empty-p pending)))
-      (insert pending)))
   (let ((preedit (nskk-preedit-string)))
     (when (and preedit (not (string-empty-p preedit)))
       (cond
@@ -1303,7 +1296,10 @@ all matches."
               (mod (1+ nskk--dcomp-index)
                    (length nskk--dcomp-candidates)))
         (nskk--dcomp-replace-preedit
-         (nth nskk--dcomp-index nskk--dcomp-candidates)))
+         (nth nskk--dcomp-index nskk--dcomp-candidates))
+        ;; Discard pending romaji — the completed reading supersedes it.
+        (nskk--clear-pending-romaji)
+        (setq nskk--romaji-buffer ""))
        ;; Fresh search
        (t
         (let ((matches (nskk--dcomp-search-prefix preedit)))
@@ -1311,7 +1307,10 @@ all matches."
             (setq nskk--dcomp-prefix preedit
                   nskk--dcomp-candidates matches
                   nskk--dcomp-index 0)
-            (nskk--dcomp-replace-preedit (car matches)))))))))
+            (nskk--dcomp-replace-preedit (car matches))
+            ;; Discard pending romaji — the completed reading supersedes it.
+            (nskk--clear-pending-romaji)
+            (setq nskk--romaji-buffer ""))))))
 
 ;;;; SKK Numeric Conversion (数値変換)
 

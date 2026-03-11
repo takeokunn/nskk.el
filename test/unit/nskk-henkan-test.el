@@ -1085,7 +1085,7 @@
     :rows (("42" 0 "42")
            ("42" 1 "４２")
            ("42" 2 "四二")
-           ("42" 3 "四二")
+           ("42" 3 "四十二")
            ("42" 4 "四二")
            ("42" 9 "42"))
     :body (should (equal (nskk--numeric-convert input type) expected)))
