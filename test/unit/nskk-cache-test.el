@@ -410,7 +410,10 @@
        (should (string= (nskk-cache-lfu-get cache "key3") "value3"))
        (should (string= (nskk-cache-lfu-get cache "key4") "value4")))))
 
-  (nskk-it "evicts the first inserted entry when frequencies are equal (FIFO tiebreak)"
+  (nskk-it "evicts any entry at the minimum frequency when frequencies are equal"
+    ;; Frequency buckets are now hash-tables (O(1) add/remove), so eviction order
+    ;; within equal-frequency entries is arbitrary (not FIFO).  The contract is:
+    ;; exactly one of the min-freq entries is evicted; the new entry is present.
     (let ((cache (nskk-cache-lfu-create 3)))
       (nskk-given
        ;; All entries have frequency 1
@@ -420,11 +423,14 @@
       (nskk-when
        (nskk-cache-lfu-put cache "key4" "value4"))
       (nskk-then
-       ;; key1 inserted first → evicted first
-       (should (null  (nskk-cache-lfu-get cache "key1")))
-       (should (string= (nskk-cache-lfu-get cache "key2") "value2"))
-       (should (string= (nskk-cache-lfu-get cache "key3") "value3"))
-       (should (string= (nskk-cache-lfu-get cache "key4") "value4"))))))
+       ;; key4 is always present; exactly 2 of {key1,key2,key3} survive
+       (should (= (nskk-cache-lfu-size cache) 3))
+       (should (string= (nskk-cache-lfu-get cache "key4") "value4"))
+       (let ((surviving (cl-count-if #'identity
+                          (list (nskk-cache-lfu-get cache "key1")
+                                (nskk-cache-lfu-get cache "key2")
+                                (nskk-cache-lfu-get cache "key3")))))
+         (should (= surviving 2)))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; LFU cache: statistics
@@ -785,7 +791,7 @@
         (nskk-cache-lfu-put cache (format "key%d" i) (format "value%d" i)))
       (let ((put-ms (* 1000 (float-time (time-subtract (current-time) start)))))
         (message "[Performance] LFU put 1000 entries: %.3fms" put-ms)
-        (should (< put-ms 100))))
+        (should (< put-ms 100))))   ; < 100 ms total
     (let ((start (current-time)))
       (dotimes (i 1000)
         (nskk-cache-lfu-get cache (format "key%d" i)))

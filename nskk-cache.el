@@ -375,6 +375,29 @@ Returns t if KEY was found and removed, nil otherwise."
 
 ;;; LFU Cache Implementation
 
+(defun/k nskk-cache-lfu--bucket-any-key (bucket)
+  "Return any key from BUCKET (a hash-table mapping key -> t).
+Calls on-found with the key when BUCKET is non-empty; on-not-found otherwise."
+  (let ((k (catch 'found
+              (maphash (lambda (key _) (throw 'found key)) bucket))))
+    (if k (succeed k) (fail))))
+
+(defun/done nskk-cache-lfu--evict-min-freq (cache)
+  "Evict one entry at the minimum frequency from CACHE.
+No-op when the min-freq bucket is absent or empty."
+  (let* ((min-freq   (nskk-cache-lfu-min-freq cache))
+         (freq-table (nskk-cache-lfu-freq cache))
+         (bucket     (gethash min-freq freq-table)))
+    (when bucket
+      (nskk-cache-lfu--bucket-any-key/k bucket
+        (lambda (evict-key)
+          (remhash evict-key (nskk-cache-lfu-hash cache))
+          (remhash evict-key bucket)
+          (when (zerop (hash-table-count bucket))
+            (remhash min-freq freq-table))
+          (cl-decf (nskk-cache-lfu-size cache)))
+        #'ignore))))
+
 (defun nskk-cache-lfu-create (capacity)
   "Create an LFU cache with CAPACITY entries."
   (nskk-cache-lfu--create
@@ -389,23 +412,27 @@ Returns t if KEY was found and removed, nil otherwise."
 (defsubst nskk-cache-lfu--update-freq (cache entry old-freq)
   "Promote ENTRY in LFU CACHE from OLD-FREQ to its new frequency.
 Removes ENTRY from the old frequency bucket and inserts into the new one.
+Each bucket is a hash-table (key -> t) for O(1) add/remove.
 Updates min-freq when the old minimum frequency bucket becomes empty."
   (let ((freq-table (nskk-cache-lfu-freq cache))
         (key        (nskk-cache-lfu-entry-key entry))
         (new-freq   (nskk-cache-lfu-entry-frequency entry)))
-    ;; Remove from old frequency bucket
+    ;; Remove from old frequency bucket (O(1))
     (when old-freq
-      (let ((keys (delete key (gethash old-freq freq-table))))
-        (if keys
-            (puthash old-freq keys freq-table)
-          (remhash old-freq freq-table)
-          ;; Advance min-freq when minimum bucket is emptied
-          (when (= old-freq (nskk-cache-lfu-min-freq cache))
-            (setf (nskk-cache-lfu-min-freq cache) new-freq)))))
-    ;; Append to new frequency bucket (FIFO within equal frequencies)
-    (puthash new-freq
-             (append (gethash new-freq freq-table) (list key))
-             freq-table)))
+      (let ((bucket (gethash old-freq freq-table)))
+        (when bucket
+          (remhash key bucket)
+          (when (zerop (hash-table-count bucket))
+            (remhash old-freq freq-table)
+            ;; Advance min-freq when minimum bucket is emptied
+            (when (= old-freq (nskk-cache-lfu-min-freq cache))
+              (setf (nskk-cache-lfu-min-freq cache) new-freq))))))
+    ;; Add to new frequency bucket (O(1))
+    (let ((bucket (gethash new-freq freq-table)))
+      (unless bucket
+        (setq bucket (make-hash-table :test 'equal :size 4))
+        (puthash new-freq bucket freq-table))
+      (puthash key t bucket))))
 
 (defun/k nskk-cache-lfu-get (cache key)
   "Get the value for KEY from LFU CACHE.
@@ -433,17 +460,7 @@ Evicts the least-frequently-used entry when CACHE is at capacity."
           (nskk-cache-lfu--update-freq cache entry old-freq))
       ;; New entry: evict if at capacity, then insert at frequency 1
       (when (>= (nskk-cache-lfu-size cache) (nskk-cache-lfu-capacity cache))
-        (let* ((min-freq  (nskk-cache-lfu-min-freq cache))
-               (freq-table (nskk-cache-lfu-freq cache))
-               (keys      (gethash min-freq freq-table))
-               (evict-key (car keys)))
-          (when evict-key
-            (remhash evict-key (nskk-cache-lfu-hash cache))
-            (let ((remaining (cdr keys)))
-              (if remaining
-                  (puthash min-freq remaining freq-table)
-                (remhash min-freq freq-table)))
-            (cl-decf (nskk-cache-lfu-size cache)))))
+        (nskk-cache-lfu--evict-min-freq cache))
       (let ((new-entry (nskk-cache-lfu-entry--create
                         :key key :value value :frequency 1)))
         (puthash key new-entry (nskk-cache-lfu-hash cache))
@@ -459,10 +476,11 @@ Returns t if KEY was found and removed, nil otherwise."
         (progn
           (let* ((freq-table (nskk-cache-lfu-freq cache))
                  (freq       (nskk-cache-lfu-entry-frequency entry))
-                 (remaining  (delete key (gethash freq freq-table))))
-            (if remaining
-                (puthash freq remaining freq-table)
-              (remhash freq freq-table)))
+                 (bucket     (gethash freq freq-table)))
+            (when bucket
+              (remhash key bucket)
+              (when (zerop (hash-table-count bucket))
+                (remhash freq freq-table))))
           (remhash key (nskk-cache-lfu-hash cache))
           (cl-decf (nskk-cache-lfu-size cache))
           (succeed t))
