@@ -701,7 +701,20 @@ that the second element is a symbol with the given name."
         (should (equal (cadr let*-form) '((x 1) (y x))))
         (let ((body-form (caddr let*-form)))
           (should (nskk-cps-test--funcall-sym-named-p body-form "on-found"))
-          (should (equal (nth 2 body-form) 'y))))))
+          (should (equal (nth 2 body-form) 'y)))))
+
+    (nskk-it "transforms pcase-let* body in tail position"
+      (defun/k nskk-cps-test--pcase-let*-fn (x)
+        "Test pcase-let* CPS transform."
+        (pcase-let* ((`(,a ,b) x))
+          (succeed (+ a b))))
+      (should (= (nskk-cps-test--pcase-let*-fn '(3 4)) 7))
+      (let ((found nil) (not-found-called nil))
+        (nskk-cps-test--pcase-let*-fn/k '(3 4)
+          (lambda (v) (setq found v))
+          (lambda () (setq not-found-called t)))
+        (should (= found 7))
+        (should (null not-found-called)))))
 
   (nskk-context "pcase form"
     (nskk-it "transforms each pcase clause body while leaving patterns and expr unchanged"
@@ -1592,6 +1605,150 @@ that the second element is a symbol with the given name."
       (should (null (cadr on-miss)))      ; zero args
       (should (equal (caddr on-miss) '(error "not-found!"))))))
 
+
+;;; -------------------------------------------------------------------
+;;; <-seq CPS special form tests
+;;; -------------------------------------------------------------------
+
+(nskk-describe "defun/k <-seq special form"
+  (nskk-it "propagates success: binds result and evaluates body"
+    ;; <-seq [result (helper arg)] body  is equivalent to
+    ;; (<- result helper arg) body
+    (defun/k nskk-cps-test--always-found (x)
+      "Always succeed with X doubled."
+      (succeed (* x 2)))
+    (defun/k nskk-cps-test--seq-caller (n)
+      "Use <-seq to bind and double-double N."
+      (<-seq [doubled (nskk-cps-test--always-found n)]
+        (succeed (* doubled 2))))
+    (should (= (nskk-cps-test--seq-caller 3) 12)))
+
+  (nskk-it "propagates failure to the outer on-not-found"
+    (defun/k nskk-cps-test--always-failed (_x)
+      "Always fail."
+      (fail))
+    (defun/k nskk-cps-test--seq-fail-caller (n)
+      "Use <-seq; inner failure should propagate."
+      (<-seq [_result (nskk-cps-test--always-failed n)]
+        (succeed "should-not-reach")))
+    ;; sync wrapper returns nil on failure
+    (should (null (nskk-cps-test--seq-fail-caller 99))))
+
+  (nskk-it "body is not reached when CPS call fails"
+    (defun/k nskk-cps-test--always-failed (_x)
+      "Always fail."
+      (fail))
+    (let ((body-reached nil))
+      (defun/k nskk-cps-test--seq-side-effect-caller (n)
+        "Track whether body was executed on failure."
+        (<-seq [_result (nskk-cps-test--always-failed n)]
+          (progn (setq body-reached t) (succeed t))))
+      (nskk-cps-test--seq-side-effect-caller 0)
+      (should (null body-reached))))
+
+  (nskk-it "macroexpand produces fn/k call with two lambdas"
+    ;; The expansion of (<-seq [v (my-fn arg)] body) inside a defun/k should
+    ;; produce (my-fn/k arg (lambda (--v--) (let ((v --v--)) body)) on-not-found)
+    (let* ((form '(defun/k nskk-cps-test--seq-expand (x)
+                    "Expansion test."
+                    (<-seq [result (my-fn x)]
+                      (succeed result))))
+           (expanded (macroexpand-1 form))
+           ;; expanded = (progn (defun nskk-cps-test--seq-expand/k ...) (defun ...) (put ...))
+           (k-defun  (nth 1 expanded))
+           (k-body   (nth 4 k-defun))  ; (<-seq ...) transformed body
+           )
+      ;; The /k body should be a call to my-fn/k
+      (should (eq (car k-body) 'my-fn/k))
+      ;; Second arg is a lambda (on-found)
+      (should (eq (car (nth 2 k-body)) 'lambda))
+      ;; Third arg is the outer on-not-found symbol (a lambda or symbol)
+      (should (nth 3 k-body)))))
+
+;;; -------------------------------------------------------------------
+;;; New helper function tests
+;;; -------------------------------------------------------------------
+
+(nskk-describe "nskk--cps-parse-interactive"
+  (nskk-it "returns nil form and unchanged body when no :interactive"
+    (let ((result (nskk--cps-parse-interactive '((foo) (bar)))))
+      (should (null (car result)))
+      (should (equal (cdr result) '((foo) (bar))))))
+
+  (nskk-it "returns (interactive) for :interactive t"
+    (let ((result (nskk--cps-parse-interactive '(:interactive t (foo)))))
+      (should (equal (car result) '(interactive)))
+      (should (equal (cdr result) '((foo))))))
+
+  (nskk-it "returns (interactive SPEC) for string spec"
+    (let ((result (nskk--cps-parse-interactive '(:interactive "p" (foo)))))
+      (should (equal (car result) '(interactive "p")))
+      (should (equal (cdr result) '((foo))))))
+
+  (nskk-it "handles empty body with :interactive"
+    (let ((result (nskk--cps-parse-interactive '(:interactive t))))
+      (should (equal (car result) '(interactive)))
+      (should (null (cdr result)))))
+
+  (nskk-it "returns (interactive FORM) for arbitrary form spec"
+    (let ((result (nskk--cps-parse-interactive '(:interactive (list "f") (foo)))))
+      (should (equal (car result) '(interactive (list "f"))))
+      (should (equal (cdr result) '((foo)))))))
+
+(nskk-describe "nskk--cps-parse-kw-args"
+  (nskk-it "splits :found and :fail from rest args"
+    (let* ((rest '(arg1 :found found-form :fail fail-form))
+           (result (nskk--cps-parse-kw-args rest '(:found :fail))))
+      (should (equal (car result) '(arg1)))
+      (should (equal (cdr (assq :found (cdr result))) 'found-form))
+      (should (equal (cdr (assq :fail  (cdr result))) 'fail-form))))
+
+  (nskk-it "handles :fail before :found"
+    (let* ((rest '(arg1 :fail fail-form :found found-form))
+           (result (nskk--cps-parse-kw-args rest '(:found :fail))))
+      (should (equal (car result) '(arg1)))
+      (should (equal (cdr (assq :found (cdr result))) 'found-form))
+      (should (equal (cdr (assq :fail  (cdr result))) 'fail-form))))
+
+  (nskk-it "errors when keyword missing"
+    (should-error (nskk--cps-parse-kw-args '(arg1 :found f) '(:found :fail))))
+
+  (nskk-it "errors when keyword has no following form"
+    (should-error (nskk--cps-parse-kw-args '(:found) '(:found :fail))))
+
+  (nskk-it "handles zero positional args"
+    (let* ((rest '(:found found-form :fail fail-form))
+           (result (nskk--cps-parse-kw-args rest '(:found :fail))))
+      (should (null (car result)))
+      (should (equal (cdr (assq :found (cdr result))) 'found-form))
+      (should (equal (cdr (assq :fail  (cdr result))) 'fail-form)))))
+
+(nskk-describe "nskk--cps-args-info simplified"
+  (nskk-it "handles plain args"
+    (should (equal (nskk--cps-args-info '(a b c)) '((a b c)))))
+
+  (nskk-it "strips &optional keyword"
+    (should (equal (nskk--cps-args-info '(a &optional b)) '((a b)))))
+
+  (nskk-it "extracts &rest symbol"
+    (should (equal (nskk--cps-args-info '(a &rest rest)) (cons '(a) 'rest))))
+
+  (nskk-it "handles &optional and &rest together"
+    (should (equal (nskk--cps-args-info '(a &optional b &rest rest))
+                   (cons '(a b) 'rest)))))
+
+(nskk-describe "nskk--cps-define-handler"
+  (nskk-it "registers handler in dispatch table"
+    (let ((nskk--cps-form-dispatch nil))
+      (nskk--cps-define-handler test-form #'identity)
+      (should (assq 'test-form nskk--cps-form-dispatch))))
+
+  (nskk-it "registered handler is called by nskk--cps-transform-form"
+    (let* ((called nil)
+           (handler (lambda (form _f _nf) (setq called form) 'result))
+           (nskk--cps-form-dispatch (list (cons 'my-form handler))))
+      (nskk--cps-transform-form '(my-form arg) 'found 'not-found)
+      (should (equal called '(my-form arg))))))
 
 (provide 'nskk-cps-macros-test)
 

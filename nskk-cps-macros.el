@@ -125,8 +125,50 @@ An alist mapping form-head symbol to a handler function.
 Each handler has the signature (FORM ON-FOUND-SYM ON-NOT-FOUND-SYM) and
 returns the CPS-transformed form.
 Set unconditionally at load time so `eval-buffer' picks up any changes.
-New forms can be supported by pushing (SYMBOL . HANDLER-FN) entries onto
-this variable.")
+New forms can be supported by registering an entry with
+`nskk--cps-define-handler'.
+
+Note: this table handles standard Emacs Lisp special forms and macros
+(e.g. `let', `if', `when').  Framework-internal pipeline operators
+\(`<-', `<-or', `<-seq', `fail', `succeed') are dispatched inline in
+the `cond' of `nskk--cps-transform-form' because they are CPS-specific
+constructs with no meaning outside `defun/k' bodies.")
+
+(defmacro nskk--cps-define-handler (form-head fn-sym)
+  "Register FN-SYM as the CPS transform handler for FORM-HEAD.
+FN-SYM must already be defined.  Pushes (FORM-HEAD . FN-SYM) onto
+`nskk--cps-form-dispatch' unconditionally (load-time, not eval-time)."
+  `(push (cons ',form-head ,fn-sym) nskk--cps-form-dispatch))
+
+;;; -----------------------------------------------------------------------
+;;; Generic form handlers
+;;; -----------------------------------------------------------------------
+
+(defun nskk--cps-transform-binding-form (form on-found-sym on-not-found-sym)
+  "Generic CPS transform for binding forms: (HEAD BINDINGS BODY...).
+Handles `let', `let*', and `pcase-let*' uniformly.
+The HEAD symbol is preserved, BINDINGS pass through, BODY tail is transformed."
+  `(,(car form) ,(cadr form)
+    ,@(nskk--cps-transform-body-list (cddr form) on-found-sym on-not-found-sym)))
+
+(defun nskk--cps-transform-test-body-form (form on-found-sym on-not-found-sym)
+  "Generic CPS transform for test-body forms: (HEAD TEST BODY...).
+Handles `when' and `unless' uniformly.
+The HEAD symbol and TEST are preserved; BODY tail is transformed."
+  `(,(car form) ,(cadr form)
+    ,@(nskk--cps-transform-body-list (cddr form) on-found-sym on-not-found-sym)))
+
+(defun nskk--cps-transform-short-circuit-form (form on-found-sym on-not-found-sym)
+  "Generic CPS transform for short-circuit forms: (HEAD PRECEDING... LAST).
+Handles `and' and `or' uniformly.
+PRECEDING forms pass through; only LAST is CPS-transformed.
+An empty (and) / (or) passes through unchanged."
+  (let ((preceding (butlast (cdr form)))
+        (last      (car (last (cdr form)))))
+    (if last
+        `(,(car form) ,@preceding
+          ,(nskk--cps-transform-form last on-found-sym on-not-found-sym))
+      form)))
 
 (defun nskk--cps-transform-if (form on-found-sym on-not-found-sym)
   "CPS-transform an (if TEST THEN [ELSE...]) FORM.
@@ -159,51 +201,11 @@ Each clause body is transformed; test-only clauses pass through unchanged."
                     `(,test))))
               (cdr form))))
 
-(defun nskk--cps-transform-when (form on-found-sym on-not-found-sym)
-  "CPS-transform a (when TEST BODY...) FORM.
-The last body form is transformed; preceding forms pass through."
-  (let ((test (cadr form))
-        (body (cddr form)))
-    `(when ,test
-       ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym))))
-
-(defun nskk--cps-transform-unless (form on-found-sym on-not-found-sym)
-  "CPS-transform an (unless TEST BODY...) FORM.
-The last body form is transformed; preceding forms pass through."
-  (let ((test (cadr form))
-        (body (cddr form)))
-    `(unless ,test
-       ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym))))
-
 (defun nskk--cps-transform-progn (form on-found-sym on-not-found-sym)
   "CPS-transform a (progn FORMS...) FORM.
 The last form is transformed; preceding forms pass through unchanged."
   `(progn ,@(nskk--cps-transform-body-list
              (cdr form) on-found-sym on-not-found-sym)))
-
-(defun nskk--cps-transform-let (form on-found-sym on-not-found-sym)
-  "CPS-transform a (let BINDINGS BODY...) FORM.
-Binding expressions are not transformed; only the body tail is."
-  (let ((bindings (cadr form))
-        (body     (cddr form)))
-    `(let ,bindings
-       ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym))))
-
-(defun nskk--cps-transform-let* (form on-found-sym on-not-found-sym)
-  "CPS-transform a (let* BINDINGS BODY...) FORM.
-Binding expressions are not transformed; only the body tail is."
-  (let ((bindings (cadr form))
-        (body     (cddr form)))
-    `(let* ,bindings
-       ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym))))
-
-(defun nskk--cps-transform-pcase-let* (form on-found-sym on-not-found-sym)
-  "CPS-transform a (pcase-let* BINDINGS BODY...) FORM.
-Binding patterns and expressions are not transformed; only the body tail is."
-  (let ((bindings (cadr form))
-        (body     (cddr form)))
-    `(pcase-let* ,bindings
-       ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym))))
 
 (defun nskk--cps-transform-pcase (form on-found-sym on-not-found-sym)
   "CPS-transform a (pcase EXPR CLAUSES...) FORM.
@@ -253,52 +255,35 @@ transformation applies.  Only valid in tail position."
        (let ((,k-name (lambda (v) (throw ',tag (funcall ,on-found-sym v)))))
          ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym)))))
 
-(defun nskk--cps-transform-and (form on-found-sym on-not-found-sym)
-  "CPS-transform an (and FORMS...) FORM.
-Only the last form is CPS-transformed; preceding forms act as guards.
-An empty (and) passes through unchanged."
-  (let ((guards (butlast (cdr form)))
-        (last   (car (last (cdr form)))))
-    (if last
-        `(and ,@guards
-              ,(nskk--cps-transform-form last on-found-sym on-not-found-sym))
-      form)))
-
-(defun nskk--cps-transform-or (form on-found-sym on-not-found-sym)
-  "CPS-transform an (or FORMS...) FORM.
-Only the last form is CPS-transformed; preceding forms act as fallbacks.
-An empty (or) passes through unchanged."
-  (let ((fallbacks (butlast (cdr form)))
-        (last      (car (last (cdr form)))))
-    (if last
-        `(or ,@fallbacks
-             ,(nskk--cps-transform-form last on-found-sym on-not-found-sym))
-      form)))
-
-(setq nskk--cps-form-dispatch
-      (list (cons 'if      #'nskk--cps-transform-if)
-            (cons 'cond    #'nskk--cps-transform-cond)
-            (cons 'when    #'nskk--cps-transform-when)
-            (cons 'unless  #'nskk--cps-transform-unless)
-            (cons 'progn   #'nskk--cps-transform-progn)
-            (cons 'let     #'nskk--cps-transform-let)
-            (cons 'let*    #'nskk--cps-transform-let*)
-            (cons 'pcase        #'nskk--cps-transform-pcase)
-            (cons 'pcase-let*  #'nskk--cps-transform-pcase-let*)
-            (cons 'call/cc #'nskk--cps-transform-call/cc)
-            (cons 'escape  #'nskk--cps-transform-escape)
-            (cons 'and     #'nskk--cps-transform-and)
-            (cons 'or      #'nskk--cps-transform-or)))
+(setq nskk--cps-form-dispatch nil)
+;; Binding forms: (HEAD BINDINGS BODY...)
+(nskk--cps-define-handler let     #'nskk--cps-transform-binding-form)
+(nskk--cps-define-handler let*    #'nskk--cps-transform-binding-form)
+(nskk--cps-define-handler pcase-let*  #'nskk--cps-transform-binding-form)
+;; Test-body forms: (HEAD TEST BODY...)
+(nskk--cps-define-handler when    #'nskk--cps-transform-test-body-form)
+(nskk--cps-define-handler unless  #'nskk--cps-transform-test-body-form)
+;; Short-circuit forms: (HEAD GUARDS... LAST)
+(nskk--cps-define-handler and     #'nskk--cps-transform-short-circuit-form)
+(nskk--cps-define-handler or      #'nskk--cps-transform-short-circuit-form)
+;; Remaining specific forms
+(nskk--cps-define-handler if      #'nskk--cps-transform-if)
+(nskk--cps-define-handler cond    #'nskk--cps-transform-cond)
+(nskk--cps-define-handler progn   #'nskk--cps-transform-progn)
+(nskk--cps-define-handler pcase   #'nskk--cps-transform-pcase)
+(nskk--cps-define-handler call/cc #'nskk--cps-transform-call/cc)
+(nskk--cps-define-handler escape  #'nskk--cps-transform-escape)
 
 (defun nskk--cps-transform-form (form on-found-sym on-not-found-sym)
   "Transform a single FORM in CPS tail position.
 ON-FOUND-SYM and ON-NOT-FOUND-SYM are the continuation parameter symbols.
 Returns the transformed form.
 
-Atoms and unrecognized forms pass through unchanged.  Recognized special
-forms are dispatched via `nskk--cps-form-dispatch'.  The `fail', `succeed',
-`<-', and `<-or' special forms are handled inline due to their arity
-requirements or dedicated helper functions."
+Atoms and unrecognized forms pass through unchanged.  Recognized standard
+Emacs Lisp forms are dispatched via `nskk--cps-form-dispatch'.
+Framework pipeline operators (`fail', `succeed', `<-', `<-or', `<-seq')
+are handled inline: they are CPS-specific constructs that have no meaning
+outside `defun/k' bodies."
   (cond
    ;; Atom — pass through unchanged (no CPS transformation possible)
    ((not (consp form)) form)
@@ -326,6 +311,10 @@ requirements or dedicated helper functions."
    ;; (<-or ...) — two-arm CPS bind
    ((eq (car form) '<-or)
     (nskk--cps-transform-<-or form on-found-sym on-not-found-sym))
+
+   ;; (<-seq [VAR (FN ARGS...)] BODY...) — sequential CPS bind
+   ((eq (car form) '<-seq)
+    (nskk--cps-transform-<-seq form on-found-sym on-not-found-sym))
 
    ;; Dispatch via table, or pass through if the form head is not registered
    (t
@@ -372,6 +361,29 @@ two (on-found, on-not-found).  Call %s directly or use its sync wrapper."
                     ,@cont-body))
                 ,on-not-found-sym)))))
 
+(defun nskk--cps-parse-kw-args (rest required-kws)
+  "Split REST at REQUIRED-KWS keyword positions.
+Returns (POSITIONAL-ARGS . ((KW . FORM) ...)).
+Each keyword in REQUIRED-KWS must appear in REST with a following form.
+POSITIONAL-ARGS are all elements before the first keyword.
+Signals an error if any keyword is missing or has no following form.
+Positional argument values must not be symbols that appear in
+REQUIRED-KWS: such symbols would be mistaken for keyword markers by
+`cl-position', silently producing wrong positional/keyword splits."
+  (let* ((positions (mapcar (lambda (kw)
+                              (let ((pos (cl-position kw rest)))
+                                (unless pos
+                                  (error "nskk-cps: missing %S keyword" kw))
+                                (when (>= (1+ pos) (length rest))
+                                  (error "nskk-cps: %S has no following form" kw))
+                                (cons kw pos)))
+                            required-kws))
+         (first-kw-pos (apply #'min (mapcar #'cdr positions))))
+    (cons (cl-subseq rest 0 first-kw-pos)
+          (mapcar (lambda (kw-pos)
+                    (cons (car kw-pos) (nth (1+ (cdr kw-pos)) rest)))
+                  positions))))
+
 (defun nskk--cps-transform-<-or (form on-found-sym on-not-found-sym)
   "Transform a (<-or VAR FN-NAME ARG... :found FOUND-FORM :fail FAIL-FORM) form.
 FORM is the full `<-or' form.
@@ -386,30 +398,59 @@ one form; use `progn' for multiple forms."
     (when (string-suffix-p "/k" (symbol-name fn-name))
       (error "nskk-cps: `<-or' fn-name must be a non-/k name, got: %s \
 \(would generate %s/k — double /k suffix)" fn-name fn-name))
-    ;; Split on :found and :fail keywords
-    (let* ((found-pos (cl-position :found rest))
-           (fail-pos  (cl-position :fail  rest)))
-      (unless found-pos
-        (error "nskk-cps: `<-or' missing :found keyword in form %S" form))
-      (unless fail-pos
-        (error "nskk-cps: `<-or' missing :fail keyword in form %S" form))
-      (when (>= (1+ found-pos) (length rest))
-        (error "nskk-cps: `<-or' :found keyword has no following form in %S" form))
-      (when (>= (1+ fail-pos) (length rest))
-        (error "nskk-cps: `<-or' :fail keyword has no following form in %S" form))
-      (let* ((args       (cl-subseq rest 0 (min found-pos fail-pos)))
-             (found-form (nth (1+ found-pos) rest))
-             (fail-form  (nth (1+ fail-pos)  rest))
-             (param      (make-symbol (concat "--" (symbol-name var) "--"))))
+    (let* ((parsed     (nskk--cps-parse-kw-args rest '(:found :fail)))
+           (args        (car parsed))
+           (found-form  (cdr (assq :found (cdr parsed))))
+           (fail-form   (cdr (assq :fail  (cdr parsed))))
+           (param       (make-symbol (concat "--" (symbol-name var) "--"))))
+      `(,fn-k ,@args
+              (lambda (,param)
+                (let ((,var ,param))
+                  ,(nskk--cps-transform-form
+                    found-form on-found-sym on-not-found-sym)))
+              (lambda ()
+                ,(nskk--cps-transform-form
+                  fail-form on-found-sym on-not-found-sym))))))
+
+
+(defun nskk--cps-transform-<-seq (form on-found-sym on-not-found-sym)
+  "Transform a (<-seq [VAR (FN ARGS...)] BODY...) form.
+VAR is bound to the CPS result of FN/k; BODY forms are the continuation.
+Failure from FN/k auto-propagates to ON-NOT-FOUND-SYM without an explicit
+:fail arm.
+
+Equivalent to writing (<- VAR FN ARGS...) followed immediately by BODY
+forms, but with explicit grouping: the binding and its entire continuation
+are enclosed in one syntactic unit.
+
+FN must NOT end in /k; the macro appends /k automatically.
+Signals an error at macro-expansion time if FN ends in /k.
+Cannot bind a defun/done function (1-continuation arity mismatch).
+
+Only valid inside `defun/k' bodies."
+  (let* ((binding (nth 1 form))
+         (body    (nthcdr 2 form)))
+    (unless (and (vectorp binding) (= (length binding) 2))
+      (error "nskk-cps: <-seq binding must be a 2-element vector [var (fn args...)], got %S"
+             binding))
+    (let* ((var     (aref binding 0))
+           (call    (aref binding 1))
+           (fn-name (car call))
+           (args    (cdr call))
+           (fn-k    (intern (concat (symbol-name fn-name) "/k"))))
+      (when (string-suffix-p "/k" (symbol-name fn-name))
+        (error "nskk-cps: <-seq fn must NOT end in /k, got: %s \
+\(would generate %s/k — double /k suffix)" fn-name fn-name))
+      (when (eq (get fn-k 'nskk--cps-continuation-pattern) :done)
+        (error "nskk-cps: `<-seq' cannot bind a defun/done function `%s'.
+`defun/done' /k functions take one continuation (on-done), not two."
+               fn-k))
+      (let ((param (make-symbol (concat "--" (symbol-name var) "--"))))
         `(,fn-k ,@args
                 (lambda (,param)
                   (let ((,var ,param))
-                    ,(nskk--cps-transform-form
-                      found-form on-found-sym on-not-found-sym)))
-                (lambda ()
-                  ,(nskk--cps-transform-form
-                    fail-form on-found-sym on-not-found-sym)))))))
-
+                    ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym)))
+                ,on-not-found-sym)))))
 
 ;;; -----------------------------------------------------------------------
 ;;; Arglist helpers
@@ -427,25 +468,31 @@ REST-SYM-OR-NIL is the symbol following &rest, or nil if none.
 This is used by `defun/k' and `defun/done' to build correct call forms
 inside sync wrappers: lambda keywords are declaration syntax, not values,
 so they cannot appear in a function call position."
-  (let ((plain nil)
-        (rest-sym nil)
-        (reading-rest nil))
-    (dolist (arg args)
-      (cond
-       (reading-rest
-        (setq rest-sym arg reading-rest nil))
-       ((eq arg '&rest)
-        (setq reading-rest t))
-       ((memq arg '(&optional &key &allow-other-keys))
-        nil)                            ; skip keyword, keep following arg names
-       (t
-        (push arg plain))))
-    (cons (nreverse plain) rest-sym)))
+  (let* ((rest-pos (cl-position '&rest args))
+         (pre-rest (if rest-pos (cl-subseq args 0 rest-pos) args))
+         (plain    (cl-remove-if (lambda (a)
+                                   (memq a '(&optional &key &allow-other-keys)))
+                                 pre-rest))
+         (rest-sym (when rest-pos (nth (1+ rest-pos) args))))
+    (cons plain rest-sym)))
 
 
 ;;; -----------------------------------------------------------------------
 ;;; Public macros
 ;;; -----------------------------------------------------------------------
+
+(defun nskk--cps-parse-interactive (body)
+  "Extract optional :interactive spec from the start of BODY.
+Returns a cons cell (INTERACTIVE-FORM . REAL-BODY).
+INTERACTIVE-FORM is nil if no :interactive keyword is present,
+\\='(interactive) for `:interactive t', or \\='(interactive SPEC)' for a
+string or form spec.  REAL-BODY is BODY with the :interactive keyword
+and its argument removed."
+  (if (and (consp body) (eq (car body) :interactive))
+      (let* ((spec (cadr body))
+             (form (if (eq spec t) '(interactive) `(interactive ,spec))))
+        (cons form (cddr body)))
+    (cons nil body)))
 
 ;;;###autoload
 (defmacro defun/k (name args docstring &rest body)
@@ -473,6 +520,9 @@ CPS special forms recognized in BODY:
   (<- VAR FN ARGS...)   — bind CPS result of FN/k, continue with rest of body
   (<-or VAR FN ARGS... :found FOUND-FORM :fail FAIL-FORM)
                         — two-arm CPS bind
+  (<-seq [VAR (FN ARGS...)] BODY...)
+                        — sequential bind; failure auto-propagates;
+                          groups binding and continuation in one unit
   (call/cc (lambda (K) BODY...))
                         — bind K to on-found (first-class continuation);
                           K can be stored, passed around, or called many times
@@ -497,15 +547,9 @@ Example:
          (on-not-found-sym (make-symbol "on-not-found"))
          (cps-docstring    (concat docstring "\n[CPS]"))
          ;; Optional :interactive keyword (sync wrapper only; /k is never interactive).
-         ;; :interactive t   → (interactive)
-         ;; :interactive "p" → (interactive "p")
-         (interactivep (and (consp body) (eq (car body) :interactive)))
-         (interactive-spec (when interactivep (cadr body)))
-         (interactive-form (when interactivep
-                             (if (eq interactive-spec t)
-                                 '(interactive)
-                               `(interactive ,interactive-spec))))
-         (real-body        (if interactivep (cddr body) body))
+         (interactive-parsed (nskk--cps-parse-interactive body))
+         (interactive-form   (car interactive-parsed))
+         (real-body          (cdr interactive-parsed))
          (transformed      (nskk--cps-transform-body-list
                             real-body on-found-sym on-not-found-sym))
          (sync-call        (if rest-sym
@@ -547,8 +591,7 @@ Generates two definitions:
 If the keyword `:interactive' appears as the first element of BODY (before any
 other forms), the sync wrapper will include `(interactive)' (for
 `:interactive t') or `(interactive SPEC)' (for `:interactive \"SPEC\"').
-The /k function is
-never interactive.
+The /k function is never interactive.
 Note: place `;;;###autoload' before the `defun/done' call site in the source
 file to autoload the sync wrapper — autoload cookies cannot be generated
 inside macro expansions.
@@ -578,17 +621,10 @@ Example:
          (name/k       (intern (concat (symbol-name name) "/k")))
          (on-done-sym  (make-symbol "on-done"))
          (cps-docstring (concat docstring "\n[CPS]"))
-         ;; Check for leading :interactive keyword followed by its spec value.
-         ;; :interactive t   → (interactive)
-         ;; :interactive "p" → (interactive "p")
-         ;; :interactive FORM → (interactive FORM)
-         (interactivep (and (consp body) (eq (car body) :interactive)))
-         (interactive-spec (when interactivep (cadr body)))
-         (interactive-form (when interactivep
-                             (if (eq interactive-spec t)
-                                 '(interactive)
-                               `(interactive ,interactive-spec))))
-         (real-body    (if interactivep (cddr body) body))
+         ;; Optional :interactive keyword (sync wrapper only; /k is never interactive).
+         (interactive-parsed (nskk--cps-parse-interactive body))
+         (interactive-form   (car interactive-parsed))
+         (real-body          (cdr interactive-parsed))
          ;; Build the sync call form, handling &rest via apply.
          (sync-call    (if rest-sym
                            `(apply #',name/k ,@plain-args #'ignore ,rest-sym)
