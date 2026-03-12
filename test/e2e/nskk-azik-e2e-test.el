@@ -785,6 +785,387 @@ This ensures:
       (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kaq")
       (nskk-e2e-assert-mode 'hiragana "standalone q in AZIK ▽ preedit must not toggle mode"))))
 
+;;;;
+;;;; Section 13: AZIK Okurigana with AZIK Kana Shortcuts — Double-* Regression
+;;;;
+;;
+;; Regression tests for: typing XhSS or TukaTTe in AZIK ▽ preedit was inserting
+;; a spurious second okurigana marker (*), producing e.g. 'しゅう**ss' or
+;; 'つか**te' instead of triggering the AZIK kana shortcut as okurigana kana.
+;;
+;; Root cause: nskk--compute-effective-char's normalize-vowel-p predicate did
+;; not account for the case where okurigana is already pending.  When okurigana
+;; state was non-nil (first uppercase consonant had set okurigana), the second
+;; uppercase consonant was treated as a new okurigana boundary trigger instead
+;; of a plain romaji continuation.
+;;
+;; Fix: added condition (c) to normalize-vowel-p — when nskk-state-get-okurigana
+;; is non-nil AND the romaji buffer is non-empty, uppercase chars are normalised
+;; to lowercase (bypassing the okurigana trigger), allowing AZIK doubled-consonant
+;; shortcuts (ss→せい, tt→たち→azik-deferred→っ+vowel) to fire correctly.
+;;
+;; The TukaTTe case exercises the same fix for the tt→azik-deferred path: the
+;; second T (uppercase) must be normalised to lowercase, giving input "tt" which
+;; fires AZIK's deferred sokuon mechanism.  A following vowel 'e' then retroactively
+;; corrects the tentative "たち" to "っ" and appends "て" → okurigana kana "って".
+
+(nskk-describe "AZIK okurigana with AZIK kana shortcuts: double-* regression"
+
+  (nskk-it "XhSS triggers conversion (no spurious double * marker)"
+    ;; Regression guard: the second S must NOT start a fresh okurigana boundary.
+    ;; Xh→▽しゅう (AZIK x-row + h extension), first S→okurigana ?s (sets *),
+    ;; second S→romaji "ss"→AZIK せい→okurigana kana→conversion fires with "しゅうs".
+    (let ((dict '(("しゅうs" . ("修正")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "XhSS")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "修正"))))
+
+  (nskk-it "XhSS commits to 修正せい after C-j"
+    ;; Full end-to-end: preedit → okurigana conversion → commit appends okurigana kana.
+    (let ((dict '(("しゅうs" . ("修正")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "XhSS")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "修正せい"))))
+
+  (nskk-it "TukaTTe triggers conversion showing 使 (no spurious double * marker)"
+    ;; Regression guard for Tuka+Te → 使って.
+    ;; When shift is held across the okurigana boundary (TukaTTe instead of TukaTte),
+    ;; the second uppercase T must be treated as lowercase (condition c in
+    ;; normalize-vowel-p), giving input "tt".  AZIK "tt"→"たち" fires azik-deferred;
+    ;; the following 'e' retroactively corrects to っ+て = って as okurigana kana.
+    (let ((dict '(("つかt" . ("使")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "TukaTTe")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "使"))))
+
+  (nskk-it "TukaTTe commits to 使って after C-j"
+    (let ((dict '(("つかt" . ("使")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "TukaTTe")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "使って"))))
+
+  (nskk-it "TukaT;te triggers conversion showing 使 (AZIK ; sokuon in okurigana)"
+    ;; When the user types ; (AZIK sokuon = っ) after the okurigana trigger T,
+    ;; the pending 't' consonant in the romaji buffer must not absorb ';'.
+    ;; The fix: non-alphabetic chars with a standalone complete match flush the
+    ;; pending buffer and reprocess — so ';'→っ fires and triggers okuri conversion.
+    (let ((dict '(("つかt" . ("使")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Tuka")
+        (nskk-e2e-type "T")
+        (nskk-e2e-type ";")
+        (nskk-e2e-type "t")
+        (nskk-e2e-type "e")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "使"))))
+
+  (nskk-it "TukaT;te commits to 使って after C-j"
+    (let ((dict '(("つかt" . ("使")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Tuka")
+        (nskk-e2e-type "T")
+        (nskk-e2e-type ";")
+        (nskk-e2e-type "t")
+        (nskk-e2e-type "e")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "使って"))))
+
+  (nskk-it "Tuka:te triggers conversion showing 使 (AZIK Shift+; sokuon okurigana)"
+    ;; In AZIK mode, `:' (Shift+;) in preedit acts as a combined okurigana +
+    ;; sokuon trigger.  Tuka→▽つか, then `:' inserts * and arms the colon-okuri
+    ;; trigger, `t' fires the dict lookup at preedit-end (after `*') with query
+    ;; "つかt", and the following `e' retroactively inserts っ before te→て,
+    ;; giving okurigana kana "って".
+    (let ((dict '(("つかt" . ("使")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Tuka")
+        (nskk-e2e-type ":")
+        (nskk-e2e-type "t")
+        (nskk-e2e-type "e")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "使"))))
+
+  (nskk-it "Tuka:te commits to 使って after C-j"
+    (let ((dict '(("つかt" . ("使")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Tuka")
+        (nskk-e2e-type ":")
+        (nskk-e2e-type "t")
+        (nskk-e2e-type "e")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "使って")))))
+
+;;;;
+;;;; Section 14: Okurigana Conversion in AZIK Mode
+;;;;
+;;
+;; Tests that okurigana input works correctly when AZIK romaji style is active.
+;; Covers: basic consonant okurigana, multi-candidate cycling, commit,
+;; vowel okurigana, AZIK-specific combos (hatsuon, double-vowel, same-finger,
+;; youon), SPC during partial okurigana, and KaKi cycling regression guard.
+;;
+;; All tests use nskk-e2e-with-azik-buffer with test-specific inline dicts.
+
+;;; 14.1 Basic consonant okurigana
+
+(nskk-describe "AZIK okurigana: basic consonant okurigana"
+
+  (nskk-it "OkuRu shows first candidate 送 in overlay"
+    (let ((dict '(("おくr" . ("送" "贈" "遅")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Oku")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "送"))))
+
+  (nskk-it "OkuRu + SPC cycles to second candidate 贈"
+    (let ((dict '(("おくr" . ("送" "贈" "遅")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Oku")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-overlay-shows "送")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "贈"))))
+
+  (nskk-it "OkuRu + SPC SPC cycles to third candidate 遅"
+    (let ((dict '(("おくr" . ("送" "贈" "遅")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Oku")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-overlay-shows "送")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "贈")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "遅"))))
+
+  (nskk-it "KaKu shows first candidate 書 in overlay"
+    (let ((dict '(("かk" . ("書" "掛")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書"))))
+
+  (nskk-it "TaBeRu shows first candidate 食 in overlay"
+    (let ((dict '(("たべr" . ("食" "喰")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Tabe")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "食")))))
+
+;;; 14.2 Commit and buffer content
+
+(nskk-describe "AZIK okurigana: commit and buffer content"
+
+  (nskk-it "OkuRu + C-j commits 送る to buffer"
+    (let ((dict '(("おくr" . ("送")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Oku")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "u")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "送る")
+        (nskk-e2e-assert-not-converting))))
+
+  (nskk-it "KaKu + SPC + C-j commits second candidate 掛く to buffer"
+    (let ((dict '(("かk" . ("書" "掛")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "掛く")))))
+
+;;; 14.3 Vowel okurigana
+
+(nskk-describe "AZIK okurigana: vowel okurigana"
+
+  (nskk-it "OkuRI triggers vowel okurigana with overlay showing 送"
+    (let ((dict '(("おくr" . ("送")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Oku")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "I")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "送")))))
+
+;;; 14.4 AZIK-specific combos with okurigana
+
+(nskk-describe "AZIK okurigana: AZIK-specific combos"
+
+  (nskk-it "AZIK hatsuon kz + okurigana Ku: KzKu shows 換"
+    ;; K starts henkan AND feeds "k" to romaji; z completes kz→かん;
+    ;; K triggers okurigana (consonant "k"); u completes く → conversion fires.
+    ;; Dict key: "かんk"
+    (let ((dict '(("かんk" . ("換")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "z")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "換"))))
+
+  (nskk-it "AZIK double-vowel kp + okurigana Ku: KpKu shows 耕"
+    ;; K starts henkan AND feeds "k" to romaji; p completes kp→こう;
+    ;; K triggers okurigana (consonant "k"); u completes く → conversion fires.
+    ;; Dict key: "こうk"
+    (let ((dict '(("こうk" . ("耕")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "p")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "耕"))))
+
+  (nskk-it "AZIK same-finger hf + okurigana Ku: HfKu shows 吹"
+    ;; H starts henkan AND feeds "h" to romaji; f completes hf→ふ;
+    ;; K triggers okurigana (consonant "k"); u completes く → conversion fires.
+    ;; Dict key: "ふk"
+    (let ((dict '(("ふk" . ("吹")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "H")
+        (nskk-e2e-type "f")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "吹"))))
+
+  (nskk-it "AZIK youon kga + okurigana Ru: KgaRu shows 嫌"
+    ;; K starts henkan AND feeds "k" to romaji; ga completes kga→きゃ;
+    ;; R triggers okurigana (consonant "r"); u completes る → conversion fires.
+    ;; Dict key: "きゃr"
+    (let ((dict '(("きゃr" . ("嫌")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "g")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "嫌")))))
+
+;;; 14.5 SPC during partial consonant okurigana
+
+(nskk-describe "AZIK okurigana: SPC during partial consonant okurigana"
+
+  (nskk-it "OkuR + SPC triggers okurigana conversion showing 送"
+    ;; SPC pressed with pending consonant R (no vowel typed yet).
+    ;; Must trigger okurigana conversion using pending "r" as okuri-char.
+    (let ((dict '(("おくr" . ("送" "贈")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Oku")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "送"))))
+
+  (nskk-it "OkuR + SPC SPC cycles to second candidate 贈"
+    (let ((dict '(("おくr" . ("送" "贈")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Oku")
+        (nskk-e2e-type "R")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "送")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "贈")))))
+
+;;; 14.6 KaKi multi-candidate cycling regression guard
+
+(nskk-describe "AZIK okurigana: KaKi multi-candidate SPC cycling regression guard"
+
+  (nskk-it "KaKi + SPC cycles to second candidate 掛 (different vowel okurigana)"
+    ;; Regression guard: verifies multi-candidate cycling works for okurigana
+    ;; with vowel "i" (not just "u").  Dict key is "かk" shared across vowels.
+    (let ((dict '(("かk" . ("書" "掛" "欠")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "i")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "掛")))))
+
+;;;;
+;;;; Section 15: AZIK NN Okurigana — YoNN → 読ん Regression Guard
+;;;;
+;;
+;; Regression tests for: typing YoNN in AZIK mode must trigger okurigana
+;; conversion with ん (nn-double), producing 読ん — NOT inserting a spurious
+;; second * marker to produce よ*ん*.
+;;
+;; Root cause (when auto-start-henkan=nil): the second uppercase N was
+;; classified as `normal' (not `normalize-vowel'), so it reached
+;; nskk-process-okurigana-input which triggered a SECOND okurigana boundary.
+;;
+;; Fix: (1) nskk-process-okurigana-input/k now skips when okurigana is already
+;; pending.  (2) nskk--process-normal-japanese-input downcases the char when
+;; okurigana is pending, ensuring the romaji converter sees "nn" not "nN".
+
+;;; 15.1 Basic YoNN conversion
+
+(nskk-describe "AZIK okurigana: YoNN triggers ん okurigana conversion"
+
+  (nskk-it "YoNN shows first candidate 読 in overlay"
+    (let ((dict '(("よn" . ("読" "呼")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Yo")
+        (nskk-e2e-type "N")
+        (nskk-e2e-type "N")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "読"))))
+
+  (nskk-it "YoNN + C-j commits 読ん to buffer"
+    (let ((dict '(("よn" . ("読")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Yo")
+        (nskk-e2e-type "N")
+        (nskk-e2e-type "N")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "読ん"))))
+
+  (nskk-it "YoNN + SPC cycles to second candidate 呼"
+    (let ((dict '(("よn" . ("読" "呼")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Yo")
+        (nskk-e2e-type "N")
+        (nskk-e2e-type "N")
+        (nskk-e2e-assert-overlay-shows "読")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "呼")))))
+
+;;; 15.2 YoNN regression guard: no double * marker
+
+(nskk-describe "AZIK okurigana: YoNN does not produce double okurigana marker"
+
+  (nskk-it "YoNN (empty dict) does not produce よ*ん* with two * markers"
+    ;; Regression guard: without the okurigana re-entry guard, the second N
+    ;; would trigger nskk-process-okurigana-input again, flushing romaji "n"
+    ;; as ん and inserting a second * marker → よ*ん*.
+    ;; With the fix, second N completes nn→ん in the okurigana zone.
+    (let ((dict '(("dummy" . ("dummy")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Yo")
+        (nskk-e2e-type "N")
+        (nskk-e2e-type "N")
+        ;; No candidates for "よn" → falls to registration.
+        ;; The key assertion: buffer must NOT contain two * markers.
+        (let ((buf (buffer-string)))
+          (should-not (string-match-p "\\*.*\\*" buf)))))))
+
 (provide 'nskk-azik-e2e-test)
 
 ;;; nskk-azik-e2e-test.el ends here

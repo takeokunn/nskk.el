@@ -36,7 +36,9 @@
 ;; - 特殊拡張 (special extension) tests
 ;; - Q-key behavior tests
 ;; - Compatibility tests
-;; - Prolog-level tests (azik-rule/2 direct queries, bridge rule)
+;; - Prolog predicate tests (azik-vowel-char/1, azik-key-extends/2,
+;;   azik-nonvowel-ext/1, azik-vowel-shadow/1, azik-rule/2, bridge rule)
+;; - CPS function tests (nskk--azik-classify-key/k, nskk--azik-finalize-hash-table)
 
 ;;; Code:
 
@@ -1725,45 +1727,236 @@
 
 (nskk-describe "AZIK CPS initialization: nskk--init-azik-rules/k"
   (nskk-it "calls on-done continuation exactly once"
-    (nskk-prolog-test-with-isolated-db
-      (let ((call-count 0))
-        (nskk--init-azik-rules/k
-         (lambda ()
-           (cl-incf call-count)))
-        (should (= call-count 1)))))
+    (let ((saved-romaji-table (copy-hash-table nskk--romaji-table)))
+      (unwind-protect
+          (nskk-prolog-test-with-isolated-db
+            (let ((call-count 0))
+              (nskk--init-azik-rules/k
+               (lambda ()
+                 (cl-incf call-count)))
+              (should (= call-count 1))))
+        (clrhash nskk--romaji-table)
+        (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                 saved-romaji-table))))
 
   (nskk-it "on-done is called after hash table is populated"
-    (nskk-prolog-test-with-isolated-db
-      (let ((hash-populated nil))
-        (nskk--init-azik-rules/k
-         (lambda ()
-           ;; At call time the AZIK rules must already be in the hash
-           (setq hash-populated
-                 (stringp (nskk-converter-lookup "kz")))))
-        (should hash-populated)))))
+    (let ((saved-romaji-table (copy-hash-table nskk--romaji-table)))
+      (unwind-protect
+          (nskk-prolog-test-with-isolated-db
+            (let ((hash-populated nil))
+              (nskk--init-azik-rules/k
+               (lambda ()
+                 ;; At call time the AZIK rules must already be in the hash
+                 (setq hash-populated
+                       (stringp (nskk-converter-lookup "kz")))))
+              (should hash-populated)))
+        (clrhash nskk--romaji-table)
+        (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                 saved-romaji-table)))))
 
-(nskk-describe "AZIK CPS restore: nskk--azik-restore-standard-prefixes/k"
+(nskk-describe "azik-vowel-char/1 Prolog predicate"
+  (nskk-it "succeeds for each of the five romaji vowel character codes"
+    (nskk-prolog-test-with-isolated-db
+      (nskk--azik-init-char-facts)
+      (should (nskk-prolog-holds-p `(azik-vowel-char ,?a)))
+      (should (nskk-prolog-holds-p `(azik-vowel-char ,?i)))
+      (should (nskk-prolog-holds-p `(azik-vowel-char ,?u)))
+      (should (nskk-prolog-holds-p `(azik-vowel-char ,?e)))
+      (should (nskk-prolog-holds-p `(azik-vowel-char ,?o)))))
+
+  (nskk-it "fails for consonant character codes"
+    (nskk-prolog-test-with-isolated-db
+      (nskk--azik-init-char-facts)
+      (should-not (nskk-prolog-holds-p `(azik-vowel-char ,?k)))
+      (should-not (nskk-prolog-holds-p `(azik-vowel-char ,?s)))
+      (should-not (nskk-prolog-holds-p `(azik-vowel-char ,?n)))))
+
+  (nskk-it "enumerates exactly 5 solutions"
+    (nskk-prolog-test-with-isolated-db
+      (nskk--azik-init-char-facts)
+      (should (= 5 (length (nskk-prolog-query-all-values
+                            '(azik-vowel-char \?ch) '\?ch)))))))
+
+(nskk-describe "azik-key-extends/2 Prolog predicate"
+  (nskk-it "asserts prefix-extension pairs from the hash after AZIK init"
+    ;; "sh"→"すう" in hash; "sha","shi","shu","she","sho" also in hash
+    ;; so azik-key-extends("sh", ?a) etc. should hold
+    (nskk-with-azik-style
+      (should (nskk-prolog-holds-p `(azik-key-extends "sh" ,?a)))
+      (should (nskk-prolog-holds-p `(azik-key-extends "sh" ,?i)))
+      (should (nskk-prolog-holds-p `(azik-key-extends "sh" ,?u)))))
+
+  (nskk-it "does not assert pairs for keys with no longer hash entry"
+    ;; "kz"→"かん" has no "kza","kzb",... in hash
+    (nskk-with-azik-style
+      (should-not (nskk-prolog-holds-p `(azik-key-extends "kz" \?ch)))))
+
+  (nskk-it "deduplicates: same (prefix, ch) pair asserted at most once"
+    (nskk-prolog-test-with-isolated-db
+      (let ((saved (copy-hash-table nskk--romaji-table)))
+        (unwind-protect
+            (progn
+              ;; Two hash keys share prefix "k" + char ?a: "ka" and "kab"
+              ;; both contribute azik-key-extends("k", ?a).
+              (puthash "ka"  "か"   nskk--romaji-table)
+              (puthash "kab" "かあ" nskk--romaji-table)
+              (nskk--azik-init-key-extend-facts)
+              ;; Must yield exactly 1 solution for ("k", ?a), not 2.
+              (should (= 1 (length (nskk-prolog-query
+                                    `(azik-key-extends "k" ,?a))))))
+          (clrhash nskk--romaji-table)
+          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved))))))
+
+(nskk-describe "azik-nonvowel-ext/1 Prolog rule"
+  (nskk-it "succeeds for a prefix that has at least one non-vowel extension"
+    (nskk-prolog-test-with-isolated-db
+      (let ((saved (copy-hash-table nskk--romaji-table)))
+        (unwind-protect
+            (progn
+              (nskk--azik-init-char-facts)
+              (puthash "tx"  "てすと"  nskk--romaji-table)
+              (puthash "txk" "てすとん" nskk--romaji-table)
+              (nskk--azik-init-key-extend-facts)
+              (nskk-prolog-retract-all 'azik-nonvowel-ext 1)
+              (nskk-prolog-<- (azik-nonvowel-ext \?k)
+                (azik-key-extends \?k \?ch)
+                (not (azik-vowel-char \?ch)))
+              (should (nskk-prolog-holds-p '(azik-nonvowel-ext "tx"))))
+          (clrhash nskk--romaji-table)
+          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved)))))
+
+  (nskk-it "fails for a prefix whose extensions are all vowels"
+    (nskk-prolog-test-with-isolated-db
+      (let ((saved (copy-hash-table nskk--romaji-table)))
+        (unwind-protect
+            (progn
+              (nskk--azik-init-char-facts)
+              (puthash "sh"  "すう" nskk--romaji-table)
+              (puthash "sha" "しゃ" nskk--romaji-table)
+              (puthash "shi" "し"   nskk--romaji-table)
+              (nskk--azik-init-key-extend-facts)
+              (nskk-prolog-retract-all 'azik-nonvowel-ext 1)
+              (nskk-prolog-<- (azik-nonvowel-ext \?k)
+                (azik-key-extends \?k \?ch)
+                (not (azik-vowel-char \?ch)))
+              (should-not (nskk-prolog-holds-p '(azik-nonvowel-ext "sh"))))
+          (clrhash nskk--romaji-table)
+          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved))))))
+
+(nskk-describe "azik-vowel-shadow/1 Prolog rule"
+  (nskk-it "holds for \"sh\" after AZIK init — vowel-only extensions"
+    ;; "sh"→"すう" is shadowed by "sha"/"shi"/"shu"/"she"/"sho" (all vowels)
+    (nskk-with-azik-style
+      (should (nskk-prolog-holds-p '(azik-vowel-shadow "sh")))))
+
+  (nskk-it "holds for \"ch\" after AZIK init — vowel-only extensions"
+    (nskk-with-azik-style
+      (should (nskk-prolog-holds-p '(azik-vowel-shadow "ch")))))
+
+  (nskk-it "does not hold for keys with no extensions (e.g. \"kz\")"
+    (nskk-with-azik-style
+      (should-not (nskk-prolog-holds-p '(azik-vowel-shadow "kz")))))
+
+  (nskk-it "does not hold for non-AZIK complete rules"
+    ;; "ka"→"か" is in the hash but is not in azik-rule/2 as an AZIK-specific
+    ;; rule; azik-vowel-shadow requires azik-rule(K, _) to hold.
+    (nskk-with-azik-style
+      (should-not (nskk-prolog-holds-p '(azik-vowel-shadow "ka"))))))
+
+(nskk-describe "nskk--azik-classify-key/k"
+  (nskk-it "calls succeed with :vowel-shadow for \"sh\""
+    ;; "sh"→"すう" with vowel-only longer entries (sha/shi/shu/she/sho)
+    (nskk-with-azik-style
+      (let ((result :not-called))
+        (nskk--azik-classify-key/k "sh"
+          (lambda (kind) (setq result kind))
+          #'ignore)
+        (should (eq result :vowel-shadow)))))
+
+  (nskk-it "calls fail for \"kz\" which has no longer extensions"
+    (nskk-with-azik-style
+      (let ((fail-called nil))
+        (nskk--azik-classify-key/k "kz"
+          (lambda (_kind) nil)
+          (lambda () (setq fail-called t)))
+        (should fail-called))))
+
+  (nskk-it "calls succeed with :incomplete for a key with non-vowel extensions"
+    (nskk-prolog-test-with-isolated-db
+      (let ((saved (copy-hash-table nskk--romaji-table)))
+        (unwind-protect
+            (progn
+              (nskk-prolog-retract-all 'azik-rule 2)
+              (nskk-prolog-set-index 'azik-rule 2 :hash)
+              (nskk-prolog-assert '((azik-rule "tx" "てすと")))
+              (puthash "tx"  "てすと"  nskk--romaji-table)
+              (puthash "txk" "てすとん" nskk--romaji-table)
+              (nskk--azik-init-char-facts)
+              (nskk--azik-init-key-extend-facts)
+              (nskk-prolog-retract-all 'azik-nonvowel-ext 1)
+              (nskk-prolog-<- (azik-nonvowel-ext \?k)
+                (azik-key-extends \?k \?ch)
+                (not (azik-vowel-char \?ch)))
+              (nskk-prolog-retract-all 'azik-vowel-shadow 1)
+              (nskk-prolog-<- (azik-vowel-shadow \?k)
+                (azik-rule \?k \?_kana)
+                (azik-key-extends \?k \?_ext)
+                (not (azik-nonvowel-ext \?k)))
+              (let ((result :not-called))
+                (nskk--azik-classify-key/k "tx"
+                  (lambda (kind) (setq result kind))
+                  #'ignore)
+                (should (eq result :incomplete))))
+          (clrhash nskk--romaji-table)
+          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved))))))
+
+(nskk-describe "nskk--azik-finalize-hash-table"
   (nskk-it "calls on-done continuation exactly once"
-    (nskk-prolog-test-with-isolated-db
-      (nskk--init-azik-rules)
-      (let ((call-count 0))
-        (nskk--azik-restore-standard-prefixes/k
-         (lambda ()
-           (cl-incf call-count)))
-        (should (= call-count 1)))))
+    (let ((saved-romaji-table (copy-hash-table nskk--romaji-table)))
+      (unwind-protect
+          (nskk-prolog-test-with-isolated-db
+            (nskk--init-azik-rules)
+            (let ((call-count 0))
+              (nskk--azik-finalize-hash-table/k
+               (lambda () (cl-incf call-count)))
+              (should (= call-count 1))))
+        (clrhash nskk--romaji-table)
+        (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                 saved-romaji-table))))
 
-  (nskk-it "on-done is called after standard prefixes are restored"
-    (nskk-prolog-test-with-isolated-db
-      (nskk--init-azik-rules)
-      (let ((sh-is-vowel-shadowed nil))
-        (nskk--azik-restore-standard-prefixes/k
-         (lambda ()
-           ;; "sh" must be complete (not :incomplete) in the hash — the
-           ;; azik-vowel-deferred mechanism handles sha→しゃ correction at
-           ;; input time, so "sh" stays as "すう" to enable Sh→すう.
-           (setq sh-is-vowel-shadowed
-                 (equal (nskk-converter-lookup "sh") "すう"))))
-        (should sh-is-vowel-shadowed)))))
+  (nskk-it "\"sh\" remains complete in hash after finalize (vowel-shadow)"
+    ;; azik-vowel-deferred mechanism handles sha→しゃ at input time,
+    ;; so "sh" stays as "すう" in the hash — never demoted to :incomplete.
+    (let ((saved-romaji-table (copy-hash-table nskk--romaji-table)))
+      (unwind-protect
+          (nskk-prolog-test-with-isolated-db
+            (nskk--init-azik-rules)
+            (should (equal (nskk-converter-lookup "sh") "すう")))
+        (clrhash nskk--romaji-table)
+        (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                 saved-romaji-table))))
+
+  (nskk-it "\"sh\" is recorded in nskk--azik-vowel-shadow-set after finalize"
+    (let ((saved-romaji-table (copy-hash-table nskk--romaji-table)))
+      (unwind-protect
+          (nskk-prolog-test-with-isolated-db
+            (nskk--init-azik-rules)
+            (should (gethash "sh" nskk--azik-vowel-shadow-set)))
+        (clrhash nskk--romaji-table)
+        (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                 saved-romaji-table))))
+
+  (nskk-it "registers :incomplete for proper prefixes of AZIK rules"
+    ;; "kg" is a prefix of "kga","kgu","kge","kgo","kgz",... produced by
+    ;; nskk-azik-youon.  It must be :incomplete so the converter waits.
+    (let ((saved-romaji-table (copy-hash-table nskk--romaji-table)))
+      (unwind-protect
+          (nskk-prolog-test-with-isolated-db
+            (nskk--init-azik-rules)
+            (should (eq (gethash "kg" nskk--romaji-table) :incomplete)))
+        (clrhash nskk--romaji-table)
+        (maphash (lambda (k v) (puthash k v nskk--romaji-table))
+                 saved-romaji-table)))))
 
 (nskk-property-test converter-convert/k-azik-exactly-one-branch-called
   ((pattern azik-rule))
@@ -1845,75 +2038,6 @@
         (should (nskk-prolog-holds-p '(azik-rule "r2" "い")))
         (should (nskk-prolog-holds-p '(azik-rule "r3" "う")))))))
 
-(nskk-describe "nskk--azik-is-prefix-of-longer-p"
-  (nskk-it "returns non-nil when key is a proper prefix of a longer hash entry"
-    (nskk-prolog-test-with-isolated-db
-      (let ((saved (copy-hash-table nskk--romaji-table)))
-        (unwind-protect
-            (progn
-              (puthash "sh" :incomplete nskk--romaji-table)
-              (puthash "sha" "しゃ" nskk--romaji-table)
-              (should (nskk--azik-is-prefix-of-longer-p "sh")))
-          (clrhash nskk--romaji-table)
-          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved)))))
-
-  (nskk-it "returns nil when key is not a prefix of any longer entry"
-    (nskk-prolog-test-with-isolated-db
-      (let ((saved (copy-hash-table nskk--romaji-table)))
-        (unwind-protect
-            (progn
-              (puthash "zz" "ずず" nskk--romaji-table)
-              ;; "zz" is not a prefix of any longer entry in the hash
-              (should-not (nskk--azik-is-prefix-of-longer-p "zzz")))
-          (clrhash nskk--romaji-table)
-          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved)))))
-
-  (nskk-it "returns nil for an empty string (no longer entry can have empty prefix problem)"
-    ;; An empty string is technically a prefix of everything, but the function
-    ;; checks (> (length k) key-len) which is always true for non-empty k.
-    ;; The function returns t; this test documents that known behavior.
-    (nskk-prolog-test-with-isolated-db
-      (let ((saved (copy-hash-table nskk--romaji-table)))
-        (unwind-protect
-            (progn
-              (puthash "a" "あ" nskk--romaji-table)
-              ;; "" is shorter than "a", so it IS a prefix of it
-              (should (nskk--azik-is-prefix-of-longer-p "")))
-          (clrhash nskk--romaji-table)
-          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved))))))
-
-(nskk-describe "nskk--azik-register-partial-prefixes"
-  (nskk-it "adds :incomplete for each proper prefix of multi-char AZIK rules"
-    (nskk-prolog-test-with-isolated-db
-      (let ((saved (copy-hash-table nskk--romaji-table)))
-        (unwind-protect
-            (progn
-              ;; Assert a 3-char AZIK rule "kza" → "テスト" into azik-rule/2
-              (nskk--azik-assert-rules '(("kza" "テスト")))
-              ;; Populate the hash (sync Prolog → hash)
-              (nskk--azik-sync-to-romaji-hash)
-              ;; Register partial prefixes for all azik-rule/2 entries
-              (nskk--azik-register-partial-prefixes)
-              ;; "k" and "kz" should now be :incomplete in the hash
-              (should (eq (gethash "k" nskk--romaji-table) :incomplete))
-              (should (eq (gethash "kz" nskk--romaji-table) :incomplete)))
-          (clrhash nskk--romaji-table)
-          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved)))))
-
-  (nskk-it "does not overwrite existing hash entries when registering partials"
-    (nskk-prolog-test-with-isolated-db
-      (let ((saved (copy-hash-table nskk--romaji-table)))
-        (unwind-protect
-            (progn
-              (nskk--azik-assert-rules '(("ka" "か")))
-              (nskk--azik-sync-to-romaji-hash)
-              ;; Pre-populate "k" with an explicit value
-              (puthash "k" :incomplete nskk--romaji-table)
-              (nskk--azik-register-partial-prefixes)
-              ;; "k" should still be :incomplete (not overwritten with a new value)
-              (should (eq (gethash "k" nskk--romaji-table) :incomplete)))
-          (clrhash nskk--romaji-table)
-          (maphash (lambda (k v) (puthash k v nskk--romaji-table)) saved))))))
 
 ;;;
 ;;; AZIK macro API (nskk-azik-hatsuon, nskk-azik-double-vowel,

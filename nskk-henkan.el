@@ -729,11 +729,6 @@ Uses Prolog `candidate-nav-next-action/3' to dispatch the navigation mode."
   (if (nskk-converting-p)
       (progn
         (cl-incf nskk--henkan-count)
-        ;; Inline pcase (rather than nskk-henkan-dispatch) so the defun/k CPS
-        ;; transformer can see and transform (fail)/(succeed) calls directly.
-        ;; nskk-henkan-dispatch expands to (let…(pcase…)) but macroexpand in the
-        ;; CPS transformer uses the global env, which doesn't include macros only
-        ;; defined in the byte-compiler's local env during compilation.
         (let ((action (nskk-prolog-query-value
                        `(candidate-nav-next-action ,nskk--henkan-count
                                                    ,nskk-henkan-show-candidates-nth
@@ -767,8 +762,6 @@ Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
                             'list-active 'not-active)
                        ,'\?a)
                      '\?a)))
-        ;; Inline pcase (rather than nskk-henkan-dispatch) so the defun/k CPS
-        ;; transformer can see and transform (fail)/(succeed) calls directly.
         (pcase action
           ('show-list-prev
            (nskk--show-candidate-list-prev)
@@ -809,13 +802,22 @@ in place and will immediately follow the inserted candidate."
            (index         (nskk-state-current-index nskk-current-state))
            (candidate     (nth index candidates))
            (start         (nskk--get-conversion-start))
-           (end           (point))
            ;; NOTE: (overlayp obj) returns t even after delete-overlay — the
            ;; Lisp object persists but overlay-end returns nil for a deleted
            ;; overlay.  Always check overlay-end result, not just overlayp.
            (overlay-end-pos (when (and (overlayp nskk--conversion-overlay)
                                        (overlay-end nskk--conversion-overlay))
                               (overlay-end nskk--conversion-overlay)))
+           ;; When an unbound command (M-b, mouse click, etc.) moves point
+           ;; backward into the conversion area, (point) is less than
+           ;; overlay-end.  Use overlay-end as the authoritative deletion
+           ;; boundary so that the entire conversion text is removed.
+           ;; When point >= overlay-end (normal case, or okurigana where
+           ;; kana sits after the overlay), use (point) to also cover
+           ;; the okurigana suffix.
+           (end           (if (and overlay-end-pos (> overlay-end-pos (point)))
+                              overlay-end-pos
+                            (point)))
            ;; Okurigana kana (e.g. "く" in "書く") sits between overlay-end
            ;; and point.  Capture it before deletion so it can be re-inserted
            ;; after the candidate, placing point after the okurigana kana.
@@ -824,8 +826,8 @@ in place and will immediately follow the inserted candidate."
       ;; Delete overlay before buffer modification to avoid stale display.
       (nskk-delete-overlay nskk--conversion-overlay)
       (when (and start candidate)
-        ;; Delete from start to point (= end): covers the reading kana under
-        ;; the overlay AND any okurigana kana between overlay-end and point.
+        ;; Delete from start to end: covers reading kana under the overlay
+        ;; AND any okurigana kana between overlay-end and point.
         ;; Re-insert okuri-kana explicitly so point ends after it.
         (delete-region start end)
         (goto-char start)
@@ -978,9 +980,17 @@ Returns t when CHAR was handled as okurigana; nil otherwise.
   "Process CHAR as potential okurigana marker.
 Calls ON-FOUND with t when CHAR was handled as okurigana.
 Calls ON-NOT-FOUND when CHAR is not okurigana.
+Skips when okurigana is already pending (e.g. second N in YoNN);
+the caller downcases and routes through kana conversion instead.
 [CPS]"
   (let ((okuri-char (nskk-detect-okurigana-char char)))
-    (if (and okuri-char (nskk--conversion-start-active-p))
+    (if (and okuri-char
+             (nskk--conversion-start-active-p)
+             ;; Don't re-enter okurigana when already in okurigana zone.
+             ;; The second uppercase consonant (e.g. N in YoNN) must complete
+             ;; the kana sequence, not insert another * marker.
+             (not (nskk-with-current-state
+                    (nskk-state-get-okurigana nskk-current-state))))
         (nskk-with-current-state
           (nskk--setup-okurigana-context okuri-char)
           ;; on-found accessible by name here (explicit pair), so lambdas
@@ -1053,60 +1063,79 @@ Returns the query string, or nil if the position data is invalid."
                     (replace-regexp-in-string nskk-okurigana-marker-regexp "" text-with-marker))))
     (and text (concat text (char-to-string okuri-char)))))
 
-(defun nskk--trigger-okuri-no-candidates (start text-start preedit-end query)
-  "Handle no-candidates result for okurigana conversion.
-Builds the registration reading in ddskk display format (\"stem*kana\",
-e.g. \"ほ*け\") BEFORE mutating the buffer, then opens dict registration.
-START is the conversion start position, TEXT-START the position after ▽,
-PREEDIT-END the pre-okurigana buffer position, QUERY the dict lookup key."
-  ;; Capture okuri-kana from buffer BEFORE removing the * marker.
-  ;; The dict lookup key `query' uses the consonant (e.g. \"ほk\"), but
-  ;; the registration prompt should show the actual kana syllable.
-  (let* ((okuri-kana          (buffer-substring-no-properties preedit-end (point)))
-         (raw-stem            (buffer-substring-no-properties text-start preedit-end))
-         (stem                (replace-regexp-in-string nskk-okurigana-marker-regexp "" raw-stem))
-         (registration-reading (if (string-empty-p okuri-kana)
-                                   query
-                                 (concat stem nskk-okurigana-marker okuri-kana))))
-    (nskk--remove-okuri-marker (or text-start start) preedit-end)
-    (nskk-start-registration/k registration-reading
-      (lambda (registered)
-        (when registered
-          (delete-region start (point))
-          (goto-char start)
-          (insert registered)
-          (nskk-henkan-do-reset)))
-      #'ignore)))
+(defun nskk--apply-okuri-candidates (start text-start preedit-end candidates query)
+  "Mutate buffer and state after finding okurigana candidates.
+Removes the * marker, replaces ▽ with ▼, updates the conversion overlay
+to show the first candidate over the reading stem, and sets active state.
+START is the conversion start position (▽ marker start).
+TEXT-START is the position after the ▽ marker, or nil (falls back to START).
+PREEDIT-END is the buffer position before the okurigana kana was inserted.
+CANDIDATES is the non-nil list of candidate strings.
+QUERY is the dict lookup key stored in okurigana-query metadata."
+  (nskk--remove-okuri-marker (or text-start start) preedit-end)
+  (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
+  (let ((okuri-kana-start (- preedit-end (length nskk-okurigana-marker))))
+    (nskk--update-overlay (+ start (length nskk-henkan-active-marker))
+                          okuri-kana-start (car candidates)))
+  (nskk-with-current-state
+    (nskk-set-active-candidates candidates)
+    (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+    (nskk-state-put-metadata nskk-current-state 'okurigana-query query))
+  (setq nskk--henkan-count 1))
 
-(defun/done nskk--trigger-okuri-conversion (okuri-char preedit-end)
+(defun nskk--build-okuri-registration-reading (text-start preedit-end query)
+  "Build the display-format reading string for okurigana dict registration.
+Format: \"stem*kana\" (e.g. \"ほ*け\"), falling back to QUERY when no okuri-kana.
+Captures okuri-kana from the buffer BEFORE the * marker is removed.
+TEXT-START is the position after ▽, PREEDIT-END is the pre-okurigana position."
+  (let* ((okuri-kana (buffer-substring-no-properties preedit-end (point)))
+         (raw-stem   (buffer-substring-no-properties text-start preedit-end))
+         (stem       (replace-regexp-in-string nskk-okurigana-marker-regexp "" raw-stem)))
+    (if (string-empty-p okuri-kana)
+        query
+      (concat stem nskk-okurigana-marker okuri-kana))))
+
+(defun/3k nskk--trigger-okuri-conversion (okuri-char preedit-end)
+    (on-found on-not-found on-register)
   "Trigger conversion with okurigana OKURI-CHAR ending at PREEDIT-END.
 PREEDIT-END is the buffer position before the okurigana kana was inserted.
-Searches the dictionary first; only mutates the buffer when candidates are
-found.  Falls back to dictionary registration via
-`nskk--trigger-okuri-no-candidates' on no match."
+ON-FOUND is called with the candidates list when a dict match is found.
+ON-NOT-FOUND is called when no candidates exist and registration is cancelled.
+ON-REGISTER is called after a word is successfully registered and inserted.
+Searches the dictionary first; only mutates the buffer when
+candidates are found."
   (nskk-debug-log "[HENKAN] trigger-okuri: okuri-char=%c" okuri-char)
   (let* ((start      (nskk--get-conversion-start))
          (text-start (and start (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
          (query      (nskk--extract-okuri-query start preedit-end okuri-char)))
-    (when query
-      ;; Search BEFORE mutating the buffer to prevent state corruption on miss.
+    (if (not query)
+        (funcall on-not-found)
       (nskk-core-search/k query :exact nil
         (lambda (candidates)
-          ;; Candidates found: mutate buffer.
-          ;; Remove *, replace ▽→▼, set overlay over reading portion only.
-          ;; `preedit-end' was recorded before the okurigana kana was inserted;
-          ;; after * deletion it equals okurigana-kana-start.
-          (nskk--remove-okuri-marker (or text-start start) preedit-end)
-          (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
-          (let ((okuri-kana-start (- preedit-end (length nskk-okurigana-marker))))
-            (nskk--update-overlay (+ start (length nskk-henkan-active-marker))
-                                  okuri-kana-start (car candidates)))
-          (nskk-with-current-state
-            (nskk-set-active-candidates candidates)
-            (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t))
-          (setq nskk--henkan-count 1))
+          (nskk--apply-okuri-candidates start text-start preedit-end candidates query)
+          (funcall on-found candidates))
         (lambda ()
-          (nskk--trigger-okuri-no-candidates start text-start preedit-end query))))))
+          (let ((reading (nskk--build-okuri-registration-reading
+                          text-start preedit-end query)))
+            (nskk--remove-okuri-marker (or text-start start) preedit-end)
+            (nskk-start-registration/k reading
+              (lambda (registered)
+                (if registered
+                    (progn
+                      (delete-region start (point))
+                      (goto-char start)
+                      (insert registered)
+                      (nskk-henkan-do-reset)
+                      (funcall on-register))
+                  (funcall on-not-found)))
+              #'ignore)))))))
+
+(defun nskk--trigger-okuri-conversion (okuri-char preedit-end)
+  "Trigger conversion with okurigana OKURI-CHAR ending at PREEDIT-END.
+Sync entry point; calls `nskk--trigger-okuri-conversion/k' with
+no-op continuations.
+See `nskk--trigger-okuri-conversion/k' for the full conversion logic."
+  (nskk--trigger-okuri-conversion/k okuri-char preedit-end #'ignore #'ignore #'ignore))
 
 ;;;; Conversion Pipeline
 
@@ -1179,7 +1208,7 @@ Uses `nskk-<-or' to thread the search continuation without lambda nesting."
                              (1+ (point)))))
           (nskk-with-current-state
             (nskk-state-set-okurigana nskk-current-state nil))
-          (nskk--trigger-okuri-conversion okuri preedit-end))
+          (nskk--trigger-okuri-conversion/k okuri preedit-end on-found on-not-found on-register))
       (nskk-henkan-with-preedit start
     (let* (;; Flush trailing romaji BEFORE capturing `end' so the lookup key
            ;; is complete (e.g. \"にほ\" + flush → \"にほん\").
@@ -1301,18 +1330,28 @@ If the user cancels, wrap around to the first candidate in list display."
          (text (when (and text-start (> (point) text-start))
                  (buffer-substring-no-properties text-start (point)))))
     (if text
-        (nskk-start-registration/k text
-          (lambda (registered)
-            (if registered
-                (progn
-                  (nskk-delete-overlay nskk--conversion-overlay)
-                  (delete-region start (point))
-                  (goto-char start)
-                  (insert registered)
-                  (nskk-henkan-do-reset))
-              ;; Registration cancelled: wrap back to first candidate page.
-              (nskk--wrap-to-first-candidate)))
-          #'ignore)
+        (let ((reading
+               (if (nskk-with-current-state
+                     (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
+                   (let* ((query (nskk-with-current-state
+                                   (nskk-state-get-metadata nskk-current-state 'okurigana-query)))
+                          (okuri-kana (buffer-substring-no-properties
+                                       (overlay-end nskk--conversion-overlay) (point)))
+                          (stem (substring query 0 (- (length query) 1))))
+                     (concat stem nskk-okurigana-marker okuri-kana))
+                 text)))
+          (nskk-start-registration/k reading
+            (lambda (registered)
+              (if registered
+                  (progn
+                    (nskk-delete-overlay nskk--conversion-overlay)
+                    (delete-region start (point))
+                    (goto-char start)
+                    (insert registered)
+                    (nskk-henkan-do-reset))
+                ;; Registration cancelled: wrap back to first candidate page.
+                (nskk--wrap-to-first-candidate)))
+            #'ignore))
       ;; No preedit text: wrap back to first candidate page.
       (nskk--wrap-to-first-candidate))))
 

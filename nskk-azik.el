@@ -50,13 +50,21 @@
 ;; - The hash table is populated from azik-rule/2 for hot-path lookups.
 ;;   `nskk-converter-lookup' (inline) reads only from the hash, never Prolog.
 ;;
-;; Partial match markers (:incomplete entries) are derived automatically
-;; from azik-rule/2 by scanning all romaji keys of length > 1 and
-;; computing their proper prefixes.
+;; Partial match markers and standard-prefix restoration are handled by
+;; `nskk--azik-finalize-hash-table' using Prolog classification predicates:
+;; - `azik-vowel-char/1'      -- succeeds for vowel character codes (a/i/u/e/o).
+;; - `azik-key-extends/2'     -- (prefix char) for every proper prefix in hash.
+;; - `azik-nonvowel-ext/1'    -- derived rule; succeeds when key has non-vowel ext.
+;; - `azik-vowel-shadow/1'    -- derived rule; succeeds when all extensions are vowels.
+;; - `nskk--azik-classify-key/k' -- CPS classifier using azik-vowel-shadow/1.
 ;;
 ;; Prolog predicates maintained by this module:
-;; - `azik-rule/2'  -- (romaji kana) AZIK-specific conversion rules,
+;; - `azik-rule/2'         -- (romaji kana) AZIK-specific conversion rules,
 ;;     hash-indexed on first arg for O(1) lookup.
+;; - `azik-vowel-char/1'   -- integer character code facts for a/i/u/e/o.
+;; - `azik-key-extends/2'  -- (prefix char) prefix→next-char extension map.
+;; - `azik-nonvowel-ext/1' -- rule: KEY has at least one non-vowel extension.
+;; - `azik-vowel-shadow/1' -- rule: KEY is AZIK-complete with vowel-only exts.
 ;;
 ;; AZIK rule categories (in `azik-rule/2'):
 ;; 1. Special keys (; -> っ, : -> ー)
@@ -308,27 +316,6 @@ purely a hash-cache sync from the Prolog truth source."
       (when (and (stringp romaji) (stringp kana))
         (puthash romaji kana nskk--romaji-table)))))
 
-(defun/done nskk--azik-register-partial-prefixes ()
-  "Register :incomplete markers for all proper prefixes of AZIK romaji keys.
-Called after `nskk--azik-sync-to-romaji-hash' has populated the hash.
-
-Scan all romaji keys of length > 1 and compute every proper prefix;
-these become :incomplete entries so the converter knows to keep
-accumulating input.  This automatically covers single-char consonants
-\(k, g, ...) and 2-char youon prefixes (kg, hg, ...) without a
-hand-maintained list."
-  (let ((partials (make-hash-table :test 'equal)))
-    (dolist (subst (nskk-prolog-query '(azik-rule \?r \?_)))
-      (let* ((romaji (nskk-prolog-walk '\?r subst))
-             (len    (and (stringp romaji) (length romaji))))
-        (when (and len (> len 1))
-          (dotimes (i (1- len))
-            (puthash (substring romaji 0 (1+ i)) t partials)))))
-    (maphash (lambda (prefix _)
-               (unless (gethash prefix nskk--romaji-table)
-                 (nskk-converter-add-rule prefix :incomplete)))
-             partials)))
-
 (defvar nskk--azik-vowel-shadow-set (make-hash-table :test 'equal)
   "Set of AZIK rule keys that are vowel-only-shadowed.
 A key K is in this set when every longer hash entry prefixed by K extends K
@@ -338,63 +325,82 @@ rules in the hash (not demoted to :incomplete) and instead use the
 `nskk-convert-input-to-kana/k': the AZIK kana is emitted tentatively, and if
 the next character is a vowel, the emission is retroactively replaced by the
 longer standard-romaji rule.
-Rebuilt from scratch on each call to `nskk--azik-restore-standard-prefixes'.")
+Rebuilt from scratch on each call to `nskk--azik-finalize-hash-table'.")
 
-(defun nskk--azik-is-prefix-of-longer-p (key)
-  "Return non-nil if KEY is a proper prefix of a longer entry in the romaji hash."
-  (let ((key-len (length key)))
-    (cl-loop for k being the hash-keys of nskk--romaji-table
-             thereis (and (> (length k) key-len)
-                          (string-prefix-p key k)))))
+(defun/done nskk--azik-init-char-facts ()
+  "Assert azik-vowel-char/1 for each Japanese romaji vowel character code.
+Must be called at init time after the Prolog DB is fresh for this session.
+Character codes: ?a=97, ?i=105, ?u=117, ?e=101, ?o=111."
+  (nskk-prolog-retract-all 'azik-vowel-char 1)
+  (dolist (ch '(?a ?i ?u ?e ?o))
+    (nskk-prolog-assert `((azik-vowel-char ,ch)))))
 
-(defun nskk--azik-vowel-only-extensions-p (key)
-  "Return non-nil if KEY's longer hash extensions all add exactly one vowel.
-Every key K in the romaji hash satisfying
-  (and (> (length K) (length KEY)) (string-prefix-p KEY K))
-must have exactly length (1+ (length KEY)) and its final character must be
-one of a/i/u/e/o.  When this holds, KEY is \"vowel-only-shadowed\" and should
-use the `azik-vowel-deferred' mechanism rather than plain demotion to
-`:incomplete'."
-  (let ((key-len (length key)))
-    (cl-loop for k being the hash-keys of nskk--romaji-table
-             when (and (> (length k) key-len) (string-prefix-p key k))
-             always (and (= (length k) (1+ key-len))
-                         (memq (aref k key-len) '(?a ?i ?u ?e ?o))))))
+(defun/done nskk--azik-init-key-extend-facts ()
+  "Assert azik-key-extends/2 from the romaji hash for prefix extension analysis.
+For every romaji key K of length > 1, asserts (azik-key-extends PREFIX CH)
+for each proper prefix PREFIX of K and next character CH at that position.
+Deduplicates (PREFIX, CH) pairs before asserting.
+Must be called after `nskk--azik-sync-to-romaji-hash'."
+  (nskk-prolog-retract-all 'azik-key-extends 2)
+  (nskk-prolog-set-index 'azik-key-extends 2 :hash)
+  (let ((seen (make-hash-table :test 'equal)))
+    (maphash
+     (lambda (k _)
+       (let ((len (length k)))
+         (when (> len 1)
+           (dotimes (i (1- len))
+             (let* ((pfx  (substring k 0 (1+ i)))
+                    (ch   (aref k (1+ i)))
+                    (pair (cons pfx ch)))
+               (unless (gethash pair seen)
+                 (puthash pair t seen)
+                 (nskk-prolog-assert `((azik-key-extends ,pfx ,ch)))))))))
+     nskk--romaji-table)))
 
-(defun/done nskk--azik-restore-standard-prefixes ()
-  "Demote or mark AZIK complete rules that are prefixes of longer hash entries.
-Called after `nskk--azik-sync-to-romaji-hash' and
-`nskk--azik-register-partial-prefixes'.
+(defun/k nskk--azik-classify-key (key)
+  "Classify romaji KEY for prefix-restore using Prolog shadow rules.
+Calls (succeed :vowel-shadow) when azik-vowel-shadow/1 holds for KEY:
+  all longer hash entries extend KEY by exactly one vowel character.
+Calls (succeed :incomplete) when KEY has any extension but is not vowel-shadow.
+Calls (fail) when KEY has no longer extensions at all."
+  (cond
+   ((nskk-prolog-holds-p `(azik-vowel-shadow ,key))
+    (succeed :vowel-shadow))
+   ((nskk-prolog-holds-p `(azik-key-extends ,key \?ext))
+    (succeed :incomplete))
+   (t (fail))))
 
-Problem: `nskk-azik-double-vowel' generates rules like \"sh\"→\"すう\" which
-would overwrite the standard romaji `:incomplete' marker for \"sh\".  But the
-standard romaji table retains \"sha\"→\"しゃ\", \"shi\"→\"し\", etc.
+(defun/done nskk--azik-finalize-hash-table ()
+  "Register :incomplete prefixes and restore standard-romaji semantics.
+Called after `nskk--azik-init-key-extend-facts' populates azik-key-extends/2.
 
-Two cases arise for a key K that is a prefix of longer entries:
-
-1. Non-vowel-only-shadowed: some longer entry adds a non-vowel suffix.
-   Action: demote K to `:incomplete' so the longer rule remains reachable.
-
-2. Vowel-only-shadowed: ALL longer entries add exactly one vowel (a/i/u/e/o).
-   Example: \"sh\"→\"すう\" vs. \"sha\"/\"shi\"/\"shu\"/\"she\"/\"sho\".
-   Action: keep K complete in the hash and record it in
-   `nskk--azik-vowel-shadow-set'.  The input engine uses the
-   `azik-vowel-deferred' mechanism: emit the AZIK kana tentatively; if the
-   next character is a vowel, retroactively replace the emission with the
-   longer standard rule.  If the next character is not a vowel, keep the
-   AZIK kana.  This enables \"Sh\"→\"すう\" (AZIK double-vowel) while
-   preserving \"sha\"→\"しゃ\" (standard romaji)."
-  ;; Safety: `puthash' here only updates the value of an existing key (k came
-  ;; from the maphash iteration itself), never inserts a new key.  Updating
-  ;; existing keys during `maphash' is documented-safe in Emacs Lisp.
+Performs two passes using azik-key-extends/2 facts:
+1. Register :incomplete markers for each prefix not yet in the hash.
+   Proper prefixes of longer rules must be :incomplete so the converter
+   keeps accumulating input.
+2. Classify complete hash entries that are prefixes of longer entries
+   using `nskk--azik-classify-key/k':
+   - :vowel-shadow → record in `nskk--azik-vowel-shadow-set', keep complete.
+   - :incomplete   → demote in the hash so longer standard rules
+     remain reachable."
   (clrhash nskk--azik-vowel-shadow-set)
-  (maphash (lambda (k v)
-              (when (and (stringp k) (stringp v)
-                         (nskk--azik-is-prefix-of-longer-p k))
-                (if (nskk--azik-vowel-only-extensions-p k)
-                    (puthash k t nskk--azik-vowel-shadow-set)
-                  (puthash k :incomplete nskk--romaji-table))))
-            nskk--romaji-table))
+  (let ((registered (make-hash-table :test 'equal)))
+    (dolist (subst (nskk-prolog-query '(azik-key-extends \?pfx \?ch)))
+      (let ((pfx (nskk-prolog-walk '\?pfx subst)))
+        (when (and (stringp pfx) (not (gethash pfx registered)))
+          (puthash pfx t registered)
+          (unless (gethash pfx nskk--romaji-table)
+            (nskk-converter-add-rule pfx :incomplete))))))
+  (maphash
+   (lambda (k v)
+     (when (stringp v)
+       (nskk--azik-classify-key/k k
+         (lambda (kind)
+           (pcase kind
+             (:vowel-shadow (puthash k t nskk--azik-vowel-shadow-set))
+             (:incomplete   (puthash k :incomplete nskk--romaji-table))))
+         #'ignore)))
+   nskk--romaji-table))
 
 ;;;; Main Initialization
 
@@ -405,9 +411,7 @@ into the azik-rule/2 Prolog predicate.  A bridge rule connects
 azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
 The hash table is populated from azik-rule/2 for hot-path lookups."
 
-  ;; Step 1: Initialize standard romaji rules as the base.
-  ;; Clears and repopulates both romaji-to-kana/2 and the hash table
-  ;; before AZIK rules are added.
+  ;; Step 1: Standard romaji base.
   (nskk--initialize-romaji-table)
 
   ;; Step 2: Set up azik-rule/2 predicate (index before assert).
@@ -415,63 +419,50 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (nskk-prolog-set-index 'azik-rule 2 :hash)
 
   ;; Step 3: Assert all AZIK rule categories.
-
-  ;; 3a. Special keys (; → っ, : → ー)
-  (nskk--azik-assert-rules nskk--azik-special-keys)
-
-  ;; 3b. Consonant compatibility (x=しゃ行, c=ちゃ行)
-  (nskk--azik-assert-rules nskk--azik-consonant-compat-rules)
-
-  ;; 3c. Hatsuon (撥音) + double vowel (二重母音) extensions.
-  ;;     Extension keys: z=a+ん, k=i+ん, j=u+ん, d=e+ん, l=o+ん
-  ;;                     q=a+い, h=u+う, w=e+い, p=o+う
-  (nskk--azik-init-extension-rows)
-
-  ;; 3d. Youon (拗音) compatibility.
-  ;;     g-substitution rows (ng/kg/.../pg): AZIK-specific g-for-y forms.
-  ;;     y-prefix rows (ny/ky/.../py): DDSKK-compatible standard romaji youon
-  ;;     with AZIK extension keys (ryp→りょう, ryh→りゅう, etc.).
-  ;;     Each row: base (a/u/e/o) + hatsuon (5) + double vowel (4)
-  (nskk--azik-init-youon-rows)
-
-  ;; 3e. Same-finger alternatives (f suffix)
-  (nskk--azik-assert-rules nskk--azik-same-finger-rules)
-
-  ;; 3f. Word shortcuts
-  (nskk--azik-assert-rules nskk--azik-word-shortcuts)
-
-  ;; 3g. Foreign word extensions
-  (nskk--azik-assert-rules nskk--azik-foreign-extensions)
+  (nskk--azik-assert-rules nskk--azik-special-keys)          ; ; → っ, : → ー
+  (nskk--azik-assert-rules nskk--azik-consonant-compat-rules) ; x=しゃ行, c=ちゃ行
+  (nskk--azik-init-extension-rows)                            ; hatsuon + double vowel
+  (nskk--azik-init-youon-rows)                                ; g-sub + y-prefix youon
+  (nskk--azik-assert-rules nskk--azik-same-finger-rules)      ; f-suffix ergonomics
+  (nskk--azik-assert-rules nskk--azik-word-shortcuts)         ; common word pairs
+  (nskk--azik-assert-rules nskk--azik-foreign-extensions)     ; foreign sound rules
 
   ;; Step 4: Bridge rule — AZIK rules are also romaji-to-kana.
-  ;; Placed after all azik-rule/2 facts so Prolog queries on
-  ;; romaji-to-kana/2 can discover AZIK rules via this rule.
-  ;;
-  ;; Trie limitation: the variable first arg (?r) means this rule is NOT
-  ;; inserted into the trie index.  Use nskk-prolog-query on azik-rule/2
-  ;; directly for enumeration; hot-path lookups use the hash cache.
-  (nskk-prolog-<- (romaji-to-kana \?r \?k)
-    (azik-rule \?r \?k))
+  ;; The variable first arg (?r) is NOT trie-indexed; use azik-rule/2
+  ;; directly for enumeration.  Hot-path lookups use the hash cache.
+  (nskk-prolog-<- (romaji-to-kana \?r \?k) (azik-rule \?r \?k))
 
-  ;; Step 5: Populate hash table from azik-rule/2, then register
-  ;; :incomplete markers for all proper prefixes.
+  ;; Step 5: Sync azik-rule/2 → hash table.
   (nskk--azik-sync-to-romaji-hash)
-  (nskk--azik-register-partial-prefixes)
 
-  ;; Step 6: Restore standard-romaji prefix semantics.
-  ;; AZIK sync may have overwritten standard `:incomplete' markers with
-  ;; complete AZIK rules (e.g. "sh"→"すう") that shadow longer standard-
-  ;; romaji entries ("sha"→"しゃ").  Demote any such key back to
-  ;; `:incomplete' so multi-char standard rules remain reachable.
-  (nskk--azik-restore-standard-prefixes)
+  ;; Step 6: Build Prolog classification predicates from the current hash.
+  ;;   azik-vowel-char/1   — character codes for a/i/u/e/o (integer facts).
+  ;;   azik-key-extends/2  — (PREFIX CH) for every proper prefix in the hash.
+  ;;   azik-nonvowel-ext/1 — succeeds when KEY has a non-vowel extension.
+  ;;   azik-vowel-shadow/1 — succeeds when KEY's extensions are all vowels.
+  (nskk--azik-init-char-facts)
+  (nskk--azik-init-key-extend-facts)
+  (nskk-prolog-retract-all 'azik-nonvowel-ext 1)
+  (nskk-prolog-<- (azik-nonvowel-ext \?k)
+    (azik-key-extends \?k \?ch)
+    (not (azik-vowel-char \?ch)))
+  (nskk-prolog-retract-all 'azik-vowel-shadow 1)
+  (nskk-prolog-<- (azik-vowel-shadow \?k)
+    (azik-rule \?k \?_kana)
+    (azik-key-extends \?k \?_ext)
+    (not (azik-nonvowel-ext \?k)))
 
-  ;; Step 7: Compound rules added after prefix restore.
-  ;; Inserting after the restore pass ensures 2-char prefixes like "ka"
-  ;; remain complete, enabling sequences like xhkak → しゅうかく.
+  ;; Step 7: Register :incomplete prefixes + restore standard-romaji semantics.
+  ;; Uses azik-key-extends/2 and azik-vowel-shadow/1 queries via Prolog.
+  (nskk--azik-finalize-hash-table)
+
+  ;; Step 8: Compound rules added after finalize.
+  ;; Inserting after finalize ensures 2-char prefixes like "ka" remain
+  ;; complete, enabling sequences like xhkak → しゅうかく.
   (dolist (rule nskk--azik-compound-rules)
     (puthash (car rule) (cadr rule) nskk--romaji-table))
 
-  ;; Step 8: Set up AZIK toggle key binding.
+  ;; Step 9: AZIK toggle key binding.
   (nskk--setup-azik-toggle-key))
 
 ;; Register AZIK style

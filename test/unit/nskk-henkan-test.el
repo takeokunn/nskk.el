@@ -2519,27 +2519,102 @@
             (lambda (v) (setq on-found-value v))
             #'ignore))
         (should (eq on-found-value t))
-        (should (equal nskk--romaji-buffer "k"))))))
+        (should (equal nskk--romaji-buffer "k")))))
+
+  (nskk-it "calls on-not-found when okurigana is already pending (YoNN guard)"
+    ;; Regression: second uppercase N in YoNN must NOT re-enter okurigana.
+    ;; When okurigana is already set in state, the guard rejects the char.
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--romaji-buffer "n")
+            (nskk--pending-romaji-overlay nil)
+            not-found-called)
+        (insert nskk-henkan-on-marker "よ*")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (nskk-state-set-okurigana nskk-current-state ?n)
+        (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) ?n)))
+          (nskk-process-okurigana-input/k ?N
+            (lambda (_v) (error "on-found should not be called"))
+            (lambda () (setq not-found-called t))))
+        (should not-found-called)))))
+
+;;;
+;;; nskk--apply-okuri-candidates
+;;;
+
+(nskk-describe "nskk--apply-okuri-candidates"
+  (nskk-it "updates overlay, sets active candidates, and sets henkan-count to 1"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--conversion-overlay nil)
+            (nskk--henkan-count 0))
+        (insert nskk-henkan-on-marker "か*")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (nskk-state-force-henkan-phase nskk-current-state 'on)
+        (let* ((start (marker-position nskk--conversion-start-marker))
+               (text-start (+ start (length nskk-henkan-on-marker)))
+               (preedit-end (point-max)))
+          (nskk-with-mocks ((nskk--remove-okuri-marker #'ignore)
+                            (nskk--replace-marker-at #'ignore)
+                            (nskk--update-overlay #'ignore))
+            (nskk--apply-okuri-candidates start text-start preedit-end
+                                          '("書" "欠") "かk"))
+          (should (equal (nskk-state-candidates nskk-current-state) '("書" "欠")))
+          (should (= nskk--henkan-count 1))
+          (should (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
+          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))))))
+
+;;;
+;;; nskk--build-okuri-registration-reading
+;;;
+
+(nskk-describe "nskk--build-okuri-registration-reading"
+  (nskk-it "builds stem*kana format when okuri-kana is present in buffer"
+    (with-temp-buffer
+      (insert nskk-henkan-on-marker "ほ*" "け")  ; stem=ほ, okuri-kana=け
+      ;; Note: the function reads (point) to find the okurigana kana boundary.
+      ;; (point) is at (point-max) after insert, which is the correct position here.
+      (let* ((start (point-min))
+             (text-start (+ start (length nskk-henkan-on-marker)))
+             ;; preedit-end = just after the * marker
+             (preedit-end (+ text-start (length "ほ") (length nskk-okurigana-marker))))
+        (should (equal (nskk--build-okuri-registration-reading text-start preedit-end "ほk")
+                       "ほ*け")))))
+
+  (nskk-it "falls back to query when no okuri-kana (SPC path, no vowel typed)"
+    (with-temp-buffer
+      (insert nskk-henkan-on-marker "か*")  ; preedit-end = end of buffer, no kana after *
+      (let* ((start (point-min))
+             (text-start (+ start (length nskk-henkan-on-marker)))
+             (preedit-end (point-max)))
+        (should (equal (nskk--build-okuri-registration-reading text-start preedit-end "かk")
+                       "かk"))))))
 
 ;;;
 ;;; nskk--trigger-okuri-conversion/k
 ;;;
 
 (nskk-describe "nskk--trigger-okuri-conversion/k"
-  (nskk-it "calls on-done immediately when no preedit query can be built"
+  (nskk-it "calls on-not-found immediately when no preedit query can be built"
     (with-temp-buffer
       (let ((nskk--conversion-start-marker (make-marker))
-            on-done-called)
-        ;; Marker with no position → extract-okuri-query returns nil
-        (nskk--trigger-okuri-conversion/k ?k (point) (lambda () (setq on-done-called t)))
-        (should on-done-called))))
+            on-not-found-called)
+        ;; Marker with no position → extract-okuri-query returns nil → on-not-found
+        (nskk--trigger-okuri-conversion/k ?k (point)
+                                          #'ignore
+                                          (lambda () (setq on-not-found-called t))
+                                          #'ignore)
+        (should on-not-found-called))))
 
-  (nskk-it "calls on-done after setting candidates when search finds results"
+  (nskk-it "calls on-found with candidates when search finds results"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker (make-marker))
             (nskk--conversion-overlay nil)
-            on-done-called)
+            (nskk--henkan-count 0)
+            on-found-candidates)
         (insert nskk-henkan-on-marker "かく")
         (set-marker nskk--conversion-start-marker (point-min))
         (let ((preedit-end (point-max)))
@@ -2551,8 +2626,62 @@
                             (nskk--remove-okuri-marker #'ignore)
                             (nskk--update-overlay #'ignore))
             (nskk--trigger-okuri-conversion/k ?k preedit-end
-                                              (lambda () (setq on-done-called t)))))
-        (should on-done-called)))))
+                                              (lambda (candidates)
+                                                (setq on-found-candidates candidates))
+                                              #'ignore
+                                              #'ignore)))
+        (should (equal on-found-candidates '("書く"))))))
+
+  (nskk-it "calls on-not-found when registration is cancelled"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--conversion-overlay nil)
+            (nskk--henkan-count 0)
+            (nskk--registration-depth 0)
+            on-not-found-called)
+        (insert nskk-henkan-on-marker "ほ*")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (let ((preedit-end (- (point-max) 1)))
+          (nskk-state-force-henkan-phase nskk-current-state 'on)
+          (nskk-with-mocks ((nskk-core-search/k
+                             (lambda (_q _type _limit _on-found on-not-found)
+                               (funcall on-not-found)))
+                            (nskk-start-registration/k
+                             (lambda (_reading on-done _on-fail)
+                               (funcall on-done nil)))  ; nil = cancelled
+                            (nskk--remove-okuri-marker #'ignore))
+            (nskk--trigger-okuri-conversion/k ?k preedit-end
+                                              #'ignore
+                                              (lambda () (setq on-not-found-called t))
+                                              #'ignore)))
+        (should on-not-found-called))))
+
+  (nskk-it "calls on-register after successful registration"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--conversion-overlay nil)
+            (nskk--henkan-count 0)
+            (nskk--registration-depth 0)
+            on-register-called)
+        (insert nskk-henkan-on-marker "ほ*")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (let ((preedit-end (- (point-max) 1)))
+          (nskk-state-force-henkan-phase nskk-current-state 'on)
+          (nskk-with-mocks ((nskk-core-search/k
+                             (lambda (_q _type _limit _on-found on-not-found)
+                               (funcall on-not-found)))
+                            (nskk-start-registration/k
+                             (lambda (_reading on-done _on-fail)
+                               (funcall on-done "炎")))  ; "炎" = registered word
+                            (nskk--remove-okuri-marker #'ignore)
+                            (nskk-henkan-do-reset #'ignore))
+            (nskk--trigger-okuri-conversion/k ?k preedit-end
+                                              #'ignore
+                                              #'ignore
+                                              (lambda () (setq on-register-called t)))))
+        (should on-register-called)))))
 
 ;;;
 ;;; nskk--handle-vowel-okuri/k
