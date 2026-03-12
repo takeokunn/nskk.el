@@ -175,9 +175,9 @@ Returns nil when MODE has no `mode-properties/5' fact, the cursor
 face is not defined, or its :background attribute is `unspecified'."
   (when-let* ((face (nskk-prolog-query-value
                      `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?c))
-              (_ (facep face))
+              (_face-p (facep face))
               (color (face-attribute face :background nil t))
-              (_ (not (memq color '(nil unspecified)))))
+              (_color-valid (not (memq color '(nil unspecified)))))
     color))
 
 (defun/done nskk-cursor-update ()

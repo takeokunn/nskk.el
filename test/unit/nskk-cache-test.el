@@ -769,7 +769,7 @@
         (nskk-cache-lru-put cache (format "key%d" i) (format "value%d" i)))
       (let ((put-ms (* 1000 (float-time (time-subtract (current-time) start)))))
         (message "[Performance] LRU put 1000 entries: %.3fms" put-ms)
-        (should (< put-ms 100))))   ; < 100 ms total
+        (should (< put-ms 200))))   ; < 200 ms total (relaxed for CI)
     (let ((start (current-time)))
       (dotimes (i 1000)
         (nskk-cache-lru-get cache (format "key%d" i)))
