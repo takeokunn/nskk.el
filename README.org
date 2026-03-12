@@ -46,7 +46,7 @@ No external ELPA packages required.
 ** use-package
 #+begin_src elisp
 (use-package nskk
-  :ensure t
+  :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest)
   :custom
   (nskk-dict-system-dictionary-files
    '("/usr/share/skk/SKK-JISYO.L"))
@@ -56,7 +56,7 @@ No external ELPA packages required.
 ** leaf
 #+begin_src elisp
 (leaf nskk
-  :ensure t
+  :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest)
   :custom
   (nskk-dict-system-dictionary-files . '("/usr/share/skk/SKK-JISYO.L"))
   :config
@@ -77,16 +77,16 @@ No external ELPA packages required.
 ;; macOS: brew install skk-jisyo
 ;; NixOS: environment.systemPackages = [ skk-jisyo ];
 
-(setq nskk-dict-system-dictionary-files
-      '("/usr/share/skk/SKK-JISYO.L"
-        "/usr/share/skk/SKK-JISYO.jinmei"
-        "/usr/share/skk/SKK-JISYO.geo"))
+(setopt nskk-dict-system-dictionary-files
+        '("/usr/share/skk/SKK-JISYO.L"
+          "/usr/share/skk/SKK-JISYO.jinmei"
+          "/usr/share/skk/SKK-JISYO.geo"))
 (nskk-global-mode 1)
 #+end_src
 ** Recommended Configuration
 #+begin_src elisp
 (use-package nskk
-  :ensure t
+  :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest)
   :bind (("C-x C-j" . nskk-toggle-mode)
          :map nskk-mode-map
          ("C-j" . nskk-kakutei))
@@ -222,25 +222,25 @@ stateDiagram-v2
 ** Common Options
 #+begin_src elisp
 ;; Set initial input mode
-(setq nskk-state-default-mode 'hiragana)
+(setopt nskk-state-default-mode 'hiragana)
 
 ;; System dictionary files
-(setq nskk-dict-system-dictionary-files
-      '("/usr/share/skk/SKK-JISYO.L"))
+(setopt nskk-dict-system-dictionary-files
+        '("/usr/share/skk/SKK-JISYO.L"))
 
 ;; User dictionary location
-(setq nskk-dict-user-dictionary-file "~/.nskk/jisyo")
+(setopt nskk-dict-user-dictionary-file "~/.nskk/jisyo")
 
 ;; Candidate display
-(setq nskk-henkan-show-candidates-nth 2)
-(setq nskk-henkan-number-to-display-candidates 7)
+(setopt nskk-henkan-show-candidates-nth 2)
+(setopt nskk-henkan-number-to-display-candidates 7)
 #+end_src
 ** SKK Server (skkserv)
 #+begin_src elisp
 ;; Connect to a running skkserv for extended dictionary lookup
-(setq nskk-server-enable t)
-(setq nskk-server-host "localhost")
-(setq nskk-server-port 1178)
+(setopt nskk-server-enable t)
+(setopt nskk-server-host "localhost")
+(setopt nskk-server-port 1178)
 #+end_src
 ** Hooks
 #+begin_src elisp
