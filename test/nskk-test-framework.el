@@ -39,6 +39,7 @@
 (require 'ert)
 (require 'nskk-dictionary)
 (require 'nskk-prolog)
+(require 'nskk-trie)
 (eval-when-compile (require 'cl-lib))
 
 ;; Load all NSKK modules and initialize their Prolog predicates once for the
@@ -318,29 +319,29 @@ Matches legacy nskk-deftest-integration, property tests, and BDD-style names."
   "Return a deep copy of trie NODE and all its descendants.
 Recursively copies the children hash-table so mutations in one test
 do not bleed into the saved copy."
-  (let ((new (nskk--prolog-trie-node--create
-              :char    (nskk--prolog-trie-node-char node)
-              :is-end  (nskk--prolog-trie-node-is-end node)
-              :value   (nskk--prolog-trie-node-value node)
-              :count   (nskk--prolog-trie-node-count node))))
-    (when-let* ((children (nskk--prolog-trie-node-children node)))
+  (let ((new (nskk-trie-node--create
+              :char    (nskk-trie-node-char node)
+              :is-end  (nskk-trie-node-is-end node)
+              :value   (nskk-trie-node-value node)
+              :count   (nskk-trie-node-count node))))
+    (when-let* ((children (nskk-trie-node-children node)))
       (let ((new-children (make-hash-table :test 'eq
                                            :size (hash-table-count children))))
         (maphash (lambda (ch child)
                    (puthash ch (nskk-prolog-test--copy-trie-node child)
                             new-children))
                  children)
-        (setf (nskk--prolog-trie-node-children new) new-children)))
+        (setf (nskk-trie-node-children new) new-children)))
     new))
 
 (defun nskk-prolog-test--copy-trie (trie)
   "Return a deep copy of TRIE.
 The root node and all descendant nodes are recursively duplicated so
-that `nskk--prolog-trie-insert' and `nskk--prolog-trie-delete' in the
+that `nskk-trie-insert' and `nskk-trie-delete' in the
 test body cannot mutate the saved snapshot."
-  (nskk--prolog-trie--create-internal
-   :root (nskk-prolog-test--copy-trie-node (nskk--prolog-trie-root trie))
-   :size (nskk--prolog-trie-size trie)))
+  (nskk-trie--create-internal
+   :root (nskk-prolog-test--copy-trie-node (nskk-trie-root trie))
+   :size (nskk-trie-size trie)))
 
 (defun nskk-prolog-test--copy-hash-table (ht)
   "Deep-copy hash table HT for test isolation.
@@ -352,7 +353,7 @@ by reference."
                               :size (hash-table-size ht))))
     (maphash (lambda (k v)
                (puthash k (cond
-                           ((nskk--prolog-trie-p v)
+                           ((nskk-trie-p v)
                             (nskk-prolog-test--copy-trie v))
                            ((sequencep v)
                             (copy-sequence v))

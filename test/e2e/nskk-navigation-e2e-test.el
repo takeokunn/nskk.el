@@ -394,6 +394,91 @@
           (nskk-e2e-type "C-b")
           (should (and (>= (point) (point-min)) (<= (point) (point-max)))))))))
 
+;;;;
+;;;; Section 10: Unbound key implicit kakutei via post-command-handler
+;;;;
+;; These tests exercise the `nskk--post-command-handler` safety net path,
+;; which commits conversion when an unbound command moves point away from
+;; the overlay boundary.  Unlike sections 1–9 (which test bound keys that
+;; call `nskk--commit-by-phase` explicitly), these simulate the interactive
+;; command loop: pre-command-hook → command → post-command-hook.
+
+(defmacro nskk-e2e--simulate-unbound-command (command)
+  "Simulate running COMMAND as if from the interactive command loop.
+Saves point in `nskk--point-before-command', runs COMMAND via
+`call-interactively', then fires `nskk--post-command-handler'."
+  (let ((cmd (gensym "cmd")))
+    `(let ((,cmd ,command)
+           (nskk--point-before-command (point)))
+       (condition-case nil
+           (call-interactively ,cmd)
+         (error nil))
+       (let ((this-command ,cmd))
+         (nskk--post-command-handler)))))
+
+(nskk-describe "unbound key implicit kakutei in converting state"
+  (nskk-it "M-b commits candidate without residual text"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (insert "test word ")
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e--simulate-unbound-command #'backward-word)
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "test word 漢字")))
+
+  (nskk-it "M-f commits candidate when moving past overlay"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (insert "before ")
+      (save-excursion (insert " after"))
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e--simulate-unbound-command #'forward-word)
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "before 漢字 after")))
+
+  (nskk-it "beginning-of-buffer into overlay commits correctly"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (insert "a")
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e--simulate-unbound-command #'beginning-of-buffer)
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "a漢字"))))
+
+(nskk-describe "unbound key implicit kakutei with okurigana"
+  (nskk-it "M-b during okurigana conversion preserves kana suffix"
+    (let ((dict '(("かk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (insert "test ")
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "i")
+        (nskk-e2e-assert-converting)
+        ;; Point is past overlay-end (okurigana "き" sits after overlay).
+        ;; M-b moves point backward — but since point was PAST overlay-end
+        ;; before the command, the normal commit path (Branch B) fires via
+        ;; the post-command-handler.
+        (nskk-e2e--simulate-unbound-command #'backward-word)
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-henkan-phase nil)
+        (nskk-e2e-assert-buffer "test 書き")))))
+
+(nskk-describe "unbound key implicit kakutei in preedit state"
+  (nskk-it "M-b commits kana as-is from preedit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (insert "test ")
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e--simulate-unbound-command #'backward-word)
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "test かんじ"))))
+
 (provide 'nskk-navigation-e2e-test)
 
 ;;; nskk-navigation-e2e-test.el ends here

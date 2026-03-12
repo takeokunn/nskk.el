@@ -44,7 +44,7 @@
 (nskk-describe "cache basic operations"
 
   (nskk-it "creating LRU cache with capacity 10 yields empty stats"
-    (let ((cache (nskk-cache-create 'lru 10)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
       (nskk-then
         (should (nskk-cache-p cache))
         (should (= (nskk-cache-size cache) 0))
@@ -56,7 +56,7 @@
           (should (eq (plist-get stats :type) 'lru))))))
 
   (nskk-it "put and get records a hit and a miss correctly"
-    (let ((cache (nskk-cache-create 'lru 10)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
       (nskk-given (nskk-cache-put cache "test" '("a" "b")))
       (nskk-then
         ;; Hit: existing key
@@ -69,7 +69,7 @@
           (should (= (plist-get stats :misses) 1))))))
 
   (nskk-it "hit-rate is 0.75 after 3 hits and 1 miss"
-    (let ((cache (nskk-cache-create 'lru 10)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
       (nskk-given
         (nskk-cache-put cache "k1" "v1")
         (nskk-cache-put cache "k2" "v2")
@@ -83,7 +83,7 @@
         (nskk-assert-approx-equal (nskk-cache-hit-rate cache) 0.75 0.001))))
 
   (nskk-it "LRU cache with capacity 2 evicts the least-recently-used entry"
-    (let ((cache (nskk-cache-create 'lru 2)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 2)))
       (nskk-given
         (nskk-cache-put cache "key1" "val1")
         (nskk-cache-put cache "key2" "val2"))
@@ -96,7 +96,7 @@
         (nskk-should-equal "val3" (nskk-cache-get cache "key3")))))
 
   (nskk-it "invalidating a specific key removes it and decrements size"
-    (let ((cache (nskk-cache-create 'lru 10)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
       (nskk-given
         (nskk-cache-put cache "alpha" '("x"))
         (nskk-cache-put cache "beta" '("y")))
@@ -109,7 +109,7 @@
 
   (nskk-it "pattern invalidation removes matching keys and leaves others intact"
     (nskk-prolog-test-with-isolated-db
-      (let ((cache (nskk-cache-create 'lru 20)))
+      (let ((cache (nskk-cache-create :type 'lru :capacity 20)))
         (nskk-given
           (nskk-cache-put cache "かんじ:exact:nil" '("漢字"))
           (nskk-cache-put cache "かんじ:prefix:nil" '("漢字" "感じ"))
@@ -124,7 +124,7 @@
           (nskk-should-equal '("桜") (nskk-cache-get cache "さくら:exact:nil"))))))
 
   (nskk-it "clearing a cache removes all entries and resets size to zero"
-    (let ((cache (nskk-cache-create 'lru 10)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
       (nskk-given
         (nskk-cache-put cache "a" 1)
         (nskk-cache-put cache "b" 2)
@@ -157,7 +157,7 @@
 
   (nskk-it "first search is a cache miss; second is a cache hit"
     (nskk-with-mock-dict nil
-      (let* ((cache (nskk-cache-create 'lru 100))
+      (let* ((cache (nskk-cache-create :type 'lru :capacity 100))
              (cache-key "かんじ:exact:none")
              ;; First call: cache miss, result fetched from Prolog
              (result1 (nskk-search-with-cache cache nskk--system-dict-index "かんじ")))
@@ -178,7 +178,7 @@
 
   (nskk-it "search-with-cache returns nil for a missing key and does not cache nil"
     (nskk-with-mock-dict nil
-      (let* ((cache (nskk-cache-create 'lru 100))
+      (let* ((cache (nskk-cache-create :type 'lru :capacity 100))
              (result (nskk-search-with-cache cache nskk--system-dict-index "ほげほげほげ")))
         (nskk-then
           (should (null result))
@@ -186,7 +186,7 @@
 
   (nskk-it "independent keys are cached separately without interference"
     (nskk-with-mock-dict nil
-      (let ((cache (nskk-cache-create 'lru 100)))
+      (let ((cache (nskk-cache-create :type 'lru :capacity 100)))
         (let ((e1 (nskk-search-with-cache cache nskk--system-dict-index "かんじ"))
               (e2 (nskk-search-with-cache cache nskk--system-dict-index "さくら")))
           (nskk-then
@@ -248,7 +248,7 @@
 (nskk-describe "cache type validation"
 
   (nskk-it "LFU cache supports basic put/get and tracks stats by type"
-    (let ((cache (nskk-cache-create 'lfu 100)))
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 100)))
       (nskk-given
         (should (nskk-cache-p cache))
         (should (= (nskk-cache-size cache) 0)))
@@ -263,7 +263,7 @@
           (should (= (plist-get stats :misses) 1))))))
 
   (nskk-it "LFU cache evicts the least-frequently-used entry on overflow"
-    (let ((cache (nskk-cache-create 'lfu 2)))
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 2)))
       (nskk-given
         (nskk-cache-put cache "rare" "r")
         (nskk-cache-put cache "freq" "f"))
@@ -281,11 +281,11 @@
   (nskk-it "requesting an unknown cache type signals a user-error"
     (nskk-then
       (should-error
-       (nskk-cache-create 'invalid-type)
+       (nskk-cache-create :type 'invalid-type)
        :type 'user-error)))
 
   (nskk-it "invalidating a non-existent key returns nil"
-    (let ((cache (nskk-cache-create 'lru 10)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
       (nskk-then
         (should (null (nskk-cache-invalidate cache "no-such-key"))))))
 
@@ -361,7 +361,7 @@
   (nskk-property-test cache-hit-rate-monotonically-non-decreasing
     ((key   search-query)
      (value candidate-list))
-    (let* ((cache    (nskk-cache-create 'lru 50))
+    (let* ((cache    (nskk-cache-create :type 'lru :capacity 50))
            (num-puts (+ 3 (random 8)))   ; 3..10 random puts
            (num-hits (+ 2 (random 8)))   ; 2..9 guaranteed hits
            ;; Collect a pool of keys actually inserted so we can hit them.
@@ -393,7 +393,7 @@
   (nskk-property-test cache-lru-capacity-never-exceeded
     ((key search-query))
     (let* ((capacity 3)
-           (cache    (nskk-cache-create 'lru capacity))
+           (cache    (nskk-cache-create :type 'lru :capacity capacity))
            (num-puts (+ 4 (random 10)))  ; 4..13, always > capacity
            (ok t))
       (dotimes (i num-puts)
@@ -411,7 +411,7 @@
   ;; insert a fourth entry D which must trigger eviction of A (lowest freq).
   (nskk-property-test cache-lfu-evicts-least-frequently-used
     ((key search-query))
-    (let* ((cache (nskk-cache-create 'lfu 3))
+    (let* ((cache (nskk-cache-create :type 'lfu :capacity 3))
            (k-a   (format "%s-a" key))
            (k-b   (format "%s-b" key))
            (k-c   (format "%s-c" key))

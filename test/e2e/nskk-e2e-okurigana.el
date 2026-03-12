@@ -1272,6 +1272,80 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-assert-overlay-shows "花")))))
 
+;;;;
+;;;; Okurigana bug regression tests (OKU-2, OKU-4)
+;;;;
+;;
+;; Regression guards for fixed okurigana bugs.
+;;
+;; OKU-2: nskk--exhaust-candidates previously passed buffer kanji text (not
+;;        the original reading) to nskk-start-registration.  Now it
+;;        reconstructs the reading in okurigana-aware format (e.g. "か*く")
+;;        from stored metadata.
+;;
+;; OKU-4: nskk-start-conversion/k SPC okurigana path previously never called
+;;        on-found continuation.  Now the inline CPS block properly threads
+;;        all three continuations to the caller.
+
+(nskk-describe "Okurigana bug regression (OKU-2, OKU-4)"
+  (nskk-it "OKU-2: exhaust-candidates passes okurigana-aware reading to registration"
+    ;; Dict has a single candidate for "かk".  Typing KaKu triggers okurigana
+    ;; conversion showing "書く".  Pressing SPC enough times exhausts candidates
+    ;; and triggers registration.  The registration prompt SHOULD contain the
+    ;; original reading (e.g. "か*く" or "かk"), NOT the kanji "書".
+    (let ((dict '(("かk" . ("書"))))
+          (nskk-henkan-show-candidates-nth 2)
+          (captured-prompt nil))
+      (nskk-e2e-with-buffer 'hiragana dict
+        ;; Override read-from-minibuffer to capture the prompt string.
+        (cl-letf (((symbol-function 'read-from-minibuffer)
+                   (lambda (prompt &rest _)
+                     (setq captured-prompt prompt)
+                     "")))
+          (nskk-e2e-type "K")
+          (nskk-e2e-type "a")
+          (nskk-e2e-type "K")
+          (nskk-e2e-type "u")
+          (nskk-e2e-assert-converting)
+          ;; Exhaust all candidates: only "書" exists.
+          ;; First SPC enters candidate-list display, second SPC exhausts.
+          (nskk-e2e-type "SPC")
+          (nskk-e2e-type "SPC")
+          ;; Registration should have been triggered.
+          (should captured-prompt)
+          ;; The prompt should contain the reading in stem*kana format.
+          (should (string-match-p "か\\*く" captured-prompt))
+          ;; The reading portion (after "] ") must NOT contain the kanji "書".
+          ;; Note: "辞書登録" in the header contains "書", so check only the
+          ;; reading portion after the last "] ".
+          (let ((reading-part (if (string-match "\\] \\(.+\\): \\'" captured-prompt)
+                                  (match-string 1 captured-prompt)
+                                captured-prompt)))
+            (should-not (string-match-p "書" reading-part)))))))
+
+  (nskk-it "OKU-4: SPC okurigana path calls on-found continuation"
+    ;; When nskk-start-conversion/k is called and the SPC okurigana path fires
+    ;; (pending okurigana detected), the on-found continuation must be called
+    ;; so the caller knows conversion succeeded.  Currently the okuri branch
+    ;; in nskk-start-conversion/k calls nskk--trigger-okuri-conversion as a
+    ;; side effect but never invokes on-found.
+    (let ((dict '(("かk" . ("書" "掛"))))
+          (on-found-called nil))
+      (nskk-e2e-with-buffer 'hiragana dict
+        ;; Set up the ▽か*k state by typing K a K.
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "K")
+        ;; Now call nskk-start-conversion/k directly with tracking lambdas.
+        ;; The okuri branch should fire because okurigana is pending.
+        (nskk-start-conversion/k
+         (lambda (&rest _args)
+           (setq on-found-called t))
+         #'ignore
+         #'ignore)
+        ;; on-found must have been called.
+        (should on-found-called)))))
+
 (provide 'nskk-e2e-okurigana)
 
 ;;; nskk-e2e-okurigana.el ends here

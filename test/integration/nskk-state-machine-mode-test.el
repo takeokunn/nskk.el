@@ -358,7 +358,7 @@ TRIGGER is ignored; a random valid mode is chosen."
     ;; Invariant: mode must remain within the recognised valid-modes set
     (and (nskk-state-p state)
          (nskk-state-valid-mode-p (nskk-state-mode state))
-         (memq (nskk-state-mode state) nskk-state-modes)))
+         (nskk-state-valid-mode-p (nskk-state-mode state))))
   50)
 
 

@@ -151,7 +151,7 @@
     (nskk-state-set state 'converted-buffer "converted")
     (nskk-state-set state 'candidates (plist-get cands :candidates))
     (and (symbolp (nskk-state-mode state))
-         (memq (nskk-state-mode state) nskk-state-modes)
+         (nskk-state-valid-mode-p (nskk-state-mode state))
          (stringp (nskk-state-input-buffer state))
          (stringp (nskk-state-converted-buffer state))
          (listp (nskk-state-candidates state))

@@ -102,13 +102,15 @@
     ("ぬ"      . ("ぬ"))
     ("ね"      . ("根" "値" "寝"))
     ("の"      . ("野" "乃" "農"))
-    ;; Okurigana (okuri-ari) entries: key = hiragana-stem + lowercase-consonant
+    ;; Okurigana (okuri-ari) entries: key = hiragana-stem + lowercase-consonant.
     ;; Candidates contain only the kanji stem; the okurigana kana is appended by
     ;; the input pipeline from the okurigana buffer.
+    ;; Multi-candidate entries (2-3 candidates) enable SPC-cycling regression
+    ;; tests in Section 14 of nskk-azik-e2e-test.el and nskk-e2e-okurigana.el.
     ("できr"  . ("出来"))
-    ("みr"    . ("見"))
-    ("かk"    . ("書"))
-    ("おくr"  . ("送"))
+    ("みr"    . ("見" "診"))
+    ("かk"    . ("書" "掛" "欠"))
+    ("おくr"  . ("送" "贈" "遅"))
     ("はしr"  . ("走"))
     ("よm"    . ("読"))
     ("きk"    . ("聞"))
@@ -117,7 +119,7 @@
     ("おもw"  . ("思"))
     ("はなs"  . ("話"))
     ("とr"    . ("取"))
-    ("たべr"  . ("食"))
+    ("たべr"  . ("食" "喰"))
     ("はびこr" . ("蔓延")))
   "Default mock dictionary for E2E tests.
 Uses alist of (reading . candidates-list).
