@@ -295,7 +295,11 @@ explicitly before moving, so by the time this hook fires for them the
 relevant phase is already nil and both guards are no-ops."
   (when (and nskk-mode nskk-current-state)
     ;; Converting (▼) point-escape guard.
-    (when (nskk-converting-p)
+    ;; Skip when okurigana is in progress: point is legitimately past
+    ;; overlay-end because the okurigana kana sits after the overlay.
+    (when (and (nskk-converting-p)
+              (not (nskk-state-get-metadata nskk-current-state
+                                            'okurigana-in-progress)))
       (let* ((conv-start (nskk--get-conversion-start))
              (overlay-end (when (and (boundp 'nskk--conversion-overlay)
                                      (overlayp nskk--conversion-overlay))

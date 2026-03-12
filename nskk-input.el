@@ -105,6 +105,7 @@
 (defvar nskk-henkan-select-candidate-by-key-function) ;; Forward declaration from nskk-henkan.el
 (defvar nskk-converter-romaji-style)                 ;; Forward declaration from nskk-converter.el
 (defvar nskk-azik-q-behavior)                        ;; Forward declaration from nskk-azik.el
+(defvar nskk-azik-keyboard-type)                     ;; Forward declaration from nskk-azik.el
 (defvar nskk--hatsuon-blockers)                      ;; Forward declaration from nskk-converter.el
 (defvar nskk--sokuon-blockers)                       ;; Forward declaration from nskk-converter.el
 
@@ -135,6 +136,16 @@ prefix (e.g. \"sh\") and KANA-STRING is the tentatively emitted kana
     Unlike `nskk--deferred-azik-state', NO っ is inserted.
   - Non-vowel: clear deferred state without retroactive correction.
 Satisfies Sh→すう (AZIK double-vowel) while preserving sha→しゃ (standard romaji).")
+
+(defun nskk--azik-colon-key-p (char)
+  "Return non-nil when CHAR is the AZIK colon-okurigana trigger key.
+On US101 keyboards, the trigger is `:' (Shift+;).
+On JP106 keyboards, the trigger is `+' (Shift+;) because `:' is a
+separate key.  Both characters are accepted in AZIK mode."
+  (or (eq char ?:)
+      (and (eq char ?+)
+           (bound-and-true-p nskk-azik-keyboard-type)
+           (eq nskk-azik-keyboard-type 'jp106))))
 
 (defvar-local nskk--azik-colon-okuri-pending nil
   "Non-nil when the AZIK colon-okurigana trigger (`:') has been armed.
@@ -651,7 +662,7 @@ Actions:
       (setq char (upcase char))))
   (let* ((char-type (cond
                      ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
-                     ((eq char ?:)                                       'colon)
+                     ((nskk--azik-colon-key-p char)                       'colon)
                      (t                                                  'other)))
          (input-context (cond
                          (nskk--azik-colon-okuri-pending

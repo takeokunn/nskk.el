@@ -1346,6 +1346,85 @@
         ;; on-found must have been called.
         (should on-found-called)))))
 
+;;;;
+;;;; Post-command-handler okurigana guard (point-escape regression)
+;;
+;; Bug: nskk--post-command-handler's converting (▼) point-escape guard
+;; auto-committed okurigana conversions because the overlay only covers the
+;; reading stem (e.g. "お") while the okurigana kana (e.g. "い") sits after
+;; the overlay.  Point is at the end of the kana, past overlay-end, so the
+;; guard falsely detected point escape and called nskk-commit-current.
+;;
+;; Fix: skip the point-escape guard when okurigana-in-progress metadata is set.
+;;
+;; These tests call nskk--post-command-handler explicitly because
+;; nskk-e2e--dispatch-event uses call-interactively which does not trigger
+;; post-command-hook (only the real Emacs command loop does).
+
+(nskk-describe "post-command-handler okurigana guard"
+  (nskk-it "does not auto-commit vowel okurigana OI after post-command-handler"
+    (let ((dict '(("おi" . ("推" "置")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "O")
+        (nskk-e2e-type "I")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "推")
+        ;; Simulate post-command-hook firing (real command loop does this)
+        (nskk--post-command-handler)
+        ;; Must still be in converting state — NOT auto-committed
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "推"))))
+
+  (nskk-it "allows SPC cycling after post-command-handler on vowel okurigana"
+    (let ((dict '(("おi" . ("推" "置")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "O")
+        (nskk-e2e-type "I")
+        (nskk--post-command-handler)
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "SPC")
+        (nskk--post-command-handler)
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "置"))))
+
+  (nskk-it "commits vowel okurigana OI with C-j after post-command-handler"
+    (let ((dict '(("おi" . ("推")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "O")
+        (nskk-e2e-type "I")
+        (nskk--post-command-handler)
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "推い"))))
+
+  (nskk-it "does not auto-commit consonant okurigana KaKu after post-command-handler"
+    (let ((dict '(("かk" . ("書" "掛")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "u")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")
+        (nskk--post-command-handler)
+        ;; Must still be converting — NOT auto-committed
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書"))))
+
+  (nskk-it "does not auto-commit AI vowel okurigana after post-command-handler"
+    (let ((dict '(("あi" . ("愛" "哀")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "A")
+        (nskk-e2e-type "I")
+        (nskk-e2e-assert-converting)
+        (nskk--post-command-handler)
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "愛")
+        (nskk-e2e-type "SPC")
+        (nskk--post-command-handler)
+        (nskk-e2e-assert-overlay-shows "哀")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "哀い")))))
+
 (provide 'nskk-e2e-okurigana)
 
 ;;; nskk-e2e-okurigana.el ends here

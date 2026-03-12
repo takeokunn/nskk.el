@@ -1166,6 +1166,47 @@ This ensures:
         (let ((buf (buffer-string)))
           (should-not (string-match-p "\\*.*\\*" buf)))))))
 
+;;;;
+;;;; Section 16: JP106 Keyboard Colon-Okurigana via + Key
+;;;;
+;;
+;; On JP106 keyboards, Shift+; produces `+' (not `:'). The AZIK colon-okurigana
+;; trigger must recognize `+' as equivalent to `:' when nskk-azik-keyboard-type
+;; is jp106.  Without this, JP106 users cannot use the colon-okurigana feature
+;; at all (e.g. Nao+ta → 治った would fail).
+
+(nskk-describe "AZIK JP106 + key as colon-okurigana trigger"
+  (nskk-it "Nao+ta converts to 治った on JP106 keyboard"
+    (let ((dict '(("なおt" . ("治")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Nao")
+          (nskk-e2e--dispatch-event ?+)
+          (nskk-e2e-type "ta")
+          (nskk-e2e-assert-converting)
+          (nskk-e2e-assert-overlay-shows "治")
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-buffer "治った")))))
+
+  (nskk-it "Tuka+te converts to 使って on JP106 keyboard"
+    (let ((dict '(("つかt" . ("使")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Tuka")
+          (nskk-e2e--dispatch-event ?+)
+          (nskk-e2e-type "te")
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-buffer "使って")))))
+
+  (nskk-it "+ does not trigger colon-okurigana on US101 keyboard"
+    (let ((dict '(("なおt" . ("治")))))
+      (let ((nskk-azik-keyboard-type 'us101))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Nao")
+          (nskk-e2e--dispatch-event ?+)
+          ;; + should NOT arm colon-okurigana on US101
+          (should-not nskk--azik-colon-okuri-pending))))))
+
 (provide 'nskk-azik-e2e-test)
 
 ;;; nskk-azik-e2e-test.el ends here
