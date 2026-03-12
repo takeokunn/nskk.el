@@ -59,8 +59,8 @@
 ;;
 ;; Key public API (all interactive):
 ;;
-;; Mode-switch handlers (via `nskk-define-mode-switch-handler'):
-;; - `nskk-handle-q'       -- toggle hiragana/katakana
+;; Mode-switch handlers (via `nskk-define-mode-switch-handler' or manual defun/done):
+;; - `nskk-handle-q'       -- convert preedit to opposite script, or toggle hiragana/katakana
 ;; - `nskk-handle-upper-l' -- switch to full-width latin mode
 ;; - `nskk-handle-slash'   -- enter abbrev mode
 ;; - `nskk-handle-hash'    -- enter numeric input mode
@@ -113,6 +113,7 @@
 (declare-function nskk-rollback-conversion "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
+(declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
 (defvar nskk-henkan-on-marker)
 ;; Variables in nskk-azik.el
@@ -389,14 +390,31 @@ Falls through to `self-insert-command' when not in a Japanese input mode."
         (lambda (_) ,action)
         (lambda () (self-insert-command 1))))))
 
-(nskk-define-mode-switch-handler q
-  "Handle q key: toggle between hiragana and katakana (or AZIK romaji dispatch).
-In henkan-active mode, perform implicit kakutei first.
-When AZIK is active and pending-romaji+q is a complete hash match
-\(e.g. kq->kai), delegates to `nskk-handle-q-key' to fire the AZIK rule.
-In ASCII mode or when NSKK state is inactive, fall through to
+(defun/done nskk-handle-q ()
+  "Handle q key: convert preedit kana to opposite script, or toggle mode.
+In ▽ preedit phase (hiragana/katakana Japanese mode):
+  - AZIK mode: delegates to `nskk-handle-q-key' so that AZIK romaji rules
+    take priority (e.g. \"tq\" → \"たい\") and standalone q inserts ん.
+    `nskk-henkan-kakutei-convert-script' is NOT called; in AZIK the toggle
+    key is @ (jp106) or [ (us101), not q.
+  - Standard mode: converts the accumulated kana to the opposite script via
+    `nskk-henkan-kakutei-convert-script' and commits without changing the
+    input mode (DDSKK-compatible: q in ▽ preedit converts script only; mode
+    toggle is suppressed).
+In henkan-active (▼) mode: performs implicit kakutei first via
+`mode-switch-preaction/2', then delegates to `nskk-handle-q-key'.
+In idle Japanese mode: delegates to `nskk-handle-q-key' (hiragana↔katakana
+toggle, or AZIK romaji dispatch when pending-romaji+q is a complete hash match).
+In ASCII mode or when NSKK state is inactive, falls through to
 `self-insert-command'."
-  (nskk-handle-q-key))
+  :interactive t
+  (if (eq (nskk--japanese-mode-class) 'preedit-japanese)
+      (if (eq nskk-converter-romaji-style 'azik)
+          (nskk-handle-q-key)
+        (nskk-henkan-kakutei-convert-script))
+    (nskk--with-japanese-mode/k
+     (lambda (_) (nskk-handle-q-key))
+     (lambda () (self-insert-command 1)))))
 
 (defun nskk--l-key-dispatch-state ()
   "Return (STYLE . BUF-STATE) cons for l-key Prolog dispatch.
@@ -413,15 +431,20 @@ Used by `nskk-handle-l' to query `l-key-action/3'."
 
 (defun/done nskk-handle-l ()
   "Handle l key: switch to ASCII mode, or fire romaji rule when pending.
+In AZIK mode, `nskk--azik-complete-match-p' is checked first so the AZIK
+table takes priority even when the romaji buffer is empty (e.g. a
+standalone \\='l\\=' -> kana custom rule would be honoured).
 When pending romaji combined with l forms a complete conversion rule
-\(e.g. \"zl\" → \"→\" in standard mode, or AZIK multi-char rules),
-fires the romaji processor instead of switching to latin mode.
+\(e.g. \"zl\" -> \"->\" in standard mode, or AZIK multi-char rules like
+\"hl\" -> \"ほん\"), fires the romaji processor instead of switching to
+latin mode.
 In henkan-active mode, perform implicit kakutei first when not routing
 to romaji.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   :interactive t
-  (if (nskk--romaji-has-match-p ?l)
+  (if (or (nskk--azik-complete-match-p ?l)
+          (nskk--romaji-has-match-p ?l))
       (nskk-process-japanese-input ?l 1)
     (nskk--with-japanese-mode/k
      (lambda (_) (nskk-set-mode-latin))

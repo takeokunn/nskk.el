@@ -192,7 +192,8 @@ The x and c rows support all extension keys (z/k/j/d/l for hatsuon,
 q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
 
 (defconst nskk--azik-youon-rows
-  '(("kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
+  '(("ng" "にゃ" "にぃ" "にゅ" "にぇ" "にょ")
+    ("kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
     ("hg" "ひゃ" "ひぃ" "ひゅ" "ひぇ" "ひょ")
     ("mg" "みゃ" "みぃ" "みゅ" "みぇ" "みょ")
     ("rg" "りゃ" "りぃ" "りゅ" "りぇ" "りょ")
@@ -211,7 +212,7 @@ Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.")
 
 (defconst nskk--azik-word-shortcuts
   '(("km" "かも") ("kr" "から") ("gr" "がら") ("kt" "こと") ("gt" "ごと")
-    ("zr" "ざる") ("st" "した") ("sr" "する") ("tt" "たち") ("dt" "だち")
+    ("zr" "ざる") ("st" "した") ("ss" "せい") ("sr" "する") ("tt" "たち") ("dt" "だち")
     ("tb" "たび") ("tm" "ため") ("tr" "たら") ("ds" "です") ("dm" "でも")
     ("nr" "なる") ("nt" "にち") ("nb" "ねば") ("ht" "ひと") ("bt" "びと")
     ("ms" "ます") ("mt" "また") ("mn" "もの") ("yr" "よる")

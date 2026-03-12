@@ -53,7 +53,7 @@
 ;;   `nskk-set-mode-latin'           -- switch to ASCII/latin mode
 ;;   `nskk-set-mode-abbrev'          -- switch to abbrev mode
 ;;   `nskk-set-mode-jisx0208-latin'  -- switch to full-width latin mode
-;;   `nskk-toggle-japanese-mode'     -- toggle hiragana<->katakana
+;;   `nskk-toggle-japanese-mode'     -- convert preedit script or toggle hiragana<->katakana
 ;;   `nskk-current-mode'             -- return current mode symbol
 ;;   `nskk-handle-q-key'             -- q key with AZIK dispatch
 ;;   `nskk-handle-semicolon-key'     -- semicolon key with AZIK dispatch
@@ -87,6 +87,7 @@
 (declare-function nskk--conversion-start-active-p "nskk-henkan")
 (declare-function nskk-process-okurigana-input "nskk-henkan")
 (declare-function nskk-converting-p "nskk-henkan")
+(declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-state-get-metadata "nskk-state")
 (declare-function nskk-state-henkan-phase "nskk-state")
 (declare-function nskk--clear-conversion-context "nskk-henkan")
@@ -187,17 +188,26 @@ Dictionary keys that begin with # trigger numeric candidate expansion."
 
 ;;;###autoload
 (defun/done nskk-toggle-japanese-mode ()
-  "Toggle between hiragana and katakana modes."
+  "Convert preedit kana to opposite script, or toggle hiragana<->katakana.
+In ▽ preedit phase (henkan-phase `on'): delegates to
+`nskk-henkan-kakutei-convert-script' which queries `script-toggle/2'
+(Prolog) for the target script, converts and commits the preedit text,
+and clears conversion state without changing the input mode (DDSKK-compatible).
+In idle state: queries `toggle-mode/2' (Prolog) for the target mode and
+switches via `nskk--set-mode' (hiragana↔katakana toggle)."
   :interactive t
-  (let* ((current-mode (when (boundp 'nskk-current-state)
-                         (nskk-state-mode nskk-current-state)))
-         (target (nskk-prolog-query-value
-                  `(toggle-mode ,current-mode ,'\?target) '\?target)))
-    (when target
-      (nskk-debug-log "[INPUT] toggle-mode: from=%s to=%s" current-mode target)
-      (nskk--set-mode target)
-      (when (fboundp 'nskk-modeline-update)
-        (nskk-modeline-update)))))
+  (if (nskk-with-current-state
+        (eq (nskk-state-henkan-phase nskk-current-state) 'on))
+      (nskk-henkan-kakutei-convert-script)
+    (let* ((current-mode (when (boundp 'nskk-current-state)
+                           (nskk-state-mode nskk-current-state)))
+           (target (nskk-prolog-query-value
+                    `(toggle-mode ,current-mode ,'\?target) '\?target)))
+      (when target
+        (nskk-debug-log "[INPUT] toggle-mode: from=%s to=%s" current-mode target)
+        (nskk--set-mode target)
+        (when (fboundp 'nskk-modeline-update)
+          (nskk-modeline-update))))))
 
 (defun/done nskk--set-mode (mode)
   "Internal mode setter with validation.
@@ -236,8 +246,7 @@ Side effect: calls `nskk-converter-load-style' with `azik'."
 In AZIK mode:
   - If pending-romaji+q is a complete AZIK hash match (e.g. kq→かい),
     fire the AZIK rule via `nskk-process-japanese-input'.
-  - If there is other pending romaji input, produce \u3093
-  - Otherwise, toggle hiragana/katakana mode
+  - Otherwise, produce \u3093 (katakana mode: \u30f3)
 In standard mode: toggle mode (default SKK behavior)."
   :interactive t
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
@@ -254,7 +263,9 @@ In standard mode: toggle mode (default SKK behavior)."
     (nskk-debug-log "[INPUT] q-key: style=%s buf-state=%s action=%s" style buf-state action)
     (pcase action
       ('toggle-mode  (nskk-toggle-japanese-mode))
-      ('insert-n     (insert "\u3093"))
+      ('insert-n     (insert (if (memq (nskk-state-mode nskk-current-state)
+                                       '(katakana katakana-半角))
+                                 "\u30f3" "\u3093")))
       ('fire-romaji  (nskk-process-japanese-input ?q 1))
       (_             nil))))
 
@@ -663,9 +674,14 @@ n-consonant > match > incomplete > no-match."
            ;; n followed by non-hatsuon-blocker: n-consonant case.
            ;; Yield to `match' when the combined input has a complete AZIK rule
            ;; (e.g. "nq"→"ない", "nk"→"にん") so AZIK takes priority over ん-emit.
+           ;; Also yield when the two-char combo is DIRECTLY :incomplete in the
+           ;; romaji hash (e.g. AZIK "ng" is a youon prefix for "nga"→"にゃ").
+           ;; Standard-mode "nj" hits :incomplete only via the single-char "n"
+           ;; fallback, so its direct two-char lookup is nil → n-consonant fires.
            ((and (eql last-buf-char ?n)
                  (not (memq char nskk--hatsuon-blockers))
-                 (not (eq result-type 'match)))
+                 (not (eq result-type 'match))
+                 (not (eq (nskk-converter-lookup (string ?n char)) :incomplete)))
             'n-consonant)
            ;; same eligible consonant doubled with a complete match
            ((and same-doubled not-sokuon-blocked (eq result-type 'match))
@@ -836,13 +852,13 @@ All input modes are covered here, including abbrev (process-abbrev)."
 Simplified context-aware q-key handling:
 - standard: always toggle mode
 - azik + azik-complete: fire the AZIK romaji rule (e.g. kq→かい)
-- azik + pending: insert ん
-- azik + empty: toggle mode"
+- azik + pending: insert ん/ン
+- azik + empty: insert ん/ン (standalone q)"
   (nskk-prolog-define-fact-table q-key-action (:arity 3 :index :hash)
     (standard \?buf toggle-mode)
     (azik azik-complete fire-romaji)
     (azik pending insert-n)
-    (azik empty toggle-mode)))
+    (azik empty insert-n)))
 
 (defun/done nskk--init-semicolon-rules ()
   "Assert semicolon-key-action/2 facts.
