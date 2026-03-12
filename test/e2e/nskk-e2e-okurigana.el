@@ -137,6 +137,19 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "掛け"))))
 
+  (nskk-it "selects second candidate 掛き from KaKi"
+    (let ((dict '(("かk" . ("書" "掛")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "i")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "掛")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "掛き"))))
+
   (nskk-it "cancels KaKu conversion with C-g"
     (let ((dict '(("かk" . ("書")))))
       (nskk-e2e-with-buffer 'hiragana dict
