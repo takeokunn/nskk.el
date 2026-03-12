@@ -103,6 +103,9 @@
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--get-conversion-start "nskk-henkan")
 (declare-function nskk-commit-current "nskk-henkan")
+(declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
+(declare-function nskk-cancel-preedit "nskk-henkan")
+(declare-function nskk--clear-conversion-context "nskk-henkan")
 
 (defvar nskk-mode-hook nil
   "Hook run when NSKK mode is enabled.
@@ -213,6 +216,21 @@ This provides global bindings that work even when nskk-mode is not yet active."
 
 (defun nskk--disable ()
   "Disable NSKK in current buffer."
+  ;; Cancel any in-progress conversion or preedit before tearing down state.
+  (when (and (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (let ((phase (nskk-state-henkan-phase nskk-current-state)))
+      (cond
+       ;; Active/list conversion (▼): remove marker, leave kana reading.
+       ((memq phase '(active list))
+        (nskk-cancel-conversion-to-reading))
+       ;; Preedit (▽) or word-registration (still ▽ in buffer): remove marker + text.
+       ;; Note: 'registration lies in nskk--converting-phases but keeps ▽ (not ▼).
+       ((memq phase '(on registration))
+        (nskk-cancel-preedit)))))
+  ;; Clear remaining input state: pending romaji, dcomp, numeric, sticky shift, AZIK.
+  ;; Internally guarded via nskk-when-bound and nskk-with-current-state; safe when nil.
+  (nskk--clear-conversion-context)
   (run-hooks 'nskk-mode-off-hook)
   (nskk--cleanup-buffer)
   (remove-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
