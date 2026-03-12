@@ -119,7 +119,7 @@ that the second element is a symbol with the given name."
              (k-def (nth 1 expansion))
              (k-doc (nth 3 k-def)))
         (should (stringp k-doc))
-        (should (string-suffix-p " [CPS]" k-doc))
+        (should (string-suffix-p "\n[CPS]" k-doc))
         (should (string-prefix-p "Original doc." k-doc))))
 
     (nskk-it "preserves the original docstring unchanged in the sync wrapper"
@@ -883,7 +883,7 @@ that the second element is a symbol with the given name."
                             nil)))
              (k-def (nth 1 expansion))
              (k-doc (nth 3 k-def)))
-        (should (string-suffix-p " [CPS]" k-doc))
+        (should (string-suffix-p "\n[CPS]" k-doc))
         (should (string-prefix-p "Side-effect doc." k-doc)))))
 
   (nskk-context "no AST transformation"
@@ -1021,7 +1021,7 @@ that the second element is a symbol with the given name."
              (k-def   (nth 1 expansion))
              (docstr  (nth 3 k-def)))
         (should (stringp docstr))
-        (should (string-suffix-p " [CPS]" docstr)))))
+        (should (string-suffix-p "\n[CPS]" docstr)))))
 
   (nskk-context "no AST transformation"
     (nskk-it "does not CPS-transform the body and passes funcall forms through verbatim"
@@ -1525,7 +1525,7 @@ that the second element is a symbol with the given name."
   :description "Each generated /k function has [CPS] appended to its docstring"
   :body (progn
           (eval macro-form)
-          (should (string-suffix-p " [CPS]" (or (documentation fn-name) "")))))
+          (should (string-suffix-p "\n[CPS]" (or (documentation fn-name) "")))))
 
 
 ;;; -------------------------------------------------------------------

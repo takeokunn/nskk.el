@@ -190,10 +190,10 @@ is unbound."
              (boundp 'nskk-current-state)
              nskk-current-state)
     (when-let* ((mode (nskk-state-mode nskk-current-state))
-                (color (nskk--cursor-with-color mode))
-                (_ (not (equal color nskk--last-cursor-color))))
-      (set-cursor-color color)
-      (setq nskk--last-cursor-color color))))
+                (color (nskk--cursor-with-color mode)))
+      (when (not (equal color nskk--last-cursor-color))
+        (set-cursor-color color)
+        (setq nskk--last-cursor-color color)))))
 
 (provide 'nskk-modeline)
 
