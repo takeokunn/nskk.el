@@ -387,6 +387,51 @@
          (should (= freq 2)))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
+;;; LFU cache: internal helpers
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "LFU cache internal helpers"
+
+  (nskk-describe "nskk-cache-lfu--bucket-any-key/k"
+    (nskk-it "calls on-found with a key from a non-empty bucket"
+      (let ((bucket (make-hash-table :test 'equal)))
+        (puthash "k1" t bucket)
+        (puthash "k2" t bucket)
+        (let ((result nil))
+          (nskk-cache-lfu--bucket-any-key/k bucket
+            (lambda (k) (setq result k))
+            (lambda () (setq result :not-found)))
+          ;; Any key in the bucket is acceptable
+          (should (member result '("k1" "k2"))))))
+
+    (nskk-it "calls on-not-found for an empty bucket"
+      (let ((bucket (make-hash-table :test 'equal))
+            (called nil))
+        (nskk-cache-lfu--bucket-any-key/k bucket
+          (lambda (_k) (setq called :found))
+          (lambda ()   (setq called :not-found)))
+        (should (eq called :not-found)))))
+
+  (nskk-describe "nskk-cache-lfu--evict-min-freq"
+    (nskk-it "evicts one entry and decrements size"
+      (let ((cache (nskk-cache-lfu-create 2)))
+        (nskk-cache-lfu-put cache "key1" "v1")
+        (nskk-cache-lfu-put cache "key2" "v2")
+        ;; Both at freq 1; evict one
+        (nskk-cache-lfu--evict-min-freq cache)
+        (should (= (nskk-cache-lfu-size cache) 1))
+        ;; Exactly one of the two keys survives
+        (let ((surviving (cl-count-if #'identity
+                           (list (nskk-cache-lfu-get cache "key1")
+                                 (nskk-cache-lfu-get cache "key2")))))
+          (should (= surviving 1)))))
+
+    (nskk-it "is a no-op when the cache is empty"
+      (let ((cache (nskk-cache-lfu-create 10)))
+        (nskk-cache-lfu--evict-min-freq cache)
+        (should (= (nskk-cache-lfu-size cache) 0))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
 ;;; LFU cache: eviction
 ;;; ─────────────────────────────────────────────────────────────────────────
 
@@ -409,6 +454,51 @@
        (should (string= (nskk-cache-lfu-get cache "key2") "value2"))
        (should (string= (nskk-cache-lfu-get cache "key3") "value3"))
        (should (string= (nskk-cache-lfu-get cache "key4") "value4")))))
+
+  (nskk-it "capacity-1 cache: second put evicts the first entry"
+    (let ((cache (nskk-cache-lfu-create 1)))
+      (nskk-given (nskk-cache-lfu-put cache "key1" "value1"))
+      (nskk-when  (nskk-cache-lfu-put cache "key2" "value2"))
+      (nskk-then
+       (should (= (nskk-cache-lfu-size cache) 1))
+       (should (null  (nskk-cache-lfu-get cache "key1")))
+       (should (string= (nskk-cache-lfu-get cache "key2") "value2")))))
+
+  (nskk-it "min-freq advances when all entries at min-freq are promoted by get"
+    ;; Two entries at freq 1.  After getting both, the freq-1 bucket empties.
+    ;; min-freq must advance to 2; a new entry inserted afterward correctly
+    ;; sets min-freq back to 1 and the promoted entries survive eviction.
+    (let ((cache (nskk-cache-lfu-create 2)))
+      (nskk-given
+       (nskk-cache-lfu-put cache "key1" "value1")   ; freq 1
+       (nskk-cache-lfu-put cache "key2" "value2")   ; freq 1
+       (nskk-cache-lfu-get cache "key1")             ; key1 freq → 2
+       (nskk-cache-lfu-get cache "key2"))            ; key2 freq → 2; min-freq=2
+      (nskk-then
+       (should (= (nskk-cache-lfu-min-freq cache) 2)))
+      (nskk-when
+       ;; Inserting key3 triggers eviction at min-freq=2 (key1 or key2),
+       ;; then resets min-freq to 1.
+       (nskk-cache-lfu-put cache "key3" "value3"))
+      (nskk-then
+       (should (= (nskk-cache-lfu-size cache) 2))
+       (should (= (nskk-cache-lfu-min-freq cache) 1))
+       (should (string= (nskk-cache-lfu-get cache "key3") "value3")))))
+
+  (nskk-it "get-promoted entries survive when a lower-frequency entry is evicted"
+    ;; key1 stays at freq 1; key2 gets promoted to freq 2.
+    ;; Inserting key3 must evict key1, not key2.
+    (let ((cache (nskk-cache-lfu-create 2)))
+      (nskk-given
+       (nskk-cache-lfu-put cache "key1" "value1")   ; freq 1
+       (nskk-cache-lfu-put cache "key2" "value2")   ; freq 1
+       (nskk-cache-lfu-get cache "key2"))            ; key2 freq → 2
+      (nskk-when
+       (nskk-cache-lfu-put cache "key3" "value3"))   ; evicts key1 (min-freq=1)
+      (nskk-then
+       (should (null  (nskk-cache-lfu-get cache "key1")))
+       (should (string= (nskk-cache-lfu-get cache "key2") "value2"))
+       (should (string= (nskk-cache-lfu-get cache "key3") "value3")))))
 
   (nskk-it "evicts any entry at the minimum frequency when frequencies are equal"
     ;; Frequency buckets are now hash-tables (O(1) add/remove), so eviction order
@@ -1099,9 +1189,10 @@
              (old-freq (nskk-cache-lfu-entry-frequency entry)))
         (cl-incf (nskk-cache-lfu-entry-frequency entry))
         (nskk-cache-lfu--update-freq cache entry old-freq)
-        ;; Entry should now be in frequency bucket 2
-        (let ((freq-2-keys (gethash 2 (nskk-cache-lfu-freq cache))))
-          (should (member "key" freq-2-keys)))))))
+        ;; Entry should now be in frequency bucket 2 (bucket is now a hash-table)
+        (let ((freq-2-bucket (gethash 2 (nskk-cache-lfu-freq cache))))
+          (should (hash-table-p freq-2-bucket))
+          (should (gethash "key" freq-2-bucket)))))))
 
 (provide 'nskk-cache-test)
 
