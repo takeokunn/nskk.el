@@ -30,9 +30,7 @@
 ;; - nskk--program-dict-strip-annotation: annotation removal
 ;; - nskk--program-dict-build-call: command tokenization and %s replacement
 ;; - nskk--program-dict-parse-output: SKK/skkserv/line output parsing (CPS)
-;; - nskk--program-dict-exec-stdin: stdin-mode process execution (CPS)
-;; - nskk--program-dict-exec-argv: argv-mode process execution (CPS)
-;; - nskk--program-dict-run-command: external process execution dispatcher (CPS)
+;; - nskk--program-dict-exec-command: unified process execution (CPS)
 ;; - nskk--program-dict-call-function: Elisp function entry (CPS)
 ;; - nskk--program-dict-call-command: shell command entry (CPS)
 ;; - nskk--program-dict-invoke-entry: Prolog-driven dispatch (CPS)
@@ -306,11 +304,43 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
       #'ignore)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
-;;; nskk--program-dict-exec-stdin
+;;; nskk--program-dict-exec-command
 ;;; ─────────────────────────────────────────────────────────────────────────
 
-(nskk-describe "nskk--program-dict-exec-stdin"
-  (nskk-context "on-found"
+(nskk-describe "nskk--program-dict-exec-command"
+  (nskk-context "argv mode (stdin-key = nil)"
+    (nskk-it "calls on-found with stdout string on success"
+      (let ((found-arg nil))
+        (nskk-with-mocks
+            ((call-process (lambda (_prog _in _out _disp &rest _args)
+                             (insert "/候補/\n")
+                             0)))
+          (nskk--program-dict-exec-command/k "my-dict" nil '("かんじ")
+            (lambda (v) (setq found-arg v))
+            #'ignore)
+          (should (stringp found-arg))
+          (should (string-prefix-p "/" found-arg)))))
+
+    (nskk-it "passes args to call-process"
+      (let ((received-args nil))
+        (nskk-with-mocks
+            ((call-process (lambda (_prog _in _out _disp &rest args)
+                             (setq received-args args)
+                             0)))
+          (nskk--program-dict-exec-command/k "prog" nil '("--flag" "かんじ")
+            #'ignore #'ignore)
+          (should (equal received-args '("--flag" "かんじ"))))))
+
+    (nskk-it "calls on-not-found when call-process signals an error"
+      (let ((not-found-called nil))
+        (nskk-with-mocks
+            ((call-process (lambda (&rest _) (error "not found"))))
+          (nskk--program-dict-exec-command/k "bad" nil nil
+            #'ignore
+            (lambda () (setq not-found-called t)))
+          (should not-found-called)))))
+
+  (nskk-context "stdin mode (stdin-key non-nil)"
     (nskk-it "calls on-found with stdout string on success"
       (let ((found-arg nil))
         (nskk-with-mocks
@@ -319,7 +349,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
                 (delete-region beg end)
                 (insert "/漢字/\n")
                 0)))
-          (nskk--program-dict-exec-stdin/k "my-dict" "かんじ" nil
+          (nskk--program-dict-exec-command/k "my-dict" "かんじ" nil
             (lambda (v) (setq found-arg v))
             #'ignore)
           (should (stringp found-arg))
@@ -332,7 +362,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
               (lambda (beg end _prog _del _out _disp &rest _args)
                 (setq inserted-content (buffer-substring beg end))
                 0)))
-          (nskk--program-dict-exec-stdin/k "prog" "てすと" nil
+          (nskk--program-dict-exec-command/k "prog" "てすと" nil
             #'ignore #'ignore)
           (should (equal inserted-content "てすと\n")))))
 
@@ -343,119 +373,15 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
               (lambda (_beg _end _prog _del _out _disp &rest args)
                 (setq received-args args)
                 0)))
-          (nskk--program-dict-exec-stdin/k "prog" "key" '("--flag")
+          (nskk--program-dict-exec-command/k "prog" "key" '("--flag")
             #'ignore #'ignore)
-          (should (equal received-args '("--flag"))))))
+          (should (equal received-args '("--flag")))))  )
 
-    (nskk-it "calls exactly one continuation on success"
-      (let ((count 0))
-        (nskk-with-mocks
-            ((call-process-region (lambda (&rest _) (insert "/x/") 0)))
-          (nskk--program-dict-exec-stdin/k "p" "k" nil
-            (lambda (_v) (cl-incf count))
-            (lambda ()   (cl-incf count)))
-          (should (= count 1))))))
-
-  (nskk-context "on-not-found"
     (nskk-it "calls on-not-found when call-process-region signals an error"
       (let ((not-found-called nil))
         (nskk-with-mocks
             ((call-process-region (lambda (&rest _) (error "no such file"))))
-          (nskk--program-dict-exec-stdin/k "bad" "key" nil
-            #'ignore
-            (lambda () (setq not-found-called t)))
-          (should not-found-called))))))
-
-;;; ─────────────────────────────────────────────────────────────────────────
-;;; nskk--program-dict-exec-argv
-;;; ─────────────────────────────────────────────────────────────────────────
-
-(nskk-describe "nskk--program-dict-exec-argv"
-  (nskk-context "on-found"
-    (nskk-it "calls on-found with stdout string on success"
-      (let ((found-arg nil))
-        (nskk-with-mocks
-            ((call-process (lambda (_prog _in _out _disp &rest _args)
-                             (insert "/候補/\n")
-                             0)))
-          (nskk--program-dict-exec-argv/k "my-dict" '("かんじ")
-            (lambda (v) (setq found-arg v))
-            #'ignore)
-          (should (stringp found-arg))
-          (should (string-prefix-p "/" found-arg)))))
-
-    (nskk-it "passes args to call-process"
-      (let ((received-args nil))
-        (nskk-with-mocks
-            ((call-process (lambda (_prog _in _out _disp &rest args)
-                             (setq received-args args)
-                             0)))
-          (nskk--program-dict-exec-argv/k "prog" '("--flag" "かんじ")
-            #'ignore #'ignore)
-          (should (equal received-args '("--flag" "かんじ"))))))
-
-    (nskk-it "calls exactly one continuation on success"
-      (let ((count 0))
-        (nskk-with-mocks
-            ((call-process (lambda (&rest _) (insert "/x/") 0)))
-          (nskk--program-dict-exec-argv/k "p" nil
-            (lambda (_v) (cl-incf count))
-            (lambda ()   (cl-incf count)))
-          (should (= count 1))))))
-
-  (nskk-context "on-not-found"
-    (nskk-it "calls on-not-found when call-process signals an error"
-      (let ((not-found-called nil))
-        (nskk-with-mocks
-            ((call-process (lambda (&rest _) (error "not found"))))
-          (nskk--program-dict-exec-argv/k "bad" nil
-            #'ignore
-            (lambda () (setq not-found-called t)))
-          (should not-found-called))))))
-
-;;; ─────────────────────────────────────────────────────────────────────────
-;;; nskk--program-dict-run-command
-;;; ─────────────────────────────────────────────────────────────────────────
-
-(nskk-describe "nskk--program-dict-run-command"
-  (nskk-context "argv mode (stdin-key = nil)"
-    (nskk-it "delegates to exec-argv/k and calls on-found with stdout"
-      (let ((found-arg nil))
-        (nskk-with-mocks
-            ((nskk--program-dict-exec-argv/k
-              (lambda (_prog _args on-f _nf) (funcall on-f "/漢字/\n"))))
-          (nskk--program-dict-run-command/k "my-dict" nil '("かんじ")
-            (lambda (v) (setq found-arg v))
-            #'ignore)
-          (should (equal found-arg "/漢字/\n")))))
-
-    (nskk-it "calls on-not-found when exec-argv fails"
-      (let ((not-found-called nil))
-        (nskk-with-mocks
-            ((nskk--program-dict-exec-argv/k
-              (lambda (_prog _args _on-f nf) (funcall nf))))
-          (nskk--program-dict-run-command/k "bad" nil nil
-            #'ignore
-            (lambda () (setq not-found-called t)))
-          (should not-found-called)))))
-
-  (nskk-context "stdin mode (stdin-key non-nil)"
-    (nskk-it "delegates to exec-stdin/k and calls on-found with stdout"
-      (let ((found-arg nil))
-        (nskk-with-mocks
-            ((nskk--program-dict-exec-stdin/k
-              (lambda (_prog _key _args on-f _nf) (funcall on-f "/結果/\n"))))
-          (nskk--program-dict-run-command/k "stdin-dict" "かんじ" nil
-            (lambda (v) (setq found-arg v))
-            #'ignore)
-          (should (equal found-arg "/結果/\n")))))
-
-    (nskk-it "calls on-not-found when exec-stdin fails"
-      (let ((not-found-called nil))
-        (nskk-with-mocks
-            ((nskk--program-dict-exec-stdin/k
-              (lambda (_prog _key _args _on-f nf) (funcall nf))))
-          (nskk--program-dict-run-command/k "bad" "key" nil
+          (nskk--program-dict-exec-command/k "bad" "key" nil
             #'ignore
             (lambda () (setq not-found-called t)))
           (should not-found-called)))))
@@ -464,9 +390,8 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
     (nskk-it "calls exactly one continuation on argv success"
       (let ((count 0))
         (nskk-with-mocks
-            ((nskk--program-dict-exec-argv/k
-              (lambda (_prog _args on-f _nf) (funcall on-f "/x/"))))
-          (nskk--program-dict-run-command/k "prog" nil nil
+            ((call-process (lambda (&rest _) (insert "/x/") 0)))
+          (nskk--program-dict-exec-command/k "p" nil nil
             (lambda (_v) (cl-incf count))
             (lambda ()   (cl-incf count)))
           (should (= count 1)))))
@@ -474,9 +399,8 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
     (nskk-it "calls exactly one continuation on stdin failure"
       (let ((count 0))
         (nskk-with-mocks
-            ((nskk--program-dict-exec-stdin/k
-              (lambda (_prog _key _args _on-f nf) (funcall nf))))
-          (nskk--program-dict-run-command/k "prog" "key" nil
+            ((call-process-region (lambda (&rest _) (error "fail"))))
+          (nskk--program-dict-exec-command/k "p" "key" nil
             (lambda (_v) (cl-incf count))
             (lambda ()   (cl-incf count)))
           (should (= count 1)))))))
@@ -544,7 +468,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
     (nskk-it "calls on-found with candidates from SKK output"
       (let ((found-arg nil))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_prog _stdin _args on-f _nf) (funcall on-f "/漢字/感じ/"))))
           (nskk--program-dict-call-command/k "prog %s" "かんじ"
             (lambda (v) (setq found-arg v))
@@ -554,7 +478,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
     (nskk-it "calls on-found with candidates from skkserv output"
       (let ((found-arg nil))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_prog _stdin _args on-f _nf) (funcall on-f "1/漢字/"))))
           (nskk--program-dict-call-command/k "prog %s" "key"
             (lambda (v) (setq found-arg v))
@@ -564,7 +488,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
     (nskk-it "calls on-found with candidates from line-delimited output"
       (let ((found-arg nil))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_prog _stdin _args on-f _nf) (funcall on-f "漢字\n感じ"))))
           (nskk--program-dict-call-command/k "prog" "key"
             (lambda (v) (setq found-arg v))
@@ -572,10 +496,10 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
           (should (equal found-arg '("漢字" "感じ")))))))
 
   (nskk-context "on-not-found branch"
-    (nskk-it "calls on-not-found when run-command fails"
+    (nskk-it "calls on-not-found when exec-command fails"
       (let ((not-found-called nil))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_prog _stdin _args _on-f nf) (funcall nf))))
           (nskk--program-dict-call-command/k "prog %s" "key"
             #'ignore
@@ -585,7 +509,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
     (nskk-it "calls on-not-found when output has no parseable candidates"
       (let ((not-found-called nil))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_prog _stdin _args on-f _nf) (funcall on-f ""))))
           (nskk--program-dict-call-command/k "prog %s" "key"
             #'ignore
@@ -593,10 +517,10 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
           (should not-found-called)))))
 
   (nskk-context "argument routing"
-    (nskk-it "passes the key as an argument when %s is present"
-      (let ((received-stdin nil))
+    (nskk-it "passes nil stdin-key when %s is present (argv mode)"
+      (let ((received-stdin :unset))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_prog stdin-key _args on-f _nf)
                 (setq received-stdin stdin-key)
                 (funcall on-f "/x/"))))
@@ -604,10 +528,10 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
             #'ignore #'ignore)
           (should (null received-stdin)))))    ; %s mode: no stdin
 
-    (nskk-it "passes the key via stdin when no %s is present"
+    (nskk-it "passes the key as stdin-key when no %s is present (stdin mode)"
       (let ((received-stdin nil))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_prog stdin-key _args on-f _nf)
                 (setq received-stdin stdin-key)
                 (funcall on-f "/x/"))))
@@ -661,7 +585,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
     (nskk-it "calls on-found for a command that returns candidates"
       (let ((found-arg nil))
         (nskk-with-mocks
-            ((nskk--program-dict-run-command/k
+            ((nskk--program-dict-exec-command/k
               (lambda (_p _s _a on-f _nf) (funcall on-f "/漢字/"))))
           (nskk--program-dict-invoke-entry/k "my-cmd %s" "かんじ"
             (lambda (v) (setq found-arg v))

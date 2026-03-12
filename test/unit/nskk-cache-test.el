@@ -78,7 +78,18 @@
         :body
         (should (eq (nskk-prolog-query-value
                      `(cache-dispatch-fn ,type ,op \?fn) '\?fn)
-                    expected-fn))))))
+                    expected-fn)))))
+
+  (nskk-it "cache-constructor/2 maps each type to its constructor function"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-deftest-table cache-constructor-dispatch-spot-check
+        :columns (type expected-fn)
+        :rows ((lru nskk-cache-lru-create)
+               (lfu nskk-cache-lfu-create))
+        :body
+        (should (eq expected-fn
+                    (nskk-prolog-query-value
+                     `(cache-constructor ,type \?fn) '\?fn)))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; Cache predicate and type detection
@@ -667,10 +678,13 @@
 ;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "unified cache interface"
-  (nskk-it "creates LRU and LFU caches by positional type argument"
+  (nskk-it "creates an LRU cache with keyword args :type 'lru"
     (nskk-then
-     (should (nskk-cache-lru-p (nskk-cache-create 'lru nskk--test-default-cache-capacity)))
-     (should (nskk-cache-lfu-p (nskk-cache-create 'lfu nskk--test-default-cache-capacity)))))
+     (should (nskk-cache-lru-p (nskk-cache-create :type 'lru :capacity nskk--test-default-cache-capacity)))))
+
+  (nskk-it "creates an LFU cache with keyword args :type 'lfu"
+    (nskk-then
+     (should (nskk-cache-lfu-p (nskk-cache-create :type 'lfu :capacity nskk--test-default-cache-capacity)))))
 
   (nskk-it "creates a cache with keyword arguments"
     (let ((cache (nskk-cache-create :type 'lru :capacity 50)))
@@ -684,12 +698,26 @@
         (should (nskk-cache-lru-p cache))
         (should (= (nskk-cache-lru-capacity cache) 200)))))
 
+  (nskk-it ":size takes precedence over :capacity when both are supplied"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10 :size 20)))
+      (should (= (nskk-cache-lru-capacity cache) 20))))
+
+  (nskk-it ":size alone sets capacity without :capacity"
+    (let ((cache (nskk-cache-create :type 'lfu :size 30)))
+      (should (= (nskk-cache-lfu-capacity cache) 30))))
+
+  (nskk-it "defaults to nskk-cache-strategy type when :type is omitted"
+    (let* ((nskk-cache-strategy 'lfu)
+           (cache (nskk-cache-create :capacity 5)))
+      (should (nskk-cache-lfu-p cache))
+      (should (= (nskk-cache-lfu-capacity cache) 5))))
+
   (nskk-it "signals user-error for an unregistered cache type"
-    (should-error (nskk-cache-create 'bogus nskk--test-default-cache-capacity)     :type 'user-error)
-    (should-error (nskk-cache-create 'unknown-type)  :type 'user-error))
+    (should-error (nskk-cache-create :type 'bogus :capacity nskk--test-default-cache-capacity)     :type 'user-error)
+    (should-error (nskk-cache-create :type 'unknown-type)  :type 'user-error))
 
   (nskk-it "provides get/put through the unified interface"
-    (let ((cache (nskk-cache-create 'lru nskk--test-default-cache-capacity)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity nskk--test-default-cache-capacity)))
       (nskk-given (nskk-cache-put cache "key1" "value1"))
       (nskk-then
        (should (string= (nskk-cache-get cache "key1") "value1"))
@@ -702,14 +730,14 @@
       (nskk-then  (should (null (nskk-cache-get cache "key1"))))))
 
   (nskk-it "tracks size through the unified interface"
-    (let ((cache (nskk-cache-create 'lru nskk--test-default-cache-capacity)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity nskk--test-default-cache-capacity)))
       (should (= (nskk-cache-size cache) 0))
       (nskk-cache-put cache "k1" "v1")
       (nskk-cache-put cache "k2" "v2")
       (should (= (nskk-cache-size cache) 2))))
 
   (nskk-it "dispatches get/put correctly to the LFU implementation"
-    (let ((cache (nskk-cache-create 'lfu nskk--test-default-cache-capacity)))
+    (let ((cache (nskk-cache-create :type 'lfu :capacity nskk--test-default-cache-capacity)))
       (nskk-given (nskk-cache-put cache "key1" "value1"))
       (nskk-then
        (should (string= (nskk-cache-get cache "key1") "value1"))
@@ -725,7 +753,7 @@
       (nskk-cache-create/k
        (lambda (c) (setq result c))
        nil
-       'lru nskk--test-default-cache-capacity)
+       :type 'lru :capacity nskk--test-default-cache-capacity)
       (should (nskk-cache-lru-p result))
       (should (= (nskk-cache-lru-capacity result) nskk--test-default-cache-capacity))))
 
@@ -734,7 +762,7 @@
       (nskk-cache-create/k
        (lambda (c) (setq result c))
        nil
-       'lfu 50)
+       :type 'lfu :capacity 50)
       (should (nskk-cache-lfu-p result))
       (should (= (nskk-cache-lfu-capacity result) 50))))
 
@@ -743,12 +771,12 @@
       (nskk-cache-create/k
        #'identity
        (lambda () (setq not-found-called t))
-       'lru 10)
+       :type 'lru :capacity 10)
       (should-not not-found-called)))
 
   (nskk-it "signals user-error for an unknown type (propagates from nskk-cache-create)"
     (should-error
-     (nskk-cache-create/k #'identity nil 'bogus 10)
+     (nskk-cache-create/k #'identity nil :type 'bogus :capacity 10)
      :type 'user-error)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
@@ -829,6 +857,161 @@
       (should found-called))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
+;;; Direct /k variant calling convention tests
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "LRU /k variants: direct continuation tests"
+  (nskk-it "nskk-cache-lru-get/k calls on-found with the stored value"
+    (nskk-given "an LRU cache with one entry"
+      (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+            (result nil))
+        (nskk-cache-lru-put cache "k" "v")
+        (nskk-when "get/k is called for that key"
+          (nskk-cache-lru-get/k cache "k"
+            (lambda (val) (setq result val))
+            (lambda () (ert-fail "on-not-found called unexpectedly")))
+          (nskk-then "on-found receives the stored value"
+            (should (equal result "v")))))))
+
+  (nskk-it "nskk-cache-lru-get/k calls on-not-found on miss"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (missed nil))
+      (nskk-cache-lru-get/k cache "absent"
+        (lambda (_) (ert-fail "on-found called unexpectedly"))
+        (lambda () (setq missed t)))
+      (should missed)))
+
+  (nskk-it "nskk-cache-lru-get/k calls on-found even when stored value is nil"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (found nil))
+      (nskk-cache-lru-put cache "nilkey" nil)
+      (nskk-cache-lru-get/k cache "nilkey"
+        (lambda (val) (setq found (list :found val)))
+        (lambda () (ert-fail "on-not-found called — nil value confused with miss")))
+      (should (equal found '(:found nil)))))
+
+  (nskk-it "nskk-cache-lru-invalidate/k calls on-found with t for an existing key"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (result nil))
+      (nskk-cache-lru-put cache "k" "v")
+      (nskk-cache-lru-invalidate/k cache "k"
+        (lambda (val) (setq result val))
+        (lambda () (ert-fail "on-not-found called unexpectedly")))
+      (should (eq result t))))
+
+  (nskk-it "nskk-cache-lru-invalidate/k calls on-not-found for a missing key"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (missed nil))
+      (nskk-cache-lru-invalidate/k cache "absent"
+        (lambda (_) (ert-fail "on-found called unexpectedly"))
+        (lambda () (setq missed t)))
+      (should missed))))
+
+(nskk-describe "LFU /k variants: direct continuation tests"
+  (nskk-it "nskk-cache-lfu-get/k calls on-found with the stored value"
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 10))
+          (result nil))
+      (nskk-cache-lfu-put cache "k" "v")
+      (nskk-cache-lfu-get/k cache "k"
+        (lambda (val) (setq result val))
+        (lambda () (ert-fail "on-not-found called unexpectedly")))
+      (should (equal result "v"))))
+
+  (nskk-it "nskk-cache-lfu-get/k calls on-not-found on miss"
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 10))
+          (missed nil))
+      (nskk-cache-lfu-get/k cache "absent"
+        (lambda (_) (ert-fail "on-found called unexpectedly"))
+        (lambda () (setq missed t)))
+      (should missed)))
+
+  (nskk-it "nskk-cache-lfu-get/k calls on-found even when stored value is nil"
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 10))
+          (found nil))
+      (nskk-cache-lfu-put cache "nilkey" nil)
+      (nskk-cache-lfu-get/k cache "nilkey"
+        (lambda (val) (setq found (list :found val)))
+        (lambda () (ert-fail "on-not-found called — nil value confused with miss")))
+      (should (equal found '(:found nil)))))
+
+  (nskk-it "nskk-cache-lfu-invalidate/k calls on-found with t for an existing key"
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 10))
+          (result nil))
+      (nskk-cache-lfu-put cache "k" "v")
+      (nskk-cache-lfu-invalidate/k cache "k"
+        (lambda (val) (setq result val))
+        (lambda () (ert-fail "on-not-found called unexpectedly")))
+      (should (eq result t))))
+
+  (nskk-it "nskk-cache-lfu-invalidate/k calls on-not-found for a missing key"
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 10))
+          (missed nil))
+      (nskk-cache-lfu-invalidate/k cache "absent"
+        (lambda (_) (ert-fail "on-found called unexpectedly"))
+        (lambda () (setq missed t)))
+      (should missed))))
+
+(nskk-describe "Unified /k variants: direct continuation tests"
+  (nskk-it "nskk-cache-invalidate/k calls on-not-found for a missing key"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (missed nil))
+      (nskk-cache-invalidate/k cache "never-inserted"
+        (lambda (_) (ert-fail "on-found called unexpectedly"))
+        (lambda () (setq missed t)))
+      (should missed)))
+
+  (nskk-it "nskk-cache-invalidate-pattern/k calls on-found with the deleted key list"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (result :unset))
+      (nskk-cache-put cache "abc" 1)
+      (nskk-cache-put cache "abd" 2)
+      (nskk-cache-put cache "xyz" 3)
+      (nskk-cache-invalidate-pattern/k cache "^ab"
+        (lambda (keys) (setq result keys))
+        (lambda () (ert-fail "on-not-found called unexpectedly")))
+      (should (equal (sort result #'string<) '("abc" "abd")))))
+
+  (nskk-it "nskk-cache-p/k calls on-found for a valid LRU cache"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (found nil))
+      (nskk-cache-p/k cache
+        (lambda (v) (setq found v))
+        (lambda () (ert-fail "on-not-found called unexpectedly")))
+      (should (eq found t))))
+
+  (nskk-it "nskk-cache-p/k calls on-not-found for a non-cache value"
+    (let ((missed nil))
+      (nskk-cache-p/k "not-a-cache"
+        (lambda (_) (ert-fail "on-found called unexpectedly"))
+        (lambda () (setq missed t)))
+      (should missed)))
+
+  (nskk-it "nskk-cache-hit-rate/k calls on-found with a float"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 10))
+          (result nil))
+      (nskk-cache-put cache "k" "v")
+      (nskk-cache-get cache "k")    ; hit
+      (nskk-cache-get cache "miss") ; miss
+      (nskk-cache-hit-rate/k cache
+        (lambda (r) (setq result r))
+        (lambda () (ert-fail "on-not-found called unexpectedly")))
+      (should (floatp result))
+      (should (= result 0.5))))
+
+  (nskk-it "nskk-cache-stats/k calls on-found with the stats plist"
+    (let ((cache (nskk-cache-create :type 'lru :capacity 42))
+          (result nil))
+      (nskk-cache-stats/k cache
+        (lambda (s) (setq result s))
+        (lambda () (ert-fail "on-not-found called unexpectedly")))
+      (should (plist-get result :type))
+      (should (= (plist-get result :capacity) 42))
+      (should (= (plist-get result :size) 0))
+      (should (= (plist-get result :hits) 0))
+      (should (= (plist-get result :misses) 0))
+      (should (= (plist-get result :hit-rate) 0.0)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
 ;;; Hit rate
 ;;; ─────────────────────────────────────────────────────────────────────────
 
@@ -901,7 +1084,7 @@
 
 (nskk-deftest-performance cache-performance-unified-prolog-dispatch-500
   "Unified interface Prolog dispatch overhead for 500 gets stays within budget."
-  (let ((cache (nskk-cache-create 'lru 1000)))
+  (let ((cache (nskk-cache-create :type 'lru :capacity 1000)))
     (dotimes (i 500)
       (nskk-cache-put cache (format "key%d" i) (format "value%d" i)))
     (let ((start (current-time)))
@@ -925,16 +1108,14 @@
         (equal (nskk-cache-lru-get cache key) value))
       50))
 
-  (nskk-it "size is always 0 <= size <= capacity (LRU)"
-    (nskk-property-test lru-size-invariant
-      ((n romaji-string))
-      (let* ((capacity 10)
-             (cache    (nskk-cache-lru-create capacity)))
-        ;; Insert up to 20 entries to trigger eviction
-        (dotimes (i 20)
-          (nskk-cache-lru-put cache (format "key%d" i) "v"))
-        (let ((sz (nskk-cache-lru-size cache)))
-          (and (>= sz 0) (<= sz capacity))))
+  (nskk-it "0 <= size <= capacity after random inserts (LRU)"
+    (nskk-property-test lru-size-invariant-random
+      ((key (nskk-gen-romaji-string)))
+      (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
+        (nskk-cache-put cache key "v")
+        (cl-loop for i from 1 to 20 do
+                 (nskk-cache-put cache (format "key%d" i) i))
+        (<= 0 (nskk-cache-size cache) 10))
       30))
 
   (nskk-it "hit rate is always in [0.0, 1.0] (LRU)"
@@ -956,7 +1137,18 @@
           (nskk-cache-lru-put cache (format "key%d" i) "v"))
         (nskk-cache-lru-clear cache)
         (= (nskk-cache-lru-size cache) 0))
-      20)))
+      20))
+
+  (nskk-it "invalidate removes key and decrements size (LRU)"
+    (nskk-property-test lru-invalidate-removes-key
+      ((key (nskk-gen-romaji-string)))
+      (let ((cache (nskk-cache-create :type 'lru :capacity 100)))
+        (nskk-cache-put cache key "val")
+        (let ((size-before (nskk-cache-size cache)))
+          (nskk-cache-invalidate cache key)
+          (and (null (nskk-cache-get cache key))
+               (= (nskk-cache-size cache) (1- size-before)))))
+      30)))
 
 (nskk-describe "PBT: LFU cache invariants"
   (nskk-it "get-after-put returns the stored value (LFU)"
@@ -968,15 +1160,14 @@
         (equal (nskk-cache-lfu-get cache key) value))
       50))
 
-  (nskk-it "size is always 0 <= size <= capacity (LFU)"
-    (nskk-property-test lfu-size-invariant
-      ((n romaji-string))
-      (let* ((capacity 10)
-             (cache    (nskk-cache-lfu-create capacity)))
-        (dotimes (i 20)
-          (nskk-cache-lfu-put cache (format "key%d" i) "v"))
-        (let ((sz (nskk-cache-lfu-size cache)))
-          (and (>= sz 0) (<= sz capacity))))
+  (nskk-it "0 <= size <= capacity after random inserts (LFU)"
+    (nskk-property-test lfu-size-invariant-random
+      ((key (nskk-gen-romaji-string)))
+      (let ((cache (nskk-cache-create :type 'lfu :capacity 10)))
+        (nskk-cache-put cache key "v")
+        (cl-loop for i from 1 to 20 do
+                 (nskk-cache-put cache (format "key%d" i) i))
+        (<= 0 (nskk-cache-size cache) 10))
       30))
 
   (nskk-it "hit rate is always in [0.0, 1.0] (LFU)"
@@ -998,7 +1189,18 @@
           (nskk-cache-lfu-put cache (format "key%d" i) "v"))
         (nskk-cache-lfu-clear cache)
         (= (nskk-cache-lfu-size cache) 0))
-      20)))
+      20))
+
+  (nskk-it "invalidate removes key and decrements size (LFU)"
+    (nskk-property-test lfu-invalidate-removes-key
+      ((key (nskk-gen-romaji-string)))
+      (let ((cache (nskk-cache-create :type 'lfu :capacity 100)))
+        (nskk-cache-put cache key "val")
+        (let ((size-before (nskk-cache-size cache)))
+          (nskk-cache-invalidate cache key)
+          (and (null (nskk-cache-get cache key))
+               (= (nskk-cache-size cache) (1- size-before)))))
+      30)))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; Integration workflows
@@ -1049,23 +1251,23 @@
 
 (nskk-describe "nskk-cache-invalidate"
   (nskk-it "removes a key from an LRU cache and returns t"
-    (let ((cache (nskk-cache-create 'lru 8)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 8)))
       (nskk-cache-put cache "key" "value")
       (should (nskk-cache-invalidate cache "key"))
       (should (null (nskk-cache-get cache "key")))))
 
   (nskk-it "returns nil when the key does not exist"
-    (let ((cache (nskk-cache-create 'lru 8)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 8)))
       (should (null (nskk-cache-invalidate cache "missing")))))
 
   (nskk-it "removes a key from an LFU cache and returns t"
-    (let ((cache (nskk-cache-create 'lfu 8)))
+    (let ((cache (nskk-cache-create :type 'lfu :capacity 8)))
       (nskk-cache-put cache "key" "value")
       (should (nskk-cache-invalidate cache "key"))
       (should (null (nskk-cache-get cache "key")))))
 
   (nskk-it "does not affect other keys when one is invalidated"
-    (let ((cache (nskk-cache-create 'lru 8)))
+    (let ((cache (nskk-cache-create :type 'lru :capacity 8)))
       (nskk-cache-put cache "a" "1")
       (nskk-cache-put cache "b" "2")
       (nskk-cache-invalidate cache "a")
@@ -1192,7 +1394,51 @@
         ;; Entry should now be in frequency bucket 2 (bucket is now a hash-table)
         (let ((freq-2-bucket (gethash 2 (nskk-cache-lfu-freq cache))))
           (should (hash-table-p freq-2-bucket))
-          (should (gethash "key" freq-2-bucket)))))))
+          (should (gethash "key" freq-2-bucket))))))
+
+  (nskk-it "handles nil old-freq (new-entry path — no bucket removal)"
+    (let* ((cache (nskk-cache-lfu-create 10))
+           (entry (nskk-cache-lfu-entry--create :key "k" :value "v" :frequency 1)))
+      ;; old-freq nil means first insertion — should not error
+      (nskk-cache-lfu--update-freq cache entry nil)
+      ;; entry should be in bucket 1
+      (let* ((bucket (gethash 1 (nskk-cache-lfu-freq cache))))
+        (should bucket)
+        (should (gethash "k" bucket)))))
+
+  (nskk-it "advances min-freq when emptied bucket was the minimum"
+    (let* ((cache (nskk-cache-lfu-create 10))
+           ;; manually set up: one entry at freq 1
+           (entry (nskk-cache-lfu-entry--create :key "k" :value "v" :frequency 2)))
+      (puthash "k" entry (nskk-cache-lfu-hash cache))
+      ;; create bucket at freq 1 with just this key, set min-freq=1
+      (let ((b1 (make-hash-table :test 'equal :size 4)))
+        (puthash "k" t b1)
+        (puthash 1 b1 (nskk-cache-lfu-freq cache)))
+      (setf (nskk-cache-lfu-min-freq cache) 1)
+      ;; update-freq: remove from freq 1, add to freq 2
+      (nskk-cache-lfu--update-freq cache entry 1)
+      ;; freq 1 bucket should be gone, min-freq should advance to 2
+      (should-not (gethash 1 (nskk-cache-lfu-freq cache)))
+      (should (= 2 (nskk-cache-lfu-min-freq cache)))))
+
+  (nskk-it "removing one entry does not destroy a multi-entry bucket"
+    (let* ((cache (nskk-cache-lfu-create 10))
+           (e1 (nskk-cache-lfu-entry--create :key "k1" :value 1 :frequency 2))
+           (e2 (nskk-cache-lfu-entry--create :key "k2" :value 2 :frequency 2)))
+      ;; set up freq 1 bucket with both k1 and k2
+      (let ((b1 (make-hash-table :test 'equal :size 4)))
+        (puthash "k1" t b1)
+        (puthash "k2" t b1)
+        (puthash 1 b1 (nskk-cache-lfu-freq cache)))
+      (setf (nskk-cache-lfu-min-freq cache) 1)
+      ;; promote k1: remove from freq 1, add to freq 2
+      (nskk-cache-lfu--update-freq cache e1 1)
+      ;; freq 1 bucket should still exist (k2 is still there)
+      (let ((b1-after (gethash 1 (nskk-cache-lfu-freq cache))))
+        (should b1-after)
+        (should (gethash "k2" b1-after))
+        (should-not (gethash "k1" b1-after))))))
 
 (provide 'nskk-cache-test)
 

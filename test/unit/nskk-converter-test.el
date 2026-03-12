@@ -1115,6 +1115,257 @@
   (nskk-it "returns nil for a key that is neither complete nor a romaji prefix"
     (should (null (nskk-converter-lookup "zzz")))))
 
+;;;
+;;; nskk--sokuon-p unit tests
+;;;
+
+(nskk-describe "nskk--sokuon-p"
+  (nskk-it "returns non-nil for doubled k (kka)"
+    (should (nskk--sokuon-p ?k "kka")))
+
+  (nskk-it "returns non-nil for doubled t (tta)"
+    (should (nskk--sokuon-p ?t "tta")))
+
+  (nskk-it "returns non-nil for doubled s (ssa)"
+    (should (nskk--sokuon-p ?s "ssa")))
+
+  (nskk-it "returns nil for doubled n (nna) — n is in sokuon-blockers"
+    (should-not (nskk--sokuon-p ?n "nna")))
+
+  (nskk-it "returns nil for doubled a (aaa) — vowels are in sokuon-blockers"
+    (should-not (nskk--sokuon-p ?a "aaa")))
+
+  (nskk-it "returns nil when c0 does not match first char of remaining (k vs ka)"
+    (should-not (nskk--sokuon-p ?k "ka")))
+
+  (nskk-it "returns nil when remaining is too short (length < 2)"
+    (should-not (nskk--sokuon-p ?k "k")))
+
+  (nskk-it "returns nil for doubled i — vowel blocker"
+    (should-not (nskk--sokuon-p ?i "ii")))
+
+  (nskk-it "returns nil for doubled u — vowel blocker"
+    (should-not (nskk--sokuon-p ?u "uu")))
+
+  (nskk-it "returns nil for doubled e — vowel blocker"
+    (should-not (nskk--sokuon-p ?e "ee")))
+
+  (nskk-it "returns nil for doubled o — vowel blocker"
+    (should-not (nskk--sokuon-p ?o "oo")))
+
+  (nskk-it "returns nil for non-ASCII character — ASCII guard"
+    ;; ?あ = #x3042, well above 128; ASCII guard must exclude it
+    (should-not (nskk--sokuon-p ?あ "ああ"))))
+
+
+;;;
+;;; nskk--convert-step/k unit tests
+;;;
+
+(nskk-describe "nskk--convert-step/k"
+  ;; on-kana: sokuon branch
+  (nskk-it "calls on-kana with (っ ka) for doubled k (kka)"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "kka"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "っ"))
+      (should (equal got-rest "ka"))))
+
+  (nskk-it "calls on-kana with (っ ta) for doubled t (tta)"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "tta"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "っ"))
+      (should (equal got-rest "ta"))))
+
+  ;; on-kana: n-prefix → ん before consonant
+  (nskk-it "calls on-kana with (ん b) for nb"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "nb"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "b"))))
+
+  (nskk-it "calls on-kana with (ん k) for nk"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "nk"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "k"))))
+
+  ;; on-kana: n-prefix falls through to table (na, ni, etc.)
+  (nskk-it "calls on-kana with (な empty) for na"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "na"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "な"))
+      (should (equal got-rest ""))))
+
+  (nskk-it "calls on-kana with (に empty) for ni"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "ni"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "に"))
+      (should (equal got-rest ""))))
+
+  ;; on-kana: normal table match
+  (nskk-it "calls on-kana with (か empty) for ka"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "ka"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "か"))
+      (should (equal got-rest ""))))
+
+  (nskk-it "calls on-kana with (しゃ empty) for sha"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "sha"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "しゃ"))
+      (should (equal got-rest ""))))
+
+  ;; on-partial: incomplete prefix
+  (nskk-it "calls on-partial with k for incomplete prefix k"
+    (let (got-partial)
+      (nskk--convert-step/k "k"
+        (lambda (_kana _rest) (should nil))
+        (lambda (partial) (setq got-partial partial))
+        (lambda () (should nil)))
+      (should (equal got-partial "k"))))
+
+  (nskk-it "calls on-partial with sh for incomplete prefix sh"
+    (let (got-partial)
+      (nskk--convert-step/k "sh"
+        (lambda (_kana _rest) (should nil))
+        (lambda (partial) (setq got-partial partial))
+        (lambda () (should nil)))
+      (should (equal got-partial "sh"))))
+
+  ;; on-fail: no match
+  (nskk-it "calls on-fail for digit input with no romaji entry (2)"
+    (let (fail-called)
+      (nskk--convert-step/k "2"
+        (lambda (_kana _rest) (should nil))
+        (lambda (_partial) (should nil))
+        (lambda () (setq fail-called t)))
+      (should fail-called)))
+
+  (nskk-it "calls on-fail for digit input with no romaji entry (8)"
+    (let (fail-called)
+      (nskk--convert-step/k "8"
+        (lambda (_kana _rest) (should nil))
+        (lambda (_partial) (should nil))
+        (lambda () (setq fail-called t)))
+      (should fail-called)))
+
+  (nskk-it "calls on-kana with (ん nil) for standalone n"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "n"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (null got-rest))))
+
+  (nskk-it "calls on-kana with (ん nil) for nn"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "nn"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (null got-rest))))
+
+  (nskk-it "calls on-kana with (ん nil) for n-quote"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "n'"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (null got-rest))))
+
+  (nskk-it "calls on-kana with (ん a) for n-quote-a — apostrophe consumed"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "n'a"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "a"))))
+
+  (nskk-it "calls on-kana with (ん nk) for nnk — nn consumed, nk remains"
+    (let (got-kana got-rest)
+      (nskk--convert-step/k "nnk"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_partial) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "nk")))))
+
+
+;;;
+;;; Seeded PBTs for nskk--convert-step/k
+;;;
+
+;; Property: nskk--convert-step/k always calls exactly one continuation.
+(nskk-property-test-seeded convert-step/k-pbt-calls-exactly-one-continuation
+  ((input romaji-basic))
+  (when (and (stringp input) (> (length input) 0))
+    (let ((call-count 0))
+      (nskk--convert-step/k input
+        (lambda (_kana _rest) (cl-incf call-count))
+        (lambda (_partial)    (cl-incf call-count))
+        (lambda ()            (cl-incf call-count)))
+      (= call-count 1)))
+  50 4001)
+
+;; Property: nskk--convert-step/k on-kana always receives a non-empty kana string.
+(nskk-property-test-seeded convert-step/k-pbt-on-kana-receives-string
+  ((input romaji-basic))
+  (when (and (stringp input) (> (length input) 0))
+    (let ((result t))
+      (nskk--convert-step/k input
+        (lambda (kana _rest) (setq result (and (stringp kana) (> (length kana) 0))))
+        (lambda (_partial) t)
+        (lambda () t))
+      result))
+  50 4002)
+
+;; Property: nskk--convert-step/k is deterministic — calling it twice on the
+;; same input yields the same continuation dispatch.  (defun/3k has no sync
+;; wrapper, so the old sync-vs-CPS consistency check does not apply.)
+(nskk-property-test-seeded convert-step/k-pbt-consistent-with-sync
+  ((input romaji-basic))
+  (when (and (stringp input) (> (length input) 0))
+    (let ((result1 nil)
+          (result2 nil))
+      (nskk--convert-step/k input
+        (lambda (kana rest)  (setq result1 (list :match kana rest)))
+        (lambda (partial)    (setq result1 (list :partial partial)))
+        (lambda ()           (setq result1 (list :fail))))
+      (nskk--convert-step/k input
+        (lambda (kana rest)  (setq result2 (list :match kana rest)))
+        (lambda (partial)    (setq result2 (list :partial partial)))
+        (lambda ()           (setq result2 (list :fail))))
+      (equal result1 result2)))
+  50 4003)
+
 (provide 'nskk-converter-test)
 
 ;;; nskk-converter-test.el ends here

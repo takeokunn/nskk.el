@@ -200,29 +200,33 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
                     (should (>= dist prev-dist))
                     (setq prev-dist dist))))))))))
 
-  (nskk-context "dedupe-fuzzy"
+  (nskk-context "nskk--search-dedup (fuzzy: keep-closer merge)"
     (nskk-it "returns all entries when no duplicates"
       (let ((results `(("a" entry1 . 0) ("b" entry2 . 1) ("c" entry3 . 2))))
-        (should (= (length (nskk--search-dedupe-fuzzy results)) 3))))
+        (should (= (length (nskk--search-dedup results #'car
+                                               (lambda (e n) (< (cddr n) (cddr e)))))
+                   3))))
 
     (nskk-it "keeps the entry with the smallest distance"
       (let* ((far   `("漢字" entry-far  . 3))
              (close `("漢字" entry-close . 1))
              (results (list far close)))
-        (let ((deduped (nskk--search-dedupe-fuzzy results)))
+        (let ((deduped (nskk--search-dedup results #'car
+                                           (lambda (e n) (< (cddr n) (cddr e))))))
           (should (= (length deduped) 1))
           ;; The entry with smaller distance should be kept
           (should (= (cddr (car deduped)) 1)))))
 
-    (nskk-it "keeps first entry when distances are equal"
+    (nskk-it "keeps first entry when distances are equal (no merge-fn trigger)"
       (let* ((first  `("同じ" entry-first  . 2))
              (second `("同じ" entry-second . 2))
              (results (list first second)))
-        (let ((deduped (nskk--search-dedupe-fuzzy results)))
+        (let ((deduped (nskk--search-dedup results #'car
+                                           (lambda (e n) (< (cddr n) (cddr e))))))
           (should (= (length deduped) 1)))))
 
     (nskk-it "returns nil for empty input"
-      (should (null (nskk--search-dedupe-fuzzy nil))))))
+      (should (null (nskk--search-dedup nil))))))
 
 ;;;
 ;;; Levenshtein Distance Tests
@@ -347,22 +351,22 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
             (nskk-dict-search-invalid-query (setq caught t)))
           (should caught)))))
 
-  (nskk-context "duplicate removal"
+  (nskk-context "nskk--search-dedup (ordinary: first-wins)"
     (nskk-it "returns all entries when there are no duplicates"
       (let ((results '(("a" . 1) ("b" . 2) ("c" . 3))))
-        (let ((unique (nskk--search-remove-duplicates results)))
+        (let ((unique (nskk--search-dedup results)))
           (should (= (length unique) 3)))))
 
     (nskk-it "deduplicates keeping the first occurrence"
       (let ((results '(("a" . 1) ("b" . 2) ("a" . 3) ("c" . 4) ("b" . 5))))
-        (let ((unique (nskk--search-remove-duplicates results)))
+        (let ((unique (nskk--search-dedup results)))
           (should (= (length unique) 3))
-          ;; First occurrence should be kept
+          ;; First occurrence should be kept (no merge-fn → first-wins)
           (should (equal (cdr (assoc "a" unique)) 1))
           (should (equal (cdr (assoc "b" unique)) 2)))))
 
     (nskk-it "returns nil for empty input"
-      (should (null (nskk--search-remove-duplicates nil))))))
+      (should (null (nskk--search-dedup nil))))))
 
 ;;;
 ;;; Sort Tests
@@ -831,24 +835,24 @@ in this list.")
   30
   17)
 
-;; PBT-005 — remove-duplicates idempotency: applying it twice yields the same result
-(nskk-property-test-seeded search-remove-duplicates-idempotency
+;; PBT-005 — nskk--search-dedup idempotency: applying it twice yields the same result
+(nskk-property-test-seeded search-dedup-idempotency
   ((a romaji-basic)
    (b romaji-basic)
    (c romaji-basic))
   (let* ((items (list (cons a 1) (cons b 2) (cons c 3) (cons a 4)))
-         (once  (nskk--search-remove-duplicates items))
-         (twice (nskk--search-remove-duplicates once)))
+         (once  (nskk--search-dedup items))
+         (twice (nskk--search-dedup once)))
     (equal once twice))
   30
   23)
 
-;; PBT-006 — remove-duplicates never increases length
-(nskk-property-test-seeded search-remove-duplicates-length-monotone
+;; PBT-006 — nskk--search-dedup never increases length
+(nskk-property-test-seeded search-dedup-length-monotone
   ((a romaji-basic)
    (b romaji-basic))
   (let* ((items (list (cons a 1) (cons b 2) (cons a 3)))
-         (result (nskk--search-remove-duplicates items)))
+         (result (nskk--search-dedup items)))
     (<= (length result) (length items)))
   30
   29)
@@ -1287,7 +1291,7 @@ of keys under `string<' regardless of the input order."
   (nskk-it "calls on-found on cache miss and on cache hit"
     (nskk-with-prolog-entries ((cps-cache-test "かんじ" ("漢字" "感じ")))
       (let ((index (make-nskk-dict-index :predicate 'cps-cache-test))
-            (cache (nskk-cache-create :lru 10))
+            (cache (nskk-cache-create :type 'lru :capacity 10))
             first-result second-result)
         ;; First lookup — cache miss, but result found; on-found fires
         (nskk-search-with-cache/k cache index "かんじ" 'exact nil nil
@@ -1304,7 +1308,7 @@ of keys under `string<' regardless of the input order."
   (nskk-it "calls on-not-found when key is absent"
     (nskk-with-prolog-entries ((cps-cache-miss-test "かんじ" ("漢字")))
       (let ((index (make-nskk-dict-index :predicate 'cps-cache-miss-test))
-            (cache (nskk-cache-create :lru 10))
+            (cache (nskk-cache-create :type 'lru :capacity 10))
             not-found-called)
         (nskk-search-with-cache/k cache index "ない" 'exact nil nil
                                   (lambda (_r) (should nil))
@@ -1324,7 +1328,7 @@ of keys under `string<' regardless of the input order."
   ((q search-query))
   (nskk-prolog-test-with-isolated-db
     (let* ((index (nskk-search-test--make-index '(("かんじ" . ("漢字")))))
-           (cache (nskk-cache-create :lru 10))
+           (cache (nskk-cache-create :type 'lru :capacity 10))
            (found-count 0)
            (not-found-count 0))
       (nskk-search-with-cache/k cache index q 'exact nil nil
@@ -1333,6 +1337,68 @@ of keys under `string<' regardless of the input order."
       ;; Exactly one callback must have fired
       (= 1 (+ found-count not-found-count))))
   30)
+
+;;;
+;;; PBT: post-process pipeline invariants
+;;;
+
+;; PBT-015 — post-process output has no duplicate keys (dedup invariant)
+;;
+;; For any list of (key . entry) pairs (including deliberate duplicates),
+;; nskk--search-post-process-results must produce a list where every key
+;; appears exactly once.
+(nskk-property-test-seeded search-post-process-no-duplicates
+  ((a search-query)
+   (b search-query))
+  (let* ((e1 (make-nskk-dict-entry :key a :candidates (list a)))
+         (e2 (make-nskk-dict-entry :key b :candidates (list b)))
+         ;; Deliberately insert a duplicate of (a . e1)
+         (results (list (cons a e1) (cons b e2) (cons a e1)))
+         (processed (nskk--search-post-process-results results nil nil))
+         (keys (mapcar #'car processed)))
+    ;; No duplicate keys in output
+    (= (length keys)
+       (length (cl-remove-duplicates keys :test #'equal))))
+  40
+  37)
+
+;; PBT-016 — post-process respects the LIMIT argument
+;;
+;; For any non-empty results list and any positive limit L, the output
+;; must have at most L elements.
+(nskk-property-test-seeded search-post-process-limit-respected
+  ((a search-query)
+   (b search-query)
+   (c search-query)
+   (d search-query))
+  (let* ((entries (mapcar (lambda (k)
+                            (cons k (make-nskk-dict-entry :key k :candidates (list k))))
+                          (list a b c d)))
+         (limit 2)
+         (processed (nskk--search-post-process-results entries nil limit)))
+    (<= (length processed) limit))
+  40
+  41)
+
+;; PBT-017 — post-process with sort=kana produces non-decreasing key order
+;;
+;; When nskk-search-sort-method is 'kana, every adjacent pair of keys in the
+;; output must satisfy (not (string< key[n+1] key[n])).
+(nskk-property-test-seeded search-post-process-kana-sort-order
+  ((a search-query)
+   (b search-query)
+   (c search-query))
+  (let* ((nskk-search-sort-method 'kana)
+         (entries (list (cons a (make-nskk-dict-entry :key a :candidates (list a)))
+                        (cons b (make-nskk-dict-entry :key b :candidates (list b)))
+                        (cons c (make-nskk-dict-entry :key c :candidates (list c)))))
+         (processed (nskk--search-post-process-results entries nil nil))
+         (keys (mapcar #'car processed)))
+    (cl-loop for (prev . rest) on keys
+             while rest
+             always (not (string< (car rest) prev))))
+  40
+  43)
 
 (provide 'nskk-search-test)
 

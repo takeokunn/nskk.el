@@ -1380,219 +1380,50 @@ the database in the same state as before the assertion."
           (should (equal results-a results-b)))))))
 
 ;;;
-;;; nskk-define-goal-handler
+;;; Goal dispatch: nskk--prolog-goal-kind and nskk--prolog-builtin-table
 ;;;
 
-(nskk-describe "nskk-define-goal-handler"
-  (nskk-it "appends a new handler entry to nskk--prolog-goal-handlers"
-    (let ((nskk--prolog-goal-handlers (copy-sequence nskk--prolog-goal-handlers)))
-      (let ((count-before (length nskk--prolog-goal-handlers)))
-        (nskk-define-goal-handler test-new-handler
-            (goal _rest _subst on-solution)
-          :match (eq (car goal) 'test-new-handler)
-          :body  (funcall on-solution nil))
-        (should (= (length nskk--prolog-goal-handlers) (1+ count-before)))
-        (should (assq 'test-new-handler nskk--prolog-goal-handlers)))))
+(nskk-describe "nskk--prolog-goal-kind"
+  (nskk-context "cut"
+    (nskk-it "classifies ! as :cut"
+      (should (eq (nskk--prolog-goal-kind '!) :cut))))
 
-  (nskk-it "re-defining a handler with the same name replaces it in place"
-    (let ((nskk--prolog-goal-handlers (copy-sequence nskk--prolog-goal-handlers)))
-      (let ((count-before (length nskk--prolog-goal-handlers)))
-        (nskk-define-goal-handler test-idempotent-handler
-            (goal _rest _subst on-solution)
-          :match (eq (car goal) 'test-idempotent-handler)
-          :body  (funcall on-solution nil))
-        (nskk-define-goal-handler test-idempotent-handler
-            (goal _rest _subst on-solution)
-          :match (eq (car goal) 'test-idempotent-handler)
-          :body  (funcall on-solution nil))
-        ;; Re-definition MUST NOT add a second entry — count stays 1+before
-        (should (= (length nskk--prolog-goal-handlers) (1+ count-before))))))
+  (nskk-context "negation"
+    (nskk-it "classifies (not foo) as :not"
+      (should (eq (nskk--prolog-goal-kind '(not foo)) :not))))
 
-  (nskk-it "handler entry has (name match-fn body-fn) structure"
-    (let ((nskk--prolog-goal-handlers (copy-sequence nskk--prolog-goal-handlers)))
-      (nskk-define-goal-handler test-structure-check
-          (goal _rest _subst on-solution)
-        :match (eq (car goal) 'test-structure-check)
-        :body  (funcall on-solution nil))
-      (let ((entry (assq 'test-structure-check nskk--prolog-goal-handlers)))
-        (should entry)
-        (should (functionp (nth 1 entry)))   ; match function
-        (should (functionp (nth 2 entry)))))))  ; body function
+  (nskk-context "assertz"
+    (nskk-it "classifies (assertz (foo)) as :assertz"
+      (should (eq (nskk--prolog-goal-kind '(assertz (foo))) :assertz))))
 
-;;;
-;;; Private trie operations (nskk--prolog-trie-*)
-;;;
+  (nskk-context "retract"
+    (nskk-it "classifies (retract (foo)) as :retract"
+      (should (eq (nskk--prolog-goal-kind '(retract (foo))) :retract))))
 
-(nskk-describe "nskk--prolog-trie internal operations"
-  (nskk-it "trie-create produces a trie with size 0"
-    (let ((trie (nskk--prolog-trie-create)))
-      (should (= (nskk--prolog-trie-size trie) 0))))
+  (nskk-context "arithmetic"
+    (nskk-it "is-2 op classifies as arith"
+      (should (eq (nskk--prolog-goal-kind '(is '\?x 1)) :arith)))
+    (nskk-it "arith-eq op classifies as arith"
+      (should (eq (nskk--prolog-goal-kind '(=:= 1 1)) :arith)))
+    (nskk-it "greater-than op classifies as arith"
+      (should (eq (nskk--prolog-goal-kind '(> 2 1)) :arith)))
+    (nskk-it "less-than op classifies as arith"
+      (should (eq (nskk--prolog-goal-kind '(< 1 2)) :arith)))
+    (nskk-it "greater-equal op classifies as arith"
+      (should (eq (nskk--prolog-goal-kind '(>= 2 2)) :arith)))
+    (nskk-it "less-equal op classifies as arith"
+      (should (eq (nskk--prolog-goal-kind '(<= 1 1)) :arith))))
 
-  (nskk-it "trie-insert stores a key-value pair"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "hello" "world")
-      (should (= (nskk--prolog-trie-size trie) 1))))
+  (nskk-context "normal"
+    (nskk-it "classifies a user predicate call as :normal"
+      (should (eq (nskk--prolog-goal-kind '(my-pred foo bar)) :normal)))
+    (nskk-it "classifies a bare atom as :normal"
+      (should (eq (nskk--prolog-goal-kind 'some-atom) :normal))))
 
-  (nskk-it "trie-lookup returns (value . t) for an inserted key"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "hello" "world")
-      (let ((result (nskk--prolog-trie-lookup trie "hello")))
-        (should (equal (car result) "world"))
-        (should (cdr result)))))
-
-  (nskk-it "trie-lookup returns (nil . nil) for a missing key"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "hello" "world")
-      (let ((result (nskk--prolog-trie-lookup trie "xyz")))
-        (should (null (car result)))
-        (should (null (cdr result))))))
-
-  (nskk-it "trie-delete removes a key and returns t"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "hello" "world")
-      (should (nskk--prolog-trie-delete trie "hello"))
-      (should (= (nskk--prolog-trie-size trie) 0))
-      ;; After deletion, lookup should miss
-      (let ((result (nskk--prolog-trie-lookup trie "hello")))
-        (should (null (cdr result))))))
-
-  (nskk-it "trie-delete returns nil for a non-existent key"
-    (let ((trie (nskk--prolog-trie-create)))
-      (should (null (nskk--prolog-trie-delete trie "missing")))))
-
-  (nskk-it "trie supports Japanese string keys"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "かんじ" '("漢字"))
-      (nskk--prolog-trie-insert trie "かんたん" '("簡単"))
-      (let ((r1 (nskk--prolog-trie-lookup trie "かんじ"))
-            (r2 (nskk--prolog-trie-lookup trie "かんたん")))
-        (should (equal (car r1) '("漢字")))
-        (should (equal (car r2) '("簡単")))))))
-
-;;;
-;;; nskk--prolog-trie--find-node
-;;;
-
-(nskk-describe "nskk--prolog-trie--find-node"
-  (nskk-it "returns the terminal node for an inserted key"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "abc" "value")
-      (let ((node (nskk--prolog-trie--find-node trie "abc")))
-        (should node)
-        (should (nskk--prolog-trie-node-is-end node)))))
-
-  (nskk-it "returns nil for a key that was not inserted"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "abc" "value")
-      (should-not (nskk--prolog-trie--find-node trie "xyz"))))
-
-  (nskk-it "returns a non-terminal node for a prefix of an existing key"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "abc" "value")
-      ;; "ab" is a prefix but not a terminal node
-      (let ((node (nskk--prolog-trie--find-node trie "ab")))
-        (should node)
-        (should-not (nskk--prolog-trie-node-is-end node)))))
-
-  (nskk-it "returns nil for any key in an empty trie"
-    (let ((trie (nskk--prolog-trie-create)))
-      (should-not (nskk--prolog-trie--find-node trie "abc")))))
-
-;;;
-;;; nskk--prolog-trie-prefix-search
-;;;
-
-(nskk-describe "nskk--prolog-trie-prefix-search"
-  (nskk-it "returns all (key . value) pairs with the given prefix"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "abc" "v1")
-      (nskk--prolog-trie-insert trie "abd" "v2")
-      (nskk--prolog-trie-insert trie "xyz" "v3")
-      (let ((results (nskk--prolog-trie-prefix-search trie "ab")))
-        (should (= (length results) 2))
-        (should (assoc "abc" results))
-        (should (assoc "abd" results))
-        (should-not (assoc "xyz" results)))))
-
-  (nskk-it "returns empty list when no keys match prefix"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "abc" "val")
-      (should (null (nskk--prolog-trie-prefix-search trie "xyz")))))
-
-  (nskk-it "limits results with the optional limit parameter"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "aa" "v1")
-      (nskk--prolog-trie-insert trie "ab" "v2")
-      (nskk--prolog-trie-insert trie "ac" "v3")
-      (let ((results (nskk--prolog-trie-prefix-search trie "a" 2)))
-        (should (= (length results) 2)))))
-
-  (nskk-it "returns all keys when prefix is empty string"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "a" "v1")
-      (nskk--prolog-trie-insert trie "b" "v2")
-      (let ((results (nskk--prolog-trie-prefix-search trie "")))
-        (should (= (length results) 2))))))
-
-;;;
-;;; nskk--prolog-trie--collect-all
-;;;
-
-(nskk-describe "nskk--prolog-trie--collect-all"
-  (nskk-it "collects all key/value pairs from a trie rooted at node"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "ab" "v1")
-      (nskk--prolog-trie-insert trie "ac" "v2")
-      (let* ((root (nskk--prolog-trie-root trie))
-             (results (nskk--prolog-trie--collect-all root "" nil 0)))
-        (should (= (length results) 2))
-        (should (assoc "ab" results))
-        (should (assoc "ac" results)))))
-
-  (nskk-it "returns empty list for an empty trie root"
-    (let* ((trie (nskk--prolog-trie-create))
-           (root (nskk--prolog-trie-root trie))
-           (results (nskk--prolog-trie--collect-all root "" nil 0)))
-      (should (null results))))
-
-  (nskk-it "stops at limit when limit is specified"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "a" "v1")
-      (nskk--prolog-trie-insert trie "b" "v2")
-      (nskk--prolog-trie-insert trie "c" "v3")
-      (let* ((root (nskk--prolog-trie-root trie))
-             (results (nskk--prolog-trie--collect-all root "" 2 0)))
-        (should (= (length results) 2)))))
-
-  (nskk-it "uses prefix as key prefix for collected entries"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "ab" "val")
-      (let* ((root (nskk--prolog-trie-root trie))
-             (results (nskk--prolog-trie--collect-all root "" nil 0)))
-        ;; Key should be the full path from the root prefix
-        (should (equal (car (car results)) "ab"))))))
-
-;;;
-;;; nskk--prolog-trie--cleanup-path
-;;;
-
-(nskk-describe "nskk--prolog-trie--cleanup-path"
-  (nskk-it "removes leaf nodes that are no longer needed after deletion"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "ab" "val")
-      (nskk--prolog-trie-delete trie "ab")
-      ;; After delete + cleanup (trie-delete calls cleanup-path internally),
-      ;; the path should be gone — lookup returns (nil . nil) for missing keys
-      (should-not (cdr (nskk--prolog-trie-lookup trie "ab")))))
-
-  (nskk-it "does not remove shared nodes when two keys share a prefix"
-    (let ((trie (nskk--prolog-trie-create)))
-      (nskk--prolog-trie-insert trie "abc" "v1")
-      (nskk--prolog-trie-insert trie "abd" "v2")
-      ;; Delete one key; the shared "ab" prefix node must remain
-      (nskk--prolog-trie-delete trie "abc")
-      ;; "abd" should still be accessible
-      (should (nskk--prolog-trie-lookup trie "abd")))))
+  (nskk-context "builtin-table completeness"
+    (nskk-it "nskk--prolog-builtin-table has an entry for every kind"
+      (dolist (kind '(:cut :not :assertz :retract :arith :normal))
+        (should (functionp (gethash kind nskk--prolog-builtin-table)))))))
 
 ;;;
 ;;; nskk--prolog-index-add / nskk--prolog-index-remove
@@ -1834,20 +1665,20 @@ the database in the same state as before the assertion."
          (nskk-prolog-trie-bulk-assert 'no-index-pred-xyz 2
                                        '(("x" . "y"))))))))
 
-(nskk-describe "nskk--prolog-trie input validation"
+(nskk-describe "nskk-trie input validation"
   (nskk-context "invalid key types"
     (nskk-it "signals an error for an empty string key"
-      (let ((trie (nskk--prolog-trie-create)))
-        (should-error (nskk--prolog-trie-insert trie "" "value"))))
+      (let ((trie (nskk-trie-create)))
+        (should-error (nskk-trie-insert trie "" "value"))))
 
     (nskk-it "signals an error for a non-string key"
-      (let ((trie (nskk--prolog-trie-create)))
-        (should-error (nskk--prolog-trie-insert trie 42 "value"))))
+      (let ((trie (nskk-trie-create)))
+        (should-error (nskk-trie-insert trie 42 "value"))))
 
     (nskk-it "signals an error for a non-string prefix in prefix-search"
-      (let ((trie (nskk--prolog-trie-create)))
-        (nskk--prolog-trie-insert trie "hello" "world")
-        (should-error (nskk--prolog-trie-prefix-search trie 42))))))
+      (let ((trie (nskk-trie-create)))
+        (nskk-trie-insert trie "hello" "world")
+        (should-error (nskk-trie-prefix-search trie 42))))))
 
 ;;;;
 ;;;; 19. Property-Based Tests: substitute, ground-p, rename-variables
@@ -2013,180 +1844,6 @@ the database in the same state as before the assertion."
         (should (nskk-prolog-query-one '(my-unary-pred disabled)))))))
 
 ;;;
-;;; nskk-define-goal-handler Tests
-;;;
-
-;; Note on handler test design: `nskk--prolog-goal-handlers' is an ordered alist
-;; in which the `normal' entry (with :match t) is the catch-all and is appended
-;; last.  `nskk-define-goal-handler' appends new entries AFTER existing ones, so
-;; a freshly registered handler sits AFTER `normal' and would never be reached by
-;; `nskk-prolog-prove'.  The dispatch tests below therefore call
-;; `nskk--prolog-dispatch-goal' directly with a controlled, minimal handlers list
-;; that puts the test handler first, avoiding the catch-all ordering issue.
-
-(nskk-describe "nskk-define-goal-handler macro"
-  (nskk-context "handler registration"
-    (nskk-it "after nskk-define-goal-handler an entry exists in nskk--prolog-goal-handlers"
-      (let ((saved-handlers nskk--prolog-goal-handlers))
-        (unwind-protect
-            (progn
-              (nskk-define-goal-handler test-reg-handler (goal rest subst k)
-                :match (and (consp goal) (eq (car goal) 'test-reg-goal))
-                :body (funcall k subst))
-              (let ((entry (assq 'test-reg-handler nskk--prolog-goal-handlers)))
-                (should entry)
-                (should (eq (nth 0 entry) 'test-reg-handler))
-                (should (functionp (nth 1 entry)))
-                (should (functionp (nth 2 entry)))))
-          (setq nskk--prolog-goal-handlers saved-handlers))))
-
-    (nskk-it "the match predicate of a registered handler is invoked for dispatch"
-      (let ((saved-handlers nskk--prolog-goal-handlers)
-            (match-called nil))
-        (unwind-protect
-            (progn
-              (nskk-define-goal-handler test-match-handler-2 (goal rest subst k)
-                :match (progn (setq match-called t)
-                              (and (consp goal) (eq (car goal) 'test-match-sentinel-2)))
-                :body (funcall k subst))
-              ;; Call dispatch directly with a handler list that puts our handler FIRST,
-              ;; so it is tried before the `normal' catch-all.
-              (let* ((our-entry (assq 'test-match-handler-2 nskk--prolog-goal-handlers))
-                     (nskk--prolog-goal-handlers (list our-entry)))
-                (nskk--prolog-dispatch-goal '(test-match-sentinel-2) nil nil #'identity))
-              (should match-called))
-          (setq nskk--prolog-goal-handlers saved-handlers))))
-
-    (nskk-it "the body of a matching handler is executed and calls on-solution"
-      (let ((saved-handlers nskk--prolog-goal-handlers)
-            (body-called nil)
-            (solution-received nil))
-        (unwind-protect
-            (progn
-              (nskk-define-goal-handler test-body-handler-2 (goal rest subst k)
-                :match (and (consp goal) (eq (car goal) 'test-body-sentinel-2))
-                :body
-                (setq body-called t)
-                (funcall k subst))
-              ;; Place our handler first so it is matched before the `normal' catch-all.
-              (let* ((our-entry (assq 'test-body-handler-2 nskk--prolog-goal-handlers))
-                     (nskk--prolog-goal-handlers (list our-entry)))
-                (nskk--prolog-dispatch-goal
-                 '(test-body-sentinel-2) nil nil
-                 (lambda (s) (setq solution-received t))))
-              (should body-called)
-              (should solution-received))
-          (setq nskk--prolog-goal-handlers saved-handlers)))))
-
-  (nskk-context "idempotency and reload"
-    (nskk-it "re-defining a handler with the same name does not create a duplicate"
-      (let ((saved-handlers nskk--prolog-goal-handlers))
-        (unwind-protect
-            (progn
-              (nskk-define-goal-handler test-idem-handler (goal rest subst k)
-                :match (and (consp goal) (eq (car goal) 'test-idem-goal))
-                :body (funcall k subst))
-              (let ((count-before
-                     (length (cl-remove-if-not
-                              (lambda (e) (eq (car e) 'test-idem-handler))
-                              nskk--prolog-goal-handlers))))
-                ;; Re-register with the same name.
-                (nskk-define-goal-handler test-idem-handler (goal rest subst k)
-                  :match (and (consp goal) (eq (car goal) 'test-idem-goal))
-                  :body (funcall k subst))
-                (let ((count-after
-                       (length (cl-remove-if-not
-                                (lambda (e) (eq (car e) 'test-idem-handler))
-                                nskk--prolog-goal-handlers))))
-                  ;; Count must not increase.
-                  (should (= count-before count-after)))))
-          (setq nskk--prolog-goal-handlers saved-handlers))))
-
-    (nskk-it "re-defining a handler replaces the match and body functions in place"
-      (let ((saved-handlers nskk--prolog-goal-handlers)
-            (call-log nil))
-        (unwind-protect
-            (progn
-              ;; First registration: body records 'first.
-              (nskk-define-goal-handler test-reload-handler (goal rest subst k)
-                :match (and (consp goal) (eq (car goal) 'test-reload-goal))
-                :body
-                (push 'first call-log)
-                (funcall k subst))
-              ;; Second registration with same name: body records 'second.
-              (nskk-define-goal-handler test-reload-handler (goal rest subst k)
-                :match (and (consp goal) (eq (car goal) 'test-reload-goal))
-                :body
-                (push 'second call-log)
-                (funcall k subst))
-              ;; Dispatch directly via the entry so ordering doesn't matter.
-              (let* ((our-entry (assq 'test-reload-handler nskk--prolog-goal-handlers))
-                     (nskk--prolog-goal-handlers (list our-entry)))
-                (nskk--prolog-dispatch-goal '(test-reload-goal) nil nil #'identity))
-              ;; The second (updated) body should have been called; first must not.
-              (should (equal call-log '(second)))
-              (should-not (member 'first call-log)))
-          (setq nskk--prolog-goal-handlers saved-handlers)))))
-
-  (nskk-context "dispatch behavior"
-    (nskk-it "nskk--prolog-dispatch-goal signals an error when no handler matches"
-      ;; Bind nskk--prolog-goal-handlers to nil (empty alist) so no entry
-      ;; can match the goal, forcing the error path.
-      (let ((nskk--prolog-goal-handlers nil))
-        (should-error (nskk--prolog-dispatch-goal '(unknown-goal) nil nil #'identity)
-                      :type 'error)))
-
-    (nskk-it "when two handlers both match a goal the first-registered one runs"
-      (nskk-prolog-test-with-isolated-db
-        (let* ((first-fired nil)
-               (second-fired nil)
-               ;; Build a substitution we can pass into the handlers.
-               (subst nil)
-               (nskk--prolog-goal-handlers
-                (list
-                 ;; First handler: always matches, sets first-fired.
-                 (list 'first-h
-                       (lambda (_g) t)
-                       (lambda (_g _r _s k)
-                         (setq first-fired t)
-                         (funcall k subst)))
-                 ;; Second handler: also always matches, sets second-fired.
-                 (list 'second-h
-                       (lambda (_g) t)
-                       (lambda (_g _r _s k)
-                         (setq second-fired t)
-                         (funcall k subst))))))
-          (nskk--prolog-dispatch-goal '(any-goal) nil subst #'identity)
-          (should first-fired)
-          (should-not second-fired))))
-
-    (nskk-it "an assertz goal inside a rule body dynamically adds a fact via dispatch"
-      (nskk-prolog-test-with-isolated-db
-        (nskk-prolog-clear-database)
-        ;; Assert a rule whose body contains an assertz goal.
-        (nskk-prolog-<- (my-setup-rule)
-          (assertz (my-dynamic-fact x)))
-        ;; Firing the rule should cause (my-dynamic-fact x) to be asserted.
-        (nskk-prolog-query-one '(my-setup-rule))
-        ;; Now the fact should be queryable.
-        (should (nskk-prolog-query-one '(my-dynamic-fact x)))))
-
-    (nskk-it "a retract goal inside a rule body dynamically removes a fact via dispatch"
-      (nskk-prolog-test-with-isolated-db
-        (nskk-prolog-clear-database)
-        ;; Assert a fact that will be removed.
-        (nskk-prolog-<- (my-removable-fact y))
-        ;; Assert a rule whose body contains a retract goal.
-        (nskk-prolog-<- (my-teardown-rule)
-          (retract (my-removable-fact y)))
-        ;; Verify the fact is present before firing the rule.
-        (should (nskk-prolog-query-one '(my-removable-fact y)))
-        ;; Fire the rule; this should retract the fact.
-        (nskk-prolog-query-one '(my-teardown-rule))
-        ;; The fact should now be gone.
-        (should (null (nskk-prolog-query-one '(my-removable-fact y))))))))
-
-;;;
 ;;; nskk-when-prolog-holds Tests
 ;;;
 
@@ -2273,32 +1930,6 @@ the database in the same state as before the assertion."
       (should (eq (car expansion) 'progn))
       (should (= n (length (cdr expansion)))))))
 
-;;;;
-;;;; Property: nskk-define-goal-handler registration is idempotent across modes
-;;;;
-
-(ert-deftest nskk-refactoring-goal-handler-count-stable-under-reload ()
-  "Re-registering a handler with the same name never increases the handler count."
-  (nskk-for-all ((mode valid-mode))
-    (let ((saved-handlers nskk--prolog-goal-handlers)
-          (handler-name (intern (format "test-reload-handler-for-%s" mode))))
-      (unwind-protect
-          (progn
-            (nskk-define-goal-handler test-reload-stable-handler (goal rest subst k)
-              :match (and (consp goal) (eq (car goal) 'test-reload-stable-sentinel))
-              :body (funcall k subst))
-            (let ((count-1 (length (cl-remove-if-not
-                                    (lambda (e) (eq (car e) 'test-reload-stable-handler))
-                                    nskk--prolog-goal-handlers))))
-              (nskk-define-goal-handler test-reload-stable-handler (goal rest subst k)
-                :match (and (consp goal) (eq (car goal) 'test-reload-stable-sentinel))
-                :body (funcall k subst))
-              (let ((count-2 (length (cl-remove-if-not
-                                      (lambda (e) (eq (car e) 'test-reload-stable-handler))
-                                      nskk--prolog-goal-handlers))))
-                (should (= count-1 count-2)))))
-        (ignore handler-name)
-        (setq nskk--prolog-goal-handlers saved-handlers)))))
 
 ;;;;
 ;;;; Property-Based Tests: Assert/Query/Retract Invariants

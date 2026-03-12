@@ -49,6 +49,7 @@
 ;; - `cache-eviction-policy/2' -- type -> policy name documentation
 ;; - `cache-dispatch-fn/3'     -- (type op fn) operation dispatch table
 ;; - `cache-field-fn/3'        -- (type field accessor-fn) field accessor table
+;; - `cache-constructor/2'     -- (type constructor-fn) creation dispatch table
 ;;
 ;; Key public API:
 ;; - `nskk-cache-create'             -- create LRU or LFU cache
@@ -69,7 +70,7 @@
 ;;
 ;; Usage:
 ;;
-;;   (setq cache (nskk-cache-create 'lru 1000))
+;;   (setq cache (nskk-cache-create :type 'lru :capacity 1000))
 ;;   (nskk-cache-put cache "key" "value")
 ;;   (nskk-cache-get cache "key")  ; => "value"
 ;;   (nskk-cache-stats cache)      ; => (:hits N :misses N :hit-rate R ...)
@@ -142,6 +143,11 @@
   (lfu hits     nskk-cache-lfu-hits)
   (lfu misses   nskk-cache-lfu-misses)
   (lfu hash     nskk-cache-lfu-hash))
+
+;; Cache constructor table: (cache-constructor TYPE CONSTRUCTOR-FN)
+(nskk-prolog-define-fact-table cache-constructor (:arity 2 :index :hash)
+  (lru nskk-cache-lru-create)
+  (lfu nskk-cache-lfu-create))
 
 ;;; Cache Type Dispatch
 
@@ -409,6 +415,19 @@ No-op when the min-freq bucket is absent or empty."
    :hits     0
    :misses   0))
 
+(defsubst nskk-cache-lfu--remove-from-freq-bucket (cache key old-freq new-freq)
+  "Remove KEY from the OLD-FREQ bucket in LFU CACHE.
+When the bucket becomes empty, remove it and advance min-freq to NEW-FREQ
+if OLD-FREQ was the current minimum."
+  (let* ((freq-table (nskk-cache-lfu-freq cache))
+         (bucket     (gethash old-freq freq-table)))
+    (when bucket
+      (remhash key bucket)
+      (when (zerop (hash-table-count bucket))
+        (remhash old-freq freq-table)
+        (when (= old-freq (nskk-cache-lfu-min-freq cache))
+          (setf (nskk-cache-lfu-min-freq cache) new-freq))))))
+
 (defsubst nskk-cache-lfu--update-freq (cache entry old-freq)
   "Promote ENTRY in LFU CACHE from OLD-FREQ to its new frequency.
 Removes ENTRY from the old frequency bucket and inserts into the new one.
@@ -417,17 +436,8 @@ Updates min-freq when the old minimum frequency bucket becomes empty."
   (let ((freq-table (nskk-cache-lfu-freq cache))
         (key        (nskk-cache-lfu-entry-key entry))
         (new-freq   (nskk-cache-lfu-entry-frequency entry)))
-    ;; Remove from old frequency bucket (O(1))
     (when old-freq
-      (let ((bucket (gethash old-freq freq-table)))
-        (when bucket
-          (remhash key bucket)
-          (when (zerop (hash-table-count bucket))
-            (remhash old-freq freq-table)
-            ;; Advance min-freq when minimum bucket is emptied
-            (when (= old-freq (nskk-cache-lfu-min-freq cache))
-              (setf (nskk-cache-lfu-min-freq cache) new-freq))))))
-    ;; Add to new frequency bucket (O(1))
+      (nskk-cache-lfu--remove-from-freq-bucket cache key old-freq new-freq))
     (let ((bucket (gethash new-freq freq-table)))
       (unless bucket
         (setq bucket (make-hash-table :test 'equal :size 4))
@@ -473,14 +483,13 @@ Evicts the least-frequently-used entry when CACHE is at capacity."
 Returns t if KEY was found and removed, nil otherwise."
   (let ((entry (gethash key (nskk-cache-lfu-hash cache))))
     (if entry
-        (progn
-          (let* ((freq-table (nskk-cache-lfu-freq cache))
-                 (freq       (nskk-cache-lfu-entry-frequency entry))
-                 (bucket     (gethash freq freq-table)))
-            (when bucket
-              (remhash key bucket)
-              (when (zerop (hash-table-count bucket))
-                (remhash freq freq-table))))
+        (let* ((freq-table (nskk-cache-lfu-freq cache))
+               (freq       (nskk-cache-lfu-entry-frequency entry))
+               (bucket     (gethash freq freq-table)))
+          (when bucket
+            (remhash key bucket)
+            (when (zerop (hash-table-count bucket))
+              (remhash freq freq-table)))
           (remhash key (nskk-cache-lfu-hash cache))
           (cl-decf (nskk-cache-lfu-size cache))
           (succeed t))
@@ -497,72 +506,41 @@ Returns t if KEY was found and removed, nil otherwise."
 
 ;;; Unified Interface
 
-(defun nskk-cache-create--impl (&rest args)
-  "Create a cache, returning an LRU or LFU cache structure.
-
-ARGS supports three calling conventions:
-
-  Positional:  (TYPE CAPACITY)
-    TYPE     -- cache algorithm symbol, either \\='lru or \\='lfu
-    CAPACITY -- maximum number of entries (positive integer)
-
-  Keyword:     (:type TYPE :capacity CAP)
-    :type     -- cache algorithm symbol, either \\='lru or \\='lfu
-    :capacity -- maximum number of entries (positive integer)
-    :size     -- alias for :capacity; overrides :capacity when both present
-
-  No arguments: uses defaults from `nskk-cache-strategy' and
-    `nskk-cache-default-capacity'.
-
-When both :capacity and :size appear in a keyword call, :size takes
-precedence because it is applied after :capacity.  In practice, pass
-only one of the two.
-
-TYPE defaults to `nskk-cache-strategy' (customizable, default \\='lru).
-CAPACITY defaults to `nskk-cache-default-capacity' (customizable, default 1000).
-
-Signals a `user-error' if TYPE is not a Prolog-registered cache type
-(i.e., not a fact in cache-type/1).  Valid types are: lru, lfu."
-  (let ((cache-type     nskk-cache-strategy)
-        (cache-capacity nskk-cache-default-capacity))
-    (cond
-     ((null args))
-     ((keywordp (car args))
-      (let ((plist args))
-        (when (plist-member plist :type)
-          (setq cache-type (plist-get plist :type)))
-        (when (plist-member plist :capacity)
-          (setq cache-capacity (plist-get plist :capacity)))
-        (when (plist-member plist :size)
-          (setq cache-capacity (plist-get plist :size)))))
-     (t
-      (setq cache-type (car args))
-      (when (cdr args)
-        (setq cache-capacity (cadr args)))))
-    ;; Validate via Prolog before constructing.  An unrecognized TYPE causes
-    ;; nskk-prolog-holds-p to return nil, and the unless branch signals
-    ;; user-error.  The pcase below is therefore exhaustive over valid types:
-    ;; it will never reach an unmatched arm because the validation above
-    ;; already rejects anything outside {lru, lfu}.
-    (unless (nskk-prolog-holds-p `(cache-type ,cache-type))
-      (user-error "Unknown cache type: %s; valid types: lru, lfu" cache-type))
-    (pcase cache-type
-      ('lru (nskk-cache-lru-create cache-capacity))
-      ('lfu (nskk-cache-lfu-create cache-capacity)))))
-
 ;;;###autoload
 (defun/k nskk-cache-create (&rest args)
   "Create a new NSKK cache of the specified type and capacity.
 Calls on-found with the created cache object.  Always succeeds.
 
-ARGS supports three calling conventions (see `nskk-cache-create--impl').
+ARGS accepts keyword arguments:
+  :type     -- cache algorithm symbol, either \\='lru or \\='lfu
+               defaults to `nskk-cache-strategy'
+  :capacity -- maximum number of entries (positive integer)
+               defaults to `nskk-cache-default-capacity'
+  :size     -- alias for :capacity; takes precedence when both present
 
-NOTE: Because `&rest args' cannot follow the continuations in the generated
-`/k' signature, the generated `nskk-cache-create/k' has signature
+Calling with no arguments uses the defaults:
+  (nskk-cache-create) ; => cache of `nskk-cache-strategy' type, default capacity
+
+NOTE: Because `&rest args\\=' cannot follow the continuations in the generated
+`/k\\=' signature, the generated `nskk-cache-create/k\\=' has signature
   (on-found on-not-found &rest args)
-where continuations come before the data arguments.  Use it directly;
-it is not compatible with `<-' or `<-or'."
-  (succeed (apply #'nskk-cache-create--impl args)))
+where continuations come before the data arguments.
+
+Signals a `user-error\\=' if :type is not a Prolog-registered cache type
+\\(i.e., not a fact in cache-type/1).  Valid types are: lru, lfu."
+  (let* ((plist         args)
+         (cache-type     (if (plist-member plist :type)
+                             (plist-get plist :type)
+                           nskk-cache-strategy))
+         (cache-capacity (cond
+                          ((plist-member plist :size)     (plist-get plist :size))
+                          ((plist-member plist :capacity) (plist-get plist :capacity))
+                          (t nskk-cache-default-capacity))))
+    (unless (nskk-prolog-holds-p `(cache-type ,cache-type))
+      (user-error "Unknown cache type: %s; valid types: lru, lfu" cache-type))
+    (let ((ctor (nskk-prolog-query-value
+                 `(cache-constructor ,cache-type \?fn) '\?fn)))
+      (succeed (funcall ctor cache-capacity)))))
 
 ;;;###autoload
 (defun/k nskk-cache-get (cache key)
@@ -619,7 +597,7 @@ literal regexp string from source code, never from user input."
                  (push key keys-to-delete)))
              hash-table)
     (dolist (key keys-to-delete)
-      (nskk-cache-invalidate cache key))
+      (nskk-cache-invalidate/k cache key #'ignore #'ignore))
     (succeed keys-to-delete)))
 
 ;;;###autoload
@@ -631,27 +609,29 @@ literal regexp string from source code, never from user input."
     (fail)))
 
 ;;;###autoload
-(defun nskk-cache-stats (cache)
+(defun/k nskk-cache-stats (cache)
   "Return a statistics plist for CACHE.
 The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
-  (let* ((type     (nskk--cache-type-of cache))
-         (capacity (nskk-cache-field cache capacity))
-         (size     (nskk-cache-field cache size))
-         (hits     (nskk-cache-field cache hits))
-         (misses   (nskk-cache-field cache misses))
-         (total    (+ hits misses))
-         (hit-rate (if (> total 0) (/ (float hits) total) 0.0)))
-    (list :type type
-          :capacity capacity
-          :size size
-          :hits hits
-          :misses misses
-          :hit-rate hit-rate)))
+  (succeed
+   (let* ((type     (nskk--cache-type-of cache))
+          (capacity (nskk-cache-field cache capacity))
+          (size     (nskk-cache-field cache size))
+          (hits     (nskk-cache-field cache hits))
+          (misses   (nskk-cache-field cache misses))
+          (total    (+ hits misses))
+          (hit-rate (if (> total 0) (/ (float hits) total) 0.0)))
+     (list :type type
+           :capacity capacity
+           :size size
+           :hits hits
+           :misses misses
+           :hit-rate hit-rate))))
 
 ;;;###autoload
 (defun/k nskk-cache-hit-rate (cache)
   "Return the hit rate for CACHE as a float between 0.0 and 1.0."
-  (succeed (plist-get (nskk-cache-stats cache) :hit-rate)))
+  (<- stats nskk-cache-stats cache)
+  (succeed (plist-get stats :hit-rate)))
 
 ;;;###autoload
 (defun nskk-cache-size (cache)

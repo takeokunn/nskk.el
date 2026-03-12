@@ -52,9 +52,11 @@
 ;; `nskk-search-learning-file'.
 ;;
 ;; Prolog predicates maintained by this module:
-;; - `search-strategy/1'      -- valid search type membership
-;; - `learning-score/3'       -- (reading candidate score) usage frequency
-;; - `okuri-type-matches/2'   -- (filter-type entry-type) okurigana match rules
+;; - `search-strategy/1'              -- valid search type membership
+;; - `learning-score/3'               -- (reading candidate score) usage frequency
+;; - `okuri-type-matches/2'           -- (filter-type entry-type) okurigana match rules
+;; - `entry-matches-okuri-filter/2'   -- derived rule; (filter okuri-sym) wraps
+;;                                       okuri-type-matches/2 for filter dispatch
 ;;
 ;; Key public API:
 ;; - `nskk-search'              -- unified search dispatcher
@@ -148,6 +150,14 @@ DDSKK equivalent: skk-save-history-hook")
   (any        okuri-ari)
   (any        okuri-nasi))
 
+;; Derived rule: entry-matches-okuri-filter/2
+;; (entry-matches-okuri-filter Filter OkuriSym) succeeds when OkuriSym
+;; satisfies Filter.  The entry-okuri string is converted to a symbol
+;; (okuri-ari / okuri-nasi) by Elisp before calling this rule so that
+;; all filter-dispatch logic lives in the Prolog knowledge base.
+(nskk-prolog-<- (entry-matches-okuri-filter \?filter \?okuri-sym)
+  (okuri-type-matches \?filter \?okuri-sym))
+
 ;;; Unified search interface
 
 (defun nskk--search-run-post-hook ()
@@ -197,36 +207,38 @@ because Emacs Lisp `&optional' applies to all parameters after the first."
 (defun nskk--search-match-okuri-type-p (okuri-type entry-okuri)
   "Return non-nil if ENTRY-OKURI matches OKURI-TYPE filter.
 OKURI-TYPE is \\='okuri-ari, \\='okuri-nasi, or nil (match all).
-Delegates to the Prolog `okuri-type-matches/2' fact table."
-  (let ((filter (or okuri-type 'any))
+Converts ENTRY-OKURI string to a symbol, then delegates to the Prolog
+`entry-matches-okuri-filter/2' rule (which wraps `okuri-type-matches/2')."
+  (let ((filter    (or okuri-type 'any))
         (entry-sym (if (and entry-okuri (not (string= entry-okuri "")))
                        'okuri-ari
                      'okuri-nasi)))
-    (nskk-prolog-holds-p `(okuri-type-matches ,filter ,entry-sym))))
+    (nskk-prolog-holds-p `(entry-matches-okuri-filter ,filter ,entry-sym))))
 
 ;;; Exact match search
 
 (defun/k nskk-search-exact (index query okuri-type)
   "Perform exact match search in INDEX for QUERY.
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil."
-  (let* ((pred (nskk-dict-index-predicate index))
+  (let* ((pred       (nskk-dict-index-predicate index))
          (candidates (when pred
                        (nskk-prolog-query-value
-                        `(,pred ,query \?candidates) '\?candidates))))
+                        `(,pred ,query \?candidates) '\?candidates)))
+         (entry      (when candidates
+                       (make-nskk-dict-entry :key query :candidates candidates))))
     (nskk-debug-log "[SEARCH] exact: query=%s found=%s" query (if candidates t nil))
-    (if candidates
-        (let ((entry (make-nskk-dict-entry :key query :candidates candidates)))
-          (if (nskk--search-match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry))
-              (succeed entry)
-            (fail)))
+    (if (and entry
+             (nskk--search-match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry)))
+        (succeed entry)
       (fail))))
 
 ;;; Prefix match search
 
 (defun nskk--search-post-process-results (results okuri-type limit)
   "Apply standard post-processing to RESULTS.
-Filters by OKURI-TYPE, removes duplicates, applies LIMIT, and sorts by
-`nskk-search-sort-method'.  Returns the processed result list."
+Filters by OKURI-TYPE via Prolog `entry-matches-okuri-filter/2', removes
+duplicates, applies LIMIT, and sorts by `nskk-search-sort-method'.
+Returns the processed result list."
   (let* ((filtered (if okuri-type
                        (cl-remove-if-not
                         (lambda (result)
@@ -234,7 +246,7 @@ Filters by OKURI-TYPE, removes duplicates, applies LIMIT, and sorts by
                            okuri-type (nskk-dict-entry-okuri (cdr result))))
                         results)
                      results))
-         (unique (nskk--search-remove-duplicates filtered))
+         (unique  (nskk--search-dedup filtered))
          (limited (if (and limit (> (length unique) limit))
                       (seq-take unique limit)
                     unique)))
@@ -259,16 +271,30 @@ LIMIT is the maximum number of results."
         (succeed processed)
       (fail))))
 
-(defun nskk--search-remove-duplicates (results)
-  "Remove duplicate entries from RESULTS."
-  (let ((seen (make-hash-table :test 'equal))
-        (unique nil))
-    (dolist (result results)
-      (let ((key (car result)))
-        (unless (gethash key seen)
-          (puthash key t seen)
-          (push result unique))))
-    (nreverse unique)))
+(defun nskk--search-dedup (results &optional key-fn merge-fn)
+  "Remove duplicates from RESULTS, keeping one item per key.
+KEY-FN extracts the dedup key from an item (default: `car').
+MERGE-FN is called as (MERGE-FN EXISTING NEW) and should return non-nil
+when NEW should replace EXISTING; default keeps the first occurrence.
+
+Used for both ordinary and fuzzy results:
+  Ordinary: (nskk--search-dedup results)
+  Fuzzy:    (nskk--search-dedup results #\\='car
+            (lambda (e n) (< (cddr n) (cddr e))))"
+  (let ((key-fn   (or key-fn #'car))
+        (seen     (make-hash-table :test 'equal))
+        (acc      nil))
+    (dolist (item results)
+      (let* ((key      (funcall key-fn item))
+             (existing (gethash key seen)))
+        (cond
+         ((null existing)
+          (puthash key item seen)
+          (push item acc))
+         ((and merge-fn (funcall merge-fn existing item))
+          (puthash key item seen)
+          (setq acc (cons item (delete existing acc)))))))
+    (nreverse acc)))
 
 ;;; Partial match search
 
@@ -277,20 +303,18 @@ LIMIT is the maximum number of results."
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
 LIMIT is the maximum number of results."
   (let* ((pred (nskk-dict-index-predicate index))
+         ;; Collect all substring matches, then delegate filtering / dedup /
+         ;; limit / sort to the shared post-process pipeline (consistent with
+         ;; prefix and exact search paths).
          (results
           (when pred
-            ;; cl-loop replaces the nested catch/dolist/when/push structure.
-            ;; Okuri filtering is applied inline; post-process receives nil for
-            ;; okuri-type to avoid a redundant second filter pass.
             (cl-loop for sol   in (nskk-prolog-query `(,pred \?k \?candidates))
                      for key    = (nskk-prolog-walk '\?k sol)
                      for cands  = (nskk-prolog-walk '\?candidates sol)
                      for entry  = (make-nskk-dict-entry :key key :candidates cands)
-                     when (and (string-search query key)
-                               (nskk--search-match-okuri-type-p
-                                okuri-type (nskk-dict-entry-okuri entry)))
+                     when (string-search query key)
                        collect (cons key entry))))
-         (processed (nskk--search-post-process-results results nil limit)))
+         (processed (nskk--search-post-process-results results okuri-type limit)))
     (if processed (succeed processed) (fail))))
 
 ;;; Fuzzy search
@@ -318,12 +342,14 @@ the integer Levenshtein distance from QUERY."
                        collect (cons key (cons (make-nskk-dict-entry
                                                 :key key :candidates cands)
                                                distance)))))
-         ;; Pipeline: deduplicate → sort by distance → apply limit
-         (deduped  (nskk--search-dedupe-fuzzy raw))
-         (sorted   (sort deduped (lambda (a b) (< (cddr a) (cddr b)))))
-         (results  (if (and limit (> (length sorted) limit))
-                       (seq-take sorted limit)
-                     sorted)))
+         ;; Pipeline: deduplicate (keep closest) → sort by distance → limit
+         (deduped (nskk--search-dedup raw #'car
+                                      (lambda (existing new)
+                                        (< (cddr new) (cddr existing)))))
+         (sorted  (sort deduped (lambda (a b) (< (cddr a) (cddr b)))))
+         (results (if (and limit (> (length sorted) limit))
+                      (seq-take sorted limit)
+                    sorted)))
     (if results (succeed results) (fail))))
 
 (defun nskk--search-levenshtein-distance (s1 s2)
@@ -420,24 +446,6 @@ the integer Levenshtein distance from QUERY."
     (car candidate))
    (t nil)))
 
-;;; Deduplication
-
-(defun nskk--search-dedupe-fuzzy (results)
-  "Remove duplicate entries from fuzzy search RESULTS, keeping closest match."
-  (let ((seen (make-hash-table :test 'equal))
-        (acc '()))
-    (dolist (item results)
-      (let* ((key (car item))
-             (distance (cddr item))
-             (existing (gethash key seen)))
-        (cond
-         ((null existing)
-          (puthash key item seen)
-          (push item acc))
-         ((< distance (cddr existing))
-          (puthash key item seen)
-          (setq acc (cons item (delete existing acc)))))))
-    (nreverse acc)))
 
 ;;; Learning data management
 
@@ -510,11 +518,10 @@ is bypassed; fires only on cache misses (when `nskk-search' is called)."
                (succeed cached))
       :fail  (progn
                (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
-               (<-or result nskk-search index query search-type okuri-type limit
-                 :found (progn
-                          (nskk-cache-put cache cache-key result)
-                          (succeed result))
-                 :fail  (fail))))))
+               (<-seq [result (nskk-search index query search-type okuri-type limit)]
+                 (progn
+                   (nskk-cache-put cache cache-key result)
+                   (succeed result)))))))
 
 (provide 'nskk-search)
 

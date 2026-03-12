@@ -182,7 +182,7 @@ Keyed by reading string; values are deduplicated candidate lists.")
   "Return the program dict LRU cache, creating it lazily when needed."
   (unless nskk--program-dict-cache
     (setq nskk--program-dict-cache
-          (nskk-cache-create 'lru nskk--program-dict-cache-capacity)))
+          (nskk-cache-create :type 'lru :capacity nskk--program-dict-cache-capacity)))
   nskk--program-dict-cache)
 
 ;;; Section 4: Command string parsing
@@ -217,74 +217,39 @@ When no semicolon is present CANDIDATE is returned unchanged."
   (let ((semi (string-search ";" candidate)))
     (if semi (substring candidate 0 semi) candidate)))
 
-;;; Section 6a: stdin execution
+;;; Section 6: External command execution
 
-(defun/k nskk--program-dict-exec-stdin (program stdin-key args)
-  "Execute PROGRAM with STDIN-KEY written to stdin; call on-found with stdout.
+(defun/k nskk--program-dict-exec-command (program stdin-key args)
+  "Execute PROGRAM, piping STDIN-KEY via stdin when non-nil, else using ARGS.
 
-STDIN-KEY is inserted into a temporary buffer followed by a newline, then
-piped to PROGRAM via `call-process-region' (delete=t so only process stdout
-remains in the buffer).  ARGS are passed as additional argv elements.
+When STDIN-KEY is non-nil, inserts STDIN-KEY followed by a newline into a
+temporary buffer and pipes it to PROGRAM via `call-process-region' (the
+input region is deleted so only stdout remains).  When STDIN-KEY is nil,
+PROGRAM is invoked directly via `call-process' with ARGS as argv.
 
 The call is guarded by `with-timeout' using `nskk-program-dict-timeout'.
-Any error or timeout calls on-not-found."
+Any error or timeout calls on-not-found.  Calls on-found with stdout string."
   (let ((output
          (condition-case err
              (with-timeout (nskk-program-dict-timeout nil)
                (with-temp-buffer
-                 (insert stdin-key "\n")
-                 (apply #'call-process-region
-                        (point-min) (point-max)
-                        program
-                        t    ; delete input region (stdin piped)
-                        t    ; stdout -> current buffer
-                        nil  ; no display
-                        args)
+                 (if stdin-key
+                     (progn
+                       (insert stdin-key "\n")
+                       (apply #'call-process-region
+                              (point-min) (point-max)
+                              program
+                              t    ; delete input region (stdin piped)
+                              t    ; stdout -> current buffer
+                              nil  ; no display
+                              args))
+                   (apply #'call-process program nil t nil args))
                  (buffer-string)))
            (error
-            (nskk-debug-message "nskk-program-dict: stdin command %s error: %s"
+            (nskk-debug-message "nskk-program-dict: command %s error: %s"
                                 program (error-message-string err))
             nil))))
     (if output (succeed output) (fail))))
-
-;;; Section 6b: argv execution
-
-(defun/k nskk--program-dict-exec-argv (program args)
-  "Execute PROGRAM with ARGS; call on-found with stdout.
-
-PROGRAM is called via `call-process' with ARGS as argv.  No stdin is sent.
-stdout is captured from a temporary buffer.
-
-The call is guarded by `with-timeout' using `nskk-program-dict-timeout'.
-Any error or timeout calls on-not-found."
-  (let ((output
-         (condition-case err
-             (with-timeout (nskk-program-dict-timeout nil)
-               (with-temp-buffer
-                 (apply #'call-process program nil t nil args)
-                 (buffer-string)))
-           (error
-            (nskk-debug-message "nskk-program-dict: argv command %s error: %s"
-                                program (error-message-string err))
-            nil))))
-    (if output (succeed output) (fail))))
-
-;;; Section 6c: External command execution
-
-(defun/k nskk--program-dict-run-command (program stdin-key args)
-  "Execute PROGRAM; pipe STDIN-KEY via stdin when non-nil, else use ARGS.
-
-Dispatches to `nskk--program-dict-exec-stdin/k' when STDIN-KEY is non-nil
-(reading sent via stdin), or `nskk--program-dict-exec-argv/k' otherwise
-(reading already embedded in ARGS by `nskk--program-dict-build-call').
-
-Calls on-found with the process stdout string; on-not-found on timeout
-or error."
-  (if stdin-key
-      (<-or out nskk--program-dict-exec-stdin program stdin-key args
-        :found (succeed out) :fail (fail))
-    (<-or out nskk--program-dict-exec-argv program args
-      :found (succeed out) :fail (fail))))
 
 ;;; Section 7: Output parsing
 
@@ -342,18 +307,16 @@ returns nil, a non-list value, an empty list, or signals an error."
 (defun/k nskk--program-dict-call-command (cmd key)
   "Execute shell command CMD looking up reading KEY.
 Parses CMD via `nskk--program-dict-build-call', runs the command via
-`nskk--program-dict-run-command/k', then passes stdout to
+`nskk--program-dict-exec-command/k', then passes stdout to
 `nskk--program-dict-parse-output/k' for SKK/skkserv/line parsing.
 
 Calls on-found with candidates; on-not-found on timeout, error, or when
 the command produces no parseable candidates."
   (pcase-let* ((`(,program ,stdin-p . ,args) (nskk--program-dict-build-call cmd key)))
     (nskk-debug-message "nskk-program-dict: cmd=%s key=%s stdin=%s" cmd key stdin-p)
-    (<-or output nskk--program-dict-run-command program (when stdin-p key) args
-      :found (<-or cands nskk--program-dict-parse-output output
-               :found (succeed cands)
-               :fail  (fail))
-      :fail  (fail))))
+    (<- output nskk--program-dict-exec-command program (when stdin-p key) args)
+    (<- cands  nskk--program-dict-parse-output output)
+    (succeed cands)))
 
 ;;; Section 10: Entry dispatch (Prolog-driven)
 
@@ -369,14 +332,8 @@ unrecognized or the handler returns no results."
           `(program-dict-entry-type
             ,(if (functionp entry) 'function 'command) \?a)
           '\?a)
-    ('call-function
-     (<-or cands nskk--program-dict-call-function entry key
-       :found (succeed cands)
-       :fail  (fail)))
-    ('call-command
-     (<-or cands nskk--program-dict-call-command entry key
-       :found (succeed cands)
-       :fail  (fail)))
+    ('call-function (<- cands nskk--program-dict-call-function entry key))
+    ('call-command  (<- cands nskk--program-dict-call-command  entry key))
     (_ (fail))))
 
 ;;; Section 11: Multi-entry collector
@@ -417,10 +374,10 @@ when disabled, `nskk-program-dicts' is nil, or all entries miss."
     (let ((cache (nskk--program-dict-ensure-cache)))
       (<-or cached nskk-cache-get cache key
         :found (succeed cached)
-        :fail  (<-or results nskk--program-dict-collect-all nskk-program-dicts key
-                 :found (progn (nskk-cache-put cache key results)
-                               (succeed results))
-                 :fail  (fail))))))
+        :fail  (progn
+                 (<- results nskk--program-dict-collect-all nskk-program-dicts key)
+                 (nskk-cache-put cache key results)
+                 (succeed results))))))
 
 (provide 'nskk-program-dictionary)
 

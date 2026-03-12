@@ -1029,6 +1029,45 @@ Note: Prolog-backed classification costs ~200-300us per character."
       (should fail-called))))
 
 ;;;
+;;; nskk--kana-hankaku-lookup-at
+;;;
+
+(nskk-describe "nskk--kana-hankaku-lookup-at"
+  (nskk-context "two-char dakuten match"
+    (nskk-it "returns (zenkaku . 2) for a two-char dakuten sequence at position 0"
+      (let ((result (nskk--kana-hankaku-lookup-at "ｶﾞ" 0 2)))
+        (should (equal (car result) "ガ"))
+        (should (= (cdr result) 2))))
+
+    (nskk-it "returns (zenkaku . 2) for a handakuten sequence at position 0"
+      (let ((result (nskk--kana-hankaku-lookup-at "ﾊﾟ" 0 2)))
+        (should (equal (car result) "パ"))
+        (should (= (cdr result) 2)))))
+
+  (nskk-context "single-char fallback"
+    (nskk-it "returns (zenkaku . 1) for a plain single-char sequence"
+      (let ((result (nskk--kana-hankaku-lookup-at "ｱ" 0 1)))
+        (should (equal (car result) "ア"))
+        (should (= (cdr result) 1))))
+
+    (nskk-it "falls back to single char when two-char seq is not in table"
+      ;; "ｱｲ" — not a dakuten pair; should return ア with advance 1
+      (let ((result (nskk--kana-hankaku-lookup-at "ｱｲ" 0 2)))
+        (should (equal (car result) "ア"))
+        (should (= (cdr result) 1))))
+
+    (nskk-it "passes through unrecognized chars unchanged with advance 1"
+      (let ((result (nskk--kana-hankaku-lookup-at "a" 0 1)))
+        (should (equal (car result) "a"))
+        (should (= (cdr result) 1))))
+
+    (nskk-it "handles the last character in a string (no pair possible)"
+      ;; position 1 of a 2-char string: only c1 is available
+      (let ((result (nskk--kana-hankaku-lookup-at "ｱｲ" 1 2)))
+        (should (equal (car result) "イ"))
+        (should (= (cdr result) 1))))))
+
+;;;
 ;;; nskk--kana-hankaku-string-to-zenkaku/k
 ;;;
 
