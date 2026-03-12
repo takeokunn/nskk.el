@@ -204,8 +204,13 @@ batch-mode event queue contamination: `execute-kbd-macro' in Emacs
 batch mode leaves residual events in the event queue that persist
 across `with-temp-buffer' boundaries and corrupt subsequent tests."
   (let* ((cmd (key-binding (vector event)))
-         (last-command-event event)
-         (this-command cmd))
+         (last-command-event event))
+    ;; Use setq (not let) for this-command to match the real Emacs
+    ;; command loop, where this-command persists after the command
+    ;; finishes.  Tests that call nskk--post-command-handler after
+    ;; nskk-e2e-type rely on this-command reflecting the last
+    ;; dispatched NSKK command.
+    (setq this-command cmd)
     (when cmd
       (call-interactively cmd))))
 

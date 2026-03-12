@@ -90,7 +90,7 @@
         (nskk-with-mocks ((message (lambda (fmt &rest args)
                                      (setq captured (apply #'format fmt args)))))
           (nskk-when (nskk-debug-toggle))
-          (nskk-then (should (equal captured "NSKK debug mode enabled")))))))
+          (nskk-then (should (equal captured "NSKK debug mode is enabled")))))))
 
   (nskk-it "emits \"NSKK debug mode disabled\" when toggling off"
     (with-debug-enabled
@@ -98,7 +98,7 @@
         (nskk-with-mocks ((message (lambda (fmt &rest args)
                                      (setq captured (apply #'format fmt args)))))
           (nskk-when (nskk-debug-toggle))
-          (nskk-then (should (equal captured "NSKK debug mode disabled"))))))))
+          (nskk-then (should (equal captured "NSKK debug mode is disabled"))))))))
 
 ;;; Debug buffer management
 
@@ -134,7 +134,7 @@
       (nskk-with-mocks ((message (lambda (fmt &rest args)
                                    (setq captured (apply #'format fmt args)))))
         (nskk-when (nskk-debug-clear))
-        (nskk-then (should (equal captured "NSKK debug buffer cleared"))))))
+        (nskk-then (should (equal captured "NSKK debug buffer is cleared"))))))
 
   (nskk-it "returns the same buffer object on repeated calls"
     (nskk-debug-clear)
