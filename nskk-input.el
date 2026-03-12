@@ -6,7 +6,6 @@
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -194,7 +193,10 @@ In ▽ preedit phase (henkan-phase `on'): delegates to
 (Prolog) for the target script, converts and commits the preedit text,
 and clears conversion state without changing the input mode (DDSKK-compatible).
 In idle state: queries `toggle-mode/2' (Prolog) for the target mode and
-switches via `nskk--set-mode' (hiragana↔katakana toggle)."
+switches via `nskk--set-mode' (hiragana↔katakana toggle).
+Falls through to `self-insert-command' when no toggle-mode fact exists for
+the current mode (e.g. ascii, latin), so that the AZIK toggle key (@/[)
+self-inserts in non-Japanese modes."
   :interactive t
   (if (nskk-with-current-state
         (eq (nskk-state-henkan-phase nskk-current-state) 'on))
@@ -203,11 +205,13 @@ switches via `nskk--set-mode' (hiragana↔katakana toggle)."
                            (nskk-state-mode nskk-current-state)))
            (target (nskk-prolog-query-value
                     `(toggle-mode ,current-mode ,'\?target) '\?target)))
-      (when target
-        (nskk-debug-log "[INPUT] toggle-mode: from=%s to=%s" current-mode target)
-        (nskk--set-mode target)
-        (when (fboundp 'nskk-modeline-update)
-          (nskk-modeline-update))))))
+      (if target
+          (progn
+            (nskk-debug-log "[INPUT] toggle-mode: from=%s to=%s" current-mode target)
+            (nskk--set-mode target)
+            (when (fboundp 'nskk-modeline-update)
+              (nskk-modeline-update)))
+        (self-insert-command 1)))))
 
 (defun/done nskk--set-mode (mode)
   "Internal mode setter with validation.
@@ -487,12 +491,24 @@ IS-HENKAN-START is non-nil when all of the following hold:
   - `nskk-converter-auto-start-henkan' is non-nil
   - No conversion is currently active (see `nskk--conversion-start-active-p')
 
-NORMALIZE-VOWEL-P is non-nil when CHAR is an uppercase vowel (A I U E O),
-a conversion is already active, and the romaji buffer is non-empty.
-This handles the case where a pending consonant (e.g. \"h\") should be
-completed by the vowel (\"O\" → \"o\" → \"ほ\") rather than starting
-okurigana.  Uppercase consonants always function as okurigana markers per
-DDSKK behavior; the empty-buffer case for vowels also triggers okurigana."
+NORMALIZE-VOWEL-P is non-nil when all of the following hold:
+  - CHAR is an uppercase ASCII letter (A-Z)
+  - A conversion is already active
+  - The romaji buffer is non-empty (a preceding consonant is pending)
+  - Either CHAR is an uppercase vowel (A I U E O), OR the preedit reading
+    has no kana yet (`nskk--has-preedit' is nil)
+
+The vowel branch handles the common case: pending consonant + vowel completes
+a kana pair (e.g., \"h\" + \"O\" → \"o\" → \"ほ\") rather than starting okurigana.
+
+The no-kana branch handles the case where an uppercase consonant arrives
+while the romaji buffer has content but no kana has been committed to the
+preedit yet (e.g., \"x\" + \"H\" → \"xh\" → AZIK: \"しゅう\"; standard: \"xh\"
+stays in romaji buffer).  Without this guard the char would be treated as an
+okurigana trigger, producing the spurious \"▽*\" state.
+
+Uppercase consonants with an existing kana preedit always function as
+okurigana markers per DDSKK behavior."
   (let* ((is-henkan-start (and (characterp char)
                                (<= ?A char) (<= char ?Z)
                                nskk-converter-auto-start-henkan
@@ -501,8 +517,9 @@ DDSKK behavior; the empty-buffer case for vowels also triggers okurigana."
           (and (characterp char)
                (<= ?A char) (<= char ?Z)
                (nskk--conversion-start-active-p)
-               (memq char '(?A ?I ?U ?E ?O))
-               (not (string-empty-p nskk--romaji-buffer))))
+               (not (string-empty-p nskk--romaji-buffer))
+               (or (memq char '(?A ?I ?U ?E ?O))
+                   (not (nskk--has-preedit)))))
          (effective-char (if (or normalize-vowel-p is-henkan-start)
                              (downcase char)
                            char)))

@@ -503,18 +503,18 @@ Note: `nskk-search-jisyo-hook' is NOT run on cache hits, since `nskk-search'
 is bypassed; fires only on cache misses (when `nskk-search' is called)."
   (unless (nskk-cache-p cache)
     (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
-  (let* ((cache-key (nskk--search-cache-key query search-type okuri-type))
-         (cached (nskk-cache-get cache cache-key)))
-    (if cached
-        (progn
-          (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
-          (succeed cached))
-      (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
-      (<-or result nskk-search index query search-type okuri-type limit
-        :found (progn
-                 (nskk-cache-put cache cache-key result)
-                 (succeed result))
-        :fail  (fail)))))
+  (let ((cache-key (nskk--search-cache-key query search-type okuri-type)))
+    (<-or cached nskk-cache-get cache cache-key
+      :found (progn
+               (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
+               (succeed cached))
+      :fail  (progn
+               (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
+               (<-or result nskk-search index query search-type okuri-type limit
+                 :found (progn
+                          (nskk-cache-put cache cache-key result)
+                          (succeed result))
+                 :fail  (fail))))))
 
 (provide 'nskk-search)
 

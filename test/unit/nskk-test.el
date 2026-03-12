@@ -262,7 +262,55 @@
                            (lambda () (setq update-called t))))
           (nskk--post-command-handler)
           (should update-called)))
-      (nskk-mode -1))))
+      (nskk-mode -1)))
+
+  (nskk-it "commits when point moves outside the overlay (right of overlay-end)"
+    (with-temp-buffer
+      (insert "▼かんじ!!")   ; positions: 1=▼, 2=か, 3=ん, 4=じ, 5=!, 6=!, 7=(eob)
+      (let ((nskk-mode t)
+            (nskk-current-state (nskk-state-create 'hiragana))
+            (commit-called nil)
+            (nskk--conversion-overlay (make-overlay 1 5)))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk--set-conversion-start-marker 1)
+        (goto-char 6)  ; point > overlay-end(5)
+        (nskk-with-mocks ((nskk-commit-current (lambda () (setq commit-called t)))
+                          (nskk-modeline-update (lambda () nil)))
+          (nskk--post-command-handler))
+        (delete-overlay nskk--conversion-overlay)
+        (should commit-called))))
+
+  (nskk-it "commits when point moves inside the overlay (between conv-start and overlay-end)"
+    (with-temp-buffer
+      (insert "▼かんじ")   ; overlay will span [1, 5]
+      (let ((nskk-mode t)
+            (nskk-current-state (nskk-state-create 'hiragana))
+            (commit-called nil)
+            (nskk--conversion-overlay (make-overlay 1 5)))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk--set-conversion-start-marker 1)
+        (goto-char 3)  ; inside overlay [1,5], not at overlay-end
+        (nskk-with-mocks ((nskk-commit-current (lambda () (setq commit-called t)))
+                          (nskk-modeline-update (lambda () nil)))
+          (nskk--post-command-handler))
+        (delete-overlay nskk--conversion-overlay)
+        (should commit-called))))
+
+  (nskk-it "does not commit when point is exactly at overlay-end"
+    (with-temp-buffer
+      (insert "▼かんじ")   ; overlay will span [1, 5]
+      (let ((nskk-mode t)
+            (nskk-current-state (nskk-state-create 'hiragana))
+            (commit-called nil)
+            (nskk--conversion-overlay (make-overlay 1 5)))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk--set-conversion-start-marker 1)
+        (goto-char 5)  ; exactly at overlay-end
+        (nskk-with-mocks ((nskk-commit-current (lambda () (setq commit-called t)))
+                          (nskk-modeline-update (lambda () nil)))
+          (nskk--post-command-handler))
+        (delete-overlay nskk--conversion-overlay)
+        (should-not commit-called)))))
 
 (provide 'nskk-test)
 

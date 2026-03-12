@@ -337,16 +337,46 @@ This ensures:
       (nskk-e2e-assert-mode 'hiragana)
       (nskk-e2e-assert-buffer "ない")))
 
-  (nskk-it "q with pending non-AZIK romaji produces ん"
-    ;; When pending romaji + q does NOT form an AZIK rule, q inserts ん.
-    ;; Example: "f" + "q" has no AZIK rule, so q acts as standalone ん.
+  (nskk-it "fq produces ふぁい in AZIK hiragana mode"
+    ;; "fq" → ふぁい (f-row, a+い diphthong).
     (nskk-e2e-with-azik-buffer 'hiragana nil
-      ;; Type "f" to put "f" in the romaji buffer (no fq AZIK rule).
       (nskk-e2e-type "f")
       (nskk-handle-q-key)
       ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
-      ;; "f" is discarded, q produces ん.
+      (nskk-e2e-assert-buffer "ふぁい")))
+
+  (nskk-it "jq produces じゃい in AZIK hiragana mode"
+    ;; "jq" → じゃい (j-row, a+い diphthong).
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "j")
+      (nskk-handle-q-key)
+      ;; Mode should NOT have changed.
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "じゃい")))
+
+  (nskk-it "vq produces ゔぁい in AZIK hiragana mode"
+    ;; "vq" → ゔぁい (v-row, a+い diphthong).
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "v")
+      (nskk-handle-q-key)
+      ;; Mode should NOT have changed.
+      (nskk-e2e-assert-mode 'hiragana)
+      (nskk-e2e-assert-buffer "ゔぁい")))
+
+  (nskk-it "q with pending non-AZIK romaji produces ん"
+    ;; When pending romaji + q does NOT form an AZIK rule, q inserts ん.
+    ;; Example: "l" + "q" has no AZIK rule, so q acts as standalone ん.
+    ;; NOTE: "l" cannot be typed via nskk-e2e-type because it is bound to
+    ;; nskk-handle-l (latin-mode switch).  Set the romaji buffer directly to
+    ;; simulate a pending "l" without triggering the mode-switch side-effect.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      ;; Directly put "l" in the romaji buffer (no lq AZIK rule exists).
+      (setq nskk--romaji-buffer "l")
+      (nskk-handle-q-key)
+      ;; Mode should NOT have changed.
+      (nskk-e2e-assert-mode 'hiragana)
+      ;; "l" is discarded, q produces ん.
       (nskk-e2e-assert-buffer "ん"))))
 
 ;;;;

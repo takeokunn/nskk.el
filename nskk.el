@@ -254,24 +254,25 @@ This provides global bindings that work even when nskk-mode is not yet active."
 
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update.
-Also guards against point escaping the conversion region (▼) due to
+Also guards against point leaving the expected position (▼) due to
 unmapped cursor-movement commands (mouse clicks, scroll, etc.).
-When point drifts outside [conversion-start .. overlay-end] while
-converting, performs an implicit kakutei (確定) identical to DDSKK
-behaviour.  Handlers bound in nskk keymaps call `nskk-commit-current'
-explicitly before moving, so by the time this hook fires for them,
-`nskk-converting-p' is already nil and this guard is a no-op."
+During conversion point must be exactly at overlay-end.  Any other
+position — including clicks inside the overlay — performs an implicit
+kakutei (確定) identical to DDSKK behaviour.  Handlers bound in nskk
+keymaps call `nskk-commit-current' explicitly before moving, so by the
+time this hook fires for them `nskk-converting-p' is already nil and
+this guard is a no-op."
   (when (and nskk-mode nskk-current-state)
-    ;; Point-escape guard: if converting and point moved outside the
-    ;; conversion region, commit the current candidate (implicit kakutei).
+    ;; Point-escape guard: during conversion point must sit exactly at
+    ;; overlay-end.  Commit the current candidate (implicit kakutei)
+    ;; whenever point is anywhere else, including inside the overlay.
     (when (nskk-converting-p)
       (let* ((conv-start (nskk--get-conversion-start))
              (overlay-end (when (and (boundp 'nskk--conversion-overlay)
                                      (overlayp nskk--conversion-overlay))
                             (overlay-end nskk--conversion-overlay))))
         (when (and conv-start overlay-end
-                   (or (< (point) conv-start)
-                       (> (point) overlay-end)))
+                   (/= (point) overlay-end))
           (nskk-commit-current))))
     (nskk-modeline-update)))
 

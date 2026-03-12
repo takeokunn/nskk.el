@@ -518,7 +518,9 @@ VALUE should be the okurigana consonant (e.g., \\='k\\=' for \\='く\\=').")
 (defun/k nskk-state-get-okurigana (state)
   "Return the okurigana consonant from STATE's metadata, or nil if unset."
   (if (nskk-state-p state)
-      (succeed (nskk-state-get-metadata state 'okurigana))
+      (progn
+        (<- val nskk-state-get-metadata state 'okurigana)
+        (succeed val))
     (fail)))
 
 ;; Buffer-local state management

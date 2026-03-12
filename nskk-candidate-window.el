@@ -214,6 +214,8 @@ selection key or if the resulting index is out of range."
             (fail)))
       (fail))))
 
+(put 'nskk-candidate-list-select-by-key/k 'nskk--cps-continuation-pattern :found-not-found)
+
 (provide 'nskk-candidate-window)
 
 ;;; nskk-candidate-window.el ends here

@@ -7,7 +7,6 @@
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
 ;; Keywords: i18n
-;; Package-Requires: ((emacs "29.1") (cl-lib "1.0"))
 
 ;; This file is NOT part of GNU Emacs.
 

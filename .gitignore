@@ -1,5 +1,6 @@
 # Build artifacts
 *.elc
+*-autoloads.el
 coverage/
 dist/
 

@@ -770,6 +770,8 @@ Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
         (pcase action
           ('show-list-prev
            (nskk--show-candidate-list-prev)
+           ;; succeed with nil: signals "showed previous list page" (no candidate selected).
+           ;; Callers using the sync wrapper receive nil — same as "not currently converting".
            (succeed nil))
           ('select-prev
            (when (> nskk--henkan-count 0)
@@ -1025,31 +1027,6 @@ standalone n, or with the converted kana (falling back to raw buffer).
         (lambda (_romaji) (funcall on-found buf))
         (lambda () (funcall on-found buf)))))))
 
-(defun/done nskk-start-conversion-with-okuri (okuri-char)
-  "Start conversion with okurigana context OKURI-CHAR.
-Searches dictionary with okuri-ari type using the conversion start
-marker for the preedit region.  Handles \u25bd marker in preedit text."
-  (let* ((start (nskk--get-conversion-start))
-         ;; Skip ▽ marker
-         (text-start (when start
-                       (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
-         (end (point))
-         (text (when (and text-start (> end text-start))
-                 (buffer-substring-no-properties text-start end)))
-         (query (when text (concat text (char-to-string okuri-char)))))
-    (when query
-      ;; Replace ▽ with ▼
-      (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
-      ;; Search with okuri-ari type
-      (nskk-core-search/k query :exact nil
-        (lambda (candidates)
-          (let ((primary (car candidates)))
-            (when primary
-              (nskk--update-overlay (+ start (length nskk-henkan-active-marker)) end primary)
-              (nskk-with-current-state
-                (nskk-set-active-candidates candidates)))))
-        #'ignore))))
-
 (defun nskk--remove-okuri-marker (search-start preedit-end)
   "Remove the okurigana boundary marker (*) from the buffer.
 Searches forward from SEARCH-START up to PREEDIT-END and deletes the
@@ -1124,7 +1101,8 @@ found.  Falls back to dictionary registration via
                                   okuri-kana-start (car candidates)))
           (nskk-with-current-state
             (nskk-set-active-candidates candidates)
-            (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)))
+            (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t))
+          (setq nskk--henkan-count 1))
         (lambda ()
           (nskk--trigger-okuri-no-candidates start text-start preedit-end query))))))
 
@@ -1188,7 +1166,19 @@ registered via `nskk-start-registration' and inserted.
 Registration is a distinct third outcome, not a subcase of not-found:
 the user may cancel (→ on-not-found) or complete it (→ on-register).
 Uses `nskk-<-or' to thread the search continuation without lambda nesting."
-  (nskk-henkan-with-preedit start
+  ;; Check for pending okurigana state (SPC pressed during ▽か*k).
+  ;; When the * marker is present and okurigana context is stored, trigger
+  ;; okurigana conversion immediately — matches DDSKK behaviour.
+  (let ((okuri (nskk-with-current-state
+                 (nskk-state-get-okurigana nskk-current-state))))
+    (if okuri
+        (let ((preedit-end (save-excursion
+                             (search-backward nskk-okurigana-marker nil t)
+                             (1+ (point)))))
+          (nskk-with-current-state
+            (nskk-state-set-okurigana nskk-current-state nil))
+          (nskk--trigger-okuri-conversion okuri preedit-end))
+      (nskk-henkan-with-preedit start
     (let* (;; Flush trailing romaji BEFORE capturing `end' so the lookup key
            ;; is complete (e.g. \"にほ\" + flush → \"にほん\").
            (end         (progn
@@ -1214,7 +1204,7 @@ Uses `nskk-<-or' to thread the search continuation without lambda nesting."
       (when (and text search-key)
         (nskk-<-or (raw-candidates) (nskk-core-search/k search-key nil nil)
                    (nskk--start-conv-register text start end on-not-found on-register)
-          (nskk--start-conv-apply-found start end lookup-text raw-candidates numeric-info on-found))))))
+          (nskk--start-conv-apply-found start end lookup-text raw-candidates numeric-info on-found))))))))
 
 (defun nskk-start-conversion ()
   "Start dictionary conversion for the preedit text.

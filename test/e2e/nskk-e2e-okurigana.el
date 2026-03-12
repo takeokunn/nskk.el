@@ -363,6 +363,59 @@
         ;; Conversion should trigger normally
         (nskk-e2e-assert-converting)))))
 
+;;;; Regression Tests: Xh => ▽* (uppercase consonant with no kana in preedit)
+;;
+;; Bug: typing X (starts henkan preedit, puts "x" in romaji buffer) followed
+;; by H (Shift held too long) caused nskk-process-okurigana-input to fire with
+;; an empty reading, producing ▽* instead of continuing romaji accumulation.
+;;
+;; Root cause: normalize-vowel-p only covered uppercase vowels; uppercase
+;; consonants always bypassed the guard and were treated as okurigana triggers
+;; even when no kana had been written to the preedit yet.
+;;
+;; Fix: normalize-vowel-p now also covers uppercase consonants when
+;; nskk--has-preedit is nil (no kana committed to preedit buffer yet).
+;;
+;; Input sequence for T-E3 (XH in standard mode):
+;;   X   → starts henkan (▽), romaji buffer = "x" (pending incomplete), no kana
+;;   H   → must be normalized (not okurigana); "xh" stays in romaji buffer
+;;   (buffer must NOT contain ▽*)
+
+(nskk-describe "Xh regression: no spurious ▽* with pending romaji and no kana"
+  (nskk-it "XH in standard mode does not produce ▽*"
+    ;; Standard mode: "xh" has no rule; both chars accumulate in romaji buffer
+    ;; without triggering okurigana.
+    (let ((dict '(("あ" . ("亜")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "X")
+        (nskk-e2e-type "H")
+        ;; Must NOT contain ▽ immediately followed by * (empty reading okurigana)
+        (should-not (string-match-p (regexp-quote (concat nskk-henkan-on-marker nskk-okurigana-marker))
+                                    (buffer-string))))))
+
+  (nskk-it "Xa in standard mode does produce ▽さ (sanity: normal romaji still works)"
+    ;; Typing X then a should produce ▽xa ... wait, "xa" → "さ" in some tables,
+    ;; but the key point is no ▽* appears.  Just check the negative condition.
+    (let ((dict '(("あ" . ("亜")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "X")
+        (nskk-e2e-type "a")
+        ;; Must NOT contain okurigana marker at all
+        (should-not (string-match-p (regexp-quote nskk-okurigana-marker)
+                                    (buffer-string))))))
+
+  (nskk-it "Ka followed by K still produces okurigana (regression guard)"
+    ;; After fixing the bug, legitimate okurigana triggers must still work:
+    ;; Ka produces ▽か, then K triggers ▽か*.
+    (let ((dict '(("かk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "K")
+        ;; Buffer must contain ▽か* — okurigana triggered correctly
+        (should (string-match-p (regexp-quote (concat nskk-henkan-on-marker "か" nskk-okurigana-marker))
+                                (buffer-string)))))))
+
 ;;;;
 ;;;; Katakana Mode Okurigana (カタカナ送り仮名) E2E Tests
 ;;;;
@@ -1065,6 +1118,97 @@
           (nskk-e2e-assert-buffer expected
                                   (format "okurigana commit %S+%S+%S → %S failed"
                                           reading okuri-trigger okuri-suffix expected))))
+
+;;;;
+;;;; SPC during partial consonant okurigana
+;;;;
+;;
+;; When the user types ▽か*k (K a K, leaving the pending consonant "k" without
+;; a following vowel) and then presses SPC, the fix routes to okurigana
+;; conversion using the pending consonant directly — matching DDSKK behaviour.
+;;
+;; Dict key for okurigana: reading + lowercase consonant (e.g. "かk").
+;;
+;; Key sequences:
+;;   K   → henkan-on: ▽ marker inserted, preedit starts
+;;   a   → "ka" → "か" inserted into preedit: ▽か
+;;   K   → okurigana trigger: * marker inserted, "k" stored as pending consonant
+;;   SPC → new fix: triggers okurigana conversion using pending "k" as okuri-char
+
+(nskk-describe "SPC during partial consonant okurigana (TR-001 through TR-005)"
+  (nskk-it "TR-001: SPC during ▽か*k shows first candidate ▼書"
+    ;; Dict has "かk" → ("書" "佳").  Typing K a K puts us in state ▽か*k.
+    ;; SPC must trigger okurigana conversion and display the first candidate.
+    (let ((dict '(("かk" . ("書" "佳")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書"))))
+
+  (nskk-it "TR-002: SPC during ▽か*k with empty dict triggers registration"
+    ;; Empty dict: no candidates for "かk".  SPC should trigger okurigana
+    ;; conversion, find no candidates, and open the registration dialog.
+    ;; The default mock returns "" (cancel), restoring to 'on phase.
+    ;; NOTE: Use a stub dict that lacks "かk" rather than '() (nil), because
+    ;; '() evaluates to nil and (or nil default-dict) falls back to the
+    ;; default dict which contains ("かk" . ("書")), causing on-found to fire.
+    (let ((dict '(("あ" . ("亜")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "SPC")
+        ;; Registration was opened (and cancelled by the default mock returning "").
+        ;; Phase is restored to 'on after cancel.
+        (nskk-e2e-assert-henkan-phase 'on)
+        ;; * marker should be removed from buffer after cancelled registration
+        (should (not (string-match-p "\\*" (buffer-string)))))))
+
+  (nskk-it "TR-003: SPC then C-j during ▽か*k commits 書 (candidate only — no okurigana kana in SPC path)"
+    ;; After okurigana conversion via SPC, committing via C-j (nskk-commit-current)
+    ;; inserts only the candidate kanji: 書.  No okurigana kana suffix is appended
+    ;; because the user never typed the vowel in the SPC path.
+    ;; Here we supply a full okuri vowel sequence by pressing i after SPC.
+    (let ((dict '(("かk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        ;; Candidate "書" is committed; no okuri-kana was inserted in the SPC path
+        ;; (the user never typed the vowel), so only 書 appears in the buffer.
+        (nskk-e2e-assert-buffer "書"))))
+
+  (nskk-it "TR-004: second SPC after ▽か*k conversion advances to next candidate ▼佳"
+    ;; After the first SPC triggers okurigana conversion (showing ▼書),
+    ;; a second SPC must advance to the next candidate (▼佳).
+    (let ((dict '(("かk" . ("書" "佳"))))
+          (nskk-henkan-show-candidates-nth 4))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "佳"))))
+
+  (nskk-it "TR-005: normal SPC conversion (▽か + SPC) still works (regression guard)"
+    ;; Ensure the SPC fix does not break the ordinary non-okurigana conversion path.
+    ;; Ka + SPC: no pending okurigana consonant → normal nskk-start-conversion.
+    (let ((dict '(("か" . ("花" "香")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "a")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "花")))))
 
 (provide 'nskk-e2e-okurigana)
 

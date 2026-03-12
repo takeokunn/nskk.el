@@ -59,10 +59,14 @@ Also resets `nskk--conversion-overlay' to nil for test isolation."
   "Execute BODY with a fresh romaji buffer and standard romaji and classify tables.
 Ensures both the romaji conversion table and the romaji-classify/3 Prolog
 facts are loaded regardless of prior test state.  The retract-before-assert
-pattern prevents duplicate facts when multiple tests use this macro."
+pattern prevents duplicate facts when multiple tests use this macro.
+Also populates :incomplete markers for all romaji prefixes so that
+incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
+`incomplete' rather than `no-match'."
   (declare (indent 0))
   `(progn
      (nskk--initialize-romaji-table)
+     (nskk--converter-populate-incomplete-markers)
      (nskk-prolog-retract-all 'romaji-classify 3)
      (nskk--init-romaji-classify-rules)
      (let ((nskk--romaji-buffer ""))
@@ -769,6 +773,62 @@ pattern prevents duplicate facts when multiple tests use this macro."
           (nskk-then  (should-not (nskk--conversion-start-active-p))))))))
 
 ;;;
+;;; Regression: Xh => ▽* (uppercase consonant with pending romaji, no kana yet)
+;;;
+;;; When the user types X (starts henkan preedit) and then H while the romaji
+;;; buffer still holds "x" (no kana committed to the preedit yet),
+;;; normalize-vowel-p must be non-nil so that the char is downcased and routed
+;;; through the normal romaji path — NOT the okurigana path that produces ▽*.
+
+(nskk-describe "uppercase consonant with pending romaji and no preedit kana"
+  (nskk-it "normalize-vowel-p is non-nil for uppercase consonant when romaji pending and no kana"
+    ;; Simulate the state inside nskk--compute-effective-char:
+    ;; - conversion is active (▽ marker set)
+    ;; - romaji buffer has "x" (a pending consonant, no complete kana yet)
+    ;; - no kana has been written to the preedit buffer (nskk--has-preedit = nil)
+    (with-temp-buffer
+      (nskk-input-test-with-romaji
+        (nskk-input-test-with-state 'hiragana
+          (let ((nskk-converter-auto-start-henkan t))
+            ;; Type X to start henkan and put "x" into romaji buffer
+            (nskk-process-japanese-input ?X 1)
+            ;; At this point: ▽ in buffer, "x" in romaji buffer, no kana yet
+            (nskk-then
+             ;; H should be classified as normalize-vowel-p=t, not okurigana
+             (cl-destructuring-bind (_eff _henkan-start normalize-vowel-p)
+                 (nskk--compute-effective-char ?H)
+               (should normalize-vowel-p))))))))
+
+  (nskk-it "does not produce ▽* when typing Xh"
+    ;; Full integration: X then H should NOT produce ▽* (okurigana with empty reading)
+    (with-temp-buffer
+      (nskk-input-test-with-romaji
+        (nskk-input-test-with-state 'hiragana
+          (let ((nskk-converter-auto-start-henkan t))
+            (nskk-given (progn
+                          (nskk-process-japanese-input ?X 1)
+                          (nskk-process-japanese-input ?H 1)))
+            (nskk-then
+             ;; Buffer must NOT contain the okurigana marker (*) with nothing before it
+             (should-not (string-match-p (regexp-quote (concat nskk-henkan-on-marker nskk-okurigana-marker))
+                                         (buffer-string)))))))))
+
+  (nskk-it "uppercase consonant DOES trigger okurigana when kana is already in preedit"
+    ;; Sanity check: Ka then K must still produce ▽か* (okurigana is correct here)
+    (with-temp-buffer
+      (nskk-input-test-with-romaji
+        (nskk-input-test-with-state 'hiragana
+          (let ((nskk-converter-auto-start-henkan t))
+            (nskk-given (progn
+                          (nskk-process-japanese-input ?K 1)  ; start ▽, romaji "k"
+                          (nskk-process-japanese-input ?a 1)  ; complete to ▽か
+                          (nskk-process-japanese-input ?K 1))) ; trigger okurigana → ▽か*
+            (nskk-then
+             ;; Buffer must contain ▽ + か + * (okurigana marker)
+             (should (string-match-p (regexp-quote (concat nskk-henkan-on-marker "か" nskk-okurigana-marker))
+                                     (buffer-string))))))))))
+
+;;;
 ;;; Inline Marker Constant Tests
 ;;;
 
@@ -984,10 +1044,14 @@ pattern prevents duplicate facts when multiple tests use this macro."
       (nskk-when (nskk-toggle-japanese-mode))
       (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
 
-  (nskk-it "is a no-op in ascii mode (no toggle-mode Prolog fact)"
+  (nskk-it "self-inserts in ascii mode (no toggle-mode Prolog fact)"
     (nskk-input-test-with-state 'ascii
-      (nskk-when (nskk-toggle-japanese-mode))
-      (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'ascii))))))
+      (with-temp-buffer
+        (let ((last-command-event ?@))
+          (nskk-when (nskk-toggle-japanese-mode))
+          (nskk-then
+           (should (string= (buffer-string) "@"))
+           (should (eq (nskk-state-mode nskk-current-state) 'ascii))))))))
 
 ;;;
 ;;; kakutei-action Prolog Rule Tests

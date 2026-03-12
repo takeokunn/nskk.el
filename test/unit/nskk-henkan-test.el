@@ -2522,36 +2522,6 @@
         (should (equal nskk--romaji-buffer "k"))))))
 
 ;;;
-;;; nskk-start-conversion-with-okuri/k
-;;;
-
-(nskk-describe "nskk-start-conversion-with-okuri/k"
-  (nskk-it "calls on-done immediately when conversion start marker has no position"
-    (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
-            on-done-called)
-        (nskk-start-conversion-with-okuri/k ?k (lambda () (setq on-done-called t)))
-        (should on-done-called))))
-
-  (nskk-it "calls on-done after searching when preedit text exists and candidates found"
-    (with-temp-buffer
-      (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            on-done-called)
-        (insert nskk-henkan-on-marker "かく")
-        (set-marker nskk--conversion-start-marker (point-min))
-        (goto-char (point-max))
-        (nskk-state-force-henkan-phase nskk-current-state 'on)
-        (nskk-with-mocks ((nskk-core-search/k
-                           (lambda (_q _type _limit on-found _on-not-found)
-                             (funcall on-found '("書く"))))
-                          (nskk--replace-marker-at #'ignore)
-                          (nskk--update-overlay #'ignore))
-          (nskk-start-conversion-with-okuri/k ?k (lambda () (setq on-done-called t))))
-        (should on-done-called)))))
-
-;;;
 ;;; nskk--trigger-okuri-conversion/k
 ;;;
 

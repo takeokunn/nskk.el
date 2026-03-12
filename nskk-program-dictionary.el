@@ -7,8 +7,6 @@
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
 ;; Keywords: i18n
-;; Package-Requires: ((emacs "29.1"))
-
 ;; This file is NOT part of GNU Emacs.
 
 ;; This program is free software: you can redistribute it and/or modify

@@ -356,6 +356,33 @@
         (should-not (equal (nskk-convert-romaji "ck") "ちんん"))
         (should-not (equal (nskk-convert-romaji "cj") "ちゅ"))))))
 
+  (nskk-context "f-row hatsuon extensions"
+    (nskk-it "fz fk fj fd fl convert to ふぁん ふぃん ふん ふぇん ふぉん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "fz") "ふぁん"))
+        (should (equal (nskk-convert-romaji "fk") "ふぃん"))
+        (should (equal (nskk-convert-romaji "fj") "ふん"))
+        (should (equal (nskk-convert-romaji "fd") "ふぇん"))
+        (should (equal (nskk-convert-romaji "fl") "ふぉん")))))
+
+  (nskk-context "j-row hatsuon extensions"
+    (nskk-it "jz jk jj jd jl convert to じゃん じん じゅん じぇん じょん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "jz") "じゃん"))
+        (should (equal (nskk-convert-romaji "jk") "じん"))
+        (should (equal (nskk-convert-romaji "jj") "じゅん"))
+        (should (equal (nskk-convert-romaji "jd") "じぇん"))
+        (should (equal (nskk-convert-romaji "jl") "じょん")))))
+
+  (nskk-context "v-row hatsuon extensions"
+    (nskk-it "vz vk vj vd vl convert to ゔぁん ゔぃん ゔん ゔぇん ゔぉん"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "vz") "ゔぁん"))
+        (should (equal (nskk-convert-romaji "vk") "ゔぃん"))
+        (should (equal (nskk-convert-romaji "vj") "ゔん"))
+        (should (equal (nskk-convert-romaji "vd") "ゔぇん"))
+        (should (equal (nskk-convert-romaji "vl") "ゔぉん")))))
+
 
 ;;;;
 ;;;; 4. 二重母音拡張 (Diphthong Extension) Tests
@@ -524,7 +551,31 @@
         ;; Conversion should work for all (except ch which is demoted to :incomplete)
         (should (equal (nskk-convert-romaji "cq") "ちゃい"))
         (should (equal (nskk-convert-romaji "cw") "ちぇい"))
-        (should (equal (nskk-convert-romaji "cp") "ちょう"))))))
+        (should (equal (nskk-convert-romaji "cp") "ちょう")))))
+
+  (nskk-context "f-row diphthong extensions"
+    (nskk-it "fq fh fw fp convert to ふぁい ふう ふぇい ふぉう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "fq") "ふぁい"))
+        (should (equal (nskk-convert-romaji "fh") "ふう"))
+        (should (equal (nskk-convert-romaji "fw") "ふぇい"))
+        (should (equal (nskk-convert-romaji "fp") "ふぉう")))))
+
+  (nskk-context "j-row diphthong extensions"
+    (nskk-it "jq jh jw jp convert to じゃい じゅう じぇい じょう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "jq") "じゃい"))
+        (should (equal (nskk-convert-romaji "jh") "じゅう"))
+        (should (equal (nskk-convert-romaji "jw") "じぇい"))
+        (should (equal (nskk-convert-romaji "jp") "じょう")))))
+
+  (nskk-context "v-row diphthong extensions"
+    (nskk-it "vq vh vw vp convert to ゔぁい ゔう ゔぇい ゔぉう"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "vq") "ゔぁい"))
+        (should (equal (nskk-convert-romaji "vh") "ゔう"))
+        (should (equal (nskk-convert-romaji "vw") "ゔぇい"))
+        (should (equal (nskk-convert-romaji "vp") "ゔぉう"))))))
 
 
 ;;;;
@@ -650,6 +701,10 @@
   (nskk-it "yf converts to ゆ"
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji "yf") "ゆ")))))
+
+  (nskk-it "hf converts to ふ (same-finger alt for hu/fu)"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "hf") "ふ"))))
 
 
 ;;;;
@@ -1044,7 +1099,7 @@
     (nskk-with-azik-style
       (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
         (should results)
-        ;; 2 special + 10 compat + 14*9 extensions + 8*13 youon + 7 same-finger
+        ;; 2 special + 10 compat + 17*9 extensions + 9*13 youon + 8 same-finger
         ;; + 27 shortcuts + 5 foreign = at least 200 rules
         (should (>= (length results) 200)))))
 
@@ -1428,6 +1483,39 @@
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
+;; f-row: fz→ふぁん, fk→ふぃん, fj→ふん, fd→ふぇん, fl→ふぉん
+(nskk-deftest-cases azik-hatsuon-f-row
+  (("fz" . "ふぁん")
+   ("fk" . "ふぃん")
+   ("fj" . "ふん")
+   ("fd" . "ふぇん")
+   ("fl" . "ふぉん"))
+  :description "AZIK f-row 撥音拡張: each pattern exists in hash lookup"
+  :body (nskk-with-azik-style
+          (should (equal expected (nskk-converter-lookup input)))))
+
+;; j-row: jz→じゃん, jk→じん, jj→じゅん, jd→じぇん, jl→じょん
+(nskk-deftest-cases azik-hatsuon-j-row
+  (("jz" . "じゃん")
+   ("jk" . "じん")
+   ("jj" . "じゅん")
+   ("jd" . "じぇん")
+   ("jl" . "じょん"))
+  :description "AZIK j-row 撥音拡張: each pattern exists in hash lookup"
+  :body (nskk-with-azik-style
+          (should (equal expected (nskk-converter-lookup input)))))
+
+;; v-row: vz→ゔぁん, vk→ゔぃん, vj→ゔん, vd→ゔぇん, vl→ゔぉん
+(nskk-deftest-cases azik-hatsuon-v-row
+  (("vz" . "ゔぁん")
+   ("vk" . "ゔぃん")
+   ("vj" . "ゔん")
+   ("vd" . "ゔぇん")
+   ("vl" . "ゔぉん"))
+  :description "AZIK v-row 撥音拡張: each pattern exists in hash lookup"
+  :body (nskk-with-azik-style
+          (should (equal expected (nskk-converter-lookup input)))))
+
 
 ;;;;
 ;;;; 16. Data-Provider: AZIK youon (拗音互換キー) table
@@ -1495,7 +1583,10 @@
             ("r" "らい" "るう" "れい" "ろう")
             ("g" "がい" "ぐう" "げい" "ごう")
             ("z" "ざい" "ずう" "ぜい" "ぞう")
-            ("b" "ばい" "ぶう" "べい" "ぼう"))
+            ("b" "ばい" "ぶう" "べい" "ぼう")
+            ("f" "ふぁい" "ふう" "ふぇい" "ふぉう")
+            ("j" "じゃい" "じゅう" "じぇい" "じょう")
+            ("v" "ゔぁい" "ゔう" "ゔぇい" "ゔぉう"))
   :description "AZIK diphthong rules: q/h/w/p keys produce correct double-vowel forms"
   :body (nskk-with-azik-style
           (should (equal q-expected (nskk-converter-lookup (concat prefix "q"))))

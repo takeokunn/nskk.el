@@ -6,7 +6,6 @@
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: i18n
 
 ;; This file is NOT part of GNU Emacs.
@@ -65,7 +64,7 @@
 ;; 3. Hatsuon extensions (z/k/j/d/l -> +ん)
 ;; 4. Double vowel extensions (q/h/w/p -> +vowel pair)
 ;; 5. Youon compatibility (g substitutes for y)
-;; 6. Same-finger alternatives (f suffix)
+;; 6. Same-finger alternatives (hf=ふ, kf=き, nf=ぬ, mf=む, gf=ぐ, pf=ぷ, rf=る, yf=ゆ)
 ;; 7. Word shortcuts
 ;; 8. Foreign word extensions
 ;;
@@ -177,6 +176,9 @@ c-prefix: ちゃ行.")
     ("d" "だ" "ぢ" "づ" "で" "ど")
     ("b" "ば" "び" "ぶ" "べ" "ぼ")
     ("p" "ぱ" "ぴ" "ぷ" "ぺ" "ぽ")
+    ("f" "ふぁ" "ふぃ" "ふ" "ふぇ" "ふぉ")
+    ("j" "じゃ" "じ" "じゅ" "じぇ" "じょ")
+    ("v" "ゔぁ" "ゔぃ" "ゔ" "ゔぇ" "ゔぉ")
     ("x" "しゃ" "し" "しゅ" "しぇ" "しょ")
     ("c" "ちゃ" "ち" "ちゅ" "ちぇ" "ちょ"))
   "Consonant rows for AZIK hatsuon + double-vowel extension rules.
@@ -185,6 +187,9 @@ overrides O for the double-vowel rule.
 
 Special rows:
 - The w-row has 7 elements: the extra element is the DV-O override (うぉ).
+- The f-row covers foreign-sound ふぁ/ふぃ/ふ/ふぇ/ふぉ (enabling fq→ふぁい etc.).
+- The j-row covers じゃ行 extensions (jq→じゃい, jj→じゅん, jh→じゅう etc.).
+- The v-row covers ゔ行 extensions (vq→ゔぁい, vd→ゔぇん etc.).
 - The x-row provides sha/shu/sho compatibility (しゃ/し/しゅ/しぇ/しょ).
 - The c-row provides cha/chu/cho compatibility (ちゃ/ち/ちゅ/ちぇ/ちょ).
 
@@ -206,9 +211,10 @@ Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.")
 )
 
 (defconst nskk--azik-same-finger-rules
-  '(("kf" "き") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
+  '(("kf" "き") ("hf" "ふ") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
     ("pf" "ぷ") ("rf" "る") ("yf" "ゆ"))
-  "Same-finger alternative rules (f suffix for ring-finger consonants).")
+  "Same-finger alternative rules (f suffix for ergonomic consonant alternatives).
+hf=ふ avoids the h→u same-hand sequence (h and f share the left index finger).")
 
 (defconst nskk--azik-word-shortcuts
   '(("km" "かも") ("kr" "から") ("gr" "がら") ("kt" "こと") ("gt" "ごと")
