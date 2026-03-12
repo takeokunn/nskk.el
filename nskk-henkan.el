@@ -50,6 +50,7 @@
 ;;   search-result-action/2      -- (has/no candidates) post-search dispatch
 ;;   convert-or-commit-action/2  -- (converting state) SPC-without-preedit dispatch
 ;;   should-update-overlay/1     -- phases that require overlay display
+;;   script-toggle/2             -- (mode target) opposite-script for q-key/toggle-key in ▽ preedit
 ;;
 ;; Key macros:
 ;;   `nskk-without-modification'      -- inhibit undo/modification hooks in body
@@ -60,6 +61,7 @@
 ;;   `nskk-when-bound-and'            -- execute body when variable is bound and satisfies pred
 ;;
 ;; Key public functions:
+;;   `nskk-henkan-kakutei-convert-script' -- commit preedit converted to opposite kana script
 ;;   `nskk-convert'              -- start conversion when preedit exists
 ;;   `nskk-convert-or-commit'    -- start conversion or commit active candidate
 ;;   `nskk-next-candidate'       -- advance candidate selection
@@ -534,6 +536,43 @@ resets the romaji buffer, and clears the henkan phase."
   (let ((start (nskk--get-conversion-start)))
     (when start
       (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)))
+  (nskk--clear-conversion-start-marker)
+  (nskk--reset-romaji-buffer)
+  (nskk-with-current-state
+    (nskk-state-set-henkan-phase nskk-current-state nil)))
+
+(defun/done nskk-henkan-kakutei-convert-script ()
+  "Convert preedit kana to the opposite script and commit (確定変換).
+Queries `script-toggle/2' (Prolog) for the target script:
+- hiragana → katakana via `nskk-kana-string-hiragana-to-katakana/k'
+- katakana → hiragana via `nskk-kana-string-katakana-to-hiragana/k'
+Removes ▽ marker and clears state.  Mode is NOT changed.
+Pending romaji is discarded (DDSKK-compatible).
+Used by `nskk-handle-q' / `nskk-toggle-japanese-mode' in ▽ preedit."
+  (let ((start (nskk--get-conversion-start)))
+    (when start
+      (nskk-with-current-state
+        (let* ((mode       (nskk-state-mode nskk-current-state))
+               (target     (nskk-prolog-query-value
+                            `(script-toggle ,mode ,'\?t) '\?t))
+               (text-start (nskk--skip-marker-pos
+                            start nskk-henkan-on-marker-regexp))
+               (preedit    (buffer-substring-no-properties text-start (point))))
+          (pcase target
+            ('katakana
+             (nskk-kana-string-hiragana-to-katakana/k preedit
+               (lambda (converted)
+                 (delete-region text-start (point))
+                 (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)
+                 (insert converted))
+               #'ignore))
+            ('hiragana
+             (nskk-kana-string-katakana-to-hiragana/k preedit
+               (lambda (converted)
+                 (delete-region text-start (point))
+                 (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)
+                 (insert converted))
+               #'ignore)))))))
   (nskk--clear-conversion-start-marker)
   (nskk--reset-romaji-buffer)
   (nskk-with-current-state
@@ -1497,6 +1536,13 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-define-fact-table convert-or-commit-action (:arity 2 :index :hash)
       (converting     commit-current)
       (not-converting start-conversion))
+
+    ;; Script-toggle direction for q-key/AZIK-toggle-key in ▽ preedit mode.
+    ;; Maps the current input mode to the target script for kakutei-convert-script.
+    ;; Queried by `nskk-henkan-kakutei-convert-script' at commit time.
+    (nskk-prolog-define-fact-table script-toggle (:arity 2 :index :hash)
+      (hiragana katakana)
+      (katakana hiragana))
 
     ;; Overlay update phase guard
     (nskk-prolog-define-fact-table should-update-overlay (:arity 1 :index :hash)
