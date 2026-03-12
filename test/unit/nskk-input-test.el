@@ -1189,7 +1189,7 @@ pattern prevents duplicate facts when multiple tests use this macro."
     :columns (style buf-state expected-action)
     :rows ((azik azik-complete fire-romaji)
            (azik pending      insert-n)
-           (azik empty        toggle-mode))
+           (azik empty        insert-n))
     :body (should (eq (nskk-prolog-query-value
                        `(q-key-action ,style ,buf-state ,'\?action) '\?action)
                       expected-action))))

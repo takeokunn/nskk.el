@@ -3317,6 +3317,73 @@
   (nskk-it "defines backend order: program-dict-lookup is third"
     (should (nskk-prolog-query '(search-backend 3 program-dict-lookup)))))
 
+;;;
+;;; script-toggle/2 Prolog Facts Tests
+;;;
+
+(nskk-describe "script-toggle/2 Prolog facts"
+  (nskk-it "hiragana → katakana direction is defined"
+    (should (nskk-prolog-query '(script-toggle hiragana katakana))))
+
+  (nskk-it "katakana → hiragana direction is defined"
+    (should (nskk-prolog-query '(script-toggle katakana hiragana))))
+
+  (nskk-it "hiragana target is katakana via query-value"
+    (should (eq (nskk-prolog-query-value '(script-toggle hiragana \?t) '\?t)
+                'katakana)))
+
+  (nskk-it "katakana target is hiragana via query-value"
+    (should (eq (nskk-prolog-query-value '(script-toggle katakana \?t) '\?t)
+                'hiragana)))
+
+  (nskk-it "ascii mode has no script-toggle fact"
+    (should-not (nskk-prolog-query '(script-toggle ascii \?_)))))
+
+;;;
+;;; nskk-henkan-kakutei-convert-script Tests
+;;;
+
+(nskk-describe "nskk-henkan-kakutei-convert-script"
+  (nskk-it "is fboundp"
+    (should (fboundp 'nskk-henkan-kakutei-convert-script)))
+
+  (nskk-it "in hiragana mode: converts preedit hiragana to katakana and commits"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk--set-mode 'hiragana)
+        (nskk-without-modification
+          (insert nskk-henkan-on-marker "かんじ"))
+        (nskk--set-conversion-start-marker (point-min))
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
+        (nskk-henkan-kakutei-convert-script)
+        (should (null (nskk-state-henkan-phase nskk-current-state)))
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+        (should (string= (buffer-string) "カンジ")))))
+
+  (nskk-it "in katakana mode: converts preedit katakana to hiragana and commits"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk--set-mode 'katakana)
+        (nskk-without-modification
+          (insert nskk-henkan-on-marker "カンジ"))
+        (nskk--set-conversion-start-marker (point-min))
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
+        (nskk-henkan-kakutei-convert-script)
+        (should (null (nskk-state-henkan-phase nskk-current-state)))
+        (should (eq (nskk-state-mode nskk-current-state) 'katakana))
+        (should (string= (buffer-string) "かんじ")))))
+
+  (nskk-it "is a no-op when no preedit is active"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-without-modification (insert "あ"))
+        (let ((content-before (buffer-string)))
+          (nskk-henkan-kakutei-convert-script)
+          (should (string= (buffer-string) content-before)))))))
+
 (provide 'nskk-henkan-test)
 
 ;;; nskk-henkan-test.el ends here

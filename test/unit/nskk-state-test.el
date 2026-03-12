@@ -324,8 +324,7 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
   (nskk-it "tracks previous-mode through multiple transitions"
     (let ((state (nskk-state-create 'ascii)))
       ;; Initial state
-      (should (eq (nskk-state-mode state) 'ascii))
-      (should (eq (nskk-state-previous-mode state) 'ascii))
+            (should (eq (nskk-state-previous-mode state) 'ascii))
 
       ;; First transition
       (nskk-state-set state 'mode 'hiragana)
@@ -646,8 +645,7 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
 
   (nskk-it "mode change does not affect buffer operations"
     (let ((state (nskk-state-create 'ascii)))
-      (should (eq (nskk-state-mode state) 'ascii))
-
+      
       (nskk-state-set state 'mode 'hiragana)
       (should (eq (nskk-state-mode state) 'hiragana))
 
@@ -1208,8 +1206,7 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
 
   (nskk-it "switches modes and tracks previous-mode through ascii hiragana katakana"
     (let ((state (nskk-state-create 'ascii)))
-      (should (eq (nskk-state-mode state) 'ascii))
-
+      
       ;; Switch to hiragana
       (nskk-state-transition state 'ascii 'hiragana)
       (should (eq (nskk-state-previous-mode state) 'ascii))

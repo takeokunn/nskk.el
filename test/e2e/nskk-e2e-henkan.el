@@ -1233,14 +1233,14 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-assert-henkan-phase nil)
       (nskk-e2e-assert-buffer "か")))
 
-  (nskk-it "q during preedit commits kana then toggles to katakana"
+  (nskk-it "q during preedit converts preedit to katakana without toggling mode"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Ka")
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "q")
       (nskk-e2e-assert-henkan-phase nil)
-      (nskk-e2e-assert-buffer "か")
-      (nskk-e2e-assert-mode 'katakana)))
+      (nskk-e2e-assert-buffer "カ")
+      (nskk-e2e-assert-mode 'hiragana)))
 
   (nskk-it "/ during preedit commits kana then switches to abbrev"
     (nskk-e2e-with-buffer 'hiragana nil

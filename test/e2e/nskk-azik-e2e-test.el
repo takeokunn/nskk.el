@@ -42,13 +42,14 @@
 ;;    So nskk-e2e-type ";" and nskk-e2e-type ":" work correctly in
 ;;    AZIK mode via normal key dispatch.
 ;;
-;; 2. Q-key AZIK behavior: The nskk-mode-map binds "q" to nskk-handle-q,
-;;    which calls nskk-toggle-japanese-mode unconditionally (not AZIK-aware).
-;;    The AZIK-aware nskk-handle-q-key is a separate function not bound in
-;;    the default keymap.  E2E q-behavior tests therefore call
-;;    nskk-handle-q-key directly inside nskk-e2e-with-azik-buffer, which
-;;    accurately exercises the AZIK q dispatch path (Prolog query on
-;;    q-key-action/4) while still operating in a full live NSKK buffer.
+;; 2. Q-key AZIK behavior: The nskk-mode-map binds "q" to nskk-handle-q.
+;;    In AZIK mode, nskk-handle-q delegates to nskk-handle-q-key (which
+;;    queries q-key-action/3) both in idle Japanese mode and in ▽ preedit
+;;    mode.  In standard mode it calls nskk-henkan-kakutei-convert-script
+;;    (script toggle) in ▽ preedit, or nskk-toggle-japanese-mode in idle.
+;;    Section 5 tests call nskk-handle-q-key directly (idle mode) for
+;;    focused AZIK dispatch testing; Section 12 tests use nskk-e2e-type "q"
+;;    to cover the full nskk-handle-q dispatch path in ▽ preedit.
 ;;
 ;; 3. AZIK romaji rules (hatsuon, double vowel, youon): These reach the
 ;;    buffer via normal nskk-e2e-type key dispatch because nskk-self-insert
@@ -283,31 +284,31 @@ This ensures:
 ;;
 ;; NOTE: In the standard nskk-mode-map, "q" is bound to nskk-handle-q
 ;; (which always toggles mode via nskk-toggle-japanese-mode).  The AZIK-aware
-;; nskk-handle-q-key (which queries q-key-action/4) is a separate function.
+;; nskk-handle-q-key (which queries q-key-action/3) is a separate function.
 ;; These tests call nskk-handle-q-key directly to exercise AZIK q dispatch.
 ;;
-;; Context-aware q-key behavior (now the only mode):
-;; - Empty buffer + q → toggle mode
+;; Context-aware q-key behavior:
+;; - Empty buffer + q → insert ん (hiragana) or ン (katakana)
 ;; - Pending romaji + q where AZIK match exists → fire AZIK rule (e.g., kq → かい)
 ;; - Pending romaji + q where no AZIK match → insert ん
 
 (nskk-describe "AZIK q context-aware mode (default)"
 
-  (nskk-it "q with empty romaji buffer toggles hiragana to katakana"
-    ;; context-aware + empty buffer -> toggle-mode action.
-    ;; nskk--romaji-buffer is "" (cleared by nskk-e2e-with-azik-buffer setup),
-    ;; so the q-key-action query returns toggle-mode.
+  (nskk-it "q with empty romaji buffer inserts ん in hiragana mode"
+    ;; context-aware + empty buffer -> insert-n action.
+    ;; Standalone q produces ん without toggling mode.
     (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-handle-q-key)
       (nskk-e2e-assert-mode 'hiragana)
-      (nskk-handle-q-key)
-      (nskk-e2e-assert-mode 'katakana)))
+      (nskk-e2e-assert-buffer "ん")))
 
-  (nskk-it "q with empty romaji buffer toggles katakana to hiragana"
-    ;; context-aware + empty buffer -> toggle-mode action (reverse).
+  (nskk-it "q with empty romaji buffer inserts ン in katakana mode"
+    ;; context-aware + empty buffer -> insert-n action.
+    ;; In katakana mode, ん is automatically converted to ン.
     (nskk-e2e-with-azik-buffer 'katakana nil
-      (nskk-e2e-assert-mode 'katakana)
       (nskk-handle-q-key)
-      (nskk-e2e-assert-mode 'hiragana)))
+      (nskk-e2e-assert-mode 'katakana)
+      (nskk-e2e-assert-buffer "ン")))
 
   (nskk-it "q completing an AZIK double-vowel rule produces the kana (not ん)"
     ;; context-aware: when pending-romaji+q forms a complete AZIK hash match,
@@ -482,7 +483,34 @@ This ensures:
     ;; Rule: kgp -> きょう (youon diphthong).
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "kgp")
-      (nskk-e2e-assert-buffer "きょう"))))
+      (nskk-e2e-assert-buffer "きょう")))
+
+  (nskk-it "nga produces にゃ in AZIK mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "nga")
+      (nskk-e2e-assert-buffer "にゃ")))
+
+  (nskk-it "ngu produces にゅ in AZIK mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ngu")
+      (nskk-e2e-assert-buffer "にゅ")))
+
+  (nskk-it "ngo produces にょ in AZIK mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ngo")
+      (nskk-e2e-assert-buffer "にょ")))
+
+  (nskk-it "ngz produces にゃん via ng youon + hatsuon in AZIK mode"
+    ;; ngz = ng youon prefix (にゃ base) + z hatsuon suffix (a+ん) = にゃん
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ngz")
+      (nskk-e2e-assert-buffer "にゃん")))
+
+  (nskk-it "ngq produces にゃい via ng youon + double vowel in AZIK mode"
+    ;; ngq = ng youon prefix (にゃ base) + q double-vowel suffix (a+い) = にゃい
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ngq")
+      (nskk-e2e-assert-buffer "にゃい"))))
 
 ;;;;
 ;;;; Section 9: AZIK Word Shortcuts via Key Dispatch
@@ -512,7 +540,20 @@ This ensures:
     ;; AZIK word shortcut: "kt" -> "こと".
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "kt")
-      (nskk-e2e-assert-buffer "こと"))))
+      (nskk-e2e-assert-buffer "こと")))
+
+  (nskk-it "ss produces せい in AZIK mode"
+    ;; AZIK same-key double: "ss" -> "せい" (same as sw, ddskk compatible).
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ss")
+      (nskk-e2e-assert-buffer "せい")))
+
+  (nskk-it "ssa produces っさ via azik-deferred retroactive correction"
+    ;; azik-deferred: "ss" emits "せい" tentatively; next char "a" (vowel)
+    ;; triggers retroactive correction: delete "せい", emit "っ", then process "sa" -> さ.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ssa")
+      (nskk-e2e-assert-buffer "っさ"))))
 
 ;;;;
 ;;;; Section 10: AZIK Same-Finger Alternatives via Key Dispatch
@@ -637,6 +678,74 @@ This ensures:
           (nskk-e2e-type r)
           (nskk-e2e-type "C-j")
           (should (> (length (buffer-string)) 0)))))))
+
+;;;
+;;; AZIK @ Key in ▽ Preedit — Script Conversion (DDSKK-compatible)
+;;;
+
+(nskk-describe "AZIK @ key in ▽ preedit: script conversion"
+  (nskk-it "hiragana preedit + @ → katakana committed, mode stays hiragana"
+    ;; In AZIK mode the @ key is bound to nskk-toggle-japanese-mode.
+    ;; When in ▽ preedit phase it must call nskk-henkan-kakutei-convert-script
+    ;; (DDSKK-compatible: converts preedit script without toggling mode).
+    ;; Use "Kana" (かな) to avoid AZIK nj→ぬん rule that fires for "Kanji".
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Kana")
+      (nskk-e2e-assert-henkan-phase 'on "should be in ▽ preedit after Kana")
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-henkan-phase nil "henkan-phase must clear after @")
+      (nskk-e2e-assert-mode 'hiragana "mode must remain hiragana (no toggle)")
+      (nskk-e2e-assert-buffer "カナ")))
+
+  (nskk-it "idle hiragana + @ → still toggles to katakana (existing behaviour unchanged)"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-assert-henkan-phase nil "idle: no preedit")
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-mode 'katakana "idle @ must still toggle mode"))))
+
+;;;;
+;;;; Section 12: AZIK q Key in ▽ Preedit — Romaji Priority over Script Conversion
+;;;;
+;;
+;; Regression tests for: typing q in AZIK ▽ preedit mode was calling
+;; nskk-henkan-kakutei-convert-script (script toggle), which cleared ▽ mode.
+;;
+;; Root cause: nskk-handle-q short-circuited to nskk-henkan-kakutei-convert-script
+;; for any preedit-japanese state without checking AZIK mode first.
+;;
+;; Fix: in nskk-handle-q, when preedit-japanese AND AZIK mode, delegate to
+;; nskk-handle-q-key (which handles azik-complete→fire-romaji, and
+;; empty/pending→insert-ん).  Standard mode retains the original script-toggle.
+;;
+;; In AZIK, the toggle key is @ (jp106) or [ (us101) — q is purely a romaji key.
+
+(nskk-describe "AZIK q key in ▽ preedit: romaji rules take priority over script conversion"
+
+  (nskk-it "Zdtq: ▽ mode stays active after q fires tq→たい rule"
+    ;; Regression: "Zdtq" caused ▽ mode to change unexpectedly.
+    ;; Z → ▽ with z pending; zd → ぜん (z-row hatsuon, d=E suffix);
+    ;; t → t pending; q → in AZIK preedit fires tq→たい (NOT script toggle).
+    ;; ▽ mode must remain active; mode must stay hiragana.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Zdtq")
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Zdtq")
+      (nskk-e2e-assert-mode 'hiragana "mode must not change after q in AZIK ▽ preedit")))
+
+  (nskk-it "Katq: q fires tq→たい in ▽ preedit, stays in ▽"
+    ;; Ka → ▽ か (ka complete); t → t pending; q → tq→たい fired.
+    ;; ▽ mode must remain active; mode must stay hiragana.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Katq")
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Katq")
+      (nskk-e2e-assert-mode 'hiragana "mode must not change after tq in AZIK ▽ preedit")))
+
+  (nskk-it "Kaq: standalone q in ▽ preedit inserts ん (AZIK empty-q rule), stays in ▽"
+    ;; Ka → ▽ か; q → romaji buffer empty → AZIK empty-q → insert ん.
+    ;; ▽ mode must remain active; mode must stay hiragana.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Kaq")
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kaq")
+      (nskk-e2e-assert-mode 'hiragana "standalone q in AZIK ▽ preedit must not toggle mode"))))
 
 (provide 'nskk-azik-e2e-test)
 

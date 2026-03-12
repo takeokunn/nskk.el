@@ -1018,7 +1018,15 @@
       ;; Double vowel: kq → かい
       (let ((results (nskk-prolog-query '(azik-rule "kq" \?k))))
         (should results)
-        (should (equal (nskk-prolog-walk '\?k (car results)) "かい")))))
+        (should (equal (nskk-prolog-walk '\?k (car results)) "かい")))
+      ;; ng youon: nga → にゃ
+      (let ((results (nskk-prolog-query '(azik-rule "nga" \?k))))
+        (should results)
+        (should (equal (nskk-prolog-walk '\?k (car results)) "にゃ")))
+      ;; word shortcut: ss → せい
+      (let ((results (nskk-prolog-query '(azik-rule "ss" \?k))))
+        (should results)
+        (should (equal (nskk-prolog-walk '\?k (car results)) "せい")))))
 
   (nskk-it "bridge rule makes azik-rule/2 facts accessible via romaji-to-kana/2 enumeration"
     (nskk-with-azik-style
@@ -1429,7 +1437,8 @@
 ;; a → small-ya form, u → small-yu form, e → small-ye form, o → small-yo form
 (nskk-deftest-table azik-youon-rules
   :columns (prefix a-expected u-expected e-expected o-expected)
-  :rows    (("kg" "きゃ" "きゅ" "きぇ" "きょ")
+  :rows    (("ng" "にゃ" "にゅ" "にぇ" "にょ")
+            ("kg" "きゃ" "きゅ" "きぇ" "きょ")
             ("hg" "ひゃ" "ひゅ" "ひぇ" "ひょ")
             ("mg" "みゃ" "みゅ" "みぇ" "みょ")
             ("rg" "りゃ" "りゅ" "りぇ" "りょ")

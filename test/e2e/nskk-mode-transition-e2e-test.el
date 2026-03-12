@@ -545,6 +545,79 @@
     (nskk-state-valid-mode-p (nskk-current-mode)))
   20)
 
+
+;;;;
+;;;; nskk-mode disable cleans up conversion state
+;;;;
+
+(nskk-describe "nskk-mode disable cleans up conversion state"
+  (nskk-it "idle state: buffer unchanged after nskk-mode disable"
+    ;; Starting in hiragana with no conversion in progress.
+    ;; "a" directly commits あ with no preedit; C-j from idle inserts a newline.
+    ;; Together they leave buffer as "あ\n" in a clean idle state.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "a")
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-not-converting)
+      (let ((content-before (buffer-string)))
+        (nskk-mode 0)
+        ;; Buffer content must be unchanged; nskk-mode and state are gone.
+        (should (null nskk-mode))
+        (should (null nskk-current-state))
+        (should (equal (buffer-string) content-before)))))
+
+  (nskk-it "preedit (▽) phase: marker and text removed after nskk-mode disable"
+    ;; Typing an uppercase letter enters preedit (▽) phase.
+    ;; Disabling nskk-mode while in ▽ state must call nskk-cancel-preedit,
+    ;; which deletes the ▽ marker and all accumulated preedit text, leaving
+    ;; the buffer empty.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Ka")
+      (nskk-e2e-assert-henkan-phase 'on
+        "After 'Ka': should be in ▽ preedit before nskk-mode disable")
+      (nskk-mode 0)
+      ;; nskk-cancel-preedit deletes from conversion-start to point,
+      ;; removing the ▽ marker and the preedit kana text entirely.
+      (should (null nskk-mode))
+      (should (null nskk-current-state))
+      (should (equal (buffer-string) ""))))
+
+  (nskk-it "converting (▼) phase: marker removed, kana reading remains after nskk-mode disable"
+    ;; "Kanji" + SPC → ▼ phase with candidate "漢字" (from default dict).
+    ;; Disabling nskk-mode calls nskk-cancel-conversion-to-reading, which
+    ;; removes the ▼ marker and overlay, leaving the kana reading "かんじ"
+    ;; in the buffer.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-henkan-phase 'active
+        "After SPC: should be in ▼ converting phase before nskk-mode disable")
+      (nskk-e2e-assert-converting)
+      (nskk-mode 0)
+      ;; nskk-cancel-conversion-to-reading removed the ▼ overlay and marker;
+      ;; the kana reading text is left behind in the buffer.
+      (should (null nskk-mode))
+      (should (null nskk-current-state))
+      (should (string-match-p "かんじ" (buffer-string)))))
+
+  (nskk-it "pending romaji: cleared after nskk-mode disable"
+    ;; If the user types an incomplete romaji consonant (e.g. "k") then
+    ;; disables nskk-mode, nskk--clear-conversion-context (called unconditionally
+    ;; in nskk--disable) must reset nskk--romaji-buffer and its display overlay.
+    ;; "k" only lives in nskk--romaji-buffer and never appears in the buffer.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "k")
+      ;; Incomplete romaji: henkan-phase stays nil (no preedit triggered).
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-mode 0)
+      (should (null nskk-mode))
+      (should (null nskk-current-state))
+      ;; No characters from the incomplete keystroke appear in the buffer.
+      (should (equal (buffer-string) "")))))
+
+
 (provide 'nskk-mode-transition-e2e-test)
 
 ;;; nskk-mode-transition-e2e-test.el ends here

@@ -479,6 +479,7 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
     (diphthong-d . ("dq" "dw" "dp"))
     (diphthong-b . ("bq" "bh" "bw" "bp"))
     (diphthong-p . ("pq" "ph" "pw" "pp"))
+    (youon-ng . ("nga" "ngu" "nge" "ngo" "ngz" "ngk" "ngj" "ngd" "ngl" "ngq" "ngh" "ngw" "ngp"))
     (youon-kg . ("kga" "kgu" "kge" "kgo" "kgz" "kgk" "kgj" "kgd" "kgl" "kgq" "kgh" "kgw" "kgp"))
     (youon-hg . ("hga" "hgu" "hge" "hgo" "hgz" "hgk" "hgj" "hgd" "hgl" "hgq" "hgh" "hgw" "hgp"))
     (youon-mg . ("mga" "mgu" "mge" "mgo" "mgz" "mgk" "mgj" "mgd" "mgl" "mgq" "mgh" "mgw" "mgp"))
@@ -488,7 +489,7 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
     (youon-bg . ("bga" "bgu" "bge" "bgo" "bgz" "bgk" "bgj" "bgd" "bgl" "bgq" "bgh" "bgw" "bgp"))
     (youon-pg . ("pga" "pgu" "pge" "pgo" "pgz" "pgk" "pgj" "pgd" "pgl" "pgq" "pgh" "pgw" "pgp"))
     (same-finger . ("kf" "nf" "mf" "gf" "pf" "rf" "yf"))
-    (special-ext . ("km" "kr" "gr" "kt" "gt" "zr" "st" "sr" "tt" "dt"
+    (special-ext . ("km" "kr" "gr" "kt" "gt" "zr" "st" "ss" "sr" "tt" "dt"
                     "tb" "tm" "tr" "ds" "dm" "nr" "nt" "nb" "ht" "bt"
                     "ms" "mt" "mn" "yr" "rr" "wt" "wr"))
     (gairaigo . ("tgi" "tgu" "dci" "dcu" "wso"))

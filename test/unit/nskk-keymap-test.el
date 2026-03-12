@@ -306,7 +306,43 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (nskk-when (nskk-handle-l))
           (nskk-then
            (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
-           (should (string-suffix-p "l" (buffer-string)))))))))
+           (should (string-suffix-p "l" (buffer-string))))))))
+
+  (nskk-context "AZIK table priority"
+    (nskk-it "fires romaji via azik-complete-match-p even when romaji buffer is empty"
+      ;; nskk--romaji-has-match-p has an empty-buffer guard that always returns nil
+      ;; when nskk--romaji-buffer is "".  A standalone AZIK rule for 'l' (e.g. a
+      ;; custom "l" -> "ん" mapping) would therefore silently fall through to
+      ;; latin-mode.  Fix: nskk-handle-l now checks nskk--azik-complete-match-p
+      ;; first; that function has no empty-buffer guard and covers this case.
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (process-called nil))
+        (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) t))
+                          (nskk-process-japanese-input (lambda (_c _n) (setq process-called t))))
+          (nskk-when (nskk-handle-l))
+          (nskk-then
+           (should process-called)
+           (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
+
+    (nskk-it "still fires romaji for zl -> -> in standard mode (nskk--romaji-has-match-p path)"
+      ;; nskk--azik-complete-match-p returns nil in standard mode.
+      ;; nskk--romaji-has-match-p handles the z-prefix case when buffer = "z".
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (process-called nil))
+        (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) nil))
+                          (nskk--romaji-has-match-p    (lambda (_) t))
+                          (nskk-process-japanese-input (lambda (_c _n) (setq process-called t))))
+          (nskk-when (nskk-handle-l))
+          (nskk-then
+           (should process-called)
+           (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
+
+    (nskk-it "switches to latin mode when neither check fires"
+      (let ((nskk-current-state (nskk-state-create 'hiragana)))
+        (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) nil))
+                          (nskk--romaji-has-match-p    (lambda (_) nil)))
+          (nskk-when (nskk-handle-l))
+          (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'latin))))))))
 
 ;;;
 ;;; nskk--l-key-dispatch-state
