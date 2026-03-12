@@ -63,7 +63,7 @@
 ;; 2. Consonant compatibility (x=しゃ行, c=ちゃ行)
 ;; 3. Hatsuon extensions (z/k/j/d/l -> +ん)
 ;; 4. Double vowel extensions (q/h/w/p -> +vowel pair)
-;; 5. Youon compatibility (g substitutes for y)
+;; 5. Youon compatibility (g-substitution AZIK-specific + y-prefix DDSKK-compatible)
 ;; 6. Same-finger alternatives (hf=ふ, kf=き, nf=ぬ, mf=む, gf=ぐ, pf=ぷ, rf=る, yf=ゆ)
 ;; 7. Word shortcuts
 ;; 8. Foreign word extensions
@@ -197,7 +197,8 @@ The x and c rows support all extension keys (z/k/j/d/l for hatsuon,
 q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
 
 (defconst nskk--azik-youon-rows
-  '(("ng" "にゃ" "にぃ" "にゅ" "にぇ" "にょ")
+  '(;; g-substitution youon (AZIK-specific: g replaces y)
+    ("ng" "にゃ" "にぃ" "にゅ" "にぇ" "にょ")
     ("kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
     ("hg" "ひゃ" "ひぃ" "ひゅ" "ひぇ" "ひょ")
     ("mg" "みゃ" "みぃ" "みゅ" "みぇ" "みょ")
@@ -205,9 +206,28 @@ q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
     ("gg" "ぎゃ" "ぎぃ" "ぎゅ" "ぎぇ" "ぎょ")
     ("jg" "じゃ" "じぃ" "じゅ" "じぇ" "じょ")
     ("bg" "びゃ" "びぃ" "びゅ" "びぇ" "びょ")
-    ("pg" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ"))
+    ("pg" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ")
+    ;; standard romaji y-prefix youon (DDSKK-compatible: ry, ky, etc.)
+    ;; Enables AZIK extension keys on standard y-prefix sequences:
+    ;;   ryp → りょう, ryh → りゅう, ryz → りゃん, etc.
+    ("ny" "にゃ" "にぃ" "にゅ" "にぇ" "にょ")
+    ("ky" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
+    ("hy" "ひゃ" "ひぃ" "ひゅ" "ひぇ" "ひょ")
+    ("my" "みゃ" "みぃ" "みゅ" "みぇ" "みょ")
+    ("ry" "りゃ" "りぃ" "りゅ" "りぇ" "りょ")
+    ("gy" "ぎゃ" "ぎぃ" "ぎゅ" "ぎぇ" "ぎょ")
+    ("jy" "じゃ" "じぃ" "じゅ" "じぇ" "じょ")
+    ("by" "びゃ" "びぃ" "びゅ" "びぇ" "びょ")
+    ("py" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ"))
   "Youon (拗音) rows for AZIK rules.
-Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.")
+Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.
+
+Two parallel sets of rows are provided:
+- g-substitution (AZIK-specific): ng/kg/hg/mg/rg/gg/jg/bg/pg
+  These use g as a y-substitute, the original AZIK design.
+- y-prefix (DDSKK-compatible): ny/ky/hy/my/ry/gy/jy/by/py
+  These add AZIK extension keys (hatsuon z/k/j/d/l, diphthong q/h/w/p)
+  to standard romaji y-prefix youon sequences.  e.g. ryp → りょう.")
 )
 
 (defconst nskk--azik-same-finger-rules
@@ -309,6 +329,17 @@ hand-maintained list."
                  (nskk-converter-add-rule prefix :incomplete)))
              partials)))
 
+(defvar nskk--azik-vowel-shadow-set (make-hash-table :test 'equal)
+  "Set of AZIK rule keys that are vowel-only-shadowed.
+A key K is in this set when every longer hash entry prefixed by K extends K
+by exactly one vowel character (a/i/u/e/o).  These keys are kept as complete
+rules in the hash (not demoted to :incomplete) and instead use the
+`azik-vowel-deferred' emit-and-correct mechanism in
+`nskk-convert-input-to-kana/k': the AZIK kana is emitted tentatively, and if
+the next character is a vowel, the emission is retroactively replaced by the
+longer standard-romaji rule.
+Rebuilt from scratch on each call to `nskk--azik-restore-standard-prefixes'.")
+
 (defun nskk--azik-is-prefix-of-longer-p (key)
   "Return non-nil if KEY is a proper prefix of a longer entry in the romaji hash."
   (let ((key-len (length key)))
@@ -316,28 +347,53 @@ hand-maintained list."
              thereis (and (> (length k) key-len)
                           (string-prefix-p key k)))))
 
+(defun nskk--azik-vowel-only-extensions-p (key)
+  "Return non-nil if KEY's longer hash extensions all add exactly one vowel.
+Every key K in the romaji hash satisfying
+  (and (> (length K) (length KEY)) (string-prefix-p KEY K))
+must have exactly length (1+ (length KEY)) and its final character must be
+one of a/i/u/e/o.  When this holds, KEY is \"vowel-only-shadowed\" and should
+use the `azik-vowel-deferred' mechanism rather than plain demotion to
+`:incomplete'."
+  (let ((key-len (length key)))
+    (cl-loop for k being the hash-keys of nskk--romaji-table
+             when (and (> (length k) key-len) (string-prefix-p key k))
+             always (and (= (length k) (1+ key-len))
+                         (memq (aref k key-len) '(?a ?i ?u ?e ?o))))))
+
 (defun/done nskk--azik-restore-standard-prefixes ()
-  "Demote AZIK complete rules that are proper prefixes of longer hash entries.
+  "Demote or mark AZIK complete rules that are prefixes of longer hash entries.
 Called after `nskk--azik-sync-to-romaji-hash' and
 `nskk--azik-register-partial-prefixes'.
 
 Problem: `nskk-azik-double-vowel' generates rules like \"sh\"→\"すう\" which
-overwrite the standard romaji `:incomplete' marker for \"sh\".  But the
-standard romaji table retains \"sha\"→\"しゃ\", \"shi\"→\"し\", etc.  When the
-user types \"sha\", the hash returns \"すう\" at \"sh\" (a complete match) and
-\"sha\" is never reached — the engine emits \"すう\" then
-\"あ\" instead of \"しゃ\".
+would overwrite the standard romaji `:incomplete' marker for \"sh\".  But the
+standard romaji table retains \"sha\"→\"しゃ\", \"shi\"→\"し\", etc.
 
-Fix: scan all complete (string-valued) key/value pairs in a single pass;
-demote any key that is a proper prefix of some longer entry back to
-`:incomplete' so multi-char standard rules remain reachable."
+Two cases arise for a key K that is a prefix of longer entries:
+
+1. Non-vowel-only-shadowed: some longer entry adds a non-vowel suffix.
+   Action: demote K to `:incomplete' so the longer rule remains reachable.
+
+2. Vowel-only-shadowed: ALL longer entries add exactly one vowel (a/i/u/e/o).
+   Example: \"sh\"→\"すう\" vs. \"sha\"/\"shi\"/\"shu\"/\"she\"/\"sho\".
+   Action: keep K complete in the hash and record it in
+   `nskk--azik-vowel-shadow-set'.  The input engine uses the
+   `azik-vowel-deferred' mechanism: emit the AZIK kana tentatively; if the
+   next character is a vowel, retroactively replace the emission with the
+   longer standard rule.  If the next character is not a vowel, keep the
+   AZIK kana.  This enables \"Sh\"→\"すう\" (AZIK double-vowel) while
+   preserving \"sha\"→\"しゃ\" (standard romaji)."
   ;; Safety: `puthash' here only updates the value of an existing key (k came
   ;; from the maphash iteration itself), never inserts a new key.  Updating
   ;; existing keys during `maphash' is documented-safe in Emacs Lisp.
+  (clrhash nskk--azik-vowel-shadow-set)
   (maphash (lambda (k v)
               (when (and (stringp k) (stringp v)
                          (nskk--azik-is-prefix-of-longer-p k))
-                (puthash k :incomplete nskk--romaji-table)))
+                (if (nskk--azik-vowel-only-extensions-p k)
+                    (puthash k t nskk--azik-vowel-shadow-set)
+                  (puthash k :incomplete nskk--romaji-table))))
             nskk--romaji-table))
 
 ;;;; Main Initialization
@@ -371,7 +427,10 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;;                     q=a+い, h=u+う, w=e+い, p=o+う
   (nskk--azik-init-extension-rows)
 
-  ;; 3d. Youon (拗音) compatibility — g substitutes for y.
+  ;; 3d. Youon (拗音) compatibility.
+  ;;     g-substitution rows (ng/kg/.../pg): AZIK-specific g-for-y forms.
+  ;;     y-prefix rows (ny/ky/.../py): DDSKK-compatible standard romaji youon
+  ;;     with AZIK extension keys (ryp→りょう, ryh→りゅう, etc.).
   ;;     Each row: base (a/u/e/o) + hatsuon (5) + double vowel (4)
   (nskk--azik-init-youon-rows)
 

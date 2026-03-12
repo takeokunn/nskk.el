@@ -281,10 +281,10 @@
       (nskk-e2e-type "arigatou")
       (nskk-e2e-assert-buffer "ありがとう")))
 
-  (nskk-it "types konnichiwa as こんにちわ"
+  (nskk-it "types konnichiwa as こんいちわ (DDSKK-compatible: nn clears buffer)"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "konnichiwa")
-      (nskk-e2e-assert-buffer "こんにちわ")))
+      (nskk-e2e-assert-buffer "こんいちわ")))
 
   (nskk-it "continues typing hiragana after kanji conversion"
     (nskk-e2e-with-buffer 'hiragana nil

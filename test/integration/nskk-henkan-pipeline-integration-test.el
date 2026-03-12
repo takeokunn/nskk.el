@@ -111,7 +111,10 @@
                       (nskk-handle-x)))
         (nskk-then  (nskk-should-equal "漢字" (nskk-state-current-candidate nskk-current-state))))))
 
-  (nskk-it "C-g during conversion cancels it and restores kana reading without ▽"
+  (nskk-it "C-g during conversion rolls back to preedit (▽) state (DDSKK-compatible)"
+    ;; DDSKK behavior: C-g from ▼ returns to ▽ preedit — does NOT fully cancel.
+    ;; nskk-rollback-conversion keeps the conversion start marker active and
+    ;; restores the ▽ marker with the kana reading.
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         (nskk-given (nskk-henkan-pipeline--setup-kanji-preedit))
@@ -121,8 +124,8 @@
         (nskk-when  (nskk-handle-cancel))
         (nskk-then
           (should-not (nskk-converting-p))
-          (should-not (nskk--conversion-start-active-p))
-          (nskk-should-equal "かんじ" (buffer-string))))))
+          (should (nskk--conversion-start-active-p))
+          (nskk-should-equal "▽かんじ" (buffer-string))))))
 
   (nskk-it "a word with a single dictionary candidate converts and commits correctly"
     (nskk-with-mock-dict nil

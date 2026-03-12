@@ -318,16 +318,17 @@
         (should (equal (nskk-convert-romaji "pl") "ぽん")))))
 
   (nskk-context "x-row hatsuon extensions"
-    (nskk-it "xz xk xj xd xl convert to しゃん しん しゅん しぇん しょん; xk demoted to :incomplete"
+    (nskk-it "xz xk xj xd xl convert to しゃん しん しゅん しぇん しょん"
       (nskk-with-azik-style
-        ;; "xk" is demoted to :incomplete: standard romaji has xka/xke
-        (should (eq (nskk-converter-lookup "xk") :incomplete))
+        ;; "xk" is vowel-only-shadowed: kept complete for xk→しん (xka/xke still reachable)
+        (should (equal (nskk-converter-lookup "xk") "しん"))
+        (should (equal (nskk-convert-romaji "xk") "しん"))
         ;; Other rules should exist in the table
         (should (equal (nskk-converter-lookup "xz") "しゃん"))
         (should (equal (nskk-converter-lookup "xj") "しゅん"))
         (should (equal (nskk-converter-lookup "xd") "しぇん"))
         (should (equal (nskk-converter-lookup "xl") "しょん"))
-        ;; Conversion should work (except xk which is demoted)
+        ;; Conversion should work for all rules
         (should (equal (nskk-convert-romaji "xz") "しゃん"))
         (should (equal (nskk-convert-romaji "xj") "しゅん"))
         (should (equal (nskk-convert-romaji "xd") "しぇん"))
@@ -398,20 +399,23 @@
         (should (equal (nskk-convert-romaji "kp") "こう")))))
 
   (nskk-context "s-row diphthong"
-    (nskk-it "sq sw sp convert to さい せい そう; sh demoted to :incomplete"
+    (nskk-it "sq sh sw sp convert to さい すう せい そう"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "sq") "さい"))
-        ;; "sh" is demoted to :incomplete: standard romaji has sha/shi/shu/she/sho
-        (should (eq (nskk-converter-lookup "sh") :incomplete))
+        ;; "sh" is vowel-only-shadowed: kept complete (not :incomplete) for Sh→すう
+        ;; sha/shi/shu/she/sho remain reachable via the azik-vowel-deferred mechanism
+        (should (equal (nskk-converter-lookup "sh") "すう"))
+        (should (equal (nskk-convert-romaji "sh") "すう"))
         (should (equal (nskk-convert-romaji "sw") "せい"))
         (should (equal (nskk-convert-romaji "sp") "そう")))))
 
   (nskk-context "t-row diphthong"
-    (nskk-it "tq tw tp convert to たい てい とう; th demoted to :incomplete"
+    (nskk-it "tq th tw tp convert to たい つう てい とう"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "tq") "たい"))
-        ;; "th" is demoted to :incomplete: standard romaji has tha/thi/thu/the/tho
-        (should (eq (nskk-converter-lookup "th") :incomplete))
+        ;; "th" is vowel-only-shadowed: kept complete for Th→つう
+        (should (equal (nskk-converter-lookup "th") "つう"))
+        (should (equal (nskk-convert-romaji "th") "つう"))
         (should (equal (nskk-convert-romaji "tw") "てい"))
         (should (equal (nskk-convert-romaji "tp") "とう")))))
 
@@ -462,12 +466,13 @@
         (should (equal (nskk-convert-romaji "rp") "ろう")))))
 
   (nskk-context "w-row diphthong"
-    (nskk-it "wq wp convert to わい うぉう; wh demoted to :incomplete"
+    (nskk-it "wq wh wp convert to わい うう うぉう"
       (nskk-with-azik-style
         ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "wq") "わい"))
-        ;; "wh" is demoted to :incomplete: standard romaji has wha/whi/whu/whe/who
-        (should (eq (nskk-converter-lookup "wh") :incomplete))
+        ;; "wh" is vowel-only-shadowed: kept complete for Wh→うう
+        (should (equal (nskk-converter-lookup "wh") "うう"))
+        (should (equal (nskk-convert-romaji "wh") "うう"))
         (should (equal (nskk-converter-lookup "ww") "うぇい"))
         (should (equal (nskk-converter-lookup "wp") "うぉう"))
         ;; wq, wp should work in conversion
@@ -491,11 +496,12 @@
         (should (equal (nskk-convert-romaji "zp") "ぞう")))))
 
   (nskk-context "d-row diphthong"
-    (nskk-it "dq dw dp convert to だい でい どう; dh demoted to :incomplete"
+    (nskk-it "dq dh dw dp convert to だい づう でい どう"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "dq") "だい"))
-        ;; "dh" is demoted to :incomplete: standard romaji has dha/dhi/dhu/dhe/dho
-        (should (eq (nskk-converter-lookup "dh") :incomplete))
+        ;; "dh" is vowel-only-shadowed: kept complete for Dh→づう
+        (should (equal (nskk-converter-lookup "dh") "づう"))
+        (should (equal (nskk-convert-romaji "dh") "づう"))
         (should (equal (nskk-convert-romaji "dw") "でい"))
         (should (equal (nskk-convert-romaji "dp") "どう")))))
 
@@ -521,34 +527,34 @@
         (should (equal (nskk-convert-romaji "pw") "ぺい")))))
 
   (nskk-context "x-row diphthong extensions"
-    (nskk-it "xq xh xp convert to しゃい しゅう しょう; xw demoted to :incomplete"
+    (nskk-it "xq xh xw xp convert to しゃい しゅう しぇい しょう"
       (nskk-with-azik-style
-        ;; "xw" is demoted to :incomplete: standard romaji has xwa
-        (should (eq (nskk-converter-lookup "xw") :incomplete))
+        ;; "xw" is vowel-only-shadowed: kept complete for xw→しぇい (xwa still reachable)
+        (should (equal (nskk-converter-lookup "xw") "しぇい"))
+        (should (equal (nskk-convert-romaji "xw") "しぇい"))
         ;; xq, xh, xp should work in lookup
         (should (equal (nskk-converter-lookup "xq") "しゃい"))
         (should (equal (nskk-converter-lookup "xh") "しゅう"))
         (should (equal (nskk-converter-lookup "xp") "しょう"))
-        ;; Conversion should work for all (except xw which is demoted to :incomplete)
+        ;; Conversion should work for all rules
         (should (equal (nskk-convert-romaji "xq") "しゃい"))
         (should (equal (nskk-convert-romaji "xh") "しゅう"))
         (should (equal (nskk-convert-romaji "xp") "しょう"))
-        ;; KEY TEST CASE from bug report: xh should produce しゅう
-        (should (equal (nskk-convert-romaji "xh") "しゅう"))
         ;; Negative tests - should not equal incorrect values
         (should-not (equal (nskk-convert-romaji "xh") "しゅ"))
         (should-not (equal (nskk-convert-romaji "xh") "しゅうう")))))
 
   (nskk-context "c-row diphthong extensions"
-    (nskk-it "cq cw cp convert to ちゃい ちぇい ちょう; ch demoted to :incomplete"
+    (nskk-it "cq ch cw cp convert to ちゃい ちゅう ちぇい ちょう"
       (nskk-with-azik-style
-        ;; "ch" is demoted to :incomplete: standard romaji has cha/chi/chu/che/cho
-        (should (eq (nskk-converter-lookup "ch") :incomplete))
+        ;; "ch" is vowel-only-shadowed: kept complete for Ch→ちゅう
+        (should (equal (nskk-converter-lookup "ch") "ちゅう"))
+        (should (equal (nskk-convert-romaji "ch") "ちゅう"))
         ;; cq, cw, cp should work in lookup
         (should (equal (nskk-converter-lookup "cq") "ちゃい"))
         (should (equal (nskk-converter-lookup "cw") "ちぇい"))
         (should (equal (nskk-converter-lookup "cp") "ちょう"))
-        ;; Conversion should work for all (except ch which is demoted to :incomplete)
+        ;; Conversion should work for all rules
         (should (equal (nskk-convert-romaji "cq") "ちゃい"))
         (should (equal (nskk-convert-romaji "cw") "ちぇい"))
         (should (equal (nskk-convert-romaji "cp") "ちょう")))))
@@ -614,6 +620,29 @@
         (should (equal (nskk-convert-romaji "rgu") "りゅ"))
         (should (equal (nskk-convert-romaji "rge") "りぇ"))
         (should (equal (nskk-convert-romaji "rgo") "りょ")))))
+
+  (nskk-context "ry-row youon (DDSKK-compatible y-prefix + AZIK extensions)"
+    (nskk-it "rya ryu rye ryo convert to りゃ りゅ りぇ りょ"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "rya") "りゃ"))
+        (should (equal (nskk-convert-romaji "ryu") "りゅ"))
+        (should (equal (nskk-convert-romaji "rye") "りぇ"))
+        (should (equal (nskk-convert-romaji "ryo") "りょ"))))
+
+    (nskk-it "ryp ryh ryw ryq convert to りょう りゅう りぇい りゃい"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ryp") "りょう"))
+        (should (equal (nskk-convert-romaji "ryh") "りゅう"))
+        (should (equal (nskk-convert-romaji "ryw") "りぇい"))
+        (should (equal (nskk-convert-romaji "ryq") "りゃい"))))
+
+    (nskk-it "ryz ryk ryj ryd ryl convert to りゃん りぃん りゅん りぇん りょん (hatsuon extensions)"
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ryz") "りゃん"))
+        (should (equal (nskk-convert-romaji "ryk") "りぃん"))
+        (should (equal (nskk-convert-romaji "ryj") "りゅん"))
+        (should (equal (nskk-convert-romaji "ryd") "りぇん"))
+        (should (equal (nskk-convert-romaji "ryl") "りょん")))))
 
   (nskk-context "gg-row youon"
     (nskk-it "gga ggu gge ggo rules exist in the lookup table"
@@ -1095,13 +1124,13 @@
         (should (member "kz" all-romajis))
         (should (member "kq" all-romajis)))))
 
-  (nskk-it "azik-rule/2 contains a substantial number of facts (at least 200)"
+  (nskk-it "azik-rule/2 contains a substantial number of facts (at least 320)"
     (nskk-with-azik-style
       (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
         (should results)
-        ;; 2 special + 10 compat + 17*9 extensions + 9*13 youon + 8 same-finger
-        ;; + 27 shortcuts + 5 foreign = at least 200 rules
-        (should (>= (length results) 200)))))
+        ;; 2 special + 10 compat + 17*9 extensions + 18*13 youon + 8 same-finger
+        ;; + 27 shortcuts + 5 foreign = at least 320 rules
+        (should (>= (length results) 320)))))
 
   (nskk-it "switching to standard style resets the hot-path hash cache"
     (nskk-with-azik-style
@@ -1122,12 +1151,22 @@
       (should (eq (nskk-converter-lookup "k") :incomplete))
       (should (eq (nskk-converter-lookup "h") :incomplete))
       (should (eq (nskk-converter-lookup "m") :incomplete))
-      ;; 2-char youon prefixes (derived from azik-rule/2, not hardcoded)
+      ;; 2-char g-substitution youon prefixes
       (should (eq (nskk-converter-lookup "kg") :incomplete))
       (should (eq (nskk-converter-lookup "hg") :incomplete))
       (should (eq (nskk-converter-lookup "mg") :incomplete))
       (should (eq (nskk-converter-lookup "rg") :incomplete))
-      (should (eq (nskk-converter-lookup "jg") :incomplete)))))
+      (should (eq (nskk-converter-lookup "jg") :incomplete))
+      ;; 2-char y-prefix youon prefixes (DDSKK-compatible)
+      (should (eq (nskk-converter-lookup "ky") :incomplete))
+      (should (eq (nskk-converter-lookup "hy") :incomplete))
+      (should (eq (nskk-converter-lookup "my") :incomplete))
+      (should (eq (nskk-converter-lookup "ry") :incomplete))
+      (should (eq (nskk-converter-lookup "jy") :incomplete))
+      (should (eq (nskk-converter-lookup "ny") :incomplete))
+      (should (eq (nskk-converter-lookup "gy") :incomplete))
+      (should (eq (nskk-converter-lookup "by") :incomplete))
+      (should (eq (nskk-converter-lookup "py") :incomplete)))))
 
 
 ;;;;
@@ -1521,8 +1560,8 @@
 ;;;; 16. Data-Provider: AZIK youon (拗音互換キー) table
 ;;;;
 
-;; Each row is a 3-char prefix (consonant + "g"); columns are the four youon vowel keys.
-;; a → small-ya form, u → small-yu form, e → small-ye form, o → small-yo form
+;; Rows: g-substitution (consonant + "g") and y-prefix (consonant + "y") youon.
+;; Columns: a/u/e/o keys produce the contracted-sound forms.
 (nskk-deftest-table azik-youon-rules
   :columns (prefix a-expected u-expected e-expected o-expected)
   :rows    (("ng" "にゃ" "にゅ" "にぇ" "にょ")
@@ -1533,7 +1572,17 @@
             ("gg" "ぎゃ" "ぎゅ" "ぎぇ" "ぎょ")
             ("jg" "じゃ" "じゅ" "じぇ" "じょ")
             ("bg" "びゃ" "びゅ" "びぇ" "びょ")
-            ("pg" "ぴゃ" "ぴゅ" "ぴぇ" "ぴょ"))
+            ("pg" "ぴゃ" "ぴゅ" "ぴぇ" "ぴょ")
+            ;; y-prefix rows (DDSKK-compatible standard romaji youon + AZIK extensions)
+            ("ny" "にゃ" "にゅ" "にぇ" "にょ")
+            ("ky" "きゃ" "きゅ" "きぇ" "きょ")
+            ("hy" "ひゃ" "ひゅ" "ひぇ" "ひょ")
+            ("my" "みゃ" "みゅ" "みぇ" "みょ")
+            ("ry" "りゃ" "りゅ" "りぇ" "りょ")
+            ("gy" "ぎゃ" "ぎゅ" "ぎぇ" "ぎょ")
+            ("jy" "じゃ" "じゅ" "じぇ" "じょ")
+            ("by" "びゃ" "びゅ" "びぇ" "びょ")
+            ("py" "ぴゃ" "ぴゅ" "ぴぇ" "ぴょ"))
   :description "AZIK youon rules: a/u/e/o keys produce correct contracted-sound forms"
   :body (nskk-with-azik-style
           (should (equal a-expected (nskk-converter-lookup (concat prefix "a"))))
@@ -1548,15 +1597,14 @@
 
 ;; Each row represents a consonant prefix; columns are the four diphthong keys.
 ;; q → A+い, h → U+う, w → E+い, p → O+う
-;; Note: "s" and "t" rows use :incomplete for h-key because "sh"/"th" are
-;; proper prefixes of standard romaji entries ("sha","shi","tha","thi",...) and
-;; nskk--azik-restore-standard-prefixes intentionally demotes them back to
-;; :incomplete so that multi-char standard sequences remain reachable.
+;; Note: "s" and "t" rows use the azik-vowel-deferred mechanism for the h-key
+;; because "sh"/"th" are proper prefixes of vowel-only-shadowed entries.
+;; The h-key rules are COMPLETE (not :incomplete) and use the deferred correction.
 (nskk-deftest-table azik-diphthong-rules
   :columns (prefix q-expected h-expected w-expected p-expected)
   :rows    (("k" "かい" "くう" "けい" "こう")
-            ("s" "さい" :incomplete "せい" "そう")
-            ("t" "たい" :incomplete "てい" "とう")
+            ("s" "さい" "すう" "せい" "そう")
+            ("t" "たい" "つう" "てい" "とう")
             ("n" "ない" "ぬう" "ねい" "のう")
             ("m" "まい" "むう" "めい" "もう")
             ("r" "らい" "るう" "れい" "ろう"))
@@ -1707,13 +1755,15 @@
   (nskk-it "on-done is called after standard prefixes are restored"
     (nskk-prolog-test-with-isolated-db
       (nskk--init-azik-rules)
-      (let ((sh-was-demoted nil))
+      (let ((sh-is-vowel-shadowed nil))
         (nskk--azik-restore-standard-prefixes/k
          (lambda ()
-           ;; "sh" must be :incomplete after restore so "sha" remains reachable
-           (setq sh-was-demoted
-                 (eq (nskk-converter-lookup "sh") :incomplete))))
-        (should sh-was-demoted)))))
+           ;; "sh" must be complete (not :incomplete) in the hash — the
+           ;; azik-vowel-deferred mechanism handles sha→しゃ correction at
+           ;; input time, so "sh" stays as "すう" to enable Sh→すう.
+           (setq sh-is-vowel-shadowed
+                 (equal (nskk-converter-lookup "sh") "すう"))))
+        (should sh-is-vowel-shadowed)))))
 
 (nskk-property-test converter-convert/k-azik-exactly-one-branch-called
   ((pattern azik-rule))

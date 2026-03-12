@@ -230,16 +230,20 @@
       ;; After commit, beginning-of-line moves point to start of line
       (should (= (point) (line-beginning-position)))))
 
-  (nskk-it "does not commit in preedit (▽) state, just moves point"
+  (nskk-it "commits preedit and moves to beginning of line"
     (nskk-e2e-with-buffer 'hiragana nil
       ;; Type "Kanji" → enter ▽ preedit (かんじ), do NOT press SPC
       (nskk-e2e-type "Kanji")
       ;; Still in preedit, not converting
       (nskk-e2e-assert-henkan-phase 'on)
-      ;; C-a in preedit state: plain beginning-of-line, no kakutei
+      ;; C-a in preedit state: kakutei-then-bol -- commit かんじ, then BOL
       (nskk-e2e-type "C-a")
-      ;; henkan-phase must still be 'on (preedit not committed)
-      (nskk-e2e-assert-henkan-phase 'on)))
+      ;; preedit must have been committed -- henkan-phase is now nil
+      (nskk-e2e-assert-henkan-phase nil)
+      ;; reading is now in buffer as committed kana
+      (nskk-e2e-assert-buffer "かんじ")
+      ;; point is at beginning of line after commit
+      (should (= (point) (line-beginning-position)))))
 
   (nskk-it "is plain beginning-of-line in normal hiragana state"
     (nskk-e2e-with-buffer 'hiragana nil
@@ -271,32 +275,34 @@
 ;;;;
 
 (nskk-describe "C-e in preedit state"
-  (nskk-it "does not commit in preedit (▽) state, just moves to end of line"
+  (nskk-it "commits preedit and moves to end of line"
     (nskk-e2e-with-buffer 'hiragana nil
       ;; Type "Kanji" → enter ▽ preedit (かんじ), do NOT press SPC
       (nskk-e2e-type "Kanji")
       ;; Still in preedit, not converting
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-assert-not-converting)
-      ;; C-e in preedit state: plain end-of-line, no kakutei
+      ;; C-e in preedit state: kakutei-then-eol -- commit かんじ, then EOL
       (nskk-e2e-type "C-e")
-      ;; henkan-phase must still be 'on (preedit not committed)
-      (nskk-e2e-assert-henkan-phase 'on)
-      ;; still not converting (nskk-converting-p = nil for preedit state)
-      (nskk-e2e-assert-not-converting)
-      ;; point must be at end of line
+      ;; preedit must have been committed -- henkan-phase is now nil
+      (nskk-e2e-assert-henkan-phase nil)
+      ;; reading is now in buffer as committed kana
+      (nskk-e2e-assert-buffer "かんじ")
+      ;; point is at end of line after commit
       (should (= (point) (point-max)))))
 
-  (nskk-it "point is at end of line after C-e in preedit state"
+  (nskk-it "commits preedit and leaves point at end of line"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type "Ka" to start ▽ preedit
+      ;; Type "Ka" to start ▽ preedit (か)
       (nskk-e2e-type "Ka")
       (nskk-e2e-assert-henkan-phase 'on)
-      ;; C-e: plain end-of-line, no kakutei
+      ;; C-e: kakutei-then-eol -- commit か, then EOL
       (nskk-e2e-type "C-e")
-      ;; preedit phase is preserved -- no kakutei fired
-      (nskk-e2e-assert-henkan-phase 'on)
-      ;; point is at end of line (no wrap past end)
+      ;; preedit committed -- henkan-phase is now nil
+      (nskk-e2e-assert-henkan-phase nil)
+      ;; committed kana is in buffer
+      (nskk-e2e-assert-buffer "か")
+      ;; point is at end of line
       (should (= (point) (point-max))))))
 
 ;;;;

@@ -503,48 +503,49 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (should (equal result "ん"))
         (should-not (equal result "っ")))))
 
-  (nskk-it "nn keeps second n in buffer after emitting ん (ddskk compatibility)"
+  (nskk-it "nn clears buffer after emitting ん (DDSKK-compatible)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?n)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "n")))))
+        (should (equal nskk--romaji-buffer "")))))
 
-  (nskk-it "nna converts to んな (second n kept, na completes)"
+  (nskk-it "nna converts to んあ (DDSKK-compatible: nn clears buffer)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result1 (nskk-convert-input-to-kana ?n)))
         (should (equal result1 "ん"))
-        (should (equal nskk--romaji-buffer "n")))
+        (should (equal nskk--romaji-buffer "")))
       (let ((result2 (nskk-convert-input-to-kana ?a)))
-        (should (equal result2 "な")))))
+        (should (equal result2 "あ")))))
 
-  (nskk-it "nni converts to んに (second n kept, ni completes)"
+  (nskk-it "nni converts to んい (DDSKK-compatible: nn clears buffer)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result1 (nskk-convert-input-to-kana ?n)))
         (should (equal result1 "ん"))
-        (should (equal nskk--romaji-buffer "n")))
+        (should (equal nskk--romaji-buffer "")))
       (let ((result2 (nskk-convert-input-to-kana ?i)))
-        (should (equal result2 "に")))))
+        (should (equal result2 "い")))))
 
-  (nskk-it "nnk emits ん then n+k triggers ん then k starts fresh"
+  (nskk-it "nnk: buffer cleared after nn, k becomes incomplete"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?n)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "n")))
+        (should (equal nskk--romaji-buffer "")))
       (let ((result2 (nskk-convert-input-to-kana ?k)))
-        (should (equal result2 "ん"))
+        (should (equal result2 ""))
         (should (equal nskk--romaji-buffer "k")))))
 
-  (nskk-it "nnn produces んん (triple-n edge case)"
+  (nskk-it "nnn: second nn emits ん, third n is pending (DDSKK-compatible)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result1 (nskk-convert-input-to-kana ?n)))
         (should (equal result1 "ん")))
       (let ((result2 (nskk-convert-input-to-kana ?n)))
-        (should (equal result2 "ん"))))))
+        (should (equal result2 ""))
+        (should (equal nskk--romaji-buffer "n"))))))
 
 (nskk-describe "sokuon (っ) doubled-consonant rule"
   (nskk-deftest-table input-sokuon-doubles

@@ -458,11 +458,19 @@ This ensures:
       (nskk-e2e-type "ka")
       (nskk-e2e-assert-buffer "か")))
 
+  (nskk-it "sh produces すう in AZIK mode (vowel-shadow deferred)"
+    ;; Bug fix: "sh" was incorrectly demoted to :incomplete, making Sh→すう impossible.
+    ;; Now "sh" is vowel-only-shadowed: kept complete, using azik-vowel-deferred
+    ;; mechanism so sh→すう works while sha/shi/shu/she/sho remain reachable.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "sh")
+      (nskk-e2e-assert-buffer "すう")))
+
   (nskk-it "sha still produces しゃ in AZIK mode"
     ;; DDSKK AZIK: standard "sha" → しゃ is preserved alongside AZIK extensions.
-    ;; Fix: nskk--azik-restore-standard-prefixes demotes AZIK complete rules
-    ;; (e.g. "sh"→"すう") that are proper prefixes of longer entries ("sha"→"しゃ")
-    ;; back to :incomplete, so the standard multi-char sequence remains reachable.
+    ;; azik-vowel-deferred: "sh" emits "すう" tentatively; next char "a" (vowel)
+    ;; triggers retroactive correction: delete "すう", reset buffer to "sh",
+    ;; then "sha" → "しゃ".
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "sha")
       (nskk-e2e-assert-buffer "しゃ")))

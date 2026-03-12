@@ -108,15 +108,30 @@
 (defvar-local nskk--sticky-shift-pending nil
   "Non-nil when sticky shift is pending (next char treated as uppercase).")
 
+(defvar nskk--azik-vowel-shadow-set)    ;; Forward declaration from nskk-azik.el
+
 (defvar-local nskk--deferred-azik-state nil
-  "Non-nil when an AZIK two-char rule was tentatively emitted.
+  "Non-nil when an AZIK two-char rule was tentatively emitted (sokuon case).
 Value is a cons (CONSONANT-CHAR . KANA-STRING).  CONSONANT-CHAR is the
 doubled character (e.g. ?k) and KANA-STRING is the tentatively emitted
 kana (e.g. \"きん\").  On the next input:
   - Vowel: delete tentative kana, insert っ, reset romaji buffer to
     CONSONANT-CHAR, then process consonant+vowel normally (sokuon).
   - Non-vowel: clear deferred state without retroactive correction.
-Satisfies kk→きん (AZIK hatsuon) and kka→っか (standard sokuon).")
+Satisfies kk→きん (AZIK hatsuon) and kka→っか (standard sokuon).
+See also `nskk--deferred-vowel-shadow-state' for the vowel-shadow variant.")
+
+(defvar-local nskk--deferred-vowel-shadow-state nil
+  "Non-nil when a vowel-shadowed AZIK rule was tentatively emitted.
+Value is a cons (ROMAJI-STRING . KANA-STRING).  ROMAJI-STRING is the romaji
+prefix (e.g. \"sh\") and KANA-STRING is the tentatively emitted kana
+(e.g. \"すう\").  On the next input:
+  - Vowel: delete tentative kana, reset romaji buffer to ROMAJI-STRING, then
+    process ROMAJI-STRING+vowel as the longer standard rule
+    (e.g. \"sha\"→\"しゃ\").
+    Unlike `nskk--deferred-azik-state', NO っ is inserted.
+  - Non-vowel: clear deferred state without retroactive correction.
+Satisfies Sh→すう (AZIK double-vowel) while preserving sha→しゃ (standard romaji).")
 
 (defvar-local nskk--numeric-mode nil
   "Non-nil when in numeric input mode for SKK numeric conversion.")
@@ -623,7 +638,7 @@ Facts encode the priority-ordered dispatch table for
 `nskk--classify-romaji-input'.  The 3 arguments are:
 
   CLASS            -- the classification symbol to return; one of:
-                       `nn-double'      (n+n → emit ん, keep \"n\" in buffer)
+                       `nn-double'      (n+n → emit ん; DDSKK-compatible)
                        `azik-deferred'  (doubled consonant, AZIK match, emit
                                          kana tentatively for sokuon correction)
                        `sokuon'         (doubled consonant, no AZIK match →
@@ -721,7 +736,7 @@ n-consonant > match > incomplete > no-match."
 ;;
 ;;  Priority  Class           Trigger condition
 ;;  --------  --------------  ---------------------------------------------------
-;;  1         nn-double       last=n AND char=n → emit ん, keep "n" in buffer
+;;  1         nn-double       last=n AND char=n → emit ん, clear buffer (DDSKK-compatible)
 ;;  2         azik-deferred   same doubled consonant, AZIK match → emit kana
 ;;                            tentatively; may be retroactively corrected to っ
 ;;                            on the next vowel input
@@ -752,6 +767,23 @@ A non-vowel CHAR merely clears the deferred state without correction."
         (insert "\u3063")
         (setq nskk--romaji-buffer (char-to-string deferred-cons))))))
 
+(defun/done nskk--apply-vowel-shadow-correction (char)
+  "Apply retroactive correction when a vowel-shadow deferred state is pending.
+When CHAR is a vowel and `nskk--deferred-vowel-shadow-state' is set, deletes
+the tentatively emitted kana and resets the romaji buffer to the deferred
+romaji prefix so that romaji+vowel is processed as the longer standard rule.
+Unlike `nskk--apply-deferred-azik-correction', no っ is inserted.
+A non-vowel CHAR merely clears the deferred state without correction."
+  (when nskk--deferred-vowel-shadow-state
+    (let ((deferred-romaji (car nskk--deferred-vowel-shadow-state))
+          (deferred-kana   (cdr nskk--deferred-vowel-shadow-state)))
+      (setq nskk--deferred-vowel-shadow-state nil)
+      (when (memq char '(?a ?i ?u ?e ?o))
+        (nskk-debug-log "[INPUT] azik-vowel-shadow-correction: romaji=%s kana=%s"
+                        deferred-romaji deferred-kana)
+        (delete-char (- (length deferred-kana)))
+        (setq nskk--romaji-buffer deferred-romaji)))))
+
 (defun/k nskk-convert-input-to-kana (char)
   "Convert input CHAR to kana, calling ON-FOUND or ON-NOT-FOUND when done.
 Accumulates romaji characters in `nskk--romaji-buffer' and converts
@@ -764,20 +796,43 @@ incomplete (waiting for more characters to complete a sequence).
 
 When `nskk--deferred-azik-state' is set, calls
 `nskk--apply-deferred-azik-correction' first: a vowel triggers retroactive
-sokuon correction; a non-vowel merely clears the state."
+sokuon correction; a non-vowel merely clears the state.
+When `nskk--deferred-vowel-shadow-state' is set, calls
+`nskk--apply-vowel-shadow-correction' first: a vowel triggers retroactive
+standard-romaji correction (no っ); a non-vowel clears the state."
   (nskk--apply-deferred-azik-correction char)
+  (nskk--apply-vowel-shadow-correction char)
   (let* ((input (concat nskk--romaji-buffer (char-to-string char)))
          (result (nskk-converter-convert input))
          (buf-len (length nskk--romaji-buffer))
          (last-buf-char (and (> buf-len 0)
-                             (aref nskk--romaji-buffer (1- buf-len)))))
-    (pcase (nskk--classify-romaji-input char last-buf-char result)
-      ;; Priority 1: n+n → emit ん, leave "n" in buffer for next consonant.
+                             (aref nskk--romaji-buffer (1- buf-len))))
+         (class (let ((c (nskk--classify-romaji-input char last-buf-char result)))
+                  (if (and (eq c 'match)
+                           (bound-and-true-p nskk--azik-vowel-shadow-set)
+                           (gethash input nskk--azik-vowel-shadow-set))
+                      'azik-vowel-deferred
+                    c))))
+    (pcase class
+      ;; Priority 1: n+n → emit ん, clear buffer (DDSKK-compatible: nna → んあ).
       ;; Checked before `n-consonant' because nn is the most specific n-prefix rule.
       ('nn-double
        (nskk-debug-log "[INPUT] romaji-hatsuon-nn: input=%s" input)
-       (<- hatsuon-kana nskk--emit-hatsuon-prefix "n")
+       (<- hatsuon-kana nskk--emit-hatsuon-prefix "")
        (succeed hatsuon-kana))
+
+      ('azik-vowel-deferred
+       ;; Emit the AZIK kana tentatively and record the vowel-shadow deferred state.
+       ;; If the next character is a vowel, `nskk--apply-vowel-shadow-correction'
+       ;; (called at the top of the next invocation) will delete the tentative kana,
+       ;; reset the romaji buffer to INPUT, and allow INPUT+vowel to match the longer
+       ;; standard-romaji rule (e.g. "sh"+"a" → "sha"→"しゃ").
+       ;; If the next character is not a vowel, the AZIK kana (e.g. "すう") stands.
+       (let ((kana (car result)))
+         (nskk-debug-log "[INPUT] azik-vowel-deferred-emit: input=%s kana=%s" input kana)
+         (setq nskk--deferred-vowel-shadow-state (cons input kana))
+         (setq nskk--romaji-buffer "")
+         (succeed kana)))
 
       ('azik-deferred
        ;; Emit the AZIK kana tentatively and record the deferred state.

@@ -277,7 +277,7 @@
         (nskk-e2e-type "no")
         (nskk-e2e-assert-buffer "漢字の"))))
 
-  (nskk-it "restores plain kana after C-g cancel"
+  (nskk-it "restores kana reading to preedit (▽) after C-g cancel"
     (let ((dict '(("かわ" . ("川" "河")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "Ka")
@@ -286,8 +286,8 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "C-g")
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-henkan-phase nil)
-        (nskk-e2e-assert-buffer "かわ")))))
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-assert-buffer "▽かわ")))))
 
 ;;;;
 ;;;; Edge Case Tests
@@ -595,8 +595,8 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
 ;;;;
 
 (nskk-describe "C-g in list phase"
-  (nskk-it "cancels conversion and resets henkan-phase to nil"
-    ;; C-g → nskk-handle-cancel → 'rollback-to-reading → nskk-cancel-conversion-to-reading.
+  (nskk-it "rolls back to preedit (▽) state"
+    ;; C-g → nskk-handle-cancel → 'rollback-to-reading → nskk-rollback-conversion.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-given
         (nskk-e2e-type "Kanji"))
@@ -611,19 +611,18 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
         (nskk-e2e-type "C-g"))
       (nskk-then
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-henkan-phase nil "C-g in list phase must reset phase to nil"))))
+        (nskk-e2e-assert-henkan-phase 'on "C-g in list phase must return to ▽ preedit state"))))
 
-  (nskk-it "restores kana reading to buffer after cancel"
-    ;; nskk-cancel-conversion-to-reading restores bare kana (without ▽/▼)
-    ;; for the input "Kanji" → "かんじ".
+  (nskk-it "restores kana reading to preedit (▽) buffer after cancel"
+    ;; nskk-rollback-conversion restores ▽ preedit with kana reading.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
       (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-not-converting)
-      ;; Buffer should contain the bare kana "かんじ" (no ▽ or ▼ marker).
-      (nskk-e2e-assert-buffer "かんじ" "C-g must restore kana reading to buffer")))
+      ;; Buffer should contain ▽ + kana reading (DDSKK-compatible rollback).
+      (nskk-e2e-assert-buffer "▽かんじ" "C-g must return to ▽ preedit with kana reading")))
 
   (nskk-it "clears nskk--henkan-candidate-list-active after cancel"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
@@ -724,12 +723,12 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
 (nskk-describe "DEL key in list phase"
   ;; DEL in list phase is bound to `rollback-to-reading' in nskk-keymap.el:
   ;;   (backspace converting rollback-to-reading)
-  ;; This is identical in effect to C-g: it calls nskk-cancel-conversion-to-reading,
-  ;; which restores the kana reading, resets henkan-phase to nil, and clears
+  ;; This is identical in effect to C-g: it calls nskk-rollback-conversion,
+  ;; which returns to ▽ preedit state, sets henkan-phase to 'on, and clears
   ;; nskk--henkan-candidate-list-active.
 
-  (nskk-it "cancels conversion and resets henkan-phase to nil"
-    ;; DEL → rollback-to-reading → nskk-cancel-conversion-to-reading → phase = nil.
+  (nskk-it "rolls back to preedit (▽) state"
+    ;; DEL → rollback-to-reading → nskk-rollback-conversion → phase = 'on.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-given
         (nskk-e2e-type "Kanji"))
@@ -744,18 +743,18 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
         (nskk-e2e-type "DEL"))
       (nskk-then
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-henkan-phase nil "DEL in list phase must reset phase to nil"))))
+        (nskk-e2e-assert-henkan-phase 'on "DEL in list phase must return to ▽ preedit state"))))
 
-  (nskk-it "restores kana reading to buffer (same as C-g)"
-    ;; nskk-cancel-conversion-to-reading restores bare kana for "Kanji" → "かんじ".
+  (nskk-it "restores kana reading to preedit (▽) buffer (same as C-g)"
+    ;; nskk-rollback-conversion restores ▽ preedit with kana reading.
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
       (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-not-converting)
-      ;; Buffer must contain the bare kana "かんじ" with no ▽/▼ markers.
-      (nskk-e2e-assert-buffer "かんじ" "DEL must restore kana reading to buffer")))
+      ;; Buffer must contain ▽ + kana reading (DDSKK-compatible rollback).
+      (nskk-e2e-assert-buffer "▽かんじ" "DEL must return to ▽ preedit with kana reading")))
 
   (nskk-it "clears nskk--henkan-candidate-list-active"
     ;; After cancel, the list-active flag must be nil (matching C-g behavior).
@@ -1087,21 +1086,21 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
 ;;;;
 
 (nskk-describe "DEL in converting state"
-  (nskk-it "cancels to preedit and restores kana reading"
+  (nskk-it "rolls back to preedit (▽) and restores kana reading"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       ;; Verify we are in converting state before DEL
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "DEL")
-      ;; After cancel: no longer converting
+      ;; After rollback: no longer converting (▽ preedit is not converting)
       (nskk-e2e-assert-not-converting)
-      ;; henkan-phase is nil after rollback (nskk-rollback-conversion resets it)
-      (nskk-e2e-assert-henkan-phase nil "DEL from ▼ state: henkan-phase should be nil")
-      ;; Buffer retains the kana reading without the ▼ marker
-      (nskk-e2e-assert-buffer "かんじ" "DEL from ▼ state: buffer should contain kana reading")))
+      ;; henkan-phase is 'on after rollback (back to ▽ preedit state)
+      (nskk-e2e-assert-henkan-phase 'on "DEL from ▼ state: henkan-phase should be 'on (▽ preedit)")
+      ;; Buffer contains ▽ + kana reading (DDSKK-compatible rollback)
+      (nskk-e2e-assert-buffer "▽かんじ" "DEL from ▼ state: buffer should contain ▽ + kana reading")))
 
-  (nskk-it "cancels from 2nd candidate back to kana reading"
+  (nskk-it "rolls back from 2nd candidate to preedit (▽)"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
@@ -1111,12 +1110,12 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       ;; Still in converting state
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "DEL")
-      ;; After cancel: no longer converting
+      ;; After rollback: no longer converting
       (nskk-e2e-assert-not-converting)
-      ;; henkan-phase is nil after rollback
-      (nskk-e2e-assert-henkan-phase nil "DEL from ▼ 2nd candidate: henkan-phase should be nil")
-      ;; Buffer retains the kana reading
-      (nskk-e2e-assert-buffer "かんじ" "DEL from ▼ 2nd candidate: buffer should contain kana reading"))))
+      ;; henkan-phase is 'on (back to ▽ preedit)
+      (nskk-e2e-assert-henkan-phase 'on "DEL from ▼ 2nd candidate: henkan-phase should be 'on")
+      ;; Buffer contains ▽ + kana reading
+      (nskk-e2e-assert-buffer "▽かんじ" "DEL from ▼ 2nd candidate: buffer should contain ▽ + kana reading"))))
 
 ;;;;
 ;;;; DEL in Hiragana Preedit State (Non-abbrev)
@@ -1205,14 +1204,12 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; DEL: cancel conversion → kana reading restored, phase nil
+      ;; DEL: cancel conversion → rollback to ▽ preedit (DDSKK-compatible)
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-not-converting)
-      (nskk-e2e-assert-henkan-phase nil "After DEL cancel: henkan-phase should be nil")
-      ;; After rollback the kana reading is in the buffer.
-      ;; We cannot re-enter conversion from the rolled-back text because the ▽
-      ;; marker is gone and henkan-phase is nil.  Verify buffer shows reading.
-      (nskk-e2e-assert-buffer "かんじ" "After DEL cancel: buffer contains kana reading"))))
+      (nskk-e2e-assert-henkan-phase 'on "After DEL cancel: henkan-phase should be 'on (▽ preedit)")
+      ;; After rollback the reading is back in ▽ preedit — user can edit and re-convert.
+      (nskk-e2e-assert-buffer "▽かんじ" "After DEL cancel: buffer contains ▽ + kana reading"))))
 
 (nskk-describe "implicit kakutei on mode switch during preedit"
   (nskk-it "l during preedit commits kana then switches to latin"

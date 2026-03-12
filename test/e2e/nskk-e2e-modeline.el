@@ -388,16 +388,15 @@
 (nskk-describe "point position after C-g cancel"
   (nskk-it "point is within valid bounds after C-g from converting state"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; In nskk.el, C-g from ▼ (converting) state goes directly to idle (phase=nil),
-      ;; NOT to ▽ preedit (phase=on) as DDSKK does.  The kana reading is retained in
-      ;; the buffer (confirmed: see "reverts to kana" test below).
+      ;; C-g from ▼ (converting) state rolls back to ▽ preedit (phase=on), DDSKK-compatible.
+      ;; The kana reading is retained in the buffer with the ▽ marker restored.
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "C-g")
-      ;; After C-g: not converting, phase=nil (idle).
+      ;; After C-g: not converting (▽ preedit is not converting), phase=on.
       (nskk-e2e-assert-not-converting)
-      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-henkan-phase 'on)
       ;; Point must be within valid buffer bounds.
       (should (<= (point-min) (point)))
       (should (<= (point) (point-max)))))
@@ -414,20 +413,18 @@
       (nskk-e2e-assert-buffer "")
       (should (= (point) (point-min)))))
 
-  (nskk-it "point is at point-max after C-g from converting state reverts to kana"
+  (nskk-it "point is at point-max after C-g from converting state reverts to preedit"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; In nskk.el, C-g from ▼ (converting) state goes directly to idle (phase=nil).
-      ;; Unlike DDSKK (▼→▽ on first C-g, ▽→idle on second), nskk.el collapses to one
-      ;; step.  The kana reading remains in the buffer; only the preedit overlay/marker
-      ;; is removed.
+      ;; C-g from ▼ (converting) state rolls back to ▽ preedit (DDSKK-compatible).
+      ;; The ▼ marker is replaced with ▽; the kana reading stays in the buffer.
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-not-converting)
-      (nskk-e2e-assert-henkan-phase nil)
-      ;; Buffer retains the kana reading after cancellation; point is at the end.
-      (nskk-e2e-assert-buffer "かんじ")
+      (nskk-e2e-assert-henkan-phase 'on)
+      ;; Buffer contains ▽ + kana reading; point is at the end of the reading.
+      (nskk-e2e-assert-buffer "▽かんじ")
       (should (= (point) (point-max)))))
 
   (nskk-it "point remains within valid bounds after C-g from converting with pre-existing text"

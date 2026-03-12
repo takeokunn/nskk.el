@@ -142,27 +142,27 @@
   (x normal    self-insert)
   ;; C-n
   (ctrl-n converting kakutei-then-next-line)
-  (ctrl-n preedit    next-line)
+  (ctrl-n preedit    kakutei-then-next-line)
   (ctrl-n normal     next-line)
   ;; C-p
   (ctrl-p converting kakutei-then-previous-line)
-  (ctrl-p preedit    previous-line)
+  (ctrl-p preedit    kakutei-then-previous-line)
   (ctrl-p normal     previous-line)
   ;; C-f / right-arrow
   (ctrl-f converting kakutei-then-forward)
-  (ctrl-f preedit    forward-char)
+  (ctrl-f preedit    kakutei-then-forward)
   (ctrl-f normal     forward-char)
   ;; C-b / left-arrow
   (ctrl-b converting kakutei-then-backward)
-  (ctrl-b preedit    backward-char)
+  (ctrl-b preedit    kakutei-then-backward)
   (ctrl-b normal     backward-char)
   ;; C-a / home-key
   (ctrl-a converting kakutei-then-bol)
-  (ctrl-a preedit    beginning-of-line)
+  (ctrl-a preedit    kakutei-then-bol)
   (ctrl-a normal     beginning-of-line)
   ;; C-e / end-key
   (ctrl-e converting kakutei-then-eol)
-  (ctrl-e preedit    end-of-line)
+  (ctrl-e preedit    kakutei-then-eol)
   (ctrl-e normal     end-of-line)
   ;; Backspace
   (backspace preedit    delete-preedit-char)
@@ -313,6 +313,21 @@ abbrev preedit holds raw ASCII -- mode-switch keys fall through to
      ((and (eq base 'preedit) (nskk--japanese-mode-active-p)) 'preedit-japanese)
      ((nskk--japanese-mode-active-p) 'idle-japanese)
      (t 'other))))
+
+;;;; Commit-by-Phase Helper
+
+(defun nskk--commit-by-phase ()
+  "Commit the current NSKK state, dispatching based on conversion phase.
+In `converting' (▼) phase: commits the selected candidate via
+`nskk-commit-current'.  In `preedit' (▽) phase: commits the reading
+text as-is via `nskk-henkan-kakutei'.  No-op when neither phase is
+active."
+  (cond
+   ((nskk-converting-p)
+    (nskk-commit-current))
+   ((and nskk-current-state
+         (eq (nskk-state-henkan-phase nskk-current-state) 'on))
+    (nskk-henkan-kakutei))))
 
 ;;;; Internal Macros
 
@@ -500,62 +515,62 @@ unconditionally (preedit text is left in place)."
   (_ (newline)))
 
 (nskk-define-key-handler ctrl-n
-  "Handle C-n/down-arrow: commit conversion then move to next line.
-In conversion mode, commits the current candidate then moves down.
-In preedit mode or normal mode, delegates to \\[next-line]."
-  ('kakutei-then-next-line (nskk-commit-current)
+  "Handle C-n/down-arrow: commit then move to next line.
+In conversion (▼) or preedit (▽) mode, commits then moves down.
+In normal mode, delegates to \\[next-line]."
+  ('kakutei-then-next-line (nskk--commit-by-phase)
                            (nskk--safe-nav-command #'next-line end-of-buffer))
   ('next-line      (nskk--safe-nav-command #'next-line end-of-buffer)))
 
 (nskk-define-key-handler ctrl-p
-  "Handle C-p/up-arrow: commit conversion then move to previous line.
-In conversion mode, commits the current candidate then moves up.
-In preedit mode or normal mode, delegates to \\[previous-line]."
-  ('kakutei-then-previous-line (nskk-commit-current)
+  "Handle C-p/up-arrow: commit then move to previous line.
+In conversion (▼) or preedit (▽) mode, commits then moves up.
+In normal mode, delegates to \\[previous-line]."
+  ('kakutei-then-previous-line (nskk--commit-by-phase)
                                (nskk--safe-nav-command #'previous-line beginning-of-buffer))
   ('previous-line      (nskk--safe-nav-command #'previous-line beginning-of-buffer)))
 
 (nskk-define-key-handler ctrl-f
-  "Handle C-f/right-arrow: commit conversion then move forward, else forward-char.
-In conversion mode, commits the current candidate then moves point forward.
-In preedit mode or normal mode, delegates to \\[forward-char]."
-  ('kakutei-then-forward (nskk-commit-current)
+  "Handle C-f/right-arrow: commit then move forward, else forward-char.
+In conversion (▼) or preedit (▽) mode, commits then moves forward.
+In normal mode, delegates to \\[forward-char]."
+  ('kakutei-then-forward (nskk--commit-by-phase)
                          (nskk--safe-nav-command #'forward-char end-of-buffer))
   ('forward-char (nskk--safe-nav-command #'forward-char end-of-buffer)))
 
 (nskk-define-key-handler ctrl-b
-  "Handle C-b/left-arrow: commit conversion then move backward, else backward-char.
-In conversion mode, commits the current candidate then moves point backward.
-In preedit mode or normal mode, delegates to \\[backward-char]."
-  ('kakutei-then-backward (nskk-commit-current)
+  "Handle C-b/left-arrow: commit then move backward, else backward-char.
+In conversion (▼) or preedit (▽) mode, commits then moves backward.
+In normal mode, delegates to \\[backward-char]."
+  ('kakutei-then-backward (nskk--commit-by-phase)
                           (nskk--safe-nav-command #'backward-char beginning-of-buffer))
   ('backward-char (nskk--safe-nav-command #'backward-char beginning-of-buffer)))
 
 (nskk-define-key-handler ctrl-a
   "Handle C-a/Home: commit then go to beginning of line.
-In conversion mode, commits the current candidate then moves to BOL.
-In preedit mode or normal mode, delegates to \\[beginning-of-line]."
-  ('kakutei-then-bol (nskk-commit-current)
+In conversion (▼) or preedit (▽) mode, commits then moves to BOL.
+In normal mode, delegates to \\[beginning-of-line]."
+  ('kakutei-then-bol (nskk--commit-by-phase)
                      (call-interactively #'beginning-of-line))
   ;; beginning-of-line does not signal beginning-of-buffer; no error suppression needed
   ('beginning-of-line (call-interactively #'beginning-of-line)))
 
 (nskk-define-key-handler ctrl-e
   "Handle C-e/End: commit then go to end of line.
-In conversion mode, commits the current candidate then moves to EOL.
-In preedit mode or normal mode, delegates to \\[end-of-line]."
-  ('kakutei-then-eol (nskk-commit-current)
+In conversion (▼) or preedit (▽) mode, commits then moves to EOL.
+In normal mode, delegates to \\[end-of-line]."
+  ('kakutei-then-eol (nskk--commit-by-phase)
                      (call-interactively #'end-of-line))
   ;; end-of-line does not signal end-of-buffer; no error suppression needed
   ('end-of-line (call-interactively #'end-of-line)))
 
 (nskk-define-key-handler cancel
   "Handle C-g: cancel current conversion or preedit (DDSKK-compatible).
-In conversion mode, rolls back to preedit state so the user
+In conversion mode, rolls back to preedit (▽) state so the user
 can edit the reading or re-convert.
 In preedit mode, discards preedit text and resets state entirely.
 Otherwise calls `keyboard-quit'."
-  ('rollback-to-reading (nskk-cancel-conversion-to-reading))
+  ('rollback-to-reading (nskk-rollback-conversion))
   ('cancel-preedit (nskk-cancel-preedit))
   (_ (keyboard-quit)))
 
@@ -581,7 +596,7 @@ so the user can edit the reading and re-convert.
 Otherwise delegates to `delete-char', silently ignoring
 beginning-of-buffer errors so DEL on an empty buffer is a no-op."
   ('delete-preedit-char (nskk--backspace-in-preedit))
-  ('rollback-to-reading (nskk-cancel-conversion-to-reading))
+  ('rollback-to-reading (nskk-rollback-conversion))
   (_ (ignore-errors (delete-char -1))))
 
 (nskk-define-key-handler tab

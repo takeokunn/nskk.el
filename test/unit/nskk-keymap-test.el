@@ -74,15 +74,21 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
              (call-interactively ',handler)))
          (should nav-called)))
 
-     (nskk-it ,(format "calls %s (not commit) in preedit state" nav-fn)
+     (nskk-it ,(format "calls nskk-henkan-kakutei (not nskk-commit-current) then %s in preedit state" nav-fn)
        (let ((commit-called nil)
+             (kakutei-called nil)
              (nav-called nil))
          (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                            (nskk--has-preedit (lambda () t))
                            (nskk-commit-current (lambda () (setq commit-called t)))
+                           (nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
                            (,nav-fn (lambda (&rest _) (interactive) (setq nav-called t))))
-           (call-interactively ',handler))
+           (let* ((preedit-state (nskk-state-create))
+                  (_ (nskk-state-force-henkan-phase preedit-state 'on))
+                  (nskk-current-state preedit-state))
+             (call-interactively ',handler)))
          (should-not commit-called)
+         (should kakutei-called)
          (should nav-called)))))
 
 ;;;
@@ -577,18 +583,18 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-when (nskk-handle-cancel))
         (nskk-then (should quit-called)))))
 
-  (nskk-it "calls nskk-cancel-conversion-to-reading when converting"
+  (nskk-it "calls nskk-rollback-conversion when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (cancel-called nil))
+            (rollback-called nil))
         (nskk-given (progn
                       (nskk--set-conversion-start-marker (point-min))
                       (insert "preedit")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
-        (nskk-with-mocks ((nskk-cancel-conversion-to-reading (lambda () (setq cancel-called t))))
+        (nskk-with-mocks ((nskk-rollback-conversion (lambda () (setq rollback-called t))))
           (nskk-when (nskk-handle-cancel))
-          (nskk-then (should cancel-called))))))
+          (nskk-then (should rollback-called))))))
 
   (nskk-it "calls nskk-cancel-preedit when in preedit state"
     (let ((cancel-called nil))
@@ -936,17 +942,17 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
           (nskk-when (nskk-handle-backspace))
           (nskk-then (should cancel-preedit-called))))))
 
-  (nskk-it "calls nskk-cancel-conversion-to-reading when converting"
+  (nskk-it "calls nskk-rollback-conversion when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (cancel-called nil))
+            (rollback-called nil))
         (nskk--set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (nskk-with-mocks ((nskk-cancel-conversion-to-reading (lambda () (setq cancel-called t))))
+        (nskk-with-mocks ((nskk-rollback-conversion (lambda () (setq rollback-called t))))
           (nskk-when (nskk-handle-backspace))
-          (nskk-then (should cancel-called))))))
+          (nskk-then (should rollback-called))))))
 
   (nskk-it "deletes backward char when no preedit (normal state)"
     (with-temp-buffer
@@ -1102,27 +1108,27 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
            (x normal    self-insert)
            ;; C-n
            (ctrl-n converting kakutei-then-next-line)
-           (ctrl-n preedit    next-line)
+           (ctrl-n preedit    kakutei-then-next-line)
            (ctrl-n normal     next-line)
            ;; C-p
            (ctrl-p converting kakutei-then-previous-line)
-           (ctrl-p preedit    previous-line)
+           (ctrl-p preedit    kakutei-then-previous-line)
            (ctrl-p normal     previous-line)
            ;; C-f
            (ctrl-f converting kakutei-then-forward)
-           (ctrl-f preedit    forward-char)
+           (ctrl-f preedit    kakutei-then-forward)
            (ctrl-f normal     forward-char)
            ;; C-b
            (ctrl-b converting kakutei-then-backward)
-           (ctrl-b preedit    backward-char)
+           (ctrl-b preedit    kakutei-then-backward)
            (ctrl-b normal     backward-char)
            ;; C-a
            (ctrl-a converting kakutei-then-bol)
-           (ctrl-a preedit    beginning-of-line)
+           (ctrl-a preedit    kakutei-then-bol)
            (ctrl-a normal     beginning-of-line)
            ;; C-e
            (ctrl-e converting kakutei-then-eol)
-           (ctrl-e preedit    end-of-line)
+           (ctrl-e preedit    kakutei-then-eol)
            (ctrl-e normal     end-of-line)
            ;; Backspace
            (backspace preedit    delete-preedit-char)

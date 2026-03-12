@@ -106,6 +106,7 @@
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk--clear-conversion-context "nskk-henkan")
+(declare-function nskk--commit-by-phase "nskk-keymap")
 
 (defvar nskk-mode-hook nil
   "Hook run when NSKK mode is enabled.
@@ -244,28 +245,56 @@ This provides global bindings that work even when nskk-mode is not yet active."
   (unless (minibufferp)
     (nskk-mode 1)))
 
+(defvar-local nskk--bound-commands nil
+  "List of interactive commands bound in `nskk-mode-map'.
+Used by `nskk--post-command-handler' to distinguish NSKK-internal
+commands from unbound movement commands in the preedit (▽) guard.")
+
+(defvar-local nskk--point-before-command nil
+  "Point position recorded before each command, for preedit movement detection.
+Set by `nskk--pre-command-handler' and read by `nskk--post-command-handler'.")
+
 (defun nskk--setup-buffer ()
   "Setup buffer-local NSKK state."
+  ;; Collect all commands reachable from nskk-mode-map (including sub-keymaps
+  ;; like C-x C-j) for the preedit point-escape guard.
+  (let ((cmds nil))
+    (dolist (km (accessible-keymaps nskk-mode-map))
+      (map-keymap (lambda (_key binding)
+                    (when (commandp binding)
+                      (push binding cmds)))
+                  (cdr km)))
+    (setq nskk--bound-commands cmds))
+  (add-hook 'pre-command-hook  #'nskk--pre-command-handler  nil t)
   (add-hook 'post-command-hook #'nskk--post-command-handler nil t))
 
 (defun nskk--cleanup-buffer ()
   "Cleanup buffer-local NSKK state."
+  (remove-hook 'pre-command-hook  #'nskk--pre-command-handler  t)
   (remove-hook 'post-command-hook #'nskk--post-command-handler t))
+
+(defun nskk--pre-command-handler ()
+  "Record point before each command for preedit movement detection.
+Used by `nskk--post-command-handler' to detect point changes caused by
+unbound cursor-movement commands while in preedit (▽) state."
+  (setq nskk--point-before-command (point)))
 
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update.
-Also guards against point leaving the expected position (▼) due to
-unmapped cursor-movement commands (mouse clicks, scroll, etc.).
-During conversion point must be exactly at overlay-end.  Any other
-position — including clicks inside the overlay — performs an implicit
-kakutei (確定) identical to DDSKK behaviour.  Handlers bound in nskk
-keymaps call `nskk-commit-current' explicitly before moving, so by the
-time this hook fires for them `nskk-converting-p' is already nil and
-this guard is a no-op."
+Guards against point escaping the active conversion or preedit area due
+to unmapped cursor-movement commands (mouse clicks, M-f, page-up, etc.).
+
+Converting (▼) guard: point must be exactly at overlay-end.  Any
+deviation triggers implicit kakutei (確定), identical to DDSKK behaviour.
+
+Preedit (▽) guard: if point moved and `this-command' is not an
+NSKK-bound command, commits the reading as-is via `nskk-henkan-kakutei'.
+
+Handlers bound in `nskk-mode-map' call `nskk--commit-by-phase'
+explicitly before moving, so by the time this hook fires for them the
+relevant phase is already nil and both guards are no-ops."
   (when (and nskk-mode nskk-current-state)
-    ;; Point-escape guard: during conversion point must sit exactly at
-    ;; overlay-end.  Commit the current candidate (implicit kakutei)
-    ;; whenever point is anywhere else, including inside the overlay.
+    ;; Converting (▼) point-escape guard.
     (when (nskk-converting-p)
       (let* ((conv-start (nskk--get-conversion-start))
              (overlay-end (when (and (boundp 'nskk--conversion-overlay)
@@ -274,6 +303,14 @@ this guard is a no-op."
         (when (and conv-start overlay-end
                    (/= (point) overlay-end))
           (nskk-commit-current))))
+    ;; Preedit (▽) point-escape guard: commit reading when an unbound command moved point.
+    (when (and (not (nskk-converting-p))
+               (eq (nskk-state-henkan-phase nskk-current-state) 'on)
+               (nskk--get-conversion-start)
+               nskk--point-before-command
+               (/= (point) nskk--point-before-command)
+               (not (memq this-command nskk--bound-commands)))
+      (nskk-henkan-kakutei))
     (nskk-modeline-update)))
 
 ;; User commands

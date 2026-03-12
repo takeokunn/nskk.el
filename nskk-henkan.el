@@ -524,6 +524,8 @@ start marker, and romaji buffer."
     (setq nskk--sticky-shift-pending nil))
   (nskk-when-bound nskk--deferred-azik-state
     (setq nskk--deferred-azik-state nil))
+  (nskk-when-bound nskk--deferred-vowel-shadow-state
+    (setq nskk--deferred-vowel-shadow-state nil))
   (nskk-with-current-state
     (nskk-reset-henkan-state)))
 

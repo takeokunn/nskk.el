@@ -124,6 +124,19 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "効く"))))
 
+  (nskk-it "selects second candidate 掛け from KaKe"
+    (let ((dict '(("かk" . ("書" "掛")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "e")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-overlay-shows "掛")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "掛け"))))
+
   (nskk-it "cancels KaKu conversion with C-g"
     (let ((dict '(("かk" . ("書")))))
       (nskk-e2e-with-buffer 'hiragana dict
@@ -961,6 +974,36 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "書く"))))
 
+  (nskk-it "KaKe commits to 書け (vowel-e okurigana)"
+    ;; Regression: okurigana with vowel-e (書け, 聞け etc.) must trigger
+    ;; conversion exactly like vowel-u (書く).  Dict key is always the
+    ;; consonant suffix, e.g. "かk" covers く/き/け/こ/か.
+    (let ((dict '(("かk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "e")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "書け"))))
+
+  (nskk-it "KAKe (all-shift) commits to 書け (uppercase-A reading)"
+    ;; Regression guard for the normalize-vowel-p path: K starts preedit,
+    ;; uppercase A normalizes to 'a' (completing "ka"→"か"), uppercase K
+    ;; triggers okurigana, lowercase 'e' completes "ke"→"け".
+    ;; All three SHOULD produce the same dict query "かk" as "KaKe".
+    (let ((dict '(("かk" . ("書")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "A")   ; uppercase vowel: normalize-vowel-p=t → "か"
+        (nskk-e2e-type "K")   ; uppercase consonant: okurigana trigger
+        (nskk-e2e-type "e")   ; lowercase vowel: completes "ke"→"け"
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "書")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "書け"))))
+
   (nskk-it "MiRu commits to 見る with uppercase consonant"
     (let ((dict '(("みr" . ("見")))))
       (nskk-e2e-with-buffer 'hiragana dict
@@ -1102,12 +1145,18 @@
 (nskk-deftest-table okurigana-post-commit-content
   ;; Property: after okurigana conversion + commit, buffer contains exactly
   ;; kanji + okurigana kana suffix (no preedit markers or residual state).
+  ;; Covers all five okurigana vowel suffixes (a/i/u/e/o) to prevent
+  ;; regressions in normalize-vowel-p or emit-converted-kana paths.
   :columns (reading okuri-trigger okuri-suffix dict-key kanji expected)
-  :rows (("Ka" "K" "u"  "かk" "書" "書く")
-         ("Mi" "R" "u"  "みr" "見" "見る")
-         ("Ki" "K" "u"  "きk" "聞" "聞く")
-         ("No" "M" "u"  "のm" "飲" "飲む")
-         ("Ha" "N" "a"  "はn" "話" "話な"))
+  :rows (("Ka" "K" "u"  "かk" "書" "書く")   ;; vowel u
+         ("Mi" "R" "u"  "みr" "見" "見る")   ;; vowel u, r-consonant
+         ("Ki" "K" "u"  "きk" "聞" "聞く")   ;; vowel u, different reading
+         ("No" "M" "u"  "のm" "飲" "飲む")   ;; vowel u, m-consonant
+         ("Ha" "N" "a"  "はn" "話" "話な")   ;; vowel a
+         ("Ka" "K" "i"  "かk" "書" "書き")   ;; vowel i (KAKe-like pattern)
+         ("Ka" "K" "e"  "かk" "書" "書け")   ;; vowel e (KAKe pattern: 書け)
+         ("Ka" "K" "o"  "かk" "書" "書こ")   ;; vowel o
+         ("Mi" "R" "e"  "みr" "見" "見れ"))  ;; vowel e, r-consonant
   :body (nskk-e2e-with-buffer 'hiragana (list (cons dict-key (list kanji)))
           (nskk-e2e-type reading)
           (nskk-e2e-type okuri-trigger)
