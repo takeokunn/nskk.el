@@ -469,10 +469,10 @@ the integer Levenshtein distance from QUERY."
                      solutions)
              (current-buffer)))
           (setq nskk--search-dirty-flag nil)
-          (message "Learning data saved")
+          (message "NSKK: Learning data saved")
           (run-hooks 'nskk-save-history-hook)))
     (error
-     (message "Failed to save learning data: %s" (error-message-string err)))))
+     (message "NSKK: Failed to save learning data: %s" (error-message-string err)))))
 
 ;;;###autoload
 (defun/done nskk-search-learn (query candidate &optional context)

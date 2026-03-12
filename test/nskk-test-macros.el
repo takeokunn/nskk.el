@@ -779,7 +779,7 @@ STEPS: List of (step-description step-form) pairs"
                     (message "  Running: %s" ',test)
                     (funcall #',test)))
                tests)
-     (message "Test suite %s complete" ',name)))
+     (message "Test suite %s is complete" ',name)))
 
 (defmacro nskk-test-group (description &rest tests)
   "Group related tests with DESCRIPTION."

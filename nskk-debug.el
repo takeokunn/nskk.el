@@ -196,7 +196,7 @@ Note: arguments are always evaluated even when debug is disabled."
   "Toggle NSKK debug mode."
   :interactive t
   (setq nskk-debug-enabled (not nskk-debug-enabled))
-  (message "NSKK debug mode %s"
+  (message "NSKK debug mode is %s"
            (if nskk-debug-enabled "enabled" "disabled")))
 
 ;;;###autoload
@@ -214,7 +214,7 @@ Note: arguments are always evaluated even when debug is disabled."
     (when buf
       (with-current-buffer buf
         (erase-buffer))))
-  (message "NSKK debug buffer cleared"))
+  (message "NSKK debug buffer is cleared"))
 
 ;;;; Provide
 

@@ -192,7 +192,7 @@ This provides global bindings that work even when nskk-mode is not yet active."
 
 (defun nskk--enable ()
   "Enable NSKK in current buffer."
-  (nskk-debug-message "NSKK enabled in buffer: %s" (buffer-name))
+  (nskk-debug-message "NSKK is enabled in buffer: %s" (buffer-name))
   ;; Initialize global Prolog predicates (idempotent, guard-protected)
   (nskk-state-initialize-prolog)
   (nskk-kana-initialize)
@@ -322,7 +322,7 @@ relevant phase is already nil and both guards are no-ops."
   (if nskk-mode
       (nskk-mode 0)
     (nskk-mode 1))
-  (message "NSKK mode %s" (if nskk-mode "enabled" "disabled")))
+  (message "NSKK mode is %s" (if nskk-mode "enabled" "disabled")))
 
 ;;;###autoload
 (defun nskk-kakutei ()

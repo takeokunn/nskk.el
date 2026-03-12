@@ -257,7 +257,7 @@ self-inserts in non-Japanese modes."
 MODE is the target mode symbol.
 Signals user-error if NSKK state is not initialized."
   (unless (and (boundp 'nskk-current-state) (nskk-state-p nskk-current-state))
-    (user-error "NSKK state not initialized"))
+    (user-error "NSKK state is not initialized"))
   (nskk-debug-log "[INPUT] set-mode: mode=%s" mode)
   (nskk-state-set nskk-current-state 'mode mode)
   (nskk--clear-conversion-context))

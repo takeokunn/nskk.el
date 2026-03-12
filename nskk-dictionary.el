@@ -306,7 +306,7 @@ Calls ON-FOUND with \\='system if entries loaded; ON-NOT-FOUND otherwise."
                     (nskk--dict-load-from-files dict-files))))
       (if (> loaded 0)
           (progn
-            (message "NSKK: Dictionary initialization complete (%d entries)" loaded)
+            (message "NSKK: Dictionary initialization is complete (%d entries)" loaded)
             (succeed 'system))
         (message "NSKK: No system dictionaries found")
         (fail)))))
@@ -450,7 +450,7 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
   ;; Mark initialization complete (whether or not system dict was found).
   ;; This prevents repeated re-initialization across buffer enables.
   (nskk-prolog-assert '((dict-initialized)))
-  (message "NSKK: Dictionary initialization complete"))
+  (message "NSKK: Dictionary initialization is complete"))
 
 ;;; Okurigana consonants used in SKK dictionary (14 standard consonants)
 (defconst nskk--dict-okuri-consonants
@@ -567,7 +567,7 @@ Called from `kill-emacs-hook' to persist registrations on Emacs exit."
   (when nskk-dict-modified
     (condition-case err
         (nskk-dict-save-user-dictionary)
-      (error (message "NSKK: failed to save user dictionary: %s"
+      (error (message "NSKK: Failed to save user dictionary: %s"
                       (error-message-string err))))))
 
 (provide 'nskk-dictionary)
