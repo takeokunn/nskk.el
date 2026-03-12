@@ -496,7 +496,7 @@ Example:
          (name/k           (intern (concat (symbol-name name) "/k")))
          (on-found-sym     (make-symbol "on-found"))
          (on-not-found-sym (make-symbol "on-not-found"))
-         (cps-docstring    (concat docstring " [CPS]"))
+         (cps-docstring    (concat docstring "\n[CPS]"))
          ;; Optional :interactive keyword (sync wrapper only; /k is never interactive).
          ;; :interactive t   → (interactive)
          ;; :interactive "p" → (interactive "p")
@@ -578,7 +578,7 @@ Example:
          (rest-sym     (cdr args-info))
          (name/k       (intern (concat (symbol-name name) "/k")))
          (on-done-sym  (make-symbol "on-done"))
-         (cps-docstring (concat docstring " [CPS]"))
+         (cps-docstring (concat docstring "\n[CPS]"))
          ;; Check for leading :interactive keyword followed by its spec value.
          ;; :interactive t   → (interactive)
          ;; :interactive "p" → (interactive "p")
@@ -657,7 +657,7 @@ ON-FAIL is called as (funcall ON-FAIL) on no match.\"
          (cont1         (nth 0 cont-names))
          (cont2         (nth 1 cont-names))
          (cont3         (nth 2 cont-names))
-         (cps-docstring (concat docstring " [CPS]")))
+         (cps-docstring (concat docstring "\n[CPS]")))
     `(progn
        (defun ,name/k (,@args ,cont1 ,cont2 ,cont3)
          ,cps-docstring
