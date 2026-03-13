@@ -1208,33 +1208,49 @@ This ensures:
           (should-not nskk--azik-colon-okuri-pending))))))
 
 ;;;;
-;;;; Section 17: JP106 + Key Deferred Sokuon (っ)
+;;;; Section 17: JP106 + Key Immediate Sokuon Okurigana
 ;;;;
 ;;
-;; On JP106 keyboards, + (Shift+;) now has deferred dual-role behavior:
-;; - When followed by a consonant: triggers colon-okurigana (same as : on US101)
-;; - When followed by anything else: produces っ (sokuon)
-;; This allows both JI+ → じっ and Tuka+te → 使って on JP106.
+;; On JP106 keyboards, + (Shift+;) in henkan preedit acts as an immediate
+;; okurigana trigger with sokuon っ: flushes romaji, inserts * marker,
+;; inserts っ, and triggers okurigana conversion with okuri-char=?t.
+;; In idle mode (outside henkan preedit), + produces っ via AZIK romaji rules.
 
-(nskk-describe "AZIK JP106 + key deferred sokuon"
-  (nskk-it "JI+ produces じっ on JP106 keyboard"
-    (let ((nskk-azik-keyboard-type 'jp106))
-      (nskk-e2e-with-azik-buffer 'hiragana nil
-        (nskk-e2e-type "JI")
-        (nskk-e2e--dispatch-event ?+)
-        ;; At this point, っ is tentatively emitted (deferred state pending).
-        ;; Pressing C-j (kakutei) should commit with っ as final.
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "じっ"))))
+(nskk-describe "AZIK JP106 + key immediate sokuon okurigana"
+  (nskk-it "Oku+ enters conversion state on JP106 keyboard"
+    (let ((dict '(("おくt" . ("送")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Oku")
+          (nskk-e2e--dispatch-event ?+)
+          (should (string-match-p "▼" (buffer-string)))))))
 
-  (nskk-it "Tuka+te still triggers colon-okurigana on JP106 keyboard"
+  (nskk-it "Oku+ C-j commits to 送っ on JP106 keyboard"
+    (let ((dict '(("おくt" . ("送")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Oku")
+          (nskk-e2e--dispatch-event ?+)
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-buffer "送っ")))))
+
+  (nskk-it "Tuka+ C-j commits to 使っ on JP106 keyboard"
     (let ((dict '(("つかt" . ("使")))))
       (let ((nskk-azik-keyboard-type 'jp106))
         (nskk-e2e-with-azik-buffer 'hiragana dict
           (nskk-e2e-type "Tuka")
           (nskk-e2e--dispatch-event ?+)
-          (nskk-e2e-type "te")
           (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-buffer "使っ")))))
+
+  (nskk-it "Tuka+ C-j te produces 使って on JP106 keyboard"
+    (let ((dict '(("つかt" . ("使")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Tuka")
+          (nskk-e2e--dispatch-event ?+)
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-type "te")
           (nskk-e2e-assert-buffer "使って")))))
 
   (nskk-it "+ in idle hiragana produces っ on JP106 keyboard"
@@ -1255,7 +1271,45 @@ This ensures:
       (nskk-e2e-with-azik-buffer 'hiragana nil
         (nskk-e2e--dispatch-event ?+)
         ;; + should NOT produce っ on US101 (no romaji rule for +)
-        (should-not (string-match-p "っ" (buffer-string)))))))
+        (should-not (string-match-p "っ" (buffer-string))))))
+
+  (nskk-it "Oku:te still works (colon-okurigana path preserved)"
+    (let ((dict '(("おくt" . ("送")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Oku")
+          (nskk-e2e--dispatch-event ?:)
+          (nskk-e2e-type "te")
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-buffer "送って")))))
+
+  (nskk-it "Oku+ SPC cycles to next candidate on JP106 keyboard"
+    (let ((dict '(("おくt" . ("送" "奥")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Oku")
+          (nskk-e2e--dispatch-event ?+)
+          (should (string-match-p "▼" (buffer-string)))
+          (nskk-e2e-type "SPC")
+          (should (string-match-p "▼" (buffer-string)))))))
+
+  (nskk-it "Oku+ with empty dict enters registration dialog on JP106 keyboard"
+    (let ((dict '(("あ" . ("亜")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Oku")
+          (nskk-e2e--dispatch-event ?+)
+          (let ((buf (buffer-string)))
+            (should (or (string-match-p "\\[辞書登録\\]" buf)
+                        (string-match-p "▽" buf)
+                        (string-match-p "おく" buf))))))))
+
+  (nskk-it "+ with empty preedit does not error on JP106 keyboard"
+    (let ((nskk-azik-keyboard-type 'jp106))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "Q")
+        (nskk-e2e--dispatch-event ?+)
+        (should-not (string-match-p "error" (downcase (buffer-string))))))))
 
 (provide 'nskk-azik-e2e-test)
 

@@ -1491,9 +1491,8 @@
         (should (memq 'nskk--deferred-vowel-shadow-state vars))
         (should (memq 'nskk--azik-colon-okuri-pending vars))
         (should (memq 'nskk--azik-colon-okuri-deferred vars))
-        (should (memq 'nskk--deferred-plus-state vars))
-        ;; All 7 expected variables must be present.
-        (should (>= (length vars) 7))))))
+        ;; All 6 expected variables must be present.
+        (should (>= (length vars) 6))))))
 
 ;;;
 ;;; nskk--insert-registered-and-reset
@@ -1956,16 +1955,14 @@
             (nskk--deferred-azik-state '(some state))
             (nskk--deferred-vowel-shadow-state t)
             (nskk--azik-colon-okuri-pending t)
-            (nskk--azik-colon-okuri-deferred t)
-            (nskk--deferred-plus-state t))
+            (nskk--azik-colon-okuri-deferred t))
         (nskk--clear-conversion-context)
         (should-not nskk--numeric-mode)
         (should-not nskk--sticky-shift-pending)
         (should-not nskk--deferred-azik-state)
         (should-not nskk--deferred-vowel-shadow-state)
         (should-not nskk--azik-colon-okuri-pending)
-        (should-not nskk--azik-colon-okuri-deferred)
-        (should-not nskk--deferred-plus-state))))
+        (should-not nskk--azik-colon-okuri-deferred))))
 
   (nskk-it "resets nskk--henkan-candidate-list-active to nil on mode switch"
     ;; Regression test: nskk--clear-conversion-context must call

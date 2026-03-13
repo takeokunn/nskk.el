@@ -1565,8 +1565,7 @@ Idempotent: subsequent calls are no-ops."
       (nskk--deferred-azik-state)
       (nskk--deferred-vowel-shadow-state)
       (nskk--azik-colon-okuri-pending)
-      (nskk--azik-colon-okuri-deferred)
-      (nskk--deferred-plus-state))
+      (nskk--azik-colon-okuri-deferred))
 
     (setq nskk--henkan-initialized t)))
 

@@ -173,16 +173,6 @@ Used to convert Emacs Lisp boolean values to Prolog-compatible symbols
 for fact-table queries that use yes/no classification columns."
   (if val 'yes 'no))
 
-(defvar-local nskk--deferred-plus-state nil
-  "Non-nil when a JP106 `+' key was tentatively emitted as っ in preedit.
-Value is the string \"っ\" that was inserted tentatively.  On the next input:
-  - Lowercase consonant (b-z minus vowels): delete っ, arm colon-okurigana
-    (insert `*'), then fire with the consonant (replay arm+fire sequence).
-  - Anything else: keep っ as final, clear deferred state.
-Enables deferred dual-role for JP106 `+' key: っ when alone, okurigana
-trigger when followed by a consonant.
-See `nskk--apply-deferred-plus-correction'.")
-
 (defvar-local nskk--numeric-mode nil
   "Non-nil when in numeric input mode for SKK numeric conversion.")
 
@@ -619,20 +609,21 @@ and char-type=colon."
     (nskk--insert-marker nskk-okurigana-marker))
   (setq nskk--azik-colon-okuri-pending t))
 
-(defun/done nskk--defer-plus-as-sokuon ()
-  "Handle JP106 `+' key in eligible preedit context with deferred resolution.
-Flushes any pending romaji buffer, inserts っ tentatively, and sets
-`nskk--deferred-plus-state' to await the next character.  On the next input:
-  - Lowercase consonant: delete っ, replay arm+fire okurigana sequence.
-  - Anything else: keep っ as final output.
+(defun/done nskk--trigger-sokuon-okurigana ()
+  "Handle JP106 `+' key as immediate okurigana trigger with sokuon っ.
+Flushes any pending romaji buffer, inserts `*' okurigana marker, inserts っ,
+sets okurigana state to ?t, and triggers okurigana conversion immediately.
 Called from `nskk-process-japanese-input' when context=azik-arm-eligible
 and char-type=plus-jp106."
   (nskk-with-current-state
-    (nskk--flush-romaji-before-okuri))
-  (let ((kana "っ"))
-    (nskk--emit-converted-kana kana 1)
-    (setq nskk--deferred-plus-state kana)
-    (setq nskk--romaji-buffer "")))
+    (nskk--flush-romaji-before-okuri)
+    (nskk--insert-marker nskk-okurigana-marker)
+    (nskk-state-set-okurigana nskk-current-state ?t))
+  (let ((preedit-end (point)))
+    (insert "っ")
+    (nskk--trigger-okuri-conversion ?t preedit-end)
+    (nskk-with-current-state
+      (nskk-state-set-okurigana nskk-current-state nil))))
 
 (defun/done nskk--process-normal-japanese-input (char n)
   "Handle normal Japanese input for CHAR with repeat count N.
@@ -661,27 +652,6 @@ Called from `nskk-process-japanese-input' for the `normal' action class."
         (nskk--process-kana-result
          (or (nskk-convert-input-to-kana eff) "") n)))))
 
-(defun nskk--resolve-deferred-plus (char)
-  "Resolve deferred-plus state if pending.
-If CHAR is a consonant, convert the deferred っ into okurigana and
-fire the colon-okuri sequence.  Return non-nil when CHAR was consumed."
-  (when nskk--deferred-plus-state
-    (let ((kana nskk--deferred-plus-state))
-      (setq nskk--deferred-plus-state nil)
-      (if (and (characterp char)
-               (<= ?a char) (<= char ?z)
-               (not (memq char '(?a ?i ?u ?e ?o))))
-          (progn
-            (nskk-debug-log "[INPUT] deferred-plus-correction: consonant=%c kana=%s"
-                            char kana)
-            (delete-char (- (length kana)))
-            (nskk-with-current-state
-              (nskk--insert-marker nskk-okurigana-marker))
-            (nskk--fire-azik-colon-okuri char)
-            t)
-        (nskk-debug-log "[INPUT] deferred-plus-kept: char=%c kana=%s" char kana)
-        nil))))
-
 (defun/done nskk-process-japanese-input (char n)
   "Process input in Japanese mode (hiragana/katakana), then call on-done.
 CHAR is the input character.  N is the repeat count.
@@ -694,53 +664,51 @@ pre-computed classification symbols:
 
 CONTEXT -- input context from runtime state:
   `colon-pending'      -- `nskk--azik-colon-okuri-pending' is set
-  `azik-arm-eligible'  -- AZIK style + conversion active + preedit +
-                          no okurigana
+  `azik-arm-eligible'  -- AZIK style + active preedit + no okurigana
   `other'              -- everything else
 
 CHAR-TYPE -- character classification:
   `alphabetic-lower'   -- ASCII a-z
-  `plus-jp106'         -- `+' on JP106 keyboard (deferred っ / okurigana)
-  `colon'              -- the `:' character (or `+' on JP106 when not matched above)
+  `plus-jp106'         -- `+' on JP106 keyboard (immediate sokuon okurigana)
+  `colon'              -- the `:' character
   `other'              -- anything else
 
 Actions:
-  fire       → `nskk--fire-azik-colon-okuri'
-  arm        → `nskk--arm-azik-colon-trigger'
-  defer-plus → `nskk--defer-plus-as-sokuon'
-  normal     → `nskk--process-normal-japanese-input'"
+  fire        → `nskk--fire-azik-colon-okuri'
+  arm         → `nskk--arm-azik-colon-trigger'
+  okuri-sokuon → `nskk--trigger-sokuon-okurigana'
+  normal      → `nskk--process-normal-japanese-input'"
   (when nskk--sticky-shift-pending
     (setq nskk--sticky-shift-pending nil)
     (when (and (characterp char) (<= ?a char) (<= char ?z))
       (setq char (upcase char))))
-  (unless (nskk--resolve-deferred-plus char)
-    (let* ((char-type (cond
-                          ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
-                          ((and (eq char ?+)
-                                (bound-and-true-p nskk-azik-keyboard-type)
-                                (eq nskk-azik-keyboard-type 'jp106))          'plus-jp106)
-                          ((nskk--azik-colon-key-p char)                       'colon)
-                          (t                                                  'other)))
-             (input-context (cond
-                              (nskk--azik-colon-okuri-pending
-                               'colon-pending)
-                              ((and (eq nskk-converter-romaji-style 'azik)
-                                    (nskk--conversion-start-active-p)
-                                    (nskk--has-preedit)
-                                    (not (nskk-with-current-state
-                                           (nskk-state-get-okurigana nskk-current-state))))
-                               'azik-arm-eligible)
-                              (t 'other)))
-             (action (nskk-prolog-query-value
-                       `(japanese-input-class ,'\?action ,input-context ,char-type)
-                       '\?action)))
-        (nskk-debug-log "[INPUT] japanese-input: char=%c ctx=%s char-type=%s action=%s"
-                        char input-context char-type action)
-        (pcase action
-          ('fire       (nskk--fire-azik-colon-okuri char))
-          ('arm        (nskk--arm-azik-colon-trigger))
-          ('defer-plus (nskk--defer-plus-as-sokuon))
-          ('normal     (nskk--process-normal-japanese-input char n))))))
+  (let* ((char-type (cond
+                        ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
+                        ((and (eq char ?+)
+                              (bound-and-true-p nskk-azik-keyboard-type)
+                              (eq nskk-azik-keyboard-type 'jp106))          'plus-jp106)
+                        ((nskk--azik-colon-key-p char)                       'colon)
+                        (t                                                  'other)))
+           (input-context (cond
+                            (nskk--azik-colon-okuri-pending
+                             'colon-pending)
+                            ((and (eq nskk-converter-romaji-style 'azik)
+                                  (nskk--conversion-start-active-p)
+                                  (nskk--has-preedit)
+                                  (not (nskk-with-current-state
+                                         (nskk-state-get-okurigana nskk-current-state))))
+                             'azik-arm-eligible)
+                            (t 'other)))
+           (action (nskk-prolog-query-value
+                     `(japanese-input-class ,'\?action ,input-context ,char-type)
+                     '\?action)))
+      (nskk-debug-log "[INPUT] japanese-input: char=%c ctx=%s char-type=%s action=%s"
+                      char input-context char-type action)
+      (pcase action
+        ('fire        (nskk--fire-azik-colon-okuri char))
+        ('arm         (nskk--arm-azik-colon-trigger))
+        ('okuri-sokuon (nskk--trigger-sokuon-okurigana))
+        ('normal      (nskk--process-normal-japanese-input char n)))))
 
 ;;;; Abbrev Input Processing
 
@@ -916,10 +884,7 @@ Sequentially applies the three deferred-correction handlers in order:
   1. `nskk--apply-deferred-azik-correction'   -- AZIK sokuon (っ) correction
   2. `nskk--apply-vowel-shadow-correction'     -- vowel-shadow AZIK correction
   3. `nskk--apply-colon-okuri-correction'      -- colon-okurigana っ correction
-Each is a no-op when its respective deferred-state variable is nil.
-Note: deferred-plus correction is handled at the dispatch level in
-`nskk-process-japanese-input', not here, because the consonant-okurigana
-path must return early before the romaji converter processes the char."
+Each is a no-op when its respective deferred-state variable is nil."
   (nskk--apply-deferred-azik-correction char)
   (nskk--apply-vowel-shadow-correction char)
   (nskk--apply-colon-okuri-correction char))
@@ -969,28 +934,6 @@ buffer to the consonant so that consonant+vowel completes the okurigana
 syllable (e.g. `t' + `e' → て, giving って as the full okurigana kana).
 A non-vowel CHAR merely clears the deferred state without correction."
   (nskk--apply-one-deferred-correction 'nskk--azik-colon-okuri-deferred char t))
-
-(defun/done nskk--apply-deferred-plus-correction (char)
-  "Apply deferred resolution for JP106 `+' key tentative っ emission.
-When `nskk--deferred-plus-state' is set and CHAR is a lowercase consonant
-\(not a vowel), deletes the tentative っ, arms colon-okurigana (inserts `*'
-marker), and fires with CHAR as the okurigana consonant — replaying the
-arm+fire sequence that `:' would have triggered.
-A non-consonant CHAR (vowels, uppercase, SPC, etc.) keeps っ as final."
-  (when nskk--deferred-plus-state
-    (let ((kana nskk--deferred-plus-state))
-      (setq nskk--deferred-plus-state nil)
-      (when (and (characterp char)
-                 (<= ?a char) (<= char ?z)
-                 (not (memq char '(?a ?i ?u ?e ?o))))
-        (nskk-debug-log "[INPUT] deferred-plus-correction: consonant=%c kana=%s"
-                        char kana)
-        (delete-char (- (length kana)))
-        ;; Replay arm: insert okurigana marker
-        (nskk-with-current-state
-          (nskk--insert-marker nskk-okurigana-marker))
-        ;; Replay fire: set okurigana state, emit placeholder, arm deferred
-        (nskk--fire-azik-colon-okuri char)))))
 
 ;;;; Romaji-to-Kana Class Handlers
 ;;
@@ -1239,15 +1182,15 @@ Arguments (all pre-computed classification symbols):
                `colon'               -- the `:' character
                `other'               -- anything else
 Result (first arg):
-  `fire'       -- call nskk--fire-azik-colon-okuri
-  `arm'        -- call nskk--arm-azik-colon-trigger
-  `defer-plus' -- call nskk--defer-plus-as-sokuon
-  `normal'     -- call nskk--process-normal-japanese-input"
+  `fire'        -- call nskk--fire-azik-colon-okuri
+  `arm'         -- call nskk--arm-azik-colon-trigger
+  `okuri-sokuon' -- call nskk--trigger-sokuon-okurigana
+  `normal'      -- call nskk--process-normal-japanese-input"
   (nskk-prolog-define-fact-table japanese-input-class (:arity 3 :index :list)
-    (fire       colon-pending      alphabetic-lower)
-    (arm        azik-arm-eligible  colon)
-    (defer-plus azik-arm-eligible  plus-jp106)
-    (normal     \?ctx              \?ct)))
+    (fire         colon-pending      alphabetic-lower)
+    (arm          azik-arm-eligible  colon)
+    (okuri-sokuon azik-arm-eligible  plus-jp106)
+    (normal       \?ctx              \?ct)))
 
 (defun/done nskk--init-doubled-context-rules ()
   "Assert doubled-context/6 facts for romaji doubled-consonant pre-classification.
