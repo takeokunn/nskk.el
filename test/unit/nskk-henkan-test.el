@@ -15,7 +15,7 @@
 ;;   nskk-with-conversion-context
 ;; - New Prolog predicates: candidate-nav-next-action/3,
 ;;   candidate-nav-prev-action/2, search-result-action/2,
-;;   convert-or-commit-action/2, okurigana-trigger/1,
+;;   convert-or-commit-action/2,
 ;;   should-update-overlay/1
 ;; - Existing Prolog predicates: converting-phase/1, okurigana-char/2
 ;; - nskk-converting-p across all henkan phases
@@ -262,13 +262,6 @@
 ;;;
 ;;; Prolog Predicate Tests: New Predicates
 ;;;
-
-(nskk-describe "okurigana-trigger Prolog predicate"
-  (nskk-it "succeeds for an uppercase letter"
-    (should (nskk-prolog-query-one `(okurigana-trigger ,?K))))
-
-  (nskk-it "fails for a lowercase letter"
-    (should-not (nskk-prolog-query-one `(okurigana-trigger ,?k)))))
 
 (nskk-describe "candidate-nav-next-action Prolog predicate"
   (nskk-it "returns select-next when count is below threshold"
@@ -738,8 +731,7 @@
           (goto-char (point-max))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-state-set-candidates nskk-current-state '("漢字" "感じ"))
-          (nskk-with-mocks ((nskk--restore-preedit #'ignore)
-                            (nskk--delete-marker-at #'ignore)
+          (nskk-with-mocks ((nskk--delete-marker-at #'ignore)
                             (run-hook-with-args #'ignore))
             (nskk-rollback-conversion)
             (should (= nskk--henkan-count 0))))))))
@@ -1486,7 +1478,73 @@
       ;; ?K → ?k
       (let ((lower (nskk-prolog-query-value
                     `(okurigana-char ,?K \?l) '\?l)))
-        (should (= lower ?k))))))
+        (should (= lower ?k)))))
+
+  (nskk-it "populates clearable-input-var/1 Prolog facts"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-henkan-initialize)
+      (let ((vars (nskk-prolog-query-all-values
+                   '(clearable-input-var \?v) '\?v)))
+        (should (memq 'nskk--numeric-mode vars))
+        (should (memq 'nskk--sticky-shift-pending vars))
+        (should (memq 'nskk--deferred-azik-state vars))
+        (should (memq 'nskk--deferred-vowel-shadow-state vars))
+        (should (memq 'nskk--azik-colon-okuri-pending vars))
+        (should (memq 'nskk--azik-colon-okuri-deferred vars))
+        (should (memq 'nskk--deferred-plus-state vars))
+        ;; All 7 expected variables must be present.
+        (should (>= (length vars) 7))))))
+
+;;;
+;;; nskk--insert-registered-and-reset
+;;;
+
+(nskk-describe "nskk--insert-registered-and-reset"
+  (nskk-it "inserts registered word at start and resets state"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-overlay nil)
+            (nskk--pending-romaji-overlay nil)
+            (nskk--conversion-start-marker nil)
+            (nskk--romaji-buffer "")
+            (nskk--henkan-count 3)
+            (nskk--henkan-candidate-list-active nil)
+            (nskk-henkan-hide-candidates-functions nil)
+            (called nil))
+        (insert "▼かんじ")
+        (goto-char (point-max))
+        (nskk--insert-registered-and-reset "漢字" 1 (lambda () (setq called t)))
+        (should (string= (buffer-string) "漢字"))
+        (should called))))
+
+  (nskk-it "tolerates nil on-done callback"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-overlay nil)
+            (nskk--pending-romaji-overlay nil)
+            (nskk--conversion-start-marker nil)
+            (nskk--romaji-buffer "")
+            (nskk--henkan-count 1)
+            (nskk--henkan-candidate-list-active nil)
+            (nskk-henkan-hide-candidates-functions nil))
+        (insert "▼test")
+        (goto-char (point-max))
+        ;; Should not error when on-done is nil
+        (should (progn (nskk--insert-registered-and-reset "result" 1 nil) t))))))
+
+;;;
+;;; nskk--replace-preedit-with-converted
+;;;
+
+(nskk-describe "nskk--replace-preedit-with-converted"
+  (nskk-it "replaces preedit text and removes marker"
+    (with-temp-buffer
+      (insert "▽かな")
+      (goto-char (point-max))
+      (let ((start 1)
+            (text-start (1+ (length "▽"))))
+        (nskk--replace-preedit-with-converted text-start start "カナ")
+        (should (string= (buffer-string) "カナ"))))))
 
 ;;;
 ;;; nskk-reset-henkan-state macro
@@ -1793,42 +1851,6 @@
 
 
 ;;;
-;;; nskk--restore-preedit Tests
-;;;
-
-(nskk-describe "nskk--restore-preedit"
-  (nskk-it "clears the romaji buffer to empty string"
-    (with-temp-buffer
-      (let ((nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "ka"))
-        (set-marker nskk--conversion-start-marker (point-min))
-        (nskk--restore-preedit)
-        (should (equal nskk--romaji-buffer "")))))
-
-  (nskk-it "clears the conversion start marker"
-    (with-temp-buffer
-      (let ((nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer ""))
-        (set-marker nskk--conversion-start-marker (point-min))
-        (should (marker-position nskk--conversion-start-marker))
-        (nskk--restore-preedit)
-        (should-not (marker-position nskk--conversion-start-marker)))))
-
-  (nskk-it "is safe to call when all state is already nil/empty"
-    (with-temp-buffer
-      (let ((nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker nil)
-            (nskk--romaji-buffer ""))
-        ;; Should not error
-        (nskk--restore-preedit)
-        (should (equal nskk--romaji-buffer ""))))))
-
-;;;
 ;;; nskk--dcomp-search-prefix Tests
 ;;;
 
@@ -1918,6 +1940,32 @@
         (nskk--clear-conversion-context)
         (should (null (nskk-state-candidates nskk-current-state)))
         (should (null (nskk-state-henkan-phase nskk-current-state))))))
+
+  (nskk-it "clears input state variables via Prolog clearable-input-var/1 table"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-overlay nil)
+            (nskk--pending-romaji-overlay nil)
+            (nskk--conversion-start-marker nil)
+            (nskk--romaji-buffer "")
+            (nskk--dcomp-candidates nil)
+            (nskk--dcomp-prefix nil)
+            (nskk--dcomp-index 0)
+            (nskk--numeric-mode t)
+            (nskk--sticky-shift-pending t)
+            (nskk--deferred-azik-state '(some state))
+            (nskk--deferred-vowel-shadow-state t)
+            (nskk--azik-colon-okuri-pending t)
+            (nskk--azik-colon-okuri-deferred t)
+            (nskk--deferred-plus-state t))
+        (nskk--clear-conversion-context)
+        (should-not nskk--numeric-mode)
+        (should-not nskk--sticky-shift-pending)
+        (should-not nskk--deferred-azik-state)
+        (should-not nskk--deferred-vowel-shadow-state)
+        (should-not nskk--azik-colon-okuri-pending)
+        (should-not nskk--azik-colon-okuri-deferred)
+        (should-not nskk--deferred-plus-state))))
 
   (nskk-it "resets nskk--henkan-candidate-list-active to nil on mode switch"
     ;; Regression test: nskk--clear-conversion-context must call
@@ -3046,37 +3094,6 @@
       :body (should-not (nskk-prolog-query-value `(okurigana-char ,ch \?lc) '\?lc)))))
 
 ;;;
-;;; Prolog Predicate Tests: okurigana-trigger/1
-;;;
-
-(nskk-describe "Prolog okurigana-trigger/1 predicate"
-  (nskk-context "uppercase letter triggering"
-    (nskk-it "okurigana-trigger succeeds for uppercase K"
-      (should (nskk-prolog-query-one `(okurigana-trigger ,?K))))
-
-    (nskk-it "okurigana-trigger succeeds for uppercase S"
-      (should (nskk-prolog-query-one `(okurigana-trigger ,?S))))
-
-    (nskk-it "okurigana-trigger succeeds for uppercase T"
-      (should (nskk-prolog-query-one `(okurigana-trigger ,?T))))
-
-    (nskk-it "okurigana-trigger succeeds for uppercase N"
-      (should (nskk-prolog-query-one `(okurigana-trigger ,?N))))
-
-    (nskk-it "okurigana-trigger succeeds for all uppercase A-Z"
-      (dolist (c (number-sequence ?A ?Z))
-        (should (nskk-prolog-query-one `(okurigana-trigger ,c))))))
-
-  (nskk-context "non-uppercase rejection"
-    (nskk-it "okurigana-trigger fails for all lowercase letters"
-      (dolist (c (number-sequence ?a ?z))
-        (should-not (nskk-prolog-query-one `(okurigana-trigger ,c)))))
-
-    (nskk-it "okurigana-trigger fails for digit characters"
-      (dolist (c (number-sequence ?0 ?9))
-        (should-not (nskk-prolog-query-one `(okurigana-trigger ,c)))))))
-
-;;;
 ;;; Table-Driven Tests: 14 Standard Okurigana Consonants
 ;;;
 
@@ -3337,70 +3354,6 @@
         (nskk--run-registration-session "てすと"))
       (should (= depth-during 1))
       (should (= nskk--registration-depth 0)))))
-
-;;;
-;;; nskk--optional-server-lookup/k Tests
-;;;
-
-(nskk-describe "nskk--optional-server-lookup/k"
-  (nskk-it "calls on-not-found when nskk-server-lookup/k is not defined"
-    (let ((not-found-called nil)
-          (saved-fn (and (fboundp 'nskk-server-lookup/k)
-                         (symbol-function 'nskk-server-lookup/k))))
-      (fmakunbound 'nskk-server-lookup/k)
-      (unwind-protect
-          (progn
-            (nskk--optional-server-lookup/k "かんじ"
-              #'ignore
-              (lambda () (setq not-found-called t)))
-            (should not-found-called))
-        (when saved-fn (fset 'nskk-server-lookup/k saved-fn)))))
-
-  (nskk-it "calls on-not-found when nskk-server-enable is nil"
-    (let ((not-found-called nil)
-          (nskk-server-enable nil))
-      (nskk--optional-server-lookup/k "かんじ"
-        #'ignore
-        (lambda () (setq not-found-called t)))
-      (should not-found-called)))
-
-  (nskk-it "delegates to nskk-server-lookup/k when it is defined"
-    (let ((delegated-key nil)
-          (nskk-server-enable t))
-      (nskk-with-mocks ((nskk-server-ensure-open (lambda () t))
-                        (nskk-server-lookup/k
-                         (lambda (key on-found _on-not-found)
-                           (setq delegated-key key)
-                           (funcall on-found '("結果")))))
-        (nskk--optional-server-lookup/k "てすと" #'ignore #'ignore))
-      (should (equal delegated-key "てすと")))))
-
-;;;
-;;; nskk--optional-program-dict-lookup/k Tests
-;;;
-
-(nskk-describe "nskk--optional-program-dict-lookup/k"
-  (nskk-it "calls on-not-found when nskk-program-dict-lookup/k is not defined"
-    (let ((not-found-called nil)
-          (saved-fn (and (fboundp 'nskk-program-dict-lookup/k)
-                         (symbol-function 'nskk-program-dict-lookup/k))))
-      (fmakunbound 'nskk-program-dict-lookup/k)
-      (unwind-protect
-          (progn
-            (nskk--optional-program-dict-lookup/k "かんじ"
-              #'ignore
-              (lambda () (setq not-found-called t)))
-            (should not-found-called))
-        (when saved-fn (fset 'nskk-program-dict-lookup/k saved-fn)))))
-
-  (nskk-it "delegates to nskk-program-dict-lookup/k when it is defined"
-    (let ((delegated-key nil))
-      (nskk-with-mocks ((nskk-program-dict-lookup/k
-                         (lambda (key on-found _on-not-found)
-                           (setq delegated-key key)
-                           (funcall on-found '("結果")))))
-        (nskk--optional-program-dict-lookup/k "てすと" #'ignore #'ignore))
-      (should (equal delegated-key "てすと")))))
 
 ;;;
 ;;; search-backend/2 Prolog Facts Tests

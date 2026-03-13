@@ -267,7 +267,7 @@ This is a no-op when no index strategy is configured for KEY."
       (:trie
        (when (stringp first-arg)
          (let* ((trie (gethash key nskk--prolog-trie-indices))
-                (existing (car (nskk-trie-lookup trie first-arg))))
+                (existing (nskk-trie-lookup trie first-arg)))
            (nskk-trie-insert
             trie first-arg
             (nconc existing (list clause)))))))))
@@ -289,11 +289,14 @@ This is a no-op when no index strategy is configured for KEY."
       (:trie
        (when (stringp first-arg)
          (let* ((trie (gethash key nskk--prolog-trie-indices))
-                (existing (car (nskk-trie-lookup trie first-arg)))
+                (existing (nskk-trie-lookup trie first-arg))
                 (filtered (cl-remove clause existing
                                     :test #'equal :count 1)))
            (if filtered
                (nskk-trie-insert trie first-arg filtered)
+             ;; Invariant: always delete the trie key when clause list
+             ;; becomes empty, so nskk--prolog-get-clauses never sees
+             ;; a stored nil (indistinguishable from not-found in sync).
              (nskk-trie-delete trie first-arg))))))))
 
 (defun nskk--prolog-get-clauses (predicate args subst)
@@ -316,9 +319,9 @@ Uses the configured index strategy for dispatch:
       (:trie
        (if (and (stringp first-arg)
                 (not (nskk-prolog-variable-p first-arg)))
-           (car (nskk-trie-lookup
-                 (gethash key nskk--prolog-trie-indices)
-                 first-arg))
+           (nskk-trie-lookup
+            (gethash key nskk--prolog-trie-indices)
+            first-arg)
          (gethash key nskk--prolog-database)))
       (_
        (gethash key nskk--prolog-database)))))
@@ -771,6 +774,14 @@ Returns nil if no trie index exists or PREFIX matches nothing."
                for head = (caar clauses)
                when (and head (>= (length head) 3))
                collect (cons index-key (nth 2 head))))))
+
+(defun nskk-prolog-trie-has-prefix-p (predicate arity prefix)
+  "Return non-nil if PREFIX leads to a node in PREDICATE/ARITY trie.
+This means PREFIX is either a complete key or a proper prefix of some key."
+  (let* ((key (nskk--prolog-clause-key predicate arity))
+         (trie (gethash key nskk--prolog-trie-indices)))
+    (when trie
+      (nskk-trie-has-prefix-p trie prefix))))
 
 (defun nskk-prolog-trie-bulk-assert (predicate arity kana-candidates-pairs)
   "Bulk-assert dictionary entries into the trie index and flat clause database.

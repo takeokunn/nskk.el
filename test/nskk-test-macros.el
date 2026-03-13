@@ -102,13 +102,6 @@ RUNS: Number of test runs (default: nskk-test-property-runs)"
                            (length failures)
                            (take 5 failures)))))))
 
-(defmacro nskk-property-check (name generators property &optional runs)
-  "Define a property check (lighter weight test).
-Like `nskk-property-test' but with fewer runs by default."
-  (declare (indent 3))
-  `(nskk-property-test ,name ,generators ,property
-                       (or ,runs 10)))
-
 (defmacro nskk-for-all (generators &rest body)
   "Test BODY for all values from GENERATORS."
   (declare (indent 1))
@@ -121,24 +114,6 @@ Like `nskk-property-test' but with fewer runs by default."
 ;;;;
 ;;;; Shrinking Support Functions
 ;;;;
-
-(defun nskk--test-shrink-sequence (sequence property shrink-fn)
-  "Shrink SEQUENCE to find minimal failing case for PROPERTY.
-SHRINK-FN is called with smaller sequences to attempt shrinking.
-Returns (MINIMAL-SEQUENCE . SHRINK-STEPS) or nil if no shrinking possible.
-Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
-  (let ((current sequence)
-        (steps 0)
-        (max-steps nskk-test-shrinking-max-steps))
-    (while (and (< steps max-steps)
-                (> (length current) 1))
-      (let ((shrunk (funcall shrink-fn current)))
-        (when (and shrunk
-                   (not (funcall property shrunk)))
-          (setq current shrunk))
-        (cl-incf steps)))
-    (when (> steps 0)
-      (cons current steps))))
 
 (defun nskk--test-shrink-list (list)
   "Return a list of smaller versions of LIST for shrinking.
@@ -435,53 +410,8 @@ Returns updated state."
 
 
 ;;;;
-;;;; Common Property Tests
-;;;;
-
-(nskk-property-test conversion-idempotent
-  ((input romaji-string))
-  (let ((converted (nskk-convert-romaji input)))
-    (equal converted (nskk-convert-romaji converted)))
-  100)
-
-(nskk-property-test conversion-reversible
-  ((input romaji-string))
-  (let ((converted (nskk-convert-romaji input)))
-    ;; Converted string should be non-nil and a string
-    (and (stringp converted) (> (length converted) 0)))
-  75)
-
-(nskk-property-test string-length-preservation
-  ((input romaji-string))
-  (let ((converted (nskk-convert-romaji input)))
-    ;; Kana output length should be at least 1/4 of romaji input
-    ;; (since some romaji like "tsu" are 3 chars -> 1 kana)
-    (>= (length converted) (/ (length input) 4)))
-  100)
-
-(nskk-property-test partial-conversion-consistency
-  ((input romaji-string))
-  (let* ((converted (nskk-convert-romaji input))
-         (converted2 (nskk-convert-romaji input)))
-    ;; Conversion should be deterministic
-    (equal converted converted2))
-  75)
-
-
-;;;;
 ;;;; Performance Testing Macros
 ;;;;
-
-(defmacro nskk-benchmark (name iterations &rest body)
-  "Benchmark BODY execution over ITERATIONS.
-Returns time in seconds per iteration."
-  (declare (indent 2))
-  `(let ((start-time (current-time))
-         (iter ,iterations))
-     (dotimes (_ iter)
-       ,@body)
-     (let ((elapsed (float-time (time-subtract (current-time) start-time))))
-       (/ elapsed iter))))
 
 (defmacro nskk-should-be-fast (name threshold-ms &rest body)
   "Assert that BODY completes within THRESHOLD-MS milliseconds."
@@ -493,42 +423,6 @@ Returns time in seconds per iteration."
        (when (> elapsed-ms ,threshold-ms)
          (ert-fail (format "Too slow: %s took %.2fms (threshold: %dms)"
                            ',name elapsed-ms ,threshold-ms))))))
-
-(defmacro nskk-measure-memory (&rest body)
-  "Measure memory usage of BODY."
-  (declare (indent 0))
-  `(let ((before (garbage-collect)))
-     ,@body
-     (let ((after (garbage-collect)))
-       (- (car after) (car before)))))
-
-(defmacro nskk-profile-form (form &optional label)
-  "Profile FORM and print timing information."
-  `(let ((start (current-time))
-         (label ,(or label "Profile")))
-     (prog1
-         ,form
-       (let ((elapsed (* 1000.0 (float-time (time-subtract (current-time) start)))))
-         (message "[NSKK Profile] %s: %.2fms" label elapsed)))))
-
-(defmacro nskk-compare-performance (baseline optimized &optional speedup-factor)
-  "Compare BASELINE and OPTIMIZED implementations.
-Assert that OPTIMIZED is at least SPEEDUP-FACTOR times faster."
-  (declare (indent 1))
-  `(let ((baseline-time
-          (let ((start (current-time)))
-            (dotimes (_ 100) ,baseline)
-            (float-time (time-subtract (current-time) start))))
-         (optimized-time
-          (let ((start (current-time)))
-            (dotimes (_ 100) ,optimized)
-            (float-time (time-subtract (current-time) start))))
-         (min-speedup (or ,speedup-factor 1.2)))
-     (let ((speedup (/ baseline-time optimized-time)))
-       (when (< speedup min-speedup)
-         (ert-fail (format "Not fast enough: %.2fx speedup (expected > %.2fx)"
-                           speedup min-speedup)))
-       speedup)))
 
 
 ;;;;
@@ -551,47 +445,10 @@ full Prolog database isolation via `nskk-prolog-test-with-isolated-db'."
          (progn ,@body)
        (setq nskk-current-state nil))))
 
-(defmacro nskk-with-mode (mode &rest body)
-  "Execute BODY with NSKK in MODE."
-  (declare (indent 1))
-  `(let ((nskk--conversion-mode ,mode))
-     ,@body))
-
-(defmacro nskk-with-buffer (content &rest body)
-  "Execute BODY with CONTENT in a temporary buffer."
-  (declare (indent 1))
-  `(with-temp-buffer
-     (insert ,content)
-     (goto-char (point-min))
-     ,@body))
-
-(defmacro nskk-with-input-simulation (keys &rest body)
-  "Simulate input KEYS and execute BODY."
-  (declare (indent 1))
-  `(let ((input-buffer "")
-         (pos 0))
-     ;; Simulate key input
-     (dolist (key ,keys)
-       (setq input-buffer (concat input-buffer (string key))))
-     ;; Execute body with simulated input
-     (let ((nskk--input-buffer input-buffer))
-       ,@body)))
-
 
 ;;;;
 ;;;; Assertion Helper Macros
 ;;;;
-
-(defmacro nskk-should-error (type &rest body)
-  "Assert that BODY signals error of TYPE."
-  (declare (indent 1))
-  `(condition-case err
-       (progn ,@body
-              (ert-fail (format "Expected error %s but none was signaled" ',type)))
-     (,type nil)  ; Expected error, test passes
-     (error
-      (ert-fail (format "Got wrong error type: %s (expected %s)"
-                        (car err) ',type)))))
 
 (defmacro nskk-should-not-error (&rest body)
   "Assert that BODY does not signal any error."
@@ -600,60 +457,6 @@ full Prolog database isolation via `nskk-prolog-test-with-isolated-db'."
        (progn ,@body)
      (error
       (ert-fail (format "Unexpected error: %s" err)))))
-
-(defmacro nskk-should-return (expected-value &rest body)
-  "Assert that BODY returns EXPECTED-VALUE."
-  (declare (indent 1))
-  `(let ((actual (progn ,@body)))
-     (unless (equal actual ,expected-value)
-       (ert-fail (format "Expected %S but got %S" ,expected-value actual)))
-     actual))
-
-(defmacro nskk-should-match (regex &rest body)
-  "Assert that BODY returns string matching REGEX."
-  (declare (indent 1))
-  `(let ((result (progn ,@body)))
-     (unless (and (stringp result)
-                  (string-match ,regex result))
-       (ert-fail (format "Expected string matching %S but got %S"
-                         ,regex result)))
-     result))
-
-(defmacro nskk-should-be-a (type &rest body)
-  "Assert that BODY returns value of TYPE."
-  (declare (indent 1))
-  `(let ((result (progn ,@body)))
-     (unless (funcall ',type result)
-       (ert-fail (format "Expected %s but got %S: %S"
-                         ',type (type-of result) result)))
-     result))
-
-
-;;;;
-;;;; Test Data Macros
-;;;;
-
-(defmacro nskk-with-test-data (spec &rest body)
-  "Execute BODY with test data from SPEC.
-SPEC is ((var data)...) where data can be a literal value or
-a generator name."
-  (declare (indent 1))
-  `(let ,(mapcar (lambda (entry)
-                   `(,(car entry)
-                     (cond
-                      ((quoted-p ,(cadr entry))
-                       ,(cadr entry))  ; Literal value
-                      ((symbolp ,(cadr entry))
-                       (nskk-generate ',(cadr entry)))  ; Generator
-                      (t ,(cadr entry)))))  ; Expression
-                 spec)
-     ,@body))
-
-(defmacro nskk-with-fixture-data (name &rest body)
-  "Execute BODY with fixture data NAME."
-  (declare (indent 1))
-  `(let ((data (nskk--get-fixture-data ',name)))
-     ,@body))
 
 
 ;;;;
@@ -671,97 +474,6 @@ BODY: Test implementation"
      (nskk-with-clean-state
        (nskk-with-temp-dictionary
          ,@body))))
-
-(defmacro nskk-e2e-test (name description &rest steps)
-  "Define an end-to-end test with multiple steps.
-NAME: Test name
-DESCRIPTION: Test description
-STEPS: List of (step-description step-form) pairs"
-  (declare (indent 2))
-  `(ert-deftest ,(intern (format "nskk-e2e-%s" name)) ()
-     ,description
-     (nskk-with-clean-state
-       (nskk-with-temp-dictionary
-         (let ((step-num 0))
-           ,@(mapcar (lambda (step)
-                       `(let ((step-num (1+ step-num)))
-                          (message "[Step %d] %s" step-num ,(car step))
-                          ,(cadr step)))
-                     steps))))))
-
-
-;;;;
-;;;; Regression Test Macros
-;;;;
-
-(defvar nskk--regression-tests nil
-  "Registry of regression tests.")
-
-(defmacro nskk-regression-test (name bug-id description &rest body)
-  "Define a regression test for BUG-ID."
-  (declare (indent 3))
-  `(ert-deftest ,(intern (format "nskk-regression-%s" name)) ()
-     ,(format "Regression test for %s: %s" bug-id description)
-     (push (cons ',name ,bug-id) nskk--regression-tests)
-     ,@body))
-
-(defmacro nskk-with-known-bug (bug-id &rest body)
-  "Mark test as known bug BUG-ID and execute BODY."
-  (declare (indent 1))
-  `(condition-case err
-       (progn ,@body)
-     (error
-      (message "[Known Bug %s] Test failed as expected: %s" ,bug-id err)
-      ;; Don't fail the test for known bugs
-      nil)))
-
-
-;;;;
-;;;; Coverage Testing Macros
-;;;;
-
-(defmacro nskk-with-coverage-tracking (&rest body)
-  "Execute BODY with coverage tracking enabled."
-  (declare (indent 0))
-  `(let ((nskk--coverage-tracking t)
-         (nskk--coverage-data (make-hash-table :test 'equal)))
-     (unwind-protect
-         (progn ,@body)
-       (nskk--report-coverage))))
-
-(defmacro nskk-should-cover (function-list &rest body)
-  "Assert that BODY covers all functions in FUNCTION-LIST."
-  (declare (indent 1))
-  `(let ((covered nil))
-     (nskk-with-coverage-tracking
-       ,@body
-       (dolist (fn ,function-list)
-         (unless (gethash fn nskk--coverage-data)
-           (ert-fail (format "Function %s not covered" fn)))
-         (push fn covered)))
-     covered))
-
-
-;;;;
-;;;; Parallel Test Execution
-;;;;
-
-(defmacro nskk-parallel-test (&rest tests)
-  "Execute TESTS in parallel (if threads available)."
-  (declare (indent 0))
-  `(if (fboundp 'make-thread)
-       ;; Use threads for parallel execution
-       (let ((threads nil))
-         (dolist (test ,tests)
-           (push (make-thread
-                  (lambda () (funcall test))
-                  (format "nskk-test-%s" (gensym)))
-                 threads))
-         (dolist (thread threads)
-           (thread-join thread)))
-     ;; Sequential fallback
-     (dolist (test ,tests)
-       (funcall test))))
 
 
 ;;;;
@@ -781,56 +493,15 @@ STEPS: List of (step-description step-form) pairs"
                tests)
      (message "Test suite %s is complete" ',name)))
 
-(defmacro nskk-test-group (description &rest tests)
-  "Group related tests with DESCRIPTION."
-  (declare (indent 1))
-  `(progn
-     (message "")
-     (message "=== %s ===" ,description)
-     ,@tests
-     (message "")))
-
-
-;;;;
-;;;; Debug Macros
-;;;;
-
-(defmacro nskk-test-trace (&rest forms)
-  "Trace evaluation of FORMS in test context."
-  `(let ((results nil))
-     (dolist (form ',forms)
-       (let ((result (eval form)))
-         (message "[TRACE] %S => %S" form result)
-         (push result results)))
-     (nreverse results)))
-
-(defmacro nskk-inspect (var)
-  "Inspect VAR in test context."
-  `(let ((value ,var))
-     (message "[INSPECT] %s = %S (type: %s)"
-              ',var value (type-of value))
-     value))
-
 
 ;;;;
 ;;;; Compatibility Macros
 ;;;;
 
-(defmacro nskk-skip-unless (feature)
-  "Skip test unless FEATURE is available."
-  `(unless (featurep ',feature)
-     (ert-skip (format "Feature %s not available" ',feature))))
-
 (defmacro nskk-skip-when (condition)
   "Skip test when CONDITION is non-nil."
   `(when ,condition
      (ert-skip (format "Skipped: %s" ',condition))))
-
-(defmacro nskk-emacs-version-< (major minor)
-  "Skip test unless Emacs version is >= (MAJOR . MINOR)."
-  `(nskk-skip-when
-    (version< emacs-version
-              (format "%d.%d" ,major ,minor))))
 
 ;;;;
 ;;;; Behavior DSL (describe/it/given/when/then)
@@ -1146,26 +817,8 @@ Example:
 
 
 ;;;;
-;;;; Candidate State Setup Macros
-;;;;
-
-(defmacro nskk-test-set-candidates (candidates &optional index)
-  "Set CANDIDATES on `nskk-current-state', with INDEX (default 0)."
-  (declare (indent 0) (debug t))
-  `(progn
-     (setf (nskk-state-candidates nskk-current-state) ,candidates)
-     (setf (nskk-state-current-index nskk-current-state) (or ,index 0))))
-
-
-;;;;
 ;;;; Henkan State Assertion Macros
 ;;;;
-
-(defmacro nskk-should-be-phase (phase &optional state-form)
-  "Assert that henkan-phase in STATE-FORM (or `nskk-current-state') equals PHASE."
-  (declare (indent 0))
-  `(should (eq (nskk-state-henkan-phase (or ,state-form nskk-current-state))
-               ,phase)))
 
 (defmacro nskk-should-convert-to (romaji expected)
   "Assert that ROMAJI converts to EXPECTED kana via `nskk-convert-romaji'."

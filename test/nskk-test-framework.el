@@ -32,7 +32,6 @@
 ;; - ERT-based test framework
 ;; - Test environment setup/teardown
 ;; - Property-based testing support
-;; - Performance benchmarking
 
 ;;; Code:
 
@@ -201,23 +200,6 @@
   (unless (equal a b)
     (ert-fail (format "Strings differ:\nExpected: %S\nActual:   %S" a b))))
 
-(defun nskk-assert-length (collection expected-length)
-  "Assert that COLLECTION has EXPECTED-LENGTH."
-  (unless (= (length collection) expected-length)
-    (ert-fail (format "Length mismatch: expected %d, got %d"
-                      expected-length (length collection)))))
-
-(defun nskk-assert-member (item list)
-  "Assert that ITEM is a member of LIST."
-  (unless (member item list)
-    (ert-fail (format "%S not found in %S" item list))))
-
-(defun nskk-assert-type (value expected-type)
-  "Assert that VALUE is of EXPECTED-TYPE."
-  (unless (funcall expected-type value)
-    (ert-fail (format "Type assertion failed: %S is not %s"
-                      value expected-type))))
-
 
 ;;;;
 ;;;; Test Data Generators
@@ -274,41 +256,6 @@
                  ""))))
 
 
-;;;;
-;;;; Test Suite Management
-;;;;
-
-(defun nskk-test-run-all (&optional selector)
-  "Run all NSKK tests matching SELECTOR."
-  (interactive)
-  (let ((test-selector (or selector "^nskk")))
-    (ert-run-tests-batch test-selector)))
-
-(defun nskk-test-run-unit ()
-  "Run unit tests only.
-Matches both legacy nskk-deftest-unit names and BDD-style nskk-describe/nskk-it names."
-  (interactive)
-  (nskk-test-run-all "^nskk-unit-\\|^nskk-it/"))
-
-(defun nskk-test-run-integration ()
-  "Run integration tests only.
-Matches legacy nskk-deftest-integration, property tests, and BDD-style names."
-  (interactive)
-  (nskk-test-run-all "^nskk-integration-\\|^nskk-property-\\|^nskk-it/"))
-
-(defun nskk-test-run-performance ()
-  "Run performance tests only."
-  (interactive)
-  (nskk-test-run-all "^nskk-performance-"))
-
-(defun nskk-test-list ()
-  "List all NSKK tests."
-  (interactive)
-  (let ((tests (ert-select-tests "^nskk" nil)))
-    (with-output-to-temp-buffer "*NSKK Tests*"
-      (princ "NSKK Test Suite:\n\n")
-      (dolist (test tests)
-        (princ (format "  - %s\n" (ert-test-name test)))))))
 
 
 ;;;;
@@ -320,7 +267,6 @@ Matches legacy nskk-deftest-integration, property tests, and BDD-style names."
 Recursively copies the children hash-table so mutations in one test
 do not bleed into the saved copy."
   (let ((new (nskk-trie-node--create
-              :char    (nskk-trie-node-char node)
               :is-end  (nskk-trie-node-is-end node)
               :value   (nskk-trie-node-value node)
               :count   (nskk-trie-node-count node))))
@@ -486,8 +432,7 @@ or `nskk-with-mock-dict' to prevent Prolog database pollution."
     (dolist (entry (or entries default-entries))
       (nskk-prolog-assert (list (list pred (car entry) (cdr entry)))))
     (make-nskk-dict-index
-     :predicate pred
-     :by-freq nil)))
+     :predicate pred)))
 
 (defmacro nskk-with-mock-dict (entries &rest body)
   "Execute BODY with a mock dictionary installed.

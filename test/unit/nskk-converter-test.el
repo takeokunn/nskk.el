@@ -30,17 +30,17 @@
 ;; - Edge cases: nil/empty input, case insensitivity, boundary conditions
 ;; - Integration: full kana row conversion
 ;; - CPS variants: nskk-converter-convert/k, nskk-convert-romaji/k,
-;;     nskk-convert-n--internal/k, nskk-convert-romaji--internal/k,
+;;     nskk--convert-step-n/k, nskk-convert-romaji--internal/k,
 ;;     nskk-converter-load-style/k (on-found/on-not-found),
 ;;     defun/done /k forms (remove-rule/k, register-style/k, initialize/k)
-;; - Internal functions: nskk-convert-romaji--internal, nskk-convert-n--internal,
+;; - Internal functions: nskk-convert-romaji--internal, nskk--convert-step-n,
 ;;     nskk--converter-populate-incomplete-markers
 ;; - Rule management: add, remove, override, get (with Prolog DB isolation)
 ;; - Style system: register, load, define-style macro (with registry isolation)
 ;; - Data validation: nskk--standard-romaji-rules content and structure
 ;; - Macro validation: nskk-converter-define-rules, nskk-converter-define-style
 ;; - Property-based tests: determinism, string output, compression ratio, CPS/sync consistency
-;; - Seeded PBTs: convert/k, romaji/k, get-rule/k, completions/k, n-internal invariant
+;; - Seeded PBTs: convert/k, romaji/k, get-rule/k, completions/k, step-n invariant
 ;; - Regression tests: double consonant, n-conversion, palatal, long strings, fallback path
 ;; - Performance tests: basic, complex, batch, long-input
 
@@ -508,45 +508,51 @@
       (nskk-convert-romaji/k input (lambda (kana) (setq result kana)) #'ignore)
       (should (equal result expected)))))
 
-(nskk-describe "nskk-convert-n--internal/k CPS variant"
-  (nskk-it "calls on-found for standalone n"
-    (let (got-result)
-      (nskk-convert-n--internal/k "n"
-        (lambda (result) (setq got-result result))
+(nskk-describe "nskk--convert-step-n/k CPS variant"
+  (nskk-it "calls on-kana for standalone n"
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "n"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_remaining) (should nil))
         (lambda () (should nil)))
-      (should (equal (car got-result) "ん"))
-      (should-not (cdr got-result))))
+      (should (equal got-kana "ん"))
+      (should-not got-rest)))
 
-  (nskk-it "calls on-found for n before consonant"
-    (let (got-result)
-      (nskk-convert-n--internal/k "nb"
-        (lambda (result) (setq got-result result))
+  (nskk-it "calls on-kana for n before consonant"
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "nb"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_remaining) (should nil))
         (lambda () (should nil)))
-      (should (equal (car got-result) "ん"))
-      (should (equal (cdr got-result) "b"))))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "b"))))
 
-  (nskk-it "calls on-not-found for n before vowel"
-    (let (fallthrough-called)
-      (nskk-convert-n--internal/k "na"
-        (lambda (_result) (should nil))
-        (lambda () (setq fallthrough-called t)))
-      (should fallthrough-called)))
-
-  (nskk-it "calls on-found for n-quote sequence"
-    (let (got-result)
-      (nskk-convert-n--internal/k "n'"
-        (lambda (result) (setq got-result result))
+  (nskk-it "calls on-kana for n before vowel via trie delegation"
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "na"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_remaining) (should nil))
         (lambda () (should nil)))
-      (should (equal (car got-result) "ん"))
-      (should-not (cdr got-result))))
+      (should (equal got-kana "な"))
+      (should (equal got-rest ""))))
 
-  (nskk-it "calls on-found for nn with remainder"
-    (let (got-result)
-      (nskk-convert-n--internal/k "nnk"
-        (lambda (result) (setq got-result result))
+  (nskk-it "calls on-kana for n-quote sequence"
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "n'"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_remaining) (should nil))
         (lambda () (should nil)))
-      (should (equal (car got-result) "ん"))
-      (should (equal (cdr got-result) "nk")))))
+      (should (equal got-kana "ん"))
+      (should-not got-rest)))
+
+  (nskk-it "calls on-kana for nn with remainder"
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "nnk"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_remaining) (should nil))
+        (lambda () (should nil)))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "nk")))))
 
 (nskk-describe "possible completions"
   (nskk-it "returns completions for a basic prefix"
@@ -676,57 +682,110 @@
     (let ((result (nskk-convert-romaji--internal "kka")))
       (should (equal result "っか")))))
 
-;; TR-006: Direct nskk-convert-n--internal tests
-(nskk-describe "nskk-convert-n--internal"
-  (nskk-it "produces ん for standalone n at end of input"
-    (let ((result (nskk-convert-n--internal "n")))
-      (should result)
-      (should (equal (car result) "ん"))
-      (should-not (cdr result))))
+;; TR-006: Direct nskk--convert-step-n tests
+(nskk-describe "nskk--convert-step-n sync wrapper"
+  (nskk-it "produces ん for standalone n"
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "n"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ん"))
+      (should-not got-rest)))
 
   (nskk-it "produces ん for nn sequence"
-    (let ((result (nskk-convert-n--internal "nn")))
-      (should result)
-      (should (equal (car result) "ん"))
-      (should-not (cdr result))))
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "nn"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ん"))
+      (should-not got-rest)))
 
   (nskk-it "produces ん for nn with remainder"
-    (let ((result (nskk-convert-n--internal "nnk")))
-      (should result)
-      (should (equal (car result) "ん"))
-      (should (equal (cdr result) "nk"))))
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "nnk"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "nk"))))
 
   (nskk-it "produces ん for n-quote sequence"
-    (let ((result (nskk-convert-n--internal "n'")))
-      (should result)
-      (should (equal (car result) "ん"))
-      (should-not (cdr result))))
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "n'"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ん"))
+      (should-not got-rest)))
 
   (nskk-it "produces ん for n-quote with remainder"
-    (let ((result (nskk-convert-n--internal "n'a")))
-      (should result)
-      (should (equal (car result) "ん"))
-      (should (equal (cdr result) "a"))))
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k "n'a"
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest "a"))))
 
-  (nskk-deftest-cases n-internal-before-consonant
+  (nskk-deftest-cases step-n-before-consonant
     (("nb" . "b") ("nk" . "k") ("nm" . "m") ("np" . "p") ("nt" . "t"))
-    :description "n before consonant produces ん with consonant as remainder"
+    :description "n before consonant calls on-kana with ん and consonant remainder"
     :body
-    (let ((result (nskk-convert-n--internal input)))
-      (should result)
-      (should (equal (car result) "ん"))
-      (should (equal (cdr result) expected))))
+    (let (got-kana got-rest)
+      (nskk--convert-step-n/k input
+        (lambda (kana rest) (setq got-kana kana got-rest rest))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ん"))
+      (should (equal got-rest expected))))
 
-  (nskk-it "returns nil for n before vowel (falls through to table)"
-    (should-not (nskk-convert-n--internal "na"))
-    (should-not (nskk-convert-n--internal "ni"))
-    (should-not (nskk-convert-n--internal "nu"))
-    (should-not (nskk-convert-n--internal "ne"))
-    (should-not (nskk-convert-n--internal "no")))
+  (nskk-it "n before vowel delegates to trie and produces kana"
+    (let (got-kana)
+      (nskk--convert-step-n/k "na"
+        (lambda (kana _rest) (setq got-kana kana))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "な")))
+    (let (got-kana)
+      (nskk--convert-step-n/k "ni"
+        (lambda (kana _rest) (setq got-kana kana))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "に")))
+    (let (got-kana)
+      (nskk--convert-step-n/k "nu"
+        (lambda (kana _rest) (setq got-kana kana))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ぬ")))
+    (let (got-kana)
+      (nskk--convert-step-n/k "ne"
+        (lambda (kana _rest) (setq got-kana kana))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "ね")))
+    (let (got-kana)
+      (nskk--convert-step-n/k "no"
+        (lambda (kana _rest) (setq got-kana kana))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "の"))))
 
-  (nskk-it "returns nil for n before y (falls through to table)"
-    (should-not (nskk-convert-n--internal "nya"))
-    (should-not (nskk-convert-n--internal "nyu"))))
+  (nskk-it "n before y delegates to trie and produces kana"
+    (let (got-kana)
+      (nskk--convert-step-n/k "nya"
+        (lambda (kana _rest) (setq got-kana kana))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "にゃ")))
+    (let (got-kana)
+      (nskk--convert-step-n/k "nyu"
+        (lambda (kana _rest) (setq got-kana kana))
+        (lambda (_r) nil)
+        (lambda () nil))
+      (should (equal got-kana "にゅ")))))
 
 
 
@@ -835,17 +894,20 @@
          (nskk-converter-get-possible-completions/k input #'identity (lambda () nil)))
   50 3002)
 
-;; Property: for any string starting with ?n, nskk-convert-n--internal returns
-;; nil or a cons whose car is "ん" and whose cdr is nil or a string.
-(nskk-property-test-seeded n-internal-pbt-returns-cons-or-nil
+;; Property: for any string starting with ?n, nskk--convert-step-n/k calls
+;; exactly one continuation with appropriate argument types.
+(nskk-property-test-seeded step-n-pbt-calls-one-continuation
   ((input romaji-basic))
-  (let ((s (concat "n" input)))
-    (let ((result (nskk-convert-n--internal s)))
-      (or (null result)
-          (and (consp result)
-               (equal (car result) "ん")
-               (or (null (cdr result))
-                   (stringp (cdr result)))))))
+  (let ((s (concat "n" input))
+        (call-count 0))
+    (nskk--convert-step-n/k s
+      (lambda (kana rest)
+        (cl-incf call-count)
+        (and (stringp kana)
+             (or (null rest) (stringp rest))))
+      (lambda (_remaining) (cl-incf call-count) t)
+      (lambda () (cl-incf call-count) t))
+    (= call-count 1))
   100 3003)
 
 ;;;
@@ -1022,7 +1084,7 @@
       (nskk-converter-initialize)
       (should (progn (nskk-converter-define-rules) t)))))
 
-;;; nskk-convert-n--internal/k behavior is tested above via CPS variant tests.
+;;; nskk--convert-step-n/k behavior is tested above via CPS variant tests.
 
 ;;;
 ;;; nskk-convert-romaji--internal/k CPS variant

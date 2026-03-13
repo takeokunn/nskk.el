@@ -2080,40 +2080,6 @@
   50)
 
 
-;;;;
-;;;; Test Suite Organization
-;;;;
-
-(defun nskk-azik-test-run-all ()
-  "Run all AZIK tests."
-  (interactive)
-  (ert-run-tests-batch "azik"))
-
-(defun nskk-azik-test-run-style ()
-  "Run AZIK style switching tests."
-  (interactive)
-  (ert-run-tests-batch "^nskk-it/azik-style-switching"))
-
-(defun nskk-azik-test-run-hatsuon ()
-  "Run AZIK 撥音拡張 tests."
-  (interactive)
-  (ert-run-tests-batch "^nskk-it/azik-hatsuon"))
-
-(defun nskk-azik-test-run-diphthong ()
-  "Run AZIK 二重母音拡張 tests."
-  (interactive)
-  (ert-run-tests-batch "^nskk-it/azik-diphthong"))
-
-(defun nskk-azik-test-run-youon ()
-  "Run AZIK 拗音互換キー tests."
-  (interactive)
-  (ert-run-tests-batch "^nskk-it/azik-youon"))
-
-(defun nskk-azik-test-run-compatibility ()
-  "Run AZIK compatibility tests."
-  (interactive)
-  (ert-run-tests-batch "^nskk-it/azik-compatibility"))
-
 
 ;;;
 ;;; Low-level AZIK helpers

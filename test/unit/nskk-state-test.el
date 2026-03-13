@@ -905,26 +905,6 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
                                (lambda () (setq failed t)))
       (should failed))))
 
-(nskk-describe "nskk-state-set-henkan-phase/k"
-  (nskk-it "calls on-found with t for a valid phase transition"
-    (let ((state (nskk-state-create 'hiragana))
-          done)
-      (nskk-state-set-henkan-phase/k state 'on
-                                     (lambda (_) (setq done t))
-                                     (lambda () (should nil)))
-      (should done)
-      (should (eq (nskk-state-henkan-phase state) 'on))))
-
-  (nskk-it "calls on-not-found for an invalid phase transition"
-    (let ((state (nskk-state-create 'hiragana))
-          got-not-found)
-      ;; nil -> active is invalid
-      (nskk-state-set-henkan-phase/k state 'active
-                                     (lambda (_) (should nil))
-                                     (lambda () (setq got-not-found t)))
-      (should got-not-found)
-      (should (null (nskk-state-henkan-phase state))))))
-
 (nskk-describe "nskk-state-next-candidate/k and nskk-state-previous-candidate/k"
   (nskk-it "next-candidate/k calls on-candidate with the next candidate"
     (let ((state (nskk-state-create))
@@ -1066,35 +1046,7 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
                  `(mode-properties nonexistent ,'\?s ,'\?f ,'\?h ,'\?c)))))
 
 ;;;
-;;; Prolog Predicate Tests: preedit-phase/1
-;;;
-
-(nskk-describe "preedit-phase Prolog predicate"
-  (nskk-deftest-table state-prolog-preedit-phase-known
-    :description "preedit-phase/1 succeeds for known phases"
-    :columns (phase)
-    :rows ((normal) (preedit))
-    :body (should (nskk-prolog-query-one `(preedit-phase ,phase))))
-
-  (nskk-it "returns nil for unknown phase 'on'"
-    (should-not (nskk-prolog-query-one '(preedit-phase on)))))
-
-;;;
-;;; Prolog Predicate Tests: registration-phase/1
-;;;
-
-(nskk-describe "registration-phase Prolog predicate"
-  (nskk-deftest-table state-prolog-registration-phase-known
-    :description "registration-phase/1 succeeds for known phases"
-    :columns (phase)
-    :rows ((active) (list))
-    :body (should (nskk-prolog-query-one `(registration-phase ,phase))))
-
-  (nskk-it "returns nil for invalid phase 'normal'"
-    (should-not (nskk-prolog-query-one '(registration-phase normal)))))
-
-;;;
-;;; Prolog Predicate Tests: state-slot-default/2 and resettable-field/1
+;;; Prolog Predicate Tests: state-slot-default/2
 ;;;
 
 (nskk-describe "state-slot-default Prolog predicate"
@@ -1117,22 +1069,6 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
 
   (nskk-it "returns nil for unknown slot"
     (should-not (nskk-prolog-query-one '(state-slot-default nonexistent \?v)))))
-
-(nskk-describe "resettable-field Prolog predicate"
-  (nskk-deftest-table state-prolog-resettable-fields
-    :description "resettable-field/1 succeeds for each slot that has a default"
-    :columns (slot)
-    :rows ((input-buffer) (converted-buffer) (candidates) (current-index)
-           (henkan-position) (marker-position) (undo-stack) (redo-stack)
-           (henkan-phase) (metadata))
-    :body (should (nskk-prolog-query-one `(resettable-field ,slot))))
-
-  (nskk-it "mode is NOT a resettable field (preserved on reset)"
-    (should-not (nskk-prolog-query-one '(resettable-field mode))))
-
-  (nskk-it "enumerates exactly 10 resettable fields"
-    (let ((fields (nskk-prolog-query-all-values '(resettable-field \?s) '\?s)))
-      (should (= (length fields) 10)))))
 
 ;;;
 ;;; Property-Based Tests for CPS Variants
@@ -1383,11 +1319,6 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
                      '(mode-properties hiragana \?s \?f \?h \?c))))
         (should result))))
 
-  (nskk-it "populates resettable-field/1 facts"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-state-initialize-prolog)
-      (should (nskk-prolog-holds-p '(resettable-field input-buffer)))))
-
   (nskk-it "is idempotent: calling twice does not cause errors"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
@@ -1462,26 +1393,6 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
     (let ((state (nskk-state-create 'hiragana)))
       (nskk-state-slot-dispatch state 'nonexistent-slot 'katakana mode candidates)
       (should (eq (nskk-state-mode state) 'hiragana)))))
-
-;;;
-;;; nskk--state-get-default
-;;;
-
-(nskk-describe "nskk--state-get-default"
-  (nskk-it "returns 0 as default for current-index slot"
-    (should (equal (nskk--state-get-default 'current-index) 0)))
-
-  (nskk-it "returns nil as default for candidates slot"
-    (should (null (nskk--state-get-default 'candidates))))
-
-  (nskk-it "returns empty string as default for input-buffer slot"
-    (should (equal (nskk--state-get-default 'input-buffer) "")))
-
-  (nskk-it "returns empty string as default for converted-buffer slot"
-    (should (equal (nskk--state-get-default 'converted-buffer) "")))
-
-  (nskk-it "returns nil for an unknown slot"
-    (should (null (nskk--state-get-default 'nonexistent-slot)))))
 
 ;;;;
 ;;;; Sequence-Based State-Struct Tests (moved from integration layer)

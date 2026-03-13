@@ -108,17 +108,9 @@
 (declare-function nskk--clear-conversion-context "nskk-henkan")
 (declare-function nskk--commit-by-phase "nskk-keymap")
 
-(defvar nskk-mode-hook nil
-  "Hook run when NSKK mode is enabled.
-DDSKK equivalent: skk-mode-hook")
-
 (defvar nskk-mode-off-hook nil
   "Hook run when NSKK mode is disabled.
 DDSKK equivalent: skk-mode-off-hook")
-
-(defvar nskk-input-mode-hook nil
-  "Hook run when input mode changes.
-DDSKK equivalent: skk-input-mode-hook")
 
 (defvar nskk--system-dict-index)
 

@@ -95,13 +95,6 @@
   :package-version '(nskk . "0.1.0")
   :group 'nskk-state)
 
-(defcustom nskk-state-undo-limit 100
-  "Maximum number of undo operations to keep in history."
-  :type 'natnum
-  :safe #'natnump
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-state)
-
 ;;;; Converter Settings
 ;;
 ;; Note: nskk-kana group is defined in nskk-kana.el.
@@ -110,25 +103,6 @@
   "Romaji to Kana conversion settings."
   :prefix "nskk-converter-"
   :group 'nskk)
-
-(defcustom nskk-converter-use-sokuon t
-  "Whether to enable automatic sokuon (small tsu) conversion."
-  :type 'boolean
-  :safe #'booleanp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-converter)
-
-(defcustom nskk-converter-n-processing-mode 'smart
-  "How to process \\='n' for \\='ん' (hiragana) or \\='ン' (katakana).
-\\='smart means auto-detect based on context.
-\\='strict means \\='nn' is required.
-\\='loose means single \\='n' is sufficient."
-  :type '(choice (const :tag "Smart (auto)" smart)
-                 (const :tag "Strict (nn required)" strict)
-                 (const :tag "Loose (single n ok)" loose))
-  :safe #'symbolp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-converter)
 
 (defcustom nskk-converter-auto-start-henkan t
   "Whether to automatically start conversion on uppercase input."
@@ -173,32 +147,10 @@ Zero disables fuzzy matching."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
-(defcustom nskk-search-enable-cache t
-  "Enable search result caching when non-nil."
-  :type 'boolean
-  :safe #'booleanp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-search)
-
 (defcustom nskk-search-learning-file "~/.emacs.d/nskk/learning.dat"
   "File path for persisting learning data."
   :type 'file
   :safe #'stringp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-search)
-
-(defcustom nskk-search-auto-save t
-  "When non-nil, automatically save learning data periodically."
-  :type 'boolean
-  :safe #'booleanp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-search)
-
-(defcustom nskk-search-auto-save-interval 300
-  "Auto-save interval in seconds for learning data.
-Zero means save on every update."
-  :type 'natnum
-  :safe #'natnump
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 

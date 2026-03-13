@@ -42,17 +42,11 @@
 (nskk-deftest-table custom-variable-registration
   :columns (var)
   :rows ((nskk-state-default-mode)
-         (nskk-state-undo-limit)
-         (nskk-converter-use-sokuon)
-         (nskk-converter-n-processing-mode)
          (nskk-converter-auto-start-henkan)
          (nskk-converter-romaji-style)
          (nskk-search-sort-method)
          (nskk-search-fuzzy-threshold)
-         (nskk-search-enable-cache)
          (nskk-search-learning-file)
-         (nskk-search-auto-save)
-         (nskk-search-auto-save-interval)
          (nskk-jisyo-files)
          (nskk-modeline-format)
          (nskk-use-color-cursor)
@@ -72,7 +66,6 @@
 (nskk-deftest-table custom-symbol-defaults
   :columns (var expected)
   :rows ((nskk-state-default-mode          ascii)
-         (nskk-converter-n-processing-mode smart)
          (nskk-converter-romaji-style       standard)
          (nskk-search-sort-method           frequency))
   :description "Symbol-typed defcustom variables have correct default values"
@@ -80,9 +73,7 @@
 
 (nskk-deftest-table custom-integer-defaults
   :columns (var expected)
-  :rows ((nskk-state-undo-limit               100)
-         (nskk-search-fuzzy-threshold          3)
-         (nskk-search-auto-save-interval       300)
+  :rows ((nskk-search-fuzzy-threshold          3)
          (nskk-henkan-show-candidates-nth      5)
          (nskk-henkan-number-to-display-candidates 7)
          (nskk-max-registration-depth          3)
@@ -92,10 +83,7 @@
 
 (nskk-deftest-table custom-boolean-true-defaults
   :columns (var)
-  :rows ((nskk-converter-use-sokuon)
-         (nskk-converter-auto-start-henkan)
-         (nskk-search-enable-cache)
-         (nskk-search-auto-save)
+  :rows ((nskk-converter-auto-start-henkan)
          (nskk-use-color-cursor))
   :description "Boolean defcustom variables that default to t"
   :body (should (eq (default-value var) t)))
@@ -175,26 +163,17 @@
 
 (nskk-deftest-table safe-predicate-accepts-valid-values
   :columns (var valid-value)
-  :rows ((nskk-state-undo-limit                    42)
-         (nskk-state-undo-limit                    0)
-         (nskk-search-fuzzy-threshold              0)
-         (nskk-search-auto-save-interval           60)
+  :rows ((nskk-search-fuzzy-threshold              0)
          (nskk-henkan-show-candidates-nth          3)
          (nskk-henkan-number-to-display-candidates 10)
          (nskk-max-registration-depth              1)
          (nskk-debug-max-entries                   500)
-         (nskk-converter-use-sokuon                t)
-         (nskk-converter-use-sokuon                nil)
          (nskk-converter-auto-start-henkan         t)
          (nskk-converter-auto-start-henkan         nil)
-         (nskk-search-enable-cache                 t)
-         (nskk-search-enable-cache                 nil)
-         (nskk-search-auto-save                    t)
          (nskk-use-color-cursor                    nil)
          (nskk-debug-enabled                       nil)
          (nskk-state-default-mode                  ascii)
          (nskk-state-default-mode                  hiragana)
-         (nskk-converter-n-processing-mode         strict)
          (nskk-converter-romaji-style              azik)
          (nskk-search-sort-method                  kana)
          (nskk-modeline-format                     " SKK")
@@ -208,16 +187,11 @@
 
 (nskk-deftest-table safe-predicate-rejects-invalid-types
   :columns (var invalid-value)
-  :rows ((nskk-state-undo-limit               "string")
-         (nskk-state-undo-limit               3.14)
-         (nskk-search-fuzzy-threshold         t)
+  :rows ((nskk-search-fuzzy-threshold         t)
          (nskk-henkan-show-candidates-nth     3.14)
-         (nskk-converter-use-sokuon           42)
-         (nskk-converter-use-sokuon           "true")
          (nskk-converter-auto-start-henkan    1)
          (nskk-state-default-mode             42)
          (nskk-state-default-mode             "ascii")
-         (nskk-converter-n-processing-mode    42)
          (nskk-modeline-format                42)
          (nskk-search-learning-file           42)
          (nskk-jisyo-files                    "not-a-list")
@@ -239,13 +213,11 @@
   ;; since no small-positive-integer generator exists in the project.
   (cl-every (lambda (v)
               (and (natnump v)
-                   (funcall (get 'nskk-state-undo-limit 'safe-local-variable) v)
                    (funcall (get 'nskk-debug-max-entries 'safe-local-variable) v)
                    (funcall (get 'nskk-search-fuzzy-threshold 'safe-local-variable) v)
                    (funcall (get 'nskk-henkan-show-candidates-nth 'safe-local-variable) v)
                    (funcall (get 'nskk-henkan-number-to-display-candidates 'safe-local-variable) v)
-                   (funcall (get 'nskk-max-registration-depth 'safe-local-variable) v)
-                   (funcall (get 'nskk-search-auto-save-interval 'safe-local-variable) v)))
+                   (funcall (get 'nskk-max-registration-depth 'safe-local-variable) v)))
             '(0 1 5 10 50 100 500 1000))
   20 42)
 
@@ -264,10 +236,7 @@
 ;; any non-boolean value.
 (nskk-property-test-seeded custom-pbt-boolean-vars-reject-non-booleans
   ((n romaji-string))
-  (let ((bool-vars '(nskk-converter-use-sokuon
-                     nskk-converter-auto-start-henkan
-                     nskk-search-enable-cache
-                     nskk-search-auto-save
+  (let ((bool-vars '(nskk-converter-auto-start-henkan
                      nskk-use-color-cursor
                      nskk-debug-enabled)))
     (cl-every (lambda (var)

@@ -622,36 +622,6 @@ in this list.")
         (should (= (nskk--search-reading-score "かんじ" entry) 0))))))
 
 ;;;
-;;; Sort Entry by Learning Tests
-;;;
-
-(nskk-describe "nskk--search-sort-entry-by-learning"
-  (nskk-it "reorders candidates by Prolog score descending"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'learning-score 3)
-      (nskk-prolog-assert '((learning-score "かんじ" "漢字" 1)))
-      (nskk-prolog-assert '((learning-score "かんじ" "感じ" 5)))
-      (let ((entry (make-nskk-dict-entry :key "かんじ" :candidates '("漢字" "感じ"))))
-        (nskk--search-sort-entry-by-learning entry)
-        ;; Higher score (感じ=5) should come first
-        (should (equal (car (nskk-dict-entry-candidates entry)) "感じ")))))
-
-  (nskk-it "preserves original order when scores are equal"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'learning-score 3)
-      (let ((entry (make-nskk-dict-entry :key "かんじ" :candidates '("漢字" "感じ"))))
-        (let ((result (nskk--search-sort-entry-by-learning entry)))
-          ;; Returns the entry itself
-          (should (eq result entry))
-          ;; All candidates still present
-          (should (= (length (nskk-dict-entry-candidates entry)) 2))))))
-
-  (nskk-it "returns nil gracefully for nil input"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'learning-score 3)
-      (should (null (nskk--search-sort-entry-by-learning nil))))))
-
-;;;
 ;;; Sort Prefix Results Tests
 ;;;
 

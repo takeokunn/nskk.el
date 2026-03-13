@@ -556,33 +556,6 @@ TYPE-HINT specifies the type of VALUE for optimized shrinking."
       (nskk-shrink-report-final value result))
     result))
 
-(defun nskk-pbt-with-shrinking (generator property-fn &optional runs)
-  "Run PROPERTY-FN with generated values, shrinking on failure.
-GENERATOR is a function that produces random test values.
-RUNS is the number of test runs (default: nskk-test-property-runs).
-Returns (PASSED . MINIMAL-FAILING-CASE) or (t . nil) if all passed."
-  (let ((test-runs (or runs nskk-test-property-runs))
-        (failing-case nil))
-    (cl-block test-loop
-      (dotimes (_ test-runs)
-        (let ((value (funcall generator)))
-          (condition-case nil
-              (progn
-                (funcall property-fn value))
-            (error
-             (setq failing-case value)
-             (cl-return-from test-loop))))))
-    (if failing-case
-        (let ((minimal (nskk-pbt-shrink-failing-case
-                        failing-case
-                        (lambda (v)
-                          (condition-case nil
-                              (progn (funcall property-fn v) nil)
-                            (error t))))))
-          (cons nil minimal))
-      (cons t nil))))
-
-
 (provide 'nskk-pbt-shrink)
 
 ;;; nskk-pbt-shrink.el ends here

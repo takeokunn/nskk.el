@@ -57,15 +57,6 @@ TRIGGER is ignored; a random valid mode is chosen."
     (nskk-state-set state 'mode new-mode)
     state))
 
-(defun nskk--sm-transition-with-context (state _trigger)
-  "Transition STATE to a new mode and clear conversion context.
-TRIGGER is ignored; a random valid mode is chosen."
-  (let ((new-mode (nskk--pbt-generate-valid-mode)))
-    (nskk-state-set state 'mode new-mode)
-    ;; Simulate clearing context on mode switch
-    (nskk-state-reset state)
-    state))
-
 (defun nskk--sm-roundtrip-hiragana-katakana (state _trigger)
   "Perform hiragana -> katakana -> hiragana roundtrip on STATE."
   (nskk-state-set state 'mode 'katakana)

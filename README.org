@@ -226,16 +226,9 @@ stateDiagram-v2
 #+end_src
 ** Hooks
 #+begin_src elisp
-;; Run when NSKK is enabled in a buffer
-(add-hook 'nskk-mode-hook
-          (lambda () (message "NSKK activated")))
-
 ;; Run when NSKK is disabled
 (add-hook 'nskk-mode-off-hook
           (lambda () (message "NSKK deactivated")))
-
-;; Run on every input-mode change (ascii → hiragana, etc.)
-(add-hook 'nskk-input-mode-hook #'my-nskk-mode-change-handler)
 #+end_src
 ** Customization Group
 #+begin_example

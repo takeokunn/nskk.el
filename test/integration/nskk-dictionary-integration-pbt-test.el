@@ -76,15 +76,6 @@
     "かぜ" "あめ" "ゆき")
   "Keys known to exist in the test fixture dictionary.")
 
-(defconst nskk--pbt-known-dict-expected
-  '(("かんじ" . ("漢字" "感じ" "幹事"))
-    ("にほん" . ("日本" "二本"))
-    ("にほんご" . ("日本語"))
-    ("さくら" . ("桜"))
-    ("やま" . ("山"))
-    ("かわ" . ("川" "河")))
-  "Known key -> candidates mappings from fixture dictionary.")
-
 (defun nskk--pbt-generate-unknown-key ()
   "Generate a key that is unlikely to exist in the fixture dictionary."
   (let ((prefixes '("zzz" "xxx" "qqq" "www"))

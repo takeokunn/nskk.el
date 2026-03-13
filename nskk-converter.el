@@ -32,7 +32,7 @@
 ;; Read-only conversion functions (`nskk-converter-lookup', `nskk-converter-convert',
 ;; `nskk-convert-romaji') are stateless and have no buffer side effects.
 ;; Style-loading and initialization functions (`nskk-converter-load-style',
-;; `nskk-converter-initialize') mutate the global romaji table and Prolog database.
+;; `nskk-converter-initialize') mutate the Prolog database.
 ;; All transient conversion state (pending romaji, henkan phase) is managed by the
 ;; Application layer (nskk-input, nskk-henkan).
 ;;
@@ -42,12 +42,12 @@
 ;; `defun/k' (on-found/on-not-found), `defun/done' (on-done), or `defun/3k'
 ;; (three explicit continuations, e.g. on-kana/on-partial/on-fail) as appropriate.
 ;; `defun/3k' is used when the function has three semantically distinct outcomes
-;; with no natural default sync-wrapper mapping.  Internal function
-;; `nskk--convert-step/k' is a `defun/3k' example.
+;; with no natural default sync-wrapper mapping.  Internal functions
+;; `nskk--convert-step/k' and `nskk--convert-step-n/k' are `defun/3k' examples.
 ;; See `nskk-cps-macros.el' for macro documentation.
 ;;
 ;; It handles:
-;; - Romaji-to-kana conversion using a table-driven longest-match approach
+;; - Romaji-to-kana conversion using a Prolog trie longest-match approach
 ;; - Partial and complete romaji sequence matching
 ;; - Vowel-based conversion (a, i, u, e, o)
 ;; - Consonant-vowel combinations (ka, ki, ku, ke, ko, etc.)
@@ -55,6 +55,10 @@
 ;; - Small kana and digraph handling
 ;; - Sokuon (っ) detection: doubled consonant
 ;; - Hatsuon (ん) detection: n followed by non-vowel/non-y/non-n/non-quote
+;;
+;; The Prolog trie index (`romaji-to-kana/2') is the single source of truth
+;; for all romaji-to-kana mappings.  Lookups, longest-match, and prefix
+;; queries all go through the trie; no separate hash table is maintained.
 ;;
 ;; Romaji styles are registered via `nskk-converter-register-style' and
 ;; loaded on demand.  Standard SKK style is initialized at load time.
@@ -87,7 +91,9 @@
 ;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)
 (defvar nskk--romaji-table
   (make-hash-table :test 'equal :size 200)
-  "Romaji to kana conversion table.")
+  "Romaji to kana conversion table.
+Used as a cache by AZIK and for hash-based lookups.  The Prolog trie
+is the primary source of truth for `nskk-converter-lookup'.")
 
 (defvar nskk--style-registry '((standard . nskk--initialize-romaji-table))
   "Registry mapping style symbols to their initialization functions.
@@ -201,21 +207,15 @@ Example:
                rule-pairs)))
 
 (defun nskk--initialize-romaji-table ()
-  "Populate the romaji conversion table with standard SKK rules.
-Rules are sourced from `nskk--standard-romaji-rules'.
-This function only populates rules; clearing, trie setup, and
-incomplete-marker population are handled by `nskk-converter-load-style'.
-As a side effect, asserts all rules as `romaji-to-kana' Prolog facts via
-`nskk-prolog-bulk-facts', making them available for Prolog queries."
+  "Populate romaji-to-kana Prolog facts from `nskk--standard-romaji-rules'.
+Also populates `nskk--romaji-table' hash table for AZIK and input lookups."
   (dolist (rule nskk--standard-romaji-rules)
     (puthash (car rule) (cadr rule) nskk--romaji-table))
   (nskk-prolog-bulk-facts romaji-to-kana nskk--standard-romaji-rules))
 
 (defun nskk--converter-populate-incomplete-markers ()
-  "Populate nskk--romaji-table with :incomplete for all proper romaji prefixes.
-Auto-derived from the complete romaji entries already in the table.
-This eliminates manual maintenance of prefix lists when adding new rules.
-O(n·k) where n is number of complete rules and k is average romaji length."
+  "Populate `nskk--romaji-table' with :incomplete for all proper romaji prefixes.
+Auto-derived from the complete romaji entries already in the table."
   (let (keys)
     (maphash (lambda (k _v) (when (stringp k) (push k keys)))
              nskk--romaji-table)
@@ -226,16 +226,19 @@ O(n·k) where n is number of complete rules and k is average romaji length."
             (unless (gethash prefix nskk--romaji-table)
               (puthash prefix :incomplete nskk--romaji-table))))))))
 
-
-(define-inline nskk-converter-lookup (romaji)
-  "Look up ROMAJI in conversion table.
-Returns kana string if found, nil if not found.
-Returns :incomplete if ROMAJI is a partial match.
-Declared inline for hot path optimization."
-  (inline-letevals (romaji)
-    (inline-quote
-     (when (stringp ,romaji)
-       (gethash ,romaji nskk--romaji-table)))))
+(defun nskk-converter-lookup (romaji)
+  "Look up ROMAJI in the romaji-to-kana conversion system.
+Returns kana string if ROMAJI is a complete rule, :incomplete if ROMAJI
+is a proper prefix of some rule, or nil if no match.
+Uses the hash table for O(1) exact-match lookups (includes both standard
+and AZIK rules), falling back to the Prolog trie for prefix detection."
+  (when (stringp romaji)
+    (let ((result (gethash romaji nskk--romaji-table)))
+      (cond
+       ((stringp result) result)
+       ((eq result :incomplete) :incomplete)
+       ((nskk-prolog-trie-has-prefix-p 'romaji-to-kana 2 romaji)
+        :incomplete)))))
 
 (defun/k nskk-convert-romaji (romaji)
   "Convert ROMAJI string to kana by repeatedly applying longest-match conversion.
@@ -246,38 +249,14 @@ Returns converted kana string for string input, nil for nil input."
              ((zerop (length romaji)) "")
              (t (nskk-convert-romaji--internal (downcase romaji))))))
 
-(defun/k nskk-convert-n--internal (remaining)
-  "Handle all ん-producing cases where REMAINING begins with character n.
-Precondition: REMAINING must be a non-empty string whose first character is ?n.
-Returns (kana . rest) cons cell via on-found, or calls on-not-found
-to fall through to normal table-driven conversion."
-  (let ((len (length remaining)))
-    (cond
-     ;; Standalone \"n\" at end of input
-     ((= len 1)
-      (succeed (cons "ん" nil)))
-     ;; \"nn\" sequence: double-n always produces ん
-     ((= (aref remaining 1) ?n)
-      (if (= len 2)
-          (succeed (cons "ん" nil))
-        (succeed (cons "ん" (substring remaining 1)))))
-     ;; \"n'\" sequence: n followed by single quote (ASCII 39)
-     ((= (aref remaining 1) ?')
-      (succeed (cons "ん" (if (> len 2) (substring remaining 2) nil))))
-     ;; \"n\" before a consonant (not in hatsuon-blocker set)
-     ((not (memq (aref remaining 1) nskk--hatsuon-blockers))
-      (succeed (cons "ん" (substring remaining 1))))
-     ;; n followed by vowel/y/etc: fall through to table lookup (\"na\"->\"な\")
-     (t (fail)))))
-
 (defun nskk--sokuon-p (c0 remaining)
   "Return non-nil if C0 and REMAINING qualify as a sokuon (っ) trigger.
 C0 is a character integer, typically (aref remaining 0) from the caller.
-REMAINING is the unconsumed romaji string; must have length ≥ 2 for the
+REMAINING is the unconsumed romaji string; must have length >= 2 for the
 doubling check to succeed (length < 2 always returns nil).
 Sokuon occurs when C0 is an ASCII consonant not in `nskk--sokuon-blockers',
 C0 equals the second character of REMAINING, and the two-character pair is
-not a complete romaji rule (allowing AZIK entries like \"kk\" → \"きん\" to
+not a complete romaji rule (allowing AZIK entries like \"kk\" -> \"きん\" to
 override sokuon via `nskk-converter-lookup')."
   (and (> (length remaining) 1)
        (< c0 128)
@@ -285,72 +264,97 @@ override sokuon via `nskk-converter-lookup')."
        (not (memq c0 nskk--sokuon-blockers))
        (not (stringp (nskk-converter-lookup (substring remaining 0 2))))))
 
+(defun/3k nskk--convert-step-n (remaining)
+    (on-kana on-partial on-fail)
+  "Handle n-prefix conversion for REMAINING (which starts with ?n).
+ON-KANA is called as (funcall ON-KANA kana rest) when hatsuon produces ん.
+ON-PARTIAL and ON-FAIL are forwarded to `nskk-converter-convert/k' when
+the n-prefix falls through to the trie (e.g. na, ni, nya)."
+  (let ((len (length remaining)))
+    (cond
+     ;; Standalone n at end
+     ((= len 1)
+      (funcall on-kana "ん" nil))
+     ;; nn -> ん (keep second n for potential next match)
+     ((= (aref remaining 1) ?n)
+      (funcall on-kana "ん" (if (> len 2) (substring remaining 1) nil)))
+     ;; n' -> ん
+     ((= (aref remaining 1) ?')
+      (funcall on-kana "ん" (if (> len 2) (substring remaining 2) nil)))
+     ;; n + non-blocker consonant -> ん + rest
+     ((not (memq (aref remaining 1) nskk--hatsuon-blockers))
+      (funcall on-kana "ん" (substring remaining 1)))
+     ;; n + vowel/y: fall through to trie lookup (na->な, etc.)
+     (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
+
 (defun/3k nskk--convert-step (remaining)
     (on-kana on-partial on-fail)
   "Dispatch one conversion step for REMAINING (must be a non-empty string).
-ON-KANA is called as (funcall ON-KANA kana rest) on a successful conversion:
-kana is the produced string (\"っ\", \"ん\", or a table kana), rest is the
-unconsumed tail (a non-empty string, empty string when fully consumed, or nil).
+ON-KANA is called as (funcall ON-KANA kana rest) on a successful conversion.
 ON-PARTIAL is called as (funcall ON-PARTIAL remaining) when REMAINING is a
 known incomplete prefix with no full match yet.
 ON-FAIL is called as (funcall ON-FAIL) when REMAINING has no match and is not
 a known prefix.
-Three dispatch branches:
-  1. Sokuon: doubled ASCII consonant not in `nskk--sokuon-blockers' and not a
-     complete rule — emits っ and advances by one character.
-  2. n-prefix: delegates to `nskk-convert-n--internal/k'; on success calls
-     ON-KANA; on failure (n before vowel/y/n/apostrophe, see
-     `nskk--hatsuon-blockers') falls through to table lookup.
-  3. Normal: delegates to `nskk-converter-convert/k'."
+Handles sokuon, hatsuon (via `nskk--convert-step-n/k'), and normal trie lookup
+in a flat cond."
   (let ((c0 (aref remaining 0)))
     (cond
+     ;; Sokuon: doubled consonant
      ((nskk--sokuon-p c0 remaining)
       (funcall on-kana "っ" (substring remaining 1)))
+     ;; n-handling: delegated to nskk--convert-step-n/k
      ((= c0 ?n)
-      (nskk-convert-n--internal/k remaining
-        (lambda (r) (funcall on-kana (car r) (cdr r)))
-        (lambda () (nskk-converter-convert/k remaining on-kana on-partial on-fail))))
-     (t
-      (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
+      (nskk--convert-step-n/k remaining on-kana on-partial on-fail))
+     ;; Normal: trie longest-match
+     (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
+
+(defun nskk--convert-loop/k (remaining parts on-found _on-not-found)
+  "Tail-recursive conversion loop. [CPS]
+REMAINING is the unconsumed input, PARTS is accumulated kana (reversed).
+Always calls ON-FOUND with the assembled kana string.
+Hand-written explicit pair because ON-FOUND must be passed as a value
+to the recursive call (defun/k only rewrites succeed/fail call forms)."
+  (if (or (null remaining) (zerop (length remaining)))
+      (funcall on-found (apply #'concat (nreverse parts)))
+    (nskk--convert-step/k remaining
+      (lambda (kana rest)
+        (nskk--convert-loop/k
+         (and (stringp rest) (> (length rest) 0) rest)
+         (cons kana parts)
+         on-found _on-not-found))
+      (lambda (partial)
+        (funcall on-found
+                 (apply #'concat (nreverse (cons partial parts)))))
+      (lambda ()
+        (funcall on-found
+                 (apply #'concat (nreverse (cons remaining parts))))))))
+
+(defun nskk--convert-loop (remaining parts)
+  "Tail-recursive conversion loop (sync wrapper)."
+  (nskk--convert-loop/k remaining parts #'identity #'ignore))
+(put 'nskk--convert-loop/k 'nskk--cps-continuation-pattern :found-not-found)
 
 (defun/k nskk-convert-romaji--internal (input)
-  "Internal romaji conversion for INPUT string.
-Accumulates converted parts as a list and joins at the end to avoid
-the O(n²) string allocation of repeated `concat' calls in a loop.
-Each iteration delegates to `nskk--convert-step/k' for single-token
-dispatch (sokuon / n-prefix / table lookup), keeping the loop body flat.
-INPUT must be a non-empty, already-downcased string (the caller
-`nskk-convert-romaji' applies `downcase' before invoking this function).
-Always calls on-found with the assembled kana string; on-not-found is
-never called.  The sync wrapper returns the kana string directly.
-Partial romaji prefixes are appended verbatim to the output and
-iteration stops; no continuation is signalled for partial matches."
-  (succeed (let ((parts nil)
-                 (remaining input))
-             (while (and remaining (> (length remaining) 0))
-               (nskk--convert-step/k remaining
-                 (lambda (kana rest)
-                   (push kana parts)
-                   (setq remaining (and (stringp rest) (> (length rest) 0) rest)))
-                 (lambda (partial) (push partial parts) (setq remaining nil))
-                 (lambda ()        (push remaining parts) (setq remaining nil))))
-             (apply #'concat (nreverse parts)))))
+  "Internal romaji conversion via tail-recursive CPS loop.
+INPUT must be a non-empty, already-downcased string."
+  (succeed (nskk--convert-loop input nil)))
 
 (defun/3k nskk-converter-convert (romaji)
     (on-match on-incomplete on-fail)
-  "Convert ROMAJI string to kana and dispatch to a continuation.
+  "Convert ROMAJI string to kana via longest-match lookup.
 ON-MATCH is called as (funcall ON-MATCH kana remaining) when a complete match
 is found; kana is the converted string, remaining is the unconsumed romaji.
 ON-INCOMPLETE is called as (funcall ON-INCOMPLETE romaji) when ROMAJI is a
 proper prefix of a known sequence (no full match yet).
 ON-FAIL is called as (funcall ON-FAIL) when ROMAJI is nil, empty, or has no
-match and is not a known prefix."
+match and is not a known prefix.
+Uses `nskk-converter-lookup' for each candidate prefix length (4 down to 1)."
   (if (not (and (stringp romaji) (> (length romaji) 0)))
       (funcall on-fail)
     (cl-loop for len from (min 4 (length romaji)) downto 1
              for prefix = (substring romaji 0 len)
              for result = (nskk-converter-lookup prefix)
-             when (and result (stringp result))
+             when (stringp result)
              return (funcall on-match result (substring romaji len))
              when (eq result :incomplete)
              return (funcall on-incomplete romaji)
@@ -362,8 +366,8 @@ Returns (kana . remaining-romaji) cons cell on complete match.
 Returns (:incomplete . romaji) on partial prefix match.
 Returns nil when ROMAJI is nil, empty, or has no match."
   (nskk-converter-convert/k romaji
-    #'cons                              ; on-match:      (cons kana remaining)
-    (lambda (r) (cons :incomplete r))   ; on-incomplete: (:incomplete . romaji)
+    #'cons
+    (lambda (r) (cons :incomplete r))
     (lambda () nil)))
 
 (defun/k nskk-converter-get-possible-completions (romaji)
@@ -379,25 +383,25 @@ The sync wrapper returns the list on success, nil on failure."
 
 (defun/done nskk-converter-add-rule (romaji kana)
   "Add ROMAJI -> KANA mapping to hash table and Prolog database.
-Called for side effects."
+Retracts any existing fact for ROMAJI first so overrides replace
+the old value in the trie rather than appending a duplicate."
   (puthash romaji kana nskk--romaji-table)
   (when (stringp kana)
+    (nskk-prolog-retract (list 'romaji-to-kana romaji '\?_))
     (nskk-prolog-assert (list (list 'romaji-to-kana romaji kana)))))
 
 (defun/done nskk-converter-remove-rule (romaji)
-  "Remove ROMAJI from conversion table and Prolog database.
-Called for side effects; the sync wrapper always returns nil.
-If ROMAJI is not present in the table, this is a no-op."
+  "Remove ROMAJI from hash table and Prolog database."
   (remhash romaji nskk--romaji-table)
   (nskk-prolog-retract (list 'romaji-to-kana romaji '\?_)))
 
 (defun/k nskk-converter-get-rule (romaji)
   "Return the value mapped to ROMAJI in the conversion table.
-On success, calls on-found with the kana string or the symbol `:incomplete'
-for known romaji prefixes that are not complete conversion rules.
-On failure (key absent from table), calls on-not-found.
-The sync wrapper returns the kana string, `:incomplete', or nil."
-  (let ((result (gethash romaji nskk--romaji-table)))
+On success, calls on-found with the kana string or `:incomplete'.
+On failure (key absent), calls on-not-found.
+The sync wrapper returns the kana string, `:incomplete', or nil.
+Delegates to `nskk-converter-lookup' for unified hash+trie lookup."
+  (let ((result (nskk-converter-lookup romaji)))
     (if result (succeed result) (fail))))
 
 (defun/done nskk-converter-register-style (style init-fn)
@@ -408,16 +412,11 @@ via `nskk-converter-add-rule'.  Called for side effects."
 
 (defun/k nskk-converter-load-style (style)
   "Load romaji rules for STYLE.
-Clears the existing table and Prolog database, sets trie indexing,
-calls the registered initialization function, then populates incomplete-prefix
-markers.  Each registered init-fn is responsible only for asserting conversion
-rules; orchestration (clear, index, populate) is handled by this function.
+Clears existing Prolog facts and repopulates from the registered init function.
 Valid styles are defined in `nskk--style-registry'.
 On success, calls on-found with the STYLE symbol.
 On failure (unregistered STYLE), calls on-not-found with no arguments.
-The sync wrapper returns the style symbol on success, or nil for unknown style.
-Note: the sync wrapper does NOT signal `user-error' for unknown styles; use
-`nskk-converter-load-style/k' to handle the failure path explicitly."
+The sync wrapper returns the style symbol on success, or nil for unknown style."
   (let ((init-fn (alist-get style nskk--style-registry)))
     (if init-fn
         (progn

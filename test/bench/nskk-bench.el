@@ -103,14 +103,6 @@ Each plist has :layer :name :n :ms-per-op :gc-count.")
   (nskk-bench "L0" "prolog-query-value (input-route hiragana)" 50000
     (nskk-prolog-query-value '(input-route hiragana \?action) '\?action))
 
-  ;; Rule-based query — can-transition uses derived valid-mode rule
-  (nskk-bench "L0" "prolog-holds-p rule (can-transition h→k)" 10000
-    (nskk-prolog-holds-p '(can-transition hiragana katakana)))
-
-  ;; Multi-value retrieval — iterates all resettable-field facts (10 slots)
-  (nskk-bench "L0" "prolog-query-all-values (resettable-field)" 5000
-    (nskk-prolog-query-all-values '(resettable-field \?s) '\?s))
-
   ;; Henkan phase lookup — used on every Japanese keypress
   (nskk-bench "L0" "prolog-holds-p (valid-henkan-phase on)" 50000
     (nskk-prolog-holds-p '(valid-henkan-phase on)))
@@ -235,7 +227,7 @@ Each plist has :layer :name :n :ms-per-op :gc-count.")
       (let ((s (nskk-state-create)))
         (nskk-state-force-henkan-phase s 'on)))
 
-    ;; Mode transition — validated via Prolog can-transition rule
+    ;; Mode transition
     (nskk-bench "L2a" "state-transition (hiragana→katakana)" 10000
       (let ((s (nskk-state-create 'hiragana)))
         (nskk-state-transition s 'hiragana 'katakana)))

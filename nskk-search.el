@@ -83,7 +83,6 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'subr-x)
 (require 'nskk-cps-macros)
 (require 'nskk-dictionary)
 (require 'nskk-cache)
@@ -401,17 +400,6 @@ the integer Levenshtein distance from QUERY."
           (string< (car a) (car b)))))
 
 ;;; Learning-based sorting
-
-(defun nskk--search-sort-entry-by-learning (entry)
-  "Sort candidates within ENTRY by Prolog learning scores."
-  (when (nskk-dict-entry-p entry)
-    (let ((reading (nskk-dict-entry-key entry)))
-      (setf (nskk-dict-entry-candidates entry)
-            (sort (copy-sequence (nskk-dict-entry-candidates entry))
-                  (lambda (a b)
-                    (> (nskk--search-candidate-score reading a)
-                       (nskk--search-candidate-score reading b))))))
-    entry))
 
 (defun nskk--search-sort-prefix-results (results)
   "Sort prefix search RESULTS by learning scores in descending order."

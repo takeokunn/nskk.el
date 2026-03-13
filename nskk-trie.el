@@ -27,7 +27,8 @@
 
 ;; Trie (prefix tree) data structure for NSKK (Layer 0: Foundation).
 ;;
-;; Layer position: L0 (Foundation) -- no dependencies on other nskk-* modules.
+;; Layer position: L0 (Foundation) -- compile-time dependency on
+;; nskk-cps-macros (also L0); no runtime nskk-* dependencies.
 ;;
 ;; Provides an efficient character-keyed trie for string prefix lookup,
 ;; insertion, deletion, and prefix search operations used by the dictionary
@@ -36,6 +37,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(eval-when-compile (require 'nskk-cps-macros))
 
 ;;;; Trie Node Structure
 
@@ -44,12 +46,10 @@
                (:copier nil))
   "Trie node for NSKK.
 Slots:
-  char     - character this node represents (nil for root)
   children - hash-table of child nodes (char -> node)
   value    - value stored at this node (terminal nodes only)
   is-end   - non-nil if this node terminates a key
   count    - number of keys passing through this node"
-  (char nil :type (or null character))
   (children nil :type (or null hash-table))
   (value nil)
   (is-end nil :type boolean)
@@ -86,7 +86,7 @@ Slots:
           (make-hash-table :test 'eq :size 50)))
   (let ((child (gethash char (nskk-trie-node-children node))))
     (unless child
-      (setq child (nskk-trie-node--create :char char))
+      (setq child (nskk-trie-node--create))
       (puthash char child (nskk-trie-node-children node)))
     (cl-incf (nskk-trie-node-count child))
     child))
@@ -111,42 +111,39 @@ Slots:
 (defun nskk--trie-find-node (trie key)
   "Return the trie node for KEY in TRIE, or nil if not found."
   (let ((node (nskk-trie-root trie))
-        (key-len (length key)))
-    (catch 'not-found
-      (dotimes (i key-len)
-        (let ((char (aref key i)))
-          (unless (and (nskk-trie-node-children node)
-                       (setq node (gethash char (nskk-trie-node-children node))))
-            (throw 'not-found nil))))
-      node)))
+        (i 0)
+        (len (length key)))
+    (while (and (< i len)
+                (nskk-trie-node-children node)
+                (setq node (gethash (aref key i) (nskk-trie-node-children node))))
+      (cl-incf i))
+    (and (= i len) node)))
 
-(defun nskk-trie-lookup (trie key)
+(defun/k nskk-trie-lookup (trie key)
   "Look up KEY in TRIE.
-Returns (value . t) if found, (nil . nil) otherwise."
+Sync wrapper returns the value if found, nil otherwise.
+To distinguish a stored nil from not-found, use the /k variant."
   (unless (stringp key)
     (error "Key must be a string: %s" key))
   (let ((node (nskk--trie-find-node trie key)))
     (if (and node (nskk-trie-node-is-end node))
-        (cons (nskk-trie-node-value node) t)
-      (cons nil nil))))
+        (succeed (nskk-trie-node-value node))
+      (fail))))
 
 (defun nskk--trie-cleanup-path (trie key)
-  "Remove leaf nodes no longer needed after deleting KEY from TRIE."
-  (let ((node (nskk-trie-root trie))
-        (parent-stack nil)
-        (key-len (length key)))
-    (dotimes (i key-len)
-      (let ((char (aref key i)))
-        (push node parent-stack)
-        (setq node (gethash char (nskk-trie-node-children node)))))
-    (while (and node
-                parent-stack
-                (nskk--trie-node-leaf-p node))
-      (let ((parent (pop parent-stack)))
-        (when (nskk-trie-node-children parent)
-          (remhash (nskk-trie-node-char node)
-                   (nskk-trie-node-children parent)))
-        (setq node parent)))))
+  "Remove orphaned nodes along the path for KEY in TRIE."
+  (let ((root (nskk-trie-root trie)))
+    (cl-labels
+        ((prune (node depth)
+           (when (< depth (length key))
+             (let* ((char (aref key depth))
+                    (children (nskk-trie-node-children node))
+                    (child (and children (gethash char children))))
+               (when child
+                 (prune child (1+ depth))
+                 (when (nskk--trie-node-leaf-p child)
+                   (remhash char children)))))))
+      (prune root 0))))
 
 (defun nskk-trie-delete (trie key)
   "Delete KEY from TRIE.
@@ -161,23 +158,24 @@ Returns t if deleted, nil if not present."
       (nskk--trie-cleanup-path trie key)
       t)))
 
-(defun nskk--trie-collect-all (node prefix limit collected-count)
-  "Collect all (key . value) pairs reachable from NODE with PREFIX."
-  (let ((results nil)
-        (count collected-count))
-    (cl-labels
-        ((dfs (n pfx)
-           (when (nskk-trie-node-is-end n)
-             (when (and limit (>= count limit))
-               (throw 'limit-reached nil))
-             (push (cons pfx (nskk-trie-node-value n)) results)
-             (cl-incf count))
-           (when-let* ((children (nskk-trie-node-children n)))
-             (maphash (lambda (char child)
-                        (dfs child (concat pfx (char-to-string char))))
-                      children))))
-      (catch 'limit-reached
-        (dfs node prefix)))
+(defun nskk--trie-collect-all (node prefix limit)
+  "Collect all (key . value) pairs reachable from NODE with PREFIX.
+Uses an iterative DFS with an explicit stack."
+  (let ((stack (list (cons node prefix)))
+        (results nil)
+        (count 0))
+    (while (and stack (or (null limit) (< count limit)))
+      (let* ((entry (pop stack))
+             (n (car entry))
+             (pfx (cdr entry)))
+        (when (nskk-trie-node-is-end n)
+          (push (cons pfx (nskk-trie-node-value n)) results)
+          (cl-incf count))
+        (when-let* ((children (nskk-trie-node-children n)))
+          (maphash (lambda (char child)
+                     (push (cons child (concat pfx (char-to-string char)))
+                           stack))
+                   children))))
     (nreverse results)))
 
 (defun nskk-trie-prefix-search (trie prefix &optional limit)
@@ -190,7 +188,38 @@ If LIMIT is non-nil, return at most LIMIT results."
                   (nskk-trie-root trie)
                 (nskk--trie-find-node trie prefix))))
     (when node
-      (nskk--trie-collect-all node prefix limit 0))))
+      (nskk--trie-collect-all node prefix limit))))
+
+(defun/k nskk-trie-longest-match (trie input)
+  "Walk TRIE character-by-character over INPUT, return longest match.
+INPUT is a string.  Sync wrapper returns (VALUE . CONSUMED-LENGTH) or nil.
+To distinguish stored nil from no match, use the /k variant.
+O(k) where k = length of INPUT."
+  (unless (stringp input)
+    (error "Input must be a string: %s" input))
+  (let ((node (nskk-trie-root trie))
+        (best nil)
+        (i 0)
+        (len (length input)))
+    (while (and (< i len)
+                (nskk-trie-node-children node)
+                (setq node (gethash (aref input i) (nskk-trie-node-children node))))
+      (cl-incf i)
+      (when (nskk-trie-node-is-end node)
+        (setq best (cons (nskk-trie-node-value node) i))))
+    (if best
+        (succeed best)
+      (fail))))
+
+(defun nskk-trie-has-prefix-p (trie prefix)
+  "Return non-nil if PREFIX leads to a node in TRIE (has children or is-end).
+This means PREFIX is either a complete key or a proper prefix of some key.
+O(k) where k = length of PREFIX."
+  (unless (stringp prefix)
+    (error "Prefix must be a string: %s" prefix))
+  (if (zerop (length prefix))
+      (nskk-trie-root trie)
+    (nskk--trie-find-node trie prefix)))
 
 (provide 'nskk-trie)
 

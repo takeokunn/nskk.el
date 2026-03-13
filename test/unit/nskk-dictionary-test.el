@@ -235,8 +235,7 @@
   (nskk-it "creates index with default values"
     (let ((index (make-nskk-dict-index)))
       (should (nskk-dict-index-p index))
-      (should (null (nskk-dict-index-predicate index)))
-      (should (null (nskk-dict-index-by-freq index)))))
+      (should (null (nskk-dict-index-predicate index)))))
 
   (nskk-it "creates index with a Prolog predicate"
     (nskk-with-prolog-entries ((test-dict "key1" ("val1"))
@@ -267,13 +266,7 @@
 (nskk-describe "dict-index accessors"
   (nskk-it "reads predicate field"
     (let ((index (make-nskk-dict-index :predicate 'my-dict)))
-      (should (eq (nskk-dict-index-predicate index) 'my-dict))))
-
-  (nskk-it "reads and sets by-freq field"
-    (let ((freq-data '((10 . "entry-a") (5 . "entry-b")))
-          (index (make-nskk-dict-index)))
-      (setf (nskk-dict-index-by-freq index) freq-data)
-      (should (equal (nskk-dict-index-by-freq index) freq-data)))))
+      (should (eq (nskk-dict-index-predicate index) 'my-dict)))))
 
 
 (nskk-describe "dict-struct integration"

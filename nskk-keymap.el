@@ -474,19 +474,6 @@ Dispatched via `q-key-dispatch/3' Prolog table."
                           (lambda () (self-insert-command 1))))
       (_                (self-insert-command 1)))))
 
-(defun nskk--l-key-dispatch-state ()
-  "Return (STYLE . BUF-STATE) cons for l-key Prolog dispatch.
-STYLE is `azik' if `nskk-converter-romaji-style' is `azik', else
-`standard'.  BUF-STATE is `azik-complete' when STYLE is `azik' and
-the current pending-romaji+l sequence is a complete AZIK hash match
-\(via `nskk--azik-complete-match-p'); `other' otherwise.
-Used by `nskk-handle-l' to query `l-key-action/3'."
-  (let ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard)))
-    (cons style
-          (if (and (eq style 'azik) (nskk--azik-complete-match-p ?l))
-              'azik-complete
-            'other))))
-
 (defun/done nskk-handle-l ()
   "Handle l key: switch to ASCII mode, or fire romaji rule when pending.
 In AZIK mode, `nskk--azik-complete-match-p' is checked first so the AZIK

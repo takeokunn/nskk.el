@@ -44,7 +44,6 @@
 ;;   core-search-type/2          -- maps search type keyword to search function
 ;;   converting-phase/1          -- enumerates valid converting phases
 ;;   okurigana-char/2            -- maps uppercase ASCII to its lowercase
-;;   okurigana-trigger/1         -- true if char is an okurigana trigger
 ;;   candidate-nav-next-action/3 -- (count threshold action) next-key dispatch
 ;;   candidate-nav-prev-action/2 -- (list-state action) prev-key dispatch
 ;;   search-result-action/2      -- (has/no candidates) post-search dispatch
@@ -280,25 +279,6 @@ Returns the selected candidate index, or nil if KEY is not valid.")
 ;; the on-not-found continuation, calling nskk-core-search/k again with a
 ;; different type.
 ;;
-;; Optional-backend adapters: these wrappers guard on `fboundp' so that
-;; nskk-server.el and nskk-program-dictionary.el remain truly optional.
-;; Each backend's own /k function also checks the enable flag internally.
-
-(defun nskk--optional-server-lookup/k (key on-found on-not-found)
-  "Attempt skkserv lookup; call ON-NOT-FOUND if absent, disabled, or unreachable."
-  (if (and (fboundp 'nskk-server-lookup/k)
-           (boundp 'nskk-server-enable)
-           nskk-server-enable
-           (nskk-server-ensure-open))
-      (nskk-server-lookup/k key on-found on-not-found)
-    (funcall on-not-found)))
-
-(defun nskk--optional-program-dict-lookup/k (key on-found on-not-found)
-  "Attempt program-dict lookup; call ON-NOT-FOUND if module not loaded."
-  (if (fboundp 'nskk-program-dict-lookup/k)
-      (nskk-program-dict-lookup/k key on-found on-not-found)
-    (funcall on-not-found)))
-
 (defun/k nskk-core-search (key &optional type limit)
   "Search the dictionary for KEY and return a list of candidates.
 TYPE is the search type: :exact (default), :prefix, or :partial.
@@ -483,14 +463,6 @@ Creates a new marker if one does not already exist."
   (and (markerp nskk--conversion-start-marker)
        (marker-position nskk--conversion-start-marker)))
 
-(defun nskk--restore-preedit ()
-  "Restore preedit text after cancel.
-Clears the conversion overlay, pending romaji overlay,
-start marker, and romaji buffer."
-  (nskk-delete-overlay nskk--conversion-overlay)
-  (nskk--clear-conversion-start-marker)
-  (nskk--reset-romaji-buffer))
-
 ;;;; Clear Conversion Context
 
 (defmacro nskk-when-bound (var &rest body)
@@ -517,21 +489,10 @@ start marker, and romaji buffer."
   (setq nskk--dcomp-candidates nil
         nskk--dcomp-prefix nil
         nskk--dcomp-index 0)
-  ;; Clear numeric mode, sticky shift, and deferred AZIK state from nskk-input.el
-  (nskk-when-bound nskk--numeric-mode
-    (setq nskk--numeric-mode nil))
-  (nskk-when-bound nskk--sticky-shift-pending
-    (setq nskk--sticky-shift-pending nil))
-  (nskk-when-bound nskk--deferred-azik-state
-    (setq nskk--deferred-azik-state nil))
-  (nskk-when-bound nskk--deferred-vowel-shadow-state
-    (setq nskk--deferred-vowel-shadow-state nil))
-  (nskk-when-bound nskk--azik-colon-okuri-pending
-    (setq nskk--azik-colon-okuri-pending nil))
-  (nskk-when-bound nskk--azik-colon-okuri-deferred
-    (setq nskk--azik-colon-okuri-deferred nil))
-  (nskk-when-bound nskk--deferred-plus-state
-    (setq nskk--deferred-plus-state nil))
+  ;; Clear all registered input state variables via Prolog fact table.
+  ;; The clearable-input-var/1 table is defined in nskk-henkan-initialize.
+  (dolist (sym (nskk-prolog-query-all-values '(clearable-input-var \?v) '\?v))
+    (when (boundp sym) (set sym nil)))
   (nskk-with-current-state
     (nskk-reset-henkan-state)))
 
@@ -549,6 +510,12 @@ resets the romaji buffer, and clears the henkan phase."
   (nskk-with-current-state
     (nskk-state-set-henkan-phase nskk-current-state nil)))
 
+(defun nskk--replace-preedit-with-converted (text-start start converted)
+  "Replace preedit at TEXT-START with CONVERTED text and remove ▽ marker at START."
+  (delete-region text-start (point))
+  (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)
+  (insert converted))
+
 (defun/done nskk-henkan-kakutei-convert-script ()
   "Convert preedit kana to the opposite script and commit (確定変換).
 Queries `script-toggle/2' (Prolog) for the target script:
@@ -565,22 +532,15 @@ Used by `nskk-handle-q' / `nskk-toggle-japanese-mode' in ▽ preedit."
                             `(script-toggle ,mode ,'\?t) '\?t))
                (text-start (nskk--skip-marker-pos
                             start nskk-henkan-on-marker-regexp))
-               (preedit    (buffer-substring-no-properties text-start (point))))
-          (pcase target
-            ('katakana
-             (nskk-kana-string-hiragana-to-katakana/k preedit
-               (lambda (converted)
-                 (delete-region text-start (point))
-                 (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)
-                 (insert converted))
-               #'ignore))
-            ('hiragana
-             (nskk-kana-string-katakana-to-hiragana/k preedit
-               (lambda (converted)
-                 (delete-region text-start (point))
-                 (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)
-                 (insert converted))
-               #'ignore)))))))
+               (preedit    (buffer-substring-no-properties text-start (point)))
+               (converter  (pcase target
+                             ('katakana #'nskk-kana-string-hiragana-to-katakana/k)
+                             ('hiragana #'nskk-kana-string-katakana-to-hiragana/k))))
+          (when converter
+            (funcall converter preedit
+                     (lambda (converted)
+                       (nskk--replace-preedit-with-converted text-start start converted))
+                     #'ignore))))))
   (nskk--clear-conversion-start-marker)
   (nskk--reset-romaji-buffer)
   (nskk-with-current-state
@@ -1127,12 +1087,7 @@ candidates are found."
             (nskk-start-registration/k reading
               (lambda (registered)
                 (if registered
-                    (progn
-                      (delete-region start (point))
-                      (goto-char start)
-                      (insert registered)
-                      (nskk-henkan-do-reset)
-                      (funcall on-register))
+                    (nskk--insert-registered-and-reset registered start on-register)
                   (funcall on-not-found)))
               #'ignore)))))))
 
@@ -1178,14 +1133,46 @@ ON-REGISTER is called (no args) after a word is successfully registered."
   (nskk-start-registration/k text
     (lambda (registered)
       (if registered
-          (progn
-            (delete-region start end)
-            (goto-char start)
-            (insert registered)
-            (nskk-henkan-do-reset)
-            (funcall on-register))
+          (nskk--insert-registered-and-reset registered start on-register)
         (funcall on-not-found)))
     #'ignore))
+
+(defun nskk--insert-registered-and-reset (registered start on-done)
+  "Insert REGISTERED word at START, reset henkan state, and call ON-DONE.
+Shared by all registration callbacks in the conversion pipeline."
+  (delete-region start (point))
+  (goto-char start)
+  (insert registered)
+  (nskk-henkan-do-reset)
+  (when (functionp on-done) (funcall on-done)))
+
+(defun nskk--start-conversion-normal (start on-found on-not-found on-register)
+  "Execute the normal (non-okurigana) conversion path.
+START is the conversion start position.  Flushes pending romaji,
+extracts preedit text, handles katakana-半角 and numeric mode,
+then searches the dictionary.
+ON-FOUND, ON-NOT-FOUND, ON-REGISTER are the three continuations."
+  (let* ((end         (progn
+                        (let ((pending (nskk-convert-input-to-kana-final)))
+                          (when (and (stringp pending) (not (string-empty-p pending)))
+                            (insert pending)))
+                        (point)))
+         (text-start  (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp))
+         (text        (when (> end text-start)
+                        (buffer-substring-no-properties text-start end)))
+         (lookup-text (when text
+                        (if (eq (nskk-state-get-mode) 'katakana-半角)
+                            (nskk-kana-string-katakana-to-hiragana
+                             (nskk-kana-hankaku-to-zenkaku text))
+                          text)))
+         (numeric-info (when (and lookup-text (boundp 'nskk--numeric-mode) nskk--numeric-mode)
+                         (nskk--numeric-parse-reading lookup-text)))
+         (search-key  (when lookup-text
+                        (if numeric-info (cdr numeric-info) lookup-text))))
+    (when (and text search-key)
+      (nskk-<-or (raw-candidates) (nskk-core-search/k search-key nil nil)
+                 (nskk--start-conv-register text start end on-not-found on-register)
+        (nskk--start-conv-apply-found start end lookup-text raw-candidates numeric-info on-found)))))
 
 (defun/3k nskk-start-conversion ()
     (on-found on-not-found on-register)
@@ -1202,10 +1189,7 @@ registered via `nskk-start-registration' and inserted.
 
 Registration is a distinct third outcome, not a subcase of not-found:
 the user may cancel (→ on-not-found) or complete it (→ on-register).
-Uses `nskk-<-or' to thread the search continuation without lambda nesting."
-  ;; Check for pending okurigana state (SPC pressed during ▽か*k).
-  ;; When the * marker is present and okurigana context is stored, trigger
-  ;; okurigana conversion immediately — matches DDSKK behaviour.
+Delegates to `nskk--start-conversion-normal' for the main pipeline."
   (let ((okuri (nskk-with-current-state
                  (nskk-state-get-okurigana nskk-current-state))))
     (if okuri
@@ -1216,32 +1200,7 @@ Uses `nskk-<-or' to thread the search continuation without lambda nesting."
             (nskk-state-set-okurigana nskk-current-state nil))
           (nskk--trigger-okuri-conversion/k okuri preedit-end on-found on-not-found on-register))
       (nskk-henkan-with-preedit start
-    (let* (;; Flush trailing romaji BEFORE capturing `end' so the lookup key
-           ;; is complete (e.g. \"にほ\" + flush → \"にほん\").
-           (end         (progn
-                          (let ((pending (nskk-convert-input-to-kana-final)))
-                            (when (and (stringp pending) (not (string-empty-p pending)))
-                              (insert pending)))
-                          (point)))
-           (text-start  (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp))
-           (text        (when (> end text-start)
-                          (buffer-substring-no-properties text-start end)))
-           ;; In katakana-半角 mode preedit is half-width katakana; convert to
-           ;; hiragana so that e.g. "ｶﾝｼﾞ" finds the "かんじ" dict entry.
-           (lookup-text (when text
-                          (if (eq (nskk-state-get-mode) 'katakana-半角)
-                              (nskk-kana-string-katakana-to-hiragana
-                               (nskk-kana-hankaku-to-zenkaku text))
-                            text)))
-           ;; Numeric mode: extract the number string and use the base key for lookup.
-           (numeric-info (when (and lookup-text (boundp 'nskk--numeric-mode) nskk--numeric-mode)
-                           (nskk--numeric-parse-reading lookup-text)))
-           (search-key  (when lookup-text
-                          (if numeric-info (cdr numeric-info) lookup-text))))
-      (when (and text search-key)
-        (nskk-<-or (raw-candidates) (nskk-core-search/k search-key nil nil)
-                   (nskk--start-conv-register text start end on-not-found on-register)
-          (nskk--start-conv-apply-found start end lookup-text raw-candidates numeric-info on-found))))))))
+        (nskk--start-conversion-normal start on-found on-not-found on-register)))))
 
 (defun nskk-start-conversion ()
   "Start dictionary conversion for the preedit text.
@@ -1351,10 +1310,7 @@ If the user cancels, wrap around to the first candidate in list display."
               (if registered
                   (progn
                     (nskk-delete-overlay nskk--conversion-overlay)
-                    (delete-region start (point))
-                    (goto-char start)
-                    (insert registered)
-                    (nskk-henkan-do-reset))
+                    (nskk--insert-registered-and-reset registered start (lambda ())))
                 ;; Registration cancelled: wrap back to first candidate page.
                 (nskk--wrap-to-first-candidate)))
             #'ignore))
@@ -1549,10 +1505,6 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-define-fact-table vowel-okurigana-char (:arity 1 :index :hash)
       (?a) (?i) (?u) (?e) (?o))
 
-    ;; Okurigana trigger predicate
-    (nskk-prolog-<- (okurigana-trigger \?c)
-      (okurigana-char \?c \?_))
-
     ;; Candidate navigation action rules
     (nskk-prolog-set-index 'candidate-nav-next-action 3 :list)
     (nskk-prolog-<- (candidate-nav-next-action \?count \?threshold select-next)
@@ -1585,6 +1537,17 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-define-fact-table should-update-overlay (:arity 1 :index :hash)
       (active)
       (list))
+
+    ;; Input state variables to clear on mode switch / context reset.
+    ;; Queried by `nskk--clear-conversion-context' for dynamic iteration.
+    (nskk-prolog-define-fact-table clearable-input-var (:arity 1 :index :list)
+      (nskk--numeric-mode)
+      (nskk--sticky-shift-pending)
+      (nskk--deferred-azik-state)
+      (nskk--deferred-vowel-shadow-state)
+      (nskk--azik-colon-okuri-pending)
+      (nskk--azik-colon-okuri-deferred)
+      (nskk--deferred-plus-state))
 
     (setq nskk--henkan-initialized t)))
 

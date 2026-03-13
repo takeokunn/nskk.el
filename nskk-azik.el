@@ -83,7 +83,6 @@
 
 ;;; Code:
 
-(require 'cl-lib)
 (require 'nskk-cps-macros)
 (require 'nskk-converter)
 (require 'nskk-keymap)

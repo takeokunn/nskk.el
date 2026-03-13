@@ -34,11 +34,6 @@
          (nskk--server-process nil))
      ,@body))
 
-(defmacro nskk--server-with-enabled (&rest body)
-  "Execute BODY with nskk-server-enable forced to t."
-  `(let ((nskk-server-enable t))
-     ,@body))
-
 ;;;; Disabled-mode integration tests (no network required)
 
 (nskk-describe "server disabled mode"

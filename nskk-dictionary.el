@@ -160,8 +160,7 @@ DDSKK equivalent: skk-jisyo-update-hook")
 Lookup is performed via the Prolog database using PREDICATE.
 PREDICATE is a symbol naming the Prolog predicate (e.g., \\='system-dict-entry)
 with arity 2: (predicate key candidates-list)."
-  (predicate nil)
-  (by-freq nil))
+  (predicate nil))
 
 ;;; Section 4: Elisp helpers (replacing removed Prolog predicates)
 

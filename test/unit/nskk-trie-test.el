@@ -32,6 +32,10 @@
 ;; - prefix-search: exact match, partial prefix, empty prefix, no-match, limit
 ;; - size tracking: insert, overwrite, delete lifecycle
 ;; - error cases: non-string key, empty key
+;; - longest-match: single/multi char, no match, non-terminal prefix, exact key
+;; - has-prefix-p: exact key, proper prefix, non-existent, empty
+;; - lookup/k: CPS on-found/on-not-found, falsy nil value
+;; - longest-match/k: CPS on-found/on-not-found
 
 ;;; Code:
 
@@ -62,39 +66,39 @@
     (nskk-it "inserts and looks up a simple ASCII key"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "hello" "world")
-        (should (equal (nskk-trie-lookup trie "hello") '("world" . t)))))
+        (should (equal (nskk-trie-lookup trie "hello") "world"))))
 
-    (nskk-it "lookup returns (nil . nil) for an absent ASCII key"
+    (nskk-it "lookup returns nil for an absent ASCII key"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "hello" "world")
-        (should (equal (nskk-trie-lookup trie "helo") '(nil . nil)))))
+        (should (null (nskk-trie-lookup trie "helo")))))
 
-    (nskk-it "lookup returns (nil . nil) when trie is empty"
+    (nskk-it "lookup returns nil when trie is empty"
       (let ((trie (nskk-trie-create)))
-        (should (equal (nskk-trie-lookup trie "any") '(nil . nil))))))
+        (should (null (nskk-trie-lookup trie "any"))))))
 
   (nskk-context "Japanese kana key round-trip"
     (nskk-it "inserts and looks up a single kana key"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "か" "KA")
-        (should (equal (nskk-trie-lookup trie "か") '("KA" . t)))))
+        (should (equal (nskk-trie-lookup trie "か") "KA"))))
 
     (nskk-it "inserts and looks up a multi-kana key"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "かんじ" '("漢字" "感じ"))
-        (should (equal (nskk-trie-lookup trie "かんじ") '(("漢字" "感じ") . t)))))
+        (should (equal (nskk-trie-lookup trie "かんじ") '("漢字" "感じ")))))
 
-    (nskk-it "lookup returns (nil . nil) for absent kana key"
+    (nskk-it "lookup returns nil for absent kana key"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "か" "KA")
-        (should (equal (nskk-trie-lookup trie "き") '(nil . nil))))))
+        (should (null (nskk-trie-lookup trie "き"))))))
 
   (nskk-context "overwrite"
     (nskk-it "overwriting an existing key updates the value"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "key" "first")
         (nskk-trie-insert trie "key" "second")
-        (should (equal (nskk-trie-lookup trie "key") '("second" . t)))))
+        (should (equal (nskk-trie-lookup trie "key") "second"))))
 
     (nskk-it "overwriting an existing key does not change size"
       (let ((trie (nskk-trie-create)))
@@ -108,34 +112,40 @@
         (nskk-trie-insert trie "ka"  "か")
         (nskk-trie-insert trie "ki"  "き")
         (nskk-trie-insert trie "ku"  "く")
-        (should (equal (nskk-trie-lookup trie "ka") '("か" . t)))
-        (should (equal (nskk-trie-lookup trie "ki") '("き" . t)))
-        (should (equal (nskk-trie-lookup trie "ku") '("く" . t)))))
+        (should (equal (nskk-trie-lookup trie "ka") "か"))
+        (should (equal (nskk-trie-lookup trie "ki") "き"))
+        (should (equal (nskk-trie-lookup trie "ku") "く"))))
 
     (nskk-it "keys with shared prefix do not collide"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "ka"  "short")
         (nskk-trie-insert trie "kan" "medium")
         (nskk-trie-insert trie "kanji" "long")
-        (should (equal (nskk-trie-lookup trie "ka")    '("short"  . t)))
-        (should (equal (nskk-trie-lookup trie "kan")   '("medium" . t)))
-        (should (equal (nskk-trie-lookup trie "kanji") '("long"   . t))))))
+        (should (equal (nskk-trie-lookup trie "ka")    "short"))
+        (should (equal (nskk-trie-lookup trie "kan")   "medium"))
+        (should (equal (nskk-trie-lookup trie "kanji") "long")))))
 
   (nskk-context "falsy stored values"
-    (nskk-it "stores nil as a value and returns (nil . t)"
-      (let ((trie (nskk-trie-create)))
+    (nskk-it "stores nil — /k calls on-found (not on-not-found)"
+      (let* ((trie (nskk-trie-create))
+             (found nil)
+             (not-found nil))
         (nskk-trie-insert trie "nilkey" nil)
-        (should (equal (nskk-trie-lookup trie "nilkey") '(nil . t)))))
+        (nskk-trie-lookup/k trie "nilkey"
+                            (lambda (v) (setq found (cons v t)))
+                            (lambda () (setq not-found t)))
+        (should found)
+        (should-not not-found)))
 
-    (nskk-it "stores 0 as a value and returns (0 . t)"
+    (nskk-it "stores 0 as a value and returns 0"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "zero" 0)
-        (should (equal (nskk-trie-lookup trie "zero") '(0 . t)))))
+        (should (equal (nskk-trie-lookup trie "zero") 0))))
 
-    (nskk-it "stores empty string as a value and returns (\"\" . t)"
+    (nskk-it "stores empty string as a value and returns it"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "emptyval" "")
-        (should (equal (nskk-trie-lookup trie "emptyval") '("" . t)))))))
+        (should (equal (nskk-trie-lookup trie "emptyval") ""))))))
 
 ;;;;
 ;;;; 3. delete
@@ -155,11 +165,11 @@
         (nskk-trie-delete trie "foo")
         (should (= (nskk-trie-size trie) 1))))
 
-    (nskk-it "lookup returns (nil . nil) after deletion"
+    (nskk-it "lookup returns nil after deletion"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "foo" "bar")
         (nskk-trie-delete trie "foo")
-        (should (equal (nskk-trie-lookup trie "foo") '(nil . nil))))))
+        (should (null (nskk-trie-lookup trie "foo"))))))
 
   (nskk-context "deleting an absent key"
     (nskk-it "returns nil when the key is not present"
@@ -178,21 +188,21 @@
         (nskk-trie-insert trie "ka"  "か")
         (nskk-trie-insert trie "kan" "かん")
         (nskk-trie-delete trie "kan")
-        (should (equal (nskk-trie-lookup trie "ka") '("か" . t)))))
+        (should (equal (nskk-trie-lookup trie "ka") "か"))))
 
     (nskk-it "deleting a shorter key does not affect the longer key sharing that prefix"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "ka"  "か")
         (nskk-trie-insert trie "kan" "かん")
         (nskk-trie-delete trie "ka")
-        (should (equal (nskk-trie-lookup trie "kan") '("かん" . t)))))
+        (should (equal (nskk-trie-lookup trie "kan") "かん"))))
 
-    (nskk-it "after deleting shorter key, lookup of it returns (nil . nil)"
+    (nskk-it "after deleting shorter key, lookup of it returns nil"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "ka"  "か")
         (nskk-trie-insert trie "kan" "かん")
         (nskk-trie-delete trie "ka")
-        (should (equal (nskk-trie-lookup trie "ka") '(nil . nil))))))
+        (should (null (nskk-trie-lookup trie "ka"))))))
 
   (nskk-context "leaf node cleanup"
     (nskk-it "inserting then deleting the only key yields size 0"
@@ -346,6 +356,125 @@
     (nskk-it "signals an error when inserting with an empty string key"
       (let ((trie (nskk-trie-create)))
         (should-error (nskk-trie-insert trie "" "val"))))))
+
+;;;;
+;;;; 7. longest-match
+;;;;
+
+(nskk-describe "nskk-trie-longest-match"
+  (nskk-it "returns (value . consumed-length) for single-char match"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "a" "A")
+      (should (equal (nskk-trie-longest-match trie "abc") '("A" . 1)))))
+
+  (nskk-it "returns the longest matching prefix"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "a" "short")
+      (nskk-trie-insert trie "ab" "medium")
+      (nskk-trie-insert trie "abc" "long")
+      (should (equal (nskk-trie-longest-match trie "abcd") '("long" . 3)))))
+
+  (nskk-it "returns nil when no prefix matches"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "xyz" "val")
+      (should (null (nskk-trie-longest-match trie "abc")))))
+
+  (nskk-it "skips non-terminal prefix nodes"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "abc" "full")
+      (should (null (nskk-trie-longest-match trie "ab")))))
+
+  (nskk-it "returns match when input is exactly the key"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "abc" "exact")
+      (should (equal (nskk-trie-longest-match trie "abc") '("exact" . 3)))))
+
+  (nskk-it "works with Japanese kana keys"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "か" "ka")
+      (nskk-trie-insert trie "かん" "kan")
+      (should (equal (nskk-trie-longest-match trie "かんじ") '("kan" . 2))))))
+
+;;;;
+;;;; 8. has-prefix-p
+;;;;
+
+(nskk-describe "nskk-trie-has-prefix-p"
+  (nskk-it "returns non-nil for an exact key"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "abc" "val")
+      (should (nskk-trie-has-prefix-p trie "abc"))))
+
+  (nskk-it "returns non-nil for a proper prefix of a key"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "abcdef" "val")
+      (should (nskk-trie-has-prefix-p trie "abc"))))
+
+  (nskk-it "returns nil for a non-existent prefix"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "abc" "val")
+      (should-not (nskk-trie-has-prefix-p trie "xyz"))))
+
+  (nskk-it "returns non-nil for empty prefix (root always exists)"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "abc" "val")
+      (should (nskk-trie-has-prefix-p trie "")))))
+
+;;;;
+;;;; 9. lookup/k CPS behavior
+;;;;
+
+(nskk-describe "nskk-trie-lookup/k"
+  (nskk-it "calls on-found with value when key exists"
+    (let* ((trie (nskk-trie-create))
+           (result nil))
+      (nskk-trie-insert trie "key" "val")
+      (nskk-trie-lookup/k trie "key"
+                          (lambda (v) (setq result v))
+                          #'ignore)
+      (should (equal result "val"))))
+
+  (nskk-it "calls on-not-found when key is absent"
+    (let* ((trie (nskk-trie-create))
+           (not-found nil))
+      (nskk-trie-lookup/k trie "missing"
+                          #'ignore
+                          (lambda () (setq not-found t)))
+      (should not-found)))
+
+  (nskk-it "calls on-found for falsy stored nil value"
+    (let* ((trie (nskk-trie-create))
+           (found-called nil)
+           (not-found-called nil))
+      (nskk-trie-insert trie "nilkey" nil)
+      (nskk-trie-lookup/k trie "nilkey"
+                          (lambda (v) (setq found-called (cons v t)))
+                          (lambda () (setq not-found-called t)))
+      (should found-called)
+      (should-not not-found-called))))
+
+;;;;
+;;;; 10. longest-match/k CPS behavior
+;;;;
+
+(nskk-describe "nskk-trie-longest-match/k"
+  (nskk-it "calls on-found with (value . length) on match"
+    (let* ((trie (nskk-trie-create))
+           (result nil))
+      (nskk-trie-insert trie "ab" "AB")
+      (nskk-trie-longest-match/k trie "abc"
+                                 (lambda (v) (setq result v))
+                                 #'ignore)
+      (should (equal result '("AB" . 2)))))
+
+  (nskk-it "calls on-not-found when no prefix matches"
+    (let* ((trie (nskk-trie-create))
+           (not-found nil))
+      (nskk-trie-insert trie "xyz" "val")
+      (nskk-trie-longest-match/k trie "abc"
+                                 #'ignore
+                                 (lambda () (setq not-found t)))
+      (should not-found))))
 
 (provide 'nskk-trie-test)
 ;;; nskk-trie-test.el ends here

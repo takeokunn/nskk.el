@@ -59,14 +59,10 @@
 ;; - `valid-mode/1'              -- derived rule: succeeds iff mode has
 ;;     a mode-properties/5 fact; used as a guard in transition rules.
 ;; - `japanese-mode/1'           -- hiragana, katakana, katakana-半角
-;; - `can-transition/2'          -- valid-mode/1 to valid-mode/1
 ;; - `valid-henkan-phase/1'      -- membership: nil, on, active, list, registration
 ;; - `valid-henkan-transition/2' -- (from to) transition graph
 ;; - `henkan-mode-phase/1'       -- active henkan phases (on, active, list, registration)
-;; - `preedit-phase/1'           -- preedit (non-converting) phases
-;; - `registration-phase/1'      -- dict-registration phases
 ;; - `state-slot-default/2'      -- (slot default-value) for struct creation
-;; - `resettable-field/1'        -- fields reset by `nskk-state-reset'
 ;;
 ;; Key public API:
 ;; - `nskk-state-create'           -- create a new state struct
@@ -88,7 +84,6 @@
 ;; - `nskk-state-append-input/k'        -- on-done(new-buf) / on-fail()
 ;; - `nskk-state-delete-last-char/k'    -- on-deleted(char) / on-empty()
 ;; - `nskk-state-transition/k'          -- on-found(t) / on-not-found()
-;; - `nskk-state-set-henkan-phase/k'    -- on-found(t) / on-not-found()
 ;; - `nskk-state-next-candidate/k'      -- on-candidate(cand) / on-empty()
 ;; - `nskk-state-previous-candidate/k'  -- on-candidate(cand) / on-empty()
 
@@ -133,12 +128,6 @@ Falls through to nil if no slot matches."
                             ,val-sym)
                       ,val-sym))
                   slots)))))
-
-(defun nskk--state-get-default (slot)
-  "Return the Prolog-defined default value for SLOT in `nskk-state'.
-Queries the `state-slot-default/2' Prolog facts.
-Returns nil for unknown or non-existent slots."
-  (nskk-prolog-query-value `(state-slot-default ,slot \?v) '\?v))
 
 (defmacro nskk-define-slot-setter (slot)
   "Generate sync and CPS setter pair for SLOT in `nskk-state' struct.
@@ -226,15 +215,6 @@ Queries `valid-mode/1' Prolog facts.
 Requires `nskk-state-initialize-prolog' to have been called first."
   (nskk-prolog-holds-p `(valid-mode ,mode)))
 
-(defun nskk-state-valid-mode-p/k (mode on-found on-not-found)
-  "Return non-nil if MODE is a valid NSKK input mode symbol. [CPS]
-Calls ON-FOUND with t when MODE is valid; ON-NOT-FOUND otherwise."
-  (if (nskk-state-valid-mode-p mode)
-      (funcall on-found t)
-    (funcall on-not-found)))
-
-(put 'nskk-state-valid-mode-p/k 'nskk--cps-continuation-pattern :found-not-found)
-
 ;;;; Per-Slot Typed Setters (macro-generated)
 ;;
 ;; Each call to `nskk-define-slot-setter' generates:
@@ -268,16 +248,6 @@ Signals an error for invalid mode symbols."
     (setf (nskk-state-previous-mode state) (nskk-state-mode state)
           (nskk-state-mode state) value)
     value))
-
-(defun nskk-state-set-mode/k (state value on-found on-not-found)
-  "Set mode slot in STATE to VALUE with Prolog validation. [CPS]
-Calls ON-FOUND with VALUE on success; ON-NOT-FOUND on failure."
-  (condition-case _
-      (let ((result (nskk-state-set-mode state value)))
-        (if result (funcall on-found result) (funcall on-not-found)))
-    (error (funcall on-not-found))))
-
-(put 'nskk-state-set-mode/k 'nskk--cps-continuation-pattern :found-not-found)
 
 ;;;; Generic Setter — flat pcase dispatcher
 
@@ -345,15 +315,6 @@ Queries `henkan-mode-phase/1' Prolog facts."
   (and (nskk-state-p state)
        (nskk-prolog-holds-p `(henkan-mode-phase ,(nskk-state-henkan-phase state)))))
 
-(defun nskk-state-in-henkan-mode-p/k (state on-found on-not-found)
-  "Return non-nil if STATE is currently in an active conversion phase. [CPS]
-Calls ON-FOUND with t when in an active phase; ON-NOT-FOUND otherwise."
-  (if (nskk-state-in-henkan-mode-p state)
-      (funcall on-found t)
-    (funcall on-not-found)))
-
-(put 'nskk-state-in-henkan-mode-p/k 'nskk--cps-continuation-pattern :found-not-found)
-
 (defun/k nskk-state-henkan-on-p (state)
   "Check if STATE is in henkan-on phase (▽)."
   (if (and (nskk-state-p state)
@@ -384,17 +345,6 @@ Signals an error for invalid phase or invalid transition."
                 (nskk-prolog-holds-p `(valid-henkan-transition ,current ,phase)))
       (error "Invalid henkan phase transition: %s -> %s" current phase)))
   (setf (nskk-state-henkan-phase state) phase))
-
-(defun nskk-state-set-henkan-phase/k (state phase on-found on-not-found)
-  "Set henkan PHASE in STATE with Prolog-validated transition. [CPS]
-Calls ON-FOUND with t on success; ON-NOT-FOUND on invalid phase or transition."
-  (condition-case _
-      (progn
-        (nskk-state-set-henkan-phase state phase)
-        (funcall on-found t))
-    (error (funcall on-not-found))))
-
-(put 'nskk-state-set-henkan-phase/k 'nskk--cps-continuation-pattern :found-not-found)
 
 (defun/done nskk-state-force-henkan-phase (state phase)
   "Force set henkan PHASE in STATE, bypassing transition validation.
@@ -700,10 +650,6 @@ Subsequent calls are no-ops guarded by `nskk--state-prolog-initialized'."
       (list)
       (registration))
 
-    ;; Transition rules: any valid mode can transition to any other valid mode
-    (nskk-prolog-<- (can-transition \?from \?to)
-      (valid-mode \?from) (valid-mode \?to))
-
     ;; Henkan phase transition graph
     (nskk-prolog-define-fact-table valid-henkan-transition (:arity 2 :index :hash)
       (nil on)
@@ -726,19 +672,6 @@ Subsequent calls are no-ops guarded by `nskk--state-prolog-initialized'."
       (list)
       (registration))
 
-    ;; Preedit phase classification
-    ;; Phases in which the user is building preedit text (▽ marker visible)
-    ;; but no dictionary search has started yet.
-    (nskk-prolog-define-fact-table preedit-phase (:arity 1 :index :hash)
-      (normal)
-      (preedit))
-
-    ;; Registration phase classification
-    ;; Phases related to dictionary registration (active nesting).
-    (nskk-prolog-define-fact-table registration-phase (:arity 1 :index :hash)
-      (active)
-      (list))
-
     ;; State slot defaults
     (nskk-prolog-define-fact-table state-slot-default (:arity 2 :index :hash)
       (input-buffer "")
@@ -751,11 +684,6 @@ Subsequent calls are no-ops guarded by `nskk--state-prolog-initialized'."
       (redo-stack nil)
       (henkan-phase nil)
       (metadata nil))
-
-    ;; Resettable fields: derived rule — any slot with a default is resettable.
-    ;; Eliminates the need to list the same 10 slots twice.
-    (nskk-prolog-<- (resettable-field \?slot)
-      (state-slot-default \?slot \?_))
 
     (setq nskk--state-prolog-initialized t)))
 

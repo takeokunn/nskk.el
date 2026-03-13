@@ -104,7 +104,6 @@
 (defvar nskk--henkan-candidate-list-active)          ;; Forward declaration from nskk-henkan.el
 (defvar nskk-henkan-select-candidate-by-key-function) ;; Forward declaration from nskk-henkan.el
 (defvar nskk-converter-romaji-style)                 ;; Forward declaration from nskk-converter.el
-(defvar nskk-azik-q-behavior)                        ;; Forward declaration from nskk-azik.el
 (defvar nskk-azik-keyboard-type)                     ;; Forward declaration from nskk-azik.el
 (defvar nskk--hatsuon-blockers)                      ;; Forward declaration from nskk-converter.el
 (defvar nskk--sokuon-blockers)                       ;; Forward declaration from nskk-converter.el
@@ -167,6 +166,12 @@ right after `*' for the dict query.  On the next input:
 Produces the correct okurigana kana (e.g. って) after the dict lookup has
 already fired with the consonant-only query (e.g. \"つかt\").
 See `nskk--apply-colon-okuri-correction'.")
+
+(defsubst nskk--bool-sym (val)
+  "Return `yes' when VAL is non-nil, `no' otherwise.
+Used to convert Emacs Lisp boolean values to Prolog-compatible symbols
+for fact-table queries that use yes/no classification columns."
+  (if val 'yes 'no))
 
 (defvar-local nskk--deferred-plus-state nil
   "Non-nil when a JP106 `+' key was tentatively emitted as っ in preedit.
@@ -575,10 +580,10 @@ Results:
                              (nskk-state-get-okurigana nskk-current-state))))
          (class (nskk-prolog-query-value
                  `(effective-char-class ,'\?class
-                                        ,(if upper-ready  'yes 'no)
-                                        ,(if conv-active  'yes 'no)
-                                        ,(if buf-nonempty 'yes 'no)
-                                        ,(if vowel-or-ctx 'yes 'no))
+                                        ,(nskk--bool-sym upper-ready)
+                                        ,(nskk--bool-sym conv-active)
+                                        ,(nskk--bool-sym buf-nonempty)
+                                        ,(nskk--bool-sym vowel-or-ctx))
                  '\?class)))
     (pcase class
       ('henkan-start    (succeed (list (downcase char) t   nil)))
@@ -656,6 +661,27 @@ Called from `nskk-process-japanese-input' for the `normal' action class."
         (nskk--process-kana-result
          (or (nskk-convert-input-to-kana eff) "") n)))))
 
+(defun nskk--resolve-deferred-plus (char)
+  "Resolve deferred-plus state if pending.
+If CHAR is a consonant, convert the deferred っ into okurigana and
+fire the colon-okuri sequence.  Return non-nil when CHAR was consumed."
+  (when nskk--deferred-plus-state
+    (let ((kana nskk--deferred-plus-state))
+      (setq nskk--deferred-plus-state nil)
+      (if (and (characterp char)
+               (<= ?a char) (<= char ?z)
+               (not (memq char '(?a ?i ?u ?e ?o))))
+          (progn
+            (nskk-debug-log "[INPUT] deferred-plus-correction: consonant=%c kana=%s"
+                            char kana)
+            (delete-char (- (length kana)))
+            (nskk-with-current-state
+              (nskk--insert-marker nskk-okurigana-marker))
+            (nskk--fire-azik-colon-okuri char)
+            t)
+        (nskk-debug-log "[INPUT] deferred-plus-kept: char=%c kana=%s" char kana)
+        nil))))
+
 (defun/done nskk-process-japanese-input (char n)
   "Process input in Japanese mode (hiragana/katakana), then call on-done.
 CHAR is the input character.  N is the repeat count.
@@ -687,28 +713,8 @@ Actions:
     (setq nskk--sticky-shift-pending nil)
     (when (and (characterp char) (<= ?a char) (<= char ?z))
       (setq char (upcase char))))
-  ;; Deferred-plus resolution: must happen at dispatch level (not inside
-  ;; nskk-convert-input-to-kana) to avoid double-processing the consonant.
-  ;; When a consonant resolves the deferred っ to okurigana, we replay the
-  ;; arm+fire sequence and skip normal dispatch — the char is consumed here.
-  (let ((deferred-plus-consumed nil))
-    (when nskk--deferred-plus-state
-      (let ((kana nskk--deferred-plus-state))
-        (setq nskk--deferred-plus-state nil)
-        (if (and (characterp char)
-                 (<= ?a char) (<= char ?z)
-                 (not (memq char '(?a ?i ?u ?e ?o))))
-            (progn
-              (nskk-debug-log "[INPUT] deferred-plus-correction: consonant=%c kana=%s"
-                              char kana)
-              (delete-char (- (length kana)))
-              (nskk-with-current-state
-                (nskk--insert-marker nskk-okurigana-marker))
-              (nskk--fire-azik-colon-okuri char)
-              (setq deferred-plus-consumed t))
-          (nskk-debug-log "[INPUT] deferred-plus-kept: char=%c kana=%s" char kana))))
-    (unless deferred-plus-consumed
-      (let* ((char-type (cond
+  (unless (nskk--resolve-deferred-plus char)
+    (let* ((char-type (cond
                           ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
                           ((and (eq char ?+)
                                 (bound-and-true-p nskk-azik-keyboard-type)
@@ -734,7 +740,7 @@ Actions:
           ('fire       (nskk--fire-azik-colon-okuri char))
           ('arm        (nskk--arm-azik-colon-trigger))
           ('defer-plus (nskk--defer-plus-as-sokuon))
-          ('normal     (nskk--process-normal-japanese-input char n)))))))
+          ('normal     (nskk--process-normal-japanese-input char n))))))
 
 ;;;; Abbrev Input Processing
 
@@ -870,10 +876,10 @@ Pre-computed boolean inputs for doubled-context/6:
                                 (not (eq (nskk-converter-lookup (string ?n char)) :incomplete))))
          (doubled-eligible (or (nskk-prolog-query-value
                                 `(doubled-context ,'\?de
-                                                  ,(if last-is-n 'yes 'no)
-                                                  ,(if char-is-n 'yes 'no)
-                                                  ,(if same-ok   'yes 'no)
-                                                  ,(if n-ok      'yes 'no)
+                                                  ,(nskk--bool-sym last-is-n)
+                                                  ,(nskk--bool-sym char-is-n)
+                                                  ,(nskk--bool-sym same-ok)
+                                                  ,(nskk--bool-sym n-ok)
                                                   ,result-type)
                                 '\?de)
                                'not-eligible))
@@ -918,22 +924,33 @@ path must return early before the romaji converter processes the char."
   (nskk--apply-vowel-shadow-correction char)
   (nskk--apply-colon-okuri-correction char))
 
+(defun nskk--apply-one-deferred-correction (state-var char insert-sokuon-p)
+  "Apply one deferred correction for CHAR using STATE-VAR.
+STATE-VAR is a symbol naming a buffer-local variable holding (KEY . KANA) or nil.
+When CHAR is a vowel and STATE-VAR is set: deletes the tentative kana,
+optionally inserts っ (when INSERT-SOKUON-P is non-nil), and resets
+`nskk--romaji-buffer' to the key portion of the deferred state.
+KEY can be a character (converted via `char-to-string') or a string (used as-is).
+A non-vowel CHAR clears the state without correction."
+  (let ((state (symbol-value state-var)))
+    (when state
+      (let ((deferred-key (car state))
+            (deferred-kana (cdr state)))
+        (set state-var nil)
+        (when (memq char '(?a ?i ?u ?e ?o))
+          (delete-char (- (length deferred-kana)))
+          (when insert-sokuon-p (insert "っ"))
+          (setq nskk--romaji-buffer
+                (if (stringp deferred-key) deferred-key
+                  (char-to-string deferred-key))))))))
+
 (defun/done nskk--apply-deferred-azik-correction (char)
   "Apply retroactive sokuon correction when a deferred AZIK state is pending.
 When CHAR is a vowel and `nskk--deferred-azik-state' is set, deletes the
 tentatively emitted kana, inserts っ, and resets the romaji buffer to the
 consonant so that consonant+vowel is processed normally as sokuon.
 A non-vowel CHAR merely clears the deferred state without correction."
-  (when nskk--deferred-azik-state
-    (let ((deferred-cons (car nskk--deferred-azik-state))
-          (deferred-kana (cdr nskk--deferred-azik-state)))
-      (setq nskk--deferred-azik-state nil)
-      (when (memq char '(?a ?i ?u ?e ?o))
-        (nskk-debug-log "[INPUT] azik-deferred-correction: cons=%c kana=%s"
-                        deferred-cons deferred-kana)
-        (delete-char (- (length deferred-kana)))
-        (insert "\u3063")
-        (setq nskk--romaji-buffer (char-to-string deferred-cons))))))
+  (nskk--apply-one-deferred-correction 'nskk--deferred-azik-state char t))
 
 (defun/done nskk--apply-vowel-shadow-correction (char)
   "Apply retroactive correction when a vowel-shadow deferred state is pending.
@@ -942,15 +959,7 @@ the tentatively emitted kana and resets the romaji buffer to the deferred
 romaji prefix so that romaji+vowel is processed as the longer standard rule.
 Unlike `nskk--apply-deferred-azik-correction', no っ is inserted.
 A non-vowel CHAR merely clears the deferred state without correction."
-  (when nskk--deferred-vowel-shadow-state
-    (let ((deferred-romaji (car nskk--deferred-vowel-shadow-state))
-          (deferred-kana   (cdr nskk--deferred-vowel-shadow-state)))
-      (setq nskk--deferred-vowel-shadow-state nil)
-      (when (memq char '(?a ?i ?u ?e ?o))
-        (nskk-debug-log "[INPUT] azik-vowel-shadow-correction: romaji=%s kana=%s"
-                        deferred-romaji deferred-kana)
-        (delete-char (- (length deferred-kana)))
-        (setq nskk--romaji-buffer deferred-romaji)))))
+  (nskk--apply-one-deferred-correction 'nskk--deferred-vowel-shadow-state char nil))
 
 (defun/done nskk--apply-colon-okuri-correction (char)
   "Apply retroactive sokuon insertion for AZIK colon-okurigana sequence.
@@ -959,16 +968,7 @@ the tentative placeholder consonant, inserts っ, and resets the romaji
 buffer to the consonant so that consonant+vowel completes the okurigana
 syllable (e.g. `t' + `e' → て, giving って as the full okurigana kana).
 A non-vowel CHAR merely clears the deferred state without correction."
-  (when nskk--azik-colon-okuri-deferred
-    (let ((deferred-cons (car nskk--azik-colon-okuri-deferred))
-          (deferred-placeholder (cdr nskk--azik-colon-okuri-deferred)))
-      (setq nskk--azik-colon-okuri-deferred nil)
-      (when (memq char '(?a ?i ?u ?e ?o))
-        (nskk-debug-log "[INPUT] colon-okuri-correction: cons=%c placeholder=%s"
-                        deferred-cons deferred-placeholder)
-        (delete-char (- (length deferred-placeholder)))
-        (insert "\u3063")
-        (setq nskk--romaji-buffer (char-to-string deferred-cons))))))
+  (nskk--apply-one-deferred-correction 'nskk--azik-colon-okuri-deferred char t))
 
 (defun/done nskk--apply-deferred-plus-correction (char)
   "Apply deferred resolution for JP106 `+' key tentative っ emission.
@@ -1122,21 +1122,21 @@ Processing pipeline:
                            c))))
     (pcase class
       ('nn-double
-       (<- kana nskk--kana-handle-nn-double result) (succeed kana))
+       (<- kana nskk--kana-handle-nn-double result))
       ('azik-vowel-deferred
-       (<- kana nskk--kana-handle-azik-vowel-deferred input result) (succeed kana))
+       (<- kana nskk--kana-handle-azik-vowel-deferred input result))
       ('azik-deferred
-       (<- kana nskk--kana-handle-azik-deferred input result) (succeed kana))
+       (<- kana nskk--kana-handle-azik-deferred input result))
       ('match
-       (<- kana nskk--kana-handle-match result) (succeed kana))
+       (<- kana nskk--kana-handle-match result))
       ('n-consonant
-       (<- kana nskk--kana-handle-n-consonant char result) (succeed kana))
+       (<- kana nskk--kana-handle-n-consonant char result))
       ('sokuon
-       (<- kana nskk--kana-handle-sokuon char) (succeed kana))
+       (<- kana nskk--kana-handle-sokuon char))
       ('incomplete
-       (<- kana nskk--kana-handle-incomplete char input) (succeed kana))
+       (<- kana nskk--kana-handle-incomplete char input))
       (_
-       (<- kana nskk--kana-handle-no-match input) (succeed kana)))))
+       (<- kana nskk--kana-handle-no-match input)))))
 
 ;; Override the sync wrapper generated by `defun/k' to return "" instead of
 ;; nil on incomplete romaji (failure path).  Callers and tests rely on ""

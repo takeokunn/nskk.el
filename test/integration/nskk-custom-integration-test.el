@@ -20,12 +20,8 @@
 ;;
 ;;   nskk-state-*
 ;;     nskk-state-default-mode    -- nskk-state-create uses it when no mode given
-;;     nskk-state-undo-limit      -- checked by natnump / :safe guard (structural)
 ;;
 ;;   nskk-converter-*
-;;     nskk-converter-use-sokuon  -- variable is read at call time; let-binding
-;;                                   affects sokuon detection in nskk-convert-romaji
-;;     nskk-converter-n-processing-mode -- affects ん/n detection at call time
 ;;     nskk-converter-auto-start-henkan -- declared guard; read at call time
 ;;     nskk-converter-romaji-style      -- load-style selects the registered init-fn
 ;;
@@ -91,110 +87,6 @@
     (let ((nskk-state-default-mode 'nonexistent-mode))
       (let ((state (nskk-state-create)))
         (should (eq (nskk-state-mode state) 'ascii))))))
-
-
-;;;;
-;;;; nskk-state-undo-limit
-;;;;
-
-(nskk-describe "nskk-state-undo-limit: natural-number constraint"
-
-  (nskk-it "default value satisfies natnump"
-    (should (natnump nskk-state-undo-limit)))
-
-  (nskk-it ":safe predicate accepts zero (no-undo)"
-    (let ((pred (get 'nskk-state-undo-limit 'safe-local-variable)))
-      (should (funcall pred 0))))
-
-  (nskk-it "let-binding to a larger value is accepted by :safe"
-    (let ((nskk-state-undo-limit 500)
-          (pred (get 'nskk-state-undo-limit 'safe-local-variable)))
-      (should (funcall pred nskk-state-undo-limit))))
-
-  (nskk-it "let-binding to zero keeps the variable at zero inside the body"
-    (let ((nskk-state-undo-limit 0))
-      (should (= nskk-state-undo-limit 0))))
-
-  (nskk-it "variable is restored to default after let-binding exits"
-    (let ((default (default-value 'nskk-state-undo-limit)))
-      (let ((nskk-state-undo-limit 9999))
-        (should (= nskk-state-undo-limit 9999)))
-      (should (= nskk-state-undo-limit default)))))
-
-
-;;;;
-;;;; nskk-converter-use-sokuon
-;;;;
-
-(nskk-describe "nskk-converter-use-sokuon: sokuon conversion toggle"
-
-  ;; nskk-convert-romaji processes the entire string using the converter.
-  ;; When use-sokuon is t, a doubled consonant like "tt" produces "っt"
-  ;; (the small tsu + remaining consonant).  We verify the variable is read
-  ;; at call time by let-binding it.
-
-  (nskk-it "default value is t (sokuon enabled)"
-    (should (eq (default-value 'nskk-converter-use-sokuon) t)))
-
-  (nskk-it "let-binding to t keeps the variable non-nil inside the body"
-    (let ((nskk-converter-use-sokuon t))
-      (should nskk-converter-use-sokuon)))
-
-  (nskk-it "let-binding to nil sets the variable to nil inside the body"
-    (let ((nskk-converter-use-sokuon nil))
-      (should-not nskk-converter-use-sokuon)))
-
-  (nskk-it "variable is restored after the let exits"
-    (let ((nskk-converter-use-sokuon nil))
-      (should-not nskk-converter-use-sokuon))
-    (should nskk-converter-use-sokuon))
-
-  (nskk-it "with sokuon enabled, doubled consonant produces っ prefix in output"
-    (let ((nskk-converter-use-sokuon t))
-      ;; "tta" -> "った" via sokuon+ta conversion (hot path is always active)
-      (let ((result (nskk-convert-romaji "tta")))
-        (should (stringp result))
-        (should (string-prefix-p "っ" result)))))
-
-  (nskk-it "nskk-convert-romaji returns a string regardless of sokuon flag value"
-    ;; The sokuon flag is a declared user preference; the hot-path converter
-    ;; in nskk-convert-romaji uses nskk--sokuon-blockers directly and does not
-    ;; read nskk-converter-use-sokuon at call time.  Confirm the function
-    ;; always returns a string for valid romaji input regardless of the flag.
-    (dolist (flag '(t nil))
-      (let ((nskk-converter-use-sokuon flag))
-        (let ((result (nskk-convert-romaji "ka")))
-          (should (stringp result)))))))
-
-
-;;;;
-;;;; nskk-converter-n-processing-mode
-;;;;
-
-(nskk-describe "nskk-converter-n-processing-mode: n-to-ん detection mode"
-
-  (nskk-it "default value is smart"
-    (should (eq (default-value 'nskk-converter-n-processing-mode) 'smart)))
-
-  (nskk-it "let-binding to strict is visible inside the body"
-    (let ((nskk-converter-n-processing-mode 'strict))
-      (should (eq nskk-converter-n-processing-mode 'strict))))
-
-  (nskk-it "let-binding to loose is visible inside the body"
-    (let ((nskk-converter-n-processing-mode 'loose))
-      (should (eq nskk-converter-n-processing-mode 'loose))))
-
-  (nskk-it "variable is restored to smart after let exits"
-    (let ((nskk-converter-n-processing-mode 'strict))
-      (should (eq nskk-converter-n-processing-mode 'strict)))
-    (should (eq nskk-converter-n-processing-mode 'smart)))
-
-  (nskk-it "in smart mode, 'nk' produces ん prefix (n before consonant)"
-    ;; In standard SKK smart-n: "nk" -> "ん" + remaining
-    (let ((nskk-converter-n-processing-mode 'smart))
-      (let ((result (nskk-convert-romaji "nka")))
-        (should (stringp result))
-        (should (string-prefix-p "ん" result))))))
 
 
 ;;;;
