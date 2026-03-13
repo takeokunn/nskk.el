@@ -492,7 +492,11 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
     (special-ext . ("km" "kr" "gr" "kt" "gt" "zr" "st" "ss" "sr" "tt" "dt"
                     "tb" "tm" "tr" "ds" "dm" "nr" "nt" "nb" "ht" "bt"
                     "ms" "mt" "mn" "yr" "rr" "wt" "wr"))
-    (gairaigo . ("tgi" "tgu" "dci" "dcu" "wso"))
+    (gairaigo . ("tgi" "tgu" "dci" "dcu" "wso"
+                 "tgk" "tgj" "dck" "dcj" "wsok"
+                 "tgq" "tgh" "tgw" "tgp"
+                 "dcq" "dch" "dcw" "dcp"
+                 "wsoq" "wsoh" "wsow" "wsop"))
     (standard-basic . ("ka" "ki" "ku" "ke" "ko" "ga" "gi" "gu" "ge" "go"
                        "sa" "si" "shi" "su" "se" "so" "za" "zi" "ji" "zu" "ze" "zo"
                        "ta" "ti" "chi" "tu" "tsu" "te" "to" "da" "di" "du" "de" "do"

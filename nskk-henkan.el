@@ -526,6 +526,12 @@ start marker, and romaji buffer."
     (setq nskk--deferred-azik-state nil))
   (nskk-when-bound nskk--deferred-vowel-shadow-state
     (setq nskk--deferred-vowel-shadow-state nil))
+  (nskk-when-bound nskk--azik-colon-okuri-pending
+    (setq nskk--azik-colon-okuri-pending nil))
+  (nskk-when-bound nskk--azik-colon-okuri-deferred
+    (setq nskk--azik-colon-okuri-deferred nil))
+  (nskk-when-bound nskk--deferred-plus-state
+    (setq nskk--deferred-plus-state nil))
   (nskk-with-current-state
     (nskk-reset-henkan-state)))
 

@@ -1207,6 +1207,56 @@ This ensures:
           ;; + should NOT arm colon-okurigana on US101
           (should-not nskk--azik-colon-okuri-pending))))))
 
+;;;;
+;;;; Section 17: JP106 + Key Deferred Sokuon (っ)
+;;;;
+;;
+;; On JP106 keyboards, + (Shift+;) now has deferred dual-role behavior:
+;; - When followed by a consonant: triggers colon-okurigana (same as : on US101)
+;; - When followed by anything else: produces っ (sokuon)
+;; This allows both JI+ → じっ and Tuka+te → 使って on JP106.
+
+(nskk-describe "AZIK JP106 + key deferred sokuon"
+  (nskk-it "JI+ produces じっ on JP106 keyboard"
+    (let ((nskk-azik-keyboard-type 'jp106))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "JI")
+        (nskk-e2e--dispatch-event ?+)
+        ;; At this point, っ is tentatively emitted (deferred state pending).
+        ;; Pressing C-j (kakutei) should commit with っ as final.
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "じっ"))))
+
+  (nskk-it "Tuka+te still triggers colon-okurigana on JP106 keyboard"
+    (let ((dict '(("つかt" . ("使")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Tuka")
+          (nskk-e2e--dispatch-event ?+)
+          (nskk-e2e-type "te")
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-buffer "使って")))))
+
+  (nskk-it "+ in idle hiragana produces っ on JP106 keyboard"
+    (let ((nskk-azik-keyboard-type 'jp106))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e--dispatch-event ?+)
+        (nskk-e2e-assert-buffer "っ"))))
+
+  (nskk-it "++ produces っっ on JP106 keyboard"
+    (let ((nskk-azik-keyboard-type 'jp106))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e--dispatch-event ?+)
+        (nskk-e2e--dispatch-event ?+)
+        (nskk-e2e-assert-buffer "っっ"))))
+
+  (nskk-it "+ on US101 keyboard does not produce っ"
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e--dispatch-event ?+)
+        ;; + should NOT produce っ on US101 (no romaji rule for +)
+        (should-not (string-match-p "っ" (buffer-string)))))))
+
 (provide 'nskk-azik-e2e-test)
 
 ;;; nskk-azik-e2e-test.el ends here

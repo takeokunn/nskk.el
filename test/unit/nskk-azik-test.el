@@ -1130,9 +1130,10 @@
     (nskk-with-azik-style
       (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
         (should results)
-        ;; 2 special + 10 compat + 17*9 extensions + 18*13 youon + 8 same-finger
-        ;; + 27 shortcuts + 5 foreign = at least 320 rules
-        (should (>= (length results) 320)))))
+        ;; 2 special + 10 compat + 19*9 extensions + 18*14 youon + 8 same-finger
+        ;; + 28 shortcuts + 5 foreign + 5 foreign-hatsuon + 12 foreign-dv
+        ;; = at least 470 rules
+        (should (>= (length results) 470)))))
 
   (nskk-it "switching to standard style resets the hot-path hash cache"
     (nskk-with-azik-style
@@ -1253,6 +1254,102 @@
       (should (equal (nskk-convert-romaji "tgika") "てぃか"))
       (should (equal (nskk-convert-romaji "dcika") "でぃか")))))
 
+;;;;
+;;;; 12a. 外来語撥音拡張 (Foreign Word Hatsuon Extension) Tests
+;;;;
+
+(nskk-describe "AZIK foreign hatsuon extensions (外来語撥音拡張)"
+  (nskk-it "tgk converts to てぃん"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "tgk") "てぃん"))))
+
+  (nskk-it "tgj converts to とぅん"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "tgj") "とぅん"))))
+
+  (nskk-it "dck converts to でぃん"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "dck") "でぃん"))))
+
+  (nskk-it "dcj converts to どぅん"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "dcj") "どぅん"))))
+
+  (nskk-it "wsok converts to うぉん"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "wsok") "うぉん"))))
+
+  (nskk-it "all foreign hatsuon rules exist in azik-rule/2 Prolog predicate"
+    (nskk-with-azik-style
+      (dolist (rule nskk--azik-foreign-hatsuon-rules)
+        (let* ((romaji (car rule))
+               (kana   (cadr rule))
+               (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
+          (should results)
+          (should (equal (nskk-prolog-walk '\?k (car results)) kana)))))))
+
+;;;;
+;;;; 12b. 外来語二重母音拡張 (Foreign Word Double-Vowel Extension) Tests
+;;;;
+
+(nskk-describe "AZIK foreign double-vowel extensions (外来語二重母音拡張)"
+  (nskk-it "tgq converts to てぃい"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "tgq") "てぃい"))))
+
+  (nskk-it "tgh converts to てぃい"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "tgh") "てぃい"))))
+
+  (nskk-it "tgw converts to とぅう"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "tgw") "とぅう"))))
+
+  (nskk-it "tgp converts to とぅう"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "tgp") "とぅう"))))
+
+  (nskk-it "dcq converts to でぃい"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "dcq") "でぃい"))))
+
+  (nskk-it "dch converts to でぃい"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "dch") "でぃい"))))
+
+  (nskk-it "dcw converts to どぅう"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "dcw") "どぅう"))))
+
+  (nskk-it "dcp converts to どぅう"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "dcp") "どぅう"))))
+
+  (nskk-it "wsoq converts to うぉお"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "wsoq") "うぉお"))))
+
+  (nskk-it "wsoh converts to うぉお"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "wsoh") "うぉお"))))
+
+  (nskk-it "wsow converts to うぉお"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "wsow") "うぉお"))))
+
+  (nskk-it "wsop converts to うぉお"
+    (nskk-with-azik-style
+      (should (equal (nskk-convert-romaji "wsop") "うぉお"))))
+
+  (nskk-it "all foreign double-vowel rules exist in azik-rule/2 Prolog predicate"
+    (nskk-with-azik-style
+      (dolist (rule nskk--azik-foreign-double-vowel-rules)
+        (let* ((romaji (car rule))
+               (kana   (cadr rule))
+               (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
+          (should results)
+          (should (equal (nskk-prolog-walk '\?k (car results)) kana)))))))
+
 
 ;;;;
 ;;;; 13. Compound Rules Tests
@@ -1280,10 +1377,19 @@
 
   (nskk-it "all compound rules are absent from azik-rule/2 (hash-only)"
     (nskk-with-azik-style
-      ;; These are hash-only: not in Prolog
+      ;; These are hash-only: not in Prolog.
+      ;; Exception: "wso" is also in azik-rule/2 via foreign-extensions;
+      ;; the compound entry only restores the hash mapping after finalize.
       (dolist (rule nskk--azik-compound-rules)
         (let ((romaji (car rule)))
-          (should-not (nskk-prolog-query `(azik-rule ,romaji \?k))))))))
+          (unless (equal romaji "wso")
+            (should-not (nskk-prolog-query `(azik-rule ,romaji \?k))))))))
+
+  (nskk-it "wso hash entry is restored after finalize via compound rules"
+    (nskk-with-azik-style
+      ;; wso is demoted to :incomplete by finalize (non-vowel extensions
+      ;; from wsok, wsoq, etc.), then restored by compound-rules step.
+      (should (equal (nskk-converter-lookup "wso") "うぉ")))))
 
 
 ;;;;
@@ -2125,6 +2231,22 @@
 (nskk-describe "nskk--azik-init-youon-rows"
   (nskk-it "is a macro"
     (should (macrop 'nskk--azik-init-youon-rows))))
+
+;;;;
+;;;; Section: JP106 + Key Rules
+;;;;
+
+(nskk-describe "AZIK JP106 + key rules"
+  (nskk-it "JP106 rules include + → っ"
+    (let ((nskk-azik-keyboard-type 'jp106))
+      ;; Reinitialize to pick up JP106 rules
+      (nskk-with-azik-style
+        (should (equal "っ" (gethash "+" nskk--romaji-table))))))
+
+  (nskk-it "US101 rules do not include + → っ"
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk-with-azik-style
+        (should-not (gethash "+" nskk--romaji-table))))))
 
 (provide 'nskk-azik-test)
 

@@ -1900,6 +1900,59 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (equal sync-result cps-result))))
   30 44)
 
+;;;;
+;;;; nskk--apply-deferred-plus-correction
+;;;;
+
+(nskk-describe "nskk--apply-deferred-plus-correction"
+  (nskk-it "consonant after + deletes っ and replays arm+fire"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        ;; Simulate deferred plus state: っ was tentatively inserted
+        (insert "っ")
+        (setq nskk--deferred-plus-state "っ")
+        ;; Apply correction with consonant 't'
+        (nskk--apply-deferred-plus-correction ?t)
+        ;; Deferred state should be cleared
+        (should-not nskk--deferred-plus-state)
+        ;; っ should be deleted from buffer
+        (should-not (string-match-p "っ" (buffer-string))))))
+
+  (nskk-it "vowel after + keeps っ as final"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "っ")
+        (setq nskk--deferred-plus-state "っ")
+        (nskk--apply-deferred-plus-correction ?a)
+        ;; Deferred state cleared, but っ is kept (not deleted)
+        (should-not nskk--deferred-plus-state)
+        (should (string-match-p "っ" (buffer-string))))))
+
+  (nskk-it "SPC after + keeps っ as final"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "っ")
+        (setq nskk--deferred-plus-state "っ")
+        (nskk--apply-deferred-plus-correction ?\s)
+        (should-not nskk--deferred-plus-state)
+        (should (string-match-p "っ" (buffer-string))))))
+
+  (nskk-it "no-op when deferred state is nil"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (setq nskk--deferred-plus-state nil)
+        ;; Should not error or modify buffer
+        (nskk--apply-deferred-plus-correction ?t)
+        (should-not nskk--deferred-plus-state))))
+
+  (nskk-it "state is cleared after consonant correction"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "っ")
+        (setq nskk--deferred-plus-state "っ")
+        (nskk--apply-deferred-plus-correction ?k)
+        (should (null nskk--deferred-plus-state))))))
+
 (provide 'nskk-input-test)
 
 ;;; nskk-input-test.el ends here

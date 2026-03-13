@@ -161,6 +161,12 @@ Hatsuon and double vowel extensions are generated for all positions."
   '((";" "っ") (":" "ー"))
   "Special keys: semicolon → っ (geminate stop), colon → ー (prolonged sound).")
 
+(defconst nskk--azik-jp106-rules
+  '(("+" "っ"))
+  "JP106-specific AZIK rules: + (Shift+;) maps to っ (sokuon).
+On JP106 keyboards, Shift+; produces + instead of :.  This rule makes +
+equivalent to ; (→ っ) in romaji contexts where colon-okurigana does not apply.")
+
 (defconst nskk--azik-consonant-compat-rules
   '(("xa" "しゃ") ("xi" "し") ("xu" "しゅ") ("xe" "しぇ") ("xo" "しょ")
     ("ca" "ちゃ") ("ci" "ち") ("cu" "ちゅ") ("ce" "ちぇ") ("co" "ちょ"))
@@ -257,8 +263,34 @@ hf=ふ avoids the h→u same-hand sequence (h and f share the left index finger)
   '(("tgi" "てぃ") ("tgu" "とぅ") ("dci" "でぃ") ("dcu" "どぅ") ("wso" "うぉ"))
   "Foreign word extension rules for non-native Japanese sounds.")
 
+(defconst nskk--azik-foreign-hatsuon-rules
+  '(;; tg prefix: k→i-variant+ん, j→u-variant+ん
+    ("tgk" "てぃん") ("tgj" "とぅん")
+    ;; dc prefix: k→i-variant+ん, j→u-variant+ん
+    ("dck" "でぃん") ("dcj" "どぅん")
+    ;; wso prefix: k→single-variant+ん
+    ("wsok" "うぉん"))
+  "Hatsuon (撥音) extensions for foreign word prefixes.
+k suffix → i-variant + ん, j suffix → u-variant + ん.
+Only k (i-position) and j (u-position) are used because tg/dc foreign
+prefixes have only two variants (i and u); the remaining hatsuon keys
+(z/d/l for a/e/o positions) have no corresponding vowel variant.
+For wso (single o-variant), k suffix → うぉん.")
+
+(defconst nskk--azik-foreign-double-vowel-rules
+  '(;; tg prefix: q/h→i-variant vowel repeat, w/p→u-variant vowel repeat
+    ("tgq" "てぃい") ("tgh" "てぃい") ("tgw" "とぅう") ("tgp" "とぅう")
+    ;; dc prefix: q/h→i-variant vowel repeat, w/p→u-variant vowel repeat
+    ("dcq" "でぃい") ("dch" "でぃい") ("dcw" "どぅう") ("dcp" "どぅう")
+    ;; wso prefix: all keys→nearest (o-variant vowel repeat)
+    ("wsoq" "うぉお") ("wsoh" "うぉお") ("wsow" "うぉお") ("wsop" "うぉお"))
+  "Double-vowel extensions for foreign word prefixes.
+q/h → i-variant's vowel repeat, w/p → u-variant's vowel repeat.
+For wso (single o-variant), all keys produce うぉお.")
+
 (defconst nskk--azik-compound-rules
-  '(("kak" "かく") ("kaq" "かい") ("kakz" "かかん"))
+  '(("kak" "かく") ("kaq" "かい") ("kakz" "かかん")
+    ("wso" "うぉ"))
   "Compound rules inserted into the hash table after the prefix-restore pass.
 
 These rules are NOT asserted into azik-rule/2 to avoid the prefix-restore
@@ -266,6 +298,10 @@ step demoting their 2-char prefixes (e.g., \"ka\") back to :incomplete.
 Adding them after the restore pass lets the greedy longest-match finder
 discover e.g. \"kak\" before \"ka\", enabling compound input like
 xhkak → しゅうかく (shuukaku).
+
+The \"wso\" entry restores the mapping after finalize demotes it: adding
+foreign hatsuon/double-vowel extensions (wsok, wsoq, etc.) causes the
+finalize step to classify \"wso\" as :incomplete (non-vowel extensions).
 
 Format: each entry is (ROMAJI KANA) where ROMAJI is the full key string
 and KANA is the output string.")
@@ -426,6 +462,13 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (nskk--azik-assert-rules nskk--azik-same-finger-rules)      ; f-suffix ergonomics
   (nskk--azik-assert-rules nskk--azik-word-shortcuts)         ; common word pairs
   (nskk--azik-assert-rules nskk--azik-foreign-extensions)     ; foreign sound rules
+  (nskk--azik-assert-rules nskk--azik-foreign-hatsuon-rules)  ; foreign hatsuon (+ん)
+  (nskk--azik-assert-rules nskk--azik-foreign-double-vowel-rules) ; foreign double-vowel
+
+  ;; Step 3b: JP106-specific rules (+ → っ for Shift+; key).
+  (when (and (boundp 'nskk-azik-keyboard-type)
+             (eq nskk-azik-keyboard-type 'jp106))
+    (nskk--azik-assert-rules nskk--azik-jp106-rules))
 
   ;; Step 4: Bridge rule — AZIK rules are also romaji-to-kana.
   ;; The variable first arg (?r) is NOT trie-indexed; use azik-rule/2
