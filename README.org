@@ -10,7 +10,7 @@
 NSKK is a modern, zero-dependency Japanese input method for Emacs built on
 SKK (Simple Kana to Kanji) principles. It delivers:
 
-- Clean architecture — 6-layer modular design with full lexical-binding
+- Clean architecture — 5-layer modular design with full lexical-binding
 - DDSKK compatibility — Familiar keybindings and behavior
 - Extensible — Embedded Prolog engine for customizable conversion logic
 
@@ -30,9 +30,9 @@ No external ELPA packages required.
 
 | Component        | Description                             |
 |------------------+-----------------------------------------|
-| Lexical binding  | All 19 modules use =lexical-binding: t= |
+| Lexical binding  | All 20 modules use =lexical-binding: t= |
 | Prolog engine    | Conversion rules as facts/queries       |
-| Layer separation | 6 strict layers, zero circular deps     |
+| Layer separation | 5 strict layers, zero circular deps     |
 | Test coverage    | 3,000+ unit/integration/E2E tests       |
 
 ** DDSKK Compatibility
@@ -53,23 +53,15 @@ No external ELPA packages required.
   :config
   (nskk-global-mode 1))
 #+end_src
-** leaf
-#+begin_src elisp
-(leaf nskk
-  :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest)
-  :custom
-  (nskk-dict-system-dictionary-files . '("/usr/share/skk/SKK-JISYO.L"))
-  :config
-  (nskk-global-mode 1))
-#+end_src
 * Quick Start
 ** Minimal Configuration
 #+begin_src elisp
 (require 'nskk)
 (nskk-global-mode 1)
 
-;; Toggle in current buffer
-;; C-x C-j  → activate/deactivate nskk-mode
+;; After nskk-global-mode is enabled:
+;; C-j       → switch to hiragana input (from ascii mode)
+;; C-x C-j   → toggle nskk-mode on/off in current buffer
 #+end_src
 ** With System Dictionary
 #+begin_src elisp
@@ -87,9 +79,6 @@ No external ELPA packages required.
 #+begin_src elisp
 (use-package nskk
   :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest)
-  :bind (("C-x C-j" . nskk-toggle-mode)
-         :map nskk-mode-map
-         ("C-j" . nskk-kakutei))
   :custom
   ;; Start in hiragana mode (optional, default is ascii)
   (nskk-state-default-mode 'hiragana)
@@ -118,7 +107,7 @@ No external ELPA packages required.
 
 | From     | Key       | To         | Indicator |
 |----------+-----------+------------+-----------|
-| Any      | =C-x C-j= | Toggle     | —         |
+| Any      | =C-x C-j= | Toggle on/off | —         |
 | ascii    | =C-j=     | hiragana   | かな       |
 | hiragana | =q=       | katakana   | カナ       |
 | hiragana | =l=       | ascii      | SKK       |
@@ -128,38 +117,31 @@ No external ELPA packages required.
 ** Conversion Flow
 #+begin_src mermaid
 stateDiagram-v2
-    [*] --> ASCII: toggle
-    ASCII --> ASCII: commit line
-    ASCII --> Hiragana: C-j
-    ASCII --> FullWidth: L
-    ASCII --> Abbrev: slash
+    [*] --> ASCII: nskk-global-mode (default)
 
-    Hiragana --> Conversion: SPC
-    Hiragana --> Katakana: q
+    ASCII --> Hiragana: C-j
     Hiragana --> ASCII: l
+    Hiragana --> Katakana: q
     Hiragana --> FullWidth: L
     Hiragana --> Abbrev: slash
-    Hiragana --> ASCII: C-g
-
-    Conversion --> Conversion: SPC
-    Conversion --> Conversion: x
-    Conversion --> Conversion: a-l
-    Conversion --> ASCII: RET
-    Conversion --> ASCII: C-g
-    Conversion --> ASCII: arrow
-    Conversion --> ASCII: C-a
-    Conversion --> ASCII: C-e
+    Abbrev --> Conversion: SPC
+    Abbrev --> Hiragana: C-j / C-g
 
     Katakana --> Hiragana: q
-    Katakana --> Conversion: SPC
+    Katakana --> Hiragana: C-j
     Katakana --> ASCII: l
-    Katakana --> ASCII: C-g
 
-    FullWidth --> ASCII: exit
     FullWidth --> Hiragana: C-j
 
-    Abbrev --> ASCII: exit
-    Abbrev --> Conversion: SPC
+    Hiragana --> Preedit: Uppercase
+    Katakana --> Preedit: Uppercase
+    Preedit --> Conversion: SPC
+    Preedit --> Hiragana: C-g (returns to kana mode)
+
+    Conversion --> Hiragana: C-j (commit, returns to kana mode)
+    Conversion --> Conversion: SPC (next)
+    Conversion --> Conversion: x (prev)
+    Conversion --> Preedit: C-g (rollback)
 #+end_src
 ** Key Bindings
 *** Mode Control
@@ -240,7 +222,7 @@ stateDiagram-v2
 ;; Connect to a running skkserv for extended dictionary lookup
 (setopt nskk-server-enable t)
 (setopt nskk-server-host "localhost")
-(setopt nskk-server-port 1178)
+(setopt nskk-server-portnum 1178)
 #+end_src
 ** Hooks
 #+begin_src elisp
