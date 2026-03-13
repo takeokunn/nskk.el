@@ -269,6 +269,25 @@ Returns the selected candidate index, or nil if KEY is not valid.")
 
 ;;;; Dictionary Search API
 
+;; Optional-backend adapters: these wrappers guard on `fboundp' so that
+;; nskk-server.el and nskk-program-dictionary.el remain truly optional.
+;; Each backend's own /k function also checks the enable flag internally.
+
+(defun nskk--optional-server-lookup/k (key on-found on-not-found)
+  "Attempt skkserv lookup; call ON-NOT-FOUND if absent, disabled, or unreachable."
+  (if (and (fboundp 'nskk-server-lookup/k)
+           (boundp 'nskk-server-enable)
+           nskk-server-enable
+           (nskk-server-ensure-open))
+      (nskk-server-lookup/k key on-found on-not-found)
+    (funcall on-not-found)))
+
+(defun nskk--optional-program-dict-lookup/k (key on-found on-not-found)
+  "Attempt program-dict lookup; call ON-NOT-FOUND if module not loaded."
+  (if (fboundp 'nskk-program-dict-lookup/k)
+      (nskk-program-dict-lookup/k key on-found on-not-found)
+    (funcall on-not-found)))
+
 ;; Search strategy: exact match → prefix fallback → partial match → skkserv (remote).
 ;; Each stage calls on-not-found to fall through to the next.
 ;; The type argument selects which stage is executed for a given call:
