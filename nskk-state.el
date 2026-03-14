@@ -563,6 +563,13 @@ project convention that all buffer-local overlay variables live in
 nskk-state.el alongside `nskk--conversion-overlay' and
 `nskk--pending-romaji-overlay'.")
 
+(defvar-local nskk--dcomp-multiple-overlay nil
+  "Overlay for displaying multiple dynamic completion candidates inline.
+Zero-length overlay anchored at the end of the preedit text.
+Managed by dcomp-multiple display logic in nskk-henkan.el; declared here
+following the project convention that all buffer-local overlay variables
+live in nskk-state.el.")
+
 ;;;; Overlay and Marker Management Macros
 
 (defmacro nskk-ensure-overlay (var start end &rest props)

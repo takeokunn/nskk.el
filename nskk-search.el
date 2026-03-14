@@ -101,8 +101,9 @@ Hook functions must not signal errors; errors are silently suppressed
 to protect the CPS continuation chain.")
 
 (defvar nskk-save-history-hook nil
-  "Hook run after learning data is successfully saved by
-`nskk-search-save-learning-data'.  Each function is called with no
+  "Hook run after learning data is successfully saved.
+The save is performed by `nskk-search-save-learning-data'.
+Each function is called with no
 arguments.  The hook fires only on successful save; I/O errors
 suppress both the save and this hook.")
 
@@ -458,18 +459,23 @@ the integer Levenshtein distance from QUERY."
 (defun/done nskk-search-learn (query candidate &optional context)
   "Record that CANDIDATE was selected for QUERY.
 _CONTEXT is reserved for future use.
-Stores learning score as a Prolog learning-score/3 fact."
+Stores learning score as a Prolog learning-score/3 fact.
+
+Candidates marked with the `nskk-no-learn' text property (e.g. those
+produced by built-in program dictionary handlers such as the date or
+calculator) are silently skipped -- equivalent to AquaSKK SetAvoidStudy."
   (ignore context)
-  (let* ((word (if (stringp candidate) candidate (car candidate)))
-         (old-score (when word
-                      (nskk-prolog-query-value
-                       `(learning-score ,query ,word \?s) '\?s)))
-         (new-score (1+ (or old-score 0))))
-    (when word
-      (nskk-debug-log "[SEARCH] learn: query=%s word=%s new-score=%d" query word new-score)
-      (when old-score
-        (nskk-prolog-retract `(learning-score ,query ,word ,old-score)))
-      (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score))))))
+  (let ((word (if (stringp candidate) candidate (car candidate))))
+    ;; Skip learning for no-learn candidates early (before Prolog queries).
+    ;; Built-in program dict handlers mark candidates with `nskk-no-learn' t.
+    (when (and word (not (get-text-property 0 'nskk-no-learn word)))
+      (let* ((old-score (nskk-prolog-query-value
+                         `(learning-score ,query ,word \?s) '\?s))
+             (new-score (1+ (or old-score 0))))
+        (nskk-debug-log "[SEARCH] learn: query=%s word=%s new-score=%d" query word new-score)
+        (when old-score
+          (nskk-prolog-retract `(learning-score ,query ,word ,old-score)))
+        (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score)))))))
 
 ;;; Cache-backed search
 

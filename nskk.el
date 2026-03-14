@@ -91,6 +91,18 @@
 (require 'nskk-debug nil t)
 (require 'nskk-server nil t)
 (require 'nskk-program-dictionary nil t)
+;; Optional (L5) - inline mode indicator on mode switch
+(require 'nskk-show-mode nil t)
+;; Optional (L5) - annotation display for dictionary candidates
+(require 'nskk-annotation nil t)
+;; Optional (L5) - inline candidate display
+(require 'nskk-inline nil t)
+;; Optional (L5) - region operation commands
+(require 'nskk-region nil t)
+;; Optional (L5) - context-aware auto mode switching
+(require 'nskk-context nil t)
+;; Optional (L5) - isearch integration
+(require 'nskk-isearch nil t)
 
 (declare-function nskk-set-mode-hiragana "nskk-input")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
@@ -200,6 +212,14 @@ This provides global bindings that work even when nskk-mode is not yet active."
   (add-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
   (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
   (setq nskk-henkan-select-candidate-by-key-function #'nskk-candidate-list-select-by-key)
+  ;; Initialize optional features
+  (when (fboundp 'nskk-annotation-initialize)
+    (nskk-annotation-initialize))
+  ;; Setup isearch integration if enabled
+  (when (and (fboundp 'nskk-isearch-setup)
+             (boundp 'nskk-isearch-enable)
+             nskk-isearch-enable)
+    (nskk-isearch-setup))
   ;; Load AZIK style if configured
   (nskk--maybe-load-azik-style)
   ;; Register save-on-exit hook; add-hook deduplicates same symbol safely
@@ -272,9 +292,10 @@ unbound cursor-movement commands while in preedit (▽) state."
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update.
 Guards against point escaping the active conversion or preedit area due
-to unmapped cursor-movement commands (mouse clicks, M-f, page-up, etc.).
+to unmapped cursor-movement commands
+\(mouse clicks, \[forward-word], page-up, etc.).
 
-Converting (▼) guard: point must be exactly at overlay-end.  Any
+Converting (▼) guard: point must be exactly at `overlay-end'.  Any
 deviation triggers implicit kakutei (確定).
 
 Preedit (▽) guard: if point moved and `this-command' is not an

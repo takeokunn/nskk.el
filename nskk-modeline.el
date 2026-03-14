@@ -64,6 +64,9 @@
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
 
+;; Optional: nskk-show-mode provides inline mode indicator on mode change.
+(declare-function nskk-show-mode-display "nskk-show-mode")
+
 (defvar-local nskk--last-cursor-color nil
   "Last cursor color applied, to avoid redundant `set-cursor-color' calls.")
 
@@ -164,10 +167,15 @@ re-queries the Prolog database for the new mode's display data."
 (defun/done nskk-modeline-update ()
   "Update the mode line and cursor color to reflect the current NSKK state.
 Clears the memoized indicator cache, updates the cursor color, and
-forces a mode-line redisplay."
+forces a mode-line redisplay.  Also triggers inline mode indicator display
+when `nskk-show-mode-show' is non-nil (via `nskk-show-mode-display')."
   (nskk--modeline-clear-cache)
   (nskk-cursor-update)
-  (force-mode-line-update))
+  (force-mode-line-update)
+  ;; Show inline mode indicator if configured (optional feature)
+  (when (and (boundp 'nskk-show-mode-show) nskk-show-mode-show
+             (fboundp 'nskk-show-mode-display))
+    (nskk-show-mode-display)))
 
 ;;;; Cursor Color
 

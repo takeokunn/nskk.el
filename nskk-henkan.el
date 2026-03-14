@@ -123,8 +123,12 @@
 (declare-function nskk-server-lookup "nskk-server")
 (declare-function nskk-server-lookup/k "nskk-server")
 
-(declare-function nskk-program-dict-lookup "nskk-program-dictionary")
-(declare-function nskk-program-dict-lookup/k "nskk-program-dictionary")
+(declare-function nskk-program-dict-lookup "nskk-program-dictionary" (key))
+(declare-function nskk-program-dict-lookup/k "nskk-program-dictionary"
+                  (key on-found on-not-found))
+(declare-function nskk-program-dict-builtin-lookup "nskk-program-dictionary" (key))
+(declare-function nskk-program-dict-builtin-lookup/k "nskk-program-dictionary"
+                  (key on-found on-not-found))
 (declare-function nskk-state-force-henkan-phase "nskk-state")
 (declare-function nskk-state-get-mode "nskk-state")
 (declare-function nskk-kana-string-katakana-to-hiragana "nskk-kana")
@@ -136,6 +140,8 @@
 (defvar nskk--numeric-mode)
 
 ;;;; Dynamic Completion State
+
+(defvar nskk--dcomp-multiple-overlay)  ;; defined in nskk-state.el
 
 (defvar-local nskk--dcomp-prefix nil
   "The original preedit prefix used for dynamic completion search.")
@@ -302,11 +308,32 @@ Returns the selected candidate index, or nil if KEY is not valid.")
         :fail  (fail))
     (fail)))
 
+(defun/k nskk--optional-program-dict-builtin-lookup (key)
+  "Attempt built-in program-dict lookup; call on-not-found if module not loaded.
+Guards on `fboundp' so that nskk-program-dictionary.el remains truly optional."
+  (if (fboundp 'nskk-program-dict-builtin-lookup/k)
+      (<-or result nskk-program-dict-builtin-lookup key
+        :found (succeed result)
+        :fail  (fail))
+    (fail)))
+
 (defun/k nskk--optional-program-dict-lookup (key)
   "Attempt program-dict lookup; call on-not-found if module not loaded."
   (if (fboundp 'nskk-program-dict-lookup/k)
       (<-or result nskk-program-dict-lookup key
         :found (succeed result)
+        :fail  (fail))
+    (fail)))
+
+(defun/k nskk--optional-kakutei-lookup (key)
+  "Attempt kakutei (confirmed) dict lookup; fail if not loaded or no entry.
+When `nskk-kakutei-jisyo' is configured and `nskk-dict-lookup-kakutei/k'
+is available, tries a confirmed lookup.  A confirmed entry has exactly one
+candidate and is committed immediately without candidate selection.
+Calls on-not-found for any non-confirmed result."
+  (if (fboundp 'nskk-dict-lookup-kakutei/k)
+      (<-or result nskk-dict-lookup-kakutei key
+        :found (succeed (list result))
         :fail  (fail))
     (fail)))
 
@@ -341,16 +368,25 @@ always pass both continuation arguments explicitly."
       (nskk-debug-log "[HENKAN] search: key=%s type=%s" key (or type 'exact))
       (pcase action
         ('dict-lookup
-         ;; Flat fallback chain: local dict → skkserv → program-dict.
+         ;; Flat fallback chain:
+         ;;   kakutei-dict (confirmed, optional) → local dict → skkserv
+         ;;   → builtin-handlers → program-dict.
+         ;; Kakutei dictionary is checked first: if it returns a single
+         ;; confirmed candidate, it is committed immediately without
+         ;; showing the candidate selection menu.
          ;; Enable-flag guards live inside each backend's own /k function.
          ;; fboundp guards in the optional-* wrappers handle unloaded modules.
-         (<-or result nskk-dict-lookup key
+         (<-or result nskk--optional-kakutei-lookup key
            :found (succeed result)
-           :fail  (<-or r nskk--optional-server-lookup key
-             :found (succeed r)
-             :fail  (<-or p nskk--optional-program-dict-lookup key
-               :found (succeed p)
-               :fail  (fail)))))
+           :fail  (<-or result2 nskk-dict-lookup key
+             :found (succeed result2)
+             :fail  (<-or r nskk--optional-server-lookup key
+               :found (succeed r)
+               :fail  (<-or b nskk--optional-program-dict-builtin-lookup key
+                 :found (succeed b)
+                 :fail  (<-or p nskk--optional-program-dict-lookup key
+                   :found (succeed p)
+                   :fail  (fail)))))))
         ('prefix-search
          (if (nskk-dict-system-index)
              (<-or r nskk-search-prefix (nskk-dict-system-index) key nil limit
@@ -518,14 +554,18 @@ Creates a new marker if one does not already exist."
   "Clear conversion context when switching modes."
   (nskk-delete-overlay nskk--conversion-overlay)
   (nskk--dismiss-candidate-list)
+  ;; Clear inline display if enabled
+  (when (fboundp 'nskk-inline-hide)
+    (nskk-inline-hide))
   (nskk-when-bound-and nskk--conversion-start-marker markerp
     (set-marker nskk--conversion-start-marker nil))
   (nskk-when-bound nskk--romaji-buffer
     (nskk--reset-romaji-buffer))
-  ;; Clear dynamic completion state
+  ;; Clear dynamic completion state and multiple display
   (setq nskk--dcomp-candidates nil
         nskk--dcomp-prefix nil
         nskk--dcomp-index 0)
+  (nskk-delete-overlay nskk--dcomp-multiple-overlay)
   ;; Clear all registered input state variables via Prolog fact table.
   ;; The clearable-input-var/1 table is defined in nskk-input-initialize.
   (dolist (sym (nskk-prolog-query-all-values '(clearable-input-var \?v) '\?v))
@@ -649,7 +689,7 @@ Does nothing when not currently converting."
   "Restore previous Japanese mode when cancelling from abbrev preedit.
 WAS-ABBREV is non-nil when the active mode was abbrev at cancel time.
 Uses setf directly on the struct slot to avoid updating previous-mode
-(this is a restore, not a user-initiated mode switch).
+\(this is a restore, not a user-initiated mode switch).
 No-op when WAS-ABBREV is nil or previous-mode is nil or abbrev."
   (when was-abbrev
     (let ((prev-mode (nskk-with-current-state
@@ -840,7 +880,9 @@ in place and will immediately follow the inserted candidate."
         ;; Re-insert okuri-kana explicitly so point ends after it.
         (delete-region start end)
         (goto-char start)
-        (insert candidate)
+        ;; Strip text properties (e.g. nskk-no-learn from built-in program dict
+        ;; handlers) before inserting into the buffer.
+        (insert (substring-no-properties candidate))
         (when okuri-kana
           (insert okuri-kana)))
       ;; Clear all conversion state (includes candidate list dismissal).
@@ -871,7 +913,10 @@ where `nskk-current-state' is guaranteed valid."
                             (overlay-end nskk--conversion-overlay)
                           (point))))
         (setf (nskk-state-current-index nskk-current-state) new-index)
-        (nskk--update-overlay text-start end candidate)))))
+        (nskk--update-overlay text-start end candidate)
+        ;; Show inline candidate if configured
+        (when (fboundp 'nskk-inline-show-candidate)
+          (nskk-inline-show-candidate candidate))))))
 
 (defun nskk--show-candidate-list-next ()
   "Show next page of candidates in overlay list below the conversion region.
@@ -1078,9 +1123,11 @@ QUERY is the dict lookup key stored in okurigana-query metadata."
 
 (defun nskk--build-okuri-registration-reading (text-start preedit-end query)
   "Build the display-format reading string for okurigana dict registration.
-Format: \"stem*kana\" (e.g. \"ほ*け\"), falling back to QUERY when no okuri-kana.
+Format: \"stem*kana\" (e.g. \"ほ*け\").
+Falls back to QUERY when no okuri-kana.
 Captures okuri-kana from the buffer BEFORE the * marker is removed.
-TEXT-START is the position after ▽, PREEDIT-END is the pre-okurigana position."
+TEXT-START is the position after ▽.
+PREEDIT-END is the pre-okurigana position."
   (let* ((okuri-kana (buffer-substring-no-properties preedit-end (point)))
          (raw-stem   (buffer-substring-no-properties text-start preedit-end))
          (stem       (replace-regexp-in-string nskk-okurigana-marker-regexp "" raw-stem)))
@@ -1251,7 +1298,7 @@ Manages `nskk--registration-depth' and restores the henkan-phase via
 `unwind-protect', so depth and phase are always consistent on exit.
 
 `unwind-protect' is mandatory here because the user can abort at any time
-via C-g (keyboard-quit) or if an error is signalled inside
+via \[keyboard-quit] or if an error is signalled inside
 `read-from-minibuffer'.  Without the cleanup form the depth counter would
 remain incremented, blocking future registration attempts.
 
@@ -1272,6 +1319,9 @@ The cleanup form guarantees two invariants on exit:
       (nskk-with-current-state
         (nskk-state-force-henkan-phase nskk-current-state 'registration))
       (cl-incf nskk--registration-depth)
+      ;; Show inline registration badge when inline display is enabled
+      (when (fboundp 'nskk-inline-show-registration-badge)
+        (nskk-inline-show-registration-badge))
       (unwind-protect
           (let ((entry (read-from-minibuffer
                         (nskk--registration-prompt nskk--registration-depth reading))))
@@ -1279,6 +1329,9 @@ The cleanup form guarantees two invariants on exit:
               (setq result entry)
               (nskk-dict-register-word reading entry)))
         (cl-decf nskk--registration-depth)
+        ;; Hide inline badge on exit
+        (when (fboundp 'nskk-inline-hide)
+          (nskk-inline-hide))
         (nskk-with-current-state
           (nskk-state-force-henkan-phase nskk-current-state prev-phase)))
       result)))
@@ -1374,12 +1427,74 @@ Prolog trie indexes; deduplicates keys present in both."
         (goto-char text-start)
         (insert new-text)))))
 
+;;;; Dynamic Completion Multiple Display
+
+(defvar nskk--dcomp-multiple-overlay)  ;; defined in nskk-state.el
+
+(defun nskk--dcomp-multiple-build-string (candidates selected-index prefix)
+  "Build overlay after-string for dcomp multiple display.
+CANDIDATES is the list of reading strings.
+SELECTED-INDEX is the currently selected 0-based index.
+PREFIX is the original preedit prefix for highlighting the trailing part.
+Returns a multi-line string starting with \\n."
+  (let* ((rows (min (or (and (boundp 'nskk-dcomp-multiple-rows)
+                             nskk-dcomp-multiple-rows)
+                        7)
+                    (length candidates)))
+         (display-candidates (cl-subseq candidates 0 rows))
+         (prefix-len (length prefix)))
+    (mapconcat
+     (lambda (pair)
+       (let* ((idx (car pair))
+              (cand (cdr pair))
+              (is-selected (= idx selected-index))
+              (prefix-part (if (and (> (length cand) prefix-len)
+                                   (string-prefix-p prefix cand))
+                               (substring cand 0 prefix-len)
+                             cand))
+              (trailing-part (if (and (> (length cand) prefix-len)
+                                     (string-prefix-p prefix cand))
+                                 (substring cand prefix-len)
+                               ""))
+              (cand-str (concat
+                         (propertize prefix-part
+                                     'face (if is-selected
+                                               'nskk-dcomp-multiple-selected-face
+                                             'nskk-dcomp-multiple-face))
+                         (propertize trailing-part
+                                     'face (if is-selected
+                                               'nskk-dcomp-multiple-selected-face
+                                             'nskk-dcomp-multiple-trailing-face)))))
+         (concat "  " cand-str)))
+     (cl-loop for i from 0
+              for c in display-candidates
+              collect (cons i c))
+     "\n")))
+
+(defun nskk--dcomp-multiple-show (candidates selected-index prefix)
+  "Display dcomp multiple candidate list inline below preedit.
+CANDIDATES is the full list; SELECTED-INDEX is current selection; PREFIX
+is the original preedit prefix for display styling."
+  (when (and (boundp 'nskk-dcomp-multiple-activate)
+             nskk-dcomp-multiple-activate
+             candidates)
+    (let* ((after-str (nskk--dcomp-multiple-build-string
+                       candidates selected-index prefix))
+           (anchor (or (and (overlayp nskk--conversion-overlay)
+                            (overlay-end nskk--conversion-overlay))
+                       (point))))
+      (nskk-ensure-overlay nskk--dcomp-multiple-overlay anchor anchor
+        'after-string (concat "\n" after-str)
+        'priority 99))))
+
 (defun/done nskk-dynamic-complete ()
   "Complete the preedit reading from dictionary prefix matches.
-Called when Tab is pressed in preedit (\u25bd) phase.  Searches
+Called when Tab is pressed in preedit (▽) phase.  Searches
 for dict keys that start with the current reading and replaces
 the preedit with the first match.  Subsequent calls cycle through
-all matches."
+all matches.
+When `nskk-dcomp-multiple-activate' is non-nil, also displays all
+matching candidates inline below the preedit text."
   (let ((preedit (nskk-preedit-string)))
     (when (and preedit (not (string-empty-p preedit)))
       (cond
@@ -1393,7 +1508,11 @@ all matches."
         (nskk--dcomp-replace-preedit
          (nth nskk--dcomp-index nskk--dcomp-candidates))
         ;; Discard pending romaji — the completed reading supersedes it.
-        (nskk--reset-romaji-buffer))
+        (nskk--reset-romaji-buffer)
+        ;; Update multiple display if enabled
+        (nskk--dcomp-multiple-show nskk--dcomp-candidates
+                                   nskk--dcomp-index
+                                   nskk--dcomp-prefix))
        ;; Fresh search
        (t
         (let ((matches (nskk--dcomp-search-prefix preedit)))
@@ -1403,7 +1522,9 @@ all matches."
                   nskk--dcomp-index 0)
             (nskk--dcomp-replace-preedit (car matches))
             ;; Discard pending romaji — the completed reading supersedes it.
-            (nskk--reset-romaji-buffer))))))))
+            (nskk--reset-romaji-buffer)
+            ;; Show multiple candidates if enabled
+            (nskk--dcomp-multiple-show matches 0 preedit))))))))
 
 ;;;; SKK Numeric Conversion (数値変換)
 
