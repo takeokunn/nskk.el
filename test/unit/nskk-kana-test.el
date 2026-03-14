@@ -1146,6 +1146,40 @@ Note: Prolog-backed classification costs ~200-300us per character."
        (nskk--hankaku-to-hiragana (nskk--hiragana-to-hankaku "あいう"))
        "あいう"))))
 
+;;;
+;;; nskk-kana-convert-for-mode
+;;;
+
+(nskk-deftest-table kana-convert-for-mode-insert
+  :description "nskk-kana-convert-for-mode converts hiragana to the correct script per mode"
+  :columns (mode input expected)
+  :rows ((hiragana     "あいう" "あいう")
+         (katakana     "あいう" "アイウ")
+         (katakana-半角 "あいう" "ｱｲｳ"))
+  :body (should (equal (nskk-kana-convert-for-mode input mode) expected)))
+
+(nskk-describe "nskk-kana-convert-for-mode"
+  (nskk-context "unknown mode falls back to identity"
+    (nskk-it "passes text through unchanged when mode has no kana-conversion/3 entry"
+      (should (equal (nskk-kana-convert-for-mode "あ" 'ascii) "あ")))))
+
+;;;
+;;; nskk-kana-normalize-for-lookup
+;;;
+
+(nskk-deftest-table kana-normalize-for-lookup
+  :description "nskk-kana-normalize-for-lookup normalizes script to hiragana for dict lookup"
+  :columns (mode input expected)
+  :rows ((hiragana     "あいう" "あいう")
+         (katakana     "アイウ" "あいう")
+         (katakana-半角 "ｱｲｳ"   "あいう"))
+  :body (should (equal (nskk-kana-normalize-for-lookup input mode) expected)))
+
+(nskk-describe "nskk-kana-normalize-for-lookup"
+  (nskk-context "unknown mode falls back to identity"
+    (nskk-it "passes text through unchanged when mode has no normalize entry"
+      (should (equal (nskk-kana-normalize-for-lookup "test" 'ascii) "test")))))
+
 (provide 'nskk-kana-test)
 
 ;;; nskk-kana-test.el ends here
