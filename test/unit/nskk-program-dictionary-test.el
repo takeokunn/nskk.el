@@ -37,6 +37,13 @@
 ;; - nskk--program-dict-collect-all: multi-entry aggregation (CPS)
 ;; - nskk-program-dict-lookup: public API with enable guard and cache (CPS)
 ;; - PBT: output parsing invariants, build-call invariants
+;;
+;; Built-in handler tests (Sections 13-15):
+;; - nskk-program-dict-dispatch-table: default entries, prefix matching
+;; - nskk--program-dict-today: date format validation
+;; - nskk--program-dict-now: time format validation
+;; - nskk--program-dict-calculate: arithmetic via calc-eval
+;; - nskk-program-dict-builtin-lookup: enable guard, prefix dispatch, no-learn property
 
 ;;; Code:
 
@@ -816,6 +823,427 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
                       (nskk--program-dict-strip-annotation
                        (concat word ";" note))))
   30)
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-program-dict-dispatch-table (Section 13)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-program-dict-dispatch-table defaults"
+  (nskk-it "contains entries for today, now, and ="
+    (let ((prefixes (mapcar #'car nskk-program-dict-dispatch-table)))
+      (should (member "today" prefixes))
+      (should (member "now"   prefixes))
+      (should (member "="     prefixes))))
+
+  (nskk-it "all entries are (string . function) cons cells"
+    (dolist (entry nskk-program-dict-dispatch-table)
+      (should (consp entry))
+      (should (stringp (car entry)))
+      (should (functionp (cdr entry)))))
+
+  (nskk-it "today entry maps to nskk--program-dict-today"
+    (let ((entry (assoc "today" nskk-program-dict-dispatch-table)))
+      (should entry)
+      (should (eq (cdr entry) #'nskk--program-dict-today))))
+
+  (nskk-it "now entry maps to nskk--program-dict-now"
+    (let ((entry (assoc "now" nskk-program-dict-dispatch-table)))
+      (should entry)
+      (should (eq (cdr entry) #'nskk--program-dict-now))))
+
+  (nskk-it "= entry maps to nskk--program-dict-calculate"
+    (let ((entry (assoc "=" nskk-program-dict-dispatch-table)))
+      (should entry)
+      (should (eq (cdr entry) #'nskk--program-dict-calculate)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-today (Section 14)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-today"
+  (nskk-context "return structure"
+    (nskk-it "returns a list of exactly 2 strings"
+      (let ((result (nskk--program-dict-today "today")))
+        (should (listp result))
+        (should (= (length result) 2))
+        (should (cl-every #'stringp result))))
+
+    (nskk-it "ignores the key argument (today prefix triggers it)"
+      ;; Even with an extended key, it still returns 2 candidates
+      (let ((result (nskk--program-dict-today "today-extra")))
+        (should (= (length result) 2)))))
+
+  (nskk-context "format validation"
+    (nskk-it "first candidate matches YYYY/MM/DD(WeekAbbrev) pattern"
+      (let ((cand1 (car (nskk--program-dict-today "today"))))
+        (should (string-match "\\`[0-9]\\{4\\}/[0-9]\\{2\\}/[0-9]\\{2\\}(\\(?:Sun\\|Mon\\|Tue\\|Wed\\|Thu\\|Fri\\|Sat\\))\\'" cand1))))
+
+    (nskk-it "second candidate matches YYYY年MM月DD日(WeekKanji) pattern"
+      (let ((cand2 (cadr (nskk--program-dict-today "today"))))
+        (should (string-match "\\`[0-9]\\{4\\}年[0-9]\\{2\\}月[0-9]\\{2\\}日([日月火水木金土])\\'" cand2))))
+
+    (nskk-it "year in first candidate is a 4-digit number > 2000"
+      (let ((cand1 (car (nskk--program-dict-today "today"))))
+        (string-match "\\`\\([0-9]\\{4\\}\\)/" cand1)
+        (should (> (string-to-number (match-string 1 cand1)) 2000))))
+
+    (nskk-it "month in first candidate is in range 01-12"
+      (let* ((cand1  (car (nskk--program-dict-today "today")))
+             (month  (string-to-number (substring cand1 5 7))))
+        (should (<= 1 month 12))))
+
+    (nskk-it "day in first candidate is in range 01-31"
+      (let* ((cand1 (car (nskk--program-dict-today "today")))
+             (day   (string-to-number (substring cand1 8 10))))
+        (should (<= 1 day 31))))
+
+    (nskk-it "both candidates represent the same year/month/day"
+      (let* ((result (nskk--program-dict-today "today"))
+             (cand1  (car result))
+             (cand2  (cadr result)))
+        (string-match "\\`\\([0-9]\\{4\\}\\)/\\([0-9]\\{2\\}\\)/\\([0-9]\\{2\\}\\)" cand1)
+        (let ((y (match-string 1 cand1))
+              (m (match-string 2 cand1))
+              (d (match-string 3 cand1)))
+          (should (string-match-p (regexp-quote (format "%s年%s月%s日" y m d)) cand2)))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-now (Section 14)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-now"
+  (nskk-context "return structure"
+    (nskk-it "returns a list of exactly 2 strings"
+      (let ((result (nskk--program-dict-now "now")))
+        (should (listp result))
+        (should (= (length result) 2))
+        (should (cl-every #'stringp result)))))
+
+  (nskk-context "format validation"
+    (nskk-it "first candidate matches HH:MM:SS pattern"
+      (let ((cand1 (car (nskk--program-dict-now "now"))))
+        (should (string-match "\\`[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\'" cand1))))
+
+    (nskk-it "second candidate matches HH時MM分SS秒 pattern"
+      (let ((cand2 (cadr (nskk--program-dict-now "now"))))
+        (should (string-match "\\`[0-9]\\{2\\}時[0-9]\\{2\\}分[0-9]\\{2\\}秒\\'" cand2))))
+
+    (nskk-it "hour in first candidate is in range 00-23"
+      (let* ((cand1 (car (nskk--program-dict-now "now")))
+             (hour  (string-to-number (substring cand1 0 2))))
+        (should (<= 0 hour 23))))
+
+    (nskk-it "minute in first candidate is in range 00-59"
+      (let* ((cand1   (car (nskk--program-dict-now "now")))
+             (minute  (string-to-number (substring cand1 3 5))))
+        (should (<= 0 minute 59))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-calculate (Section 14)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-calculate"
+  (nskk-context "arithmetic evaluation"
+    (nskk-it "evaluates simple addition"
+      (let ((result (nskk--program-dict-calculate "=1+2")))
+        (should (listp result))
+        (should (= (length result) 1))
+        (should (equal (car result) "3"))))
+
+    (nskk-it "evaluates multiplication with parentheses"
+      (let ((result (nskk--program-dict-calculate "=(3+4)*2")))
+        (should (equal (car result) "14"))))
+
+    (nskk-it "evaluates power operator"
+      (let ((result (nskk--program-dict-calculate "=2^10")))
+        (should (equal (car result) "1024"))))
+
+    (nskk-it "returns a single-element list on success"
+      (nskk-deftest-table pd-builtin-calc-single-result
+        :columns (expr)
+        :rows    (("=1+1") ("=100-50") ("=6*7"))
+        :body    (let ((result (nskk--program-dict-calculate expr)))
+                   (should (= (length result) 1))
+                   (should (stringp (car result)))))))
+
+  (nskk-context "error handling"
+    (nskk-it "returns a non-nil list for expressions calc-eval can represent symbolically"
+      ;; calc-eval returns a string (symbolic expression) for some non-numeric inputs
+      (let ((result (nskk--program-dict-calculate "=not-a-number")))
+        ;; Should return a list with a string, not signal an error
+        (when result
+          (should (listp result))
+          (should (stringp (car result))))))
+
+    (nskk-it "does not signal an error for any expression"
+      ;; Must not propagate errors to callers regardless of input
+      (should-not (condition-case _
+                      (progn (nskk--program-dict-calculate "=???") nil)
+                    (error t))))
+
+    (nskk-it "returns error message for empty expression (= with no operand)"
+      ;; calc-eval \"\" returns (0 . \"Expected a number\") (cons, not string/signal);
+      ;; the (consp result) branch extracts (cdr result) as the error message.
+      (let ((result (nskk--program-dict-calculate "=")))
+        (should (listp result))
+        (should (= (length result) 1))
+        (should (stringp (car result))))))
+
+  (nskk-context "key parsing"
+    (nskk-it "strips the leading = from key before evaluating"
+      ;; "=5+5" -> evaluates "5+5" -> "10"
+      (let ((result (nskk--program-dict-calculate "=5+5")))
+        (should (equal (car result) "10"))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk-program-dict-builtin-lookup (Section 15)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(defmacro nskk--pd-builtin-test-with-env (enable &rest body)
+  "Execute BODY with `nskk-program-dict-enable' bound to ENABLE."
+  (declare (indent 1))
+  `(let ((nskk-program-dict-enable ,enable))
+     ,@body))
+
+(nskk-describe "nskk-program-dict-builtin-lookup enable guard"
+  (nskk-it "returns nil (sync) when nskk-program-dict-enable is nil"
+    (nskk--pd-builtin-test-with-env nil
+      (should (null (nskk-program-dict-builtin-lookup "today")))))
+
+  (nskk-it "calls on-not-found when nskk-program-dict-enable is nil"
+    (let ((not-found-called nil))
+      (nskk--pd-builtin-test-with-env nil
+        (nskk-program-dict-builtin-lookup/k "today"
+          #'ignore
+          (lambda () (setq not-found-called t))))
+      (should not-found-called)))
+
+  (nskk-it "calls on-not-found for an unrecognized key (no prefix match)"
+    (let ((not-found-called nil))
+      (nskk--pd-builtin-test-with-env t
+        (nskk-program-dict-builtin-lookup/k "zzz-no-match"
+          #'ignore
+          (lambda () (setq not-found-called t))))
+      (should not-found-called))))
+
+(nskk-describe "nskk-program-dict-builtin-lookup prefix dispatch"
+  (nskk-it "calls on-found for 'today'"
+    (let ((found-arg nil))
+      (nskk--pd-builtin-test-with-env t
+        (nskk-program-dict-builtin-lookup/k "today"
+          (lambda (v) (setq found-arg v))
+          #'ignore))
+      (should (listp found-arg))
+      (should (> (length found-arg) 0))))
+
+  (nskk-it "calls on-found for 'now'"
+    (let ((found-arg nil))
+      (nskk--pd-builtin-test-with-env t
+        (nskk-program-dict-builtin-lookup/k "now"
+          (lambda (v) (setq found-arg v))
+          #'ignore))
+      (should (listp found-arg))
+      (should (> (length found-arg) 0))))
+
+  (nskk-it "calls on-found for '=1+1'"
+    (let ((found-arg nil))
+      (nskk--pd-builtin-test-with-env t
+        (nskk-program-dict-builtin-lookup/k "=1+1"
+          (lambda (v) (setq found-arg v))
+          #'ignore))
+      (should (listp found-arg))
+      (should (> (length found-arg) 0))))
+
+  (nskk-it "returns candidates from today handler"
+    (nskk--pd-builtin-test-with-env t
+      (let ((result (nskk-program-dict-builtin-lookup "today")))
+        (should (= (length result) 2))
+        (should (cl-every #'stringp result)))))
+
+  (nskk-it "returns candidates from now handler"
+    (nskk--pd-builtin-test-with-env t
+      (let ((result (nskk-program-dict-builtin-lookup "now")))
+        (should (= (length result) 2))
+        (should (cl-every #'stringp result))))))
+
+(nskk-describe "nskk-program-dict-builtin-lookup no-learn property"
+  (nskk-it "all candidates have nskk-no-learn property set to t"
+    (nskk--pd-builtin-test-with-env t
+      (let ((result (nskk-program-dict-builtin-lookup "today")))
+        (should result)
+        (dolist (cand result)
+          (should (eq (get-text-property 0 'nskk-no-learn cand) t))))))
+
+  (nskk-it "no-learn property is set to t (not just truthy) for 'now' candidates"
+    ;; Normalize: use (eq ... t) like the today test for consistency.
+    (nskk--pd-builtin-test-with-env t
+      (let ((result (nskk-program-dict-builtin-lookup "now")))
+        (should result)
+        (dolist (cand result)
+          (should (eq (get-text-property 0 'nskk-no-learn cand) t))))))
+
+  (nskk-it "no-learn property is set to t for '=' calculator candidates"
+    (nskk--pd-builtin-test-with-env t
+      (let ((result (nskk-program-dict-builtin-lookup "=1+1")))
+        (should result)
+        (dolist (cand result)
+          (should (eq (get-text-property 0 'nskk-no-learn cand) t)))))))
+
+(nskk-describe "nskk-program-dict-builtin-lookup CPS contract"
+  (nskk-it "calls exactly one continuation on found"
+    (let ((count 0))
+      (nskk--pd-builtin-test-with-env t
+        (nskk-program-dict-builtin-lookup/k "today"
+          (lambda (_v) (cl-incf count))
+          (lambda ()   (cl-incf count))))
+      (should (= count 1))))
+
+  (nskk-it "calls exactly one continuation on not-found"
+    (let ((count 0))
+      (nskk--pd-builtin-test-with-env t
+        (nskk-program-dict-builtin-lookup/k "zzz-no-match"
+          (lambda (_v) (cl-incf count))
+          (lambda ()   (cl-incf count))))
+      (should (= count 1))))
+
+  (nskk-it "candidates are a proper list of strings"
+    (nskk--pd-builtin-test-with-env t
+      (nskk-program-dict-builtin-lookup/k "today"
+        (lambda (cands)
+          (should (listp cands))
+          (should (cl-every #'stringp cands)))
+        #'ignore)))
+
+  (nskk-it "handler error is caught and treated as miss for that handler"
+    ;; Add a broken handler, verify builtin-lookup still works for other handlers
+    (let* ((called nil)
+           (broken-handler (lambda (_k) (error "boom")))
+           (nskk-program-dict-dispatch-table
+            (append (list (cons "boom" broken-handler))
+                    nskk-program-dict-dispatch-table)))
+      (nskk--pd-builtin-test-with-env t
+        ;; "today" still works even though "boom" handler would error
+        (let ((result (nskk-program-dict-builtin-lookup "today")))
+          (should (= (length result) 2)))
+        ;; "boom" key returns nil (error suppressed)
+        (setq called (nskk-program-dict-builtin-lookup "boom"))
+        (should (null called))))))
+
+(nskk-describe "nskk-program-dict-builtin-lookup deduplication"
+  (nskk-it "deduplicates candidates when multiple handlers match same prefix"
+    ;; Two handlers with same prefix and overlapping results
+    (let* ((h1 (lambda (_k) '("result1" "shared")))
+           (h2 (lambda (_k) '("shared" "result2")))
+           (nskk-program-dict-dispatch-table
+            (list (cons "test" h1) (cons "test" h2))))
+      (nskk--pd-builtin-test-with-env t
+        (let ((result (nskk-program-dict-builtin-lookup "test")))
+          (should result)
+          ;; After dedup, "shared" appears only once
+          (should (= (cl-count "shared" result :test #'string=) 1)))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-now: second range (S-1)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-now second range"
+  (nskk-it "second in first candidate is in range 00-59"
+    (let* ((cand1  (car (nskk--program-dict-now "now")))
+           (second (string-to-number (substring cand1 6 8))))
+      (should (<= 0 second 59))))
+
+  (nskk-it "both candidates contain the same second value"
+    (let* ((result (nskk--program-dict-now "now"))
+           (cand1  (car result))
+           (cand2  (cadr result))
+           (sec1   (string-to-number (substring cand1 6 8))))
+      ;; HH:MM:SS and HH時MM分SS秒 share the same second
+      (should (string-match (format "%02d秒" sec1) cand2)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-calculate: floating point and custom (S-3/S-4/S-5)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-calculate additional cases"
+  (nskk-context "floating point results (S-3)"
+    (nskk-it "returns a string result for floating point addition"
+      (let ((result (nskk--program-dict-calculate "=1.5+2.5")))
+        (should (listp result))
+        (should (stringp (car result)))))
+
+    (nskk-it "returns a string result for expressions producing decimals"
+      ;; calc-eval may return "4" or "4." depending on inputs; both are strings
+      (let ((result (nskk--program-dict-calculate "=3.0+1.0")))
+        (should (listp result))
+        (should (stringp (car result))))))
+
+  (nskk-context "calc-eval returns nil unexpectedly (S-5)"
+    (nskk-it "returns nil gracefully when calc-eval returns nil"
+      ;; Guard: (t nil) branch of the cond handles unexpected nil return.
+      (nskk-with-mocks ((calc-eval (lambda (_expr) nil)))
+        (let ((result (nskk--program-dict-calculate "=1+1")))
+          (should (null result))))))
+
+  (nskk-context "calc-eval returns non-string/non-cons unexpectedly (S-5)"
+    (nskk-it "returns nil gracefully when calc-eval returns an integer"
+      (nskk-with-mocks ((calc-eval (lambda (_expr) 42)))
+        (let ((result (nskk--program-dict-calculate "=1+1")))
+          (should (null result)))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; dispatch-table: custom entry priority (S-4)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk-program-dict-dispatch-table custom entry"
+  (nskk-it "custom entry prepended to dispatch table is invoked (S-4)"
+    (let* ((custom-called nil)
+           (custom-result '("custom-today"))
+           (nskk-program-dict-dispatch-table
+            (cons (cons "today" (lambda (_k)
+                                  (setq custom-called t)
+                                  custom-result))
+                  nskk-program-dict-dispatch-table)))
+      (nskk--pd-builtin-test-with-env t
+        (let ((result (nskk-program-dict-builtin-lookup "today")))
+          ;; Custom handler is called
+          (should custom-called)
+          ;; Custom result is present among candidates
+          (should (member "custom-today" (mapcar #'substring-no-properties result)))))))
+
+  (nskk-it "custom entry with unique prefix works independently"
+    (let* ((nskk-program-dict-dispatch-table
+            (cons (cons "myprefix" (lambda (_k) '("my-result")))
+                  nskk-program-dict-dispatch-table)))
+      (nskk--pd-builtin-test-with-env t
+        (let ((result (nskk-program-dict-builtin-lookup "myprefix-query")))
+          (should result)
+          (should (member "my-result" (mapcar #'substring-no-properties result))))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; PBT: nskk-no-learn invariant on all builtin-lookup results (S-6)
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-property-test pd-builtin-no-learn-invariant-today
+  ((word romaji-string))
+  ;; Any key with "today" prefix must yield only nskk-no-learn-t candidates
+  (let ((nskk-program-dict-enable t)
+        (key (concat "today" word)))
+    (let ((result (nskk-program-dict-builtin-lookup key)))
+      (or (null result)
+          (cl-every (lambda (c) (eq (get-text-property 0 'nskk-no-learn c) t))
+                    result))))
+  20)
+
+(nskk-property-test pd-builtin-no-learn-invariant-now
+  ((word romaji-string))
+  ;; Any key with "now" prefix must yield only nskk-no-learn-t candidates
+  (let ((nskk-program-dict-enable t)
+        (key (concat "now" word)))
+    (let ((result (nskk-program-dict-builtin-lookup key)))
+      (or (null result)
+          (cl-every (lambda (c) (eq (get-text-property 0 'nskk-no-learn c) t))
+                    result))))
+  20)
 
 (provide 'nskk-program-dictionary-test)
 

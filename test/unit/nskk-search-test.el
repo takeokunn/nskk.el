@@ -704,7 +704,36 @@ in this list.")
       (let ((all-scores (nskk-prolog-query-all-values
                          '(learning-score "かんじ" "漢字" \?s) '\?s)))
         (should (= (length all-scores) 1))
-        (should (= (car all-scores) 3))))))
+        (should (= (car all-scores) 3)))))
+
+  ;; nskk-no-learn: built-in program dictionary candidates (AquaSKK SetAvoidStudy equiv.)
+  (nskk-it "does not record learning for candidates with nskk-no-learn text property"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'learning-score 3)
+      (let ((no-learn-cand (propertize "2026/03/15(Sun)" 'nskk-no-learn t)))
+        (nskk-search-learn "today" no-learn-cand)
+        ;; No learning-score fact must be created for a no-learn candidate
+        (should-not (nskk-prolog-query-value
+                     '(learning-score "today" \?c \?s) '\?s)))))
+
+  (nskk-it "still records learning for candidates WITHOUT nskk-no-learn property"
+    ;; Regression guard: normal candidates continue to be learned
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'learning-score 3)
+      (let ((normal-cand "漢字"))  ; no text properties
+        (nskk-search-learn "かんじ" normal-cand)
+        (should (= (nskk-prolog-query-value
+                    '(learning-score "かんじ" "漢字" \?s) '\?s)
+                   1)))))
+
+  (nskk-it "nskk-no-learn=nil is treated the same as no property (learns normally)"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'learning-score 3)
+      (let ((cand (propertize "漢字" 'nskk-no-learn nil)))
+        (nskk-search-learn "かんじ" cand)
+        ;; nskk-no-learn=nil should not prevent learning
+        (should (nskk-prolog-query-value
+                 '(learning-score "かんじ" "漢字" \?s) '\?s))))))
 
 ;;;
 ;;; Learning Data: Save / Load Tests
