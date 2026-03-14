@@ -261,10 +261,11 @@
 
 (require 'nskk-pbt-generators)
 
-(nskk-deftest-cases dict-registration-readings
-  (("てすと" . "テスト")
-   ("さくら" . "桜")
-   ("やま"   . "山"))
+(nskk-deftest-table dict-registration-readings
+  :columns (input expected)
+  :rows (("てすと" "テスト")
+         ("さくら" "桜")
+         ("やま"   "山"))
   :body
   (nskk-prolog-test-with-isolated-db
     (let ((nskk--user-dict-index 'user)

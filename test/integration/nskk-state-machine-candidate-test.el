@@ -71,11 +71,6 @@ COUNT defaults to 0-10 if not specified."
   (nskk-state-previous-candidate state)
   state)
 
-(defun nskk--sm-clear-candidates (state _trigger)
-  "Clear candidates in STATE."
-  (nskk-state-set-candidates state nil)
-  state)
-
 (defun nskk--sm-safe-candidate-ops (state _trigger)
   "Perform safe candidate operations on STATE even with empty list."
   (let ((op (nskk--pbt-random-int 0 3)))
@@ -113,74 +108,6 @@ COUNT defaults to 0-10 if not specified."
                (< index (length candidates))))))
   50)
 
-(ert-deftest nskk-state-machine-candidate-index-bounds-description ()
-  "current-index is always < length(candidates) when candidates non-nil."
-  (let* ((state (nskk-state-create 'hiragana))
-         (candidates '("a" "b" "c" "d" "e")))
-    (nskk-state-set-candidates state candidates)
-    (dotimes (_ 3)
-      (nskk-state-next-candidate state))
-    (let ((idx (nskk-state-current-index state)))
-      (should (>= idx 0))
-      (should (< idx (length candidates))))))
-
-
-;;;;
-;;;; Property 2: Candidate Next Wraps
-;;;;
-
-(ert-deftest nskk-state-machine-candidate-next-wraps ()
-  "Next candidate wraps around to 0 after last."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (candidates '("a" "b" "c" "d"))
-             (len (length candidates)))
-        (nskk-state-set-candidates state candidates)
-        ;; Start at index 0
-        (should (= (nskk-state-current-index state) 0))
-        ;; Navigate to the end
-        (dotimes (_ (1- len))
-          (nskk-state-next-candidate state))
-        ;; Should be at last index
-        (should (= (nskk-state-current-index state) (1- len)))
-        ;; Next should wrap to 0
-        (nskk-state-next-candidate state)
-        (unless (= (nskk-state-current-index state) 0)
-          (push (list :expected 0
-                      :actual (nskk-state-current-index state))
-                failures))))
-    (when failures
-      (ert-fail (format "Next wrap failed for %d cases:\n%S"
-                        (length failures) failures)))))
-
-
-;;;;
-;;;; Property 3: Candidate Previous Wraps
-;;;;
-
-(ert-deftest nskk-state-machine-candidate-previous-wraps ()
-  "Previous candidate wraps to last from 0."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (candidates '("a" "b" "c" "d"))
-             (len (length candidates)))
-        (nskk-state-set-candidates state candidates)
-        ;; Start at index 0
-        (should (= (nskk-state-current-index state) 0))
-        ;; Previous should wrap to last
-        (nskk-state-previous-candidate state)
-        (unless (= (nskk-state-current-index state) (1- len))
-          (push (list :expected (1- len)
-                      :actual (nskk-state-current-index state))
-                failures))))
-    (when failures
-      (ert-fail (format "Previous wrap failed for %d cases:\n%S"
-                        (length failures) failures)))))
-
 
 ;;;;
 ;;;; Property 4: Candidate Current Valid
@@ -202,47 +129,6 @@ COUNT defaults to 0-10 if not specified."
           (member current candidates))))
   50)
 
-(ert-deftest nskk-state-machine-candidate-current-valid-description ()
-  "Current candidate is always in the list."
-  (let* ((state (nskk-state-create 'hiragana))
-         (candidates '("first" "second" "third")))
-    (nskk-state-set-candidates state candidates)
-    (should (member (nskk-state-current-candidate state) candidates))
-    (nskk-state-next-candidate state)
-    (should (member (nskk-state-current-candidate state) candidates))
-    (nskk-state-previous-candidate state)
-    (should (member (nskk-state-current-candidate state) candidates))))
-
-
-;;;;
-;;;; Property 5: Candidate Set Resets Index
-;;;;
-
-(ert-deftest nskk-state-machine-candidate-set-resets-index ()
-  "Setting candidates resets index to 0."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (initial-candidates '("a" "b" "c"))
-             (new-candidates '("x" "y" "z" "w")))
-        ;; Set initial candidates
-        (nskk-state-set-candidates state initial-candidates)
-        ;; Navigate to a non-zero index
-        (nskk-state-next-candidate state)
-        (nskk-state-next-candidate state)
-        (should (= (nskk-state-current-index state) 2))
-        ;; Set new candidates
-        (nskk-state-set-candidates state new-candidates)
-        ;; Index should be reset to 0
-        (unless (= (nskk-state-current-index state) 0)
-          (push (list :expected 0
-                      :actual (nskk-state-current-index state))
-                failures))))
-    (when failures
-      (ert-fail (format "Set candidates reset index failed for %d cases:\n%S"
-                        (length failures) failures)))))
-
 
 ;;;;
 ;;;; Property 6: Candidate Empty List Safe
@@ -261,16 +147,6 @@ COUNT defaults to 0-10 if not specified."
          (listp (nskk-state-candidates state))))
   50)
 
-(ert-deftest nskk-state-machine-candidate-empty-list-safe-description ()
-  "Empty candidate list doesn't crash."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-candidates state nil)
-    (should (null (nskk-state-current-candidate state)))
-    (nskk-state-next-candidate state)
-    (should (>= (nskk-state-current-index state) 0))
-    (nskk-state-previous-candidate state)
-    (should (>= (nskk-state-current-index state) 0))))
-
 
 ;;;;
 ;;;; Additional Property: Candidate Navigation Cycle
@@ -288,36 +164,6 @@ COUNT defaults to 0-10 if not specified."
     (let ((index (nskk-state-current-index state)))
       (>= index 0)))
   50)
-
-(ert-deftest nskk-state-machine-candidate-navigation-cycle-description ()
-  "Navigating forward and backward should maintain consistency."
-  (let* ((state (nskk-state-create 'hiragana))
-         (candidates '("a" "b" "c" "d" "e")))
-    (nskk-state-set-candidates state candidates)
-    ;; Go forward 2, then backward 2 — must return to index 0
-    (nskk-state-next-candidate state)
-    (nskk-state-next-candidate state)
-    (nskk-state-previous-candidate state)
-    (nskk-state-previous-candidate state)
-    (should (= 0 (nskk-state-current-index state)))
-    (should (string= "a" (nskk-state-current-candidate state)))))
-
-
-;;;;
-;;;; Property: Single Candidate Navigation
-;;;;
-
-(ert-deftest nskk-state-machine-single-candidate-nav ()
-  "Navigation with single candidate should stay at index 0."
-  (let* ((state (nskk-state-create 'hiragana))
-         (runs 50))
-    (nskk-state-set-candidates state '("only"))
-    (dotimes (_ runs)
-      (nskk-state-next-candidate state)
-      (should (= (nskk-state-current-index state) 0))
-      (nskk-state-previous-candidate state)
-      (should (= (nskk-state-current-index state) 0))
-      (should (string= (nskk-state-current-candidate state) "only")))))
 
 
 ;;;;
@@ -342,138 +188,291 @@ COUNT defaults to 0-10 if not specified."
                (< index (length candidates))))))
   50)
 
-(ert-deftest nskk-state-machine-candidate-replacement-safe-description ()
-  "Replacing candidate list should always result in valid state."
-  (let* ((state (nskk-state-create 'hiragana))
-         (first-list '("a" "b" "c"))
-         (second-list '("x" "y")))
-    (nskk-state-set-candidates state first-list)
-    (nskk-state-next-candidate state)
-    (nskk-state-set-candidates state second-list)
-    (should (listp (nskk-state-candidates state)))
-    (should (>= (nskk-state-current-index state) 0))
-    (should (< (nskk-state-current-index state) (length second-list)))))
+
+;;;;
+;;;; BDD: Candidate index behaviors
+;;;;
+
+(nskk-describe "candidate index bounds"
+  (nskk-it "current-index is always < length(candidates) when candidates non-nil"
+    (let* ((state (nskk-state-create 'hiragana))
+           (candidates '("a" "b" "c" "d" "e")))
+      (nskk-state-set-candidates state candidates)
+      (nskk-when
+        (dotimes (_ 3)
+          (nskk-state-next-candidate state)))
+      (nskk-then
+        (let ((idx (nskk-state-current-index state)))
+          (should (>= idx 0))
+          (should (< idx (length candidates))))))))
 
 
 ;;;;
-;;;; Property: Full Navigation Cycle
+;;;; BDD: Candidate wrap behaviors
 ;;;;
 
-(ert-deftest nskk-state-machine-full-navigation-cycle ()
-  "Full cycle through all candidates should return to start."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (candidates '("a" "b" "c" "d" "e"))
-             (len (length candidates)))
-        (nskk-state-set-candidates state candidates)
-        ;; Navigate through all candidates (full cycle)
-        (dotimes (_ len)
-          (nskk-state-next-candidate state))
-        ;; Should be back at index 0
-        (unless (= (nskk-state-current-index state) 0)
-          (push (list :expected 0
-                      :actual (nskk-state-current-index state)
-                      :len len)
-                failures))
-        ;; Navigate backward through all candidates (full cycle)
-        (dotimes (_ len)
-          (nskk-state-previous-candidate state))
-        ;; Should still be at index 0
-        (unless (= (nskk-state-current-index state) 0)
-          (push (list :expected 0
-                      :actual (nskk-state-current-index state)
-                      :len len)
-                failures))))
-    (when failures
-      (ert-fail (format "Full cycle failed for %d cases:\n%S"
-                        (length failures) failures)))))
+(nskk-describe "candidate wrap behavior"
+  (nskk-it "next candidate wraps around to 0 after last"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (candidates '("a" "b" "c" "d"))
+               (len (length candidates)))
+          (nskk-state-set-candidates state candidates)
+          ;; Start at index 0
+          (should (= (nskk-state-current-index state) 0))
+          ;; Navigate to the end
+          (dotimes (_ (1- len))
+            (nskk-state-next-candidate state))
+          ;; Should be at last index
+          (should (= (nskk-state-current-index state) (1- len)))
+          ;; Next should wrap to 0
+          (nskk-state-next-candidate state)
+          (unless (= (nskk-state-current-index state) 0)
+            (push (list :expected 0
+                        :actual (nskk-state-current-index state))
+                  failures))))
+      (when failures
+        (ert-fail (format "Next wrap failed for %d cases:\n%S"
+                          (length failures) failures)))))
 
+  (nskk-it "previous candidate wraps to last from 0"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (candidates '("a" "b" "c" "d"))
+               (len (length candidates)))
+          (nskk-state-set-candidates state candidates)
+          ;; Start at index 0
+          (should (= (nskk-state-current-index state) 0))
+          ;; Previous should wrap to last
+          (nskk-state-previous-candidate state)
+          (unless (= (nskk-state-current-index state) (1- len))
+            (push (list :expected (1- len)
+                        :actual (nskk-state-current-index state))
+                  failures))))
+      (when failures
+        (ert-fail (format "Previous wrap failed for %d cases:\n%S"
+                          (length failures) failures)))))
 
-;;;;
-;;;; Negative Test Cases
-;;;;
+  (nskk-it "full cycle through all candidates returns to start"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (candidates '("a" "b" "c" "d" "e"))
+               (len (length candidates)))
+          (nskk-state-set-candidates state candidates)
+          ;; Navigate through all candidates (full cycle)
+          (dotimes (_ len)
+            (nskk-state-next-candidate state))
+          ;; Should be back at index 0
+          (unless (= (nskk-state-current-index state) 0)
+            (push (list :expected 0
+                        :actual (nskk-state-current-index state)
+                        :len len)
+                  failures))
+          ;; Navigate backward through all candidates (full cycle)
+          (dotimes (_ len)
+            (nskk-state-previous-candidate state))
+          ;; Should still be at index 0
+          (unless (= (nskk-state-current-index state) 0)
+            (push (list :expected 0
+                        :actual (nskk-state-current-index state)
+                        :len len)
+                  failures))))
+      (when failures
+        (ert-fail (format "Full cycle failed for %d cases:\n%S"
+                          (length failures) failures)))))
 
-(ert-deftest nskk-state-machine-candidate-negative-nil-state ()
-  "Candidate operations on nil state should not crash."
-  (should-not (nskk-state-next-candidate nil))
-  (should-not (nskk-state-previous-candidate nil))
-  (should-not (nskk-state-current-candidate nil)))
-
-(ert-deftest nskk-state-machine-candidate-negative-nil-candidates ()
-  "Operations with nil candidates should return nil safely."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; No candidates set
-    (should-not (nskk-state-current-candidate state))
-    ;; Next/previous should return nil and not crash
-    (should-not (nskk-state-next-candidate state))
-    (should-not (nskk-state-previous-candidate state))))
-
-(ert-deftest nskk-state-machine-candidate-negative-invalid-index ()
-  "Setting invalid index should not crash state."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-candidates state '("a" "b" "c"))
-    ;; Set a valid index
-    (nskk-state-set state 'current-index 2)
-    (should (= (nskk-state-current-index state) 2))
-    ;; Try to set an out-of-bounds index
-    ;; (The state doesn't prevent this, but operations should still work)
-    (nskk-state-set state 'current-index 100)
-    ;; Current candidate may be nil, but state should be valid
-    (should (nskk-state-p state))))
-
-(ert-deftest nskk-state-machine-candidate-negative-empty-string-candidates ()
-  "Empty strings in candidate list should work."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set-candidates state '("" "a" "" "b" ""))
-    (should (string= (nskk-state-current-candidate state) ""))
-    (nskk-state-next-candidate state)
-    (should (string= (nskk-state-current-candidate state) "a"))))
-
-
-;;;;
-;;;; Stress Test: Many Navigation Operations
-;;;;
-
-(ert-deftest nskk-state-machine-candidate-stress-navigation ()
-  "Stress test with many candidate navigation operations."
-  (let ((state (nskk-state-create 'hiragana))
-        (operations 0))
-    (nskk-state-set-candidates state '("a" "b" "c" "d" "e" "f" "g" "h" "i" "j"))
-    ;; Perform 1000 random navigation operations
-    (dotimes (_ 1000)
-      (cl-incf operations)
-      (let ((op (nskk--pbt-random-int 0 1)))
-        (pcase op
-          (0 (nskk-state-next-candidate state))
-          (1 (nskk-state-previous-candidate state))))
-      ;; Verify invariant after each operation
-      (let ((index (nskk-state-current-index state)))
-        (should (>= index 0))
-        (should (< index 10))))
-    (message "Completed %d candidate navigation operations" operations)))
+  (nskk-it "navigating forward and backward N steps returns to original index"
+    (let* ((state (nskk-state-create 'hiragana))
+           (candidates '("a" "b" "c" "d" "e")))
+      (nskk-state-set-candidates state candidates)
+      (nskk-when
+        ;; Go forward 2, then backward 2 -- must return to index 0
+        (nskk-state-next-candidate state)
+        (nskk-state-next-candidate state)
+        (nskk-state-previous-candidate state)
+        (nskk-state-previous-candidate state))
+      (nskk-then
+        (should (= 0 (nskk-state-current-index state)))
+        (should (string= "a" (nskk-state-current-candidate state)))))))
 
 
 ;;;;
-;;;; Property: Large Candidate List
+;;;; BDD: Candidate set behaviors
 ;;;;
 
-(ert-deftest nskk-state-machine-large-candidate-list ()
-  "Test navigation with large candidate list."
-  (let* ((state (nskk-state-create 'hiragana))
-         (large-candidates (cl-loop for i from 1 to 100
-                                    collect (format "candidate-%d" i))))
-    (nskk-state-set-candidates state large-candidates)
-    ;; Navigate to end
-    (dotimes (_ 99)
-      (nskk-state-next-candidate state))
-    (should (= (nskk-state-current-index state) 99))
-    (should (string= (nskk-state-current-candidate state) "candidate-100"))
-    ;; One more should wrap to beginning
-    (nskk-state-next-candidate state)
-    (should (= (nskk-state-current-index state) 0))
-    (should (string= (nskk-state-current-candidate state) "candidate-1"))))
+(nskk-describe "candidate set behavior"
+  (nskk-it "setting candidates resets index to 0"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (initial-candidates '("a" "b" "c"))
+               (new-candidates '("x" "y" "z" "w")))
+          ;; Set initial candidates
+          (nskk-state-set-candidates state initial-candidates)
+          ;; Navigate to a non-zero index
+          (nskk-state-next-candidate state)
+          (nskk-state-next-candidate state)
+          (should (= (nskk-state-current-index state) 2))
+          ;; Set new candidates
+          (nskk-state-set-candidates state new-candidates)
+          ;; Index should be reset to 0
+          (unless (= (nskk-state-current-index state) 0)
+            (push (list :expected 0
+                        :actual (nskk-state-current-index state))
+                  failures))))
+      (when failures
+        (ert-fail (format "Set candidates reset index failed for %d cases:\n%S"
+                          (length failures) failures)))))
+
+  (nskk-it "replacing candidate list always results in valid state"
+    (let* ((state (nskk-state-create 'hiragana))
+           (first-list '("a" "b" "c"))
+           (second-list '("x" "y")))
+      (nskk-state-set-candidates state first-list)
+      (nskk-state-next-candidate state)
+      (nskk-when
+        (nskk-state-set-candidates state second-list))
+      (nskk-then
+        (should (listp (nskk-state-candidates state)))
+        (should (>= (nskk-state-current-index state) 0))
+        (should (< (nskk-state-current-index state) (length second-list)))))))
+
+
+;;;;
+;;;; BDD: Candidate current value behaviors
+;;;;
+
+(nskk-describe "candidate current value"
+  (nskk-it "current candidate is always in the list"
+    (let* ((state (nskk-state-create 'hiragana))
+           (candidates '("first" "second" "third")))
+      (nskk-state-set-candidates state candidates)
+      (nskk-then
+        (should (member (nskk-state-current-candidate state) candidates)))
+      (nskk-when
+        (nskk-state-next-candidate state))
+      (nskk-then
+        (should (member (nskk-state-current-candidate state) candidates)))
+      (nskk-when
+        (nskk-state-previous-candidate state))
+      (nskk-then
+        (should (member (nskk-state-current-candidate state) candidates)))))
+
+  (nskk-it "empty candidate list produces nil current candidate"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-when
+        (nskk-state-set-candidates state nil))
+      (nskk-then
+        (should (null (nskk-state-current-candidate state)))
+        (nskk-state-next-candidate state)
+        (should (>= (nskk-state-current-index state) 0))
+        (nskk-state-previous-candidate state)
+        (should (>= (nskk-state-current-index state) 0)))))
+
+  (nskk-it "navigation with single candidate stays at index 0"
+    (let ((state (nskk-state-create 'hiragana))
+          (runs 50))
+      (nskk-state-set-candidates state '("only"))
+      (nskk-when
+        (dotimes (_ runs)
+          (nskk-state-next-candidate state)
+          (should (= (nskk-state-current-index state) 0))
+          (nskk-state-previous-candidate state)
+          (should (= (nskk-state-current-index state) 0))
+          (should (string= (nskk-state-current-candidate state) "only")))))))
+
+
+;;;;
+;;;; BDD: Candidate negative cases
+;;;;
+
+(nskk-describe "candidate negative cases"
+  (nskk-it "candidate operations on nil state should not crash"
+    (nskk-then
+      (should-not (nskk-state-next-candidate nil))
+      (should-not (nskk-state-previous-candidate nil))
+      (should-not (nskk-state-current-candidate nil))))
+
+  (nskk-it "operations with nil candidates should return nil safely"
+    (let ((state (nskk-state-create 'hiragana)))
+      ;; No candidates set
+      (nskk-then
+        (should-not (nskk-state-current-candidate state))
+        ;; Next/previous should return nil and not crash
+        (should-not (nskk-state-next-candidate state))
+        (should-not (nskk-state-previous-candidate state)))))
+
+  (nskk-it "setting invalid index should not crash state"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-state-set-candidates state '("a" "b" "c"))
+      ;; Set a valid index
+      (nskk-state-set state 'current-index 2)
+      (should (= (nskk-state-current-index state) 2))
+      ;; Try to set an out-of-bounds index
+      ;; (The state doesn't prevent this, but operations should still work)
+      (nskk-state-set state 'current-index 100)
+      ;; Current candidate may be nil, but state should be valid
+      (nskk-then
+        (should (nskk-state-p state)))))
+
+  (nskk-it "empty strings in candidate list should work"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-state-set-candidates state '("" "a" "" "b" ""))
+      (nskk-then
+        (should (string= (nskk-state-current-candidate state) "")))
+      (nskk-when
+        (nskk-state-next-candidate state))
+      (nskk-then
+        (should (string= (nskk-state-current-candidate state) "a"))))))
+
+
+;;;;
+;;;; BDD: Candidate stress tests
+;;;;
+
+(nskk-describe "candidate stress tests"
+  (nskk-it "stress test with many navigation operations maintains index bounds"
+    (let ((state (nskk-state-create 'hiragana))
+          (operations 0))
+      (nskk-state-set-candidates state '("a" "b" "c" "d" "e" "f" "g" "h" "i" "j"))
+      ;; Perform 1000 random navigation operations
+      (dotimes (_ 1000)
+        (cl-incf operations)
+        (let ((op (nskk--pbt-random-int 0 1)))
+          (pcase op
+            (0 (nskk-state-next-candidate state))
+            (1 (nskk-state-previous-candidate state))))
+        ;; Verify invariant after each operation
+        (let ((index (nskk-state-current-index state)))
+          (should (>= index 0))
+          (should (< index 10))))
+      (message "Completed %d candidate navigation operations" operations)))
+
+  (nskk-it "navigation with large candidate list maintains bounds"
+    (let* ((state (nskk-state-create 'hiragana))
+           (large-candidates (cl-loop for i from 1 to 100
+                                      collect (format "candidate-%d" i))))
+      (nskk-state-set-candidates state large-candidates)
+      ;; Navigate to end
+      (nskk-when
+        (dotimes (_ 99)
+          (nskk-state-next-candidate state)))
+      (nskk-then
+        (should (= (nskk-state-current-index state) 99))
+        (should (string= (nskk-state-current-candidate state) "candidate-100")))
+      ;; One more should wrap to beginning
+      (nskk-when
+        (nskk-state-next-candidate state))
+      (nskk-then
+        (should (= (nskk-state-current-index state) 0))
+        (should (string= (nskk-state-current-candidate state) "candidate-1"))))))
 
 
 ;;;;
@@ -516,11 +515,12 @@ COUNT defaults to 0-10 if not specified."
 ;;;; Data-Provider: Known candidate navigation results
 ;;;;
 
-(nskk-deftest-cases candidate-navigation-known
-  ((0 . "漢字")
-   (1 . "感じ")
-   (2 . "幹事"))
+(nskk-deftest-table candidate-navigation-known
   :description "Navigating to index N yields the Nth candidate"
+  :columns (input expected)
+  :rows ((0 "漢字")
+         (1 "感じ")
+         (2 "幹事"))
   :body (let* ((state (nskk-state-create 'hiragana))
                (candidates '("漢字" "感じ" "幹事")))
           (nskk-state-set-candidates state candidates)
@@ -541,17 +541,16 @@ COUNT defaults to 0-10 if not specified."
         (should (null (nskk-state-current-candidate state))))))
 
   (nskk-it "next wraps around after exhausting all candidates"
-    (nskk-given
-      (let* ((state (nskk-state-create 'hiragana))
-             (candidates '("a" "b" "c")))
-        (nskk-state-set-candidates state candidates)
-        (nskk-when
-          ;; Navigate past the end
-          (dotimes (_ (length candidates))
-            (nskk-state-next-candidate state)))
-        (nskk-then
-          ;; Should have wrapped to index 0
-          (should (= 0 (nskk-state-current-index state)))))))
+    (let* ((state (nskk-state-create 'hiragana))
+           (candidates '("a" "b" "c")))
+      (nskk-state-set-candidates state candidates)
+      (nskk-when
+        ;; Navigate past the end
+        (dotimes (_ (length candidates))
+          (nskk-state-next-candidate state)))
+      (nskk-then
+        ;; Should have wrapped to index 0
+        (should (= 0 (nskk-state-current-index state))))))
 
   (nskk-it "for-all: index is always in bounds after any navigation sequence"
     (nskk-for-all ((data candidates-with-valid-index))

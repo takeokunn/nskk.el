@@ -1111,21 +1111,22 @@
 ;;;; PBT: Okurigana input invariants
 ;;;;
 
-(nskk-deftest-cases okurigana-basic-consonants
-  (("K" . "K")
-   ("S" . "S")
-   ("T" . "T")
-   ("N" . "N")
-   ("H" . "H")
-   ("M" . "M")
-   ("Y" . "Y")
-   ("R" . "R")
-   ("G" . "G")
-   ("Z" . "Z")
-   ("D" . "D")
-   ("B" . "B")
-   ("P" . "P"))
+(nskk-deftest-table okurigana-basic-consonants
   :description "All standard okurigana consonant markers are uppercase ASCII"
+  :columns (input expected)
+  :rows (("K" "K")
+         ("S" "S")
+         ("T" "T")
+         ("N" "N")
+         ("H" "H")
+         ("M" "M")
+         ("Y" "Y")
+         ("R" "R")
+         ("G" "G")
+         ("Z" "Z")
+         ("D" "D")
+         ("B" "B")
+         ("P" "P"))
   :body (should (and (stringp input)
                      (= 1 (length input))
                      (>= (aref input 0) ?A)

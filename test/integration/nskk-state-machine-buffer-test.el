@@ -81,22 +81,6 @@
     (nskk-state-set state 'converted-buffer random-str))
   state)
 
-(defun nskk--sm-append-then-delete (state _trigger)
-  "Append a character then potentially delete it."
-  (nskk-state-append-input state (nskk--sm-random-char))
-  ;; 50% chance to delete
-  (when (nskk--pbt-random-bool)
-    (nskk-state-delete-last-char state))
-  state)
-
-(defun nskk--sm-random-append-then-clear (state _trigger)
-  "Append some characters then clear."
-  (dotimes (_ (nskk--pbt-random-int 1 5))
-    (nskk-state-append-input state (nskk--sm-random-char)))
-  (when (nskk--pbt-random-bool)
-    (nskk-state-clear-input state))
-  state)
-
 (defun nskk--sm-mixed-operations (state _trigger)
   "Perform random buffer operations on STATE."
   (let ((op (nskk--pbt-random-int 0 3)))
@@ -121,11 +105,6 @@
   (nskk-state-clear-input state)
   state)
 
-(defun nskk--sm-reset-state (state _trigger)
-  "Reset STATE completely."
-  (nskk-state-reset state)
-  state)
-
 
 ;;;;
 ;;;; Property 1: Input Buffer Append Increases Length
@@ -144,13 +123,6 @@
            (>= (length buf) 0))))
   50)
 
-(ert-deftest nskk-state-machine-buffer-append-increases-length-description ()
-  "Appending to buffer increases or maintains length."
-  (let ((state (nskk-state-create 'hiragana)))
-    (let ((len-before (length (nskk-state-input-buffer state))))
-      (nskk-state-append-input state ?a)
-      (should (>= (length (nskk-state-input-buffer state)) len-before)))))
-
 
 ;;;;
 ;;;; Property 2: Input Buffer Delete Decreases Length
@@ -166,42 +138,6 @@
       (and (stringp buf)
            (>= (length buf) 0))))
   50)
-
-(ert-deftest nskk-state-machine-buffer-delete-decreases-length-description ()
-  "Deleting from buffer decreases length (or leaves empty buffer unchanged)."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; Start with known content
-    (nskk-state-append-input state ?a)
-    (nskk-state-append-input state ?b)
-    (nskk-state-append-input state ?c)
-    (let ((len-before (length (nskk-state-input-buffer state))))
-      (nskk-state-delete-last-char state)
-      (should (<= (length (nskk-state-input-buffer state)) len-before)))))
-
-
-;;;;
-;;;; Property 3: Input Buffer Clear Empties
-;;;;
-
-(ert-deftest nskk-state-machine-input-buffer-clear-empties ()
-  "Clear buffer results in empty string when clear is called."
-  (dotimes (_ 50)
-    (let ((state (nskk-state-create 'hiragana)))
-      ;; Add random content
-      (dotimes (_ (nskk--pbt-random-int 1 10))
-        (nskk-state-append-input state (nskk--sm-random-char)))
-      ;; Clear the buffer
-      (nskk-state-clear-input state)
-      ;; Verify buffer is empty
-      (should (stringp (nskk-state-input-buffer state)))
-      (should (string= (nskk-state-input-buffer state) "")))))
-
-(ert-deftest nskk-state-machine-buffer-clear-empties-description ()
-  "Clear buffer results in empty string when clear is called."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-append-input state ?x)
-    (nskk-state-clear-input state)
-    (should (string= "" (nskk-state-input-buffer state)))))
 
 
 ;;;;
@@ -221,16 +157,6 @@
     (not (null (nskk-state-input-buffer state))))
   50)
 
-(ert-deftest nskk-state-machine-buffer-never-nil-description ()
-  "Buffer is never nil after any operation."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-append-input state ?a)
-    (should (not (null (nskk-state-input-buffer state))))
-    (nskk-state-delete-last-char state)
-    (should (not (null (nskk-state-input-buffer state))))
-    (nskk-state-clear-input state)
-    (should (not (null (nskk-state-input-buffer state))))))
-
 
 ;;;;
 ;;;; Property 5: Input Buffer String Type
@@ -246,15 +172,6 @@
   (lambda (state)
     (stringp (nskk-state-input-buffer state)))
   50)
-
-(ert-deftest nskk-state-machine-buffer-string-type-description ()
-  "Buffer is always a string."
-  (let ((state (nskk-state-create 'hiragana)))
-    (should (stringp (nskk-state-input-buffer state)))
-    (nskk-state-append-input state ?z)
-    (should (stringp (nskk-state-input-buffer state)))
-    (nskk-state-clear-input state)
-    (should (stringp (nskk-state-input-buffer state)))))
 
 
 ;;;;
@@ -272,14 +189,6 @@
            (>= (length buf) 0))))
   50)
 
-(ert-deftest nskk-state-machine-converted-buffer-consistency-description ()
-  "Converted buffer is always valid."
-  (let ((state (nskk-state-create 'hiragana)))
-    (should (stringp (nskk-state-converted-buffer state)))
-    (nskk-state-set state 'converted-buffer "あいう")
-    (should (stringp (nskk-state-converted-buffer state)))
-    (should (string= "あいう" (nskk-state-converted-buffer state)))))
-
 
 ;;;;
 ;;;; Additional Property: Buffer Length Bounds
@@ -296,18 +205,6 @@
     (>= (length (nskk-state-input-buffer state)) 0))
   50)
 
-(ert-deftest nskk-state-machine-buffer-length-bounds-description ()
-  "Buffer length should always be non-negative and bounded."
-  (let ((state (nskk-state-create 'hiragana)))
-    (dotimes (_ 10)
-      (nskk-state-append-input state ?a))
-    (should (>= (length (nskk-state-input-buffer state)) 0))
-    (dotimes (_ 5)
-      (nskk-state-delete-last-char state))
-    (should (>= (length (nskk-state-input-buffer state)) 0))
-    (nskk-state-clear-input state)
-    (should (= 0 (length (nskk-state-input-buffer state))))))
-
 
 ;;;;
 ;;;; Property: Buffer Operations Idempotency
@@ -319,13 +216,6 @@
   (lambda (state)
     (string= (nskk-state-input-buffer state) ""))
   50)
-
-(ert-deftest nskk-state-machine-buffer-clear-idempotent-description ()
-  "Clearing empty buffer should be idempotent."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-clear-input state)
-    (nskk-state-clear-input state)
-    (should (string= "" (nskk-state-input-buffer state)))))
 
 
 ;;;;
@@ -342,103 +232,233 @@
          (string= (nskk-state-input-buffer state) "")))
   50)
 
-(ert-deftest nskk-state-machine-buffer-delete-empty-safe-description ()
-  "Deleting from empty buffer should be safe."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-delete-last-char state)
-    (should (stringp (nskk-state-input-buffer state)))
-    (should (string= "" (nskk-state-input-buffer state)))))
-
 
 ;;;;
-;;;; Property: Buffer State After Reset
+;;;; BDD: Buffer append behaviors
 ;;;;
 
-(ert-deftest nskk-state-machine-input-buffer-reset-empties ()
-  "Reset should empty all buffers."
-  (dotimes (_ 50)
+(nskk-describe "buffer append behavior"
+  (nskk-it "appending to buffer increases or maintains length"
+    (let* ((state (nskk-state-create 'hiragana))
+           (len-before (length (nskk-state-input-buffer state))))
+      (nskk-when
+        (nskk-state-append-input state ?a))
+      (nskk-then
+        (should (>= (length (nskk-state-input-buffer state)) len-before)))))
+
+  (nskk-it "buffer is never nil after append, delete, or clear"
     (let ((state (nskk-state-create 'hiragana)))
-      ;; Add random content to both buffers
-      (dotimes (_ (nskk--pbt-random-int 1 10))
-        (nskk-state-append-input state (nskk--sm-random-char)))
-      (nskk-state-set state 'converted-buffer
-                      (nskk--pbt-generate-input-buffer 10))
-      ;; Reset the state
-      (nskk-state-reset state)
-      ;; Verify buffers are empty
-      (should (string= (nskk-state-input-buffer state) ""))
-      (should (string= (nskk-state-converted-buffer state) "")))))
+      (nskk-when
+        (nskk-state-append-input state ?a))
+      (nskk-then
+        (should (not (null (nskk-state-input-buffer state)))))
+      (nskk-when
+        (nskk-state-delete-last-char state))
+      (nskk-then
+        (should (not (null (nskk-state-input-buffer state)))))
+      (nskk-when
+        (nskk-state-clear-input state))
+      (nskk-then
+        (should (not (null (nskk-state-input-buffer state)))))))
 
-(ert-deftest nskk-state-machine-buffer-reset-empties-description ()
-  "Reset should empty all buffers."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-append-input state ?a)
-    (nskk-state-set state 'converted-buffer "あ")
-    (nskk-state-reset state)
-    (should (string= "" (nskk-state-input-buffer state)))
-    (should (string= "" (nskk-state-converted-buffer state)))))
-
-
-;;;;
-;;;; Negative Test Cases
-;;;;
-
-(ert-deftest nskk-state-machine-buffer-negative-append-nil ()
-  "Appending to nil state should return nil gracefully."
-  (should-not (nskk-state-append-input nil ?a)))
-
-(ert-deftest nskk-state-machine-buffer-negative-delete-nil ()
-  "Deleting from nil state should return nil gracefully."
-  (should-not (nskk-state-delete-last-char nil)))
-
-(ert-deftest nskk-state-machine-buffer-negative-clear-nil ()
-  "Clearing nil state should not crash."
-  (should-not (nskk-state-clear-input nil)))
-
-(ert-deftest nskk-state-machine-buffer-negative-large-append ()
-  "Appending many characters should not cause overflow."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; Append 1000 characters
-    (dotimes (_ 1000)
-      (nskk-state-append-input state ?a))
-    (should (= (length (nskk-state-input-buffer state)) 1000))
-    ;; Buffer should still be valid
-    (should (stringp (nskk-state-input-buffer state)))))
-
-(ert-deftest nskk-state-machine-buffer-negative-unicode-chars ()
-  "Appending Unicode characters should work correctly."
-  (let ((state (nskk-state-create 'hiragana)))
-    ;; Append various Unicode characters
-    (nskk-state-append-input state ?あ)
-    (nskk-state-append-input state ?ア)
-    (nskk-state-append-input state ?漢)
-    (nskk-state-append-input state ?🔥)
-    (should (> (length (nskk-state-input-buffer state)) 0))
-    (should (stringp (nskk-state-input-buffer state)))))
+  (nskk-it "buffer is always a string after any operation"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-then
+        (should (stringp (nskk-state-input-buffer state))))
+      (nskk-when
+        (nskk-state-append-input state ?z))
+      (nskk-then
+        (should (stringp (nskk-state-input-buffer state))))
+      (nskk-when
+        (nskk-state-clear-input state))
+      (nskk-then
+        (should (stringp (nskk-state-input-buffer state)))))))
 
 
 ;;;;
-;;;; Stress Test: Many Operations
+;;;; BDD: Buffer delete behaviors
 ;;;;
 
-(ert-deftest nskk-state-machine-buffer-stress-operations ()
-  "Stress test with many buffer operations."
-  (let ((state (nskk-state-create 'hiragana))
-        (operations 0))
-    ;; Perform 1000 random operations
-    (dotimes (_ 1000)
-      (cl-incf operations)
-      (let ((op (nskk--pbt-random-int 0 3)))
-        (pcase op
-          (0 (nskk-state-append-input state (nskk--sm-random-char)))
-          (1 (nskk-state-delete-last-char state))
-          (2 (nskk-state-clear-input state))
-          (3 (nskk-state-set state 'input-buffer
-                             (nskk--pbt-generate-input-buffer 20)))))
-      ;; Verify invariant after each operation
-      (should (stringp (nskk-state-input-buffer state)))
-      (should (>= (length (nskk-state-input-buffer state)) 0)))
-    (message "Completed %d buffer operations" operations)))
+(nskk-describe "buffer delete behavior"
+  (nskk-it "deleting from buffer decreases length or leaves empty buffer unchanged"
+    (let ((state (nskk-state-create 'hiragana)))
+      ;; Start with known content
+      (nskk-state-append-input state ?a)
+      (nskk-state-append-input state ?b)
+      (nskk-state-append-input state ?c)
+      (let ((len-before (length (nskk-state-input-buffer state))))
+        (nskk-when
+          (nskk-state-delete-last-char state))
+        (nskk-then
+          (should (<= (length (nskk-state-input-buffer state)) len-before))))))
+
+  (nskk-it "deleting from empty buffer is safe"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-when
+        (nskk-state-delete-last-char state))
+      (nskk-then
+        (should (stringp (nskk-state-input-buffer state)))
+        (should (string= "" (nskk-state-input-buffer state)))))))
+
+
+;;;;
+;;;; BDD: Buffer clear behaviors
+;;;;
+
+(nskk-describe "buffer clear behavior"
+  (nskk-it "clear buffer results in empty string (property-based)"
+    (dotimes (_ 50)
+      (let ((state (nskk-state-create 'hiragana)))
+        ;; Add random content
+        (dotimes (_ (nskk--pbt-random-int 1 10))
+          (nskk-state-append-input state (nskk--sm-random-char)))
+        ;; Clear the buffer
+        (nskk-state-clear-input state)
+        ;; Verify buffer is empty
+        (should (stringp (nskk-state-input-buffer state)))
+        (should (string= (nskk-state-input-buffer state) "")))))
+
+  (nskk-it "clear after append always produces empty buffer"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-state-append-input state ?x)
+      (nskk-when
+        (nskk-state-clear-input state))
+      (nskk-then
+        (should (string= "" (nskk-state-input-buffer state))))))
+
+  (nskk-it "clearing empty buffer is idempotent"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-when
+        (nskk-state-clear-input state)
+        (nskk-state-clear-input state))
+      (nskk-then
+        (should (string= "" (nskk-state-input-buffer state))))))
+
+  (nskk-it "buffer length is always non-negative and bounded"
+    (let ((state (nskk-state-create 'hiragana)))
+      (dotimes (_ 10)
+        (nskk-state-append-input state ?a))
+      (nskk-then
+        (should (>= (length (nskk-state-input-buffer state)) 0)))
+      (dotimes (_ 5)
+        (nskk-state-delete-last-char state))
+      (nskk-then
+        (should (>= (length (nskk-state-input-buffer state)) 0)))
+      (nskk-when
+        (nskk-state-clear-input state))
+      (nskk-then
+        (should (= 0 (length (nskk-state-input-buffer state))))))))
+
+
+;;;;
+;;;; BDD: Converted buffer behaviors
+;;;;
+
+(nskk-describe "converted buffer behavior"
+  (nskk-it "converted buffer is always a valid string"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-then
+        (should (stringp (nskk-state-converted-buffer state))))
+      (nskk-when
+        (nskk-state-set state 'converted-buffer "あいう"))
+      (nskk-then
+        (should (stringp (nskk-state-converted-buffer state)))
+        (should (string= "あいう" (nskk-state-converted-buffer state)))))))
+
+
+;;;;
+;;;; BDD: Buffer reset behaviors
+;;;;
+
+(nskk-describe "buffer reset behavior"
+  (nskk-it "reset should empty all buffers (property-based)"
+    (dotimes (_ 50)
+      (let ((state (nskk-state-create 'hiragana)))
+        ;; Add random content to both buffers
+        (dotimes (_ (nskk--pbt-random-int 1 10))
+          (nskk-state-append-input state (nskk--sm-random-char)))
+        (nskk-state-set state 'converted-buffer
+                        (nskk--pbt-generate-input-buffer 10))
+        ;; Reset the state
+        (nskk-state-reset state)
+        ;; Verify buffers are empty
+        (should (string= (nskk-state-input-buffer state) ""))
+        (should (string= (nskk-state-converted-buffer state) "")))))
+
+  (nskk-it "reset empties input and converted buffers"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-state-append-input state ?a)
+      (nskk-state-set state 'converted-buffer "あ")
+      (nskk-when
+        (nskk-state-reset state))
+      (nskk-then
+        (should (string= "" (nskk-state-input-buffer state)))
+        (should (string= "" (nskk-state-converted-buffer state)))))))
+
+
+;;;;
+;;;; BDD: Buffer negative cases
+;;;;
+
+(nskk-describe "buffer negative cases"
+  (nskk-it "appending to nil state should return nil gracefully"
+    (nskk-then
+      (should-not (nskk-state-append-input nil ?a))))
+
+  (nskk-it "deleting from nil state should return nil gracefully"
+    (nskk-then
+      (should-not (nskk-state-delete-last-char nil))))
+
+  (nskk-it "clearing nil state should not crash"
+    (nskk-then
+      (should-not (nskk-state-clear-input nil))))
+
+  (nskk-it "appending many characters should not cause overflow"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-when
+        ;; Append 1000 characters
+        (dotimes (_ 1000)
+          (nskk-state-append-input state ?a)))
+      (nskk-then
+        (should (= (length (nskk-state-input-buffer state)) 1000))
+        ;; Buffer should still be valid
+        (should (stringp (nskk-state-input-buffer state))))))
+
+  (nskk-it "appending Unicode characters should work correctly"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-when
+        ;; Append various Unicode characters
+        (nskk-state-append-input state ?あ)
+        (nskk-state-append-input state ?ア)
+        (nskk-state-append-input state ?漢)
+        (nskk-state-append-input state ?🔥))
+      (nskk-then
+        (should (> (length (nskk-state-input-buffer state)) 0))
+        (should (stringp (nskk-state-input-buffer state)))))))
+
+
+;;;;
+;;;; BDD: Stress tests
+;;;;
+
+(nskk-describe "buffer stress tests"
+  (nskk-it "stress test with many buffer operations maintains string invariant"
+    (let ((state (nskk-state-create 'hiragana))
+          (operations 0))
+      ;; Perform 1000 random operations
+      (dotimes (_ 1000)
+        (cl-incf operations)
+        (let ((op (nskk--pbt-random-int 0 3)))
+          (pcase op
+            (0 (nskk-state-append-input state (nskk--sm-random-char)))
+            (1 (nskk-state-delete-last-char state))
+            (2 (nskk-state-clear-input state))
+            (3 (nskk-state-set state 'input-buffer
+                               (nskk--pbt-generate-input-buffer 20)))))
+        ;; Verify invariant after each operation
+        (should (stringp (nskk-state-input-buffer state)))
+        (should (>= (length (nskk-state-input-buffer state)) 0)))
+      (message "Completed %d buffer operations" operations))))
 
 
 ;;;;
@@ -462,41 +482,42 @@
 
 
 ;;;;
-;;;; PBT: Append-then-delete length invariant (nskk-for-all inline)
+;;;; BDD: Buffer length invariants
 ;;;;
 
-(ert-deftest nskk-state-machine-buffer-append-delete-length-invariant ()
-  "Appending then deleting returns to original length."
-  (let ((failures nil))
-    (dotimes (_ 50)
-      (nskk-for-all ((mode valid-mode))
-        (let* ((state (nskk-state-create mode))
-               (init-len (length (nskk-state-input-buffer state))))
-          ;; Append N chars then delete N chars
-          (let ((n (nskk--pbt-random-int 1 10)))
-            (dotimes (_ n)
-              (nskk-state-append-input state (nskk--sm-random-char)))
-            (dotimes (_ n)
-              (nskk-state-delete-last-char state)))
-          (let ((final-len (length (nskk-state-input-buffer state))))
-            (unless (= init-len final-len)
-              (push (list :initial init-len :final final-len :mode mode)
-                    failures))))))
-    (when failures
-      (ert-fail (format "Length invariant failed for %d cases:\n%S"
-                        (length failures) (seq-take failures 3))))))
+(nskk-describe "buffer length invariants"
+  (nskk-it "appending then deleting N chars returns to original length"
+    (let ((failures nil))
+      (dotimes (_ 50)
+        (nskk-for-all ((mode valid-mode))
+          (let* ((state (nskk-state-create mode))
+                 (init-len (length (nskk-state-input-buffer state))))
+            ;; Append N chars then delete N chars
+            (let ((n (nskk--pbt-random-int 1 10)))
+              (dotimes (_ n)
+                (nskk-state-append-input state (nskk--sm-random-char)))
+              (dotimes (_ n)
+                (nskk-state-delete-last-char state)))
+            (let ((final-len (length (nskk-state-input-buffer state))))
+              (unless (= init-len final-len)
+                (push (list :initial init-len :final final-len :mode mode)
+                      failures))))))
+      (when failures
+        (ert-fail (format "Length invariant failed for %d cases:\n%S"
+                          (length failures) (seq-take failures 3)))))))
 
 
 ;;;;
 ;;;; Data-Provider: Buffer clear is idempotent
 ;;;;
 
-(nskk-deftest-cases buffer-clear-idempotent
-  ((hiragana . "")
-   (katakana . "")
-   (ascii    . "")
-   (latin    . ""))
+(nskk-deftest-table buffer-clear-idempotent
   :description "Clearing an already-empty buffer is a no-op for any mode"
+  :columns (input expected)
+  :rows ((hiragana "")
+         (katakana "")
+         (ascii    "")
+         (latin    ""))
   :body (let ((state (nskk-state-create input)))
           (nskk-state-clear-input state)
           (nskk-state-clear-input state)

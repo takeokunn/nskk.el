@@ -35,23 +35,13 @@
 ;;;
 
 (nskk-describe "hiragana character classification"
-  (nskk-context "basic hiragana characters"
-    (nskk-it "recognizes representative hiragana across a-, ka-, and sa-rows"
-      (should (nskk-kana-hiragana-p ?あ))
-      (should (nskk-kana-hiragana-p ?い))
-      (should (nskk-kana-hiragana-p ?う))
-      (should (nskk-kana-hiragana-p ?え))
-      (should (nskk-kana-hiragana-p ?お))
-      (should (nskk-kana-hiragana-p ?か))
-      (should (nskk-kana-hiragana-p ?き))
-      (should (nskk-kana-hiragana-p ?く))
-      (should (nskk-kana-hiragana-p ?け))
-      (should (nskk-kana-hiragana-p ?こ))
-      (should (nskk-kana-hiragana-p ?さ))
-      (should (nskk-kana-hiragana-p ?し))
-      (should (nskk-kana-hiragana-p ?す))
-      (should (nskk-kana-hiragana-p ?せ))
-      (should (nskk-kana-hiragana-p ?そ))))
+  (nskk-deftest-table kana-hiragana-basic-chars
+    :description "Recognizes representative hiragana across a-, ka-, and sa-rows"
+    :columns (char)
+    :rows ((?あ) (?い) (?う) (?え) (?お)
+           (?か) (?き) (?く) (?け) (?こ)
+           (?さ) (?し) (?す) (?せ) (?そ))
+    :body (should (nskk-kana-hiragana-p char)))
 
   (nskk-context "range boundary detection"
     (nskk-it "accepts characters at the start and end of the hiragana unicode range"
@@ -71,23 +61,13 @@
       (should (not (nskk-kana-hiragana-p "あ"))))))
 
 (nskk-describe "katakana character classification"
-  (nskk-context "basic katakana characters"
-    (nskk-it "recognizes representative katakana across a-, ka-, and sa-rows"
-      (should (nskk-kana-katakana-p ?ア))
-      (should (nskk-kana-katakana-p ?イ))
-      (should (nskk-kana-katakana-p ?ウ))
-      (should (nskk-kana-katakana-p ?エ))
-      (should (nskk-kana-katakana-p ?オ))
-      (should (nskk-kana-katakana-p ?カ))
-      (should (nskk-kana-katakana-p ?キ))
-      (should (nskk-kana-katakana-p ?ク))
-      (should (nskk-kana-katakana-p ?ケ))
-      (should (nskk-kana-katakana-p ?コ))
-      (should (nskk-kana-katakana-p ?サ))
-      (should (nskk-kana-katakana-p ?シ))
-      (should (nskk-kana-katakana-p ?ス))
-      (should (nskk-kana-katakana-p ?セ))
-      (should (nskk-kana-katakana-p ?ソ))))
+  (nskk-deftest-table kana-katakana-basic-chars
+    :description "Recognizes representative katakana across a-, ka-, and sa-rows"
+    :columns (char)
+    :rows ((?ア) (?イ) (?ウ) (?エ) (?オ)
+           (?カ) (?キ) (?ク) (?ケ) (?コ)
+           (?サ) (?シ) (?ス) (?セ) (?ソ))
+    :body (should (nskk-kana-katakana-p char)))
 
   (nskk-context "range boundary detection"
     (nskk-it "accepts characters at the start and end of the katakana unicode range"
@@ -107,16 +87,11 @@
       (should (not (nskk-kana-katakana-p "ア"))))))
 
 (nskk-describe "hankaku katakana character classification"
-  (nskk-context "basic hankaku katakana characters"
-    (nskk-it "recognizes representative half-width katakana"
-      (should (nskk-kana-hankaku-katakana-p ?ｱ))
-      (should (nskk-kana-hankaku-katakana-p ?ｲ))
-      (should (nskk-kana-hankaku-katakana-p ?ｳ))
-      (should (nskk-kana-hankaku-katakana-p ?ｴ))
-      (should (nskk-kana-hankaku-katakana-p ?ｵ))
-      (should (nskk-kana-hankaku-katakana-p ?ｶ))
-      (should (nskk-kana-hankaku-katakana-p ?ﾝ))
-      (should (nskk-kana-hankaku-katakana-p ?ｦ))))
+  (nskk-deftest-table kana-hankaku-basic-chars
+    :description "Recognizes representative half-width katakana"
+    :columns (char)
+    :rows ((?ｱ) (?ｲ) (?ｳ) (?ｴ) (?ｵ) (?ｶ) (?ﾝ) (?ｦ))
+    :body (should (nskk-kana-hankaku-katakana-p char)))
 
   (nskk-context "range boundary detection"
     (nskk-it "accepts characters at the start and end of the hankaku unicode range"
@@ -133,15 +108,11 @@
       (should (not (nskk-kana-hankaku-katakana-p nil))))))
 
 (nskk-describe "han (kanji) character classification"
-  (nskk-context "common kanji characters"
-    (nskk-it "recognizes common kanji characters"
-      (should (nskk-kana-han-p ?漢))
-      (should (nskk-kana-han-p ?字))
-      (should (nskk-kana-han-p ?日))
-      (should (nskk-kana-han-p ?本))
-      (should (nskk-kana-han-p ?語))
-      (should (nskk-kana-han-p ?入))
-      (should (nskk-kana-han-p ?力))))
+  (nskk-deftest-table kana-han-basic-chars
+    :description "Recognizes common kanji characters"
+    :columns (char)
+    :rows ((?漢) (?字) (?日) (?本) (?語) (?入) (?力))
+    :body (should (nskk-kana-han-p char)))
 
   (nskk-context "range boundary detection"
     (nskk-it "accepts characters at the start and end of both CJK and Extension A ranges"
@@ -1128,6 +1099,52 @@ Note: Prolog-backed classification costs ~200-300us per character."
       (puthash "key" "old" tbl)
       (nskk--kana-fill-hash-table tbl ("key" "new"))
       (should (equal (gethash "key" tbl) "new")))))
+
+;;;
+;;; nskk--hiragana-to-hankaku
+;;;
+
+(nskk-describe "nskk--hiragana-to-hankaku"
+  (nskk-context "basic a-row hiragana"
+    (nskk-it "converts あ (U+3042) to ｱ (U+FF71)"
+      (nskk-assert-strings-equal (nskk--hiragana-to-hankaku "あ") "ｱ"))
+    (nskk-it "converts い (U+3044) to ｲ (U+FF72)"
+      (nskk-assert-strings-equal (nskk--hiragana-to-hankaku "い") "ｲ"))
+    (nskk-it "converts う (U+3046) to ｳ (U+FF73)"
+      (nskk-assert-strings-equal (nskk--hiragana-to-hankaku "う") "ｳ")))
+
+  (nskk-context "voiced mora (dakuten)"
+    (nskk-it "converts が to ｶﾞ (base char ｶ plus combining dakuten ﾞ)"
+      ;; が → (hiragana->katakana) → ガ → (zenkaku->hankaku) → ｶﾞ
+      (nskk-assert-strings-equal (nskk--hiragana-to-hankaku "が") "ｶﾞ")))
+
+  (nskk-context "multi-character strings"
+    (nskk-it "converts あいう to ｱｲｳ"
+      (nskk-assert-strings-equal (nskk--hiragana-to-hankaku "あいう") "ｱｲｳ"))))
+
+;;;
+;;; nskk--hankaku-to-hiragana
+;;;
+
+(nskk-describe "nskk--hankaku-to-hiragana"
+  (nskk-context "basic a-row hankaku katakana"
+    (nskk-it "converts ｱ (U+FF71) to あ"
+      (nskk-assert-strings-equal (nskk--hankaku-to-hiragana "ｱ") "あ"))
+    (nskk-it "converts ｲ (U+FF72) to い"
+      (nskk-assert-strings-equal (nskk--hankaku-to-hiragana "ｲ") "い"))
+    (nskk-it "converts ｳ (U+FF73) to う"
+      (nskk-assert-strings-equal (nskk--hankaku-to-hiragana "ｳ") "う")))
+
+  (nskk-context "voiced mora (dakuten)"
+    (nskk-it "converts ｶﾞ (two-char dakuten sequence) to が"
+      ;; ｶﾞ → (hankaku->zenkaku) → ガ → (katakana->hiragana) → が
+      (nskk-assert-strings-equal (nskk--hankaku-to-hiragana "ｶﾞ") "が")))
+
+  (nskk-context "roundtrip"
+    (nskk-it "hankaku->hiragana is the inverse of hiragana->hankaku for あいう"
+      (nskk-assert-strings-equal
+       (nskk--hankaku-to-hiragana (nskk--hiragana-to-hankaku "あいう"))
+       "あいう"))))
 
 (provide 'nskk-kana-test)
 

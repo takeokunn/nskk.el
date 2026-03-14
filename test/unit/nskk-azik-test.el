@@ -37,7 +37,8 @@
 ;; - Q-key behavior tests
 ;; - Compatibility tests
 ;; - Prolog predicate tests (azik-vowel-char/1, azik-key-extends/2,
-;;   azik-nonvowel-ext/1, azik-vowel-shadow/1, azik-rule/2, bridge rule)
+;;   azik-nonvowel-ext/1, azik-vowel-shadow/1, azik-rule/2, bridge rule,
+;;   azik-colon-trigger-char/1)
 ;; - CPS function tests (nskk--azik-classify-key/k, nskk--azik-finalize-hash-table)
 
 ;;; Code:
@@ -145,7 +146,7 @@
 ;;;; 2. Special Keys Tests
 ;;;;
 
-(nskk-describe "AZIK special keys"
+(nskk-describe "AZIK special keys unit"
   (nskk-it "semicolon produces small tsu in AZIK mode"
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji ";") "っ"))))
@@ -168,7 +169,7 @@
 
 (nskk-describe "AZIK hatsuon (撥音拡張) rules"
   ;; NOTE: Tests below use `nskk-convert-romaji' (full pipeline) to verify
-  ;; end-to-end behavior.  The `nskk-deftest-cases' blocks at the bottom of
+  ;; end-to-end behavior.  The `nskk-deftest-table' blocks at the bottom of
   ;; this file use `nskk-converter-lookup' (hash-only) to test rule existence
   ;; directly, bypassing pipeline rules that would interfere (e.g., the n-row
   ;; triggers the special ん rule; the z/d rows trigger double-consonant rules).
@@ -1241,7 +1242,7 @@
 
   (nskk-it "all foreign extensions exist in azik-rule/2 Prolog predicate"
     (nskk-with-azik-style
-      (dolist (rule nskk--azik-foreign-extensions)
+      (dolist (rule '(("tgi" "てぃ") ("tgu" "とぅ") ("dci" "でぃ") ("dcu" "どぅ") ("wso" "うぉ")))
         (let* ((romaji (car rule))
                (kana   (cadr rule))
                (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
@@ -1281,7 +1282,9 @@
 
   (nskk-it "all foreign hatsuon rules exist in azik-rule/2 Prolog predicate"
     (nskk-with-azik-style
-      (dolist (rule nskk--azik-foreign-hatsuon-rules)
+      (dolist (rule '(("tgk" "てぃん") ("tgj" "とぅん")
+                      ("dck" "でぃん") ("dcj" "どぅん")
+                      ("wsok" "うぉん")))
         (let* ((romaji (car rule))
                (kana   (cadr rule))
                (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
@@ -1343,7 +1346,9 @@
 
   (nskk-it "all foreign double-vowel rules exist in azik-rule/2 Prolog predicate"
     (nskk-with-azik-style
-      (dolist (rule nskk--azik-foreign-double-vowel-rules)
+      (dolist (rule '(("tgq" "てぃい") ("tgh" "てぃい") ("tgw" "とぅう") ("tgp" "とぅう")
+                      ("dcq" "でぃい") ("dch" "でぃい") ("dcw" "どぅう") ("dcp" "どぅう")
+                      ("wsoq" "うぉお") ("wsoh" "うぉお") ("wsow" "うぉお") ("wsop" "うぉお")))
         (let* ((romaji (car rule))
                (kana   (cadr rule))
                (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
@@ -1380,7 +1385,7 @@
       ;; These are hash-only: not in Prolog.
       ;; Exception: "wso" is also in azik-rule/2 via foreign-extensions;
       ;; the compound entry only restores the hash mapping after finalize.
-      (dolist (rule nskk--azik-compound-rules)
+      (dolist (rule '(("kak" "かく") ("kaq" "かい") ("kakz" "かかん") ("wso" "うぉ")))
         (let ((romaji (car rule)))
           (unless (equal romaji "wso")
             (should-not (nskk-prolog-query `(azik-rule ,romaji \?k))))))))
@@ -1441,7 +1446,8 @@
 
   (nskk-it "all same-finger rules exist in azik-rule/2"
     (nskk-with-azik-style
-      (dolist (rule nskk--azik-same-finger-rules)
+      (dolist (rule '(("kf" "き") ("hf" "ふ") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
+                      ("pf" "ぷ") ("rf" "る") ("yf" "ゆ")))
         (let* ((romaji  (car rule))
                (kana    (cadr rule))
                (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
@@ -1466,200 +1472,218 @@
 ;;;;
 
 ;; k-row: kz→かん, kk→きん, kj→くん, kd→けん, kl→こん
-(nskk-deftest-cases azik-hatsuon-k-row
-  (("kz" . "かん")
-   ("kk" . "きん")
-   ("kj" . "くん")
-   ("kd" . "けん")
-   ("kl" . "こん"))
+(nskk-deftest-table azik-hatsuon-k-row
   :description "AZIK k-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("kz" "かん")
+         ("kk" "きん")
+         ("kj" "くん")
+         ("kd" "けん")
+         ("kl" "こん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; s-row: sz→さん, sk→しん, sj→すん, sd→せん, sl→そん
-(nskk-deftest-cases azik-hatsuon-s-row
-  (("sz" . "さん")
-   ("sk" . "しん")
-   ("sj" . "すん")
-   ("sd" . "せん")
-   ("sl" . "そん"))
+(nskk-deftest-table azik-hatsuon-s-row
   :description "AZIK s-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("sz" "さん")
+         ("sk" "しん")
+         ("sj" "すん")
+         ("sd" "せん")
+         ("sl" "そん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; t-row: tz→たん, tk→ちん, tj→つん, td→てん, tl→とん
-(nskk-deftest-cases azik-hatsuon-t-row
-  (("tz" . "たん")
-   ("tk" . "ちん")
-   ("tj" . "つん")
-   ("td" . "てん")
-   ("tl" . "とん"))
+(nskk-deftest-table azik-hatsuon-t-row
   :description "AZIK t-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("tz" "たん")
+         ("tk" "ちん")
+         ("tj" "つん")
+         ("td" "てん")
+         ("tl" "とん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; g-row: gz→がん, gk→ぎん, gj→ぐん, gd→げん, gl→ごん
-(nskk-deftest-cases azik-hatsuon-g-row
-  (("gz" . "がん")
-   ("gk" . "ぎん")
-   ("gj" . "ぐん")
-   ("gd" . "げん")
-   ("gl" . "ごん"))
+(nskk-deftest-table azik-hatsuon-g-row
   :description "AZIK g-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("gz" "がん")
+         ("gk" "ぎん")
+         ("gj" "ぐん")
+         ("gd" "げん")
+         ("gl" "ごん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; h-row: hz→はん, hk→ひん, hj→ふん, hd→へん, hl→ほん
-(nskk-deftest-cases azik-hatsuon-h-row
-  (("hz" . "はん")
-   ("hk" . "ひん")
-   ("hj" . "ふん")
-   ("hd" . "へん")
-   ("hl" . "ほん"))
+(nskk-deftest-table azik-hatsuon-h-row
   :description "AZIK h-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("hz" "はん")
+         ("hk" "ひん")
+         ("hj" "ふん")
+         ("hd" "へん")
+         ("hl" "ほん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; m-row: mz→まん, mk→みん, mj→むん, md→めん, ml→もん
-(nskk-deftest-cases azik-hatsuon-m-row
-  (("mz" . "まん")
-   ("mk" . "みん")
-   ("mj" . "むん")
-   ("md" . "めん")
-   ("ml" . "もん"))
+(nskk-deftest-table azik-hatsuon-m-row
   :description "AZIK m-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("mz" "まん")
+         ("mk" "みん")
+         ("mj" "むん")
+         ("md" "めん")
+         ("ml" "もん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; y-row: yz→やん, yk→いん, yj→ゆん, yd→えん, yl→よん
-(nskk-deftest-cases azik-hatsuon-y-row
-  (("yz" . "やん")
-   ("yk" . "いん")
-   ("yj" . "ゆん")
-   ("yd" . "えん")
-   ("yl" . "よん"))
+(nskk-deftest-table azik-hatsuon-y-row
   :description "AZIK y-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("yz" "やん")
+         ("yk" "いん")
+         ("yj" "ゆん")
+         ("yd" "えん")
+         ("yl" "よん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; r-row: rz→らん, rk→りん, rj→るん, rd→れん, rl→ろん
-(nskk-deftest-cases azik-hatsuon-r-row
-  (("rz" . "らん")
-   ("rk" . "りん")
-   ("rj" . "るん")
-   ("rd" . "れん")
-   ("rl" . "ろん"))
+(nskk-deftest-table azik-hatsuon-r-row
   :description "AZIK r-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("rz" "らん")
+         ("rk" "りん")
+         ("rj" "るん")
+         ("rd" "れん")
+         ("rl" "ろん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; w-row: wz→わん, wk→うぃん, wj→うん, wd→うぇん, wl→をん
-(nskk-deftest-cases azik-hatsuon-w-row
-  (("wz" . "わん")
-   ("wk" . "うぃん")
-   ("wj" . "うん")
-   ("wd" . "うぇん")
-   ("wl" . "をん"))
+(nskk-deftest-table azik-hatsuon-w-row
   :description "AZIK w-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("wz" "わん")
+         ("wk" "うぃん")
+         ("wj" "うん")
+         ("wd" "うぇん")
+         ("wl" "をん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; b-row: bz→ばん, bk→びん, bj→ぶん, bd→べん, bl→ぼん
-(nskk-deftest-cases azik-hatsuon-b-row
-  (("bz" . "ばん")
-   ("bk" . "びん")
-   ("bj" . "ぶん")
-   ("bd" . "べん")
-   ("bl" . "ぼん"))
+(nskk-deftest-table azik-hatsuon-b-row
   :description "AZIK b-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("bz" "ばん")
+         ("bk" "びん")
+         ("bj" "ぶん")
+         ("bd" "べん")
+         ("bl" "ぼん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; p-row: pz→ぱん, pk→ぴん, pj→ぷん, pd→ぺん, pl→ぽん
-(nskk-deftest-cases azik-hatsuon-p-row
-  (("pz" . "ぱん")
-   ("pk" . "ぴん")
-   ("pj" . "ぷん")
-   ("pd" . "ぺん")
-   ("pl" . "ぽん"))
+(nskk-deftest-table azik-hatsuon-p-row
   :description "AZIK p-row 撥音拡張: each pattern converts correctly via hash lookup"
+  :columns (input expected)
+  :rows (("pz" "ぱん")
+         ("pk" "ぴん")
+         ("pj" "ぷん")
+         ("pd" "ぺん")
+         ("pl" "ぽん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; z-row: zz→ざん, zk→じん, zj→ずん, zd→ぜん, zl→ぞん
-(nskk-deftest-cases azik-hatsuon-z-row
-  (("zz" . "ざん")
-   ("zk" . "じん")
-   ("zj" . "ずん")
-   ("zd" . "ぜん")
-   ("zl" . "ぞん"))
+(nskk-deftest-table azik-hatsuon-z-row
   :description "AZIK z-row 撥音拡張: each pattern exists in hash lookup"
+  :columns (input expected)
+  :rows (("zz" "ざん")
+         ("zk" "じん")
+         ("zj" "ずん")
+         ("zd" "ぜん")
+         ("zl" "ぞん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; d-row: dz→だん, dk→ぢん, dj→づん, dd→でん, dl→どん
-(nskk-deftest-cases azik-hatsuon-d-row
-  (("dz" . "だん")
-   ("dk" . "ぢん")
-   ("dj" . "づん")
-   ("dd" . "でん")
-   ("dl" . "どん"))
+(nskk-deftest-table azik-hatsuon-d-row
   :description "AZIK d-row 撥音拡張: each pattern exists in hash lookup"
+  :columns (input expected)
+  :rows (("dz" "だん")
+         ("dk" "ぢん")
+         ("dj" "づん")
+         ("dd" "でん")
+         ("dl" "どん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; x-row: xz→しゃん, xj→しゅん, xd→しぇん, xl→しょん
 ;; (xk is demoted to :incomplete due to standard-romaji xka/xke entries)
-(nskk-deftest-cases azik-hatsuon-x-row
-  (("xz" . "しゃん")
-   ("xj" . "しゅん")
-   ("xd" . "しぇん")
-   ("xl" . "しょん"))
+(nskk-deftest-table azik-hatsuon-x-row
   :description "AZIK x-row 撥音拡張: complete (non-demoted) entries in hash lookup"
+  :columns (input expected)
+  :rows (("xz" "しゃん")
+         ("xj" "しゅん")
+         ("xd" "しぇん")
+         ("xl" "しょん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; c-row: cz→ちゃん, ck→ちん, cj→ちゅん, cd→ちぇん, cl→ちょん
-(nskk-deftest-cases azik-hatsuon-c-row
-  (("cz" . "ちゃん")
-   ("ck" . "ちん")
-   ("cj" . "ちゅん")
-   ("cd" . "ちぇん")
-   ("cl" . "ちょん"))
+(nskk-deftest-table azik-hatsuon-c-row
   :description "AZIK c-row 撥音拡張: each pattern exists in hash lookup"
+  :columns (input expected)
+  :rows (("cz" "ちゃん")
+         ("ck" "ちん")
+         ("cj" "ちゅん")
+         ("cd" "ちぇん")
+         ("cl" "ちょん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; f-row: fz→ふぁん, fk→ふぃん, fj→ふん, fd→ふぇん, fl→ふぉん
-(nskk-deftest-cases azik-hatsuon-f-row
-  (("fz" . "ふぁん")
-   ("fk" . "ふぃん")
-   ("fj" . "ふん")
-   ("fd" . "ふぇん")
-   ("fl" . "ふぉん"))
+(nskk-deftest-table azik-hatsuon-f-row
   :description "AZIK f-row 撥音拡張: each pattern exists in hash lookup"
+  :columns (input expected)
+  :rows (("fz" "ふぁん")
+         ("fk" "ふぃん")
+         ("fj" "ふん")
+         ("fd" "ふぇん")
+         ("fl" "ふぉん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; j-row: jz→じゃん, jk→じん, jj→じゅん, jd→じぇん, jl→じょん
-(nskk-deftest-cases azik-hatsuon-j-row
-  (("jz" . "じゃん")
-   ("jk" . "じん")
-   ("jj" . "じゅん")
-   ("jd" . "じぇん")
-   ("jl" . "じょん"))
+(nskk-deftest-table azik-hatsuon-j-row
   :description "AZIK j-row 撥音拡張: each pattern exists in hash lookup"
+  :columns (input expected)
+  :rows (("jz" "じゃん")
+         ("jk" "じん")
+         ("jj" "じゅん")
+         ("jd" "じぇん")
+         ("jl" "じょん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
 ;; v-row: vz→ゔぁん, vk→ゔぃん, vj→ゔん, vd→ゔぇん, vl→ゔぉん
-(nskk-deftest-cases azik-hatsuon-v-row
-  (("vz" . "ゔぁん")
-   ("vk" . "ゔぃん")
-   ("vj" . "ゔん")
-   ("vd" . "ゔぇん")
-   ("vl" . "ゔぉん"))
+(nskk-deftest-table azik-hatsuon-v-row
   :description "AZIK v-row 撥音拡張: each pattern exists in hash lookup"
+  :columns (input expected)
+  :rows (("vz" "ゔぁん")
+         ("vk" "ゔぃん")
+         ("vj" "ゔん")
+         ("vd" "ゔぇん")
+         ("vl" "ゔぉん"))
   :body (nskk-with-azik-style
           (should (equal expected (nskk-converter-lookup input)))))
 
@@ -1759,20 +1783,20 @@
 ;; Each iteration isolates Prolog DB + romaji table + keymap via nskk-with-azik-style
 ;; to prevent AZIK's keymap binding (@ → nskk-toggle-japanese-mode) from leaking
 ;; into subsequent non-AZIK tests.
-(ert-deftest nskk-contract-convert-romaji-azik-pattern ()
-  "Contract test: nskk-convert-romaji returns a string for any AZIK pattern."
-  (let ((failures nil))
-    (dotimes (_ 50)
-      (nskk-with-azik-style
-        (let* ((input  (nskk--pbt-random-choice (nskk--pbt-get-all-azik-patterns)))
-               (result (nskk-convert-romaji input)))
-          (unless (stringp result)
-            (push (list :postcondition-failed :input input :result result) failures))
-          (unless (> (length result) 0)
-            (push (list :invariant-failed "result is empty string" input) failures)))))
-    (when failures
-      (ert-fail (format "Contract test `nskk-convert-romaji' AZIK: %d failures:\n%S"
-                        (length failures) failures)))))
+(nskk-describe "nskk-convert-romaji AZIK contract"
+  (nskk-it "should return a non-empty string for any AZIK pattern"
+    (let ((failures nil))
+      (dotimes (_ 50)
+        (nskk-with-azik-style
+          (let* ((input  (nskk--pbt-random-choice (nskk--pbt-get-all-azik-patterns)))
+                 (result (nskk-convert-romaji input)))
+            (unless (stringp result)
+              (push (list :postcondition-failed :input input :result result) failures))
+            (unless (> (length result) 0)
+              (push (list :invariant-failed "result is empty string" input) failures)))))
+      (when failures
+        (ert-fail (format "Contract test `nskk-convert-romaji' AZIK: %d failures:\n%S"
+                          (length failures) failures))))))
 
 
 ;;;;
@@ -2081,34 +2105,6 @@
 
 
 
-;;;
-;;; Low-level AZIK helpers
-;;;
-
-(nskk-describe "nskk--azik-assert-rules"
-  (nskk-it "asserts azik-rule/2 facts into the Prolog database"
-    (nskk-prolog-test-with-isolated-db
-      (nskk--azik-assert-rules '(("xz" "テスト") ("yy" "テスト2")))
-      (should (nskk-prolog-holds-p '(azik-rule "xz" "テスト")))
-      (should (nskk-prolog-holds-p '(azik-rule "yy" "テスト2")))))
-
-  (nskk-it "does nothing when given an empty list"
-    (nskk-prolog-test-with-isolated-db
-      ;; Clear any pre-existing azik-rule/2 facts (populated when AZIK is
-      ;; initialized earlier in the full test suite) so this test sees a
-      ;; clean predicate when checking non-existence.
-      (nskk-prolog-retract-all 'azik-rule 2)
-      (nskk--azik-assert-rules '())
-      ;; No facts should be added (db is clean)
-      (should-not (nskk-prolog-holds-p '(azik-rule "xz" \?k)))))
-
-  (nskk-it "can assert multiple rules in one call"
-    (nskk-prolog-test-with-isolated-db
-      (let ((rules '(("r1" "あ") ("r2" "い") ("r3" "う"))))
-        (nskk--azik-assert-rules rules)
-        (should (nskk-prolog-holds-p '(azik-rule "r1" "あ")))
-        (should (nskk-prolog-holds-p '(azik-rule "r2" "い")))
-        (should (nskk-prolog-holds-p '(azik-rule "r3" "う")))))))
 
 
 ;;;
@@ -2213,6 +2209,25 @@
     (let ((nskk-azik-keyboard-type 'us101))
       (nskk-with-azik-style
         (should-not (gethash "+" nskk--romaji-table))))))
+
+(nskk-describe "azik-removed-internals"
+  (nskk-it "nskk--azik-assert-rules should not exist (removed in refactoring)"
+    (should-not (fboundp 'nskk--azik-assert-rules))))
+
+;;;;
+;;;; azik-colon-trigger-char/1 Prolog fact Tests
+;;;;
+
+(nskk-describe "azik-colon-trigger-char/1 Prolog fact"
+  (nskk-it "should register colon as a trigger char"
+    (nskk-with-azik-style
+      (should (nskk-prolog-holds-p '(azik-colon-trigger-char ?:)))))
+  (nskk-it "should register plus as a trigger char"
+    (nskk-with-azik-style
+      (should (nskk-prolog-holds-p '(azik-colon-trigger-char ?+)))))
+  (nskk-it "should NOT register other chars like a"
+    (nskk-with-azik-style
+      (should-not (nskk-prolog-holds-p '(azik-colon-trigger-char ?a))))))
 
 (provide 'nskk-azik-test)
 

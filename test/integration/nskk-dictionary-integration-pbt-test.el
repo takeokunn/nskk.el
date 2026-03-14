@@ -76,13 +76,6 @@
     "かぜ" "あめ" "ゆき")
   "Keys known to exist in the test fixture dictionary.")
 
-(defun nskk--pbt-generate-unknown-key ()
-  "Generate a key that is unlikely to exist in the fixture dictionary."
-  (let ((prefixes '("zzz" "xxx" "qqq" "www"))
-        (suffixes '("ああ" "いい" "うう" "ええ" "おお")))
-    (concat (nskk--pbt-random-choice prefixes)
-            (nskk--pbt-random-choice suffixes))))
-
 (defconst nskk--pbt-test-pred 'nskk-pbt-test-dict-entry
   "Prolog predicate used in fixture-loading integration tests.")
 
@@ -91,27 +84,27 @@
 ;;;; Property 1: Dictionary Load Fixture
 ;;;;
 
-(ert-deftest nskk-state-machine-dict-load-fixture ()
-  "Loading test dictionary yields accessible entries via Prolog."
-  (nskk-prolog-test-with-isolated-db
-    (nskk-prolog-clear-database)
-    (let* ((dict-path (nskk--pbt-fixture-dict-path))
-           (pred (nskk-dict-load-file dict-path nil nskk--pbt-test-pred)))
-      ;; nskk-dict-load-file returns the predicate symbol on success
-      (should (symbolp pred))
-      (should (eq pred nskk--pbt-test-pred))
-      ;; Create an index struct from the predicate
-      (let ((index (make-nskk-dict-index :predicate pred)))
-        (should (nskk-dict-index-p index)))
-      ;; All known keys should be present via Prolog query
-      (let ((failures nil))
-        (dolist (key nskk--pbt-known-dict-keys)
-          (let ((result (nskk-prolog-query-value
-                         `(,nskk--pbt-test-pred ,key \?c) '\?c)))
-            (unless result
-              (push key failures))))
-        (when failures
-          (ert-fail (format "Missing keys in loaded dictionary: %S" failures)))))))
+(nskk-describe "dictionary load fixture"
+  (nskk-it "should load test dictionary and expose all known keys via Prolog"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-clear-database)
+      (let* ((dict-path (nskk--pbt-fixture-dict-path))
+             (pred (nskk-dict-load-file dict-path nil nskk--pbt-test-pred)))
+        ;; nskk-dict-load-file returns the predicate symbol on success
+        (should (symbolp pred))
+        (should (eq pred nskk--pbt-test-pred))
+        ;; Create an index struct from the predicate
+        (let ((index (make-nskk-dict-index :predicate pred)))
+          (should (nskk-dict-index-p index)))
+        ;; All known keys should be present via Prolog query
+        (let ((failures nil))
+          (dolist (key nskk--pbt-known-dict-keys)
+            (let ((result (nskk-prolog-query-value
+                           `(,nskk--pbt-test-pred ,key \?c) '\?c)))
+              (unless result
+                (push key failures))))
+          (when failures
+            (ert-fail (format "Missing keys in loaded dictionary: %S" failures))))))))
 
 
 
@@ -180,7 +173,7 @@
 
 
 ;;;
-;;; Property-Based Tests (nskk-property-test / nskk-deftest-cases)
+;;; Property-Based Tests (nskk-property-test / nskk-deftest-table)
 ;;;
 
 (nskk-property-test dict-lookup-returns-list-or-nil
@@ -201,9 +194,10 @@
       (should (member "テスト" (nskk-dict-lookup q)))))
   20)
 
-(nskk-deftest-cases dict-known-entries
-  (("かんじ" . "漢字")
-   ("うみ"   . "海"))
+(nskk-deftest-table dict-known-entries
+  :columns (input expected)
+  :rows (("かんじ" "漢字")
+         ("うみ"   "海"))
   :body (nskk-with-mock-dict (list (cons input (list expected)))
           (should (member expected (nskk-dict-lookup input)))))
 

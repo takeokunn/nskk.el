@@ -110,8 +110,9 @@
 
 ;; The original single case is preserved.  It verifies that the canonical
 ;; ";;" sequence self-inserts a literal semicolon character.
-(nskk-deftest-cases sticky-double-semicolon-cases
-  (( ";;" . ";"))
+(nskk-deftest-table sticky-double-semicolon-cases
+  :columns (input expected)
+  :rows (( ";;" ";"))
   :body
   (nskk-e2e-with-buffer 'hiragana nil
     (nskk-e2e-type input)

@@ -120,12 +120,13 @@
   ;; that must appear in the buffer after the call.  We use a dedicated marker
   ;; suffix per case to avoid cross-contamination between cases.
 
-  (nskk-deftest-cases debug-message-inputs
-    (("multi-line-marker\nsecond-line"             . "multi-line-marker")
-     ("日本語テスト-unicode-marker"                  . "日本語テスト-unicode-marker")
-     ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long-marker" . "long-marker")
-     ("control-chars-marker\t\r"                   . "control-chars-marker"))
+  (nskk-deftest-table debug-message-inputs
     :description "nskk-debug-message handles various input string forms"
+    :columns (input expected)
+    :rows (("multi-line-marker\nsecond-line"             "multi-line-marker")
+           ("日本語テスト-unicode-marker"                  "日本語テスト-unicode-marker")
+           ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-long-marker" "long-marker")
+           ("control-chars-marker\t\r"                   "control-chars-marker"))
     :body (let ((nskk-debug-enabled t))
             (nskk-debug-clear)
             (nskk-debug-message "%s" input)
@@ -139,10 +140,11 @@
   ;; Cases B: (INITIAL-VALUE . EXPECTED-AFTER-TOGGLE)
   ;; After one `nskk-debug-toggle' call the flag must equal `expected'.
 
-  (nskk-deftest-cases debug-toggle-transitions
-    ((nil . t)
-     (t   . nil))
+  (nskk-deftest-table debug-toggle-transitions
     :description "nskk-debug-toggle transitions between enabled states"
+    :columns (input expected)
+    :rows ((nil t)
+           (t   nil))
     :body (let ((nskk-debug-enabled input))
             (nskk-debug-toggle)
             (should (eq nskk-debug-enabled expected)))))

@@ -247,6 +247,48 @@
     :rows ((nil) (on))
     :body (should-not (nskk-prolog-query `(converting-phase ,phase)))))
 
+(nskk-describe "preedit-phase Prolog predicate"
+  (nskk-it "preedit-phase/1 holds for on"
+    (should (nskk-prolog-holds-p '(preedit-phase on))))
+
+  (nskk-deftest-table henkan-prolog-preedit-phase-invalid
+    :description "preedit-phase/1 fails for non-preedit phases"
+    :columns (phase)
+    :rows ((nil) (active) (list) (registration))
+    :body (should-not (nskk-prolog-holds-p `(preedit-phase ,phase)))))
+
+(nskk-describe "script-converter Prolog predicate"
+  (nskk-it "katakana maps to hiragana-to-katakana/k converter"
+    (should (eq (nskk-prolog-query-value
+                 '(script-converter katakana \?fn) '\?fn)
+                'nskk-kana-string-hiragana-to-katakana/k)))
+
+  (nskk-it "hiragana maps to katakana-to-hiragana/k converter"
+    (should (eq (nskk-prolog-query-value
+                 '(script-converter hiragana \?fn) '\?fn)
+                'nskk-kana-string-katakana-to-hiragana/k)))
+
+  (nskk-it "non-existent target returns nil"
+    (should-not (nskk-prolog-query-value
+                 '(script-converter ascii \?fn) '\?fn))))
+
+(nskk-describe "disable-cleanup Prolog predicate"
+  (nskk-it "active maps to cancel-conversion"
+    (should (nskk-prolog-holds-p '(disable-cleanup active cancel-conversion))))
+
+  (nskk-it "list maps to cancel-conversion"
+    (should (nskk-prolog-holds-p '(disable-cleanup list cancel-conversion))))
+
+  (nskk-it "on maps to cancel-preedit"
+    (should (nskk-prolog-holds-p '(disable-cleanup on cancel-preedit))))
+
+  (nskk-it "registration maps to cancel-preedit"
+    (should (nskk-prolog-holds-p '(disable-cleanup registration cancel-preedit))))
+
+  (nskk-it "nil phase returns nil"
+    (should-not (nskk-prolog-query-value
+                 '(disable-cleanup nil \?a) '\?a))))
+
 (nskk-describe "okurigana-char Prolog predicate"
   (nskk-it "maps uppercase A to lowercase a"
     (should (equal (nskk-prolog-query-value `(okurigana-char ,?A \?lc) '\?lc)
@@ -764,7 +806,7 @@
 
 ;; Property: "converting-p state invariant"
 ;; For any henkan-phase, set it on a fresh state, then verify nskk-converting-p
-;; matches whether the phase is in '(active list registration).
+;; matches `converting-phase/1' Prolog fact table membership.
 (nskk-property-test-seeded henkan-pbt-converting-p-invariant
   ((phase henkan-phase))
   (let ((nskk-current-state (nskk-state-create 'hiragana)))
@@ -773,9 +815,9 @@
       ;; nil phase: do not force any phase (state is freshly created)
       nil)
     (let ((converting (nskk-converting-p))
-          (is-converting-phase (memq phase '(active list registration))))
+          (is-converting-phase (nskk-prolog-holds-p `(converting-phase ,phase))))
       (nskk-assert-state-invariant nskk-current-state
-        ;; converting-p is non-nil iff phase is active/list/registration
+        ;; converting-p is non-nil iff phase is in converting-phase/1
         (eq (not (null converting)) (not (null is-converting-phase))))
       t))
   100 2001)
@@ -2213,21 +2255,24 @@
       (nskk-previous-candidate/k #'ignore (lambda () (setq not-found-called t)))
       (should not-found-called)))
 
-  (nskk-it "calls on-found with nil after selecting prev candidate inline"
+  (nskk-it "calls on-found with the selected candidate after selecting prev candidate inline"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--conversion-start-marker (make-marker))
             (nskk--henkan-count 2)
             (nskk--henkan-candidate-list-active nil)
-            on-found-called)
+            received-candidate)
         (set-marker nskk--conversion-start-marker (point-min))
         (insert "test")
         (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
+        (nskk-state-set-current-index nskk-current-state 1)
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk--select-candidate #'ignore))
-          ;; on-found is called with nil in the select-prev branch
-          (nskk-previous-candidate/k (lambda (_v) (setq on-found-called t)) #'ignore))
-        (should on-found-called)))))
+          ;; on-found is called with the candidate at current-index after decrement.
+          ;; nskk--henkan-count decrements 2→1; nskk--select-candidate is mocked
+          ;; (no real index change), so current-index stays at 1 → candidate "b".
+          (nskk-previous-candidate/k (lambda (c) (setq received-candidate c)) #'ignore))
+        (should (equal received-candidate "b"))))))
 
 ;;;
 ;;; nskk-start-conversion/k Tests
@@ -3432,6 +3477,162 @@
         (let ((content-before (buffer-string)))
           (nskk-henkan-kakutei-convert-script)
           (should (string= (buffer-string) content-before)))))))
+
+;;;
+;;; preedit-phase/1 Prolog Table Integrity Tests
+;;;
+
+(nskk-describe "preedit-phase/1 Prolog table integrity"
+  (nskk-it "on holds as a preedit phase"
+    (should (nskk-prolog-holds-p '(preedit-phase on))))
+
+  (nskk-it "active does NOT hold as a preedit phase"
+    (should-not (nskk-prolog-holds-p '(preedit-phase active))))
+
+  (nskk-it "nil does NOT hold as a preedit phase"
+    (should-not (nskk-prolog-holds-p '(preedit-phase nil))))
+
+  (nskk-it "list does NOT hold as a preedit phase"
+    (should-not (nskk-prolog-holds-p '(preedit-phase list))))
+
+  (nskk-it "registration does NOT hold as a preedit phase"
+    (should-not (nskk-prolog-holds-p '(preedit-phase registration)))))
+
+;;;
+;;; kana-conversion/3 normalize Prolog Table Integrity Tests
+;;;
+
+(nskk-describe "kana-conversion/3 normalize Prolog table integrity"
+  (nskk-deftest-table henkan-prolog-lookup-normalize-table
+    :description "kana-conversion/3 normalize maps mode to normalization function"
+    :columns (mode expected-fn)
+    :rows ((hiragana      identity)
+           (katakana      nskk-kana-string-katakana-to-hiragana)
+           (katakana-半角  nskk--hankaku-to-hiragana))
+    :body (should (eq expected-fn
+                      (nskk-prolog-query-value
+                       `(kana-conversion ,mode normalize ,'\?fn) '\?fn))))
+
+  (nskk-it "returns nil for unknown mode"
+    (should-not (nskk-prolog-query-value
+                 `(kana-conversion nonexistent normalize ,'\?fn) '\?fn))))
+
+;;;
+;;; disable-cleanup/2 Prolog Table Integrity Tests
+;;;
+
+(nskk-describe "disable-cleanup/2 Prolog table integrity"
+  (nskk-deftest-table henkan-prolog-disable-cleanup-table
+    :description "disable-cleanup/2 maps henkan phase to cleanup action"
+    :columns (phase expected-action)
+    :rows ((active       cancel-conversion)
+           (list         cancel-conversion)
+           (on           cancel-preedit)
+           (registration cancel-preedit))
+    :body (should (eq expected-action
+                      (nskk-prolog-query-value
+                       `(disable-cleanup ,phase ,'\?a) '\?a))))
+
+  (nskk-it "returns nil for nil phase"
+    (should-not (nskk-prolog-query-value
+                 `(disable-cleanup nil ,'\?a) '\?a))))
+
+;;;
+;;; script-converter/2 Prolog Table Integrity Tests
+;;;
+
+(nskk-describe "script-converter/2 Prolog table integrity"
+  (nskk-deftest-table henkan-prolog-script-converter-table
+    :description "script-converter/2 maps target script to CPS converter function"
+    :columns (target expected-fn)
+    :rows ((katakana nskk-kana-string-hiragana-to-katakana/k)
+           (hiragana nskk-kana-string-katakana-to-hiragana/k))
+    :body (should (eq expected-fn
+                      (nskk-prolog-query-value
+                       `(script-converter ,target ,'\?fn) '\?fn))))
+
+  (nskk-it "returns nil for unknown target"
+    (should-not (nskk-prolog-query-value
+                 `(script-converter ascii ,'\?fn) '\?fn))))
+
+;;;
+;;; nskk--hankaku-to-hiragana Tests
+;;;
+
+(nskk-describe "henkan hankaku-to-hiragana helper"
+  (nskk-it "is defined as a callable function (fboundp)"
+    (should (fboundp 'nskk--hankaku-to-hiragana)))
+
+  (nskk-it "converts single a-row char from hankaku to hiragana"
+    (should (equal (nskk--hankaku-to-hiragana "ｱ") "あ")))
+
+  (nskk-it "converts single ka-row char from hankaku to hiragana"
+    (should (equal (nskk--hankaku-to-hiragana "ｶ") "か")))
+
+  (nskk-it "converts multi-char hankaku string to hiragana"
+    (should (equal (nskk--hankaku-to-hiragana "ｱｲｳ") "あいう"))))
+
+;;;
+;;; nskk--normalize-for-lookup Tests
+;;;
+
+(nskk-describe "henkan normalize-for-lookup helper"
+  (nskk-it "is defined as a callable function (fboundp)"
+    (should (fboundp 'nskk--normalize-for-lookup)))
+
+  (nskk-it "in hiragana mode returns text as-is"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (should (equal (nskk--normalize-for-lookup "あいう") "あいう"))))
+
+  (nskk-it "in katakana mode normalizes to hiragana"
+    (let ((nskk-current-state (nskk-state-create 'katakana)))
+      (should (equal (nskk--normalize-for-lookup "アイウ") "あいう"))))
+
+  (nskk-it "in hankaku-katakana mode normalizes to hiragana"
+    (let ((nskk-current-state (nskk-state-create 'katakana-半角)))
+      (should (equal (nskk--normalize-for-lookup "ｱｲｳ") "あいう"))))
+
+  (nskk-it "falls back to identity for unknown mode with no fact"
+    (let ((nskk-current-state (nskk-state-create 'ascii)))
+      (should (equal (nskk--normalize-for-lookup "abc") "abc")))))
+
+;;;
+;;; nskk--standalone-n-p Tests
+;;;
+
+(nskk-describe "nskk--standalone-n-p"
+  (nskk-it "should return non-nil for single-char \"n\" string"
+    (should (nskk--standalone-n-p "n")))
+  (nskk-it "should return nil for empty string"
+    (should-not (nskk--standalone-n-p "")))
+  (nskk-it "should return nil for \"nn\""
+    (should-not (nskk--standalone-n-p "nn")))
+  (nskk-it "should return nil for \"na\""
+    (should-not (nskk--standalone-n-p "na")))
+  (nskk-it "should return nil for non-n single char"
+    (should-not (nskk--standalone-n-p "a"))))
+
+;;;
+;;; nskk-henkan-unknown-search-type error signal Tests
+;;;
+
+(nskk-describe "nskk-core-search/k unknown search type"
+  (nskk-it "signals nskk-henkan-unknown-search-type for an unrecognized search type keyword"
+    (nskk-with-mock-dict '()
+      (should-error
+       (nskk-core-search/k "かんじ" :unknown-type nil
+         #'ignore
+         #'ignore)
+       :type 'nskk-henkan-unknown-search-type)))
+
+  (nskk-it "signals nskk-henkan-unknown-search-type and error data contains the bad type"
+    (nskk-with-mock-dict '()
+      (condition-case err
+          (progn
+            (nskk-core-search/k "てすと" :bogus nil #'ignore #'ignore)
+            (ert-fail "Expected signal was not raised"))
+        (nskk-henkan-unknown-search-type
+         (should (memq :bogus (cdr err))))))))
 
 (provide 'nskk-henkan-test)
 

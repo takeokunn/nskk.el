@@ -297,14 +297,15 @@
 ;; the predicate with that many variables returns a non-error result
 ;; (either solutions or empty -- both are valid; the test only checks no crash).
 
-(nskk-deftest-cases nskk-prolog-predicate-arity-mapping
-  (("valid-mode" . 1)
-   ("japanese-mode" . 1)
-   ("romaji-to-kana" . 2)
-   ("dict-entry" . 2)
-   ("semicolon-key-action" . 2)
-   ("henkan-phase" . 1))
+(nskk-deftest-table nskk-prolog-predicate-arity-mapping
   :description "Known predicates can be queried without error at the expected arity"
+  :columns (input expected)
+  :rows (("valid-mode" 1)
+         ("japanese-mode" 1)
+         ("romaji-to-kana" 2)
+         ("dict-entry" 2)
+         ("semicolon-key-action" 2)
+         ("henkan-phase" 1))
   :body
   ;; Build a variable list of length `expected' then attempt a query.
   ;; The query may return nil (no solutions) but must not signal an error.

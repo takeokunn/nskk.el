@@ -55,13 +55,6 @@
 ;;;; Helper Functions for Sequence Testing
 ;;;;
 
-(defun nskk-sequence-test--execute-keys (state key-sequence)
-  "Execute KEY-SEQUENCE on STATE, returning updated state.
-Simulates key presses without actual buffer insertion."
-  (let ((current-state state))
-    (dolist (key key-sequence current-state)
-      (setq current-state (nskk-sequence-test--process-key current-state key)))))
-
 (defun nskk-sequence-test--process-key (state key)
   "Process a single KEY press on STATE, returning updated state.
 KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
@@ -135,16 +128,6 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
 (defun nskk-sequence-test--mode-valid-p (state)
   "Check if mode in STATE is one of the valid NSKK modes."
   (nskk-state-valid-mode-p (nskk-state-mode state)))
-
-(defun nskk-sequence-test--states-equal-p (state1 state2)
-  "Check if STATE1 and STATE2 have equivalent mode and buffer content."
-  (and (nskk-state-p state1)
-       (nskk-state-p state2)
-       (eq (nskk-state-mode state1) (nskk-state-mode state2))
-       (string= (nskk-state-input-buffer state1)
-                (nskk-state-input-buffer state2))
-       (string= (nskk-state-converted-buffer state1)
-                (nskk-state-converted-buffer state2))))
 
 
 ;;;;

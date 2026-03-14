@@ -40,7 +40,6 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
-(require 'nskk-integration-test) ; for nskk-integration-with-session, nskk--integration-type-char
 
 ;;;; Post-initialization predicate availability (nskk-state-initialize-prolog)
 

@@ -76,11 +76,6 @@
   :type 'boolean
   :group 'nskk-test)
 
-(defcustom nskk-test-timeout 5.0
-  "Default test timeout in seconds."
-  :type 'number
-  :group 'nskk-test)
-
 (defcustom nskk-test-property-runs 100
   "Default number of runs for property-based tests."
   :type 'integer
@@ -146,18 +141,6 @@
   "Define a unit test."
   (declare (indent 2) (doc-string 2))
   `(ert-deftest ,(intern (format "nskk-unit-%s" name)) ()
-     ,docstring
-     (let ((nskk--test-mode t))
-       (nskk--test-setup)
-       (unwind-protect
-           (progn
-             ,@body)
-         (nskk--test-teardown)))))
-
-(defmacro nskk-deftest-integration (name docstring &rest body)
-  "Define an integration test."
-  (declare (indent 2) (doc-string 2))
-  `(ert-deftest ,(intern (format "nskk-integration-%s" name)) ()
      ,docstring
      (let ((nskk--test-mode t))
        (nskk--test-setup)
@@ -554,6 +537,10 @@ search function such as `nskk-search'."
 ;;;; Mock skkserv Helper
 ;;;;
 
+;; `nskk-keymap' is needed for `nskk-self-insert', used by the
+;; integration session helpers below.
+(require 'nskk-keymap)
+
 ;; `nskk-server-coding-system' is defined in nskk-server.el.
 ;; Load it here so the mock helper below can reference that variable.
 (require 'nskk-server)
@@ -592,6 +579,41 @@ This helper is shared by both `nskk-server-integration-test' and
                                           (concat "4" key " \n"))))
                         (process-send-string client response))))))))))
     (cons srv (process-contact srv :service))))
+
+
+;;;;
+;;;; Integration Session Helpers
+;;;;
+
+(defmacro nskk-integration-with-session (mode &rest body)
+  "Execute BODY in a full NSKK session initialized to MODE.
+Sets up a temporary buffer with a fresh state struct, empty romaji buffer,
+and initialized romaji table.  Suitable for integration tests that exercise
+the full input pipeline without enabling `nskk-mode'."
+  (declare (indent 1))
+  `(with-temp-buffer
+     (let ((nskk-current-state (nskk-state-create ,mode))
+           (nskk--conversion-overlay nil)
+           (nskk--romaji-buffer "")
+           (nskk-converter-auto-start-henkan t))
+       (nskk--initialize-romaji-table)
+       ,@body)))
+
+(defun nskk--integration-type-char (char)
+  "Simulate typing CHAR via `nskk-self-insert' in an integration session."
+  (let ((last-command-event char))
+    (nskk-self-insert 1)))
+
+(defmacro nskk-azik-with-session (mode &rest body)
+  "Like `nskk-integration-with-session' but with AZIK style loaded.
+Restores the standard romaji table after BODY completes so that
+subsequent non-AZIK tests are not affected."
+  (declare (indent 1))
+  `(nskk-integration-with-session ,mode
+     (nskk-converter-load-style 'azik)
+     (unwind-protect
+         (progn ,@body)
+       (nskk-converter-load-style 'standard))))
 
 
 (provide 'nskk-test-framework)

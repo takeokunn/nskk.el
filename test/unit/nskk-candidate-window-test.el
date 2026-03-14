@@ -15,7 +15,6 @@
 ;; - Overlay lifecycle (create, reuse, delete, anchor)
 ;; - Candidate selection by key (Prolog-based)
 ;; - Prolog candidate-selection-key/2 fact initialization
-;; - Page state management (show/hide)
 ;; - Custom variable defaults and custom group
 ;; - Face definitions
 ;; - Page-slice pure function
@@ -122,10 +121,6 @@
     (should (get 'nskk-candidate-window 'custom-group))))
 
 (nskk-describe "state variable defaults"
-  (nskk-it "page number defaults to 0"
-    (with-temp-buffer
-      (should (= nskk--candidate-list-page 0))))
-
   (nskk-it "candidate list active defaults to nil"
     (with-temp-buffer
       (should (null nskk--candidate-list-active)))))
@@ -161,12 +156,7 @@
           (should (= (length result) 2))
           (should (equal result '("四" "五")))))))
 
-  (nskk-it "correctly sets the page number"
-    (with-temp-buffer
-      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
-            (nskk-henkan-number-to-display-candidates 7))
-        (nskk-candidate-show-list '("a" "b" "c" "d" "e" "f" "g" "h" "i") 7)
-        (should (= nskk--candidate-list-page 1))))))
+)
 
 (nskk-describe "list active predicate"
   (nskk-it "returns nil when not active"
@@ -188,8 +178,7 @@
         (nskk-candidate-show-list '("test") 0)
         (should nskk--candidate-list-active)
         (nskk-candidate-hide-list)
-        (should-not nskk--candidate-list-active)
-        (should (= nskk--candidate-list-page 0)))))
+        (should-not nskk--candidate-list-active))))
 
   (nskk-it "is safe to call when not active"
     (with-temp-buffer

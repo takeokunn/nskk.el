@@ -80,6 +80,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
              (nav-called nil))
          (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                            (nskk--has-preedit (lambda () t))
+                           (nskk--get-conversion-start (lambda () 1))
                            (nskk-commit-current (lambda () (setq commit-called t)))
                            (nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
                            (,nav-fn (lambda (&rest _) (interactive) (setq nav-called t))))
@@ -150,7 +151,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 ;;; Interactive Command Tests
 ;;;
 
-(nskk-describe "interactive command availability"
+(nskk-describe "interactive command availability (keymap)"
   (nskk-deftest-table keymap-commands-interactive
     :description "Command is interactive (commandp)"
     :columns (cmd)
@@ -207,7 +208,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (nskk-given (nskk-set-mode-latin))
       (nskk-then  (should (eq (nskk-state-mode nskk-current-state) 'latin))))))
 
-(nskk-describe "nskk-toggle-japanese-mode behavior"
+(nskk-describe "nskk-toggle-japanese-mode behavior (keymap)"
   (nskk-it "toggles hiragana to katakana and back"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-when  (nskk-toggle-japanese-mode))
@@ -571,6 +572,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                         (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1))
                         (nskk-cancel-preedit (lambda () (setq cancel-called t))))
         (nskk-handle-cancel))
       (should cancel-called))))
@@ -588,7 +590,8 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-it "returns 'preedit when nskk--has-preedit is true"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t)))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1)))
         (should (eq (nskk--current-kakutei-state) 'preedit)))))
 
   (nskk-it "returns 'romaji-pending when nskk--romaji-buffer is non-empty"
@@ -731,7 +734,7 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                         (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () nil)))
+                        (nskk--get-conversion-start (lambda () 1)))
         (should (eq (nskk--current-key-state) 'preedit)))))
 
   (nskk-it "returns 'normal in hiragana mode with no preedit"
@@ -775,34 +778,32 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
             (should (eq (nskk--current-key-state) 'preedit))))))))
 
 ;;;
-;;; nskk-self-insert abbrev-bypass Tests
+;;; nskk-self-insert abbrev-mode routing Tests
 ;;;
 ;; These unit tests verify that nskk-self-insert routes ALL chars to
-;; nskk-process-abbrev-input in abbrev mode, bypassing the Prolog
-;; input-route query entirely.
+;; nskk-process-abbrev-input in abbrev mode via the Prolog input-route
+;; table.
 
-(nskk-describe "nskk-self-insert abbrev-mode Prolog bypass"
-  (nskk-it "bypasses Prolog for uppercase letters in abbrev mode"
+(nskk-describe "nskk-self-insert abbrev-mode routing"
+  (nskk-it "routes uppercase letters in abbrev mode via input-route Prolog table"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'abbrev))
             (last-command-event ?T)
-            (prolog-called nil))
-        (nskk-with-mocks ((nskk-prolog-query-value (lambda (&rest _) (setq prolog-called t) nil)))
+            (abbrev-called nil))
+        (nskk-with-mocks ((nskk-process-abbrev-input (lambda (_char) (setq abbrev-called t))))
           (nskk-when (nskk-self-insert 1))
           (nskk-then
-           (should-not prolog-called)
-           (should (> (buffer-size) 0)))))))
+           (should abbrev-called))))))
 
-  (nskk-it "bypasses Prolog for 'n' in abbrev mode"
+  (nskk-it "routes 'n' in abbrev mode via input-route Prolog table"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'abbrev))
             (last-command-event ?n)
-            (prolog-called nil))
-        (nskk-with-mocks ((nskk-prolog-query-value (lambda (&rest _) (setq prolog-called t) nil)))
+            (abbrev-called nil))
+        (nskk-with-mocks ((nskk-process-abbrev-input (lambda (_char) (setq abbrev-called t))))
           (nskk-when (nskk-self-insert 1))
           (nskk-then
-           (should-not prolog-called)
-           (should (> (buffer-size) 0))))))))
+           (should abbrev-called)))))))
 
 ;;;
 ;;; nskk-handle-ctrl-a behavior
@@ -1078,27 +1079,82 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
                 'latin-mode))))
 
 ;;;
-;;; preedit-marker-mode/1 Prolog Table Tests
+;;; state-classify/4 Prolog Table Tests
 ;;;
 
-(nskk-describe "preedit-marker-mode/1 Prolog table integrity"
-  (nskk-it "abbrev mode is a preedit-marker-mode"
-    (should (nskk-prolog-holds-p '(preedit-marker-mode abbrev))))
+(nskk-describe "state-classify/4 Prolog table completeness"
+  (nskk-it "converting phase always yields converting regardless of text and mode"
+    (dolist (text '(has-text no-text))
+      (dolist (cat '(japanese marker-mode other))
+        (should (eq (nskk-prolog-query-value
+                     `(state-classify converting ,text ,cat \?c) '\?c)
+                    'converting)))))
 
-  (nskk-it "hiragana mode is a preedit-marker-mode"
-    (should (nskk-prolog-holds-p '(preedit-marker-mode hiragana))))
+  (nskk-it "henkan-on + japanese + has-text yields preedit-japanese"
+    (should (nskk-prolog-holds-p
+             '(state-classify henkan-on has-text japanese preedit-japanese))))
 
-  (nskk-it "katakana mode is a preedit-marker-mode"
-    (should (nskk-prolog-holds-p '(preedit-marker-mode katakana))))
+  (nskk-it "henkan-on + japanese + no-text yields preedit-pending"
+    (should (nskk-prolog-holds-p
+             '(state-classify henkan-on no-text japanese preedit-pending))))
 
-  (nskk-it "katakana hankaku mode is a preedit-marker-mode"
-    (should (nskk-prolog-holds-p '(preedit-marker-mode katakana-半角))))
+  (nskk-it "henkan-on + marker-mode always yields preedit-marker"
+    (dolist (text '(has-text no-text))
+      (should (nskk-prolog-holds-p
+               `(state-classify henkan-on ,text marker-mode preedit-marker)))))
 
-  (nskk-it "ascii mode is NOT a preedit-marker-mode"
-    (should-not (nskk-prolog-holds-p '(preedit-marker-mode ascii))))
+  (nskk-it "idle + japanese always yields idle-japanese"
+    (dolist (text '(has-text no-text))
+      (should (nskk-prolog-holds-p
+               `(state-classify idle ,text japanese idle-japanese)))))
 
-  (nskk-it "latin mode is NOT a preedit-marker-mode"
-    (should-not (nskk-prolog-holds-p '(preedit-marker-mode latin)))))
+  (nskk-it "idle + non-japanese always yields idle-direct"
+    (dolist (text '(has-text no-text))
+      (dolist (cat '(marker-mode other))
+        (should (nskk-prolog-holds-p
+                 `(state-classify idle ,text ,cat idle-direct)))))))
+
+;;;
+;;; kakutei-active-state/3 Prolog Table Tests
+;;;
+
+(nskk-describe "kakutei-active-state/3 Prolog table integrity"
+  (nskk-it "converting maps to converting for both text variants"
+    (dolist (text '(has-text no-text))
+      (should (eq (nskk-prolog-query-value
+                   `(kakutei-active-state converting ,text \?s) '\?s)
+                  'converting))))
+
+  (nskk-it "preedit-japanese maps to preedit for both text variants"
+    (dolist (text '(has-text no-text))
+      (should (eq (nskk-prolog-query-value
+                   `(kakutei-active-state preedit-japanese ,text \?s) '\?s)
+                  'preedit))))
+
+  (nskk-it "preedit-pending maps to preedit for both text variants"
+    (dolist (text '(has-text no-text))
+      (should (eq (nskk-prolog-query-value
+                   `(kakutei-active-state preedit-pending ,text \?s) '\?s)
+                  'preedit))))
+
+  (nskk-it "preedit-marker with has-text maps to preedit"
+    (should (eq (nskk-prolog-query-value
+                 '(kakutei-active-state preedit-marker has-text \?s) '\?s)
+                'preedit)))
+
+  (nskk-it "preedit-marker with no-text returns nil (falls through to idle)"
+    (should-not (nskk-prolog-query-value
+                 '(kakutei-active-state preedit-marker no-text \?s) '\?s))))
+
+;;;
+;;; mode-switch-preaction/2 preedit-pending Tests
+;;;
+
+(nskk-describe "mode-switch-preaction/2 preedit-pending row"
+  (nskk-it "preedit-pending maps to noop"
+    (should (eq (nskk-prolog-query-value
+                 '(mode-switch-preaction preedit-pending \?a) '\?a)
+                'noop))))
 
 ;;;
 ;;; nskk-define-key-handler
@@ -1136,13 +1192,15 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
   (nskk-it "returns 'preedit-japanese when preedit is active in hiragana mode"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t)))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1)))
         (should (eq (nskk--japanese-mode-class) 'preedit-japanese)))))
 
   (nskk-it "returns 'other when preedit is active in abbrev mode (not Japanese)"
     (let ((nskk-current-state (nskk-state-create 'abbrev)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t)))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1)))
         (should (eq (nskk--japanese-mode-class) 'other)))))
 
   (nskk-it "returns 'idle-japanese when in hiragana mode with no preedit"
@@ -1258,7 +1316,8 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
   (nskk-it "returns 'preedit-japanese when preedit in hiragana mode"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t)))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1)))
         (should (eq (nskk--classify-state) 'preedit-japanese)))))
 
   (nskk-it "returns 'preedit-marker when abbrev with marker set"
@@ -1269,13 +1328,13 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
           (nskk--set-conversion-start-marker (point-min))
           (should (eq (nskk--classify-state) 'preedit-marker))))))
 
-  (nskk-it "returns 'preedit-marker when hiragana with marker set but no preedit text"
+  (nskk-it "returns 'preedit-pending when hiragana with marker set but no preedit text"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                           (nskk--has-preedit (lambda () nil)))
           (nskk--set-conversion-start-marker (point-min))
-          (should (eq (nskk--classify-state) 'preedit-marker))))))
+          (should (eq (nskk--classify-state) 'preedit-pending))))))
 
   (nskk-it "returns 'idle-japanese when hiragana idle"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
@@ -1300,7 +1359,8 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
   (nskk-it "converting takes priority over preedit"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                        (nskk--has-preedit (lambda () t)))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1)))
         (should (eq (nskk--classify-state) 'converting))))))
 
 ;;;
@@ -1405,6 +1465,7 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
     :columns (rich-state expected-simple)
     :rows ((converting       converting)
            (preedit-japanese preedit)
+           (preedit-pending  preedit)
            (preedit-marker   preedit)
            (idle-japanese    normal)
            (idle-direct      normal))
@@ -1422,6 +1483,7 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
     :columns (rich-state expected-class)
     :rows ((converting       converting)
            (preedit-japanese preedit-japanese)
+           (preedit-pending  preedit-pending)
            (preedit-marker   other)
            (idle-japanese    idle-japanese)
            (idle-direct      other))
@@ -1439,6 +1501,8 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
     :columns (cls style expected-action)
     :rows ((preedit-japanese azik     fire-romaji)
            (preedit-japanese standard convert-script)
+           (preedit-pending  azik     fire-romaji)
+           (preedit-pending  standard convert-script)
            (converting       azik     mode-switch)
            (converting       standard mode-switch)
            (idle-japanese    azik     mode-switch)
@@ -1471,8 +1535,8 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
 ;;;
 
 (nskk-describe "nskk--classify-state return type invariants"
-  (nskk-it "return value is always one of the 5 known symbols"
-    (let ((valid-states '(converting preedit-japanese preedit-marker idle-japanese idle-direct)))
+  (nskk-it "return value is always one of the 6 known symbols"
+    (let ((valid-states '(converting preedit-japanese preedit-pending preedit-marker idle-japanese idle-direct)))
       ;; converting
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
                         (nskk--has-preedit  (lambda () nil)))
@@ -1480,7 +1544,8 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
       ;; preedit-japanese
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk--has-preedit  (lambda () t)))
+                          (nskk--has-preedit  (lambda () t))
+                          (nskk--get-conversion-start (lambda () 1)))
           (should (memq (nskk--classify-state) valid-states))))
       ;; idle
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))

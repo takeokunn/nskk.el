@@ -63,17 +63,6 @@
       (nskk-e2e-type "!@#")
       (nskk-e2e-assert-buffer "!@#"))))
 
-;;;;
-;;;; Hiragana Vowel Input Tests
-;;;;
-
-(nskk-deftest-table buffer-hiragana-vowels
-  :columns (input expected)
-  :rows (("a" "あ") ("i" "い") ("u" "う") ("e" "え") ("o" "お"))
-  :body (nskk-e2e-with-buffer 'hiragana nil
-          (nskk-e2e-type input)
-          (nskk-e2e-assert-buffer expected)))
-
 (nskk-describe "hiragana all vowels in sequence"
   (nskk-it "inserts all vowels as a word"
     (nskk-e2e-with-buffer 'hiragana nil
@@ -84,7 +73,7 @@
 ;;;; Hiragana Consonant+Vowel (K-row)
 ;;;;
 
-(nskk-deftest-table hiragana-ka-row
+(nskk-deftest-table kana-e2e-hiragana-ka-row
   :columns (romaji expected)
   :rows (("ka" "か") ("ki" "き") ("ku" "く") ("ke" "け") ("ko" "こ"))
   :body
@@ -97,7 +86,7 @@
 ;;;; Complete Romaji Table Tests (ddskk-equivalent)
 ;;;;
 
-(nskk-deftest-table romaji-table-comprehensive
+(nskk-deftest-table kana-e2e-romaji-comprehensive
   :columns (romaji expected)
   :rows (;; A-row
          ("a" "あ") ("i" "い") ("u" "う") ("e" "え") ("o" "お")
@@ -142,7 +131,7 @@
 ;;;; Compound Kana (拗音) Tests
 ;;;;
 
-(nskk-deftest-table compound-kana-romaji
+(nskk-deftest-table kana-e2e-compound-kana
   :columns (romaji expected)
   :rows (;; KY-row
          ("kya" "きゃ") ("kyu" "きゅ") ("kyo" "きょ")
@@ -191,7 +180,7 @@
       (nskk-e2e-type "sshi")
       (nskk-e2e-assert-buffer "っし")))
 
-  (nskk-deftest-table sokuon-consonant-combinations
+  (nskk-deftest-table kana-e2e-sokuon-consonant-combinations
     :columns (romaji expected)
     :rows (("ppa" "っぱ") ("bba" "っば") ("dda" "っだ") ("gga" "っが"))
     :body (nskk-e2e-with-buffer 'hiragana nil
@@ -234,7 +223,7 @@
       (nskk-e2e-type "aiueo")
       (nskk-e2e-assert-buffer "アイウエオ")))
 
-  (nskk-deftest-table katakana-single-cv
+  (nskk-deftest-table kana-e2e-katakana-single-cv
     :columns (romaji expected)
     :rows (("ka"  "カ") ("ki"  "キ") ("ku"  "ク")
            ("shi" "シ") ("tsu" "ツ") ("chi" "チ"))
@@ -249,7 +238,7 @@
       (nskk-e2e-type "tte")
       (nskk-e2e-assert-buffer "ッテ")))
 
-  (nskk-deftest-table katakana-representative-entries
+  (nskk-deftest-table kana-e2e-katakana-representative-entries
     :columns (romaji expected)
     :rows (("a" "ア") ("i" "イ") ("u" "ウ") ("e" "エ") ("o" "オ")
            ("ka" "カ") ("ki" "キ") ("ku" "ク")
@@ -299,7 +288,7 @@
 ;;;; Half-width Katakana (katakana-半角) Character Output Tests
 ;;;;
 
-(nskk-deftest-table hankaku-katakana-comprehensive
+(nskk-deftest-table kana-e2e-hankaku-katakana-comprehensive
   :columns (romaji expected)
   :rows (;; Vowel row
          ("a" "ｱ") ("i" "ｲ") ("u" "ｳ") ("e" "ｴ") ("o" "ｵ")
@@ -381,7 +370,7 @@
 ;;;;
 
 (nskk-describe "small kana romaji rows"
-  (nskk-deftest-table buffer-romaji-small-kana-xa-row
+  (nskk-deftest-table kana-e2e-romaji-small-kana-xa-row
     :columns (romaji kana)
     ;; la/li/lu/le/lo omitted: 'l' is bound to nskk-handle-l (Latin-mode switch)
     ;; and cannot be used as a romaji prefix in E2E key-event tests.
@@ -391,7 +380,7 @@
             (nskk-e2e-assert-buffer kana
                                     (format "romaji %S → %S failed" romaji kana))))
 
-  (nskk-deftest-table buffer-romaji-small-kana-xtsu
+  (nskk-deftest-table kana-e2e-romaji-small-kana-xtsu
     :columns (romaji kana)
     ;; ltsu/ltu omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
     :rows (("xtsu" "っ") ("xtu" "っ"))
@@ -400,7 +389,7 @@
             (nskk-e2e-assert-buffer kana
                                     (format "romaji %S → %S failed" romaji kana))))
 
-  (nskk-deftest-table buffer-romaji-small-kana-xya-row
+  (nskk-deftest-table kana-e2e-romaji-small-kana-xya-row
     :columns (romaji kana)
     ;; lya/lyu/lyo omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
     :rows (("xya" "ゃ") ("xyu" "ゅ") ("xyo" "ょ"))
@@ -414,7 +403,7 @@
 ;;;;
 
 (nskk-describe "v-row romaji"
-  (nskk-deftest-table buffer-romaji-v-row
+  (nskk-deftest-table kana-e2e-romaji-v-row
     :columns (romaji kana)
     :rows (("va"  "ゔぁ")
            ("vi"  "ゔぃ")
@@ -434,7 +423,7 @@
 ;;;;
 
 (nskk-describe "foreign extension romaji rows"
-  (nskk-deftest-table buffer-romaji-th-row
+  (nskk-deftest-table kana-e2e-romaji-th-row
     :columns (romaji kana)
     :rows (("tha" "てぁ")
            ("thi" "てぃ")
@@ -446,7 +435,7 @@
             (nskk-e2e-assert-buffer kana
                                     (format "romaji %S → %S failed" romaji kana))))
 
-  (nskk-deftest-table buffer-romaji-dh-row
+  (nskk-deftest-table kana-e2e-romaji-dh-row
     :columns (romaji kana)
     :rows (("dha" "でぁ")
            ("dhi" "でぃ")
@@ -458,7 +447,7 @@
             (nskk-e2e-assert-buffer kana
                                     (format "romaji %S → %S failed" romaji kana))))
 
-  (nskk-deftest-table buffer-romaji-wh-row
+  (nskk-deftest-table kana-e2e-romaji-wh-row
     :columns (romaji kana)
     :rows (("wha" "うぁ")
            ("whi" "うぃ")

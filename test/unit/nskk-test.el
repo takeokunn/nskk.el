@@ -175,6 +175,7 @@
     (nskk-with-test-buffer 'hiragana
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                         (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1))
                         (nskk-henkan-kakutei (lambda () (insert "変換"))))
         (nskk-kakutei)
         (nskk-should-buffer "変換")))))

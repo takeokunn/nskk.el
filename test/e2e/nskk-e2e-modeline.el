@@ -72,14 +72,15 @@
 ;;;; Complete Mode-to-Indicator Table Test
 ;;;;
 
-(nskk-deftest-cases modeline-mode-indicator-table
-  ((ascii          . "SKK")
-   (latin          . "SKK")
-   (hiragana       . "かな")
-   (katakana       . "カナ")
-   (katakana-半角   . "ｶﾅ")
-   (abbrev         . "aA")
-   (jisx0208-latin . "全英"))
+(nskk-deftest-table modeline-mode-indicator-table
+  :columns (input expected)
+  :rows ((ascii          "SKK")
+         (latin          "SKK")
+         (hiragana       "かな")
+         (katakana       "カナ")
+         (katakana-半角   "ｶﾅ")
+         (abbrev         "aA")
+         (jisx0208-latin "全英"))
   :body
   (nskk-e2e-with-buffer input nil
     (nskk-e2e-assert-modeline-contains

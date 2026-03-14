@@ -354,9 +354,10 @@
 ;;;; Property-Based Tests: Navigation Point Invariants
 ;;;;
 
-(nskk-deftest-cases navigation-point-invariants
-  (("C-f" . "forward")
-   ("C-b" . "backward"))
+(nskk-deftest-table navigation-point-invariants
+  :columns (input expected)
+  :rows (("C-f" "forward")
+         ("C-b" "backward"))
   :body
   (nskk-e2e-with-buffer 'hiragana nil
     (nskk-e2e-type "a")

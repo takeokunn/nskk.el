@@ -27,7 +27,6 @@
 (require 'nskk-converter)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
-(require 'nskk-integration-test)
 
 ;;;
 ;;; Helper: type the "▽かんじ" preedit sequence
@@ -158,10 +157,11 @@
 
 (require 'nskk-pbt-generators)
 
-(nskk-deftest-cases henkan-pipeline-preedit-sequences
-  (("kanji" . "かんじ")
-   ("umi"   . "うみ")
-   ("sora"  . "そら"))
+(nskk-deftest-table henkan-pipeline-preedit-sequences
+  :columns (input expected)
+  :rows (("kanji" "かんじ")
+         ("umi"   "うみ")
+         ("sora"  "そら"))
   :body
   (nskk-with-mock-dict nil
     (nskk-integration-with-session 'hiragana

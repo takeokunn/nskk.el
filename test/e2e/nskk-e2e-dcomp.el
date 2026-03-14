@@ -180,16 +180,17 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-assert-henkan-phase 'on))))
 
 ;;;;
-;;;; nskk-deftest-cases: known prefix → completion is a string
+;;;; nskk-deftest-table: known prefix → completion is a string
 ;;;;
 
 ;; For each known romaji prefix, Tab must produce a preedit that is a string.
 ;; The exact completed value is not asserted here — only that completion ran
 ;; without error and produced a string result.
-(nskk-deftest-cases dcomp-known-prefix-cases
-  (("Ka" . t)   ; "Ka" → かん prefix → at least one completion in dict
-   ("Sa" . t)   ; "Sa" → さ prefix → さくら in extended dict
-   ("Ni" . t))  ; "Ni" → に prefix → にほん in extended dict
+(nskk-deftest-table dcomp-known-prefix-cases
+  :columns (input expected)
+  :rows (("Ka" t)   ; "Ka" → かん prefix → at least one completion in dict
+         ("Sa" t)   ; "Sa" → さ prefix → さくら in extended dict
+         ("Ni" t))  ; "Ni" → に prefix → にほん in extended dict
   :body
   (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict-extended
     (nskk-e2e-type input)

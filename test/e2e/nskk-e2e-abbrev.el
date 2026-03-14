@@ -270,10 +270,11 @@
 ;;;; Property-Based Tests
 ;;;;
 
-(nskk-deftest-cases abbrev-ascii-sequences
-  (("test"  . "▽test")
-   ("hello" . "▽hello")
-   ("abc"   . "▽abc"))
+(nskk-deftest-table abbrev-ascii-sequences
+  :columns (input expected)
+  :rows (("test"  "▽test")
+         ("hello" "▽hello")
+         ("abc"   "▽abc"))
   :body
   (nskk-e2e-with-buffer 'hiragana nil
     (nskk-e2e-type "/")

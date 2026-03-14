@@ -348,7 +348,7 @@ Each plist has :layer :name :n :ms-per-op :gc-count.")
 
       ;; Fuzzy search (Levenshtein distance) — most CPU intensive
       (nskk-bench "L3" "search-fuzzy (かんし, limit=3)" 500
-        (nskk-search-fuzzy idx "かんし" nil 3))
+        (nskk-search-fuzzy idx "かんし" 3))
 
       ;; Unified dispatcher (defaults to exact search)
       (nskk-bench "L3" "search dispatcher (exact, かんじ)" 3000
@@ -381,12 +381,12 @@ Each plist has :layer :name :n :ms-per-op :gc-count.")
 
 (defun nskk-bench-run-l4a ()
   "Benchmark L4a: character input processing hot paths."
-  ;; Full-width char hash table lookup — used in jisx0208-latin mode
-  (nskk-bench "L4a" "fullwidth char-table lookup (hit: A)" 100000
-    (gethash ?A nskk--fullwidth-char-table))
+  ;; Full-width char Prolog rule query — used in jisx0208-latin mode
+  (nskk-bench "L4a" "fullwidth prolog-query-value (hit: A)" 100000
+    (nskk-prolog-query-value `(fullwidth-char ,?A \?fw) '\?fw))
 
-  (nskk-bench "L4a" "fullwidth char-table lookup (SPC)" 100000
-    (gethash ?\s nskk--fullwidth-char-table))
+  (nskk-bench "L4a" "fullwidth prolog-query-value (SPC)" 100000
+    (nskk-prolog-query-value `(fullwidth-char ,?\s \?fw) '\?fw))
 
   ;; Romaji input classification — called once per keypress in Japanese mode
   ;; Each case exercises a different branch of the priority dispatch.

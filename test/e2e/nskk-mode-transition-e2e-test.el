@@ -498,12 +498,13 @@
 ;;;; PBT: Mode transition invariants
 ;;;;
 
-(nskk-deftest-cases mode-valid-symbols
-  ((ascii    . ascii)
-   (hiragana . hiragana)
-   (katakana . katakana)
-   (latin    . latin))
+(nskk-deftest-table mode-valid-symbols
   :description "Each mode symbol is a valid non-nil symbol"
+  :columns (input expected)
+  :rows ((ascii    ascii)
+         (hiragana hiragana)
+         (katakana katakana)
+         (latin    latin))
   :body (should (and (symbolp input) (not (null input)) (eq input expected))))
 
 (nskk-property-test mode-transition-state-always-valid

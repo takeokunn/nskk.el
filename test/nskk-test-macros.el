@@ -33,7 +33,7 @@
 ;; - Assertion helper macros
 ;; - Mock and fixture macros
 ;; - Behavior DSL (nskk-describe/nskk-it/nskk-context/nskk-given/nskk-when/nskk-then)
-;; - Table-driven data providers (nskk-deftest-cases/nskk-deftest-table)
+;; - Table-driven data providers (nskk-deftest-table)
 ;; - Composable fixture system (nskk-deffixture/nskk-with-fixtures)
 ;; - Contract-based PBT (nskk-property-from-contract)
 
@@ -52,10 +52,6 @@
 ;;;; Customization Variables for Property Tests
 ;;;;
 
-(defcustom nskk-test-property-seeded-runs 100
-  "Default number of runs for seeded property-based tests."
-  :type 'integer
-  :group 'nskk-test)
 
 (defcustom nskk-test-state-machine-runs 50
   "Default number of runs for state machine tests."
@@ -64,11 +60,6 @@
 
 (defcustom nskk-test-sequence-runs 75
   "Default number of runs for sequence-based tests."
-  :type 'integer
-  :group 'nskk-test)
-
-(defcustom nskk-test-shrinking-max-steps 100
-  "Maximum number of shrinking steps to attempt."
   :type 'integer
   :group 'nskk-test)
 
@@ -149,12 +140,12 @@ Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
 NAME: Test name
 GENERATORS: ((var generator-name)...) pairs
 PROPERTY: Property expression to test
-RUNS: Number of test runs (default: nskk-test-property-seeded-runs)
+RUNS: Number of test runs (default: nskk-test-property-runs)
 SEED: Random seed for reproducibility (default: random)"
   (declare (indent 3))
   `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
      (let ((test-seed (or ,seed (abs (random))))
-           (runs (or ,runs nskk-test-property-seeded-runs))
+           (runs (or ,runs nskk-test-property-runs))
            (failures nil))
        (random test-seed)
        (message "Property test '%s' seed: %d" ',name test-seed)
@@ -180,12 +171,12 @@ When a failure is detected, attempts to find the minimal failing case.
 NAME: Test name
 GENERATORS: ((var generator-name)...) pairs
 PROPERTY: Property expression to test
-RUNS: Number of test runs (default: nskk-test-property-seeded-runs)
+RUNS: Number of test runs (default: nskk-test-property-runs)
 SEED: Random seed for reproducibility (default: random)"
   (declare (indent 3))
   `(ert-deftest ,(intern (format "nskk-property-shrinking-%s" name)) ()
      (let ((test-seed (or ,seed (abs (random))))
-           (runs (or ,runs nskk-test-property-seeded-runs))
+           (runs (or ,runs nskk-test-property-runs))
            (failure-case nil)
            (minimal-case nil))
        (random test-seed)
@@ -494,14 +485,6 @@ BODY: Test implementation"
      (message "Test suite %s is complete" ',name)))
 
 
-;;;;
-;;;; Compatibility Macros
-;;;;
-
-(defmacro nskk-skip-when (condition)
-  "Skip test when CONDITION is non-nil."
-  `(when ,condition
-     (ert-skip (format "Skipped: %s" ',condition))))
 
 ;;;;
 ;;;; Behavior DSL (describe/it/given/when/then)
@@ -557,9 +540,10 @@ Returns an `ert-deftest' form or signals an error."
 
 (defmacro nskk-describe (description &rest body)
   "Group related test behaviors under DESCRIPTION.
-Each `nskk-it' form in BODY expands to an independent `ert-deftest'.
-Each `nskk-context' form in BODY provides sub-grouping.
-Non-nskk-it/nskk-context forms are emitted as-is (for shared let/defvar etc).
+Each `nskk-it' or `nskk-it-k' form in BODY expands to an independent
+`ert-deftest'.  Each `nskk-context' form in BODY provides sub-grouping.
+Non-nskk-it/nskk-it-k/nskk-context forms are emitted as-is (for shared
+let/defvar etc).
 
 Test names follow the pattern: nskk-it/DESCRIPTION/BEHAVIOR
 where both DESCRIPTION and BEHAVIOR are normalized (lowercase, hyphens).
@@ -579,6 +563,9 @@ Example:
              ;; nskk-it → expand to named ert-deftest
              ((and (listp form) (eq (car form) 'nskk-it))
               (nskk--expand-it-form prefix form))
+             ;; nskk-it-k → expand CPS /k test to named ert-deftest
+             ((and (listp form) (eq (car form) 'nskk-it-k))
+              (nskk--expand-it-k-form prefix form))
              ;; nskk-context → nested group with sub-prefix
              ((and (listp form) (eq (car form) 'nskk-context))
               (let* ((ctx-desc (cadr form))
@@ -589,9 +576,12 @@ Example:
                 `(progn
                    ,@(mapcar
                       (lambda (inner)
-                        (if (and (listp inner) (eq (car inner) 'nskk-it))
-                            (nskk--expand-it-form ctx-prefix inner)
-                          inner))
+                        (cond
+                         ((and (listp inner) (eq (car inner) 'nskk-it))
+                          (nskk--expand-it-form ctx-prefix inner))
+                         ((and (listp inner) (eq (car inner) 'nskk-it-k))
+                          (nskk--expand-it-k-form ctx-prefix inner))
+                         (t inner)))
                       ctx-body))))
              ;; Other forms pass through (shared variables, constants, etc.)
              (t form)))
@@ -622,47 +612,127 @@ BEHAVIOR should be a string describing what is being tested."
              (progn ,@body)
            (nskk--test-teardown))))))
 
+(defun nskk--parse-it-k-clauses (rest)
+  "Parse :found and :not-found clauses from REST keyword-argument list.
+REST is the portion of an `nskk-it-k' form after the /k call expression.
+
+Expected shape:
+  :found (BINDING) BODY-FOUND...
+  :not-found () BODY-NOT-FOUND...   ; optional
+
+Returns a plist with keys:
+  :found-binding   — symbol (or _ for ignored)
+  :found-body      — list of forms
+  :not-found-body  — list of forms (default: single ert-fail form)"
+  (let (found-binding found-body not-found-body)
+    ;; :found clause — required
+    (unless (eq (car rest) :found)
+      (error "nskk-it-k: expected :found keyword, got %S" (car rest)))
+    (setq rest (cdr rest))
+    (let ((binding-list (car rest)))
+      (unless (listp binding-list)
+        (error "nskk-it-k: :found binding must be a list, got %S" binding-list))
+      (setq found-binding (if (null binding-list) '_ (car binding-list)))
+      (setq rest (cdr rest)))
+    ;; collect found-body forms until :not-found or end
+    (while (and rest (not (eq (car rest) :not-found)))
+      (push (car rest) found-body)
+      (setq rest (cdr rest)))
+    (setq found-body (nreverse found-body))
+    ;; :not-found clause — optional
+    (if (eq (car rest) :not-found)
+        (progn
+          (setq rest (cdr rest))
+          (let ((binding-list (car rest)))
+            (unless (listp binding-list)
+              (error "nskk-it-k: :not-found binding must be a list, got %S"
+                     binding-list))
+            (setq rest (cdr rest)))
+          (setq not-found-body (or rest
+                                   '((ert-fail "on-not-found called unexpectedly")))))
+      (setq not-found-body '((ert-fail "on-not-found called unexpectedly"))))
+    (list :found-binding found-binding
+          :found-body    found-body
+          :not-found-body not-found-body)))
+
+(defun nskk--expand-it-k-form (prefix it-k-form)
+  "Expand a single IT-K-FORM into an `ert-deftest' with PREFIX.
+IT-K-FORM must be (nskk-it-k BEHAVIOR K-CALL :found (BINDING) BODY...).
+Returns an `ert-deftest' form or signals an error."
+  (unless (and (listp it-k-form)
+               (eq (car it-k-form) 'nskk-it-k)
+               (>= (length it-k-form) 4))
+    (error "nskk--expand-it-k-form: expected (nskk-it-k BEHAVIOR K-CALL ...), got %S"
+           it-k-form))
+  (let* ((behavior  (cadr it-k-form))
+         (k-call    (caddr it-k-form))
+         (rest      (cdddr it-k-form))
+         (clauses   (nskk--parse-it-k-clauses rest))
+         (f-binding (plist-get clauses :found-binding))
+         (f-body    (plist-get clauses :found-body))
+         (nf-body   (plist-get clauses :not-found-body))
+         (test-name (intern (format "nskk-it/%s/%s"
+                                    prefix
+                                    (nskk--normalize-test-name behavior)))))
+    `(ert-deftest ,test-name ()
+       ,behavior
+       (let ((nskk--test-mode t))
+         (nskk--test-setup)
+         (unwind-protect
+             ,(append k-call
+                      (list `(lambda (,f-binding) ,@f-body)
+                            `(lambda () ,@nf-body)))
+           (nskk--test-teardown))))))
+
+(defmacro nskk-it-k (behavior k-call &rest clauses)
+  "Define a CPS /k function test with automatic continuation injection.
+BEHAVIOR is a string describing the test.
+K-CALL is the /k function call expression WITHOUT the two continuation
+arguments — they are synthesized from the :found and :not-found clauses.
+
+CLAUSES keyword syntax:
+  :found (BINDING) BODY-FOUND...
+    BINDING is the symbol that receives the on-found value.
+    Use _ to ignore the value.
+  :not-found () BODY-NOT-FOUND...   (optional)
+    Body executed when on-not-found is called.
+    When omitted, on-not-found signals `ert-fail'.
+
+The macro expands to an `nskk-it' form whose body appends the two
+continuation lambdas to K-CALL.
+
+Example:
+  (nskk-it-k \"retrieves stored value\"
+    (nskk-cache-lru-get/k cache \"key\")
+    :found (result)
+      (should (equal result \"expected\"))
+    :not-found ()
+      (ert-fail \"Expected found but got not-found\"))
+
+When used standalone (outside `nskk-describe'), expands to an ERT test
+named nskk-unit-BEHAVIOR (normalized).  Inside `nskk-describe' or
+`nskk-context', the containing macro supplies the prefix."
+  (declare (indent 2))
+  (let* ((parsed   (nskk--parse-it-k-clauses clauses))
+         (f-binding (plist-get parsed :found-binding))
+         (f-body    (plist-get parsed :found-body))
+         (nf-body   (plist-get parsed :not-found-body))
+         (test-name (intern (format "nskk-unit-%s"
+                                    (nskk--normalize-test-name behavior)))))
+    `(ert-deftest ,test-name ()
+       ,behavior
+       (let ((nskk--test-mode t))
+         (nskk--test-setup)
+         (unwind-protect
+             ,(append k-call
+                      (list `(lambda (,f-binding) ,@f-body)
+                            `(lambda () ,@nf-body)))
+           (nskk--test-teardown))))))
+
 
 ;;;;
 ;;;; Table-Driven Data Providers
 ;;;;
-
-(defmacro nskk-deftest-cases (name cases &rest keys)
-  "Define parameterized unit tests from a table of (INPUT . EXPECTED) pairs.
-NAME: base name (tests get prefix nskk-unit-)
-CASES: literal list of (input . expected) cons pairs
-KEYS: keyword arguments:
-  :description STR  - static string used as ERT test docstring for all cases
-  :body FORM        - test body using `input' and `expected' (default: (should (equal expected input)))
-
-Each case expands to an independent ERT test named:
-  nskk-unit-NAME/case-00, nskk-unit-NAME/case-01, ...
-
-The test failure message shows both the case index and input/expected values.
-
-Example:
-  (nskk-deftest-cases romaji->hiragana
-    ((\"ka\" . \"か\")
-     (\"ki\" . \"き\")
-     (\"sha\" . \"し\"))
-    :body (should (equal expected (nskk-convert-romaji input))))"
-  (declare (indent 2))
-  (let ((description (plist-get keys :description))
-        (body (plist-get keys :body)))
-    `(progn
-       ,@(cl-loop for case-pair in cases
-                  for i from 0
-                  collect
-                  (let* ((input (car case-pair))
-                         (expected (cdr case-pair))
-                         (test-name (intern (format "nskk-unit-%s/case-%02d" name i)))
-                         (doc (or description
-                                  (format "Case %02d: input=%S expected=%S" i input expected))))
-                    `(ert-deftest ,test-name ()
-                       ,doc
-                       (let ((input ',input)
-                             (expected ',expected))
-                         ,(or body '(should (equal expected input))))))))))
 
 (defmacro nskk-deftest-table (name &rest keys)
   "Define parameterized unit tests from a multi-column table.

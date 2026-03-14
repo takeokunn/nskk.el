@@ -174,20 +174,14 @@
 ;;;; Regression Test: ASCII Mode Bug Detection
 ;;;;
 
-(ert-deftest nskk-pbt-regression-ascii-mode-bug ()
-  "Regression test: Verify ASCII mode bug is fixed.
-
-This test would FAIL if the bug where ASCII mode was incorrectly
-routed through Japanese conversion is reintroduced.
-
-The bug was: (eq (nskk-get-mode) 'latin) instead of
-            (memq (nskk-get-mode) '(ascii latin))"
-  ;; Test that typing 'a' in ASCII mode produces 'a', not 'あ'
-  (nskk-input-routing-test-with-state 'ascii
-    (with-temp-buffer
-      (setq last-command-event ?a)
-      (nskk-self-insert 1)
-      (should (string= (buffer-string) "a")))))
+(nskk-describe "input routing regression: ASCII mode bug"
+  (nskk-it "should insert 'a' directly in ASCII mode without Japanese conversion"
+    ;; Test that typing 'a' in ASCII mode produces 'a', not 'あ'
+    (nskk-input-routing-test-with-state 'ascii
+      (with-temp-buffer
+        (setq last-command-event ?a)
+        (nskk-self-insert 1)
+        (should (string= (buffer-string) "a"))))))
 
 ;;;; Enhanced PBT Coverage
 ;;;;

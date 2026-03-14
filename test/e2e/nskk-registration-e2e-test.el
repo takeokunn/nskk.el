@@ -143,7 +143,7 @@
 ;;;; Section 4: Unit tests — nskk--dict-maybe-save persistence
 ;;;;
 
-(nskk-describe "nskk--dict-maybe-save"
+(nskk-describe "nskk--dict-maybe-save e2e"
   (nskk-it "calls nskk-dict-save-user-dictionary when modified flag is t"
     (let ((save-called nil))
       (cl-letf (((symbol-function 'nskk-dict-save-user-dictionary)
@@ -342,9 +342,10 @@
 ;;;; Property-Based Tests
 ;;;;
 
-(nskk-deftest-cases registration-flow-readings
-  (("Shinki" . "新機")
-   ("Kanji"  . "漢字"))
+(nskk-deftest-table registration-flow-readings
+  :columns (input expected)
+  :rows (("Shinki" "新機")
+         ("Kanji"  "漢字"))
   :body
   ;; Use a stub dict that does NOT contain the tested readings.
   ;; Both cases must go through the registration (not-found) path so that

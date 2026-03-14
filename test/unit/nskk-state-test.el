@@ -36,32 +36,9 @@
 
 (defun nskk-state-test--process-key (state key)
   "Process a single KEY press on STATE, returning updated state.
-KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
-  (when (nskk-state-p state)
-    (cond
-     ((string= key "C-j")
-      (nskk-state-set state 'mode 'hiragana)
-      state)
-     ((string= key "q")
-      (let ((current-mode (nskk-state-mode state)))
-        (cond
-         ((eq current-mode 'hiragana)
-          (nskk-state-set state 'mode 'katakana))
-         ((eq current-mode 'katakana)
-          (nskk-state-set state 'mode 'hiragana))
-         (t state))
-        state))
-     ((string= key "l")
-      (nskk-state-set state 'mode 'latin)
-      state)
-     ((string= key ";")
-      (nskk-state-set state 'mode 'abbrev)
-      state)
-     ((and (stringp key) (= (length key) 1))
-      (let* ((current-buffer (nskk-state-input-buffer state)))
-        (nskk-state-set state 'input-buffer (concat current-buffer key))
-        state))
-     (t state))))
+KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\").
+Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
+  (nskk--simulate-key-for-state state key))
 
 (defun nskk-state-test--execute-keys (state key-sequence)
   "Execute KEY-SEQUENCE on STATE, returning updated state."
@@ -1233,52 +1210,6 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
       (should (string= (nskk-state-input-buffer nskk-current-state) "a")))))
 
 ;;;
-;;; nskk-ensure-overlay and nskk-delete-overlay macros
-;;;
-
-(nskk-describe "nskk-ensure-overlay"
-  (nskk-it "creates an overlay covering the specified region"
-    (with-temp-buffer
-      (insert "hello world")
-      (let (my-overlay)
-        (nskk-ensure-overlay my-overlay 1 6)
-        (should (overlayp my-overlay))
-        (should (= (overlay-start my-overlay) 1))
-        (should (= (overlay-end my-overlay) 6)))))
-
-  (nskk-it "moves an existing overlay to a new region"
-    (with-temp-buffer
-      (insert "hello world")
-      (let ((my-overlay (make-overlay 1 6)))
-        (nskk-ensure-overlay my-overlay 7 12)
-        (should (overlayp my-overlay))
-        (should (= (overlay-start my-overlay) 7))
-        (should (= (overlay-end my-overlay) 12)))))
-
-  (nskk-it "accepts keyword property pairs"
-    (with-temp-buffer
-      (insert "hello world")
-      (let (my-overlay)
-        (nskk-ensure-overlay my-overlay 1 6 'face 'bold)
-        (should (overlayp my-overlay))
-        (should (eq (overlay-get my-overlay 'face) 'bold))))))
-
-(nskk-describe "nskk-delete-overlay"
-  (nskk-it "deletes an existing overlay and sets the variable to nil"
-    (with-temp-buffer
-      (insert "hello")
-      (let ((my-overlay (make-overlay 1 3)))
-        (should (overlayp my-overlay))
-        (nskk-delete-overlay my-overlay)
-        (should (null my-overlay)))))
-
-  (nskk-it "does nothing when the variable is already nil"
-    (let ((my-overlay nil))
-      (should-not (condition-case err
-                      (progn (nskk-delete-overlay my-overlay) nil)
-                    (error err))))))
-
-;;;
 ;;; nskk-ensure-marker macro
 ;;;
 
@@ -1398,337 +1329,337 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
 ;;;; Sequence-Based State-Struct Tests (moved from integration layer)
 ;;;;
 
-(ert-deftest nskk-state-sequence-deterministic-replay ()
-  "Same key sequence produces same result."
-  (let ((runs 75)
-        (failures nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'deterministic-replay' seed: %d" test-seed)
-    (dotimes (run runs)
-      (let* ((key-sequence (nskk-generate 'key-sequence))
-             (initial-state1 (nskk-state-create 'hiragana))
-             (initial-state2 (nskk-state-create 'hiragana))
-             (result1 (nskk-state-test--execute-keys initial-state1 key-sequence))
-             (result2 (nskk-state-test--execute-keys initial-state2 key-sequence)))
-        (unless (nskk-state-test--states-equal-p result1 result2)
-          (push (list :seed test-seed
-                      :run run
-                      :key-sequence key-sequence
-                      :result1-mode (nskk-state-mode result1)
-                      :result2-mode (nskk-state-mode result2)
-                      :result1-buffer (nskk-state-input-buffer result1)
-                      :result2-buffer (nskk-state-input-buffer result2))
-                failures))))
-    (when failures
-      (ert-fail (format "Determinism failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
-
-(ert-deftest nskk-state-sequence-undo-redo-invariant ()
-  "Undo + Redo returns to original state (when both succeed)."
-  (let ((runs 75)
-        (failures nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'undo-redo-invariant' seed: %d" test-seed)
-    (dotimes (run runs)
-      (let* ((initial-state (nskk-state-create 'hiragana))
-             ;; Setup: add something to undo stack
-             (state-with-history
-              (progn
-                (setf (nskk-state-undo-stack initial-state)
-                      (list (list :mode 'ascii :input-buffer "test")))
-                (setf (nskk-state-mode initial-state) 'hiragana)
-                (setf (nskk-state-input-buffer initial-state) "")
-                initial-state))
-             ;; Record original state
-             (original-mode (nskk-state-mode state-with-history))
-             (original-buffer (nskk-state-input-buffer state-with-history))
-             ;; Apply undo then redo
-             (after-undo (nskk-state-test--simulate-undo
-                          (copy-sequence state-with-history)))
-             (after-redo (nskk-state-test--simulate-redo after-undo)))
-        ;; Check if we returned to original state
-        (when (and after-undo after-redo)
-          (unless (and (eq (nskk-state-mode after-redo) original-mode)
-                       (string= (nskk-state-input-buffer after-redo) original-buffer))
+(nskk-describe "state sequence: deterministic replay"
+  (nskk-it "should produce the same result for the same key sequence"
+    (let ((runs 75)
+          (failures nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'deterministic-replay' seed: %d" test-seed)
+      (dotimes (run runs)
+        (let* ((key-sequence (nskk-generate 'key-sequence))
+               (initial-state1 (nskk-state-create 'hiragana))
+               (initial-state2 (nskk-state-create 'hiragana))
+               (result1 (nskk-state-test--execute-keys initial-state1 key-sequence))
+               (result2 (nskk-state-test--execute-keys initial-state2 key-sequence)))
+          (unless (nskk-state-test--states-equal-p result1 result2)
             (push (list :seed test-seed
                         :run run
-                        :original-mode original-mode
-                        :original-buffer original-buffer
-                        :final-mode (nskk-state-mode after-redo)
-                        :final-buffer (nskk-state-input-buffer after-redo))
-                  failures)))))
-    (when failures
-      (ert-fail (format "Undo/Redo invariant failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
+                        :key-sequence key-sequence
+                        :result1-mode (nskk-state-mode result1)
+                        :result2-mode (nskk-state-mode result2)
+                        :result1-buffer (nskk-state-input-buffer result1)
+                        :result2-buffer (nskk-state-input-buffer result2))
+                  failures))))
+      (when failures
+        (ert-fail (format "Determinism failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
 
-(ert-deftest nskk-state-sequence-typing-japanese-no-crash ()
-  "Typing valid romaji sequence should not crash."
-  (let ((runs 75)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'typing-japanese-no-crash' seed: %d" test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let* ((state (nskk-state-create 'hiragana))
-                 (romaji-seq (nskk-generate 'romaji-basic))
-                 ;; Convert romaji string to key sequence
-                 (key-seq (cl-loop for char across romaji-seq
-                                   collect (char-to-string char)))
-                 (final-state (nskk-state-test--simulate-japanese-input
-                               state key-seq)))
-            ;; Just verify we got a valid state back
-            (unless (nskk-state-p final-state)
-              (push (list :seed test-seed :run run :error "Invalid final state")
-                    errors)))
-        (error
-         (push (list :seed test-seed :run run :error (error-message-string err))
-               errors))))
-    (when errors
-      (ert-fail (format "Typing Japanese failed with %d errors (seed: %d):\n%S"
-                        (length errors) test-seed
-                        (take 3 errors))))))
+(nskk-describe "state sequence: undo/redo invariant"
+  (nskk-it "should return to original state after undo then redo"
+    (let ((runs 75)
+          (failures nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'undo-redo-invariant' seed: %d" test-seed)
+      (dotimes (run runs)
+        (let* ((initial-state (nskk-state-create 'hiragana))
+               ;; Setup: add something to undo stack
+               (state-with-history
+                (progn
+                  (setf (nskk-state-undo-stack initial-state)
+                        (list (list :mode 'ascii :input-buffer "test")))
+                  (setf (nskk-state-mode initial-state) 'hiragana)
+                  (setf (nskk-state-input-buffer initial-state) "")
+                  initial-state))
+               ;; Record original state
+               (original-mode (nskk-state-mode state-with-history))
+               (original-buffer (nskk-state-input-buffer state-with-history))
+               ;; Apply undo then redo
+               (after-undo (nskk-state-test--simulate-undo
+                            (copy-sequence state-with-history)))
+               (after-redo (nskk-state-test--simulate-redo after-undo)))
+          ;; Check if we returned to original state
+          (when (and after-undo after-redo)
+            (unless (and (eq (nskk-state-mode after-redo) original-mode)
+                         (string= (nskk-state-input-buffer after-redo) original-buffer))
+              (push (list :seed test-seed
+                          :run run
+                          :original-mode original-mode
+                          :original-buffer original-buffer
+                          :final-mode (nskk-state-mode after-redo)
+                          :final-buffer (nskk-state-input-buffer after-redo))
+                    failures)))))
+      (when failures
+        (ert-fail (format "Undo/Redo invariant failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
 
-(ert-deftest nskk-state-sequence-invalid-romaji-no-crash ()
-  "Invalid romaji should not crash."
-  (let ((runs 75)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'invalid-romaji-no-crash' seed: %d" test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let* ((state (nskk-state-create 'hiragana))
-                 ;; Generate potentially invalid sequences
-                 (key-seq (nskk-generate 'key-sequence))
-                 (final-state (nskk-state-test--execute-keys state key-seq)))
-            ;; Verify state is still valid
-            (unless (nskk-state-test--valid-state-p final-state)
-              (push (list :seed test-seed :run run :error "State corrupted")
-                    errors)))
-        (error
-         (push (list :seed test-seed :run run :error (error-message-string err))
-               errors))))
-    (when errors
-      (ert-fail (format "Invalid romaji handling failed with %d errors (seed: %d):\n%S"
-                        (length errors) test-seed
-                        (take 3 errors))))))
+(nskk-describe "state sequence: typing Japanese"
+  (nskk-it "should not crash when typing a valid romaji sequence"
+    (let ((runs 75)
+          (errors nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'typing-japanese-no-crash' seed: %d" test-seed)
+      (dotimes (run runs)
+        (condition-case err
+            (let* ((state (nskk-state-create 'hiragana))
+                   (romaji-seq (nskk-generate 'romaji-basic))
+                   ;; Convert romaji string to key sequence
+                   (key-seq (cl-loop for char across romaji-seq
+                                     collect (char-to-string char)))
+                   (final-state (nskk-state-test--simulate-japanese-input
+                                 state key-seq)))
+              ;; Just verify we got a valid state back
+              (unless (nskk-state-p final-state)
+                (push (list :seed test-seed :run run :error "Invalid final state")
+                      errors)))
+          (error
+           (push (list :seed test-seed :run run :error (error-message-string err))
+                 errors))))
+      (when errors
+        (ert-fail (format "Typing Japanese failed with %d errors (seed: %d):\n%S"
+                          (length errors) test-seed
+                          (take 3 errors)))))))
 
-(ert-deftest nskk-state-sequence-mode-switch-idempotent-toggle ()
-  "Pressing mode switch key twice returns to original mode (for toggle keys)."
-  (let ((runs 75)
-        (failures nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'mode-switch-idempotent-toggle' seed: %d" test-seed)
-    (dotimes (run runs)
-      ;; Test hiragana <-> katakana toggle with 'q' key
-      (let* ((initial-mode (nskk--pbt-random-choice '(hiragana katakana)))
-             (state (nskk-state-create initial-mode))
-             ;; Press 'q' twice
-             (after-first (nskk-state-test--process-key state "q"))
-             (after-second (nskk-state-test--process-key after-first "q")))
-        ;; After two 'q' presses, mode should return to initial
-        (unless (eq (nskk-state-mode after-second) initial-mode)
-          (push (list :seed test-seed
-                      :run run
-                      :initial-mode initial-mode
-                      :after-first (nskk-state-mode after-first)
-                      :after-second (nskk-state-mode after-second))
-                failures))))
-    (when failures
-      (ert-fail (format "Mode switch idempotency failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
+(nskk-describe "state sequence: invalid romaji"
+  (nskk-it "should not crash when processing invalid romaji sequences"
+    (let ((runs 75)
+          (errors nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'invalid-romaji-no-crash' seed: %d" test-seed)
+      (dotimes (run runs)
+        (condition-case err
+            (let* ((state (nskk-state-create 'hiragana))
+                   ;; Generate potentially invalid sequences
+                   (key-seq (nskk-generate 'key-sequence))
+                   (final-state (nskk-state-test--execute-keys state key-seq)))
+              ;; Verify state is still valid
+              (unless (nskk-state-test--valid-state-p final-state)
+                (push (list :seed test-seed :run run :error "State corrupted")
+                      errors)))
+          (error
+           (push (list :seed test-seed :run run :error (error-message-string err))
+                 errors))))
+      (when errors
+        (ert-fail (format "Invalid romaji handling failed with %d errors (seed: %d):\n%S"
+                          (length errors) test-seed
+                          (take 3 errors)))))))
 
-(ert-deftest nskk-state-sequence-mode-switch-consistent ()
-  "Same mode switch key always produces same result."
-  (let ((runs 75)
-        (failures nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'mode-switch-consistent' seed: %d" test-seed)
-    (dotimes (run runs)
-      (let* ((initial-mode (nskk-generate 'valid-mode))
-             (switch-key (nskk--pbt-random-choice '("C-j" "l" ";")))
-             (state1 (nskk-state-create initial-mode))
-             (state2 (nskk-state-create initial-mode))
-             (result1 (nskk-state-test--process-key state1 switch-key))
-             (result2 (nskk-state-test--process-key state2 switch-key)))
-        ;; Both should produce the same mode
-        (unless (eq (nskk-state-mode result1) (nskk-state-mode result2))
-          (push (list :seed test-seed
-                      :run run
-                      :initial-mode initial-mode
-                      :switch-key switch-key
-                      :result1-mode (nskk-state-mode result1)
-                      :result2-mode (nskk-state-mode result2))
-                failures))))
-    (when failures
-      (ert-fail (format "Mode switch consistency failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
+(nskk-describe "state sequence: mode switch idempotent toggle"
+  (nskk-it "should return to original mode after pressing toggle key twice"
+    (let ((runs 75)
+          (failures nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'mode-switch-idempotent-toggle' seed: %d" test-seed)
+      (dotimes (run runs)
+        ;; Test hiragana <-> katakana toggle with 'q' key
+        (let* ((initial-mode (nskk--pbt-random-choice '(hiragana katakana)))
+               (state (nskk-state-create initial-mode))
+               ;; Press 'q' twice
+               (after-first (nskk-state-test--process-key state "q"))
+               (after-second (nskk-state-test--process-key after-first "q")))
+          ;; After two 'q' presses, mode should return to initial
+          (unless (eq (nskk-state-mode after-second) initial-mode)
+            (push (list :seed test-seed
+                        :run run
+                        :initial-mode initial-mode
+                        :after-first (nskk-state-mode after-first)
+                        :after-second (nskk-state-mode after-second))
+                  failures))))
+      (when failures
+        (ert-fail (format "Mode switch idempotency failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
 
-(ert-deftest nskk-state-sequence-empty-sequence ()
-  "Empty key sequence should leave state unchanged."
-  (let ((runs 75)
-        (failures nil))
-    (dotimes (run runs)
-      (let* ((initial-mode (nskk-generate 'valid-mode))
-             (state (nskk-state-create initial-mode))
-             (result (nskk-state-test--execute-keys state nil)))
-        (unless (nskk-state-test--states-equal-p state result)
-          (push (list :run run
-                      :initial-mode initial-mode
-                      :result-mode (nskk-state-mode result))
-                failures))))
-    (when failures
-      (ert-fail (format "Empty sequence test failed for %d cases:\n%S"
-                        (length failures) (take 3 failures))))))
+(nskk-describe "state sequence: mode switch consistency"
+  (nskk-it "should always produce the same mode from the same mode switch key"
+    (let ((runs 75)
+          (failures nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'mode-switch-consistent' seed: %d" test-seed)
+      (dotimes (run runs)
+        (let* ((initial-mode (nskk-generate 'valid-mode))
+               (switch-key (nskk--pbt-random-choice '("C-j" "l" ";")))
+               (state1 (nskk-state-create initial-mode))
+               (state2 (nskk-state-create initial-mode))
+               (result1 (nskk-state-test--process-key state1 switch-key))
+               (result2 (nskk-state-test--process-key state2 switch-key)))
+          ;; Both should produce the same mode
+          (unless (eq (nskk-state-mode result1) (nskk-state-mode result2))
+            (push (list :seed test-seed
+                        :run run
+                        :initial-mode initial-mode
+                        :switch-key switch-key
+                        :result1-mode (nskk-state-mode result1)
+                        :result2-mode (nskk-state-mode result2))
+                  failures))))
+      (when failures
+        (ert-fail (format "Mode switch consistency failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
 
-(ert-deftest nskk-state-sequence-long-sequence-no-overflow ()
-  "Very long sequences should not cause overflow or crash."
-  (let ((runs 75)
-        (errors nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'long-sequence-no-overflow' seed: %d" test-seed)
-    (dotimes (run runs)
-      (condition-case err
-          (let* ((state (nskk-state-create 'hiragana))
-                 ;; Generate a long sequence (50-100 keys)
-                 (long-seq (nskk-generate 'key-sequence-of-length
-                                          (nskk--pbt-random-int 50 100)))
-                 (final-state (nskk-state-test--execute-keys state long-seq)))
-            ;; Verify state is still valid
-            (unless (nskk-state-test--valid-state-p final-state)
-              (push (list :seed test-seed :run run :error "Invalid state")
-                    errors))
-            ;; Verify buffer bounds
-            (unless (nskk-state-test--buffer-bounds-p final-state)
-              (push (list :seed test-seed :run run :error "Buffer overflow")
-                    errors)))
-        (error
-         (push (list :seed test-seed :run run :error (error-message-string err))
-               errors))))
-    (when errors
-      (ert-fail (format "Long sequence test failed with %d errors (seed: %d):\n%S"
-                        (length errors) test-seed
-                        (take 3 errors))))))
+(nskk-describe "state sequence: empty sequence"
+  (nskk-it "should leave state unchanged when processing an empty key sequence"
+    (let ((runs 75)
+          (failures nil))
+      (dotimes (run runs)
+        (let* ((initial-mode (nskk-generate 'valid-mode))
+               (state (nskk-state-create initial-mode))
+               (result (nskk-state-test--execute-keys state nil)))
+          (unless (nskk-state-test--states-equal-p state result)
+            (push (list :run run
+                        :initial-mode initial-mode
+                        :result-mode (nskk-state-mode result))
+                  failures))))
+      (when failures
+        (ert-fail (format "Empty sequence test failed for %d cases:\n%S"
+                          (length failures) (take 3 failures)))))))
 
-(ert-deftest nskk-state-sequence-mixed-typing-and-mode-switch ()
-  "Mixed typing and mode switching should maintain state integrity."
-  (let ((runs 75)
-        (failures nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'mixed-typing-mode-switch' seed: %d" test-seed)
-    (dotimes (run runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (key-seq (nskk-generate 'key-sequence))
-             (final-state (nskk-state-test--execute-keys state key-seq)))
-        ;; State should always be valid regardless of sequence
-        (unless (and (nskk-state-test--valid-state-p final-state)
-                     (nskk-state-test--buffer-bounds-p final-state)
-                     (nskk-state-test--mode-valid-p final-state))
-          (push (list :seed test-seed
-                      :run run
-                      :key-sequence (take 10 key-seq)
-                      :valid-p (nskk-state-test--valid-state-p final-state)
-                      :bounds-p (nskk-state-test--buffer-bounds-p final-state)
-                      :mode-p (nskk-state-test--mode-valid-p final-state))
-                failures))))
-    (when failures
-      (ert-fail (format "Mixed sequence test failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
+(nskk-describe "state sequence: long sequence"
+  (nskk-it "should not overflow or crash on very long key sequences"
+    (let ((runs 75)
+          (errors nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'long-sequence-no-overflow' seed: %d" test-seed)
+      (dotimes (run runs)
+        (condition-case err
+            (let* ((state (nskk-state-create 'hiragana))
+                   ;; Generate a long sequence (50-100 keys)
+                   (long-seq (nskk-generate 'key-sequence-of-length
+                                            (nskk--pbt-random-int 50 100)))
+                   (final-state (nskk-state-test--execute-keys state long-seq)))
+              ;; Verify state is still valid
+              (unless (nskk-state-test--valid-state-p final-state)
+                (push (list :seed test-seed :run run :error "Invalid state")
+                      errors))
+              ;; Verify buffer bounds
+              (unless (nskk-state-test--buffer-bounds-p final-state)
+                (push (list :seed test-seed :run run :error "Buffer overflow")
+                      errors)))
+          (error
+           (push (list :seed test-seed :run run :error (error-message-string err))
+                 errors))))
+      (when errors
+        (ert-fail (format "Long sequence test failed with %d errors (seed: %d):\n%S"
+                          (length errors) test-seed
+                          (take 3 errors)))))))
 
-(ert-deftest nskk-state-sequence-pure-typing ()
-  "Pure typing (letters only) should accumulate in buffer."
-  (let ((runs 75)
-        (failures nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'pure-typing' seed: %d" test-seed)
-    (dotimes (run runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (key-seq (nskk-generate 'typing-key-sequence))
-             (final-state (nskk-state-test--execute-keys state key-seq))
-             (buffer (nskk-state-input-buffer final-state))
-             (expected-length (length key-seq)))
-        ;; Buffer should contain all typed characters
-        (unless (= (length buffer) expected-length)
-          (push (list :seed test-seed
-                      :run run
-                      :key-count expected-length
-                      :buffer-length (length buffer)
-                      :buffer buffer)
-                failures))))
-    (when failures
-      (ert-fail (format "Pure typing test failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
+(nskk-describe "state sequence: mixed typing and mode switch"
+  (nskk-it "should maintain state integrity through mixed typing and mode switching"
+    (let ((runs 75)
+          (failures nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'mixed-typing-mode-switch' seed: %d" test-seed)
+      (dotimes (run runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (key-seq (nskk-generate 'key-sequence))
+               (final-state (nskk-state-test--execute-keys state key-seq)))
+          ;; State should always be valid regardless of sequence
+          (unless (and (nskk-state-test--valid-state-p final-state)
+                       (nskk-state-test--buffer-bounds-p final-state)
+                       (nskk-state-test--mode-valid-p final-state))
+            (push (list :seed test-seed
+                        :run run
+                        :key-sequence (take 10 key-seq)
+                        :valid-p (nskk-state-test--valid-state-p final-state)
+                        :bounds-p (nskk-state-test--buffer-bounds-p final-state)
+                        :mode-p (nskk-state-test--mode-valid-p final-state))
+                  failures))))
+      (when failures
+        (ert-fail (format "Mixed sequence test failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
 
-(ert-deftest nskk-state-sequence-mode-switch-only ()
-  "Mode switches only should not affect input buffer."
-  (let ((runs 75)
-        (failures nil)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'mode-switch-only' seed: %d" test-seed)
-    (dotimes (run runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (mode-keys '("C-j" "q" "l" ";"))
-             ;; Generate sequence of only mode switches
-             (key-seq (cl-loop repeat (nskk--pbt-random-int 1 20)
-                               collect (nskk--pbt-random-choice mode-keys)))
-             (final-state (nskk-state-test--execute-keys state key-seq))
-             (buffer (nskk-state-input-buffer final-state)))
-        ;; Buffer should be empty (no character input)
-        (unless (string-empty-p buffer)
-          (push (list :seed test-seed
-                      :run run
-                      :key-sequence key-seq
-                      :buffer buffer)
-                failures))))
-    (when failures
-      (ert-fail (format "Mode switch only test failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
+(nskk-describe "state sequence: pure typing"
+  (nskk-it "should accumulate all typed letters in the input buffer"
+    (let ((runs 75)
+          (failures nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'pure-typing' seed: %d" test-seed)
+      (dotimes (run runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (key-seq (nskk-generate 'typing-key-sequence))
+               (final-state (nskk-state-test--execute-keys state key-seq))
+               (buffer (nskk-state-input-buffer final-state))
+               (expected-length (length key-seq)))
+          ;; Buffer should contain all typed characters
+          (unless (= (length buffer) expected-length)
+            (push (list :seed test-seed
+                        :run run
+                        :key-count expected-length
+                        :buffer-length (length buffer)
+                        :buffer buffer)
+                  failures))))
+      (when failures
+        (ert-fail (format "Pure typing test failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
 
-(ert-deftest nskk-state-sequence-stack-size-bounded ()
-  "Undo + Redo stack size should be bounded."
-  (let ((runs 75)
-        (failures nil)
-        (max-stack-size 100)
-        (test-seed (abs (random))))
-    (random test-seed)
-    (message "Sequence test 'stack-size-bounded' seed: %d" test-seed)
-    (dotimes (run runs)
-      (let* ((state (nskk-state-create 'hiragana))
-             (key-seq (nskk-generate 'key-sequence-of-length
-                                     (nskk--pbt-random-int 10 50)))
-             (final-state (nskk-state-test--execute-keys state key-seq))
-             (undo-size (length (nskk-state-undo-stack final-state)))
-             (redo-size (length (nskk-state-redo-stack final-state)))
-             (total-size (+ undo-size redo-size)))
-        ;; Total stack size should be bounded
-        (when (> total-size max-stack-size)
-          (push (list :seed test-seed
-                      :run run
-                      :undo-size undo-size
-                      :redo-size redo-size
-                      :total-size total-size
-                      :max-allowed max-stack-size)
-                failures))))
-    (when failures
-      (ert-fail (format "Stack size bounded test failed for %d cases (seed: %d):\n%S"
-                        (length failures) test-seed
-                        (take 3 failures))))))
+(nskk-describe "state sequence: mode switch only"
+  (nskk-it "should not affect the input buffer when only mode switches are pressed"
+    (let ((runs 75)
+          (failures nil)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'mode-switch-only' seed: %d" test-seed)
+      (dotimes (run runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (mode-keys '("C-j" "q" "l" ";"))
+               ;; Generate sequence of only mode switches
+               (key-seq (cl-loop repeat (nskk--pbt-random-int 1 20)
+                                 collect (nskk--pbt-random-choice mode-keys)))
+               (final-state (nskk-state-test--execute-keys state key-seq))
+               (buffer (nskk-state-input-buffer final-state)))
+          ;; Buffer should be empty (no character input)
+          (unless (string-empty-p buffer)
+            (push (list :seed test-seed
+                        :run run
+                        :key-sequence key-seq
+                        :buffer buffer)
+                  failures))))
+      (when failures
+        (ert-fail (format "Mode switch only test failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
+
+(nskk-describe "state sequence: stack size bounded"
+  (nskk-it "should keep undo/redo stack size bounded after long sequences"
+    (let ((runs 75)
+          (failures nil)
+          (max-stack-size 100)
+          (test-seed (abs (random))))
+      (random test-seed)
+      (message "Sequence test 'stack-size-bounded' seed: %d" test-seed)
+      (dotimes (run runs)
+        (let* ((state (nskk-state-create 'hiragana))
+               (key-seq (nskk-generate 'key-sequence-of-length
+                                       (nskk--pbt-random-int 10 50)))
+               (final-state (nskk-state-test--execute-keys state key-seq))
+               (undo-size (length (nskk-state-undo-stack final-state)))
+               (redo-size (length (nskk-state-redo-stack final-state)))
+               (total-size (+ undo-size redo-size)))
+          ;; Total stack size should be bounded
+          (when (> total-size max-stack-size)
+            (push (list :seed test-seed
+                        :run run
+                        :undo-size undo-size
+                        :redo-size redo-size
+                        :total-size total-size
+                        :max-allowed max-stack-size)
+                  failures))))
+      (when failures
+        (ert-fail (format "Stack size bounded test failed for %d cases (seed: %d):\n%S"
+                          (length failures) test-seed
+                          (take 3 failures)))))))
 
 
 ;;;
@@ -1837,6 +1768,29 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
         (set-marker m 1)
         (nskk-ensure-marker m 6)
         (should (= (marker-position m) 6))))))
+
+;;;
+;;; mode-category/2 Prolog Table Integrity Tests
+;;;
+
+(nskk-describe "mode-category/2 Prolog table integrity"
+  (nskk-deftest-table state-prolog-mode-category-table
+    :description "mode-category/2 maps input mode to orthogonal category"
+    :columns (mode expected-category)
+    :rows ((hiragana      japanese)
+           (katakana      japanese)
+           (katakana-半角  japanese)
+           (abbrev        marker-mode)
+           (ascii         other)
+           (latin         other)
+           (jisx0208-latin other))
+    :body (should (eq expected-category
+                      (nskk-prolog-query-value
+                       `(mode-category ,mode ,'\?c) '\?c))))
+
+  (nskk-it "returns nil for unknown mode"
+    (should-not (nskk-prolog-query-value
+                 `(mode-category nonexistent ,'\?c) '\?c))))
 
 (provide 'nskk-state-test)
 

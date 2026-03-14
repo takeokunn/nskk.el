@@ -47,7 +47,6 @@
          (nskk-search-sort-method)
          (nskk-search-fuzzy-threshold)
          (nskk-search-learning-file)
-         (nskk-jisyo-files)
          (nskk-modeline-format)
          (nskk-use-color-cursor)
          (nskk-henkan-show-candidates-nth)
@@ -90,8 +89,7 @@
 
 (nskk-deftest-table custom-nil-defaults
   :columns (var)
-  :rows ((nskk-jisyo-files)
-         (nskk-debug-enabled))
+  :rows ((nskk-debug-enabled))
   :description "defcustom variables that default to nil (boolean or list type)"
   :body (should (null (default-value var))))
 
@@ -178,8 +176,6 @@
          (nskk-search-sort-method                  kana)
          (nskk-modeline-format                     " SKK")
          (nskk-search-learning-file                "/tmp/test.dat")
-         (nskk-jisyo-files                         nil)
-         (nskk-jisyo-files                         ("/path/to/SKK-JISYO.L"))
          (nskk-henkan-show-candidates-keys         (?a ?s ?d))
          (nskk-henkan-show-candidates-keys         nil))
   :description ":safe predicate accepts valid-typed values"
@@ -194,8 +190,6 @@
          (nskk-state-default-mode             "ascii")
          (nskk-modeline-format                42)
          (nskk-search-learning-file           42)
-         (nskk-jisyo-files                    "not-a-list")
-         (nskk-jisyo-files                    (1 2 3))
          (nskk-henkan-show-candidates-keys    ("a" "b")))
   :description ":safe predicate rejects wrong-typed values"
   :body (should-not (funcall (get var 'safe-local-variable) invalid-value)))
@@ -254,15 +248,8 @@
 ;; and reject non-list values.
 (nskk-property-test-seeded custom-pbt-list-vars-accept-valid-lists
   ((n romaji-string))
-  (let ((jisyo-pred (get 'nskk-jisyo-files 'safe-local-variable))
-        (keys-pred  (get 'nskk-henkan-show-candidates-keys 'safe-local-variable)))
+  (let ((keys-pred  (get 'nskk-henkan-show-candidates-keys 'safe-local-variable)))
     (and
-     ;; nskk-jisyo-files: nil and string-only lists
-     (funcall jisyo-pred nil)
-     (funcall jisyo-pred '("/path/to/dict"))
-     (funcall jisyo-pred '("/a" "/b" "/c"))
-     (not (funcall jisyo-pred "not-a-list"))
-     (not (funcall jisyo-pred '(1 2 3)))
      ;; nskk-henkan-show-candidates-keys: nil and character lists
      (funcall keys-pred nil)
      (funcall keys-pred '(?a ?s ?d))

@@ -60,43 +60,43 @@
 
 ;;;; Protocol tests using in-process mock skkserv
 
-(ert-deftest nskk-server-integration-live-connect-and-lookup ()
-  "Connect to an in-process mock skkserv and look up a basic reading."
-  (let* ((mock (nskk--server-start-mock-server '(("あ" . "1/亜/阿/唖/\n"))))
-         (server-proc (car mock))
-         (port (cdr mock))
-         (nskk-server-enable t)
-         (nskk-server-host "127.0.0.1")
-         (nskk-server-portnum port)
-         (nskk--server-process nil)
-         (nskk--server-kill-emacs-hook-registered nil))
-    (unwind-protect
-        (progn
-          (should (nskk-server-open))
-          (should (nskk-server-live-p))
-          (let ((result (nskk-server-lookup "あ")))
-            (should (listp result))
-            (should result)))
-      (nskk-server-close)
-      (delete-process server-proc))))
+(nskk-describe "server in-process mock skkserv"
 
-(ert-deftest nskk-server-integration-live-not-found-returns-nil ()
-  "In-process mock skkserv returns nil for keys not in the dictionary."
-  (let* ((mock (nskk--server-start-mock-server '(("あ" . "1/亜/阿/唖/\n"))))
-         (server-proc (car mock))
-         (port (cdr mock))
-         (nskk-server-enable t)
-         (nskk-server-host "127.0.0.1")
-         (nskk-server-portnum port)
-         (nskk--server-process nil)
-         (nskk--server-kill-emacs-hook-registered nil))
-    (unwind-protect
-        (progn
-          (should (nskk-server-open))
-          (let ((result (nskk-server-lookup "zzzzzzzzzzzzz")))
-            (should (null result))))
-      (nskk-server-close)
-      (delete-process server-proc))))
+  (nskk-it "should connect and look up a basic reading"
+    (let* ((mock (nskk--server-start-mock-server '(("あ" . "1/亜/阿/唖/\n"))))
+           (server-proc (car mock))
+           (port (cdr mock))
+           (nskk-server-enable t)
+           (nskk-server-host "127.0.0.1")
+           (nskk-server-portnum port)
+           (nskk--server-process nil)
+           (nskk--server-kill-emacs-hook-registered nil))
+      (unwind-protect
+          (progn
+            (should (nskk-server-open))
+            (should (nskk-server-live-p))
+            (let ((result (nskk-server-lookup "あ")))
+              (should (listp result))
+              (should result)))
+        (nskk-server-close)
+        (delete-process server-proc))))
+
+  (nskk-it "should return nil for keys not in the dictionary"
+    (let* ((mock (nskk--server-start-mock-server '(("あ" . "1/亜/阿/唖/\n"))))
+           (server-proc (car mock))
+           (port (cdr mock))
+           (nskk-server-enable t)
+           (nskk-server-host "127.0.0.1")
+           (nskk-server-portnum port)
+           (nskk--server-process nil)
+           (nskk--server-kill-emacs-hook-registered nil))
+      (unwind-protect
+          (progn
+            (should (nskk-server-open))
+            (let ((result (nskk-server-lookup "zzzzzzzzzzzzz")))
+              (should (null result))))
+        (nskk-server-close)
+        (delete-process server-proc)))))
 
 (provide 'nskk-server-integration-test)
 

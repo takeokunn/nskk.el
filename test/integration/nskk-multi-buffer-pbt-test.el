@@ -63,160 +63,160 @@
 ;;;; Property 1: Buffer-Local State Isolation
 ;;;;
 
-(ert-deftest nskk-state-machine-buffer-local-state-isolation ()
-  "State changes in one buffer do not affect another."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((mode1 (nskk--pbt-generate-valid-mode))
-             (mode2 (nskk--pbt-generate-valid-mode))
-             (buf1 (nskk--pbt-create-buffer-with-state mode1))
-             (buf2 (nskk--pbt-create-buffer-with-state mode2)))
-        (unwind-protect
-            (progn
-              ;; Modify state in buffer 1
-              (with-current-buffer buf1
-                (nskk-state-set nskk-current-state 'input-buffer "hello")
-                (nskk-state-set nskk-current-state 'candidates '("a" "b" "c"))
-                (nskk-state-set nskk-current-state 'henkan-position 5))
-              ;; Verify buffer 2 is unaffected
-              (with-current-buffer buf2
-                (let ((input2 (nskk-state-input-buffer nskk-current-state))
-                      (cands2 (nskk-state-candidates nskk-current-state))
-                      (henkan2 (nskk-state-henkan-position nskk-current-state)))
-                  (unless (and (string= input2 "")
-                               (null cands2)
-                               (null henkan2))
-                    (push (list :mode1 mode1 :mode2 mode2
-                                :buf2-input input2
-                                :buf2-candidates cands2
-                                :buf2-henkan henkan2)
-                          failures)))))
-          (nskk--pbt-cleanup-test-buffer buf1)
-          (nskk--pbt-cleanup-test-buffer buf2))))
-    (when failures
-      (ert-fail (format "Buffer state isolation failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-describe "buffer-local state isolation"
+  (nskk-it "should not allow state changes in one buffer to affect another"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((mode1 (nskk--pbt-generate-valid-mode))
+               (mode2 (nskk--pbt-generate-valid-mode))
+               (buf1 (nskk--pbt-create-buffer-with-state mode1))
+               (buf2 (nskk--pbt-create-buffer-with-state mode2)))
+          (unwind-protect
+              (progn
+                ;; Modify state in buffer 1
+                (with-current-buffer buf1
+                  (nskk-state-set nskk-current-state 'input-buffer "hello")
+                  (nskk-state-set nskk-current-state 'candidates '("a" "b" "c"))
+                  (nskk-state-set nskk-current-state 'henkan-position 5))
+                ;; Verify buffer 2 is unaffected
+                (with-current-buffer buf2
+                  (let ((input2 (nskk-state-input-buffer nskk-current-state))
+                        (cands2 (nskk-state-candidates nskk-current-state))
+                        (henkan2 (nskk-state-henkan-position nskk-current-state)))
+                    (unless (and (string= input2 "")
+                                 (null cands2)
+                                 (null henkan2))
+                      (push (list :mode1 mode1 :mode2 mode2
+                                  :buf2-input input2
+                                  :buf2-candidates cands2
+                                  :buf2-henkan henkan2)
+                            failures)))))
+            (nskk--pbt-cleanup-test-buffer buf1)
+            (nskk--pbt-cleanup-test-buffer buf2))))
+      (when failures
+        (ert-fail (format "Buffer state isolation failed for %d cases:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;
 ;;;; Property 2: Buffer-Local Mode Isolation
 ;;;;
 
-(ert-deftest nskk-state-machine-buffer-local-mode-isolation ()
-  "Mode changes in one buffer do not affect another."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((initial-mode (nskk--pbt-generate-valid-mode))
-             (buf1 (nskk--pbt-create-buffer-with-state initial-mode))
-             (buf2 (nskk--pbt-create-buffer-with-state initial-mode)))
-        (unwind-protect
-            (progn
-              ;; Change mode in buffer 1 multiple times
-              (with-current-buffer buf1
-                (dotimes (_ (nskk--pbt-random-int 2 5))
-                  (let ((new-mode (nskk--pbt-generate-valid-mode)))
-                    (nskk-state-set nskk-current-state 'mode new-mode))))
-              ;; Verify buffer 2 still has the original mode
-              (with-current-buffer buf2
-                (let ((mode2 (nskk-state-mode nskk-current-state)))
-                  (unless (eq mode2 initial-mode)
-                    (push (list :initial-mode initial-mode
-                                :buf2-mode mode2
-                                :buf1-mode (with-current-buffer buf1
-                                             (nskk-state-mode nskk-current-state)))
-                          failures)))))
-          (nskk--pbt-cleanup-test-buffer buf1)
-          (nskk--pbt-cleanup-test-buffer buf2))))
-    (when failures
-      (ert-fail (format "Buffer mode isolation failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-describe "buffer-local mode isolation"
+  (nskk-it "should not allow mode changes in one buffer to affect another"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((initial-mode (nskk--pbt-generate-valid-mode))
+               (buf1 (nskk--pbt-create-buffer-with-state initial-mode))
+               (buf2 (nskk--pbt-create-buffer-with-state initial-mode)))
+          (unwind-protect
+              (progn
+                ;; Change mode in buffer 1 multiple times
+                (with-current-buffer buf1
+                  (dotimes (_ (nskk--pbt-random-int 2 5))
+                    (let ((new-mode (nskk--pbt-generate-valid-mode)))
+                      (nskk-state-set nskk-current-state 'mode new-mode))))
+                ;; Verify buffer 2 still has the original mode
+                (with-current-buffer buf2
+                  (let ((mode2 (nskk-state-mode nskk-current-state)))
+                    (unless (eq mode2 initial-mode)
+                      (push (list :initial-mode initial-mode
+                                  :buf2-mode mode2
+                                  :buf1-mode (with-current-buffer buf1
+                                               (nskk-state-mode nskk-current-state)))
+                            failures)))))
+            (nskk--pbt-cleanup-test-buffer buf1)
+            (nskk--pbt-cleanup-test-buffer buf2))))
+      (when failures
+        (ert-fail (format "Buffer mode isolation failed for %d cases:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;
 ;;;; Property 3: Buffer-Local Romaji Isolation
 ;;;;
 
-(ert-deftest nskk-state-machine-buffer-local-romaji-isolation ()
-  "Romaji buffer in one buffer does not leak to another."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((buf1 (nskk--pbt-create-buffer-with-state 'hiragana))
-             (buf2 (nskk--pbt-create-buffer-with-state 'hiragana))
-             (romaji-input (nskk--pbt-generate-input-buffer 10)))
-        (unwind-protect
-            (progn
-              ;; Set input-buffer (simulating romaji accumulation) in buffer 1
-              (with-current-buffer buf1
-                (nskk-state-set nskk-current-state 'input-buffer romaji-input))
-              ;; Verify buffer 2 input-buffer is still empty
-              (with-current-buffer buf2
-                (let ((input2 (nskk-state-input-buffer nskk-current-state)))
-                  (unless (string= input2 "")
-                    (push (list :romaji-set romaji-input
-                                :buf2-input input2)
-                          failures)))))
-          (nskk--pbt-cleanup-test-buffer buf1)
-          (nskk--pbt-cleanup-test-buffer buf2))))
-    (when failures
-      (ert-fail (format "Romaji buffer isolation failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-describe "buffer-local romaji isolation"
+  (nskk-it "should not allow romaji buffer in one buffer to leak to another"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((buf1 (nskk--pbt-create-buffer-with-state 'hiragana))
+               (buf2 (nskk--pbt-create-buffer-with-state 'hiragana))
+               (romaji-input (nskk--pbt-generate-input-buffer 10)))
+          (unwind-protect
+              (progn
+                ;; Set input-buffer (simulating romaji accumulation) in buffer 1
+                (with-current-buffer buf1
+                  (nskk-state-set nskk-current-state 'input-buffer romaji-input))
+                ;; Verify buffer 2 input-buffer is still empty
+                (with-current-buffer buf2
+                  (let ((input2 (nskk-state-input-buffer nskk-current-state)))
+                    (unless (string= input2 "")
+                      (push (list :romaji-set romaji-input
+                                  :buf2-input input2)
+                            failures)))))
+            (nskk--pbt-cleanup-test-buffer buf1)
+            (nskk--pbt-cleanup-test-buffer buf2))))
+      (when failures
+        (ert-fail (format "Romaji buffer isolation failed for %d cases:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;
 ;;;; Additional Property: Multiple Buffers Independent State
 ;;;;
 
-(ert-deftest nskk-state-machine-multiple-buffers-independent ()
-  "Creating and modifying state across multiple buffers remains independent."
-  (let ((runs 50)
-        (failures nil))
-    (dotimes (_ runs)
-      (let* ((num-buffers (nskk--pbt-random-int 2 5))
-             (buffers nil)
-             (modes nil))
-        (unwind-protect
-            (progn
-              ;; Create buffers with random modes
-              (dotimes (_ num-buffers)
-                (let ((mode (nskk--pbt-generate-valid-mode)))
-                  (push (nskk--pbt-create-buffer-with-state mode) buffers)
-                  (push mode modes)))
-              (setq buffers (nreverse buffers))
-              (setq modes (nreverse modes))
-              ;; Modify each buffer independently
-              (cl-loop for buf in buffers
-                       for i from 0
-                       do (with-current-buffer buf
-                            (nskk-state-set nskk-current-state 'input-buffer
-                                            (format "buf-%d" i))))
-              ;; Verify each buffer has its own input
-              (cl-loop for buf in buffers
-                       for i from 0
-                       for expected-mode in modes
-                       do (with-current-buffer buf
-                            (let ((input (nskk-state-input-buffer nskk-current-state))
-                                  (mode (nskk-state-mode nskk-current-state)))
-                              (unless (and (string= input (format "buf-%d" i))
-                                           (eq mode expected-mode))
-                                (push (list :buffer-idx i
-                                            :expected-input (format "buf-%d" i)
-                                            :actual-input input
-                                            :expected-mode expected-mode
-                                            :actual-mode mode)
-                                      failures))))))
-          ;; Cleanup all buffers
-          (dolist (buf buffers)
-            (nskk--pbt-cleanup-test-buffer buf)))))
-    (when failures
-      (ert-fail (format "Multi-buffer independence failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+(nskk-describe "multiple buffers independence"
+  (nskk-it "should maintain independent state across multiple buffers"
+    (let ((runs 50)
+          (failures nil))
+      (dotimes (_ runs)
+        (let* ((num-buffers (nskk--pbt-random-int 2 5))
+               (buffers nil)
+               (modes nil))
+          (unwind-protect
+              (progn
+                ;; Create buffers with random modes
+                (dotimes (_ num-buffers)
+                  (let ((mode (nskk--pbt-generate-valid-mode)))
+                    (push (nskk--pbt-create-buffer-with-state mode) buffers)
+                    (push mode modes)))
+                (setq buffers (nreverse buffers))
+                (setq modes (nreverse modes))
+                ;; Modify each buffer independently
+                (cl-loop for buf in buffers
+                         for i from 0
+                         do (with-current-buffer buf
+                              (nskk-state-set nskk-current-state 'input-buffer
+                                              (format "buf-%d" i))))
+                ;; Verify each buffer has its own input
+                (cl-loop for buf in buffers
+                         for i from 0
+                         for expected-mode in modes
+                         do (with-current-buffer buf
+                              (let ((input (nskk-state-input-buffer nskk-current-state))
+                                    (mode (nskk-state-mode nskk-current-state)))
+                                (unless (and (string= input (format "buf-%d" i))
+                                             (eq mode expected-mode))
+                                  (push (list :buffer-idx i
+                                              :expected-input (format "buf-%d" i)
+                                              :actual-input input
+                                              :expected-mode expected-mode
+                                              :actual-mode mode)
+                                        failures))))))
+            ;; Cleanup all buffers
+            (dolist (buf buffers)
+              (nskk--pbt-cleanup-test-buffer buf)))))
+      (when failures
+        (ert-fail (format "Multi-buffer independence failed for %d cases:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;

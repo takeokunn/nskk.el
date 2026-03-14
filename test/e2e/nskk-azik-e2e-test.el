@@ -662,10 +662,11 @@ This ensures:
 ;;;; Property-Based Tests: AZIK Hatsuon Known Pairs
 ;;;;
 
-(nskk-deftest-cases azik-hatsuon-pairs
-  (("kz" . "かん")
-   ("sz" . "さん")
-   ("tz" . "たん"))
+(nskk-deftest-table azik-hatsuon-pairs
+  :columns (input expected)
+  :rows (("kz" "かん")
+         ("sz" "さん")
+         ("tz" "たん"))
   :body
   (nskk-e2e-with-azik-buffer 'hiragana nil
     (nskk-e2e-type input)
@@ -783,7 +784,28 @@ This ensures:
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Kaq")
       (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kaq")
-      (nskk-e2e-assert-mode 'hiragana "standalone q in AZIK ▽ preedit must not toggle mode"))))
+      (nskk-e2e-assert-mode 'hiragana "standalone q in AZIK ▽ preedit must not toggle mode")))
+
+  (nskk-it "Sq: q fires sq→さい as first char after henkan start (preedit-pending state)"
+    ;; Regression: S → ▽ (preedit-pending, romaji="s"); q was self-inserted
+    ;; because classify-state returned preedit-marker instead of preedit-pending.
+    ;; Now preedit-pending dispatches q to fire-romaji, producing さい.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Sq")
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Sq")
+      (nskk-e2e-assert-buffer "▽さい" "Sq must produce さい via AZIK diphthong rule")))
+
+  (nskk-it "Tq: q fires tq→たい as first char after henkan start"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Tq")
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Tq")
+      (nskk-e2e-assert-buffer "▽たい" "Tq must produce たい via AZIK diphthong rule")))
+
+  (nskk-it "Kq: q fires kq→かい as first char after henkan start"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Kq")
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kq")
+      (nskk-e2e-assert-buffer "▽かい" "Kq must produce かい via AZIK diphthong rule"))))
 
 ;;;;
 ;;;; Section 13: AZIK Okurigana with AZIK Kana Shortcuts — Double-* Regression

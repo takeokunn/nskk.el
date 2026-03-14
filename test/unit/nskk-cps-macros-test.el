@@ -1750,6 +1750,50 @@ that the second element is a symbol with the given name."
       (nskk--cps-transform-form '(my-form arg) 'found 'not-found)
       (should (equal called '(my-form arg))))))
 
+;;; -------------------------------------------------------------------
+;;; nskk-it-k macro tests
+;;; -------------------------------------------------------------------
+
+(nskk-describe "nskk-it-k macro"
+  (nskk-it "nskk--parse-it-k-clauses extracts found binding and body"
+    (let* ((rest '(:found (val) (should (equal val 42))))
+           (parsed (nskk--parse-it-k-clauses rest)))
+      (should (eq (plist-get parsed :found-binding) 'val))
+      (should (equal (plist-get parsed :found-body) '((should (equal val 42)))))
+      (should (equal (plist-get parsed :not-found-body)
+                     '((ert-fail "on-not-found called unexpectedly"))))))
+
+  (nskk-it "nskk--parse-it-k-clauses uses default not-found body when omitted"
+    (let* ((rest '(:found (result) (should result)))
+           (parsed (nskk--parse-it-k-clauses rest)))
+      (should (equal (plist-get parsed :not-found-body)
+                     '((ert-fail "on-not-found called unexpectedly"))))))
+
+  (nskk-it "nskk--parse-it-k-clauses extracts explicit not-found body"
+    (let* ((rest '(:found (v) (should v) :not-found () (should nil)))
+           (parsed (nskk--parse-it-k-clauses rest)))
+      (should (eq  (plist-get parsed :found-binding) 'v))
+      (should (equal (plist-get parsed :found-body) '((should v))))
+      (should (equal (plist-get parsed :not-found-body) '((should nil))))))
+
+  (nskk-it "nskk-it-k :found body executes when on-found is called"
+    (let ((found-val nil))
+      (cl-flet ((fake/k (on-found _on-not-found)
+                  (funcall on-found 99)))
+        (fake/k
+          (lambda (v) (setq found-val v))
+          (lambda () (ert-fail "on-not-found should not be called"))))
+      (should (equal found-val 99))))
+
+  (nskk-it "nskk-it-k :not-found body executes when on-not-found is called"
+    (let ((nf-called nil))
+      (cl-flet ((fake/k (_on-found on-not-found)
+                  (funcall on-not-found)))
+        (fake/k
+          (lambda (_v) (ert-fail "on-found should not be called"))
+          (lambda () (setq nf-called t))))
+      (should nf-called))))
+
 (provide 'nskk-cps-macros-test)
 
 ;;; nskk-cps-macros-test.el ends here

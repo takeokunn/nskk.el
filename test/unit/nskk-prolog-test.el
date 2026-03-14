@@ -53,15 +53,13 @@
 ;;;; 1. Variable Representation
 ;;;;
 
-(nskk-describe "Prolog variable representation"
-  (nskk-context "symbol-with-question-mark variables"
-    (nskk-it "recognizes variables starting with ? as Prolog variables"
-      (should (nskk-prolog-variable-p '\?x))
-      (should (nskk-prolog-variable-p '\?y))
-      (should (nskk-prolog-variable-p '\?foo))
-      (should (nskk-prolog-variable-p '\?char))
-      (should (nskk-prolog-variable-p '\?who))))
+(nskk-deftest-table prolog-variable-p-recognizes
+  :description "Recognizes symbols starting with ? as Prolog variables"
+  :columns (var)
+  :rows ((\?x) (\?y) (\?foo) (\?char) (\?who))
+  :body (should (nskk-prolog-variable-p var)))
 
+(nskk-describe "Prolog variable representation"
   (nskk-context "anonymous variable"
     (nskk-it "recognizes the anonymous variable ?_ as a Prolog variable"
       (should (nskk-prolog-variable-p '\?_))))
@@ -816,6 +814,36 @@
         ;; But query-one correctly returns t
         (should (eq t (nskk-prolog-query-one '(ground-query-vals-test)))))))
 
+  (nskk-context "query-bindings"
+    (nskk-it "returns all solutions with multiple variables walked"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((pair a 1)))
+        (nskk-prolog-assert '((pair b 2)))
+        (nskk-prolog-assert '((pair c 3)))
+        (let ((result (nskk-prolog-query-bindings '(pair \?x \?y) '(\?x \?y))))
+          (should (equal result '((a 1) (b 2) (c 3)))))))
+
+    (nskk-it "returns empty list when no solutions exist"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (should (null (nskk-prolog-query-bindings '(nonexistent \?x \?y) '(\?x \?y))))))
+
+    (nskk-it "returns list-of-singletons for single variable"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((item a)))
+        (nskk-prolog-assert '((item b)))
+        (let ((result (nskk-prolog-query-bindings '(item \?x) '(\?x))))
+          (should (equal result '((a) (b)))))))
+
+    (nskk-it "returns list with empty binding for ground successful query"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((fact)))
+        (let ((result (nskk-prolog-query-bindings '(fact) '())))
+          (should (equal result '(())))))))
+
   (nskk-context "query and query-one"
     (nskk-it "query returns list of all substitution alists"
       (nskk-prolog-test-with-isolated-db
@@ -1383,43 +1411,24 @@ the database in the same state as before the assertion."
 ;;; Goal dispatch: nskk--prolog-goal-kind and nskk--prolog-builtin-table
 ;;;
 
+(nskk-deftest-table prolog-goal-kind-dispatch
+  :description "nskk--prolog-goal-kind classifies each goal form to the expected kind keyword"
+  :columns (goal expected-kind)
+  :rows ((!                 :cut)
+         ((not foo)         :not)
+         ((assertz (foo))   :assertz)
+         ((retract (foo))   :retract)
+         ((is \?x 1)        :arith)
+         ((=:= 1 1)         :arith)
+         ((> 2 1)           :arith)
+         ((< 1 2)           :arith)
+         ((>= 2 2)          :arith)
+         ((<= 1 1)          :arith)
+         ((my-pred foo bar) :normal)
+         (some-atom         :normal))
+  :body (should (eq (nskk--prolog-goal-kind goal) expected-kind)))
+
 (nskk-describe "nskk--prolog-goal-kind"
-  (nskk-context "cut"
-    (nskk-it "classifies ! as :cut"
-      (should (eq (nskk--prolog-goal-kind '!) :cut))))
-
-  (nskk-context "negation"
-    (nskk-it "classifies (not foo) as :not"
-      (should (eq (nskk--prolog-goal-kind '(not foo)) :not))))
-
-  (nskk-context "assertz"
-    (nskk-it "classifies (assertz (foo)) as :assertz"
-      (should (eq (nskk--prolog-goal-kind '(assertz (foo))) :assertz))))
-
-  (nskk-context "retract"
-    (nskk-it "classifies (retract (foo)) as :retract"
-      (should (eq (nskk--prolog-goal-kind '(retract (foo))) :retract))))
-
-  (nskk-context "arithmetic"
-    (nskk-it "is-2 op classifies as arith"
-      (should (eq (nskk--prolog-goal-kind '(is '\?x 1)) :arith)))
-    (nskk-it "arith-eq op classifies as arith"
-      (should (eq (nskk--prolog-goal-kind '(=:= 1 1)) :arith)))
-    (nskk-it "greater-than op classifies as arith"
-      (should (eq (nskk--prolog-goal-kind '(> 2 1)) :arith)))
-    (nskk-it "less-than op classifies as arith"
-      (should (eq (nskk--prolog-goal-kind '(< 1 2)) :arith)))
-    (nskk-it "greater-equal op classifies as arith"
-      (should (eq (nskk--prolog-goal-kind '(>= 2 2)) :arith)))
-    (nskk-it "less-equal op classifies as arith"
-      (should (eq (nskk--prolog-goal-kind '(<= 1 1)) :arith))))
-
-  (nskk-context "normal"
-    (nskk-it "classifies a user predicate call as :normal"
-      (should (eq (nskk--prolog-goal-kind '(my-pred foo bar)) :normal)))
-    (nskk-it "classifies a bare atom as :normal"
-      (should (eq (nskk--prolog-goal-kind 'some-atom) :normal))))
-
   (nskk-context "builtin-table completeness"
     (nskk-it "nskk--prolog-builtin-table has an entry for every kind"
       (dolist (kind '(:cut :not :assertz :retract :arith :normal))
@@ -1521,62 +1530,44 @@ the database in the same state as before the assertion."
 ;;; nskk--prolog-clause-key
 ;;;
 
-(nskk-describe "nskk--prolog-clause-key"
-  (nskk-it "formats predicate and arity as 'pred/arity' string"
-    (should (equal (nskk--prolog-clause-key 'foo 2) "foo/2")))
-
-  (nskk-it "formats predicate and arity 0 as 'pred/0' string"
-    (should (equal (nskk--prolog-clause-key 'bar 0) "bar/0")))
-
-  (nskk-it "formats predicate and arity 3 as 'pred/3' string"
-    (should (equal (nskk--prolog-clause-key 'my-pred 3) "my-pred/3")))
-
-  (nskk-it "works with string predicate name"
-    (should (equal (nskk--prolog-clause-key "pred" 1) "pred/1"))))
+(nskk-deftest-table prolog-clause-key-format
+  :description "nskk--prolog-clause-key formats predicate/arity as 'pred/N' string"
+  :columns (pred arity expected)
+  :rows ((foo     2 "foo/2")
+         (bar     0 "bar/0")
+         (my-pred 3 "my-pred/3")
+         ("pred"  1 "pred/1"))
+  :body (should (equal (nskk--prolog-clause-key pred arity) expected)))
 
 ;;;
 ;;; nskk--prolog-head-key
 ;;;
 
-(nskk-describe "nskk--prolog-head-key"
-  (nskk-it "returns key for a zero-arity clause head"
-    ;; (foo) → functor=foo, arity=1-1=0
-    (should (equal (nskk--prolog-head-key '(foo)) "foo/0")))
-
-  (nskk-it "returns key for a unary clause head"
-    ;; (foo arg1) → functor=foo, arity=2-1=1
-    (should (equal (nskk--prolog-head-key '(foo arg1)) "foo/1")))
-
-  (nskk-it "returns key for a binary clause head"
-    ;; (foo a b) → functor=foo, arity=3-1=2
-    (should (equal (nskk--prolog-head-key '(foo a b)) "foo/2"))))
+(nskk-deftest-table prolog-head-key-format
+  :description "nskk--prolog-head-key derives 'functor/arity' from a clause head list"
+  :columns (head expected)
+  :rows (((foo)      "foo/0")
+         ((foo arg1) "foo/1")
+         ((foo a b)  "foo/2"))
+  :body (should (equal (nskk--prolog-head-key head) expected)))
 
 ;;;
 ;;; nskk--prolog-eval-arith
 ;;;
 
+(nskk-deftest-table prolog-eval-arith-expressions
+  :description "nskk--prolog-eval-arith evaluates numeric literals and arithmetic expressions"
+  :columns (expr expected)
+  :rows ((42            42)
+         (0             0)
+         ((+ 3 4)       7)
+         ((- 10 3)      7)
+         ((* 6 7)       42)
+         ((/ 10 2)      5)
+         ((+ (* 2 3) 4) 10))
+  :body (should (= (nskk--prolog-eval-arith expr nil) expected)))
+
 (nskk-describe "nskk--prolog-eval-arith"
-  (nskk-it "evaluates a number literal to itself"
-    (should (= (nskk--prolog-eval-arith 42 nil) 42)))
-
-  (nskk-it "evaluates integer literal 0 to itself"
-    (should (= (nskk--prolog-eval-arith 0 nil) 0)))
-
-  (nskk-it "evaluates addition expression (+ 3 4) to 7"
-    (should (= (nskk--prolog-eval-arith '(+ 3 4) nil) 7)))
-
-  (nskk-it "evaluates subtraction expression (- 10 3) to 7"
-    (should (= (nskk--prolog-eval-arith '(- 10 3) nil) 7)))
-
-  (nskk-it "evaluates multiplication expression (* 6 7) to 42"
-    (should (= (nskk--prolog-eval-arith '(* 6 7) nil) 42)))
-
-  (nskk-it "evaluates integer division"
-    (should (= (nskk--prolog-eval-arith '(/ 10 2) nil) 5)))
-
-  (nskk-it "evaluates nested arithmetic expressions"
-    (should (= (nskk--prolog-eval-arith '(+ (* 2 3) 4) nil) 10)))
-
   (nskk-it "signals error for unknown arithmetic operator"
     (should-error (nskk--prolog-eval-arith '(% 10 3) nil)))
 
@@ -1921,14 +1912,14 @@ the database in the same state as before the assertion."
 ;;;; Property: nskk-prolog-deffacts always produces valid progn form
 ;;;;
 
-(ert-deftest nskk-refactoring-prolog-deffacts-always-progn ()
-  "nskk-prolog-deffacts always expands to a progn form regardless of row count."
-  (dolist (n '(0 1 2 5 10))
-    (let* ((rows (cl-loop repeat n collect '(key value)))
-           (form `(nskk-prolog-deffacts test-pred ,@rows))
-           (expansion (macroexpand form)))
-      (should (eq (car expansion) 'progn))
-      (should (= n (length (cdr expansion)))))))
+(nskk-describe "nskk-prolog-deffacts always-progn contract"
+  (nskk-it "should always expand to a progn form regardless of row count"
+    (dolist (n '(0 1 2 5 10))
+      (let* ((rows (cl-loop repeat n collect '(key value)))
+             (form `(nskk-prolog-deffacts test-pred ,@rows))
+             (expansion (macroexpand form)))
+        (should (eq (car expansion) 'progn))
+        (should (= n (length (cdr expansion))))))))
 
 
 ;;;;
@@ -2088,6 +2079,49 @@ the database in the same state as before the assertion."
             ;; the outer catch would have been the handler instead.
             )
           (should-not cut-escaped))))))
+
+;;;;
+;;;; nskk--prolog-try-clause internal contract
+;;;;
+
+(nskk-describe "nskk--prolog-try-clause internal contract"
+  (nskk-context "per-clause cut isolation"
+    (nskk-it "per-clause cut does not escape to parent goal (G10)"
+      ;; nskk--prolog-try-clause wraps each clause body in (catch 'nskk-prolog-cut).
+      ;; A cut thrown inside one clause must not prevent backtracking over OTHER
+      ;; top-level clauses (the outer goal loop must continue).
+      ;; We verify this by asserting two independent facts and confirming that
+      ;; nskk-prolog-query collects both solutions regardless of cut semantics.
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((outer a)))
+        (nskk-prolog-assert '((outer b)))
+        ;; Both facts must be reachable — cut inside one clause must not block
+        ;; the engine from considering the second clause.
+        (let ((solutions (nskk-prolog-query '(outer \?x))))
+          (should (= (length solutions) 2))
+          (let ((vals (mapcar (lambda (s) (nskk-prolog-walk '\?x s)) solutions)))
+            (should (member 'a vals))
+            (should (member 'b vals)))))))
+
+  (nskk-context "variable renaming per call"
+    (nskk-it "variable renaming gives fresh vars per call so two queries do not share bindings (G11)"
+      ;; Each call to the Prolog engine renames clause variables to fresh gensyms.
+      ;; Two separate nskk-prolog-query-one calls therefore return independent
+      ;; substitution environments; walking ?x in one must not yield the binding
+      ;; from the other's environment.
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-assert '((shared-var foo)))
+        (let ((s1 (nskk-prolog-query-one '(shared-var \?x)))
+              (s2 (nskk-prolog-query-one '(shared-var \?x))))
+          ;; Both queries must succeed and return the same value "foo".
+          (should s1)
+          (should s2)
+          (should (equal (nskk-prolog-walk '\?x s1) 'foo))
+          (should (equal (nskk-prolog-walk '\?x s2) 'foo))
+          ;; The two substitution alists must be independent objects — not eq.
+          (should-not (eq s1 s2)))))))
 
 (provide 'nskk-prolog-test)
 

@@ -476,5 +476,54 @@
                                  (lambda () (setq not-found t)))
       (should not-found))))
 
+;;;;
+;;;; PBT: Trie invariants
+;;;;
+
+(nskk-describe "PBT: trie invariants"
+  (nskk-it "insert-then-lookup always returns the stored value"
+    (nskk-property-test trie-pbt-insert-lookup
+      ((key   romaji-string)
+       (value romaji-string))
+      (let ((trie (nskk-trie-create)))
+        (nskk-trie-insert trie key value)
+        (equal (nskk-trie-lookup trie key) value))
+      50))
+
+  (nskk-it "size is 0 for a fresh trie regardless of lookup"
+    (nskk-property-test trie-pbt-empty-lookup-nil
+      ((key romaji-string))
+      (let ((trie (nskk-trie-create)))
+        (and (null (nskk-trie-lookup trie key))
+             (= (nskk-trie-size trie) 0)))
+      50))
+
+  (nskk-it "insert increments size by 1 for a new key"
+    (nskk-property-test trie-pbt-size-after-insert
+      ((key romaji-string))
+      (let ((trie (nskk-trie-create)))
+        (let ((size-before (nskk-trie-size trie)))
+          (nskk-trie-insert trie key "v")
+          (= (nskk-trie-size trie) (1+ size-before))))
+      50))
+
+  (nskk-it "delete after insert reduces size back to 0"
+    (nskk-property-test trie-pbt-delete-removes-key
+      ((key romaji-string))
+      (let ((trie (nskk-trie-create)))
+        (nskk-trie-insert trie key "v")
+        (nskk-trie-delete trie key)
+        (and (null (nskk-trie-lookup trie key))
+             (= (nskk-trie-size trie) 0)))
+      50))
+
+  (nskk-it "has-prefix-p is true for the key itself after insert"
+    (nskk-property-test trie-pbt-has-prefix-after-insert
+      ((key romaji-string))
+      (let ((trie (nskk-trie-create)))
+        (nskk-trie-insert trie key "v")
+        (nskk-trie-has-prefix-p trie key))
+      50)))
+
 (provide 'nskk-trie-test)
 ;;; nskk-trie-test.el ends here

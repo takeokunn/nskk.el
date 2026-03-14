@@ -452,6 +452,9 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 ;;; Cache Key Generation Tests
 ;;;
 
+;; Top-level defconst: shared across multiple nskk-describe blocks below.
+;; Defined here (not inside any describe block) so it is interned at load time
+;; and visible to all test cases without being re-evaluated per-test.
 (defconst nskk-search-test--all-cache-key-queries
   '(("query1" exact   nil)
     ("query1" prefix  nil)
@@ -662,13 +665,10 @@ in this list.")
   (nskk-it "initializes score to 1 for a new candidate"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (let ((nskk--search-dirty-flag nil))
-        (nskk-search-learn "かんじ" "漢字")
-        (should (= (nskk-prolog-query-value
-                    '(learning-score "かんじ" "漢字" \?s) '\?s)
-                   1))
-        ;; Dirty flag must be set
-        (should nskk--search-dirty-flag))))
+      (nskk-search-learn "かんじ" "漢字")
+      (should (= (nskk-prolog-query-value
+                  '(learning-score "かんじ" "漢字" \?s) '\?s)
+                 1))))
 
   (nskk-it "increments an existing score by 1"
     (nskk-prolog-test-with-isolated-db
@@ -690,13 +690,10 @@ in this list.")
   (nskk-it "does nothing when candidate is nil"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (let ((nskk--search-dirty-flag nil))
-        (nskk-search-learn "かんじ" nil)
-        ;; No learning-score fact should be created
-        (should-not (nskk-prolog-query-value
-                     '(learning-score "かんじ" \?c \?s) '\?s))
-        ;; Dirty flag must remain unset
-        (should-not nskk--search-dirty-flag))))
+      (nskk-search-learn "かんじ" nil)
+      ;; No learning-score fact should be created
+      (should-not (nskk-prolog-query-value
+                   '(learning-score "かんじ" \?c \?s) '\?s))))
 
   (nskk-it "retracts old score before asserting new one (no duplicates)"
     (nskk-prolog-test-with-isolated-db
@@ -714,18 +711,6 @@ in this list.")
 ;;;
 
 (nskk-describe "nskk-search learning data persistence"
-  (nskk-it "save sets nskk--search-dirty-flag to nil"
-    (nskk-prolog-test-with-isolated-db
-      (let* ((tmp-file (make-temp-file "nskk-learning-test" nil ".dat"))
-             (nskk-search-learning-file tmp-file)
-             (nskk--search-dirty-flag t))
-        (unwind-protect
-            (progn
-              (nskk-search-save-learning-data)
-              (should-not nskk--search-dirty-flag))
-          (when (file-exists-p tmp-file)
-            (delete-file tmp-file))))))
-
   (nskk-it "handles write errors gracefully without signaling"
     (nskk-prolog-test-with-isolated-db
       (let* ((nskk-search-learning-file "/nonexistent/dir/learning.dat")
@@ -832,12 +817,13 @@ in this list.")
 ;;;
 
 ;; 1. Table-driven: nskk--search-candidate-word for known inputs
-(nskk-deftest-cases search-candidate-word-known
-  (("漢字"          . "漢字")
-    (("漢字" . "ji") . "漢字")
-    (nil             . nil)
-    (42              . nil))
+(nskk-deftest-table search-candidate-word-known
   :description "nskk--search-candidate-word extracts word string"
+  :columns (input expected)
+  :rows (("漢字"          "漢字")
+         (("漢字" . "ji") "漢字")
+         (nil             nil)
+         (42              nil))
   :body (should (equal expected (nskk--search-candidate-word input))))
 
 ;; PBT-007 — Levenshtein distance is always non-negative
@@ -881,16 +867,6 @@ in this list.")
       (let ((new-score (nskk-prolog-query-value
                         `(learning-score ,q "テスト" \?s) '\?s)))
         (= new-score (1+ initial-score)))))
-  20)
-
-;; PBT-012 — nskk-search-learn always sets dirty flag for non-nil string candidates
-(nskk-property-test search-learn-sets-dirty-flag
-  ((q search-query))
-  (nskk-prolog-test-with-isolated-db
-    (nskk-prolog-retract-all 'learning-score 3)
-    (let ((nskk--search-dirty-flag nil))
-      (nskk-search-learn q "テスト")
-      nskk--search-dirty-flag))
   20)
 
 ;; PBT-013 — nskk-search/k calls exactly one callback (mutual exclusion)
@@ -1069,7 +1045,7 @@ of keys under `string<' regardless of the input order."
       (let ((nskk-search-fuzzy-threshold 1)
             (index (nskk-search-test--make-index
                     '(("abc" . ("value"))))))
-        (let ((results (nskk-search-fuzzy index "abc" nil nil)))
+        (let ((results (nskk-search-fuzzy index "abc" nil)))
           (should (listp results))
           (should (= (length results) 1))
           ;; Shape is (key entry . distance)
@@ -1083,7 +1059,7 @@ of keys under `string<' regardless of the input order."
       (let ((nskk-search-fuzzy-threshold 3)
             (index (nskk-search-test--make-index
                     '(("abc" . ("v1")) ("abx" . ("v2")) ("xyz" . ("v3"))))))
-        (let ((results (nskk-search-fuzzy index "abc" nil nil)))
+        (let ((results (nskk-search-fuzzy index "abc" nil)))
           ;; Closest match (distance 0) should be first
           (should (= (cddr (car results)) 0))
           ;; Remaining results should have non-decreasing distances
@@ -1098,13 +1074,13 @@ of keys under `string<' regardless of the input order."
                     '(("abc" . ("v1")) ("xyz" . ("v2"))))))
         ;; With threshold 0 only exact matches (distance=0) pass.
         ;; "abc" matches "abc" exactly; query "abc" finds it.
-        (let ((results (nskk-search-fuzzy index "def" nil nil)))
+        (let ((results (nskk-search-fuzzy index "def" nil)))
           (should (null results))))))
 
   (nskk-it "returns nil when predicate is nil"
     (nskk-prolog-test-with-isolated-db
       (let ((index (make-nskk-dict-index :predicate nil)))
-        (should (null (nskk-search-fuzzy index "abc" nil nil)))))))
+        (should (null (nskk-search-fuzzy index "abc" nil)))))))
 
 ;;;
 ;;; Direct CPS variant tests
@@ -1221,7 +1197,7 @@ of keys under `string<' regardless of the input order."
       (let ((index (make-nskk-dict-index :predicate 'cps-fuzzy-test))
             (nskk-search-fuzzy-threshold 2)
             found-results)
-        (nskk-search-fuzzy/k index "abc" nil nil
+        (nskk-search-fuzzy/k index "abc" nil
                              (lambda (r) (setq found-results r))
                              (lambda () (should nil)))
         (should (listp found-results))
@@ -1237,7 +1213,7 @@ of keys under `string<' regardless of the input order."
       (let ((index (make-nskk-dict-index :predicate 'cps-fuzzy-miss-test))
             (nskk-search-fuzzy-threshold 1)
             not-found-called)
-        (nskk-search-fuzzy/k index "abc" nil nil
+        (nskk-search-fuzzy/k index "abc" nil
                              (lambda (_) (should nil))
                              (lambda () (setq not-found-called t)))
         (should not-found-called))))
@@ -1249,7 +1225,7 @@ of keys under `string<' regardless of the input order."
       (let ((index (make-nskk-dict-index :predicate 'cps-fuzzy-sort-test))
             (nskk-search-fuzzy-threshold 3)
             found-results)
-        (nskk-search-fuzzy/k index "abc" nil nil
+        (nskk-search-fuzzy/k index "abc" nil
                              (lambda (r) (setq found-results r))
                              (lambda () nil))
         ;; Results must be sorted by distance (non-decreasing)
@@ -1291,7 +1267,44 @@ of keys under `string<' regardless of the input order."
         (should-error
          (nskk-search-with-cache/k "not-a-cache" index "かんじ" 'exact nil nil
                                    #'identity #'ignore)
-         :type 'wrong-type-argument)))))
+         :type 'wrong-type-argument))))
+
+  (nskk-context "with cached falsy result"
+    (nskk-it "calls on-found (not on-not-found) for cached empty-string result"
+      ;; Pre-populate the cache with "" (falsy in many contexts) under a key
+      ;; that matches what nskk--search-cache-key would generate.  Then call
+      ;; nskk-search-with-cache/k and verify the :found path fires, not :fail.
+      (nskk-with-prolog-entries ((cps-cache-falsy-empty-test "あ" ("亜")))
+        (let* ((index     (make-nskk-dict-index :predicate 'cps-cache-falsy-empty-test))
+               (cache     (nskk-cache-create :type 'lru :capacity 10))
+               ;; Compute the same key nskk-search-with-cache uses internally.
+               (cache-key (nskk--search-cache-key "あ" 'exact nil))
+               found-val
+               not-found-called)
+          ;; Store "" as a cached result — a falsy value that must trigger on-found.
+          (nskk-cache-put cache cache-key "")
+          (nskk-search-with-cache/k cache index "あ" 'exact nil nil
+                                    (lambda (v) (setq found-val v))
+                                    (lambda ()  (setq not-found-called t)))
+          (should-not not-found-called)
+          (should (string= found-val "")))))
+
+    (nskk-it "calls on-found (not on-not-found) for cached nil result"
+      ;; Same as above but the cached value is nil — the falsiest of falsy values.
+      ;; nskk-cache-get/k uses key-presence testing, not value truthiness, so
+      ;; on-found must still fire when nil is the stored value.
+      (nskk-with-prolog-entries ((cps-cache-falsy-nil-test "い" ("以")))
+        (let* ((index     (make-nskk-dict-index :predicate 'cps-cache-falsy-nil-test))
+               (cache     (nskk-cache-create :type 'lru :capacity 10))
+               (cache-key (nskk--search-cache-key "い" 'exact nil))
+               found-called
+               not-found-called)
+          (nskk-cache-put cache cache-key nil)
+          (nskk-search-with-cache/k cache index "い" 'exact nil nil
+                                    (lambda (_v) (setq found-called t))
+                                    (lambda ()   (setq not-found-called t)))
+          (should found-called)
+          (should-not not-found-called))))))
 
 ;; PBT-015 — nskk-search-with-cache/k calls exactly one callback per invocation
 (nskk-property-test search-cache-k-mutual-exclusion

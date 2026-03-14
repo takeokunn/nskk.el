@@ -69,49 +69,6 @@
     (random 11)))  ; Range: 0 to 10
 
 ;;;
-;;; Helper Functions
-;;;
-
-(defun nskk--pbt-state-valid-p (state)
-  "Check if STATE is a valid nskk-state structure."
-  (and (nskk-state-p state)
-       (nskk-state-valid-mode-p (nskk-state-mode state))
-       (stringp (nskk-state-input-buffer state))
-       (stringp (nskk-state-converted-buffer state))
-       (listp (nskk-state-candidates state))
-       (integerp (nskk-state-current-index state))
-       (>= (nskk-state-current-index state) 0)
-       (listp (nskk-state-undo-stack state))
-       (listp (nskk-state-redo-stack state))))
-
-(defun nskk--pbt-copy-state (state)
-  "Create a copy of STATE for comparison."
-  (when (nskk-state-p state)
-    (let ((copy (nskk-state-create (nskk-state-mode state))))
-      (nskk-state-set copy 'input-buffer (nskk-state-input-buffer state))
-      (nskk-state-set copy 'converted-buffer (nskk-state-converted-buffer state))
-      (nskk-state-set copy 'candidates (nskk-state-candidates state))
-      (nskk-state-set copy 'current-index (nskk-state-current-index state))
-      (nskk-state-set copy 'henkan-position (nskk-state-henkan-position state))
-      (nskk-state-set copy 'previous-mode (nskk-state-previous-mode state))
-      (nskk-state-set copy 'undo-stack (nskk-state-undo-stack state))
-      (nskk-state-set copy 'redo-stack (nskk-state-redo-stack state))
-      copy)))
-
-(defun nskk--pbt-states-equal-p (state1 state2 &rest ignore-slots)
-  "Check if STATE1 and STATE2 are equal, ignoring IGNORE-SLOTS."
-  (and (nskk-state-p state1)
-       (nskk-state-p state2)
-       (cl-loop for slot in '(mode input-buffer converted-buffer
-                               candidates current-index henkan-position
-                               previous-mode undo-stack redo-stack)
-                unless (memq slot ignore-slots)
-                do (unless (equal (nskk-state-get state1 slot)
-                                  (nskk-state-get state2 slot))
-                     (cl-return nil))
-                finally return t)))
-
-;;;
 ;;; State Structure Properties
 ;;;
 

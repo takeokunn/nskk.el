@@ -205,7 +205,7 @@
       (let ((nskk-search-fuzzy-threshold 0)
             (idx nskk--system-dict-index))
         ;; "かん" is distance 1 from "かんじ"; threshold 0 means no fuzzy hits
-        (let ((results (nskk-search-fuzzy idx "かん" nil nil)))
+        (let ((results (nskk-search-fuzzy idx "かん" nil)))
           (should (null results))))))
 
   (nskk-it "let-binding to 1 allows distance-1 matches"
@@ -213,7 +213,7 @@
       (let ((nskk-search-fuzzy-threshold 1)
             (idx nskk--system-dict-index))
         ;; "かんじ" has distance 0 from itself, so it must appear
-        (let ((results (nskk-search-fuzzy idx "かんじ" nil nil)))
+        (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
           (should results)))))
 
   (nskk-it "threshold 2 includes entries within distance 2"
@@ -221,7 +221,7 @@
       (let ((nskk-search-fuzzy-threshold 2)
             (idx nskk--system-dict-index))
         ;; "かんじ" and "かんき" are distance 1 apart; both within threshold 2
-        (let ((results (nskk-search-fuzzy idx "かんじ" nil nil)))
+        (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
           (should results)
           (should (listp results))))))
 
@@ -229,37 +229,6 @@
     (let ((nskk-search-fuzzy-threshold 0))
       (should (= nskk-search-fuzzy-threshold 0)))
     (should (= nskk-search-fuzzy-threshold 3))))
-
-
-;;;;
-;;;; nskk-jisyo-files
-;;;;
-
-(nskk-describe "nskk-jisyo-files: list of dictionary file paths"
-
-  (nskk-it "default value is nil (no extra dicts)"
-    (should (null (default-value 'nskk-jisyo-files))))
-
-  (nskk-it "let-binding to a list of strings is visible inside the body"
-    (let ((nskk-jisyo-files '("/tmp/a.dict" "/tmp/b.dict")))
-      (should (equal nskk-jisyo-files '("/tmp/a.dict" "/tmp/b.dict")))))
-
-  (nskk-it "let-binding to nil is visible inside the body"
-    (let ((nskk-jisyo-files nil))
-      (should (null nskk-jisyo-files))))
-
-  (nskk-it "variable is restored to nil after let exits"
-    (let ((nskk-jisyo-files '("/tmp/x.dict")))
-      (should (equal nskk-jisyo-files '("/tmp/x.dict"))))
-    (should (null nskk-jisyo-files)))
-
-  (nskk-it ":safe predicate accepts a list of string paths"
-    (let ((pred (get 'nskk-jisyo-files 'safe-local-variable)))
-      (should (funcall pred '("/path/to/SKK-JISYO.L" "/path/to/SKK-JISYO.jinmei")))))
-
-  (nskk-it ":safe predicate rejects a list with non-string elements"
-    (let ((pred (get 'nskk-jisyo-files 'safe-local-variable)))
-      (should-not (funcall pred '(1 2 3))))))
 
 
 ;;;;

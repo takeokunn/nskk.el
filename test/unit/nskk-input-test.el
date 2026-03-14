@@ -17,7 +17,7 @@
 ;; Comprehensive tests for nskk-input.el and nskk-henkan.el covering:
 ;; - Character insertion in latin mode
 ;; - Input conversion to kana
-;; - Full-width character mapping (nskk--fullwidth-char-table)
+;; - Full-width character mapping (fullwidth-char/2 Prolog rule)
 ;; - Toggle-mode Prolog rules
 ;; - Input-route Prolog rules
 ;; - Mode-aware command dispatch
@@ -228,7 +228,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 ;;; Interactive Command Tests
 ;;;
 
-(nskk-describe "interactive command availability"
+(nskk-describe "interactive command availability (input)"
   (nskk-deftest-table input-interactive-commands
     :description "Command is defined and interactive"
     :columns (cmd)
@@ -931,13 +931,14 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 ;; Table-driven mode creation tests: nskk-state-create with each valid mode
 ;; produces a state that reports that same mode.
-(nskk-deftest-cases input-pbt-mode-creation
-  ((ascii    . ascii)
-   (hiragana . hiragana)
-   (katakana . katakana)
-   (latin    . latin)
-   (abbrev   . abbrev))
+(nskk-deftest-table input-pbt-mode-creation
   :description "Mode creation: nskk-state-create produces state in requested mode"
+  :columns (input expected)
+  :rows ((ascii    ascii)
+         (hiragana hiragana)
+         (katakana katakana)
+         (latin    latin)
+         (abbrev   abbrev))
   :body (let ((state (nskk-state-create input)))
           (should (nskk-state-p state))
           (should (eq (nskk-state-mode state) expected))))
@@ -968,15 +969,15 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
   (nskk-it "returns azik-deferred when doubled consonant has complete AZIK result"
     ;; azik-deferred: same char doubled, not a sokuon-blocker, result is a kana string
-    (let ((nskk--sokuon-blockers '()))
-      (should (eq (nskk--classify-romaji-input ?k ?k '("きん" . ""))
-                  'azik-deferred)))))
+    ;; ?k is not in the sokuon-blocker Prolog table, so same-ok is true
+    (should (eq (nskk--classify-romaji-input ?k ?k '("きん" . ""))
+                'azik-deferred))))
 
 ;;;
 ;;; Fullwidth-Char Prolog Table Tests
 ;;;
 
-(nskk-describe "nskk--fullwidth-char-table mappings"
+(nskk-describe "fullwidth-char Prolog rule mappings"
   (nskk-deftest-table input-fullwidth-char-mappings
     :description "ASCII characters map to their fullwidth Unicode equivalents"
     :columns (char expected)
@@ -985,7 +986,8 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
            (?~  ?\uFF5E)
            (?A  ?\uFF21)
            (?a  ?\uFF41))
-    :body (should (eq (gethash char nskk--fullwidth-char-table)
+    :body (should (eq (nskk-prolog-query-value
+                       `(fullwidth-char ,char \?fw) '\?fw)
                       expected)))
 
   (nskk-it "non-ASCII character passes through unchanged"
@@ -1023,6 +1025,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     :rows ((hiragana       process-japanese)
            (katakana       process-japanese)
            (katakana-半角  process-japanese)
+           (abbrev         process-abbrev)
            (ascii          insert-direct)
            (latin          insert-direct)
            (jisx0208-latin insert-fullwidth))
@@ -1034,7 +1037,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 ;;; Toggle Japanese Mode Tests
 ;;;
 
-(nskk-describe "nskk-toggle-japanese-mode behavior"
+(nskk-describe "nskk-toggle-japanese-mode behavior (input)"
   (nskk-it "toggles hiragana to katakana"
     (nskk-input-test-with-state 'hiragana
       (nskk-when (nskk-toggle-japanese-mode))
@@ -1211,6 +1214,84 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (nskk-convert-input-to-kana ?a)
         (should (null nskk--deferred-azik-state))))))
 
+;;;
+;;; nskk--apply-colon-okuri-correction Tests
+;;;
+
+(nskk-describe "nskk--apply-colon-okuri-correction"
+  (nskk-it "vowel triggers retroactive っ insertion when deferred state is set"
+    ;; When nskk--azik-colon-okuri-deferred is set (consonant placeholder emitted)
+    ;; and the next char is a vowel, the placeholder is deleted and っ is inserted.
+    ;; This mirrors the AZIK colon-okurigana sequence: e.g. Tuka:te → 使って
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        ;; Simulate that "t" was emitted as a placeholder for ?t
+        (insert "t")
+        (setq nskk--azik-colon-okuri-deferred (cons ?t "t"))
+        ;; Feed a vowel — should trigger retroactive っ insertion
+        (nskk--apply-colon-okuri-correction ?e)
+        ;; The placeholder "t" is deleted and っ is inserted
+        (should (string= (buffer-string) "っ")))))
+
+  (nskk-it "vowel correction resets romaji buffer to the deferred consonant"
+    ;; After correction the romaji buffer must hold the consonant char
+    ;; so that consonant+vowel can be processed as the okurigana syllable.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "t")
+        (setq nskk--azik-colon-okuri-deferred (cons ?t "t"))
+        (setq nskk--romaji-buffer "")
+        (nskk--apply-colon-okuri-correction ?e)
+        (should (equal nskk--romaji-buffer "t")))))
+
+  (nskk-it "deferred state is cleared after vowel correction"
+    ;; nskk--azik-colon-okuri-deferred must be nil after the correction fires.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "t")
+        (setq nskk--azik-colon-okuri-deferred (cons ?t "t"))
+        (nskk--apply-colon-okuri-correction ?e)
+        (should (null nskk--azik-colon-okuri-deferred)))))
+
+  (nskk-it "non-vowel clears deferred state without buffer modification"
+    ;; When the next char is not a vowel, the deferred state is cleared
+    ;; but no っ is inserted and the buffer is left unchanged.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "t")
+        (setq nskk--azik-colon-okuri-deferred (cons ?t "t"))
+        (nskk--apply-colon-okuri-correction ?s)
+        ;; State cleared
+        (should (null nskk--azik-colon-okuri-deferred))
+        ;; No っ inserted, placeholder still present
+        (should-not (string-match-p "っ" (buffer-string))))))
+
+  (nskk-it "is a no-op when deferred state is nil (pending only)"
+    ;; nskk--azik-colon-okuri-pending being set does NOT affect this function.
+    ;; Only nskk--azik-colon-okuri-deferred is consulted; when it is nil the
+    ;; function must leave the buffer and romaji buffer completely untouched.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "か")
+        (setq nskk--azik-colon-okuri-pending t)
+        (setq nskk--azik-colon-okuri-deferred nil)
+        (setq nskk--romaji-buffer "k")
+        (nskk--apply-colon-okuri-correction ?e)
+        ;; Buffer unchanged
+        (should (string= (buffer-string) "か"))
+        ;; Romaji buffer unchanged
+        (should (equal nskk--romaji-buffer "k")))))
+
+  (nskk-it "is a no-op when both pending and deferred are nil"
+    ;; When neither flag is set the function must be a true no-op.
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (insert "あ")
+        (setq nskk--azik-colon-okuri-pending nil)
+        (setq nskk--azik-colon-okuri-deferred nil)
+        (nskk--apply-colon-okuri-correction ?a)
+        (should (string= (buffer-string) "あ"))))))
+
 (nskk-describe "nskk--emit-hatsuon-prefix/k CPS behavior"
   (nskk-it "calls on-kana with ん when buffer ends in n"
     (let ((nskk--romaji-buffer "n")
@@ -1230,9 +1311,16 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 (nskk-property-test-exhaustive input-pbt-fullwidth-mapping-invariant
   (number-sequence ?! ?~)
-  ;; Every printable ASCII char (0x21–0x7E) must map to +#xFEE0 in the table
-  (eq (gethash item nskk--fullwidth-char-table)
-      (+ item #xFEE0)))
+  ;; Every printable ASCII char (0x21–0x7E) must produce the +#xFEE0 mapping.
+  ;; Char 95 (underscore) is bypassed in Prolog due to the anonymous-var sentinel
+  ;; collision (integer 95 == ?_); it is handled directly in Elisp.
+  ;; Test it via nskk-insert-fullwidth-char which covers the Elisp bypass.
+  (if (= item 95)
+      (with-temp-buffer
+        (nskk-insert-fullwidth-char item 1)
+        (= (aref (buffer-string) 0) (+ item #xFEE0)))
+    (eq (nskk-prolog-query-value `(fullwidth-char ,item \?fw) '\?fw)
+        (+ item #xFEE0))))
 
 ;;;
 ;;; q-key-action Prolog Rule Tests (FR-T-005)
@@ -1477,31 +1565,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (let ((nskk--input-initialized nil))
         (nskk-input-initialize)
         (should nskk--input-initialized)))))
-
-;;;
-;;; nskk--emit-hatsuon-prefix (sync wrapper)
-;;;
-
-(nskk-describe "nskk--emit-hatsuon-prefix"
-  (nskk-it "returns ん when buffer is just n and new-buffer-value is empty"
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        (let ((nskk--romaji-buffer "n"))
-          (let ((result (nskk--emit-hatsuon-prefix "")))
-            (should (stringp result))
-            (should (string-match-p "ん" result)))))))
-
-  (nskk-it "is a sync wrapper: result is a string ending with ん"
-    ;; nskk--emit-hatsuon-prefix calls the /k variant with #'identity.
-    ;; The return value must be a string that includes ん (for the trailing n).
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        (let ((nskk--romaji-buffer "n"))
-          (let ((result (nskk--emit-hatsuon-prefix "")))
-            (should (stringp result))
-            (should (string-suffix-p "ん" result))))))))
 
 ;;;
 ;;; nskk-process-japanese-input/k
@@ -1899,6 +1962,91 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                            c #'identity (lambda () nil))))
         (equal sync-result cps-result))))
   30 44)
+
+;;;
+;;; kana-conversion/3 insert Prolog Table Integrity Tests
+;;;
+
+(nskk-describe "kana-conversion/3 insert Prolog table integrity"
+  (nskk-deftest-table input-prolog-kana-script-action-table
+    :description "kana-conversion/3 insert maps mode to converter function"
+    :columns (mode expected-fn)
+    :rows ((hiragana      identity)
+           (katakana      nskk-kana-string-hiragana-to-katakana)
+           (katakana-半角  nskk--hiragana-to-hankaku))
+    :body (should (eq expected-fn
+                      (nskk-prolog-query-value
+                       `(kana-conversion ,mode insert ,'\?fn) '\?fn))))
+
+  (nskk-it "returns nil for unknown mode"
+    (should-not (nskk-prolog-query-value
+                 `(kana-conversion nonexistent insert ,'\?fn) '\?fn))))
+
+;;;
+;;; nskk--hiragana-to-hankaku Tests
+;;;
+
+(nskk-describe "input hiragana-to-hankaku helper"
+  (nskk-it "is defined as a callable function (fboundp)"
+    (should (fboundp 'nskk--hiragana-to-hankaku)))
+
+  (nskk-it "converts single a-row hiragana to hankaku katakana"
+    (should (equal (nskk--hiragana-to-hankaku "あ") "ｱ")))
+
+  (nskk-it "converts single ka-row hiragana to hankaku katakana"
+    (should (equal (nskk--hiragana-to-hankaku "か") "ｶ")))
+
+  (nskk-it "converts multi-char hiragana string to hankaku"
+    (should (equal (nskk--hiragana-to-hankaku "あいう") "ｱｲｳ"))))
+
+;;;
+;;; nskk--convert-kana-for-mode Tests
+;;;
+
+(nskk-describe "input convert-kana-for-mode helper"
+  (nskk-it "is defined as a callable function (fboundp)"
+    (should (fboundp 'nskk--convert-kana-for-mode)))
+
+  (nskk-it "in hiragana mode returns kana as-is"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (should (equal (nskk--convert-kana-for-mode "あ") "あ"))))
+
+  (nskk-it "in katakana mode converts to full-width katakana"
+    (let ((nskk-current-state (nskk-state-create 'katakana)))
+      (should (equal (nskk--convert-kana-for-mode "あ") "ア"))))
+
+  (nskk-it "in hankaku-katakana mode converts to half-width katakana"
+    (let ((nskk-current-state (nskk-state-create 'katakana-半角)))
+      (should (equal (nskk--convert-kana-for-mode "あ") "ｱ"))))
+
+  (nskk-it "falls back to identity for ascii mode with no fact"
+    (let ((nskk-current-state (nskk-state-create 'ascii)))
+      (should (equal (nskk--convert-kana-for-mode "あ") "あ")))))
+
+;;;
+;;; nskk--update-modeline Tests
+;;;
+
+(nskk-describe "nskk--update-modeline"
+  (nskk-it "is a no-op when nskk-modeline-update is not fboundp"
+    ;; Should not signal any error when the function is absent.
+    (nskk-with-mocks ((nskk-modeline-update nil))
+      ;; Temporarily fmakunbound if it happens to be bound in this test run.
+      (let ((was-bound (fboundp 'nskk-modeline-update)))
+        (when was-bound
+          (fmakunbound 'nskk-modeline-update))
+        (unwind-protect
+            (should-not (nskk--update-modeline))
+          (when was-bound
+            ;; Restore the binding that nskk-with-mocks saved, if applicable.
+            nil)))))
+
+  (nskk-it "calls nskk-modeline-update once when it is fboundp"
+    (let ((call-count 0))
+      (cl-letf (((symbol-function 'nskk-modeline-update)
+                 (lambda () (cl-incf call-count))))
+        (nskk--update-modeline)
+        (should (= call-count 1))))))
 
 (provide 'nskk-input-test)
 

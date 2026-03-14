@@ -26,32 +26,12 @@
 (require 'nskk-test-macros)
 
 ;;;
-;;; Helper Macros
-;;;
-
-(defmacro nskk-integration-with-session (mode &rest body)
-  "Execute BODY in a full NSKK session initialized to MODE."
-  (declare (indent 1))
-  `(with-temp-buffer
-     (let ((nskk-current-state (nskk-state-create ,mode))
-           (nskk--conversion-overlay nil)
-           (nskk--romaji-buffer "")
-           (nskk-converter-auto-start-henkan t))
-       (nskk--initialize-romaji-table)
-       ,@body)))
-
-(defun nskk--integration-type-char (char)
-  "Simulate typing CHAR via nskk-self-insert."
-  (let ((last-command-event char))
-    (nskk-self-insert 1)))
-
-;;;
 ;;; Hiragana Input Lifecycle Tests
 ;;;
 
 (nskk-describe "hiragana input lifecycle"
 
-  (nskk-deftest-table hiragana-single-vowels
+  (nskk-deftest-table integration-hiragana-vowels
     :description "Single vowels produce correct hiragana"
     :columns (char expected)
     :rows ((?a "あ") (?i "い") (?u "う") (?e "え") (?o "お"))

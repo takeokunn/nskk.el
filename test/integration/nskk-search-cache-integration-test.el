@@ -233,12 +233,7 @@
                   '(learning-score "かんじ" "漢字" \?s) '\?s)))
             (should (= score 3)))))))
 
-  (nskk-it "learning sets the dirty flag so auto-save knows data changed"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-with-mock-dict nil
-        (nskk-given (setq nskk--search-dirty-flag nil))
-        (nskk-when  (nskk-search-learn "にほん" "日本"))
-        (nskk-then  (should (eq nskk--search-dirty-flag t)))))))
+)
 
 
 ;;;

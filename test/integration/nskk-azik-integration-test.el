@@ -24,28 +24,12 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
-(require 'nskk-integration-test)
-
-;;;
-;;; Helper Macros
-;;;
-
-(defmacro nskk-azik-with-session (mode &rest body)
-  "Like `nskk-integration-with-session' but with AZIK style loaded.
-Restores the standard romaji table after BODY completes so that
-subsequent non-AZIK tests are not affected."
-  (declare (indent 1))
-  `(nskk-integration-with-session ,mode
-     (nskk-converter-load-style 'azik)
-     (unwind-protect
-         (progn ,@body)
-       (nskk-converter-load-style 'standard))))
 
 ;;;
 ;;; Group 1: Special Keys
 ;;;
 
-(nskk-describe "AZIK special keys"
+(nskk-describe "AZIK special keys integration"
 
   (nskk-deftest-table azik-special-keys
     :description "Special keys produce expected kana in AZIK mode"
@@ -61,8 +45,8 @@ subsequent non-AZIK tests are not affected."
 
 (nskk-describe "AZIK hatsuon extensions"
 
-  (nskk-deftest-table azik-hatsuon-k-row
-    :description "k-row hatsuon extensions produce kana+ん"
+  (nskk-deftest-table azik-integration-hatsuon-k-row
+    :description "k-row hatsuon extensions produce kana+ん (integration session)"
     :columns (second-char expected)
     :rows ((?k "きん") (?z "かん") (?j "くん") (?d "けん") (?l "こん"))
     :body (nskk-azik-with-session 'hiragana

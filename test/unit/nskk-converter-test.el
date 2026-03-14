@@ -56,122 +56,128 @@
 
 
 (nskk-describe "romaji basic conversion"
-  (nskk-deftest-cases converter-vowels
-    (("a" . "あ")
-     ("i" . "い")
-     ("u" . "う")
-     ("e" . "え")
-     ("o" . "お"))
+  (nskk-deftest-table converter-vowels
     :description "Converts vowels to hiragana"
+    :columns (input expected)
+    :rows (("a" "あ")
+           ("i" "い")
+           ("u" "う")
+           ("e" "え")
+           ("o" "お"))
     :body (should (equal expected (nskk-convert-romaji input))))
 
-  (nskk-deftest-cases converter-consonant-vowel
-    (("ka"  . "か")
-     ("ki"  . "き")
-     ("ku"  . "く")
-     ("ke"  . "け")
-     ("ko"  . "こ")
-     ("sa"  . "さ")
-     ("shi" . "し")
-     ("ta"  . "た")
-     ("chi" . "ち")
-     ("tsu" . "つ")
-     ("na"  . "な")
-     ("ni"  . "に")
-     ("ha"  . "は")
-     ("hi"  . "ひ")
-     ("fu"  . "ふ")
-     ("he"  . "へ")
-     ("ho"  . "ほ")
-     ("ma"  . "ま")
-     ("mi"  . "み")
-     ("ya"  . "や")
-     ("yu"  . "ゆ")
-     ("yo"  . "よ")
-     ("ra"  . "ら")
-     ("ri"  . "り")
-     ("ru"  . "る")
-     ("re"  . "れ")
-     ("ro"  . "ろ")
-     ("wa"  . "わ")
-     ("wo"  . "を")
-     ("n"   . "ん"))
+  (nskk-deftest-table converter-consonant-vowel
     :description "Converts consonant + vowel pairs to hiragana"
+    :columns (input expected)
+    :rows (("ka"  "か")
+           ("ki"  "き")
+           ("ku"  "く")
+           ("ke"  "け")
+           ("ko"  "こ")
+           ("sa"  "さ")
+           ("shi" "し")
+           ("ta"  "た")
+           ("chi" "ち")
+           ("tsu" "つ")
+           ("na"  "な")
+           ("ni"  "に")
+           ("ha"  "は")
+           ("hi"  "ひ")
+           ("fu"  "ふ")
+           ("he"  "へ")
+           ("ho"  "ほ")
+           ("ma"  "ま")
+           ("mi"  "み")
+           ("ya"  "や")
+           ("yu"  "ゆ")
+           ("yo"  "よ")
+           ("ra"  "ら")
+           ("ri"  "り")
+           ("ru"  "る")
+           ("re"  "れ")
+           ("ro"  "ろ")
+           ("wa"  "わ")
+           ("wo"  "を")
+           ("n"   "ん"))
     :body (should (equal expected (nskk-convert-romaji input))))
 
-  (nskk-deftest-cases converter-voiced-consonants
-    (("ga" . "が")
-     ("gi" . "ぎ")
-     ("gu" . "ぐ")
-     ("ge" . "げ")
-     ("go" . "ご")
-     ("za" . "ざ")
-     ("ji" . "じ")
-     ("zu" . "ず")
-     ("da" . "だ")
-     ("du" . "づ")
-     ("ba" . "ば")
-     ("bi" . "び")
-     ("bu" . "ぶ")
-     ("be" . "べ")
-     ("bo" . "ぼ")
-     ("pa" . "ぱ")
-     ("pi" . "ぴ")
-     ("pu" . "ぷ")
-     ("pe" . "ぺ")
-     ("po" . "ぽ"))
+  (nskk-deftest-table converter-voiced-consonants
     :description "Converts voiced and semi-voiced consonants to hiragana"
+    :columns (input expected)
+    :rows (("ga" "が")
+           ("gi" "ぎ")
+           ("gu" "ぐ")
+           ("ge" "げ")
+           ("go" "ご")
+           ("za" "ざ")
+           ("ji" "じ")
+           ("zu" "ず")
+           ("da" "だ")
+           ("du" "づ")
+           ("ba" "ば")
+           ("bi" "び")
+           ("bu" "ぶ")
+           ("be" "べ")
+           ("bo" "ぼ")
+           ("pa" "ぱ")
+           ("pi" "ぴ")
+           ("pu" "ぷ")
+           ("pe" "ぺ")
+           ("po" "ぽ"))
     :body (should (equal expected (nskk-convert-romaji input))))
 
-  (nskk-deftest-cases converter-palatal-consonants
-    (("kya" . "きゃ")
-     ("kyu" . "きゅ")
-     ("kyo" . "きょ")
-     ("sha" . "しゃ")
-     ("shu" . "しゅ")
-     ("sho" . "しょ")
-     ("cha" . "ちゃ")
-     ("chu" . "ちゅ")
-     ("cho" . "ちょ")
-     ("nya" . "にゃ")
-     ("nyu" . "にゅ")
-     ("nyo" . "にょ")
-     ("hya" . "ひゃ")
-     ("hyu" . "ひゅ")
-     ("hyo" . "ひょ")
-     ("mya" . "みゃ")
-     ("myu" . "みゅ")
-     ("myo" . "みょ")
-     ("rya" . "りゃ")
-     ("ryu" . "りゅ")
-     ("ryo" . "りょ"))
+  (nskk-deftest-table converter-palatal-consonants
     :description "Converts palatal consonant combinations to hiragana"
+    :columns (input expected)
+    :rows (("kya" "きゃ")
+           ("kyu" "きゅ")
+           ("kyo" "きょ")
+           ("sha" "しゃ")
+           ("shu" "しゅ")
+           ("sho" "しょ")
+           ("cha" "ちゃ")
+           ("chu" "ちゅ")
+           ("cho" "ちょ")
+           ("nya" "にゃ")
+           ("nyu" "にゅ")
+           ("nyo" "にょ")
+           ("hya" "ひゃ")
+           ("hyu" "ひゅ")
+           ("hyo" "ひょ")
+           ("mya" "みゃ")
+           ("myu" "みゅ")
+           ("myo" "みょ")
+           ("rya" "りゃ")
+           ("ryu" "りゅ")
+           ("ryo" "りょ"))
     :body (should (equal expected (nskk-convert-romaji input))))
 
-  (nskk-deftest-cases converter-special-sequences
-    (("nn"   . "ん")
-     ("n'"   . "ん")
-     ("kka"  . "っか")
-     ("sshi" . "っし")
-     ("tte"  . "って")
-     ("ppu"  . "っぷ")
-     ("xtsu" . "っ")
-     ("ya"   . "や")
-     ("yu"   . "ゆ")
-     ("yo"   . "よ"))
+  (nskk-deftest-table converter-special-sequences
     :description "Converts special romaji sequences to hiragana"
+    :columns (input expected)
+    :rows (("nn"   "ん")
+           ("n'"   "ん")
+           ("kka"  "っか")
+           ("sshi" "っし")
+           ("tte"  "って")
+           ("ppu"  "っぷ")
+           ("xtsu" "っ")
+           ("ya"   "や")
+           ("yu"   "ゆ")
+           ("yo"   "よ"))
     :body (should (equal expected (nskk-convert-romaji input))))
 
-  (nskk-deftest-cases converter-complete-words
-    (("nihongo"    . "にほんご")
-     ("konnichiwa" . "こんにちわ")
-     ("sayounara"  . "さようなら")
-     ("arigatou"   . "ありがとう")
-     ("sakana"     . "さかな")
-     ("yama"       . "やま")
-     ("kawa"       . "かわ")
-     ("sora"       . "そら"))
+  (nskk-deftest-table converter-complete-words
     :description "Converts complete romaji words to hiragana"
+    :columns (input expected)
+    :rows (("nihongo"    "にほんご")
+           ("konnichiwa" "こんにちわ")
+           ("sayounara"  "さようなら")
+           ("arigatou"   "ありがとう")
+           ("sakana"     "さかな")
+           ("yama"       "やま")
+           ("kawa"       "かわ")
+           ("sora"       "そら"))
     :body (should (equal expected (nskk-convert-romaji input)))))
 
 (nskk-describe "romaji edge cases"
@@ -283,27 +289,29 @@
 
 
 (nskk-describe "ddskk punctuation rules"
-  (nskk-deftest-cases converter-basic-punctuation
-    (("."  . "。")
-     (","  . "、")
-     ("["  . "「")
-     ("]"  . "」"))
+  (nskk-deftest-table converter-basic-punctuation
     :description "Basic punctuation keys convert to Japanese punctuation"
+    :columns (input expected)
+    :rows (("."  "。")
+           (","  "、")
+           ("["  "「")
+           ("]"  "」"))
     :body (should (equal expected (nskk-convert-romaji input))))
 
-  (nskk-deftest-cases converter-z-prefix-symbols
-    (("z-" . "〜")
-     ("z." . "…")
-     ("z," . "‥")
-     ("z[" . "『")
-     ("z]" . "』")
-     ("z/" . "・")
-     ("zh" . "←")
-     ("zj" . "↓")
-     ("zk" . "↑")
-     ("zl" . "→")
-     ("z " . "　"))
+  (nskk-deftest-table converter-z-prefix-symbols
     :description "z-prefix key sequences convert to Japanese symbols"
+    :columns (input expected)
+    :rows (("z-" "〜")
+           ("z." "…")
+           ("z," "‥")
+           ("z[" "『")
+           ("z]" "』")
+           ("z/" "・")
+           ("zh" "←")
+           ("zj" "↓")
+           ("zk" "↑")
+           ("zl" "→")
+           ("z " "　"))
     :body (should (equal expected (nskk-convert-romaji input))))
 
   (nskk-it "katakana-passthrough: symbols produced by punctuation rules are not altered by hiragana-to-katakana conversion"
@@ -400,21 +408,23 @@
 
 ;; TR-007: Direct nskk-converter-lookup tests
 (nskk-describe "nskk-converter-lookup"
-  (nskk-deftest-cases lookup-complete-match
-    (("a"   . "あ")
-     ("ka"  . "か")
-     ("sha" . "しゃ")
-     ("tsu" . "つ")
-     ("-"   . "ー"))
+  (nskk-deftest-table lookup-complete-match
     :description "Returns kana string for complete romaji matches"
+    :columns (input expected)
+    :rows (("a"   "あ")
+           ("ka"  "か")
+           ("sha" "しゃ")
+           ("tsu" "つ")
+           ("-"   "ー"))
     :body (should (equal expected (nskk-converter-lookup input))))
 
-  (nskk-deftest-cases lookup-incomplete-prefix
-    (("k" . :incomplete)
-     ("s" . :incomplete)
-     ("sh" . :incomplete)
-     ("ky" . :incomplete))
+  (nskk-deftest-table lookup-incomplete-prefix
     :description "Returns :incomplete for known romaji prefixes"
+    :columns (input expected)
+    :rows (("k"  :incomplete)
+           ("s"  :incomplete)
+           ("sh" :incomplete)
+           ("ky" :incomplete))
     :body (should (eq expected (nskk-converter-lookup input))))
 
   (nskk-it "returns nil for unknown key"
@@ -470,9 +480,10 @@
         (lambda () (setq fail-called t)))
       (should fail-called)))
 
-  (nskk-deftest-cases convert/k-match-cases
-    (("sha" . "しゃ") ("tsu" . "つ") ("chi" . "ち") ("a" . "あ"))
+  (nskk-deftest-table convert/k-match-cases
     :description "nskk-converter-convert/k on-match path for known syllables"
+    :columns (input expected)
+    :rows (("sha" "しゃ") ("tsu" "つ") ("chi" "ち") ("a" "あ"))
     :body
     (let (got-kana)
       (nskk-converter-convert/k input
@@ -498,11 +509,12 @@
       (nskk-convert-romaji/k "" (lambda (kana) (setq result kana)) #'ignore)
       (should (equal result ""))))
 
-  (nskk-deftest-cases romaji/k-full-conversion
-    (("nihongo" . "にほんご")
-     ("konnichiwa" . "こんにちわ")
-     ("aiueo" . "あいうえお"))
+  (nskk-deftest-table romaji/k-full-conversion
     :description "nskk-convert-romaji/k produces same output as sync wrapper"
+    :columns (input expected)
+    :rows (("nihongo" "にほんご")
+           ("konnichiwa" "こんにちわ")
+           ("aiueo" "あいうえお"))
     :body
     (let (result)
       (nskk-convert-romaji/k input (lambda (kana) (setq result kana)) #'ignore)
@@ -729,9 +741,10 @@
       (should (equal got-kana "ん"))
       (should (equal got-rest "a"))))
 
-  (nskk-deftest-cases step-n-before-consonant
-    (("nb" . "b") ("nk" . "k") ("nm" . "m") ("np" . "p") ("nt" . "t"))
+  (nskk-deftest-table step-n-before-consonant
     :description "n before consonant calls on-kana with ん and consonant remainder"
+    :columns (input expected)
+    :rows (("nb" "b") ("nk" "k") ("nm" "m") ("np" "p") ("nt" "t"))
     :body
     (let (got-kana got-rest)
       (nskk--convert-step-n/k input
@@ -818,15 +831,16 @@
   50)
 
 ;; Table-driven cases: known romaji->kana mappings
-(nskk-deftest-cases conversion-pbt-known-romaji-kana
-  (("ka"  . "か")
-   ("ki"  . "き")
-   ("ku"  . "く")
-   ("sa"  . "さ")
-   ("shi" . "し")
-   ("tsu" . "つ")
-   ("chi" . "ち"))
+(nskk-deftest-table conversion-pbt-known-romaji-kana
   :description "Known romaji→kana mapping"
+  :columns (input expected)
+  :rows (("ka"  "か")
+         ("ki"  "き")
+         ("ku"  "く")
+         ("sa"  "さ")
+         ("shi" "し")
+         ("tsu" "つ")
+         ("chi" "ち"))
   :body (should (equal expected (nskk-convert-romaji input))))
 
 ;;;
@@ -1427,6 +1441,95 @@
         (lambda ()           (setq result2 (list :fail))))
       (equal result1 result2)))
   50 4003)
+
+;;; Prolog fact table initialization tests
+
+(nskk-describe "sokuon-blocker and hatsuon-blocker Prolog tables"
+  (nskk-it "Vowels a i u e o are in sokuon-blocker table after initialization."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(sokuon-blocker ,?a)))
+      (should (nskk-prolog-holds-p `(sokuon-blocker ,?i)))
+      (should (nskk-prolog-holds-p `(sokuon-blocker ,?u)))
+      (should (nskk-prolog-holds-p `(sokuon-blocker ,?e)))
+      (should (nskk-prolog-holds-p `(sokuon-blocker ,?o)))))
+
+  (nskk-it "Character n is in sokuon-blocker table after initialization."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(sokuon-blocker ,?n)))))
+
+  (nskk-it "Typical consonants k s t are NOT in sokuon-blocker (they trigger sokuon)."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should-not (nskk-prolog-holds-p `(sokuon-blocker ,?k)))
+      (should-not (nskk-prolog-holds-p `(sokuon-blocker ,?s)))
+      (should-not (nskk-prolog-holds-p `(sokuon-blocker ,?t)))))
+
+  (nskk-it "Vowels and y are in hatsuon-blocker table after initialization."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?a)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?i)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?u)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?e)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?o)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?y)))))
+
+  (nskk-it "Characters n and apostrophe are in hatsuon-blocker after initialization."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?n)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?\')))))
+
+  (nskk-it "Typical consonants k s t are NOT in hatsuon-blocker (they trigger ん)."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?k)))
+      (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?s)))
+      (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?t))))))
+
+(nskk-describe "nskk-convert-romaji/k via nskk-it-k"
+  (nskk-it-k "converts hiragana romaji via nskk-convert-romaji/k"
+    (nskk-convert-romaji/k "ka")
+    :found (result)
+      (should (stringp result))
+      (should (equal result "か"))
+    :not-found ()
+      (ert-fail "nskk-convert-romaji/k must always call on-found")))
+
+(nskk-describe "vowel-char and uppercase-vowel-char Prolog tables"
+  (nskk-it "Lowercase vowels a i u e o are in vowel-char table after initialization."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(vowel-char ,?a)))
+      (should (nskk-prolog-holds-p `(vowel-char ,?i)))
+      (should (nskk-prolog-holds-p `(vowel-char ,?u)))
+      (should (nskk-prolog-holds-p `(vowel-char ,?e)))
+      (should (nskk-prolog-holds-p `(vowel-char ,?o)))))
+
+  (nskk-it "Typical consonants k s t are NOT in vowel-char table."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should-not (nskk-prolog-holds-p `(vowel-char ,?k)))
+      (should-not (nskk-prolog-holds-p `(vowel-char ,?s)))
+      (should-not (nskk-prolog-holds-p `(vowel-char ,?t)))))
+
+  (nskk-it "Uppercase vowels A I U E O are in uppercase-vowel-char table after initialization."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(uppercase-vowel-char ,?A)))
+      (should (nskk-prolog-holds-p `(uppercase-vowel-char ,?I)))
+      (should (nskk-prolog-holds-p `(uppercase-vowel-char ,?U)))
+      (should (nskk-prolog-holds-p `(uppercase-vowel-char ,?E)))
+      (should (nskk-prolog-holds-p `(uppercase-vowel-char ,?O)))))
+
+  (nskk-it "Uppercase consonants K S T are NOT in uppercase-vowel-char table."
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should-not (nskk-prolog-holds-p `(uppercase-vowel-char ,?K)))
+      (should-not (nskk-prolog-holds-p `(uppercase-vowel-char ,?S)))
+      (should-not (nskk-prolog-holds-p `(uppercase-vowel-char ,?T))))))
 
 (provide 'nskk-converter-test)
 

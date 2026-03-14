@@ -393,8 +393,7 @@
 
 (nskk-describe "dict-initialize"
   (nskk-it "uses auto-detection when config is nil"
-    (let ((nskk-jisyo-files nil)
-          (nskk-dict-system-dictionary-files nil)
+    (let ((nskk-dict-system-dictionary-files nil)
           (nskk-dict-user-dictionary-file nil)
           (nskk--system-dict-index nil)
           (nskk--user-dict-index nil)
@@ -405,8 +404,7 @@
         (should detect-called))))
 
   (nskk-it "skips auto-detection when files are configured"
-    (let ((nskk-jisyo-files nil)
-          (nskk-dict-system-dictionary-files '("/some/path"))
+    (let ((nskk-dict-system-dictionary-files '("/some/path"))
           (nskk-dict-user-dictionary-file nil)
           (nskk--system-dict-index nil)
           (nskk--user-dict-index nil)
@@ -422,12 +420,13 @@
 ;;;
 
 ;; Table-driven dict entry creation
-(nskk-deftest-cases dict-pbt-entry-creation
-  (("かんじ"   . ("漢字" "感じ" "幹事"))
-   ("にほん"   . ("日本" "二本"))
-   ("さくら"   . ("桜"))
-   ("やま"     . ("山")))
+(nskk-deftest-table dict-pbt-entry-creation
   :description "Dict entry creation with known keys and candidates"
+  :columns (input expected)
+  :rows (("かんじ"   ("漢字" "感じ" "幹事"))
+         ("にほん"   ("日本" "二本"))
+         ("さくら"   ("桜"))
+         ("やま"     ("山")))
   :body (let ((entry (make-nskk-dict-entry :key input :candidates expected)))
           (should (nskk-dict-entry-p entry))
           (should (equal (nskk-dict-entry-key entry) input))
@@ -691,12 +690,13 @@
 
 ;;; Section 10: register-lookup invariants (table-driven PBT)
 
-(nskk-deftest-cases dict-register-lookup-invariant
-  (("てすと"   . "テスト")
-   ("かんじ"   . "漢字")
-   ("さくら"   . "桜")
-   ("にほんご" . "日本語"))
+(nskk-deftest-table dict-register-lookup-invariant
   :description "register-then-lookup invariant: registered word is always retrievable"
+  :columns (input expected)
+  :rows (("てすと"   "テスト")
+         ("かんじ"   "漢字")
+         ("さくら"   "桜")
+         ("にほんご" "日本語"))
   :body
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
@@ -707,10 +707,11 @@
         (should result)
         (should (member expected result))))))
 
-(nskk-deftest-cases dict-register-idempotency
-  (("てすと" . "テスト")
-   ("かんじ" . "漢字"))
+(nskk-deftest-table dict-register-idempotency
   :description "register-idempotency: registering same word twice is safe and appears exactly once"
+  :columns (input expected)
+  :rows (("てすと" "テスト")
+         ("かんじ" "漢字"))
   :body
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
@@ -927,7 +928,7 @@
         ;; Modified flag should remain unchanged
         (should nskk-dict-modified)))))
 
-(nskk-describe "nskk--dict-maybe-save"
+(nskk-describe "nskk--dict-maybe-save unit"
   (nskk-it "calls nskk-dict-save-user-dictionary when nskk-dict-modified is non-nil"
     (let ((save-called nil))
       (nskk-with-mocks ((nskk-dict-save-user-dictionary
@@ -1097,13 +1098,14 @@
 
 ;;; Section 13: Table-driven parse-line tests
 
-(nskk-deftest-cases dict-parse-line-table
-  (("かんじ /漢字/感じ/"  . "かんじ")
-   ("にほん /日本/"       . "にほん")
-   (";; comment"          . nil)
-   (""                    . nil)
-   ("no-slash-line"       . nil))
+(nskk-deftest-table dict-parse-line-table
   :description "dict-parse-line-table: key extraction from SKK dictionary lines"
+  :columns (input expected)
+  :rows (("かんじ /漢字/感じ/"  "かんじ")
+         ("にほん /日本/"       "にほん")
+         (";; comment"          nil)
+         (""                    nil)
+         ("no-slash-line"       nil))
   :body (let ((result (nskk-dict-parse-line input)))
           (if expected
               (should (equal (car result) expected))
@@ -1146,11 +1148,12 @@
 
 ;;; Section 16: register-word dedup and priority tests
 
-(nskk-deftest-cases dict-register-word-dedup
-  (("かんじ" . "漢字")
-   ("にほん" . "日本")
-   ("さくら" . "桜"))
+(nskk-deftest-table dict-register-word-dedup
   :description "register-word dedup: registering the same word twice produces exactly one occurrence"
+  :columns (input expected)
+  :rows (("かんじ" "漢字")
+         ("にほん" "日本")
+         ("さくら" "桜"))
   :body (nskk-prolog-test-with-isolated-db
           (let ((nskk--user-dict-index 'user)
                 (nskk-dict-modified nil))
@@ -1164,10 +1167,11 @@
                    (occurrences (cl-count expected candidates :test #'equal)))
               (should (= occurrences 1))))))
 
-(nskk-deftest-cases dict-register-word-priority
-  (("かんじ" . "漢字")
-   ("にほん" . "日本"))
+(nskk-deftest-table dict-register-word-priority
   :description "register-word priority: newly registered word appears first in candidates"
+  :columns (input expected)
+  :rows (("かんじ" "漢字")
+         ("にほん" "日本"))
   :body (nskk-prolog-test-with-isolated-db
           (let ((nskk--user-dict-index 'user)
                 (nskk-dict-modified nil))

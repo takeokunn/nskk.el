@@ -118,10 +118,6 @@ TRIGGER is ignored; a random valid mode is chosen."
          (nskk-state-valid-mode-p (nskk-state-mode state))))
   50)
 
-(ert-deftest nskk-state-machine-mode-transition-valid-description ()
-  "Any mode transition should result in a valid mode."
-  (message "Testing: mode-transition-valid property"))
-
 
 ;;;;
 ;;;; Property 2: Mode Transition Previous Mode
@@ -138,10 +134,6 @@ TRIGGER is ignored; a random valid mode is chosen."
          (nskk-state-valid-mode-p (nskk-state-mode state))
          (nskk-state-valid-mode-p (nskk-state-previous-mode state))))
   50)
-
-(ert-deftest nskk-state-machine-mode-transition-previous-mode-description ()
-  "After transition, previous-mode should be the old mode."
-  (message "Testing: mode-transition-previous-mode property"))
 
 
 ;;;;
@@ -162,10 +154,6 @@ TRIGGER is ignored; a random valid mode is chosen."
          (nskk-state-valid-mode-p (nskk-state-mode state))))
   50)
 
-(ert-deftest nskk-state-machine-mode-transition-clears-context-description ()
-  "Mode switch should clear conversion context."
-  (message "Testing: mode-transition-clears-context property"))
-
 
 ;;;;
 ;;;; Property 4: Mode Roundtrip Hiragana-Katakana
@@ -178,10 +166,6 @@ TRIGGER is ignored; a random valid mode is chosen."
     (and (nskk-state-p state)
          (eq (nskk-state-mode state) 'hiragana)))
   50)
-
-(ert-deftest nskk-state-machine-mode-roundtrip-hiragana-katakana-description ()
-  "hiragana -> katakana -> hiragana returns to original mode."
-  (message "Testing: mode-roundtrip-hiragana-katakana property"))
 
 
 ;;;;
@@ -196,44 +180,40 @@ TRIGGER is ignored; a random valid mode is chosen."
          (eq (nskk-state-mode state) 'hiragana)))
   50)
 
-(ert-deftest nskk-state-machine-mode-roundtrip-hiragana-latin-description ()
-  "hiragana -> latin -> hiragana returns to original mode."
-  (message "Testing: mode-roundtrip-hiragana-latin property"))
-
 
 ;;;;
 ;;;; Property 6: Invalid Mode Rejected
 ;;;;
 
-(ert-deftest nskk-state-machine-invalid-mode-rejected ()
-  "Invalid mode symbols should be rejected by nskk-state-set."
-  (let ((runs 50)
-        (failures nil)
-        (invalid-modes '(invalid-mode nil 123 "hiragana" :keyword
-                         random-symbol another-invalid)))
-    (dotimes (_ runs)
-      (let ((state (nskk-state-create 'hiragana))
-            (invalid-mode (nskk--pbt-random-choice invalid-modes)))
-        ;; Try to set an invalid mode - should raise error
-        (condition-case err
-            (nskk-state-set state 'mode invalid-mode)
-          (error
-           ;; Error expected - check that mode remained unchanged
-           (unless (eq (nskk-state-mode state) 'hiragana)
+(nskk-describe "mode validation"
+  (nskk-it "invalid mode symbols are rejected by nskk-state-set"
+    (let ((runs 50)
+          (failures nil)
+          (invalid-modes '(invalid-mode nil 123 "hiragana" :keyword
+                           random-symbol another-invalid)))
+      (dotimes (_ runs)
+        (let ((state (nskk-state-create 'hiragana))
+              (invalid-mode (nskk--pbt-random-choice invalid-modes)))
+          ;; Try to set an invalid mode - should raise error
+          (condition-case err
+              (nskk-state-set state 'mode invalid-mode)
+            (error
+             ;; Error expected - check that mode remained unchanged
+             (unless (eq (nskk-state-mode state) 'hiragana)
+               (push (list :invalid-mode invalid-mode
+                           :error err
+                           :actual-mode (nskk-state-mode state))
+                     failures)))
+            (:no-error
+             ;; No error raised - this is a failure
              (push (list :invalid-mode invalid-mode
-                         :error err
+                         :error "No error raised"
                          :actual-mode (nskk-state-mode state))
-                   failures)))
-          (:no-error
-           ;; No error raised - this is a failure
-           (push (list :invalid-mode invalid-mode
-                       :error "No error raised"
-                       :actual-mode (nskk-state-mode state))
-                 failures)))))
-    (when failures
-      (ert-fail (format "Invalid mode rejection failed for %d cases:\n%S"
-                        (length failures)
-                        (take 5 failures))))))
+                   failures)))))
+      (when failures
+        (ert-fail (format "Invalid mode rejection failed for %d cases:\n%S"
+                          (length failures)
+                          (take 5 failures)))))))
 
 
 ;;;;
@@ -250,10 +230,6 @@ TRIGGER is ignored; a random valid mode is chosen."
     (and (nskk-state-p state)
          (nskk-state-valid-mode-p (nskk-state-mode state))))
   50)
-
-(ert-deftest nskk-state-machine-mode-cycle-through-all-description ()
-  "Cycling through all modes should always result in valid modes."
-  (message "Testing: mode-cycle-through-all property"))
 
 
 ;;;;
@@ -286,40 +262,38 @@ TRIGGER is ignored; a random valid mode is chosen."
              (listp (nskk-state-metadata state)))))
   50)
 
-(ert-deftest nskk-state-machine-mode-transition-preserves-integrity-description ()
-  "Mode transitions should preserve state structure integrity."
-  (message "Testing: mode-transition-preserves-integrity property"))
-
 
 ;;;;
 ;;;; Negative Test Cases
 ;;;;
 
-(ert-deftest nskk-state-machine-negative-nil-state ()
-  "Operations on nil state should not crash."
-  (should-not (nskk-state-set nil 'mode 'hiragana))
-  (should-not (nskk-state-get nil 'mode))
-  (should-not (nskk-state-transition nil 'ascii 'hiragana)))
+(nskk-describe "mode negative cases"
+  (nskk-it "operations on nil state should not crash"
+    (nskk-then
+      (should-not (nskk-state-set nil 'mode 'hiragana))
+      (should-not (nskk-state-get nil 'mode))
+      (should-not (nskk-state-transition nil 'ascii 'hiragana))))
 
-(ert-deftest nskk-state-machine-negative-transition-mismatch ()
-  "Transition with wrong from-mode should fail."
-  (let ((state (nskk-state-create 'hiragana)))
-    (should-not (nskk-state-transition state 'katakana 'latin))
-    ;; Mode should remain unchanged
-    (should (eq (nskk-state-mode state) 'hiragana))))
+  (nskk-it "transition with wrong from-mode should fail"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-then
+        (should-not (nskk-state-transition state 'katakana 'latin))
+        ;; Mode should remain unchanged
+        (should (eq (nskk-state-mode state) 'hiragana)))))
 
-(ert-deftest nskk-state-machine-negative-rapid-mode-changes ()
-  "Rapid mode changes should not cause state corruption."
-  (let ((state (nskk-state-create 'ascii))
-        (modes '(hiragana katakana latin abbrev ascii)))
-    ;; Rapidly switch modes
-    (dotimes (_ 100)
-      (dolist (mode modes)
-        (nskk-state-set state 'mode mode)
-        (should (nskk-state-valid-mode-p (nskk-state-mode state)))))
-    ;; Final state should still be valid
-    (should (nskk-state-p state))
-    (should (nskk-state-valid-mode-p (nskk-state-mode state)))))
+  (nskk-it "rapid mode changes should not cause state corruption"
+    (let ((state (nskk-state-create 'ascii))
+          (modes '(hiragana katakana latin abbrev ascii)))
+      (nskk-when
+        ;; Rapidly switch modes
+        (dotimes (_ 100)
+          (dolist (mode modes)
+            (nskk-state-set state 'mode mode)
+            (should (nskk-state-valid-mode-p (nskk-state-mode state))))))
+      (nskk-then
+        ;; Final state should still be valid
+        (should (nskk-state-p state))
+        (should (nskk-state-valid-mode-p (nskk-state-mode state)))))))
 
 
 ;;;; Enhanced PBT Coverage
