@@ -1127,14 +1127,16 @@
         (should (member "kz" all-romajis))
         (should (member "kq" all-romajis)))))
 
-  (nskk-it "azik-rule/2 contains a substantial number of facts (at least 320)"
+  (nskk-it "azik-rule/2 contains a substantial number of facts (at least 534)"
     (nskk-with-azik-style
       (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
         (should results)
         ;; 2 special + 10 compat + 19*9 extensions + 18*14 youon + 8 same-finger
         ;; + 28 shortcuts + 5 foreign + 5 foreign-hatsuon + 12 foreign-dv
-        ;; = at least 470 rules
-        (should (>= (length results) 470)))))
+        ;; + 1 jp106 + 16 n-suffix-hatsuon + 9 v-suffix + 3 x-suffix
+        ;; + 19 word-shortcuts-extra + 9 xx-prefix + 8 misc
+        ;; = at least 534 rules
+        (should (>= (length results) 534)))))
 
   (nskk-it "switching to standard style resets the hot-path hash cache"
     (nskk-with-azik-style

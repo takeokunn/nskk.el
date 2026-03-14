@@ -847,7 +847,10 @@ Pre-computed boolean inputs for doubled-context/6:
          (last-is-n        (eql last-buf-char ?n))
          (char-is-n        (eql char ?n))
          (same-ok          (and (eql last-buf-char char)
-                                (not (nskk-prolog-holds-p `(sokuon-blocker ,char)))))
+                                 (not (nskk-prolog-holds-p `(sokuon-blocker ,char)))
+                                 (not (eq (nskk-converter-lookup
+                                           (string last-buf-char char))
+                                          :incomplete))))
          (n-ok             (and (not (nskk-prolog-holds-p `(hatsuon-blocker ,char)))
                                 (not (eq (nskk-converter-lookup (string ?n char)) :incomplete))))
          (doubled-eligible (or (nskk-prolog-query-value

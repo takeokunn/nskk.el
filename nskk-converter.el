@@ -270,13 +270,14 @@ REMAINING is the unconsumed romaji string; must have length >= 2 for the
 doubling check to succeed (length < 2 always returns nil).
 Sokuon occurs when C0 is an ASCII consonant not in the `sokuon-blocker' table,
 C0 equals the second character of REMAINING, and the two-character pair is
-not a complete romaji rule (allowing AZIK entries like \"kk\" -> \"きん\" to
-override sokuon via `nskk-converter-lookup')."
+neither a complete romaji rule nor a prefix of a longer rule (allowing
+AZIK entries like \"kk\" -> \"きん\" and prefixes like \"xx\" -> :incomplete
+to override sokuon via `nskk-converter-lookup')."
   (and (> (length remaining) 1)
        (<= c0 nskk--romaji-char-max)
        (= c0 (aref remaining 1))
        (not (nskk-prolog-holds-p `(sokuon-blocker ,c0)))
-       (not (stringp (nskk-converter-lookup (substring remaining 0 2))))))
+       (not (nskk-converter-lookup (substring remaining 0 2)))))
 
 (defun/3k nskk--convert-step-n (remaining)
     (on-kana on-partial on-fail)
