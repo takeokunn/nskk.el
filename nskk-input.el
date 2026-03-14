@@ -155,10 +155,10 @@ prefix (e.g. \"sh\") and KANA-STRING is the tentatively emitted kana
 Satisfies Sh→すう (AZIK double-vowel) while preserving sha→しゃ (standard romaji).")
 
 (defun nskk--azik-colon-key-p (char)
-  "Return non-nil when CHAR is the AZIK colon-okurigana trigger key.
-On US101 keyboards, the trigger is `:' (Shift+;).
-On JP106 keyboards, the trigger is `+' (Shift+;) because `:' is a
-separate key.  Both characters are accepted in AZIK mode."
+  "Return non-nil when CHAR arms the AZIK colon-okurigana pending state.
+The trigger is `:' (Shift+; on US101) on all keyboard types.
+On JP106 keyboards, `+' (Shift+;) triggers immediate sokuon okurigana
+via the `plus-jp106' char-type path and does not arm colon-okurigana."
   (nskk-prolog-holds-p `(azik-colon-trigger-char ,char)))
 
 (defvar-local nskk--azik-colon-okuri-pending nil

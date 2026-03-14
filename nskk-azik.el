@@ -392,12 +392,12 @@ Performs two passes using azik-key-extends/2 facts:
   (us101 "["))
 
 ;; azik-colon-trigger-char/1: (CHAR-CODE)
-;; Characters that trigger colon-okurigana in AZIK mode.
-;; ?: (colon) is the primary trigger on US101 keyboards (Shift+;).
-;; ?+ (plus) is the trigger on JP106 keyboards (Shift+; on JP layout).
+;; Characters that arm the colon-okurigana pending state in AZIK mode.
+;; ?: (colon) is the trigger on all keyboards (Shift+; on US101).
+;; ?+ (plus) on JP106 is handled via the `plus-jp106' char-type path
+;; (immediate sokuon okurigana), NOT via this predicate.
 (nskk-prolog-define-fact-table azik-colon-trigger-char (:arity 1 :index :hash)
-  (?:)
-  (?+))
+  (?:))
 
 (defun nskk--setup-azik-toggle-key ()
   "Set up AZIK toggle key binding based on keyboard type.

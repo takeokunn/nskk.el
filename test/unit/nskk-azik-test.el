@@ -2222,9 +2222,9 @@
   (nskk-it "should register colon as a trigger char"
     (nskk-with-azik-style
       (should (nskk-prolog-holds-p '(azik-colon-trigger-char ?:)))))
-  (nskk-it "should register plus as a trigger char"
+  (nskk-it "should NOT register plus (handled via plus-jp106 path, not colon-arm)"
     (nskk-with-azik-style
-      (should (nskk-prolog-holds-p '(azik-colon-trigger-char ?+)))))
+      (should-not (nskk-prolog-holds-p '(azik-colon-trigger-char ?+)))))
   (nskk-it "should NOT register other chars like a"
     (nskk-with-azik-style
       (should-not (nskk-prolog-holds-p '(azik-colon-trigger-char ?a))))))
