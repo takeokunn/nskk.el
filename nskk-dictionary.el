@@ -71,6 +71,9 @@
 (require 'nskk-cps-macros)
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
+;; Optional: annotation support
+(declare-function nskk-annotation-initialize "nskk-annotation")
+(declare-function nskk--annotation-load-from-candidates "nskk-annotation")
 
 (defgroup nskk-dictionary nil
   "Dictionary and search settings."
@@ -117,7 +120,8 @@ and common system locations."
 ;; These map source symbols to their Prolog predicate names
 (nskk-prolog-define-fact-table dict-source (:arity 2 :index :hash)
   (user user-dict-entry)
-  (system system-dict-entry))
+  (system system-dict-entry)
+  (kakutei kakutei-dict-entry))
 
 ;; Bridge rule: unified lookup across all dictionary sources
 ;; User dictionary has priority (first clause wins on first solution)
@@ -213,7 +217,9 @@ Returns entry count (0 if no readable files or no entries found)."
 
 (defun nskk-dict-parse-line (line)
   "Parse a single SKK dictionary LINE.
-Returns (key . candidates-list) or nil for comments/invalid lines."
+Returns (key . candidates-list) or nil for comments/invalid lines.
+When `nskk-show-annotation' is non-nil and nskk-annotation is loaded,
+also registers any candidate annotations found in the line."
   ;; Skip comment lines and empty lines
   (when (and (stringp line)
              (> (length line) 0)
@@ -226,6 +232,14 @@ Returns (key . candidates-list) or nil for comments/invalid lines."
         (let* ((key (substring line 0 space-pos))
                (candidates-str (substring line (1+ space-pos)))
                (candidates (nskk--dict-parse-candidates candidates-str)))
+          ;; Register annotations when annotation support is enabled
+          (when (and candidates
+                     (boundp 'nskk-show-annotation)
+                     nskk-show-annotation
+                     (fboundp 'nskk--annotation-load-from-candidates))
+            (let ((with-annots (nskk--dict-parse-candidates-with-annotations
+                                candidates-str)))
+              (nskk--annotation-load-from-candidates key with-annots)))
           (when candidates
             (cons key candidates)))))))
 
@@ -238,6 +252,25 @@ Returns (key . candidates-list) or nil for comments/invalid lines."
                 (let ((semi (string-search ";" c)))
                   (if semi (substring c 0 semi) c)))
               parts))))
+
+(defun nskk--dict-split-candidate-annotation (candidate-str)
+  "Split CANDIDATE-STR into (candidate . annotation) cons cell.
+If CANDIDATE-STR contains ';', returns (text-before-semi . text-after-semi).
+Otherwise returns (CANDIDATE-STR . nil)."
+  (let ((semi (string-search ";" candidate-str)))
+    (if semi
+        (cons (substring candidate-str 0 semi)
+              (substring candidate-str (1+ semi)))
+      (cons candidate-str nil))))
+
+(defun nskk--dict-parse-candidates-with-annotations (str)
+  "Parse candidates from STR, preserving annotations.
+Returns a list of (candidate . annotation-or-nil) cons cells.
+For \"/漢字;a kanji/感じ/\", returns:
+  ((\"漢字\" . \"a kanji\") (\"感じ\" . nil))"
+  (when (and (stringp str) (> (length str) 1) (= (aref str 0) ?/))
+    (let ((parts (split-string (substring str 1) "/" t)))
+      (mapcar #'nskk--dict-split-candidate-annotation parts))))
 
 ;;; Dictionary Loading
 
@@ -458,6 +491,8 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
       (let ((nskk-dict-system-dictionary-files dict-files))
         (setq nskk--system-dict-index (nskk-dict-load-system-dictionaries)))))
   (setq nskk--user-dict-index (nskk-dict-load-user-dictionary))
+  ;; Load confirmed dictionary if configured
+  (nskk-dict-load-kakutei-dictionary)
   ;; Mark initialization complete (whether or not system dict was found).
   ;; This prevents repeated re-initialization across buffer enables.
   (nskk-prolog-assert '((dict-initialized)))
@@ -575,6 +610,51 @@ Called from `kill-emacs-hook' to persist registrations on Emacs exit."
         (nskk-dict-save-user-dictionary)
       (error (message "NSKK: Failed to save user dictionary: %s"
                       (error-message-string err))))))
+
+;;;; Confirmed Dictionary (確定辞書) Support
+
+(defvar nskk--kakutei-dict-loaded nil
+  "Non-nil when the confirmed (kakutei) dictionary has been loaded.")
+
+(defun nskk-dict-load-kakutei-dictionary ()
+  "Load the confirmed dictionary from `nskk-kakutei-jisyo' if configured.
+The confirmed dictionary contains entries that are committed immediately
+without candidate selection.  Entries are loaded as \\='kakutei-dict-entry/2
+Prolog facts with trie indexing.
+Returns \\='kakutei if loaded, nil otherwise."
+  (when (and (boundp 'nskk-kakutei-jisyo)
+             nskk-kakutei-jisyo
+             (file-readable-p nskk-kakutei-jisyo))
+    (message "NSKK: Loading kakutei dictionary from %s" nskk-kakutei-jisyo)
+    (nskk-prolog-retract-all 'kakutei-dict-entry 2)
+    (nskk-prolog-set-index 'kakutei-dict-entry 2 :trie)
+    (let ((entries (nskk--dict-parse-file-to-entries nskk-kakutei-jisyo)))
+      (when entries
+        (dolist (entry entries)
+          (nskk-prolog-assert (list (list 'kakutei-dict-entry
+                                         (car entry) (cdr entry)))))
+        (setq nskk--kakutei-dict-loaded t)
+        'kakutei))))
+
+(defun/k nskk-dict-lookup-kakutei (reading)
+  "Look up READING in the confirmed dictionary.
+Returns the single candidate string when a unique match is found.
+Calls on-not-found when the kakutei dictionary is not loaded or has
+no entry, or when the entry has multiple candidates (not a confirmed entry).
+Entries with exactly one candidate are treated as confirmed; others are
+treated as regular entries (returned via on-not-found to allow normal
+candidate selection to proceed)."
+  (if (and nskk--kakutei-dict-loaded (stringp reading))
+      (let ((result (nskk-prolog-query-value
+                     `(kakutei-dict-entry ,reading \?c) '\?c)))
+        (if (and result
+                 (listp result)
+                 (= (length result) 1))
+            ;; Single candidate: confirm immediately
+            (succeed (car result))
+          ;; Multiple candidates or no entry: fall through
+          (fail)))
+    (fail)))
 
 (provide 'nskk-dictionary)
 
