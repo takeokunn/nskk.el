@@ -146,7 +146,7 @@ See also `nskk--deferred-vowel-shadow-state' for the vowel-shadow variant.")
   "Non-nil when a vowel-shadowed AZIK rule was tentatively emitted.
 Value is a cons (ROMAJI-STRING . KANA-STRING).  ROMAJI-STRING is the romaji
 prefix (e.g. \"sh\") and KANA-STRING is the tentatively emitted kana
-(e.g. \"すう\").  On the next input:
+\(e.g. \"すう\").  On the next input:
   - Vowel: delete tentative kana, reset romaji buffer to ROMAJI-STRING, then
     process ROMAJI-STRING+vowel as the longer standard rule
     (e.g. \"sha\"→\"しゃ\").

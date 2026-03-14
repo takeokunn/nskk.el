@@ -120,7 +120,7 @@ The first %s is the timestamp, the second %s is the message text.")
 (defun nskk--debug-format/k (format-string args on-found on-not-found)
   "Format FORMAT-STRING with ARGS list.
 Calls ON-FOUND with the formatted string on success.
-Calls ON-NOT-FOUND on format error, after issuing a `display-warning'. [CPS]"
+Calls ON-NOT-FOUND on format error, after issuing a `display-warning'.  [CPS]"
   (condition-case err
       (funcall on-found (apply #'format format-string args))
     (error

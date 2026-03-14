@@ -324,11 +324,12 @@ in a flat cond."
      (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
 
 (defun nskk--convert-loop/k (remaining parts on-found on-not-found)
-  "Tail-recursive conversion loop. [CPS]
+  "Run the tail-recursive conversion loop in CPS style.
 REMAINING is the unconsumed input, PARTS is accumulated kana (reversed).
 Always calls ON-FOUND with the assembled kana string.
 Hand-written explicit pair because ON-FOUND must be passed as a value
-to the recursive call (defun/k only rewrites succeed/fail call forms)."
+to the recursive call (defun/k only rewrites succeed/fail call forms).
+ON-NOT-FOUND is forwarded unchanged through recursion."
   (if (or (null remaining) (zerop (length remaining)))
       (funcall on-found (apply #'concat (nreverse parts)))
     (nskk--convert-step/k remaining
@@ -345,7 +346,7 @@ to the recursive call (defun/k only rewrites succeed/fail call forms)."
                  (apply #'concat (nreverse (cons remaining parts))))))))
 
 (defun nskk--convert-loop (remaining parts)
-  "Tail-recursive conversion loop (sync wrapper)."
+  "Tail-recursive conversion loop for REMAINING and PARTS (sync wrapper)."
   (nskk--convert-loop/k remaining parts #'identity #'ignore))
 (put 'nskk--convert-loop/k 'nskk--cps-continuation-pattern :found-not-found)
 

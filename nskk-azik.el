@@ -198,7 +198,7 @@ Hatsuon and double vowel extensions are generated for all positions."
     ("c" "ちゃ" "ち" "ちゅ" "ちぇ" "ちょ"))
   "Consonant rows for AZIK hatsuon + double-vowel extension rules.
 Each entry is (PREFIX A I U E O) or (PREFIX A I U E O DV-O) or
-(PREFIX A I U E O DV-O DV-P-STR) where DV-O overrides O for the double-vowel
+\(PREFIX A I U E O DV-O DV-P-STR) where DV-O overrides O for the double-vowel
 rule, and DV-P-STR overrides the p-suffix output (used for foreign loanword rows
 that use ー instead of O+う, e.g., fp→ふぉー instead of ふぉう).
 

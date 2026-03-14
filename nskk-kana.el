@@ -480,7 +480,7 @@ Idempotent: subsequent calls are no-ops."
 
 (defun nskk-kana-normalize-for-lookup (text mode)
   "Normalize MODE-script TEXT to hiragana for dictionary lookup.
-Uses the `kana-conversion/3' Prolog fact table for mode dispatch."
+Uses the `kana-conversion/3' Prolog fact table for MODE dispatch."
   (nskk-kana-initialize)
   (funcall (or (nskk-prolog-query-value
                 `(kana-conversion ,mode normalize \?fn) '\?fn)

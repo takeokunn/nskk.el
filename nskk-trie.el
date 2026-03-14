@@ -166,6 +166,7 @@ Returns t if deleted, nil if not present."
 
 (defun nskk--trie-collect-all (node prefix limit)
   "Collect all (key . value) pairs reachable from NODE with PREFIX.
+LIMIT is the maximum number of pairs to collect, or nil for no limit.
 Uses an iterative DFS with an explicit stack."
   (let ((stack (list (cons node prefix)))
         (results nil)

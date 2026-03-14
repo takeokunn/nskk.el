@@ -172,7 +172,7 @@ Distinguished from nil, which is a valid empty substitution.")
 ;; Explicit pair: sync wrapper preserves :fail sentinel for callers that
 ;; check (nskk--prolog-fail-p result).  Standard defun/k would return nil.
 (defun nskk-prolog-unify/k (term1 term2 subst on-found on-not-found)
-  "Unify TERM1 and TERM2 under substitution SUBST. [CPS]
+  "Unify TERM1 and TERM2 under substitution SUBST in CPS style.
 ON-FOUND receives the extended substitution on success.
 ON-NOT-FOUND is called with no arguments on failure."
   (let ((t1 (nskk-prolog-walk term1 subst))
@@ -408,7 +408,10 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
    (t                                      :normal)))
 
 (defun nskk--prolog-handle-cut (_goal rest subst k)
-  "Handle cut (!): commit to current clause, abort remaining alternatives."
+  "Handle cut (!): commit to current clause, abort remaining alternatives.
+REST is the remaining goals after cut.
+SUBST is the current substitution.
+K is called for each successful result."
   (let ((found nil))
     (catch 'nskk-prolog-cut
       (nskk--prolog-prove-internal rest subst
@@ -417,7 +420,10 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
       (throw 'nskk-prolog-cut nil))))
 
 (defun nskk--prolog-handle-not (goal rest subst k)
-  "Handle negation-as-failure: succeed iff the negated goal has no solution."
+  "Handle negation-as-failure: succeed iff the negated GOAL has no solution.
+REST is proved when GOAL fails.
+SUBST is used while proving GOAL and REST.
+K is called for each successful result."
   (unless (catch 'nskk-prolog-naf
             (nskk--prolog-prove-internal
              (list (cadr goal)) subst
@@ -426,19 +432,28 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
     (nskk--prolog-prove-internal rest subst k)))
 
 (defun nskk--prolog-handle-assertz (goal rest subst k)
-  "Handle assertz: dynamically add a new fact/rule to the database."
+  "Handle assertz GOAL: dynamically add a new fact/rule to the database.
+REST is then proved with the updated database.
+SUBST is applied to GOAL before assertion.
+K is called for each successful result."
   (nskk-prolog-assert
    (list (nskk-prolog-substitute (cadr goal) subst)))
   (nskk--prolog-prove-internal rest subst k))
 
 (defun nskk--prolog-handle-retract (goal rest subst k)
-  "Handle retract: remove the first matching fact/rule from the database."
+  "Handle retract GOAL: remove the first matching fact/rule from the database.
+REST is proved only when a matching clause is removed.
+SUBST is applied to GOAL before retraction.
+K is called for each successful result."
   (when (nskk-prolog-retract
          (nskk-prolog-substitute (cadr goal) subst))
     (nskk--prolog-prove-internal rest subst k)))
 
 (defun nskk--prolog-handle-arith (goal rest subst k)
-  "Handle arithmetic goals: is/2, =:=/2, and comparison operators."
+  "Handle arithmetic GOAL: is/2, =:=/2, and comparison operators.
+REST is proved when GOAL succeeds.
+SUBST is used for expression evaluation and unification.
+K is called for each successful result."
   (pcase (car goal)
     ('is
      (nskk-prolog-unify/k
@@ -478,7 +493,11 @@ from being tried by the caller."
      #'ignore)))
 
 (defun nskk--prolog-handle-normal (goal rest subst k)
-  "Handle normal clause resolution: variable rename, unify head, prove body."
+  "Handle normal clause resolution for GOAL.
+Performs variable rename, unify head, and prove body.
+REST is appended after each selected clause body.
+SUBST is the incoming substitution for clause resolution.
+K is called for each successful result."
   (let* ((predicate (car goal))
          (args (cdr goal))
          (clauses (nskk--prolog-get-clauses predicate args subst)))
@@ -498,7 +517,9 @@ from being tried by the caller."
 Built once at load time; O(1) dispatch via `nskk--prolog-goal-kind'.")
 
 (defun nskk--prolog-dispatch-goal (goal rest-goals subst on-solution)
-  "Dispatch GOAL to the appropriate built-in handler via O(1) hash lookup."
+  "Dispatch GOAL and REST-GOALS via O(1) built-in handler lookup.
+SUBST is forwarded to the selected handler.
+ON-SOLUTION is passed to the selected handler as the success callback."
   (funcall (gethash (nskk--prolog-goal-kind goal) nskk--prolog-builtin-table)
            goal rest-goals subst on-solution))
 
