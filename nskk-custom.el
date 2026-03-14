@@ -267,6 +267,80 @@ registration attempts are silently ignored."
   :prefix "nskk-candidate-"
   :group 'nskk-ui)
 
+(defcustom nskk-show-tooltip nil
+  "When non-nil, display conversion candidates using Emacs tooltip.
+Only works in GUI Emacs (not terminal).  When both `nskk-show-inline' and
+`nskk-show-tooltip' are non-nil, `nskk-show-inline' takes precedence."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-candidate-window)
+
+;;;; Dynamic Completion Multiple Display Settings
+
+(defgroup nskk-dcomp nil
+  "Dynamic completion (dcomp) settings for NSKK."
+  :prefix "nskk-dcomp-"
+  :group 'nskk-ui)
+
+(defcustom nskk-dcomp-multiple-activate nil
+  "When non-nil, display multiple dynamic completion candidates inline.
+When enabled, pressing TAB in preedit (\u25bd) mode shows a list of matching
+completion candidates directly below the preedit text.  Use TAB or
+SHIFT+TAB to cycle through the candidates.
+When nil, only the current completion is shown (default behavior)."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defcustom nskk-dcomp-multiple-rows 7
+  "Maximum number of candidates to display in the dcomp multiple view.
+When `nskk-dcomp-multiple-activate' is non-nil, this controls how many
+completion candidates appear in the inline list below the preedit."
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-face
+  '((t (:foreground "DarkKhaki")))
+  "Face for the dynamically completed part of the reading (inline suffix)."
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-multiple-face
+  '((t (:inherit default)))
+  "Face for candidate readings in the dcomp multiple display."
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-multiple-trailing-face
+  '((t (:foreground "DarkKhaki")))
+  "Face for trailing part of candidate readings in dcomp multiple display."
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-multiple-selected-face
+  '((t (:inherit highlight :weight bold)))
+  "Face for the currently selected candidate in dcomp multiple display."
+  :group 'nskk-dcomp)
+
+;;;; Kakutei Dictionary Settings
+
+(defgroup nskk-kakutei-jisyo nil
+  "Confirmed dictionary settings for NSKK."
+  :prefix "nskk-kakutei-"
+  :group 'nskk)
+
+(defcustom nskk-kakutei-jisyo nil
+  "Path to the confirmed (kakutei) dictionary file, or nil to disable.
+The confirmed dictionary contains entries that are committed immediately
+without showing a candidate selection menu.  When a reading matches an
+entry in this dictionary, the single candidate is inserted directly.
+The file format is the same as the standard SKK dictionary format."
+  :type '(choice file (const nil))
+  :safe (lambda (v) (or (null v) (stringp v)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-kakutei-jisyo)
+
 ;;;; Debug Settings
 
 (defgroup nskk-debug nil
