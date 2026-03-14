@@ -29,18 +29,21 @@
 ;;
 ;; Layer position: L0 (Foundation) -- no dependencies on other NSKK modules.
 ;;
-;; All `defgroup' and `defcustom' forms for the entire package are defined
-;; here so that:
+;; Core `defgroup' and `defcustom' forms are defined here so that:
 ;; - The customization group hierarchy is established in a single place.
 ;; - Individual modules `(require \'nskk-custom)' to access their variables
 ;;   without needing to declare groups themselves.
+;; Optional-module customizations (nskk-server.el, nskk-azik.el,
+;; nskk-cache.el, nskk-kana.el, nskk-dictionary.el) define their own
+;; `defcustom' and `defgroup' forms near their implementation for
+;; self-containment; those groups are listed in the hierarchy below.
 ;;
 ;; No Prolog predicates are maintained by this module.
 ;;
 ;; Group hierarchy:
 ;;   nskk
-;;   ├── nskk-state      (default mode, undo limit)
-;;   ├── nskk-converter  (romaji style, sokuon, n-processing)
+;;   ├── nskk-state      (default mode)
+;;   ├── nskk-converter  (auto-start henkan, romaji style)
 ;;   ├── nskk-search     (sort method, fuzzy threshold, learning file)
 ;;   ├── nskk-server     (host, port, coding-system, timeout) [defined in nskk-server.el]
 ;;   ├── nskk-cache      (strategy, capacity)  [defined in nskk-cache.el]
@@ -151,23 +154,6 @@ Zero disables fuzzy matching."
   "File path for persisting learning data."
   :type 'file
   :safe #'stringp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-search)
-
-(defcustom nskk-jisyo-files nil
-  "List of SKK dictionary file paths to load, in priority order.
-When non-nil, these files are loaded as system dictionaries in addition
-to any auto-detected dictionaries.  Each file should be a valid path to
-an SKK-format dictionary file (e.g. SKK-JISYO.L).
-
-Example configuration:
-  (setq nskk-jisyo-files
-        (list \"/path/to/SKK-JISYO.L\"
-              \"/path/to/SKK-JISYO.jinmei\"))
-
-DDSKK equivalent: skk-search-prog-list with multiple jisyo entries."
-  :type '(repeat file)
-  :safe (lambda (v) (and (listp v) (cl-every #'stringp v)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 

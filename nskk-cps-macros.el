@@ -61,6 +61,13 @@
 ;;     Two-arm CPS bind.  VAR is bound in FOUND-FORM; FAIL-FORM runs when
 ;;     FN-NAME/k calls its on-not-found continuation.
 ;;
+;;   (<-seq [VAR (FN-NAME ARG...)] BODY...)
+;;     Sequential bind.  VAR is bound to the CPS result of FN-NAME/k and
+;;     BODY forms become the continuation.  Failure auto-propagates to
+;;     on-not-found without an explicit :fail arm.  Equivalent to `<-'
+;;     followed immediately by BODY, but groups the binding and its entire
+;;     continuation in one syntactic unit.
+;;
 ;;   (call/cc (lambda (K) BODY...))
 ;;     Binds K to the current on-found continuation (first-class, multi-shot).
 ;;     Calling (funcall K v) is equivalent to (succeed v) but K can be stored
@@ -81,9 +88,7 @@
 (require 'cl-lib)
 
 
-;;; -----------------------------------------------------------------------
 ;;; Internal AST walker helpers
-;;; -----------------------------------------------------------------------
 
 (defun nskk--cps-transform-body-list (forms on-found-sym on-not-found-sym)
   "Transform a list of FORMS for CPS in tail position.
@@ -115,9 +120,7 @@ as its continuation body and transforms the whole remainder."
        (t
         (list (nskk--cps-transform-form head on-found-sym on-not-found-sym)))))))
 
-;;; -----------------------------------------------------------------------
 ;;; Internal form dispatch table
-;;; -----------------------------------------------------------------------
 
 (defvar nskk--cps-form-dispatch nil
   "Dispatch table for `nskk--cps-transform-form'.
@@ -140,9 +143,7 @@ FN-SYM must already be defined.  Pushes (FORM-HEAD . FN-SYM) onto
 `nskk--cps-form-dispatch' unconditionally (load-time, not eval-time)."
   `(push (cons ',form-head ,fn-sym) nskk--cps-form-dispatch))
 
-;;; -----------------------------------------------------------------------
 ;;; Generic form handlers
-;;; -----------------------------------------------------------------------
 
 (defun nskk--cps-transform-binding-form (form on-found-sym on-not-found-sym)
   "Generic CPS transform for binding forms: (HEAD BINDINGS BODY...).
@@ -452,9 +453,7 @@ Only valid inside `defun/k' bodies."
                     ,@(nskk--cps-transform-body-list body on-found-sym on-not-found-sym)))
                 ,on-not-found-sym)))))
 
-;;; -----------------------------------------------------------------------
 ;;; Arglist helpers
-;;; -----------------------------------------------------------------------
 
 (defun nskk--cps-args-info (args)
   "Parse lambda ARGS into (PLAIN-ARGS . REST-SYM-OR-NIL).
@@ -477,9 +476,7 @@ so they cannot appear in a function call position."
     (cons plain rest-sym)))
 
 
-;;; -----------------------------------------------------------------------
 ;;; Public macros
-;;; -----------------------------------------------------------------------
 
 (defun nskk--cps-parse-interactive (body)
   "Extract optional :interactive spec from the start of BODY.

@@ -629,7 +629,12 @@ The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
 
 ;;;###autoload
 (defun/k nskk-cache-hit-rate (cache)
-  "Return the hit rate for CACHE as a float between 0.0 and 1.0."
+  "Return the hit rate for CACHE as a float between 0.0 and 1.0.
+Always returns a value via `succeed'; on-not-found is never called."
+  ;; NOTE: always succeeds; on-not-found is never called.
+  ;; `nskk-cache-stats' is a defun/k CPS function that always calls (succeed ...)
+  ;; with a plist, so the chain never fails.
+  ;; The sync wrapper (nskk-cache-hit-rate cache) returns the float directly.
   (<- stats nskk-cache-stats cache)
   (succeed (plist-get stats :hit-rate)))
 

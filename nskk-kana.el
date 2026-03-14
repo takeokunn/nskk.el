@@ -54,6 +54,7 @@
 ;; - `kana-japanese/1'          -- disjunction of the four ranges above
 ;; - `zenkaku-to-hankaku/2'     -- hash-indexed facts (string -> string)
 ;; - `hankaku-to-zenkaku/2'     -- hash-indexed facts (string -> string)
+;; - `kana-conversion/3'        -- (mode direction converter-fn) kana conversion dispatch table
 ;;
 ;; Key public API:
 ;;
@@ -446,7 +447,45 @@ Idempotent: subsequent calls are no-ops."
     (maphash (lambda (k v)
                (nskk-prolog-assert (list (list 'hankaku-to-zenkaku k v))))
              nskk--kana-hankaku-to-zenkaku-table)
+    ;; Unified kana conversion table: (MODE DIRECTION CONVERTER-FN)
+    ;; DIRECTION is `insert' (hiragana → mode script) or `normalize' (mode script → hiragana).
+    ;; Consolidates kana-script-action/2 and lookup-normalize/2 into one orthogonal table.
+    (nskk-prolog-define-fact-table kana-conversion (:arity 3 :index :hash)
+      (hiragana      insert      identity)
+      (katakana      insert      nskk-kana-string-hiragana-to-katakana)
+      (katakana-半角  insert      nskk--hiragana-to-hankaku)
+      (hiragana      normalize   identity)
+      (katakana      normalize   nskk-kana-string-katakana-to-hiragana)
+      (katakana-半角  normalize   nskk--hankaku-to-hiragana))
+
     (setq nskk--kana-initialized t)))
+
+;;;; Cross-Script Conversion Helpers
+
+(defun nskk--hiragana-to-hankaku (kana)
+  "Convert hiragana KANA to half-width katakana via full-width intermediate."
+  (nskk-kana-zenkaku-to-hankaku (nskk-kana-string-hiragana-to-katakana kana)))
+
+(defun nskk--hankaku-to-hiragana (text)
+  "Convert half-width katakana TEXT to hiragana via full-width intermediate."
+  (nskk-kana-string-katakana-to-hiragana (nskk-kana-hankaku-to-zenkaku text)))
+
+(defun nskk-kana-convert-for-mode (kana mode)
+  "Convert hiragana KANA to the script of MODE via `kana-conversion/3'."
+  (nskk-kana-initialize)
+  (funcall (or (nskk-prolog-query-value
+                `(kana-conversion ,mode insert \?fn) '\?fn)
+               'identity)
+           kana))
+
+(defun nskk-kana-normalize-for-lookup (text mode)
+  "Normalize MODE-script TEXT to hiragana for dictionary lookup.
+Uses the `kana-conversion/3' Prolog fact table for mode dispatch."
+  (nskk-kana-initialize)
+  (funcall (or (nskk-prolog-query-value
+                `(kana-conversion ,mode normalize \?fn) '\?fn)
+               'identity)
+           text))
 
 (provide 'nskk-kana)
 

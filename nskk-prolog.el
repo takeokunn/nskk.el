@@ -40,7 +40,7 @@
 ;; - Cut (!) and negation-as-failure (not)
 ;; - Three index strategies: hash (O(1)), trie (prefix), list (scan)
 ;; - Assert/retract for dynamic clause management
-;; - Arithmetic built-in goals: is/2, </2, >/2, <=/2, >=/2, =:=/2
+;; - Arithmetic built-in goals: is/2 (supports +, -, *, / expressions), </2, >/2, <=/2, >=/2, =:=/2
 ;; - DSL macros for natural Prolog-like syntax
 ;;
 ;; Performance target: single query < 20us with hash indexing.
@@ -732,6 +732,27 @@ Example:
   (let ((solution (nskk-prolog-query-one goal)))
     (when (and solution (listp solution))
       (mapcar (lambda (var) (nskk-prolog-walk var solution)) vars))))
+
+(defun nskk-prolog-query-bindings (goal variables)
+  "Query GOAL and extract VARIABLES from all solutions.
+GOAL is a Prolog goal (a list: (predicate arg1 arg2 ...)).
+VARIABLES is a list of Prolog variable terms (e.g., (\\?r \\?k)).
+Returns a list of value-lists, one per solution, in the same order as VARIABLES.
+
+Example:
+  (nskk-prolog-query-bindings \\='(azik-rule \\?r \\?k) \\='(\\?r \\?k))
+  => ((\"ka\" \"か\") (\"ki\" \"き\") (\"ku\" \"く\") ...)
+
+This is equivalent to:
+  (mapcar (lambda (sol)
+            (mapcar (lambda (v) (nskk-prolog-walk v sol)) variables))
+          (nskk-prolog-query goal))
+
+Unlike `nskk-prolog-query-values' (first solution only),
+this function returns bindings from ALL solutions."
+  (mapcar (lambda (sol)
+            (mapcar (lambda (v) (nskk-prolog-walk v sol)) variables))
+          (nskk-prolog-query goal)))
 
 ;;;; Utility Functions
 

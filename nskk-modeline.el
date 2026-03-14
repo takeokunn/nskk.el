@@ -27,6 +27,9 @@
 
 ;; Mode line indicator showing current input mode (Layer 5: Presentation).
 ;;
+;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-prolog,
+;;   nskk-custom, and nskk-cps-macros.
+;;
 ;; Architecture:
 ;; - All mode display data (strings, faces, help text, cursor colors) is stored
 ;;   as unified `mode-properties/5' Prolog facts in nskk-state.el:
@@ -39,7 +42,7 @@
 ;;   `define-minor-mode', so Emacs calls this function directly on each
 ;;   mode-line redisplay without manual `minor-mode-alist' mutation.
 ;;
-;; Displays mode indicator in modeline (ddskk-compatible strings):
+;; Displays mode indicator in modeline:
 ;; - かな (hiragana)
 ;; - カナ (katakana)
 ;; - aA  (abbrev)

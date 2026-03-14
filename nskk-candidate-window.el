@@ -31,7 +31,7 @@
 ;;   and nskk-cps-macros (for defun/done).
 ;;   Wired into the henkan pipeline via hooks in nskk.el.
 ;;
-;; Implements ddskk-compatible candidate display:
+;; Candidate display:
 ;; - First N-1 candidates shown inline one-by-one with a ▼ marker
 ;; - After the Nth SPC press, switches to overlay list display below
 ;;   the conversion region with home-row selection keys (a s d f j k l)
@@ -119,9 +119,6 @@ Idempotent: safe to call multiple times."
   "Face for candidate text."
   :group 'nskk-candidate-window)
 
-(defvar-local nskk--candidate-list-page 0
-  "Current page in candidate list display (0-indexed).")
-
 (defvar-local nskk--candidate-list-active nil
   "Non-nil when the candidate list overlay is currently displayed.")
 
@@ -184,7 +181,6 @@ as computed by the henkan pipeline."
          (anchor (nskk--candidate-overlay-anchor)))
     (nskk-ensure-overlay nskk--candidate-overlay anchor anchor 'after-string after-str)
     (setq nskk--candidate-list-active t)
-    (setq nskk--candidate-list-page (/ current-index per-page))
     (succeed page-candidates)))
 
 (defun/k nskk-candidate-list-active-p ()
@@ -195,8 +191,7 @@ as computed by the henkan pipeline."
   "Hide the candidate list by deleting its overlay."
   (when nskk--candidate-list-active
     (nskk-delete-overlay nskk--candidate-overlay)
-    (setq nskk--candidate-list-active nil)
-    (setq nskk--candidate-list-page 0)))
+    (setq nskk--candidate-list-active nil)))
 
 (defun/k nskk-candidate-list-select-by-key (key candidates current-index)
   "Return the absolute index of the candidate selected by KEY.

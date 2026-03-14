@@ -94,9 +94,7 @@ To enable program dictionary lookup:
   (setq nskk-program-dict-enable t)
   (setq nskk-program-dicts
     (list (lambda (r) (my-lookup r))
-          \"/usr/local/bin/my-dict %s\"))
-
-DDSKK equivalent: non-empty `skk-search-prog-list'."
+          \"/usr/local/bin/my-dict %s\"))"
   :type 'boolean
   :safe #'booleanp
   :group 'nskk-program-dict)
@@ -127,9 +125,7 @@ Example:
     (list
       (lambda (r) (my-lisp-lookup r))   ; Emacs Lisp function
       \"/usr/local/bin/my-dict %s\"       ; %s replaced by reading (as arg)
-      \"my-stdin-dict\"))                  ; reading sent via stdin
-
-DDSKK equivalent: entries in `skk-search-prog-list'."
+      \"my-stdin-dict\"))                  ; reading sent via stdin"
   :type '(repeat (choice function string))
   :safe (lambda (v)
           (and (listp v)

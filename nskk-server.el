@@ -114,16 +114,14 @@ To enable skkserv lookup:
 (defcustom nskk-server-host "localhost"
   "Hostname or IP address of the skkserv instance.
 Only used when `nskk-server-enable' is non-nil.
-Note: connections to non-localhost hosts are unencrypted plaintext TCP.
-DDSKK equivalent: skk-server-host"
+Note: connections to non-localhost hosts are unencrypted plaintext TCP."
   :type 'string
   :safe #'stringp
   :group 'nskk-server)
 
 (defcustom nskk-server-portnum 1178
   "TCP port number of the skkserv instance.
-The default port 1178 is registered as \\='skkserv\\=' in /etc/services.
-DDSKK equivalent: skk-server-portnum"
+The default port 1178 is registered as \\='skkserv\\=' in /etc/services."
   :type 'integer
   :safe #'integerp
   :group 'nskk-server)
@@ -131,8 +129,7 @@ DDSKK equivalent: skk-server-portnum"
 (defcustom nskk-server-coding-system 'euc-jp
   "Coding system used for skkserv communication.
 Traditional skkserv implementations use EUC-JP.  Modern servers such as
-yaskkserv2 may use UTF-8; set this to \\='utf-8 in that case.
-DDSKK equivalent: (set-process-coding-system ... coding coding)"
+yaskkserv2 may use UTF-8; set this to \\='utf-8 in that case."
   :type 'coding-system
   :safe #'coding-system-p
   :group 'nskk-server)
@@ -151,8 +148,7 @@ target when the server is remote or slow."
 (defcustom nskk-server-report-response nil
   "When non-nil, log skkserv response timing to the NSKK debug buffer.
 Useful for diagnosing latency issues.  Requires `nskk-debug-enabled' to
-be non-nil for the log entries to appear.
-DDSKK equivalent: skk-server-report-response"
+be non-nil for the log entries to appear."
   :type 'boolean
   :safe #'booleanp
   :group 'nskk-server)
@@ -235,8 +231,7 @@ fact to \\='open."
 Connects to `nskk-server-host':`nskk-server-portnum'.  On success,
 calls `nskk--server-configure-process' to set up the connection and
 update Prolog state, then succeeds with the process object.
-Returns nil (via sync wrapper) or fails if disabled or connection fails.
-DDSKK equivalent: skk-open-server (connection part)"
+Returns nil (via sync wrapper) or fails if disabled or connection fails."
   (if (not nskk-server-enable)
       (fail)
     (let ((proc (nskk--server-make-connection)))
@@ -251,8 +246,7 @@ DDSKK equivalent: skk-open-server (connection part)"
 Sends the protocol command \\='0\\=' to terminate the session cleanly,
 kills the process and working buffer, and updates the Prolog
 server-state/1 fact to \\='closed.
-Safe to call when not connected (idempotent).
-DDSKK equivalent: skk-disconnect-server"
+Safe to call when not connected (idempotent)."
   (when (nskk-server-live-p)
     (ignore-errors (process-send-string nskk--server-process "0")))
   (when nskk--server-process
@@ -269,8 +263,7 @@ DDSKK equivalent: skk-disconnect-server"
 Succeeds with t if the connection is live after this call.
 Fails immediately when `nskk-server-enable' is nil.
 Fails when `nskk-server-enable' is non-nil but the connection cannot
-be established.
-DDSKK equivalent: skk-open-server"
+be established."
   (if (not nskk-server-enable)
       (fail)
     (if (nskk-server-live-p)
@@ -380,9 +373,7 @@ network error occurs.  Never signals an error to the caller.
 OKURI-ARI keys should be passed in their standard SKK format (e.g.,
 \"かんじk\" for okurigana words); the server handles them natively.
 
-CPS pipeline: guard -> I/O -> parse.
-
-DDSKK equivalent: skk-search-server-1"
+CPS pipeline: guard -> I/O -> parse."
   (<- _guard nskk--server-lookup-guards-p key)
   (<- resp nskk--server-with-response key)
   (<- result nskk--server-parse-response resp)

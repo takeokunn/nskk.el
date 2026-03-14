@@ -58,6 +58,7 @@
 ;;     Single source of truth for all mode display data.
 ;; - `valid-mode/1'              -- derived rule: succeeds iff mode has
 ;;     a mode-properties/5 fact; used as a guard in transition rules.
+;; - `mode-category/2'           -- (mode category) mode classification, derived by japanese-mode/1 rule
 ;; - `japanese-mode/1'           -- hiragana, katakana, katakana-半角
 ;; - `valid-henkan-phase/1'      -- membership: nil, on, active, list, registration
 ;; - `valid-henkan-transition/2' -- (from to) transition graph
@@ -79,6 +80,13 @@
 ;; - `nskk-state-append-input'     -- append char to input buffer
 ;; - `nskk-state-delete-last-char' -- delete last char from input buffer
 ;; - `nskk-state-next-candidate' / `nskk-state-previous-candidate'
+;;
+;; Key public macros (used across 5+ downstream files):
+;; - `nskk-with-current-state'   -- guard macro, validates nskk-current-state before body
+;; - `nskk-ensure-overlay'       -- creates or returns existing overlay
+;; - `nskk-delete-overlay'       -- deletes overlay safely
+;; - `nskk-ensure-marker'        -- creates or returns existing marker
+;; - `nskk-with-candidates'      -- binds candidate list for body
 ;;
 ;; CPS variants (suffix /k) — pass result to continuation; never return a value:
 ;; - `nskk-state-append-input/k'        -- on-done(new-buf) / on-fail()
@@ -154,13 +162,6 @@ Creates two functions:
 
 (declare-function nskk-debug-message "nskk-debug" (format-string &rest args))
 
-;; Documentation constant — used in error messages and force-set validation only.
-;; Runtime validation uses `valid-henkan-phase/1' Prolog facts.
-(defconst nskk-state-henkan-phases '(nil on active list registration)
-  "List of valid henkan phases.
-Used for documentation and error messages only; runtime validation is
-performed via the `valid-henkan-phase/1' and `valid-henkan-transition/2'
-Prolog facts (populated by `nskk-state-initialize-prolog').")
 
 ;; Main state structure
 (cl-defstruct nskk-state
@@ -285,7 +286,9 @@ Slot defaults are queried from `state-slot-default/2' Prolog facts.
 
 NOTE: The generated `nskk-state-create/k' variant places ON-FOUND and
 ON-NOT-FOUND after the &optional INITIAL-MODE parameter.  Callers MUST
-always pass both continuation arguments explicitly."
+always pass both continuation arguments explicitly; omitting them causes
+a silent nil-continuation crash, because Emacs Lisp `&optional' applies
+to all parameters after the first."
   (nskk-state-initialize-prolog)
   (let* ((mode (let ((m (or initial-mode nskk-state-default-mode 'ascii)))
                  (if (nskk-state-valid-mode-p m) m 'ascii)))
@@ -339,7 +342,7 @@ Signals an error for invalid phase or invalid transition."
   (unless (nskk-state-p state)
     (error "nskk-state-set-henkan-phase: STATE must be an nskk-state, got %S" state))
   (unless (nskk-prolog-holds-p `(valid-henkan-phase ,phase))
-    (error "Invalid henkan phase: %s. Valid phases: %s" phase nskk-state-henkan-phases))
+    (error "Invalid henkan phase: %s (not in valid-henkan-phase/1)" phase))
   (let ((current (nskk-state-henkan-phase state)))
     (unless (or (eq current phase)
                 (nskk-prolog-holds-p `(valid-henkan-transition ,current ,phase)))
@@ -348,11 +351,11 @@ Signals an error for invalid phase or invalid transition."
 
 (defun/done nskk-state-force-henkan-phase (state phase)
   "Force set henkan PHASE in STATE, bypassing transition validation.
-Only validates that PHASE is a member of `nskk-state-henkan-phases'.
+Validates PHASE via `valid-henkan-phase/1' Prolog fact.
 Use for test setup or emergency reset."
   (nskk-with-state state
-    (unless (memq phase nskk-state-henkan-phases)
-      (error "Invalid henkan phase: %s. Valid phases: %s" phase nskk-state-henkan-phases))
+    (unless (nskk-prolog-holds-p `(valid-henkan-phase ,phase))
+      (error "Invalid henkan phase: %s (not in valid-henkan-phase/1)" phase))
     (setf (nskk-state-henkan-phase state) phase)))
 
 ;;;; State Transition
@@ -636,13 +639,24 @@ Subsequent calls are no-ops guarded by `nskk--state-prolog-initialized'."
     (nskk-prolog-<- (valid-mode \?m)
       (mode-properties \?m \?disp \?face \?help \?cur))
 
-    ;; Japanese input mode classification
-    (nskk-prolog-define-fact-table japanese-mode (:arity 1 :index :hash)
-      (hiragana)
-      (katakana)
-      (katakana-半角))
+    ;; Mode category: orthogonal classification of input modes.
+    ;; `japanese'     — hiragana/katakana/katakana-半角
+    ;; `marker-mode'  — modes using a conversion-start marker (abbrev)
+    ;; `other'        — direct input modes (ascii/latin/jisx0208-latin)
+    (nskk-prolog-define-fact-table mode-category (:arity 2 :index :hash)
+      (hiragana      japanese)
+      (katakana      japanese)
+      (katakana-半角  japanese)
+      (abbrev        marker-mode)
+      (ascii         other)
+      (latin         other)
+      (jisx0208-latin other))
 
-    ;; Valid henkan phases (derived from nskk-state-henkan-phases defconst)
+    ;; japanese-mode/1: derived from mode-category/2.
+    ;; A mode is a Japanese input mode iff its category is `japanese'.
+    (nskk-prolog-<- (japanese-mode \?m) (mode-category \?m japanese))
+
+    ;; Valid henkan phases
     (nskk-prolog-define-fact-table valid-henkan-phase (:arity 1 :index :hash)
       (nil)
       (on)

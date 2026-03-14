@@ -25,9 +25,9 @@
 
 ;;; Commentary:
 
-;; Romaji-to-kana conversion engine for NSKK (Layer 2: Domain).
+;; Romaji-to-kana conversion engine for NSKK (Layer 1: Core Engine).
 ;;
-;; Layer position: L2 (Domain) -- depends on nskk-prolog and nskk-custom.
+;; Layer position: L1 (Core Engine) -- depends on nskk-prolog and nskk-custom.
 ;;
 ;; Read-only conversion functions (`nskk-converter-lookup', `nskk-converter-convert',
 ;; `nskk-convert-romaji') are stateless and have no buffer side effects.
@@ -56,9 +56,10 @@
 ;; - Sokuon (っ) detection: doubled consonant
 ;; - Hatsuon (ん) detection: n followed by non-vowel/non-y/non-n/non-quote
 ;;
-;; The Prolog trie index (`romaji-to-kana/2') is the single source of truth
-;; for all romaji-to-kana mappings.  Lookups, longest-match, and prefix
-;; queries all go through the trie; no separate hash table is maintained.
+;; The Prolog trie index (`romaji-to-kana/2') is the authoritative source
+;; for all romaji-to-kana mappings.  A parallel `nskk--romaji-table' hash
+;; table is maintained as a hot-path cache for O(1) exact-match lookups
+;; (used by inline `nskk-converter-lookup'); trie is used for prefix queries.
 ;;
 ;; Romaji styles are registered via `nskk-converter-register-style' and
 ;; loaded on demand.  Standard SKK style is initialized at load time.
@@ -74,11 +75,27 @@
 ;;   ~192 facts; populated by `nskk--initialize-romaji-table'.
 ;;   Example: (romaji-to-kana "ka" "か")
 ;;
-;; Character classification for hatsuon and sokuon is handled by the
-;; `nskk--hatsuon-blockers' and `nskk--sokuon-blockers' defconsts (plain
-;; Emacs Lisp lists), not Prolog predicates.  These are kept in Elisp
-;; because they are evaluated on every character of the hot conversion
-;; path; Prolog call overhead would be unacceptable here.
+;; `sokuon-blocker/1' --- (sokuon-blocker CHAR)
+;;   Characters that cannot be doubled to produce っ.
+;;   Vowels (?a ?i ?u ?e ?o) and ?n are excluded; other consonants trigger
+;;   sokuon.  Indexed with :hash for O(1) membership tests.
+;;   Populated by `nskk-converter-initialize'.
+;;
+;; `hatsuon-blocker/1' --- (hatsuon-blocker CHAR)
+;;   Characters after n that do not trigger ん insertion.
+;;   When the char following n is in this table, n stays in the buffer.
+;;   Indexed with :hash for O(1) membership tests.
+;;   Populated by `nskk-converter-initialize'.
+;;
+;; `vowel-char/1' --- (vowel-char CHAR)
+;;   The five lowercase romaji vowels: a, i, u, e, o.
+;;   Indexed with :hash for O(1) membership tests.
+;;   Populated by `nskk-converter-initialize'.
+;;
+;; `uppercase-vowel-char/1' --- (uppercase-vowel-char CHAR)
+;;   The five uppercase romaji vowels: A, I, U, E, O.
+;;   Indexed with :hash for O(1) membership tests.
+;;   Populated by `nskk-converter-initialize'.
 
 ;;; Code:
 
@@ -101,14 +118,6 @@ An alist of the form ((STYLE-SYMBOL . INIT-FN) ...) where INIT-FN is a
 zero-argument function that populates the romaji table via
 `nskk-converter-add-rule'.  Use `nskk-converter-register-style' to add
 entries; do not modify this variable directly.")
-
-(defconst nskk--hatsuon-blockers '(?a ?i ?u ?e ?o ?y ?n ?')
-  "Characters after n that do not trigger ん insertion.
-When the char following n is in this list, n stays in the buffer.")
-
-(defconst nskk--sokuon-blockers '(?a ?i ?u ?e ?o ?n)
-  "Characters that cannot be doubled to produce っ.
-Vowels and n are excluded; other consonants trigger sokuon.")
 
 (defconst nskk--standard-romaji-rules
   '(;; Vowels
@@ -176,10 +185,10 @@ Vowels and n are excluded; other consonants trigger sokuon.")
     ("xwa" "ゎ") ("xka" "ゕ") ("xke" "ゖ")
     ;; Long vowel mark
     ("-" "ー")
-    ;; Basic punctuation (ddskk-compatible)
+    ;; Basic punctuation
     ("." "。") ("," "、")
     ("[" "「") ("]" "」")
-    ;; z-prefix symbols (ddskk-compatible)
+    ;; z-prefix symbols
     ("z-" "〜") ("z." "…") ("z," "‥")
     ("z[" "『") ("z]" "』") ("z/" "・")
     ("zh" "←") ("zj" "↓") ("zk" "↑") ("zl" "→")
@@ -240,6 +249,11 @@ and AZIK rules), falling back to the Prolog trie for prefix detection."
        ((nskk-prolog-trie-has-prefix-p 'romaji-to-kana 2 romaji)
         :incomplete)))))
 
+(defconst nskk--romaji-char-max 127
+  "Maximum ASCII character code accepted as romaji input.
+Characters above this value (non-ASCII) are never valid romaji and bypass
+the sokuon/hatsuon detection logic in `nskk--sokuon-p'.")
+
 (defun/k nskk-convert-romaji (romaji)
   "Convert ROMAJI string to kana by repeatedly applying longest-match conversion.
 Returns converted kana string for string input, nil for nil input."
@@ -254,14 +268,14 @@ Returns converted kana string for string input, nil for nil input."
 C0 is a character integer, typically (aref remaining 0) from the caller.
 REMAINING is the unconsumed romaji string; must have length >= 2 for the
 doubling check to succeed (length < 2 always returns nil).
-Sokuon occurs when C0 is an ASCII consonant not in `nskk--sokuon-blockers',
+Sokuon occurs when C0 is an ASCII consonant not in the `sokuon-blocker' table,
 C0 equals the second character of REMAINING, and the two-character pair is
 not a complete romaji rule (allowing AZIK entries like \"kk\" -> \"きん\" to
 override sokuon via `nskk-converter-lookup')."
   (and (> (length remaining) 1)
-       (< c0 128)
+       (<= c0 nskk--romaji-char-max)
        (= c0 (aref remaining 1))
-       (not (memq c0 nskk--sokuon-blockers))
+       (not (nskk-prolog-holds-p `(sokuon-blocker ,c0)))
        (not (stringp (nskk-converter-lookup (substring remaining 0 2))))))
 
 (defun/3k nskk--convert-step-n (remaining)
@@ -282,7 +296,7 @@ the n-prefix falls through to the trie (e.g. na, ni, nya)."
      ((= (aref remaining 1) ?')
       (funcall on-kana "ん" (if (> len 2) (substring remaining 2) nil)))
      ;; n + non-blocker consonant -> ん + rest
-     ((not (memq (aref remaining 1) nskk--hatsuon-blockers))
+     ((not (nskk-prolog-holds-p `(hatsuon-blocker ,(aref remaining 1))))
       (funcall on-kana "ん" (substring remaining 1)))
      ;; n + vowel/y: fall through to trie lookup (na->な, etc.)
      (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
@@ -308,7 +322,7 @@ in a flat cond."
      ;; Normal: trie longest-match
      (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
 
-(defun nskk--convert-loop/k (remaining parts on-found _on-not-found)
+(defun nskk--convert-loop/k (remaining parts on-found on-not-found)
   "Tail-recursive conversion loop. [CPS]
 REMAINING is the unconsumed input, PARTS is accumulated kana (reversed).
 Always calls ON-FOUND with the assembled kana string.
@@ -321,7 +335,7 @@ to the recursive call (defun/k only rewrites succeed/fail call forms)."
         (nskk--convert-loop/k
          (and (stringp rest) (> (length rest) 0) rest)
          (cons kana parts)
-         on-found _on-not-found))
+         on-found on-not-found))
       (lambda (partial)
         (funcall on-found
                  (apply #'concat (nreverse (cons partial parts)))))
@@ -457,6 +471,14 @@ Example:
 Idempotent: subsequent calls are no-ops."
   (unless nskk--converter-initialized
     (nskk-converter-load-style 'standard)
+    (nskk-prolog-define-fact-table sokuon-blocker (:arity 1 :index :hash)
+      (?a) (?i) (?u) (?e) (?o) (?n))
+    (nskk-prolog-define-fact-table hatsuon-blocker (:arity 1 :index :hash)
+      (?a) (?i) (?u) (?e) (?o) (?y) (?n) (?\'))
+    (nskk-prolog-define-fact-table vowel-char (:arity 1 :index :hash)
+      (?a) (?i) (?u) (?e) (?o))
+    (nskk-prolog-define-fact-table uppercase-vowel-char (:arity 1 :index :hash)
+      (?A) (?I) (?U) (?E) (?O))
     (setq nskk--converter-initialized t)))
 
 (provide 'nskk-converter)

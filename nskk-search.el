@@ -53,6 +53,7 @@
 ;;
 ;; Prolog predicates maintained by this module:
 ;; - `search-strategy/1'              -- valid search type membership
+;; - `search-sort-method/1'           -- valid sort method membership (frequency kana none)
 ;; - `learning-score/3'               -- (reading candidate score) usage frequency
 ;; - `okuri-type-matches/2'           -- (filter-type entry-type) okurigana match rules
 ;; - `entry-matches-okuri-filter/2'   -- derived rule; (filter okuri-sym) wraps
@@ -97,20 +98,13 @@ success (when a result is found); failed searches and direct calls to
 `nskk-search-exact', `nskk-search-prefix', etc. do not trigger it.
 The hook does not fire on cache hits via `nskk-search-with-cache'.
 Hook functions must not signal errors; errors are silently suppressed
-to protect the CPS continuation chain.
-DDSKK equivalent: skk-search-jisyo-hook")
+to protect the CPS continuation chain.")
 
 (defvar nskk-save-history-hook nil
   "Hook run after learning data is successfully saved by
 `nskk-search-save-learning-data'.  Each function is called with no
 arguments.  The hook fires only on successful save; I/O errors
-suppress both the save and this hook.
-DDSKK equivalent: skk-save-history-hook")
-
-;;; Internal variables for learning data
-
-(defvar nskk--search-dirty-flag nil
-  "Non-nil means learning data has been modified since last save.")
+suppress both the save and this hook.")
 
 ;;; Error definitions
 
@@ -149,6 +143,10 @@ DDSKK equivalent: skk-save-history-hook")
   (any        okuri-ari)
   (any        okuri-nasi))
 
+;; Valid sort method membership: (search-sort-method METHOD)
+(nskk-prolog-define-fact-table search-sort-method (:arity 1 :index :hash)
+  (frequency) (kana) (none))
+
 ;; Derived rule: entry-matches-okuri-filter/2
 ;; (entry-matches-okuri-filter Filter OkuriSym) succeeds when OkuriSym
 ;; satisfies Filter.  The entry-okuri string is converted to a symbol
@@ -169,7 +167,7 @@ Errors in hook functions are suppressed to protect the CPS chain."
 (defun/k nskk-search (index query &optional search-type okuri-type limit)
   "Search dictionary INDEX for QUERY.
 SEARCH-TYPE is `exact', `prefix', `partial', or `fuzzy'.
-OKURI-TYPE is `okuri-ari', `okuri-nasi', or nil.
+OKURI-TYPE is `okuri-ari', `okuri-nasi', or nil (ignored for `fuzzy' searches).
 LIMIT is the maximum number of results.
 
 NOTE: The generated `nskk-search/k' variant places ON-FOUND and ON-NOT-FOUND
@@ -196,7 +194,7 @@ because Emacs Lisp `&optional' applies to all parameters after the first."
                   ('exact   (nskk-search-exact   index query okuri-type))
                   ('prefix  (nskk-search-prefix  index query okuri-type limit))
                   ('partial (nskk-search-partial index query okuri-type limit))
-                  ('fuzzy   (nskk-search-fuzzy   index query okuri-type limit)))))
+                  ('fuzzy   (nskk-search-fuzzy   index query limit)))))
     (if result
         (progn (nskk--search-run-post-hook) (succeed result))
       (fail))))
@@ -318,18 +316,13 @@ LIMIT is the maximum number of results."
 
 ;;; Fuzzy search
 
-(defun/k nskk-search-fuzzy (index query okuri-type limit)
+(defun/k nskk-search-fuzzy (index query limit)
   "Perform fuzzy search in INDEX for QUERY using Levenshtein distance.
-OKURI-TYPE is accepted for API compatibility but not yet applied; pass nil.
 LIMIT is the maximum number of results.
 
 Each element in the results list has the shape (KEY ENTRY . DISTANCE)
 where KEY is a string, ENTRY is an `nskk-dict-entry', and DISTANCE is
 the integer Levenshtein distance from QUERY."
-  ;; okuri-type is accepted for API compatibility with other search functions
-  ;; but is not yet applied to fuzzy search logic.
-  ;; TODO: apply okuri-type filtering once fuzzy search matures
-  (ignore okuri-type)
   (let* ((pred (nskk-dict-index-predicate index))
          (raw
           (when pred
@@ -385,7 +378,7 @@ the integer Levenshtein distance from QUERY."
 
 (defun/k nskk--search-sort-results (results)
   "Sort search RESULTS according to `nskk-search-sort-method'."
-  (let ((method (if (memq nskk-search-sort-method '(frequency kana none))
+  (let ((method (if (nskk-prolog-holds-p `(search-sort-method ,nskk-search-sort-method))
                     nskk-search-sort-method
                   'none)))
     (pcase method
@@ -456,7 +449,6 @@ the integer Levenshtein distance from QUERY."
                              (nskk-prolog-walk '\?s sol)))
                      solutions)
              (current-buffer)))
-          (setq nskk--search-dirty-flag nil)
           (message "NSKK: Learning data saved")
           (run-hooks 'nskk-save-history-hook)))
     (error
@@ -477,8 +469,7 @@ Stores learning score as a Prolog learning-score/3 fact."
       (nskk-debug-log "[SEARCH] learn: query=%s word=%s new-score=%d" query word new-score)
       (when old-score
         (nskk-prolog-retract `(learning-score ,query ,word ,old-score)))
-      (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score)))
-      (setq nskk--search-dirty-flag t))))
+      (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score))))))
 
 ;;; Cache-backed search
 
@@ -495,8 +486,10 @@ Stores learning score as a Prolog learning-score/3 fact."
 Returns the cached or fresh result via ON-FOUND when candidates exist,
 or calls ON-NOT-FOUND when no candidates are found.
 SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to `nskk-search' on cache miss.
-Note: `nskk-search-jisyo-hook' is NOT run on cache hits, since `nskk-search'
-is bypassed; fires only on cache misses (when `nskk-search' is called)."
+
+NOTE: `nskk-search-jisyo-hook' fires on cache misses (when `nskk-search' is
+invoked) but does NOT fire on cache hits.  Consumers expecting the hook
+to fire on every returned result should query `nskk-search' directly."
   (unless (nskk-cache-p cache)
     (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
   (let ((cache-key (nskk--search-cache-key query search-type okuri-type)))
