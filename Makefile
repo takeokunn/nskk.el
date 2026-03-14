@@ -3,13 +3,15 @@ BATCH = $(EMACS) -Q --batch
 
 LOAD_PATH = -L . -L test -L test/integration -L test/unit -L test/e2e
 
-# All source files
-SRC = nskk-cps-macros.el nskk-prolog.el \
+# All source files (core + optional extension modules)
+SRC = nskk-cps-macros.el nskk-prolog.el nskk-trie.el \
        nskk-custom.el nskk-debug.el \
        nskk-kana.el nskk-converter.el nskk-cache.el nskk-dictionary.el nskk-search.el \
        nskk-state.el nskk-henkan.el nskk-input.el \
        nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-server.el nskk-azik.el \
+       nskk-server.el nskk-program-dictionary.el nskk-azik.el \
+       nskk-annotation.el nskk-context.el nskk-inline.el \
+       nskk-isearch.el nskk-region.el nskk-show-mode.el \
        nskk.el
 
 # Unit test files
@@ -18,6 +20,7 @@ UNIT_SRC = $(wildcard test/unit/*-test.el)
 # Integration test files (with PBT)
 INTEGRATION_SRC = test/integration/nskk-integration-test.el \
                   test/integration/nskk-sequence-test.el \
+                  test/integration/nskk-prolog-integration-test.el \
                   test/integration/nskk-input-routing-pbt-test.el \
                   test/integration/nskk-conversion-flow-pbt-test.el \
                   test/integration/nskk-dictionary-integration-pbt-test.el \
