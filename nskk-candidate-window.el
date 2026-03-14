@@ -209,6 +209,37 @@ selection key or if the resulting index is out of range."
             (fail)))
       (fail))))
 
+;;;; Tooltip Candidate Display (FR-009)
+
+(defun nskk--candidate-build-tooltip-string (page-candidates)
+  "Build tooltip string for PAGE-CANDIDATES.
+Returns a multi-line string with one candidate per line."
+  (mapconcat #'identity page-candidates "\n"))
+
+(defun/k nskk-candidate-show-tooltip (candidates current-index)
+  "Display CANDIDATES via tooltip starting at CURRENT-INDEX.
+Only works in GUI Emacs.  Falls back gracefully in terminal.
+Controlled by `nskk-show-tooltip' custom variable."
+  (when (and (boundp 'nskk-show-tooltip) nskk-show-tooltip
+             (display-graphic-p)
+             (fboundp 'tooltip-show))
+    (let* ((keys nskk-henkan-show-candidates-keys)
+           (per-page (min nskk-henkan-number-to-display-candidates (length keys)))
+           (page (nskk--candidate-page-slice candidates current-index per-page))
+           (page-candidates (plist-get page :slice))
+           (remaining (plist-get page :remaining))
+           (tooltip-str (nskk--candidate-build-tooltip-string page-candidates))
+           (suffix (when (> remaining 0) (format "\n[残り %d]" remaining))))
+      (tooltip-show (concat tooltip-str suffix))))
+  (succeed nil))
+
+(defun/done nskk-candidate-hide-tooltip ()
+  "Hide the tooltip candidate display."
+  (when (and (boundp 'nskk-show-tooltip) nskk-show-tooltip
+             (display-graphic-p)
+             (fboundp 'tooltip-hide))
+    (tooltip-hide)))
+
 (provide 'nskk-candidate-window)
 
 ;;; nskk-candidate-window.el ends here
