@@ -54,7 +54,11 @@
          (nskk-henkan-show-candidates-keys)
          (nskk-max-registration-depth)
          (nskk-debug-enabled)
-         (nskk-debug-max-entries))
+         (nskk-debug-max-entries)
+         (nskk-show-tooltip)
+         (nskk-dcomp-multiple-activate)
+         (nskk-dcomp-multiple-rows)
+         (nskk-kakutei-jisyo))
   :description "Every nskk-custom defcustom is registered as a custom variable"
   :body (should (custom-variable-p var)))
 
@@ -87,10 +91,19 @@
   :description "Boolean defcustom variables that default to t"
   :body (should (eq (default-value var) t)))
 
+(nskk-deftest-table custom-integer-extended-defaults
+  :columns (var expected)
+  :rows ((nskk-dcomp-multiple-rows 7))
+  :description "Integer-typed dcomp defcustom variables have correct default values"
+  :body (should (= (default-value var) expected)))
+
 (nskk-deftest-table custom-nil-defaults
   :columns (var)
-  :rows ((nskk-debug-enabled))
-  :description "defcustom variables that default to nil (boolean or list type)"
+  :rows ((nskk-debug-enabled)
+         (nskk-show-tooltip)
+         (nskk-dcomp-multiple-activate)
+         (nskk-kakutei-jisyo))
+  :description "defcustom variables that default to nil (boolean or file-or-nil type)"
   :body (should (null (default-value var))))
 
 (nskk-describe "nskk-custom string defaults"
@@ -137,6 +150,15 @@
   :description "All NSKK cursor faces specify a :background attribute"
   :body (should (face-attribute face :background nil t)))
 
+(nskk-deftest-table dcomp-face-existence
+  :columns (face)
+  :rows ((nskk-dcomp-face)
+         (nskk-dcomp-multiple-face)
+         (nskk-dcomp-multiple-trailing-face)
+         (nskk-dcomp-multiple-selected-face))
+  :description "All NSKK dcomp faces are defined via facep"
+  :body (should (facep face)))
+
 ;;;
 ;;; defgroup Registration Tests
 ;;;
@@ -151,6 +173,8 @@
          (nskk-modeline)
          (nskk-henkan)
          (nskk-candidate-window)
+         (nskk-dcomp)
+         (nskk-kakutei-jisyo)
          (nskk-debug))
   :description "All NSKK defgroups are registered as custom groups"
   :body (should (get group 'group-documentation)))
@@ -166,10 +190,17 @@
          (nskk-henkan-number-to-display-candidates 10)
          (nskk-max-registration-depth              1)
          (nskk-debug-max-entries                   500)
+         (nskk-dcomp-multiple-rows                 5)
          (nskk-converter-auto-start-henkan         t)
          (nskk-converter-auto-start-henkan         nil)
          (nskk-use-color-cursor                    nil)
          (nskk-debug-enabled                       nil)
+         (nskk-show-tooltip                        t)
+         (nskk-show-tooltip                        nil)
+         (nskk-dcomp-multiple-activate             t)
+         (nskk-dcomp-multiple-activate             nil)
+         (nskk-kakutei-jisyo                       nil)
+         (nskk-kakutei-jisyo                       "/tmp/test-kakutei.dat")
          (nskk-state-default-mode                  ascii)
          (nskk-state-default-mode                  hiragana)
          (nskk-converter-romaji-style              azik)
@@ -185,11 +216,15 @@
   :columns (var invalid-value)
   :rows ((nskk-search-fuzzy-threshold         t)
          (nskk-henkan-show-candidates-nth     3.14)
+         (nskk-dcomp-multiple-rows            "seven")
          (nskk-converter-auto-start-henkan    1)
+         (nskk-show-tooltip                   1)
+         (nskk-dcomp-multiple-activate        0)
          (nskk-state-default-mode             42)
          (nskk-state-default-mode             "ascii")
          (nskk-modeline-format                42)
          (nskk-search-learning-file           42)
+         (nskk-kakutei-jisyo                  42)
          (nskk-henkan-show-candidates-keys    ("a" "b")))
   :description ":safe predicate rejects wrong-typed values"
   :body (should-not (funcall (get var 'safe-local-variable) invalid-value)))
