@@ -29,12 +29,21 @@
 ;; Layer position: L2 (Domain) -- depends on nskk-prolog, nskk-cps-macros,
 ;;   nskk-cache, and optionally nskk-debug.
 ;;
-;; Supports two types of program dictionary entries:
+;; Supports three types of program dictionary entries:
 ;;
-;; 1. Emacs Lisp functions -- called as (funcall fn reading); must return
+;; 1. Built-in dispatch handlers -- selected by AquaSKK-compatible prefix
+;;    matching against `nskk-program-dict-dispatch-table'.  Built-in entries:
+;;      "today"  -- current date in two formats (YYYY/MM/DD and 年月日)
+;;      "now"    -- current time in two formats (HH:MM:SS and 時分秒)
+;;      "="      -- arithmetic via `calc-eval' (e.g. "=(32768+64)*1024" → 33619968)
+;;    Candidates produced by built-in handlers are marked with the
+;;    `nskk-no-learn' text property so they are never persisted to the
+;;    personal dictionary (equivalent to AquaSKK SetAvoidStudy).
+;;
+;; 2. Emacs Lisp functions -- called as (funcall fn reading); must return
 ;;    a list of candidate strings or nil.
 ;;
-;; 2. Shell commands (strings) -- executed via `call-process'.  The literal
+;; 3. Shell commands (strings) -- executed via `call-process'.  The literal
 ;;    token "%s" (whitespace-delimited) in the command is replaced by the
 ;;    reading as a separate argument.  When no "%s" token is present, the
 ;;    reading is sent to the command via stdin.  stdout is parsed as SKK or
@@ -53,14 +62,15 @@
 ;;                                     output format detection table
 ;;
 ;; Key public API:
-;; - `nskk-program-dict-lookup' -- unified CPS lookup across all entries
+;; - `nskk-program-dict-builtin-lookup' -- CPS lookup against built-in dispatch table
+;; - `nskk-program-dict-lookup'         -- CPS lookup across user-defined entries
 ;;
 ;; Integration:
-;;   Called from `nskk-core-search/k' in nskk-henkan.el as the final
-;;   fallback after skkserv: dict-lookup -> skkserv -> program-dict -> fail.
+;;   Both are called from `nskk-core-search/k' in nskk-henkan.el as fallbacks
+;;   after skkserv: dict-lookup → skkserv → builtin-handlers → user-program-dict → fail.
 ;;
 ;; Configuration example:
-;;   (setq nskk-program-dict-enable t)
+;;   (setq nskk-program-dict-enable t)       ; enables both built-in and user entries
 ;;   (setq nskk-program-dicts
 ;;     (list
 ;;       (lambda (reading) (my-lisp-lookup reading))  ; Elisp function
@@ -374,6 +384,136 @@ when disabled, `nskk-program-dicts' is nil, or all entries miss."
                  (<- results nskk--program-dict-collect-all nskk-program-dicts key)
                  (nskk-cache-put cache key results)
                  (succeed results))))))
+
+;;; Section 13: Built-in dispatch table
+
+(defcustom nskk-program-dict-dispatch-table
+  (list (cons "today" #'nskk--program-dict-today)
+        (cons "now"   #'nskk--program-dict-now)
+        (cons "="     #'nskk--program-dict-calculate))
+  "Built-in program dictionary dispatch table (AquaSKK DispatchTable equivalent).
+Each entry is (PREFIX . HANDLER-FUNCTION) where PREFIX is matched against
+the reading with `string-prefix-p' and HANDLER-FUNCTION receives the full
+reading string and returns a list of candidate strings, or nil.
+
+Users may prepend custom entries:
+  (push (cons \"prefix\" #\\='my-handler) nskk-program-dict-dispatch-table)
+
+Built-in entries:
+  \"today\" -- current date in two formats (AquaSKK today handler equivalent)
+  \"now\"   -- current time in two formats (AquaSKK now handler equivalent)
+  \"=\"     -- arithmetic via `calc-eval' (AquaSKK calculate handler equivalent)
+
+This table is consulted only when `nskk-program-dict-enable' is non-nil.
+Candidates produced by built-in handlers are marked with the `nskk-no-learn'
+text property so they are never persisted to the personal dictionary."
+  :type '(repeat (cons (string :tag "Prefix") (function :tag "Handler")))
+  :group 'nskk-program-dict)
+
+;;; Section 14: Built-in handlers
+
+(defun nskk--program-dict-today (_key)
+  "Return current date as a candidate list.
+Equivalent to the AquaSKK \\='today\\=' handler.
+Returns two candidates:
+  1. \"YYYY/MM/DD(WeekAbbrev)\"     e.g. \"2026/03/15(Sun)\"
+  2. \"YYYY年MM月DD日(WeekKanji)\"  e.g. \"2026年03月15日(日)\"
+_KEY is ignored; the current system date is always used."
+  (let* ((now    (decode-time))
+         (year   (decoded-time-year now))
+         (month  (decoded-time-month now))
+         (day    (decoded-time-day now))
+         (wday   (decoded-time-weekday now))
+         (abbrev '("Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"))
+         (kanji  '("日" "月" "火" "水" "木" "金" "土")))
+    (list
+     (format "%04d/%02d/%02d(%s)" year month day (nth wday abbrev))
+     (format "%04d年%02d月%02d日(%s)" year month day (nth wday kanji)))))
+
+(defun nskk--program-dict-now (_key)
+  "Return current time as a candidate list.
+Equivalent to the AquaSKK \\='now\\=' handler.
+Returns two candidates:
+  1. \"HH:MM:SS\"      e.g. \"14:30:00\"
+  2. \"HH時MM分SS秒\"   e.g. \"14時30分00秒\"
+_KEY is ignored; the current system time is always used."
+  (let* ((now    (decode-time))
+         (hour   (decoded-time-hour now))
+         (minute (decoded-time-minute now))
+         (second (truncate (decoded-time-second now))))
+    (list
+     (format "%02d:%02d:%02d" hour minute second)
+     (format "%02d時%02d分%02d秒" hour minute second))))
+
+(defun nskk--program-dict-calculate (key)
+  "Evaluate arithmetic expression KEY.
+Equivalent to the AquaSKK \\='=\\=' handler.
+KEY must begin with \"=\".
+The expression is KEY with the leading \"=\" stripped.
+Uses `calc-eval' from Emacs Calc (loaded via autoload on first use).
+
+Returns a single-element list:
+  - arithmetic result string on success (e.g. \"33619968\")
+  - error message string when `calc-eval' returns a parse-error cons
+  - nil when the expression is empty (KEY is exactly \"=\")
+  - Lisp error message string when `calc-eval' signals an error
+
+Note: `calc-eval' returns `(POSITION . \"error-msg\")' for parse errors
+rather than signalling a Lisp error; both cases are handled here."
+  ;; `calc-eval' is autoloaded from the built-in `calc' package.
+  (let ((expr (substring key 1)))
+    (condition-case err
+        (let ((result (calc-eval expr)))
+          (cond
+           ((stringp result) (list result))
+           ;; calc-eval returns (POSITION "error-msg") list for parse errors.
+           ;; cadr extracts the message string from position-1.
+           ((and (consp result) (stringp (cadr result)))
+            (list (cadr result)))
+           (t nil)))
+      (error
+       (list (error-message-string err))))))
+
+;;; Section 15: Built-in lookup public API
+
+;;;###autoload
+(defun/k nskk-program-dict-builtin-lookup (key)
+  "Look up KEY against `nskk-program-dict-dispatch-table' (built-in handlers).
+Equivalent to AquaSKK SKKGadgetDictionary::Find.
+
+Fails immediately when `nskk-program-dict-enable' is nil or KEY is not
+a string (matches the guard in `nskk-core-search/k').
+
+Iterates `nskk-program-dict-dispatch-table' in order, applying
+`string-prefix-p' to match each entry prefix against KEY.  All matching
+handlers are invoked; results are merged and deduplicated.  Each candidate
+is marked with the `nskk-no-learn' text property (equivalent to AquaSKK
+SetAvoidStudy) so they are never persisted to the personal dictionary.
+
+Handler errors are caught via `condition-case', logged via
+`nskk-debug-message', and treated as misses.
+
+Calls on-found with the candidate list when at least one handler returns
+results; calls on-not-found when disabled, KEY is not a string, or no
+handler produces candidates."
+  (if (not (and (stringp key) nskk-program-dict-enable))
+      (fail)
+    (let (results)
+      (dolist (pair nskk-program-dict-dispatch-table)
+        (when (string-prefix-p (car pair) key)
+          (let ((cands (condition-case err
+                           (funcall (cdr pair) key)
+                         (error
+                          (nskk-debug-message
+                           "nskk-program-dict: builtin handler [%s] error: %s"
+                           (car pair) (error-message-string err))
+                          nil))))
+            (when (consp cands)
+              (setq results (append results cands))))))
+      (if results
+          (succeed (mapcar (lambda (c) (propertize c 'nskk-no-learn t))
+                           (delete-dups (copy-sequence results))))
+        (fail)))))
 
 (provide 'nskk-program-dictionary)
 
