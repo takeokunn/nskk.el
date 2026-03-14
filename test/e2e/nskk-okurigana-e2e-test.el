@@ -1,4 +1,4 @@
-;;; nskk-e2e-okurigana.el --- E2E okurigana tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-okurigana-e2e-test.el --- E2E okurigana tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -1426,6 +1426,6 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "哀い")))))
 
-(provide 'nskk-e2e-okurigana)
+(provide 'nskk-okurigana-e2e-test)
 
-;;; nskk-e2e-okurigana.el ends here
+;;; nskk-okurigana-e2e-test.el ends here

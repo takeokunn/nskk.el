@@ -1,4 +1,4 @@
-;;; nskk-e2e-sticky.el --- E2E sticky shift tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-sticky-e2e-test.el --- E2E sticky shift tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -237,6 +237,6 @@
   25)
 
 
-(provide 'nskk-e2e-sticky)
+(provide 'nskk-sticky-e2e-test)
 
-;;; nskk-e2e-sticky.el ends here
+;;; nskk-sticky-e2e-test.el ends here

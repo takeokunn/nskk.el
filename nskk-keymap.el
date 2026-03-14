@@ -83,7 +83,7 @@
 ;; - `nskk-handle-space'   -- start conversion / next candidate
 ;; - `nskk-handle-return'  -- commit candidate (no newline) / insert newline
 ;; - `nskk-handle-ctrl-n'  -- commit then next-line / next-line fallthrough
-;; - `nskk-handle-ctrl-p'  -- commit then prev-line / previous-line fallthrough
+;; - `nskk-handle-ctrl-p'  -- previous candidate (in conversion) / commit then prev-line / previous-line fallthrough
 ;; - `nskk-handle-ctrl-f'  -- commit then forward-char / forward-char fallthrough
 ;; - `nskk-handle-ctrl-b'  -- commit then backward-char / backward-char fallthrough
 ;; - `nskk-handle-ctrl-a'  -- commit then beginning-of-line / beginning-of-line fallthrough
@@ -151,8 +151,8 @@
   (ctrl-n converting kakutei-then-next-line)
   (ctrl-n preedit    kakutei-then-next-line)
   (ctrl-n normal     next-line)
-  ;; C-p
-  (ctrl-p converting kakutei-then-previous-line)
+  ;; C-p: previous candidate in conversion, commit+nav in preedit
+  (ctrl-p converting previous-candidate)
   (ctrl-p preedit    kakutei-then-previous-line)
   (ctrl-p normal     previous-line)
   ;; C-f / right-arrow
@@ -632,11 +632,17 @@ In conversion (▼) or preedit (▽) mode, commits then moves down.
 In normal mode, delegates to \\[next-line]."
   kakutei-then-next-line next-line #'next-line end-of-buffer)
 
-(nskk-define-nav-handler ctrl-p
-  "Handle C-p/up-arrow: commit then move to previous line.
-In conversion (▼) or preedit (▽) mode, commits then moves up.
+(nskk-define-key-handler ctrl-p
+  "Handle C-p/up-arrow: previous candidate or move to previous line.
+In conversion (▼) mode, shows the previous candidate.
+In preedit (▽) mode, commits then moves up.
 In normal mode, delegates to \\[previous-line]."
-  kakutei-then-previous-line previous-line #'previous-line beginning-of-buffer)
+  ('previous-candidate (nskk-previous-candidate))
+  ('kakutei-then-previous-line
+   (nskk--commit-by-phase)
+   (nskk--safe-nav-command #'previous-line beginning-of-buffer))
+  ('previous-line
+   (nskk--safe-nav-command #'previous-line beginning-of-buffer)))
 
 (nskk-define-nav-handler ctrl-f
   "Handle C-f/right-arrow: commit then move forward, else forward-char.

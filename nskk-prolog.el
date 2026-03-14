@@ -462,6 +462,8 @@ where OP is one of +, -, *, / and A, B are arithmetic expressions."
 Renames variables in CLAUSE to fresh names, unifies with GOAL, and on
 success proves the concatenation of CLAUSE body and REST, calling
 ON-SOLUTION for each solution.
+Side effect: increments `nskk--prolog-var-counter' unconditionally
+\(even when unification fails) to guarantee globally unique fresh names.
 Cut semantics: per-clause catch/throw; does NOT prevent other clauses
 from being tried by the caller."
   (let* ((counter (cl-incf nskk--prolog-var-counter))

@@ -43,22 +43,18 @@ INTEGRATION_SRC = test/integration/nskk-integration-test.el \
                   test/integration/nskk-custom-integration-test.el
 
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
-# E2E test files — non-overlapping old files + reorganized new files
-# Old files kept (no overlap with new): mode-transition, navigation, azik, registration
-# Old files removed (subsumed by new): buffer, modeline, backspace, romaji-edge,
-#   candidate-list, point, okuri-extended, pending-features
-E2E_SRC = test/e2e/nskk-mode-transition-e2e-test.el \
-           test/e2e/nskk-navigation-e2e-test.el \
+E2E_SRC = test/e2e/nskk-abbrev-e2e-test.el \
            test/e2e/nskk-azik-e2e-test.el \
+           test/e2e/nskk-dcomp-e2e-test.el \
+           test/e2e/nskk-henkan-e2e-test.el \
+           test/e2e/nskk-kana-input-e2e-test.el \
+           test/e2e/nskk-modeline-e2e-test.el \
+           test/e2e/nskk-mode-transition-e2e-test.el \
+           test/e2e/nskk-navigation-e2e-test.el \
+           test/e2e/nskk-numeric-e2e-test.el \
+           test/e2e/nskk-okurigana-e2e-test.el \
            test/e2e/nskk-registration-e2e-test.el \
-           test/e2e/nskk-e2e-kana-input.el \
-           test/e2e/nskk-e2e-henkan.el \
-           test/e2e/nskk-e2e-okurigana.el \
-           test/e2e/nskk-e2e-abbrev.el \
-           test/e2e/nskk-e2e-modeline.el \
-           test/e2e/nskk-e2e-sticky.el \
-           test/e2e/nskk-e2e-numeric.el \
-           test/e2e/nskk-e2e-dcomp.el
+           test/e2e/nskk-sticky-e2e-test.el
 
 .PHONY: all compile test test-integration test-unit test-e2e bench lint lint-checkdoc package-lint clean
 

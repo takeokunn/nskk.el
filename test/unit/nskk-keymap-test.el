@@ -636,7 +636,64 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-deftest-nav-handler ctrl-n nskk-handle-ctrl-n "C-n" "<down>" next-line))
 
 (nskk-describe "nskk-handle-ctrl-p behavior"
-  (nskk-deftest-nav-handler ctrl-p nskk-handle-ctrl-p "C-p" "<up>" previous-line))
+  ;; ctrl-p in converting mode shows previous candidate (same as x key),
+  ;; so we cannot use nskk-deftest-nav-handler which tests commit+nav behavior.
+  (nskk-it "nskk-handle-ctrl-p is defined and interactive"
+    (should (commandp 'nskk-handle-ctrl-p)))
+
+  (nskk-it "C-p is bound in nskk-mode-map"
+    (should (eq (lookup-key nskk-mode-map (kbd "C-p")) 'nskk-handle-ctrl-p)))
+
+  (nskk-it "<up> is bound to nskk-handle-ctrl-p in nskk-mode-map"
+    (should (eq (lookup-key nskk-mode-map (kbd "<up>")) 'nskk-handle-ctrl-p)))
+
+  (nskk-it "calls nskk-previous-candidate when converting"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (prev-candidate-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-candidate-called t))))
+          (nskk-when (nskk-handle-ctrl-p))
+          (nskk-then (should prev-candidate-called))))))
+
+  (nskk-it "calls previous-line when not converting (normal state)"
+    (let ((nav-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--has-preedit (lambda () nil))
+                        (previous-line (lambda (&rest _) (interactive) (setq nav-called t))))
+        (let ((nskk-current-state (nskk-state-create)))
+          (call-interactively 'nskk-handle-ctrl-p)))
+      (should nav-called)))
+
+  (nskk-it "calls previous-line when nskk-current-state is nil"
+    (let ((nav-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--has-preedit (lambda () nil))
+                        (previous-line (lambda (&rest _) (interactive) (setq nav-called t))))
+        (let ((nskk-current-state nil))
+          (call-interactively 'nskk-handle-ctrl-p)))
+      (should nav-called)))
+
+  (nskk-it "calls nskk-henkan-kakutei (not nskk-commit-current) then previous-line in preedit state"
+    (let ((commit-called nil)
+          (kakutei-called nil)
+          (nav-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1))
+                        (nskk-commit-current (lambda () (setq commit-called t)))
+                        (nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
+                        (previous-line (lambda (&rest _) (interactive) (setq nav-called t))))
+        (let* ((preedit-state (nskk-state-create 'hiragana))
+               (_ (nskk-state-force-henkan-phase preedit-state 'on))
+               (nskk-current-state preedit-state))
+          (call-interactively 'nskk-handle-ctrl-p)))
+      (should-not commit-called)
+      (should kakutei-called)
+      (should nav-called))))
 
 ;;;
 ;;; Helper Function for Cursor Key Tests
@@ -668,18 +725,23 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
          (should (string= (buffer-string) "愛うえお\nかきくけこ"))
          (should (= (line-number-at-pos) 2))))))
 
-  (nskk-it "C-p commits candidate and moves to previous line in converting mode"
+  (nskk-it "C-p shows previous candidate in converting mode (does not commit)"
+    ;; C-p calls nskk-previous-candidate instead of committing.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer ""))
+            (nskk--romaji-buffer "")
+            (prev-called nil))
         (insert "あいうえお\nかきくけこ")
         (goto-char (point-min))
         (forward-line 1)
         (nskk-test-setup-converting "か" "書")
-        (nskk-when (nskk-handle-ctrl-p))
+        (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-called t))))
+          (nskk-when (nskk-handle-ctrl-p)))
+        ;; C-p called previous-candidate, not commit+navigate
         (nskk-then
-         (should (string= (buffer-string) "あいうえお\n書きくけこ"))
-         (should (= (line-number-at-pos) 1))))))
+         (should prev-called)
+         ;; Still in converting mode (not committed)
+         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
   (nskk-it "C-n at buffer end during conversion silently ignores end-of-buffer"
     (with-temp-buffer
@@ -693,17 +755,21 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
          (should (string= (buffer-string) "愛"))
          (should (= (point) (point-max)))))))
 
-  (nskk-it "C-p at buffer beginning during conversion silently ignores beginning-of-buffer"
+  (nskk-it "C-p in converting mode calls previous-candidate (no beginning-of-buffer error)"
+    ;; Since C-p now calls nskk-previous-candidate, there is no navigation
+    ;; and therefore no beginning-of-buffer error regardless of cursor position.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer ""))
+            (nskk--romaji-buffer "")
+            (prev-called nil))
         (insert "あい")
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
-        (nskk-when (nskk-handle-ctrl-p))
+        (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-called t))))
+          (nskk-when (nskk-handle-ctrl-p)))
         (nskk-then
-         (should (string= (buffer-string) "愛"))
-         (should (= (point) (point-min))))))))
+         (should prev-called)
+         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))))))
 
 ;;;
 ;;; C-f and C-b Handler Tests
@@ -1020,10 +1086,10 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
            (ctrl-n converting kakutei-then-next-line)
            (ctrl-n preedit    kakutei-then-next-line)
            (ctrl-n normal     next-line)
-           ;; C-p
-           (ctrl-p converting kakutei-then-previous-line)
-           (ctrl-p preedit    kakutei-then-previous-line)
-           (ctrl-p normal     previous-line)
+            ;; C-p
+            (ctrl-p converting previous-candidate)
+            (ctrl-p preedit    kakutei-then-previous-line)
+            (ctrl-p normal     previous-line)
            ;; C-f
            (ctrl-f converting kakutei-then-forward)
            (ctrl-f preedit    kakutei-then-forward)

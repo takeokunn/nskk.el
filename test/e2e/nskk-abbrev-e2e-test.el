@@ -1,4 +1,4 @@
-;;; nskk-e2e-abbrev.el --- E2E abbrev mode tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-abbrev-e2e-test.el --- E2E abbrev mode tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -301,6 +301,6 @@
           (nskk-e2e-type r)
           (should (string-prefix-p "▽" (buffer-string))))))))
 
-(provide 'nskk-e2e-abbrev)
+(provide 'nskk-abbrev-e2e-test)
 
-;;; nskk-e2e-abbrev.el ends here
+;;; nskk-abbrev-e2e-test.el ends here

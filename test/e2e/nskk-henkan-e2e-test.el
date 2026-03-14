@@ -1,4 +1,4 @@
-;;; nskk-e2e-henkan.el --- E2E conversion tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-henkan-e2e-test.el --- E2E conversion tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -1263,6 +1263,6 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
     (and (not (string-empty-p (buffer-string)))
          (equal (buffer-string) (cdr item)))))
 
-(provide 'nskk-e2e-henkan)
+(provide 'nskk-henkan-e2e-test)
 
-;;; nskk-e2e-henkan.el ends here
+;;; nskk-henkan-e2e-test.el ends here

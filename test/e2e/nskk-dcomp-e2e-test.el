@@ -1,4 +1,4 @@
-;;; nskk-e2e-dcomp.el --- E2E dynamic completion tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-dcomp-e2e-test.el --- E2E dynamic completion tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -342,5 +342,5 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
     (eq (nskk-current-mode) 'hiragana))
   30)
 
-(provide 'nskk-e2e-dcomp)
-;;; nskk-e2e-dcomp.el ends here
+(provide 'nskk-dcomp-e2e-test)
+;;; nskk-dcomp-e2e-test.el ends here

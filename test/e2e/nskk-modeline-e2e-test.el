@@ -1,4 +1,4 @@
-;;; nskk-e2e-modeline.el --- E2E modeline and display tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-modeline-e2e-test.el --- E2E modeline and display tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -508,6 +508,6 @@
       (should (<= (point-min) (point)))
       (should (>= (point-max) (point))))))
 
-(provide 'nskk-e2e-modeline)
+(provide 'nskk-modeline-e2e-test)
 
-;;; nskk-e2e-modeline.el ends here
+;;; nskk-modeline-e2e-test.el ends here

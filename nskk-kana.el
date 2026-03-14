@@ -449,7 +449,7 @@ Idempotent: subsequent calls are no-ops."
              nskk--kana-hankaku-to-zenkaku-table)
     ;; Unified kana conversion table: (MODE DIRECTION CONVERTER-FN)
     ;; DIRECTION is `insert' (hiragana → mode script) or `normalize' (mode script → hiragana).
-    ;; Consolidates kana-script-action/2 and lookup-normalize/2 into one orthogonal table.
+    ;; 3x2 orthogonal table: MODE × DIRECTION → CONVERTER-FN.
     (nskk-prolog-define-fact-table kana-conversion (:arity 3 :index :hash)
       (hiragana      insert      identity)
       (katakana      insert      nskk-kana-string-hiragana-to-katakana)

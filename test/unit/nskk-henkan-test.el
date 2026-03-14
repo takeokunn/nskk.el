@@ -1522,9 +1522,9 @@
                     `(okurigana-char ,?K \?l) '\?l)))
         (should (= lower ?k)))))
 
-  (nskk-it "populates clearable-input-var/1 Prolog facts"
+  (nskk-it "populates clearable-input-var/1 Prolog facts (defined in nskk-input)"
     (nskk-prolog-test-with-isolated-db
-      (nskk-henkan-initialize)
+      (nskk-input-initialize)
       (let ((vars (nskk-prolog-query-all-values
                    '(clearable-input-var \?v) '\?v)))
         (should (memq 'nskk--numeric-mode vars))

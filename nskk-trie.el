@@ -79,11 +79,17 @@ Slots:
        (or (null (nskk-trie-node-children node))
            (zerop (hash-table-count (nskk-trie-node-children node))))))
 
+(defconst nskk--trie-initial-children-size 50
+  "Initial hash-table capacity for trie node children.
+Romaji trie nodes typically branch over the ASCII letter set (26-52
+entries); 50 avoids early rehash for most nodes while keeping memory
+modest for leaf-heavy subtrees.")
+
 (defun nskk--trie-get-or-create-child (node char)
   "Return the child of NODE for CHAR, creating it if absent."
   (unless (nskk-trie-node-children node)
     (setf (nskk-trie-node-children node)
-          (make-hash-table :test 'eq :size 50)))
+          (make-hash-table :test 'eq :size nskk--trie-initial-children-size)))
   (let ((child (gethash char (nskk-trie-node-children node))))
     (unless child
       (setq child (nskk-trie-node--create))

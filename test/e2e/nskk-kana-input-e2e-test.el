@@ -1,4 +1,4 @@
-;;; nskk-e2e-kana-input.el --- E2E kana input tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-kana-input-e2e-test.el --- E2E kana input tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -497,6 +497,6 @@
       (nskk-e2e-assert-buffer "ー"
                               "romaji \"-\" → \"ー\" failed in katakana mode"))))
 
-(provide 'nskk-e2e-kana-input)
+(provide 'nskk-kana-input-e2e-test)
 
-;;; nskk-e2e-kana-input.el ends here
+;;; nskk-kana-input-e2e-test.el ends here

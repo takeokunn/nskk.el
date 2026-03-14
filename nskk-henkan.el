@@ -54,11 +54,10 @@
 ;;   vowel-okurigana-char/1      -- set of lowercase vowels that are immediate okurigana
 ;;   preedit-phase/1             -- phases where preedit display is active
 ;;   script-converter/2          -- (target-script converter-fn) for script conversion dispatch
-;;   clearable-input-var/1       -- input state variables cleared on mode switch
-;;     NOTE: this predicate enumerates variables from nskk-input.el (L4),
-;;     creating a cross-layer coupling.  If new buffer-local state variables
-;;     are added to nskk-input.el, this predicate must be updated to include them.
 ;;   disable-cleanup/2           -- (action handler) cleanup actions on nskk-mode disable
+;;
+;; External Prolog tables queried by this module:
+;;   clearable-input-var/1       -- defined in nskk-input.el; input state vars cleared on reset
 ;;
 ;; Key macros:
 ;;   `nskk-without-modification'      -- inhibit undo/modification hooks in body
@@ -528,7 +527,7 @@ Creates a new marker if one does not already exist."
         nskk--dcomp-prefix nil
         nskk--dcomp-index 0)
   ;; Clear all registered input state variables via Prolog fact table.
-  ;; The clearable-input-var/1 table is defined in nskk-henkan-initialize.
+  ;; The clearable-input-var/1 table is defined in nskk-input-initialize.
   (dolist (sym (nskk-prolog-query-all-values '(clearable-input-var \?v) '\?v))
     (when (boundp sym) (set sym nil)))
   (nskk-with-current-state
@@ -1584,15 +1583,9 @@ Idempotent: subsequent calls are no-ops."
       (active)
       (list))
 
-    ;; Input state variables to clear on mode switch / context reset.
-    ;; Queried by `nskk--clear-conversion-context' for dynamic iteration.
-    (nskk-prolog-define-fact-table clearable-input-var (:arity 1 :index :list)
-      (nskk--numeric-mode)
-      (nskk--sticky-shift-pending)
-      (nskk--deferred-azik-state)
-      (nskk--deferred-vowel-shadow-state)
-      (nskk--azik-colon-okuri-pending)
-      (nskk--azik-colon-okuri-deferred))
+    ;; clearable-input-var/1 is defined in nskk-input-initialize (nskk-input.el)
+    ;; because the listed symbols are all nskk-input internal variables.
+    ;; Queried by `nskk--clear-conversion-context' below.
 
     ;; Disable/cleanup action dispatch: maps henkan phase to the cleanup
     ;; action to perform when nskk-mode is disabled or context is reset.

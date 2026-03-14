@@ -1,4 +1,4 @@
-;;; nskk-e2e-numeric.el --- E2E numeric conversion tests for NSKK  -*- lexical-binding: t; -*-
+;;; nskk-numeric-e2e-test.el --- E2E numeric conversion tests for NSKK  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Contributors
 
@@ -182,6 +182,6 @@ Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
                        mode (error-message-string err)))))
   20)
 
-(provide 'nskk-e2e-numeric)
+(provide 'nskk-numeric-e2e-test)
 
-;;; nskk-e2e-numeric.el ends here
+;;; nskk-numeric-e2e-test.el ends here

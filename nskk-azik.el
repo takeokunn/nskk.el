@@ -134,27 +134,30 @@ Generates: prefix+z→A+ん, prefix+k→I+ん, prefix+j→U+ん,
      (nskk-prolog-<- (azik-rule ,(concat prefix "d") ,(concat e "ん")))
      (nskk-prolog-<- (azik-rule ,(concat prefix "l") ,(concat o "ん")))))
 
-(defmacro nskk-azik-double-vowel (prefix a u e o)
+(defmacro nskk-azik-double-vowel (prefix a u e o &optional dv-p-str)
   "Define AZIK double vowel (二重母音) extensions as azik-rule/2 Prolog facts.
 PREFIX is the consonant key string.
 A/U/E/O are the base kana for each vowel position.
-Generates: prefix+q→A+い, prefix+h→U+う, prefix+w→E+い, prefix+p→O+う."
+Optional DV-P-STR overrides the p-suffix output string (used for foreign rows
+that use ー instead of O+う, e.g. ふぉー for f-row).
+Generates: prefix+q→A+い, prefix+h→U+う, prefix+w→E+い, prefix+p→DV-P-STR or O+う."
   (declare (indent 0) (debug t))
   `(progn
      (nskk-prolog-<- (azik-rule ,(concat prefix "q") ,(concat a "い")))
      (nskk-prolog-<- (azik-rule ,(concat prefix "h") ,(concat u "う")))
      (nskk-prolog-<- (azik-rule ,(concat prefix "w") ,(concat e "い")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "p") ,(concat o "う")))))
+     (nskk-prolog-<- (azik-rule ,(concat prefix "p") ,(or dv-p-str (concat o "う"))))))
 
-(defmacro nskk-azik-extensions (prefix a i u e o &optional dv-o)
+(defmacro nskk-azik-extensions (prefix a i u e o &optional dv-o dv-p-str)
   "Define hatsuon + double vowel extensions for a consonant row.
 PREFIX is the consonant key string.
 A/I/U/E/O are the base kana for each vowel position.
-DV-O overrides O for double vowel (e.g., わ行 uses うぉ instead of を)."
+DV-O overrides O for double vowel (e.g., わ行 uses うぉ instead of を).
+DV-P-STR overrides the p-suffix output (e.g., foreign rows use ー instead of う)."
   (declare (indent 0) (debug t))
   `(progn
      (nskk-azik-hatsuon ,prefix ,a ,i ,u ,e ,o)
-     (nskk-azik-double-vowel ,prefix ,a ,u ,e ,(or dv-o o))))
+     (nskk-azik-double-vowel ,prefix ,a ,u ,e ,(or dv-o o) ,dv-p-str)))
 
 (defmacro nskk-azik-youon (prefix a i u e o)
   "Define AZIK youon (拗音) row with base rules + all extensions.
@@ -182,26 +185,30 @@ Hatsuon and double vowel extensions are generated for all positions."
     ("m" "ま" "み" "む" "め" "も")
     ("y" "や" "い" "ゆ" "え" "よ")
     ("r" "ら" "り" "る" "れ" "ろ")
-    ("w" "わ" "うぃ" "う" "うぇ" "を" "うぉ")
+    ("w" "わ" "うぃ" "う" "うぇ" "を" "うぉ" "うぉー")
     ("g" "が" "ぎ" "ぐ" "げ" "ご")
     ("z" "ざ" "じ" "ず" "ぜ" "ぞ")
     ("d" "だ" "ぢ" "づ" "で" "ど")
     ("b" "ば" "び" "ぶ" "べ" "ぼ")
     ("p" "ぱ" "ぴ" "ぷ" "ぺ" "ぽ")
-    ("f" "ふぁ" "ふぃ" "ふ" "ふぇ" "ふぉ")
+    ("f" "ふぁ" "ふぃ" "ふ" "ふぇ" "ふぉ" nil "ふぉー")
     ("j" "じゃ" "じ" "じゅ" "じぇ" "じょ")
-    ("v" "ゔぁ" "ゔぃ" "ゔ" "ゔぇ" "ゔぉ")
+    ("v" "ゔぁ" "ゔぃ" "ゔ" "ゔぇ" "ゔぉ" nil "ゔぉー")
     ("x" "しゃ" "し" "しゅ" "しぇ" "しょ")
     ("c" "ちゃ" "ち" "ちゅ" "ちぇ" "ちょ"))
   "Consonant rows for AZIK hatsuon + double-vowel extension rules.
-Each entry is (PREFIX A I U E O) or (PREFIX A I U E O DV-O) where DV-O
-overrides O for the double-vowel rule.
+Each entry is (PREFIX A I U E O) or (PREFIX A I U E O DV-O) or
+(PREFIX A I U E O DV-O DV-P-STR) where DV-O overrides O for the double-vowel
+rule, and DV-P-STR overrides the p-suffix output (used for foreign loanword rows
+that use ー instead of O+う, e.g., fp→ふぉー instead of ふぉう).
 
 Special rows:
-- The w-row has 7 elements: the extra element is the DV-O override (うぉ).
+- The w-row has 8 elements: DV-O=うぉ and DV-P-STR=うぉー.
 - The f-row covers foreign-sound ふぁ/ふぃ/ふ/ふぇ/ふぉ (enabling fq→ふぁい etc.).
+- The f-row sets DV-P-STR=ふぉー, producing fp→ふぉー.
 - The j-row covers じゃ行 extensions (jq→じゃい, jj→じゅん, jh→じゅう etc.).
 - The v-row covers ゔ行 extensions (vq→ゔぁい, vd→ゔぇん etc.).
+- The v-row sets DV-P-STR=ゔぉー, producing vp→ゔぉー.
 - The x-row provides sha/shu/sho compatibility (しゃ/し/しゅ/しぇ/しょ).
 - The c-row provides cha/chu/cho compatibility (ちゃ/ち/ちゅ/ちぇ/ちょ).
 
@@ -463,7 +470,7 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
 
   ;; Foreign word extensions for non-native Japanese sounds.
   (nskk-prolog-deffacts azik-rule
-    ("tgi" "てぃ") ("tgu" "とぅ") ("dci" "でぃ") ("dcu" "どぅ") ("wso" "うぉ"))
+    ("tgi" "てぃ") ("tgu" "てゅ") ("dci" "でぃ") ("dcu" "でゅ") ("wso" "うぉ"))
 
   ;; Hatsuon extensions for foreign word prefixes (+ん).
   ;; tg/dc: k→i-variant+ん, j→u-variant+ん.  wso: k→うぉん.
@@ -473,11 +480,12 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
     ("wsok" "うぉん"))
 
   ;; Double-vowel extensions for foreign word prefixes.
-  ;; q/h→i-variant vowel repeat, w/p→u-variant vowel repeat.
+  ;; q→i-variant vowel repeat, w→u-variant vowel repeat.
+  ;; tg/dc h/p use ddskk-compatible long-vowel forms.
   ;; For wso (single o-variant), all keys produce うぉお.
   (nskk-prolog-deffacts azik-rule
-    ("tgq" "てぃい") ("tgh" "てぃい") ("tgw" "とぅう") ("tgp" "とぅう")
-    ("dcq" "でぃい") ("dch" "でぃい") ("dcw" "どぅう") ("dcp" "どぅう")
+    ("tgq" "てぃい") ("tgh" "てゅー") ("tgw" "とぅう") ("tgp" "とぅー")
+    ("dcq" "でぃい") ("dch" "でゅー") ("dcw" "どぅう") ("dcp" "どぅー")
     ("wsoq" "うぉお") ("wsoh" "うぉお") ("wsow" "うぉお") ("wsop" "うぉお"))
 
   ;; n-suffix hatsuon: Cn → A+ん (ddskk compatible).

@@ -469,7 +469,7 @@
         (should (equal (nskk-convert-romaji "rp") "ろう")))))
 
   (nskk-context "w-row diphthong"
-    (nskk-it "wq wh wp convert to わい うう うぉう"
+    (nskk-it "wq wh wp convert to わい うう うぉー"
       (nskk-with-azik-style
         ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "wq") "わい"))
@@ -477,10 +477,10 @@
         (should (equal (nskk-converter-lookup "wh") "うう"))
         (should (equal (nskk-convert-romaji "wh") "うう"))
         (should (equal (nskk-converter-lookup "ww") "うぇい"))
-        (should (equal (nskk-converter-lookup "wp") "うぉう"))
+        (should (equal (nskk-converter-lookup "wp") "うぉー"))
         ;; wq, wp should work in conversion
         (should (equal (nskk-convert-romaji "wq") "わい"))
-        (should (equal (nskk-convert-romaji "wp") "うぉう")))))
+        (should (equal (nskk-convert-romaji "wp") "うぉー")))))
 
   (nskk-context "g-row diphthong"
     (nskk-it "gq gh gw gp convert to がい ぐう げい ごう"
@@ -563,12 +563,12 @@
         (should (equal (nskk-convert-romaji "cp") "ちょう")))))
 
   (nskk-context "f-row diphthong extensions"
-    (nskk-it "fq fh fw fp convert to ふぁい ふう ふぇい ふぉう"
+    (nskk-it "fq fh fw fp convert to ふぁい ふう ふぇい ふぉー"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "fq") "ふぁい"))
         (should (equal (nskk-convert-romaji "fh") "ふう"))
         (should (equal (nskk-convert-romaji "fw") "ふぇい"))
-        (should (equal (nskk-convert-romaji "fp") "ふぉう")))))
+        (should (equal (nskk-convert-romaji "fp") "ふぉー")))))
 
   (nskk-context "j-row diphthong extensions"
     (nskk-it "jq jh jw jp convert to じゃい じゅう じぇい じょう"
@@ -579,12 +579,12 @@
         (should (equal (nskk-convert-romaji "jp") "じょう")))))
 
   (nskk-context "v-row diphthong extensions"
-    (nskk-it "vq vh vw vp convert to ゔぁい ゔう ゔぇい ゔぉう"
+    (nskk-it "vq vh vw vp convert to ゔぁい ゔう ゔぇい ゔぉー"
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "vq") "ゔぁい"))
         (should (equal (nskk-convert-romaji "vh") "ゔう"))
         (should (equal (nskk-convert-romaji "vw") "ゔぇい"))
-        (should (equal (nskk-convert-romaji "vp") "ゔぉう"))))))
+        (should (equal (nskk-convert-romaji "vp") "ゔぉー"))))))
 
 
 ;;;;
@@ -1226,17 +1226,17 @@
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji "tgi") "てぃ"))))
 
-  (nskk-it "tgu converts to とぅ"
+  (nskk-it "tgu converts to てゅ"
     (nskk-with-azik-style
-      (should (equal (nskk-convert-romaji "tgu") "とぅ"))))
+      (should (equal (nskk-convert-romaji "tgu") "てゅ"))))
 
   (nskk-it "dci converts to でぃ"
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji "dci") "でぃ"))))
 
-  (nskk-it "dcu converts to どぅ"
+  (nskk-it "dcu converts to でゅ"
     (nskk-with-azik-style
-      (should (equal (nskk-convert-romaji "dcu") "どぅ"))))
+      (should (equal (nskk-convert-romaji "dcu") "でゅ"))))
 
   (nskk-it "wso converts to うぉ"
     (nskk-with-azik-style
@@ -1244,7 +1244,7 @@
 
   (nskk-it "all foreign extensions exist in azik-rule/2 Prolog predicate"
     (nskk-with-azik-style
-      (dolist (rule '(("tgi" "てぃ") ("tgu" "とぅ") ("dci" "でぃ") ("dcu" "どぅ") ("wso" "うぉ")))
+      (dolist (rule '(("tgi" "てぃ") ("tgu" "てゅ") ("dci" "でぃ") ("dcu" "でゅ") ("wso" "うぉ")))
         (let* ((romaji (car rule))
                (kana   (cadr rule))
                (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
@@ -1302,33 +1302,33 @@
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji "tgq") "てぃい"))))
 
-  (nskk-it "tgh converts to てぃい"
+  (nskk-it "tgh converts to てゅー"
     (nskk-with-azik-style
-      (should (equal (nskk-convert-romaji "tgh") "てぃい"))))
+      (should (equal (nskk-convert-romaji "tgh") "てゅー"))))
 
   (nskk-it "tgw converts to とぅう"
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji "tgw") "とぅう"))))
 
-  (nskk-it "tgp converts to とぅう"
+  (nskk-it "tgp converts to とぅー"
     (nskk-with-azik-style
-      (should (equal (nskk-convert-romaji "tgp") "とぅう"))))
+      (should (equal (nskk-convert-romaji "tgp") "とぅー"))))
 
   (nskk-it "dcq converts to でぃい"
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji "dcq") "でぃい"))))
 
-  (nskk-it "dch converts to でぃい"
+  (nskk-it "dch converts to でゅー"
     (nskk-with-azik-style
-      (should (equal (nskk-convert-romaji "dch") "でぃい"))))
+      (should (equal (nskk-convert-romaji "dch") "でゅー"))))
 
   (nskk-it "dcw converts to どぅう"
     (nskk-with-azik-style
       (should (equal (nskk-convert-romaji "dcw") "どぅう"))))
 
-  (nskk-it "dcp converts to どぅう"
+  (nskk-it "dcp converts to どぅー"
     (nskk-with-azik-style
-      (should (equal (nskk-convert-romaji "dcp") "どぅう"))))
+      (should (equal (nskk-convert-romaji "dcp") "どぅー"))))
 
   (nskk-it "wsoq converts to うぉお"
     (nskk-with-azik-style
@@ -1348,8 +1348,8 @@
 
   (nskk-it "all foreign double-vowel rules exist in azik-rule/2 Prolog predicate"
     (nskk-with-azik-style
-      (dolist (rule '(("tgq" "てぃい") ("tgh" "てぃい") ("tgw" "とぅう") ("tgp" "とぅう")
-                      ("dcq" "でぃい") ("dch" "でぃい") ("dcw" "どぅう") ("dcp" "どぅう")
+      (dolist (rule '(("tgq" "てぃい") ("tgh" "てゅー") ("tgw" "とぅう") ("tgp" "とぅー")
+                      ("dcq" "でぃい") ("dch" "でゅー") ("dcw" "どぅう") ("dcp" "どぅー")
                       ("wsoq" "うぉお") ("wsoh" "うぉお") ("wsow" "うぉお") ("wsop" "うぉお")))
         (let* ((romaji (car rule))
                (kana   (cadr rule))
@@ -1766,9 +1766,9 @@
             ("g" "がい" "ぐう" "げい" "ごう")
             ("z" "ざい" "ずう" "ぜい" "ぞう")
             ("b" "ばい" "ぶう" "べい" "ぼう")
-            ("f" "ふぁい" "ふう" "ふぇい" "ふぉう")
+            ("f" "ふぁい" "ふう" "ふぇい" "ふぉー")
             ("j" "じゃい" "じゅう" "じぇい" "じょう")
-            ("v" "ゔぁい" "ゔう" "ゔぇい" "ゔぉう"))
+            ("v" "ゔぁい" "ゔう" "ゔぇい" "ゔぉー"))
   :description "AZIK diphthong rules: q/h/w/p keys produce correct double-vowel forms"
   :body (nskk-with-azik-style
           (should (equal q-expected (nskk-converter-lookup (concat prefix "q"))))

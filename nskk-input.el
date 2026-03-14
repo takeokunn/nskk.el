@@ -1286,6 +1286,19 @@ Idempotent: subsequent calls are no-ops."
     (nskk--init-doubled-context-rules)
     (nskk--init-effective-char-rules)
     (nskk--init-fullwidth-char-rules)
+
+    ;; Input state variables to clear on mode switch / context reset.
+    ;; Queried by `nskk--clear-conversion-context' (nskk-henkan.el) for
+    ;; dynamic iteration.  Defined here because these are all nskk-input
+    ;; internal variables — the owner module declares the table.
+    (nskk-prolog-define-fact-table clearable-input-var (:arity 1 :index :list)
+      (nskk--numeric-mode)
+      (nskk--sticky-shift-pending)
+      (nskk--deferred-azik-state)
+      (nskk--deferred-vowel-shadow-state)
+      (nskk--azik-colon-okuri-pending)
+      (nskk--azik-colon-okuri-deferred))
+
     (setq nskk--input-initialized t)))
 
 (provide 'nskk-input)
