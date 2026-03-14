@@ -49,18 +49,21 @@
 ;;   q        Toggle hiragana ↔ katakana
 ;;   l        Switch to ASCII (latin) mode
 ;;   L        Switch to full-width latin (JIS X 0208) mode
-;;   /        Enter abbrev mode (▽word SPC → dictionary lookup, DDSKK-compatible)
+;;   /        Enter abbrev mode (▽word SPC → dictionary lookup)
 ;;   DEL      Delete last preedit char / cancel empty abbrev preedit
 ;;   C-g      Cancel conversion or preedit (abbrev: restores previous mode)
 ;;   C-n      Next candidate (in conversion mode) / next-line
 ;;   C-p      Previous candidate (in conversion mode) / previous-line
+;;   C-f      Forward-char (commits active conversion/preedit first)
+;;   C-b      Backward-char (commits active conversion/preedit first)
+;;   C-a      Beginning-of-line (commits active conversion/preedit first)
+;;   C-e      End-of-line (commits active conversion/preedit first)
+;;   TAB      Dynamic completion in preedit / pass-through
+;;   #        Enter numeric input mode
+;;   ;        Sticky shift (next char uppercase) / AZIK small-tsu (っ)
 ;;
 ;; Input modes: ascii (default), hiragana, katakana, latin,
 ;;   abbrev, jisx0208-latin.
-;;
-;; Dictionary configuration:
-;;   (setq nskk-jisyo-files
-;;         (list "/path/to/SKK-JISYO.L" "/path/to/SKK-JISYO.jinmei"))
 ;;
 ;; SKK server (skkserv) configuration (optional):
 ;;   (setq nskk-server-enable t)
@@ -109,10 +112,7 @@
 (declare-function nskk--commit-by-phase "nskk-keymap")
 
 (defvar nskk-mode-off-hook nil
-  "Hook run when NSKK mode is disabled.
-DDSKK equivalent: skk-mode-off-hook")
-
-(defvar nskk--system-dict-index)
+  "Hook run when NSKK mode is disabled.")
 
 ;; Define the minor mode
 (defvar-keymap nskk-mode-map
@@ -127,7 +127,7 @@ DDSKK equivalent: skk-mode-off-hook")
   "l"       #'nskk-handle-l
   "SPC"     #'nskk-handle-space
   "RET"     #'nskk-handle-return
-  ;; Additional ddskk-compatible bindings
+  ;; Additional special-key bindings
   "L"       #'nskk-handle-upper-l
   "/"       #'nskk-handle-slash
   "x"       #'nskk-handle-x
@@ -188,11 +188,11 @@ This provides global bindings that work even when nskk-mode is not yet active."
   ;; Initialize global Prolog predicates (idempotent, guard-protected)
   (nskk-state-initialize-prolog)
   (nskk-kana-initialize)
-  (nskk-henkan-initialize)
-  (nskk-input-initialize)
   (nskk-converter-initialize)
   (unless (nskk-prolog-holds-p '(dict-initialized))
     (nskk-dict-initialize))
+  (nskk-henkan-initialize)
+  (nskk-input-initialize)
   (unless nskk-current-state
     (setq nskk-current-state (nskk-state-create nskk-state-default-mode))
     (nskk-debug-message "Created initial state: mode=%s" nskk-state-default-mode))
@@ -212,15 +212,13 @@ This provides global bindings that work even when nskk-mode is not yet active."
   ;; Cancel any in-progress conversion or preedit before tearing down state.
   (when (and (boundp 'nskk-current-state)
              (nskk-state-p nskk-current-state))
-    (let ((phase (nskk-state-henkan-phase nskk-current-state)))
-      (cond
-       ;; Active/list conversion (▼): remove marker, leave kana reading.
-       ((memq phase '(active list))
-        (nskk-cancel-conversion-to-reading))
-       ;; Preedit (▽) or word-registration (still ▽ in buffer): remove marker + text.
-       ;; Note: 'registration lies in nskk--converting-phases but keeps ▽ (not ▼).
-       ((memq phase '(on registration))
-        (nskk-cancel-preedit)))))
+    (let* ((phase (nskk-state-henkan-phase nskk-current-state))
+           (action (when phase
+                     (nskk-prolog-query-value
+                      `(disable-cleanup ,phase \?a) '\?a))))
+      (pcase action
+        ('cancel-conversion (nskk-cancel-conversion-to-reading))
+        ('cancel-preedit    (nskk-cancel-preedit)))))
   ;; Clear remaining input state: pending romaji, dcomp, numeric, sticky shift, AZIK.
   ;; Internally guarded via nskk-when-bound and nskk-with-current-state; safe when nil.
   (nskk--clear-conversion-context)
@@ -277,7 +275,7 @@ Guards against point escaping the active conversion or preedit area due
 to unmapped cursor-movement commands (mouse clicks, M-f, page-up, etc.).
 
 Converting (▼) guard: point must be exactly at overlay-end.  Any
-deviation triggers implicit kakutei (確定), identical to DDSKK behaviour.
+deviation triggers implicit kakutei (確定).
 
 Preedit (▽) guard: if point moved and `this-command' is not an
 NSKK-bound command, commits the reading as-is via `nskk-henkan-kakutei'.
@@ -304,8 +302,8 @@ relevant phase is already nil and both guards are no-ops."
                    (/= (point) overlay-end))
           (nskk-commit-current))))
     ;; Preedit (▽) point-escape guard: commit reading when an unbound command moved point.
-    (when (and (not (nskk-converting-p))
-               (eq (nskk-state-henkan-phase nskk-current-state) 'on)
+    (when (and (nskk-prolog-holds-p
+                `(preedit-phase ,(nskk-state-henkan-phase nskk-current-state)))
                (nskk--get-conversion-start)
                nskk--point-before-command
                (/= (point) nskk--point-before-command)

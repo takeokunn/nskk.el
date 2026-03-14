@@ -39,8 +39,8 @@
 ;;   `user-dict-entry/2'   --- (user-dict-entry READING CANDIDATES-LIST)
 ;;   `system-dict-entry/2' --- (system-dict-entry READING CANDIDATES-LIST)
 ;;
-;; Lookup is O(1) for exact matches via Prolog hash index, O(k + n) for
-;; prefix matches via Prolog trie index.  User dictionary entries take
+;; Lookup is O(k) for exact matches via Prolog trie index (where k is the
+;; key length), O(k + n) for prefix matches.  User dictionary entries take
 ;; priority over system entries via Prolog clause ordering in `dict-entry/2'.
 ;;
 ;; Prolog predicates maintained by this module:
@@ -51,6 +51,9 @@
 ;; - `member/2'                  -- list membership helper
 ;; - `dict-register/2'           -- assertz/retract-based registration rule
 ;; - `dict-initialized/0'        -- idempotency marker (asserted after init)
+;; - `okuri-consonant/1'         -- set of valid okurigana consonant characters,
+;;                                  queried by `nskk--dict-lookup-okuri-ari'
+;;                                  (arity 1, :hash index)
 ;;
 ;; Key public API:
 ;; - `nskk-dict-lookup'                   -- look up a reading key
@@ -68,11 +71,6 @@
 (require 'nskk-cps-macros)
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
-
-(defvar nskk-jisyo-files nil
-  "Legacy compatibility variable for system dictionary file list.
-When set, takes priority over `nskk-dict-system-dictionary-files'
-in `nskk-dict-initialize'.")
 
 (defgroup nskk-dictionary nil
   "Dictionary and search settings."
@@ -107,8 +105,7 @@ and common system locations."
   :group 'nskk-dictionary)
 
 (defvar nskk-jisyo-update-hook nil
-  "Hook run when dictionary is updated.
-DDSKK equivalent: skk-jisyo-update-hook")
+  "Hook run when dictionary is updated.")
 
 ;;; Section 1: Error types
 
@@ -395,6 +392,10 @@ paths does not invalidate the cache (FR-009)."
   "Non-nil when system dictionary is loaded.
 Value is the source symbol \\='system.")
 
+(defsubst nskk-dict-system-index ()
+  "Return the system dictionary index, or nil if not initialized."
+  nskk--system-dict-index)
+
 (defvar nskk--user-dict-index nil
   "Non-nil when user dictionary is loaded.
 Value is the source symbol \\='user.")
@@ -428,6 +429,10 @@ Returns a list of readable dictionary file paths."
                   large-dict-paths)))
     (delete-dups (cl-remove-if-not (lambda (p) (and (stringp p) (file-readable-p p))) candidates))))
 
+(defvar nskk--dict-okuri-consonants nil
+  "Cached list of okuri-ari consonant character codes.
+Populated by `nskk-dict-initialize' from the `okuri-consonant/1' Prolog table.")
+
 ;;;###autoload
 (defun nskk-dict-initialize ()
   "Initialize dictionaries by loading system and user dictionaries.
@@ -439,8 +444,15 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
   (interactive)
   ;; Allow manual retry: retract previous initialization marker
   (nskk-prolog-retract-all 'dict-initialized 0)
-  (let ((dict-files (or nskk-jisyo-files
-                        nskk-dict-system-dictionary-files
+  ;; Define okuri-consonant/1 fact table (inside guard so it survives
+  ;; nskk-prolog-clear-database and is re-asserted on re-initialization)
+  (nskk-prolog-define-fact-table okuri-consonant (:arity 1 :index :hash)
+    (?k) (?s) (?t) (?n) (?h) (?m) (?y) (?r) (?w)
+    (?g) (?z) (?d) (?b) (?p))
+  ;; Populate the module-level cache used by nskk--dict-lookup-okuri-ari
+  (setq nskk--dict-okuri-consonants
+        (nskk-prolog-query-all-values '(okuri-consonant \?c) '\?c))
+  (let ((dict-files (or nskk-dict-system-dictionary-files
                         (nskk--dict-detect-system-dictionaries))))
     (when dict-files
       (let ((nskk-dict-system-dictionary-files dict-files))
@@ -451,26 +463,22 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
   (nskk-prolog-assert '((dict-initialized)))
   (message "NSKK: Dictionary initialization is complete"))
 
-;;; Okurigana consonants used in SKK dictionary (14 standard consonants)
-(defconst nskk--dict-okuri-consonants
-  '(?k ?s ?t ?n ?h ?m ?y ?r ?w ?g ?z ?d ?b ?p)
-  "List of lowercase consonants used as okurigana markers in SKK dictionary.")
-
-(defun nskk--dict-lookup-okuri-ari (key)
-  "Look up KEY for okuri-ari entries (reading + okurigana consonant).
-Returns combined candidates from all possible okuri-ari variants.
-This is used when no explicit okurigana marker is present in the input."
-  (let ((all-candidates nil))
-    (dolist (okuri-char nskk--dict-okuri-consonants)
-      (let* ((okuri-key (concat key (string okuri-char)))
-             (solutions (nskk-prolog-query `(dict-entry ,okuri-key \?c))))
-        (when solutions
-          (dolist (sol solutions)
-            (let ((cands (nskk-prolog-walk '\?c sol)))
-              (when cands
-                (setq all-candidates
-                      (cl-union all-candidates cands :test #'equal))))))))
-    all-candidates))
+(defun/k nskk--dict-lookup-okuri-ari (key)
+  "Look up KEY for okuri-ari entries by appending each okuri consonant.
+Returns combined unique candidates from all matching entries via on-found,
+or calls on-not-found if no candidates are found."
+  (let* ((consonants nskk--dict-okuri-consonants)
+         (all-candidates
+          (cl-loop for c in consonants
+                   for okuri-key = (concat key (string c))
+                   for solutions = (nskk-prolog-query `(dict-entry ,okuri-key \?cands))
+                   when solutions
+                   nconc (cl-loop for sol in solutions
+                                  for cands = (nskk-prolog-walk '\?cands sol)
+                                  when cands append cands))))
+    (if all-candidates
+        (succeed (cl-remove-duplicates all-candidates :test #'equal))
+      (fail))))
 
 (defun/k nskk--dict-do-lookup (key)
   "Internal: perform the actual Prolog lookup for KEY.
@@ -514,7 +522,7 @@ Returns t on success (Prolog dict-register/2 succeeded), nil on failure."
   (unless nskk--user-dict-index
     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
     (setq nskk--user-dict-index 'user))
-  (nskk-when-prolog-holds `(dict-register ,reading ,word)
+  (when (nskk-prolog-holds-p `(dict-register ,reading ,word))
     (setq nskk-dict-modified t)
     (nskk--dict-run-update-hook)
     (message "NSKK: Registered %s -> %s" reading word)
@@ -548,14 +556,13 @@ are empty/invalid or when the Prolog registration query fails."
       (insert ";; NSKK user dictionary\n")
       (insert ";; okuri-nasi entries.\n")
       ;; Single query fetches all key+candidates pairs (eliminates N+1 pattern)
-      (let ((solutions (nskk-prolog-query '(user-dict-entry \?k \?c))))
-        (dolist (sol solutions)
-          (let ((key (nskk-prolog-walk '\?k sol))
-                (candidates (nskk-prolog-walk '\?c sol)))
-            (when (and key candidates)
-              (insert (format "%s /%s/\n"
-                              key
-                              (mapconcat #'identity candidates "/"))))))))
+      (dolist (binding (nskk-prolog-query-bindings '(user-dict-entry \?k \?c) '(\?k \?c)))
+        (let ((key        (car binding))
+              (candidates (cadr binding)))
+          (when (and key candidates)
+            (insert (format "%s /%s/\n"
+                            key
+                            (mapconcat #'identity candidates "/")))))))
     (message "NSKK: User dictionary saved to %s"
              nskk-dict-user-dictionary-file)
     (setq nskk-dict-modified nil)))
