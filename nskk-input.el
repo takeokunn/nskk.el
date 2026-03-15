@@ -192,7 +192,7 @@ for fact-table queries that use yes/no classification columns."
   "Non-nil when in numeric input mode for SKK numeric conversion.")
 
 (defsubst nskk--update-modeline ()
-  "Update modeline if nskk-modeline module is loaded."
+  "Refresh NSKK modeline indicators when modeline support is available."
   (when (fboundp 'nskk-modeline-update)
     (nskk-modeline-update)))
 
@@ -200,11 +200,13 @@ for fact-table queries that use yes/no classification columns."
 
 (defmacro nskk-define-mode-setter (mode)
   "Define an interactive mode setter function for MODE.
-Creates `nskk-set-mode-MODE' that switches to MODE and updates modeline."
+Creates `nskk-set-mode-MODE' that switches to MODE, clears conversion
+context via `nskk--set-mode', and refreshes the modeline via
+`nskk--update-modeline'."
   (declare (indent 1) (debug t))
   (let ((fn-name (intern (format "nskk-set-mode-%s" mode))))
     `(defun ,fn-name ()
-       ,(format "Switch to %s mode." mode)
+       ,(format "Switch NSKK input mode to `%s' and refresh the modeline." mode)
        (interactive)
        (nskk--set-mode ',mode)
        (nskk--update-modeline))))

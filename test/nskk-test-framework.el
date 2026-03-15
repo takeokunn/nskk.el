@@ -1,6 +1,6 @@
 ;;; nskk-test-framework.el --- NSKK Test Framework using ERT  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 NSKK Authors
+;; Copyright (C) 2026 NSKK Authors
 
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: i18n

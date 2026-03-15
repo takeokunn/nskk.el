@@ -209,7 +209,9 @@ Returns nil if STATE is invalid."
 (defun/k nskk-state-get (state key)
   "Return the value of KEY slot from STATE struct.
 KEY can be a slot name symbol or string.
-Returns nil if KEY is not found or STATE is invalid."
+Sync wrapper returns the slot value, or nil when KEY is not found or
+STATE is invalid.  The /k variant calls ON-FOUND with the value, or
+ON-NOT-FOUND when STATE is not an `nskk-state' or KEY is not a valid slot."
   (if (nskk-state-p state)
       (let ((accessor (intern (format "nskk-state-%s" key))))
         (if (fboundp accessor)
@@ -275,10 +277,12 @@ Signals an error for invalid mode symbols."
 ;;;; Generic Setter — flat pcase dispatcher
 
 (defun/k nskk-state-set (state key value)
-  "Set KEY to VALUE in STATE struct.
+  "Set KEY to VALUE in STATE struct and return VALUE.
 KEY can be a slot name symbol or string.
-Routes `mode' and `henkan-phase' through validated setters; all other slots
-are set directly via `setf'.  Returns VALUE on success."
+Routes \\='mode and \\='henkan-phase through validated setters; all other slots
+are set directly via `setf'.
+Sync wrapper returns VALUE, or nil when STATE is invalid or KEY is unknown.
+The /k variant calls ON-FOUND with VALUE on success, ON-NOT-FOUND otherwise."
   (if (not (nskk-state-p state))
       (fail)
     (let ((key-sym (if (stringp key) (intern key) key)))
@@ -363,14 +367,18 @@ Queries `henkan-mode-phase/1' Prolog facts."
        (nskk-prolog-holds-p `(henkan-mode-phase ,(nskk-state-henkan-phase state)))))
 
 (defun/k nskk-state-henkan-on-p (state)
-  "Check if STATE is in henkan-on phase (▽)."
+  "Return non-nil when STATE is in the preedit (▽) henkan-on phase.
+Returns t in the sync wrapper; the /k variant calls ON-FOUND with t
+when the phase is \\='on, or ON-NOT-FOUND when it is not."
   (if (and (nskk-state-p state)
            (eq (nskk-state-henkan-phase state) 'on))
       (succeed t)
     (fail)))
 
 (defun/k nskk-state-henkan-active-p (state)
-  "Check if STATE is in henkan-active phase (▼)."
+  "Return non-nil when STATE is in the active conversion (▼) phase.
+Returns t in the sync wrapper; the /k variant calls ON-FOUND with t
+when the phase is \\='active, or ON-NOT-FOUND when it is not."
   (if (and (nskk-state-p state)
            (eq (nskk-state-henkan-phase state) 'active))
       (succeed t)

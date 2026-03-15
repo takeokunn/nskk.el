@@ -551,7 +551,15 @@ Creates a new marker if one does not already exist."
      ,@body))
 
 (defun nskk--clear-conversion-context ()
-  "Clear conversion context when switching modes."
+  "Clear all conversion and input context for mode switching or mode disable.
+Called by `nskk--disable' (mode teardown) and mode-switch commands.
+Clears: conversion overlay, candidate list display, inline overlay (if
+present), conversion-start-marker, romaji-buffer, dynamic completion
+state (dcomp-candidates, dcomp-prefix, dcomp-index, dcomp-multiple-overlay),
+all AZIK/sticky/numeric input state variables via the `clearable-input-var/1'
+Prolog fact table, and the current `nskk-state' henkan phase and candidates
+via `nskk-reset-henkan-state'.
+Does not reset the input mode."
   (nskk-delete-overlay nskk--conversion-overlay)
   (nskk--dismiss-candidate-list)
   ;; Clear inline display if enabled
@@ -567,7 +575,8 @@ Creates a new marker if one does not already exist."
         nskk--dcomp-index 0)
   (nskk-delete-overlay nskk--dcomp-multiple-overlay)
   ;; Clear all registered input state variables via Prolog fact table.
-  ;; The clearable-input-var/1 table is defined in nskk-input-initialize.
+  ;; The clearable-input-var/1 table is defined by
+  ;; `nskk-input-initialize' in nskk-input.el.
   (dolist (sym (nskk-prolog-query-all-values '(clearable-input-var \?v) '\?v))
     (when (boundp sym) (set sym nil)))
   (nskk-with-current-state
@@ -1428,8 +1437,6 @@ Prolog trie indexes; deduplicates keys present in both."
         (insert new-text)))))
 
 ;;;; Dynamic Completion Multiple Display
-
-(defvar nskk--dcomp-multiple-overlay)  ;; defined in nskk-state.el
 
 (defun nskk--dcomp-multiple-build-string (candidates selected-index prefix)
   "Build overlay after-string for dcomp multiple display.

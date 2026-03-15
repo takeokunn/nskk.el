@@ -139,6 +139,11 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
               (nskk-state-set current-state 'input-buffer
                               (concat current-buffer key)))))))))
 
+(defun nskk-state-test--get-mode-with-state/k (mode on-found on-not-found)
+  "Invoke `nskk-state-get-mode/k' with temporary MODE as current state."
+  (let ((nskk-current-state (nskk-state-create mode)))
+    (nskk-state-get-mode/k on-found on-not-found)))
+
 ;; Test Constants
 
 (defconst nskk-state-test-valid-modes
@@ -196,6 +201,43 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (let ((state (nskk-state-create mode)))
         (should (nskk-state-p state))
         (should (eq (nskk-state-mode state) mode))))))
+
+;;;
+;;; nskk-state-create/k CPS Tests
+;;;
+
+;; Table-driven: all valid modes → on-found called with a valid state.
+(nskk-describe "nskk-state-create/k"
+  (nskk-deftest-table state-create/k-valid-modes
+    :description "Calls on-found with a valid nskk-state for every valid mode"
+    :columns (mode)
+    :rows ((hiragana) (katakana) (katakana-半角) (abbrev) (ascii) (latin) (jisx0208-latin))
+    :body (let (got-state got-not-found)
+            (nskk-state-create/k mode
+              (lambda (s) (setq got-state s))
+              (lambda () (setq got-not-found t)))
+            (should (nskk-state-p got-state))
+            (should (eq (nskk-state-mode got-state) mode))
+            (should-not got-not-found)))
+
+  ;; NOTE: nskk-state-create/k has an &optional initial-mode parameter.
+  ;; The /k variant signature is (initial-mode on-found on-not-found), so
+  ;; nil must be passed explicitly as initial-mode to get the default (ascii).
+  (nskk-it "calls on-found with default (ascii) state when nil mode given"
+    (let (got-state)
+      (nskk-state-create/k nil
+        (lambda (s) (setq got-state s))
+        (lambda () (ert-fail "Expected on-found for nskk-state-create/k")))
+      (should (nskk-state-p got-state))
+      (should (eq (nskk-state-mode got-state) 'ascii))))
+
+  (nskk-it "calls on-found with ascii fallback for invalid mode"
+    (let (got-state)
+      (nskk-state-create/k 'not-a-valid-mode
+        (lambda (s) (setq got-state s))
+        (lambda () (ert-fail "Expected on-found even for invalid mode (fallback to ascii)")))
+      (should (nskk-state-p got-state))
+      (should (eq (nskk-state-mode got-state) 'ascii)))))
 
 ;;;
 ;;; Getter Tests
@@ -917,6 +959,129 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                                        (lambda (_) (should nil))
                                        (lambda () (setq was-empty t)))
       (should was-empty))))
+
+(nskk-describe "CPS /k variants with nskk-it-k"
+  (nskk-it-k "nskk-state-get/k returns the requested slot value"
+    (nskk-state-get/k
+     (let ((state (nskk-state-create 'hiragana)))
+       (nskk-state-set state 'input-buffer "ka")
+       state)
+     'input-buffer)
+    :found (result)
+      (should (equal result "ka"))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-get/k"))
+
+  (nskk-it-k "nskk-state-set/k sets mode and returns the new mode"
+    (nskk-state-set/k (nskk-state-create 'ascii) 'mode 'katakana)
+    :found (result)
+      (should (eq result 'katakana))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-set/k"))
+
+  (nskk-it-k "nskk-state-append-input/k appends one character"
+    (nskk-state-append-input/k (nskk-state-create) ?a)
+    :found (result)
+      (should (equal result "a"))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-append-input/k"))
+
+  (nskk-it-k "nskk-state-delete-last-char/k returns the deleted character"
+    (nskk-state-delete-last-char/k
+     (let ((state (nskk-state-create)))
+       (nskk-state-set state 'input-buffer "ab")
+       state))
+    :found (result)
+      (should (eq result ?b))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-delete-last-char/k"))
+
+  (nskk-it-k "nskk-state-transition/k transitions to a valid target mode"
+    (nskk-state-transition/k (nskk-state-create 'ascii) 'ascii 'hiragana)
+    :found (result)
+      (should (eq result t))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-transition/k"))
+
+  (nskk-it-k "nskk-state-next-candidate/k returns the next candidate"
+    (nskk-state-next-candidate/k
+     (let ((state (nskk-state-create)))
+       (nskk-state-set-candidates state '("a" "b" "c"))
+       state))
+    :found (result)
+      (should (equal result "b"))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-next-candidate/k"))
+
+  (nskk-it-k "nskk-state-previous-candidate/k returns the previous candidate"
+    (nskk-state-previous-candidate/k
+     (let ((state (nskk-state-create)))
+       (nskk-state-set-candidates state '("a" "b" "c"))
+       (nskk-state-set state 'current-index 2)
+       state))
+    :found (result)
+      (should (equal result "b"))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-previous-candidate/k"))
+
+  (nskk-it-k "nskk-state-current-candidate/k returns current candidate"
+    (nskk-state-current-candidate/k
+     (let ((state (nskk-state-create)))
+       (nskk-state-set-candidates state '("a" "b" "c"))
+       (nskk-state-set state 'current-index 1)
+       state))
+    :found (result)
+      (should (equal result "b"))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-current-candidate/k"))
+
+  (nskk-it-k "nskk-state-get-metadata/k returns stored metadata"
+    (nskk-state-get-metadata/k
+     (let ((state (nskk-state-create)))
+       (nskk-state-put-metadata state :foo "bar")
+       state)
+     :foo)
+    :found (result)
+      (should (equal result "bar"))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-get-metadata/k"))
+
+  (nskk-it-k "nskk-state-get-okurigana/k returns stored okurigana"
+    (nskk-state-get-okurigana/k
+     (let ((state (nskk-state-create)))
+       (nskk-state-set-okurigana state "k")
+       state))
+    :found (result)
+      (should (equal result "k"))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-get-okurigana/k"))
+
+  (nskk-it-k "nskk-state-get-mode/k returns current-state mode"
+    (nskk-state-test--get-mode-with-state/k 'katakana)
+    :found (result)
+      (should (eq result 'katakana))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-get-mode/k"))
+
+  (nskk-it-k "nskk-state-henkan-on-p/k returns t when phase is on"
+    (nskk-state-henkan-on-p/k
+     (let ((state (nskk-state-create 'hiragana)))
+       (nskk-state-set-henkan-phase state 'on)
+       state))
+    :found (result)
+      (should (eq result t))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-henkan-on-p/k"))
+
+  (nskk-it-k "nskk-state-henkan-active-p/k returns t when phase is active"
+    (nskk-state-henkan-active-p/k
+     (let ((state (nskk-state-create 'hiragana)))
+       (nskk-state-force-henkan-phase state 'active)
+       state))
+    :found (result)
+      (should (eq result t))
+    :not-found ()
+      (ert-fail "Expected on-found for nskk-state-henkan-active-p/k")))
 
 ;;;
 ;;; Japanese Mode Classification Tests

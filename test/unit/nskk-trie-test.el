@@ -352,6 +352,16 @@
       (let ((trie (nskk-trie-create)))
         (should-error (nskk-trie-insert trie nil "val")))))
 
+  ;; Table-driven: each trie query operation signals an error for non-string input.
+  ;; All five operations share the same contract: key/prefix/input must be a string.
+  (nskk-deftest-table trie-non-string-input-signals-error
+    :description "Each trie operation signals an error when given a non-string argument"
+    :columns (operation)
+    :rows ((nskk-trie-lookup) (nskk-trie-delete) (nskk-trie-prefix-search)
+           (nskk-trie-longest-match) (nskk-trie-has-prefix-p))
+    :body (let ((trie (nskk-trie-create)))
+            (should-error (funcall operation trie 42))))
+
   (nskk-context "empty string key"
     (nskk-it "signals an error when inserting with an empty string key"
       (let ((trie (nskk-trie-create)))
@@ -481,6 +491,31 @@
 ;;;;
 
 (nskk-describe "PBT: trie invariants"
+  (nskk-it "trie-insert-lookup-roundtrip"
+    (nskk-property-test trie-insert-lookup-roundtrip
+      ((key romaji-basic))
+      (let* ((trie (nskk-trie-create))
+             (key-x (concat key "x"))
+             (key-y (concat key "y")))
+        (nskk-trie-insert trie key-x 42)
+        (nskk-trie-insert trie key-y 99)
+        (and (equal (nskk-trie-lookup trie key-x) 42)
+             (equal (nskk-trie-lookup trie key-y) 99)))
+      50))
+
+  (nskk-it "trie-delete-removes-key"
+    (nskk-property-test trie-delete-removes-key
+      ((key romaji-basic))
+      (let* ((trie (nskk-trie-create))
+             (key-x (concat key "x"))
+             (key-y (concat key "y")))
+        (nskk-trie-insert trie key-x 42)
+        (nskk-trie-insert trie key-y 99)
+        (nskk-trie-delete trie key-x)
+        (and (null (nskk-trie-lookup trie key-x))
+             (equal (nskk-trie-lookup trie key-y) 99)))
+      50))
+
   (nskk-it "insert-then-lookup always returns the stored value"
     (nskk-property-test trie-pbt-insert-lookup
       ((key   romaji-string)

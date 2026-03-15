@@ -406,30 +406,43 @@
     (let ((nskk-current-state nil))
       (should-not (nskk-converting-p))))
 
-  (nskk-context "when henkan phase is set"
-    (nskk-it "returns nil when phase is nil (fresh state)"
-      (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (should-not (nskk-converting-p))))
+  ;; Table-driven: all 5 phases with expected bool result.
+  ;; Uses force-henkan-phase throughout to avoid dependency on transition validity
+  ;; (the nil->active transition is not in the transition table, so force is required).
+  (nskk-deftest-table converting-p-by-henkan-phase
+    :description "Returns correct bool for each of the 5 henkan phases"
+    :columns (phase expected-converting-p)
+    :rows ((nil          nil)
+           (on           nil)
+           (active       t)
+           (list         t)
+           (registration t))
+    :body (let ((nskk-current-state (nskk-state-create 'hiragana)))
+            (nskk-state-force-henkan-phase nskk-current-state phase)
+            (if expected-converting-p
+                (should (nskk-converting-p))
+              (should-not (nskk-converting-p)))))
 
-    (nskk-it "returns nil when phase is 'on (preedit, not converting)"
-      (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-state-set-henkan-phase nskk-current-state 'on)
-        (should-not (nskk-converting-p))))
+  ;; CPS variant: on-found(t) when converting, on-not-found() when not.
+  ;; Use nskk-it (not nskk-it-k) because the state setup must precede the /k call;
+  ;; nskk-it-k's k-call cannot contain a wrapping `let' form.
+  (nskk-it "converting-p/k calls on-found when phase is active (CPS contract)"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-state-force-henkan-phase nskk-current-state 'active)
+      (let (on-found-called)
+        (nskk-converting-p/k
+         (lambda (_) (setq on-found-called t))
+         (lambda () (ert-fail "Expected on-found for active phase but got on-not-found")))
+        (should on-found-called))))
 
-    (nskk-it "returns non-nil when phase is 'active"
-      (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (should (nskk-converting-p))))
-
-    (nskk-it "returns non-nil when phase is 'list"
-      (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-state-force-henkan-phase nskk-current-state 'list)
-        (should (nskk-converting-p))))
-
-    (nskk-it "returns non-nil when phase is 'registration"
-      (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-state-force-henkan-phase nskk-current-state 'registration)
-        (should (nskk-converting-p))))))
+  (nskk-it "converting-p/k calls on-not-found when phase is on (CPS contract)"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-state-set-henkan-phase nskk-current-state 'on)
+      (let (on-not-found-called)
+        (nskk-converting-p/k
+         (lambda (_) (ert-fail "Expected on-not-found for on phase but got on-found"))
+         (lambda () (setq on-not-found-called t)))
+        (should on-not-found-called)))))
 
 ;;;
 ;;; nskk-detect-okurigana-char Tests
@@ -1277,7 +1290,33 @@
         (nskk-mode 1)
         (nskk-without-modification (insert nskk-henkan-on-marker))
         (nskk--set-conversion-start-marker (point-min))
-        (should (null (nskk-preedit-string)))))))
+        (should (null (nskk-preedit-string))))))
+
+  ;; CPS variant: on-found(string) when preedit text exists, on-not-found() otherwise.
+  (nskk-it "preedit-string/k calls on-found with text when preedit text is present"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-without-modification
+          (insert nskk-henkan-on-marker)
+          (insert "か"))
+        (nskk--set-conversion-start-marker (point-min))
+        (let (got-text got-not-found)
+          (nskk-preedit-string/k
+           (lambda (s) (setq got-text s))
+           (lambda () (setq got-not-found t)))
+          (should (equal got-text "か"))
+          (should-not got-not-found)))))
+
+  (nskk-it "preedit-string/k calls on-not-found when no preedit text is present"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let (got-not-found)
+          (nskk-preedit-string/k
+           (lambda (_s) (ert-fail "Expected on-not-found but got on-found"))
+           (lambda () (setq got-not-found t)))
+          (should got-not-found))))))
 
 ;;;
 ;;; Dynamic completion (dcomp)

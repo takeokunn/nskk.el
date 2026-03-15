@@ -170,6 +170,9 @@ Errors in hook functions are suppressed to protect the CPS chain."
 SEARCH-TYPE is `exact', `prefix', `partial', or `fuzzy'.
 OKURI-TYPE is `okuri-ari', `okuri-nasi', or nil (ignored for `fuzzy' searches).
 LIMIT is the maximum number of results.
+Sync wrapper return value is search-type dependent:
+`nskk-dict-entry' for exact search, or a result list for prefix/partial/fuzzy.
+The /k variant calls ON-FOUND on success and ON-NOT-FOUND when no result exists.
 
 NOTE: The generated `nskk-search/k' variant places ON-FOUND and ON-NOT-FOUND
 after the &optional parameters.  Callers MUST always pass both continuation
@@ -217,7 +220,9 @@ Converts ENTRY-OKURI string to a symbol, then delegates to the Prolog
 
 (defun/k nskk-search-exact (index query okuri-type)
   "Perform exact match search in INDEX for QUERY.
-OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil."
+OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
+Returns an `nskk-dict-entry' in the sync wrapper, or nil when not found.
+The /k variant calls ON-FOUND with the entry, ON-NOT-FOUND otherwise."
   (let* ((pred       (nskk-dict-index-predicate index))
          (candidates (when pred
                        (nskk-prolog-query-value
@@ -253,7 +258,10 @@ Returns the processed result list."
 (defun/k nskk-search-prefix (index query okuri-type limit)
   "Perform prefix match search in INDEX for QUERY.
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
-LIMIT is the maximum number of results."
+LIMIT is the maximum number of results.
+Returns a list of (KEY . `nskk-dict-entry') pairs in the sync wrapper,
+or nil when no results remain after filtering.
+The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
   (let* ((pred (nskk-dict-index-predicate index))
          (raw-results (when pred (nskk-prolog-trie-prefix-search pred 2 query)))
          ;; Convert raw (key . candidates) pairs to (key . nskk-dict-entry) pairs
@@ -299,7 +307,10 @@ Used for both ordinary and fuzzy results:
 (defun/k nskk-search-partial (index query okuri-type limit)
   "Perform partial match search in INDEX for QUERY.
 OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
-LIMIT is the maximum number of results."
+LIMIT is the maximum number of results.
+Returns a list of (KEY . `nskk-dict-entry') pairs in the sync wrapper,
+or nil when no results remain after filtering.
+The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
   (let* ((pred (nskk-dict-index-predicate index))
          ;; Collect all substring matches, then delegate filtering / dedup /
          ;; limit / sort to the shared post-process pipeline (consistent with
@@ -320,6 +331,9 @@ LIMIT is the maximum number of results."
 (defun/k nskk-search-fuzzy (index query limit)
   "Perform fuzzy search in INDEX for QUERY using Levenshtein distance.
 LIMIT is the maximum number of results.
+Returns a list in the sync wrapper, or nil when no match is within
+`nskk-search-fuzzy-threshold'.  The /k variant calls ON-FOUND with the list
+or ON-NOT-FOUND when no candidate qualifies.
 
 Each element in the results list has the shape (KEY ENTRY . DISTANCE)
 where KEY is a string, ENTRY is an `nskk-dict-entry', and DISTANCE is
@@ -492,6 +506,7 @@ calculator) are silently skipped -- equivalent to AquaSKK SetAvoidStudy."
 Returns the cached or fresh result via ON-FOUND when candidates exist,
 or calls ON-NOT-FOUND when no candidates are found.
 SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to `nskk-search' on cache miss.
+Sync wrapper returns the same value shape as `nskk-search'.
 
 NOTE: `nskk-search-jisyo-hook' fires on cache misses (when `nskk-search' is
 invoked) but does NOT fire on cache hits.  Consumers expecting the hook

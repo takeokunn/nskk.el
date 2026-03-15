@@ -88,6 +88,10 @@
 ;; - `nskk-kana-hankaku-to-zenkaku/k'        -- defun/k: always succeeds
 ;; - `nskk-kana-initialize/k'  (defun/done: on-done continuation)
 ;;
+;; Plain defun helpers:
+;; - `nskk-kana-convert-for-mode'            -- MODE-script conversion via `kana-conversion/3'
+;; - `nskk-kana-normalize-for-lookup'        -- normalize MODE text to hiragana via `kana-conversion/3'
+;;
 ;; Unicode ranges used:
 ;; - Hiragana: U+3040-U+309F
 ;; - Katakana: U+30A0-U+30FF
@@ -477,16 +481,21 @@ Idempotent: subsequent calls are no-ops."
   (nskk-kana-string-katakana-to-hiragana (nskk-kana-hankaku-to-zenkaku text)))
 
 (defun nskk-kana-convert-for-mode (kana mode)
-  "Convert hiragana KANA to the script of MODE via `kana-conversion/3'."
+  "Convert hiragana KANA to the script expected by MODE.
+MODE is a mode symbol used in `kana-conversion/3' (for example,
+`hiragana', `katakana', or `katakana-半角').
+Returns converted text as a string; unknown MODE falls back to identity."
   (nskk-kana-initialize)
   (funcall (or (nskk-prolog-query-value
                 `(kana-conversion ,mode insert \?fn) '\?fn)
-               'identity)
+                'identity)
            kana))
 
 (defun nskk-kana-normalize-for-lookup (text mode)
   "Normalize MODE-script TEXT to hiragana for dictionary lookup.
-Uses the `kana-conversion/3' Prolog fact table for MODE dispatch."
+MODE is a mode symbol used in `kana-conversion/3'.
+Returns a hiragana string suitable as a dictionary lookup key;
+unknown MODE falls back to identity."
   (nskk-kana-initialize)
   (funcall (or (nskk-prolog-query-value
                 `(kana-conversion ,mode normalize \?fn) '\?fn)
