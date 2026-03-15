@@ -405,9 +405,11 @@ Performs two passes using azik-key-extends/2 facts:
 
 ;; azik-colon-trigger-char/1: (CHAR-CODE)
 ;; Characters that arm the colon-okurigana pending state in AZIK mode.
-;; ?: (colon) is the trigger on all keyboards (Shift+; on US101).
-;; ?+ (plus) on JP106 is handled via the `plus-jp106' char-type path
-;; (immediate sokuon okurigana), NOT via this predicate.
+;; ?: (colon) is the trigger on US101 keyboards (Shift+;).
+;; On JP106, `:' is a bare key producing ー (long vowel) via the romaji
+;; table; `nskk--azik-colon-key-p' excludes JP106 so `:' falls through
+;; to the normal path.  JP106 uses `+' (Shift+;) for sokuon okurigana
+;; via the `plus-jp106' char-type path instead.
 (nskk-prolog-define-fact-table azik-colon-trigger-char (:arity 1 :index :hash)
   (?:))
 

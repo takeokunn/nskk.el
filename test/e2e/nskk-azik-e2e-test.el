@@ -896,30 +896,33 @@ This ensures:
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "使って"))))
 
-  (nskk-it "Tuka:te triggers conversion showing 使 (AZIK Shift+; sokuon okurigana)"
-    ;; In AZIK mode, `:' (Shift+;) in preedit acts as a combined okurigana +
+  (nskk-it "Tuka:te triggers conversion showing 使 on US101 (AZIK Shift+; sokuon okurigana)"
+    ;; On US101, `:' (Shift+;) in preedit acts as a combined okurigana +
     ;; sokuon trigger.  Tuka→▽つか, then `:' inserts * and arms the colon-okuri
     ;; trigger, `t' fires the dict lookup at preedit-end (after `*') with query
     ;; "つかt", and the following `e' retroactively inserts っ before te→て,
     ;; giving okurigana kana "って".
+    ;; On JP106, `:' produces ー (long vowel); use `+' for sokuon okurigana.
     (let ((dict '(("つかt" . ("使")))))
-      (nskk-e2e-with-azik-buffer 'hiragana dict
-        (nskk-e2e-type "Tuka")
-        (nskk-e2e-type ":")
-        (nskk-e2e-type "t")
-        (nskk-e2e-type "e")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "使"))))
+      (let ((nskk-azik-keyboard-type 'us101))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Tuka")
+          (nskk-e2e-type ":")
+          (nskk-e2e-type "t")
+          (nskk-e2e-type "e")
+          (nskk-e2e-assert-converting)
+          (nskk-e2e-assert-overlay-shows "使")))))
 
-  (nskk-it "Tuka:te commits to 使って after C-j"
+  (nskk-it "Tuka:te commits to 使って after C-j on US101"
     (let ((dict '(("つかt" . ("使")))))
-      (nskk-e2e-with-azik-buffer 'hiragana dict
-        (nskk-e2e-type "Tuka")
-        (nskk-e2e-type ":")
-        (nskk-e2e-type "t")
-        (nskk-e2e-type "e")
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "使って")))))
+      (let ((nskk-azik-keyboard-type 'us101))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Tuka")
+          (nskk-e2e-type ":")
+          (nskk-e2e-type "t")
+          (nskk-e2e-type "e")
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-assert-buffer "使って"))))))
 
 ;;;;
 ;;;; Section 14: Okurigana Conversion in AZIK Mode
@@ -1295,15 +1298,28 @@ This ensures:
         ;; + should NOT produce っ on US101 (no romaji rule for +)
         (should-not (string-match-p "っ" (buffer-string))))))
 
-  (nskk-it "Oku:te still works (colon-okurigana path preserved)"
-    (let ((dict '(("おくt" . ("送")))))
+  (nskk-it "colon in JP106 preedit produces ー (not colon-okurigana)"
+    ;; On JP106, `:' is a bare key that produces ー (long vowel) in preedit.
+    ;; JP106 users use `+' (Shift+;) for sokuon okurigana instead.
+    (let ((nskk-azik-keyboard-type 'jp106))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "Ka")
+        (nskk-e2e--dispatch-event ?:)
+        (should (string-match-p "ー" (buffer-string)))
+        (should-not nskk--azik-colon-okuri-pending))))
+
+  (nskk-it "Ka:soru converts to カーソル on JP106 keyboard"
+    ;; Regression test: Ka:soru on JP106 must produce reading かーそる,
+    ;; not arm colon-okurigana.
+    (let ((dict '(("かーそる" . ("カーソル")))))
       (let ((nskk-azik-keyboard-type 'jp106))
         (nskk-e2e-with-azik-buffer 'hiragana dict
-          (nskk-e2e-type "Oku")
+          (nskk-e2e-type "Ka")
           (nskk-e2e--dispatch-event ?:)
-          (nskk-e2e-type "te")
+          (nskk-e2e-type "soru")
+          (nskk-e2e-type " ")
           (nskk-e2e-type "C-j")
-          (nskk-e2e-assert-buffer "送って")))))
+          (nskk-e2e-assert-buffer "カーソル")))))
 
   (nskk-it "Oku+ SPC cycles to next candidate on JP106 keyboard"
     (let ((dict '(("おくt" . ("送" "奥")))))

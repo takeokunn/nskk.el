@@ -156,10 +156,12 @@ Satisfies Sh→すう (AZIK double-vowel) while preserving sha→しゃ (standar
 
 (defun nskk--azik-colon-key-p (char)
   "Return non-nil when CHAR arms the AZIK colon-okurigana pending state.
-The trigger is `:' (Shift+; on US101) on all keyboard types.
-On JP106 keyboards, `+' (Shift+;) triggers immediate sokuon okurigana
-via the `plus-jp106' char-type path and does not arm colon-okurigana."
-  (nskk-prolog-holds-p `(azik-colon-trigger-char ,char)))
+The trigger is `:' (Shift+; on US101) on non-JP106 keyboards only.
+On JP106, `:' is a bare key that produces `ー' (long vowel) via the
+standard AZIK romaji table; JP106 users use `+' (Shift+;) for
+sokuon okurigana via the `plus-jp106' char-type path instead."
+  (and (not (eq nskk-azik-keyboard-type 'jp106))
+       (nskk-prolog-holds-p `(azik-colon-trigger-char ,char))))
 
 (defvar-local nskk--azik-colon-okuri-pending nil
   "Non-nil when the AZIK colon-okurigana trigger (`:') has been armed.
