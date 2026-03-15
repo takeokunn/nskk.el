@@ -1792,6 +1792,77 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     (should-not (nskk-prolog-query-value
                  `(mode-category nonexistent ,'\?c) '\?c))))
 
+;;;
+;;; Static Cache / Prolog Fact Invariant Tests
+;;;
+;;; These tests verify that the static `defconst' caches defined for
+;;; hot-path performance remain in sync with the authoritative Prolog facts.
+;;; A failure here means the caches need to be updated to match the facts.
+;;;
+
+(nskk-describe "nskk--valid-modes cache invariant"
+  (nskk-it "every Prolog valid-mode fact is in the static set"
+    (let ((prolog-modes
+           (nskk-prolog-query-all-values '(valid-mode \?m) '\?m)))
+      (dolist (m prolog-modes)
+        (should (memq m nskk--valid-modes)))))
+
+  (nskk-it "every static-set mode is known to Prolog"
+    (dolist (m nskk--valid-modes)
+      (should (nskk-prolog-holds-p `(valid-mode ,m)))))
+
+  (nskk-it "count matches between Prolog facts and static set"
+    (let ((prolog-modes
+           (nskk-prolog-query-all-values '(valid-mode \?m) '\?m)))
+      (should (= (length prolog-modes) (length nskk--valid-modes))))))
+
+(nskk-describe "nskk--valid-henkan-phases cache invariant"
+  (nskk-it "every Prolog valid-henkan-phase fact is in the static list"
+    (let ((prolog-phases
+           (nskk-prolog-query-all-values '(valid-henkan-phase \?p) '\?p)))
+      (dolist (p prolog-phases)
+        (should (memq p nskk--valid-henkan-phases)))))
+
+  (nskk-it "every static-list phase is known to Prolog"
+    (dolist (p nskk--valid-henkan-phases)
+      (should (nskk-prolog-holds-p `(valid-henkan-phase ,p)))))
+
+  (nskk-it "nil is a valid henkan phase in both"
+    (should (memq nil nskk--valid-henkan-phases))
+    (should (nskk-prolog-holds-p '(valid-henkan-phase nil)))))
+
+(nskk-describe "nskk--valid-henkan-transitions cache invariant"
+  (nskk-it "every static transition is known to Prolog"
+    (dolist (pair nskk--valid-henkan-transitions)
+      (let ((from (car pair))
+            (to   (cdr pair)))
+        (should (nskk-prolog-holds-p
+                 `(valid-henkan-transition ,from ,to))))))
+
+  (nskk-it "nil→on is present in both"
+    (should (nskk--henkan-transition-valid-p nil 'on))
+    (should (nskk-prolog-holds-p '(valid-henkan-transition nil on))))
+
+  (nskk-it "on→active is present in both"
+    (should (nskk--henkan-transition-valid-p 'on 'active))
+    (should (nskk-prolog-holds-p '(valid-henkan-transition on active)))))
+
+(nskk-describe "nskk--state-slot-defaults cache invariant"
+  (nskk-it "input-buffer default matches Prolog"
+    (should (equal (plist-get nskk--state-slot-defaults :input-buffer)
+                   (nskk-prolog-query-value
+                    '(state-slot-default input-buffer \?v) '\?v))))
+
+  (nskk-it "henkan-phase default matches Prolog"
+    (should (equal (plist-get nskk--state-slot-defaults :henkan-phase)
+                   (nskk-prolog-query-value
+                    '(state-slot-default henkan-phase \?v) '\?v))))
+
+  (nskk-it "current-index default matches Prolog"
+    (should (equal (plist-get nskk--state-slot-defaults :current-index)
+                   (nskk-prolog-query-value
+                    '(state-slot-default current-index \?v) '\?v)))))
+
 (provide 'nskk-state-test)
 
 ;;; nskk-state-test.el ends here

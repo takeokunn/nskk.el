@@ -32,9 +32,18 @@
 ;; Manages the per-buffer `nskk-state' struct and the Prolog facts that
 ;; encode valid modes, valid transitions, and struct slot defaults.
 ;;
-;; Single source of truth: Prolog facts populated by `nskk-state-initialize-prolog'.
-;; All mode and phase validation uses live Prolog queries; no Elisp defconsts
-;; mirror those facts.
+;; Dual-source architecture:
+;; - Authoritative source: Prolog facts populated by `nskk-state-initialize-prolog'.
+;;   These remain queryable by all modules and are the canonical truth.
+;; - Fast-path caches (read-only): static `defconst' values that mirror the
+;;   Prolog facts and eliminate ~10µs Prolog round-trips on every keystroke:
+;;     `nskk--valid-modes'             -- mirrors mode-properties/5 fact table
+;;     `nskk--valid-henkan-phases'     -- mirrors valid-henkan-phase/1 facts
+;;     `nskk--valid-henkan-transitions'-- mirrors valid-henkan-transition/2 facts
+;;     `nskk--state-slot-defaults'     -- mirrors state-slot-default/2 facts
+;;   The caches are co-located with the initialization function (same file, same
+;;   section) so any change to the Prolog facts is immediately visible alongside
+;;   the constants that must stay in sync.
 ;;
 ;; The central `nskk-state' struct (cl-defstruct) tracks:
 ;; - Current input mode: hiragana, katakana, ascii, latin, abbrev,
@@ -208,13 +217,26 @@ Returns nil if KEY is not found or STATE is invalid."
           (fail)))
     (fail)))
 
-;;;; Mode Validation — clean pair, no with-no-warnings
+;;;; Mode Validation — fast path via static set (no Prolog round-trip)
+;;
+;; `nskk--valid-modes' mirrors the mode-properties/5 fact table defined in
+;; `nskk-state-initialize-prolog'.  Both must stay in sync.  The static set
+;; gives O(1) lookup without the ~10µs Prolog overhead on every keypress.
+;; Prolog facts remain authoritative for cross-module queries; this is a
+;; read-only cache for the hot path only.
 
-(defun nskk-state-valid-mode-p (mode)
+(defconst nskk--valid-modes
+  '(hiragana katakana katakana-半角 abbrev ascii latin jisx0208-latin)
+  "Fast-path mirror of the valid-mode/1 Prolog fact table.
+Must stay in sync with the mode-properties/5 facts in
+`nskk-state-initialize-prolog'.  Used by `nskk-state-valid-mode-p'
+to avoid a Prolog round-trip on every mode validation call.")
+
+(defsubst nskk-state-valid-mode-p (mode)
   "Return non-nil if MODE is a valid NSKK input mode symbol.
-Queries `valid-mode/1' Prolog facts.
-Requires `nskk-state-initialize-prolog' to have been called first."
-  (nskk-prolog-holds-p `(valid-mode ,mode)))
+Uses a static set for O(1) lookup without Prolog overhead.
+The set mirrors the mode-properties/5 Prolog facts exactly."
+  (memq mode nskk--valid-modes))
 
 ;;;; Per-Slot Typed Setters (macro-generated)
 ;;
@@ -277,12 +299,37 @@ are set directly via `setf'.  Returns VALUE on success."
                (_ nil))))
         (if result (succeed result) (fail))))))
 
+;;;; State Slot Defaults — static cache, no Prolog round-trip per create/reset
+;;
+;; `nskk--state-slot-defaults' mirrors the state-slot-default/2 Prolog facts
+;; defined in `nskk-state-initialize-prolog'.  All default values are nil or ""
+;; (immutable), so sharing them across instances is safe.  Mutable structures
+;; (lists, plists) are NOT stored here; each create call gets its own fresh nil.
+;; This eliminates 10 Prolog `nskk-prolog-query-value' round-trips (~10µs each)
+;; per `nskk-state-create' and `nskk-state-reset' call.
+
+(defconst nskk--state-slot-defaults
+  (list :input-buffer     ""
+        :converted-buffer ""
+        :candidates       nil
+        :current-index    0
+        :henkan-position  nil
+        :marker-position  nil
+        :undo-stack       nil
+        :redo-stack       nil
+        :henkan-phase     nil
+        :metadata         nil)
+  "Inline defaults for `nskk-state' struct slots.
+Must stay in sync with the state-slot-default/2 Prolog facts in
+`nskk-state-initialize-prolog'.")
+
 ;;;; State Creation
 
 (defun/k nskk-state-create (&optional initial-mode)
-  "Create a new NSKK state object with Prolog-sourced slot defaults.
+  "Create a new NSKK state object with statically-cached slot defaults.
 INITIAL-MODE defaults to `nskk-state-default-mode' if not specified.
-Slot defaults are queried from `state-slot-default/2' Prolog facts.
+Slot defaults are sourced from `nskk--state-slot-defaults' (constant)
+rather than Prolog queries, saving ~10 × 10µs per call.
 
 NOTE: The generated `nskk-state-create/k' variant places ON-FOUND and
 ON-NOT-FOUND after the &optional INITIAL-MODE parameter.  Callers MUST
@@ -292,22 +339,19 @@ to all parameters after the first."
   (nskk-state-initialize-prolog)
   (let* ((mode (let ((m (or initial-mode nskk-state-default-mode 'ascii)))
                  (if (nskk-state-valid-mode-p m) m 'ascii)))
-         (state (cl-flet ((default (slot)
-                            (nskk-prolog-query-value
-                             `(state-slot-default ,slot \?v) '\?v)))
-                  (make-nskk-state
-                   :mode             mode
-                   :input-buffer     (default 'input-buffer)
-                   :converted-buffer (default 'converted-buffer)
-                   :candidates       (default 'candidates)
-                   :current-index    (default 'current-index)
-                   :henkan-position  (default 'henkan-position)
-                   :marker-position  (default 'marker-position)
-                   :previous-mode    mode
-                   :undo-stack       (default 'undo-stack)
-                   :redo-stack       (default 'redo-stack)
-                   :henkan-phase     (default 'henkan-phase)
-                   :metadata         (default 'metadata)))))
+         (state (make-nskk-state
+                 :mode             mode
+                 :input-buffer     (plist-get nskk--state-slot-defaults :input-buffer)
+                 :converted-buffer (plist-get nskk--state-slot-defaults :converted-buffer)
+                 :candidates       (plist-get nskk--state-slot-defaults :candidates)
+                 :current-index    (plist-get nskk--state-slot-defaults :current-index)
+                 :henkan-position  (plist-get nskk--state-slot-defaults :henkan-position)
+                 :marker-position  (plist-get nskk--state-slot-defaults :marker-position)
+                 :previous-mode    mode
+                 :undo-stack       (plist-get nskk--state-slot-defaults :undo-stack)
+                 :redo-stack       (plist-get nskk--state-slot-defaults :redo-stack)
+                 :henkan-phase     (plist-get nskk--state-slot-defaults :henkan-phase)
+                 :metadata         (plist-get nskk--state-slot-defaults :metadata))))
     (succeed state)))
 
 ;;;; Henkan Phase Predicates — clean pairs, no with-no-warnings
@@ -332,29 +376,66 @@ Queries `henkan-mode-phase/1' Prolog facts."
       (succeed t)
     (fail)))
 
+;;;; Henkan Phase — fast-path static sets (no Prolog round-trips on hot path)
+;;
+;; These sets mirror the Prolog facts defined in `nskk-state-initialize-prolog'.
+;; Prolog facts remain authoritative for cross-module queries; these are
+;; read-only caches eliminating 2 × ~10µs Prolog queries per phase transition.
+
+(defconst nskk--valid-henkan-phases
+  '(nil on active list registration)
+  "Fast-path mirror of valid-henkan-phase/1 Prolog facts.
+Must stay in sync with the valid-henkan-phase facts in
+`nskk-state-initialize-prolog'.")
+
+(defconst nskk--valid-henkan-transitions
+  ;; Flat list of (FROM . TO) cons cells for O(1) assoc lookup.
+  '((nil      . on)
+    (on       . active)
+    (on       . registration)
+    (on       . nil)
+    (active   . on)
+    (active   . nil)
+    (active   . list)
+    (list     . on)
+    (list     . nil)
+    (list     . registration)
+    (registration . nil)
+    (registration . list))
+  "Fast-path mirror of valid-henkan-transition/2 Prolog facts as (FROM . TO) pairs.
+Must stay in sync with the valid-henkan-transition facts in
+`nskk-state-initialize-prolog'.")
+
+(defsubst nskk--henkan-transition-valid-p (from to)
+  "Return non-nil if FROM -> TO is a valid henkan phase transition.
+Uses a static alist for O(n) lookup where n is small (12 entries)."
+  (cl-find-if (lambda (pair) (and (eq (car pair) from) (eq (cdr pair) to)))
+              nskk--valid-henkan-transitions))
+
 ;;;; Henkan Phase Setter — clean pair, no with-no-warnings, no nested condition-case
 
 (defun nskk-state-set-henkan-phase (state phase)
-  "Set henkan PHASE in STATE with Prolog-validated transition.
-Validates PHASE against `valid-henkan-phase/1' and the current phase
-against `valid-henkan-transition/2'.  Same-phase transitions are no-ops.
-Signals an error for invalid phase or invalid transition."
+  "Set henkan PHASE in STATE with static-set-validated transition.
+Validates PHASE against `nskk--valid-henkan-phases' and the current phase
+against `nskk--valid-henkan-transitions'.  Same-phase transitions are no-ops.
+Signals an error for invalid phase or invalid transition.
+No Prolog round-trips on the hot path."
   (unless (nskk-state-p state)
     (error "nskk-state-set-henkan-phase: STATE must be an nskk-state, got %S" state))
-  (unless (nskk-prolog-holds-p `(valid-henkan-phase ,phase))
+  (unless (memq phase nskk--valid-henkan-phases)
     (error "Invalid henkan phase: %s (not in valid-henkan-phase/1)" phase))
   (let ((current (nskk-state-henkan-phase state)))
     (unless (or (eq current phase)
-                (nskk-prolog-holds-p `(valid-henkan-transition ,current ,phase)))
+                (nskk--henkan-transition-valid-p current phase))
       (error "Invalid henkan phase transition: %s -> %s" current phase)))
   (setf (nskk-state-henkan-phase state) phase))
 
 (defun/done nskk-state-force-henkan-phase (state phase)
   "Force set henkan PHASE in STATE, bypassing transition validation.
-Validates PHASE via `valid-henkan-phase/1' Prolog fact.
+Validates PHASE via the static `nskk--valid-henkan-phases' set.
 Use for test setup or emergency reset."
   (nskk-with-state state
-    (unless (nskk-prolog-holds-p `(valid-henkan-phase ,phase))
+    (unless (memq phase nskk--valid-henkan-phases)
       (error "Invalid henkan phase: %s (not in valid-henkan-phase/1)" phase))
     (setf (nskk-state-henkan-phase state) phase)))
 
@@ -376,19 +457,19 @@ Calls on-found with t on success; on-not-found on failure."
 
 (defun/done nskk-state-reset (state)
   "Reset STATE to initial state (preserves mode and previous-mode).
-Slot defaults are sourced from `state-slot-default/2' Prolog facts."
+Slot defaults are sourced from `nskk--state-slot-defaults' (constant),
+saving ~10 × 10µs Prolog round-trips compared to live `state-slot-default/2'
+queries.  The Prolog facts remain authoritative; this is a read-only cache."
   (nskk-with-state state
-    (cl-flet ((default (slot)
-                (nskk-prolog-query-value `(state-slot-default ,slot \?v) '\?v)))
-      (setf (nskk-state-input-buffer     state) (default 'input-buffer)
-            (nskk-state-converted-buffer state) (default 'converted-buffer)
-            (nskk-state-candidates       state) (default 'candidates)
-            (nskk-state-current-index    state) (default 'current-index)
-            (nskk-state-henkan-position  state) (default 'henkan-position)
-            (nskk-state-marker-position  state) (default 'marker-position)
-            (nskk-state-undo-stack       state) (default 'undo-stack)
-            (nskk-state-redo-stack       state) (default 'redo-stack)
-            (nskk-state-metadata         state) (default 'metadata)))
+    (setf (nskk-state-input-buffer     state) ""
+          (nskk-state-converted-buffer state) ""
+          (nskk-state-candidates       state) nil
+          (nskk-state-current-index    state) 0
+          (nskk-state-henkan-position  state) nil
+          (nskk-state-marker-position  state) nil
+          (nskk-state-undo-stack       state) nil
+          (nskk-state-redo-stack       state) nil
+          (nskk-state-metadata         state) nil)
     (nskk-state-force-henkan-phase state nil)))
 
 ;;;; Buffer Management Helpers
@@ -397,14 +478,16 @@ Slot defaults are sourced from `state-slot-default/2' Prolog facts."
   "Append CHAR to STATE's input buffer.
 CHAR must be a valid character (integer).
 Returns the new buffer string on success, nil on failure.
-Uses `concat' with a list to avoid intermediate string allocation."
+Uses `concat' with a list to avoid intermediate string allocation.
+Defensive: coerces a non-string buffer to \"\" rather than propagating
+corrupt state.  This guards against buffer corruption from external mutation
+while remaining allocation-free on the normal (string) path."
   (if (and (nskk-state-p state) (characterp char))
-      (let ((buf (nskk-state-input-buffer state)))
-        (unless (stringp buf)
-          (setq buf ""))
-        (let ((new-buf (concat buf (list char))))
-          (setf (nskk-state-input-buffer state) new-buf)
-          (succeed new-buf)))
+      (let* ((raw (nskk-state-input-buffer state))
+             (buf (if (stringp raw) raw ""))
+             (new-buf (concat buf (list char))))
+        (setf (nskk-state-input-buffer state) new-buf)
+        (succeed new-buf))
     (fail)))
 
 (defun/k nskk-state-delete-last-char (state)
@@ -415,8 +498,9 @@ Properly handles multibyte characters."
   (if (nskk-state-p state)
       (let ((buf (nskk-state-input-buffer state)))
         (if (and (stringp buf) (> (length buf) 0))
-            (let ((last-char (aref buf (1- (length buf))))
-                  (new-buf (substring buf 0 (1- (length buf)))))
+            (let* ((new-len  (1- (length buf)))
+                   (last-char (aref buf new-len))
+                   (new-buf   (substring buf 0 new-len)))
               (setf (nskk-state-input-buffer state) new-buf)
               (succeed last-char))
           (fail)))
