@@ -684,11 +684,21 @@ Called when backspace is pressed in preedit state.
 If point is beyond the marker content area, deletes one character
 backward with `delete-char'.  If the preedit area is empty (marker in
 buffer but no characters typed yet), cancels the entire preedit via
-`nskk-cancel-preedit'."
-  (let ((start (nskk--get-conversion-start)))
-    (if (and start (> (point) (+ start (length nskk-henkan-on-marker))))
-        (delete-char -1)
-      (nskk-cancel-preedit))))
+`nskk-cancel-preedit'.
+
+If point drifted to the left of the preedit boundary, do not delete any
+buffer text; move point back to the preedit boundary instead.  This is
+the safe-side behavior to avoid deleting already-committed text."
+  (let* ((start (nskk--get-conversion-start))
+         (preedit-min (and start (+ start (length nskk-henkan-on-marker)))))
+    (when preedit-min
+      (cond
+       ((> (point) preedit-min)
+        (delete-char -1))
+       ((= (point) preedit-min)
+        (nskk-cancel-preedit))
+       (t
+        (goto-char preedit-min))))))
 
 (nskk-define-key-handler backspace
   "Handle DEL key: delete last preedit char or backward-delete-char.

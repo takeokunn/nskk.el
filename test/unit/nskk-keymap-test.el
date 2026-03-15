@@ -935,7 +935,19 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
       (let ((nskk-current-state (nskk-state-create 'ascii)))
         (insert "abc")
         (nskk-when (nskk-handle-backspace))
-        (nskk-then (should (equal (buffer-string) "ab")))))))
+        (nskk-then (should (equal (buffer-string) "ab"))))))
+
+  (nskk-it "does not delete committed text when point drifted left of preedit"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana)))
+        (insert "A▽ka")
+        (nskk--set-conversion-start-marker 2)
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
+        (goto-char 1)
+        (nskk-when (nskk-handle-backspace))
+        (nskk-then
+         (should (equal (buffer-string) "A▽ka"))
+         (should (= (point) 3)))))))
 
 ;;;
 ;;; nskk--backspace-in-preedit
@@ -967,7 +979,23 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
           (goto-char (point-max))
           (let ((nskk-henkan-on-marker "▽"))
             (nskk--backspace-in-preedit)))
-        (should cancel-called)))))
+        (should cancel-called))))
+
+  (nskk-it "moves point to preedit boundary when point drifted left"
+    (let ((cancel-called nil)
+          (delete-called nil))
+      (nskk-with-mocks ((nskk-cancel-preedit (lambda () (setq cancel-called t)))
+                        (delete-char (lambda (_n) (setq delete-called t))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽"))
+            (insert "A▽ka")
+            (goto-char 1)
+            (nskk--set-conversion-start-marker 2)
+            (nskk--backspace-in-preedit)
+            (should (= (point) 3))
+            (should (equal (buffer-string) "A▽ka"))
+            (should-not cancel-called)
+            (should-not delete-called)))))))
 
 ;;;
 ;;; nskk-handle-tab behavior

@@ -1159,7 +1159,20 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       ;; Second DEL: empty preedit (nothing after ▽) → cancel preedit
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-henkan-phase nil "After 2nd DEL: henkan-phase reset to nil (preedit cancelled)")
-      (nskk-e2e-assert-buffer "" "After 2nd DEL: buffer is empty (preedit cancelled)"))))
+      (nskk-e2e-assert-buffer "" "After 2nd DEL: buffer is empty (preedit cancelled)")))
+
+  (nskk-it "does not delete committed text when point drifted left of preedit"
+    ;; Regression: if point is left of ▽ preedit boundary, DEL must not delete
+    ;; committed text before preedit. It should safely clamp point to boundary.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (insert "A")
+      (nskk-e2e-type "Ka")
+      (nskk-e2e-assert-buffer "A▽か" "Precondition: committed text + preedit")
+      ;; Simulate point drift to the committed region (left of preedit boundary).
+      (goto-char (point-min))
+      (nskk-e2e-type "DEL")
+      (nskk-e2e-assert-buffer "A▽か" "DEL must not delete committed text when point drifted left")
+      (should (= (point) (+ 2 (length nskk-henkan-on-marker)))))))
 
 ;;;;
 ;;;; DEL in Normal State (No Preedit, No Conversion)
