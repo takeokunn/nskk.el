@@ -59,6 +59,9 @@ No external ELPA packages required.
 (require 'nskk)
 (nskk-global-mode 1)
 
+;; NSKK uses Emacs's built-in ja-dic by default when available.
+;; You can still override it with `nskk-dict-system-dictionary-files'.
+
 ;; After nskk-global-mode is enabled:
 ;; C-j       → switch to hiragana input (from ascii mode)
 ;; C-x C-j   → toggle nskk-mode on/off in current buffer
