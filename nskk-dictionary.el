@@ -61,6 +61,7 @@
 ;; - `nskk-dict-register-word'            -- register a new word
 ;; - `nskk-dict-load-user-dictionary'     -- load user dictionary from file
 ;; - `nskk-dict-load-system-dictionaries' -- load system dictionaries
+;; - `nskk-dict-load-ja-dic'              -- load Emacs built-in ja-dic data
 ;; - `nskk-dict-save-user-dictionary'     -- persist user dictionary to file
 ;; - `nskk-dict-initialize'               -- initialize all dictionaries
 
@@ -97,6 +98,13 @@ and common system locations."
 
 (defcustom nskk-dict-cache-enabled t
   "When non-nil, enable on-disk caching for system dictionaries."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'nskk-dictionary)
+
+(defcustom nskk-dict-use-ja-dic t
+  "When non-nil, use Emacs's built-in ja-dic as the default system dictionary.
+Only used when `nskk-dict-system-dictionary-files' is nil."
   :type 'boolean
   :safe #'booleanp
   :group 'nskk-dictionary)
@@ -207,9 +215,70 @@ Returns entry count (0 if no readable files or no entries found)."
                                append (nskk--dict-parse-file-to-entries file))))
     (when all-entries
       (nskk-prolog-trie-bulk-assert 'system-dict-entry 2 all-entries)
-      (when nskk-dict-cache-enabled
-        (nskk--dict-save-system-dict-cache all-entries dict-files)))
+    (when nskk-dict-cache-enabled
+      (nskk--dict-save-system-dict-cache all-entries dict-files)))
     (length all-entries)))
+
+(defvar nskk--dict-ja-dic-code-table nil
+  "Hash table mapping ja-dic compact kana codes to Emacs characters.")
+
+(defun nskk--dict-ja-dic-decode-key (codes)
+  "Decode ja-dic compact key CODES into an NSKK reading string."
+  (unless nskk--dict-ja-dic-code-table
+    (setq nskk--dict-ja-dic-code-table (make-hash-table :test #'eql))
+    (cl-loop for ch from #x3041 to #x3096
+             for jis = (encode-char ch 'japanese-jisx0208)
+             when jis do (puthash (- (logand jis #xFF) 32) ch nskk--dict-ja-dic-code-table)))
+  (apply #'string
+         (mapcar (lambda (code)
+                   (cond ((zerop code) ?ー)
+                         ((< code 0) (- code))
+                         (t (or (gethash code nskk--dict-ja-dic-code-table)
+                                (error "NSKK: Unknown ja-dic compact code %S" code)))))
+                 codes)))
+
+(defun nskk--dict-ja-dic-flatten-node (node prefix)
+  "Recursively flatten ja-dic NODE using PREFIX compact codes."
+  (let* ((code (car node))
+         (rest (cdr node))
+         (path (append prefix (list code)))
+         (cands (car rest))
+         (entries nil))
+    (when (and (listp cands) (stringp (car cands)))
+      (push (cons (nskk--dict-ja-dic-decode-key path) (reverse cands)) entries)
+      (setq rest (cdr rest)))
+    (when (eq (car rest) t) (setq rest (cdr rest)))
+    (dolist (child rest)
+      (when (consp child)
+        (setq entries (nconc entries (nskk--dict-ja-dic-flatten-node child path)))))
+    entries))
+
+(defun nskk--dict-ja-dic-flatten-tree (tree)
+  "Flatten ja-dic TREE into a list of (key . candidates) entries."
+  (cl-loop for node in (cdr tree)
+           when (consp node)
+           nconc (nskk--dict-ja-dic-flatten-node node nil)))
+
+(defun nskk-dict-load-ja-dic ()
+  "Load Emacs built-in `ja-dic' data as `system-dict-entry' facts.
+Returns `system' when entries were loaded successfully, or nil otherwise."
+  (condition-case err
+      (when (load-library "ja-dic/ja-dic")
+        (let ((entries (append (when (boundp 'skkdic-okuri-nasi)
+                                 (nskk--dict-ja-dic-flatten-tree skkdic-okuri-nasi))
+                               (when (boundp 'skkdic-okuri-ari)
+                                 (nskk--dict-ja-dic-flatten-tree skkdic-okuri-ari)))))
+          (when entries
+            (nskk-prolog-retract-all 'system-dict-entry 2)
+            (nskk-prolog-set-index 'system-dict-entry 2 :trie)
+            (nskk-prolog-trie-bulk-assert 'system-dict-entry 2 entries)
+            (message "NSKK: Loaded ja-dic system dictionary (%d entries)"
+                     (length entries))
+            'system)))
+    (error
+     (message "NSKK: Could not load ja-dic (%s)"
+              (error-message-string err))
+     nil)))
 
 ;;; Section 5: I/O and lifecycle
 
@@ -466,11 +535,25 @@ Returns a list of readable dictionary file paths."
   "Cached list of okuri-ari consonant character codes.
 Populated by `nskk-dict-initialize' from the `okuri-consonant/1' Prolog table.")
 
+(defun nskk--dict-initialize-system-dictionary ()
+  "Initialize the system dictionary using configured files or built-in ja-dic."
+  (or (when nskk-dict-system-dictionary-files
+        (nskk-dict-load-system-dictionaries))
+      (when (and (null nskk-dict-system-dictionary-files)
+                 nskk-dict-use-ja-dic)
+        (nskk-dict-load-ja-dic))
+      (let ((dict-files (and (null nskk-dict-system-dictionary-files)
+                             (nskk--dict-detect-system-dictionaries))))
+        (when dict-files
+          (let ((nskk-dict-system-dictionary-files dict-files))
+            (nskk-dict-load-system-dictionaries))))))
+
 ;;;###autoload
 (defun nskk-dict-initialize ()
   "Initialize dictionaries by loading system and user dictionaries.
 When `nskk-dict-system-dictionary-files' is nil, auto-detects
-dictionary paths from nix profiles and common system locations.
+ dictionary paths from nix profiles and common system locations.
+NSKK first tries Emacs's built-in `ja-dic' before file auto-detection.
 
 Calling this function interactively allows manual retry: it retracts
 the \\='(dict-initialized) Prolog fact first, then reinitializes."
@@ -485,11 +568,7 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
   ;; Populate the module-level cache used by nskk--dict-lookup-okuri-ari
   (setq nskk--dict-okuri-consonants
         (nskk-prolog-query-all-values '(okuri-consonant \?c) '\?c))
-  (let ((dict-files (or nskk-dict-system-dictionary-files
-                        (nskk--dict-detect-system-dictionaries))))
-    (when dict-files
-      (let ((nskk-dict-system-dictionary-files dict-files))
-        (setq nskk--system-dict-index (nskk-dict-load-system-dictionaries)))))
+  (setq nskk--system-dict-index (nskk--dict-initialize-system-dictionary))
   (setq nskk--user-dict-index (nskk-dict-load-user-dictionary))
   ;; Load confirmed dictionary if configured
   (nskk-dict-load-kakutei-dictionary)

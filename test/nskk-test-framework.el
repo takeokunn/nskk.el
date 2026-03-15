@@ -50,6 +50,10 @@
 (require 'nskk-input)
 (require 'nskk-converter)
 
+;; Disable loading of large system dictionaries (like ja-dic) by default in
+;; tests. Most unit and integration tests only need small mock dictionaries.
+(setq nskk-dict-use-ja-dic nil)
+
 ;; NOTE: The initialization calls below are guarded by idempotency flags
 ;; (e.g., `nskk--state-prolog-initialized').  If you `eval-buffer' this
 ;; file after editing, those flags will prevent re-initialization unless

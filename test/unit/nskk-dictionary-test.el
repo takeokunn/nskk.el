@@ -28,6 +28,9 @@
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
 
+(defvar skkdic-okuri-ari nil)
+(defvar skkdic-okuri-nasi nil)
+
 ;;; Section 1: Error type tests
 
 (nskk-describe "module loading"
@@ -391,6 +394,42 @@
         (should result)
         (should (cl-some (lambda (p) (string-match-p "profiles/default" p)) result))))))
 
+(nskk-describe "ja-dic conversion"
+  (nskk-it "decodes and flattens okuri-nasi entries"
+    (let* ((o (- (logand (encode-char ?お 'japanese-jisx0208) #xFF) 32))
+           (sample `(skdic-okuri-nasi
+                     (,o ("緒" "小")))))
+      (should (equal (nskk--dict-ja-dic-flatten-tree sample)
+                     '(("お" . ("小" "緒")))))))
+
+  (nskk-it "decodes and flattens okuri-ari entries"
+    (let* ((wa (- (logand (encode-char ?わ 'japanese-jisx0208) #xFF) 32))
+           (ru (- (logand (encode-char ?る 'japanese-jisx0208) #xFF) 32))
+           (sample `(skkdic-okuri-ari
+                     (,wa t
+                          (,ru t
+                               (-105 ("惡" "悪")))))))
+      (should (equal (nskk--dict-ja-dic-flatten-tree sample)
+                     '(("わるi" . ("悪" "惡")))))))
+
+  (nskk-it "loads flattened ja-dic entries into system-dict-entry"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((o (- (logand (encode-char ?お 'japanese-jisx0208) #xFF) 32))
+             (wa (- (logand (encode-char ?わ 'japanese-jisx0208) #xFF) 32))
+             (ru (- (logand (encode-char ?る 'japanese-jisx0208) #xFF) 32))
+             (skkdic-okuri-nasi `(skdic-okuri-nasi
+                                  (,o ("緒" "小"))))
+             (skkdic-okuri-ari `(skkdic-okuri-ari
+                                 (,wa t
+                                      (,ru t
+                                           (-105 ("惡" "悪")))))))
+        (nskk-with-mocks ((load-library (lambda (_feature) t)))
+          (should (eq 'system (nskk-dict-load-ja-dic)))
+          (should (equal '("小" "緒")
+                         (nskk-prolog-query-value '(system-dict-entry "お" \?c) '\?c)))
+          (should (equal '("悪" "惡")
+                         (nskk-prolog-query-value '(system-dict-entry "わるi" \?c) '\?c))))))))
+
 (nskk-describe "dict-initialize"
   (nskk-it "uses auto-detection when config is nil"
     (let ((nskk-dict-system-dictionary-files nil)
@@ -413,6 +452,22 @@
                         (nskk-dict-load-system-dictionaries (lambda () nil))
                         (nskk-dict-load-user-dictionary (lambda () nil)))
         (nskk-dict-initialize)
+        (should-not detect-called))))
+
+  (nskk-it "prefers ja-dic before file auto-detection"
+    (let ((nskk-dict-system-dictionary-files nil)
+          (nskk-dict-use-ja-dic t)
+          (nskk-dict-user-dictionary-file nil)
+          (nskk--system-dict-index nil)
+          (nskk--user-dict-index nil)
+          (ja-dic-called nil)
+          (detect-called nil))
+      (nskk-with-mocks ((nskk-dict-load-ja-dic (lambda () (setq ja-dic-called t) 'system))
+                        (nskk--dict-detect-system-dictionaries
+                         (lambda () (setq detect-called t) '("/some/path")))
+                        (nskk-dict-load-user-dictionary (lambda () nil)))
+        (nskk-dict-initialize)
+        (should ja-dic-called)
         (should-not detect-called)))))
 
 ;;;
