@@ -48,6 +48,9 @@ INTEGRATION_SRC = test/integration/nskk-integration-test.el \
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
 E2E_SRC = test/e2e/nskk-abbrev-e2e-test.el \
            test/e2e/nskk-azik-e2e-test.el \
+           test/e2e/nskk-azik-chaos-e2e-test.el \
+           test/e2e/nskk-azik-mbt-e2e-test.el \
+           test/e2e/nskk-azik-state-transition-e2e-test.el \
            test/e2e/nskk-dcomp-e2e-test.el \
            test/e2e/nskk-henkan-e2e-test.el \
            test/e2e/nskk-kana-input-e2e-test.el \

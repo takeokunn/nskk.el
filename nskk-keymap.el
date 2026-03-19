@@ -109,6 +109,7 @@
 (declare-function nskk-process-japanese-input "nskk-input")
 (declare-function nskk-set-mode-numeric "nskk-input")
 (defvar nskk-converter-romaji-style)
+(defvar nskk--romaji-buffer)          ;; Forward declaration from nskk-state.el
 ;; Functions in nskk-henkan.el
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--has-preedit "nskk-henkan")
@@ -136,10 +137,9 @@
   (space preedit   start-conversion)
   (space normal    self-insert)
   ;; Return
-  (return converting commit-candidate)
-  (return normal   newline)
-  ;; Note: no (return preedit ...) row -- the wildcard `_' in nskk-handle-return
-  ;; fires for preedit, calling (newline).  This is intentional.
+  (return converting       commit-candidate)
+  (return preedit          kakutei-and-newline)
+  (return normal           newline)
   ;; Cancel
   (cancel converting rollback-to-reading)
   (cancel preedit   cancel-preedit)
@@ -218,7 +218,10 @@
 (nskk-prolog-define-fact-table mode-switch-preaction (:arity 2 :index :hash)
   (converting       commit-current)
   (preedit-japanese henkan-kakutei)
-  (preedit-pending  noop)
+  ;; preedit-pending: uppercase trigger fired (▽ marker in buffer) but no kana
+  ;; emitted yet.  Commit (remove ▽, clear state) before navigation or mode-switch
+  ;; so the cursor can move freely and the next preedit starts from a clean state.
+  (preedit-pending  henkan-kakutei)
   (idle-japanese    noop)
   (other            fallback))
 
@@ -536,9 +539,12 @@ Dispatched via `q-key-dispatch/3' Prolog table."
     (pcase action
       ('fire-romaji     (nskk-handle-q-key))
       ('convert-script  (nskk-henkan-kakutei-convert-script))
-      ('mode-switch     (nskk--with-japanese-mode/k
-                          (lambda (_) (nskk-handle-q-key))
-                          (lambda () (self-insert-command 1))))
+      ('mode-switch     (let ((saved-romaji nskk--romaji-buffer))
+                          (nskk--with-japanese-mode/k
+                           (lambda (_)
+                             (setq nskk--romaji-buffer saved-romaji)
+                             (nskk-handle-q-key))
+                           (lambda () (self-insert-command 1)))))
       (_                (self-insert-command 1)))))
 
 (defun/done nskk-handle-l ()
@@ -604,11 +610,15 @@ modes insert a literal ASCII space."
   (_ (nskk-self-insert 1)))
 
 (nskk-define-key-handler return
-  "Handle RET key: commit current conversion or insert newline.
+  "Handle RET key: commit current conversion or preedit, then insert newline.
 In conversion mode, commits the selected candidate without inserting
-a newline.  In preedit mode or normal mode, inserts a newline
-unconditionally (preedit text is left in place)."
+a newline.  In preedit (▽) mode, commits the raw kana reading via
+`nskk-henkan-kakutei' then inserts a newline (matching DDSKK behavior).
+In normal mode, inserts a newline unconditionally."
   ('commit-candidate (nskk-commit-current))
+  ('kakutei-and-newline
+   (nskk-henkan-kakutei)
+   (newline))
   (_ (newline)))
 
 (defmacro nskk-define-nav-handler (key docstring kakutei-action nav-action nav-cmd &optional error-type)

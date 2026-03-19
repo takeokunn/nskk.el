@@ -104,10 +104,12 @@
 (declare-function nskk--set-conversion-start-marker "nskk-henkan")
 (declare-function nskk--insert-marker "nskk-henkan")
 (declare-function nskk--conversion-start-active-p "nskk-henkan")
+(declare-function nskk--preedit-ends-with-plain-vowel-p "nskk-henkan" ())
 (declare-function nskk-process-okurigana-input "nskk-henkan")
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-state-get-metadata "nskk-state")
+(declare-function nskk-state-put-metadata "nskk-state")
 (declare-function nskk-state-get-okurigana "nskk-state")
 (declare-function nskk-state-set-okurigana "nskk-state")
 (declare-function nskk--flush-romaji-before-okuri "nskk-henkan")
@@ -183,6 +185,14 @@ right after `*' for the dict query.  On the next input:
 Produces the correct okurigana kana (e.g. って) after the dict lookup has
 already fired with the consonant-only query (e.g. \"つかt\").
 See `nskk--apply-colon-okuri-correction'.")
+
+(defvar-local nskk--azik-sokuon-okuri-kana-pending nil
+  "Non-nil after JP106 `+' fires sokuon okurigana conversion.
+Set by `nskk--trigger-sokuon-okurigana' immediately after the dict lookup
+fires for the っ okurigana.  Cleared by `nskk--emit-converted-kana' when the
+next kana (e.g. て from `te') is inserted in the nil-okurigana branch.
+When cleared, also resets `okurigana-in-progress' metadata so that subsequent
+consonants (e.g. `m' in `moraitq') correctly trigger implicit kakutei.")
 
 (defsubst nskk--bool-sym (val)
   "Return `yes' when VAL is non-nil, `no' otherwise.
@@ -342,7 +352,9 @@ In standard mode: toggle mode (default SKK behavior)."
     (nskk-debug-log "[INPUT] q-key: style=%s buf-state=%s action=%s" style buf-state action)
     (pcase action
       ('toggle-mode  (nskk-toggle-japanese-mode))
-      ('insert-n     (insert (nskk--convert-kana-for-mode "\u3093")))
+      ('insert-n     (nskk--clear-pending-romaji)
+                     (setq nskk--romaji-buffer "")
+                     (insert (nskk--convert-kana-for-mode "\u3093")))
       ('fire-romaji  (nskk-process-japanese-input ?q 1))
       (_             nil))))
 
@@ -527,7 +539,11 @@ arguments after all insertions and side effects complete."
           (nskk-debug-log "[INPUT] okuri-conversion: okuri=%s kana=%s" okuri converted)
           (nskk--trigger-okuri-conversion okuri preedit-end)
           (nskk-state-set-okurigana nskk-current-state nil))
-      (dotimes (_ n) (insert converted)))))
+      (dotimes (_ n) (insert converted))
+      (when nskk--azik-sokuon-okuri-kana-pending
+        (setq nskk--azik-sokuon-okuri-kana-pending nil)
+        (nskk-with-current-state
+          (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil))))))
 
 (defun nskk--convert-kana-for-mode (kana)
   "Convert hiragana KANA to the script appropriate for the current input mode.
@@ -635,7 +651,8 @@ and char-type=plus-jp106."
     (insert "っ")
     (nskk--trigger-okuri-conversion ?t preedit-end)
     (nskk-with-current-state
-      (nskk-state-set-okurigana nskk-current-state nil))))
+      (nskk-state-set-okurigana nskk-current-state nil))
+    (setq nskk--azik-sokuon-okuri-kana-pending t)))
 
 (defun/done nskk--process-normal-japanese-input (char n)
   "Handle normal Japanese input for CHAR with repeat count N.
@@ -708,7 +725,8 @@ Actions:
                                   (nskk--conversion-start-active-p)
                                   (nskk--has-preedit)
                                   (not (nskk-with-current-state
-                                         (nskk-state-get-okurigana nskk-current-state))))
+                                         (nskk-state-get-okurigana nskk-current-state)))
+                                  (not (nskk--preedit-ends-with-plain-vowel-p)))
                              'azik-arm-eligible)
                             (t 'other)))
            (action (nskk-prolog-query-value
@@ -805,7 +823,9 @@ Facts encode the priority-ordered dispatch table for
                        `match', `incomplete', `no-result'
 
 Facts are asserted in priority order (nn-double > azik-deferred > sokuon >
-n-consonant > match > incomplete > no-match).  Also clears
+match > n-consonant > incomplete > no-match).  `match' precedes `n-consonant'
+so that an AZIK hatsuon rule (e.g. nz→なん) fires in preedit rather than
+emitting ん and leaving the consonant pending.  Also clears
 `nskk--romaji-classify-cache' so stale memoized lookups are evicted."
   (clrhash nskk--romaji-classify-cache)
   (nskk-prolog-define-fact-table romaji-classify (:arity 3 :index :list)
@@ -815,12 +835,13 @@ n-consonant > match > incomplete > no-match).  Also clears
     (azik-deferred  eligible-match \?result-type)
     ;; sokuon: doubled eligible consonant, no complete match
     (sokuon         eligible-other \?result-type)
-    ;; n-consonant: last=n and char is not a hatsuon-blocker (any result-type).
-    ;; Must precede the generic ?doubled rows so the concrete n-consonant value
-    ;; is matched before the ?doubled wildcard fires.
-    (n-consonant    n-consonant    \?result-type)
-    ;; match: converter returned a kana string
+    ;; match: converter produced a complete kana string.
+    ;; Placed before n-consonant so AZIK two-char rules (e.g. nz→なん, nk→にん)
+    ;; fire when the combined n+char lookup succeeds.  When the combined lookup
+    ;; is incomplete or absent, n-consonant catches the case and emits ん.
     (match          \?doubled      match)
+    ;; n-consonant: last=n and char is not a hatsuon-blocker, no complete match.
+    (n-consonant    n-consonant    \?result-type)
     ;; incomplete: converter returned :incomplete
     (incomplete     \?doubled      incomplete)
     ;; no-match: fallback
@@ -975,6 +996,7 @@ this emission and process INPUT+vowel as the longer standard-romaji rule
 \(e.g. \"sh\"→\"すう\" then \"sha\"→\"しゃ\")."
   (let ((kana (car result)))
     (nskk-debug-log "[INPUT] azik-vowel-deferred-emit: input=%s kana=%s" input kana)
+    (setq nskk--deferred-azik-state nil)
     (setq nskk--deferred-vowel-shadow-state (cons input kana))
     (setq nskk--romaji-buffer "")
     (succeed kana)))
@@ -987,6 +1009,7 @@ emission, insert っ, and restart from the consonant
 \(e.g. \"kk\"→\"きん\" then \"kka\"→\"っか\")."
   (let ((kana (car result)))
     (nskk-debug-log "[INPUT] azik-deferred-emit: input=%s kana=%s" input kana)
+    (setq nskk--deferred-vowel-shadow-state nil)
     (setq nskk--deferred-azik-state (cons (aref input 0) kana))
     (setq nskk--romaji-buffer "")
     (succeed kana)))
@@ -1073,12 +1096,13 @@ Processing pipeline:
          (result       (nskk-converter-convert input))
          (buf-len      (length nskk--romaji-buffer))
          (last-buf-char (and (> buf-len 0) (aref nskk--romaji-buffer (1- buf-len))))
-         (class        (let ((c (nskk--classify-romaji-input char last-buf-char result)))
-                         (if (and (eq c 'match)
-                                  (bound-and-true-p nskk--azik-vowel-shadow-set)
-                                  (gethash input nskk--azik-vowel-shadow-set))
-                             'azik-vowel-deferred
-                           c))))
+         (class        (let* ((c (nskk--classify-romaji-input char last-buf-char result)))
+                          ;; Promote match → azik-vowel-deferred when in the vowel-shadow set.
+                          (if (and (eq c 'match)
+                                   (bound-and-true-p nskk--azik-vowel-shadow-set)
+                                   (gethash input nskk--azik-vowel-shadow-set))
+                              'azik-vowel-deferred
+                            c))))
     (pcase class
       ('nn-double
        (<- kana nskk--kana-handle-nn-double result))
@@ -1301,7 +1325,8 @@ Idempotent: subsequent calls are no-ops."
       (nskk--deferred-azik-state)
       (nskk--deferred-vowel-shadow-state)
       (nskk--azik-colon-okuri-pending)
-      (nskk--azik-colon-okuri-deferred))
+      (nskk--azik-colon-okuri-deferred)
+      (nskk--azik-sokuon-okuri-kana-pending))
 
     (setq nskk--input-initialized t)))
 

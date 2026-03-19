@@ -233,7 +233,7 @@ the marker position plus the \u25bd marker length.  Does nothing if no preedit."
   (let ((start-sym (make-symbol "--nskk-preedit-start--")))
     `(let ((,start-sym (nskk--get-conversion-start)))
        (when (and ,start-sym
-                  (> (point) (+ ,start-sym (length nskk-henkan-on-marker))))
+                  (>= (point) (+ ,start-sym (length nskk-henkan-on-marker))))
          (let ((,start-var ,start-sym))
            ,@body)))))
 
@@ -492,6 +492,21 @@ past the marker position plus the \u25bd marker length."
   (let ((start (nskk--get-conversion-start)))
     (and start (> (point) (+ start (length nskk-henkan-on-marker))))))
 
+(defsubst nskk--preedit-ends-with-plain-vowel-p ()
+  "Return non-nil when preedit ends with a plain vowel kana and romaji empty.
+Plain vowel kana: あいうえおアイウエオ or ー.
+In AZIK mode, `:' after a plain vowel kana should produce ー via the
+romaji table rather than arming colon-okurigana."
+  (and (string-empty-p nskk--romaji-buffer)
+       (let ((start (nskk--get-conversion-start)))
+         (when start
+           (let ((text-start (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
+             (and (> (point) text-start)
+                  (memq (char-before (point))
+                        '(?あ ?い ?う ?え ?お
+                          ?ア ?イ ?ウ ?エ ?オ
+                          ?ー))))))))
+
 (defun nskk--get-conversion-start ()
   "Get conversion start position from the dedicated marker.
 Returns the marker position as an integer, or nil if no marker is set."
@@ -587,12 +602,21 @@ Does not reset the input mode."
 (defun/done nskk-henkan-kakutei ()
   "Commit preedit text as-is without dictionary conversion (確定).
 Removes the henkan-on marker (▽), clears the conversion start marker,
-resets the romaji buffer, and clears the henkan phase."
+resets the romaji buffer, clears AZIK colon-okurigana pending state,
+and clears the henkan phase."
   (let ((start (nskk--get-conversion-start)))
     (when start
       (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)))
   (nskk--clear-conversion-start-marker)
   (nskk--reset-romaji-buffer)
+  ;; Clear AZIK colon-okurigana state that may have been armed in preedit.
+  ;; Without this, navigating away after arming colon-okurigana leaves
+  ;; nskk--azik-colon-okuri-pending set, causing the next keypress to
+  ;; misroute as colon-pending with no valid preedit context.
+  (when (boundp 'nskk--azik-colon-okuri-pending)
+    (setq nskk--azik-colon-okuri-pending nil))
+  (when (boundp 'nskk--azik-colon-okuri-deferred)
+    (setq nskk--azik-colon-okuri-deferred nil))
   (nskk-with-current-state
     (nskk-state-set-henkan-phase nskk-current-state nil)))
 
@@ -728,8 +752,22 @@ Japanese input mode via `nskk--restore-abbrev-mode'."
     (nskk--clear-conversion-start-marker)
     (nskk--reset-romaji-buffer)
     (setq nskk--henkan-count 0)
+    ;; Clear okurigana state (including stale AZIK colon-okurigana).
+    ;; nskk-reset-henkan-state also clears henkan-phase; use it here so
+    ;; that a cancelled colon-okurigana sequence (Ka:) does not leave
+    ;; nskk-state-get-okurigana returning a stale value on the next SPC.
     (nskk-with-current-state
-      (nskk-state-set-henkan-phase nskk-current-state nil))
+      (nskk-reset-henkan-state))
+    ;; Clear buffer-local AZIK colon-okurigana pending/deferred state.
+    ;; These are also enumerated in clearable-input-var/1 but cancel-preedit
+    ;; does not go through nskk--clear-conversion-context, so reset them here
+    ;; directly to avoid a stale colon-pending arm surviving into the next preedit.
+    (when (boundp 'nskk--azik-colon-okuri-pending)
+      (setq nskk--azik-colon-okuri-pending nil))
+    (when (boundp 'nskk--azik-colon-okuri-deferred)
+      (setq nskk--azik-colon-okuri-deferred nil))
+    (when (boundp 'nskk--azik-sokuon-okuri-kana-pending)
+      (setq nskk--azik-sokuon-okuri-kana-pending nil))
     ;; Restore abbrev mode if applicable
     (nskk--restore-abbrev-mode was-abbrev)))
 
@@ -762,6 +800,8 @@ of the preedit reading text so that `nskk--has-preedit' returns t."
         ;; Restore to preedit (on) phase -- C-g/DEL from ▼ returns to ▽
         (nskk-with-current-state
           (nskk-state-set-henkan-phase nskk-current-state 'on))
+        (when (boundp 'nskk--azik-sokuon-okuri-kana-pending)
+          (setq nskk--azik-sokuon-okuri-kana-pending nil))
         ;; Reposition point to end of reading kana if it
         ;; drifted outside the conversion region.  This ensures nskk--has-preedit
         ;; returns t and the preedit state is fully functional after rollback.
