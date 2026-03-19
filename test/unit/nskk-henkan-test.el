@@ -789,21 +789,25 @@
             (nskk-cancel-preedit)
             (should-not (nskk-state-get-okurigana nskk-current-state))))))
 
-    (nskk-it "clears AZIK colon okurigana pending/deferred vars on cancel"
-      (nskk-prolog-test-with-isolated-db
-        (with-temp-buffer
-          (nskk-mode 1)
-          (let ((nskk--conversion-start-marker (make-marker))
-                (nskk--romaji-buffer "")
-                (nskk--henkan-count 0)
-                (nskk--azik-colon-okuri-pending t)
-                (nskk--azik-colon-okuri-deferred 'some-value))
-            (set-marker nskk--conversion-start-marker (point-min))
-            (insert nskk-henkan-on-marker "か")
-            (nskk-state-set-henkan-phase nskk-current-state 'on)
-            (nskk-cancel-preedit)
-            (should-not nskk--azik-colon-okuri-pending)
-            (should-not nskk--azik-colon-okuri-deferred))))))
+    (nskk-it "clears all AZIK okurigana pending state vars on cancel"
+      ;; All three sentinel vars must be nil after cancel-preedit to prevent
+      ;; stale pending state (colon-arm, colon-deferred, sokuon-okuri) from
+      ;; leaking into the next preedit session.
+      (dolist (spec '((nskk--azik-colon-okuri-pending      . t)
+                      (nskk--azik-colon-okuri-deferred     . some-value)
+                      (nskk--azik-sokuon-okuri-kana-pending . t)))
+        (nskk-prolog-test-with-isolated-db
+          (with-temp-buffer
+            (nskk-mode 1)
+            (let ((nskk--conversion-start-marker (make-marker))
+                  (nskk--romaji-buffer "")
+                  (nskk--henkan-count 0))
+              (set-marker nskk--conversion-start-marker (point-min))
+              (insert nskk-henkan-on-marker "か")
+              (nskk-state-set-henkan-phase nskk-current-state 'on)
+              (set (car spec) (cdr spec))
+              (nskk-cancel-preedit)
+              (should-not (symbol-value (car spec)))))))))
 
   (nskk-context "nskk-rollback-conversion"
     (nskk-it "resets count and restores preedit phase"
@@ -822,7 +826,28 @@
           (nskk-with-mocks ((nskk--delete-marker-at #'ignore)
                             (run-hook-with-args #'ignore))
             (nskk-rollback-conversion)
-            (should (= nskk--henkan-count 0))))))))
+            (should (= nskk--henkan-count 0))))))
+
+    (nskk-it "clears nskk--azik-sokuon-okuri-kana-pending on rollback"
+      ;; After JP106 + fires sokuon okurigana, C-g (rollback) must clear the
+      ;; sentinel so the next preedit does not start with a stale flag.
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--conversion-start-marker (make-marker))
+              (nskk--romaji-buffer "")
+              (nskk--henkan-count 0)
+              (nskk--conversion-overlay nil)
+              (nskk--henkan-candidate-list-active nil)
+              (nskk--azik-sokuon-okuri-kana-pending t))
+          (insert "▼漢字")
+          (set-marker nskk--conversion-start-marker (point-min))
+          (goto-char (point-max))
+          (nskk-state-force-henkan-phase nskk-current-state 'active)
+          (nskk-state-set-candidates nskk-current-state '("漢字"))
+          (nskk-with-mocks ((nskk--delete-marker-at #'ignore)
+                            (run-hook-with-args #'ignore))
+            (nskk-rollback-conversion)
+            (should-not nskk--azik-sokuon-okuri-kana-pending)))))))
 
 ;;;
 ;;; nskk-start-registration Depth Guard Tests
@@ -1569,26 +1594,19 @@
         (nskk-henkan-kakutei)
         (should (null (nskk-state-henkan-phase nskk-current-state))))))
 
-  (nskk-it "clears nskk--azik-colon-okuri-pending when bound"
-    ;; If AZIK colon-okurigana was armed in preedit and the user then navigates
-    ;; away (triggering kakutei), the pending flag must be cleared so the next
-    ;; keypress is not misrouted as colon-pending.
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        (let ((nskk--azik-colon-okuri-pending t))
+  (nskk-it "clears all AZIK okurigana pending state vars on kakutei"
+    ;; kakutei must clear colon-pending, colon-deferred, and sokuon-okuri-pending
+    ;; so that navigating away after arming any AZIK okurigana state does not
+    ;; leave stale flags that misroute the next keypress.
+    (dolist (spec '((nskk--azik-colon-okuri-pending      . t)
+                    (nskk--azik-colon-okuri-deferred     . (?k . "k"))
+                    (nskk--azik-sokuon-okuri-kana-pending . t)))
+      (nskk-prolog-test-with-isolated-db
+        (with-temp-buffer
+          (nskk-mode 1)
+          (set (car spec) (cdr spec))
           (nskk-henkan-kakutei)
-          (should-not nskk--azik-colon-okuri-pending)))))
-
-  (nskk-it "clears nskk--azik-colon-okuri-deferred when bound"
-    ;; The deferred correction state must also be cleared on kakutei so a
-    ;; stale placeholder correction does not fire into the next preedit.
-    (nskk-prolog-test-with-isolated-db
-      (with-temp-buffer
-        (nskk-mode 1)
-        (let ((nskk--azik-colon-okuri-deferred '(?k . "k")))
-          (nskk-henkan-kakutei)
-          (should-not nskk--azik-colon-okuri-deferred))))))
+          (should-not (symbol-value (car spec))))))))
 
 ;;;
 ;;; nskk-henkan-initialize

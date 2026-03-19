@@ -413,6 +413,15 @@ Performs two passes using azik-key-extends/2 facts:
 (nskk-prolog-define-fact-table azik-colon-trigger-char (:arity 1 :index :hash)
   (?:))
 
+;; azik-plain-vowel-kana/1: (CHAR-CODE)
+;; Plain vowel kana characters.  After any of these at preedit end with an
+;; empty romaji buffer, AZIK colon-okurigana arming is skipped; instead the
+;; romaji table produces ー directly via the normal `colon → ー' rule.
+(nskk-prolog-define-fact-table azik-plain-vowel-kana (:arity 1 :index :hash)
+  (?あ) (?い) (?う) (?え) (?お)
+  (?ア) (?イ) (?ウ) (?エ) (?オ)
+  (?ー))
+
 (defun nskk--setup-azik-toggle-key ()
   "Set up AZIK toggle key binding based on keyboard type.
 Binds @ for jp106 keyboard or [ for us101 keyboard to

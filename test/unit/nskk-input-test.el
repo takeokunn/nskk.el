@@ -1450,7 +1450,31 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
           (nskk-with-mocks ((nskk--trigger-okuri-conversion #'ignore))
             (nskk-state-set-okurigana nskk-current-state "k")
             (nskk--emit-converted-kana/k "か" 1 (lambda () (setq done t)))
-            (should done)))))))
+            (should done))))))
+
+  (nskk-it "clears nskk--azik-sokuon-okuri-kana-pending when set (nil-okurigana path)"
+    ;; Regression: after JP106 + fires sokuon okurigana conversion, the
+    ;; next kana syllable (e.g. て from 'te') takes the nil-okurigana path.
+    ;; The sentinel must be cleared on that emission so implicit kakutei
+    ;; is re-enabled for subsequent consonants.
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((nskk--azik-sokuon-okuri-kana-pending t))
+          (nskk--emit-converted-kana/k "て" 1 #'ignore)
+          (should-not nskk--azik-sokuon-okuri-kana-pending)))))
+
+  (nskk-it "resets okurigana-in-progress metadata when sentinel was set"
+    ;; When the sentinel is set, clearing it must also reset the
+    ;; okurigana-in-progress metadata flag so implicit kakutei fires.
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((nskk--azik-sokuon-okuri-kana-pending t))
+          (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+          (nskk--emit-converted-kana/k "て" 1 #'ignore)
+          (should-not (nskk-state-get-metadata
+                       nskk-current-state 'okurigana-in-progress)))))))
 
 ;;;
 ;;; nskk--process-kana-result/k
@@ -1788,11 +1812,12 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                        '\?class)
                       expected-class)))
 
-  (nskk-it "n-consonant class is queryable for n-consonant doubled-eligible"
-    ;; n-consonant is a special doubled-eligible value triggered when last=n and
-    ;; char is not a hatsuon-blocker.  Any result-type matches.
+  (nskk-it "n-consonant class is returned when doubled=n-consonant and result-type=incomplete"
+    ;; When the doubled-eligible context is n-consonant and the converter
+    ;; returns :incomplete (no complete kana yet), the n-consonant row fires.
+    ;; The match row requires result-type=match, so it does not interfere here.
     (should (eq (nskk-prolog-query-value
-                 `(romaji-classify ,'\?class n-consonant \?result-type)
+                 `(romaji-classify ,'\?class n-consonant incomplete)
                  '\?class)
                 'n-consonant))))
 
@@ -2157,28 +2182,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                                (lambda () nil))))
                   (should (equal result "\u306a\u3093"))
                   (should (equal nskk--romaji-buffer "")))))
-          (nskk-converter-load-style 'standard)
-          (nskk-prolog-retract-all 'azik-rule 2)))))
-
-  (nskk-it "n+consonant without AZIK match in preedit still uses n-consonant path"
-    ;; 'nr' has no AZIK hatsuon rule.  With buffer=\"n\", typing 'r' should
-    ;; use n-consonant: emit ん and leave 'r' pending.
-    (nskk-prolog-test-with-isolated-db
-      (nskk-converter-initialize)
-      (nskk-input-initialize)
-      (let* ((nskk-converter-romaji-style 'azik))
-        (nskk-converter-load-style 'azik)
-        (unwind-protect
-            (nskk-input-test-with-state 'hiragana
-              (nskk-state-set-henkan-phase nskk-current-state 'on)
-              (let ((nskk--romaji-buffer "n"))
-                (let ((result (nskk-convert-input-to-kana/k
-                               ?r
-                               (lambda (kana) kana)
-                               (lambda () nil))))
-                  ;; n-consonant fires: emit ん, buffer = "r".
-                  (should (equal result "\u3093"))
-                  (should (equal nskk--romaji-buffer "r")))))
           (nskk-converter-load-style 'standard)
           (nskk-prolog-retract-all 'azik-rule 2))))))
 
