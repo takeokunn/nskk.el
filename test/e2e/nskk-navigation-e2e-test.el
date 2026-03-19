@@ -480,6 +480,56 @@ Saves point in `nskk--point-before-command', runs COMMAND via
       (nskk-e2e-assert-henkan-phase nil)
       (nskk-e2e-assert-buffer "test かんじ"))))
 
+;;;;
+;;;; Section 11: C-f/C-b in preedit-pending state (uppercase trigger, no kana yet)
+;;;;
+;; These tests verify the fix for Bug: preedit-pending → noop.
+;; Before the fix, pressing C-f after typing only the uppercase trigger letter
+;; (before completing the kana syllable) would leave the ▽ marker and
+;; conversion-start marker alive while the cursor moved away.  Any subsequent
+;; keypress would insert kana at the wrong position.
+;;
+;; After the fix (preedit-pending → henkan-kakutei), C-f cleans up correctly.
+
+(nskk-describe "C-f in preedit-pending state"
+  (nskk-it "cleans up henkan phase and marker when no kana emitted yet"
+    ;; Type uppercase K but NOT the completing vowel → preedit-pending.
+    ;; C-f must commit (remove ▽) and leave state idle.
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Dispatch K directly (uppercase triggers henkan-start).
+      (nskk-e2e--dispatch-event ?K)
+      ;; In preedit-pending: phase=on, conversion-start set, buf="k", no kana yet.
+      (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
+      ;; C-f (bound command) — triggers nskk-handle-ctrl-f.
+      (nskk-e2e-type "C-f")
+      ;; After fix: henkan-kakutei ran, state is clean.
+      (nskk-e2e-assert-henkan-phase nil)
+      (should (null (nskk--get-conversion-start)))
+      ;; ▽ marker must be gone from the buffer.
+      (should (not (string-search nskk-henkan-on-marker (buffer-string))))))
+
+  (nskk-it "allows fresh preedit after cursor movement from preedit-pending"
+    ;; After C-f cleans up preedit-pending, the next uppercase letter must start
+    ;; a fresh preedit — not get normalize-vowel or broken stale state.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e--dispatch-event ?K)  ; preedit-pending
+      (nskk-e2e-type "C-f")          ; clean up via fix
+      ;; Type a fresh preedit sequence: Ka → ▽か
+      (nskk-e2e--dispatch-event ?K)
+      (nskk-e2e--dispatch-event ?a)
+      ;; Fresh preedit should be active with か in the buffer.
+      (nskk-e2e-assert-henkan-phase 'on)
+      (should (string-search "か" (buffer-string))))))
+
+(nskk-describe "C-b in preedit-pending state"
+  (nskk-it "cleans up henkan phase when moving backward before kana is emitted"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e--dispatch-event ?K)
+      (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
+      (nskk-e2e-type "C-b")
+      (nskk-e2e-assert-henkan-phase nil)
+      (should (null (nskk--get-conversion-start))))))
+
 (provide 'nskk-navigation-e2e-test)
 
 ;;; nskk-navigation-e2e-test.el ends here

@@ -1347,7 +1347,58 @@ This ensures:
       (nskk-e2e-with-azik-buffer 'hiragana nil
         (nskk-e2e-type "Q")
         (nskk-e2e--dispatch-event ?+)
-        (should-not (string-match-p "error" (downcase (buffer-string))))))))
+        (should-not (string-match-p "error" (downcase (buffer-string)))))))
+
+  (nskk-it "Okona+te clears okurigana-in-progress so m triggers implicit kakutei"
+    ;; Regression: after Okona+, okurigana-in-progress=t was never cleared
+    ;; when te (nil-okurigana path) completed the syllable.  Subsequent
+    ;; lowercase consonants (m in moraitq) had implicit kakutei suppressed,
+    ;; leaving the session stuck in ▼ mode.
+    ;; Fix: nskk--azik-sokuon-okuri-kana-pending is set after + fires and
+    ;; cleared on the next kana emission (te), simultaneously clearing
+    ;; okurigana-in-progress.
+    (let ((dict '(("おこなt" . ("行")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Okona")
+          (nskk-e2e--dispatch-event ?+)
+          ;; After +: in ▼ converting state (行って visible)
+          (nskk-e2e-assert-converting)
+          (nskk-e2e-type "te")
+          ;; After te: okurigana-in-progress must be cleared; state is still ▼
+          ;; but implicit kakutei is now permitted on the next consonant.
+          (should (not (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress)))
+          ;; sentinel flag must be cleared after kana emission
+          (should (not (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending)))))))
+
+  (nskk-it "C-g after Okona+ clears nskk--azik-sokuon-okuri-kana-pending"
+    ;; Regression for the C-g/cancel path: after + fires sokuon okurigana,
+    ;; C-g must clear nskk--azik-sokuon-okuri-kana-pending so the next preedit
+    ;; session does not start with a stale flag.
+    (let ((dict '(("おこなt" . ("行")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Okona")
+          (nskk-e2e--dispatch-event ?+)
+          ;; Cancel the conversion.
+          (nskk-e2e-type "C-g")
+          ;; Sentinel must be cleared after cancellation.
+          (should (not (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending)))))))
+
+  (nskk-it "Okona+temoraitq produces 行ってもらいたい (full implicit-kakutei flow)"
+    ;; Full regression test for the original bug report.
+    ;; Without the fix, m after Okona+te does not trigger implicit kakutei
+    ;; (okurigana-in-progress=t suppresses it) and moraitq produces wrong output.
+    ;; Note: tq in AZIK fires the tq→たい diphthong rule, producing もらいたい.
+    (let ((dict '(("おこなt" . ("行")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Okona")
+          (nskk-e2e--dispatch-event ?+)
+          (nskk-e2e-type "te")
+          (nskk-e2e-type "moraitq")
+          (nskk-e2e-assert-not-converting)
+          (nskk-e2e-assert-buffer "行ってもらいたい"))))))
 
 (provide 'nskk-azik-e2e-test)
 

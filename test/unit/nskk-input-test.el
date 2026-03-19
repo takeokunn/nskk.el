@@ -2048,6 +2048,140 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (nskk--update-modeline)
         (should (= call-count 1))))))
 
+;;;
+;;; FR-002: AZIK hatsuon rules fire in both preedit and idle
+;;;
+;;; Rationale: AZIK two-char rules like nz→なん, nk→にん, nj→ぬん are
+;;; complete syllable patterns, not n-before-consonant shortcuts.  They
+;;; must fire in preedit (▽) too.  To type ん+consonant in a reading,
+;;; users type nn first (e.g. KAnnki = かんき, not KAnki which gives かにんi).
+
+(nskk-describe "FR-002: hatsuon-blocker classification (nskk-input layer)"
+  ;; These tests confirm that nskk-prolog-holds-p correctly classifies chars
+  ;; via the hatsuon-blocker/1 Prolog table.
+
+  (nskk-it "vowels a i u e o are hatsuon-blockers (n stays pending before vowel)"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?a)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?i)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?u)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?e)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?o)))))
+
+  (nskk-it "y is a hatsuon-blocker (n before y stays pending)"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?y)))))
+
+  (nskk-it "n and apostrophe are hatsuon-blockers (nn → ん, n' → ん)"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?n)))
+      (should (nskk-prolog-holds-p `(hatsuon-blocker ,?\')))))
+
+  (nskk-it "consonants j k s t are NOT hatsuon-blockers"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?j)))
+      (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?k)))
+      (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?s)))
+      (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?t))))))
+
+(nskk-describe "FR-002: AZIK hatsuon fires in preedit (▽) mode"
+  ;; AZIK two-char rules (nz→なん, nk→にん, nj→ぬん, etc.) fire in preedit
+  ;; via the match path (romaji-classify: match > n-consonant priority).
+
+  (nskk-it "nj in preedit (▽): AZIK hatsuon match fires (emits ぬん)"
+    ;; Set up: romaji buffer has \"n\", henkan-phase = 'on, AZIK loaded.
+    ;; Typing 'j' fires AZIK rule nj→ぬん via the match path.
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-input-initialize)
+      (let* ((nskk-converter-romaji-style 'azik))
+        (nskk-converter-load-style 'azik)
+        (unwind-protect
+            (nskk-input-test-with-state 'hiragana
+              ;; Simulate preedit-on by setting henkan-phase to 'on.
+              (nskk-state-set-henkan-phase nskk-current-state 'on)
+              ;; Prime the romaji buffer with \"n\".
+              (let ((nskk--romaji-buffer "n"))
+                (let ((result (nskk-convert-input-to-kana/k
+                               ?j
+                               (lambda (kana) kana)
+                               (lambda () nil))))
+                  ;; AZIK hatsuon fires: nj → ぬん.
+                  (should (equal result "\u306c\u3093"))
+                  ;; romaji buffer is cleared after a complete match.
+                  (should (equal nskk--romaji-buffer "")))))
+          (nskk-converter-load-style 'standard)
+          (nskk-prolog-retract-all 'azik-rule 2)))))
+
+  (nskk-it "nj in idle (phase=nil): AZIK hatsuon match fires (emits ぬん)"
+    ;; Outside preedit (henkan-phase = nil), the AZIK hatsuon rule for nj
+    ;; (ぬん) fires the same way as in preedit.
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-input-initialize)
+      (let* ((nskk-converter-romaji-style 'azik))
+        (nskk-converter-load-style 'azik)
+        (unwind-protect
+            (nskk-input-test-with-state 'hiragana
+              ;; henkan-phase is nil (idle) by default.
+              ;; Prime the romaji buffer with \"n\".
+              (let* ((nskk--romaji-buffer "n")
+                     (result (nskk-convert-input-to-kana/k
+                              ?j
+                              (lambda (kana) kana)
+                              (lambda () nil))))
+                ;; AZIK hatsuon match: nj → ぬん.
+                (should (equal result "\u306c\u3093"))))
+          (nskk-converter-load-style 'standard)
+          (nskk-prolog-retract-all 'azik-rule 2)))))
+
+  (nskk-it "nz in preedit (▽): AZIK hatsuon match fires (emits なん)"
+    ;; Regression test for 'Nz → んz' bug: the match row in romaji-classify
+    ;; must precede n-consonant so nz→なん fires in preedit.
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-input-initialize)
+      (let* ((nskk-converter-romaji-style 'azik))
+        (nskk-converter-load-style 'azik)
+        (unwind-protect
+            (nskk-input-test-with-state 'hiragana
+              (nskk-state-set-henkan-phase nskk-current-state 'on)
+              (let ((nskk--romaji-buffer "n"))
+                (let ((result (nskk-convert-input-to-kana/k
+                               ?z
+                               (lambda (kana) kana)
+                               (lambda () nil))))
+                  (should (equal result "\u306a\u3093"))
+                  (should (equal nskk--romaji-buffer "")))))
+          (nskk-converter-load-style 'standard)
+          (nskk-prolog-retract-all 'azik-rule 2)))))
+
+  (nskk-it "n+consonant without AZIK match in preedit still uses n-consonant path"
+    ;; 'nr' has no AZIK hatsuon rule.  With buffer=\"n\", typing 'r' should
+    ;; use n-consonant: emit ん and leave 'r' pending.
+    (nskk-prolog-test-with-isolated-db
+      (nskk-converter-initialize)
+      (nskk-input-initialize)
+      (let* ((nskk-converter-romaji-style 'azik))
+        (nskk-converter-load-style 'azik)
+        (unwind-protect
+            (nskk-input-test-with-state 'hiragana
+              (nskk-state-set-henkan-phase nskk-current-state 'on)
+              (let ((nskk--romaji-buffer "n"))
+                (let ((result (nskk-convert-input-to-kana/k
+                               ?r
+                               (lambda (kana) kana)
+                               (lambda () nil))))
+                  ;; n-consonant fires: emit ん, buffer = "r".
+                  (should (equal result "\u3093"))
+                  (should (equal nskk--romaji-buffer "r")))))
+          (nskk-converter-load-style 'standard)
+          (nskk-prolog-retract-all 'azik-rule 2))))))
+
 (provide 'nskk-input-test)
 
 ;;; nskk-input-test.el ends here
