@@ -122,6 +122,7 @@
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
 (declare-function nskk-rollback-conversion "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
+(declare-function nskk--clear-azik-pending-state "nskk-henkan")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
 (declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
@@ -515,18 +516,18 @@ Falls through to `self-insert-command' when not in a Japanese input mode."
 (defun/done nskk-handle-q ()
   "Handle q key: convert preedit kana to opposite script, or toggle mode.
 In ▽ preedit phase (hiragana/katakana Japanese mode):
-  - AZIK mode: delegates to `nskk-handle-q-key' so that AZIK romaji rules
-    take priority (e.g. \"tq\" → \"たい\") and standalone q inserts ん.
-    `nskk-henkan-kakutei-convert-script' is NOT called; in AZIK the toggle
-    key is @ (jp106) or [ (us101), not q.
+  - AZIK mode + pending romaji: delegates to `nskk-handle-q-key' so that
+    AZIK romaji rules take priority (e.g. \"tq\" → \"たい\").
+  - AZIK mode + empty romaji: converts the accumulated kana to the opposite
+    script via `nskk-henkan-kakutei-convert-script' (same as standard mode).
+    Enables e.g. A:q → アー (type kana with ー, then q to commit as katakana).
   - Standard mode: converts the accumulated kana to the opposite script via
     `nskk-henkan-kakutei-convert-script' and commits without changing the
-    input mode.  In ▽ preedit mode, converts the accumulated kana to the
-    opposite script and commits, without changing the input mode.
+    input mode.
 In henkan-active (▼) mode: performs implicit kakutei first via
 `mode-switch-preaction/2', then delegates to `nskk-handle-q-key'.
-In idle Japanese mode: delegates to `nskk-handle-q-key' (hiragana↔katakana
-toggle, or AZIK romaji dispatch when pending-romaji+q is a complete hash match).
+In idle Japanese mode: delegates to `nskk-handle-q-key' (AZIK ん insertion
+or romaji dispatch when pending-romaji+q is a complete hash match).
 In ASCII mode or when NSKK state is inactive, falls through to
 `self-insert-command'.
 
@@ -537,7 +538,10 @@ Dispatched via `q-key-dispatch/3' Prolog table."
          (action (nskk-prolog-query-value
                   `(q-key-dispatch ,cls ,style \?a) '\?a)))
     (pcase action
-      ('fire-romaji     (nskk-handle-q-key))
+      ('fire-romaji     (if (and (eq cls 'preedit-japanese)
+                                 (string-empty-p nskk--romaji-buffer))
+                            (nskk-henkan-kakutei-convert-script)
+                          (nskk-handle-q-key)))
       ('convert-script  (nskk-henkan-kakutei-convert-script))
       ('mode-switch     (let ((saved-romaji nskk--romaji-buffer))
                           (nskk--with-japanese-mode/k
@@ -683,10 +687,11 @@ In normal mode, delegates to \\[end-of-line]."
 In conversion mode, rolls back to preedit (▽) state so the user
 can edit the reading or re-convert.
 In preedit mode, discards preedit text and resets state entirely.
-Otherwise calls `keyboard-quit'."
+Otherwise clears any residual AZIK deferred state and calls
+`keyboard-quit'."
   ('rollback-to-reading (nskk-rollback-conversion))
   ('cancel-preedit (nskk-cancel-preedit))
-  (_ (keyboard-quit)))
+  (_ (nskk--clear-azik-pending-state) (keyboard-quit)))
 
 (defun nskk--backspace-in-preedit ()
   "Delete the last preedit character, or cancel preedit if empty.

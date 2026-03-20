@@ -566,14 +566,17 @@ Creates a new marker if one does not already exist."
 (defun/done nskk--clear-azik-pending-state ()
   "Clear AZIK okurigana sentinel variables if bound.
 Resets `nskk--azik-colon-okuri-pending', `nskk--azik-colon-okuri-deferred',
-and `nskk--azik-sokuon-okuri-kana-pending' to nil.  Guards each with
-`boundp' so that the function is safe to call when AZIK is not loaded.
+`nskk--azik-sokuon-okuri-kana-pending', `nskk--deferred-azik-state', and
+`nskk--deferred-vowel-shadow-state' to nil.  Guards each with `boundp' so
+that the function is safe to call when AZIK is not loaded.
 Called from `nskk-henkan-kakutei', `nskk-cancel-preedit', and
 `nskk-rollback-conversion' to prevent stale AZIK pending state from
 leaking into the next preedit context."
   (dolist (sym '(nskk--azik-colon-okuri-pending
                  nskk--azik-colon-okuri-deferred
-                 nskk--azik-sokuon-okuri-kana-pending))
+                 nskk--azik-sokuon-okuri-kana-pending
+                 nskk--deferred-azik-state
+                 nskk--deferred-vowel-shadow-state))
     (when (boundp sym)
       (set sym nil))))
 
@@ -614,8 +617,8 @@ Does not reset the input mode."
 (defun/done nskk-henkan-kakutei ()
   "Commit preedit text as-is without dictionary conversion (確定).
 Removes the henkan-on marker (▽), clears the conversion start marker,
-resets the romaji buffer, clears AZIK colon-okurigana pending state,
-and clears the henkan phase."
+resets the romaji buffer, clears all five AZIK pending state variables
+(see `nskk--clear-azik-pending-state'), and clears the henkan phase."
   (let ((start (nskk--get-conversion-start)))
     (when start
       (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)))

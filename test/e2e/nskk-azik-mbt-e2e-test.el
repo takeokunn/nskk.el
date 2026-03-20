@@ -135,6 +135,10 @@ inputs is very different from the base phase they are overlaid upon."
      "kz" "kq" "sh"
      ;; AZIK special keys extend preedit reading.
      ";" ":"
+     ;; JP106 sokuon-okurigana trigger (fires dict lookup immediately).
+     "+"
+     ;; Preedit marker (direct insert; exercises the * path).
+     "*"
      ;; Okurigana arm: uppercase consonant while in preedit.
      "Ka" "Sa"
      ;; Trigger conversion.
@@ -162,6 +166,9 @@ inputs is very different from the base phase they are overlaid upon."
      "a" "i" "u" "e" "o"
      ;; Resolve with another consonant (starts a new deferred or emits prefix).
      "k" "s" "t"
+     ;; AZIK special keys: っ (;) and ー (:) are complete rules that flush
+     ;; the deferred state and emit their kana.
+     ";" ":"
      ;; Cancel.
      "C-g")
     (vowel-shadow-deferred
@@ -169,6 +176,9 @@ inputs is very different from the base phase they are overlaid upon."
      "a" "i" "u" "e" "o"
      ;; Next consonant: resolves the deferred state and starts accumulation.
      "k" "s"
+     ;; AZIK special key: っ (;) is a complete rule that resolves the deferred
+     ;; state without a vowel, emitting the shadow kana as-is then っ.
+     ";"
      ;; Cancel.
      "C-g")
     (colon-pending
@@ -198,12 +208,18 @@ Falls back to the idle pool if ABSTRACT-STATE has no entry."
 ;;;; Invariant Checker
 ;;;;
 
-(defun nskk--mbt-check-invariants ()
+(defun nskk--mbt-check-invariants (&optional last-event)
   "Check all AZIK state machine invariants.
 Returns a list of violation strings (one per failing invariant), or nil
 when all invariants hold.
 
-Invariants checked:
+Optional LAST-EVENT is the string event just dispatched.  When provided,
+event-specific invariants are also checked:
+  I6 – After \"C-g\", nskk--deferred-azik-state and
+       nskk--deferred-vowel-shadow-state must both be nil.
+  I7 – After \";\" or \":\", nskk--romaji-buffer must be empty.
+
+Invariants always checked:
   I1 – (nskk-current-mode) is one of the six valid NSKK modes.
   I2 – At most one of the three deferred state variables is non-nil.
   I3 – henkan-phase is nil, on, active, list, or registration.
@@ -259,6 +275,30 @@ Invariants checked:
                     (buffer-string))
             violations))
 
+    ;; I6: after C-g, DA and DV deferred state must be nil.
+    ;; nskk-cancel-preedit and nskk-rollback-conversion both call
+    ;; nskk--clear-azik-pending-state, which clears these variables.
+    (when (equal last-event "C-g")
+      (let ((da (and (boundp 'nskk--deferred-azik-state)
+                     nskk--deferred-azik-state))
+            (dv (and (boundp 'nskk--deferred-vowel-shadow-state)
+                     nskk--deferred-vowel-shadow-state)))
+        (when da
+          (push (format "I6: nskk--deferred-azik-state non-nil after C-g: %S" da)
+                violations))
+        (when dv
+          (push (format "I6: nskk--deferred-vowel-shadow-state non-nil after C-g: %S" dv)
+                violations))))
+
+    ;; I7: after ";" or ":", romaji buffer must be empty.
+    ;; Both are single-char complete AZIK rules that consume the entire buffer.
+    (when (and (member last-event '(";" ":"))
+               (boundp 'nskk--romaji-buffer)
+               (not (string-empty-p nskk--romaji-buffer)))
+      (push (format "I7: non-empty romaji buffer after %S: %S"
+                    last-event nskk--romaji-buffer)
+            violations))
+
     (nreverse violations)))
 
 ;;;;
@@ -300,8 +340,8 @@ failing scenario can be reproduced with (random SEED)."
               (condition-case nil
                   (nskk--azik-chaos--dispatch-keys event)
                 (error nil) (quit nil))
-              ;; Check invariants after every step.
-              (let ((viols (nskk--mbt-check-invariants)))
+              ;; Check invariants after every step (pass event for I6/I7).
+              (let ((viols (nskk--mbt-check-invariants event)))
                 (when viols
                   (push (list :run       run
                               :seed      seed
@@ -363,8 +403,9 @@ regardless of the AZIK deferred state overlays."
           (condition-case nil
               (nskk-e2e--dispatch-event 7)  ; second C-g
             (error nil) (quit nil))
-          ;; Clear ephemeral deferred states — they are intra-keystroke and
-          ;; not cleared by C-g (which does not invoke the kana pipeline).
+          ;; DA/DV are cleared by C-g via `nskk--clear-azik-pending-state'
+          ;; (FR-001 fix) when preedit is active.  This setq guards the
+          ;; idle-C-g case where no cancel-preedit fires.
           (when (boundp 'nskk--deferred-azik-state)
             (setq nskk--deferred-azik-state nil))
           (when (boundp 'nskk--deferred-vowel-shadow-state)
@@ -522,7 +563,24 @@ state-arms might fire in the same handler call."
                               :count      cnt)
                         failures)
                   ;; Recover so the walk can continue.
-                  (nskk--azik-chaos--reset-to-idle)))))
+                  (nskk--azik-chaos--reset-to-idle)))
+              ;; Check I6: after C-g, DA and DV must be nil.
+              (when (equal event "C-g")
+                (let ((da (and (boundp 'nskk--deferred-azik-state)
+                               nskk--deferred-azik-state))
+                      (dv (and (boundp 'nskk--deferred-vowel-shadow-state)
+                               nskk--deferred-vowel-shadow-state)))
+                  (when (or da dv)
+                    (push (list :run      run
+                                :seed     seed
+                                :step     step
+                                :state    abs-state
+                                :event    event
+                                :trace    (reverse state-trace)
+                                :i6-da    da
+                                :i6-dv    dv)
+                          failures)
+                    (nskk--azik-chaos--reset-to-idle))))))
           ;; Reset between scenarios.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures

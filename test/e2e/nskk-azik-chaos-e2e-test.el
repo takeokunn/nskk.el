@@ -117,6 +117,11 @@ Does NOT catch errors or quit signals — callers must handle those."
     ";" ";" ":" ":"
     ;; Colon-okurigana trigger: additional ":" entries
     ":" ":"
+    ;; JP106 sokuon-okurigana trigger (+) and preedit marker (*).
+    ;; Lower probability than kana keys; "+" fires dict lookup in preedit,
+    ;; "*" inserts the okurigana marker directly.
+    "+" "+"
+    "*"
     ;; Standalone q (katakana toggle in preedit)
     "q" "q"
     ;; Okurigana-starting: uppercase consonant + vowel (starts preedit)
@@ -177,7 +182,9 @@ buffer.  This allows multiple chaos scenarios to run inside one
   (when (boundp 'nskk--azik-colon-okuri-pending)
     (setq nskk--azik-colon-okuri-pending nil))
   (when (boundp 'nskk--azik-colon-okuri-deferred)
-    (setq nskk--azik-colon-okuri-deferred nil)))
+    (setq nskk--azik-colon-okuri-deferred nil))
+  (when (boundp 'nskk--azik-sokuon-okuri-kana-pending)
+    (setq nskk--azik-sokuon-okuri-kana-pending nil)))
 
 ;;;;
 ;;;; Invariant Checker
@@ -564,7 +571,8 @@ input until the user manually corrects the mode."
 Runs 100 random scenarios.  Each scenario types 1-8 random events, then
 sends C-g.  After C-g, checks:
   1. henkan-phase is nil or \\='on (not active/list/registration)
-  2. All four deferred-state variables are nil
+  2. Colon-okurigana flags (CP, CD) are nil — asserted directly
+     DA/DV are cleared via belt-and-suspenders setq (see inline comment)
   3. romaji buffer is empty (for idle) or at most 1 char (for preedit-on)
 
 This is stricter than `azik-chaos-cancel-always-recovers': it also verifies
@@ -592,8 +600,11 @@ that deferred AZIK corrections are not left pending after a cancel."
                               (nskk-state-henkan-phase nskk-current-state))))
               (when (memq phase '(active list registration))
                 (push (list 'henkan-phase-not-cleared phase) violations)))
-            ;; Ephemeral deferred states (azik-deferred, vowel-shadow) are
-            ;; intra-keystroke and not cleared by C-g; clear them manually.
+            ;; DA/DV are cleared by C-g via `nskk--clear-azik-pending-state'
+            ;; (FR-001 fix) when an active preedit is cancelled.  This explicit
+            ;; setq is a belt-and-suspenders guard for the subset of C-g events
+            ;; that fire outside an active preedit (no cancel-preedit call),
+            ;; where DA/DV could still be set from a partial romaji sequence.
             (when (boundp 'nskk--deferred-azik-state)
               (setq nskk--deferred-azik-state nil))
             (when (boundp 'nskk--deferred-vowel-shadow-state)
@@ -690,12 +701,17 @@ runs (seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
 Runs 100 random scenarios.  Each scenario types 2-10 random events, then
 sends RET.  After RET, checks:
   1. nskk--romaji-buffer is empty
-  2. All four deferred-state variables are nil
+  2. Colon-okurigana flags (CP, CD) are nil — asserted directly
+     DA/DV are cleared via belt-and-suspenders setq (see inline comment)
   3. Buffer does not contain ▽ or ▼ markers
+  4. Buffer does not end with lone っ unless \";\" appeared in the sequence
 
 A non-empty romaji buffer or lingering deferred state after RET would
 indicate that the commit path skips cleanup, leaving the input pipeline
-in a partially-processed state that corrupts the next input sequence."
+in a partially-processed state that corrupts the next input sequence.
+A trailing lone っ means an AZIK doubled-consonant deferred sequence was
+half-committed: the sokuon was written but the completing kana was never
+provided, producing garbage output."
   (let* ((runs 100)
          (min-len 2)
          (max-len 10)
@@ -722,8 +738,10 @@ in a partially-processed state that corrupts the next input sequence."
                        (not (string-empty-p nskk--romaji-buffer)))
               (push (list 'romaji-buffer-nonempty nskk--romaji-buffer)
                     violations))
-            ;; 2. Ephemeral deferred states (azik-deferred, vowel-shadow) are
-            ;; intra-keystroke and not cleared by RET; clear them manually.
+            ;; 2. DA/DV are consumed within a single `nskk-convert-input-to-kana/k'
+            ;; call and should already be nil by the time RET's handler returns.
+            ;; This explicit setq is a belt-and-suspenders guard for any edge
+            ;; path where the pipeline exits before clearing them.
             (when (boundp 'nskk--deferred-azik-state)
               (setq nskk--deferred-azik-state nil))
             (when (boundp 'nskk--deferred-vowel-shadow-state)
@@ -739,11 +757,22 @@ in a partially-processed state that corrupts the next input sequence."
               (push (list 'azik-colon-okuri-deferred
                           nskk--azik-colon-okuri-deferred)
                     violations))
-            ;; 3. No ▽ or ▼ in buffer text.
+            ;; 3. No ▽ or ▼ in buffer text; also no lone っ at end of buffer
+            ;; (orphaned AZIK sokuon from a half-committed doubled-consonant
+            ;; sequence like "kk" where the completing kana never arrived).
+            ;; The っ check is skipped when ";" appears in SEQ because ";"
+            ;; is the legitimate っ-emitter and a trailing っ from it is
+            ;; valid committed output, not an orphan.
+            ;; Similarly, "+" (JP106 sokuon-okurigana) legitimately inserts っ
+            ;; as part of an okurigana conversion; trailing っ from it is valid.
             (let ((buf-text (buffer-string)))
               (when (or (string-match-p "▽" buf-text)
                         (string-match-p "▼" buf-text))
-                (push (list 'marker-in-buffer buf-text) violations)))
+                (push (list 'marker-in-buffer buf-text) violations))
+              (when (and (not (member ";" seq))
+                         (not (member "+" seq))
+                         (string-match-p "っ$" buf-text))
+                (push (list 'lone-sokuon-at-eob buf-text) violations)))
             (when violations
               (push (list :run run
                           :seed seed
@@ -807,6 +836,68 @@ crashes the candidate-cycling logic or silently picks a nil candidate."
        (format
         "Chaos test P7: active henkan-phase with empty candidates in %d/%d \
 runs (seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
+        (length failures) runs seed seed
+        (min 3 (length failures))
+        (seq-take failures 3))))))
+
+;;;;
+;;;; Chaos Test P8: DA/DV cleared by C-g (cancel path)
+;;;;
+
+(nskk-deftest-e2e azik-chaos-da-dv-clear-after-cancel
+  "Chaos test: C-g clears deferred AZIK state (DA and DV variables).
+
+Runs 100 random scenarios.  Each scenario types 1-8 random events
+(which may set DA or DV via doubled-consonant AZIK deferred or vowel-
+shadow-demoted key patterns), then sends C-g.  After C-g, both
+`nskk--deferred-azik-state' and `nskk--deferred-vowel-shadow-state'
+must be nil.
+
+This directly exercises the FR-001 fix: `nskk--clear-azik-pending-state'
+now includes these two variables in its dolist, so the cancel-preedit
+and rollback-conversion paths clear them just like the three pre-existing
+colon-okurigana and sokuon-okurigana flags."
+  (let* ((runs 100)
+         (failures nil)
+         (seed (abs (random))))
+    (random seed)
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (dotimes (run runs)
+        (let* ((pre-len (+ 1 (random 8)))
+               (pre-seq (nskk--azik-chaos--generate-sequence pre-len)))
+          ;; Type the preamble (may set DA or DV via kk, ssh, etc.)
+          (dolist (ev pre-seq)
+            (condition-case nil
+                (nskk--azik-chaos--dispatch-keys ev)
+              (error nil) (quit nil)))
+          ;; Send C-g — should clear DA and DV via nskk--clear-azik-pending-state.
+          (condition-case nil
+              (nskk-e2e--dispatch-event 7)
+            (error nil) (quit nil))
+          ;; Collect violations.
+          (let ((violations nil))
+            (when (and (boundp 'nskk--deferred-azik-state)
+                       nskk--deferred-azik-state)
+              (push (list 'deferred-azik-state nskk--deferred-azik-state)
+                    violations))
+            (when (and (boundp 'nskk--deferred-vowel-shadow-state)
+                       nskk--deferred-vowel-shadow-state)
+              (push (list 'deferred-vowel-shadow-state
+                          nskk--deferred-vowel-shadow-state)
+                    violations))
+            (when violations
+              (push (list :run      run
+                          :seed     seed
+                          :pre-seq  pre-seq
+                          :stuck    violations)
+                    failures)))
+          ;; Reset before next run.
+          (nskk--azik-chaos--reset-to-idle))))
+    (when failures
+      (ert-fail
+       (format
+        "Chaos test P8: C-g left DA/DV non-nil in %d/%d runs (seed: %d)\n\
+Reproduce: (random %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))

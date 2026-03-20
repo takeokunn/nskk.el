@@ -434,41 +434,40 @@
       (nskk-e2e-assert-mode 'hiragana))))
 
 ;;;
-;;; Group 11: FR-002 — n-consonant path in preedit (▽) overrides AZIK hatsuon
+;;; Group 11: FR-002 — AZIK hatsuon fires in preedit (▽) for n+consonant matches
 ;;;
-;;; In idle mode, "nj" fires the AZIK hatsuon rule (→ ぬん).
-;;; In preedit (▽), "n" + consonant must follow the n-consonant path:
-;;; emit ん and leave the consonant pending so the next vowel forms a mora.
-;;; This makes typing 漢字 as Ka+n+ji work correctly.
+;;; With `match > n-consonant' priority in romaji-classify, AZIK hatsuon rules
+;;; (nj → ぬん, nz → なん, etc.) fire in preedit (▽) via the match path.
+;;; To type かんじ in preedit, use double-n: Ka+n+n+ji (Kannji → ▽かんじ).
 
-(nskk-describe "FR-002: n+consonant in preedit (▽) follows n-consonant path"
+(nskk-describe "FR-002: AZIK hatsuon fires in preedit for n+consonant match"
 
-  (nskk-it "Ka+n+ji in ▽ produces ▽かんじ (not ▽かぬんじ)"
-    ;; mock dict has ("かんじ" . ("漢字" "感じ" "幹事"))
-    ;; Expected path: Ka → ▽か, n → romaji buffer="n", j → ん emitted + buffer="j",
-    ;; i → じ emitted.  Preedit reading: か+ん+じ = かんじ.
+  (nskk-it "Ka+nj in ▽ fires AZIK hatsuon → ▽かぬん (match > n-consonant)"
+    ;; With match > n-consonant, nj is an AZIK match rule (→ ぬん).
+    ;; In preedit, the match class fires before n-consonant, so nj → ぬん.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Ka")
       (nskk-e2e-assert-henkan-phase 'on)
-      (nskk-e2e-type "n")
-      (nskk-e2e-type "ji")
+      (nskk-e2e-type "nj")
       (nskk-e2e-assert-henkan-phase 'on)
-      (nskk-e2e-assert-buffer-matches "▽かんじ")))
+      (nskk-e2e-assert-buffer-matches "▽かぬん")))
 
-  (nskk-it "Ka+n+ji+SPC in ▽ triggers conversion for かんじ (漢字)"
-    ;; After producing ▽かんじ, SPC should trigger dict lookup for かんじ.
+  (nskk-it "Kannji in ▽ produces ▽かんじ (double-n forces ん emission)"
+    ;; To get かんじ in preedit, use nn (nn-double fires → ん, buffer cleared),
+    ;; then ji → じ.  After Kannji, preedit reading is かんじ.
     ;; The mock dict has ("かんじ" . ("漢字" "感じ" "幹事")).
-    (nskk-e2e-with-azik-buffer 'hiragana nil
-      (nskk-e2e-type "Ka")
-      (nskk-e2e-type "n")
-      (nskk-e2e-type "ji")
-      (nskk-e2e-assert-henkan-phase 'on)
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-assert-converting)))
+    (let ((dict '(("かんじ" . ("漢字" "感じ" "幹事")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-type "nn")
+        (nskk-e2e-type "ji")
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-assert-buffer-matches "▽かんじ")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting))))
 
-  (nskk-it "nj in idle (not preedit) still fires AZIK hatsuon rule"
-    ;; Outside preedit, nj must still produce output via the AZIK hatsuon rule.
-    ;; This verifies the guard is preedit-only and does not change idle behavior.
+  (nskk-it "nj in idle (not preedit) fires AZIK hatsuon rule"
+    ;; Outside preedit, nj fires the AZIK hatsuon match rule.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "nj")
       (nskk-e2e-assert-henkan-phase nil)
@@ -609,12 +608,15 @@
 
   (nskk-it "Ka: still arms colon-okurigana (か is not plain vowel)"
     ;; 'か' is a consonant+vowel kana, so ':' after Ka must arm okurigana.
-    (nskk-e2e-with-azik-buffer 'hiragana nil
-      (nskk-e2e-type "Ka")
-      (nskk-e2e-assert-henkan-phase 'on)
-      (should (string-search "か" (buffer-string)))
-      (nskk-e2e-type ":")
-      (should (bound-and-true-p nskk--azik-colon-okuri-pending)))))
+    ;; Use us101 keyboard type: on jp106, ':' is a bare key producing ー and
+    ;; does not arm colon-okurigana (jp106 uses '+' for sokuon-okurigana).
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "Ka")
+        (nskk-e2e-assert-henkan-phase 'on)
+        (should (string-search "か" (buffer-string)))
+        (nskk-e2e-type ":")
+        (should (bound-and-true-p nskk--azik-colon-okuri-pending))))))
 
 (nskk-describe "AZIK hatsuon rules fire in preedit (Nz → なん)"
   ;; Regression tests for the 'Nz → んz' bug.

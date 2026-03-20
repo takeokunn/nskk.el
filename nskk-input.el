@@ -625,17 +625,21 @@ and char-type=alphabetic-lower."
     (setq nskk--romaji-buffer (char-to-string char))
     (nskk--show-pending-romaji nskk--romaji-buffer)))
 
-(defun/done nskk--arm-azik-colon-trigger ()
+(defun/done nskk--arm-azik-colon-trigger (char n)
   "Handle AZIK colon-okurigana arm: `:' key in eligible preedit context.
-Flushes the current romaji buffer before the okurigana boundary, inserts
-the `*' okurigana marker, and sets `nskk--azik-colon-okuri-pending' to
-await the next consonant.
+When preedit ends with a plain vowel kana (see `azik-plain-vowel-kana/1'),
+falls back to normal input processing so that `:' produces ー via the
+romaji table (e.g. A: → あー).  Otherwise, flushes the current romaji
+buffer before the okurigana boundary, inserts the `*' okurigana marker,
+and sets `nskk--azik-colon-okuri-pending' to await the next consonant.
 Called from `nskk-process-japanese-input' when context=azik-arm-eligible
 and char-type=colon."
-  (nskk-with-current-state
-    (nskk--flush-romaji-before-okuri)
-    (nskk--insert-marker nskk-okurigana-marker))
-  (setq nskk--azik-colon-okuri-pending t))
+  (if (nskk--preedit-ends-with-plain-vowel-p)
+      (nskk--process-normal-japanese-input char n)
+    (nskk-with-current-state
+      (nskk--flush-romaji-before-okuri)
+      (nskk--insert-marker nskk-okurigana-marker))
+    (setq nskk--azik-colon-okuri-pending t)))
 
 (defun/done nskk--trigger-sokuon-okurigana ()
   "Handle JP106 `+' key as immediate okurigana trigger with sokuon っ.
@@ -725,8 +729,7 @@ Actions:
                                   (nskk--conversion-start-active-p)
                                   (nskk--has-preedit)
                                   (not (nskk-with-current-state
-                                         (nskk-state-get-okurigana nskk-current-state)))
-                                  (not (nskk--preedit-ends-with-plain-vowel-p)))
+                                         (nskk-state-get-okurigana nskk-current-state))))
                              'azik-arm-eligible)
                             (t 'other)))
            (action (nskk-prolog-query-value
@@ -736,7 +739,7 @@ Actions:
                       char input-context char-type action)
       (pcase action
         ('fire        (nskk--fire-azik-colon-okuri char))
-        ('arm         (nskk--arm-azik-colon-trigger))
+        ('arm         (nskk--arm-azik-colon-trigger char n))
         ('okuri-sokuon (nskk--trigger-sokuon-okurigana))
         ('normal      (nskk--process-normal-japanese-input char n)))))
 

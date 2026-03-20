@@ -100,14 +100,14 @@ Used to show the current input mode in the isearch prompt."
   "Return isearch prompt mode string for the current NSKK mode.
 Returns the appropriate string from `nskk-isearch-mode-string-alist',
 or nil if NSKK is not active in the originating buffer."
-  (when-let* ((buf nskk--isearch-orig-buffer)
-              (_ (buffer-live-p buf)))
-    (let ((mode (with-current-buffer buf
-                  (when (and (boundp 'nskk-current-state)
-                             nskk-current-state)
-                    (nskk-state-mode nskk-current-state)))))
-      (when mode
-        (cdr (assq mode nskk-isearch-mode-string-alist))))))
+  (let ((buf nskk--isearch-orig-buffer))
+    (when (and buf (buffer-live-p buf))
+      (let ((mode (with-current-buffer buf
+                    (when (and (boundp 'nskk-current-state)
+                               nskk-current-state)
+                      (nskk-state-mode nskk-current-state)))))
+        (when mode
+          (cdr (assq mode nskk-isearch-mode-string-alist)))))))
 
 (defun nskk--isearch-prompt-advice (orig-fun)
   "Advice for `isearch-message-prefix' to add NSKK mode indicator.
