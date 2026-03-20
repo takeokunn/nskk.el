@@ -743,22 +743,29 @@ This ensures:
       (nskk-e2e-assert-mode 'katakana "idle @ must still toggle mode"))))
 
 ;;;;
-;;;; Section 12: AZIK q Key in ▽ Preedit — Romaji Priority over Script Conversion
+;;;; Section 12: AZIK q Key in ▽ Preedit
 ;;;;
 ;;
-;; Regression tests for: typing q in AZIK ▽ preedit mode was calling
-;; nskk-henkan-kakutei-convert-script (script toggle), which cleared ▽ mode.
+;; q in AZIK ▽ preedit has two sub-cases:
 ;;
-;; Root cause: nskk-handle-q short-circuited to nskk-henkan-kakutei-convert-script
-;; for any preedit-japanese state without checking AZIK mode first.
+;;   1. Pending romaji + q forms an AZIK rule (e.g. tq→たい, sq→さい):
+;;      → delegates to nskk-handle-q-key, which fires the AZIK rule.
+;;      ▽ mode remains active.
 ;;
-;; Fix: in nskk-handle-q, when preedit-japanese AND AZIK mode, delegate to
-;; nskk-handle-q-key (which handles azik-complete→fire-romaji, and
-;; empty/pending→insert-ん).  Standard mode retains the original script-toggle.
+;;   2. Romaji buffer is empty (standalone q after completed kana):
+;;      → calls nskk-henkan-kakutei-convert-script, converting preedit kana
+;;        to the opposite script and committing (same as standard mode q).
+;;        Enables A:q → アー, Kaq → カ, etc.
 ;;
-;; In AZIK, the toggle key is @ (jp106) or [ (us101) — q is purely a romaji key.
+;; This mirrors standard SKK: q in ▽ always commits as opposite-script kana,
+;; but AZIK preserves the romaji-extension meaning when romaji is pending.
+;;
+;; Historical note: an earlier fix (section 12 v1) made standalone q insert ん
+;; to avoid a regression where q short-circuited to convert-script even when
+;; romaji was pending (e.g. tq→ was incorrectly triggering script toggle).
+;; The correct fix is the romaji-buffer guard, not blanket ん insertion.
 
-(nskk-describe "AZIK q key in ▽ preedit: romaji rules take priority over script conversion"
+(nskk-describe "AZIK q key in ▽ preedit: romaji rules take priority, empty → convert-script"
 
   (nskk-it "Zdtq: ▽ mode stays active after q fires tq→たい rule"
     ;; Regression: "Zdtq" caused ▽ mode to change unexpectedly.
@@ -778,13 +785,13 @@ This ensures:
       (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Katq")
       (nskk-e2e-assert-mode 'hiragana "mode must not change after tq in AZIK ▽ preedit")))
 
-  (nskk-it "Kaq: standalone q in ▽ preedit inserts ん (AZIK empty-q rule), stays in ▽"
-    ;; Ka → ▽ か; q → romaji buffer empty → AZIK empty-q → insert ん.
-    ;; ▽ mode must remain active; mode must stay hiragana.
+  (nskk-it "Kaq: standalone q in ▽ preedit converts to katakana and commits"
+    ;; Ka → ▽ か; q → romaji buffer empty → convert-script → commits カ.
+    ;; ▽ mode ends; buffer contains カ.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Kaq")
-      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kaq")
-      (nskk-e2e-assert-mode 'hiragana "standalone q in AZIK ▽ preedit must not toggle mode")))
+      (nskk-e2e-assert-henkan-phase nil "▽ must end after Kaq convert-script")
+      (nskk-e2e-assert-buffer "カ" "Kaq must commit カ (hiragana→katakana)")))
 
   (nskk-it "Sq: q fires sq→さい as first char after henkan start (preedit-pending state)"
     ;; Regression: S → ▽ (preedit-pending, romaji="s"); q was self-inserted
@@ -805,7 +812,15 @@ This ensures:
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Kq")
       (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kq")
-      (nskk-e2e-assert-buffer "▽かい" "Kq must produce かい via AZIK diphthong rule"))))
+      (nskk-e2e-assert-buffer "▽かい" "Kq must produce かい via AZIK diphthong rule")))
+
+  (nskk-it "A:q → アー (AZIK colon ー then q converts to katakana)"
+    ;; A → ▽あ; : → AZIK plain-vowel path → ー appended → ▽あー;
+    ;; q → romaji buffer empty → convert-script → commits アー.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "A:q")
+      (nskk-e2e-assert-henkan-phase nil "▽ must end after A:q")
+      (nskk-e2e-assert-buffer "アー" "A:q must commit アー"))))
 
 ;;;;
 ;;;; Section 13: AZIK Okurigana with AZIK Kana Shortcuts — Double-* Regression
@@ -1347,7 +1362,135 @@ This ensures:
       (nskk-e2e-with-azik-buffer 'hiragana nil
         (nskk-e2e-type "Q")
         (nskk-e2e--dispatch-event ?+)
-        (should-not (string-match-p "error" (downcase (buffer-string))))))))
+        (should-not (string-match-p "error" (downcase (buffer-string)))))))
+
+  (nskk-it "Okona+te clears okurigana-in-progress so m triggers implicit kakutei"
+    ;; Regression: after Okona+, okurigana-in-progress=t was never cleared
+    ;; when te (nil-okurigana path) completed the syllable.  Subsequent
+    ;; lowercase consonants (m in moraitq) had implicit kakutei suppressed,
+    ;; leaving the session stuck in ▼ mode.
+    ;; Fix: nskk--azik-sokuon-okuri-kana-pending is set after + fires and
+    ;; cleared on the next kana emission (te), simultaneously clearing
+    ;; okurigana-in-progress.
+    (let ((dict '(("おこなt" . ("行")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Okona")
+          (nskk-e2e--dispatch-event ?+)
+          ;; After +: in ▼ converting state (行って visible)
+          (nskk-e2e-assert-converting)
+          (nskk-e2e-type "te")
+          ;; After te: okurigana-in-progress must be cleared; state is still ▼
+          ;; but implicit kakutei is now permitted on the next consonant.
+          (should (not (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress)))
+          ;; sentinel flag must be cleared after kana emission
+          (should (not (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending)))))))
+
+  (nskk-it "C-g after Okona+ clears nskk--azik-sokuon-okuri-kana-pending"
+    ;; Regression for the C-g/cancel path: after + fires sokuon okurigana,
+    ;; C-g must clear nskk--azik-sokuon-okuri-kana-pending so the next preedit
+    ;; session does not start with a stale flag.
+    (let ((dict '(("おこなt" . ("行")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Okona")
+          (nskk-e2e--dispatch-event ?+)
+          ;; Cancel the conversion.
+          (nskk-e2e-type "C-g")
+          ;; Sentinel must be cleared after cancellation.
+          (should (not (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending)))))))
+
+  (nskk-it "Okona+temoraitq produces 行ってもらいたい (full implicit-kakutei flow)"
+    ;; Full regression test for the original bug report.
+    ;; Without the fix, m after Okona+te does not trigger implicit kakutei
+    ;; (okurigana-in-progress=t suppresses it) and moraitq produces wrong output.
+    ;; Note: tq in AZIK fires the tq→たい diphthong rule, producing もらいたい.
+    (let ((dict '(("おこなt" . ("行")))))
+      (let ((nskk-azik-keyboard-type 'jp106))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Okona")
+          (nskk-e2e--dispatch-event ?+)
+          (nskk-e2e-type "te")
+          (nskk-e2e-type "moraitq")
+          (nskk-e2e-assert-not-converting)
+          (nskk-e2e-assert-buffer "行ってもらいたい"))))))
+
+;;;;
+;;;; Section 18: DA/DV state cleared by cancel/rollback paths (FR-001 regression)
+;;;;
+
+(nskk-describe "§18: nskk--deferred-azik/vowel-shadow-state cleared by cancel-preedit and rollback"
+
+  (nskk-it "T-01: nskk--deferred-azik-state is nil after C-g cancels preedit"
+    ;; Regression for FR-001.
+    ;; "Kakk" inside a live AZIK buffer: K starts preedit (▽か), then "kk"
+    ;; triggers AZIK deferred (kk→きん), setting DA=(k."きん") and appending
+    ;; "きん" tentatively to the preedit reading.
+    ;; C-g cancels preedit (standard SKK: discards preedit entirely, buffer="").
+    ;; Bug (pre-fix): DA=(k."きん") survives cancel-preedit because
+    ;; nskk--clear-azik-pending-state only cleared CP/CD/SP, not DA.
+    ;; Next kana "a" would retroactively delete "きん" and produce "っか"
+    ;; instead of "あ".  With the fix, DA is nil after C-g and "a" → "あ".
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Kakk")
+      (nskk-e2e-type "C-g")
+      (should (not (bound-and-true-p nskk--deferred-azik-state)))
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "あ")))
+
+  (nskk-it "T-02: nskk--deferred-vowel-shadow-state is nil after C-g cancels preedit"
+    ;; Regression for FR-001.
+    ;; "Kash": K starts preedit (▽か), then "sh" is a vowel-shadow demoted key.
+    ;; nskk-azik-demote-shadow-keys makes "sh" emit "すう" tentatively and set
+    ;; DV=("sh"."すう") pending the next vowel for correction.
+    ;; C-g cancels preedit (standard SKK: discards preedit entirely, buffer="").
+    ;; Bug: DV survives cancel-preedit.  Next vowel "a" would retroactively
+    ;; delete "すう" and produce "しゃ" instead of "あ".
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Kash")
+      (nskk-e2e-type "C-g")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "あ")))
+
+  (nskk-it "T-03: nskk--deferred-azik-state is nil after rollback-conversion"
+    ;; Regression for FR-001.
+    ;; "Kakk" sets DA in preedit; SPC triggers conversion; C-g rolls back.
+    ;; nskk-rollback-conversion calls nskk--clear-azik-pending-state, which
+    ;; now also clears DA.
+    (let ((dict '(("かきん" . ("過去問")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Kakk")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-type "C-g")
+        (should (not (bound-and-true-p nskk--deferred-azik-state)))))))
+
+;;;;
+;;;; Section 19: Output correctness PBT — sokuon via DA correction (P-04)
+;;;;
+
+(nskk-describe "§19: PBT — doubled consonant + vowel produces っ + kana via DA correction"
+
+  ;; P-04: For each doubled consonant CC followed by a vowel V, the AZIK
+  ;; deferred-azik mechanism must retroactively produce っ + kana(C+V).
+  ;; The doubled-consonant triggers nskk--kana-handle-azik-deferred, setting
+  ;; DA=(C . "KANA").  The following vowel fires nskk--apply-deferred-azik-
+  ;; correction: deletes the tentative kana, inserts っ, then C+V resolves
+  ;; normally.
+  ;;
+  ;; Exhaustive over a representative cross-product of consonants × vowels.
+
+  (nskk-deftest-table azik-sokuon-da-correction
+    :columns (input expected)
+    :rows    (("kka" "っか") ("kki" "っき") ("kku" "っく") ("kke" "っけ") ("kko" "っこ")
+              ("ssa" "っさ") ("ssi" "っし") ("ssu" "っす") ("sse" "っせ") ("sso" "っそ")
+              ("tta" "った") ("tte" "って") ("tto" "っと")
+              ("hha" "っは") ("hhi" "っひ") ("hhu" "っふ") ("hhe" "っへ") ("hho" "っほ")
+              ("mma" "っま") ("mmi" "っみ") ("mmu" "っむ") ("mme" "っめ") ("mmo" "っも"))
+    :body
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type input)
+      (nskk-e2e-assert-buffer expected))))
 
 (provide 'nskk-azik-e2e-test)
 

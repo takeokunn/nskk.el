@@ -180,7 +180,10 @@
           (setq executed t))
         (should-not executed))))
 
-  (nskk-it "does nothing when point is at the marker (no preedit text)"
+  (nskk-it "executes body when point is at the marker (empty preedit text)"
+    ;; FR-005: >= guard allows conversion with empty preedit (e.g. SPC immediately
+    ;; after uppercase letter before any kana is typed).  Previously > silently
+    ;; skipped the body; now it executes, opening registration as expected.
     (with-temp-buffer
       (let ((nskk--conversion-start-marker (make-marker)))
         (set-marker nskk--conversion-start-marker (point-min))
@@ -189,7 +192,7 @@
         (let ((executed nil))
           (nskk-henkan-with-preedit _start
             (setq executed t))
-          (should-not executed)))))
+          (should executed)))))
 
   (nskk-it "executes body and binds start when preedit text exists"
     (with-temp-buffer
@@ -770,7 +773,41 @@
           (insert nskk-henkan-on-marker "か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-cancel-preedit)
-          (should-not (nskk-state-henkan-phase nskk-current-state))))))
+          (should-not (nskk-state-henkan-phase nskk-current-state)))))
+
+    (nskk-it "clears okurigana state from state struct on cancel"
+      (nskk-prolog-test-with-isolated-db
+        (with-temp-buffer
+          (nskk-mode 1)
+          (let ((nskk--conversion-start-marker (make-marker))
+                (nskk--romaji-buffer "k")
+                (nskk--henkan-count 0))
+            (set-marker nskk--conversion-start-marker (point-min))
+            (insert nskk-henkan-on-marker "か")
+            (nskk-state-set-henkan-phase nskk-current-state 'on)
+            (nskk-state-set-okurigana nskk-current-state "k")
+            (nskk-cancel-preedit)
+            (should-not (nskk-state-get-okurigana nskk-current-state))))))
+
+    (nskk-it "clears all AZIK okurigana pending state vars on cancel"
+      ;; All three sentinel vars must be nil after cancel-preedit to prevent
+      ;; stale pending state (colon-arm, colon-deferred, sokuon-okuri) from
+      ;; leaking into the next preedit session.
+      (dolist (spec '((nskk--azik-colon-okuri-pending      . t)
+                      (nskk--azik-colon-okuri-deferred     . some-value)
+                      (nskk--azik-sokuon-okuri-kana-pending . t)))
+        (nskk-prolog-test-with-isolated-db
+          (with-temp-buffer
+            (nskk-mode 1)
+            (let ((nskk--conversion-start-marker (make-marker))
+                  (nskk--romaji-buffer "")
+                  (nskk--henkan-count 0))
+              (set-marker nskk--conversion-start-marker (point-min))
+              (insert nskk-henkan-on-marker "か")
+              (nskk-state-set-henkan-phase nskk-current-state 'on)
+              (set (car spec) (cdr spec))
+              (nskk-cancel-preedit)
+              (should-not (symbol-value (car spec)))))))))
 
   (nskk-context "nskk-rollback-conversion"
     (nskk-it "resets count and restores preedit phase"
@@ -789,7 +826,28 @@
           (nskk-with-mocks ((nskk--delete-marker-at #'ignore)
                             (run-hook-with-args #'ignore))
             (nskk-rollback-conversion)
-            (should (= nskk--henkan-count 0))))))))
+            (should (= nskk--henkan-count 0))))))
+
+    (nskk-it "clears nskk--azik-sokuon-okuri-kana-pending on rollback"
+      ;; After JP106 + fires sokuon okurigana, C-g (rollback) must clear the
+      ;; sentinel so the next preedit does not start with a stale flag.
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--conversion-start-marker (make-marker))
+              (nskk--romaji-buffer "")
+              (nskk--henkan-count 0)
+              (nskk--conversion-overlay nil)
+              (nskk--henkan-candidate-list-active nil)
+              (nskk--azik-sokuon-okuri-kana-pending t))
+          (insert "▼漢字")
+          (set-marker nskk--conversion-start-marker (point-min))
+          (goto-char (point-max))
+          (nskk-state-force-henkan-phase nskk-current-state 'active)
+          (nskk-state-set-candidates nskk-current-state '("漢字"))
+          (nskk-with-mocks ((nskk--delete-marker-at #'ignore)
+                            (run-hook-with-args #'ignore))
+            (nskk-rollback-conversion)
+            (should-not nskk--azik-sokuon-okuri-kana-pending)))))))
 
 ;;;
 ;;; nskk-start-registration Depth Guard Tests
@@ -1534,7 +1592,21 @@
         (nskk-mode 1)
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-henkan-kakutei)
-        (should (null (nskk-state-henkan-phase nskk-current-state)))))))
+        (should (null (nskk-state-henkan-phase nskk-current-state))))))
+
+  (nskk-it "clears all AZIK okurigana pending state vars on kakutei"
+    ;; kakutei must clear colon-pending, colon-deferred, and sokuon-okuri-pending
+    ;; so that navigating away after arming any AZIK okurigana state does not
+    ;; leave stale flags that misroute the next keypress.
+    (dolist (spec '((nskk--azik-colon-okuri-pending      . t)
+                    (nskk--azik-colon-okuri-deferred     . (?k . "k"))
+                    (nskk--azik-sokuon-okuri-kana-pending . t)))
+      (nskk-prolog-test-with-isolated-db
+        (with-temp-buffer
+          (nskk-mode 1)
+          (set (car spec) (cdr spec))
+          (nskk-henkan-kakutei)
+          (should-not (symbol-value (car spec))))))))
 
 ;;;
 ;;; nskk-henkan-initialize
@@ -3672,6 +3744,70 @@
             (ert-fail "Expected signal was not raised"))
         (nskk-henkan-unknown-search-type
          (should (memq :bogus (cdr err))))))))
+
+(nskk-describe "nskk--preedit-ends-with-plain-vowel-p"
+  (nskk-it "returns nil when no preedit marker is set"
+    (with-temp-buffer
+      (let ((nskk--romaji-buffer ""))
+        (should-not (nskk--preedit-ends-with-plain-vowel-p)))))
+
+  (nskk-it "returns nil when romaji buffer is non-empty"
+    (with-temp-buffer
+      (let ((nskk--conversion-start-marker (make-marker))
+            (nskk--romaji-buffer "k"))
+        (set-marker nskk--conversion-start-marker (point-min))
+        (insert nskk-henkan-on-marker "か")
+        (should-not (nskk--preedit-ends-with-plain-vowel-p)))))
+
+  (nskk-it "returns nil when preedit ends with non-vowel kana (か)"
+    (with-temp-buffer
+      (let ((nskk--conversion-start-marker (make-marker))
+            (nskk--romaji-buffer ""))
+        (set-marker nskk--conversion-start-marker (point-min))
+        (insert nskk-henkan-on-marker "か")
+        (should-not (nskk--preedit-ends-with-plain-vowel-p)))))
+
+  (nskk-it "returns non-nil for reading ending with あ (empty romaji)"
+    (with-temp-buffer
+      (let ((nskk--conversion-start-marker (make-marker))
+            (nskk--romaji-buffer ""))
+        (set-marker nskk--conversion-start-marker (point-min))
+        (insert nskk-henkan-on-marker "あ")
+        (should (nskk--preedit-ends-with-plain-vowel-p)))))
+
+  (nskk-it "returns non-nil for compound reading ending with い (かい)"
+    (with-temp-buffer
+      (let ((nskk--conversion-start-marker (make-marker))
+            (nskk--romaji-buffer ""))
+        (set-marker nskk--conversion-start-marker (point-min))
+        (insert nskk-henkan-on-marker "かい")
+        (should (nskk--preedit-ends-with-plain-vowel-p)))))
+
+  (nskk-it "returns non-nil for reading ending with ー (prolonged vowel)"
+    (with-temp-buffer
+      (let ((nskk--conversion-start-marker (make-marker))
+            (nskk--romaji-buffer ""))
+        (set-marker nskk--conversion-start-marker (point-min))
+        (insert nskk-henkan-on-marker "あー")
+        (should (nskk--preedit-ends-with-plain-vowel-p)))))
+
+  (nskk-it "returns non-nil for all hiragana plain vowels"
+    (dolist (ch '(?あ ?い ?う ?え ?お))
+      (with-temp-buffer
+        (let ((nskk--conversion-start-marker (make-marker))
+              (nskk--romaji-buffer ""))
+          (set-marker nskk--conversion-start-marker (point-min))
+          (insert nskk-henkan-on-marker (char-to-string ch))
+          (should (nskk--preedit-ends-with-plain-vowel-p))))))
+
+  (nskk-it "returns non-nil for all katakana plain vowels"
+    (dolist (ch '(?ア ?イ ?ウ ?エ ?オ))
+      (with-temp-buffer
+        (let ((nskk--conversion-start-marker (make-marker))
+              (nskk--romaji-buffer ""))
+          (set-marker nskk--conversion-start-marker (point-min))
+          (insert nskk-henkan-on-marker (char-to-string ch))
+          (should (nskk--preedit-ends-with-plain-vowel-p)))))))
 
 (provide 'nskk-henkan-test)
 

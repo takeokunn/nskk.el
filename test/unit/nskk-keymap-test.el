@@ -531,11 +531,28 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
          (should-not (nskk-converting-p))
          (should (equal (buffer-string) "result"))))))
 
-  (nskk-it "key-action/3 has no explicit preedit row for return (wildcard fires)"
-    ;; Intentional: no (return preedit ...) rule; the _ arm in nskk-handle-return
-    ;; calls (newline) for preedit state. This matches DDSKK behavior.
-    (should-not (nskk-prolog-query-value
-                 `(key-action return preedit ,'\?action) '\?action))))
+  (nskk-it "key-action/3 has explicit preedit row for return (kakutei-and-newline)"
+    ;; (return preedit kakutei-and-newline) is now registered in the Prolog table,
+    ;; matching DDSKK behavior: RET in ▽ commits the raw kana then inserts newline.
+    (should (eq (nskk-prolog-query-value
+                 `(key-action return preedit ,'\?action) '\?action)
+                'kakutei-and-newline)))
+
+  (nskk-it "calls nskk-henkan-kakutei then newline when in preedit"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (kakutei-called nil)
+            (newline-called nil))
+        (nskk-given (progn
+                      (nskk--set-conversion-start-marker (point-min))
+                      (insert "▽か")
+                      (nskk-state-set-henkan-phase nskk-current-state 'on)))
+        (nskk-with-mocks ((nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
+                          (newline             (lambda () (setq newline-called t))))
+          (nskk-when (nskk-handle-return))
+          (nskk-then
+           (should kakutei-called)
+           (should newline-called)))))))
 
 ;;;
 ;;; nskk-handle-cancel behavior
@@ -1102,6 +1119,7 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
            (space normal    self-insert)
            ;; Return
            (return converting commit-candidate)
+           (return preedit  kakutei-and-newline)
            (return normal   newline)
            ;; Cancel
            (cancel converting rollback-to-reading)
@@ -1245,10 +1263,13 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
 ;;;
 
 (nskk-describe "mode-switch-preaction/2 preedit-pending row"
-  (nskk-it "preedit-pending maps to noop"
+  (nskk-it "preedit-pending maps to henkan-kakutei (not noop)"
+    ;; preedit-pending = uppercase trigger fired, ▽ in buffer, but no kana yet.
+    ;; Navigation or mode-switch must clean up (remove ▽, clear state) so the
+    ;; cursor can move freely — noop would leave stale conversion-start state.
     (should (eq (nskk-prolog-query-value
                  '(mode-switch-preaction preedit-pending \?a) '\?a)
-                'noop))))
+                'henkan-kakutei))))
 
 ;;;
 ;;; nskk-define-key-handler
