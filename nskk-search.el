@@ -84,6 +84,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'nskk-cps-macros)
 (require 'nskk-dictionary)
 (require 'nskk-cache)
@@ -180,7 +181,7 @@ arguments explicitly; omitting them causes a silent nil-continuation crash,
 because Emacs Lisp `&optional' applies to all parameters after the first."
   (unless (nskk-dict-index-p index)
     (signal 'nskk-dict-search-invalid-index (list index)))
-  (unless (and (stringp query) (> (length query) 0))
+  (unless (and (stringp query) (not (string-empty-p query)))
     (signal 'nskk-dict-search-invalid-query (list query)))
 
   ;; Default search type
@@ -229,7 +230,7 @@ The /k variant calls ON-FOUND with the entry, ON-NOT-FOUND otherwise."
                         `(,pred ,query \?candidates) '\?candidates)))
          (entry      (when candidates
                        (make-nskk-dict-entry :key query :candidates candidates))))
-    (nskk-debug-log "[SEARCH] exact: query=%s found=%s" query (if candidates t nil))
+    (nskk-debug-log "[SEARCH] exact: query=%s found=%s" query (and candidates t))
     (if (and entry
              (nskk--search-match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry)))
         (succeed entry)
@@ -435,12 +436,10 @@ the integer Levenshtein distance from QUERY."
 
 (defun nskk--search-candidate-word (candidate)
   "Extract the word string from CANDIDATE."
-  (cond
-   ((stringp candidate) candidate)
-   ((and (consp candidate)
-         (stringp (car candidate)))
-    (car candidate))
-   (t nil)))
+  (pcase candidate
+    ((pred stringp) candidate)
+    (`(,(pred stringp) . ,_) (car candidate))
+    (_ nil)))
 
 
 ;;; Learning data management

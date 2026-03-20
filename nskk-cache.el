@@ -93,8 +93,9 @@
 
 (defcustom nskk-cache-default-capacity 1000
   "Default cache capacity for LRU/LFU caches."
-  :type 'integer
-  :package-version '("nskk" . "0.1.0")
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-cache)
 
 (defcustom nskk-cache-strategy 'lru
@@ -103,7 +104,8 @@
 \\='lfu means Least Frequently Used."
   :type '(choice (const :tag "LRU" lru)
                  (const :tag "LFU" lfu))
-  :package-version '("nskk" . "0.1.0")
+  :safe (lambda (v) (memq v '(lru lfu)))
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-cache)
 
 ;;; Prolog Facts
@@ -154,10 +156,10 @@
 (defun nskk--cache-type-of (cache)
   "Return the cache type symbol for CACHE.
 Returns the symbol `lru' or `lfu'.  Signals an error for invalid CACHE."
-  (cond
-   ((nskk-cache-lru-p cache) 'lru)
-   ((nskk-cache-lfu-p cache) 'lfu)
-   (t (error "Invalid cache type: %S" cache))))
+  (pcase cache
+    ((pred nskk-cache-lru-p) 'lru)
+    ((pred nskk-cache-lfu-p) 'lfu)
+    (_ (error "Invalid cache type: %S" cache))))
 
 (defmacro nskk-cache-dispatch (cache op &rest args)
   "Dispatch OP on CACHE via the Prolog cache-dispatch-fn/3 table.

@@ -120,7 +120,7 @@
 ;;;;
 
 (nskk-property-test nskk-pbt-hiragana-mode-converts
-  ((_dummy lowercase-char))
+  ((dummy lowercase-char))
   ;; Property: In Hiragana mode, vowels are converted to hiragana.
   (let* ((vowel-map '((?a . "あ") (?i . "い") (?u . "う") (?e . "え") (?o . "お")))
          (pair (nskk--pbt-random-choice vowel-map))
@@ -134,7 +134,7 @@
   30)
 
 (nskk-property-test nskk-pbt-katakana-mode-converts
-  ((_dummy lowercase-char))
+  ((dummy lowercase-char))
   ;; Property: In Katakana mode, vowels are converted to katakana.
   (let* ((vowel-map '((?a . "ア") (?i . "イ") (?u . "ウ") (?e . "エ") (?o . "オ")))
          (pair (nskk--pbt-random-choice vowel-map))

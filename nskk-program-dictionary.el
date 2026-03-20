@@ -375,15 +375,15 @@ calls on-found.
 
 Calls on-found with the merged, deduplicated candidate list; on-not-found
 when disabled, `nskk-program-dicts' is nil, or all entries miss."
-  (if (not (and nskk-program-dict-enable nskk-program-dicts))
-      (fail)
-    (let ((cache (nskk--program-dict-ensure-cache)))
-      (<-or cached nskk-cache-get cache key
-        :found (succeed cached)
-        :fail  (progn
-                 (<- results nskk--program-dict-collect-all nskk-program-dicts key)
-                 (nskk-cache-put cache key results)
-                 (succeed results))))))
+  (if (and nskk-program-dict-enable nskk-program-dicts)
+      (let ((cache (nskk--program-dict-ensure-cache)))
+        (<-or cached nskk-cache-get cache key
+          :found (succeed cached)
+          :fail  (progn
+                   (<- results nskk--program-dict-collect-all nskk-program-dicts key)
+                   (nskk-cache-put cache key results)
+                   (succeed results))))
+    (fail)))
 
 ;;; Section 13: Built-in dispatch table
 
@@ -496,24 +496,24 @@ Handler errors are caught via `condition-case', logged via
 Calls on-found with the candidate list when at least one handler returns
 results; calls on-not-found when disabled, KEY is not a string, or no
 handler produces candidates."
-  (if (not (and (stringp key) nskk-program-dict-enable))
-      (fail)
-    (let (results)
-      (dolist (pair nskk-program-dict-dispatch-table)
-        (when (string-prefix-p (car pair) key)
-          (let ((cands (condition-case err
-                           (funcall (cdr pair) key)
-                         (error
-                          (nskk-debug-message
-                           "nskk-program-dict: builtin handler [%s] error: %s"
-                           (car pair) (error-message-string err))
-                          nil))))
-            (when (consp cands)
-              (setq results (append results cands))))))
-      (if results
-          (succeed (mapcar (lambda (c) (propertize c 'nskk-no-learn t))
-                           (delete-dups (copy-sequence results))))
-        (fail)))))
+  (if (and (stringp key) nskk-program-dict-enable)
+      (let (results)
+        (dolist (pair nskk-program-dict-dispatch-table)
+          (when (string-prefix-p (car pair) key)
+            (let ((cands (condition-case err
+                             (funcall (cdr pair) key)
+                           (error
+                            (nskk-debug-message
+                             "nskk-program-dict: builtin handler [%s] error: %s"
+                             (car pair) (error-message-string err))
+                            nil))))
+              (when (consp cands)
+                (setq results (append results cands))))))
+        (if results
+            (succeed (mapcar (lambda (c) (propertize c 'nskk-no-learn t))
+                             (delete-dups (copy-sequence results))))
+          (fail)))
+    (fail)))
 
 (provide 'nskk-program-dictionary)
 

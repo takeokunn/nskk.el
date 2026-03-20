@@ -355,7 +355,7 @@
 ;;;;
 
 (nskk-deftest-table navigation-point-invariants
-  :columns (input expected)
+  :columns (input _expected)
   :rows (("C-f" "forward")
          ("C-b" "backward"))
   :body

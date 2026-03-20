@@ -125,7 +125,7 @@
 
 ;;;; Variable Representation
 
-(defun nskk-prolog-variable-p (x)
+(defsubst nskk-prolog-variable-p (x)
   "Return non-nil if X is a Prolog variable.
 Prolog variables are symbols whose name starts with `?'
 \(e.g., \\='\\?x, \\='\\?char, \\='\\?_).
@@ -343,18 +343,18 @@ form `?_anon_N' using a fresh increment of `nskk--prolog-var-counter',
 independent of COUNTER.  Non-variable atoms and numbers are returned
 unchanged.
 Returns the renamed term."
-  (cond
-   ((nskk--prolog-anonymous-p term)
-    (intern (format "?_anon_%d" (cl-incf nskk--prolog-var-counter))))
-   ((nskk-prolog-variable-p term)
-    (or (gethash term mapping)
-        (let ((fresh (intern (format "%s_%d" (symbol-name term) counter))))
-          (puthash term fresh mapping)
-          fresh)))
-   ((consp term)
-    (cons (nskk--prolog-rename-term (car term) counter mapping)
-          (nskk--prolog-rename-term (cdr term) counter mapping)))
-   (t term)))
+  (pcase term
+    ((pred nskk--prolog-anonymous-p)
+     (intern (format "?_anon_%d" (cl-incf nskk--prolog-var-counter))))
+    ((pred nskk-prolog-variable-p)
+     (or (gethash term mapping)
+         (let ((fresh (intern (format "%s_%d" (symbol-name term) counter))))
+           (puthash term fresh mapping)
+           fresh)))
+    (`(,h . ,tl)
+     (cons (nskk--prolog-rename-term h counter mapping)
+           (nskk--prolog-rename-term tl counter mapping)))
+    (_ term)))
 
 (defun nskk--prolog-rename-variables (clause counter)
   "Rename all variables in CLAUSE using COUNTER suffix.
@@ -374,38 +374,40 @@ This set is intentionally closed; all arithmetic needed by NSKK is covered.")
   "Evaluate arithmetic EXPR under SUBST, returning a number.
 EXPR may be a number, a bound Prolog variable, or a list (OP A B)
 where OP is one of +, -, *, / and A, B are arithmetic expressions."
-  (cond
-   ((numberp expr) expr)
-   ((nskk-prolog-variable-p expr)
-    (let ((val (nskk-prolog-walk expr subst)))
-      (if (eq val expr)
-          (error "Unbound variable in arithmetic: %S" expr)
-        (nskk--prolog-eval-arith val subst))))
-   ;; Emacs Lisp bound symbol (e.g., defconst values used in rule bodies)
-   ((and (symbolp expr) (not (nskk-prolog-variable-p expr)) (boundp expr))
-    (nskk--prolog-eval-arith (symbol-value expr) subst))
-   ((consp expr)
-    (let* ((op (car expr))
-           (fn (cdr (assq op nskk--prolog-arith-operators)))
-           (a (nskk--prolog-eval-arith (cadr expr) subst))
-           (b (nskk--prolog-eval-arith (caddr expr) subst)))
-      (if fn
-          (funcall fn a b)
-        (error "Unknown arithmetic operator: %S" op))))
-   (t (error "Cannot evaluate arithmetic expression: %S" expr))))
+  (pcase expr
+    ((pred numberp) expr)
+    ((pred nskk-prolog-variable-p)
+     (let ((val (nskk-prolog-walk expr subst)))
+       (if (eq val expr)
+           (error "Unbound variable in arithmetic: %S" expr)
+         (nskk--prolog-eval-arith val subst))))
+    ;; Emacs Lisp bound symbol (e.g., defconst values used in rule bodies).
+    ;; The nskk-prolog-variable-p branch above already handles Prolog ?vars,
+    ;; so no redundant (not (nskk-prolog-variable-p expr)) guard is needed.
+    ((and (pred symbolp) (guard (boundp expr)))
+     (nskk--prolog-eval-arith (symbol-value expr) subst))
+    ((pred consp)
+     (let* ((op (car expr))
+            (fn (cdr (assq op nskk--prolog-arith-operators)))
+            (a (nskk--prolog-eval-arith (cadr expr) subst))
+            (b (nskk--prolog-eval-arith (caddr expr) subst)))
+       (if fn
+           (funcall fn a b)
+         (error "Unknown arithmetic operator: %S" op))))
+    (_ (error "Cannot evaluate arithmetic expression: %S" expr))))
 
 ;;;; Built-in Goal Handlers
 
 (defun nskk--prolog-goal-kind (goal)
   "Classify GOAL into a dispatch key for `nskk--prolog-builtin-table'."
-  (cond
-   ((eq goal '!)                            :cut)
-   ((not (consp goal))                     :normal)
-   ((eq (car goal) 'not)                   :not)
-   ((eq (car goal) 'assertz)               :assertz)
-   ((eq (car goal) 'retract)               :retract)
-   ((memq (car goal) '(is =:= > < >= <=)) :arith)
-   (t                                      :normal)))
+  (pcase goal
+    ('!                                    :cut)
+    ((pred (not consp))                    :normal)
+    (`(not      . ,_)                      :not)
+    (`(assertz  . ,_)                      :assertz)
+    (`(retract  . ,_)                      :retract)
+    (`(,(or 'is '=:= '> '< '>= '<=) . ,_) :arith)
+    (_                                     :normal)))
 
 (defun nskk--prolog-handle-cut (_goal rest subst k)
   "Handle cut (!): commit to current clause, abort remaining alternatives.
@@ -782,27 +784,25 @@ this function returns bindings from ALL solutions."
 (defun nskk-prolog-ground-p (term)
   "Return non-nil if TERM has no unbound Prolog variables.
 A ground term is fully instantiated with no unbound variables."
-  (cond
-   ((nskk-prolog-variable-p term) nil)
-   ((consp term)
-    (and (nskk-prolog-ground-p (car term))
-         (nskk-prolog-ground-p (cdr term))))
-   (t t)))
+  (pcase term
+    ((pred nskk-prolog-variable-p) nil)
+    (`(,h . ,tl) (and (nskk-prolog-ground-p h) (nskk-prolog-ground-p tl)))
+    (_ t)))
 
 (defun nskk-prolog-substitute (term subst)
   "Apply substitution SUBST to TERM, replacing all bound variables.
 Walks each variable to its final binding and reconstructs the term.
 Unbound variables remain as-is in the result."
-  (cond
-   ((nskk-prolog-variable-p term)
-    (let ((walked (nskk-prolog-walk term subst)))
-      (if (nskk-prolog-variable-p walked)
-          walked
-        (nskk-prolog-substitute walked subst))))
-   ((consp term)
-    (cons (nskk-prolog-substitute (car term) subst)
-          (nskk-prolog-substitute (cdr term) subst)))
-   (t term)))
+  (pcase term
+    ((pred nskk-prolog-variable-p)
+     (let ((walked (nskk-prolog-walk term subst)))
+       (if (nskk-prolog-variable-p walked)
+           walked
+         (nskk-prolog-substitute walked subst))))
+    (`(,h . ,tl)
+     (cons (nskk-prolog-substitute h subst)
+           (nskk-prolog-substitute tl subst)))
+    (_ term)))
 
 (defun nskk-prolog-trie-prefix-search (predicate arity prefix)
   "Search PREDICATE/ARITY trie for keys starting with PREFIX.
@@ -869,7 +869,7 @@ Example:
   (nskk-prolog-holds-p \\='(dict-initialized))
   ;; => t   (when the fact is asserted)
   ;; => nil (when the fact is absent)"
-  (not (null (nskk-prolog-query-one goal))))
+  (and (nskk-prolog-query-one goal) t))
 
 ;;;; DSL Macros
 

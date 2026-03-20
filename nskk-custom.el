@@ -189,6 +189,7 @@ separating the indicator from adjacent mode indicators in the mode line."
     (t (:background "pink")))
   "Cursor color face for hiragana mode.
 The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-ui)
 
 (defface nskk-cursor-katakana
@@ -196,6 +197,7 @@ The :background attribute is used as the cursor color via `face-attribute'."
     (t (:background "green")))
   "Cursor color face for katakana mode.
 The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-ui)
 
 (defface nskk-cursor-latin
@@ -203,18 +205,21 @@ The :background attribute is used as the cursor color via `face-attribute'."
     (t (:background "gray")))
   "Cursor color face for ASCII/latin mode.
 The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-ui)
 
 (defface nskk-cursor-jisx0208-latin
   '((t (:background "gold")))
   "Cursor color face for full-width latin mode.
 The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-ui)
 
 (defface nskk-cursor-abbrev
   '((t (:background "royalblue")))
   "Cursor color face for abbrev mode.
 The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-ui)
 
 ;;;; Henkan (Conversion) Settings
@@ -306,21 +311,25 @@ completion candidates appear in the inline list below the preedit."
 (defface nskk-dcomp-face
   '((t (:foreground "DarkKhaki")))
   "Face for the dynamically completed part of the reading (inline suffix)."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dcomp)
 
 (defface nskk-dcomp-multiple-face
   '((t (:inherit default)))
   "Face for candidate readings in the dcomp multiple display."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dcomp)
 
 (defface nskk-dcomp-multiple-trailing-face
   '((t (:foreground "DarkKhaki")))
   "Face for trailing part of candidate readings in dcomp multiple display."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dcomp)
 
 (defface nskk-dcomp-multiple-selected-face
   '((t (:inherit highlight :weight bold)))
   "Face for the currently selected candidate in dcomp multiple display."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dcomp)
 
 ;;;; Kakutei Dictionary Settings

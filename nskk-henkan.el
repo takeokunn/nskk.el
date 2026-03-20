@@ -87,6 +87,8 @@
 
 ;;; Code:
 
+(require 'subr-x)
+(require 'cl-lib)
 (require 'nskk-cps-macros)
 (require 'nskk-kana)
 (require 'nskk-state)
@@ -360,46 +362,46 @@ immediately so callers receive a definitive result in all cases.
 NOTE: The generated `nskk-core-search/k' variant places ON-FOUND and
 ON-NOT-FOUND after the &optional TYPE and LIMIT parameters.  Callers MUST
 always pass both continuation arguments explicitly."
-  (if (not (stringp key))
-      (fail)
-    (let* ((search-type (or type :exact))
-           (action (nskk-prolog-query-value
-                    `(core-search-type ,search-type ,'\?a) '\?a)))
-      (nskk-debug-log "[HENKAN] search: key=%s type=%s" key (or type 'exact))
-      (pcase action
-        ('dict-lookup
-         ;; Flat fallback chain:
-         ;;   kakutei-dict (confirmed, optional) → local dict → skkserv
-         ;;   → builtin-handlers → program-dict.
-         ;; Kakutei dictionary is checked first: if it returns a single
-         ;; confirmed candidate, it is committed immediately without
-         ;; showing the candidate selection menu.
-         ;; Enable-flag guards live inside each backend's own /k function.
-         ;; fboundp guards in the optional-* wrappers handle unloaded modules.
-         (<-or result nskk--optional-kakutei-lookup key
-           :found (succeed result)
-           :fail  (<-or result2 nskk-dict-lookup key
-             :found (succeed result2)
-             :fail  (<-or r nskk--optional-server-lookup key
-               :found (succeed r)
-               :fail  (<-or b nskk--optional-program-dict-builtin-lookup key
-                 :found (succeed b)
-                 :fail  (<-or p nskk--optional-program-dict-lookup key
-                   :found (succeed p)
-                   :fail  (fail)))))))
-        ('prefix-search
-         (if (nskk-dict-system-index)
-             (<-or r nskk-search-prefix (nskk-dict-system-index) key nil limit
-               :found (succeed r)
-               :fail  (fail))
-           (fail)))
-        ('partial-search
-         (if (nskk-dict-system-index)
-             (<-or r nskk-search-partial (nskk-dict-system-index) key nil limit
-               :found (succeed r)
-               :fail  (fail))
-           (fail)))
-        (_ (signal 'nskk-henkan-unknown-search-type (list search-type)))))))
+  (if (stringp key)
+      (let* ((search-type (or type :exact))
+             (action (nskk-prolog-query-value
+                      `(core-search-type ,search-type ,'\?a) '\?a)))
+        (nskk-debug-log "[HENKAN] search: key=%s type=%s" key (or type 'exact))
+        (pcase action
+          ('dict-lookup
+           ;; Flat fallback chain:
+           ;;   kakutei-dict (confirmed, optional) → local dict → skkserv
+           ;;   → builtin-handlers → program-dict.
+           ;; Kakutei dictionary is checked first: if it returns a single
+           ;; confirmed candidate, it is committed immediately without
+           ;; showing the candidate selection menu.
+           ;; Enable-flag guards live inside each backend's own /k function.
+           ;; fboundp guards in the optional-* wrappers handle unloaded modules.
+           (<-or result nskk--optional-kakutei-lookup key
+             :found (succeed result)
+             :fail  (<-or result2 nskk-dict-lookup key
+               :found (succeed result2)
+               :fail  (<-or r nskk--optional-server-lookup key
+                 :found (succeed r)
+                 :fail  (<-or b nskk--optional-program-dict-builtin-lookup key
+                   :found (succeed b)
+                   :fail  (<-or p nskk--optional-program-dict-lookup key
+                     :found (succeed p)
+                     :fail  (fail)))))))
+          ('prefix-search
+           (if (nskk-dict-system-index)
+               (<-or r nskk-search-prefix (nskk-dict-system-index) key nil limit
+                 :found (succeed r)
+                 :fail  (fail))
+             (fail)))
+          ('partial-search
+           (if (nskk-dict-system-index)
+               (<-or r nskk-search-partial (nskk-dict-system-index) key nil limit
+                 :found (succeed r)
+                 :fail  (fail))
+             (fail)))
+          (_ (signal 'nskk-henkan-unknown-search-type (list search-type)))))
+    (fail)))
 
 ;;;; Henkan Marker Constants
 
@@ -1375,7 +1377,7 @@ The cleanup form guarantees two invariants on exit:
       (unwind-protect
           (let ((entry (read-from-minibuffer
                         (nskk--registration-prompt nskk--registration-depth reading))))
-            (when (not (string-empty-p entry))
+            (unless (string-empty-p entry)
               (setq result entry)
               (nskk-dict-register-word reading entry)))
         (cl-decf nskk--registration-depth)

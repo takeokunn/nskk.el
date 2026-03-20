@@ -116,6 +116,8 @@ Affects key position-based shortcuts.
 \\='us101 - US 101-key layout"
   :type '(choice (const :tag "Japanese 106-key" jp106)
                  (const :tag "US 101-key" us101))
+  :safe (lambda (v) (memq v '(jp106 us101)))
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-azik)
 
 ;;;; Compile-time Rule Macros
@@ -427,10 +429,11 @@ Performs two passes using azik-key-extends/2 facts:
 Binds @ for jp106 keyboard or [ for us101 keyboard to
 `nskk-toggle-japanese-mode' in `nskk-mode-map'.
 Falls back to `@' for unrecognized keyboard types."
-  (let ((key (or (nskk-prolog-query-value
-                  `(azik-toggle-key ,nskk-azik-keyboard-type \?k) '\?k)
-                 "@")))
-    (keymap-set nskk-mode-map key #'nskk-toggle-japanese-mode)))
+  (when (boundp 'nskk-mode-map)
+    (let ((key (or (nskk-prolog-query-value
+                    `(azik-toggle-key ,nskk-azik-keyboard-type \?k) '\?k)
+                   "@")))
+      (keymap-set nskk-mode-map key #'nskk-toggle-japanese-mode))))
 
 ;;;; Main Initialization
 
@@ -441,15 +444,14 @@ into the azik-rule/2 Prolog predicate.  A bridge rule connects
 azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
 The hash table is populated from azik-rule/2 for hot-path lookups."
 
-  ;; Step 1: Standard romaji base.
   (nskk--initialize-romaji-table)
 
-  ;; Step 2: Set up azik-rule/2 predicate (index before assert).
+  ;; Set up azik-rule/2 predicate (index before assert).
   (nskk-prolog-retract-all 'azik-rule 2)
   (nskk-prolog-set-index 'azik-rule 2 :hash)
 
-  ;; Step 3: Assert all AZIK rule categories directly as Prolog facts.
-  ;; Prolog is the single source of truth; the hash is a cache (Step 5).
+  ;; Assert all AZIK rule categories directly as Prolog facts.
+  ;; Prolog is the single source of truth; the hash is a read cache.
 
   ;; Special keys: ; → っ (geminate stop), : → ー (prolonged sound).
   (nskk-prolog-deffacts azik-rule
@@ -537,20 +539,19 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
     ("x;" ";") ("kA" "ヵ") ("kE" "ヶ") ("wA" "ヮ")
     ("kyn" "きゃん") ("y<" "←") ("y>" "→") ("y^" "↑"))
 
-  ;; Step 3b: JP106-specific rules (+ → っ for Shift+; key).
+  ;; JP106-specific: + → っ for Shift+; key.
   (when (and (boundp 'nskk-azik-keyboard-type)
              (eq nskk-azik-keyboard-type 'jp106))
     (nskk-prolog-<- (azik-rule "+" "っ")))
 
-  ;; Step 4: Bridge rule — AZIK rules are also romaji-to-kana.
+  ;; Bridge rule — AZIK rules are also romaji-to-kana.
   ;; The variable first arg (?r) is NOT trie-indexed; use azik-rule/2
   ;; directly for enumeration.  Hot-path lookups use the hash cache.
   (nskk-prolog-<- (romaji-to-kana \?r \?k) (azik-rule \?r \?k))
 
-  ;; Step 5: Sync azik-rule/2 → hash table.
   (nskk--azik-sync-to-romaji-hash)
 
-  ;; Step 6: Build Prolog classification predicates from the current hash.
+  ;; Build Prolog classification predicates from the current hash.
   ;;   azik-vowel-char/1   — character codes for a/i/u/e/o (integer facts).
   ;;   azik-key-extends/2  — (PREFIX CH) for every proper prefix in the hash.
   ;;   azik-nonvowel-ext/1 — succeeds when KEY has a non-vowel extension.
@@ -567,17 +568,15 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
     (azik-key-extends \?k \?_ext)
     (not (azik-nonvowel-ext \?k)))
 
-  ;; Step 7: Register :incomplete prefixes + restore standard-romaji semantics.
+  ;; Register :incomplete prefixes + restore standard-romaji semantics.
   ;; Uses azik-key-extends/2 and azik-vowel-shadow/1 queries via Prolog.
   (nskk--azik-finalize-hash-table)
 
-  ;; Step 8: Compound rules added after finalize.
   ;; Inserting after finalize ensures 2-char prefixes like "ka" remain
   ;; complete, enabling sequences like xhkak → しゅうかく.
   (dolist (rule nskk--azik-compound-rules)
     (puthash (car rule) (cadr rule) nskk--romaji-table))
 
-  ;; Step 9: AZIK toggle key binding.
   (nskk--setup-azik-toggle-key))
 
 ;; Register AZIK style

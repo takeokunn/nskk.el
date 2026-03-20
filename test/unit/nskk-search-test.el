@@ -39,7 +39,8 @@
   "Create a test dict-index backed by Prolog facts.
 ENTRIES-ALIST is ((key . candidates-list) ...) for exact-match entries.
 TRIE-ENTRIES is ((key . candidates-list) ...) for trie-indexed entries.
-PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)."
+PRED-NAME is the Prolog predicate symbol (defaults to a unique
+generated symbol)."
   (let* ((pred (or pred-name (intern (format "test-dict-%d" (abs (random))))))
          (all-entries (append entries-alist trie-entries)))
     (nskk-prolog-set-index pred 2 :trie)
@@ -163,7 +164,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
                       '(("abc" . ("v1")) ("xyz" . ("v2"))))))
           (let ((results (nskk-search index "abc" 'fuzzy)))
             (should (listp results))
-            (should (> (length results) 0))
+            (should results)
             ;; The exact match should be first (distance 0)
             (let ((first-result (car results)))
               (should (equal (car first-result) "abc")))))))
@@ -234,7 +235,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 
 ;; Table-driven: covers all canonical edit-distance cases in one declaration
 (nskk-deftest-table levenshtein-known-distances
-  :columns (s1 s2 expected label)
+  :columns (s1 s2 expected _label)
   :rows (("abc"    "abc"      0  "identical strings")
          (""       ""         0  "both empty")
          ("abc"    ""         3  "deletion to empty")
@@ -299,7 +300,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to a unique generated symbol)
 
 ;; Table-driven: all combinations of okuri-type × entry-okuri
 (nskk-deftest-table match-okuri-type-p-cases
-  :columns (okuri-type entry-okuri matches-p label)
+  :columns (okuri-type entry-okuri matches-p _label)
   :rows ((okuri-ari  "し"  t   "ari: non-empty okuri matches")
          (okuri-ari  nil   nil "ari: nil okuri does not match")
          (okuri-nasi nil   t   "nasi: nil okuri matches")
@@ -488,7 +489,7 @@ in this list.")
 
   ;; PBT-004 -- Cache key uniqueness (table-driven)
   (nskk-deftest-table search-cache-key-uniqueness
-    :columns (query type okuri label)
+    :columns (query type okuri _label)
     :rows (("query1" exact   nil         "exact-no-okuri")
            ("query1" prefix  nil         "prefix-no-okuri")
            ("query1" exact   okuri-ari   "exact-okuri-ari")
@@ -784,7 +785,7 @@ in this list.")
         ;; Fuzzy search
         (let ((nskk-search-fuzzy-threshold 2)
               (results (nskk-search index "かんじ" 'fuzzy)))
-          (should (> (length results) 0))))))
+          (should results)))))
 
 )
 
@@ -874,7 +875,7 @@ in this list.")
 (nskk-property-test search-cache-key-always-string
   ((q search-query))
   (let ((key (nskk--search-cache-key q 'exact nil)))
-    (and (stringp key) (> (length key) 0)))
+    (and (stringp key) (not (string-empty-p key))))
   30)
 
 ;; PBT-010 — cache key contains the query string

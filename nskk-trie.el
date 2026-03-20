@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -37,6 +37,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (eval-when-compile (require 'nskk-cps-macros))
 
 ;;;; Trie Node Structure
@@ -101,7 +102,7 @@ modest for leaf-heavy subtrees.")
   "Insert KEY with VALUE into TRIE."
   (unless (stringp key)
     (error "Key must be a string: %s" key))
-  (when (zerop (length key))
+  (when (string-empty-p key)
     (error "Key cannot be empty"))
   (let ((node (nskk-trie-root trie))
         (was-new nil))
@@ -191,7 +192,7 @@ Returns a list of (key . value) pairs.
 If LIMIT is non-nil, return at most LIMIT results."
   (unless (stringp prefix)
     (error "Prefix must be a string: %s" prefix))
-  (let ((node (if (zerop (length prefix))
+  (let ((node (if (string-empty-p prefix)
                   (nskk-trie-root trie)
                 (nskk--trie-find-node trie prefix))))
     (when node
@@ -224,7 +225,7 @@ This means PREFIX is either a complete key or a proper prefix of some key.
 O(k) where k = length of PREFIX."
   (unless (stringp prefix)
     (error "Prefix must be a string: %s" prefix))
-  (if (zerop (length prefix))
+  (if (string-empty-p prefix)
       (nskk-trie-root trie)
     (nskk--trie-find-node trie prefix)))
 

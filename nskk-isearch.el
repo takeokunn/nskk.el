@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -54,6 +54,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'isearch)
 (require 'nskk-state)
 (require 'nskk-custom)
@@ -86,6 +87,7 @@ The isearch prompt shows the current NSKK mode indicator."
   "Alist mapping NSKK mode symbols to isearch prompt strings.
 Used to show the current input mode in the isearch prompt."
   :type '(alist :key-type symbol :value-type string)
+  :safe (lambda (v) (and (listp v) (cl-every (lambda (e) (and (consp e) (symbolp (car e)) (stringp (cdr e)))) v)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-isearch)
 
@@ -131,6 +133,7 @@ ORIG-FUN is the original `isearch-message-prefix' function."
 
 ;;;; Setup/Teardown
 
+;;;###autoload
 (defun nskk-isearch-setup ()
   "Install NSKK isearch integration.
 Adds hooks and advice to enable Japanese isearch."
@@ -138,6 +141,7 @@ Adds hooks and advice to enable Japanese isearch."
   (add-hook 'isearch-mode-end-hook #'nskk--isearch-teardown)
   (advice-add 'isearch-message-prefix :around #'nskk--isearch-prompt-advice))
 
+;;;###autoload
 (defun nskk-isearch-teardown ()
   "Remove NSKK isearch integration."
   (remove-hook 'isearch-mode-hook #'nskk--isearch-setup)

@@ -1126,7 +1126,7 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   ;; The romaji-string generator always produces non-empty strings.
   (let ((state (nskk-state-create)))
     (let ((before-len (length (nskk-state-input-buffer state))))
-      (if (> (length input) 0)
+      (if (not (string-empty-p input))
           (progn
             (nskk-state-append-input state (aref input 0))
             (let ((after-len (length (nskk-state-input-buffer state))))
@@ -1219,7 +1219,7 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 (nskk-property-test state-pbt-append-cps-consistent-with-sync
   ((input romaji-string))
   ;; append-input/k must produce the same result as the sync variant.
-  (when (> (length input) 0)
+  (when (not (string-empty-p input))
     (let* ((char (aref input 0))
            (state1 (nskk-state-create))
            (state2 (nskk-state-create))
@@ -1431,6 +1431,7 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
           executed)
       (nskk-state-set-candidates state '("漢字" "感じ"))
       (nskk-with-candidates state
+        (ignore candidates index)
         (setq executed t))
       (should executed)))
 
@@ -1451,12 +1452,14 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
           executed)
       ;; No candidates set -> nskk-state-candidates returns nil
       (nskk-with-candidates state
+        (ignore candidates index)
         (setq executed t))
       (should-not executed)))
 
   (nskk-it "does not execute body when state is not an nskk-state struct"
     (let (executed)
       (nskk-with-candidates nil
+        (ignore candidates index)
         (setq executed t))
       (should-not executed))))
 

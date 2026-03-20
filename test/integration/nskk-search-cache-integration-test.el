@@ -147,7 +147,7 @@
           (should (nskk-dict-entry-p entry))
           (let ((candidates (nskk-dict-entry-candidates entry)))
             (should (listp candidates))
-            (should (> (length candidates) 0))
+            (should candidates)
             (should (member "漢字" candidates)))))))
 
   (nskk-it "exact match search returns nil for a key not in the dictionary"
@@ -164,7 +164,7 @@
         (nskk-then
           (should (nskk-dict-entry-p result1))
           ;; After the miss the key should now be in the cache
-          (should (not (null (nskk-cache-get cache cache-key))))
+          (should (nskk-cache-get cache cache-key))
           ;; Stats: 1 miss from the first nskk-search-with-cache call
           (let ((stats (nskk-cache-stats cache)))
             (should (>= (plist-get stats :misses) 1))))

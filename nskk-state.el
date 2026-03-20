@@ -283,25 +283,25 @@ Routes \\='mode and \\='henkan-phase through validated setters; all other slots
 are set directly via `setf'.
 Sync wrapper returns VALUE, or nil when STATE is invalid or KEY is unknown.
 The /k variant calls ON-FOUND with VALUE on success, ON-NOT-FOUND otherwise."
-  (if (not (nskk-state-p state))
-      (fail)
-    (let ((key-sym (if (stringp key) (intern key) key)))
-      (let ((result
-             (pcase key-sym
-               ('mode         (nskk-state-set-mode state value))
-               ('henkan-phase (nskk-state-set-henkan-phase state value))
-               ('input-buffer     (setf (nskk-state-input-buffer     state) value) value)
-               ('converted-buffer (setf (nskk-state-converted-buffer state) value) value)
-               ('candidates       (setf (nskk-state-candidates       state) value) value)
-               ('current-index    (setf (nskk-state-current-index    state) value) value)
-               ('henkan-position  (setf (nskk-state-henkan-position  state) value) value)
-               ('marker-position  (setf (nskk-state-marker-position  state) value) value)
-               ('previous-mode    (setf (nskk-state-previous-mode    state) value) value)
-               ('undo-stack       (setf (nskk-state-undo-stack       state) value) value)
-               ('redo-stack       (setf (nskk-state-redo-stack       state) value) value)
-               ('metadata         (setf (nskk-state-metadata         state) value) value)
-               (_ nil))))
-        (if result (succeed result) (fail))))))
+  (if (nskk-state-p state)
+      (let ((key-sym (if (stringp key) (intern key) key)))
+        (let ((result
+               (pcase key-sym
+                 ('mode         (nskk-state-set-mode state value))
+                 ('henkan-phase (nskk-state-set-henkan-phase state value))
+                 ('input-buffer     (setf (nskk-state-input-buffer     state) value) value)
+                 ('converted-buffer (setf (nskk-state-converted-buffer state) value) value)
+                 ('candidates       (setf (nskk-state-candidates       state) value) value)
+                 ('current-index    (setf (nskk-state-current-index    state) value) value)
+                 ('henkan-position  (setf (nskk-state-henkan-position  state) value) value)
+                 ('marker-position  (setf (nskk-state-marker-position  state) value) value)
+                 ('previous-mode    (setf (nskk-state-previous-mode    state) value) value)
+                 ('undo-stack       (setf (nskk-state-undo-stack       state) value) value)
+                 ('redo-stack       (setf (nskk-state-redo-stack       state) value) value)
+                 ('metadata         (setf (nskk-state-metadata         state) value) value)
+                 (_ nil))))
+          (if result (succeed result) (fail))))
+    (fail)))
 
 ;;;; State Slot Defaults — static cache, no Prolog round-trip per create/reset
 ;;
@@ -505,7 +505,7 @@ or state is invalid.
 Properly handles multibyte characters."
   (if (nskk-state-p state)
       (let ((buf (nskk-state-input-buffer state)))
-        (if (and (stringp buf) (> (length buf) 0))
+        (if (and (stringp buf) (not (string-empty-p buf)))
             (let* ((new-len  (1- (length buf)))
                    (last-char (aref buf new-len))
                    (new-buf   (substring buf 0 new-len)))

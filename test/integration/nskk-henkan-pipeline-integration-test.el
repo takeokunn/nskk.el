@@ -158,7 +158,7 @@
 (require 'nskk-pbt-generators)
 
 (nskk-deftest-table henkan-pipeline-preedit-sequences
-  :columns (input expected)
+  :columns (input _expected)
   :rows (("kanji" "かんじ")
          ("umi"   "うみ")
          ("sora"  "そら"))
@@ -168,7 +168,7 @@
       (dolist (ch (string-to-list input))
         (nskk--integration-type-char ch))
       ;; After typing, buffer-string should be non-empty (▽ + kana)
-      (should (> (length (buffer-string)) 0)))))
+      (should (not (string-empty-p (buffer-string)))))))
 
 (nskk-property-test henkan-pipeline-preedit-does-not-crash
   ((r romaji-basic))

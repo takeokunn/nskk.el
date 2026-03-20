@@ -1794,7 +1794,7 @@
                  (result (nskk-convert-romaji input)))
             (unless (stringp result)
               (push (list :postcondition-failed :input input :result result) failures))
-            (unless (> (length result) 0)
+            (when (string-empty-p result)
               (push (list :invariant-failed "result is empty string" input) failures)))))
       (when failures
         (ert-fail (format "Contract test `nskk-convert-romaji' AZIK: %d failures:\n%S"

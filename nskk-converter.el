@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -100,6 +100,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'nskk-cps-macros)
 (require 'nskk-prolog)
 (require 'nskk-custom)
@@ -243,11 +244,11 @@ Uses the hash table for O(1) exact-match lookups (includes both standard
 and AZIK rules), falling back to the Prolog trie for prefix detection."
   (when (stringp romaji)
     (let ((result (gethash romaji nskk--romaji-table)))
-      (cond
-       ((stringp result) result)
-       ((eq result :incomplete) :incomplete)
-       ((nskk-prolog-trie-has-prefix-p 'romaji-to-kana 2 romaji)
-        :incomplete)))))
+      (pcase result
+        ((pred stringp) result)
+        (':incomplete   :incomplete)
+        (_              (when (nskk-prolog-trie-has-prefix-p 'romaji-to-kana 2 romaji)
+                          :incomplete))))))
 
 (defconst nskk--romaji-char-max 127
   "Maximum ASCII character code accepted as romaji input.
@@ -258,9 +259,8 @@ the sokuon/hatsuon detection logic in `nskk--sokuon-p'.")
   "Convert ROMAJI string to kana by repeatedly applying longest-match conversion.
 Returns converted kana string for string input, nil for nil input."
   (succeed (cond
-             ((null romaji) nil)
              ((not (stringp romaji)) nil)
-             ((zerop (length romaji)) "")
+             ((string-empty-p romaji) "")
              (t (nskk-convert-romaji--internal (downcase romaji))))))
 
 (defun nskk--sokuon-p (c0 remaining)
@@ -330,12 +330,12 @@ Always calls ON-FOUND with the assembled kana string.
 Hand-written explicit pair because ON-FOUND must be passed as a value
 to the recursive call (defun/k only rewrites succeed/fail call forms).
 ON-NOT-FOUND is forwarded unchanged through recursion."
-  (if (or (null remaining) (zerop (length remaining)))
+  (if (or (null remaining) (string-empty-p remaining))
       (funcall on-found (apply #'concat (nreverse parts)))
     (nskk--convert-step/k remaining
       (lambda (kana rest)
         (nskk--convert-loop/k
-         (and (stringp rest) (> (length rest) 0) rest)
+         (and (stringp rest) (not (string-empty-p rest)) rest)
          (cons kana parts)
          on-found on-not-found))
       (lambda (partial)
@@ -365,7 +365,7 @@ proper prefix of a known sequence (no full match yet).
 ON-FAIL is called as (funcall ON-FAIL) when ROMAJI is nil, empty, or has no
 match and is not a known prefix.
 Uses `nskk-converter-lookup' for each candidate prefix length (4 down to 1)."
-  (if (not (and (stringp romaji) (> (length romaji) 0)))
+  (if (or (not (stringp romaji)) (string-empty-p romaji))
       (funcall on-fail)
     (cl-loop for len from (min 4 (length romaji)) downto 1
              for prefix = (substring romaji 0 len)

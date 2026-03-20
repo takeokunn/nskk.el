@@ -30,7 +30,7 @@
 ;;; Nav Handler Test Helpers
 ;;;
 
-(defmacro nskk-deftest-nav-handler (key handler kbd-key arrow-key nav-fn)
+(defmacro nskk-deftest-nav-handler (_key handler kbd-key arrow-key nav-fn)
   "Generate standard tests for a commit-then-navigate key handler.
 KEY is a symbol like `ctrl-f'.  HANDLER is the command symbol.
 KBD-KEY is the kbd string (e.g. \"C-f\").  ARROW-KEY is the arrow kbd string.
@@ -719,7 +719,8 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 (defun nskk-test-setup-converting (preedit candidate)
   "Setup converting mode for PREEDIT text with CANDIDATE.
 PREEDIT should already be in buffer starting at point.
-Sets conversion-start-marker at point, advances past PREEDIT, and configures state."
+Sets conversion-start-marker at point, advances past PREEDIT,
+and configures state."
   (nskk--set-conversion-start-marker (point))
   (forward-char (length preedit))
   (nskk-state-set-candidates nskk-current-state (list candidate))
@@ -1681,6 +1682,113 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
       (condition-case err
           (nskk--classify-state)
         (error (ert-fail (format "Unexpected error: %s" err)))))))
+
+;;;
+;;; nskk--compute-phase Tests
+;;;
+
+(nskk-describe "nskk--compute-phase"
+  (nskk-it "returns 'converting when nskk-converting-p is true"
+    (nskk-with-mocks ((nskk-converting-p (lambda () t)))
+      (should (eq (nskk--compute-phase) 'converting))))
+
+  (nskk-it "returns 'henkan-on when state exists and conversion-start is set"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--get-conversion-start (lambda () 1)))
+        (should (eq (nskk--compute-phase) 'henkan-on)))))
+
+  (nskk-it "returns 'idle when no state"
+    (let ((nskk-current-state nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil)))
+        (should (eq (nskk--compute-phase) 'idle)))))
+
+  (nskk-it "returns 'idle when state exists but no conversion-start"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--get-conversion-start (lambda () nil)))
+        (should (eq (nskk--compute-phase) 'idle)))))
+
+  (nskk-it "converting takes priority over henkan-on"
+    (let ((nskk-current-state (nskk-state-create 'hiragana)))
+      (nskk-with-mocks ((nskk-converting-p (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1)))
+        (should (eq (nskk--compute-phase) 'converting)))))
+
+  (nskk-it "return value is always one of the 3 known phase symbols"
+    (let ((valid '(converting henkan-on idle)))
+      (nskk-with-mocks ((nskk-converting-p (lambda () t)))
+        (should (memq (nskk--compute-phase) valid)))
+      (let ((nskk-current-state nil))
+        (nskk-with-mocks ((nskk-converting-p (lambda () nil)))
+          (should (memq (nskk--compute-phase) valid)))))))
+
+;;;
+;;; nskk--compute-text-presence Tests
+;;;
+
+(nskk-describe "nskk--compute-text-presence"
+  (nskk-it "returns 'has-text when nskk--has-preedit is true"
+    (nskk-with-mocks ((nskk--has-preedit (lambda () t)))
+      (should (eq (nskk--compute-text-presence) 'has-text))))
+
+  (nskk-it "returns 'no-text when nskk--has-preedit is false"
+    (nskk-with-mocks ((nskk--has-preedit (lambda () nil)))
+      (should (eq (nskk--compute-text-presence) 'no-text))))
+
+  (nskk-it "return value is always one of the 2 known symbols"
+    (let ((valid '(has-text no-text)))
+      (nskk-with-mocks ((nskk--has-preedit (lambda () t)))
+        (should (memq (nskk--compute-text-presence) valid)))
+      (nskk-with-mocks ((nskk--has-preedit (lambda () nil)))
+        (should (memq (nskk--compute-text-presence) valid))))))
+
+;;;
+;;; nskk--compute-mode-category Tests
+;;;
+
+(nskk-describe "nskk--compute-mode-category"
+  (nskk-it "returns 'other when nskk-current-state is nil"
+    (let ((nskk-current-state nil))
+      (should (eq (nskk--compute-mode-category) 'other))))
+
+  (nskk-it "returns 'japanese for hiragana mode"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-state-initialize-prolog)
+      (let ((nskk-current-state (nskk-state-create 'hiragana)))
+        (should (eq (nskk--compute-mode-category) 'japanese)))))
+
+  (nskk-it "returns 'japanese for katakana mode"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-state-initialize-prolog)
+      (let ((nskk-current-state (nskk-state-create 'katakana)))
+        (should (eq (nskk--compute-mode-category) 'japanese)))))
+
+  (nskk-it "returns 'marker-mode for abbrev mode"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-state-initialize-prolog)
+      (let ((nskk-current-state (nskk-state-create 'abbrev)))
+        (should (eq (nskk--compute-mode-category) 'marker-mode)))))
+
+  (nskk-it "returns 'other for ascii mode"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-state-initialize-prolog)
+      (let ((nskk-current-state (nskk-state-create 'ascii)))
+        (should (eq (nskk--compute-mode-category) 'other)))))
+
+  (nskk-it "returns 'other for jisx0208-latin mode"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-state-initialize-prolog)
+      (let ((nskk-current-state (nskk-state-create 'jisx0208-latin)))
+        (should (eq (nskk--compute-mode-category) 'other)))))
+
+  (nskk-it "return value is always one of the 3 known category symbols"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-state-initialize-prolog)
+      (let ((valid '(japanese marker-mode other)))
+        (dolist (mode '(hiragana katakana ascii abbrev jisx0208-latin))
+          (let ((nskk-current-state (nskk-state-create mode)))
+            (should (memq (nskk--compute-mode-category) valid))))))))
 
 ;;;
 ;;; Property-based invariant tests

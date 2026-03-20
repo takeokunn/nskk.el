@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -52,6 +52,7 @@
 
 ;;; Code:
 
+(require 'subr-x)
 (require 'nskk-state)
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
@@ -81,11 +82,13 @@ Possible values:
 (defface nskk-inline-face
   '((t (:inherit shadow :slant italic)))
   "Face for the inline candidate display text."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-inline)
 
 (defface nskk-jisyo-registration-badge-face
   '((t (:inherit font-lock-warning-face :weight bold)))
   "Face for the dictionary registration badge \"↓辞書登録中↓\"."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-inline)
 
 ;;;; Buffer-Local State

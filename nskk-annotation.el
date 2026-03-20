@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -53,7 +53,7 @@
 
 ;;; Code:
 
-(require 'cl-lib)
+(require 'subr-x)
 (require 'nskk-prolog)
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
@@ -81,6 +81,7 @@ converted candidate during the \u25bc selection phase."
 (defface nskk-annotation-face
   '((t (:inherit font-lock-comment-face :slant italic)))
   "Face for annotation text displayed in the echo area."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-annotation)
 
 ;;;; Buffer-Local State
@@ -148,25 +149,24 @@ area alongside the candidate text.  No-op when `nskk-show-annotation' is nil."
     (let ((annotation (nskk-annotation-lookup reading candidate)))
       (setq nskk--annotation-current annotation)
       (when (and annotation nskk--annotation-visible)
-        (let ((ann-str (nskk--annotation-format annotation)))
-          (when ann-str
-            (let ((message-log-max nil))
-              (message "%s%s" candidate ann-str))))))))
+        (when-let* ((ann-str (nskk--annotation-format annotation)))
+          (let ((message-log-max nil))
+            (message "%s%s" candidate ann-str)))))))
 
 (defun nskk-annotation-clear ()
   "Clear the current annotation state."
   (setq nskk--annotation-current nil))
 
+;;;###autoload
 (defun nskk-annotation-toggle-display ()
   "Toggle visibility of the current candidate annotation.
 When hidden, shows annotation if one is available; when shown, hides it."
   (interactive)
   (setq nskk--annotation-visible (not nskk--annotation-visible))
   (if (and nskk--annotation-visible nskk--annotation-current)
-      (let ((ann-str (nskk--annotation-format nskk--annotation-current)))
-        (when ann-str
-          (let ((message-log-max nil))
-            (message "%s" ann-str))))
+      (when-let* ((ann-str (nskk--annotation-format nskk--annotation-current)))
+        (let ((message-log-max nil))
+          (message "%s" ann-str)))
     (message nil)))
 
 (provide 'nskk-annotation)

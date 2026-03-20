@@ -99,7 +99,7 @@
   :rows ((hiragana) (katakana) (katakana-半角) (ascii) (latin) (jisx0208-latin) (abbrev))
   :body (let ((color (nskk--cursor-with-color mode)))
           (should (stringp color))
-          (should (> (length color) 0))))
+          (should (not (string-empty-p color)))))
 
 (nskk-describe "nskk--cursor-with-color special cases"
   (nskk-it "returns nil for direct (no standalone mode-properties fact)"
@@ -197,7 +197,7 @@
             (nskk--last-cursor-color nil))
         (nskk-cursor-update)
         (should (stringp nskk--last-cursor-color))
-        (should (> (length nskk--last-cursor-color) 0)))))
+        (should (not (string-empty-p nskk--last-cursor-color))))))
 
   (nskk-it "does not re-apply cursor color when color is unchanged"
     (nskk-with-state 'hiragana
@@ -257,7 +257,7 @@
   '(hiragana katakana ascii latin jisx0208-latin abbrev)
   (let ((nskk-current-state (nskk-state-create item)))
     (and (stringp (nskk-modeline-indicator))
-         (> (length (nskk-modeline-indicator)) 0))))
+         (not (string-empty-p (nskk-modeline-indicator))))))
 
 ;;;
 ;;; PBT-002 — Format string invariant (exhaustive over all valid modes)
@@ -297,7 +297,7 @@
 (nskk-property-test-exhaustive modeline-cursor-color-all-modes-non-empty
   '(hiragana katakana katakana-半角 ascii latin jisx0208-latin abbrev)
   (let ((color (nskk--cursor-with-color item)))
-    (and (stringp color) (> (length color) 0))))
+    (and (stringp color) (not (string-empty-p color)))))
 
 (nskk-deftest-table cursor-faces-defined
   :columns (face-sym)
@@ -392,7 +392,7 @@
   (nskk-it "returns a color string for hiragana"
     (let ((color (nskk--cursor-with-color 'hiragana)))
       (should (stringp color))
-      (should (> (length color) 0))))
+      (should (not (string-empty-p color)))))
 
   (nskk-it "returns a color string for katakana"
     (let ((color (nskk--cursor-with-color 'katakana)))

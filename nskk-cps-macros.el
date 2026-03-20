@@ -103,22 +103,21 @@ as its continuation body and transforms the whole remainder."
   (when forms
     (let ((head (car forms))
           (tail (cdr forms)))
-      (cond
+      (pcase head
        ;; (<- var fn args...) — CPS bind: captures tail as continuation
-       ((and (consp head) (eq (car head) '<-))
+       (`(<- . ,_)
         (list (nskk--cps-transform-<- head tail on-found-sym on-not-found-sym)))
 
        ;; (<-or var fn args... :found f :fail g) — two-arm CPS bind
-       ((and (consp head) (eq (car head) '<-or))
+       (`(<-or . ,_)
         (list (nskk--cps-transform-<-or head on-found-sym on-not-found-sym)))
 
-       ;; More forms follow: head is NOT in tail position, recurse on tail
-       (tail
-        (cons head (nskk--cps-transform-body-list tail on-found-sym on-not-found-sym)))
-
-       ;; head IS the last form (tail position): transform it
-       (t
-        (list (nskk--cps-transform-form head on-found-sym on-not-found-sym)))))))
+       (_
+        (if tail
+            ;; More forms follow: head is NOT in tail position, recurse on tail
+            (cons head (nskk--cps-transform-body-list tail on-found-sym on-not-found-sym))
+          ;; head IS the last form (tail position): transform it
+          (list (nskk--cps-transform-form head on-found-sym on-not-found-sym))))))))
 
 ;;; Internal form dispatch table
 
@@ -181,10 +180,10 @@ Multiple else forms (e.g., (if c t e1 e2)) are wrapped in an implicit progn."
   (let* ((test       (nth 1 form))
          (then       (nth 2 form))
          (else-forms (nthcdr 3 form))
-         (else (cond
-                ((null else-forms)  nil)
-                ((cdr else-forms)   `(progn ,@else-forms))
-                (t                  (car else-forms)))))
+         (else (pcase else-forms
+                ('()       nil)
+                (`(,only)  only)
+                (_         `(progn ,@else-forms)))))
     (if else
         `(if ,test
              ,(nskk--cps-transform-form then on-found-sym on-not-found-sym)
@@ -293,41 +292,39 @@ Emacs Lisp forms are dispatched via `nskk--cps-form-dispatch'.
 Framework pipeline operators (`fail', `succeed', `<-', `<-or', `<-seq')
 are handled inline: they are CPS-specific constructs that have no meaning
 outside `defun/k' bodies."
-  (cond
+  (pcase form
    ;; Atom — pass through unchanged (no CPS transformation possible)
-   ((not (consp form)) form)
+   ((pred (not consp)) form)
 
    ;; (fail) — zero-arity not-found continuation
-   ((eq (car form) 'fail)
-    (if (null (cdr form))
-        `(funcall ,on-not-found-sym)
-       (error "NSKK-CPS: (fail) takes no arguments, got: %S" form)))
+   (`(fail)
+    `(funcall ,on-not-found-sym))
+   (`(fail . ,_)
+    (error "NSKK-CPS: (fail) takes no arguments, got: %S" form))
 
    ;; (succeed VALUE) — one-arity found continuation
-   ((eq (car form) 'succeed)
-    (cond
-     ((null (cdr form))
-       (error "NSKK-CPS: (succeed) requires exactly one argument"))
-     ((cddr form)
-       (error "NSKK-CPS: (succeed) takes exactly one argument, got: %S" form))
-     (t
-      `(funcall ,on-found-sym ,(cadr form)))))
+   (`(succeed)
+    (error "NSKK-CPS: (succeed) requires exactly one argument"))
+   (`(succeed ,val)
+    `(funcall ,on-found-sym ,val))
+   (`(succeed . ,_)
+    (error "NSKK-CPS: (succeed) takes exactly one argument, got: %S" form))
 
    ;; (<- var fn args...) — CPS bind in tail position with no following forms
-   ((eq (car form) '<-)
+   (`(<- . ,_)
     (nskk--cps-transform-<- form nil on-found-sym on-not-found-sym))
 
    ;; (<-or ...) — two-arm CPS bind
-   ((eq (car form) '<-or)
+   (`(<-or . ,_)
     (nskk--cps-transform-<-or form on-found-sym on-not-found-sym))
 
    ;; (<-seq [VAR (FN ARGS...)] BODY...) — sequential CPS bind
-   ((eq (car form) '<-seq)
+   (`(<-seq . ,_)
     (nskk--cps-transform-<-seq form on-found-sym on-not-found-sym))
 
    ;; Dispatch via table, or pass through if the form head is not registered
-   (t
-    (let ((handler (assq (car form) nskk--cps-form-dispatch)))
+   (`(,head . ,_)
+    (let ((handler (assq head nskk--cps-form-dispatch)))
       (if handler
           (funcall (cdr handler) form on-found-sym on-not-found-sym)
         form)))))

@@ -248,8 +248,8 @@
   ((input romaji-string))
   ;; Non-empty romaji input always produces non-empty output.
   ;; Empty input is handled separately (returns "" by contract).
-  (or (zerop (length input))
-      (> (length (nskk-convert-romaji input)) 0))
+  (or (string-empty-p input)
+      (not (string-empty-p (nskk-convert-romaji input))))
   100)
 
 (nskk-deftest-performance conversion-basic-performance
@@ -369,6 +369,10 @@
 ;;;; Test Suite Organization
 ;;;;
 
+(declare-function nskk-performance-conversion-basic-performance nil)
+(declare-function nskk-performance-conversion-complex-performance nil)
+(declare-function nskk-performance-conversion-batch-performance nil)
+(declare-function nskk-performance-conversion-long-input-performance nil)
 (nskk-test-suite converter-performance
   nskk-performance-conversion-basic-performance
   nskk-performance-conversion-complex-performance
@@ -951,7 +955,7 @@
 (nskk-describe "nskk--standard-romaji-rules content"
   (nskk-it "is a non-empty list"
     (should (listp nskk--standard-romaji-rules))
-    (should (> (length nskk--standard-romaji-rules) 0)))
+    (should nskk--standard-romaji-rules))
 
   (nskk-it "contains only (romaji kana) string pairs"
     (dolist (rule nskk--standard-romaji-rules)
@@ -1402,7 +1406,7 @@
 ;; Property: nskk--convert-step/k always calls exactly one continuation.
 (nskk-property-test-seeded convert-step/k-pbt-calls-exactly-one-continuation
   ((input romaji-basic))
-  (when (and (stringp input) (> (length input) 0))
+  (when (and (stringp input) (not (string-empty-p input)))
     (let ((call-count 0))
       (nskk--convert-step/k input
         (lambda (_kana _rest) (cl-incf call-count))
@@ -1414,10 +1418,10 @@
 ;; Property: nskk--convert-step/k on-kana always receives a non-empty kana string.
 (nskk-property-test-seeded convert-step/k-pbt-on-kana-receives-string
   ((input romaji-basic))
-  (when (and (stringp input) (> (length input) 0))
+  (when (and (stringp input) (not (string-empty-p input)))
     (let ((result t))
       (nskk--convert-step/k input
-        (lambda (kana _rest) (setq result (and (stringp kana) (> (length kana) 0))))
+        (lambda (kana _rest) (setq result (and (stringp kana) (not (string-empty-p kana)))))
         (lambda (_partial) t)
         (lambda () t))
       result))
@@ -1428,7 +1432,7 @@
 ;; wrapper, so the old sync-vs-CPS consistency check does not apply.)
 (nskk-property-test-seeded convert-step/k-pbt-consistent-with-sync
   ((input romaji-basic))
-  (when (and (stringp input) (> (length input) 0))
+  (when (and (stringp input) (not (string-empty-p input)))
     (let ((result1 nil)
           (result2 nil))
       (nskk--convert-step/k input

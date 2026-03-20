@@ -117,7 +117,7 @@
 (nskk-property-test nskk-state-machine-conversion-roundtrip
   ((candidates candidate-list))
   (let* ((state (nskk--pbt-make-conversion-state))
-         (input-before (nskk-state-input-buffer state)))
+         (_input-before (nskk-state-input-buffer state)))
     ;; Start conversion with candidates
     (nskk--pbt-start-conversion state candidates)
     ;; Commit conversion
@@ -125,7 +125,7 @@
     ;; Verify: converted-buffer should contain the first candidate
     (let ((converted (nskk-state-converted-buffer state)))
       (and (stringp converted)
-           (> (length converted) 0)
+           (not (string-empty-p converted))
            (member (car candidates) (list converted)))))
   50)
 
@@ -228,7 +228,7 @@
       (let ((op (nskk--pbt-random-int 0 2)))
         (pcase op
           (0 ;; Start conversion
-           (when (> (length (nskk-state-input-buffer state)) 0)
+           (when (not (string-empty-p (nskk-state-input-buffer state)))
              (nskk--pbt-start-conversion state candidates)))
           (1 ;; Cancel conversion
            (nskk--pbt-cancel-conversion state original-input))
@@ -245,7 +245,7 @@
       ;; (no dangling henkan-position with empty candidates)
       (let ((consistent t))
         ;; Invariant 2: current-index should be valid for candidates list
-        (when (and cands (> (length cands) 0))
+        (when cands
           (unless (and (integerp idx) (>= idx 0) (< idx (length cands)))
             (setq consistent nil)))
         ;; Invariant 3: buffers should always be strings
@@ -278,7 +278,7 @@
     ;; After commit, converted-buffer must be a non-empty string
     (let ((converted (nskk-state-converted-buffer state)))
       (and (stringp converted)
-           (> (length converted) 0))))
+           (not (string-empty-p converted)))))
   50)
 
 ;;;
@@ -335,7 +335,7 @@
         (nskk-then
           (let ((converted (nskk-state-converted-buffer state)))
             (should (stringp converted))
-            (should (> (length converted) 0))
+            (should (not (string-empty-p converted)))
             (should (nskk-state-p state))))))))
 
 
@@ -373,7 +373,7 @@
            (lambda () (setq branch-called 'fail)))
           (when (eq branch-called 'match)
             (unless (and (stringp result-value)
-                         (> (length result-value) 0))
+                         (not (string-empty-p result-value)))
               (push (list :romaji romaji :result result-value) failures)))))
       (when failures
         (ert-fail (format "on-match received non-string for %d cases:\n%S"

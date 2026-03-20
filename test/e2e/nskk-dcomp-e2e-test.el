@@ -194,11 +194,10 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
   :body
   (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict-extended
     (nskk-e2e-type input)
-    (let ((before (nskk-preedit-string)))
+    (let ((_before (nskk-preedit-string)))
       (nskk-e2e-type "TAB")
       ;; After Tab with a known prefix, preedit must be a valid string.
       (should (stringp (nskk-preedit-string)))
-      ;; Suppress unused-variable warning: expected is always t (crash-free).
       (should expected))))
 
 ;;;;
@@ -213,7 +212,7 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-type "TAB")
       ;; Confirm we are still in preedit phase with an extended reading.
       (nskk-e2e-assert-henkan-phase 'on)
-      (should (> (length (nskk-preedit-string)) 0))
+      (should (not (string-empty-p (nskk-preedit-string))))
       ;; SPC should trigger henkan conversion.
       (nskk-e2e-type "SPC")
       ;; Now we should be in active conversion phase (▼).
@@ -230,7 +229,7 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       ;; After commit, henkan phase returns to nil.
       (nskk-e2e-assert-henkan-phase nil)
       ;; Buffer should contain the committed kana (non-empty).
-      (should (> (length (buffer-string)) 0)))))
+      (should (not (string-empty-p (buffer-string)))))))
 
 ;;;;
 ;;;; dcomp C-g after Tab cancels preedit
@@ -244,7 +243,7 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-type "TAB")
       ;; Preedit is extended at this point.
       (nskk-e2e-assert-henkan-phase 'on)
-      (should (> (length (nskk-preedit-string)) 0))
+      (should (not (string-empty-p (nskk-preedit-string))))
       ;; C-g cancels preedit.
       (nskk-e2e-type "C-g")
       ;; After cancellation, henkan phase is nil.

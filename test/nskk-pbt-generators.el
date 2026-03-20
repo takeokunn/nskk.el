@@ -58,6 +58,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'nskk-test-framework)
 
 ;;;;
@@ -261,13 +262,13 @@ COUNT defaults to 0-10 if not specified."
                        (cond
                         ((= candidate-type 0)
                          ;; Hiragana candidate
-                         (mapconcat #'identity
+                         (string-join
                                    (cl-loop repeat (nskk--pbt-random-int 1 5)
                                             collect (nskk--pbt-random-choice hiragana-chars))
                                    ""))
                         ((= candidate-type 1)
                          ;; Kanji candidate
-                         (mapconcat #'identity
+                         (string-join
                                    (cl-loop repeat (nskk--pbt-random-int 1 3)
                                             collect (nskk--pbt-random-choice kanji-chars))
                                    ""))
@@ -376,14 +377,14 @@ SIZE controls the complexity of generated state."
 
 (defun nskk--pbt-generate-romaji-pattern (&optional size type)
   "Generate a romaji pattern with optional SIZE and TYPE.
-TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
+TYPE can be `basic', `extended', `incomplete', or nil for random."
   (let* ((sz (nskk--pbt-resolve-size size 3))
          (pattern-type (or type
                           (nskk--pbt-random-choice '(basic extended mixed incomplete)))))
     (cl-case pattern-type
       (basic
        ;; Basic patterns only
-       (mapconcat #'identity
+       (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice
                                     (append nskk--pbt-basic-vowels
@@ -391,7 +392,7 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
                   ""))
       (extended
        ;; Extended patterns including special
-       (mapconcat #'identity
+       (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice
                                     (append nskk--pbt-consonant-vowel-basic
@@ -403,7 +404,7 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
        (if (nskk--pbt-random-bool)
            (nskk--pbt-random-choice nskk--pbt-incomplete-patterns)
          ;; Mixed: complete syllables + incomplete ending
-         (concat (mapconcat #'identity
+         (concat (string-join
                            (cl-loop repeat (max 0 (1- sz))
                                     collect (nskk--pbt-random-choice
                                              (append nskk--pbt-consonant-vowel-basic
@@ -412,7 +413,7 @@ TYPE can be 'basic, 'extended, 'incomplete, or nil for random."
                  (nskk--pbt-random-choice nskk--pbt-incomplete-patterns))))
       (t
        ;; Mixed: all types
-       (mapconcat #'identity
+       (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice
                                     (append nskk--pbt-basic-vowels
@@ -596,7 +597,7 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
 (nskk-register-generator 'okurigana-pattern
   (lambda (&optional prefix-length)
     (let* ((prefix-len (or prefix-length (nskk--pbt-random-int 1 5)))
-           (prefix (mapconcat #'identity
+           (prefix (string-join
                              (cl-loop repeat prefix-len
                                       collect (nskk--pbt-random-choice
                                                (append nskk--pbt-basic-vowels
@@ -609,7 +610,7 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
 (nskk-register-generator 'okurigana-with-expected
   (lambda (&optional prefix-length)
     (let* ((prefix-len (or prefix-length (nskk--pbt-random-int 1 5)))
-           (prefix (mapconcat #'identity
+           (prefix (string-join
                              (cl-loop repeat prefix-len
                                       collect (nskk--pbt-random-choice
                                                (append nskk--pbt-basic-vowels
@@ -657,24 +658,24 @@ SIZE controls the length of the query."
          (query-type (nskk--pbt-random 4)))
     (cl-case query-type
       (0 ;; Hiragana only
-       (mapconcat #'identity
+       (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice nskk--pbt-hiragana-chars))
                   ""))
       (1 ;; Katakana only
-       (mapconcat #'identity
+       (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice nskk--pbt-katakana-chars))
                   ""))
       (2 ;; Mixed hiragana/katakana
-       (mapconcat #'identity
+       (string-join
                   (cl-loop repeat sz
                            collect (if (nskk--pbt-random-bool)
                                        (nskk--pbt-random-choice nskk--pbt-hiragana-chars)
                                      (nskk--pbt-random-choice nskk--pbt-katakana-chars)))
                   ""))
       (t ;; With okurigana marker
-       (let ((base (mapconcat #'identity
+       (let ((base (string-join
                              (cl-loop repeat (1- sz)
                                       collect (nskk--pbt-random-choice nskk--pbt-hiragana-chars))
                              "")))
@@ -827,16 +828,15 @@ TYPE specifies the expected type for proper shrinking."
      (floor (/ value 2)))
     (_
      ;; Generic shrinking: try to make value smaller
-     (cond
-      ((stringp value)
-       (when (> (length value) 0)
-         (substring value 0 (1- (length value)))))
-      ((listp value)
-       (when (> (length value) 0)
-         (cdr value)))
-      ((integerp value)
-       (floor (/ value 2)))
-      (t value)))))
+     (pcase value
+       ((pred stringp)
+        (when (> (length value) 0)
+          (substring value 0 (1- (length value)))))
+       ((pred listp)
+        (when (> (length value) 0)
+          (cdr value)))
+       ((pred integerp) (floor (/ value 2)))
+       (_ value)))))
 
 (defun nskk-pbt-classify (value &optional type)
   "Classify VALUE into a category for test result analysis.
@@ -858,17 +858,17 @@ TYPE specifies the classification type."
     ('search-type
      value)
     (_
-     (cond
-      ((stringp value)
-       (cond
-        ((string-match-p "^[a-z]+$" value) 'lowercase)
-        ((string-match-p "^[A-Z]+$" value) 'uppercase)
-        ((string-match-p "^[ぁ-ん]+$" value) 'hiragana)
-        ((string-match-p "^[ァ-ン]+$" value) 'katakana)
-        (t 'mixed)))
-      ((listp value) 'list)
-      ((integerp value) 'integer)
-      (t 'unknown)))))
+     (pcase value
+       ((pred stringp)
+        (cond
+         ((string-match-p "^[a-z]+$" value) 'lowercase)
+         ((string-match-p "^[A-Z]+$" value) 'uppercase)
+         ((string-match-p "^[ぁ-ん]+$" value) 'hiragana)
+         ((string-match-p "^[ァ-ン]+$" value) 'katakana)
+         (t 'mixed)))
+       ((pred listp)    'list)
+       ((pred integerp) 'integer)
+       (_ 'unknown)))))
 
 ;;;;
 ;;;; Statistics and Debugging
@@ -970,10 +970,8 @@ TYPE specifies the classification type."
   (lambda ()
     ;; A random non-empty list of kanji candidate strings.
     (let* ((pool '("漢字" "感じ" "桜" "海" "空" "山" "川" "花" "星" "月"))
-           (n (1+ (random (min 5 (length pool)))))
-           (result nil))
-      (dotimes (i n result)
-        (push (nth i pool) result)))))
+           (n (1+ (random (min 5 (length pool))))))
+      (seq-take pool n))))
 
 
 ;;;;

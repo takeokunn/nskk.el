@@ -348,7 +348,7 @@
                                (workflow-io-dict "あいうえ" ("アイウエ"))
                                (workflow-io-dict "あいうえお" ("アイウエオ"))
                                (workflow-io-dict "かきく" ("カキク")))
-      (let ((index (make-nskk-dict-index :predicate 'workflow-io-dict)))
+      (let ((_index (make-nskk-dict-index :predicate 'workflow-io-dict)))
         ;; Verify prefix search works
         (let ((results (nskk-prolog-trie-prefix-search 'workflow-io-dict 2 "あいう")))
           (should (= (length results) 3))
@@ -395,12 +395,15 @@
         (should (cl-some (lambda (p) (string-match-p "profiles/default" p)) result))))))
 
 (nskk-describe "ja-dic conversion"
+  ;; Mock tree nodes store candidates in the order produced by
+  ;; `skkdic-extract-conversion-data' (cons-reversal of ja-dic.el text order).
+  ;; nskk passes them through as-is, matching DDSKK's candidate presentation order.
   (nskk-it "decodes and flattens okuri-nasi entries"
     (let* ((o (- (logand (encode-char ?お 'japanese-jisx0208) #xFF) 32))
            (sample `(skdic-okuri-nasi
                      (,o ("緒" "小")))))
       (should (equal (nskk--dict-ja-dic-flatten-tree sample)
-                     '(("お" . ("小" "緒")))))))
+                     '(("お" . ("緒" "小")))))))
 
   (nskk-it "decodes and flattens okuri-ari entries"
     (let* ((wa (- (logand (encode-char ?わ 'japanese-jisx0208) #xFF) 32))
@@ -410,7 +413,7 @@
                           (,ru t
                                (-105 ("惡" "悪")))))))
       (should (equal (nskk--dict-ja-dic-flatten-tree sample)
-                     '(("わるi" . ("悪" "惡")))))))
+                     '(("わるi" . ("惡" "悪")))))))
 
   (nskk-it "loads flattened ja-dic entries into system-dict-entry"
     (nskk-prolog-test-with-isolated-db
@@ -425,9 +428,9 @@
                                            (-105 ("惡" "悪")))))))
         (nskk-with-mocks ((load-library (lambda (_feature) t)))
           (should (eq 'system (nskk-dict-load-ja-dic)))
-          (should (equal '("小" "緒")
+          (should (equal '("緒" "小")
                          (nskk-prolog-query-value '(system-dict-entry "お" \?c) '\?c)))
-          (should (equal '("悪" "惡")
+          (should (equal '("惡" "悪")
                          (nskk-prolog-query-value '(system-dict-entry "わるi" \?c) '\?c))))))))
 
 (nskk-describe "dict-initialize"
@@ -1322,6 +1325,110 @@
       ;; No duplicate entries for the registered word
       (= (cl-count word result :test #'equal) 1)))
   30 42)
+
+;;;; nskk-dict-load-kakutei-dictionary tests
+
+(defmacro nskk-test-with-kakutei-file (entries &rest body)
+  "Execute BODY with a temp SKK file containing ENTRIES loaded as kakutei dict.
+ENTRIES is a list of (reading . (candidate1 candidate2 ...)) cons cells.
+The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
+  (declare (indent 1))
+  `(nskk-prolog-test-with-isolated-db
+     (let* ((tmpfile (make-temp-file "nskk-test-kakutei-" nil ".jisyo"))
+            (nskk-kakutei-jisyo tmpfile)
+            (nskk--kakutei-dict-loaded nil))
+       (unwind-protect
+           (progn
+             (with-temp-file tmpfile
+               (insert ";; -*- coding: utf-8 -*-\n")
+               (insert ";; okuri-nasi entries.\n")
+               (dolist (e ,entries)
+                 (insert (car e) " /"
+                         (string-join (cdr e) "/")
+                         "/\n")))
+             ,@body)
+         (when (file-exists-p tmpfile)
+           (delete-file tmpfile))
+         (nskk-prolog-retract-all 'kakutei-dict-entry 2)
+         (setq nskk--kakutei-dict-loaded nil)))))
+
+(nskk-describe "nskk-dict-load-kakutei-dictionary"
+  (nskk-it "returns nil when nskk-kakutei-jisyo is nil"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-kakutei-jisyo nil)
+            (nskk--kakutei-dict-loaded nil))
+        (should (null (nskk-dict-load-kakutei-dictionary))))))
+
+  (nskk-it "returns nil when file does not exist"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-kakutei-jisyo "/nonexistent/path/kakutei.jisyo")
+            (nskk--kakutei-dict-loaded nil))
+        (should (null (nskk-dict-load-kakutei-dictionary))))))
+
+  (nskk-it "returns 'kakutei when file exists and has entries"
+    (nskk-test-with-kakutei-file '(("てすと" "テスト"))
+      (should (eq (nskk-dict-load-kakutei-dictionary) 'kakutei))))
+
+  (nskk-it "sets nskk--kakutei-dict-loaded to t after loading"
+    (nskk-test-with-kakutei-file '(("てすと" "テスト"))
+      (nskk-dict-load-kakutei-dictionary)
+      (should nskk--kakutei-dict-loaded)))
+
+  (nskk-it "makes entries queryable after load"
+    (nskk-test-with-kakutei-file '(("てすと" "テスト"))
+      (nskk-dict-load-kakutei-dictionary)
+      (let ((result (nskk-prolog-query-value
+                     '(kakutei-dict-entry "てすと" \?c) '\?c)))
+        (should result)
+        (should (member "テスト" result))))))
+
+;;;; nskk-dict-lookup-kakutei/k tests
+
+(nskk-describe "nskk-dict-lookup-kakutei/k"
+  (nskk-it "calls on-not-found when nskk--kakutei-dict-loaded is nil"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--kakutei-dict-loaded nil)
+            (not-found nil))
+        (nskk-dict-lookup-kakutei/k "てすと"
+                                  (lambda (_) nil)
+                                  (lambda () (setq not-found t)))
+        (should not-found))))
+
+  (nskk-it "calls on-not-found for non-string reading"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--kakutei-dict-loaded t)
+            (not-found nil))
+        (nskk-dict-lookup-kakutei/k nil
+                                  (lambda (_) nil)
+                                  (lambda () (setq not-found t)))
+        (should not-found))))
+
+  (nskk-it "calls on-found with single candidate when unique match"
+    (nskk-test-with-kakutei-file '(("てすと" "テスト"))
+      (nskk-dict-load-kakutei-dictionary)
+      (let ((found nil))
+        (nskk-dict-lookup-kakutei/k "てすと"
+                                  (lambda (c) (setq found c))
+                                  #'ignore)
+        (should (equal found "テスト")))))
+
+  (nskk-it "calls on-not-found when entry has multiple candidates"
+    (nskk-test-with-kakutei-file '(("かんじ" "漢字" "感じ"))
+      (nskk-dict-load-kakutei-dictionary)
+      (let ((not-found nil))
+        (nskk-dict-lookup-kakutei/k "かんじ"
+                                  (lambda (_) nil)
+                                  (lambda () (setq not-found t)))
+        (should not-found))))
+
+  (nskk-it "calls on-not-found for unknown reading"
+    (nskk-test-with-kakutei-file '(("てすと" "テスト"))
+      (nskk-dict-load-kakutei-dictionary)
+      (let ((not-found nil))
+        (nskk-dict-lookup-kakutei/k "ぜんぜんない"
+                                  (lambda (_) nil)
+                                  (lambda () (setq not-found t)))
+        (should not-found)))))
 
 (provide 'nskk-dictionary-test)
 

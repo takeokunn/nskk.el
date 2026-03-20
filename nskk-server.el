@@ -83,6 +83,7 @@
 
 ;;; Code:
 
+(require 'subr-x)
 (require 'nskk-custom)
 (require 'nskk-prolog)
 (require 'nskk-cps-macros)
@@ -109,6 +110,7 @@ To enable skkserv lookup:
   (setq nskk-server-portnum 1178)"
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
 (defcustom nskk-server-host "localhost"
@@ -117,13 +119,15 @@ Only used when `nskk-server-enable' is non-nil.
 Note: connections to non-localhost hosts are unencrypted plaintext TCP."
   :type 'string
   :safe #'stringp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
 (defcustom nskk-server-portnum 1178
   "TCP port number of the skkserv instance.
 The default port 1178 is registered as \\='skkserv\\=' in /etc/services."
-  :type 'integer
-  :safe #'integerp
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
 (defcustom nskk-server-coding-system 'euc-jp
@@ -132,6 +136,7 @@ Traditional skkserv implementations use EUC-JP.  Modern servers such as
 yaskkserv2 may use UTF-8; set this to \\='utf-8 in that case."
   :type 'coding-system
   :safe #'coding-system-p
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
 (defcustom nskk-server-timeout 1
@@ -143,6 +148,7 @@ Note: enabling skkserv may exceed the package's < 10ms search latency
 target when the server is remote or slow."
   :type 'number
   :safe #'numberp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
 (defcustom nskk-server-report-response nil
@@ -151,6 +157,7 @@ Useful for diagnosing latency issues.  Requires `nskk-debug-enabled' to
 be non-nil for the log entries to appear."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
 ;;;; Internal State
@@ -232,14 +239,14 @@ Connects to `nskk-server-host':`nskk-server-portnum'.  On success,
 calls `nskk--server-configure-process' to set up the connection and
 update Prolog state, then succeeds with the process object.
 Returns nil (via sync wrapper) or fails if disabled or connection fails."
-  (if (not nskk-server-enable)
-      (fail)
-    (let ((proc (nskk--server-make-connection)))
-      (if proc
-          (progn
-            (nskk--server-configure-process proc)
-            (succeed proc))
-        (fail)))))
+  (if nskk-server-enable
+      (let ((proc (nskk--server-make-connection)))
+        (if proc
+            (progn
+              (nskk--server-configure-process proc)
+              (succeed proc))
+          (fail)))
+    (fail)))
 
 (defun/done nskk-server-close ()
   "Send disconnect command to skkserv and clean up the connection.
@@ -264,13 +271,13 @@ Succeeds with t if the connection is live after this call.
 Fails immediately when `nskk-server-enable' is nil.
 Fails when `nskk-server-enable' is non-nil but the connection cannot
 be established."
-  (if (not nskk-server-enable)
-      (fail)
-    (if (nskk-server-live-p)
-        (succeed t)
-      (nskk-debug-message "nskk-server-ensure-open: reconnecting...")
-      (<- _open-proc nskk-server-open)
-      (succeed t))))
+  (if nskk-server-enable
+      (if (nskk-server-live-p)
+          (succeed t)
+        (nskk-debug-message "nskk-server-ensure-open: reconnecting...")
+        (<- _open-proc nskk-server-open)
+        (succeed t))
+    (fail)))
 
 ;;;; Protocol Implementation
 
@@ -282,7 +289,7 @@ characters (which would cause protocol desync).
 Then chains to `nskk-server-live-p/k' for connection liveness."
   (if (and nskk-server-enable
            (stringp key)
-           (> (length key) 0)
+           (not (string-empty-p key))
            (not (string-match-p "[\x00-\x1F\x7F ]" key)))
       (<- live-check nskk-server-live-p)
     (fail)))
@@ -306,7 +313,7 @@ Strips annotations (\\\"word;note\\\" -> \\\"word\\\") via
 Succeeds with the candidate list when at least one candidate is found.
 Fails for not-found responses, empty responses, or non-string inputs."
   (if (and (stringp response)
-           (> (length response) 0)
+           (not (string-empty-p response))
            (nskk-prolog-holds-p
             `(server-response-type ,(substring response 0 1) found)))
       (let* ((body  (string-trim-right (substring response 1) "[\r\n]+"))
@@ -315,7 +322,7 @@ Fails for not-found responses, empty responses, or non-string inputs."
               (delq nil
                     (mapcar (lambda (s)
                               (let ((trimmed (string-trim s)))
-                                (when (> (length trimmed) 0)
+                                (unless (string-empty-p trimmed)
                                   (nskk--server-strip-annotation trimmed))))
                             parts))))
         (if candidates (succeed candidates) (fail)))

@@ -77,6 +77,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'nskk-prolog)
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
@@ -112,11 +113,13 @@ Idempotent: safe to call multiple times."
 (defface nskk-candidate-key-face
   '((t (:inherit font-lock-warning-face :weight bold)))
   "Face for candidate selection key labels."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-candidate-window)
 
 (defface nskk-candidate-face
   '((t (:inherit default)))
   "Face for candidate text."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-candidate-window)
 
 (defvar-local nskk--candidate-list-active nil
@@ -214,7 +217,7 @@ selection key or if the resulting index is out of range."
 (defun nskk--candidate-build-tooltip-string (page-candidates)
   "Build tooltip string for PAGE-CANDIDATES.
 Returns a multi-line string with one candidate per line."
-  (mapconcat #'identity page-candidates "\n"))
+  (string-join page-candidates "\n"))
 
 (defun/k nskk-candidate-show-tooltip (candidates current-index)
   "Display CANDIDATES via tooltip starting at CURRENT-INDEX.

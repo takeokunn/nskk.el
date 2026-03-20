@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -84,6 +84,7 @@ for a short duration then disappears automatically."
 (defface nskk-show-mode-inline-face
   '((t (:inherit font-lock-keyword-face :weight bold)))
   "Face for the inline mode indicator text."
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-show-mode)
 
 ;;;; Buffer-Local State
@@ -145,17 +146,12 @@ Safe to call when overlay and timer are nil."
 
 (defun nskk--show-mode-display-tooltip (indicator-str)
   "Display INDICATOR-STR using the Emacs tooltip API (GUI only)."
-  (when (display-graphic-p)
-    (let ((pos (posn-at-point)))
-      (when pos
-        (tooltip-show indicator-str)
-        ;; Schedule tooltip hide
-        (let ((nskk--show-mode-timer-local nskk--show-mode-timer))
-          (when (timerp nskk--show-mode-timer-local)
-            (cancel-timer nskk--show-mode-timer-local))
-          (setq nskk--show-mode-timer
-                (run-with-timer nskk-show-mode-duration nil
-                                #'tooltip-hide)))))))
+  (when (and (display-graphic-p) (posn-at-point))
+    (tooltip-show indicator-str)
+    (when (timerp nskk--show-mode-timer)
+      (cancel-timer nskk--show-mode-timer))
+    (setq nskk--show-mode-timer
+          (run-with-timer nskk-show-mode-duration nil #'tooltip-hide))))
 
 ;;;; Public API
 

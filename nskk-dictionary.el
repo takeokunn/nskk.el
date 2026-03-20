@@ -7,18 +7,19 @@
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Version: 0.1.0
 ;; Keywords: i18n
+
 ;; This file is NOT part of GNU Emacs.
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -68,6 +69,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'nskk-prolog)
 (require 'nskk-cps-macros)
 
@@ -86,6 +88,7 @@
   "Path to the user dictionary file for storing registered words."
   :type 'file
   :safe #'stringp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
 (defcustom nskk-dict-system-dictionary-files nil
@@ -94,12 +97,14 @@ When nil, NSKK auto-detects dictionary paths from nix profiles
 and common system locations."
   :type '(repeat file)
   :safe (lambda (v) (and (listp v) (cl-every #'stringp v)))
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
 (defcustom nskk-dict-cache-enabled t
   "When non-nil, enable on-disk caching for system dictionaries."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
 (defcustom nskk-dict-use-ja-dic t
@@ -107,12 +112,14 @@ and common system locations."
 Only used when `nskk-dict-system-dictionary-files' is nil."
   :type 'boolean
   :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
 (defcustom nskk-large-dictionary nil
   "Path to large SKK dictionary file, or nil to disable."
   :type '(choice file (const nil))
   :safe (lambda (v) (or (null v) (stringp v)))
+  :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
 (defvar nskk-jisyo-update-hook nil
@@ -186,8 +193,8 @@ Returns a deduplicated list of candidate strings."
   "Return non-nil if STORED-FILES match current system dictionary configuration.
 Compares sorted STORED-FILES against sorted `nskk-dict-system-dictionary-files'
 so that reordering of dictionary paths does not invalidate the cache."
-  (equal (sort (copy-sequence (or stored-files nil)) #'string<)
-         (sort (copy-sequence (or nskk-dict-system-dictionary-files nil)) #'string<)))
+  (equal (sort (copy-sequence stored-files) #'string<)
+         (sort (copy-sequence nskk-dict-system-dictionary-files) #'string<)))
 
 (defun nskk--dict-run-update-hook ()
   "Run `nskk-jisyo-update-hook' with error protection."
@@ -238,14 +245,18 @@ Returns entry count (0 if no readable files or no entries found)."
                  codes)))
 
 (defun nskk--dict-ja-dic-flatten-node (node prefix)
-  "Recursively flatten ja-dic NODE using PREFIX compact codes."
+  "Recursively flatten ja-dic NODE using PREFIX compact codes.
+Candidates at each leaf are stored in DDSKK-compatible order by
+`skkdic-extract-conversion-data' (which reverses the source text
+order via cons-accumulation).  Using the stored order as-is matches
+DDSKK's candidate presentation order."
   (let* ((code (car node))
          (rest (cdr node))
          (path (append prefix (list code)))
          (cands (car rest))
          (entries nil))
     (when (and (listp cands) (stringp (car cands)))
-      (push (cons (nskk--dict-ja-dic-decode-key path) (reverse cands)) entries)
+      (push (cons (nskk--dict-ja-dic-decode-key path) cands) entries)
       (setq rest (cdr rest)))
     (when (eq (car rest) t) (setq rest (cdr rest)))
     (dolist (child rest)
@@ -291,26 +302,25 @@ When `nskk-show-annotation' is non-nil and nskk-annotation is loaded,
 also registers any candidate annotations found in the line."
   ;; Skip comment lines and empty lines
   (when (and (stringp line)
-             (> (length line) 0)
+             (not (string-empty-p line))
              (not (string-prefix-p ";;" line)))
-    (let ((space-pos (string-search " " line)))
-      (when (and space-pos
-                 (> space-pos 0)
-                 (> (length line) (+ space-pos 2))
-                 (= (aref line (1+ space-pos)) ?/))
-        (let* ((key (substring line 0 space-pos))
-               (candidates-str (substring line (1+ space-pos)))
-               (candidates (nskk--dict-parse-candidates candidates-str)))
-          ;; Register annotations when annotation support is enabled
-          (when (and candidates
-                     (boundp 'nskk-show-annotation)
-                     nskk-show-annotation
-                     (fboundp 'nskk--annotation-load-from-candidates))
-            (let ((with-annots (nskk--dict-parse-candidates-with-annotations
-                                candidates-str)))
-              (nskk--annotation-load-from-candidates key with-annots)))
-          (when candidates
-            (cons key candidates)))))))
+    (when-let* ((space-pos (string-search " " line))
+                ((> space-pos 0))
+                ((> (length line) (+ space-pos 2)))
+                ((= (aref line (1+ space-pos)) ?/)))
+      (let* ((key            (substring line 0 space-pos))
+             (candidates-str (substring line (1+ space-pos)))
+             (candidates     (nskk--dict-parse-candidates candidates-str)))
+        ;; Register annotations when annotation support is enabled
+        (when (and candidates
+                   (boundp 'nskk-show-annotation)
+                   nskk-show-annotation
+                   (fboundp 'nskk--annotation-load-from-candidates))
+          (let ((with-annots (nskk--dict-parse-candidates-with-annotations
+                              candidates-str)))
+            (nskk--annotation-load-from-candidates key with-annots)))
+        (when candidates
+          (cons key candidates))))))
 
 (defun nskk--dict-parse-candidates (str)
   "Parse candidates from STR like \"/candidate1/candidate2/...\"."
@@ -609,7 +619,7 @@ Calls ON-FOUND with candidates when non-empty; ON-NOT-FOUND otherwise."
                                    (nskk--dict-lookup-okuri-ari key)
                                    :test #'equal)
                        okuri-nasi)))
-    (if (and candidates (> (length candidates) 0))
+    (if candidates
         (succeed candidates)
       (fail))))
 
@@ -676,7 +686,7 @@ are empty/invalid or when the Prolog registration query fails."
           (when (and key candidates)
             (insert (format "%s /%s/\n"
                             key
-                            (mapconcat #'identity candidates "/")))))))
+                            (string-join candidates "/")))))))
     (message "NSKK: User dictionary saved to %s"
              nskk-dict-user-dictionary-file)
     (setq nskk-dict-modified nil)))
@@ -707,13 +717,12 @@ Returns \\='kakutei if loaded, nil otherwise."
     (message "NSKK: Loading kakutei dictionary from %s" nskk-kakutei-jisyo)
     (nskk-prolog-retract-all 'kakutei-dict-entry 2)
     (nskk-prolog-set-index 'kakutei-dict-entry 2 :trie)
-    (let ((entries (nskk--dict-parse-file-to-entries nskk-kakutei-jisyo)))
-      (when entries
-        (dolist (entry entries)
-          (nskk-prolog-assert (list (list 'kakutei-dict-entry
-                                         (car entry) (cdr entry)))))
-        (setq nskk--kakutei-dict-loaded t)
-        'kakutei))))
+    (when-let* ((entries (nskk--dict-parse-file-to-entries nskk-kakutei-jisyo)))
+      (dolist (entry entries)
+        (nskk-prolog-assert (list (list 'kakutei-dict-entry
+                                       (car entry) (cdr entry)))))
+      (setq nskk--kakutei-dict-loaded t)
+      'kakutei)))
 
 (defun/k nskk-dict-lookup-kakutei (reading)
   "Look up READING in the confirmed dictionary.
