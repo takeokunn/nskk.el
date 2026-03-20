@@ -82,6 +82,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'nskk-cps-macros)
 (require 'nskk-henkan)
 (require 'nskk-kana)
@@ -367,18 +368,15 @@ Three arms in priority order:
 Returns non-nil when the sticky-shift action was consumed (arms 1 or 2),
 nil when falling through to self-insert (arm 3)."
   (cond
-   ;; Arm 1 — double semicolon: cancel sticky shift, insert literal ";"
    (nskk--sticky-shift-pending
     (setq nskk--sticky-shift-pending nil)
     (insert ";")
     t)
-   ;; Arm 2 — Japanese mode: arm the sticky-shift pending flag
    ((and nskk-current-state
          (nskk-prolog-holds-p
           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
     (setq nskk--sticky-shift-pending t)
     t)
-   ;; Arm 3 — non-Japanese mode: caller should fall through to self-insert
    (t nil)))
 
 ;;;###autoload
@@ -393,25 +391,18 @@ In standard mode + non-Japanese mode: self-insert (on-not-found path).
   AZIK small-tsu insertion, sticky-shift armed, or sticky-shift cancelled.
 `on-not-found' is called when key is not consumed (self-insert path)."
   :interactive t
-  ;; Outer arm 1 — AZIK style: insert small tsu via romaji processor
-  ;; Outer arm 2 — standard style: delegate to sticky-shift sub-dispatch
-  ;;               (on-found when consumed, on-not-found when non-Japanese)
-  ;; Outer arm 3 — self-insert mode (e.g. abbrev/latin): pass through
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
          (action (nskk-prolog-query-value
                   `(semicolon-key-action ,style ,'\?action) '\?action)))
     (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
     (pcase action
-      ;; Outer arm 1: AZIK — fire the romaji rule for ";" → っ
       ('insert-small-tsu
        (nskk-process-japanese-input ?\; 1)
        (succeed t))
-      ;; Outer arm 2: standard sticky-shift sub-dispatch
       ('sticky-shift
        (if (nskk--sticky-shift-dispatch)
            (succeed t)
          (fail)))
-      ;; Outer arm 3: explicit self-insert (latin/abbrev style routes here)
       ('self-insert
        (nskk-self-insert 1)
        (fail))
@@ -772,10 +763,10 @@ NEW-BUFFER-VALUE is the string to leave in the buffer after emission
   (let* ((prefix-without-n
           (substring nskk--romaji-buffer 0 (1- (length nskk--romaji-buffer))))
          (prefix-kana
-          (if (> (length prefix-without-n) 0)
-              (let ((prev (nskk-converter-convert prefix-without-n)))
-                (if (and prev (stringp (car prev))) (car prev) ""))
-            "")))
+          (if (string-empty-p prefix-without-n)
+              ""
+            (let ((prev (nskk-converter-convert prefix-without-n)))
+              (if (and prev (stringp (car prev))) (car prev) "")))))
     (setq nskk--romaji-buffer new-buffer-value)
     (succeed (concat prefix-kana "\u3093"))))
 
@@ -784,10 +775,10 @@ NEW-BUFFER-VALUE is the string to leave in the buffer after emission
 Returns `match' when RESULT is a cons with a string car,
 `incomplete' when RESULT is a cons with :incomplete car,
 or `no-result' otherwise."
-  (cond
-   ((and (consp result) (stringp (car result))) 'match)
-   ((and (consp result) (eq (car result) :incomplete)) 'incomplete)
-   (t 'no-result)))
+  (pcase result
+    (`(,(pred stringp) . ,_) 'match)
+    (`(:incomplete . ,_)     'incomplete)
+    (_                       'no-result)))
 
 (defvar nskk--romaji-classify-cache
   (make-hash-table :test 'equal :size 16)
@@ -1026,7 +1017,7 @@ with KANA."
         (remaining (cdr result)))
     (nskk-debug-log "[INPUT] romaji-converted: kana=%s" kana)
     (setq nskk--romaji-buffer
-          (if (and (stringp remaining) (> (length remaining) 0)) remaining ""))
+          (if (and (stringp remaining) (not (string-empty-p remaining))) remaining ""))
     (succeed kana)))
 
 (defun/k nskk--kana-handle-n-consonant (char result)

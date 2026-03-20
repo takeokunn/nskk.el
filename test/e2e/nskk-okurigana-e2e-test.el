@@ -1079,7 +1079,7 @@
           (nskk-e2e-type "K")
           (nskk-e2e-type "E"))
         (should (stringp captured-prompt))
-        (should (string-match "ほ\\*け" captured-prompt)))))
+        (should (string-match-p "ほ\\*け" captured-prompt)))))
 
   (nskk-it "cancelling okurigana registration preserves preedit ▽ほけ (okuri-kana stays)"
     ;; After cancel (empty RET), the okuri-kana remains in the buffer.
@@ -1113,7 +1113,7 @@
 
 (nskk-deftest-table okurigana-basic-consonants
   :description "All standard okurigana consonant markers are uppercase ASCII"
-  :columns (input expected)
+  :columns (input _expected)
   :rows (("K" "K")
          ("S" "S")
          ("T" "T")

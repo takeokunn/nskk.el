@@ -348,36 +348,16 @@ Returns nil if CURRENT-MODE is already the simplest."
   "Generic shrinker that dispatches by type.
 Shrinks VALUE to minimal failing case for PROPERTY-FN.
 Returns smaller value of same type, or original if cannot shrink further."
-  (cond
-   ;; String
-   ((stringp value)
-    (nskk-shrink-string value property-fn))
-
-   ;; List (sequence)
-   ((listp value)
-    (nskk-shrink-sequence value property-fn))
-
-   ;; Vector (sequence)
-   ((vectorp value)
-    (let ((shrunk (nskk-shrink-sequence (append value nil) property-fn)))
-      (if (listp shrunk)
-          (vconcat shrunk)
-        shrunk)))
-
-   ;; NSKK State
-   ((nskk-state-p value)
-    (nskk-shrink-state value property-fn))
-
-   ;; Integer - try smaller values
-   ((integerp value)
-    (nskk-shrink-integer value property-fn))
-
-   ;; Float - try smaller values
-   ((floatp value)
-    (nskk-shrink-float value property-fn))
-
-   ;; Unknown type - cannot shrink
-   (t value)))
+  (pcase value
+    ((pred stringp)    (nskk-shrink-string value property-fn))
+    ((pred listp)      (nskk-shrink-sequence value property-fn))
+    ((pred vectorp)
+     (let ((shrunk (nskk-shrink-sequence (append value nil) property-fn)))
+       (if (listp shrunk) (vconcat shrunk) shrunk)))
+    ((pred nskk-state-p) (nskk-shrink-state value property-fn))
+    ((pred integerp)   (nskk-shrink-integer value property-fn))
+    ((pred floatp)     (nskk-shrink-float value property-fn))
+    (_ value)))
 
 (defun nskk-shrink-integer (value property-fn)
   "Shrink integer VALUE to minimal failing case for PROPERTY-FN.
@@ -491,19 +471,17 @@ Returns minimal failing case."
 
 (defun nskk--measure-size (value)
   "Measure the size of VALUE for shrinking comparison."
-  (cond
-   ((stringp value) (length value))
-   ((listp value) (length value))
-   ((vectorp value) (length value))
-   ((nskk-state-p value)
-    (+ (length (nskk-state-input-buffer value))
-       (length (nskk-state-converted-buffer value))
-       (length (nskk-state-candidates value))
-       (if (nskk-state-undo-stack value) 1 0)
-       (if (nskk-state-redo-stack value) 1 0)
-       (if (nskk-state-metadata value) 1 0)))
-   ((numberp value) (abs value))
-   (t 1)))
+  (pcase value
+    ((or (pred stringp) (pred listp) (pred vectorp)) (length value))
+    ((pred nskk-state-p)
+     (+ (length (nskk-state-input-buffer value))
+        (length (nskk-state-converted-buffer value))
+        (length (nskk-state-candidates value))
+        (if (nskk-state-undo-stack value) 1 0)
+        (if (nskk-state-redo-stack value) 1 0)
+        (if (nskk-state-metadata value) 1 0)))
+    ((pred numberp) (abs value))
+    (_ 1)))
 
 
 ;;;;
@@ -515,9 +493,9 @@ Returns minimal failing case."
 ITERATIONS is the current iteration count.
 CURRENT is the current shrunk value.
 ORIGINAL is the original value before shrinking."
-  (let ((orig-size (nskk--measure-size original))
-        (curr-size (nskk--measure-size current))
-        (reduction-percent (if (> orig-size 0)
+  (let* ((orig-size (nskk--measure-size original))
+         (curr-size (nskk--measure-size current))
+         (reduction-percent (if (> orig-size 0)
                                (* 100 (/ (float (- orig-size curr-size)) orig-size))
                              0)))
     (message "[NSKK Shrink] Iteration %d: %d -> %d (%.1f%% reduction)"

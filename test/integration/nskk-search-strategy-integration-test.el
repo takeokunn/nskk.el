@@ -103,7 +103,7 @@ with the mock-dict fixture.  `nskk-with-prolog-entries' calls
       (let ((idx (make-nskk-dict-index :predicate 'user-dict-entry)))
         (let ((results (nskk-search idx "かん" 'prefix)))
           (should (listp results))
-          (should (> (length results) 0))))))
+          (should results)))))
 
   (nskk-it "prefix search for かん finds all four かん-prefixed entries"
     (nskk-search-strategy--with-fixture
@@ -141,7 +141,7 @@ with the mock-dict fixture.  `nskk-with-prolog-entries' calls
       (let ((idx (make-nskk-dict-index :predicate 'user-dict-entry)))
         (let ((results (nskk-search idx "かん" 'partial)))
           (should (listp results))
-          (should (> (length results) 0))))))
+          (should results)))))
 
   (nskk-it "every partial result key contains the query substring"
     (nskk-search-strategy--with-fixture

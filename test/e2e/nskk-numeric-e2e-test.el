@@ -158,7 +158,7 @@ Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
 ;; (The generator draws any valid mode; we only run the body in hiragana so
 ;; the property is always checked with a consistent mode.)
 (nskk-property-test-seeded numeric-hiragana-no-crash
-  ((_unused valid-mode))
+  ((unused valid-mode))
   (condition-case _err
       (progn
         (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict

@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -101,6 +101,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'nskk-prolog)
 (require 'nskk-cps-macros)
 
@@ -365,12 +366,12 @@ round-trip (~10µs per query).  Prolog facts remain authoritative for
 cross-module queries; the hash table is the hot-path cache.
 Succeeds with the converted string if STRING is a string.
 Fails if STRING is not a string."
-  (if (not (stringp string))
-      (fail)
-    (succeed (cl-loop for char across string
-                      for str = (char-to-string char)
-                      concat (or (gethash str nskk--kana-zenkaku-to-hankaku-table)
-                                 str)))))
+  (if (stringp string)
+      (succeed (cl-loop for char across string
+                        for str = (char-to-string char)
+                        concat (or (gethash str nskk--kana-zenkaku-to-hankaku-table)
+                                   str)))
+    (fail)))
 
 (defun/k nskk-kana-zenkaku-to-hankaku (string-or-char)
   "Convert zenkaku katakana STRING-OR-CHAR to hankaku.
@@ -380,15 +381,14 @@ the hankaku string equivalent, or a one-character string if unrecognized.
 For any other type, returns STRING-OR-CHAR unchanged.
 Uses direct hash lookup instead of Prolog round-trip for hot-path speed.
 Always succeeds."
-  (cond
-   ((stringp string-or-char)
-    (<- result nskk--kana-zenkaku-string-to-hankaku string-or-char)
-    (succeed result))
-   ((integerp string-or-char)
-    (let* ((str (char-to-string string-or-char)))
-      (succeed (or (gethash str nskk--kana-zenkaku-to-hankaku-table) str))))
-   (t
-    (succeed string-or-char))))
+  (pcase string-or-char
+    ((pred stringp)
+     (<- result nskk--kana-zenkaku-string-to-hankaku string-or-char)
+     (succeed result))
+    ((pred integerp)
+     (let ((str (char-to-string string-or-char)))
+       (succeed (or (gethash str nskk--kana-zenkaku-to-hankaku-table) str))))
+    (_ (succeed string-or-char))))
 
 (defun nskk--kana-hankaku-lookup-at (string i len)
   "Look up hankaku->zenkaku conversion at position I in STRING (length LEN).
@@ -411,14 +411,14 @@ Tries two-character sequences first to handle dakuten combinations.
 Uses direct hash table lookup instead of Prolog round-trip.
 Succeeds with the converted string if STRING is a string.
 Fails if STRING is not a string."
-  (if (not (stringp string))
-      (fail)
-    (let ((parts nil) (i 0) (len (length string)))
-      (while (< i len)
-        (let ((pair (nskk--kana-hankaku-lookup-at string i len)))
-          (push (car pair) parts)
-          (setq i (+ i (cdr pair)))))
-      (succeed (apply #'concat (nreverse parts))))))
+  (if (stringp string)
+      (let ((parts nil) (i 0) (len (length string)))
+        (while (< i len)
+          (let ((pair (nskk--kana-hankaku-lookup-at string i len)))
+            (push (car pair) parts)
+            (setq i (+ i (cdr pair)))))
+        (succeed (apply #'concat (nreverse parts))))
+    (fail)))
 
 (defun/k nskk-kana-hankaku-to-zenkaku (string-or-char)
   "Convert hankaku katakana STRING-OR-CHAR to zenkaku.
@@ -427,15 +427,14 @@ Unrecognized characters are passed through unchanged.
 Uses direct hash table lookup instead of Prolog round-trip.
 For any other type, returns STRING-OR-CHAR unchanged.
 Always succeeds."
-  (cond
-   ((stringp string-or-char)
-    (<- result nskk--kana-hankaku-string-to-zenkaku string-or-char)
-    (succeed result))
-   ((integerp string-or-char)
-    (let* ((str (char-to-string string-or-char)))
-      (succeed (or (gethash str nskk--kana-hankaku-to-zenkaku-table) str))))
-   (t
-    (succeed string-or-char))))
+  (pcase string-or-char
+    ((pred stringp)
+     (<- result nskk--kana-hankaku-string-to-zenkaku string-or-char)
+     (succeed result))
+    ((pred integerp)
+     (let ((str (char-to-string string-or-char)))
+       (succeed (or (gethash str nskk--kana-hankaku-to-zenkaku-table) str))))
+    (_ (succeed string-or-char))))
 
 ;;;; Prolog Facts Initialization
 

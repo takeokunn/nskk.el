@@ -36,6 +36,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'subr-x)
 (require 'nskk-dictionary)
 (require 'nskk-prolog)
 (require 'nskk-trie)
@@ -227,7 +228,7 @@
                    "た" "ち" "つ" "て" "と"
                    "な" "に" "ぬ" "ね" "の"))
           (len (or length (+ 1 (random 10)))))
-      (mapconcat #'identity
+      (string-join
                  (cl-loop repeat len
                           collect (nth (random (length chars)) chars))
                  ""))))
@@ -237,7 +238,7 @@
     (let ((chars '("漢" "字" "変" "換" "日" "本" "語"
                    "入" "力" "シ" "ス" "テ" "ム"))
           (len (or length (+ 1 (random 5)))))
-      (mapconcat #'identity
+      (string-join
                  (cl-loop repeat len
                           collect (nth (random (length chars)) chars))
                  ""))))
@@ -280,14 +281,19 @@ test body cannot mutate the saved snapshot."
   "Deep-copy hash table HT for test isolation.
 Lists are shallow-copied with `copy-sequence'.  Trie structures are
 recursively deep-copied so that in-place mutations in the test body
-do not persist through restoration.  All other values are shared
-by reference."
+do not persist through restoration.  Nested hash tables (used as Prolog
+index stores, e.g. for hash-indexed predicates like `dict-annotation')
+are recursively deep-copied so mutations to index entries do not leak
+across tests via shared references.  All other values are shared by
+reference."
   (let ((new (make-hash-table :test (hash-table-test ht)
                               :size (hash-table-size ht))))
     (maphash (lambda (k v)
                (puthash k (cond
                            ((nskk-trie-p v)
                             (nskk-prolog-test--copy-trie v))
+                           ((hash-table-p v)
+                            (nskk-prolog-test--copy-hash-table v))
                            ((sequencep v)
                             (copy-sequence v))
                            (t v))
@@ -334,7 +340,9 @@ after the test ends."
          (saved-converter-init  (and (boundp 'nskk--converter-initialized)
                                      nskk--converter-initialized))
          (saved-cand-init       (and (boundp 'nskk--candidate-key-facts-initialized)
-                                     nskk--candidate-key-facts-initialized)))
+                                     nskk--candidate-key-facts-initialized))
+         (saved-annotation-init (and (boundp 'nskk--annotation-initialized)
+                                     nskk--annotation-initialized)))
      (when (boundp 'nskk--input-initialized)
        (setq nskk--input-initialized nil))
      (when (boundp 'nskk--state-prolog-initialized)
@@ -347,6 +355,8 @@ after the test ends."
        (setq nskk--converter-initialized nil))
      (when (boundp 'nskk--candidate-key-facts-initialized)
        (setq nskk--candidate-key-facts-initialized nil))
+     (when (boundp 'nskk--annotation-initialized)
+       (setq nskk--annotation-initialized nil))
      (unwind-protect
          (progn ,@body)
        (setq nskk--prolog-database    saved-db
@@ -368,6 +378,8 @@ after the test ends."
          (setq nskk--converter-initialized saved-converter-init))
        (when (boundp 'nskk--candidate-key-facts-initialized)
          (setq nskk--candidate-key-facts-initialized saved-cand-init))
+       (when (boundp 'nskk--annotation-initialized)
+         (setq nskk--annotation-initialized saved-annotation-init))
        ;; Re-derive database-tails from the now-restored database.
        ;; `copy-sequence' on a list creates a new cons-cell spine, so any
        ;; separately saved tail would point to cells that are not the actual
@@ -568,7 +580,7 @@ This helper is shared by both `nskk-server-integration-test' and
               :coding nskk-server-coding-system
               :filter
               (lambda (client string)
-                (when (> (length string) 0)
+                (when (not (string-empty-p string))
                   (let ((cmd (aref string 0)))
                     (cond
                      ((= cmd ?0)

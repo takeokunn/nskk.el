@@ -869,7 +869,7 @@
                         (nskk-dict-register-word #'ignore))
         (nskk-start-registration "てすと")
         (should prompt-shown)
-        (should (string-match "辞書登録" prompt-shown))))))
+        (should (string-match-p "辞書登録" prompt-shown))))))
 
 ;;;
 ;;; Seeded Property-Based Tests
@@ -2181,7 +2181,7 @@
         (nskk-state-set-candidates nskk-current-state '("X" "Y"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((run-hook-with-args
-                           (lambda (hook &rest args) (setq captured-args args))))
+                           (lambda (_hook &rest args) (setq captured-args args))))
           (nskk--wrap-to-first-candidate))
         (should (equal (car captured-args) '("X" "Y")))
         (should (= (cadr captured-args) 0))))))
@@ -2922,7 +2922,7 @@
       (let ((nskk-current-state (nskk-state-create 'katakana))
             (nskk--romaji-buffer "")
             (nskk--pending-romaji-overlay nil)
-            inserted-text)
+            _inserted-text)
         (nskk-with-mocks
             ((nskk-convert-input-to-kana-final/k
               (lambda (cont _ignored) (funcall cont "う")))
@@ -3036,7 +3036,7 @@
       (let ((nskk--input-initialized nil)
             (nskk--state-prolog-initialized nil)
             (nskk--henkan-initialized nil)
-            (nskk-kana--initialized nil)
+            (nskk--kana-initialized nil)
             (nskk--converter-initialized nil)
             (nskk--candidate-key-facts-initialized nil))
         (with-temp-buffer
@@ -3808,6 +3808,156 @@
           (set-marker nskk--conversion-start-marker (point-min))
           (insert nskk-henkan-on-marker (char-to-string ch))
           (should (nskk--preedit-ends-with-plain-vowel-p)))))))
+
+;;;
+;;; SKK Numeric Conversion (数値変換)
+;;;
+
+(nskk-describe "nskk--numeric-parse-reading"
+  (nskk-it "parses single-digit reading into num-str and base-key"
+    (should (equal (nskk--numeric-parse-reading "#1ko") '("1" . "#ko"))))
+
+  (nskk-it "parses multi-digit reading"
+    (should (equal (nskk--numeric-parse-reading "#123ji") '("123" . "#ji"))))
+
+  (nskk-it "parses two-digit reading with suffix"
+    (should (equal (nskk--numeric-parse-reading "#10ko") '("10" . "#ko"))))
+
+  (nskk-it "returns nil when no # prefix"
+    (should (null (nskk--numeric-parse-reading "1ko"))))
+
+  (nskk-it "returns nil for plain kana reading"
+    (should (null (nskk--numeric-parse-reading "こ"))))
+
+  (nskk-it "returns nil when # has no following digits"
+    (should (null (nskk--numeric-parse-reading "#ko")))))
+
+(nskk-describe "nskk--numeric-to-kanji"
+  (nskk-deftest-table numeric-to-kanji
+    :description "Each digit converts to its kanji equivalent"
+    :columns (input expected)
+    :rows (("0" "〇")
+           ("1" "一")
+           ("5" "五")
+           ("9" "九")
+           ("10" "一〇")
+           ("12" "一二")
+           ("1024" "一〇二四")
+           ("9999" "九九九九"))
+    :body (should (equal (nskk--numeric-to-kanji input) expected))))
+
+(nskk-describe "nskk--numeric-to-fullwidth"
+  (nskk-deftest-table numeric-to-fullwidth
+    :description "Each digit shifts to full-width Unicode range"
+    :columns (input expected)
+    :rows (("0" "０")
+           ("1" "１")
+           ("9" "９")
+           ("123" "１２３")
+           ("1024" "１０２４"))
+    :body (should (equal (nskk--numeric-to-fullwidth input) expected))))
+
+(nskk-describe "nskk--n-to-kanji-place"
+  (nskk-it "converts single-digit integers"
+    (should (equal (nskk--n-to-kanji-place 1) "一"))
+    (should (equal (nskk--n-to-kanji-place 9) "九")))
+
+  (nskk-it "drops leading 一 for 十 (10 → 十 not 一十)"
+    (should (equal (nskk--n-to-kanji-place 10) "十")))
+
+  (nskk-it "produces correct tens with remainder"
+    (should (equal (nskk--n-to-kanji-place 11) "十一"))
+    (should (equal (nskk--n-to-kanji-place 20) "二十"))
+    (should (equal (nskk--n-to-kanji-place 21) "二十一")))
+
+  (nskk-it "drops leading 一 for 百 (100 → 百 not 一百)"
+    (should (equal (nskk--n-to-kanji-place 100) "百")))
+
+  (nskk-it "produces correct hundreds"
+    (should (equal (nskk--n-to-kanji-place 101) "百一"))
+    (should (equal (nskk--n-to-kanji-place 200) "二百"))
+    (should (equal (nskk--n-to-kanji-place 110) "百十")))
+
+  (nskk-it "drops leading 一 for 千 (1000 → 千 not 一千)"
+    (should (equal (nskk--n-to-kanji-place 1000) "千")))
+
+  (nskk-it "produces correct thousands"
+    (should (equal (nskk--n-to-kanji-place 1001) "千一"))
+    (should (equal (nskk--n-to-kanji-place 2000) "二千"))
+    (should (equal (nskk--n-to-kanji-place 1024) "千二十四")))
+
+  (nskk-it "keeps leading 一 for 万 (10000 → 一万)"
+    (should (equal (nskk--n-to-kanji-place 10000) "一万")))
+
+  (nskk-it "produces correct ten-thousands"
+    (should (equal (nskk--n-to-kanji-place 20000) "二万"))
+    (should (equal (nskk--n-to-kanji-place 12345) "一万二千三百四十五"))))
+
+(nskk-describe "nskk--numeric-to-place-values"
+  (nskk-it "handles zero as special case 〇"
+    (should (equal (nskk--numeric-to-place-values "0") "〇")))
+
+  (nskk-deftest-table numeric-to-place-values
+    :description "Converts number string to kanji place values"
+    :columns (input expected)
+    :rows (("1"     "一")
+           ("10"    "十")
+           ("100"   "百")
+           ("1000"  "千")
+           ("1024"  "千二十四")
+           ("10000" "一万"))
+    :body (should (equal (nskk--numeric-to-place-values input) expected))))
+
+(nskk-describe "nskk--numeric-convert"
+  (nskk-deftest-table numeric-convert-dispatch
+    :description "Dispatches on type code to correct conversion"
+    :columns (type input expected)
+    :rows ((0 "42" "42")         ; #0 = literal (no change)
+           (1 "42" "４２")       ; #1 = full-width
+           (2 "42" "四二")       ; #2 = kanji digit-by-digit
+           (3 "42" "四十二")     ; #3 = kanji place values
+           (4 "42" "四二")       ; #4 = same as #2
+           (8 "42" "42")         ; #8 falls through to literal
+           (9 "42" "42"))        ; unknown type falls through to literal
+    :body (should (equal (nskk--numeric-convert input type) expected)))
+
+  (nskk-it "type 2 and type 4 produce identical output"
+    (should (equal (nskk--numeric-convert "1024" 2)
+                   (nskk--numeric-convert "1024" 4)))))
+
+(nskk-describe "nskk--numeric-process-candidate"
+  (nskk-it "replaces single #N pattern in template"
+    (should (equal (nskk--numeric-process-candidate "第#3時" "1") "第一時")))
+
+  (nskk-it "replaces #0 pattern as literal"
+    (should (equal (nskk--numeric-process-candidate "#0個" "42") "42個")))
+
+  (nskk-it "replaces #1 pattern as full-width"
+    (should (equal (nskk--numeric-process-candidate "#1時" "3") "３時")))
+
+  (nskk-it "replaces #2 pattern as kanji digit-by-digit"
+    (should (equal (nskk--numeric-process-candidate "#2個" "10") "一〇個")))
+
+  (nskk-it "replaces #3 pattern as kanji place values"
+    (should (equal (nskk--numeric-process-candidate "#3個" "10") "十個")))
+
+  (nskk-it "leaves template unchanged when no #N pattern present"
+    (should (equal (nskk--numeric-process-candidate "そのまま" "42") "そのまま")))
+
+  (nskk-it "replaces multiple #N patterns in a single candidate"
+    (should (equal (nskk--numeric-process-candidate "#1と#2" "5") "５と五"))))
+
+(nskk-describe "nskk--numeric-process-candidates"
+  (nskk-it "processes a list of candidates with the same num-str"
+    (should (equal (nskk--numeric-process-candidates '("#0個" "#2個") "10")
+                   '("10個" "一〇個"))))
+
+  (nskk-it "processes mixed-type candidate list"
+    (should (equal (nskk--numeric-process-candidates '("#0個" "#2個" "#3個") "10")
+                   '("10個" "一〇個" "十個"))))
+
+  (nskk-it "returns empty list for empty candidate list"
+    (should (equal (nskk--numeric-process-candidates '() "42") '()))))
 
 (provide 'nskk-henkan-test)
 

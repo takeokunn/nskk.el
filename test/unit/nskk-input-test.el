@@ -907,7 +907,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 ;; so (> (length input) 0) is always true; we return t on success and nil on error.
 (nskk-property-test-seeded input-pbt-romaji-char-no-crash-hiragana-mode
   ((input romaji-string))
-  (if (> (length input) 0)
+  (if (not (string-empty-p input))
       (let ((char (aref input 0)))
         (condition-case nil
             (let ((nskk--romaji-buffer ""))
@@ -1708,7 +1708,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (let ((start-pt (point)))
+        (let ((_start-pt (point)))
           (nskk-without-modification
             (nskk--activate-preedit-mode))
           (should (nskk--conversion-start-active-p)))))))

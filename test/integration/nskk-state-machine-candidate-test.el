@@ -563,8 +563,8 @@ COUNT defaults to 0-10 if not specified."
             (nskk-state-previous-candidate state)))
         (let ((idx (nskk-state-current-index state))
               (len (length (nskk-state-candidates state))))
-          (or (= len 0)
-              (and (>= idx 0) (< idx len))))))))
+          (should (or (= len 0)
+                      (and (>= idx 0) (< idx len)))))))))
 
 
 (provide 'nskk-state-machine-candidate-test)

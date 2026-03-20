@@ -554,7 +554,7 @@
       (nskk-with-state nskk-state-default-mode
         (let ((indicator (nskk-modeline-indicator)))
           (should (stringp indicator))
-          (should (> (length indicator) 0))))))
+          (should (not (string-empty-p indicator)))))))
 
   (nskk-it "modeline differs between hiragana and katakana default modes"
     (let ((nskk-use-color-cursor nil))

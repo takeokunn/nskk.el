@@ -45,6 +45,8 @@
 (require 'cl-lib)
 (require 'nskk-test-framework)
 
+(declare-function nskk-mode "nskk")
+
 ;;;; ── Benchmark Infrastructure ────────────────────────────────────────────────
 
 (defvar nskk-bench--results nil

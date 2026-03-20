@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -54,6 +54,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'nskk-state)
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
@@ -105,21 +106,18 @@ Used to avoid redundant mode switches when already in ASCII.")
 (defun nskk--context-programming-mode-p ()
   "Return non-nil if context-based switching should apply in the current buffer.
 Checks `nskk-context-programming-mode' against the current major mode."
-  (cond
-   ((eq nskk-context-programming-mode t)
-    (derived-mode-p 'prog-mode))
-   ((listp nskk-context-programming-mode)
-    (apply #'derived-mode-p nskk-context-programming-mode))
-   (t nil)))
+  (pcase nskk-context-programming-mode
+    ('t (derived-mode-p 'prog-mode))
+    ((pred listp) (apply #'derived-mode-p nskk-context-programming-mode))
+    (_ nil)))
 
 (defun nskk--context-in-japanese-context-p ()
   "Return non-nil if point is in a context where Japanese input is appropriate.
 Returns t when inside a string literal, comment, or doc string.
 Uses `syntax-ppss' for O(log n) context detection."
-  (let* ((ppss (syntax-ppss)))
-    (or (nth 3 ppss)   ; inside string
-        (nth 4 ppss)   ; inside comment
-        )))
+  (let ((ppss (syntax-ppss)))
+    (or (nth 3 ppss)    ; inside string
+        (nth 4 ppss)))) ; inside comment
 
 (defun nskk--context-get-current-mode ()
   "Return the current NSKK input mode symbol, or nil if NSKK is not active."

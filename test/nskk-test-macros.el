@@ -110,7 +110,7 @@ RUNS: Number of test runs (default: nskk-test-property-runs)"
   "Return a list of smaller versions of LIST for shrinking.
 Returns the first shrinking candidate that reduces size.
 Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
-  (when (and list (> (length list) 0))
+  (when list
     ;; Try removing first element
     (if (> (length list) 1)
         (cdr list)
@@ -183,7 +183,7 @@ SEED: Random seed for reproducibility (default: random)"
        (message "Property test (with shrinking) '%s' seed: %d" ',name test-seed)
        ;; First pass: find a failure
        (dotimes (_ runs)
-         (when (not failure-case)
+         (unless failure-case
            (let ,(mapcar (lambda (gen)
                            `(,(car gen) (nskk-generate ',(cadr gen))))
                          generators)
@@ -194,7 +194,7 @@ SEED: Random seed for reproducibility (default: random)"
                (error
                 (setq failure-case (list :error ,@(mapcar #'car generators) err))))))
          ;; Move to next random state if no failure yet
-         (when (not failure-case)
+         (unless failure-case
            (random)))
        ;; If we found a failure, try to shrink it
        (when failure-case
@@ -204,7 +204,7 @@ SEED: Random seed for reproducibility (default: random)"
                           collect (nskk--shrink-value val (cadr gen))))
                 (shrunk-case shrunk-values))
            ;; Try the shrunk case
-           (condition-case err
+           (condition-case _err
                (let ,(cl-loop for gen in generators
                               for i from 0
                               collect `(,(car gen) (nth ,i shrunk-case)))
@@ -240,7 +240,8 @@ NAME: Test name
 INITIAL-STATE: Expression to create initial state
 TRANSITIONS: List of (trigger target-state) pairs
 PROPERTY: Invariant that should hold after any transition
-RUNS: Number of transition sequences to test (default: nskk-test-state-machine-runs)
+RUNS: Number of transition sequences to test
+      (default: nskk-test-state-machine-runs)
 
 The test generates random sequences of transitions and verifies that
 the PROPERTY invariant holds after each transition."
@@ -480,7 +481,7 @@ BODY: Test implementation"
      ,@(mapcar (lambda (test)
                  `(progn
                     (message "  Running: %s" ',test)
-                    (funcall #',test)))
+                    (funcall ',test)))
                tests)
      (message "Test suite %s is complete" ',name)))
 
@@ -587,8 +588,9 @@ Example:
              (t form)))
           body))))
 
-(defmacro nskk-context (description &rest body)
-  "Provide sub-grouping under DESCRIPTION within a `nskk-describe' block.
+(defmacro nskk-context (_description &rest body)
+  "Provide sub-grouping within a `nskk-describe' block.
+_DESCRIPTION is a string label used only by `nskk-describe' for test naming.
 When used outside `nskk-describe', expands to a plain progn (no test naming).
 BODY may contain `nskk-it' forms and regular Emacs Lisp forms."
   (declare (indent 1))
@@ -897,7 +899,8 @@ Example:
 (defmacro nskk-with-henkan-state (phase candidates &rest body)
   "Execute BODY with henkan state set to PHASE with CANDIDATES.
 Provides bindings: `nskk-current-state', `nskk--conversion-start-marker',
-`nskk--romaji-buffer', `nskk--henkan-count', `nskk--henkan-candidate-list-active'."
+`nskk--romaji-buffer', `nskk--henkan-count',
+`nskk--henkan-candidate-list-active'."
   (declare (indent 2))
   `(with-temp-buffer
      (let ((nskk-current-state (nskk-state-create 'hiragana))

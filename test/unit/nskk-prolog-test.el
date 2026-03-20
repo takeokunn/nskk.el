@@ -201,6 +201,75 @@
       (should-not (nskk--prolog-fail-p '())))))
 
 ;;;;
+;;;; 3b. nskk-prolog-unify/k — CPS interface
+;;;;
+
+(nskk-describe "nskk-prolog-unify/k CPS interface"
+  (nskk-context "on-found path"
+    (nskk-it "calls on-found with original subst for equal atoms"
+      (let ((found nil) (not-found nil))
+        (nskk-prolog-unify/k 'a 'a nil
+                             (lambda (s) (setq found s))
+                             (lambda () (setq not-found t)))
+        (should-not not-found)
+        (should (eq found nil))))
+
+    (nskk-it "calls on-found with extended subst when binding a variable"
+      (let ((found nil))
+        (nskk-prolog-unify/k '\?x 42 nil
+                             (lambda (s) (setq found s))
+                             #'ignore)
+        (should found)
+        (should (equal (nskk-prolog-walk '\?x found) 42))))
+
+    (nskk-it "calls on-found for anonymous character (skips binding)"
+      ;; The integer ?_ (char 95) is treated as anonymous by nskk--prolog-anonymous-p
+      (let ((found nil))
+        (nskk-prolog-unify/k ?_ 'something nil
+                             (lambda (s) (setq found s))
+                             #'ignore)
+        (should (eq found nil))))  ; subst unchanged — no binding added
+
+    (nskk-it "calls on-found for recursive list unification with bindings"
+      (let ((found nil))
+        (nskk-prolog-unify/k '(a \?x) '(a 1) nil
+                             (lambda (s) (setq found s))
+                             #'ignore)
+        (should found)
+        (should (equal (nskk-prolog-walk '\?x found) 1))))
+
+    (nskk-it "preserves existing substitution entries on success"
+      (let* ((init '((\?z . 99)))
+             (found nil))
+        (nskk-prolog-unify/k '\?x 42 init
+                             (lambda (s) (setq found s))
+                             #'ignore)
+        (should (equal (nskk-prolog-walk '\?z found) 99))
+        (should (equal (nskk-prolog-walk '\?x found) 42)))))
+
+  (nskk-context "on-not-found path"
+    (nskk-it "calls on-not-found for two different atoms"
+      (let ((not-found nil))
+        (nskk-prolog-unify/k 'a 'b nil
+                             (lambda (_s) nil)
+                             (lambda () (setq not-found t)))
+        (should not-found)))
+
+    (nskk-it "calls on-not-found when lists have different lengths"
+      (let ((not-found nil))
+        (nskk-prolog-unify/k '(a b) '(a b c) nil
+                             (lambda (_s) nil)
+                             (lambda () (setq not-found t)))
+        (should not-found)))
+
+    (nskk-it "calls on-not-found when a nested element fails to unify"
+      (let ((not-found nil))
+        (nskk-prolog-unify/k '(a (b 1)) '(a (b 2)) nil
+                             (lambda (_s) nil)
+                             (lambda () (setq not-found t)))
+        (should not-found)))))
+
+;;;;
 ;;;; 4. Clause Database & Assert/Retract
 ;;;;
 
@@ -1226,7 +1295,62 @@ the database in the same state as before the assertion."
     (nskk-it "returns nil when no trie index is configured for the predicate"
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
-        (should-not (nskk-prolog-trie-prefix-search 'no-such-pred 2 "x"))))))
+        (should-not (nskk-prolog-trie-prefix-search 'no-such-pred 2 "x")))))
+
+  (nskk-context "nskk-prolog-trie-has-prefix-p"
+    (nskk-it "returns non-nil when prefix is a proper prefix of an indexed key"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'has-pfx-word 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'has-pfx-word 2
+                                      '(("hello" . "greeting")
+                                        ("world" . "noun")))
+        (should (nskk-prolog-trie-has-prefix-p 'has-pfx-word 2 "hel"))))
+
+    (nskk-it "returns non-nil for an exact key match (exact is also a valid prefix)"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'has-pfx-exact 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'has-pfx-exact 2
+                                      '(("か" . ("花" "家"))))
+        (should (nskk-prolog-trie-has-prefix-p 'has-pfx-exact 2 "か"))))
+
+    (nskk-it "returns nil when prefix matches nothing"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'has-pfx-miss 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'has-pfx-miss 2
+                                      '(("alpha" . "a")))
+        (should-not (nskk-prolog-trie-has-prefix-p 'has-pfx-miss 2 "beta"))))
+
+    (nskk-it "returns nil when no trie index is configured for the predicate"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (should-not (nskk-prolog-trie-has-prefix-p 'no-trie-pred 2 "x"))))
+
+    (nskk-it "works with Japanese kana prefixes"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'has-pfx-kana 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'has-pfx-kana 2
+                                      '(("かな" . ("仮名"))
+                                        ("かき" . ("柿" "書記"))
+                                        ("さ" . ("差"))))
+        ;; "か" is a prefix of both "かな" and "かき"
+        (should (nskk-prolog-trie-has-prefix-p 'has-pfx-kana 2 "か"))
+        ;; "さ" is an exact match (also a valid prefix node)
+        (should (nskk-prolog-trie-has-prefix-p 'has-pfx-kana 2 "さ"))
+        ;; "き" matches nothing
+        (should-not (nskk-prolog-trie-has-prefix-p 'has-pfx-kana 2 "き"))))
+
+    (nskk-it "empty prefix returns non-nil when trie has entries (root always exists)"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-clear-database)
+        (nskk-prolog-set-index 'has-pfx-root 2 :trie)
+        (nskk-prolog-trie-bulk-assert 'has-pfx-root 2
+                                      '(("x" . "val")))
+        ;; Empty string is a prefix of everything; root node always present
+        (should (nskk-prolog-trie-has-prefix-p 'has-pfx-root 2 ""))))))
 
 ;;;;
 ;;;; 16. Built-in Goal Handlers: assertz and retract
@@ -1572,7 +1696,20 @@ the database in the same state as before the assertion."
     (should-error (nskk--prolog-eval-arith '(% 10 3) nil)))
 
   (nskk-it "signals error for a non-number non-compound expression"
-    (should-error (nskk--prolog-eval-arith "not-a-number" nil))))
+    (should-error (nskk--prolog-eval-arith "not-a-number" nil)))
+
+  (nskk-it "evaluates a bound Emacs Lisp symbol (defconst/defvar) as its value"
+    ;; most-positive-fixnum is a globally-bound Emacs built-in constant;
+    ;; it satisfies (symbolp), (not (nskk-prolog-variable-p)), and (boundp).
+    (should (= most-positive-fixnum
+               (nskk--prolog-eval-arith 'most-positive-fixnum nil))))
+
+  (nskk-it "evaluates compound expression with a bound symbol operand"
+    (should (= 0
+               (nskk--prolog-eval-arith '(- most-positive-fixnum most-positive-fixnum) nil))))
+
+  (nskk-it "signals error for unbound Prolog variable in arithmetic"
+    (should-error (nskk--prolog-eval-arith '\?unbound nil))))
 
 ;;;;
 ;;;; 17. set-index Idempotency and retract-all Edge Cases
@@ -1897,7 +2034,7 @@ the database in the same state as before the assertion."
 ;;;;
 
 (nskk-deftest-table prolog-deffacts-call-count
-  :columns (fact-count expansion-args description)
+  :columns (fact-count expansion-args _description)
   :rows    ((0 ()                                       "empty fact list → zero nskk-prolog-<- calls")
             (1 ((a b c))                               "single row → exactly one call")
             (3 ((k1 v1) (k2 v2) (k3 v3))              "three rows → three calls"))

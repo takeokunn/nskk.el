@@ -14,12 +14,12 @@
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
@@ -95,6 +95,7 @@
 
 ;;; Code:
 
+(require 'subr-x)
 (require 'nskk-state)
 (require 'nskk-prolog)
 (require 'nskk-cps-macros)
@@ -305,10 +306,11 @@ Uses `nskk-converting-p' for converting detection (matches
   "Return the current mode category: `japanese', `marker-mode', or `other'.
 Queries `mode-category/2' to map the current input mode to a category.
 Returns `other' when no state exists."
-  (if (not nskk-current-state) 'other
-    (or (nskk-prolog-query-value
-         `(mode-category ,(nskk-state-mode nskk-current-state) \?c) '\?c)
-        'other)))
+  (if nskk-current-state
+      (or (nskk-prolog-query-value
+           `(mode-category ,(nskk-state-mode nskk-current-state) \?c) '\?c)
+          'other)
+    'other))
 
 (defun nskk--classify-state ()
   "Return a rich state classification symbol for the current NSKK state.

@@ -30,10 +30,10 @@ No external ELPA packages required.
 
 | Component        | Description                             |
 |------------------+-----------------------------------------|
-| Lexical binding  | All 26 modules use =lexical-binding: t= |
+| Lexical binding  | All 25 modules use =lexical-binding: t= |
 | Prolog engine    | Conversion rules as facts/queries       |
 | Layer separation | 7 strict layers, zero circular deps     |
-| Test coverage    | 4,900+ unit/integration/E2E tests       |
+| Test coverage    | 5,000+ unit/integration/E2E tests       |
 
 ** DDSKK Compatibility
 
@@ -233,6 +233,33 @@ stateDiagram-v2
 (add-hook 'nskk-mode-off-hook
           (lambda () (message "NSKK deactivated")))
 #+end_src
+** AZIK Extended Romaji
+#+begin_src elisp
+;; Enable AZIK for more efficient romaji input
+(setopt nskk-converter-romaji-style 'azik)
+
+;; Keyboard layout (us101 or jp106, default: us101)
+(setopt nskk-azik-keyboard-type 'jp106)
+#+end_src
+
+AZIK replaces standard romaji with efficiency shortcuts:
+- =f= → ん hatsuon (e.g. =kf= → かん)
+- =j= → ん hatsuon (e.g. =sj= → さん)
+- Double consonant suffixes → double vowels (e.g. =kk= → きん, =sh= → すう)
+
+** Optional Features
+
+All optional features are auto-loaded when NSKK starts if their modules are present.
+
+| Feature              | Module                 | Enable with                                  |
+|----------------------+------------------------+----------------------------------------------|
+| Annotation display   | =nskk-annotation=      | =(setopt nskk-show-annotation t)=            |
+| Inline mode display  | =nskk-show-mode=       | =(setopt nskk-show-mode-show t)=             |
+| Dynamic dcomp multi  | =nskk-inline=          | =(setopt nskk-dcomp-multiple-activate t)=    |
+| Context auto-mode    | =nskk-context=         | =(nskk-context-global-mode 1)=               |
+| Isearch integration  | =nskk-isearch=         | =(setopt nskk-isearch-enable t)=             |
+| Region operations    | =nskk-region=          | Available as =M-x nskk-region-*= commands   |
+
 ** Customization Group
 #+begin_example
 M-x customize-group RET nskk RET

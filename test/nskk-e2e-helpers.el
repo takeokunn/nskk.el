@@ -146,10 +146,9 @@ Initialization order:
   7. Teardown: disable nskk-mode, reset global state"
   (declare (indent 2) (debug t))
   `(nskk-prolog-test-with-isolated-db
-     ;; Step 1: Assert (dict-initialized) BEFORE enabling nskk-mode.
+     ;; Assert (dict-initialized) BEFORE enabling nskk-mode.
      ;; This prevents nskk-dict-initialize from running and wiping our mock.
      (nskk-prolog-assert '((dict-initialized)))
-     ;; Step 2: Set up mock user-dict-entry facts.
      ;; Must use user-dict-entry (NOT mock-dict-entry) so dict-entry/2 bridge works.
      (nskk-prolog-retract-all 'user-dict-entry 2)
      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
@@ -157,7 +156,6 @@ Initialization order:
        (dolist (entry nskk-e2e--entries)
          (nskk-prolog-assert
           `((user-dict-entry ,(car entry) ,(cdr entry))))))
-     ;; Step 3: Enable nskk-mode in a temp buffer.
      (with-temp-buffer
        ;; Clear any pending keyboard events from previous execute-kbd-macro calls.
        ;; In Emacs batch mode, unread-command-events can persist between calls
@@ -174,14 +172,13 @@ Initialization order:
                  ((symbol-function 'nskk-candidate-hide-list)
                   #'ignore))
          (nskk-mode 1)
-         ;; Step 4: Set initial mode after nskk-mode activation.
+         ;; Set initial mode after nskk-mode activation.
          (when ,initial-mode
            (nskk--set-mode ,initial-mode))
          ;; Clear any residual romaji buffer.
          (setq nskk--romaji-buffer "")
          (unwind-protect
              (progn ,@body)
-           ;; Step 5: Teardown.
            (ignore-errors (nskk-mode -1))
            ;; Clear any events we produced, so the next test starts clean.
            (setq unread-command-events nil)
@@ -228,7 +225,7 @@ dispatching raw character codes directly from the string."
   `(let* ((keys-val ,keys)
           (key-vec  (kbd keys-val)))
      (if (and (stringp keys-val)
-              (> (length keys-val) 0)
+              (not (string-empty-p keys-val))
               (zerop (length key-vec)))
          ;; Fallback: kbd parsed the string as empty (e.g., ";;" is a comment).
          ;; Dispatch each character code directly.

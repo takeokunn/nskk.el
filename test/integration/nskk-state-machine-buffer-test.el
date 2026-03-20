@@ -251,15 +251,15 @@
       (nskk-when
         (nskk-state-append-input state ?a))
       (nskk-then
-        (should (not (null (nskk-state-input-buffer state)))))
+        (should (nskk-state-input-buffer state)))
       (nskk-when
         (nskk-state-delete-last-char state))
       (nskk-then
-        (should (not (null (nskk-state-input-buffer state)))))
+        (should (nskk-state-input-buffer state)))
       (nskk-when
         (nskk-state-clear-input state))
       (nskk-then
-        (should (not (null (nskk-state-input-buffer state)))))))
+        (should (nskk-state-input-buffer state)))))
 
   (nskk-it "buffer is always a string after any operation"
     (let ((state (nskk-state-create 'hiragana)))
@@ -433,7 +433,7 @@
         (nskk-state-append-input state ?漢)
         (nskk-state-append-input state ?🔥))
       (nskk-then
-        (should (> (length (nskk-state-input-buffer state)) 0))
+        (should (not (string-empty-p (nskk-state-input-buffer state))))
         (should (stringp (nskk-state-input-buffer state)))))))
 
 

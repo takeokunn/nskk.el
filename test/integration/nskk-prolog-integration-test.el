@@ -114,7 +114,7 @@
       (let ((vals (nskk-prolog-query-all-values '(color-set \?c) '\?c)))
         (nskk-then
          (should (equal (sort (copy-sequence vals) #'string<)
-                        (sort '(red green blue) #'string<))))))))
+                        (sort (list 'red 'green 'blue) #'string<))))))))
 
 ;;;; Group 2: Retraction
 
@@ -274,10 +274,10 @@
                                   collect (nskk-generate 'search-query)))
              (all-keys (cons prefix extra-keys)))
         (dolist (k all-keys)
-          (when (and (stringp k) (> (length k) 0))
+          (when (and (stringp k) (not (string-empty-p k)))
             (nskk-prolog-assert `((pbt-trie-test ,k ("dummy"))))))
         ;; Collect prefix-search results
-        (let* ((prefix-results (when (and (stringp prefix) (> (length prefix) 0))
+        (let* ((prefix-results (when (and (stringp prefix) (not (string-empty-p prefix)))
                                  (nskk-prolog-trie-prefix-search 'pbt-trie-test 2 prefix)))
                ;; Collect all keys via full Prolog query
                (all-result-keys (nskk-prolog-query-all-values

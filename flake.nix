@@ -76,10 +76,10 @@ Key bindings (after nskk-global-mode is enabled):
   C-j              Commit conversion
 
 Useful commands in Emacs:
-  M-x nskk-switch-to-hiragana   Switch to hiragana mode
-  M-x nskk-switch-to-katakana   Switch to katakana mode
-  M-x nskk-switch-to-ascii      Switch to ASCII mode
-  M-x nskk-toggle-kana          Toggle hiragana/katakana
+  M-x nskk-set-mode-hiragana    Switch to hiragana mode
+  M-x nskk-set-mode-katakana    Switch to katakana mode
+  M-x nskk-set-mode-latin       Switch to ASCII/latin mode
+  M-x nskk-set-mode-jisx0208-latin  Switch to full-width latin mode
 
 USAGE_EOF
             '';

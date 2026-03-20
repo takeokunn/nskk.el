@@ -876,11 +876,11 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
   (nskk-context "format validation"
     (nskk-it "first candidate matches YYYY/MM/DD(WeekAbbrev) pattern"
       (let ((cand1 (car (nskk--program-dict-today "today"))))
-        (should (string-match "\\`[0-9]\\{4\\}/[0-9]\\{2\\}/[0-9]\\{2\\}(\\(?:Sun\\|Mon\\|Tue\\|Wed\\|Thu\\|Fri\\|Sat\\))\\'" cand1))))
+        (should (string-match-p "\\`[0-9]\\{4\\}/[0-9]\\{2\\}/[0-9]\\{2\\}(\\(?:Sun\\|Mon\\|Tue\\|Wed\\|Thu\\|Fri\\|Sat\\))\\'" cand1))))
 
     (nskk-it "second candidate matches YYYY年MM月DD日(WeekKanji) pattern"
       (let ((cand2 (cadr (nskk--program-dict-today "today"))))
-        (should (string-match "\\`[0-9]\\{4\\}年[0-9]\\{2\\}月[0-9]\\{2\\}日([日月火水木金土])\\'" cand2))))
+        (should (string-match-p "\\`[0-9]\\{4\\}年[0-9]\\{2\\}月[0-9]\\{2\\}日([日月火水木金土])\\'" cand2))))
 
     (nskk-it "year in first candidate is a 4-digit number > 2000"
       (let ((cand1 (car (nskk--program-dict-today "today"))))
@@ -922,11 +922,11 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
   (nskk-context "format validation"
     (nskk-it "first candidate matches HH:MM:SS pattern"
       (let ((cand1 (car (nskk--program-dict-now "now"))))
-        (should (string-match "\\`[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\'" cand1))))
+        (should (string-match-p "\\`[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\'" cand1))))
 
     (nskk-it "second candidate matches HH時MM分SS秒 pattern"
       (let ((cand2 (cadr (nskk--program-dict-now "now"))))
-        (should (string-match "\\`[0-9]\\{2\\}時[0-9]\\{2\\}分[0-9]\\{2\\}秒\\'" cand2))))
+        (should (string-match-p "\\`[0-9]\\{2\\}時[0-9]\\{2\\}分[0-9]\\{2\\}秒\\'" cand2))))
 
     (nskk-it "hour in first candidate is in range 00-23"
       (let* ((cand1 (car (nskk--program-dict-now "now")))
@@ -1034,7 +1034,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
           (lambda (v) (setq found-arg v))
           #'ignore))
       (should (listp found-arg))
-      (should (> (length found-arg) 0))))
+      (should found-arg)))
 
   (nskk-it "calls on-found for 'now'"
     (let ((found-arg nil))
@@ -1043,7 +1043,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
           (lambda (v) (setq found-arg v))
           #'ignore))
       (should (listp found-arg))
-      (should (> (length found-arg) 0))))
+      (should found-arg)))
 
   (nskk-it "calls on-found for '=1+1'"
     (let ((found-arg nil))
@@ -1052,7 +1052,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
           (lambda (v) (setq found-arg v))
           #'ignore))
       (should (listp found-arg))
-      (should (> (length found-arg) 0))))
+      (should found-arg)))
 
   (nskk-it "returns candidates from today handler"
     (nskk--pd-builtin-test-with-env t
@@ -1158,7 +1158,7 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
            (cand2  (cadr result))
            (sec1   (string-to-number (substring cand1 6 8))))
       ;; HH:MM:SS and HH時MM分SS秒 share the same second
-      (should (string-match (format "%02d秒" sec1) cand2)))))
+      (should (string-match-p (format "%02d秒" sec1) cand2)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-calculate: floating point and custom (S-3/S-4/S-5)

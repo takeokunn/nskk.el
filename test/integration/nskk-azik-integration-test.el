@@ -182,7 +182,7 @@
                   (cl-loop for ch across pattern
                            do (nskk--integration-type-char ch))
                   (unless (and (stringp (buffer-string))
-                               (> (length (buffer-string)) 0))
+                               (not (string-empty-p (buffer-string))))
                     (push pattern failures)))
               (error (push (list :error pattern err) failures)))))
         (when failures
@@ -203,7 +203,7 @@
         (cl-loop for ch across input-str
                  do (nskk--integration-type-char ch))
         (and (stringp (buffer-string))
-             (> (length (buffer-string)) 0))))
+             (not (string-empty-p (buffer-string))))))
     30))
 
 (provide 'nskk-azik-integration-test)

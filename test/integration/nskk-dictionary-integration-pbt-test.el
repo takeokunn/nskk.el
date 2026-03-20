@@ -156,9 +156,9 @@
     (should (and parsed
                  (consp parsed)
                  (stringp (car parsed))
-                 (> (length (car parsed)) 0)
+                 (not (string-empty-p (car parsed)))
                  (listp (cdr parsed))
-                 (> (length (cdr parsed)) 0))))
+                 (cdr parsed))))
   50)
 
 

@@ -23,6 +23,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'subr-x)
 (require 'nskk-debug)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
@@ -124,7 +125,7 @@
 
   (nskk-it "clears the debug buffer contents"
     (nskk-debug-test--insert-lines "[00:00:00.000] Test content")
-    (nskk-given (should (> (length (nskk-debug-test--buffer-contents)) 0)))
+    (nskk-given (should (not (string-empty-p (nskk-debug-test--buffer-contents)))))
     (nskk-when  (nskk-debug-clear))
     (nskk-then  (should (equal (nskk-debug-test--buffer-contents) ""))))
 
@@ -303,7 +304,7 @@
 
   (nskk-it "nskk--debug-timestamp-format is a non-empty string"
     (should (and (stringp nskk--debug-timestamp-format)
-                 (> (length nskk--debug-timestamp-format) 0)))))
+                 (not (string-empty-p nskk--debug-timestamp-format))))))
 
 ;;;
 ;;; PBT-001 — Timestamp format invariant
@@ -366,10 +367,10 @@
   (with-max-entries item
     (nskk-debug-test--insert-lines
      ;; Insert item+3 lines (always more than max).
-     (mapconcat #'identity
-                (cl-loop for i from 0 below (+ item 3)
-                         collect (format "[00:00:%02d.000] Entry %d" i i))
-                "\n"))
+     (string-join
+      (cl-loop for i from 0 below (+ item 3)
+               collect (format "[00:00:%02d.000] Entry %d" i i))
+      "\n"))
     (with-current-buffer (nskk--debug-buffer)
       (nskk--debug-trim))
     (let* ((raw (nskk-debug-test--buffer-contents))
@@ -422,7 +423,7 @@
     (nskk-debug-clear)
     (nskk-debug-log "%s" msg)
     (let ((contents (nskk-debug-test--buffer-contents)))
-      (and (> (length contents) 0)
+      (and (not (string-empty-p contents))
            (string-match-p "\\[[0-9]+:[0-9]+:[0-9]+\\.[0-9]+\\]" contents)
            (string-match-p (regexp-quote msg) contents))))
   50 42)

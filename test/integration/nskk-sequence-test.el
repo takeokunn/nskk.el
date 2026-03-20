@@ -81,7 +81,7 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
       state)
      ;; Regular character input
      ((and (stringp key) (= (length key) 1))
-      (let* ((char (aref key 0))
+      (let* ((_char (aref key 0))
              (current-buffer (nskk-state-input-buffer state)))
         ;; Append to input buffer
         (nskk-state-set state 'input-buffer (concat current-buffer key))

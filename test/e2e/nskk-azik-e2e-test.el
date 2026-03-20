@@ -716,7 +716,7 @@ This ensures:
         (nskk-e2e-with-azik-buffer 'hiragana nil
           (nskk-e2e-type r)
           (nskk-e2e-type "C-j")
-          (should (> (length (buffer-string)) 0)))))))
+          (should (not (string-empty-p (buffer-string)))))))))
 
 ;;;
 ;;; AZIK @ Key in ▽ Preedit — Script Conversion (DDSKK-compatible)

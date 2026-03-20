@@ -1425,7 +1425,7 @@
   (nskk-it "removing one entry does not destroy a multi-entry bucket"
     (let* ((cache (nskk-cache-lfu-create 10))
            (e1 (nskk-cache-lfu-entry--create :key "k1" :value 1 :frequency 2))
-           (e2 (nskk-cache-lfu-entry--create :key "k2" :value 2 :frequency 2)))
+           (_e2 (nskk-cache-lfu-entry--create :key "k2" :value 2 :frequency 2)))
       ;; set up freq 1 bucket with both k1 and k2
       (let ((b1 (make-hash-table :test 'equal :size 4)))
         (puthash "k1" t b1)

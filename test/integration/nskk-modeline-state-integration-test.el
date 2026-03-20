@@ -44,7 +44,7 @@
   (nskk-it "returns non-empty string for hiragana mode"
     (nskk-with-state 'hiragana
       (let ((nskk-use-color-cursor nil))
-        (should (> (length (nskk-modeline-indicator)) 0)))))
+        (should (not (string-empty-p (nskk-modeline-indicator)))))))
 
   (nskk-it "hiragana indicator contains かな"
     (nskk-with-state 'hiragana

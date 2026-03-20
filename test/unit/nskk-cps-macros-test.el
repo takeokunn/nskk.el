@@ -37,8 +37,53 @@
 
 
 ;;; -------------------------------------------------------------------
+;;; Forward declarations for test-internal defun/k helpers
+;;; These functions are defined inside nskk-it bodies (non-top-level),
+;;; so the byte-compiler requires forward declarations for their call sites.
+;;; -------------------------------------------------------------------
+
+;; defun/k helpers defined inside nskk-it bodies (generate base + /k)
+(declare-function nskk-cps-test--prop-runtime nil)
+(declare-function nskk-cps-test--prop-runtime/k nil)
+(declare-function nskk-cps-test--pcase-let*-fn nil)
+(declare-function nskk-cps-test--pcase-let*-fn/k nil)
+(declare-function nskk-cps-test--callcc-basic nil)
+(declare-function nskk-cps-test--callcc-basic/k nil)
+(declare-function nskk-cps-test--callcc-store nil)
+(declare-function nskk-cps-test--callcc-store/k nil)
+(declare-function nskk-cps-test--callcc-with-succeed nil)
+(declare-function nskk-cps-test--callcc-with-succeed/k nil)
+(declare-function nskk-cps-test--escape-basic nil)
+(declare-function nskk-cps-test--escape-basic/k nil)
+(declare-function nskk-cps-test--escape-no-continue nil)
+(declare-function nskk-cps-test--escape-no-continue/k nil)
+(declare-function nskk-cps-test--escape-no-escape nil)
+(declare-function nskk-cps-test--escape-no-escape/k nil)
+(declare-function nskk-cps-test--always-found nil)
+(declare-function nskk-cps-test--always-found/k nil)
+(declare-function nskk-cps-test--seq-caller nil)
+(declare-function nskk-cps-test--seq-caller/k nil)
+(declare-function nskk-cps-test--always-failed nil)
+(declare-function nskk-cps-test--always-failed/k nil)
+(declare-function nskk-cps-test--seq-fail-caller nil)
+(declare-function nskk-cps-test--seq-fail-caller/k nil)
+(declare-function nskk-cps-test--seq-side-effect-caller nil)
+(declare-function nskk-cps-test--seq-side-effect-caller/k nil)
+;; defun/done helpers defined inside nskk-it bodies (generate base + /k)
+(declare-function nskk--cps-test-done-fn-guard nil)
+(declare-function nskk--cps-test-done-fn-guard/k nil)
+(declare-function nskk-cps-test--prop-done-runtime nil)
+(declare-function nskk-cps-test--prop-done-runtime/k nil)
+;; defun/3k helpers defined inside nskk-it bodies (generate /k only)
+(declare-function nskk--cps-3k-put-prop-test/k nil)
+(declare-function nskk--cps-3k-runtime-test/k nil)
+
+;;; -------------------------------------------------------------------
 ;;; Test helpers
 ;;; -------------------------------------------------------------------
+
+(defvar nskk--cps-test-action-result nil
+  "Holds the side-effect result for defun/done functional tests.")
 
 (defun nskk-cps-test--funcall-sym-named-p (form name)
   "Return t if FORM is (funcall SYM ...) where SYM has `symbol-name' NAME.
@@ -1067,7 +1112,7 @@ that the second element is a symbol with the given name."
 
     (nskk-it "the /k symbol has the :3k property after evaluation at runtime"
       (defun/3k nskk--cps-3k-put-prop-test ()
-          (on-a on-b on-c)
+          (on-a _on-b _on-c)
         "Test."
         (funcall on-a nil))
       (should (eq (get 'nskk--cps-3k-put-prop-test/k
@@ -1165,9 +1210,6 @@ that the second element is a symbol with the given name."
   "Chain two CPS lookups using <-. [test-only]"
   (<- value nskk--cps-test-lookup key)
   (succeed (1+ value)))
-
-(defvar nskk--cps-test-action-result nil
-  "Holds the side-effect result for defun/done functional tests.")
 
 (defun/done nskk--cps-test-action (x)
   "Side-effecting action that stores X. [test-only]"
@@ -1624,8 +1666,9 @@ that the second element is a symbol with the given name."
     (should (= (nskk-cps-test--seq-caller 3) 12)))
 
   (nskk-it "propagates failure to the outer on-not-found"
-    (defun/k nskk-cps-test--always-failed (_x)
+    (defun/k nskk-cps-test--always-failed (x)
       "Always fail."
+      (ignore x)
       (fail))
     (defun/k nskk-cps-test--seq-fail-caller (n)
       "Use <-seq; inner failure should propagate."
@@ -1635,8 +1678,9 @@ that the second element is a symbol with the given name."
     (should (null (nskk-cps-test--seq-fail-caller 99))))
 
   (nskk-it "body is not reached when CPS call fails"
-    (defun/k nskk-cps-test--always-failed (_x)
+    (defun/k nskk-cps-test--always-failed (x)
       "Always fail."
+      (ignore x)
       (fail))
     (let ((body-reached nil))
       (defun/k nskk-cps-test--seq-side-effect-caller (n)
