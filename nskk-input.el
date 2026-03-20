@@ -419,14 +419,20 @@ In standard mode + non-Japanese mode: self-insert (on-not-found path).
 
 ;;;; Input Processing
 
-(defun nskk--implicit-kakutei-needed-p ()
-  "Return non-nil when implicit kakutei should fire before inserting a new char.
+(defun nskk--implicit-kakutei-needed-p (char)
+  "Return non-nil when implicit kakutei should fire before inserting CHAR.
 True when converting (▼ active), the candidate list is not showing, and
-okurigana is not currently being built."
+either okurigana is not currently being built or CHAR is an uppercase
+ASCII letter starting the next word after an okurigana conversion."
   (and (nskk-converting-p)
        (not nskk--henkan-candidate-list-active)
-       (not (nskk-state-get-metadata nskk-current-state
-                                     'okurigana-in-progress))))
+       (let ((okuri-in-progress
+              (nskk-state-get-metadata nskk-current-state
+                                       'okurigana-in-progress)))
+         (or (not okuri-in-progress)
+             (and (characterp char)
+                  (<= ?A char)
+                  (<= char ?Z))))))
 
 (defun nskk--route-input (char n mode)
   "Route CHAR (with repeat N) based on current input MODE.
@@ -460,7 +466,7 @@ Three-stage pipeline:
     (nskk--try-candidate-selection/k char
       #'ignore
       (lambda ()
-        (when (nskk--implicit-kakutei-needed-p)
+        (when (nskk--implicit-kakutei-needed-p char)
           (nskk-debug-log "[INPUT] implicit-kakutei: char=%c" char)
           (nskk-commit-current))
         (nskk--route-input char n mode)))))
