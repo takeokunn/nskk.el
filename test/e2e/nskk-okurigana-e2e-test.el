@@ -296,6 +296,21 @@
         (nskk-e2e-type "su")
         (nskk-e2e-assert-buffer "愛いす"))))
 
+  (nskk-it "allows uppercase next-word start after YoI without entering registration"
+    (let ((dict '(("よi" . ("良"))
+                  ("てんき" . ("天気")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "YoI")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "良")
+        (nskk-e2e-type "Tenki")
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-overlay-shows "天気")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "良い天気"))))
+
   (nskk-it "handles consonant okurigana KaKu followed by vowel okurigana AI"
     (let ((dict '(("かk" . ("書"))
                   ("あi" . ("愛")))))
