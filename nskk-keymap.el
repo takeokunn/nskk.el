@@ -76,7 +76,8 @@
 ;; - `nskk-handle-hash'    -- enter numeric input mode
 ;;
 ;; Manually defined handler (AZIK-aware Prolog dispatch):
-;; - `nskk-handle-l'       -- switch to ASCII mode (l-key-action/3 dispatch)
+;; - `nskk-handle-l'       -- candidate selection, romaji rule, or ASCII mode switch
+;;                            (via nskk--handle-l-action / l-key-action/3 dispatch)
 ;;
 ;; Prolog-dispatched handlers (via `nskk-define-key-handler'):
 ;; - `nskk-handle-x'       -- previous candidate
@@ -114,8 +115,6 @@
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--has-preedit "nskk-henkan")
 (declare-function nskk--get-conversion-start "nskk-henkan")
-(defvar nskk--henkan-candidate-list-active)
-(defvar nskk--henkan-initialized)
 (declare-function nskk-start-conversion "nskk-henkan")
 (declare-function nskk-next-candidate "nskk-henkan")
 (declare-function nskk-commit-current "nskk-henkan")
@@ -188,9 +187,10 @@
 ;; l-key-action/3: AZIK-aware dispatch for the l key.
 ;; (l-key-action STYLE BUF-STATE ACTION)
 ;; STYLE is `azik' or `standard' (from nskk-converter-romaji-style).
-;; BUF-STATE is `azik-complete' when pending-romaji+l is a complete AZIK hash
-;; match; `other' otherwise.  Standard mode uses a wildcard variable so any
-;; buf-state maps to latin-mode.
+;; BUF-STATE is `azik-complete' when pending-romaji+l forms a complete rule
+;; match (AZIK hash or standard romaji rule); `other' otherwise.  Both styles
+;; map `azik-complete' to fire-romaji (e.g. "zl" -> "->" in standard mode) and
+;; `other' to latin-mode.
 (nskk-prolog-define-fact-table l-key-action (:arity 3 :index :hash)
   (azik     azik-complete fire-romaji)
   (azik     other         latin-mode)
@@ -545,7 +545,7 @@ Dispatched via `q-key-dispatch/3' Prolog table."
                           (lambda () (self-insert-command 1))))
       (_                (self-insert-command 1)))))
 
-(defun nskk--handle-l-action ()
+(defun/done nskk--handle-l-action ()
   "Helper for `nskk-handle-l' mode-switch and fire-romaji actions.
 Dispatched via `l-key-action/3' Prolog table (style, buf-state, action)."
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
