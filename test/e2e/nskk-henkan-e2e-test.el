@@ -523,6 +523,17 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "肝事" "Key 'f' in list phase must commit 肝事 (index 6)")))
 
+  (nskk-it "pressing 'l' selects candidate at page position 6 in list phase"
+    ;; SPC x5 -> list phase (index 3).
+    ;; index 3 + pos 6 = index 9.
+    (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-11cands-dict
+      (nskk-e2e-type "Kanji")
+      (dotimes (_ 5) (nskk-e2e-type "SPC"))
+      (nskk-e2e-assert-henkan-phase 'list)
+      (nskk-e2e-type "l")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "官事" "Key 'l' in list phase must commit 官事 (index 9)")))
+
   (nskk-it "pressing 'j' does not commit when page position 4 is out of range"
     ;; 'j' → pos=4 → absolute = 3 + 4 = 7 → out of range for 7-candidate list.
     ;; nskk-candidate-list-select-by-key returns nil for out-of-range index,

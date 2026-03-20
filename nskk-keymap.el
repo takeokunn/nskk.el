@@ -76,7 +76,8 @@
 ;; - `nskk-handle-hash'    -- enter numeric input mode
 ;;
 ;; Manually defined handler (AZIK-aware Prolog dispatch):
-;; - `nskk-handle-l'       -- switch to ASCII mode (l-key-action/3 dispatch)
+;; - `nskk-handle-l'       -- candidate selection, romaji rule, or ASCII mode switch
+;;                            (via nskk--handle-l-action / l-key-action/3 dispatch)
 ;;
 ;; Prolog-dispatched handlers (via `nskk-define-key-handler'):
 ;; - `nskk-handle-x'       -- previous candidate
@@ -108,6 +109,7 @@
 (declare-function nskk--romaji-has-match-p "nskk-input")
 (declare-function nskk-process-japanese-input "nskk-input")
 (declare-function nskk-set-mode-numeric "nskk-input")
+(declare-function nskk--try-candidate-selection/k "nskk-input" (char on-found on-not-found))
 (defvar nskk-converter-romaji-style)
 (defvar nskk--romaji-buffer)          ;; Forward declaration from nskk-state.el
 ;; Functions in nskk-henkan.el
@@ -186,13 +188,15 @@
 ;; l-key-action/3: AZIK-aware dispatch for the l key.
 ;; (l-key-action STYLE BUF-STATE ACTION)
 ;; STYLE is `azik' or `standard' (from nskk-converter-romaji-style).
-;; BUF-STATE is `azik-complete' when pending-romaji+l is a complete AZIK hash
-;; match; `other' otherwise.  Standard mode uses a wildcard variable so any
-;; buf-state maps to latin-mode.
+;; BUF-STATE is `azik-complete' when pending-romaji+l forms a complete rule
+;; match (AZIK hash or standard romaji rule); `other' otherwise.  Both styles
+;; map `azik-complete' to fire-romaji (e.g. "zl" -> "->" in standard mode) and
+;; `other' to latin-mode.
 (nskk-prolog-define-fact-table l-key-action (:arity 3 :index :hash)
-  (azik azik-complete fire-romaji)
-  (azik other         latin-mode)
-  (standard \?buf     latin-mode))
+  (azik     azik-complete fire-romaji)
+  (azik     other         latin-mode)
+  (standard azik-complete fire-romaji)
+  (standard other         latin-mode))
 
 ;;;; Kakutei Idle-State Classification Rules
 
@@ -551,26 +555,34 @@ Dispatched via `q-key-dispatch/3' Prolog table."
                            (lambda () (self-insert-command 1)))))
       (_                (self-insert-command 1)))))
 
+(defun/done nskk--handle-l-action ()
+  "Helper for `nskk-handle-l' mode-switch and fire-romaji actions.
+Dispatched via `l-key-action/3' Prolog table (style, buf-state, action)."
+  (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+         (buf-state (if (or (nskk--azik-complete-match-p ?l)
+                            (nskk--romaji-has-match-p ?l))
+                        'azik-complete
+                      'other))
+         (action (nskk-prolog-query-value
+                  `(l-key-action ,style ,buf-state ,'\?a) '\?a)))
+    (pcase action
+      ('fire-romaji (nskk-process-japanese-input ?l 1))
+      ('latin-mode
+       (nskk--with-japanese-mode/k
+         (lambda (_) (nskk-set-mode-latin))
+         (lambda () (self-insert-command 1))))
+      (_ (self-insert-command 1)))))
+
 (defun/done nskk-handle-l ()
-  "Handle l key: switch to ASCII mode, or fire romaji rule when pending.
-In AZIK mode, `nskk--azik-complete-match-p' is checked first so the AZIK
-table takes priority even when the romaji buffer is empty (e.g. a
-standalone \\='l\\=' -> kana custom rule would be honoured).
-When pending romaji combined with l forms a complete conversion rule
-\(e.g. \"zl\" -> \"->\" in standard mode, or AZIK multi-char rules like
-\"hl\" -> \"ほん\"), fires the romaji processor instead of switching to
-latin mode.
-In henkan-active mode, perform implicit kakutei first when not routing
-to romaji.
-In ASCII mode or when NSKK state is inactive, fall through to
+  "Handle l key: candidate selection, romaji rule, or mode toggle.
+In candidate list selection mode, the key acts as a selection key.
+In idle Japanese mode, switches to ASCII (latin) mode or fires a romaji rule.
+In ASCII mode or when NSKK state is inactive, falls through to
 `self-insert-command'."
   :interactive t
-  (if (or (nskk--azik-complete-match-p ?l)
-          (nskk--romaji-has-match-p ?l))
-      (nskk-process-japanese-input ?l 1)
-    (nskk--with-japanese-mode/k
-     (lambda (_) (nskk-set-mode-latin))
-     (lambda () (self-insert-command 1)))))
+  (nskk--try-candidate-selection/k ?l
+    #'ignore
+    (lambda () (nskk--handle-l-action))))
 
 (nskk-define-mode-switch-handler upper-l
   "Handle L key: switch to full-width latin (jisx0208-latin) mode.

@@ -1184,11 +1184,12 @@ Sets conversion-start-marker at point, advances past PREEDIT, and configures sta
                  `(l-key-action standard other ,'\?action) '\?action)
                 'latin-mode)))
 
-  (nskk-it "standard style maps to latin-mode for any buf-state (wildcard \\?buf)"
-    ;; The (standard \?buf latin-mode) wildcard matches any buf-state value.
+  (nskk-it "standard style maps to fire-romaji for azik-complete state (supports zl)"
+    ;; Standard style uses azik-complete state when nskk--romaji-has-match-p is true
+    ;; (e.g. "zl" -> "->").
     (should (eq (nskk-prolog-query-value
                  `(l-key-action standard azik-complete ,'\?action) '\?action)
-                'latin-mode))))
+                'fire-romaji))))
 
 ;;;
 ;;; state-classify/4 Prolog Table Tests
