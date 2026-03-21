@@ -311,17 +311,15 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "良い天気"))))
 
-  (nskk-it "lowercase after okurigana ▼ continues as okurigana extension"
-    ;; After YoI → ▼良い, lowercase 'a' is okurigana continuation (romaji),
-    ;; NOT implicit kakutei.  The あ is appended after い in ▼ state.
+  (nskk-it "vowel after okurigana ▼ triggers implicit kakutei"
+    ;; After YoI → ▼良い, lowercase 'a' (vowel = complete kana) triggers
+    ;; implicit kakutei: commit 良い, then process 'a' as new input → あ.
     (let ((dict '(("よi" . ("良")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "YoI")
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "a")
-        ;; Still in ▼ (okurigana continuation)
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-not-converting)
         (nskk-e2e-assert-buffer "良いあ"))))
 
   (nskk-it "digit after okurigana ▼ triggers implicit kakutei"
@@ -360,6 +358,59 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "書く愛い")))))
+
+;;;; Okurigana Implicit Kakutei Tests
+;;
+;; After okurigana conversion (▼ state with okurigana-in-progress):
+;;   - Vowels (complete single-char kana) trigger implicit kakutei
+;;   - Consonants (incomplete romaji) continue as okurigana extension
+;;   - After continuation kana emitted, ALL lowercase triggers kakutei
+
+(nskk-describe "okurigana implicit kakutei"
+  (nskk-it "consonant after okurigana ▼ continues as okurigana"
+    ;; After OKuRi → ▼送り, consonant 'k' is incomplete romaji →
+    ;; enters romaji buffer as okurigana continuation (not kakutei).
+    (let ((dict '(("おくr" . ("送")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "OKuRi")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "k")
+        (nskk-e2e-assert-converting))))
+
+  (nskk-it "after continuation kana emitted, any lowercase triggers kakutei"
+    ;; After OKuRi → ▼送り, type 'ku' → emits く (continuation kana).
+    ;; Then 'a' triggers implicit kakutei regardless of vowel/consonant.
+    (let ((dict '(("おくr" . ("送")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "OKuRi")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "ku")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "a")
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-buffer "送りくあ"))))
+
+  (nskk-it "multi-char okurigana KaEru preserved"
+    ;; KaE → ▼変え, 'r' is consonant → continuation, 'u' → る emitted.
+    ;; Next lowercase 'a' triggers implicit kakutei.
+    (let ((dict '(("かe" . ("変")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "KaEru")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "a")
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-buffer "変えるあ"))))
+
+  (nskk-it "consonant after continuation kana also triggers kakutei"
+    ;; After continuation kana emitted, even consonants trigger kakutei.
+    (let ((dict '(("おくr" . ("送")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "OKuRi")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "ku")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "k")
+        (nskk-e2e-assert-not-converting)))))
 
 ;;;; Regression Tests: Pending Romaji Discard on Okurigana Trigger
 ;;

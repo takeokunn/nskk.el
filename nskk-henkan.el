@@ -182,6 +182,7 @@ or `nskk-with-conversion-context')."
      (nskk-state-set-candidates nskk-current-state nil)
      (nskk-state-set-okurigana nskk-current-state nil)
      (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil)
+     (nskk-state-put-metadata nskk-current-state 'okuri-continuation-kana-emitted nil)
      (nskk-state-set-henkan-phase nskk-current-state nil)))
 
 ;; Forward declarations for variables defined in the "Candidate Display Hooks"

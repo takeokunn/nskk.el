@@ -1481,14 +1481,45 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 ;;;
 
 (nskk-describe "nskk--okurigana-continuation-p"
-  (nskk-it "returns non-nil for lowercase a-z when okurigana-in-progress is set"
+  (nskk-it "returns non-nil for consonants (incomplete romaji) when okurigana-in-progress is set"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
         (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (should (nskk--okurigana-continuation-p ?k))
+        (should (nskk--okurigana-continuation-p ?s))
+        (should (nskk--okurigana-continuation-p ?t)))))
+
+  (nskk-it "returns nil for vowels (complete kana) when okurigana-in-progress is set"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (should-not (nskk--okurigana-continuation-p ?a))
+        (should-not (nskk--okurigana-continuation-p ?i))
+        (should-not (nskk--okurigana-continuation-p ?u))
+        (should-not (nskk--okurigana-continuation-p ?e))
+        (should-not (nskk--okurigana-continuation-p ?o)))))
+
+  (nskk-it "returns non-nil when romaji buffer has pending input"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (setq nskk--romaji-buffer "k")
         (should (nskk--okurigana-continuation-p ?a))
-        (should (nskk--okurigana-continuation-p ?m))
-        (should (nskk--okurigana-continuation-p ?z)))))
+        (should (nskk--okurigana-continuation-p ?u))
+        (setq nskk--romaji-buffer ""))))
+
+  (nskk-it "returns nil for all lowercase when okuri-continuation-kana-emitted is set"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (nskk-state-put-metadata nskk-current-state 'okuri-continuation-kana-emitted t)
+        (should-not (nskk--okurigana-continuation-p ?a))
+        (should-not (nskk--okurigana-continuation-p ?k))
+        (should-not (nskk--okurigana-continuation-p ?z)))))
 
   (nskk-it "returns nil for uppercase A-Z even when okurigana-in-progress is set"
     (nskk-prolog-test-with-isolated-db
