@@ -2596,6 +2596,87 @@
         (should (= nskk--henkan-count 0))))))
 
 ;;;
+;;; nskk--restore-abbrev-mode
+;;;
+
+(nskk-describe "nskk--restore-abbrev-mode"
+  (nskk-it "restores previous-mode when was-abbrev is t"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'abbrev)))
+        (setf (nskk-state-previous-mode nskk-current-state) 'hiragana)
+        (nskk--restore-abbrev-mode t)
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
+
+  (nskk-it "no-op when was-abbrev is nil"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana)))
+        (nskk--restore-abbrev-mode nil)
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
+
+  (nskk-it "no-op when previous-mode is abbrev"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'abbrev)))
+        (setf (nskk-state-previous-mode nskk-current-state) 'abbrev)
+        (nskk--restore-abbrev-mode t)
+        (should (eq (nskk-state-mode nskk-current-state) 'abbrev)))))
+
+  (nskk-it "clears nskk--numeric-mode when was-abbrev is t"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'abbrev))
+            (nskk--numeric-mode t))
+        (setf (nskk-state-previous-mode nskk-current-state) 'hiragana)
+        (nskk--restore-abbrev-mode t)
+        (should-not nskk--numeric-mode))))
+
+  (nskk-it "does not clear nskk--numeric-mode when was-abbrev is nil"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--numeric-mode t))
+        (nskk--restore-abbrev-mode nil)
+        (should nskk--numeric-mode))))
+
+  (nskk-it "no-op when previous-mode is nil"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'abbrev)))
+        (setf (nskk-state-previous-mode nskk-current-state) nil)
+        (nskk--restore-abbrev-mode t)
+        (should (eq (nskk-state-mode nskk-current-state) 'abbrev))))))
+
+;;;
+;;; nskk-henkan-kakutei abbrev mode restore
+;;;
+
+(nskk-describe "nskk-henkan-kakutei abbrev mode restore"
+  (nskk-it "restores previous mode after preedit commit from abbrev"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'abbrev))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--pending-romaji-overlay nil)
+            (nskk--romaji-buffer "")
+            (nskk--henkan-count 0))
+        (setf (nskk-state-previous-mode nskk-current-state) 'hiragana)
+        (insert nskk-henkan-on-marker "test")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (goto-char (point-max))
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
+        (nskk-henkan-kakutei)
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
+
+  (nskk-it "does not change mode after preedit commit from hiragana"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--pending-romaji-overlay nil)
+            (nskk--romaji-buffer "")
+            (nskk--henkan-count 0))
+        (insert nskk-henkan-on-marker "かんじ")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (goto-char (point-max))
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
+        (nskk-henkan-kakutei)
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
+
+;;;
 ;;; nskk--flush-romaji-before-okuri
 ;;;
 
