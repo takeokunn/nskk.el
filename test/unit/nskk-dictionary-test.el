@@ -436,6 +436,7 @@
 (nskk-describe "dict-initialize"
   (nskk-it "uses auto-detection when config is nil"
     (let ((nskk-dict-system-dictionary-files nil)
+          (nskk-dict-use-ja-dic nil)
           (nskk-dict-user-dictionary-file nil)
           (nskk--system-dict-index nil)
           (nskk--user-dict-index nil)
@@ -452,12 +453,12 @@
           (nskk--user-dict-index nil)
           (detect-called nil))
       (nskk-with-mocks ((nskk--dict-detect-system-dictionaries (lambda () (setq detect-called t) nil))
-                        (nskk-dict-load-system-dictionaries (lambda () nil))
+                        (nskk-dict-load-system-dictionaries (lambda () 'system))
                         (nskk-dict-load-user-dictionary (lambda () nil)))
         (nskk-dict-initialize)
         (should-not detect-called))))
 
-  (nskk-it "prefers ja-dic before file auto-detection"
+  (nskk-it "force ja-dic when nskk-dict-use-ja-dic is t (skips auto-detect)"
     (let ((nskk-dict-system-dictionary-files nil)
           (nskk-dict-use-ja-dic t)
           (nskk-dict-user-dictionary-file nil)
@@ -471,7 +472,68 @@
                         (nskk-dict-load-user-dictionary (lambda () nil)))
         (nskk-dict-initialize)
         (should ja-dic-called)
-        (should-not detect-called)))))
+        (should-not detect-called))))
+
+  (nskk-it "auto mode prefers auto-detect over ja-dic"
+    (let ((nskk-dict-system-dictionary-files nil)
+          (nskk-dict-use-ja-dic 'auto)
+          (nskk-dict-user-dictionary-file nil)
+          (nskk--system-dict-index nil)
+          (nskk--user-dict-index nil)
+          (ja-dic-called nil)
+          (detect-called nil)
+          (load-called nil))
+      (nskk-with-mocks ((nskk--dict-detect-system-dictionaries
+                         (lambda () (setq detect-called t) '("/found/SKK-JISYO.L")))
+                        (nskk-dict-load-system-dictionaries
+                         (lambda () (setq load-called t) 'system))
+                        (nskk-dict-load-ja-dic (lambda () (setq ja-dic-called t) 'system))
+                        (nskk-dict-load-user-dictionary (lambda () nil)))
+        (nskk-dict-initialize)
+        (should detect-called)
+        (should load-called)
+        (should-not ja-dic-called))))
+
+  (nskk-it "auto mode falls back to ja-dic when no files detected"
+    (let ((nskk-dict-system-dictionary-files nil)
+          (nskk-dict-use-ja-dic 'auto)
+          (nskk-dict-user-dictionary-file nil)
+          (nskk--system-dict-index nil)
+          (nskk--user-dict-index nil)
+          (ja-dic-called nil))
+      (nskk-with-mocks ((nskk--dict-detect-system-dictionaries (lambda () nil))
+                        (nskk-dict-load-ja-dic (lambda () (setq ja-dic-called t) 'system))
+                        (nskk-dict-load-user-dictionary (lambda () nil)))
+        (nskk-dict-initialize)
+        (should ja-dic-called))))
+
+  (nskk-it "auto mode falls back to ja-dic when auto-detect load fails"
+    (let ((nskk-dict-system-dictionary-files nil)
+          (nskk-dict-use-ja-dic 'auto)
+          (nskk-dict-user-dictionary-file nil)
+          (nskk--system-dict-index nil)
+          (nskk--user-dict-index nil)
+          (ja-dic-called nil))
+      (nskk-with-mocks ((nskk--dict-detect-system-dictionaries
+                         (lambda () '("/corrupt/file")))
+                        (nskk-dict-load-system-dictionaries (lambda () nil))
+                        (nskk-dict-load-ja-dic (lambda () (setq ja-dic-called t) 'system))
+                        (nskk-dict-load-user-dictionary (lambda () nil)))
+        (nskk-dict-initialize)
+        (should ja-dic-called))))
+
+  (nskk-it "nil suppresses ja-dic entirely"
+    (let ((nskk-dict-system-dictionary-files nil)
+          (nskk-dict-use-ja-dic nil)
+          (nskk-dict-user-dictionary-file nil)
+          (nskk--system-dict-index nil)
+          (nskk--user-dict-index nil)
+          (ja-dic-called nil))
+      (nskk-with-mocks ((nskk--dict-detect-system-dictionaries (lambda () nil))
+                        (nskk-dict-load-ja-dic (lambda () (setq ja-dic-called t) 'system))
+                        (nskk-dict-load-user-dictionary (lambda () nil)))
+        (nskk-dict-initialize)
+        (should-not ja-dic-called)))))
 
 ;;;
 ;;; Property-Based Tests
