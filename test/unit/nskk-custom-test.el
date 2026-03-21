@@ -107,9 +107,9 @@
   :body (should (null (default-value var))))
 
 (nskk-describe "nskk-custom string defaults"
-  (nskk-it "nskk-search-learning-file defaults to ~/.emacs.d/nskk/learning.dat"
+  (nskk-it "nskk-search-learning-file defaults to user-emacs-directory/nskk/learning.dat"
     (should (equal (default-value 'nskk-search-learning-file)
-                   "~/.emacs.d/nskk/learning.dat")))
+                   (expand-file-name "nskk/learning.dat" user-emacs-directory))))
 
   (nskk-it "nskk-modeline-format defaults to \" %m\""
     (should (equal (default-value 'nskk-modeline-format) " %m"))))

@@ -51,7 +51,7 @@
 
 ;;; Code:
 
-(require 'cl-lib)
+(require 'subr-x)
 (require 'seq)
 (require 'nskk-prolog)
 
@@ -62,7 +62,8 @@
   :prefix "nskk-study-"
   :group 'nskk)
 
-(defcustom nskk-study-file "~/.emacs.d/nskk/study.dat"
+(defcustom nskk-study-file
+  (expand-file-name "nskk/study.dat" user-emacs-directory)
   "File path for persisting study association data."
   :type 'file
   :safe #'stringp
@@ -145,22 +146,17 @@ INDEX is the candidate index (0-based); when `nskk-study-first-candidate'
 is nil and INDEX is 0, no association is recorded.
 
 Candidates with the `nskk-no-learn' text property are silently skipped."
-  (let ((word (if (stringp candidate) candidate (car candidate))))
-    (when (and word
-               (not (get-text-property 0 'nskk-no-learn word))
+  (when-let* ((word (if (stringp candidate) candidate (car candidate))))
+    (when (and (not (get-text-property 0 'nskk-no-learn word))
                (or nskk-study-first-candidate (and index (> index 0)))
                (nskk--study-distance-ok-p (point) (current-buffer))
                nskk--study-kakutei-ring)
-      (let ((prev-word (plist-get (car nskk--study-kakutei-ring) :word)))
-        (when prev-word
-          ;; Retract any existing association for this (prev-word, reading) pair
-          (let ((old (nskk-prolog-query-value
-                      `(study-association ,prev-word ,reading \?c) '\?c)))
-            (when old
-              (nskk-prolog-retract `(study-association ,prev-word ,reading ,old))))
-          ;; Assert the new association
-          (nskk-prolog-assert
-           (list `(study-association ,prev-word ,reading ,word))))))))
+      (when-let* ((prev-word (plist-get (car nskk--study-kakutei-ring) :word)))
+        (when-let* ((old (nskk-prolog-query-value
+                          `(study-association ,prev-word ,reading \?c) '\?c)))
+          (nskk-prolog-retract `(study-association ,prev-word ,reading ,old)))
+        (nskk-prolog-assert
+         (list `(study-association ,prev-word ,reading ,word)))))))
 
 ;;;###autoload
 (defun nskk-study-after-kakutei (reading candidate &optional index)
@@ -171,9 +167,8 @@ READING is the dictionary lookup key.
 CANDIDATE is the confirmed word string.
 INDEX is the candidate index (0-based, optional)."
   (nskk-study-record reading candidate index)
-  (let ((word (if (stringp candidate) candidate (car candidate))))
-    (when word
-      (nskk--study-push-kakutei word (point) (current-buffer)))))
+  (when-let* ((word (if (stringp candidate) candidate (car candidate))))
+    (nskk--study-push-kakutei word (point) (current-buffer))))
 
 ;;;###autoload
 (defun nskk-study-reorder (reading candidates)
@@ -183,17 +178,21 @@ If a match is found, the associated candidate is promoted to the front
 of the list.  Returns the (possibly reordered) candidate list."
   (if (or (null nskk--study-kakutei-ring) (null candidates))
       candidates
-    (let ((promoted nil))
-      ;; Search recent kakutei words for an association
-      (cl-loop for entry in nskk--study-kakutei-ring
-               for prev-word = (plist-get entry :word)
-               for assoc-candidate = (and prev-word
-                                          (nskk-prolog-query-value
-                                           `(study-association ,prev-word ,reading \?c)
-                                           '\?c))
-               when (and assoc-candidate (member assoc-candidate candidates))
-               do (setq promoted assoc-candidate)
-               and return nil)
+    (let* ((match (seq-find
+                   (lambda (entry)
+                     (let* ((prev-word (plist-get entry :word))
+                            (assoc-candidate
+                             (and prev-word
+                                  (nskk-prolog-query-value
+                                   `(study-association ,prev-word ,reading \?c)
+                                   '\?c))))
+                       (and assoc-candidate (member assoc-candidate candidates))))
+                   nskk--study-kakutei-ring))
+           (promoted (and match
+                          (let ((prev-word (plist-get match :word)))
+                            (nskk-prolog-query-value
+                             `(study-association ,prev-word ,reading \?c)
+                             '\?c)))))
       (if promoted
           (cons promoted (remove promoted candidates))
         candidates))))
@@ -228,18 +227,16 @@ of the list.  Returns the (possibly reordered) candidate list."
   (interactive)
   (when (file-readable-p nskk-study-file)
     (condition-case err
-        (let ((data (with-temp-buffer
-                      (insert-file-contents nskk-study-file)
-                      (read (current-buffer)))))
-          (when (listp data)
-            (dolist (entry data)
-              (when (and (listp entry) (= (length entry) 3))
-                (let ((prev (nth 0 entry))
-                      (reading (nth 1 entry))
-                      (cand (nth 2 entry)))
-                  (when (and (stringp prev) (stringp reading) (stringp cand))
-                    (nskk-prolog-assert
-                     (list `(study-association ,prev ,reading ,cand)))))))))
+        (when-let* ((data (with-temp-buffer
+                            (insert-file-contents nskk-study-file)
+                            (read (current-buffer)))))
+          (dolist (entry data)
+            (pcase entry
+              (`(,(and (pred stringp) prev)
+                 ,(and (pred stringp) reading)
+                 ,(and (pred stringp) cand))
+               (nskk-prolog-assert
+                (list `(study-association ,prev ,reading ,cand)))))))
       (error
        (message "NSKK: Failed to load study data: %s" (error-message-string err))))))
 

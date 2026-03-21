@@ -150,7 +150,8 @@ Zero disables fuzzy matching."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
-(defcustom nskk-search-learning-file "~/.emacs.d/nskk/learning.dat"
+(defcustom nskk-search-learning-file
+  (expand-file-name "nskk/learning.dat" user-emacs-directory)
   "File path for persisting learning data."
   :type 'file
   :safe #'stringp

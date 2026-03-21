@@ -222,6 +222,7 @@
 
   (nskk-it "repeated learning calls increment the score each time"
     (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'learning-score 3)
       (nskk-with-mock-dict nil
         (nskk-when
           (nskk-search-learn "かんじ" "漢字")
