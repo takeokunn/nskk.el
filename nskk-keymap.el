@@ -132,6 +132,7 @@
 (declare-function nskk-dynamic-complete "nskk-henkan")
 (declare-function nskk-purge-from-jisyo "nskk-henkan")
 (defvar nskk-henkan-on-marker)
+(defvar nskk-dcomp-style)
 
 ;;;; Prolog Key-Action Rules
 
@@ -756,10 +757,13 @@ beginning-of-buffer errors so DEL on an empty buffer is a no-op."
 
 (nskk-define-key-handler tab
   "Handle TAB key: dynamic completion in preedit, otherwise pass through.
-In preedit mode, searches the dictionary for keys matching the
-current reading prefix and completes inline.  Repeated TAB cycles.
+In preedit mode, behavior depends on `nskk-dcomp-style':
+  capf  -- triggers `completion-at-point' (works with corfu/company).
+  cycle -- traditional inline cycling via `nskk-dynamic-complete'.
 In other modes, delegates to `indent-for-tab-command'."
-  ('dynamic-complete (nskk-dynamic-complete))
+  ('dynamic-complete (if (eq nskk-dcomp-style 'capf)
+                         (completion-at-point)
+                       (nskk-dynamic-complete)))
   (_ (indent-for-tab-command)))
 
 (nskk-define-mode-switch-handler hash

@@ -1056,6 +1056,7 @@ and configures state."
   (nskk-it "calls nskk-dynamic-complete when preedit active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk-dcomp-style 'cycle)
             (complete-called nil))
         (nskk--set-conversion-start-marker (point-min))
         (insert "▽ka")

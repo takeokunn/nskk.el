@@ -4164,6 +4164,56 @@
           (nskk-purge-from-jisyo)
           (should cancel-called))))))
 
+;;;
+;;; nskk-completion-at-point (CAPF backend)
+;;;
+
+(nskk-describe "nskk-completion-at-point"
+  (nskk-it "returns nil when no preedit is active"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (should (null (nskk-completion-at-point)))))
+
+  (nskk-it "returns nil when preedit is empty (cursor at marker)"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (nskk-without-modification (insert nskk-henkan-on-marker))
+      (nskk--set-conversion-start-marker (point-min))
+      (should (null (nskk-completion-at-point)))))
+
+  (nskk-it "returns a completion spec when preedit has text"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-without-modification (insert nskk-henkan-on-marker "かん"))
+        (nskk--set-conversion-start-marker (point-min))
+        (let ((spec (nskk-completion-at-point)))
+          ;; spec is (start end table . plist)
+          (should spec)
+          (should (= (nth 0 spec) (1+ (point-min))))  ;; after ▽
+          (should (= (nth 1 spec) (point)))
+          (should (functionp (nth 2 spec)))            ;; completion table
+          (should (eq (plist-get (nthcdr 3 spec) :exclusive) 'no))))))
+
+  (nskk-it "completion table returns prefix matches from dictionary"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        ;; Initialize trie index and register test entries in user dictionary
+        (nskk-prolog-retract-all 'user-dict-entry 2)
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-prolog-assert '((user-dict-entry "かんじ" ("漢字"))))
+        (nskk-prolog-assert '((user-dict-entry "かんが" ("感が"))))
+        (nskk-prolog-assert '((user-dict-entry "きょう" ("今日"))))
+        (nskk-without-modification (insert nskk-henkan-on-marker "かん"))
+        (nskk--set-conversion-start-marker (point-min))
+        (let* ((spec (nskk-completion-at-point))
+               (table (nth 2 spec))
+               (completions (all-completions "かん" table)))
+          (should (member "かんじ" completions))
+          (should (member "かんが" completions))
+          (should-not (member "きょう" completions)))))))
+
 (provide 'nskk-henkan-test)
 
 ;;; nskk-henkan-test.el ends here

@@ -98,6 +98,7 @@ Guards against duplicate assertions on file reload (e.g. `eval-buffer').")
 
 Source: `nskk-henkan-show-candidates-keys'.
 Maps each selection key character to its 0-based page position.
+Also registers uppercase variants for DDSKK compatibility.
 Uses hash indexing for O(1) key dispatch during candidate selection.
 Idempotent: safe to call multiple times."
   (unless nskk--candidate-key-facts-initialized
@@ -105,7 +106,11 @@ Idempotent: safe to call multiple times."
     (nskk-prolog-set-index 'candidate-selection-key 2 :hash)
     (cl-loop for k in nskk-henkan-show-candidates-keys
              for i from 0
-             do (nskk-prolog-assert `((candidate-selection-key ,k ,i))))
+             do (progn
+                  (nskk-prolog-assert `((candidate-selection-key ,k ,i)))
+                  (let ((upper (upcase k)))
+                    (unless (= upper k)
+                      (nskk-prolog-assert `((candidate-selection-key ,upper ,i)))))))
     (setq nskk--candidate-key-facts-initialized t)))
 
 (nskk--candidate-init-key-facts)

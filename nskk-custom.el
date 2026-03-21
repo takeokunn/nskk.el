@@ -288,6 +288,21 @@ Only works in GUI Emacs (not terminal).  When both `nskk-show-inline' and
   :prefix "nskk-dcomp-"
   :group 'nskk-ui)
 
+(defcustom nskk-dcomp-style 'capf
+  "Dynamic completion style in preedit mode.
+Possible values:
+  \\='capf  -- Use `completion-at-point-functions' (default).
+             Works with corfu, company, vertico, or
+             Emacs built-in *Completions*.
+  \\='cycle -- Traditional TAB cycling (DDSKK-compatible).
+             Replaces preedit text directly and cycles
+             through matches."
+  :type '(choice (const :tag "CAPF (modern, works with corfu/company)" capf)
+                 (const :tag "Cycle (traditional DDSKK-style)" cycle))
+  :safe (lambda (v) (memq v '(capf cycle)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
 (defcustom nskk-dcomp-multiple-activate nil
   "When non-nil, display multiple dynamic completion candidates inline.
 When enabled, pressing TAB in preedit (\u25bd) mode shows a list of matching

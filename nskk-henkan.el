@@ -1740,6 +1740,24 @@ matching candidates inline below the preedit text."
             ;; Show multiple candidates if enabled
             (nskk--dcomp-multiple-show matches 0 preedit))))))))
 
+(defun nskk-completion-at-point ()
+  "CAPF backend for dynamic completion in preedit (▽) mode.
+Returns a completion spec when the cursor is inside an active preedit
+region, or nil otherwise.  The completion table performs prefix search
+against both user and system dictionaries.
+
+Intended to be added to `completion-at-point-functions' (buffer-local)
+when `nskk-dcomp-style' is \\='capf."
+  (when-let* ((start (nskk--get-conversion-start))
+              (text-start (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
+    (when (> (point) text-start)
+      (list text-start
+            (point)
+            (completion-table-dynamic
+             (lambda (prefix)
+               (nskk--dcomp-search-prefix prefix)))
+            :exclusive 'no))))
+
 ;;;; SKK Numeric Conversion (数値変換)
 
 (defconst nskk--kanji-digits
