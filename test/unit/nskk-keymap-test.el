@@ -1022,6 +1022,61 @@ and configures state."
          (should (= (point) 3)))))))
 
 ;;;
+;;; nskk--backspace-retract-pending
+;;;
+
+(nskk-describe "nskk--backspace-retract-pending"
+  (nskk-it "is defined as a callable function (fboundp)"
+    (should (fboundp 'nskk--backspace-retract-pending)))
+
+  (nskk-it "returns non-nil and clears single-char romaji buffer"
+    (let ((clear-called nil))
+      (nskk-with-mocks ((nskk--clear-pending-romaji (lambda () (setq clear-called t))))
+        (with-temp-buffer
+          (let ((nskk--romaji-buffer "k"))
+            (should (nskk--backspace-retract-pending))
+            (should (equal nskk--romaji-buffer ""))
+            (should clear-called))))))
+
+  (nskk-it "returns non-nil and truncates multi-char romaji buffer"
+    (let ((show-arg nil))
+      (nskk-with-mocks ((nskk--show-pending-romaji (lambda (s) (setq show-arg s))))
+        (with-temp-buffer
+          (let ((nskk--romaji-buffer "sh"))
+            (should (nskk--backspace-retract-pending))
+            (should (equal nskk--romaji-buffer "s"))
+            (should (equal show-arg "s")))))))
+
+  (nskk-it "returns nil when all pending state is empty"
+    (with-temp-buffer
+      (let ((nskk--romaji-buffer "")
+            (nskk--deferred-azik-state nil)
+            (nskk--deferred-vowel-shadow-state nil)
+            (nskk--azik-colon-okuri-pending nil)
+            (nskk--azik-colon-okuri-deferred nil))
+        (should-not (nskk--backspace-retract-pending)))))
+
+  (nskk-it "returns non-nil and clears DA (deferred-azik-state)"
+    (with-temp-buffer
+      (let ((nskk--romaji-buffer "")
+            (nskk--deferred-azik-state (cons ?k "きん")))
+        (insert "きん")
+        (goto-char (point-max))
+        (should (nskk--backspace-retract-pending))
+        (should-not nskk--deferred-azik-state)
+        (should (equal (buffer-string) "")))))
+
+  (nskk-it "returns non-nil and clears DV (deferred-vowel-shadow-state)"
+    (with-temp-buffer
+      (let ((nskk--romaji-buffer "")
+            (nskk--deferred-vowel-shadow-state (cons "sh" "すう")))
+        (insert "すう")
+        (goto-char (point-max))
+        (should (nskk--backspace-retract-pending))
+        (should-not nskk--deferred-vowel-shadow-state)
+        (should (equal (buffer-string) ""))))))
+
+;;;
 ;;; nskk--backspace-in-preedit
 ;;;
 
