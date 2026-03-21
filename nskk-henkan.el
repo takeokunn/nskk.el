@@ -634,16 +634,21 @@ Does not reset the input mode."
   "Commit preedit text as-is without dictionary conversion (確定).
 Removes the henkan-on marker (▽), clears the conversion start marker,
 resets the romaji buffer, clears all five AZIK pending state variables
-(see `nskk--clear-azik-pending-state'), and clears the henkan phase."
-  (let ((start (nskk--get-conversion-start)))
+(see `nskk--clear-azik-pending-state'), and clears the henkan phase.
+When called in abbrev mode, restores the previous Japanese input mode
+via `nskk--restore-abbrev-mode'."
+  (let ((was-abbrev (nskk-with-current-state
+                      (eq (nskk-state-mode nskk-current-state) 'abbrev)))
+        (start (nskk--get-conversion-start)))
     (when start
-      (nskk--delete-marker-at start nskk-henkan-on-marker-regexp)))
-  (nskk--clear-conversion-start-marker)
-  (nskk--reset-romaji-buffer)
-  ;; Clear AZIK okurigana pending state that may have been armed in preedit.
-  (nskk--clear-azik-pending-state)
-  (nskk-with-current-state
-    (nskk-state-set-henkan-phase nskk-current-state nil)))
+      (nskk--delete-marker-at start nskk-henkan-on-marker-regexp))
+    (nskk--clear-conversion-start-marker)
+    (nskk--reset-romaji-buffer)
+    ;; Clear AZIK okurigana pending state that may have been armed in preedit.
+    (nskk--clear-azik-pending-state)
+    (nskk-with-current-state
+      (nskk-state-set-henkan-phase nskk-current-state nil))
+    (nskk--restore-abbrev-mode was-abbrev)))
 
 (defun nskk--replace-preedit-with-converted (text-start start converted)
   "Replace preedit at TEXT-START with CONVERTED text and remove ▽ marker at START."
@@ -857,12 +862,14 @@ Does nothing when not currently converting."
     (nskk-rollback-conversion)))
 
 (defun nskk--restore-abbrev-mode (was-abbrev)
-  "Restore previous Japanese mode when cancelling from abbrev preedit.
-WAS-ABBREV is non-nil when the active mode was abbrev at cancel time.
+  "Restore previous Japanese mode when exiting abbrev/numeric preedit.
+WAS-ABBREV is non-nil when the active mode was abbrev at exit time.
 Uses setf directly on the struct slot to avoid updating previous-mode
 \(this is a restore, not a user-initiated mode switch).
+Also clears `nskk--numeric-mode' since numeric mode reuses abbrev.
 No-op when WAS-ABBREV is nil or previous-mode is nil or abbrev."
   (when was-abbrev
+    (nskk-when-bound nskk--numeric-mode (setq nskk--numeric-mode nil))
     (let ((prev-mode (nskk-with-current-state
                        (nskk-state-previous-mode nskk-current-state))))
       (when (and prev-mode (not (eq prev-mode 'abbrev)))
@@ -1030,6 +1037,7 @@ in place and will immediately follow the inserted candidate."
            (index         (nskk-state-current-index nskk-current-state))
            (candidate     (nth index candidates))
            (start         (nskk--get-conversion-start))
+           (was-abbrev    (eq (nskk-state-mode nskk-current-state) 'abbrev))
            ;; NOTE: (overlayp obj) returns t even after delete-overlay — the
            ;; Lisp object persists but overlay-end returns nil for a deleted
            ;; overlay.  Always check overlay-end result, not just overlayp.
@@ -1084,6 +1092,8 @@ in place and will immediately follow the inserted candidate."
                       :registered-word nil))))
       ;; Clear all conversion state (includes candidate list dismissal).
       (nskk-henkan-do-reset)
+      ;; Restore abbrev mode if applicable.
+      (nskk--restore-abbrev-mode was-abbrev)
       (succeed candidate))))
 
 (defun nskk--select-candidate (direction)
@@ -1415,26 +1425,31 @@ ON-REGISTER is called (no args) after a word is successfully registered."
 Shared by all registration callbacks in the conversion pipeline.
 Optional READING is the original reading used for registration; when
 non-nil, an undo record is stored so `nskk-undo-kakutei' can revert
-and unregister the word."
-  (delete-region start (point))
-  (goto-char start)
-  (insert registered)
-  ;; Store undo record for registration undo.
-  (when reading
-    (let ((mode (nskk-with-current-state (nskk-state-mode nskk-current-state))))
-      (setq nskk--last-kakutei-record
-            (list :reading reading
-                  :candidates (list registered)
-                  :index 0
-                  :committed-text registered
-                  :buffer-start start
-                  :buffer-end (point)
-                  :mode (or mode 'hiragana)
-                  :registered-p t
-                  :registered-reading reading
-                  :registered-word registered))))
-  (nskk-henkan-do-reset)
-  (when (functionp on-done) (funcall on-done)))
+and unregister the word.
+When called in abbrev mode, restores the previous Japanese input mode
+via `nskk--restore-abbrev-mode'."
+  (let ((was-abbrev (nskk-with-current-state
+                      (eq (nskk-state-mode nskk-current-state) 'abbrev))))
+    (delete-region start (point))
+    (goto-char start)
+    (insert registered)
+    ;; Store undo record for registration undo.
+    (when reading
+      (let ((mode (nskk-with-current-state (nskk-state-mode nskk-current-state))))
+        (setq nskk--last-kakutei-record
+              (list :reading reading
+                    :candidates (list registered)
+                    :index 0
+                    :committed-text registered
+                    :buffer-start start
+                    :buffer-end (point)
+                    :mode (or mode 'hiragana)
+                    :registered-p t
+                    :registered-reading reading
+                    :registered-word registered))))
+    (nskk-henkan-do-reset)
+    (nskk--restore-abbrev-mode was-abbrev)
+    (when (functionp on-done) (funcall on-done))))
 
 (defun nskk--start-conversion-normal (start on-found on-not-found on-register)
   "Execute the normal (non-okurigana) conversion path.

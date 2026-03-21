@@ -313,6 +313,8 @@
         ;; SPC: no candidates for "test" in empty dict → registration → "テスト"
         (nskk-e2e-type "SPC")
         (nskk-e2e-assert-buffer "テスト" "Registered word should be inserted after abbrev registration")
+        ;; Mode should be restored to hiragana after abbrev registration.
+        (nskk-e2e-assert-mode 'hiragana)
         ;; Verify the word is now stored in the user dict under the abbrev key.
         (should (nskk-prolog-query-one '(user-dict-entry "test" \?_))))))
 

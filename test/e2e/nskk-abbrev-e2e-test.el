@@ -227,6 +227,7 @@
 (nskk-describe "abbrev mode conversion via RET"
   ;; / + "test" + SPC triggers dictionary conversion.
   ;; RET (commit-candidate) commits the first candidate without a newline.
+  ;; Mode should return to hiragana after commit.
   (nskk-it "commits first candidate with RET after SPC conversion"
     (let ((dict '(("test" . ("テスト" "Test")))))
       (nskk-e2e-with-buffer 'hiragana dict
@@ -236,7 +237,8 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "RET")
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-buffer "テスト"))))
+        (nskk-e2e-assert-buffer "テスト")
+        (nskk-e2e-assert-mode 'hiragana))))
 
   (nskk-it "cycles to second candidate with SPC then commits with C-j"
     (let ((dict '(("test" . ("テスト" "Test")))))
@@ -249,7 +251,8 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-buffer "Test")))))
+        (nskk-e2e-assert-buffer "Test")
+        (nskk-e2e-assert-mode 'hiragana)))))
 
 ;;;; 8. C-g during abbrev conversion cancels back to preedit
 
@@ -265,6 +268,56 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "C-g")
         (nskk-e2e-assert-not-converting)))))
+
+;;;; 9. Abbrev mode restores previous mode after confirmation
+
+(nskk-describe "abbrev mode restores previous mode after confirmation"
+  (nskk-it "C-j preedit commit restores hiragana"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "test")
+      (nskk-e2e-assert-buffer "▽test")
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-buffer "test")
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it "C-j preedit commit restores katakana"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "abc")
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-buffer "abc")
+      (nskk-e2e-assert-mode 'katakana)))
+
+  (nskk-it "SPC candidate commit with RET restores hiragana"
+    (let ((dict '(("test" . ("テスト")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "/")
+        (nskk-e2e-type "test")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "RET")
+        (nskk-e2e-assert-mode 'hiragana))))
+
+  (nskk-it "SPC candidate commit with C-j restores hiragana"
+    (let ((dict '(("test" . ("テスト")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "/")
+        (nskk-e2e-type "test")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-mode 'hiragana))))
+
+  (nskk-it "C-g cancel still restores hiragana"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "/")
+      (nskk-e2e-assert-mode 'abbrev)
+      (nskk-e2e-type "test")
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-mode 'hiragana))))
 
 ;;;;
 ;;;; Property-Based Tests
