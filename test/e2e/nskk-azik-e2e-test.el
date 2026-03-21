@@ -785,13 +785,13 @@ This ensures:
       (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Katq")
       (nskk-e2e-assert-mode 'hiragana "mode must not change after tq in AZIK ▽ preedit")))
 
-  (nskk-it "Kaq: standalone q in ▽ preedit converts to katakana and commits"
-    ;; Ka → ▽ か; q → romaji buffer empty → convert-script → commits カ.
-    ;; ▽ mode ends; buffer contains カ.
+  (nskk-it "Kaq: standalone q in AZIK ▽ preedit inserts ん (not katakana conversion)"
+    ;; Ka → ▽ か; q → romaji buffer empty → AZIK q inserts ん → ▽かん.
+    ;; ▽ mode must remain active; AZIK q = ん, katakana via toggle key.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Kaq")
-      (nskk-e2e-assert-henkan-phase nil "▽ must end after Kaq convert-script")
-      (nskk-e2e-assert-buffer "カ" "Kaq must commit カ (hiragana→katakana)")))
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kaq")
+      (nskk-e2e-assert-buffer "▽かん" "Kaq must produce かん (q=ん in AZIK)")))
 
   (nskk-it "Sq: q fires sq→さい as first char after henkan start (preedit-pending state)"
     ;; Regression: S → ▽ (preedit-pending, romaji="s"); q was self-inserted
@@ -814,13 +814,23 @@ This ensures:
       (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Kq")
       (nskk-e2e-assert-buffer "▽かい" "Kq must produce かい via AZIK diphthong rule")))
 
-  (nskk-it "A:q → アー (AZIK colon ー then q converts to katakana)"
+  (nskk-it "A:q → ▽あーん (AZIK colon ー then q inserts ん)"
     ;; A → ▽あ; : → AZIK plain-vowel path → ー appended → ▽あー;
-    ;; q → romaji buffer empty → convert-script → commits アー.
+    ;; q → romaji buffer empty → AZIK q inserts ん → ▽あーん.
+    ;; In AZIK, katakana conversion uses toggle key (@/[), not q.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "A:q")
-      (nskk-e2e-assert-henkan-phase nil "▽ must end after A:q")
-      (nskk-e2e-assert-buffer "アー" "A:q must commit アー"))))
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after A:q")
+      (nskk-e2e-assert-buffer "▽あーん" "A:q must produce あーん (q=ん in AZIK)")))
+
+  (nskk-it "Dezqq: double-vowel then standalone q inserts ん in ▽ preedit"
+    ;; D → ▽ d pending; e → de→で; z → z pending; q → zq→ざい (AZIK);
+    ;; q → romaji empty → AZIK q inserts ん → ▽でざいん.
+    ;; Regression: second q was triggering katakana conversion (デザイ).
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Dezqq")
+      (nskk-e2e-assert-henkan-phase 'on "▽ must remain active after Dezqq")
+      (nskk-e2e-assert-buffer "▽でざいん" "Dezqq must produce でざいん (second q=ん)"))))
 
 ;;;;
 ;;;; Section 13: AZIK Okurigana with AZIK Kana Shortcuts — Double-* Regression

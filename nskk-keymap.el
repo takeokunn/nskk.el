@@ -525,11 +525,8 @@ Falls through to `self-insert-command' when not in a Japanese input mode."
 (defun/done nskk-handle-q ()
   "Handle q key: convert preedit kana to opposite script, or toggle mode.
 In ▽ preedit phase (hiragana/katakana Japanese mode):
-  - AZIK mode + pending romaji: delegates to `nskk-handle-q-key' so that
-    AZIK romaji rules take priority (e.g. \"tq\" → \"たい\").
-  - AZIK mode + empty romaji: converts the accumulated kana to the opposite
-    script via `nskk-henkan-kakutei-convert-script' (same as standard mode).
-    Enables e.g. A:q → アー (type kana with ー, then q to commit as katakana).
+  - AZIK mode: always delegates to `nskk-handle-q-key' so that AZIK romaji
+    rules take priority (e.g. \"tq\" → \"たい\", standalone q → ん).
   - Standard mode: converts the accumulated kana to the opposite script via
     `nskk-henkan-kakutei-convert-script' and commits without changing the
     input mode.
@@ -548,7 +545,8 @@ Dispatched via `q-key-dispatch/3' Prolog table."
                   `(q-key-dispatch ,cls ,style \?a) '\?a)))
     (pcase action
       ('fire-romaji     (if (and (eq cls 'preedit-japanese)
-                                 (string-empty-p nskk--romaji-buffer))
+                                 (string-empty-p nskk--romaji-buffer)
+                                 (not (eq style 'azik)))
                             (nskk-henkan-kakutei-convert-script)
                           (nskk-handle-q-key)))
       ('convert-script  (nskk-henkan-kakutei-convert-script))
