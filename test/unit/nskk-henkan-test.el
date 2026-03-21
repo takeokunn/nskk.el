@@ -4199,7 +4199,9 @@
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        ;; Register test entries in user dictionary
+        ;; Initialize trie index and register test entries in user dictionary
+        (nskk-prolog-retract-all 'user-dict-entry 2)
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
         (nskk-prolog-assert '((user-dict-entry "かんじ" ("漢字"))))
         (nskk-prolog-assert '((user-dict-entry "かんが" ("感が"))))
         (nskk-prolog-assert '((user-dict-entry "きょう" ("今日"))))
