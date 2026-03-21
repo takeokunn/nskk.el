@@ -137,6 +137,9 @@
 (declare-function nskk-state-get-mode "nskk-state")
 (declare-function nskk-kana-string-katakana-to-hiragana "nskk-kana")
 (declare-function nskk-kana-hankaku-to-zenkaku "nskk-kana")
+(declare-function nskk-study-after-kakutei "nskk-study")
+(declare-function nskk-study-reorder "nskk-study")
+(declare-function nskk-search-learn "nskk-search")
 (declare-function nskk-prolog-trie-prefix-search "nskk-prolog")
 (declare-function nskk-converter-convert/k "nskk-converter" (romaji on-match on-incomplete on-fail))
 
@@ -1090,7 +1093,12 @@ in place and will immediately follow the inserted candidate."
                       :mode mode
                       :registered-p nil
                       :registered-reading nil
-                      :registered-word nil))))
+                      :registered-word nil))
+          ;; Study + frequency learning hooks.
+          (when reading
+            (when (fboundp 'nskk-study-after-kakutei)
+              (nskk-study-after-kakutei reading candidate index))
+            (nskk-search-learn reading candidate))))
       ;; Clear all conversion state (includes candidate list dismissal).
       (nskk-henkan-do-reset)
       ;; Restore abbrev mode if applicable.
@@ -1318,17 +1326,20 @@ TEXT-START is the position after the ▽ marker, or nil (falls back to START).
 PREEDIT-END is the buffer position before the okurigana kana was inserted.
 CANDIDATES is the non-nil list of candidate strings.
 QUERY is the dict lookup key stored in okurigana-query metadata."
-  (nskk--remove-okuri-marker (or text-start start) preedit-end)
-  (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
-  (let ((okuri-kana-start (- preedit-end (length nskk-okurigana-marker))))
-    (nskk--update-overlay (+ start (length nskk-henkan-active-marker))
-                          okuri-kana-start (car candidates)))
-  (nskk-with-current-state
-    (nskk-set-active-candidates candidates)
-    (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
-    (nskk-state-put-metadata nskk-current-state 'okurigana-query query)
-    (nskk-state-put-metadata nskk-current-state 'henkan-reading query))
-  (setq nskk--henkan-count 1))
+  (let ((candidates (if (fboundp 'nskk-study-reorder)
+                        (nskk-study-reorder query candidates)
+                      candidates)))
+    (nskk--remove-okuri-marker (or text-start start) preedit-end)
+    (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
+    (let ((okuri-kana-start (- preedit-end (length nskk-okurigana-marker))))
+      (nskk--update-overlay (+ start (length nskk-henkan-active-marker))
+                            okuri-kana-start (car candidates)))
+    (nskk-with-current-state
+      (nskk-set-active-candidates candidates)
+      (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+      (nskk-state-put-metadata nskk-current-state 'okurigana-query query)
+      (nskk-state-put-metadata nskk-current-state 'henkan-reading query))
+    (setq nskk--henkan-count 1)))
 
 (defun nskk--build-okuri-registration-reading (text-start preedit-end query)
   "Build the display-format reading string for okurigana dict registration.
@@ -1395,9 +1406,12 @@ ON-FOUND is called with the final candidates list.
 
 Side effects: replaces ▽ with ▼ in the buffer, updates the conversion
 overlay, sets `nskk--henkan-count' to 1, and stores candidates in state."
-  (let ((candidates (if (and raw-candidates numeric-info)
-                        (nskk--numeric-process-candidates raw-candidates (car numeric-info))
-                      raw-candidates)))
+  (let* ((base-candidates (if (and raw-candidates numeric-info)
+                              (nskk--numeric-process-candidates raw-candidates (car numeric-info))
+                            raw-candidates))
+         (candidates (if (fboundp 'nskk-study-reorder)
+                         (nskk-study-reorder lookup-text base-candidates)
+                       base-candidates)))
     (nskk-debug-log "[HENKAN] candidates-found: key=%s count=%d" lookup-text (length candidates))
     (setq nskk--henkan-count 1)
     (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
@@ -1559,7 +1573,11 @@ The cleanup form guarantees two invariants on exit:
                         (nskk--registration-prompt nskk--registration-depth reading))))
             (unless (string-empty-p entry)
               (setq result entry)
-              (nskk-dict-register-word reading entry)))
+              (nskk-dict-register-word reading entry)
+              ;; Study + frequency learning for newly registered words.
+              (when (fboundp 'nskk-study-after-kakutei)
+                (nskk-study-after-kakutei reading entry))
+              (nskk-search-learn reading entry)))
         (cl-decf nskk--registration-depth)
         ;; Hide inline badge on exit
         (when (fboundp 'nskk-inline-hide)
