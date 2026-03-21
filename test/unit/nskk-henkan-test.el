@@ -3959,6 +3959,211 @@
   (nskk-it "returns empty list for empty candidate list"
     (should (equal (nskk--numeric-process-candidates '() "42") '()))))
 
+;;;
+;;; Section: undo-kakutei
+;;;
+
+(nskk-describe "nskk--last-kakutei-record"
+  (nskk-it "is nil by default"
+    (with-temp-buffer
+      (should (null nskk--last-kakutei-record))))
+
+  (nskk-it "can be set and read as a plist"
+    (with-temp-buffer
+      (setq nskk--last-kakutei-record
+            (list :reading "かんじ" :candidates '("漢字")
+                  :index 0 :committed-text "漢字"
+                  :buffer-start 1 :buffer-end 3
+                  :mode 'hiragana :registered-p nil
+                  :registered-reading nil
+                  :registered-word nil))
+      (should (equal "かんじ"
+                     (plist-get nskk--last-kakutei-record
+                                :reading)))
+      (should (equal '("漢字")
+                     (plist-get nskk--last-kakutei-record
+                                :candidates))))))
+
+(nskk-describe "nskk--invalidate-undo-kakutei"
+  (nskk-it "clears a non-nil record"
+    (with-temp-buffer
+      (setq nskk--last-kakutei-record '(:reading "x"))
+      (nskk--invalidate-undo-kakutei)
+      (should (null nskk--last-kakutei-record))))
+
+  (nskk-it "is a no-op when record is already nil"
+    (with-temp-buffer
+      (setq nskk--last-kakutei-record nil)
+      (nskk--invalidate-undo-kakutei)
+      (should (null nskk--last-kakutei-record)))))
+
+(nskk-describe "nskk-undo-kakutei"
+  (nskk-it "falls through to undo when no record exists"
+    (with-temp-buffer
+      (setq nskk--last-kakutei-record nil)
+      ;; undo with no undo info signals user-error
+      (should-error (nskk-undo-kakutei) :type 'user-error)))
+
+  (nskk-it "restores buffer text and sets active phase"
+    (with-temp-buffer
+      (setq-local nskk-current-state (nskk-state-create 'hiragana))
+      (insert "漢字")
+      (setq nskk--last-kakutei-record
+            (list :reading "かんじ"
+                  :candidates '("漢字" "感じ")
+                  :index 0
+                  :committed-text "漢字"
+                  :buffer-start 1
+                  :buffer-end 3
+                  :mode 'hiragana
+                  :registered-p nil
+                  :registered-reading nil
+                  :registered-word nil))
+      (nskk-undo-kakutei)
+      ;; Record should be invalidated
+      (should (null nskk--last-kakutei-record))
+      ;; Phase should be active (▼)
+      (should (eq (nskk-state-henkan-phase nskk-current-state)
+                  'active))
+      ;; Candidates restored
+      (should (equal '("漢字" "感じ")
+                     (nskk-state-candidates nskk-current-state)))
+      ;; Index restored
+      (should (= 0 (nskk-state-current-index nskk-current-state)))
+      ;; Buffer should contain ▼ + candidate
+      (should (string-match-p "▼漢字"
+                              (buffer-substring-no-properties
+                               (point-min) (point-max))))))
+
+  (nskk-it "does not revert when buffer text has changed"
+    (with-temp-buffer
+      (setq-local nskk-current-state (nskk-state-create 'hiragana))
+      (insert "modified")
+      (setq nskk--last-kakutei-record
+            (list :reading "かんじ"
+                  :candidates '("漢字")
+                  :index 0
+                  :committed-text "漢字"
+                  :buffer-start 1
+                  :buffer-end 3
+                  :mode 'hiragana
+                  :registered-p nil
+                  :registered-reading nil
+                  :registered-word nil))
+      (nskk-undo-kakutei)
+      ;; Record invalidated even on mismatch
+      (should (null nskk--last-kakutei-record))
+      ;; Buffer should be unchanged (mismatch guard)
+      (should (equal "modified"
+                     (buffer-substring-no-properties
+                      (point-min) (point-max))))))
+
+  (nskk-it "unregisters a word when registered-p is set"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil))
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-dict-register-word "てすと" "テスト")
+        (with-temp-buffer
+          (setq-local nskk-current-state
+                      (nskk-state-create 'hiragana))
+          (insert "テスト")
+          (setq nskk--last-kakutei-record
+                (list :reading "てすと"
+                      :candidates '("テスト")
+                      :index 0
+                      :committed-text "テスト"
+                      :buffer-start 1
+                      :buffer-end 4
+                      :mode 'hiragana
+                      :registered-p t
+                      :registered-reading "てすと"
+                      :registered-word "テスト"))
+          (nskk-undo-kakutei)
+          ;; Word should be unregistered
+          (should (null (nskk-dict-lookup "てすと"))))))))
+
+;;;
+;;; nskk-purge-from-jisyo
+;;;
+
+(nskk-describe "nskk-purge-from-jisyo"
+  (nskk-it "is defined and interactive"
+    (should (fboundp 'nskk-purge-from-jisyo))
+    (should (commandp 'nskk-purge-from-jisyo)))
+
+  (nskk-it "does nothing when not in converting mode"
+    (with-temp-buffer
+      (let ((unregister-called nil))
+        (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                          (nskk-dict-unregister-word
+                           (lambda (_r _c) (setq unregister-called t))))
+          (nskk-purge-from-jisyo)
+          (should-not unregister-called)))))
+
+  (nskk-it "does nothing when user answers no to confirmation"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (unregister-called nil))
+        (nskk-state-set-candidates nskk-current-state '("候補A" "候補B"))
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-state-put-metadata nskk-current-state 'henkan-reading "よみ")
+        (nskk-with-mocks ((nskk-converting-p (lambda () t))
+                          (yes-or-no-p (lambda (_prompt) nil))
+                          (nskk-dict-unregister-word
+                           (lambda (_r _c) (setq unregister-called t))))
+          (nskk-purge-from-jisyo)
+          (should-not unregister-called)))))
+
+  (nskk-it "purges candidate and updates state when multiple remain"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (unregistered-reading nil)
+            (unregistered-candidate nil)
+            (overlay-updated nil))
+        (nskk-state-set-candidates nskk-current-state '("候補A" "候補B" "候補C"))
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-state-put-metadata nskk-current-state 'henkan-reading "よみ")
+        (nskk-with-mocks ((nskk-converting-p (lambda () t))
+                          (yes-or-no-p (lambda (_prompt) t))
+                          (nskk-dict-unregister-word
+                           (lambda (r c)
+                             (setq unregistered-reading r
+                                   unregistered-candidate c)))
+                          (nskk--update-overlay
+                           (lambda (_start _end _text)
+                             (setq overlay-updated t)))
+                          (nskk--get-conversion-start (lambda () 1))
+                          (overlay-end (lambda (_ov) 10)))
+          (let ((nskk--conversion-overlay (make-overlay 1 1))
+                (nskk-henkan-active-marker "▼"))
+            (nskk-purge-from-jisyo)
+            ;; Should have called unregister with correct args
+            (should (equal unregistered-reading "よみ"))
+            (should (equal unregistered-candidate "候補A"))
+            ;; Candidates should be updated (候補A removed)
+            (should (equal (nskk-state-candidates nskk-current-state)
+                           '("候補B" "候補C")))
+            ;; Index should be adjusted
+            (should (= (nskk-state-current-index nskk-current-state) 0))
+            ;; Overlay should be updated
+            (should overlay-updated))))))
+
+  (nskk-it "cancels conversion when purging the last candidate"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (cancel-called nil))
+        (nskk-state-set-candidates nskk-current-state '("唯一"))
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-state-put-metadata nskk-current-state 'henkan-reading "ゆいいつ")
+        (nskk-with-mocks ((nskk-converting-p (lambda () t))
+                          (yes-or-no-p (lambda (_prompt) t))
+                          (nskk-dict-unregister-word #'ignore)
+                          (nskk-cancel-conversion-to-reading
+                           (lambda () (setq cancel-called t))))
+          (nskk-purge-from-jisyo)
+          (should cancel-called))))))
+
 (provide 'nskk-henkan-test)
 
 ;;; nskk-henkan-test.el ends here

@@ -163,6 +163,24 @@ Only used when `nskk-dict-system-dictionary-files' is nil."
   (not (user-dict-entry \?reading \?_))
   (assertz (user-dict-entry \?reading (\?word))))
 
+;; Dictionary unregistration rule using retract/assertz builtins
+;; Clause 1: word is the sole candidate, retract entire entry
+(nskk-prolog-<- (dict-unregister \?reading \?word)
+  (user-dict-entry \?reading (\?word))
+  (retract (user-dict-entry \?reading (\?word))))
+;; Clause 2: remove word from multi-candidate entry (keep remaining)
+(nskk-prolog-<- (dict-unregister \?reading \?word)
+  (user-dict-entry \?reading \?existing)
+  (member \?word \?existing)
+  (retract (user-dict-entry \?reading \?existing))
+  (remove-element \?word \?existing \?rest)
+  (assertz (user-dict-entry \?reading \?rest)))
+
+;; List element removal helper (needed for dict-unregister rule)
+(nskk-prolog-<- (remove-element \?x (\?x . \?rest) \?rest))
+(nskk-prolog-<- (remove-element \?x (\?y . \?tail) (\?y . \?result))
+  (remove-element \?x \?tail \?result))
+
 ;;; Section 3: Data structures
 
 (cl-defstruct nskk-dict-entry
@@ -662,6 +680,29 @@ are empty/invalid or when the Prolog registration query fails."
   (if (and (stringp reading) (not (string-empty-p reading))
            (stringp word)   (not (string-empty-p word))
            (nskk--dict-register-impl reading word))
+      (succeed t)
+    (fail)))
+
+(defun nskk--dict-unregister-impl (reading word)
+  "Attempt to unregister WORD for READING from the Prolog user dictionary.
+Returns t on success (Prolog dict-unregister/2 succeeded), nil on failure."
+  (when (and nskk--user-dict-index
+             (nskk-prolog-holds-p `(dict-unregister ,reading ,word)))
+    (setq nskk-dict-modified t)
+    (nskk--dict-run-update-hook)
+    (message "NSKK: Unregistered %s -> %s" reading word)
+    t))
+
+;;;###autoload
+(defun/k nskk-dict-unregister-word (reading word)
+  "Unregister WORD as a conversion candidate for READING from user dictionary.
+Uses the Prolog dict-unregister rule which removes the word from an
+existing entry (or retracts the entire entry if it was the sole candidate).
+Returns non-nil (t) on success; calls on-not-found when READING or WORD
+are empty/invalid or when the Prolog unregistration query fails."
+  (if (and (stringp reading) (not (string-empty-p reading))
+           (stringp word)   (not (string-empty-p word))
+           (nskk--dict-unregister-impl reading word))
       (succeed t)
     (fail)))
 

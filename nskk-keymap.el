@@ -78,6 +78,7 @@
 ;; Manually defined handler (AZIK-aware Prolog dispatch):
 ;; - `nskk-handle-l'       -- candidate selection, romaji rule, or ASCII mode switch
 ;;                            (via nskk--handle-l-action / l-key-action/3 dispatch)
+;; - `nskk-handle-upper-x' -- purge candidate from dictionary (X key)
 ;;
 ;; Prolog-dispatched handlers (via `nskk-define-key-handler'):
 ;; - `nskk-handle-x'       -- previous candidate
@@ -129,6 +130,7 @@
 (declare-function nskk-henkan-kakutei "nskk-henkan")
 (declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
+(declare-function nskk-purge-from-jisyo "nskk-henkan")
 (defvar nskk-henkan-on-marker)
 
 ;;;; Prolog Key-Action Rules
@@ -607,6 +609,16 @@ In ASCII mode or when NSKK state is inactive, fall through to
     (nskk--with-japanese-mode/k
      (lambda (_) (nskk-set-mode-abbrev))
      (lambda () (self-insert-command 1)))))
+
+(defun nskk-handle-upper-x ()
+  "Handle X key: purge current candidate from user dictionary.
+In ▼ (conversion) mode, calls `nskk-purge-from-jisyo' to remove the
+current candidate after user confirmation.
+Otherwise delegates to `nskk-self-insert'."
+  (interactive)
+  (if (nskk-converting-p)
+      (nskk-purge-from-jisyo)
+    (nskk-self-insert 1)))
 
 (nskk-define-key-handler x
   "Handle x key: select previous candidate.

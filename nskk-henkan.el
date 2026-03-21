@@ -112,6 +112,8 @@
 (declare-function nskk-state-previous-mode "nskk-state")
 (declare-function nskk-dict-register-word "nskk-dictionary")
 (declare-function nskk-dict-register-word/k "nskk-dictionary")
+(declare-function nskk-dict-unregister-word "nskk-dictionary")
+(declare-function nskk-dict-unregister-word/k "nskk-dictionary")
 (declare-function nskk-dict-lookup "nskk-dictionary")
 (declare-function nskk-dict-lookup/k "nskk-dictionary")
 (declare-function nskk-search-prefix/k "nskk-search")
@@ -153,6 +155,18 @@
 
 (defvar-local nskk--dcomp-index 0
   "Current cycling index into `nskk--dcomp-candidates'.")
+
+;;;; Undo-Kakutei State
+
+(defvar-local nskk--last-kakutei-record nil
+  "Undo record for the most recent kakutei, or nil.
+A plist with keys: :reading, :candidates, :index,
+:committed-text, :buffer-start, :buffer-end, :mode,
+:registered-p, :registered-reading, :registered-word.
+Set by `nskk-commit-current' and
+`nskk--insert-registered-and-reset'.
+Invalidated by `nskk--post-command-handler' when any
+subsequent non-undo command is executed.")
 
 ;;;; Conversion State Macros
 
@@ -667,6 +681,119 @@ Used by `nskk-handle-q' / `nskk-toggle-japanese-mode' in ▽ preedit."
   (nskk-with-current-state
     (nskk-state-set-henkan-phase nskk-current-state nil)))
 
+;;;; Undo-Kakutei
+
+;;;###autoload
+(defun nskk-undo-kakutei ()
+  "Undo the most recent kakutei (確定) operation.
+Reverts the committed text in the buffer, restores ▼ mode with
+the original candidates, and if the kakutei involved a dictionary
+registration, unregisters the word from the user dictionary.
+Only valid immediately after a kakutei; any intervening input
+invalidates the undo record.  When no undo record exists, falls
+through to `undo'."
+  (interactive)
+  (let ((record nskk--last-kakutei-record))
+    (if (null record)
+        (undo)
+      (let ((reading        (plist-get record :reading))
+            (candidates     (plist-get record :candidates))
+            (index          (plist-get record :index))
+            (committed-text (plist-get record :committed-text))
+            (buf-start      (plist-get record :buffer-start))
+            (buf-end        (plist-get record :buffer-end))
+            (registered-p   (plist-get record :registered-p))
+            (reg-reading    (plist-get record :registered-reading))
+            (reg-word       (plist-get record :registered-word)))
+        ;; Invalidate immediately to prevent double-undo.
+        (setq nskk--last-kakutei-record nil)
+        ;; Verify buffer text matches the committed text.
+        (if (and buf-start buf-end (<= buf-end (point-max))
+                 (string= committed-text
+                          (buffer-substring-no-properties
+                           buf-start buf-end)))
+            (progn
+              ;; Unregister from user dict if registration kakutei.
+              (when (and registered-p reg-reading reg-word)
+                (nskk-dict-unregister-word reg-reading reg-word))
+              ;; Replace committed text with ▼ + candidate.
+              (delete-region buf-start buf-end)
+              (goto-char buf-start)
+              (insert nskk-henkan-active-marker)
+              (let ((candidate (nth index candidates)))
+                (when candidate
+                  (insert (substring-no-properties candidate))))
+              ;; Set up conversion overlay.
+              (let ((ov-start (+ buf-start
+                                 (length nskk-henkan-active-marker)))
+                    (ov-end   (point)))
+                (nskk--set-conversion-start-marker buf-start)
+                (nskk--update-overlay
+                 ov-start ov-end (nth index candidates)))
+              ;; Restore conversion state.
+              ;; Use force-henkan-phase: nil → active is not in the
+              ;; normal transition graph, but is safe for undo restore.
+              (nskk-with-current-state
+                (nskk-state-set-candidates
+                 nskk-current-state candidates)
+                (setf (nskk-state-current-index
+                       nskk-current-state) index)
+                (nskk-state-force-henkan-phase
+                 nskk-current-state 'active)
+                (nskk-state-put-metadata
+                 nskk-current-state
+                 'henkan-reading reading)))
+          (message "NSKK: Cannot undo kakutei -- buffer has changed"))))))
+
+(defun nskk--invalidate-undo-kakutei ()
+  "Clear `nskk--last-kakutei-record' to invalidate undo.
+Called from `nskk--post-command-handler' when any non-undo
+command runs."
+  (when nskk--last-kakutei-record
+    (setq nskk--last-kakutei-record nil)))
+
+;;;; Purge from Dictionary
+
+;;;###autoload
+(defun nskk-purge-from-jisyo ()
+  "Purge the current candidate from the user dictionary.
+Only valid during ▼ (active conversion) mode.  Prompts for
+confirmation before removing the candidate.  After purging,
+if candidates remain, shows the next one; otherwise rolls
+back to ▽ (preedit) mode."
+  (interactive)
+  (when (and (nskk-converting-p)
+             (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (let* ((candidates (nskk-state-candidates nskk-current-state))
+           (index      (nskk-state-current-index nskk-current-state))
+           (candidate  (nth index candidates))
+           (reading    (nskk-state-get-metadata
+                        nskk-current-state 'henkan-reading)))
+      (when (and candidate reading
+                 (yes-or-no-p
+                  (format "Really purge \"%s\" (%s)? "
+                          candidate reading)))
+        (nskk-dict-unregister-word reading candidate)
+        (let ((remaining (cl-remove candidate candidates
+                                    :test #'equal :count 1)))
+          (if remaining
+              ;; Show next candidate from remaining list.
+              (let ((new-idx (min index
+                                  (1- (length remaining)))))
+                (nskk-state-set-candidates
+                 nskk-current-state remaining)
+                (setf (nskk-state-current-index
+                       nskk-current-state) new-idx)
+                (let ((new-cand (nth new-idx remaining)))
+                  (nskk--update-overlay
+                   (+ (nskk--get-conversion-start)
+                      (length nskk-henkan-active-marker))
+                   (overlay-end nskk--conversion-overlay)
+                   new-cand)))
+            ;; No candidates left: rollback to preedit.
+            (nskk-cancel-conversion-to-reading)))))))
+
 ;;;; Conversion Control
 
 ;;;###autoload
@@ -927,16 +1054,34 @@ in place and will immediately follow the inserted candidate."
       ;; Delete overlay before buffer modification to avoid stale display.
       (nskk-delete-overlay nskk--conversion-overlay)
       (when (and start candidate)
-        ;; Delete from start to end: covers reading kana under the overlay
-        ;; AND any okurigana kana between overlay-end and point.
-        ;; Re-insert okuri-kana explicitly so point ends after it.
-        (delete-region start end)
-        (goto-char start)
-        ;; Strip text properties (e.g. nskk-no-learn from built-in program dict
-        ;; handlers) before inserting into the buffer.
-        (insert (substring-no-properties candidate))
-        (when okuri-kana
-          (insert okuri-kana)))
+        ;; Capture undo record BEFORE modifying the buffer.
+        (let ((reading (nskk-state-get-metadata nskk-current-state 'henkan-reading))
+              (mode    (nskk-state-mode nskk-current-state))
+              (committed (substring-no-properties candidate))
+              (committed-with-okuri
+               (concat (substring-no-properties candidate) (or okuri-kana ""))))
+          ;; Delete from start to end: covers reading kana under the overlay
+          ;; AND any okurigana kana between overlay-end and point.
+          ;; Re-insert okuri-kana explicitly so point ends after it.
+          (delete-region start end)
+          (goto-char start)
+          ;; Strip text properties (e.g. nskk-no-learn from built-in program dict
+          ;; handlers) before inserting into the buffer.
+          (insert committed)
+          (when okuri-kana
+            (insert okuri-kana))
+          ;; Store undo record for nskk-undo-kakutei.
+          (setq nskk--last-kakutei-record
+                (list :reading reading
+                      :candidates candidates
+                      :index index
+                      :committed-text committed-with-okuri
+                      :buffer-start start
+                      :buffer-end (point)
+                      :mode mode
+                      :registered-p nil
+                      :registered-reading nil
+                      :registered-word nil))))
       ;; Clear all conversion state (includes candidate list dismissal).
       (nskk-henkan-do-reset)
       (succeed candidate))))
@@ -1170,7 +1315,8 @@ QUERY is the dict lookup key stored in okurigana-query metadata."
   (nskk-with-current-state
     (nskk-set-active-candidates candidates)
     (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
-    (nskk-state-put-metadata nskk-current-state 'okurigana-query query))
+    (nskk-state-put-metadata nskk-current-state 'okurigana-query query)
+    (nskk-state-put-metadata nskk-current-state 'henkan-reading query))
   (setq nskk--henkan-count 1))
 
 (defun nskk--build-okuri-registration-reading (text-start preedit-end query)
@@ -1212,7 +1358,7 @@ candidates are found."
               (nskk-start-registration/k reading
                 (lambda (registered)
                   (if registered
-                      (nskk--insert-registered-and-reset registered start on-register)
+                      (nskk--insert-registered-and-reset registered start on-register reading)
                     (funcall on-not-found)))
                 #'ignore)))))
       on-not-found)))
@@ -1246,7 +1392,8 @@ overlay, sets `nskk--henkan-count' to 1, and stores candidates in state."
     (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
     (nskk--update-overlay (+ start (length nskk-henkan-active-marker)) end (car candidates))
     (nskk-with-current-state
-      (nskk-set-active-candidates candidates))
+      (nskk-set-active-candidates candidates)
+      (nskk-state-put-metadata nskk-current-state 'henkan-reading lookup-text))
     (funcall on-found candidates)))
 
 (defun nskk--start-conv-register (text start _end on-not-found on-register)
@@ -1259,16 +1406,33 @@ ON-REGISTER is called (no args) after a word is successfully registered."
   (nskk-start-registration/k text
     (lambda (registered)
       (if registered
-          (nskk--insert-registered-and-reset registered start on-register)
+          (nskk--insert-registered-and-reset registered start on-register text)
         (funcall on-not-found)))
     #'ignore))
 
-(defun nskk--insert-registered-and-reset (registered start on-done)
+(defun nskk--insert-registered-and-reset (registered start on-done &optional reading)
   "Insert REGISTERED word at START, reset henkan state, and call ON-DONE.
-Shared by all registration callbacks in the conversion pipeline."
+Shared by all registration callbacks in the conversion pipeline.
+Optional READING is the original reading used for registration; when
+non-nil, an undo record is stored so `nskk-undo-kakutei' can revert
+and unregister the word."
   (delete-region start (point))
   (goto-char start)
   (insert registered)
+  ;; Store undo record for registration undo.
+  (when reading
+    (let ((mode (nskk-with-current-state (nskk-state-mode nskk-current-state))))
+      (setq nskk--last-kakutei-record
+            (list :reading reading
+                  :candidates (list registered)
+                  :index 0
+                  :committed-text registered
+                  :buffer-start start
+                  :buffer-end (point)
+                  :mode (or mode 'hiragana)
+                  :registered-p t
+                  :registered-reading reading
+                  :registered-word registered))))
   (nskk-henkan-do-reset)
   (when (functionp on-done) (funcall on-done)))
 
@@ -1442,7 +1606,7 @@ If the user cancels, wrap around to the first candidate in list display."
               (if registered
                   (progn
                     (nskk-delete-overlay nskk--conversion-overlay)
-                    (nskk--insert-registered-and-reset registered start (lambda ())))
+                    (nskk--insert-registered-and-reset registered start (lambda ()) reading))
                 ;; Registration cancelled: wrap back to first candidate page.
                 (nskk--wrap-to-first-candidate)))
             #'ignore))

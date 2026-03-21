@@ -33,7 +33,7 @@ No external ELPA packages required.
 | Lexical binding  | All 25 modules use =lexical-binding: t= |
 | Prolog engine    | Conversion rules as facts/queries       |
 | Layer separation | 7 strict layers, zero circular deps     |
-| Test coverage    | 5,000+ unit/integration/E2E tests       |
+| Test coverage    | 5,454+ unit/integration/E2E tests       |
 
 ** DDSKK Compatibility
 
@@ -164,11 +164,13 @@ stateDiagram-v2
 |---------+----------------------+-----------------------------------|
 | =SPC=   | =nskk-handle-space=  | Start conversion / next candidate |
 | =x=     | =nskk-handle-x=      | Previous candidate                |
+| =X=     | =nskk-handle-upper-x=  | Purge candidate from user dictionary |
 | =RET=   | =nskk-handle-return= | Commit candidate + newline        |
 | =C-g=   | =nskk-handle-cancel= | Cancel conversion or preedit      |
 | =a=–=l= | direct select        | Select candidate in list mode     |
 | =C-n=   | =nskk-handle-ctrl-n= | Next candidate OR next line       |
 | =C-p=   | =nskk-handle-ctrl-p= | Prev candidate OR previous line   |
+| =C-/=   | =nskk-undo-kakutei=    | Undo last kakutei (revert commit)    |
 
 *** Cursor Movement (in Conversion Mode)
 
