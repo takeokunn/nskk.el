@@ -121,6 +121,9 @@
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk--clear-conversion-context "nskk-henkan")
+(declare-function nskk--invalidate-undo-kakutei "nskk-henkan")
+(declare-function nskk-undo-kakutei "nskk-henkan")
+(declare-function nskk-purge-from-jisyo "nskk-henkan")
 (declare-function nskk--commit-by-phase "nskk-keymap")
 
 (defvar nskk-mode-off-hook nil
@@ -160,7 +163,11 @@
   ;; Sticky shift, dynamic completion, numeric input
   ";"       #'nskk-handle-semicolon-key
   "TAB"     #'nskk-handle-tab
-  "#"       #'nskk-handle-hash)
+  "#"       #'nskk-handle-hash
+  ;; Undo-kakutei
+  "C-/"     #'nskk-undo-kakutei
+  ;; Purge candidate from dictionary (DDSKK skk-purge-from-jisyo)
+  "X"       #'nskk-handle-upper-x)
 
 ;;;###autoload
 (define-minor-mode nskk-mode
@@ -330,6 +337,11 @@ relevant phase is already nil and both guards are no-ops."
                (/= (point) nskk--point-before-command)
                (not (memq this-command nskk--bound-commands)))
       (nskk-henkan-kakutei))
+    ;; Invalidate undo-kakutei record when any non-undo command runs.
+    (when (and (not (eq this-command 'nskk-undo-kakutei))
+               (boundp 'nskk--last-kakutei-record)
+               nskk--last-kakutei-record)
+      (nskk--invalidate-undo-kakutei))
     (nskk-modeline-update)))
 
 ;; User commands

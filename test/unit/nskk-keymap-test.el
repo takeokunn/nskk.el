@@ -399,6 +399,31 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
            (should (string-suffix-p "L" (buffer-string)))))))))
 
 ;;;
+;;; nskk-handle-upper-x behavior
+;;;
+
+(nskk-describe "nskk-handle-upper-x behavior"
+  (nskk-it "is defined and interactive"
+    (should (fboundp 'nskk-handle-upper-x))
+    (should (commandp 'nskk-handle-upper-x)))
+
+  (nskk-it "calls nskk-purge-from-jisyo when converting"
+    (let ((purge-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () t))
+                        (nskk-purge-from-jisyo
+                         (lambda () (setq purge-called t))))
+        (nskk-handle-upper-x)
+        (should purge-called))))
+
+  (nskk-it "calls nskk-self-insert when not converting"
+    (let ((self-insert-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk-self-insert
+                         (lambda (_n) (setq self-insert-called t))))
+        (nskk-handle-upper-x)
+        (should self-insert-called)))))
+
+;;;
 ;;; nskk-handle-slash behavior
 ;;;
 

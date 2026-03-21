@@ -304,6 +304,82 @@
             (should nskk-dict-modified)))))))
 
 
+;;;
+;;; Group 4: Dictionary Unregistration (nskk-dict-unregister-word)
+;;;
+
+(nskk-describe "dictionary unregistration"
+
+  (nskk-it "unregistering a sole candidate removes the entire entry"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil))
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-given (nskk-dict-register-word "てすと" "テスト"))
+        (nskk-when  (nskk-dict-unregister-word "てすと" "テスト"))
+        (nskk-then  (should (null (nskk-dict-lookup "てすと")))))))
+
+  (nskk-it "unregistering one of multiple candidates keeps others"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil))
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-given
+          (nskk-prolog-assert
+           '((user-dict-entry "ふくすう" ("AAA" "BBB" "CCC")))))
+        (nskk-when  (nskk-dict-unregister-word "ふくすう" "BBB"))
+        (nskk-then
+          (let ((candidates (nskk-prolog-query-value
+                             '(user-dict-entry "ふくすう" \?c) '\?c)))
+            (should (member "AAA" candidates))
+            (should (member "CCC" candidates))
+            (should-not (member "BBB" candidates)))))))
+
+  (nskk-it "unregistering a word not in the entry is a no-op"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil))
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-given
+          (nskk-prolog-assert
+           '((user-dict-entry "さくら" ("桜")))))
+        (nskk-when
+          (should-not (nskk-dict-unregister-word "さくら" "花")))
+        (nskk-then
+          (should (member "桜" (nskk-dict-lookup "さくら")))))))
+
+  (nskk-it "unregistering from a nonexistent reading is a no-op"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil))
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-when
+          (should-not
+           (nskk-dict-unregister-word "ほげ" "ホゲ")))
+        (nskk-then
+          (should (null nskk-dict-modified))))))
+
+  (nskk-it "nskk-dict-modified is set to t after unregistration"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil))
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-given
+          (nskk-dict-register-word "にほん" "日本")
+          (setq nskk-dict-modified nil))
+        (nskk-when  (nskk-dict-unregister-word "にほん" "日本"))
+        (nskk-then  (should (eq nskk-dict-modified t))))))
+
+  (nskk-it "register then unregister is a roundtrip"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil))
+        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+        (nskk-given (nskk-dict-register-word "やま" "山"))
+        (nskk-when  (nskk-dict-unregister-word "やま" "山"))
+        (nskk-then  (should (null (nskk-dict-lookup "やま"))))))))
+
+
 (provide 'nskk-dict-registration-integration-test)
 
 ;;; nskk-dict-registration-integration-test.el ends here
