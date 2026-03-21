@@ -479,9 +479,9 @@
 ;;;
 ;;; Bug: Nao+teNq produced 直ってん instead of 直ってない.
 ;;;
-;;; Root cause: In ▼ converting state with okurigana-in-progress metadata set,
-;;; `nskk--implicit-kakutei-needed-p' returns nil, so uppercase N accumulates
-;;; "n" in nskk--romaji-buffer without triggering implicit kakutei.  When q
+;;; Root cause (pre-fix): In ▼ converting state with okurigana-in-progress
+;;; metadata set, the old combined `nskk--implicit-kakutei-needed-p' returned
+;;; nil for uppercase N, so it accumulated "n" in nskk--romaji-buffer.  When q
 ;;; arrives, the mode-switch preaction (nskk-commit-current) calls
 ;;; nskk-henkan-do-reset which wipes the romaji buffer.  nskk-handle-q-key
 ;;; then sees an empty buffer → buf-state=empty → insert-n action → inserts ん.
@@ -499,8 +499,8 @@
     ;; default dict has ("たべr" . ("食" "喰"))
     ;; TabeRu: Ta → preedit ▽た, be → ▽たべ, R → okuri consonant r,
     ;;         u → completes okurigana → ▼食 with okurigana-in-progress=t
-    ;; N: implicit kakutei suppressed (okurigana-in-progress=t)
-    ;;    → romaji-buffer = "n"
+    ;; N: uppercase is not okurigana continuation → implicit kakutei fires,
+    ;;    then N starts new preedit → romaji-buffer = "n"
     ;; q: mode-switch arm fires; without the fix, commit wipes romaji-buffer
     ;;    and nskk-handle-q-key sees empty buffer → inserts ん (BUG).
     ;;    With the fix, romaji-buffer is restored to "n" before the call

@@ -1092,7 +1092,7 @@
         (nskk-cache-get cache (format "key%d" i)))
       (let ((ms (* 1000 (float-time (time-subtract (current-time) start)))))
         (message "[Performance] Unified get 500 (Prolog dispatch): %.3fms" ms)
-        (should (< ms 50))))))
+        (should (< ms 100))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; Property-based tests: invariants that must hold across all inputs

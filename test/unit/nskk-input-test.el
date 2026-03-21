@@ -1477,6 +1477,61 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                        nskk-current-state 'okurigana-in-progress)))))))
 
 ;;;
+;;; nskk--okurigana-continuation-p
+;;;
+
+(nskk-describe "nskk--okurigana-continuation-p"
+  (nskk-it "returns non-nil for lowercase a-z when okurigana-in-progress is set"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (should (nskk--okurigana-continuation-p ?a))
+        (should (nskk--okurigana-continuation-p ?m))
+        (should (nskk--okurigana-continuation-p ?z)))))
+
+  (nskk-it "returns nil for uppercase A-Z even when okurigana-in-progress is set"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (should-not (nskk--okurigana-continuation-p ?A))
+        (should-not (nskk--okurigana-continuation-p ?T))
+        (should-not (nskk--okurigana-continuation-p ?Z)))))
+
+  (nskk-it "returns nil for digits when okurigana-in-progress is set"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (should-not (nskk--okurigana-continuation-p ?0))
+        (should-not (nskk--okurigana-continuation-p ?9)))))
+
+  (nskk-it "returns nil for symbols when okurigana-in-progress is set"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (should-not (nskk--okurigana-continuation-p ?\;))
+        (should-not (nskk--okurigana-continuation-p ?.)))))
+
+  (nskk-it "returns nil for any char when okurigana-in-progress is nil"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (should-not (nskk--okurigana-continuation-p ?a))
+        (should-not (nskk--okurigana-continuation-p ?A))
+        (should-not (nskk--okurigana-continuation-p ?1)))))
+
+  (nskk-it "returns nil for non-characterp input"
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (should-not (nskk--okurigana-continuation-p nil))
+        (should-not (nskk--okurigana-continuation-p "a"))))))
+
+;;;
 ;;; nskk--process-kana-result/k
 ;;;
 

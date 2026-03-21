@@ -311,6 +311,41 @@
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "良い天気"))))
 
+  (nskk-it "lowercase after okurigana ▼ continues as okurigana extension"
+    ;; After YoI → ▼良い, lowercase 'a' is okurigana continuation (romaji),
+    ;; NOT implicit kakutei.  The あ is appended after い in ▼ state.
+    (let ((dict '(("よi" . ("良")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "YoI")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "a")
+        ;; Still in ▼ (okurigana continuation)
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-buffer "良いあ"))))
+
+  (nskk-it "digit after okurigana ▼ triggers implicit kakutei"
+    ;; Digits are not romaji — they trigger implicit kakutei even with
+    ;; okurigana-in-progress set.
+    (let ((dict '(("よi" . ("良")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "YoI")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "3")
+        (nskk-e2e-assert-not-converting)
+        (should (string-match-p "良い3" (buffer-string))))))
+
+  (nskk-it "symbol after okurigana ▼ triggers implicit kakutei"
+    ;; Symbols are not romaji — they trigger implicit kakutei even with
+    ;; okurigana-in-progress set.  Use '!' (not bound as a special key).
+    (let ((dict '(("よi" . ("良")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "YoI")
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-type "!")
+        (nskk-e2e-assert-not-converting)
+        (should (string-match-p "良い" (buffer-string))))))
+
   (nskk-it "handles consonant okurigana KaKu followed by vowel okurigana AI"
     (let ((dict '(("かk" . ("書"))
                   ("あi" . ("愛")))))

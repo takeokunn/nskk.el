@@ -410,20 +410,25 @@ In standard mode + non-Japanese mode: self-insert (on-not-found path).
 
 ;;;; Input Processing
 
-(defun nskk--implicit-kakutei-needed-p (char)
-  "Return non-nil when implicit kakutei should fire before inserting CHAR.
-True when converting (▼ active), the candidate list is not showing, and
-either okurigana is not currently being built or CHAR is an uppercase
-ASCII letter starting the next word after an okurigana conversion."
+(defun nskk--okurigana-continuation-p (char)
+  "Return non-nil when CHAR should continue okurigana kana in ▼ state.
+During okurigana conversion, lowercase ASCII letters extend the okurigana
+suffix (e.g., `ru' in KaEru → 変える, `a' in KaTTa → 勝った).
+Uppercase letters start a new word and trigger implicit kakutei instead.
+Non-alphabetic characters (digits, symbols) are not romaji and also
+trigger implicit kakutei."
+  (and (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress)
+       (characterp char)
+       (<= ?a char)
+       (<= char ?z)))
+
+(defun nskk--implicit-kakutei-needed-p ()
+  "Return non-nil when implicit kakutei should fire.
+True when converting (▼ active) and the candidate list is not showing.
+Callers should check `nskk--okurigana-continuation-p' first to avoid
+committing during okurigana kana continuation."
   (and (nskk-converting-p)
-       (not nskk--henkan-candidate-list-active)
-       (let ((okuri-in-progress
-              (nskk-state-get-metadata nskk-current-state
-                                       'okurigana-in-progress)))
-         (or (not okuri-in-progress)
-             (and (characterp char)
-                  (<= ?A char)
-                  (<= char ?Z))))))
+       (not nskk--henkan-candidate-list-active)))
 
 (defun nskk--route-input (char n mode)
   "Route CHAR (with repeat N) based on current input MODE.
@@ -457,7 +462,8 @@ Three-stage pipeline:
     (nskk--try-candidate-selection/k char
       #'ignore
       (lambda ()
-        (when (nskk--implicit-kakutei-needed-p char)
+        (when (and (not (nskk--okurigana-continuation-p char))
+                   (nskk--implicit-kakutei-needed-p))
           (nskk-debug-log "[INPUT] implicit-kakutei: char=%c" char)
           (nskk-commit-current))
         (nskk--route-input char n mode)))))
