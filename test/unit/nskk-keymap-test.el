@@ -1067,7 +1067,176 @@ and configures state."
             (should (= (point) 3))
             (should (equal (buffer-string) "A▽ka"))
             (should-not cancel-called)
-            (should-not delete-called)))))))
+            (should-not delete-called))))))
+
+  (nskk-it "BS clears single-char romaji buffer"
+    (let ((clear-called nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () (point-min)))
+                        (nskk--clear-pending-romaji (lambda () (setq clear-called t))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "g"))
+            (insert "▽ほ")
+            (goto-char (point-max))
+            (nskk--backspace-in-preedit)
+            (should (equal nskk--romaji-buffer ""))
+            (should clear-called)
+            (should (equal (buffer-string) "▽ほ")))))))
+
+  (nskk-it "BS truncates multi-char romaji buffer"
+    (let ((show-arg nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () (point-min)))
+                        (nskk--show-pending-romaji (lambda (s) (setq show-arg s))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "ky"))
+            (insert "▽ほ")
+            (goto-char (point-max))
+            (nskk--backspace-in-preedit)
+            (should (equal nskk--romaji-buffer "k"))
+            (should (equal show-arg "k"))
+            (should (equal (buffer-string) "▽ほ")))))))
+
+  (nskk-it "BS truncates romaji \"k\" to empty and clears pending"
+    (let ((clear-called nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () (point-min)))
+                        (nskk--clear-pending-romaji (lambda () (setq clear-called t))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "k"))
+            (insert "▽ほ")
+            (goto-char (point-max))
+            (nskk--backspace-in-preedit)
+            (should (equal nskk--romaji-buffer ""))
+            (should clear-called)
+            (should (equal (buffer-string) "▽ほ")))))))
+
+  (nskk-it "BS rolls back DA (deferred-azik-state)"
+    (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+                      (nskk-cancel-preedit (lambda () nil)))
+      (with-temp-buffer
+        (let ((nskk-henkan-on-marker "▽")
+              (nskk--romaji-buffer "")
+              (nskk--deferred-azik-state (cons ?k "きん")))
+          (insert "▽きん")
+          (goto-char (point-max))
+          (nskk--backspace-in-preedit)
+          (should-not nskk--deferred-azik-state)
+          (should (equal (buffer-string) "▽"))))))
+
+  (nskk-it "BS rolls back DV (deferred-vowel-shadow-state)"
+    (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+                      (nskk-cancel-preedit (lambda () nil)))
+      (with-temp-buffer
+        (let ((nskk-henkan-on-marker "▽")
+              (nskk--romaji-buffer "")
+              (nskk--deferred-vowel-shadow-state (cons "sh" "すう")))
+          (insert "▽すう")
+          (goto-char (point-max))
+          (nskk--backspace-in-preedit)
+          (should-not nskk--deferred-vowel-shadow-state)
+          (should (equal (buffer-string) "▽"))))))
+
+  (nskk-it "BS rolls back CP (colon-okuri-pending) deletes * marker"
+    (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1)))
+      (with-temp-buffer
+        (let ((nskk-henkan-on-marker "▽")
+              (nskk--romaji-buffer "")
+              (nskk--azik-colon-okuri-pending t))
+          (insert "▽ほ*")
+          (goto-char (point-max))
+          (nskk--backspace-in-preedit)
+          (should-not nskk--azik-colon-okuri-pending)
+          (should (equal (buffer-string) "▽ほ"))))))
+
+  (nskk-it "BS rolls back CD (colon-okuri-deferred) deletes placeholder and resets romaji"
+    (let ((reset-called nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+                        (nskk--reset-romaji-buffer (lambda () (setq reset-called t))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "t")
+                (nskk--azik-colon-okuri-deferred (cons ?t "t")))
+            (insert "▽ほ*t")
+            (goto-char (point-max))
+            (nskk--backspace-in-preedit)
+            (should-not nskk--azik-colon-okuri-deferred)
+            (should reset-called)
+            (should (equal (buffer-string) "▽ほ*")))))))
+
+  (nskk-it "DA rollback causes empty preedit triggers cancel-preedit"
+    (let ((cancel-called nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+                        (nskk-cancel-preedit (lambda () (setq cancel-called t))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "")
+                (nskk--deferred-azik-state (cons ?k "きん")))
+            (insert "▽きん")
+            (goto-char (point-max))
+            (nskk--backspace-in-preedit)
+            (should cancel-called))))))
+
+  (nskk-it "romaji empty and committed kana calls delete-char"
+    (let ((deleted nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+                        (delete-char (lambda (n) (setq deleted n))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "")
+                (nskk--deferred-azik-state nil)
+                (nskk--deferred-vowel-shadow-state nil)
+                (nskk--azik-colon-okuri-pending nil)
+                (nskk--azik-colon-okuri-deferred nil))
+            (insert "▽か")
+            (goto-char (point-max))
+            (nskk--backspace-in-preedit)
+            (should (equal deleted -1)))))))
+
+  (nskk-it "romaji empty and preedit empty calls cancel-preedit"
+    (let ((cancel-called nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+                        (nskk-cancel-preedit (lambda () (setq cancel-called t))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "")
+                (nskk--deferred-azik-state nil)
+                (nskk--deferred-vowel-shadow-state nil)
+                (nskk--azik-colon-okuri-pending nil)
+                (nskk--azik-colon-okuri-deferred nil))
+            (insert "▽")
+            (goto-char (point-max))
+            (nskk--backspace-in-preedit)
+            (should cancel-called))))))
+
+  (nskk-it "consecutive BS reduces romaji then deletes kana"
+    (let ((show-called nil)
+          (clear-called nil)
+          (deleted nil))
+      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+                        (nskk--show-pending-romaji (lambda (_s) (setq show-called t)))
+                        (nskk--clear-pending-romaji (lambda () (setq clear-called t)))
+                        (delete-char (lambda (n) (setq deleted n))))
+        (with-temp-buffer
+          (let ((nskk-henkan-on-marker "▽")
+                (nskk--romaji-buffer "ky")
+                (nskk--deferred-azik-state nil)
+                (nskk--deferred-vowel-shadow-state nil)
+                (nskk--azik-colon-okuri-pending nil)
+                (nskk--azik-colon-okuri-deferred nil))
+            (insert "▽ほ")
+            (goto-char (point-max))
+            ;; First BS: "ky" -> "k", show-pending called
+            (nskk--backspace-in-preedit)
+            (should (equal nskk--romaji-buffer "k"))
+            (should show-called)
+            ;; Second BS: "k" -> "", clear-pending called
+            (nskk--backspace-in-preedit)
+            (should (equal nskk--romaji-buffer ""))
+            (should clear-called)
+            ;; Third BS: romaji empty, committed kana -> delete-char
+            (nskk--backspace-in-preedit)
+            (should (equal deleted -1))))))))
 
 ;;;
 ;;; nskk-handle-tab behavior

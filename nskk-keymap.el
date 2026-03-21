@@ -114,6 +114,11 @@
 (declare-function nskk--try-candidate-selection/k "nskk-input" (char on-found on-not-found))
 (defvar nskk-converter-romaji-style)
 (defvar nskk--romaji-buffer)          ;; Forward declaration from nskk-state.el
+;; AZIK deferred state variables from nskk-input.el
+(defvar nskk--deferred-azik-state)
+(defvar nskk--deferred-vowel-shadow-state)
+(defvar nskk--azik-colon-okuri-pending)
+(defvar nskk--azik-colon-okuri-deferred)
 ;; Functions in nskk-henkan.el
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--has-preedit "nskk-henkan")
@@ -127,6 +132,9 @@
 (declare-function nskk-rollback-conversion "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk--clear-azik-pending-state "nskk-henkan")
+(declare-function nskk--show-pending-romaji "nskk-henkan")
+(declare-function nskk--clear-pending-romaji "nskk-henkan")
+(declare-function nskk--reset-romaji-buffer "nskk-henkan")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
 (declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
@@ -719,20 +727,46 @@ Otherwise clears any residual AZIK deferred state and calls
   (_ (nskk--clear-azik-pending-state) (keyboard-quit)))
 
 (defun nskk--backspace-in-preedit ()
-  "Delete the last preedit character, or cancel preedit if empty.
+  "Delete pending romaji, AZIK deferred state, or last preedit char.
 Called when backspace is pressed in preedit state.
-If point is beyond the marker content area, deletes one character
-backward with `delete-char'.  If the preedit area is empty (marker in
-buffer but no characters typed yet), cancels the entire preedit via
-`nskk-cancel-preedit'.
-
-If point drifted to the left of the preedit boundary, do not delete any
-buffer text; move point back to the preedit boundary instead.  This is
-the safe-side behavior to avoid deleting already-committed text."
+Priority: DA > DV > CP > CD > romaji-buffer > buffer text.
+If point drifted left of preedit boundary, clamp it instead."
   (let* ((start (nskk--get-conversion-start))
          (preedit-min (and start (+ start (length nskk-henkan-on-marker)))))
     (when preedit-min
       (cond
+       ;; 1. DA: deferred-azik-state -- delete tentative kana
+       ((and (boundp 'nskk--deferred-azik-state) nskk--deferred-azik-state)
+        (delete-char (- (length (cdr nskk--deferred-azik-state))))
+        (setq nskk--deferred-azik-state nil)
+        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
+       ;; 2. DV: deferred-vowel-shadow-state -- delete tentative kana
+       ((and (boundp 'nskk--deferred-vowel-shadow-state)
+             nskk--deferred-vowel-shadow-state)
+        (delete-char (- (length (cdr nskk--deferred-vowel-shadow-state))))
+        (setq nskk--deferred-vowel-shadow-state nil)
+        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
+       ;; 3. CP: colon-okuri-pending -- delete `*' marker
+       ((and (boundp 'nskk--azik-colon-okuri-pending)
+             nskk--azik-colon-okuri-pending)
+        (delete-char -1)
+        (setq nskk--azik-colon-okuri-pending nil)
+        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
+       ;; 4. CD: colon-okuri-deferred -- delete placeholder, reset romaji
+       ((and (boundp 'nskk--azik-colon-okuri-deferred)
+             nskk--azik-colon-okuri-deferred)
+        (delete-char (- (length (cdr nskk--azik-colon-okuri-deferred))))
+        (setq nskk--azik-colon-okuri-deferred nil)
+        (nskk--reset-romaji-buffer)
+        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
+       ;; 5. Non-empty romaji buffer -- delete last char, update overlay
+       ((and (boundp 'nskk--romaji-buffer)
+             (not (string-empty-p nskk--romaji-buffer)))
+        (setq nskk--romaji-buffer (substring nskk--romaji-buffer 0 -1))
+        (if (string-empty-p nskk--romaji-buffer)
+            (nskk--clear-pending-romaji)
+          (nskk--show-pending-romaji nskk--romaji-buffer)))
+       ;; 6. Existing logic -- delete committed kana or cancel
        ((> (point) preedit-min)
         (delete-char -1))
        ((= (point) preedit-min)
