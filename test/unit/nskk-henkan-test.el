@@ -2117,6 +2117,21 @@
         (should-not nskk--azik-colon-okuri-pending)
         (should-not nskk--azik-colon-okuri-deferred))))
 
+  (nskk-it "nskk--clear-azik-pending-state clears sticky-shift-pending"
+    ;; Regression: sticky-shift-pending was missing from the dolist in
+    ;; nskk--clear-azik-pending-state, causing stale sticky state after
+    ;; kakutei/cancel/rollback.
+    (with-temp-buffer
+      (let ((nskk--sticky-shift-pending 'immediate))
+        (nskk--clear-azik-pending-state)
+        (should-not nskk--sticky-shift-pending))))
+
+  (nskk-it "nskk--clear-azik-pending-state clears sticky-shift-pending in okurigana state"
+    (with-temp-buffer
+      (let ((nskk--sticky-shift-pending 'okurigana))
+        (nskk--clear-azik-pending-state)
+        (should-not nskk--sticky-shift-pending))))
+
   (nskk-it "resets nskk--henkan-candidate-list-active to nil on mode switch"
     ;; Regression test: nskk--clear-conversion-context must call
     ;; nskk--dismiss-candidate-list (not bare run-hook-with-args) so that

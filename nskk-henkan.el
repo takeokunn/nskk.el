@@ -206,12 +206,14 @@ exits active candidate list display: cancel, rollback, commit, exhaustion."
 (defun/done nskk-henkan-do-reset ()
   "Reset all henkan conversion state after a commit or registration.
 Clears: conversion-start-marker, pending-romaji overlay, romaji-buffer,
-henkan-count, candidate list display, and all state fields (candidates,
-okurigana, phase) via `nskk-reset-henkan-state'."
+henkan-count, candidate list display, AZIK/sticky-shift pending state,
+and all state fields (candidates, okurigana, phase) via
+`nskk-reset-henkan-state'."
   (nskk--clear-conversion-start-marker)
   (nskk--reset-romaji-buffer)
   (setq nskk--henkan-count 0)
   (nskk--dismiss-candidate-list)
+  (nskk--clear-azik-pending-state)
   (nskk-with-current-state
     (nskk-reset-henkan-state)))
 
@@ -584,19 +586,22 @@ Creates a new marker if one does not already exist."
      ,@body))
 
 (defun/done nskk--clear-azik-pending-state ()
-  "Clear AZIK okurigana sentinel variables if bound.
+  "Clear AZIK and sticky-shift pending state variables if bound.
 Resets `nskk--azik-colon-okuri-pending', `nskk--azik-colon-okuri-deferred',
-`nskk--azik-sokuon-okuri-kana-pending', `nskk--deferred-azik-state', and
-`nskk--deferred-vowel-shadow-state' to nil.  Guards each with `boundp' so
-that the function is safe to call when AZIK is not loaded.
-Called from `nskk-henkan-kakutei', `nskk-cancel-preedit', and
-`nskk-rollback-conversion' to prevent stale AZIK pending state from
+`nskk--azik-sokuon-okuri-kana-pending', `nskk--deferred-azik-state',
+`nskk--deferred-vowel-shadow-state', and `nskk--sticky-shift-pending' to
+nil.  Guards each with `boundp' so that the function is safe to call when
+AZIK or sticky-shift is not loaded.
+Called from `nskk-henkan-kakutei', `nskk-cancel-preedit',
+`nskk-rollback-conversion', `nskk-henkan-do-reset', and
+`nskk-cancel-conversion-to-reading' to prevent stale pending state from
 leaking into the next preedit context."
   (dolist (sym '(nskk--azik-colon-okuri-pending
                  nskk--azik-colon-okuri-deferred
                  nskk--azik-sokuon-okuri-kana-pending
                  nskk--deferred-azik-state
-                 nskk--deferred-vowel-shadow-state))
+                 nskk--deferred-vowel-shadow-state
+                 nskk--sticky-shift-pending))
     (when (boundp sym)
       (set sym nil))))
 
@@ -637,8 +642,8 @@ Does not reset the input mode."
 (defun/done nskk-henkan-kakutei ()
   "Commit preedit text as-is without dictionary conversion (確定).
 Removes the henkan-on marker (▽), clears the conversion start marker,
-resets the romaji buffer, clears all five AZIK pending state variables
-(see `nskk--clear-azik-pending-state'), and clears the henkan phase.
+resets the romaji buffer, clears all AZIK and sticky-shift pending state
+variables (see `nskk--clear-azik-pending-state'), and clears the henkan phase.
 When called in abbrev mode, restores the previous Japanese input mode
 via `nskk--restore-abbrev-mode'."
   (let ((was-abbrev (nskk-with-current-state
@@ -687,6 +692,7 @@ Used by `nskk-handle-q' / `nskk-toggle-japanese-mode' in ▽ preedit."
                      #'ignore))))))
   (nskk--clear-conversion-start-marker)
   (nskk--reset-romaji-buffer)
+  (nskk--clear-azik-pending-state)
   (nskk-with-current-state
     (nskk-state-set-henkan-phase nskk-current-state nil)))
 
@@ -851,6 +857,7 @@ Used by the DEL key handler."
       (nskk--reset-romaji-buffer)
       (setq nskk--henkan-count 0)
       (nskk--dismiss-candidate-list)
+      (nskk--clear-azik-pending-state)
       (nskk-with-current-state
         (nskk-reset-henkan-state)))))
 
