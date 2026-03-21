@@ -497,6 +497,69 @@
       (nskk-e2e-assert-buffer "ー"
                               "romaji \"-\" → \"ー\" failed in katakana mode"))))
 
+;;;;
+;;;; BS (DEL) with pending romaji in normal hiragana mode
+;;;;
+
+(nskk-describe "BS clears pending romaji in normal hiragana mode"
+  (nskk-it "clears single pending romaji consonant"
+    ;; Type "k" → romaji buffer has "k", overlay shows "k", no buffer text.
+    ;; BS should clear "k" from romaji buffer and overlay, not delete buffer text.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "k")
+      (should (equal nskk--romaji-buffer "k"))
+      (nskk-e2e-type "DEL")
+      (should (equal nskk--romaji-buffer ""))
+      (nskk-e2e-assert-buffer "" "DEL with pending romaji: must clear romaji, not delete text")))
+
+  (nskk-it "clears pending romaji without deleting committed kana"
+    ;; Type "ka" (→ か), then "g" (pending romaji).
+    ;; BS should clear "g", leaving か intact.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "ka")
+      (nskk-e2e-assert-buffer "か")
+      (nskk-e2e-type "g")
+      (should (equal nskk--romaji-buffer "g"))
+      (nskk-e2e-type "DEL")
+      (should (equal nskk--romaji-buffer ""))
+      (nskk-e2e-assert-buffer "か" "DEL must clear pending 'g', not delete committed か")))
+
+  (nskk-it "truncates multi-char romaji then clears on second BS"
+    ;; Type "ka" (→ か), then "sh" (two-char pending romaji).
+    ;; First BS: "sh" → "s".  Second BS: "s" → "" (cleared).
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "ka")
+      (nskk-e2e-type "s")
+      (should (equal nskk--romaji-buffer "s"))
+      (nskk-e2e-type "h")
+      (should (equal nskk--romaji-buffer "sh"))
+      (nskk-e2e-type "DEL")
+      (should (equal nskk--romaji-buffer "s"))
+      (nskk-e2e-assert-buffer "か" "1st DEL: truncate 'sh' to 's', か remains")
+      (nskk-e2e-type "DEL")
+      (should (equal nskk--romaji-buffer ""))
+      (nskk-e2e-assert-buffer "か" "2nd DEL: clear 's', か still remains")))
+
+  (nskk-it "falls through to delete committed text when no pending state"
+    ;; Type "ka" (→ か), no pending romaji.  BS deletes か.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "ka")
+      (should (equal nskk--romaji-buffer ""))
+      (nskk-e2e-type "DEL")
+      (nskk-e2e-assert-buffer "" "DEL with no pending state: delete committed か")))
+
+  (nskk-it "clears pending romaji then next BS deletes committed text"
+    ;; Type "ka" (→ か), "k" (pending). First BS clears "k", second BS deletes か.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "ka")
+      (nskk-e2e-type "k")
+      (should (equal nskk--romaji-buffer "k"))
+      (nskk-e2e-type "DEL")
+      (should (equal nskk--romaji-buffer ""))
+      (nskk-e2e-assert-buffer "か" "1st DEL: clear pending 'k'")
+      (nskk-e2e-type "DEL")
+      (nskk-e2e-assert-buffer "" "2nd DEL: delete committed か"))))
+
 (provide 'nskk-kana-input-e2e-test)
 
 ;;; nskk-kana-input-e2e-test.el ends here

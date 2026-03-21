@@ -727,6 +727,47 @@ Otherwise clears any residual AZIK deferred state and calls
   ('cancel-preedit (nskk-cancel-preedit))
   (_ (nskk--clear-azik-pending-state) (keyboard-quit)))
 
+(defun nskk--backspace-retract-pending ()
+  "Retract one pending input state if any is active.
+Checks AZIK deferred state and romaji buffer in priority order:
+DA > DV > CP > CD > romaji-buffer.
+SP is excluded: it has no visible buffer artifact to retract.
+Returns non-nil if backspace was consumed (caller must not delete further).
+Caller is responsible for preedit boundary checks after retraction."
+  (cond
+   ;; 1. DA: deferred-azik-state -- delete tentative kana
+   ((and (boundp 'nskk--deferred-azik-state) nskk--deferred-azik-state)
+    (delete-char (- (length (cdr nskk--deferred-azik-state))))
+    (setq nskk--deferred-azik-state nil)
+    t)
+   ;; 2. DV: deferred-vowel-shadow-state -- delete tentative kana
+   ((and (boundp 'nskk--deferred-vowel-shadow-state)
+         nskk--deferred-vowel-shadow-state)
+    (delete-char (- (length (cdr nskk--deferred-vowel-shadow-state))))
+    (setq nskk--deferred-vowel-shadow-state nil)
+    t)
+   ;; 3. CP: colon-okuri-pending -- delete `*' marker
+   ((and (boundp 'nskk--azik-colon-okuri-pending)
+         nskk--azik-colon-okuri-pending)
+    (delete-char -1)
+    (setq nskk--azik-colon-okuri-pending nil)
+    t)
+   ;; 4. CD: colon-okuri-deferred -- delete placeholder, reset romaji
+   ((and (boundp 'nskk--azik-colon-okuri-deferred)
+         nskk--azik-colon-okuri-deferred)
+    (delete-char (- (length (cdr nskk--azik-colon-okuri-deferred))))
+    (setq nskk--azik-colon-okuri-deferred nil)
+    (nskk--reset-romaji-buffer)
+    t)
+   ;; 5. Non-empty romaji buffer -- delete last char, update overlay
+   ((and (boundp 'nskk--romaji-buffer)
+         (not (string-empty-p nskk--romaji-buffer)))
+    (setq nskk--romaji-buffer (substring nskk--romaji-buffer 0 -1))
+    (if (string-empty-p nskk--romaji-buffer)
+        (nskk--clear-pending-romaji)
+      (nskk--show-pending-romaji nskk--romaji-buffer))
+    t)))
+
 (defun nskk--backspace-in-preedit ()
   "Delete pending romaji, AZIK deferred state, or last preedit char.
 Called when backspace is pressed in preedit state.
@@ -736,38 +777,9 @@ If point drifted left of preedit boundary, clamp it instead."
          (preedit-min (and start (+ start (length nskk-henkan-on-marker)))))
     (when preedit-min
       (cond
-       ;; 1. DA: deferred-azik-state -- delete tentative kana
-       ((and (boundp 'nskk--deferred-azik-state) nskk--deferred-azik-state)
-        (delete-char (- (length (cdr nskk--deferred-azik-state))))
-        (setq nskk--deferred-azik-state nil)
+       ((nskk--backspace-retract-pending)
         (when (<= (point) preedit-min) (nskk-cancel-preedit)))
-       ;; 2. DV: deferred-vowel-shadow-state -- delete tentative kana
-       ((and (boundp 'nskk--deferred-vowel-shadow-state)
-             nskk--deferred-vowel-shadow-state)
-        (delete-char (- (length (cdr nskk--deferred-vowel-shadow-state))))
-        (setq nskk--deferred-vowel-shadow-state nil)
-        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
-       ;; 3. CP: colon-okuri-pending -- delete `*' marker
-       ((and (boundp 'nskk--azik-colon-okuri-pending)
-             nskk--azik-colon-okuri-pending)
-        (delete-char -1)
-        (setq nskk--azik-colon-okuri-pending nil)
-        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
-       ;; 4. CD: colon-okuri-deferred -- delete placeholder, reset romaji
-       ((and (boundp 'nskk--azik-colon-okuri-deferred)
-             nskk--azik-colon-okuri-deferred)
-        (delete-char (- (length (cdr nskk--azik-colon-okuri-deferred))))
-        (setq nskk--azik-colon-okuri-deferred nil)
-        (nskk--reset-romaji-buffer)
-        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
-       ;; 5. Non-empty romaji buffer -- delete last char, update overlay
-       ((and (boundp 'nskk--romaji-buffer)
-             (not (string-empty-p nskk--romaji-buffer)))
-        (setq nskk--romaji-buffer (substring nskk--romaji-buffer 0 -1))
-        (if (string-empty-p nskk--romaji-buffer)
-            (nskk--clear-pending-romaji)
-          (nskk--show-pending-romaji nskk--romaji-buffer)))
-       ;; 6. Existing logic -- delete committed kana or cancel
+       ;; Existing logic -- delete committed kana or cancel
        ((> (point) preedit-min)
         (delete-char -1))
        ((= (point) preedit-min)
@@ -786,7 +798,8 @@ Otherwise delegates to `delete-char', silently ignoring
 beginning-of-buffer errors so DEL on an empty buffer is a no-op."
   ('delete-preedit-char (nskk--backspace-in-preedit))
   ('rollback-to-reading (nskk-rollback-conversion))
-  (_ (ignore-errors (delete-char -1))))
+  (_ (unless (nskk--backspace-retract-pending)
+       (ignore-errors (delete-char -1)))))
 
 (nskk-define-key-handler tab
   "Handle TAB key: dynamic completion in preedit, otherwise pass through.
