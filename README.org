@@ -327,5 +327,5 @@ the Free Software Foundation, either version 3 of the License, or
 #+end_quote
 * Acknowledgments
 
-- [[https://github.com/skk-dev/ddskk][DDSKK]] — The original SKK implementation
+- [[https://github.com/skk-dev/ddskk][DDSKK]] — A long-standing and widely used SKK implementation for Emacs
 - All SKK dictionary contributors
