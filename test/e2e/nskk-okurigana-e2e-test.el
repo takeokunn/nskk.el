@@ -323,8 +323,7 @@
         (nskk-e2e-assert-buffer "良いあ"))))
 
   (nskk-it "digit after okurigana ▼ triggers implicit kakutei"
-    ;; Digits are not romaji — they trigger implicit kakutei even with
-    ;; okurigana-in-progress set.
+    ;; Digits are not romaji — they trigger implicit kakutei.
     (let ((dict '(("よi" . ("良")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "YoI")
@@ -334,8 +333,8 @@
         (should (string-match-p "良い3" (buffer-string))))))
 
   (nskk-it "symbol after okurigana ▼ triggers implicit kakutei"
-    ;; Symbols are not romaji — they trigger implicit kakutei even with
-    ;; okurigana-in-progress set.  Use '!' (not bound as a special key).
+    ;; Symbols are not romaji — they trigger implicit kakutei.
+    ;; Use '!' (not bound as a special key).
     (let ((dict '(("よi" . ("良")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "YoI")
@@ -362,55 +361,31 @@
 ;;;; Okurigana Implicit Kakutei Tests
 ;;
 ;; After okurigana conversion (▼ state with okurigana-in-progress):
-;;   - Vowels (complete single-char kana) trigger implicit kakutei
-;;   - Consonants (incomplete romaji) continue as okurigana extension
-;;   - After continuation kana emitted, ALL lowercase triggers kakutei
+;;   - Any self-insert (vowel, consonant, digit, symbol) triggers immediate
+;;     implicit kakutei (DDSKK-compatible behavior).
+;;   - No okurigana continuation mechanism exists.
 
 (nskk-describe "okurigana implicit kakutei"
-  (nskk-it "consonant after okurigana ▼ continues as okurigana"
-    ;; After OKuRi → ▼送り, consonant 'k' is incomplete romaji →
-    ;; enters romaji buffer as okurigana continuation (not kakutei).
+  (nskk-it "consonant after okurigana ▼ triggers immediate kakutei"
+    ;; After OKuRi → ▼送り, consonant 'k' triggers implicit kakutei
+    ;; immediately (no okurigana continuation).
     (let ((dict '(("おくr" . ("送")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "OKuRi")
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "k")
-        (nskk-e2e-assert-converting))))
+        (nskk-e2e-assert-not-converting))))
 
-  (nskk-it "after continuation kana emitted, any lowercase triggers kakutei"
-    ;; After OKuRi → ▼送り, type 'ku' → emits く (continuation kana).
-    ;; Then 'a' triggers implicit kakutei regardless of vowel/consonant.
+  (nskk-it "vowel after okurigana ▼ triggers immediate kakutei"
+    ;; After OKuRi → ▼送り, vowel 'a' triggers implicit kakutei
+    ;; immediately, then 'a' is processed as new input → あ.
     (let ((dict '(("おくr" . ("送")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "OKuRi")
         (nskk-e2e-assert-converting)
-        (nskk-e2e-type "ku")
-        (nskk-e2e-assert-converting)
         (nskk-e2e-type "a")
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-buffer "送りくあ"))))
-
-  (nskk-it "multi-char okurigana KaEru preserved"
-    ;; KaE → ▼変え, 'r' is consonant → continuation, 'u' → る emitted.
-    ;; Next lowercase 'a' triggers implicit kakutei.
-    (let ((dict '(("かe" . ("変")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "KaEru")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "a")
-        (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-buffer "変えるあ"))))
-
-  (nskk-it "consonant after continuation kana also triggers kakutei"
-    ;; After continuation kana emitted, even consonants trigger kakutei.
-    (let ((dict '(("おくr" . ("送")))))
-      (nskk-e2e-with-buffer 'hiragana dict
-        (nskk-e2e-type "OKuRi")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "ku")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "k")
-        (nskk-e2e-assert-not-converting)))))
+        (nskk-e2e-assert-buffer "送りあ")))))
 
 ;;;; Regression Tests: Pending Romaji Discard on Okurigana Trigger
 ;;
@@ -690,7 +665,7 @@
 ;; Sections:
 ;;   1. Standard consonant okurigana (baseline)
 ;;   2. Sokuon okurigana (促音送り仮名): っ in the okurigana suffix
-;;   3. Multi-character vowel okurigana: uppercase vowel + continuation kana
+;;   3. Multi-character vowel okurigana: uppercase vowel triggers conversion
 ;;   4. Katakana mode okurigana
 
 ;;;;
@@ -878,19 +853,18 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-assert-overlay-shows "変"))))
 
-  (nskk-it "commits KaEru to 変える via C-j"
-    ;; Full 変える sequence.  After E triggers conversion (key "かe", candidate "変"),
-    ;; "ru" → "る" is appended as continuation kana in the buffer.
-    ;; C-j commits: replaces the reading with the candidate and leaves "える".
+  (nskk-it "KaEru triggers kakutei on r, then ru completes as new input"
+    ;; After E triggers conversion (key "かe", candidate "変"),
+    ;; 'r' triggers immediate implicit kakutei (no continuation).
+    ;; Then "ru" completes → "る" as new input after kakutei.
     (let ((dict '(("かe" . ("変")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "Ka")
         (nskk-e2e-type "E")
-        (nskk-e2e-type "ru")
         (nskk-e2e-assert-converting)
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "変える")
-        (nskk-e2e-assert-henkan-phase nil))))
+        (nskk-e2e-type "ru")
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-buffer "変える"))))
 
   (nskk-it "commits OmoU to 思う via C-j"
     ;; Omo → ▽おも; U (uppercase vowel) is okurigana trigger.
@@ -905,13 +879,12 @@
         (nskk-e2e-assert-buffer "思う")
         (nskk-e2e-assert-henkan-phase nil))))
 
-  (nskk-it "commits NaGaReru to 流れる via C-j (3-mora reading + vowel okurigana)"
+  (nskk-it "commits NaGaReru to 流れる (3-mora reading + vowel okurigana)"
     ;; NaGa → ▽なが; R is consonant okurigana trigger (r).
-    ;; Wait -- R followed by "eru": R triggers okurigana with consonant r,
-    ;; then "e" completes "re"→"れ", which fires conversion.
-    ;; "ru" → "る" is appended continuation.
+    ;; "e" completes "re"→"れ", fires conversion → ▼流れ.
+    ;; "r" triggers immediate implicit kakutei (DDSKK-compatible: romaji
+    ;; buffer is empty after "re" completed), then "ru"→"る" as new input.
     ;; Dict key: "ながr" (reading "なが" + consonant "r").
-    ;; C-j commits: 流 + "れる".
     (let ((dict '(("ながr" . ("流")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "Naga")
@@ -920,26 +893,31 @@
         ;; "re" completes romaji → "れ" inserted, conversion triggered with key "ながr"
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "ru")
-        (nskk-e2e-type "C-j")
+        ;; "r" triggers implicit kakutei, "ru"→"る" as new input
+        (nskk-e2e-assert-not-converting)
         (nskk-e2e-assert-buffer "流れる")
         (nskk-e2e-assert-henkan-phase nil))))
 
   (nskk-it "commits KaEru and allows continued input after"
-    ;; After committing 変える, verify that continued typing works correctly.
+    ;; After E triggers conversion (▼変え), "r" triggers immediate implicit
+    ;; kakutei (DDSKK-compatible), then "ru"→"る" as new input.
+    ;; Verify that continued typing works correctly after implicit kakutei.
     (let ((dict '(("かe" . ("変")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "Ka")
         (nskk-e2e-type "E")
         (nskk-e2e-type "ru")
-        (nskk-e2e-type "C-j")
+        ;; "r" triggers implicit kakutei, "ru"→"る" as new input
+        (nskk-e2e-assert-not-converting)
         (nskk-e2e-assert-buffer "変える")
         (nskk-e2e-type "no")
         (nskk-e2e-assert-buffer "変えるの"))))
 
-  (nskk-it "commits ArataMeru to 改める via C-j (5-mora reading + vowel okurigana)"
+  (nskk-it "commits ArataMeru to 改める (5-mora reading + vowel okurigana)"
     ;; ArataMeru: A starts preedit, "rata" → "らた" → reading "あらた";
     ;; M is okurigana consonant trigger (m); "e" completes "me"→"め", fires conversion.
-    ;; "ru" is appended as continuation.
+    ;; "r" triggers immediate implicit kakutei (DDSKK-compatible), then
+    ;; "ru"→"る" as new input.
     ;; Dict key: "あらたm" → candidate "改"; result 改める.
     (let ((dict '(("あらたm" . ("改")))))
       (nskk-e2e-with-buffer 'hiragana dict
@@ -948,7 +926,8 @@
         (nskk-e2e-type "e")
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "ru")
-        (nskk-e2e-type "C-j")
+        ;; "r" triggers implicit kakutei, "ru"→"る" as new input
+        (nskk-e2e-assert-not-converting)
         (nskk-e2e-assert-buffer "改める")
         (nskk-e2e-assert-henkan-phase nil)))))
 

@@ -895,30 +895,30 @@ This ensures:
         (nskk-e2e-type "C-j")
         (nskk-e2e-assert-buffer "使って"))))
 
-  (nskk-it "TukaT;te triggers conversion showing 使 (AZIK ; sokuon in okurigana)"
+  (nskk-it "TukaT;te triggers conversion then implicit kakutei on t (AZIK ; sokuon in okurigana)"
     ;; When the user types ; (AZIK sokuon = っ) after the okurigana trigger T,
     ;; the pending 't' consonant in the romaji buffer must not absorb ';'.
     ;; The fix: non-alphabetic chars with a standalone complete match flush the
     ;; pending buffer and reprocess — so ';'→っ fires and triggers okuri conversion.
+    ;; After ▼使っ, 't' triggers immediate implicit kakutei (DDSKK-compatible:
+    ;; romaji empty, no deferred state), then "te"→"て" as new input.
     (let ((dict '(("つかt" . ("使")))))
       (nskk-e2e-with-azik-buffer 'hiragana dict
         (nskk-e2e-type "Tuka")
         (nskk-e2e-type "T")
         (nskk-e2e-type ";")
-        (nskk-e2e-type "t")
-        (nskk-e2e-type "e")
         (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "使"))))
+        (nskk-e2e-type "te")
+        (nskk-e2e-assert-not-converting)
+        (nskk-e2e-assert-buffer "使って"))))
 
-  (nskk-it "TukaT;te commits to 使って after C-j"
+  (nskk-it "TukaT;te produces 使って without explicit C-j"
     (let ((dict '(("つかt" . ("使")))))
       (nskk-e2e-with-azik-buffer 'hiragana dict
         (nskk-e2e-type "Tuka")
         (nskk-e2e-type "T")
         (nskk-e2e-type ";")
-        (nskk-e2e-type "t")
-        (nskk-e2e-type "e")
-        (nskk-e2e-type "C-j")
+        (nskk-e2e-type "te")
         (nskk-e2e-assert-buffer "使って"))))
 
   (nskk-it "Tuka:te triggers conversion showing 使 on US101 (AZIK Shift+; sokuon okurigana)"
