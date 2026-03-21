@@ -124,6 +124,7 @@
 (declare-function nskk--invalidate-undo-kakutei "nskk-henkan")
 (declare-function nskk-undo-kakutei "nskk-henkan")
 (declare-function nskk-purge-from-jisyo "nskk-henkan")
+(declare-function nskk-completion-at-point "nskk-henkan")
 (declare-function nskk--commit-by-phase "nskk-keymap")
 
 (defvar nskk-mode-off-hook nil
@@ -219,6 +220,9 @@ This provides global bindings that work even when nskk-mode is not yet active."
   (add-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
   (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
   (setq nskk-henkan-select-candidate-by-key-function #'nskk-candidate-list-select-by-key)
+  ;; Register CAPF backend for dynamic completion when capf style is active
+  (when (eq nskk-dcomp-style 'capf)
+    (add-hook 'completion-at-point-functions #'nskk-completion-at-point nil t))
   ;; Initialize optional features
   (when (fboundp 'nskk-annotation-initialize)
     (nskk-annotation-initialize))
@@ -251,6 +255,7 @@ This provides global bindings that work even when nskk-mode is not yet active."
   (nskk--clear-conversion-context)
   (run-hooks 'nskk-mode-off-hook)
   (nskk--cleanup-buffer)
+  (remove-hook 'completion-at-point-functions #'nskk-completion-at-point t)
   (remove-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
   (remove-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
   (setq nskk-henkan-select-candidate-by-key-function nil)
