@@ -319,6 +319,28 @@
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-assert-buffer-matches "か;"))))
 
+;;;;
+;;;; Sticky Shift in Direct Input Mode
+;;;;
+
+;; Bug fix: semicolon in direct input (ascii) mode was consumed by the
+;; sticky-shift handler without inserting a literal character.
+;; The (fail) CPS path invoked #'ignore, silently eating the keypress.
+
+(nskk-describe "sticky shift in direct input mode"
+  (nskk-it "semicolon in ascii mode inserts literal semicolon"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-buffer ";")))
+
+  (nskk-it "semicolon in ascii mode does not arm sticky shift"
+    (nskk-e2e-with-buffer nil nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type "k")
+      ;; Both characters should be inserted literally, no preedit.
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer ";k"))))
+
 (provide 'nskk-sticky-e2e-test)
 
 ;;; nskk-sticky-e2e-test.el ends here
