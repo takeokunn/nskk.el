@@ -182,7 +182,6 @@ or `nskk-with-conversion-context')."
      (nskk-state-set-candidates nskk-current-state nil)
      (nskk-state-set-okurigana nskk-current-state nil)
      (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil)
-     (nskk-state-put-metadata nskk-current-state 'okuri-continuation-kana-emitted nil)
      (nskk-state-set-henkan-phase nskk-current-state nil)))
 
 ;; Forward declarations for variables defined in the "Candidate Display Hooks"
@@ -927,6 +926,15 @@ of the preedit reading text so that `nskk--has-preedit' returns t."
       ;; in buffer coordinates.  We use it to reposition point if it drifted.
       (let ((preedit-end (when (overlayp nskk--conversion-overlay)
                            (overlay-end nskk--conversion-overlay))))
+        ;; Remove okurigana kana that sits after the overlay when
+        ;; okurigana-in-progress is set.  The overlay covers the reading
+        ;; stem; okurigana kana (e.g. "い" in ▼合い) is actual buffer text
+        ;; between overlay-end and point that must be deleted on rollback.
+        (when (and preedit-end
+                   (nskk-with-current-state
+                     (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
+                   (> (point) preedit-end))
+          (delete-region preedit-end (point)))
         ;; Replace ▼ with ▽ to return to preedit display.
         (when start
           (nskk--replace-marker-at start nskk-henkan-active-marker-regexp
@@ -938,7 +946,9 @@ of the preedit reading text so that `nskk--has-preedit' returns t."
         (nskk--dismiss-candidate-list)
         ;; Restore to preedit (on) phase -- C-g/DEL from ▼ returns to ▽
         (nskk-with-current-state
-          (nskk-state-set-henkan-phase nskk-current-state 'on))
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil)
+          (nskk-state-put-metadata nskk-current-state 'okurigana-query nil))
         (nskk--clear-azik-pending-state)
         ;; Reposition point to end of reading kana if it
         ;; drifted outside the conversion region.  This ensures nskk--has-preedit

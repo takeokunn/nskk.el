@@ -444,42 +444,26 @@ In standard mode + non-Japanese mode: self-insert (on-not-found path).
 
 ;;;; Input Processing
 
-(defun nskk--okurigana-continuation-p (char)
-  "Return non-nil when CHAR should continue okurigana kana in ▼ state.
-During okurigana conversion, lowercase ASCII letters may extend the
-okurigana suffix when completing an in-progress romaji sequence (e.g.,
-`u' after `r' in KaEru → 変える).  Once a continuation kana has been
-fully emitted, all subsequent lowercase letters trigger implicit kakutei.
-When no romaji is pending and CHAR alone forms a complete kana (vowels),
-implicit kakutei is triggered immediately.  When CHAR alone is an
-incomplete romaji prefix (consonants), it enters the romaji buffer as
-okurigana continuation."
-  (and (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress)
-       (characterp char)
-       (<= ?a char)
-       (<= char ?z)
-       ;; Four-level guard:
-       ;; 0. AZIK deferred correction pending + vowel → always continue
-       ;;    (deferred correction will modify romaji buffer inside kana pipeline)
-       ;; 1. Romaji buffer non-empty → always continue (completing sequence)
-       ;; 2. Continuation kana already emitted → kakutei (nil)
-       ;; 3. Empty romaji: vowel (complete kana) → kakutei, consonant → continue
-       (cond
-        ((and (or (bound-and-true-p nskk--deferred-azik-state)
-                  (bound-and-true-p nskk--deferred-vowel-shadow-state))
-              (nskk-prolog-holds-p `(vowel-char ,char)))
-         t)
-        ((not (string-empty-p nskk--romaji-buffer)) t)
-        ((nskk-state-get-metadata nskk-current-state 'okuri-continuation-kana-emitted) nil)
-        (t (eq :incomplete (nskk-converter-lookup (char-to-string char)))))))
-
 (defun nskk--implicit-kakutei-needed-p ()
   "Return non-nil when implicit kakutei should fire.
-True when converting (▼ active) and the candidate list is not showing.
-Callers should check `nskk--okurigana-continuation-p' first to avoid
-committing during okurigana kana continuation."
+True when converting (▼ active), the candidate list is not showing,
+and no okurigana continuation condition is active.
+
+Okurigana continuation suppresses kakutei when any of these hold:
+  1. Romaji buffer non-empty -- completing an in-progress romaji
+     sequence (e.g. sokuon \"t\" remaining after っ in 勝った).
+  2. AZIK deferred correction pending -- the next vowel retroactively
+     corrects the previous kana (e.g. TukaTTe: \"たち\"→\"って\").
+  3. AZIK sokuon-okuri-kana-pending -- JP106 + key fired immediate
+     sokuon okurigana; needs \"ta\"/\"te\"/... to complete the suffix."
   (and (nskk-converting-p)
-       (not nskk--henkan-candidate-list-active)))
+       (not nskk--henkan-candidate-list-active)
+       (not (and (nskk-with-current-state
+                   (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
+                 (or (not (string-empty-p nskk--romaji-buffer))
+                     (bound-and-true-p nskk--deferred-azik-state)
+                     (bound-and-true-p nskk--deferred-vowel-shadow-state)
+                     (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending))))))
 
 (defun nskk--route-input (char n mode)
   "Route CHAR (with repeat N) based on current input MODE.
@@ -513,8 +497,7 @@ Three-stage pipeline:
     (nskk--try-candidate-selection/k char
       #'ignore
       (lambda ()
-        (when (and (not (nskk--okurigana-continuation-p char))
-                   (nskk--implicit-kakutei-needed-p))
+        (when (nskk--implicit-kakutei-needed-p)
           (nskk-debug-log "[INPUT] implicit-kakutei: char=%c" char)
           (nskk-commit-current))
         (nskk--route-input char n mode)))))
@@ -595,15 +578,10 @@ arguments after all insertions and side effects complete."
           (nskk--trigger-okuri-conversion okuri preedit-end)
           (nskk-state-set-okurigana nskk-current-state nil))
       (dotimes (_ n) (insert converted))
-      (cond
-       (nskk--azik-sokuon-okuri-kana-pending
+      (when nskk--azik-sokuon-okuri-kana-pending
         (setq nskk--azik-sokuon-okuri-kana-pending nil)
         (nskk-with-current-state
-          (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil)))
-       ((nskk-with-current-state
-          (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
-        (nskk-with-current-state
-          (nskk-state-put-metadata nskk-current-state 'okuri-continuation-kana-emitted t)))))))
+          (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil))))))
 
 (defun nskk--convert-kana-for-mode (kana)
   "Convert hiragana KANA to the script appropriate for the current input mode.
