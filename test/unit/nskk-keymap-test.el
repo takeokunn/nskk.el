@@ -1263,25 +1263,40 @@ and configures state."
           (nskk-when (nskk-handle-tab))
           (nskk-then (should complete-called))))))
 
-  (nskk-it "calls indent-for-tab-command when not in preedit"
+  (nskk-it "delegates to major-mode TAB binding when not in preedit"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (major-mode-called nil))
+        (let ((test-map (make-sparse-keymap)))
+          (define-key test-map "\t"
+            (lambda () (interactive) (setq major-mode-called t)))
+          (use-local-map test-map)
+          (nskk-when (nskk-handle-tab))
+          (nskk-then (should major-mode-called))))))
+
+  (nskk-it "falls back to indent-for-tab-command when no major-mode TAB binding"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (indent-called nil))
+        (use-local-map (make-sparse-keymap))
         (nskk-with-mocks ((indent-for-tab-command (lambda (&rest _) (interactive) (setq indent-called t))))
           (nskk-when (nskk-handle-tab))
           (nskk-then (should indent-called))))))
 
-  (nskk-it "calls indent-for-tab-command when converting (pass-through rule)"
+  (nskk-it "delegates to major-mode TAB binding when converting (pass-through rule)"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (indent-called nil))
+            (major-mode-called nil))
         (nskk--set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (nskk-with-mocks ((indent-for-tab-command (lambda (&rest _) (interactive) (setq indent-called t))))
+        (let ((test-map (make-sparse-keymap)))
+          (define-key test-map "\t"
+            (lambda () (interactive) (setq major-mode-called t)))
+          (use-local-map test-map)
           (nskk-when (nskk-handle-tab))
-          (nskk-then (should indent-called)))))))
+          (nskk-then (should major-mode-called)))))))
 
 ;;;
 ;;; nskk-handle-hash behavior
