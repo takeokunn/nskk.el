@@ -266,7 +266,36 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (nskk-when (nskk-handle-q))
           (nskk-then
            (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
-           (should (string-suffix-p "q" (buffer-string)))))))))
+           (should (string-suffix-p "q" (buffer-string))))))))
+
+  (nskk-context "AZIK preedit q dispatch"
+    (nskk-it "delegates to nskk-handle-q-key in AZIK preedit with empty romaji"
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk-converter-romaji-style 'azik)
+              (nskk--romaji-buffer "")
+              (delegated nil))
+          (nskk--set-conversion-start-marker (point-min))
+          (insert "▽か")
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          (cl-letf (((symbol-function 'nskk-handle-q-key) (lambda () (setq delegated t)))
+                    ((symbol-function 'nskk-henkan-kakutei-convert-script) (lambda () (error "must not call"))))
+            (nskk-handle-q))
+          (should delegated))))
+
+    (nskk-it "calls convert-script in standard preedit with empty romaji"
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk-converter-romaji-style 'roman)
+              (nskk--romaji-buffer "")
+              (converted nil))
+          (nskk--set-conversion-start-marker (point-min))
+          (insert "▽か")
+          (nskk-state-set-henkan-phase nskk-current-state 'on)
+          (cl-letf (((symbol-function 'nskk-henkan-kakutei-convert-script) (lambda () (setq converted t)))
+                    ((symbol-function 'nskk-handle-q-key) (lambda () (error "must not call"))))
+            (nskk-handle-q))
+          (should converted))))))
 
 ;;;
 ;;; nskk-handle-l behavior
