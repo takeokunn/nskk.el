@@ -2104,7 +2104,7 @@
             (nskk--dcomp-prefix nil)
             (nskk--dcomp-index 0)
             (nskk--numeric-mode t)
-            (nskk--sticky-shift-pending t)
+            (nskk--sticky-shift-pending 'okurigana)
             (nskk--deferred-azik-state '(some state))
             (nskk--deferred-vowel-shadow-state t)
             (nskk--azik-colon-okuri-pending t)

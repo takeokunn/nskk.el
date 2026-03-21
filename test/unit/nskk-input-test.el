@@ -1603,21 +1603,22 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (should (fboundp 'nskk-handle-semicolon-key))
     (should (commandp 'nskk-handle-semicolon-key)))
 
-  (nskk-it "in standard mode + hiragana: first press sets sticky-shift-pending"
+  (nskk-it "in standard mode + hiragana: first press inserts ▽ and sets immediate"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
         (nskk-set-mode-hiragana)
         (setq nskk--sticky-shift-pending nil)
         (nskk-handle-semicolon-key)
-        (should nskk--sticky-shift-pending))))
+        (should (eq nskk--sticky-shift-pending 'immediate))
+        (should (string-match-p nskk-henkan-on-marker (buffer-string))))))
 
   (nskk-it "in standard mode + hiragana: double-press cancels sticky and inserts ;"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
         (nskk-set-mode-hiragana)
-        (setq nskk--sticky-shift-pending t)
+        (setq nskk--sticky-shift-pending 'immediate)
         (nskk-handle-semicolon-key)
         (should (null nskk--sticky-shift-pending))
         (should (string= (buffer-string) ";"))))))
@@ -1680,16 +1681,16 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 ;;;
 
 (nskk-describe "nskk-process-japanese-input sticky-shift"
-  (nskk-it "sticky-shift converts lowercase to uppercase (triggers henkan start)"
-    ;; When nskk--sticky-shift-pending is t, the next lowercase letter is
-    ;; treated as uppercase, which triggers henkan start when auto-start is on.
+  (nskk-it "sticky-shift okurigana converts lowercase to uppercase (triggers henkan start)"
+    ;; When nskk--sticky-shift-pending is 'okurigana, the next lowercase letter
+    ;; is treated as uppercase, which triggers henkan start when auto-start is on.
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (let ((nskk--sticky-shift-pending t)
+        (let ((nskk--sticky-shift-pending 'okurigana)
               (nskk-converter-auto-start-henkan t))
           (nskk-process-japanese-input ?k 1)
-          ;; ?k with sticky-shift → ?K → henkan start → ▽ marker in buffer
+          ;; ?k with sticky-shift okurigana → ?K → henkan start → ▽ marker in buffer
           (should (string-match-p nskk-henkan-on-marker (buffer-string)))))))
 
   (nskk-it "sticky-shift clears the pending flag after use"
@@ -1697,17 +1698,30 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (let ((nskk--sticky-shift-pending t)
+        (let ((nskk--sticky-shift-pending 'okurigana)
               (nskk-converter-auto-start-henkan t))
           (nskk-process-japanese-input ?k 1)
           (should (null nskk--sticky-shift-pending))))))
 
-  (nskk-it "sticky-shift does not upcase non-letter chars"
+  (nskk-it "sticky-shift immediate does not upcase letters"
+    ;; When pending is 'immediate, lowercase letters are NOT upcased.
+    (nskk-prolog-test-with-isolated-db
+      (with-temp-buffer
+        (nskk-mode 1)
+        (let ((nskk--sticky-shift-pending 'immediate)
+              (nskk-converter-auto-start-henkan t))
+          (nskk-process-japanese-input ?k 1)
+          ;; Flag is consumed (set to nil)
+          (should (null nskk--sticky-shift-pending))
+          ;; No henkan marker was inserted ('immediate does not upcase)
+          (should-not (string-match-p nskk-henkan-on-marker (buffer-string)))))))
+
+  (nskk-it "sticky-shift okurigana does not upcase non-letter chars"
     ;; Digits are not in [a-z] so no upcase occurs; the flag is still consumed.
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (let ((nskk--sticky-shift-pending t)
+        (let ((nskk--sticky-shift-pending 'okurigana)
               (nskk-converter-auto-start-henkan t))
           (nskk-process-japanese-input ?1 1)
           ;; Flag is consumed (set to nil)

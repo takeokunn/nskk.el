@@ -116,6 +116,7 @@
 (declare-function nskk--flush-romaji-before-okuri "nskk-henkan")
 (declare-function nskk-state-henkan-phase "nskk-state")
 (declare-function nskk--clear-conversion-context "nskk-henkan")
+(declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk--show-pending-romaji "nskk-henkan" (text))
 (declare-function nskk--clear-pending-romaji "nskk-henkan" ())
 (defvar nskk--romaji-buffer)                         ;; Forward declaration from nskk-state.el
@@ -130,7 +131,11 @@
 (defvar nskk-azik-keyboard-type)                     ;; Forward declaration from nskk-azik.el
 
 (defvar-local nskk--sticky-shift-pending nil
-  "Non-nil when sticky shift is pending (next char treated as uppercase).")
+  "Non-nil when sticky shift is pending.
+Value is a symbol:
+  nil         -- not pending
+  `immediate' -- ▽ just inserted by sticky key, awaiting ;; detection
+  `okurigana' -- armed for okurigana (next char upcased for okurigana boundary)")
 
 (defvar nskk--azik-vowel-shadow-set)    ;; Forward declaration from nskk-azik.el
 
@@ -361,34 +366,62 @@ In standard mode: toggle mode (default SKK behavior)."
 
 (defun nskk--sticky-shift-dispatch ()
   "Execute the sticky-shift sub-dispatch for semicolon in standard mode.
-Three arms in priority order:
-  1. Already pending: double-semicolon cancels sticky shift and inserts \";\".
-  2. Japanese mode active: arm the sticky-shift pending flag.
-  3. Non-Japanese mode: fall through to self-insert.
-Returns non-nil when the sticky-shift action was consumed (arms 1 or 2),
-nil when falling through to self-insert (arm 3)."
+Six arms in priority order:
+  1. Already pending (any value): double-semicolon cancels sticky shift,
+     cancels preedit if ▽ was just inserted, and inserts literal \";\".
+  2. Converting (▼) state: fall through to self-insert.
+  3. Preedit with kana (▽ + text): arm okurigana for next char.
+  4. Preedit-pending (▽ without kana): cancel preedit, insert \";\".
+  5. Japanese mode, no preedit: immediately insert ▽ marker.
+  6. Non-Japanese mode: fall through to self-insert.
+Returns non-nil when the sticky-shift action was consumed,
+nil when falling through to self-insert."
   (cond
+   ;; Arm 1: double-semicolon cancel
    (nskk--sticky-shift-pending
-    (setq nskk--sticky-shift-pending nil)
+    (let ((was-immediate (eq nskk--sticky-shift-pending 'immediate)))
+      (setq nskk--sticky-shift-pending nil)
+      (when was-immediate
+        (nskk-cancel-preedit))
+      (insert ";")
+      t))
+   ;; Arm 2: converting (▼) state — fall through
+   ((and nskk-current-state
+         (nskk-state-p nskk-current-state)
+         (nskk-prolog-holds-p
+          `(converting-phase ,(nskk-state-henkan-phase nskk-current-state))))
+    nil)
+   ;; Arm 3: preedit with kana — arm okurigana
+   ((and (nskk--conversion-start-active-p)
+         (nskk--has-preedit))
+    (setq nskk--sticky-shift-pending 'okurigana)
+    t)
+   ;; Arm 4: preedit-pending (▽ without kana) — cancel + insert ";"
+   ((nskk--conversion-start-active-p)
+    (nskk-cancel-preedit)
     (insert ";")
     t)
+   ;; Arm 5: Japanese mode, no preedit — immediate ▽
    ((and nskk-current-state
          (nskk-prolog-holds-p
           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
-    (setq nskk--sticky-shift-pending t)
+    (nskk--setup-henkan-start-marker ?\;)
+    (setq nskk--sticky-shift-pending 'immediate)
     t)
+   ;; Arm 6: non-Japanese — fall through
    (t nil)))
 
 ;;;###autoload
 (defun/k nskk-handle-semicolon-key ()
   "Handle semicolon key press.
 In AZIK mode: produce small tsu (\u3063).
-In standard mode + Japanese mode: sticky shift (next char is uppercase).
+In standard mode + idle Japanese: immediately insert ▽ (sticky shift).
+In standard mode + preedit with kana: arm okurigana for next char.
 Double semicolon in sticky-shift state: cancel sticky, insert literal \";\".
 In standard mode + non-Japanese mode: self-insert (on-not-found path).
 
 `on-found' is called (with t) when the key was consumed as a Japanese action:
-  AZIK small-tsu insertion, sticky-shift armed, or sticky-shift cancelled.
+  AZIK small-tsu insertion, immediate ▽, okurigana armed, or sticky cancelled.
 `on-not-found' is called when key is not consumed (self-insert path)."
   :interactive t
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
@@ -521,7 +554,8 @@ Calls on-not-found when the list is not active or CHAR did not match."
   "Set up conversion start marker for CHAR as a henkan start.
 Inserts the ▽ marker, sets conversion start position at point,
 and marks henkan phase to `on'.
-Called when an uppercase letter triggers auto-henkan-start."
+Called when an uppercase letter triggers auto-henkan-start, or
+when the sticky key immediately enters ▽ mode (CHAR = ?\\;)."
   (nskk-debug-log "[INPUT] henkan-start: char=%c" char)
   (nskk--set-conversion-start-marker (point))
   (nskk--insert-marker nskk-henkan-on-marker)
@@ -715,9 +749,11 @@ Actions:
   okuri-sokuon → `nskk--trigger-sokuon-okurigana'
   normal      → `nskk--process-normal-japanese-input'"
   (when nskk--sticky-shift-pending
-    (setq nskk--sticky-shift-pending nil)
-    (when (and (characterp char) (<= ?a char) (<= char ?z))
-      (setq char (upcase char))))
+    (let ((sticky-mode nskk--sticky-shift-pending))
+      (setq nskk--sticky-shift-pending nil)
+      (when (and (eq sticky-mode 'okurigana)
+                 (characterp char) (<= ?a char) (<= char ?z))
+        (setq char (upcase char)))))
   (let* ((char-type (cond
                         ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
                         ((and (eq char ?+)
