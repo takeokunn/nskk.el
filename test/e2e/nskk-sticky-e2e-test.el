@@ -34,28 +34,34 @@
 (require 'nskk-pbt-generators)
 (eval-when-compile (require 'cl-lib))
 
-;; In ddskk, sticky-shift mode allows typing ";" to act as a Shift key for
-;; the immediately following character.  This lets users enter uppercase
-;; letters (and thereby trigger preedit or okurigana) without holding Shift.
+;; Sticky-shift mode: pressing ";" immediately inserts the ▽ marker
+;; (entering preedit mode), matching ddskk's `skk-sticky-set-henkan-point'.
 ;;
 ;; Key rules:
-;;   ";"  followed by a consonant letter  → treated as the uppercase consonant
-;;                                          (e.g., ;k == K → starts ▽ preedit)
-;;   ";"  followed by a vowel letter      → treated as uppercase vowel
-;;                                          (e.g., ;a == A → uppercase okurigana trigger)
+;;   ";"  in idle Japanese mode           → immediately insert ▽ (preedit-pending)
+;;   ";"  in ▽ mode with kana             → arm okurigana (next char as boundary)
+;;   ";"  in ▽ mode without kana          → cancel preedit, insert literal ";"
 ;;   ";;" (double semicolon)              → cancel sticky shift, self-insert ";"
+;;   ";"  in converting (▼) mode          → fall through to self-insert
 
 ;;;;
 ;;;; Basic Sticky Shift Tests
 ;;;;
 
 (nskk-describe "sticky shift mode (スティッキーシフト)"
-  (nskk-it "semicolon followed by consonant starts preedit (▽)"
+  (nskk-it "semicolon immediately starts preedit (▽)"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; ";" acts as Shift; ";k" is equivalent to "K" → starts ▽ preedit.
+      ;; ";" immediately inserts ▽ marker.
+      (nskk-e2e-type ";")
+      ;; Preedit (▽) phase must be active after ";" alone.
+      (nskk-e2e-assert-henkan-phase 'on)))
+
+  (nskk-it "semicolon followed by consonant continues preedit input"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; ";" inserts ▽ immediately; "k" is processed as normal preedit input.
       (nskk-e2e-type ";")
       (nskk-e2e-type "k")
-      ;; Preedit (▽) phase must be active after ;k.
+      ;; Preedit (▽) phase must remain active.
       (nskk-e2e-assert-henkan-phase 'on)))
 
   (nskk-it "double semicolon self-inserts a literal semicolon"
@@ -236,6 +242,82 @@
     (nskk-state-valid-mode-p (nskk-current-mode)))
   25)
 
+
+;;;;
+;;;; Immediate ▽ Behavior Tests
+;;;;
+
+(nskk-describe "immediate ▽ on sticky key"
+  (nskk-it "semicolon alone in hiragana inserts ▽ immediately"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it "semicolon alone in katakana inserts ▽ immediately"
+    (nskk-e2e-with-buffer 'katakana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-assert-mode 'katakana)))
+
+  (nskk-it ";ka produces ▽か (normal lowercase in preedit)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-type "ka")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-assert-buffer-matches "か")))
+
+  (nskk-it "semicolon in preedit-pending cancels preedit and inserts ;"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; First ; enters ▽ (preedit-pending, no kana yet).
+      ;; The pending flag is 'immediate, so a second ; fires arm 1
+      ;; which cancels preedit + inserts literal ";".
+      (nskk-e2e-type ";")
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer ";"))))
+
+;;;;
+;;;; Okurigana via Sticky Key in Preedit
+;;;;
+
+(nskk-describe "sticky okurigana in preedit"
+  (nskk-it "semicolon in preedit-japanese arms okurigana"
+    (let ((dict '(("おおa" . ("大")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type "Oo")         ; → ▽おお
+        (nskk-e2e-type ";")          ; arm okurigana
+        (nskk-e2e-type "a")          ; → okurigana A triggers conversion
+        (nskk-e2e-assert-henkan-phase 'active)))))
+
+;;;;
+;;;; Preedit-Pending via Uppercase + Sticky Key
+;;;;
+
+(nskk-describe "sticky key in preedit-pending (uppercase K then ;)"
+  (nskk-it "semicolon in preedit-pending (from uppercase) cancels preedit and inserts ;"
+    ;; Enter ▽ via uppercase K, then press ";" before typing any kana.
+    ;; Arm 4 fires: cancel-preedit + insert ";".
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "K")           ; → ▽ (preedit-pending via uppercase)
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type ";")           ; arm 4: cancel + insert ";"
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer ";"))))
+
+;;;;
+;;;; Double-Semicolon from Okurigana State
+;;;;
+
+(nskk-describe "double-semicolon from okurigana state"
+  (nskk-it ";; after arming okurigana inserts ; without cancelling preedit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Ka")          ; → ▽か (preedit-japanese)
+      (nskk-e2e-type ";")           ; arm 3: set 'okurigana
+      (nskk-e2e-type ";")           ; arm 1: cancel okurigana + insert ";"
+      ;; Preedit should still be active (was-immediate is nil → no cancel-preedit)
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-assert-buffer-matches "か;"))))
 
 (provide 'nskk-sticky-e2e-test)
 
