@@ -1183,7 +1183,42 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (goto-char (point-min))
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "A▽か" "DEL must not delete committed text when point drifted left")
-      (should (= (point) (+ 2 (length nskk-henkan-on-marker)))))))
+      (should (= (point) (+ 2 (length nskk-henkan-on-marker))))))
+
+  (nskk-it "deletes pending romaji instead of committed kana (backspace-in-preedit bug)"
+    ;; Bug reproduction: typing K (preedit), "a" (produces か), "g" (pending romaji).
+    ;; State: ▽かg — "g" is in romaji buffer, shown via overlay.
+    ;; Old behavior: BS deleted か (the committed kana) instead of clearing "g".
+    ;; Fixed behavior: BS clears "g" from romaji buffer, leaving ▽か.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "K")
+      (nskk-e2e-type "a")
+      (nskk-e2e-type "g")
+      (nskk-e2e-assert-henkan-phase 'on "After 'Kag': should be in ▽ preedit")
+      ;; Romaji buffer should contain "g" (pending consonant).
+      (should (equal nskk--romaji-buffer "g"))
+      ;; Press BS: should clear pending romaji, NOT delete committed kana.
+      (nskk-e2e-type "DEL")
+      (nskk-e2e-assert-buffer "▽か" "DEL with pending romaji: must clear romaji, not delete kana")
+      (should (equal nskk--romaji-buffer ""))
+      (nskk-e2e-assert-henkan-phase 'on "After DEL of pending romaji: still in ▽ preedit")))
+
+  (nskk-it "deletes committed kana when no pending romaji (existing behavior preserved)"
+    ;; Type K, then "a" (produces か) — no pending romaji.
+    ;; First BS: deletes か, leaving ▽ (empty preedit).
+    ;; Second BS: cancels preedit entirely.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Ka")
+      (nskk-e2e-assert-henkan-phase 'on "After 'Ka': should be in ▽ preedit")
+      (should (equal nskk--romaji-buffer ""))
+      ;; First DEL: no pending romaji, so delete committed kana か.
+      (nskk-e2e-type "DEL")
+      (nskk-e2e-assert-buffer "▽" "1st DEL with no pending romaji: delete committed kana")
+      (nskk-e2e-assert-henkan-phase 'on "After 1st DEL: still in ▽ preedit")
+      ;; Second DEL: empty preedit, cancel entirely.
+      (nskk-e2e-type "DEL")
+      (nskk-e2e-assert-henkan-phase nil "After 2nd DEL: preedit cancelled")
+      (nskk-e2e-assert-buffer "" "After 2nd DEL: buffer is empty"))))
 
 ;;;;
 ;;;; DEL in Normal State (No Preedit, No Conversion)

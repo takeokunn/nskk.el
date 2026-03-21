@@ -1502,6 +1502,76 @@ This ensures:
       (nskk-e2e-type input)
       (nskk-e2e-assert-buffer expected))))
 
+;;;;
+;;;; Section 20: Backspace with AZIK Deferred State in Preedit
+;;;;
+
+(nskk-describe "§20: DEL clears AZIK deferred state in preedit (backspace-in-preedit bug)"
+
+  (nskk-it "T-01: DEL rolls back tentative きん from DA (kk in preedit)"
+    ;; In AZIK mode: type K (preedit), then "k" (triggers DA: tentative きん).
+    ;; State: ▽きん (DA active, nskk--deferred-azik-state is non-nil).
+    ;; Press BS: should clear DA and delete tentative きん.
+    ;; Since きん was the only content after ▽, preedit is cancelled entirely.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "K")
+      (nskk-e2e-type "k")
+      (nskk-e2e-assert-henkan-phase 'on "After 'Kk': should be in ▽ preedit")
+      (should (bound-and-true-p nskk--deferred-azik-state))
+      ;; Press DEL: should clear DA, delete tentative kana, cancel preedit.
+      (nskk-e2e-type "DEL")
+      (should (not (bound-and-true-p nskk--deferred-azik-state)))
+      (nskk-e2e-assert-henkan-phase nil "After DEL of DA: preedit cancelled (no content left)")
+      (nskk-e2e-assert-buffer "" "After DEL of DA: buffer empty")))
+
+  (nskk-it "T-02: DEL rolls back tentative すう from DV (sh in preedit)"
+    ;; In AZIK mode: type S (preedit), then "h" (triggers DV: tentative すう).
+    ;; State: ▽すう (DV active, nskk--deferred-vowel-shadow-state is non-nil).
+    ;; Press BS: should clear DV and delete tentative すう.
+    ;; Since すう was the only content after ▽, preedit is cancelled entirely.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "S")
+      (nskk-e2e-type "h")
+      (nskk-e2e-assert-henkan-phase 'on "After 'Sh': should be in ▽ preedit")
+      (should (bound-and-true-p nskk--deferred-vowel-shadow-state))
+      ;; Press DEL: should clear DV, delete tentative kana, cancel preedit.
+      (nskk-e2e-type "DEL")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+      (nskk-e2e-assert-henkan-phase nil "After DEL of DV: preedit cancelled (no content left)")
+      (nskk-e2e-assert-buffer "" "After DEL of DV: buffer empty")))
+
+  (nskk-it "T-03: DEL with DA preserves prior kana in preedit (kakk)"
+    ;; Type "Kakk": K starts preedit, "a" produces か, "kk" triggers DA (きん tentative).
+    ;; State: ▽かきん (DA active).
+    ;; Press BS: should clear DA and delete tentative きん, leaving ▽か.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "K")
+      (nskk-e2e-type "a")
+      (nskk-e2e-type "k")
+      (nskk-e2e-type "k")
+      (nskk-e2e-assert-henkan-phase 'on "After 'Kakk': should be in ▽ preedit")
+      (should (bound-and-true-p nskk--deferred-azik-state))
+      (nskk-e2e-type "DEL")
+      (should (not (bound-and-true-p nskk--deferred-azik-state)))
+      (nskk-e2e-assert-henkan-phase 'on "After DEL of DA: preedit survives with prior kana")
+      (nskk-e2e-assert-buffer "▽か" "After DEL of DA: tentative きん removed, か remains")))
+
+  (nskk-it "T-04: DEL with DV preserves prior kana in preedit (kash)"
+    ;; Type "Kash": K starts preedit, "a" produces か, "sh" triggers DV (すう tentative).
+    ;; State: ▽かすう (DV active).
+    ;; Press BS: should clear DV and delete tentative すう, leaving ▽か.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "K")
+      (nskk-e2e-type "a")
+      (nskk-e2e-type "s")
+      (nskk-e2e-type "h")
+      (nskk-e2e-assert-henkan-phase 'on "After 'Kash': should be in ▽ preedit")
+      (should (bound-and-true-p nskk--deferred-vowel-shadow-state))
+      (nskk-e2e-type "DEL")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+      (nskk-e2e-assert-henkan-phase 'on "After DEL of DV: preedit survives with prior kana")
+      (nskk-e2e-assert-buffer "▽か" "After DEL of DV: tentative すう removed, か remains"))))
+
 (provide 'nskk-azik-e2e-test)
 
 ;;; nskk-azik-e2e-test.el ends here
