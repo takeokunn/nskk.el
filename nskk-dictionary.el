@@ -107,12 +107,21 @@ and common system locations."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
-(defcustom nskk-dict-use-ja-dic t
-  "When non-nil, use Emacs's built-in ja-dic as the default system dictionary.
-Only used when `nskk-dict-system-dictionary-files' is nil."
-  :type 'boolean
-  :safe #'booleanp
-  :package-version '(nskk . "0.1.0")
+(defcustom nskk-dict-use-ja-dic 'auto
+  "Control whether Emacs's built-in ja-dic is used as the system dictionary.
+Only consulted when `nskk-dict-system-dictionary-files' is nil.
+
+Possible values:
+  `auto' (default) -- auto-detect SKK-JISYO files from system paths first;
+                      fall back to ja-dic only if no files are found.
+  t               -- always use ja-dic, skipping auto-detection entirely.
+  nil             -- never use ja-dic; only auto-detected or explicitly
+                      configured SKK-JISYO files are loaded."
+  :type '(choice (const :tag "Auto-detect first, ja-dic fallback" auto)
+                 (const :tag "Always use ja-dic" t)
+                 (const :tag "Never use ja-dic" nil))
+  :safe (lambda (v) (memq v '(auto t nil)))
+  :package-version '(nskk . "0.2.0")
   :group 'nskk-dictionary)
 
 (defcustom nskk-large-dictionary nil
@@ -564,24 +573,33 @@ Returns a list of readable dictionary file paths."
 Populated by `nskk-dict-initialize' from the `okuri-consonant/1' Prolog table.")
 
 (defun nskk--dict-initialize-system-dictionary ()
-  "Initialize the system dictionary using configured files or built-in ja-dic."
-  (or (when nskk-dict-system-dictionary-files
+  "Initialize the system dictionary using configured files or built-in ja-dic.
+Priority (first match wins):
+  1. Explicit `nskk-dict-system-dictionary-files' -- load them.
+  2. `nskk-dict-use-ja-dic' is t -- force ja-dic unconditionally.
+  3. Auto-detect SKK-JISYO files from system paths.
+  4. ja-dic as last resort (unless `nskk-dict-use-ja-dic' is nil)."
+  (or ;; 1. Explicit dictionary files configured by user.
+      (when nskk-dict-system-dictionary-files
         (nskk-dict-load-system-dictionaries))
-      (when (and (null nskk-dict-system-dictionary-files)
-                 nskk-dict-use-ja-dic)
+      ;; 2. Force ja-dic when explicitly requested.
+      (when (eq nskk-dict-use-ja-dic t)
         (nskk-dict-load-ja-dic))
-      (let ((dict-files (and (null nskk-dict-system-dictionary-files)
-                             (nskk--dict-detect-system-dictionaries))))
+      ;; 3. Auto-detect SKK-JISYO files from system paths.
+      (let ((dict-files (nskk--dict-detect-system-dictionaries)))
         (when dict-files
           (let ((nskk-dict-system-dictionary-files dict-files))
-            (nskk-dict-load-system-dictionaries))))))
+            (nskk-dict-load-system-dictionaries))))
+      ;; 4. ja-dic as last resort (skipped when nskk-dict-use-ja-dic is nil).
+      (when nskk-dict-use-ja-dic
+        (nskk-dict-load-ja-dic))))
 
 ;;;###autoload
 (defun nskk-dict-initialize ()
   "Initialize dictionaries by loading system and user dictionaries.
 When `nskk-dict-system-dictionary-files' is nil, auto-detects
- dictionary paths from nix profiles and common system locations.
-NSKK first tries Emacs's built-in `ja-dic' before file auto-detection.
+dictionary paths from nix profiles and common system locations.
+See `nskk-dict-use-ja-dic' for the auto-detect vs ja-dic priority.
 
 Calling this function interactively allows manual retry: it retracts
 the \\='(dict-initialized) Prolog fact first, then reinitializes."
