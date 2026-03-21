@@ -341,6 +341,90 @@
       (nskk-e2e-assert-henkan-phase nil)
       (nskk-e2e-assert-buffer ";k"))))
 
+;;;;
+;;;; Sticky State Cleared on Cancel / Kakutei (Regression)
+;;;;
+
+;; Regression: nskk--sticky-shift-pending was not cleared by
+;; nskk--clear-azik-pending-state, causing a stale 'immediate state
+;; after cancel or kakutei.  The next ";" would fire Arm 1
+;; (double-semicolon cancel) instead of Arm 5 (new ▽).
+
+(nskk-describe "sticky state cleared on cancel and kakutei"
+  (nskk-it "; then C-g then ; starts new preedit (not literal ;)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-henkan-phase nil)
+      ;; Sticky state must have been cleared by cancel-preedit.
+      ;; The next ";" must start a new ▽, not insert literal ";".
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on)))
+
+  (nskk-it "; then DEL then ; starts new preedit (not literal ;)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "DEL")
+      ;; After DEL from preedit-pending, the preedit is cancelled.
+      ;; The next ";" must start a new ▽.
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on)))
+
+  (nskk-it ";ka then SPC then kakutei then ; starts new preedit"
+    (let ((dict '(("か" . ("蚊" "化")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type ";")       ; → ▽
+        (nskk-e2e-type "ka")      ; → ▽か
+        (nskk-e2e-type " ")       ; → ▼蚊
+        (nskk-e2e-assert-henkan-phase 'active)
+        (nskk-e2e-type "C-j")     ; kakutei → 蚊
+        (nskk-e2e-assert-henkan-phase nil)
+        ;; Sticky state must be cleared after kakutei.
+        (nskk-e2e-type ";")
+        (nskk-e2e-assert-henkan-phase 'on))))
+
+  (nskk-it ";ka then SPC then DEL rolls back to preedit with cleared sticky state"
+    (let ((dict '(("か" . ("蚊")))))
+      (nskk-e2e-with-buffer 'hiragana dict
+        (nskk-e2e-type ";")       ; → ▽
+        (nskk-e2e-type "ka")      ; → ▽か
+        (nskk-e2e-type " ")       ; → ▼蚊
+        (nskk-e2e-assert-henkan-phase 'active)
+        ;; DEL from ▼ rolls back to ▽ (preedit), not to idle.
+        (nskk-e2e-type "DEL")
+        (nskk-e2e-assert-henkan-phase 'on)
+        ;; Sticky state must be cleared after rollback.
+        ;; ";" in ▽-with-kana arms okurigana (arm 3), not double-semicolon.
+        (nskk-e2e-type ";")
+        ;; Okurigana armed — sticky consumed, still in preedit.
+        (nskk-e2e-assert-henkan-phase 'on))))
+
+  (nskk-it ";ka then ; (arm okurigana) then C-g then ; starts new preedit"
+    ;; Regression: okurigana-armed sticky state ('okurigana) must be
+    ;; cleared by cancel-preedit, not just 'immediate.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")       ; → ▽
+      (nskk-e2e-type "ka")      ; → ▽か
+      (nskk-e2e-type ";")       ; arm okurigana (sticky = 'okurigana)
+      (nskk-e2e-type "C-g")     ; cancel preedit
+      (nskk-e2e-assert-henkan-phase nil)
+      ;; Sticky must be cleared; next ";" starts new ▽.
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on)))
+
+  (nskk-it ";ka then q (script toggle) then ; starts new preedit"
+    ;; Regression: nskk-henkan-kakutei-convert-script must clear sticky.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type ";")       ; → ▽
+      (nskk-e2e-type "ka")      ; → ▽か
+      (nskk-e2e-type "q")       ; script toggle → カ committed
+      (nskk-e2e-assert-henkan-phase nil)
+      ;; Sticky must be cleared; next ";" starts new ▽.
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-henkan-phase 'on))))
+
 (provide 'nskk-sticky-e2e-test)
 
 ;;; nskk-sticky-e2e-test.el ends here
