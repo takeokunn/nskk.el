@@ -112,6 +112,7 @@
 (declare-function nskk-process-japanese-input "nskk-input")
 (declare-function nskk-set-mode-numeric "nskk-input")
 (declare-function nskk--try-candidate-selection/k "nskk-input" (char on-found on-not-found))
+(defvar nskk-mode)                    ;; Forward declaration from nskk.el
 (defvar nskk-converter-romaji-style)
 (defvar nskk--romaji-buffer)          ;; Forward declaration from nskk-state.el
 ;; AZIK deferred state variables from nskk-input.el
@@ -792,11 +793,17 @@ beginning-of-buffer errors so DEL on an empty buffer is a no-op."
 In preedit mode, behavior depends on `nskk-dcomp-style':
   capf  -- triggers `completion-at-point' (works with corfu/company).
   cycle -- traditional inline cycling via `nskk-dynamic-complete'.
-In other modes, delegates to `indent-for-tab-command'."
+In other modes, delegates to the underlying major-mode TAB binding
+\(e.g. `org-cycle' in Org mode).  Falls back to `indent-for-tab-command'
+when no major-mode binding exists."
   ('dynamic-complete (if (eq nskk-dcomp-style 'capf)
                          (completion-at-point)
                        (nskk-dynamic-complete)))
-  (_ (indent-for-tab-command)))
+  (_ (let ((cmd (let ((nskk-mode nil))
+                  (key-binding "\t"))))
+       (if (commandp cmd)
+           (call-interactively cmd)
+         (indent-for-tab-command)))))
 
 (nskk-define-mode-switch-handler hash
   "Handle # key: enter numeric input mode in Japanese mode.
