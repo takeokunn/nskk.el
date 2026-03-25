@@ -420,13 +420,17 @@ In standard mode + preedit with kana: arm okurigana for next char.
 Double semicolon in sticky-shift state: cancel sticky, insert literal \";\".
 In standard mode + non-Japanese mode: self-insert (on-not-found path).
 
-`on-found' is called (with t) when the key was consumed as a Japanese action:
+  `on-found' is called (with t) when the key was consumed as a Japanese action:
   AZIK small-tsu insertion, immediate ▽, okurigana armed, or sticky cancelled.
 `on-not-found' is called when key is not consumed (self-insert path)."
   :interactive t
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
-         (action (nskk-prolog-query-value
-                  `(semicolon-key-action ,style ,'\?action) '\?action)))
+         (action (if (and nskk-current-state
+                          (nskk-prolog-holds-p
+                           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+                     (nskk-prolog-query-value
+                      `(semicolon-key-action ,style ,'\?action) '\?action)
+                   'self-insert)))
     (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
     (pcase action
       ('insert-small-tsu

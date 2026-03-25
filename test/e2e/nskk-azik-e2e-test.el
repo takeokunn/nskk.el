@@ -164,7 +164,14 @@ This ensures:
     ;; っ is emitted from ";" immediately, then "ka" → か.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type ";ka")
-      (nskk-e2e-assert-buffer "っか"))))
+      (nskk-e2e-assert-buffer "っか")))
+
+  (nskk-it "semicolon self-inserts after switching from hiragana to latin in AZIK mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "l")
+      (nskk-e2e-assert-mode 'latin)
+      (nskk-e2e-type ";")
+      (nskk-e2e-assert-buffer ";"))))
 
 ;;;;
 ;;;; Section 2: AZIK Colon as Long Vowel Mark (ー)
