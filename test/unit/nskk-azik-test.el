@@ -139,6 +139,30 @@
         (when (boundp 'nskk-mode-map)
           (should (lookup-key nskk-mode-map "[")))))))
 
+(nskk-describe "AZIK custom conversion table"
+  (nskk-it "is a customizable variable with no extra rules by default"
+    (should (custom-variable-p 'nskk-azik-conversion-table))
+    (should (null (default-value 'nskk-azik-conversion-table))))
+
+  (nskk-it "user rules override built-in mappings and add new ones"
+    (let ((nskk-azik-conversion-table '(("ka" "カスタム")
+                                       ("qz" "くす"))))
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ka") "カスタム"))
+        (should (equal (nskk-convert-romaji "qz") "くす"))
+        (should (equal (nskk-convert-romaji "ki") "き"))))))
+
+(nskk-describe "AZIK custom conversion table robustness"
+  (nskk-it "ignores malformed user entries while still applying valid ones"
+    (let ((nskk-azik-conversion-table '((42 "bad")
+                                       ("ka" "カスタム")
+                                       ("qz" "くす")
+                                       ("broken"))))
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ka") "カスタム"))
+        (should (equal (nskk-convert-romaji "qz") "くす"))
+        (should (equal (nskk-convert-romaji "ki") "き"))))))
+
 
 
 
