@@ -1401,14 +1401,14 @@
           (when results
             (should-not (member "あ" results)))))))
 
-  (nskk-it "returns a sorted list"
+  (nskk-it "returns a list of strings that are not the prefix itself"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
         (let ((results (nskk--dcomp-search-prefix "あ")))
-          (when (cdr results)
-            (should (cl-every (lambda (a b) (not (string> a b)))
-                              results (cdr results)))))))))
+          (when results
+            (should (cl-every #'stringp results))
+            (should-not (member "あ" results))))))))
 
 (nskk-describe "nskk--dcomp-replace-preedit"
   (nskk-it "replaces preedit text after the ▽ marker with new text"
@@ -2026,14 +2026,65 @@
       (let ((results (nskk--dcomp-search-prefix "かんじ")))
         (should (null results)))))
 
-  (nskk-it "returns results sorted by string<"
+  (nskk-it "returns all matching keys as strings"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
       (nskk-prolog-assert '((user-dict-entry "かんとく" ("相当局"))))
       (nskk-prolog-assert '((user-dict-entry "かんじ" ("漢字"))))
       (let ((results (nskk--dcomp-search-prefix "かん")))
         (should (> (length results) 1))
-        (should (equal results (sort (copy-sequence results) #'string<)))))))
+        (should (cl-every #'stringp results))
+        (should (member "かんとく" results))
+        (should (member "かんじ" results)))))
+
+  (nskk-it "returns user-dict entries before system-dict entries"
+    (nskk-prolog-test-with-isolated-db
+      ;; Set up trie indexes for both dictionaries
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-prolog-set-index 'system-dict-entry 2 :trie)
+      ;; Assert system-dict entries
+      (nskk-prolog-assert '((system-dict-entry "かんぱい" ("乾杯"))))
+      (nskk-prolog-assert '((system-dict-entry "かんそう" ("乾燥"))))
+      ;; Assert user-dict entries
+      (nskk-prolog-assert '((user-dict-entry "かんしゃ" ("感謝"))))
+      (nskk-prolog-assert '((user-dict-entry "かんが" ("考"))))
+      (let ((results (nskk--dcomp-search-prefix "かん")))
+        ;; User-dict keys should appear before system-dict keys
+        (should results)
+        (let ((user-keys '("かんしゃ" "かんが"))
+              (sys-keys '("かんぱい" "かんそう")))
+          ;; All user-dict keys should be in results
+          (dolist (k user-keys)
+            (should (member k results)))
+          ;; All system-dict keys should be in results
+          (dolist (k sys-keys)
+            (should (member k results)))
+          ;; User-dict keys should come before system-dict keys
+          (let ((last-user-pos (apply #'max (mapcar (lambda (k) (cl-position k results :test #'equal)) user-keys)))
+                (first-sys-pos (apply #'min (mapcar (lambda (k) (cl-position k results :test #'equal)) sys-keys))))
+            (should (< last-user-pos first-sys-pos)))))))
+
+  (nskk-it "deduplicates keys present in both user-dict and system-dict"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-prolog-set-index 'system-dict-entry 2 :trie)
+      (nskk-prolog-assert '((user-dict-entry "かんじ" ("漢字"))))
+      (nskk-prolog-assert '((system-dict-entry "かんじ" ("漢字"))))
+      (nskk-prolog-assert '((system-dict-entry "かんそう" ("乾燥"))))
+      (let ((results (nskk--dcomp-search-prefix "かん")))
+        ;; "かんじ" should appear exactly once (from user-dict)
+        (should (= 1 (cl-count "かんじ" results :test #'equal)))
+        ;; "かんそう" should appear (from system-dict)
+        (should (member "かんそう" results)))))
+
+  (nskk-it "returns system-dict entries when user-dict is empty"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-prolog-set-index 'system-dict-entry 2 :trie)
+      (nskk-prolog-assert '((system-dict-entry "かんそう" ("乾燥"))))
+      (let ((results (nskk--dcomp-search-prefix "かん")))
+        (should results)
+        (should (member "かんそう" results))))))
 
 ;;;
 ;;; nskk-set-active-candidates Macro Tests

@@ -1697,22 +1697,26 @@ If the user cancels, wrap around to the first candidate in list display."
 
 (defun nskk--dcomp-search-prefix (prefix)
   "Search for dictionary keys with PREFIX for dynamic completion.
-Returns a sorted list of reading strings that start with PREFIX,
-excluding PREFIX itself.  Returns nil when no strict prefix matches
-exist.  Searches both `user-dict-entry' and `system-dict-entry'
-Prolog trie indexes; deduplicates keys present in both."
+Returns a list of reading strings that start with PREFIX, excluding
+PREFIX itself.  User-dictionary entries appear first, followed by
+system-dictionary entries (DDSKK-compatible order).  Returns nil when
+no strict prefix matches exist.  Searches both `user-dict-entry' and
+`system-dict-entry' Prolog trie indexes; deduplicates keys present in
+both (user-dictionary copy retained)."
   (let ((keys nil))
     ;; Search user-dict-entry via Prolog trie
     (dolist (pair (nskk-prolog-trie-prefix-search 'user-dict-entry 2 prefix))
       (let ((key (car pair)))
         (when (and key (not (equal key prefix)))
           (push key keys))))
-    ;; Search system-dict-entry via Prolog trie if available
-    (dolist (pair (nskk-prolog-trie-prefix-search 'system-dict-entry 2 prefix))
-      (let ((key (car pair)))
-        (when (and key (not (equal key prefix)) (not (member key keys)))
-          (push key keys))))
-    (sort keys #'string<)))
+    (setq keys (nreverse keys))
+    ;; Search system-dict-entry via Prolog trie; skip duplicates
+    (let ((sys-keys nil))
+      (dolist (pair (nskk-prolog-trie-prefix-search 'system-dict-entry 2 prefix))
+        (let ((key (car pair)))
+          (when (and key (not (equal key prefix)) (not (member key keys)))
+            (push key sys-keys))))
+      (nconc keys (nreverse sys-keys)))))
 
 (defun nskk--dcomp-replace-preedit (new-text)
   "Replace the current preedit text with NEW-TEXT for dynamic completion."

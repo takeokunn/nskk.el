@@ -273,10 +273,10 @@ Returns entry count (0 if no readable files or no entries found)."
 
 (defun nskk--dict-ja-dic-flatten-node (node prefix)
   "Recursively flatten ja-dic NODE using PREFIX compact codes.
-Candidates at each leaf are stored in DDSKK-compatible order by
-`skkdic-extract-conversion-data' (which reverses the source text
-order via cons-accumulation).  Using the stored order as-is matches
-DDSKK's candidate presentation order."
+Candidates at each leaf are stored as-is from the ja-dic tree.
+For `skkdic-okuri-nasi', the stored order matches SKK-JISYO.L order.
+For `skkdic-okuri-ari', `skkdic-extract-conversion-data' reverses
+candidates via cons-accumulation; callers must reverse them back."
   (let* ((code (car node))
          (rest (cdr node))
          (path (append prefix (list code)))
@@ -291,11 +291,19 @@ DDSKK's candidate presentation order."
         (setq entries (nconc entries (nskk--dict-ja-dic-flatten-node child path)))))
     entries))
 
-(defun nskk--dict-ja-dic-flatten-tree (tree)
-  "Flatten ja-dic TREE into a list of (key . candidates) entries."
-  (cl-loop for node in (cdr tree)
-           when (consp node)
-           nconc (nskk--dict-ja-dic-flatten-node node nil)))
+(defun nskk--dict-ja-dic-flatten-tree (tree &optional reverse-candidates)
+  "Flatten ja-dic TREE into a list of (key . candidates) entries.
+When REVERSE-CANDIDATES is non-nil, reverse each entry's candidate list.
+This is needed for `skkdic-okuri-ari' where `skkdic-extract-conversion-data'
+stores candidates in reversed order via cons-accumulation."
+  (let ((entries (cl-loop for node in (cdr tree)
+                          when (consp node)
+                          nconc (nskk--dict-ja-dic-flatten-node node nil))))
+    (if reverse-candidates
+        (mapcar (lambda (entry)
+                  (cons (car entry) (reverse (cdr entry))))
+                entries)
+      entries)))
 
 (defun nskk-dict-load-ja-dic ()
   "Load Emacs built-in `ja-dic' data as `system-dict-entry' facts.
@@ -305,7 +313,7 @@ Returns `system' when entries were loaded successfully, or nil otherwise."
         (let ((entries (append (when (boundp 'skkdic-okuri-nasi)
                                  (nskk--dict-ja-dic-flatten-tree skkdic-okuri-nasi))
                                (when (boundp 'skkdic-okuri-ari)
-                                 (nskk--dict-ja-dic-flatten-tree skkdic-okuri-ari)))))
+                                 (nskk--dict-ja-dic-flatten-tree skkdic-okuri-ari t)))))
           (when entries
             (nskk-prolog-retract-all 'system-dict-entry 2)
             (nskk-prolog-set-index 'system-dict-entry 2 :trie)
