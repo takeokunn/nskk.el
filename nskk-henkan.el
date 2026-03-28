@@ -389,19 +389,21 @@ always pass both continuation arguments explicitly."
         (pcase action
           ('dict-lookup
            ;; Flat fallback chain:
-           ;;   kakutei-dict (confirmed, optional) → local dict → skkserv
+           ;;   kakutei-dict (confirmed, optional) → skkserv → local dict
            ;;   → builtin-handlers → program-dict.
            ;; Kakutei dictionary is checked first: if it returns a single
            ;; confirmed candidate, it is committed immediately without
            ;; showing the candidate selection menu.
+           ;; skkserv is tried before local dict so that the server's
+           ;; richer dictionary and DDSKK-compatible ordering take priority.
            ;; Enable-flag guards live inside each backend's own /k function.
            ;; fboundp guards in the optional-* wrappers handle unloaded modules.
            (<-or result nskk--optional-kakutei-lookup key
              :found (succeed result)
-             :fail  (<-or result2 nskk-dict-lookup key
-               :found (succeed result2)
-               :fail  (<-or r nskk--optional-server-lookup key
-                 :found (succeed r)
+             :fail  (<-or r nskk--optional-server-lookup key
+               :found (succeed r)
+               :fail  (<-or result2 nskk-dict-lookup key
+                 :found (succeed result2)
                  :fail  (<-or b nskk--optional-program-dict-builtin-lookup key
                    :found (succeed b)
                    :fail  (<-or p nskk--optional-program-dict-lookup key
