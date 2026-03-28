@@ -412,8 +412,12 @@
                      (,wa t
                           (,ru t
                                (-105 ("惡" "悪")))))))
+      ;; Without reverse-candidates flag, stored order is preserved
       (should (equal (nskk--dict-ja-dic-flatten-tree sample)
-                     '(("わるi" . ("惡" "悪")))))))
+                     '(("わるi" . ("惡" "悪")))))
+      ;; With reverse-candidates flag (for okuri-ari), order is reversed
+      (should (equal (nskk--dict-ja-dic-flatten-tree sample t)
+                     '(("わるi" . ("悪" "惡")))))))
 
   (nskk-it "loads flattened ja-dic entries into system-dict-entry"
     (nskk-prolog-test-with-isolated-db
@@ -428,9 +432,11 @@
                                            (-105 ("惡" "悪")))))))
         (nskk-with-mocks ((load-library (lambda (_feature) t)))
           (should (eq 'system (nskk-dict-load-ja-dic)))
+          ;; okuri-nasi: order preserved as-is
           (should (equal '("緒" "小")
                          (nskk-prolog-query-value '(system-dict-entry "お" \?c) '\?c)))
-          (should (equal '("惡" "悪")
+          ;; okuri-ari: reversed to match SKK-JISYO.L / skkserv order
+          (should (equal '("悪" "惡")
                          (nskk-prolog-query-value '(system-dict-entry "わるi" \?c) '\?c))))))))
 
 (nskk-describe "dict-initialize"

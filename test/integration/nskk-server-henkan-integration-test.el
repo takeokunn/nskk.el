@@ -11,14 +11,15 @@
 
 ;; Integration tests for the server fallthrough pipeline in nskk-core-search.
 ;;
-;; In nskk-henkan.el, nskk-core-search with :exact type implements:
-;;   (or (nskk-dict-lookup key)
-;;       (when (and nskk-server-enable (nskk-server-ensure-open))
-;;         (nskk-server-lookup key)))
+;; In nskk-henkan.el, nskk-core-search implements a CPS fallback chain:
+;;   kakutei-dict → skkserv → local dict → builtin → program-dict
+;;
+;; skkserv is consulted before local dict so that the server's richer
+;; dictionary and DDSKK-compatible ordering take priority.
 ;;
 ;; These tests exercise this two-module interaction using a dual-mock strategy:
 ;; - A mock dictionary (nskk-with-mock-dict) that does NOT contain the target key,
-;;   causing nskk-dict-lookup to return nil and triggering the server path.
+;;   causing nskk-dict-lookup to return nil and triggering the fallthrough path.
 ;; - An in-process Elisp TCP mock skkserv (nskk--server-start-mock-server from
 ;;   nskk-test-framework.el) that responds with pre-defined candidates.
 ;;
@@ -26,7 +27,7 @@
 ;; - When server is disabled, nskk-core-search does not attempt network I/O.
 ;; - When the dictionary misses and the server is enabled, server candidates
 ;;   are returned from nskk-core-search.
-;; - When the dictionary hits, its result takes priority over the server.
+;; - When both server and dict hit, the server result takes priority.
 ;; - An unknown key returns nil even if the server is reachable.
 
 ;;; Code:
@@ -118,10 +119,10 @@
           (nskk-server-close)
           (delete-process server-proc)))))
 
-  (nskk-it "dict hit takes priority: server candidates are not used"
+  (nskk-it "server hit takes priority: dict candidates are not used"
     ;; Mock dict contains "てすと" → dict-lookup returns ("辞書の結果")
     ;; Mock server also has "てすと" with a different answer
-    ;; nskk-core-search must return the dict result, not the server result.
+    ;; Since skkserv is consulted before local dict, server result wins.
     (nskk-with-mock-dict '(("てすと" . ("辞書の結果")))
       (let* ((mock (nskk--server-start-mock-server
                     '(("てすと" . "1/サーバの結果/\n"))))
@@ -136,10 +137,10 @@
             (progn
               (should (nskk-server-open))
               (let ((result (nskk-core-search "てすと")))
-                ;; Dict hit → dict result must be returned
+                ;; Server hit → server result must be returned
                 (should result)
-                (should (member "辞書の結果" result))
-                (should-not (member "サーバの結果" result))))
+                (should (member "サーバの結果" result))
+                (should-not (member "辞書の結果" result))))
           (nskk-server-close)
           (delete-process server-proc))))))
 

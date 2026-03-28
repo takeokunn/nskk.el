@@ -145,6 +145,14 @@
 
 ;; From nskk-input.el (loaded after nskk-henkan.el)
 (defvar nskk--numeric-mode)
+(declare-function nskk--set-mode "nskk-input")
+
+;; From nskk-keymap.el (L5, loaded after nskk-henkan.el)
+(defvar nskk-mode-map)
+(declare-function nskk--compute-phase "nskk-keymap")
+
+;; From nskk.el (Main layer, loaded after nskk-henkan.el)
+(declare-function nskk-mode "nskk")
 
 ;;;; Dynamic Completion State
 
@@ -389,19 +397,21 @@ always pass both continuation arguments explicitly."
         (pcase action
           ('dict-lookup
            ;; Flat fallback chain:
-           ;;   kakutei-dict (confirmed, optional) → local dict → skkserv
+           ;;   kakutei-dict (confirmed, optional) → skkserv → local dict
            ;;   → builtin-handlers → program-dict.
            ;; Kakutei dictionary is checked first: if it returns a single
            ;; confirmed candidate, it is committed immediately without
            ;; showing the candidate selection menu.
+           ;; skkserv is tried before local dict so that the server's
+           ;; richer dictionary and DDSKK-compatible ordering take priority.
            ;; Enable-flag guards live inside each backend's own /k function.
            ;; fboundp guards in the optional-* wrappers handle unloaded modules.
            (<-or result nskk--optional-kakutei-lookup key
              :found (succeed result)
-             :fail  (<-or result2 nskk-dict-lookup key
-               :found (succeed result2)
-               :fail  (<-or r nskk--optional-server-lookup key
-                 :found (succeed r)
+             :fail  (<-or r nskk--optional-server-lookup key
+               :found (succeed r)
+               :fail  (<-or result2 nskk-dict-lookup key
+                 :found (succeed result2)
                  :fail  (<-or b nskk--optional-program-dict-builtin-lookup key
                    :found (succeed b)
                    :fail  (<-or p nskk--optional-program-dict-lookup key
@@ -1697,22 +1707,26 @@ If the user cancels, wrap around to the first candidate in list display."
 
 (defun nskk--dcomp-search-prefix (prefix)
   "Search for dictionary keys with PREFIX for dynamic completion.
-Returns a sorted list of reading strings that start with PREFIX,
-excluding PREFIX itself.  Returns nil when no strict prefix matches
-exist.  Searches both `user-dict-entry' and `system-dict-entry'
-Prolog trie indexes; deduplicates keys present in both."
+Returns a list of reading strings that start with PREFIX, excluding
+PREFIX itself.  User-dictionary entries appear first, followed by
+system-dictionary entries (DDSKK-compatible order).  Returns nil when
+no strict prefix matches exist.  Searches both `user-dict-entry' and
+`system-dict-entry' Prolog trie indexes; deduplicates keys present in
+both (user-dictionary copy retained)."
   (let ((keys nil))
     ;; Search user-dict-entry via Prolog trie
     (dolist (pair (nskk-prolog-trie-prefix-search 'user-dict-entry 2 prefix))
       (let ((key (car pair)))
         (when (and key (not (equal key prefix)))
           (push key keys))))
-    ;; Search system-dict-entry via Prolog trie if available
-    (dolist (pair (nskk-prolog-trie-prefix-search 'system-dict-entry 2 prefix))
-      (let ((key (car pair)))
-        (when (and key (not (equal key prefix)) (not (member key keys)))
-          (push key keys))))
-    (sort keys #'string<)))
+    (setq keys (nreverse keys))
+    ;; Search system-dict-entry via Prolog trie; skip duplicates
+    (let ((sys-keys nil))
+      (dolist (pair (nskk-prolog-trie-prefix-search 'system-dict-entry 2 prefix))
+        (let ((key (car pair)))
+          (when (and key (not (equal key prefix)) (not (member key keys)))
+            (push key sys-keys))))
+      (nconc keys (nreverse sys-keys)))))
 
 (defun nskk--dcomp-replace-preedit (new-text)
   "Replace the current preedit text with NEW-TEXT for dynamic completion."
