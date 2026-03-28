@@ -1587,19 +1587,19 @@ The cleanup form guarantees two invariants on exit:
         (nskk-inline-show-registration-badge))
       (unwind-protect
           (let* ((entry (if nskk-use-kana-in-registration
-                           ;; nskk-mode を有効化し、辞書登録専用キーマップで
-                           ;; RET/C-j の挙動を制御する
+                           ;; Enable nskk-mode with a registration-specific keymap
+                           ;; overriding RET/C-j to commit or exit based on phase.
                            (let* ((nskk-reg-exit
                                    (lambda ()
                                      (interactive)
-                                     (let ((phase (nskk--compute-phase)))
-                                       (cond
-                                        ((eq phase 'converting)
-                                         (nskk-commit-current))
-                                        ((eq phase 'henkan-on)
-                                         (nskk-henkan-kakutei))
-                                        (t
-                                         (exit-minibuffer))))))
+                                     (cond
+                                      ((nskk-converting-p)
+                                       (nskk-commit-current))
+                                      ((and nskk-current-state
+                                            (nskk--get-conversion-start))
+                                       (nskk-henkan-kakutei))
+                                      (t
+                                       (exit-minibuffer)))))
                                   (reg-nskk-map
                                    (let ((map (make-sparse-keymap)))
                                      (set-keymap-parent map nskk-mode-map)
@@ -1614,7 +1614,7 @@ The cleanup form guarantees two invariants on exit:
                                                (list (cons 'nskk-mode reg-nskk-map))))
                                (read-from-minibuffer
                                 (nskk--registration-prompt nskk--registration-depth reading))))
-                         ;; OS側のIMEに委ねる（デフォルト）
+                         ;; Default: delegate to OS IME.
                          (read-from-minibuffer
                           (nskk--registration-prompt nskk--registration-depth reading)))))
             (unless (string-empty-p entry)
