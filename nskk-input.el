@@ -414,7 +414,7 @@ nil when falling through to self-insert."
 ;;;###autoload
 (defun/k nskk-handle-semicolon-key ()
   "Handle semicolon key press.
-In AZIK mode: produce small tsu (\u3063).
+In AZIK mode: produce small tsu (\u3063) unless sticky-shift state is pending.
 In standard mode + idle Japanese: immediately insert ▽ (sticky shift).
 In standard mode + preedit with kana: arm okurigana for next char.
 Double semicolon in sticky-shift state: cancel sticky, insert literal \";\".
@@ -424,27 +424,32 @@ In standard mode + non-Japanese mode: self-insert (on-not-found path).
   AZIK small-tsu insertion, immediate ▽, okurigana armed, or sticky cancelled.
 `on-not-found' is called when key is not consumed (self-insert path)."
   :interactive t
-  (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
-         (action (if (and nskk-current-state
-                          (nskk-prolog-holds-p
-                           `(japanese-mode ,(nskk-state-mode nskk-current-state))))
-                     (nskk-prolog-query-value
-                      `(semicolon-key-action ,style ,'\?action) '\?action)
-                   'self-insert)))
-    (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
-    (pcase action
-      ('insert-small-tsu
-       (nskk-process-japanese-input ?\; 1)
-       (succeed t))
-      ('sticky-shift
-       (if (nskk--sticky-shift-dispatch)
-           (succeed t)
+  (if nskk--sticky-shift-pending
+      (if (nskk--sticky-shift-dispatch)
+          (succeed t)
+        (nskk-self-insert 1)
+        (fail))
+    (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+           (action (if (and nskk-current-state
+                            (nskk-prolog-holds-p
+                             `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+                       (nskk-prolog-query-value
+                        `(semicolon-key-action ,style ,'\?action) '\?action)
+                     'self-insert)))
+      (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
+      (pcase action
+        ('insert-small-tsu
+         (nskk-process-japanese-input ?\; 1)
+         (succeed t))
+        ('sticky-shift
+         (if (nskk--sticky-shift-dispatch)
+             (succeed t)
+           (nskk-self-insert 1)
+           (fail)))
+        ('self-insert
          (nskk-self-insert 1)
-         (fail)))
-      ('self-insert
-       (nskk-self-insert 1)
-       (fail))
-      (_ (fail)))))
+         (fail))
+        (_ (fail))))))
 
 ;;;; Input Processing
 

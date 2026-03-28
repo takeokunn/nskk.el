@@ -1264,7 +1264,20 @@ This ensures:
           ;; + should NOT arm colon-okurigana on US101
           (should-not nskk--azik-colon-okuri-pending))))))
 
-;;;;
+(nskk-describe "AZIK semicolon respects sticky shift"
+  (nskk-it "sticky-shift state survives AZIK style on semicolon"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Arm sticky shift in standard style.
+      (let ((nskk-converter-romaji-style 'standard))
+        (nskk-e2e-type ";"))
+      ;; If AZIK style becomes active before the next semicolon, the pending
+      ;; sticky-shift state must still win.
+      (let ((nskk-converter-romaji-style 'azik))
+        (nskk-e2e-type ";"))
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer ";"))))
+
+;;;; 
 ;;;; Section 17: JP106 + Key Immediate Sokuon Okurigana
 ;;;;
 ;;
@@ -1578,6 +1591,31 @@ This ensures:
       (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
       (nskk-e2e-assert-henkan-phase 'on "After DEL of DV: preedit survives with prior kana")
       (nskk-e2e-assert-buffer "▽か" "After DEL of DV: tentative すう removed, か remains"))))
+
+;;;;
+;;;; Section 21: AZIK Custom Conversion Table — E2E Input Pipeline
+;;;;
+
+(nskk-describe "AZIK custom conversion table E2E"
+  (nskk-it "user override beats built-in AZIK rule through the full input pipeline"
+    ;; "kz" is the built-in hatsuon rule for "かん".  Overriding it via
+    ;; nskk-azik-conversion-table should make typing "kz" emit "かすたむ" instead.
+    ;; Note: "q" is bound in nskk-mode-map to nskk-handle-q and bypasses the
+    ;; romaji table; use sequences routed through nskk-self-insert instead.
+    (let ((nskk-azik-conversion-table '(("kz" "かすたむ"))))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "k")
+        (nskk-e2e-type "z")
+        (nskk-e2e-assert-buffer "かすたむ"))))
+
+  (nskk-it "new romaji sequence added via custom table produces kana in buffer"
+    ;; "wv" has no built-in AZIK mapping.  Adding it via nskk-azik-conversion-table
+    ;; should make it produce kana through the standard nskk-self-insert path.
+    (let ((nskk-azik-conversion-table '(("wv" "わかす"))))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "w")
+        (nskk-e2e-type "v")
+        (nskk-e2e-assert-buffer "わかす")))))
 
 (provide 'nskk-azik-e2e-test)
 
