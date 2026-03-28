@@ -145,6 +145,14 @@
 
 ;; From nskk-input.el (loaded after nskk-henkan.el)
 (defvar nskk--numeric-mode)
+(declare-function nskk--set-mode "nskk-input")
+
+;; From nskk-keymap.el (L5, loaded after nskk-henkan.el)
+(defvar nskk-mode-map)
+(declare-function nskk--compute-phase "nskk-keymap")
+
+;; From nskk.el (Main layer, loaded after nskk-henkan.el)
+(declare-function nskk-mode "nskk")
 
 ;;;; Dynamic Completion State
 
