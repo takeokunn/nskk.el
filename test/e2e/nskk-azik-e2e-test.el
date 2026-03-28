@@ -1257,7 +1257,20 @@ This ensures:
           ;; + should NOT arm colon-okurigana on US101
           (should-not nskk--azik-colon-okuri-pending))))))
 
-;;;;
+(nskk-describe "AZIK semicolon respects sticky shift"
+  (nskk-it "sticky-shift state survives AZIK style on semicolon"
+    (nskk-e2e-with-buffer 'hiragana nil
+      ;; Arm sticky shift in standard style.
+      (let ((nskk-converter-romaji-style 'standard))
+        (nskk-e2e-type ";"))
+      ;; If AZIK style becomes active before the next semicolon, the pending
+      ;; sticky-shift state must still win.
+      (let ((nskk-converter-romaji-style 'azik))
+        (nskk-e2e-type ";"))
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer ";"))))
+
+;;;; 
 ;;;; Section 17: JP106 + Key Immediate Sokuon Okurigana
 ;;;;
 ;;
