@@ -266,6 +266,17 @@ registration attempts are silently ignored."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-henkan)
 
+(defcustom nskk-use-kana-in-registration nil
+  "Whether to enable NSKK kana input in the dictionary registration minibuffer.
+When non-nil, `nskk-mode' is automatically activated in hiragana mode
+in the registration minibuffer, allowing Japanese input with NSKK itself.
+When nil (default), the registration minibuffer uses plain text input,
+expecting the OS input method (e.g. macSKK) to provide Japanese input."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.2.0")
+  :group 'nskk-henkan)
+
 ;;;; Candidate Window Settings
 
 (defgroup nskk-candidate-window nil
