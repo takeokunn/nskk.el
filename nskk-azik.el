@@ -38,6 +38,9 @@
 ;; Architecture:
 ;; - Rule data for hatsuon/youon rows is stored in `defconst' tables for
 ;;   compile-time expansion.  See `nskk--azik-extension-rows', etc.
+;; - `nskk-azik-conversion-table' lets users extend the AZIK table with
+;;   additional `(ROMAJI KANA)' pairs.  User entries are applied after the
+;;   built-in rules, so they override conflicting defaults.
 ;; - All other AZIK rules are declared directly as Prolog facts inside
 ;;   `nskk--init-azik-rules', making Prolog the single source of truth.
 ;; - Core macros (`nskk-azik-hatsuon', `nskk-azik-double-vowel', etc.)
@@ -119,6 +122,25 @@ Affects key position-based shortcuts.
   :safe (lambda (v) (memq v '(jp106 us101)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-azik)
+
+(defcustom nskk-azik-conversion-table nil
+  "Additional AZIK conversion rules in `(ROMAJI KANA)' pair format.
+
+Entries from this table are applied after the built-in AZIK rules during
+style initialization, so user-defined entries override conflicting defaults.
+Leave this as nil to use the built-in AZIK table only.  Malformed entries are
+ignored at runtime."
+  :type '(repeat (list string string))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-azik)
+
+(defun nskk--azik-conversion-rule-p (rule)
+  "Return non-nil when RULE is a well-formed `(ROMAJI KANA)' pair."
+  (and (consp rule)
+       (stringp (car rule))
+       (consp (cdr rule))
+       (stringp (cadr rule))
+       (null (cddr rule))))
 
 ;;;; Compile-time Rule Macros
 
@@ -576,6 +598,14 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;; complete, enabling sequences like xhkak → しゅうかく.
   (dolist (rule nskk--azik-compound-rules)
     (puthash (car rule) (cadr rule) nskk--romaji-table))
+
+  ;; Apply user overrides last so they take precedence over built-ins.
+  ;; Unlike compound rules (hash only), user rules go through
+  ;; `nskk-converter-add-rule' which also asserts romaji-to-kana/2 Prolog
+  ;; facts, making them queryable via `nskk-converter-get-rule'.
+  (dolist (rule nskk-azik-conversion-table)
+    (when (nskk--azik-conversion-rule-p rule)
+      (nskk-converter-add-rule (car rule) (cadr rule))))
 
   (nskk--setup-azik-toggle-key))
 
