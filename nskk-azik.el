@@ -600,6 +600,9 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
     (puthash (car rule) (cadr rule) nskk--romaji-table))
 
   ;; Apply user overrides last so they take precedence over built-ins.
+  ;; Unlike compound rules (hash only), user rules go through
+  ;; `nskk-converter-add-rule' which also asserts romaji-to-kana/2 Prolog
+  ;; facts, making them queryable via `nskk-converter-get-rule'.
   (dolist (rule nskk-azik-conversion-table)
     (when (nskk--azik-conversion-rule-p rule)
       (nskk-converter-add-rule (car rule) (cadr rule))))

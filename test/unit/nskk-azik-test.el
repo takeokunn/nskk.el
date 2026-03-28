@@ -163,7 +163,17 @@
         (should (equal (nskk-convert-romaji "qz") "くす"))
         (should (equal (nskk-convert-romaji "ki") "き"))))))
 
-
+(nskk-describe "AZIK custom conversion table re-initialization"
+  (nskk-it "user rules are re-applied after style reload"
+    ;; nskk-converter-load-style clears the hash and re-runs the init function.
+    ;; Re-running re-applies nskk-azik-conversion-table, so user overrides survive.
+    (let ((nskk-azik-conversion-table '(("ka" "カスタム"))))
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "ka") "カスタム"))
+        ;; Reload the style — init function runs again with same custom table.
+        (nskk-converter-load-style 'azik)
+        (should (equal (nskk-convert-romaji "ka") "カスタム"))
+        (should (equal (nskk-convert-romaji "ki") "き"))))))
 
 
 ;;;;
