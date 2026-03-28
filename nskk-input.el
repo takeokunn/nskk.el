@@ -430,8 +430,12 @@ In standard mode + non-Japanese mode: self-insert (on-not-found path).
         (nskk-self-insert 1)
         (fail))
     (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
-           (action (nskk-prolog-query-value
-                    `(semicolon-key-action ,style ,'\?action) '\?action)))
+           (action (if (and nskk-current-state
+                            (nskk-prolog-holds-p
+                             `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+                       (nskk-prolog-query-value
+                        `(semicolon-key-action ,style ,'\?action) '\?action)
+                     'self-insert)))
       (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
       (pcase action
         ('insert-small-tsu
