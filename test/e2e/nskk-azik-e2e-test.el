@@ -1617,6 +1617,103 @@ This ensures:
         (nskk-e2e-type "v")
         (nskk-e2e-assert-buffer "わかす")))))
 
+;;;;
+;;;; Section 22: Custom Sokuon-Okurigana Trigger Key (l → っ via conversion table)
+;;;;
+;;
+;; When the user maps a key to っ via nskk-azik-conversion-table, that key
+;; automatically becomes a sokuon-okurigana trigger in arm-eligible context
+;; (AZIK style + active preedit + empty romaji buffer + no okurigana pending).
+;; These tests use `("l" "っ")' as the representative user mapping.
+
+(nskk-describe "§22: Custom sokuon-okurigana trigger via nskk-azik-conversion-table"
+
+  (nskk-it "T-01: l in preedit triggers sokuon-okurigana and enters conversion state"
+    ;; Ka starts preedit (▽か).  l with romaji-buffer empty and no okurigana
+    ;; pending qualifies as sokuon-eligible → trigger-sokuon-okurigana action.
+    ;; The dict fires on reading かt, producing ▼買 (or registration dialog).
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (let ((dict '(("かt" . ("買")))))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Ka")
+          (nskk-e2e-type "l")
+          (should (string-match-p "▼" (buffer-string)))))))
+
+  (nskk-it "T-02: Ka l C-j ta produces 買った"
+    ;; Steps: Ka → ▽か / l → ▼買 / C-j → commits 買 / ta → った
+    ;; Full commit: Ka starts preedit, l fires sokuon-okurigana (key=?t),
+    ;; C-j commits the candidate (買), then ta produces った.
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (let ((dict '(("かt" . ("買")))))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Ka")
+          (nskk-e2e-type "l")
+          (nskk-e2e-type "C-j")
+          (nskk-e2e-type "ta")
+          (nskk-e2e-assert-buffer "買った")))))
+
+  (nskk-it "T-03: nskk--azik-sokuon-okuri-kana-pending is set after l fires sokuon trigger"
+    ;; Mirror the §17 SP-flag test (nskk-e2e--dispatch-event ?+) but using l.
+    ;; After l fires sokuon-okurigana, the sentinel flag must be non-nil so that
+    ;; the next kana emission can clear okurigana-in-progress correctly.
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (let ((dict '(("かt" . ("買")))))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Ka")
+          (nskk-e2e-type "l")
+          (should (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending))))))
+
+  (nskk-it "T-04: C-g after Ka l clears nskk--azik-sokuon-okuri-kana-pending"
+    ;; Cancel path: after l fires sokuon-okurigana, C-g must clear the
+    ;; sentinel so the next preedit session does not start with a stale flag.
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (let ((dict '(("かt" . ("買")))))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Ka")
+          (nskk-e2e-type "l")
+          (nskk-e2e-type "C-g")
+          (should (not (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending)))))))
+
+  (nskk-it "T-05: kl in preedit produces こん (AZIK hatsuon), not sokuon trigger"
+    ;; Regression guard: when romaji-buffer is non-empty (k pending), l
+    ;; completes the kl hatsuon rule (こん) via normal AZIK romaji processing.
+    ;; The sokuon-eligible guard requires an empty romaji buffer.
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "K")
+        (nskk-e2e-type "l")
+        ;; kl fires the built-in hatsuon rule → reading is こん, still in preedit
+        (should (string-match-p "こん" (buffer-string))))))
+
+  (nskk-it "T-06: l in idle hiragana mode produces っ when l is mapped to っ"
+    ;; When l maps to っ in the custom table, pressing l in idle hiragana mode
+    ;; (no active preedit, empty romaji buffer) fires the romaji rule directly
+    ;; and inserts っ.  The l-key-action dispatch uses `azik-complete' context
+    ;; (nskk--romaji-has-match-p true) → fire-romaji, not latin-mode.
+    ;; This is correct: latin-mode only applies when l has no romaji match.
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "l")
+        (nskk-e2e-assert-buffer "っ"))))
+
+  (nskk-it "T-07: nskk--sticky-shift-pending is cleared when l triggers sokuon-okurigana"
+    ;; Verifies FR-005: nskk--sticky-shift-pending is cleared before
+    ;; nskk--trigger-sokuon-okurigana is called, preventing the flag from
+    ;; leaking into subsequent input.
+    ;; Note: In AZIK jp106, typing `;' inserts っ (not sticky-shift), so
+    ;; the pending flag is set programmatically to isolate the clearing behaviour.
+    ;; Steps: Ka → ▽か / [arm sticky] / l → ▼買 / C-j → commits 買 / ta → った
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (let ((dict '(("かt" . ("買")))))
+        (nskk-e2e-with-azik-buffer 'hiragana dict
+          (nskk-e2e-type "Ka")                            ; → ▽か
+          (setq nskk--sticky-shift-pending 'okurigana)    ; arm sticky programmatically
+          (nskk-e2e-type "l")                             ; l fires sokuon-okurigana, clears sticky
+          (nskk-e2e-type "C-j")                           ; commit 買
+          (nskk-e2e-type "ta")                            ; → った
+          (nskk-e2e-assert-buffer "買った")
+          (should (null nskk--sticky-shift-pending)))))))
+
 (provide 'nskk-azik-e2e-test)
 
 ;;; nskk-azik-e2e-test.el ends here

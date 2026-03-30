@@ -1484,7 +1484,12 @@ and configures state."
     ;; (e.g. "zl" -> "->").
     (should (eq (nskk-prolog-query-value
                  `(l-key-action standard azik-complete ,'\?action) '\?action)
-                'fire-romaji))))
+                'fire-romaji)))
+
+  (nskk-it "azik + sokuon-eligible maps to trigger-sokuon-okurigana"
+    (should (eq (nskk-prolog-query-value
+                 `(l-key-action azik sokuon-eligible ,'\?action) '\?action)
+                'trigger-sokuon-okurigana))))
 
 ;;;
 ;;; state-classify/4 Prolog Table Tests

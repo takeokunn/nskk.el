@@ -2200,6 +2200,34 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
           (nskk-converter-load-style 'standard)
           (nskk-prolog-retract-all 'azik-rule 2))))))
 
+;;;
+;;; japanese-input-class/3 sokuon-trigger row tests
+;;;
+
+(nskk-describe "japanese-input-class/3 sokuon-trigger dispatch"
+  (nskk-it "azik-arm-eligible + sokuon-trigger maps to okuri-sokuon"
+    ;; When the input context is azik-arm-eligible (AZIK style, active preedit,
+    ;; no okurigana pending) and the char-type is sokuon-trigger (a custom table
+    ;; key mapped to っ), the dispatch result must be okuri-sokuon so that
+    ;; nskk--trigger-sokuon-okurigana is called.
+    (nskk-prolog-test-with-isolated-db
+      (nskk-input-initialize)
+      (should (eq (nskk-prolog-query-value
+                   `(japanese-input-class ,'\?action azik-arm-eligible sokuon-trigger)
+                   '\?action)
+                  'okuri-sokuon))))
+
+  (nskk-it "other context + sokuon-trigger falls through to normal"
+    ;; Outside azik-arm-eligible context (e.g. idle or non-AZIK style), the
+    ;; sokuon-trigger char-type must fall through to the wildcard row and
+    ;; return normal so the key is handled as regular romaji input.
+    (nskk-prolog-test-with-isolated-db
+      (nskk-input-initialize)
+      (should (eq (nskk-prolog-query-value
+                   `(japanese-input-class ,'\?action other sokuon-trigger)
+                   '\?action)
+                  'normal)))))
+
 (provide 'nskk-input-test)
 
 ;;; nskk-input-test.el ends here

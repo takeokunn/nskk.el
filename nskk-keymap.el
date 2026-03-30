@@ -123,6 +123,13 @@
 ;; Functions in nskk-henkan.el
 (declare-function nskk-converting-p "nskk-henkan")
 (declare-function nskk--has-preedit "nskk-henkan")
+(declare-function nskk--conversion-start-active-p "nskk-henkan")
+;; Functions in nskk-input.el
+(declare-function nskk--trigger-sokuon-okurigana "nskk-input")
+;; Functions in nskk-azik.el
+(declare-function nskk--azik-sokuon-key-p "nskk-azik")
+(declare-function nskk-state-get-okurigana "nskk-state")
+(defvar nskk--sticky-shift-pending)
 (declare-function nskk--get-conversion-start "nskk-henkan")
 (declare-function nskk-start-conversion "nskk-henkan")
 (declare-function nskk-next-candidate "nskk-henkan")
@@ -201,15 +208,19 @@
 ;; l-key-action/3: AZIK-aware dispatch for the l key.
 ;; (l-key-action STYLE BUF-STATE ACTION)
 ;; STYLE is `azik' or `standard' (from nskk-converter-romaji-style).
-;; BUF-STATE is `azik-complete' when pending-romaji+l forms a complete rule
-;; match (AZIK hash or standard romaji rule); `other' otherwise.  Both styles
-;; map `azik-complete' to fire-romaji (e.g. "zl" -> "->" in standard mode) and
-;; `other' to latin-mode.
+;; BUF-STATE values:
+;;   `sokuon-eligible' -- AZIK style only; romaji buffer is empty, a conversion
+;;     start is active, preedit exists, no okurigana in progress, colon-okuri
+;;     is not pending, and l is a valid AZIK sokuon key → trigger sokuon-okurigana.
+;;   `azik-complete'   -- pending-romaji+l forms a complete rule match (AZIK hash
+;;     or standard romaji rule); maps to fire-romaji (e.g. "zl" -> "->").
+;;   `other'           -- all remaining cases; maps to latin-mode.
 (nskk-prolog-define-fact-table l-key-action (:arity 3 :index :hash)
-  (azik     azik-complete fire-romaji)
-  (azik     other         latin-mode)
-  (standard azik-complete fire-romaji)
-  (standard other         latin-mode))
+  (azik     sokuon-eligible         trigger-sokuon-okurigana)
+  (azik     azik-complete           fire-romaji)
+  (azik     other                   latin-mode)
+  (standard azik-complete           fire-romaji)
+  (standard other                   latin-mode))
 
 ;;;; Kakutei Idle-State Classification Rules
 
@@ -569,16 +580,31 @@ Dispatched via `q-key-dispatch/3' Prolog table."
 
 (defun/done nskk--handle-l-action ()
   "Helper for `nskk-handle-l' mode-switch and fire-romaji actions.
-Dispatched via `l-key-action/3' Prolog table (style, buf-state, action)."
+Dispatched via `l-key-action/3' Prolog table (style, buf-state, action).
+In AZIK style, when l is a sokuon key and conditions are met, triggers
+sokuon-okurigana instead of switching to latin mode."
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
-         (buf-state (if (or (nskk--azik-complete-match-p ?l)
-                            (nskk--romaji-has-match-p ?l))
-                        'azik-complete
-                      'other))
+         (buf-state (cond
+                      ((and (eq nskk-converter-romaji-style 'azik)
+                            (not nskk--azik-colon-okuri-pending)
+                            (nskk--azik-sokuon-key-p ?l)
+                            (string-empty-p nskk--romaji-buffer)
+                            (nskk--conversion-start-active-p)
+                            (nskk--has-preedit)
+                            (not (nskk-with-current-state
+                                   (nskk-state-get-okurigana nskk-current-state))))
+                       'sokuon-eligible)
+                      ((or (nskk--azik-complete-match-p ?l)
+                           (nskk--romaji-has-match-p ?l))
+                       'azik-complete)
+                      (t 'other)))
          (action (nskk-prolog-query-value
                   `(l-key-action ,style ,buf-state ,'\?a) '\?a)))
     (pcase action
       ('fire-romaji (nskk-process-japanese-input ?l 1))
+      ('trigger-sokuon-okurigana
+       (setq nskk--sticky-shift-pending nil)
+       (nskk--trigger-sokuon-okurigana))
       ('latin-mode
        (nskk--with-japanese-mode/k
          (lambda (_) (nskk-set-mode-latin))
@@ -586,8 +612,10 @@ Dispatched via `l-key-action/3' Prolog table (style, buf-state, action)."
       (_ (self-insert-command 1)))))
 
 (defun/done nskk-handle-l ()
-  "Handle l key: candidate selection, romaji rule, or mode toggle.
+  "Handle l key: candidate selection, romaji rule, sokuon-okurigana, or mode toggle.
 In candidate list selection mode, the key acts as a selection key.
+In AZIK style with an active preedit and no okurigana or colon-okuri pending,
+triggers sokuon-okurigana when l qualifies as a sokuon key.
 In idle Japanese mode, switches to ASCII (latin) mode or fires a romaji rule.
 In ASCII mode or when NSKK state is inactive, falls through to
 `self-insert-command'."
