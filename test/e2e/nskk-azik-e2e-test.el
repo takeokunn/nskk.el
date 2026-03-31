@@ -454,6 +454,82 @@ This ensures:
         (nskk-e2e-assert-buffer "")))))
 
 ;;;;
+;;;; Section 6b: AZIK Toggle Key During Henkan-Active (Issue #34)
+;;;;
+
+(nskk-describe "AZIK toggle key commits conversion during henkan-active"
+
+  (nskk-it "@ key during ▼ commits conversion and toggles to katakana (jp106)"
+    ;; When ▼山 is displayed and @ is pressed, the conversion should be
+    ;; committed (kakutei) and mode toggled to katakana.
+    ;; This is the jp106 equivalent of the us101 bug in issue #34.
+    ;; NOTE: Use "Yama" not "Kanji" because AZIK remaps nj → non-standard kana.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Yama")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-henkan-phase 'active)
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "山")
+      (nskk-e2e-assert-mode 'katakana)))
+
+  (nskk-it "[ key during ▼ commits conversion and toggles to katakana (us101)"
+    ;; Issue #34: pressing [ during ▼山 should commit and toggle mode.
+    ;; Previously this reverted to ▽ instead of committing.
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk--setup-azik-toggle-key)
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-type "Yama")
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-henkan-phase 'active)
+        (nskk-e2e-type "[")
+        (nskk-e2e-assert-henkan-phase nil)
+        (nskk-e2e-assert-buffer "山")
+        (nskk-e2e-assert-mode 'katakana))))
+
+  (nskk-it "@ key during ▽ converts script and commits (existing behavior preserved)"
+    ;; In ▽ preedit, @ converts kana to opposite script (hiragana→katakana)
+    ;; and commits without changing the input mode.
+    ;; NOTE: Use "Yama" not "Kanji" because AZIK remaps nj → non-standard kana.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Yama")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "ヤマ")
+      (nskk-e2e-assert-mode 'hiragana)))
+
+  (nskk-it "[ key in idle hiragana toggles to katakana (existing behavior preserved)"
+    ;; Idle toggle should still work as before.
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk--setup-azik-toggle-key)
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (nskk-e2e-assert-mode 'hiragana)
+        (nskk-e2e-type "[")
+        (nskk-e2e-assert-mode 'katakana))))
+
+  (nskk-it "[ key in ascii mode self-inserts (existing behavior preserved)"
+    ;; In ascii/latin mode, the toggle key should self-insert.
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk--setup-azik-toggle-key)
+      (nskk-e2e-with-azik-buffer nil nil
+        (nskk-e2e-type "[")
+        (nskk-e2e-assert-buffer "["))))
+
+  (nskk-it "@ key during preedit-pending clears marker and toggles mode"
+    ;; When uppercase trigger fired (▽ marker set) but no kana emitted yet,
+    ;; @ should clear the preedit marker and toggle to katakana.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "K")               ; uppercase K starts henkan (▽)
+      (nskk-e2e-assert-henkan-phase 'on) ; marker set, no kana yet
+      (nskk-e2e-type "@")
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "")
+      (nskk-e2e-assert-mode 'katakana))))
+
+;;;;
 ;;;; Section 7: AZIK Standard Romaji Compatibility in E2E Buffer
 ;;;;
 

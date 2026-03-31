@@ -120,6 +120,8 @@
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk--show-pending-romaji "nskk-henkan" (text))
 (declare-function nskk--clear-pending-romaji "nskk-henkan" ())
+(declare-function nskk--classify-state "nskk-keymap" ())
+(declare-function nskk--with-japanese-mode/k "nskk-keymap" (on-found on-not-found))
 (defvar nskk--romaji-buffer)                         ;; Forward declaration from nskk-state.el
 (defvar nskk-henkan-on-marker)                        ;; Forward declaration from nskk-henkan.el
 (defvar nskk--conversion-start-marker)               ;; Forward declaration from nskk-state.el
@@ -279,31 +281,39 @@ Dictionary keys that begin with # trigger numeric candidate expansion."
 
 ;;;###autoload
 (defun/done nskk-toggle-japanese-mode ()
-  "Convert preedit kana to opposite script, or toggle hiragana<->katakana.
-In ▽ preedit phase (henkan-phase `on'): delegates to
-`nskk-henkan-kakutei-convert-script' which queries `script-toggle/2'
-(Prolog) for the target script, converts and commits the preedit text,
-and clears conversion state without changing the input mode.
-In idle state: queries `toggle-mode/2' (Prolog) for the target mode and
-switches via `nskk--set-mode' (hiragana↔katakana toggle).
-Falls through to `self-insert-command' when no toggle-mode fact exists for
-the current mode (e.g. ascii, latin), so that the AZIK toggle key (@/[)
-self-inserts in non-Japanese modes."
+  "Toggle Japanese input mode, with phase-aware dispatch.
+Uses `nskk--classify-state' to determine the current phase:
+- `converting' (▼): implicit kakutei via
+  `nskk--with-japanese-mode/k', then toggle mode.
+- `preedit-japanese' (▽): convert preedit kana to opposite
+  script via `nskk-henkan-kakutei-convert-script'.
+- `preedit-pending': implicit kakutei, then toggle mode.
+- `idle-japanese': toggle hiragana<->katakana via
+  `toggle-mode/2' and `nskk--set-mode'.
+- Otherwise: `self-insert-command' (AZIK @/[ self-inserts)."
   :interactive t
-  (if (nskk-with-current-state
-        (nskk-prolog-holds-p
-         `(preedit-phase ,(nskk-state-henkan-phase nskk-current-state))))
-      (nskk-henkan-kakutei-convert-script)
-    (let* ((current-mode (when (boundp 'nskk-current-state)
-                           (nskk-state-mode nskk-current-state)))
-           (target (nskk-prolog-query-value
-                    `(toggle-mode ,current-mode ,'\?target) '\?target)))
-      (if target
-          (progn
-            (nskk-debug-log "[INPUT] toggle-mode: from=%s to=%s" current-mode target)
-            (nskk--set-mode target)
-            (nskk--update-modeline))
-        (self-insert-command 1)))))
+  (cl-flet ((do-toggle ()
+              (let* ((mode (nskk-state-mode nskk-current-state))
+                     (target (nskk-prolog-query-value
+                              `(toggle-mode ,mode ,'\?target)
+                              '\?target)))
+                (when target
+                  (nskk-debug-log "[INPUT] toggle-mode: from=%s to=%s"
+                                  mode target)
+                  (nskk--set-mode target)
+                  (nskk--update-modeline)
+                  t))))
+    (pcase (nskk--classify-state)
+      ((or 'converting 'preedit-pending)
+       (nskk--with-japanese-mode/k
+        (lambda (_) (do-toggle))
+        (lambda () (self-insert-command 1))))
+      ('preedit-japanese
+       (nskk-henkan-kakutei-convert-script))
+      ('idle-japanese
+       (unless (do-toggle) (self-insert-command 1)))
+      (_
+       (self-insert-command 1)))))
 
 (defun/done nskk--set-mode (mode)
   "Internal mode setter with validation.

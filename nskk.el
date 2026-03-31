@@ -236,6 +236,7 @@ This provides global bindings that work even when nskk-mode is not yet active."
   ;; Register save-on-exit hook; add-hook deduplicates same symbol safely
   (add-hook 'kill-emacs-hook #'nskk--dict-maybe-save)
   (nskk--setup-buffer)
+  (nskk--cursor-color-save)
   (nskk-modeline-update))
 
 (defun nskk--disable ()
@@ -253,6 +254,7 @@ This provides global bindings that work even when nskk-mode is not yet active."
   ;; Clear remaining input state: pending romaji, dcomp, numeric, sticky shift, AZIK.
   ;; Internally guarded via nskk-when-bound and nskk-with-current-state; safe when nil.
   (nskk--clear-conversion-context)
+  (nskk--cursor-color-restore)
   (run-hooks 'nskk-mode-off-hook)
   (nskk--cleanup-buffer)
   (remove-hook 'completion-at-point-functions #'nskk-completion-at-point t)

@@ -402,6 +402,77 @@
     (let ((color (nskk--cursor-with-color 'nonexistent-mode)))
       (should-not color))))
 
+(nskk-describe "nskk--cursor-color-save"
+  (nskk-it "is defined as a function"
+    (should (fboundp 'nskk--cursor-color-save)))
+
+  (nskk-it "sets nskk--saved-cursor-color to non-nil when nskk-use-color-cursor is t"
+    (let ((nskk--saved-cursor-color nil)
+          (nskk-use-color-cursor t))
+      (nskk--cursor-color-save)
+      (should (not (null nskk--saved-cursor-color)))))
+
+  (nskk-it "is idempotent: does not overwrite a previously saved color"
+    (let ((nskk--saved-cursor-color "pink")
+          (nskk-use-color-cursor t))
+      (nskk--cursor-color-save)
+      (should (string= nskk--saved-cursor-color "pink"))))
+
+  (nskk-it "does nothing when nskk-use-color-cursor is nil"
+    (let ((nskk--saved-cursor-color nil)
+          (nskk-use-color-cursor nil))
+      (nskk--cursor-color-save)
+      (should (null nskk--saved-cursor-color))))
+
+  (nskk-it "stores the TTY sentinel t when frame-parameter returns nil"
+    ;; In batch mode (no real frame), frame-parameter returns nil.
+    ;; nskk--cursor-color-save must store `t' as sentinel rather than nil,
+    ;; so the nil slot continues to mean "not yet saved".
+    (let ((nskk--saved-cursor-color nil)
+          (nskk-use-color-cursor t))
+      (nskk-with-mocks ((frame-parameter (lambda (&rest _) nil)))
+        (nskk--cursor-color-save)
+        (should (eq nskk--saved-cursor-color t))))))
+
+(nskk-describe "nskk--cursor-color-restore"
+  (nskk-it "is defined as a function"
+    (should (fboundp 'nskk--cursor-color-restore)))
+
+  (nskk-it "resets nskk--saved-cursor-color to nil"
+    (let ((nskk--saved-cursor-color "pink")
+          (nskk--last-cursor-color "pink")
+          (nskk-use-color-cursor t))
+      (nskk--cursor-color-restore)
+      (should (null nskk--saved-cursor-color))))
+
+  (nskk-it "resets nskk--last-cursor-color to nil"
+    (let ((nskk--saved-cursor-color "pink")
+          (nskk--last-cursor-color "pink")
+          (nskk-use-color-cursor t))
+      (nskk--cursor-color-restore)
+      (should (null nskk--last-cursor-color))))
+
+  (nskk-it "resets nskk--last-cursor-color to nil even when nskk-use-color-cursor is nil"
+    (let ((nskk--saved-cursor-color t)
+          (nskk--last-cursor-color "pink")
+          (nskk-use-color-cursor nil))
+      (nskk--cursor-color-restore)
+      (should (null nskk--last-cursor-color))
+      (should (null nskk--saved-cursor-color))))
+
+  (nskk-it "does not error when saved color is the TTY sentinel t"
+    (let ((nskk--saved-cursor-color t)
+          (nskk--last-cursor-color nil)
+          (nskk-use-color-cursor t))
+      (nskk-should-not-error (nskk--cursor-color-restore))
+      (should (null nskk--saved-cursor-color))))
+
+  (nskk-it "does not error when nskk--saved-cursor-color is nil"
+    (let ((nskk--saved-cursor-color nil)
+          (nskk--last-cursor-color nil)
+          (nskk-use-color-cursor t))
+      (nskk-should-not-error (nskk--cursor-color-restore)))))
+
 (provide 'nskk-modeline-test)
 
 ;;; nskk-modeline-test.el ends here
