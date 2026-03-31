@@ -70,6 +70,11 @@
 (defvar-local nskk--last-cursor-color nil
   "Last cursor color applied, to avoid redundant `set-cursor-color' calls.")
 
+(defvar-local nskk--saved-cursor-color nil
+  "Cursor color in effect before nskk-mode first changed it in this buffer.
+Nil means no color has been saved yet.  A string means the pre-nskk color.
+The symbol `t' means the color was nil at save time (TTY / batch frame).")
+
 ;;;; Face Definitions
 
 (defmacro nskk-define-mode-entry (mode _display face-or-spec _help)
@@ -205,6 +210,31 @@ is unbound."
       (unless (equal color nskk--last-cursor-color)
         (set-cursor-color color)
         (setq nskk--last-cursor-color color)))))
+
+(defun nskk--cursor-color-save ()
+  "Save the frame cursor color before nskk changes it.
+Idempotent: saves only when `nskk--saved-cursor-color' is nil (not yet saved).
+Stores `t' when the frame has no cursor color (TTY / batch frame) so the
+nil slot can continue to mean \"not yet saved\".
+Does nothing when `nskk-use-color-cursor' is nil."
+  (when (and nskk-use-color-cursor
+             (null nskk--saved-cursor-color))
+    (setq nskk--saved-cursor-color
+          (or (frame-parameter nil 'cursor-color) t))))
+
+(defun nskk--cursor-color-restore ()
+  "Restore the cursor color saved by `nskk--cursor-color-save'.
+Calls `set-cursor-color' when the saved value is a string.
+Resets both `nskk--saved-cursor-color' and `nskk--last-cursor-color' to nil
+regardless of `nskk-use-color-cursor', so re-enabling nskk applies
+the correct color from a clean slate.
+Does not call `set-cursor-color' when `nskk-use-color-cursor' is nil or
+when the saved color was nil (TTY / batch frame, sentinel `t')."
+  (when (and nskk-use-color-cursor
+             (stringp nskk--saved-cursor-color))
+    (set-cursor-color nskk--saved-cursor-color))
+  (setq nskk--saved-cursor-color nil
+        nskk--last-cursor-color nil))
 
 (provide 'nskk-modeline)
 

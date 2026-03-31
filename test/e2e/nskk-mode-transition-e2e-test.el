@@ -616,7 +616,38 @@
       (should (null nskk-mode))
       (should (null nskk-current-state))
       ;; No characters from the incomplete keystroke appear in the buffer.
-      (should (equal (buffer-string) "")))))
+      (should (equal (buffer-string) ""))))
+
+  (nskk-it "disable resets nskk--saved-cursor-color and nskk--last-cursor-color"
+    ;; After disabling nskk-mode, both cursor-color tracking variables must be
+    ;; nil so that re-enabling starts from a clean slate.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-mode 0)
+      (should (null nskk-mode))
+      (should (null nskk--saved-cursor-color))
+      (should (null nskk--last-cursor-color))))
+
+  (nskk-it "re-enable after disable starts with clean cursor color state"
+    ;; Disable then re-enable nskk-mode. On re-enable, nskk--cursor-color-save
+    ;; must save a fresh color (idempotency guard starts from nil after restore).
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-mode 0)
+      (should (null nskk--saved-cursor-color))
+      (nskk-mode 1)
+      ;; After re-enable, nskk--saved-cursor-color must be non-nil again.
+      (should nskk-mode)
+      (should (not (null nskk--saved-cursor-color)))))
+
+  (nskk-it "disable is safe when nskk-use-color-cursor is nil"
+    ;; When nskk-use-color-cursor is nil, nskk--cursor-color-save skips saving
+    ;; (nskk--saved-cursor-color stays nil through enable). On disable,
+    ;; nskk--cursor-color-restore must still reset both vars without error.
+    (let ((nskk-use-color-cursor nil))
+      (nskk-e2e-with-buffer 'hiragana nil
+        (nskk-mode 0)
+        (should (null nskk-mode))
+        (should (null nskk--saved-cursor-color))
+        (should (null nskk--last-cursor-color))))))
 
 
 (provide 'nskk-mode-transition-e2e-test)
