@@ -704,7 +704,64 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 ;;;
 
 (nskk-describe "nskk-handle-ctrl-n behavior"
-  (nskk-deftest-nav-handler ctrl-n nskk-handle-ctrl-n "C-n" "<down>" next-line))
+  ;; ctrl-n in converting mode shows next candidate (same as space key),
+  ;; so we cannot use nskk-deftest-nav-handler which tests commit+nav behavior.
+  (nskk-it "nskk-handle-ctrl-n is defined and interactive"
+    (should (commandp 'nskk-handle-ctrl-n)))
+
+  (nskk-it "C-n is bound in nskk-mode-map"
+    (should (eq (lookup-key nskk-mode-map (kbd "C-n")) 'nskk-handle-ctrl-n)))
+
+  (nskk-it "<down> is bound to nskk-handle-ctrl-n in nskk-mode-map"
+    (should (eq (lookup-key nskk-mode-map (kbd "<down>")) 'nskk-handle-ctrl-n)))
+
+  (nskk-it "calls nskk-next-candidate when converting"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (next-candidate-called nil))
+        (nskk--set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-candidate-called t))))
+          (nskk-when (nskk-handle-ctrl-n))
+          (nskk-then (should next-candidate-called))))))
+
+  (nskk-it "calls next-line when not converting (normal state)"
+    (let ((nav-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--has-preedit (lambda () nil))
+                        (next-line (lambda (&rest _) (interactive) (setq nav-called t))))
+        (let ((nskk-current-state (nskk-state-create)))
+          (call-interactively 'nskk-handle-ctrl-n)))
+      (should nav-called)))
+
+  (nskk-it "calls next-line when nskk-current-state is nil"
+    (let ((nav-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--has-preedit (lambda () nil))
+                        (next-line (lambda (&rest _) (interactive) (setq nav-called t))))
+        (let ((nskk-current-state nil))
+          (call-interactively 'nskk-handle-ctrl-n)))
+      (should nav-called)))
+
+  (nskk-it "calls nskk-henkan-kakutei (not nskk-commit-current) then next-line in preedit state"
+    (let ((commit-called nil)
+          (kakutei-called nil)
+          (nav-called nil))
+      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
+                        (nskk--has-preedit (lambda () t))
+                        (nskk--get-conversion-start (lambda () 1))
+                        (nskk-commit-current (lambda () (setq commit-called t)))
+                        (nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
+                        (next-line (lambda (&rest _) (interactive) (setq nav-called t))))
+        (let* ((preedit-state (nskk-state-create 'hiragana))
+               (_ (nskk-state-force-henkan-phase preedit-state 'on))
+               (nskk-current-state preedit-state))
+          (call-interactively 'nskk-handle-ctrl-n)))
+      (should-not commit-called)
+      (should kakutei-called)
+      (should nav-called))))
 
 (nskk-describe "nskk-handle-ctrl-p behavior"
   ;; ctrl-p in converting mode shows previous candidate (same as x key),
@@ -785,17 +842,21 @@ and configures state."
 ;;;
 
 (nskk-describe "cursor key commit-then-move behavior"
-  (nskk-it "C-n commits candidate and moves to next line in converting mode"
+  (nskk-it "C-n calls nskk-next-candidate in converting mode (does not commit)"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer ""))
+            (nskk--romaji-buffer "")
+            (next-called nil))
         (insert "あいうえお\nかきくけこ")
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
-        (nskk-when (nskk-handle-ctrl-n))
+        (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-called t))))
+          (nskk-when (nskk-handle-ctrl-n)))
+        ;; C-n called next-candidate, not commit+navigate
         (nskk-then
-         (should (string= (buffer-string) "愛うえお\nかきくけこ"))
-         (should (= (line-number-at-pos) 2))))))
+         (should next-called)
+         ;; Still in converting mode (not committed)
+         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
   (nskk-it "C-p shows previous candidate in converting mode (does not commit)"
     ;; C-p calls nskk-previous-candidate instead of committing.
@@ -815,17 +876,21 @@ and configures state."
          ;; Still in converting mode (not committed)
          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
-  (nskk-it "C-n at buffer end during conversion silently ignores end-of-buffer"
+  (nskk-it "C-n in converting mode calls next-candidate (no end-of-buffer error)"
+    ;; Since C-n now calls nskk-next-candidate, there is no navigation
+    ;; and therefore no end-of-buffer error regardless of cursor position.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer ""))
+            (nskk--romaji-buffer "")
+            (next-called nil))
         (insert "あい")
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
-        (nskk-when (nskk-handle-ctrl-n))
+        (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-called t))))
+          (nskk-when (nskk-handle-ctrl-n)))
         (nskk-then
-         (should (string= (buffer-string) "愛"))
-         (should (= (point) (point-max)))))))
+         (should next-called)
+         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
   (nskk-it "C-p in converting mode calls previous-candidate (no beginning-of-buffer error)"
     ;; Since C-p now calls nskk-previous-candidate, there is no navigation
@@ -1424,7 +1489,7 @@ and configures state."
            (x converting previous-candidate)
            (x normal    self-insert)
            ;; C-n
-           (ctrl-n converting kakutei-then-next-line)
+           (ctrl-n converting next-candidate)
            (ctrl-n preedit    kakutei-then-next-line)
            (ctrl-n normal     next-line)
             ;; C-p

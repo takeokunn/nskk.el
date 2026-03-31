@@ -84,7 +84,7 @@
 ;; - `nskk-handle-x'       -- previous candidate
 ;; - `nskk-handle-space'   -- start conversion / next candidate
 ;; - `nskk-handle-return'  -- commit candidate (no newline) / insert newline
-;; - `nskk-handle-ctrl-n'  -- commit then next-line / next-line fallthrough
+;; - `nskk-handle-ctrl-n'  -- next candidate (in conversion) / commit then next-line / next-line fallthrough
 ;; - `nskk-handle-ctrl-p'  -- previous candidate (in conversion) / commit then prev-line / previous-line fallthrough
 ;; - `nskk-handle-ctrl-f'  -- commit then forward-char / forward-char fallthrough
 ;; - `nskk-handle-ctrl-b'  -- commit then backward-char / backward-char fallthrough
@@ -164,7 +164,7 @@
   (x converting previous-candidate)
   (x normal    self-insert)
   ;; C-n
-  (ctrl-n converting kakutei-then-next-line)
+  (ctrl-n converting next-candidate)
   (ctrl-n preedit    kakutei-then-next-line)
   (ctrl-n normal     next-line)
   ;; C-p: previous candidate in conversion, commit+nav in preedit
@@ -674,11 +674,17 @@ ERROR-TYPE, if non-nil, is the error to suppress via `nskk--safe-nav-command'."
        (',kakutei-action (nskk--commit-by-phase) ,nav-form)
        (',nav-action ,nav-form))))
 
-(nskk-define-nav-handler ctrl-n
-  "Handle C-n/down-arrow: commit then move to next line.
-In conversion (▼) or preedit (▽) mode, commits then moves down.
+(nskk-define-key-handler ctrl-n
+  "Handle C-n/down-arrow: next candidate or commit then move to next line.
+In conversion (▼) mode, shows the next candidate.
+In preedit (▽) mode, commits then moves down.
 In normal mode, delegates to \\[next-line]."
-  kakutei-then-next-line next-line #'next-line end-of-buffer)
+  ('next-candidate (nskk-next-candidate))
+  ('kakutei-then-next-line
+   (nskk--commit-by-phase)
+   (nskk--safe-nav-command #'next-line end-of-buffer))
+  ('next-line
+   (nskk--safe-nav-command #'next-line end-of-buffer)))
 
 (nskk-define-key-handler ctrl-p
   "Handle C-p/up-arrow: previous candidate or move to previous line.
