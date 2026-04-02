@@ -1565,97 +1565,93 @@ DEPTH 1 → \"[辞書登録] READING: \", DEPTH 2 → \"[[辞書登録]] READING
         (close (make-string depth ?\])))
     (format "%s辞書登録%s %s: " open close reading)))
 
-(defun nskk--run-registration-session (reading)
-  "Open the minibuffer for registering READING; return the entered string or nil.
-Manages `nskk--registration-depth' and restores the henkan-phase via
-`unwind-protect', so depth and phase are always consistent on exit.
+(defun nskk--read-registration-entry-with-kana (prompt)
+  "Read a registration entry from the minibuffer for PROMPT with nskk-mode active.
+Sets up a dedicated keymap so RET and C-j commit the current conversion
+instead of exiting with a raw newline."
+  (let* ((exit-fn (lambda ()
+                    (interactive)
+                    (let ((phase (nskk--compute-phase)))
+                      (cond
+                       ((eq phase 'converting) (nskk-commit-current))
+                       ((eq phase 'henkan-on) (nskk-henkan-kakutei))
+                       (t (exit-minibuffer))))))
+         (reg-map (let ((map (make-sparse-keymap)))
+                    (set-keymap-parent map nskk-mode-map)
+                    (define-key map (kbd "C-j") exit-fn)
+                    (define-key map (kbd "RET") exit-fn)
+                    map)))
+    (minibuffer-with-setup-hook
+        (lambda ()
+          (nskk-mode 1)
+          (nskk--set-mode 'hiragana)
+          (setq-local minor-mode-overriding-map-alist
+                      (list (cons 'nskk-mode reg-map))))
+      (read-from-minibuffer prompt))))
 
-`unwind-protect' is mandatory here because the user can abort at any time
-via \[keyboard-quit] or if an error is signalled inside
-`read-from-minibuffer'.  Without the cleanup form the depth counter would
-remain incremented, blocking future registration attempts.
+(defun nskk--read-registration-entry (reading)
+  "Read a registration entry for READING from the minibuffer.
+Returns the entered non-empty string, or nil if the user cancels
+\(empty input or C-g).
+Uses `nskk-use-kana-in-registration' to choose the input method."
+  (condition-case nil
+      (let ((entry (if nskk-use-kana-in-registration
+                      (nskk--read-registration-entry-with-kana
+                       (nskk--registration-prompt nskk--registration-depth reading))
+                    (read-from-minibuffer
+                     (nskk--registration-prompt nskk--registration-depth reading)))))
+        (and (not (string-empty-p entry)) entry))
+    (quit nil)))
 
-`nskk--registration-depth' tracks nested (recursive) registration: each
-call increments it before opening the minibuffer and decrements it in the
-cleanup form, regardless of how the minibuffer session ends.  This allows
-the user to register a word for an unknown reading that itself appeared
-during registration (e.g. registering \"かんじ\" → user types \"漢字\" →
-\"漢\" is unknown → nested call for \"かん\"), up to
-`nskk-max-registration-depth' levels.
+(defun nskk--commit-registration-word (reading entry)
+  "Register ENTRY for READING in the dictionary and update learning state."
+  (nskk-dict-register-word reading entry)
+  (when (fboundp 'nskk-study-after-kakutei)
+    (nskk-study-after-kakutei reading entry))
+  (nskk-search-learn reading entry))
 
-The cleanup form guarantees two invariants on exit:
-  1. `nskk--registration-depth' is decremented (preventing leaks).
-  2. The henkan-phase is restored to its value before registration."
-  (when (< nskk--registration-depth nskk-max-registration-depth)
-    (let ((prev-phase (nskk-state-henkan-phase nskk-current-state))
-          (result nil))
-      (nskk-with-current-state
-        (nskk-state-force-henkan-phase nskk-current-state 'registration))
-      (cl-incf nskk--registration-depth)
-      ;; Show inline registration badge when inline display is enabled
-      (when (fboundp 'nskk-inline-show-registration-badge)
-        (nskk-inline-show-registration-badge))
-      (unwind-protect
-          (let* ((entry (if nskk-use-kana-in-registration
-                           ;; nskk-mode を有効化し、辞書登録専用キーマップで
-                           ;; RET/C-j の挙動を制御する
-                           (let* ((nskk-reg-exit
-                                   (lambda ()
-                                     (interactive)
-                                     (let ((phase (nskk--compute-phase)))
-                                       (cond
-                                        ((eq phase 'converting)
-                                         (nskk-commit-current))
-                                        ((eq phase 'henkan-on)
-                                         (nskk-henkan-kakutei))
-                                        (t
-                                         (exit-minibuffer))))))
-                                  (reg-nskk-map
-                                   (let ((map (make-sparse-keymap)))
-                                     (set-keymap-parent map nskk-mode-map)
-                                     (define-key map (kbd "C-j") nskk-reg-exit)
-                                     (define-key map (kbd "RET") nskk-reg-exit)
-                                     map)))
-                             (minibuffer-with-setup-hook
-                                 (lambda ()
-                                   (nskk-mode 1)
-                                   (nskk--set-mode 'hiragana)
-                                   (setq-local minor-mode-overriding-map-alist
-                                               (list (cons 'nskk-mode reg-nskk-map))))
-                               (read-from-minibuffer
-                                (nskk--registration-prompt nskk--registration-depth reading))))
-                         ;; OS側のIMEに委ねる（デフォルト）
-                         (read-from-minibuffer
-                          (nskk--registration-prompt nskk--registration-depth reading)))))
-            (unless (string-empty-p entry)
-              (setq result entry)
-              (nskk-dict-register-word reading entry)
-              ;; Study + frequency learning for newly registered words.
-              (when (fboundp 'nskk-study-after-kakutei)
-                (nskk-study-after-kakutei reading entry))
-              (nskk-search-learn reading entry)))
-        (cl-decf nskk--registration-depth)
-        ;; Hide inline badge on exit
-        (when (fboundp 'nskk-inline-hide)
-          (nskk-inline-hide))
+(defun nskk--run-registration-session/k (reading on-found _on-not-found)
+  "Open the minibuffer for registering READING.
+Calls ON-FOUND with the registered word string on success, or nil if the
+user cancels.  _ON-NOT-FOUND is unused.
+
+Manages `nskk--registration-depth' and the henkan-phase via
+`unwind-protect', so both are always restored on exit.  Delegates input
+to `nskk--read-registration-entry' and commit to
+`nskk--commit-registration-word'.  [CPS]"
+  (if (< nskk--registration-depth nskk-max-registration-depth)
+      (let ((prev-phase (nskk-state-henkan-phase nskk-current-state))
+            (result nil))
         (nskk-with-current-state
-          (nskk-state-force-henkan-phase nskk-current-state prev-phase)))
-      result)))
+          (nskk-state-force-henkan-phase nskk-current-state 'registration))
+        (cl-incf nskk--registration-depth)
+        (unwind-protect
+            (progn
+              (when (fboundp 'nskk-inline-show-registration-badge)
+                (nskk-inline-show-registration-badge))
+              (let ((entry (nskk--read-registration-entry reading)))
+                (when entry
+                  (setq result entry)
+                  (nskk--commit-registration-word reading entry))))
+          (cl-decf nskk--registration-depth)
+          (when (fboundp 'nskk-inline-hide)
+            (nskk-inline-hide))
+          (nskk-with-current-state
+            (nskk-state-force-henkan-phase nskk-current-state prev-phase)))
+        (funcall on-found result))
+    (funcall on-found nil)))
+
+(put 'nskk--run-registration-session/k 'nskk--cps-continuation-pattern :found-not-found)
 
 (defun/k nskk-start-registration (reading)
   "Start dictionary registration for READING.
 Opens a minibuffer prompt for the user to enter the desired text.
 READING is the headword that could not be converted.
 Supports recursive registration up to `nskk-max-registration-depth' levels:
-depth 1 shows [辞書登録], depth 2 shows [[辞書登録]], etc.
-Returns the registered word on success, or nil if the user cancels
-or if the maximum nesting depth has been reached."
+depth 1 shows [辞書登録], depth 2 shows [[辞書登録]], etc."
   (nskk-debug-log "[HENKAN] start-registration: reading=%s" reading)
-  ;; Normalize: succeed with nil when cancelled (empty string), so
-  ;; callbacks can use `(if registered ...)' without treating "" as success.
-  (let* ((result     (nskk--run-registration-session reading))
-         (normalized (and (stringp result) (not (string-empty-p result)) result)))
-    (succeed normalized)))
+  (<- result nskk--run-registration-session reading)
+  (succeed result))
 
 (defun nskk--wrap-to-first-candidate ()
   "Reset candidate display to the first page.
@@ -1696,7 +1692,7 @@ If the user cancels, wrap around to the first candidate in list display."
               (if registered
                   (progn
                     (nskk-delete-overlay nskk--conversion-overlay)
-                    (nskk--insert-registered-and-reset registered start (lambda ()) reading))
+                    (nskk--insert-registered-and-reset registered start #'ignore reading))
                 ;; Registration cancelled: wrap back to first candidate page.
                 (nskk--wrap-to-first-candidate)))
             #'ignore))
