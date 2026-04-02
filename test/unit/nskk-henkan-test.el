@@ -3621,27 +3621,39 @@
 ;;; nskk--run-registration-session Tests
 ;;;
 
-(nskk-describe "nskk--run-registration-session"
-  (nskk-it "returns nil when depth is at maximum"
+(nskk-describe "nskk--run-registration-session/k"
+  (nskk-it "calls on-found with nil when depth is at maximum"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 3))
-      (should-not (nskk--run-registration-session "てすと"))))
+          (nskk--registration-depth nskk-max-registration-depth)
+          (result 'unset))
+      (nskk--run-registration-session/k "てすと"
+        (lambda (r) (setq result r))
+        #'ignore)
+      (should-not result)))
 
-  (nskk-it "returns nil when user enters empty string"
+  (nskk-it "calls on-found with nil when user enters empty string"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 0))
+          (nskk--registration-depth 0)
+          (result 'unset))
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) ""))
                         (nskk-dict-register-word #'ignore))
-        (should-not (nskk--run-registration-session "てすと")))))
+        (nskk--run-registration-session/k "てすと"
+          (lambda (r) (setq result r))
+          (lambda () (error "on-not-found must not be called"))))
+      (should-not result)))
 
-  (nskk-it "returns the entered word when user provides input"
+  (nskk-it "calls on-found with the entered word when user provides input"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 0))
+          (nskk--registration-depth 0)
+          (result nil))
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "漢字"))
                         (nskk-dict-register-word #'ignore))
-        (should (equal (nskk--run-registration-session "かんじ") "漢字")))))
+        (nskk--run-registration-session/k "かんじ"
+          (lambda (r) (setq result r))
+          (lambda () (error "on-not-found must not be called"))))
+      (should (equal result "漢字"))))
 
   (nskk-it "increments and decrements depth atomically"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
@@ -3651,9 +3663,44 @@
       (nskk-with-mocks ((read-from-minibuffer
                          (lambda (_p) (setq depth-during nskk--registration-depth) ""))
                         (nskk-dict-register-word #'ignore))
-        (nskk--run-registration-session "てすと"))
+        (nskk--run-registration-session/k "てすと"
+          (lambda (_r) nil)
+          (lambda () (error "on-not-found must not be called"))))
       (should (= depth-during 1))
+      (should (= nskk--registration-depth 0))))
+
+  (nskk-it "calls on-found with nil and restores depth on C-g (quit signal)"
+    (let ((nskk-current-state (nskk-state-create 'hiragana))
+          (nskk--registration-depth 0)
+          (result 'unset))
+      (nskk-state-force-henkan-phase nskk-current-state 'on)
+      (nskk-with-mocks ((read-from-minibuffer (lambda (_p) (signal 'quit nil)))
+                        (nskk-dict-register-word #'ignore))
+        (nskk--run-registration-session/k "てすと"
+          (lambda (r) (setq result r))
+          (lambda () (error "on-not-found must not be called"))))
+      (should (null result))
       (should (= nskk--registration-depth 0)))))
+
+;;;
+;;; nskk--read-registration-entry Tests
+;;;
+
+(nskk-describe "nskk--read-registration-entry"
+  (nskk-it "returns nil on C-g (quit signal)"
+    (let ((nskk--registration-depth 0))
+      (nskk-with-mocks ((read-from-minibuffer (lambda (_p) (signal 'quit nil))))
+        (should-not (nskk--read-registration-entry "てすと")))))
+
+  (nskk-it "returns nil on empty string"
+    (let ((nskk--registration-depth 0))
+      (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "")))
+        (should-not (nskk--read-registration-entry "てすと")))))
+
+  (nskk-it "returns entry string when user provides input"
+    (let ((nskk--registration-depth 0))
+      (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "漢字")))
+        (should (equal (nskk--read-registration-entry "かんじ") "漢字"))))))
 
 ;;;
 ;;; search-backend/2 Prolog Facts Tests

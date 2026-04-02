@@ -373,6 +373,65 @@
             t)
         (error t))))
 
+;;;;
+;;;; Section 8: C-g cancellation tests
+;;;;
+
+(defconst nskk-e2e--reg-7cands-dict
+  '(("かんじ" . ("漢字" "感じ" "幹事" "換字" "貫地" "刊事" "肝事")))
+  "Seven-candidate dict for C-g exhaust-candidates registration tests.")
+
+(nskk-describe "C-g cancellation in registration"
+  (nskk-it "cancels registration on C-g and preserves preedit (no-candidates path)"
+    ;; No candidates on SPC → registration opens → C-g thrown as quit signal
+    ;; → condition-case catches quit → nil returned → on-found called with nil
+    ;; → preedit ▽しんき preserved, phase restored to 'on.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (&rest _) (signal 'quit nil))))
+        (nskk-e2e-type "Shinki")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-assert-buffer "▽しんき" "Preedit should be preserved after C-g cancel")
+        (nskk-e2e-assert-henkan-phase 'on "Phase should be restored to 'on after C-g")
+        (nskk-e2e-assert-not-converting))))
+
+  (nskk-it "C-g from registration does not leak registration depth"
+    ;; Without condition-case, quit escapes nskk--run-registration-session/k
+    ;; and propagates through the CPS call stack.  Although unwind-protect
+    ;; does decrement the depth counter on non-local exits, the quit signal
+    ;; still unwinds past the on-not-found continuations, leaving nskk in
+    ;; an inconsistent state.  condition-case absorbs quit so the function
+    ;; returns nil normally, letting the CPS callers handle cancellation.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (&rest _) (signal 'quit nil))))
+        (let ((depth-before nskk--registration-depth))
+          (nskk-e2e-type "Shinki")
+          (nskk-e2e-type "SPC")
+          (should (= nskk--registration-depth depth-before))))))
+
+  (nskk-it "C-g during exhaust-candidates wraps to first candidate"
+    ;; Cycle through all 7 candidates (SPC x5 → list, SPC x6 → exhaust).
+    ;; Mock throws quit → condition-case catches it → nil returned
+    ;; → nskk--wrap-to-first-candidate called → phase remains 'list at index 0.
+    ;; 'a' in list phase commits page position 0 = index 0 = 漢字.
+    (nskk-e2e-with-buffer 'hiragana nskk-e2e--reg-7cands-dict
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (&rest _) (signal 'quit nil))))
+        (nskk-e2e-type "Kanji")
+        (nskk-e2e-type "SPC")   ; SPC#1: start-conversion
+        (nskk-e2e-type "SPC")   ; SPC#2: select-next
+        (nskk-e2e-type "SPC")   ; SPC#3: select-next
+        (nskk-e2e-type "SPC")   ; SPC#4: select-next
+        (nskk-e2e-type "SPC")   ; SPC#5: show-list-next → 'list
+        (nskk-e2e-assert-henkan-phase 'list "Precondition: must be in list phase")
+        (nskk-e2e-type "SPC")   ; SPC#6: exhaust → C-g caught → wrap to index 0
+        (nskk-e2e-assert-henkan-phase 'list "After C-g exhaust: phase must remain 'list")
+        (should nskk--henkan-candidate-list-active)
+        ;; 'a' selects page position 0 = index 0 = 漢字
+        (nskk-e2e-type "a")
+        (nskk-e2e-assert-buffer "漢字" "After C-g cancel wrap, 'a' must commit 漢字")))))
+
 (provide 'nskk-registration-e2e-test)
 
 ;;; nskk-registration-e2e-test.el ends here
