@@ -652,12 +652,20 @@ modes insert a literal ASCII space."
 In conversion mode, commits the selected candidate without inserting
 a newline.  In preedit (▽) mode, commits the raw kana reading via
 `nskk-henkan-kakutei' then inserts a newline (matching DDSKK behavior).
-In normal mode, inserts a newline unconditionally."
+In normal mode, delegates to the next RET binding (skipping nskk-mode-map),
+falling back to `newline' if no other binding is found.  This matches the
+behavior of `nskk-handle-tab' and ensures compatibility with completion UIs
+such as corfu."
   ('commit-candidate (nskk-commit-current))
   ('kakutei-and-newline
    (nskk-henkan-kakutei)
    (newline))
-  (_ (newline)))
+  (_ (let ((cmd (let ((nskk-mode nil))
+                  (key-binding "\r"))))
+       (cond
+        ((or (stringp cmd) (vectorp cmd)) (execute-kbd-macro cmd))
+        ((commandp cmd) (call-interactively cmd))
+        (t (newline))))))
 
 (defmacro nskk-define-nav-handler (key docstring kakutei-action nav-action nav-cmd &optional error-type)
   "Define a commit-then-navigate handler for KEY.
@@ -820,9 +828,10 @@ when no major-mode binding exists."
                        (nskk-dynamic-complete)))
   (_ (let ((cmd (let ((nskk-mode nil))
                   (key-binding "\t"))))
-       (if (commandp cmd)
-           (call-interactively cmd)
-         (indent-for-tab-command)))))
+       (cond
+        ((or (stringp cmd) (vectorp cmd)) (execute-kbd-macro cmd))
+        ((commandp cmd) (call-interactively cmd))
+        (t (indent-for-tab-command))))))
 
 (nskk-define-mode-switch-handler hash
   "Handle # key: enter numeric input mode in Japanese mode.

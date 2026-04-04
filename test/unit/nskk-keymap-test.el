@@ -606,7 +606,49 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (nskk-when (nskk-handle-return))
           (nskk-then
            (should kakutei-called)
-           (should newline-called)))))))
+           (should newline-called))))))
+
+  (nskk-context "fall-through in normal state"
+    (nskk-it "delegates to local RET binding when nskk-mode is active (corfu-style passthrough)"
+      ;; When nskk-mode is active, `nskk-handle-return' in normal state should
+      ;; look up RET with nskk-mode nil — skipping nskk-mode-map — and call the
+      ;; next available binding (e.g. a completion UI's confirm action).
+      (with-temp-buffer
+        (nskk-mode 1)
+        (unwind-protect
+            (let ((passthrough-called nil))
+              (local-set-key (kbd "RET")
+                             (lambda () (interactive) (setq passthrough-called t)))
+              (let ((nskk-current-state (nskk-state-create 'hiragana)))
+                (call-interactively 'nskk-handle-return))
+              (should passthrough-called))
+          (nskk-mode -1))))
+
+    (nskk-it "falls back to newline when key-binding returns nil in normal state"
+      ;; If no other RET binding exists (key-binding returns nil), the handler
+      ;; falls back to `newline' rather than silently doing nothing.
+      (with-temp-buffer
+        (let ((newline-called nil))
+          (nskk-with-mocks ((key-binding (lambda (_key) nil))
+                            (newline     (lambda () (setq newline-called t))))
+            (let ((nskk-current-state (nskk-state-create 'hiragana)))
+              (call-interactively 'nskk-handle-return)))
+          (should newline-called))))
+
+    (nskk-it "does not raise wrong-type-argument for keyboard-macro RET bindings"
+      ;; `commandp' returns t for strings/vectors (keyboard macros), but in
+      ;; some Emacs versions `call-interactively' raises wrong-type-argument
+      ;; for them.  The handler must dispatch string/vector cmd through
+      ;; `execute-kbd-macro', not `call-interactively'.
+      (with-temp-buffer
+        (let ((error-raised nil))
+          (condition-case _err
+              (nskk-with-mocks ((key-binding       (lambda (_key) "test"))
+                                (execute-kbd-macro (lambda (&rest _) nil)))
+                (let ((nskk-current-state (nskk-state-create 'hiragana)))
+                  (call-interactively 'nskk-handle-return)))
+            (wrong-type-argument (setq error-raised t)))
+          (should-not error-raised))))))
 
 ;;;
 ;;; nskk-handle-cancel behavior
