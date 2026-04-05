@@ -97,6 +97,7 @@
 (declare-function nskk-state-mode "nskk-state")
 (declare-function nskk-converter-load-style "nskk-converter")
 (declare-function nskk-converter-convert "nskk-converter")
+(declare-function nskk--azik-sokuon-key-p "nskk-azik")
 (declare-function nskk-kana-string-hiragana-to-katakana "nskk-kana")
 (declare-function nskk-kana-zenkaku-to-hankaku "nskk-kana")
 ;; From nskk-henkan.el:
@@ -761,6 +762,9 @@ CHAR-TYPE -- character classification:
   `alphabetic-lower'   -- ASCII a-z
   `plus-jp106'         -- `+' on JP106 keyboard (immediate sokuon okurigana)
   `colon'              -- the `:' character
+  `sokuon-trigger'     -- single-char key mapped to っ in AZIK (empty buffer);
+                          fires okuri-sokuon only in azik-arm-eligible context,
+                          falls through to normal-romaji in other contexts
   `other'              -- anything else
 
 Actions:
@@ -775,6 +779,10 @@ Actions:
                  (characterp char) (<= ?a char) (<= char ?z))
         (setq char (upcase char)))))
   (let* ((char-type (cond
+                        ((and (eq nskk-converter-romaji-style 'azik)
+                              (characterp char) (<= ?a char) (<= char ?z)
+                              (string-empty-p nskk--romaji-buffer)
+                              (nskk--azik-sokuon-key-p char))               'sokuon-trigger)
                         ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
                         ((and (eq char ?+)
                               (bound-and-true-p nskk-azik-keyboard-type)
@@ -1282,6 +1290,7 @@ Arguments (all pre-computed classification symbols):
                `alphabetic-lower'    -- ASCII a-z
                `plus-jp106'          -- `+' on JP106 keyboard
                `colon'               -- the `:' character
+               `sokuon-trigger'      -- single-char key mapped to っ in AZIK
                `other'               -- anything else
 Result (first arg):
   `fire'        -- call nskk--fire-azik-colon-okuri
@@ -1292,6 +1301,7 @@ Result (first arg):
     (fire         colon-pending      alphabetic-lower)
     (arm          azik-arm-eligible  colon)
     (okuri-sokuon azik-arm-eligible  plus-jp106)
+    (okuri-sokuon azik-arm-eligible  sokuon-trigger)
     (normal       \?ctx              \?ct)))
 
 (defun/done nskk--init-doubled-context-rules ()

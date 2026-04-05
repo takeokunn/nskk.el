@@ -2265,6 +2265,50 @@
     (nskk-with-azik-style
       (should-not (nskk-prolog-holds-p '(azik-colon-trigger-char ?a))))))
 
+;;;;
+;;;; nskk--azik-sokuon-char-set population tests
+;;;;
+
+(nskk-describe "nskk--azik-sokuon-char-set: standard AZIK rules"
+  (nskk-it "semicolon is a sokuon key in standard AZIK (maps to っ)"
+    (nskk-with-azik-style
+      (should (nskk--azik-sokuon-key-p ?;))))
+
+  (nskk-it "alphabetic vowel a is not a sokuon key"
+    (nskk-with-azik-style
+      (should-not (nskk--azik-sokuon-key-p ?a))))
+
+  (nskk-it "consonant k is not a sokuon key"
+    (nskk-with-azik-style
+      (should-not (nskk--azik-sokuon-key-p ?k)))))
+
+(nskk-describe "nskk--azik-sokuon-char-set: custom conversion table adds l as sokuon key"
+  (nskk-it "l is detected as a sokuon key when user maps l to っ"
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (nskk-with-azik-style
+        (should (nskk--azik-sokuon-key-p ?l)))))
+
+  (nskk-it "q is not a sokuon key even though it maps to ん (not っ)"
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (nskk-with-azik-style
+        (should-not (nskk--azik-sokuon-key-p ?q)))))
+
+  (nskk-it "semicolon remains a sokuon key when user also maps l to っ"
+    (let ((nskk-azik-conversion-table '(("l" "っ"))))
+      (nskk-with-azik-style
+        (should (nskk--azik-sokuon-key-p ?;))))))
+
+(nskk-describe "nskk--azik-sokuon-char-set: JP106 + key is a sokuon key"
+  (nskk-it "+ is a sokuon key under JP106 keyboard type"
+    (let ((nskk-azik-keyboard-type 'jp106))
+      (nskk-with-azik-style
+        (should (nskk--azik-sokuon-key-p ?+)))))
+
+  (nskk-it "+ is not a sokuon key under US101 keyboard type"
+    (let ((nskk-azik-keyboard-type 'us101))
+      (nskk-with-azik-style
+        (should-not (nskk--azik-sokuon-key-p ?+))))))
+
 (provide 'nskk-azik-test)
 
 ;;; nskk-azik-test.el ends here

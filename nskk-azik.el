@@ -129,7 +129,11 @@ Affects key position-based shortcuts.
 Entries from this table are applied after the built-in AZIK rules during
 style initialization, so user-defined entries override conflicting defaults.
 Leave this as nil to use the built-in AZIK table only.  Malformed entries are
-ignored at runtime."
+ignored at runtime.
+
+Any entry that maps a single-character romaji key to \"っ\" automatically
+makes that character a sokuon-okurigana trigger in arm-eligible context
+(detected automatically during AZIK initialization)."
   :type '(repeat (list string string))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-azik)
@@ -341,6 +345,33 @@ rules in the hash (not demoted to :incomplete) and instead use the
 the next character is a vowel, the emission is retroactively replaced by the
 longer standard-romaji rule.
 Rebuilt from scratch on each call to `nskk--azik-finalize-hash-table'.")
+
+(defvar nskk--azik-sokuon-char-set (make-hash-table :test 'eql)
+  "Hash table (`:test \\='eql') mapping sokuon trigger character codes to t.
+Keys are integer character codes; values are always t (membership set).
+A character is included when its single-character romaji key maps to \"っ\"
+in `nskk--romaji-table', including any entries added via
+`nskk-azik-conversion-table' whose romaji is a single character mapping to \"っ\".
+Populated by `nskk--azik-init-sokuon-char-set' during initialization.")
+
+(defsubst nskk--azik-sokuon-key-p (char)
+  "Return non-nil if CHAR is a configured sokuon trigger key in AZIK mode.
+CHAR must be an integer character code (not a string).
+Returns nil if `nskk--azik-sokuon-char-set' has not been populated yet
+(i.e., before `nskk--azik-init-sokuon-char-set' has been called)."
+  (gethash char nskk--azik-sokuon-char-set))
+
+(defun/done nskk--azik-init-sokuon-char-set ()
+  "Populate `nskk--azik-sokuon-char-set' from `nskk--romaji-table' entries mapping to っ.
+Iterates `nskk--romaji-table' directly (not Prolog azik-rule/2 facts); includes
+only entries whose key has length 1 and whose value is exactly \"っ\".
+Must be called after all azik-rule facts and user overrides are applied."
+  (clrhash nskk--azik-sokuon-char-set)
+  (maphash (lambda (k v)
+             (when (and (= (length k) 1)
+                        (equal v "っ"))
+               (puthash (aref k 0) t nskk--azik-sokuon-char-set)))
+           nskk--romaji-table))
 
 (defun/done nskk--azik-init-char-facts ()
   "Assert azik-vowel-char/1 for each Japanese romaji vowel character code.
@@ -606,6 +637,9 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (dolist (rule nskk-azik-conversion-table)
     (when (nskk--azik-conversion-rule-p rule)
       (nskk-converter-add-rule (car rule) (cadr rule))))
+
+  ;; Build sokuon char set from finalized hash (includes user overrides).
+  (nskk--azik-init-sokuon-char-set)
 
   (nskk--setup-azik-toggle-key))
 
