@@ -109,6 +109,7 @@
 (declare-function nskk-handle-q-key "nskk-input")
 (declare-function nskk--azik-complete-match-p "nskk-input")
 (declare-function nskk--romaji-has-match-p "nskk-input")
+(declare-function nskk--deferred-state-kana "nskk-input" (state))
 (declare-function nskk-process-japanese-input "nskk-input")
 (declare-function nskk-set-mode-numeric "nskk-input")
 (declare-function nskk--try-candidate-selection/k "nskk-input" (char on-found on-not-found))
@@ -198,13 +199,15 @@
 
 ;;;; L-Key Dispatch Rules
 
-;; l-key-action/3: AZIK-aware dispatch for the l key.
+;; l-key-action/3: Dispatch for the l key, shared by all romaji styles.
 ;; (l-key-action STYLE BUF-STATE ACTION)
 ;; STYLE is `azik' or `standard' (from nskk-converter-romaji-style).
 ;; BUF-STATE is `azik-complete' when pending-romaji+l forms a complete rule
-;; match (AZIK hash or standard romaji rule); `other' otherwise.  Both styles
-;; map `azik-complete' to fire-romaji (e.g. "zl" -> "->" in standard mode) and
-;; `other' to latin-mode.
+;; match (checked by `nskk--azik-complete-match-p' or
+;; `nskk--romaji-has-match-p'); `other' otherwise.  Despite the historical
+;; name, `azik-complete' is a style-neutral "complete-match" label: both
+;; styles map it to `fire-romaji' (e.g. "zl" -> "→" in standard mode) and
+;; `other' to `latin-mode'.
 (nskk-prolog-define-fact-table l-key-action (:arity 3 :index :hash)
   (azik     azik-complete fire-romaji)
   (azik     other         latin-mode)
@@ -569,7 +572,9 @@ Dispatched via `q-key-dispatch/3' Prolog table."
 
 (defun/done nskk--handle-l-action ()
   "Helper for `nskk-handle-l' mode-switch and fire-romaji actions.
-Dispatched via `l-key-action/3' Prolog table (style, buf-state, action)."
+Dispatched via `l-key-action/3' Prolog table (style, buf-state, action).
+BUF-STATE uses `azik-complete' as a shared complete-match label for both
+AZIK and standard styles (see `l-key-action/3' table comment)."
   (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
          (buf-state (if (or (nskk--azik-complete-match-p ?l)
                             (nskk--romaji-has-match-p ?l))
@@ -757,7 +762,8 @@ Caller is responsible for preedit boundary checks after retraction."
    ;; 2. DV: deferred-vowel-shadow-state -- delete tentative kana
    ((and (boundp 'nskk--deferred-vowel-shadow-state)
          nskk--deferred-vowel-shadow-state)
-    (delete-char (- (length (cdr nskk--deferred-vowel-shadow-state))))
+    (delete-char (- (length (nskk--deferred-state-kana
+                             nskk--deferred-vowel-shadow-state))))
     (setq nskk--deferred-vowel-shadow-state nil)
     t)
    ;; 3. CP: colon-okuri-pending -- delete `*' marker
