@@ -1176,7 +1176,8 @@ and configures state."
   (nskk-it "returns non-nil and clears DV (deferred-vowel-shadow-state)"
     (with-temp-buffer
       (let ((nskk--romaji-buffer "")
-            (nskk--deferred-vowel-shadow-state (cons "sh" "すう")))
+            (nskk--deferred-vowel-shadow-state
+             (nskk--make-deferred-vowel-shadow "sh" "すう")))
         (insert "すう")
         (goto-char (point-max))
         (should (nskk--backspace-retract-pending))
@@ -1286,14 +1287,17 @@ and configures state."
           (should-not nskk--deferred-azik-state)
           (should (equal (buffer-string) "▽"))))))
 
-  (nskk-it "BS rolls back DV (deferred-vowel-shadow-state)"
+  (nskk-it "BS rolls back DV payload with continuation policy"
     (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
                       (nskk-cancel-preedit (lambda () nil)))
       (with-temp-buffer
         (let ((nskk-henkan-on-marker "▽")
               (nskk--romaji-buffer "")
-              (nskk--deferred-vowel-shadow-state (cons "sh" "すう")))
-          (insert "▽すう")
+              (nskk--deferred-vowel-shadow-state
+               (nskk--make-deferred-vowel-shadow
+                "ch" "ちゅう"
+                nskk--deferred-vowel-shadow-uppercase-vowel-continue-policy)))
+          (insert "▽ちゅう")
           (goto-char (point-max))
           (nskk--backspace-in-preedit)
           (should-not nskk--deferred-vowel-shadow-state)
