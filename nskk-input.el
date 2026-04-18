@@ -154,15 +154,73 @@ See also `nskk--deferred-vowel-shadow-state' for the vowel-shadow variant.")
 
 (defvar-local nskk--deferred-vowel-shadow-state nil
   "Non-nil when a vowel-shadowed AZIK rule was tentatively emitted.
-Value is a cons (ROMAJI-STRING . KANA-STRING).  ROMAJI-STRING is the romaji
-prefix (e.g. \"sh\") and KANA-STRING is the tentatively emitted kana
-\(e.g. \"すう\").  On the next input:
+Value is a `nskk--deferred-vowel-shadow' payload carrying the romaji prefix,
+tentative kana, and an optional continuation policy.  On the next input:
   - Vowel: delete tentative kana, reset romaji buffer to ROMAJI-STRING, then
     process ROMAJI-STRING+vowel as the longer standard rule
     (e.g. \"sha\"→\"しゃ\").
     Unlike `nskk--deferred-azik-state', NO っ is inserted.
   - Non-vowel: clear deferred state without retroactive correction.
 Satisfies Sh→すう (AZIK double-vowel) while preserving sha→しゃ (standard romaji).")
+
+(cl-defstruct (nskk--deferred-vowel-shadow
+                (:constructor nskk--make-deferred-vowel-shadow
+                              (romaji kana &optional continuation-policy)))
+   "Deferred vowel-shadow payload: ROMAJI (string) for retroactive restart,
+KANA (string) that was tentatively emitted, and optional CONTINUATION-POLICY
+(determines whether uppercase vowels continue the deferred reading).
+Stored in `nskk--deferred-vowel-shadow-state' when a vowel-shadowed AZIK
+rule was tentatively emitted."
+  romaji kana continuation-policy)
+
+(defconst nskk--deferred-vowel-shadow-uppercase-vowel-continue-policy
+  'uppercase-vowel-continue
+  "Continuation policy that treats an uppercase vowel as reading continuation.")
+
+(defun nskk--deferred-vowel-shadow-policy-for-input (input)
+  "Return the deferred vowel-shadow continuation policy for INPUT.
+This MVP enables uppercase-vowel continuation only for `ch', `sh', and `th'."
+  (and (member input '("ch" "sh" "th"))
+       nskk--deferred-vowel-shadow-uppercase-vowel-continue-policy))
+
+(defun nskk--deferred-state-key (state)
+  "Return the deferred correction key stored in STATE."
+  (cond
+   ((nskk--deferred-vowel-shadow-p state)
+    (nskk--deferred-vowel-shadow-romaji state))
+   ((consp state) (car state))
+   (t nil)))
+
+(defun nskk--deferred-state-kana (state)
+  "Return the tentative kana string stored in STATE."
+  (cond
+   ((nskk--deferred-vowel-shadow-p state)
+    (nskk--deferred-vowel-shadow-kana state))
+   ((consp state) (cdr state))
+   (t nil)))
+
+(defun nskk--deferred-vowel-shadow-uppercase-continuation-p (char)
+  "Return non-nil when CHAR should continue the deferred vowel-shadow reading."
+  (let ((state nskk--deferred-vowel-shadow-state))
+    (and (nskk--deferred-vowel-shadow-p state)
+         (eq (nskk--deferred-vowel-shadow-continuation-policy state)
+             nskk--deferred-vowel-shadow-uppercase-vowel-continue-policy)
+         (characterp char)
+         (nskk-prolog-holds-p `(uppercase-vowel-char ,char)))))
+
+(defun nskk--downcase-normal-japanese-effective-char (effective-char normalize-vowel-p
+                                                                     continue-vowel-shadow-p)
+  "Return EFFECTIVE-CHAR adjusted for normal Japanese input handling.
+Uppercase chars are downcased only when okurigana is pending or when
+CONTINUE-VOWEL-SHADOW-P keeps an explicit deferred reading alive."
+  (if (and (not normalize-vowel-p)
+           (characterp effective-char)
+           (<= ?A effective-char) (<= effective-char ?Z)
+           (or (nskk-with-current-state
+                 (nskk-state-get-okurigana nskk-current-state))
+               continue-vowel-shadow-p))
+      (downcase effective-char)
+    effective-char))
 
 (defun nskk--azik-colon-key-p (char)
   "Return non-nil when CHAR arms the AZIK colon-okurigana pending state.
@@ -723,24 +781,24 @@ through okurigana processing or delegates to the romaji-to-kana converter.
 Called from `nskk-process-japanese-input' for the `normal' action class."
   (cl-destructuring-bind (effective-char is-henkan-start normalize-vowel-p)
       (nskk--compute-effective-char char)
-    (when is-henkan-start
-      (nskk--setup-henkan-start-marker char))
-    (if (and (not is-henkan-start)
-             (not normalize-vowel-p)
-             (nskk-process-okurigana-input char))
-        (nskk-debug-log "[INPUT] okurigana-processed: char=%c" char)
-      ;; When okurigana is pending but re-entry was blocked (e.g. second N
-      ;; in YoNN), downcase uppercase chars so the romaji converter sees
-      ;; "nn" instead of "nN".
-      (let ((eff (if (and (not normalize-vowel-p)
-                          (characterp effective-char)
-                          (<= ?A effective-char) (<= effective-char ?Z)
-                          (nskk-with-current-state
-                            (nskk-state-get-okurigana nskk-current-state)))
-                     (downcase effective-char)
-                   effective-char)))
-        (nskk--process-kana-result
-         (or (nskk-convert-input-to-kana eff) "") n)))))
+    (let ((continue-vowel-shadow-p
+           (nskk--deferred-vowel-shadow-uppercase-continuation-p char)))
+      (when is-henkan-start
+        (nskk--setup-henkan-start-marker char))
+      (if (and (not is-henkan-start)
+               (not normalize-vowel-p)
+               (not continue-vowel-shadow-p)
+               (nskk-process-okurigana-input char))
+          (nskk-debug-log "[INPUT] okurigana-processed: char=%c" char)
+        ;; When okurigana is pending but re-entry was blocked (e.g. second N
+        ;; in YoNN), downcase uppercase chars so the romaji converter sees
+        ;; "nn" instead of "nN".
+        (let ((eff (nskk--downcase-normal-japanese-effective-char
+                    effective-char normalize-vowel-p continue-vowel-shadow-p)))
+          (when continue-vowel-shadow-p
+            (setq nskk--deferred-vowel-shadow-state nil))
+          (nskk--process-kana-result
+           (or (nskk-convert-input-to-kana eff) "") n))))))
 
 (defun/done nskk-process-japanese-input (char n)
   "Process input in Japanese mode (hiragana/katakana), then call on-done.
@@ -990,16 +1048,18 @@ Each is a no-op when its respective deferred-state variable is nil."
 (defun nskk--apply-one-deferred-correction (state-var char insert-sokuon-p)
   "Apply one deferred correction for CHAR using STATE-VAR.
 STATE-VAR is a symbol naming a buffer-local variable holding
-\(KEY . KANA) or nil.
+either a deferred payload (e.g., `nskk--deferred-azik-state' or
+`nskk--deferred-vowel-shadow-state') or nil.
 When CHAR is a vowel and STATE-VAR is set: deletes the tentative kana,
 optionally inserts っ (when INSERT-SOKUON-P is non-nil), and resets
-`nskk--romaji-buffer' to the key portion of the deferred state.
+`nskk--romaji-buffer' to the key portion of the deferred state (for retroactive
+processing with the vowel).
 KEY can be a character (via `char-to-string') or a string (used as-is).
 A non-vowel CHAR clears the state without correction."
   (let ((state (symbol-value state-var)))
     (when state
-      (let ((deferred-key (car state))
-            (deferred-kana (cdr state)))
+      (let ((deferred-key (nskk--deferred-state-key state))
+            (deferred-kana (nskk--deferred-state-kana state)))
         (set state-var nil)
         (when (nskk-prolog-holds-p `(vowel-char ,char))
           (delete-char (- (length deferred-kana)))
@@ -1059,7 +1119,10 @@ this emission and process INPUT+vowel as the longer standard-romaji rule
   (let ((kana (car result)))
     (nskk-debug-log "[INPUT] azik-vowel-deferred-emit: input=%s kana=%s" input kana)
     (setq nskk--deferred-azik-state nil)
-    (setq nskk--deferred-vowel-shadow-state (cons input kana))
+    (setq nskk--deferred-vowel-shadow-state
+          (nskk--make-deferred-vowel-shadow
+           input kana
+           (nskk--deferred-vowel-shadow-policy-for-input input)))
     (setq nskk--romaji-buffer "")
     (succeed kana)))
 
