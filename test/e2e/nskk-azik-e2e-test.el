@@ -283,7 +283,101 @@ This ensures:
   (nskk-it "double vowel sequence: kp + ka produces こうか"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "kpka")
-      (nskk-e2e-assert-buffer "こうか"))))
+      (nskk-e2e-assert-buffer "こうか")))
+
+  (nskk-it "ChO preserves deferred ちゅう and appends お in AZIK hiragana mode"
+    ;; `ch' carries explicit uppercase-vowel continuation policy, so the
+    ;; deferred reading stays in the normal kana path and ChO -> ちゅうお.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ChO")
+      (nskk-e2e-assert-buffer "▽ちゅうお")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ChOu produces ちゅうおう in AZIK hiragana mode"
+    ;; The same `ch' continuation policy must preserve the trailing `u'
+    ;; conversion, yielding ChOu -> ちゅうおう.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ChOu")
+      (nskk-e2e-assert-buffer "▽ちゅうおう")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ShO preserves deferred すう and appends お in AZIK hiragana mode"
+    ;; `sh' is also policy-enabled, so uppercase-vowel continuation must keep
+    ;; the deferred reading in the kana path and yield ShO -> すうお.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ShO")
+      (nskk-e2e-assert-buffer "▽すうお")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ShOu produces すうおう in AZIK hiragana mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ShOu")
+      (nskk-e2e-assert-buffer "▽すうおう")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ThO preserves deferred つう and appends お in AZIK hiragana mode"
+    ;; `th' uses the same policy-driven continuation and should yield つうお.
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ThO")
+      (nskk-e2e-assert-buffer "▽つうお")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ThOu produces つうおう in AZIK hiragana mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ThOu")
+      (nskk-e2e-assert-buffer "▽つうおう")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  ;; Remaining uppercase vowels: verify A/I/U/E also continue the deferred reading.
+  (nskk-it "ChA continues deferred ちゅう and appends あ"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ChA")
+      (nskk-e2e-assert-buffer "▽ちゅうあ")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ShI continues deferred すう and appends い"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ShI")
+      (nskk-e2e-assert-buffer "▽すうい")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ThU continues deferred つう and appends う"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ThU")
+      (nskk-e2e-assert-buffer "▽つうう")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "ChE continues deferred ちゅう and appends え"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "ChE")
+      (nskk-e2e-assert-buffer "▽ちゅうえ")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  ;; In conversion mode (▽ active), lowercase vowels also continue the deferred
+  ;; reading instead of triggering DV correction.  The user sees ちゅう after
+  ;; typing Ch and expects o to extend it, not replace it with ちょ.
+  (nskk-it "Cho with lowercase o continues deferred ちゅう in conversion mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Cho")
+      (nskk-e2e-assert-buffer "▽ちゅうお")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  (nskk-it "Sha with lowercase a continues deferred すう in conversion mode"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "Sha")
+      (nskk-e2e-assert-buffer "▽すうあ")
+      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+
+  ;; Guard: in plain hiragana (no ▽), DV correction still fires for lowercase.
+  (nskk-it "cho all-lowercase in hiragana mode still gives ちょ via DV correction"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "cho")
+      (nskk-e2e-assert-buffer "ちょ")))
+
+  (nskk-it "sha all-lowercase in hiragana mode still gives しゃ via DV correction"
+    (nskk-e2e-with-azik-buffer 'hiragana nil
+      (nskk-e2e-type "sha")
+      (nskk-e2e-assert-buffer "しゃ"))))
 
 ;;;;
 ;;;; Section 5: AZIK Q-Key Behavior — Context-Aware Mode
@@ -1569,7 +1663,22 @@ This ensures:
         (nskk-e2e-type "Kakk")
         (nskk-e2e-type "SPC")
         (nskk-e2e-type "C-g")
-        (should (not (bound-and-true-p nskk--deferred-azik-state)))))))
+        (should (not (bound-and-true-p nskk--deferred-azik-state))))))
+
+  (nskk-it "T-04: nskk--deferred-vowel-shadow-state is nil after rollback-conversion"
+    ;; Regression for FR-001.
+    ;; "Kash" sets DV in preedit; SPC triggers conversion; C-g rolls back.
+    ;; nskk-rollback-conversion calls nskk--clear-azik-pending-state, which
+    ;; must also clear DV so the next vowel does not retroactively rewrite the
+    ;; rolled-back reading.
+    (let ((dict '(("かすう" . ("加数")))))
+      (nskk-e2e-with-azik-buffer 'hiragana dict
+        (nskk-e2e-type "Kash")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-type "C-g")
+        (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+        (nskk-e2e-type "a")
+        (nskk-e2e-assert-buffer "▽かすうあ")))))
 
 ;;;;
 ;;;; Section 19: Output correctness PBT — sokuon via DA correction (P-04)

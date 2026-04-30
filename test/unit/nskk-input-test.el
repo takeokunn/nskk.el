@@ -829,6 +829,24 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
              (should (string-match-p (regexp-quote (concat nskk-henkan-on-marker "か" nskk-okurigana-marker))
                                      (buffer-string))))))))))
 
+(nskk-describe "deferred vowel-shadow continuation policy"
+  (nskk-it "attaches uppercase-vowel continuation policy only for ch/sh/th"
+    (dolist (romaji '("ch" "sh" "th"))
+      (should (eq (nskk--deferred-vowel-shadow-policy-for-input romaji)
+                  nskk--deferred-vowel-shadow-uppercase-vowel-continue-policy)))
+    (should-not (nskk--deferred-vowel-shadow-policy-for-input "wh"))
+    (should-not (nskk--deferred-vowel-shadow-policy-for-input "zh")))
+
+  (nskk-it "recognizes uppercase-vowel continuation only when the payload policy allows it"
+    (let ((nskk--deferred-vowel-shadow-state
+           (nskk--make-deferred-vowel-shadow
+            "sh" "すう"
+            (nskk--deferred-vowel-shadow-policy-for-input "sh"))))
+      (should (nskk--deferred-vowel-shadow-uppercase-continuation-p ?O)))
+    (let ((nskk--deferred-vowel-shadow-state
+           (nskk--make-deferred-vowel-shadow "wh" "うう" nil)))
+      (should-not (nskk--deferred-vowel-shadow-uppercase-continuation-p ?O)))))
+
 ;;;
 ;;; Inline Marker Constant Tests
 ;;;
