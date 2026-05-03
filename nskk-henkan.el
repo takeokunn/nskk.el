@@ -820,7 +820,6 @@ back to ▽ (preedit) mode."
 
 ;;;; Conversion Control
 
-;;;###autoload
 (defun/done nskk-convert ()
   "Start conversion when preedit text exists.
 Uses `nskk-henkan-with-preedit' to guard on preedit presence."
@@ -828,7 +827,6 @@ Uses `nskk-henkan-with-preedit' to guard on preedit presence."
   (nskk-henkan-with-preedit _start
     (nskk-start-conversion)))
 
-;;;###autoload
 (defun/done nskk-convert-or-commit ()
   "Start conversion or commit current candidate.
 When actively converting (▼ phase), commits the current candidate.
@@ -844,7 +842,6 @@ Uses Prolog `convert-or-commit-action/2' for dispatch."
       (start-conversion
        (nskk-convert)))))
 
-;;;###autoload
 (defun/done nskk-cancel-conversion-to-reading ()
   "Cancel active conversion, restoring the kana reading to the buffer.
 Unlike `nskk-rollback-conversion', does NOT return to preedit (▽) state.
@@ -870,7 +867,6 @@ Used by the DEL key handler."
       (nskk-with-current-state
         (nskk-reset-henkan-state)))))
 
-;;;###autoload
 (defun/done nskk-cancel-conversion ()
   "Cancel active conversion and return to preedit (▽) phase.
 Delegates to `nskk-rollback-conversion', which replaces the ▼
@@ -929,7 +925,6 @@ Japanese input mode via `nskk--restore-abbrev-mode'."
     ;; Restore abbrev mode if applicable
     (nskk--restore-abbrev-mode was-abbrev)))
 
-;;;###autoload
 (defun/done nskk-rollback-conversion ()
   "Rollback to pre-conversion state.
 Replaces the ▼ marker with ▽ and returns to preedit phase.
@@ -980,7 +975,6 @@ of the preedit reading text so that `nskk--has-preedit' returns t."
 
 ;;;; Candidate Navigation
 
-;;;###autoload
 (defun/k nskk-next-candidate ()
   "Select next conversion candidate.
 For the first N-1 candidates (N = `nskk-henkan-show-candidates-nth'),
@@ -1010,7 +1004,6 @@ Uses Prolog `candidate-nav-next-action/3' to dispatch the navigation mode."
     ;; Not converting: signal nothing happened
     (fail)))
 
-;;;###autoload
 (defun/k nskk-previous-candidate ()
   "Select previous conversion candidate.
 In candidate list display mode, shows the previous page.
@@ -1042,7 +1035,6 @@ Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
     ;; Not converting: signal nothing happened
     (fail)))
 
-;;;###autoload
 (defun/k nskk-commit-current ()
   "Commit current conversion candidate.
 Replaces preedit text (including ▼ marker) with the selected candidate,
