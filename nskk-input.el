@@ -309,13 +309,9 @@ context via `nskk--set-mode', and refreshes the modeline via
 
 ;;;; Mode Switching
 
-;;;###autoload
 (nskk-define-mode-setter hiragana)
-;;;###autoload
 (nskk-define-mode-setter katakana)
-;;;###autoload
 (nskk-define-mode-setter latin)
-;;;###autoload
 (nskk-define-mode-setter jisx0208-latin)
 
 (defun/done nskk--activate-preedit-mode ()
@@ -330,7 +326,6 @@ Called by `nskk-set-mode-abbrev' and `nskk-set-mode-numeric' after
     (nskk-state-set-henkan-phase nskk-current-state 'on))
   (nskk--update-modeline))
 
-;;;###autoload
 (defun/done nskk-set-mode-abbrev ()
   "Switch to abbrev mode and set up ▽ preedit marker for dictionary lookup.
 Sets up the conversion start marker and inserts ▽ after the mode switch
@@ -341,7 +336,6 @@ The / key activates abbrev mode: /word SPC → dictionary lookup → candidate."
   (nskk--set-mode 'abbrev)
   (nskk--activate-preedit-mode))
 
-;;;###autoload
 (defun/done nskk-set-mode-numeric ()
   "Switch to numeric input mode for SKK numeric conversion.
 Reuses abbrev mode mechanics (literal character input) with an additional
@@ -354,7 +348,6 @@ Dictionary keys that begin with # trigger numeric candidate expansion."
   (setq nskk--numeric-mode t)
   (insert "#"))
 
-;;;###autoload
 (defun/done nskk-toggle-japanese-mode ()
   "Toggle Japanese input mode, with phase-aware dispatch.
 Uses `nskk--classify-state' to determine the current phase:
@@ -421,7 +414,6 @@ Side effect: calls `nskk-converter-load-style' with `azik'."
 
 ;;;; AZIK-specific Key Handlers
 
-;;;###autoload
 (defun/done nskk-handle-q-key ()
   "Handle q key press based on current romaji style.
 In AZIK mode:
@@ -497,7 +489,6 @@ nil when falling through to self-insert."
    ;; Arm 6: non-Japanese — fall through
    (t nil)))
 
-;;;###autoload
 (defun/k nskk-handle-semicolon-key ()
   "Handle semicolon key press.
 In AZIK mode: produce small tsu (\u3063) unless sticky-shift state is pending.
@@ -572,7 +563,6 @@ Abbrev mode is handled via `process-abbrev' action in the Prolog table."
                        (nskk-process-abbrev-input char))
     (_                 (nskk-process-japanese-input char n))))
 
-;;;###autoload
 (defun/done nskk-self-insert (n)
   "Process self-insert input, routing the typed character based on current mode.
 N is the prefix repeat count from `last-command-event'.

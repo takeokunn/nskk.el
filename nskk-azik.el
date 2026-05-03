@@ -610,7 +610,6 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (nskk--setup-azik-toggle-key))
 
 ;; Register AZIK style
-;;;###autoload
 (nskk-converter-register-style 'azik 'nskk--init-azik-rules)
 
 (provide 'nskk-azik)
