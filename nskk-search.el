@@ -165,7 +165,6 @@ Errors in hook functions are suppressed to protect the CPS chain."
   (when nskk-search-jisyo-hook
     (ignore-errors (run-hooks 'nskk-search-jisyo-hook))))
 
-;;;###autoload
 (defun/k nskk-search (index query &optional search-type okuri-type limit)
   "Search dictionary INDEX for QUERY.
 SEARCH-TYPE is `exact', `prefix', `partial', or `fuzzy'.
@@ -468,7 +467,6 @@ the integer Levenshtein distance from QUERY."
     (error
      (message "NSKK: Failed to save learning data: %s" (error-message-string err)))))
 
-;;;###autoload
 (defun/done nskk-search-learn (query candidate &optional context)
   "Record that CANDIDATE was selected for QUERY.
 _CONTEXT is reserved for future use.
@@ -499,7 +497,6 @@ calculator) are silently skipped -- equivalent to AquaSKK SetAvoidStudy."
           (or search-type 'exact)
           (or okuri-type 'none)))
 
-;;;###autoload
 (defun/k nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
   "Search INDEX for QUERY using CACHE for result caching.
 Returns the cached or fresh result via ON-FOUND when candidates exist,

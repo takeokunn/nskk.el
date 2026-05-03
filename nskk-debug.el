@@ -191,7 +191,6 @@ Note: arguments are always evaluated even when debug is disabled."
 
 ;;;; Interactive Commands
 
-;;;###autoload
 (defun/done nskk-debug-toggle ()
   "Toggle NSKK debug mode."
   :interactive t
@@ -199,13 +198,11 @@ Note: arguments are always evaluated even when debug is disabled."
   (message "NSKK debug mode is %s"
            (if nskk-debug-enabled "enabled" "disabled")))
 
-;;;###autoload
 (defun/done nskk-debug-show ()
   "Show the NSKK debug buffer."
   :interactive t
   (display-buffer (nskk--debug-buffer)))
 
-;;;###autoload
 (defun/done nskk-debug-clear ()
   "Clear the NSKK debug buffer."
   :interactive t
