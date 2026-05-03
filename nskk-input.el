@@ -588,9 +588,12 @@ Three-stage pipeline:
         (nskk--route-input char n mode)))))
 
 (defun/done nskk-insert-char (char &optional n)
-  "Insert CHAR into the buffer N times without any kana conversion."
-  (let ((n (or n 1)))
-    (insert (make-string n char))))
+  "Insert CHAR into the buffer N times without any kana conversion.
+Uses Emacs's normal self-insert machinery so direct ascii/latin input keeps
+standard observer semantics such as `post-self-insert-hook'."
+  (let ((n (or n 1))
+        (last-command-event char))
+    (self-insert-command n char)))
 
 (defun/done nskk-insert-fullwidth-char (char &optional n)
   "Insert full-width version of ASCII CHAR N times.
