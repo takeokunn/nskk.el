@@ -346,7 +346,78 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (with-temp-buffer
         (let ((last-command-event ?z))
           (nskk-when (nskk-self-insert 3))
-          (nskk-then (should (string= (buffer-string) "zzz"))))))))
+          (nskk-then (should (string= (buffer-string) "zzz")))))))
+
+  (nskk-it "preserves post-self-insert-hook and repeat count in ascii mode"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (setf (nskk-state-mode nskk-current-state) 'ascii)
+      (let ((events nil)
+            (last-command-event ?a))
+        (add-hook 'post-self-insert-hook
+                  (lambda () (push last-command-event events))
+                  nil :local)
+        (nskk-when (nskk-self-insert 3))
+        (nskk-then
+         (should (string= (buffer-string) "aaa"))
+         (should (equal events '(?a)))))))
+
+  (nskk-it "preserves electric-pair semantics in ascii mode under nskk-mode"
+    (with-temp-buffer
+      (emacs-lisp-mode)
+      (nskk-mode 1)
+      (setf (nskk-state-mode nskk-current-state) 'ascii)
+      (electric-pair-local-mode 1)
+      (let ((last-command-event ?\())
+        (nskk-when (nskk-self-insert 1))
+        (nskk-then
+         (should (string= (buffer-string) "()"))
+         (should (= (point) 2))))))
+
+  (nskk-it "preserves electric-pair semantics in latin mode under nskk-global-mode"
+    (unwind-protect
+        (with-temp-buffer
+          (emacs-lisp-mode)
+          (nskk-global-mode 1)
+          (should nskk-mode)
+          (setf (nskk-state-mode nskk-current-state) 'latin)
+          (electric-pair-local-mode 1)
+          (let ((last-command-event ?\())
+            (nskk-when (nskk-self-insert 1))
+            (nskk-then
+             (should (string= (buffer-string) "()"))
+             (should (= (point) 2)))))
+      (nskk-global-mode -1)))
+
+  (nskk-it "preserves candidate selection before direct insertion"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (setf (nskk-state-mode nskk-current-state) 'ascii
+            (nskk-state-candidates nskk-current-state) '("漢字" "感じ"))
+      (let ((last-command-event ?a)
+            (committed nil)
+            (nskk--henkan-candidate-list-active t)
+            (nskk-henkan-select-candidate-by-key-function
+             (lambda (char _cands _idx)
+               (when (= char ?a) 0))))
+        (nskk-with-mocks ((nskk-commit-current (lambda () (setq committed t))))
+          (nskk-when (nskk-self-insert 1))
+          (nskk-then
+           (should committed)
+           (should (string= (buffer-string) "")))))))
+
+  (nskk-it "preserves implicit kakutei before direct insertion"
+    (with-temp-buffer
+      (nskk-mode 1)
+      (setf (nskk-state-mode nskk-current-state) 'ascii)
+      (let ((last-command-event ?a)
+            (committed nil))
+        (nskk-with-mocks ((nskk--implicit-kakutei-needed-p (lambda () t))
+                          (nskk-commit-current (lambda () (setq committed t))))
+          (nskk-when (nskk-self-insert 1))
+          (nskk-then
+           (should committed)
+           (should (string= (buffer-string) "a"))))))))
 
 ;;;
 ;;; Error Handling: Conversion State Guards
