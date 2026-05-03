@@ -508,7 +508,6 @@ Returns t if KEY was found and removed, nil otherwise."
 
 ;;; Unified Interface
 
-;;;###autoload
 (defun/k nskk-cache-create (&rest args)
   "Create a new NSKK cache of the specified type and capacity.
 Calls on-found with the created cache object.  Always succeeds.
@@ -544,7 +543,6 @@ Signals a `user-error\\=' if :type is not a Prolog-registered cache type
                  `(cache-constructor ,cache-type \?fn) '\?fn)))
       (succeed (funcall ctor cache-capacity)))))
 
-;;;###autoload
 (defun/k nskk-cache-get (cache key)
   "Get the value for KEY from CACHE in CPS style.
 Calls on-found with the cached value on hit.
@@ -562,12 +560,10 @@ rather than value truthiness."
           :found (succeed val)
           :fail (fail))))
 
-;;;###autoload
 (defun/done nskk-cache-put (cache key value)
   "Store KEY with VALUE in CACHE."
   (nskk-cache-dispatch cache put key value))
 
-;;;###autoload
 (defun/k nskk-cache-invalidate (cache key)
   "Remove KEY from CACHE.
 Returns t if KEY was found and removed, nil otherwise."
@@ -575,12 +571,10 @@ Returns t if KEY was found and removed, nil otherwise."
       (succeed t)
     (fail)))
 
-;;;###autoload
 (defun/done nskk-cache-clear (cache)
   "Remove all entries from CACHE and reset statistics."
   (nskk-cache-dispatch cache clear))
 
-;;;###autoload
 (defun/k nskk-cache-invalidate-pattern (cache pattern)
   "Remove all keys matching PATTERN from CACHE.
 PATTERN is a regular expression matched against each key string.
@@ -602,7 +596,6 @@ literal regexp string from source code, never from user input."
       (nskk-cache-invalidate/k cache key #'ignore #'ignore))
     (succeed keys-to-delete)))
 
-;;;###autoload
 (defun/k nskk-cache-p (cache)
   "Return non-nil if CACHE is a valid LRU or LFU cache structure."
   (if (or (nskk-cache-lru-p cache)
@@ -610,7 +603,6 @@ literal regexp string from source code, never from user input."
       (succeed t)
     (fail)))
 
-;;;###autoload
 (defun/k nskk-cache-stats (cache)
   "Return a statistics plist for CACHE.
 The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
@@ -629,7 +621,6 @@ The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
            :misses misses
            :hit-rate hit-rate))))
 
-;;;###autoload
 (defun/k nskk-cache-hit-rate (cache)
   "Return the hit rate for CACHE as a float between 0.0 and 1.0.
 Always returns a value via `succeed'; on-not-found is never called."

@@ -667,7 +667,6 @@ Calls ON-FOUND with candidates when non-empty; ON-NOT-FOUND otherwise."
         (succeed candidates)
       (fail))))
 
-;;;###autoload
 (defun/k nskk-dict-lookup (key)
   "Look up KEY in loaded dictionaries via Prolog bridge rule.
 Returns list of candidates or nil.
@@ -696,7 +695,6 @@ Returns t on success (Prolog dict-register/2 succeeded), nil on failure."
     (message "NSKK: Registered %s -> %s" reading word)
     t))
 
-;;;###autoload
 (defun/k nskk-dict-register-word (reading word)
   "Register WORD as a conversion candidate for READING in user dictionary.
 Uses the Prolog dict-register rule which handles both new entries
@@ -719,7 +717,6 @@ Returns t on success (Prolog dict-unregister/2 succeeded), nil on failure."
     (message "NSKK: Unregistered %s -> %s" reading word)
     t))
 
-;;;###autoload
 (defun/k nskk-dict-unregister-word (reading word)
   "Unregister WORD as a conversion candidate for READING from user dictionary.
 Uses the Prolog dict-unregister rule which removes the word from an

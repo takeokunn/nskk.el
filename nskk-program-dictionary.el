@@ -362,7 +362,6 @@ entries return no candidates."
 
 ;;; Section 12: Public API
 
-;;;###autoload
 (defun/k nskk-program-dict-lookup (key)
   "Look up KEY across all entries in `nskk-program-dicts'.
 Fails immediately when `nskk-program-dict-enable' is nil or
@@ -476,7 +475,6 @@ rather than signalling a Lisp error; both cases are handled here."
 
 ;;; Section 15: Built-in lookup public API
 
-;;;###autoload
 (defun/k nskk-program-dict-builtin-lookup (key)
   "Look up KEY against `nskk-program-dict-dispatch-table' (built-in handlers).
 Equivalent to AquaSKK SKKGadgetDictionary::Find.
