@@ -595,9 +595,9 @@ If the keyword `:interactive' appears as the first element of BODY (before any
 other forms), the sync wrapper will include `(interactive)' (for
 `:interactive t') or `(interactive SPEC)' (for `:interactive \"SPEC\"').
 The /k function is never interactive.
-Note: place `;;;###autoload' before the `defun/done' call site in the source
-file to autoload the sync wrapper — autoload cookies cannot be generated
-inside macro expansions.
+Autoload cookies placed directly before a `defun/done' macro call are unsafe
+for generated package autoload files, because autoload generation records the
+macro call itself instead of the expanded function definitions.
 
 ARGS is the plain argument list (without continuation parameters).
 DOCSTRING is required.
