@@ -56,7 +56,7 @@ Automated checks:
   make clean        # Remove *.elc files
 
 Manual testing:
-  emacs -Q -L . \
+  emacs -Q -L src \
     --eval "(setq nskk-dict-system-dictionary-files '(\"${skkDict}/share/skk/SKK-JISYO.L\"))" \
     --eval "(setq nskk-debug-enabled t)" \
     --eval "(require 'nskk-debug)" \
