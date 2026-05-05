@@ -1,18 +1,18 @@
 EMACS ?= emacs
 BATCH = $(EMACS) -Q --batch
 
-LOAD_PATH = -L . -L test -L test/integration -L test/unit -L test/e2e
+LOAD_PATH = -L src -L test -L test/integration -L test/unit -L test/e2e
 
 # All source files (core + optional extension modules)
-SRC = nskk-cps-macros.el nskk-prolog.el nskk-trie.el \
-       nskk-custom.el nskk-debug.el \
-       nskk-kana.el nskk-converter.el nskk-cache.el nskk-dictionary.el nskk-search.el \
-       nskk-state.el nskk-henkan.el nskk-input.el \
-       nskk-keymap.el nskk-modeline.el nskk-candidate-window.el \
-       nskk-server.el nskk-program-dictionary.el nskk-azik.el \
-       nskk-annotation.el nskk-context.el nskk-inline.el \
-       nskk-isearch.el nskk-region.el nskk-show-mode.el \
-       nskk.el
+SRC = src/nskk-cps-macros.el src/nskk-prolog.el src/nskk-trie.el \
+       src/nskk-custom.el src/nskk-debug.el \
+       src/nskk-kana.el src/nskk-converter.el src/nskk-cache.el src/nskk-dictionary.el src/nskk-search.el \
+       src/nskk-state.el src/nskk-henkan.el src/nskk-input.el \
+       src/nskk-keymap.el src/nskk-modeline.el src/nskk-candidate-window.el \
+       src/nskk-server.el src/nskk-program-dictionary.el src/nskk-azik.el \
+       src/nskk-annotation.el src/nskk-context.el src/nskk-inline.el \
+       src/nskk-isearch.el src/nskk-region.el src/nskk-show-mode.el \
+       src/nskk.el
 
 # Unit test files
 UNIT_SRC = $(wildcard test/unit/*-test.el)
@@ -129,7 +129,7 @@ package-lint:
 	$(BATCH) $(LOAD_PATH) \
 	  --eval "(progn (require 'package) (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) (package-initialize) (package-refresh-contents) (package-install 'package-lint))" \
 	  -l package-lint \
-	  -f package-lint-batch-and-exit nskk.el
+	  -f package-lint-batch-and-exit src/nskk.el
 
 clean:
-	rm -f *.elc test/*.elc test/integration/*.elc test/unit/*.elc test/e2e/*.elc
+	rm -f *.elc src/*.elc test/*.elc test/integration/*.elc test/unit/*.elc test/e2e/*.elc

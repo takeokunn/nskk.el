@@ -47,7 +47,7 @@ No external ELPA packages required.
 #+begin_src elisp
 (use-package nskk
   :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest
-       :ignored-files ("test/"))
+       :lisp-dir "src")
   :custom
   (nskk-dict-system-dictionary-files
    '("/usr/share/skk/SKK-JISYO.L"))
@@ -83,7 +83,7 @@ No external ELPA packages required.
 #+begin_src elisp
 (use-package nskk
   :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest
-       :ignored-files ("test/"))
+       :lisp-dir "src")
   :custom
   ;; Start in hiragana mode (optional, default is ascii)
   (nskk-state-default-mode 'hiragana)
