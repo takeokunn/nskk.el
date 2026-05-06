@@ -25,3 +25,6 @@ vendor/
 # Nix build results
 result
 flake.lock
+
+# package-lint local cache
+.package-lint-cache/

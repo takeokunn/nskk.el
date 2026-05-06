@@ -199,14 +199,11 @@
          (nskk-show-tooltip                        nil)
          (nskk-dcomp-multiple-activate             t)
          (nskk-dcomp-multiple-activate             nil)
-         (nskk-kakutei-jisyo                       nil)
-         (nskk-kakutei-jisyo                       "/tmp/test-kakutei.dat")
          (nskk-state-default-mode                  ascii)
          (nskk-state-default-mode                  hiragana)
          (nskk-converter-romaji-style              azik)
          (nskk-search-sort-method                  kana)
          (nskk-modeline-format                     " SKK")
-         (nskk-search-learning-file                "/tmp/test.dat")
          (nskk-henkan-show-candidates-keys         (?a ?s ?d))
          (nskk-henkan-show-candidates-keys         nil))
   :description ":safe predicate accepts valid-typed values"
@@ -223,8 +220,6 @@
          (nskk-state-default-mode             42)
          (nskk-state-default-mode             "ascii")
          (nskk-modeline-format                42)
-         (nskk-search-learning-file           42)
-         (nskk-kakutei-jisyo                  42)
          (nskk-henkan-show-candidates-keys    ("a" "b")))
   :description ":safe predicate rejects wrong-typed values"
   :body (should-not (funcall (get var 'safe-local-variable) invalid-value)))
@@ -256,8 +251,7 @@
 (nskk-property-test-seeded custom-pbt-string-vars-accept-strings
   ((s romaji-string))
   (and (stringp s)
-       (funcall (get 'nskk-modeline-format 'safe-local-variable) s)
-       (funcall (get 'nskk-search-learning-file 'safe-local-variable) s))
+       (funcall (get 'nskk-modeline-format 'safe-local-variable) s))
   30 42)
 
 ;; PBT-003 — Boolean custom vars accept only t or nil (exhaustive via seeded)
@@ -292,6 +286,20 @@
      (not (funcall keys-pred '("a" "s" "d")))
      (not (funcall keys-pred "asd"))))
   20 42)
+
+;;;
+;;; safe-local-variable policy — path and file variables
+;;;
+
+(nskk-describe "path variable safe-local-variable policy"
+  (nskk-it "no path variable has a safe-local-variable predicate"
+    (dolist (sym '(nskk-search-learning-file
+                   nskk-kakutei-jisyo
+                   nskk-dict-user-dictionary-file
+                   nskk-dict-system-dictionary-files
+                   nskk-large-dictionary
+                   nskk-study-file))
+      (should-not (get sym 'safe-local-variable)))))
 
 (provide 'nskk-custom-test)
 

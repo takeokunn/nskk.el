@@ -106,7 +106,7 @@ To enable program dictionary lookup:
     (list (lambda (r) (my-lookup r))
           \"/usr/local/bin/my-dict %s\"))"
   :type 'boolean
-  :safe #'booleanp
+  :risky t
   :group 'nskk-program-dict)
 
 (defcustom nskk-program-dicts nil
@@ -137,9 +137,7 @@ Example:
       \"/usr/local/bin/my-dict %s\"       ; %s replaced by reading (as arg)
       \"my-stdin-dict\"))                  ; reading sent via stdin"
   :type '(repeat (choice function string))
-  :safe (lambda (v)
-          (and (listp v)
-               (cl-every (lambda (e) (or (functionp e) (stringp e))) v)))
+  :risky t
   :group 'nskk-program-dict)
 
 (defcustom nskk-program-dict-timeout 1.0

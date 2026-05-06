@@ -125,9 +125,18 @@ lint-checkdoc:
 	$(BATCH) $(LOAD_PATH) \
 	  $(foreach f,$(SRC),--eval "(checkdoc-file \"$(f)\")")
 
+PACKAGE_LINT_CACHE := $(CURDIR)/.package-lint-cache
+
 package-lint:
 	$(BATCH) $(LOAD_PATH) \
-	  --eval "(progn (require 'package) (push '(\"melpa\" . \"https://melpa.org/packages/\") package-archives) (package-initialize) (package-refresh-contents) (package-install 'package-lint))" \
+	  --eval "(progn \
+	    (require 'package) \
+	    (setq package-user-dir \"$(PACKAGE_LINT_CACHE)\") \
+	    (push '(\"melpa-stable\" . \"https://stable.melpa.org/packages/\") package-archives) \
+	    (package-initialize) \
+	    (unless (package-installed-p 'package-lint) \
+	      (package-refresh-contents) \
+	      (package-install 'package-lint)))" \
 	  -l package-lint \
 	  -f package-lint-batch-and-exit src/nskk.el
 

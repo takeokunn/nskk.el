@@ -1498,6 +1498,42 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                                   (lambda () (setq not-found t)))
         (should not-found)))))
 
+;;;
+;;; Dict save sanitization tests
+;;;
+
+(nskk-describe "nskk-dict-save-user-dictionary sanitization"
+  (nskk-it "skips keys containing newline when saving"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((user-dict-entry "bad\nkey" ("候補"))))
+      (nskk-prolog-assert '((user-dict-entry "よみ" ("候補"))))
+      (let ((nskk-dict-user-dictionary-file (make-temp-file "nskk-test-dict"))
+            (nskk--user-dict-index t))
+        (unwind-protect
+            (progn
+              (nskk-dict-save-user-dictionary)
+              (let ((content (with-temp-buffer
+                               (insert-file-contents nskk-dict-user-dictionary-file)
+                               (buffer-string))))
+                (should (string-match-p "よみ" content))
+                (should-not (string-match-p "bad" content))))
+          (delete-file nskk-dict-user-dictionary-file)))))
+
+  (nskk-it "skips candidates containing / when saving"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((user-dict-entry "よみ" ("正常" "不/正" "正常2"))))
+      (let ((nskk-dict-user-dictionary-file (make-temp-file "nskk-test-dict"))
+            (nskk--user-dict-index t))
+        (unwind-protect
+            (progn
+              (nskk-dict-save-user-dictionary)
+              (let ((content (with-temp-buffer
+                               (insert-file-contents nskk-dict-user-dictionary-file)
+                               (buffer-string))))
+                (should (string-match-p "正常" content))
+                (should-not (string-match-p "不/正" content))))
+          (delete-file nskk-dict-user-dictionary-file))))))
+
 (provide 'nskk-dictionary-test)
 
 ;;; nskk-dictionary-test.el ends here

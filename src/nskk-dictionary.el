@@ -87,7 +87,6 @@
   (expand-file-name "~/.nskk/jisyo")
   "Path to the user dictionary file for storing registered words."
   :type 'file
-  :safe #'stringp
   :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
@@ -96,7 +95,6 @@
 When nil, NSKK auto-detects dictionary paths from nix profiles
 and common system locations."
   :type '(repeat file)
-  :safe (lambda (v) (and (listp v) (cl-every #'stringp v)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
@@ -127,7 +125,6 @@ Possible values:
 (defcustom nskk-large-dictionary nil
   "Path to large SKK dictionary file, or nil to disable."
   :type '(choice file (const nil))
-  :safe (lambda (v) (or (null v) (stringp v)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
 
@@ -748,9 +745,14 @@ are empty/invalid or when the Prolog unregistration query fails."
         (let ((key        (car binding))
               (candidates (cadr binding)))
           (when (and key candidates)
-            (insert (format "%s /%s/\n"
-                            key
-                            (string-join candidates "/")))))))
+            (let ((safe-cands (seq-remove
+                               (lambda (c) (string-match-p "[\n\r/]" c))
+                               candidates)))
+              (when (and (not (string-match-p "[\n\r]" key))
+                         safe-cands)
+                (insert (format "%s /%s/\n"
+                                key
+                                (string-join safe-cands "/")))))))))
     (message "NSKK: User dictionary saved to %s"
              nskk-dict-user-dictionary-file)
     (setq nskk-dict-modified nil)))
