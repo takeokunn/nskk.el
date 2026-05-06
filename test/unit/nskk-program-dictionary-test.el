@@ -1245,6 +1245,41 @@ Resets `nskk--program-dict-cache' to nil so each test starts cache-free."
                     result))))
   20)
 
+;;;
+;;; safe-local-variable policy
+;;;
+
+(nskk-describe "nskk-program-dict-enable safe-local-variable policy"
+  (nskk-it "is marked as risky-local-variable"
+    (should (get 'nskk-program-dict-enable 'risky-local-variable)))
+
+  (nskk-it "is classified as risky by risky-local-variable-p"
+    (should (risky-local-variable-p 'nskk-program-dict-enable)))
+
+  (nskk-it "has no safe-local-variable predicate"
+    (should-not (get 'nskk-program-dict-enable 'safe-local-variable))))
+
+(nskk-describe "nskk-program-dicts safe-local-variable policy"
+  (nskk-it "is marked as risky-local-variable"
+    (should (get 'nskk-program-dicts 'risky-local-variable)))
+
+  (nskk-it "is classified as risky by risky-local-variable-p"
+    (should (risky-local-variable-p 'nskk-program-dicts)))
+
+  (nskk-it "has no safe-local-variable predicate"
+    (should-not (get 'nskk-program-dicts 'safe-local-variable))))
+
+(nskk-describe "nskk-program-dicts malicious dir-locals scenario"
+  (nskk-it "lambda injection is rejected by safe-local-variable-p"
+    (should-not (safe-local-variable-p 'nskk-program-dicts
+                                       (list (lambda (k) (shell-command k))))))
+
+  (nskk-it "shell command string is rejected by safe-local-variable-p"
+    (should-not (safe-local-variable-p 'nskk-program-dicts '("rm -rf ~ %s"))))
+
+  (nskk-it "enable flag injection is rejected by safe-local-variable-p"
+    (should-not (safe-local-variable-p 'nskk-program-dict-enable t))))
+
 (provide 'nskk-program-dictionary-test)
 
 ;;; nskk-program-dictionary-test.el ends here

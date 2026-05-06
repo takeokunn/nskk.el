@@ -109,7 +109,7 @@ To enable skkserv lookup:
   (setq nskk-server-host \"localhost\")
   (setq nskk-server-portnum 1178)"
   :type 'boolean
-  :safe #'booleanp
+  :risky t
   :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
@@ -118,7 +118,7 @@ To enable skkserv lookup:
 Only used when `nskk-server-enable' is non-nil.
 Note: connections to non-localhost hosts are unencrypted plaintext TCP."
   :type 'string
-  :safe #'stringp
+  :risky t
   :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
@@ -126,7 +126,7 @@ Note: connections to non-localhost hosts are unencrypted plaintext TCP."
   "TCP port number of the skkserv instance.
 The default port 1178 is registered as \\='skkserv\\=' in /etc/services."
   :type 'natnum
-  :safe #'natnump
+  :risky t
   :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
@@ -135,7 +135,6 @@ The default port 1178 is registered as \\='skkserv\\=' in /etc/services."
 Traditional skkserv implementations use EUC-JP.  Modern servers such as
 yaskkserv2 may use UTF-8; set this to \\='utf-8 in that case."
   :type 'coding-system
-  :safe #'coding-system-p
   :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
@@ -147,7 +146,6 @@ smaller values improve responsiveness when the server is unreachable.
 Note: enabling skkserv may exceed the package's < 10ms search latency
 target when the server is remote or slow."
   :type 'number
-  :safe #'numberp
   :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 
@@ -156,7 +154,6 @@ target when the server is remote or slow."
 Useful for diagnosing latency issues.  Requires `nskk-debug-enabled' to
 be non-nil for the log entries to appear."
   :type 'boolean
-  :safe #'booleanp
   :package-version '(nskk . "0.1.0")
   :group 'nskk-server)
 

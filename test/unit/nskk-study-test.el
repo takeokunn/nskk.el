@@ -288,6 +288,36 @@
                              "予報")))
           (delete-file nskk-study-file))))))
 
+;;;
+;;; nskk-study-load validation tests
+;;;
+
+(nskk-describe "nskk-study-load validation"
+  (nskk-it "rejects non-list data and does not crash"
+    (let ((tmpfile (make-temp-file "nskk-test-study")))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (prin1 "not-a-list" (current-buffer)))
+            (let ((nskk-study-file tmpfile))
+              (nskk-prolog-test-with-isolated-db
+                (nskk-study-load)
+                (should-not (nskk-prolog-holds-p '(study-association \?_ \?_ \?_))))))
+        (delete-file tmpfile))))
+
+  (nskk-it "loads valid list data without error"
+    (let ((tmpfile (make-temp-file "nskk-test-study")))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (prin1 '(("prev" "reading" "cand")) (current-buffer)))
+            (let ((nskk-study-file tmpfile))
+              (nskk-prolog-test-with-isolated-db
+                (nskk-study-load)
+                (should (nskk-prolog-holds-p
+                         '(study-association "prev" "reading" "cand"))))))
+        (delete-file tmpfile)))))
+
 (provide 'nskk-study-test)
 
 ;;; nskk-study-test.el ends here

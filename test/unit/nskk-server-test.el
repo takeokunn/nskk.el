@@ -723,6 +723,27 @@ Restores server-state to closed in an unwind-protect."
               (setq result (nskk--server-with-response "key"))))))
       (should (null result)))))
 
+;;;
+;;; safe-local-variable policy
+;;;
+
+(nskk-describe "nskk-server-* risky-local-variable policy"
+  (nskk-it "nskk-server-enable is marked risky-local-variable"
+    (should (get 'nskk-server-enable 'risky-local-variable)))
+
+  (nskk-it "nskk-server-host is marked risky-local-variable"
+    (should (get 'nskk-server-host 'risky-local-variable)))
+
+  (nskk-it "nskk-server-portnum is marked risky-local-variable"
+    (should (get 'nskk-server-portnum 'risky-local-variable))))
+
+(nskk-describe "nskk-server-* safe-local-variable policy"
+  (nskk-it "no nskk-server-* variable has a safe-local-variable predicate"
+    (dolist (sym '(nskk-server-enable nskk-server-host nskk-server-portnum
+                   nskk-server-coding-system nskk-server-timeout
+                   nskk-server-report-response))
+      (should-not (get sym 'safe-local-variable)))))
+
 (provide 'nskk-server-test)
 
 ;;; nskk-server-test.el ends here

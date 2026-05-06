@@ -154,7 +154,6 @@ Zero disables fuzzy matching."
   (expand-file-name "nskk/learning.dat" user-emacs-directory)
   "File path for persisting learning data."
   :type 'file
-  :safe #'stringp
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
@@ -373,7 +372,6 @@ without showing a candidate selection menu.  When a reading matches an
 entry in this dictionary, the single candidate is inserted directly.
 The file format is the same as the standard SKK dictionary format."
   :type '(choice file (const nil))
-  :safe (lambda (v) (or (null v) (stringp v)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-kakutei-jisyo)
 

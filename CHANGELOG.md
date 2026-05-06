@@ -17,6 +17,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opposite order from DDSKK.  Unit tests updated to document the correct
   pass-through semantics.
 
+### Security
+
+- **safe-local-variable remediation**: Removed `:safe` predicates and added
+  `:risky t` markers to variables that control external process execution and
+  network connections.  These variables can no longer be set silently via
+  `.dir-locals.el`; Emacs will now warn or block when a project-local file
+  attempts to configure them.
+
+  **Variables marked `:risky t`** (Emacs blocks even if added to
+  `safe-local-variable-values`):
+  - `nskk-program-dict-enable`, `nskk-program-dicts` — control arbitrary
+    Emacs Lisp callbacks and external shell process execution
+  - `nskk-server-enable`, `nskk-server-host`, `nskk-server-portnum` — control
+    plaintext TCP connections to skkserv instances
+
+  **Variables with `:safe` removed** (Emacs prompts before applying):
+  - `nskk-server-coding-system`, `nskk-server-timeout`, `nskk-server-report-response`
+  - `nskk-dict-user-dictionary-file`, `nskk-dict-system-dictionary-files`,
+    `nskk-large-dictionary`, `nskk-search-learning-file`, `nskk-kakutei-jisyo`,
+    `nskk-study-file`
+
+  **Migration**: Move any of these variables from `.dir-locals.el` to your
+  `init.el` using `setq`, or accept the Emacs safety prompt on each directory
+  visit.
+
 ### Added
 
 - **AZIK y-prefix youon rows**: AZIK mode now supports standard romaji y-prefix

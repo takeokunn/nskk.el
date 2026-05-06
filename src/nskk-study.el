@@ -66,7 +66,6 @@
   (expand-file-name "nskk/study.dat" user-emacs-directory)
   "File path for persisting study association data."
   :type 'file
-  :safe #'stringp
   :package-version '(nskk . "0.1.0")
   :group 'nskk-study)
 
@@ -226,19 +225,25 @@ of the list.  Returns the (possibly reordered) candidate list."
   "Load study association data from `nskk-study-file'."
   (interactive)
   (when (file-readable-p nskk-study-file)
-    (condition-case err
-        (when-let* ((data (with-temp-buffer
-                            (insert-file-contents nskk-study-file)
-                            (read (current-buffer)))))
-          (dolist (entry data)
-            (pcase entry
-              (`(,(and (pred stringp) prev)
-                 ,(and (pred stringp) reading)
-                 ,(and (pred stringp) cand))
-               (nskk-prolog-assert
-                (list `(study-association ,prev ,reading ,cand)))))))
-      (error
-       (message "NSKK: Failed to load study data: %s" (error-message-string err))))))
+    (let ((size (file-attribute-size
+                 (file-attributes nskk-study-file))))
+      (if (and size (> size (* 10 1024 1024)))
+          (message "NSKK: Study file too large (%d bytes), skipping load" size)
+        (condition-case err
+            (when-let* ((data (with-temp-buffer
+                                (insert-file-contents nskk-study-file)
+                                (read (current-buffer)))))
+              (unless (listp data)
+                (error "Expected list, got %s" (type-of data)))
+              (dolist (entry data)
+                (pcase entry
+                  (`(,(and (pred stringp) prev)
+                     ,(and (pred stringp) reading)
+                     ,(and (pred stringp) cand))
+                   (nskk-prolog-assert
+                    (list `(study-association ,prev ,reading ,cand)))))))
+          (error
+           (message "NSKK: Failed to load study data: %s" (error-message-string err))))))))
 
 (provide 'nskk-study)
 
