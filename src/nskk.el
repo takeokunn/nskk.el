@@ -180,7 +180,7 @@ to control per-mode cursor color changes.
 
 \\{nskk-mode-map}"
   :init-value nil
-  :lighter '(:eval (nskk-modeline-indicator))
+  :lighter (:eval (nskk-modeline-indicator))
   :keymap nskk-mode-map
   :group 'nskk
   (if nskk-mode

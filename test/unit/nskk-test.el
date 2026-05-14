@@ -32,6 +32,12 @@
   (nskk-it "is an interactive command"
     (should (commandp 'nskk-mode)))
 
+  (nskk-it "registers the dynamic modeline lighter without an extra quote"
+    (let ((entry (assq (quote nskk-mode) minor-mode-alist))
+          (expected (quote (:eval (nskk-modeline-indicator)))))
+      (should entry)
+      (should (equal (cadr entry) expected))))
+
   (nskk-it "enables nskk-mode in a buffer"
     (with-temp-buffer
       (nskk-mode 1)
