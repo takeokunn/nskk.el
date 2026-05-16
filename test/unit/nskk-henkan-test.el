@@ -3703,6 +3703,24 @@
         (should (equal (nskk--read-registration-entry "かんじ") "漢字"))))))
 
 ;;;
+;;; registration minibuffer keymap Tests
+;;;
+
+(nskk-describe "registration minibuffer keymap"
+  (nskk-it "locks reg-map bindings (C-g, RET, C-j, parent) for kana-input registration"
+    (let* ((exit-fn #'ignore)
+           (reg-map (let ((map (make-sparse-keymap)))
+                      (set-keymap-parent map nskk-mode-map)
+                      (define-key map (kbd "C-j") exit-fn)
+                      (define-key map (kbd "RET") exit-fn)
+                      (define-key map (kbd "C-g") #'abort-recursive-edit)
+                      map)))
+      (should (eq (lookup-key reg-map (kbd "C-g")) #'abort-recursive-edit))
+      (should (eq (lookup-key reg-map (kbd "RET")) exit-fn))
+      (should (eq (lookup-key reg-map (kbd "C-j")) exit-fn))
+      (should (eq (keymap-parent reg-map) nskk-mode-map)))))
+
+;;;
 ;;; search-backend/2 Prolog Facts Tests
 ;;;
 

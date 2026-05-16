@@ -1560,7 +1560,9 @@ DEPTH 1 → \"[辞書登録] READING: \", DEPTH 2 → \"[[辞書登録]] READING
 (defun nskk--read-registration-entry-with-kana (prompt)
   "Read a registration entry from the minibuffer for PROMPT with nskk-mode active.
 Sets up a dedicated keymap so RET and C-j commit the current conversion
-instead of exiting with a raw newline."
+instead of exiting with a raw newline, and so C-g aborts the registration
+via `abort-recursive-edit' instead of cascading to the preedit-clear
+handler in `nskk-mode-map'."
   (let* ((exit-fn (lambda ()
                     (interactive)
                     (let ((phase (nskk--compute-phase)))
@@ -1572,6 +1574,7 @@ instead of exiting with a raw newline."
                     (set-keymap-parent map nskk-mode-map)
                     (define-key map (kbd "C-j") exit-fn)
                     (define-key map (kbd "RET") exit-fn)
+                    (define-key map (kbd "C-g") #'abort-recursive-edit)
                     map)))
     (minibuffer-with-setup-hook
         (lambda ()

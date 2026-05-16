@@ -430,7 +430,59 @@
         (should nskk--henkan-candidate-list-active)
         ;; 'a' selects page position 0 = index 0 = 漢字
         (nskk-e2e-type "a")
-        (nskk-e2e-assert-buffer "漢字" "After C-g cancel wrap, 'a' must commit 漢字")))))
+        (nskk-e2e-assert-buffer "漢字" "After C-g cancel wrap, 'a' must commit 漢字"))))
+
+  (nskk-it "cancels registration with kana-in-registration enabled"
+    ;; Exercises the kana path (src/nskk-henkan.el:1576-1582):
+    ;; nskk--read-registration-entry-with-kana → read-from-minibuffer → quit
+    ;; → outer condition-case in nskk--read-registration-entry returns nil
+    ;; → on-found called with nil → preedit preserved, phase = 'on, depth = 0.
+    (let ((nskk-use-kana-in-registration t))
+      (nskk-e2e-with-buffer 'hiragana nil
+        (cl-letf (((symbol-function 'read-from-minibuffer)
+                   (lambda (&rest _) (signal 'quit nil))))
+          (nskk-e2e-type "Shinki")
+          (nskk-e2e-type "SPC")
+          (nskk-e2e-assert-buffer "▽しんき" "Preedit preserved after C-g (kana path)")
+          (nskk-e2e-assert-henkan-phase 'on "Phase restored to 'on (kana path)")
+          (should (= nskk--registration-depth 0))))))
+
+  (nskk-it "cancels registration with kana-in-registration disabled"
+    ;; Exercises the non-kana path (src/nskk-henkan.el:1583-1585):
+    ;; plain read-from-minibuffer → quit → condition-case returns nil
+    ;; → preedit preserved, phase = 'on, depth = 0.
+    (let ((nskk-use-kana-in-registration nil))
+      (nskk-e2e-with-buffer 'hiragana nil
+        (cl-letf (((symbol-function 'read-from-minibuffer)
+                   (lambda (&rest _) (signal 'quit nil))))
+          (nskk-e2e-type "Shinki")
+          (nskk-e2e-type "SPC")
+          (nskk-e2e-assert-buffer "▽しんき" "Preedit preserved after C-g (non-kana path)")
+          (nskk-e2e-assert-henkan-phase 'on "Phase restored to 'on (non-kana path)")
+          (should (= nskk--registration-depth 0))))))
+
+  (nskk-it "restores henkan-phase on C-g during nested registration"
+    ;; Pre-seed depth = 1 (simulating outer registration already active).
+    ;; C-g in inner registration must decrement back to 1, not collapse to 0.
+    ;; unwind-protect in nskk--run-registration-session/k owns the decrement.
+    (nskk-e2e-with-buffer 'hiragana nil
+      (cl-letf (((symbol-function 'read-from-minibuffer)
+                 (lambda (&rest _) (signal 'quit nil))))
+        (let ((nskk--registration-depth 1))
+          (let ((depth-before nskk--registration-depth))
+            (nskk-e2e-type "Shinki")
+            (nskk-e2e-type "SPC")
+            (should (= nskk--registration-depth depth-before))))))))
+
+;; TODO(issue-38-followup): Deferred E2E coverage for C-g registration abort.
+;; These ACs require real-keypress dispatch (execute-kbd-macro / unread-command-events)
+;; which is infeasible in --batch (read-from-minibuffer reads from stdin in batch mode).
+;; Revisit when an interactive test harness is available, or as manual QA.
+;;   - AZIK pending states (DA/DV/CP/CD/SP/sticky-shift) inside registration minibuffer
+;;   - C-g during ▼ active conversion or list phase inside minibuffer
+;;   - C-g while katakana / abbrev / ascii / latin / jisx0208-latin mode is active
+;;   - Outer-buffer regression guards (preedit/converting/abbrev arms of nskk-handle-cancel)
+;;   - dcomp dynamic-completion overlay two-stage C-g semantics
 
 (provide 'nskk-registration-e2e-test)
 
