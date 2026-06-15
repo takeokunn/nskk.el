@@ -467,6 +467,35 @@ the integer Levenshtein distance from QUERY."
     (error
      (message "NSKK: Failed to save learning data: %s" (error-message-string err)))))
 
+;;;###autoload
+(defun nskk-search-load-learning-data ()
+  "Load learning data from `nskk-search-learning-file'.
+Restore the `learning-score' Prolog facts serialized by
+`nskk-search-save-learning-data'.  This is the inverse operation,
+allowing learning to persist across Emacs sessions."
+  (interactive)
+  (when (file-readable-p nskk-search-learning-file)
+    (let ((size (file-attribute-size
+                 (file-attributes nskk-search-learning-file))))
+      (if (and size (> size (* 10 1024 1024)))
+          (message "NSKK: Learning file too large (%d bytes), skipping load" size)
+        (condition-case err
+            (when-let* ((data (with-temp-buffer
+                                (insert-file-contents nskk-search-learning-file)
+                                (read (current-buffer)))))
+              (unless (listp data)
+                (error "Expected list, got %s" (type-of data)))
+              (dolist (entry data)
+                (pcase entry
+                  (`(,(and (pred stringp) reading)
+                     ,(and (pred stringp) word)
+                     ,(and (pred integerp) score))
+                   (nskk-prolog-assert
+                    (list `(learning-score ,reading ,word ,score)))))))
+          (error
+           (message "NSKK: Failed to load learning data: %s"
+                    (error-message-string err))))))))
+
 (defun/done nskk-search-learn (query candidate &optional context)
   "Record that CANDIDATE was selected for QUERY.
 _CONTEXT is reserved for future use.
