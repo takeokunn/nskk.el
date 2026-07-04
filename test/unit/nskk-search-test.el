@@ -313,6 +313,67 @@ generated symbol)."
           (should-not (nskk--search-match-okuri-type-p okuri-type entry-okuri))))
 
 ;;;
+;;; Okuri derivation from key shape
+;;;
+
+;; An SKK okuri-ari key ends with a single ASCII lower-case letter directly
+;; following a non-ASCII kana; everything else is okuri-nasi (nil).
+(nskk-deftest-table derive-okuri-from-key
+  :columns (key expected _label)
+  :rows (("わるi" "i" "kana + trailing ascii letter -> okuri-ari suffix")
+         ("うごk" "k" "kana + trailing ascii letter -> okuri-ari suffix")
+         ("かんじ" nil "all kana -> okuri-nasi")
+         ("a"      nil "single char is too short -> okuri-nasi")
+         ("ab"     nil "ascii penultimate char -> okuri-nasi")
+         ("わるA"  nil "trailing upper-case is not okurigana -> okuri-nasi")
+         (""       nil "empty key -> okuri-nasi"))
+  :body (should (equal (nskk--search-derive-okuri key) expected)))
+
+;;;
+;;; Okuri-type filtering end-to-end (populated okuri slot)
+;;;
+
+(nskk-describe "okuri-type filtering populates and honors the okuri slot"
+  (nskk-it "classifies constructed entries by key shape"
+    (nskk-then
+      (should (equal (nskk-dict-entry-okuri
+                      (make-nskk-dict-entry
+                       :key "わるi" :candidates '("悪")
+                       :okuri (nskk--search-derive-okuri "わるi")))
+                     "i"))
+      (should (null (nskk-dict-entry-okuri
+                     (make-nskk-dict-entry
+                      :key "かんじ" :candidates '("漢字")
+                      :okuri (nskk--search-derive-okuri "かんじ")))))))
+
+  (nskk-it "exact okuri-ari filter keeps okuri-ari and excludes okuri-nasi"
+    (nskk-prolog-test-with-isolated-db
+      (let ((index (nskk-search-test--make-index
+                    '(("わるi" . ("悪")) ("かんじ" . ("漢字"))))))
+        ;; okuri-ari key survives an okuri-ari filter, okuri-nasi key does not.
+        (should (nskk-search index "わるi" 'exact 'okuri-ari))
+        (should (null (nskk-search index "かんじ" 'exact 'okuri-ari))))))
+
+  (nskk-it "exact okuri-nasi filter keeps okuri-nasi and excludes okuri-ari"
+    (nskk-prolog-test-with-isolated-db
+      (let ((index (nskk-search-test--make-index
+                    '(("わるi" . ("悪")) ("かんじ" . ("漢字"))))))
+        (should (nskk-search index "かんじ" 'exact 'okuri-nasi))
+        (should (null (nskk-search index "わるi" 'exact 'okuri-nasi))))))
+
+  (nskk-it "prefix filter separates okuri-ari and okuri-nasi entries"
+    (nskk-prolog-test-with-isolated-db
+      (let ((index (nskk-search-test--make-index
+                    nil
+                    '(("うごk" . ("動")) ("うごく" . ("動く"))))))
+        (let ((ari (nskk-search index "うご" 'prefix 'okuri-ari)))
+          (should (assoc "うごk" ari))
+          (should-not (assoc "うごく" ari)))
+        (let ((nasi (nskk-search index "うご" 'prefix 'okuri-nasi)))
+          (should (assoc "うごく" nasi))
+          (should-not (assoc "うごk" nasi)))))))
+
+;;;
 ;;; nskk-search empty/nil handling
 ;;;
 
@@ -553,6 +614,51 @@ in this list.")
       (let ((index (nskk-search-test--make-index '(("a" . ("1"))))))
         (should-error (nskk-search-with-cache "not-a-cache" index "a")
                       :type 'wrong-type-argument)))))
+
+;;;
+;;; Cache invalidation on dictionary change
+;;;
+
+(nskk-describe "nskk-search-with-cache invalidation"
+  ;; Not wrapped in nskk-prolog-test-with-isolated-db: the cache dispatch
+  ;; facts (cache-dispatch-fn/3) must remain intact.  A unique predicate name
+  ;; keeps the dictionary facts asserted here from polluting other tests.
+  (nskk-it "returns the new candidate after nskk-jisyo-update-hook fires"
+    (let* ((cache (nskk-cache-lru-create 100))
+           (pred (intern (format "flush-test-dict-%d" (abs (random)))))
+           (index (progn
+                    (nskk-prolog-set-index pred 2 :trie)
+                    (nskk-prolog-assert (list (list pred "かんじ" '("旧"))))
+                    (make-nskk-dict-index :predicate pred))))
+      ;; Prime the cache with the current (old) candidate.
+      (nskk-should-candidates
+       '("旧") (nskk-search-with-cache cache index "かんじ" 'exact))
+      ;; The dictionary content changes underneath the cache.
+      (nskk-prolog-retract (list pred "かんじ" '("旧")))
+      (nskk-prolog-assert (list (list pred "かんじ" '("新"))))
+      ;; Before invalidation the stale candidate is still served from cache.
+      (nskk-should-candidates
+       '("旧") (nskk-search-with-cache cache index "かんじ" 'exact))
+      ;; A dictionary mutation runs nskk-jisyo-update-hook (as
+      ;; nskk-dict-register-word/unregister-word do via
+      ;; nskk--dict-run-update-hook), which flushes registered search caches.
+      (run-hooks 'nskk-jisyo-update-hook)
+      (nskk-should-candidates
+       '("新") (nskk-search-with-cache cache index "かんじ" 'exact))))
+
+  (nskk-it "flushes registered caches after nskk-search-learn"
+    (let* ((cache (nskk-cache-lru-create 100))
+           (pred (intern (format "learn-flush-dict-%d" (abs (random)))))
+           (index (progn
+                    (nskk-prolog-set-index pred 2 :trie)
+                    (nskk-prolog-assert (list (list pred "かんじ" '("漢字"))))
+                    (make-nskk-dict-index :predicate pred))))
+      ;; Register the cache by using it once.
+      (nskk-search-with-cache cache index "かんじ" 'exact)
+      (should (= (nskk-cache-size cache) 1))
+      ;; Recording a selection changes scores, so the cache must be flushed.
+      (nskk-search-learn "かんじ" "漢字")
+      (should (= (nskk-cache-size cache) 0)))))
 
 ;;;
 ;;; Candidate Word Extraction Tests
