@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -166,6 +165,14 @@ Managed by `nskk-server-open' and `nskk-server-close'.")
 (defconst nskk--server-buffer-name " *nskk-server*"
   "Name of the working buffer for skkserv I/O.")
 
+(defconst nskk--server-max-response-size (* 1024 1024)
+  "Maximum size, in bytes, of a single skkserv response.
+A well-formed skkserv reply is terminated by a newline and is far smaller
+than this cap.  If the accumulated response exceeds this size without a
+terminating newline, `nskk--server-await-response' treats the reply as a
+protocol error: it resets the connection and fails.  This bounds memory
+use against a misbehaving or malicious server that never sends a newline.")
+
 (defvar nskk--server-kill-emacs-hook-registered nil
   "Non-nil when `nskk-server-close' is registered on `kill-emacs-hook'.
 Used to avoid duplicate registrations (idempotent guard).")
@@ -200,16 +207,38 @@ Returns nil when not connected or when `nskk--server-process' is nil."
 (defun nskk--server-make-connection ()
   "Open a raw TCP connection to the configured skkserv instance.
 Returns the process object on success, or nil if the connection fails.
-Binds coding system for both read and write directions."
+
+Connects asynchronously with `:nowait' so that a host which blackholes
+incoming SYNs cannot freeze Emacs for the OS-level connect timeout
+\(~75 seconds) on every lookup.  After initiating the connection, the
+process status is polled with `accept-process-output' until it becomes
+\\='open, bounded by `nskk-server-timeout'.  If the deadline passes or the
+status becomes \\='failed or \\='closed, the half-open process is deleted
+and nil is returned (treated by callers as a connection failure).
+
+Binds coding system for both read and write directions.  Because the
+connection is plain TCP (no TLS negotiation), `:nowait' is safe here."
   (condition-case err
-      (let ((coding-system-for-read  nskk-server-coding-system)
-            (coding-system-for-write nskk-server-coding-system))
-        (open-network-stream
-         "nskk-server"
-         (get-buffer-create nskk--server-buffer-name)
-         nskk-server-host
-         nskk-server-portnum
-         :type 'plain))
+      (let* ((coding-system-for-read  nskk-server-coding-system)
+             (coding-system-for-write nskk-server-coding-system)
+             (proc (open-network-stream
+                    "nskk-server"
+                    (get-buffer-create nskk--server-buffer-name)
+                    nskk-server-host
+                    nskk-server-portnum
+                    :type 'plain
+                    :nowait t))
+             (deadline (+ (float-time) nskk-server-timeout)))
+        (while (and (eq (process-status proc) 'connect)
+                    (< (float-time) deadline))
+          (accept-process-output proc 0.1))
+        (if (eq (process-status proc) 'open)
+            proc
+          (nskk-debug-message
+           "nskk-server-open: connection to %s:%d not established (status=%s)"
+           nskk-server-host nskk-server-portnum (process-status proc))
+          (delete-process proc)
+          nil))
     (error
      (nskk-debug-message "nskk-server-open: connection failed: %s"
                          (error-message-string err))
@@ -328,17 +357,38 @@ Fails for not-found responses, empty responses, or non-string inputs."
 (defun/k nskk--server-await-response (proc buf deadline)
   "Poll PROC via BUF for a complete skkserv response line until DEADLINE.
 Polls at 0.1-second intervals using `accept-process-output'.
+
+Searches the process buffer directly for the terminating newline instead
+of copying its whole contents on every poll, and enforces
+`nskk--server-max-response-size' as an upper bound on the accumulated
+reply.  When that cap is exceeded without a newline, the response is
+treated as a protocol error: the connection is reset via
+`nskk-server-close' and the function fails.
+
 Succeeds with the accumulated response string (containing a newline).
-Fails on timeout or disconnection."
-  (let (response)
-    (while (and (nskk-server-live-p)
-                (< (float-time) deadline)
-                (not (and response (string-search "\n" response))))
+Fails on timeout, disconnection, or oversized response."
+  (let ((found nil)
+        (overflow nil))
+    (while (and (not found)
+                (not overflow)
+                (nskk-server-live-p)
+                (< (float-time) deadline))
       (accept-process-output proc 0.1)
-      (setq response (with-current-buffer buf (buffer-string))))
-    (if (and response (string-search "\n" response))
-        (succeed response)
-      (fail))))
+      (with-current-buffer buf
+        (goto-char (point-min))
+        (cond
+         ((search-forward "\n" nil t) (setq found t))
+         ((> (buffer-size) nskk--server-max-response-size)
+          (setq overflow t)))))
+    (cond
+     (overflow
+      (nskk-debug-message
+       "nskk-server-lookup: response exceeded %d bytes without newline; resetting connection"
+       nskk--server-max-response-size)
+      (nskk-server-close)
+      (fail))
+     (found (succeed (with-current-buffer buf (buffer-string))))
+     (t (fail)))))
 
 (defun/k nskk--server-with-response (key)
   "Send skkserv command 1 for KEY, await the response.
