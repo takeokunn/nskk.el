@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-04
+
 ### Fixed
 
 - **辞書登録 C-g**: ミニバッファで `C-g` が登録を抜けない問題を修正 ([#38](https://github.com/takeokunn/nskk.el/issues/38))。`reg-map` に `C-g` → `abort-recursive-edit` の束縛を追加し、`nskk-mode-map` の `nskk-handle-cancel` 経由で preedit-clear に転送される問題を回避。
