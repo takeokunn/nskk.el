@@ -157,6 +157,25 @@ Zero disables fuzzy matching."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
+(defcustom nskk-search-merge-user-dict-with-server nil
+  "When non-nil, merge user dictionary candidates with skkserv results.
+
+By default (nil), skkserv takes priority: when a server lookup succeeds
+its candidates are used as-is and the local user dictionary is not
+consulted, matching the historical NSKK search behavior.
+
+When non-nil, the local dictionary (user-registered and learned words)
+is searched first and its candidates are merged ahead of the server's,
+with duplicates removed.  This is closer to ddskk, where the personal
+dictionary is merged before the system/server dictionaries so that
+registered and learned words always appear among the top candidates.
+
+Only affects exact dictionary lookup (`nskk-core-search')."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
+
 (defcustom nskk-search-auto-save-learning t
   "When non-nil, persist learning data across Emacs sessions.
 When enabled, learning scores are loaded from `nskk-search-learning-file'
@@ -169,7 +188,6 @@ When nil, learning is kept in memory only and lost when Emacs exits."
   :safe #'booleanp
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
-
 ;;;; UI / Modeline Settings
 
 (defgroup nskk-modeline nil

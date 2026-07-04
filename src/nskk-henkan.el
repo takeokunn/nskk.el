@@ -366,6 +366,34 @@ Calls on-not-found for any non-confirmed result."
         :fail  (fail))
     (fail)))
 
+(defun nskk--merge-candidates-user-first (primary secondary)
+  "Merge candidate lists PRIMARY and SECONDARY, keeping PRIMARY first.
+Duplicates (compared with `equal') are removed, preferring PRIMARY's
+ordering.  Used to place user dictionary candidates ahead of server
+candidates when `nskk-search-merge-user-dict-with-server' is non-nil."
+  (delete-dups (append (copy-sequence primary) (copy-sequence secondary))))
+
+(defun/k nskk--core-dict-and-server (key)
+  "Look up KEY in the local dictionary and skkserv, then combine results.
+When `nskk-search-merge-user-dict-with-server' is non-nil, the local
+dictionary (which includes user-registered and learned words) is searched
+first and its candidates are merged ahead of the server's, with duplicates
+removed.  Otherwise the historical behavior is preserved: the server is
+tried first and the local dictionary is consulted only on a server miss."
+  (if nskk-search-merge-user-dict-with-server
+      (<-or local nskk-dict-lookup key
+        :found (<-or srv nskk--optional-server-lookup key
+                 :found (succeed (nskk--merge-candidates-user-first local srv))
+                 :fail  (succeed local))
+        :fail  (<-or srv nskk--optional-server-lookup key
+                 :found (succeed srv)
+                 :fail  (fail)))
+    (<-or srv nskk--optional-server-lookup key
+      :found (succeed srv)
+      :fail  (<-or local nskk-dict-lookup key
+               :found (succeed local)
+               :fail  (fail)))))
+
 ;; Search strategy: exact match → prefix fallback → partial match → skkserv (remote).
 ;; Each stage calls on-not-found to fall through to the next.
 ;; The type argument selects which stage is executed for a given call:
@@ -396,27 +424,27 @@ always pass both continuation arguments explicitly."
         (nskk-debug-log "[HENKAN] search: key=%s type=%s" key (or type 'exact))
         (pcase action
           ('dict-lookup
-           ;; Flat fallback chain:
-           ;;   kakutei-dict (confirmed, optional) → skkserv → local dict
+           ;; Fallback chain:
+           ;;   kakutei-dict (confirmed, optional) → dict-and-server
            ;;   → builtin-handlers → program-dict.
            ;; Kakutei dictionary is checked first: if it returns a single
            ;; confirmed candidate, it is committed immediately without
            ;; showing the candidate selection menu.
-           ;; skkserv is tried before local dict so that the server's
-           ;; richer dictionary and DDSKK-compatible ordering take priority.
+           ;; `nskk--core-dict-and-server' combines the local dictionary and
+           ;; skkserv.  By default the server takes priority (historical
+           ;; behavior); when `nskk-search-merge-user-dict-with-server' is
+           ;; non-nil it merges the user dictionary ahead of the server.
            ;; Enable-flag guards live inside each backend's own /k function.
            ;; fboundp guards in the optional-* wrappers handle unloaded modules.
            (<-or result nskk--optional-kakutei-lookup key
              :found (succeed result)
-             :fail  (<-or r nskk--optional-server-lookup key
-               :found (succeed r)
-               :fail  (<-or result2 nskk-dict-lookup key
-                 :found (succeed result2)
-                 :fail  (<-or b nskk--optional-program-dict-builtin-lookup key
-                   :found (succeed b)
-                   :fail  (<-or p nskk--optional-program-dict-lookup key
-                     :found (succeed p)
-                     :fail  (fail)))))))
+             :fail  (<-or ds nskk--core-dict-and-server key
+               :found (succeed ds)
+               :fail  (<-or b nskk--optional-program-dict-builtin-lookup key
+                 :found (succeed b)
+                 :fail  (<-or p nskk--optional-program-dict-lookup key
+                   :found (succeed p)
+                   :fail  (fail))))))
           ('prefix-search
            (if (nskk-dict-system-index)
                (<-or r nskk-search-prefix (nskk-dict-system-index) key nil limit

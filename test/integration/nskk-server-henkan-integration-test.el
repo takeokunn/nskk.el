@@ -144,6 +144,75 @@
           (nskk-server-close)
           (delete-process server-proc))))))
 
+;;;; User dictionary merged with server (opt-in via
+;;;; `nskk-search-merge-user-dict-with-server')
+
+(nskk-describe "user dictionary merged with server"
+
+  (nskk-it "merges user dict candidates ahead of server when enabled"
+    ;; Local dict has the registered word "優響"; the mock server returns
+    ;; other readings of "ゆき".  With merging enabled the user dict candidate
+    ;; comes first, followed by the server's.
+    (nskk-with-mock-dict '(("ゆき" . ("優響")))
+      (let* ((mock (nskk--server-start-mock-server
+                    '(("ゆき" . "1/雪/行き/\n"))))
+             (server-proc (car mock))
+             (port         (cdr mock))
+             (nskk-server-enable t)
+             (nskk-server-host "127.0.0.1")
+             (nskk-server-portnum port)
+             (nskk--server-process nil)
+             (nskk--server-kill-emacs-hook-registered nil)
+             (nskk-search-merge-user-dict-with-server t))
+        (unwind-protect
+            (progn
+              (should (nskk-server-open))
+              (let ((result (nskk-core-search "ゆき")))
+                (should (equal result '("優響" "雪" "行き")))))
+          (nskk-server-close)
+          (delete-process server-proc)))))
+
+  (nskk-it "deduplicates candidates shared by user dict and server"
+    ;; "雪" is present in both; it is kept once, with the user dict ordering.
+    (nskk-with-mock-dict '(("ゆき" . ("優響" "雪")))
+      (let* ((mock (nskk--server-start-mock-server
+                    '(("ゆき" . "1/雪/行き/\n"))))
+             (server-proc (car mock))
+             (port         (cdr mock))
+             (nskk-server-enable t)
+             (nskk-server-host "127.0.0.1")
+             (nskk-server-portnum port)
+             (nskk--server-process nil)
+             (nskk--server-kill-emacs-hook-registered nil)
+             (nskk-search-merge-user-dict-with-server t))
+        (unwind-protect
+            (progn
+              (should (nskk-server-open))
+              (let ((result (nskk-core-search "ゆき")))
+                (should (equal result '("優響" "雪" "行き")))))
+          (nskk-server-close)
+          (delete-process server-proc)))))
+
+  (nskk-it "falls back to server when merge enabled but user dict misses"
+    (nskk-with-mock-dict nskk-server-henkan--dict-without-test-key
+      (let* ((mock (nskk--server-start-mock-server
+                    '(("ゆき" . "1/雪/\n"))))
+             (server-proc (car mock))
+             (port         (cdr mock))
+             (nskk-server-enable t)
+             (nskk-server-host "127.0.0.1")
+             (nskk-server-portnum port)
+             (nskk--server-process nil)
+             (nskk--server-kill-emacs-hook-registered nil)
+             (nskk-search-merge-user-dict-with-server t))
+        (unwind-protect
+            (progn
+              (should (nskk-server-open))
+              (let ((result (nskk-core-search "ゆき")))
+                (should (member "雪" result))))
+          (nskk-server-close)
+          (delete-process server-proc))))))
+
 (provide 'nskk-server-henkan-integration-test)
 
 ;;; nskk-server-henkan-integration-test.el ends here
