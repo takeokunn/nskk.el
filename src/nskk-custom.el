@@ -176,6 +176,18 @@ Only affects exact dictionary lookup (`nskk-core-search')."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
+(defcustom nskk-search-auto-save-learning t
+  "When non-nil, persist learning data across Emacs sessions.
+When enabled, learning scores are loaded from `nskk-search-learning-file'
+the first time NSKK is enabled, and saved back on Emacs exit via
+`kill-emacs-hook'.  If the optional study feature (`nskk-study') is
+loaded, study association data is loaded and saved as well.
+
+When nil, learning is kept in memory only and lost when Emacs exits."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
 ;;;; UI / Modeline Settings
 
 (defgroup nskk-modeline nil

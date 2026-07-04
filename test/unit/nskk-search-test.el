@@ -1413,6 +1413,42 @@ of keys under `string<' regardless of the input order."
   40
   43)
 
+;;; Learning data persistence (save / load round-trip)
+
+(nskk-describe "nskk-search-load-learning-data"
+  (nskk-it "round-trips learning scores through save and load"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file (make-temp-file "nskk-learning" nil ".dat")))
+        (unwind-protect
+            (progn
+              (nskk-prolog-retract-all 'learning-score 3)
+              ;; Two candidates for the reading "ゆき"; "優響" has the higher score.
+              (nskk-prolog-assert (list '(learning-score "ゆき" "優響" 3)))
+              (nskk-prolog-assert (list '(learning-score "ゆき" "雪" 1)))
+              (nskk-search-save-learning-data)
+              ;; Wipe in-memory scores, then reload from the file.
+              (nskk-prolog-retract-all 'learning-score 3)
+              (should (null (nskk-prolog-query-value
+                             '(learning-score "ゆき" "優響" \?s) '\?s)))
+              (nskk-search-load-learning-data)
+              (should (= 3 (nskk-prolog-query-value
+                            '(learning-score "ゆき" "優響" \?s) '\?s)))
+              (should (= 1 (nskk-prolog-query-value
+                            '(learning-score "ゆき" "雪" \?s) '\?s))))
+          (delete-file nskk-search-learning-file)))))
+
+  (nskk-it "is a no-op when the learning file does not exist"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (expand-file-name "nskk-nonexistent-learning.dat"
+                               temporary-file-directory)))
+        (when (file-exists-p nskk-search-learning-file)
+          (delete-file nskk-search-learning-file))
+        (nskk-prolog-retract-all 'learning-score 3)
+        (nskk-search-load-learning-data)
+        (should (null (nskk-prolog-query-value
+                       '(learning-score "ゆき" "優響" \?s) '\?s)))))))
+
 (provide 'nskk-search-test)
 
 ;;; nskk-search-test.el ends here
