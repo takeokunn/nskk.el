@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -95,8 +94,15 @@ modest for leaf-heavy subtrees.")
     (unless child
       (setq child (nskk-trie-node--create))
       (puthash char child (nskk-trie-node-children node)))
-    (cl-incf (nskk-trie-node-count child))
     child))
+
+(defun nskk--trie-adjust-path-counts (trie key delta)
+  "Add DELTA to the key count of every node on KEY's path in TRIE.
+Assumes the full path exists."
+  (let ((node (nskk-trie-root trie)))
+    (dotimes (i (length key))
+      (setq node (gethash (aref key i) (nskk-trie-node-children node)))
+      (cl-incf (nskk-trie-node-count node) delta))))
 
 (defun nskk-trie-insert (trie key value)
   "Insert KEY with VALUE into TRIE."
@@ -107,12 +113,16 @@ modest for leaf-heavy subtrees.")
   (let ((node (nskk-trie-root trie))
         (was-new nil))
     (dotimes (i (length key))
-      (setq node (nskk--trie-get-or-create-child node (aref key i))))
+      (setq node (nskk--trie-get-or-create-child node (aref key i)))
+      (cl-incf (nskk-trie-node-count node)))
     (setq was-new (not (nskk-trie-node-is-end node)))
     (setf (nskk-trie-node-is-end node) t)
     (setf (nskk-trie-node-value node) value)
-    (when was-new
-      (cl-incf (nskk-trie-size trie)))
+    (if was-new
+        (cl-incf (nskk-trie-size trie))
+      ;; Re-inserting an existing key: roll back the count bump so node
+      ;; counts stay "number of keys passing through this node".
+      (nskk--trie-adjust-path-counts trie key -1))
     trie))
 
 (defun nskk--trie-find-node (trie key)
@@ -162,6 +172,7 @@ Returns t if deleted, nil if not present."
       (setf (nskk-trie-node-is-end node) nil)
       (setf (nskk-trie-node-value node) nil)
       (cl-decf (nskk-trie-size trie))
+      (nskk--trie-adjust-path-counts trie key -1)
       (nskk--trie-cleanup-path trie key)
       t)))
 
