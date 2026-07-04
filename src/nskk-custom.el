@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -94,7 +93,7 @@
                  (const :tag "Hiragana" hiragana)
                  (const :tag "Katakana" katakana)
                  (const :tag "Full-width Latin" jisx0208-latin))
-  :safe #'symbolp
+  :safe (lambda (v) (memq v '(ascii hiragana katakana jisx0208-latin)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-state)
 
@@ -120,7 +119,7 @@
 \\='azik     - AZIK extended romaji with efficiency shortcuts"
   :type '(choice (const :tag "Standard SKK" standard)
                  (const :tag "AZIK" azik))
-  :safe #'symbolp
+  :safe (lambda (v) (memq v '(standard azik)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-converter)
 
@@ -138,7 +137,7 @@
   :type '(choice (const :tag "Frequency order" frequency)
                  (const :tag "Kana order" kana)
                  (const :tag "No sorting" none))
-  :safe #'symbolp
+  :safe (lambda (v) (memq v '(frequency kana none)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
