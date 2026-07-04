@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -229,8 +228,9 @@ correction for plain hiragana input where no ▽ is open."
 (defun nskk--downcase-normal-japanese-effective-char (effective-char normalize-vowel-p
                                                                      continue-vowel-shadow-p)
   "Return EFFECTIVE-CHAR adjusted for normal Japanese input handling.
-Uppercase chars are downcased only when okurigana is pending or when
-CONTINUE-VOWEL-SHADOW-P keeps an explicit deferred reading alive."
+Uppercase chars are downcased only when NORMALIZE-VOWEL-P is nil and
+either okurigana is pending or CONTINUE-VOWEL-SHADOW-P keeps an
+explicit deferred reading alive."
   (if (and (not normalize-vowel-p)
            (characterp effective-char)
            (<= ?A effective-char) (<= effective-char ?Z)

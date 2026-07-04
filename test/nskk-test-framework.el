@@ -55,6 +55,17 @@
 ;; tests. Most unit and integration tests only need small mock dictionaries.
 (setq nskk-dict-use-ja-dic nil)
 
+;; Isolate the user dictionary from the developer's real ~/.nskk/jisyo.
+;; Registration tests set `nskk-dict-modified', and `nskk--dict-maybe-save'
+;; fires from `kill-emacs-hook' when the batch ERT run exits, overwriting
+;; whatever `nskk-dict-user-dictionary-file' points at with the in-memory
+;; Prolog facts.  A non-existent temp path keeps loads a no-op (matching
+;; the previous behavior for tests that bind the variable to nil) while
+;; redirecting any save away from the real personal dictionary.
+(setq nskk-dict-user-dictionary-file
+      (make-temp-name (expand-file-name "nskk-test-jisyo-"
+                                        temporary-file-directory)))
+
 ;; NOTE: The initialization calls below are guarded by idempotency flags
 ;; (e.g., `nskk--state-prolog-initialized').  If you `eval-buffer' this
 ;; file after editing, those flags will prevent re-initialization unless

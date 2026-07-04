@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -94,7 +93,7 @@
                  (const :tag "Hiragana" hiragana)
                  (const :tag "Katakana" katakana)
                  (const :tag "Full-width Latin" jisx0208-latin))
-  :safe #'symbolp
+  :safe (lambda (v) (memq v '(ascii hiragana katakana jisx0208-latin)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-state)
 
@@ -120,7 +119,7 @@
 \\='azik     - AZIK extended romaji with efficiency shortcuts"
   :type '(choice (const :tag "Standard SKK" standard)
                  (const :tag "AZIK" azik))
-  :safe #'symbolp
+  :safe (lambda (v) (memq v '(standard azik)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-converter)
 
@@ -138,7 +137,7 @@
   :type '(choice (const :tag "Frequency order" frequency)
                  (const :tag "Kana order" kana)
                  (const :tag "No sorting" none))
-  :safe #'symbolp
+  :safe (lambda (v) (memq v '(frequency kana none)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
@@ -157,6 +156,37 @@ Zero disables fuzzy matching."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
+(defcustom nskk-search-merge-user-dict-with-server nil
+  "When non-nil, merge user dictionary candidates with skkserv results.
+
+By default (nil), skkserv takes priority: when a server lookup succeeds
+its candidates are used as-is and the local user dictionary is not
+consulted, matching the historical NSKK search behavior.
+
+When non-nil, the local dictionary (user-registered and learned words)
+is searched first and its candidates are merged ahead of the server's,
+with duplicates removed.  This is closer to ddskk, where the personal
+dictionary is merged before the system/server dictionaries so that
+registered and learned words always appear among the top candidates.
+
+Only affects exact dictionary lookup (`nskk-core-search')."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
+
+(defcustom nskk-search-auto-save-learning t
+  "When non-nil, persist learning data across Emacs sessions.
+When enabled, learning scores are loaded from `nskk-search-learning-file'
+the first time NSKK is enabled, and saved back on Emacs exit via
+`kill-emacs-hook'.  If the optional study feature (`nskk-study') is
+loaded, study association data is loaded and saved as well.
+
+When nil, learning is kept in memory only and lost when Emacs exits."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
 ;;;; UI / Modeline Settings
 
 (defgroup nskk-modeline nil

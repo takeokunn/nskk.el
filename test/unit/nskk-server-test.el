@@ -311,6 +311,7 @@ Restores server-state to closed in an unwind-protect."
                          (lambda (_name _buf host port &rest _)
                            (setq received-host host received-port port)
                            'mock-proc))
+                        (process-status (lambda (_) 'open))
                         (set-process-query-on-exit-flag (lambda (&rest _) nil))
                         (process-buffer (lambda (_) nil)))
         (unwind-protect
@@ -326,6 +327,7 @@ Restores server-state to closed in an unwind-protect."
           (nskk--server-process nil)
           (nskk--server-kill-emacs-hook-registered t))
       (nskk-with-mocks ((open-network-stream (lambda (&rest _) 'new-proc))
+                        (process-status (lambda (_) 'open))
                         (set-process-query-on-exit-flag (lambda (&rest _) nil))
                         (process-buffer (lambda (_) nil)))
         (unwind-protect
@@ -341,6 +343,7 @@ Restores server-state to closed in an unwind-protect."
           (nskk--server-process nil)
           (nskk--server-kill-emacs-hook-registered t))
       (nskk-with-mocks ((open-network-stream (lambda (&rest _) 'mock-proc))
+                        (process-status (lambda (_) 'open))
                         (set-process-query-on-exit-flag (lambda (&rest _) nil))
                         (process-buffer (lambda (_) nil)))
         (unwind-protect
@@ -366,6 +369,7 @@ Restores server-state to closed in an unwind-protect."
           (nskk--server-kill-emacs-hook-registered nil)
           (add-hook-count 0))
       (nskk-with-mocks ((open-network-stream (lambda (&rest _) 'mock-proc))
+                        (process-status (lambda (_) 'open))
                         (set-process-query-on-exit-flag (lambda (&rest _) nil))
                         (add-hook (lambda (&rest _) (cl-incf add-hook-count)))
                         (process-buffer (lambda (_) nil)))
@@ -682,7 +686,86 @@ Restores server-state to closed in an unwind-protect."
         (nskk-with-mocks
             ((nskk-server-live-p (lambda () nil))
              (accept-process-output (lambda (&rest _) nil)))
-          (should (null (nskk--server-await-response proc buf deadline))))))))
+          (should (null (nskk--server-await-response proc buf deadline)))))))
+
+  ;; Regression (FIX 2): a server that streams data without ever sending a
+  ;; newline must not accumulate unbounded memory.  Once the buffer exceeds
+  ;; `nskk--server-max-response-size', await-response fails and resets the
+  ;; connection rather than looping until the deadline.
+  (nskk-it "fails and resets the connection when the response exceeds the size cap"
+    (with-temp-buffer
+      (let* ((buf (current-buffer))
+             (proc 'mock-proc)
+             (deadline (+ (float-time) 10))
+             (close-called nil))
+        (nskk-with-mocks
+            ((nskk-server-live-p (lambda () t))
+             (nskk-server-close (lambda () (setq close-called t)))
+             (accept-process-output
+              (lambda (_p _t)
+                ;; Insert one over-cap chunk with no terminating newline.
+                (with-current-buffer buf
+                  (insert (make-string (1+ nskk--server-max-response-size) ?x))))))
+          (should (null (nskk--server-await-response proc buf deadline)))
+          (should close-called)))))
+
+  (nskk-it "still succeeds for a normal-sized response under the cap"
+    (with-temp-buffer
+      (let* ((buf (current-buffer))
+             (proc 'mock-proc)
+             (deadline (+ (float-time) 10))
+             (close-called nil))
+        (nskk-with-mocks
+            ((nskk-server-live-p (lambda () t))
+             (nskk-server-close (lambda () (setq close-called t)))
+             (accept-process-output (lambda (_p _t)
+                                      (with-current-buffer buf
+                                        (insert "1/漢字/\n")))))
+          (let ((result (nskk--server-await-response proc buf deadline)))
+            (should (stringp result))
+            (should (string-match-p "\n" result))
+            (should (null close-called))))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--server-make-connection: async (:nowait) connect + timeout
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--server-make-connection async connect"
+  (nskk-it "returns the process object once the connection reaches \\='open"
+    (let ((nskk-server-timeout 5))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'mock-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) 'open))
+           (accept-process-output (lambda (&rest _) nil)))
+        (should (eq (nskk--server-make-connection) 'mock-proc)))))
+
+  ;; Regression (FIX 1): a blackholed host leaves the process stuck in
+  ;; \\='connect; make-connection must give up at `nskk-server-timeout' and
+  ;; delete the half-open process rather than blocking on the OS timeout.
+  (nskk-it "gives up at the timeout and deletes the process when connect never completes"
+    (let ((nskk-server-timeout 0.3)
+          (deleted-proc nil))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'stuck-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) 'connect))
+           (accept-process-output (lambda (&rest _) nil))
+           (delete-process (lambda (p) (setq deleted-proc p))))
+        (should (null (nskk--server-make-connection)))
+        (should (eq deleted-proc 'stuck-proc)))))
+
+  (nskk-it "returns nil and deletes the process when connect fails"
+    (let ((nskk-server-timeout 5)
+          (deleted-proc nil))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'failed-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) 'failed))
+           (accept-process-output (lambda (&rest _) nil))
+           (delete-process (lambda (p) (setq deleted-proc p))))
+        (should (null (nskk--server-make-connection)))
+        (should (eq deleted-proc 'failed-proc))))))
 
 ;;;
 ;;; nskk--server-with-response

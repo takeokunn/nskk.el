@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -54,6 +53,7 @@
 (require 'subr-x)
 (require 'seq)
 (require 'nskk-prolog)
+(require 'nskk-dictionary)
 
 ;;;; Customization
 
@@ -206,8 +206,11 @@ of the list.  Returns the (possibly reordered) candidate list."
       (progn
         (let ((dir (file-name-directory nskk-study-file)))
           (unless (file-directory-p dir)
-            (make-directory dir t)))
-        (with-temp-file nskk-study-file
+            ;; Study data records the user's conversion history; keep the
+            ;; directory private when this code has to create it.
+            (with-file-modes #o700
+              (make-directory dir t))))
+        (nskk-dict-with-atomic-file nskk-study-file
           (let ((solutions (nskk-prolog-query '(study-association \?p \?r \?c))))
             (prin1
              (mapcar (lambda (sol)

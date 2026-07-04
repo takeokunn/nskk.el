@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -134,6 +133,27 @@ Possible values:
 ;;; Section 1: Error types
 
 (define-error 'nskk-dict-error "Dictionary error")
+
+;;; Atomic file writing
+
+(defmacro nskk-dict-with-atomic-file (path &rest body)
+  "Write BODY's temp-buffer output to PATH atomically and privately.
+Like `with-temp-file', but the content is first written to a
+same-directory temp file (created with 600 permissions by
+`make-temp-file') and then renamed over PATH, so a crash or full disk
+mid-write can never leave PATH truncated.  Used for the persisted user
+data files (jisyo, study data, learning scores) and the dict cache."
+  (declare (indent 1) (debug (form body)))
+  (let ((path-sym (make-symbol "path"))
+        (tmp-sym  (make-symbol "tmp")))
+    `(let* ((,path-sym ,path)
+            (,tmp-sym  (make-temp-file (concat ,path-sym "."))))
+       (unwind-protect
+           (progn
+             (with-temp-file ,tmp-sym ,@body)
+             (rename-file ,tmp-sym ,path-sym t))
+         (when (file-exists-p ,tmp-sym)
+           (delete-file ,tmp-sym))))))
 
 ;;; Section 2: Prolog infrastructure
 
@@ -496,7 +516,7 @@ ENTRIES is a list of (kana . candidates-list) pairs.
 DICT-FILES is the list of source files used to build the cache."
   (let ((cache-path (nskk--dict-cache-file-path)))
     (make-directory (file-name-directory cache-path) t)
-    (with-temp-file cache-path
+    (nskk-dict-with-atomic-file cache-path
       (prin1 (list :version 1
                    :source-files dict-files
                    :entries entries)
@@ -684,21 +704,36 @@ consonants appended to KEY.  Results from both searches are combined."
   "Attempt to register WORD for READING in the Prolog user dictionary.
 Returns t on success (Prolog dict-register/2 succeeded), nil on failure."
   (unless nskk--user-dict-index
-    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-    (setq nskk--user-dict-index 'user))
+    ;; Load any on-disk entries before the first registration: the save
+    ;; path overwrites `nskk-dict-user-dictionary-file' with the current
+    ;; Prolog facts, so registering into an empty database and saving
+    ;; would silently drop every entry not yet loaded from the file.
+    (setq nskk--user-dict-index (nskk-dict-load-user-dictionary))
+    (unless nskk--user-dict-index
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (setq nskk--user-dict-index 'user)))
   (when (nskk-prolog-holds-p `(dict-register ,reading ,word))
     (setq nskk-dict-modified t)
     (nskk--dict-run-update-hook)
     (message "NSKK: Registered %s -> %s" reading word)
     t))
 
+(defconst nskk--dict-invalid-key-regexp "[\n\r /▽▼]"
+  "Characters rejected in user-dictionary keys.
+Whitespace, slash and newlines would corrupt the SKK file format
+\(\"KEY /cand1/cand2/\" per line); the ▽/▼ markers indicate preedit
+text leaked into a reading and must never reach the dictionary.")
+
 (defun/k nskk-dict-register-word (reading word)
   "Register WORD as a conversion candidate for READING in user dictionary.
 Uses the Prolog dict-register rule which handles both new entries
 and updates to existing entries via assertz/retract builtins.
 Returns non-nil (t) on success; calls on-not-found when READING or WORD
-are empty/invalid or when the Prolog registration query fails."
+are empty/invalid, when READING contains characters that would corrupt
+the SKK dictionary format (see `nskk--dict-invalid-key-regexp'), or
+when the Prolog registration query fails."
   (if (and (stringp reading) (not (string-empty-p reading))
+           (not (string-match-p nskk--dict-invalid-key-regexp reading))
            (stringp word)   (not (string-empty-p word))
            (nskk--dict-register-impl reading word))
       (succeed t)
@@ -728,15 +763,31 @@ are empty/invalid or when the Prolog unregistration query fails."
 
 ;;; User Dictionary Save
 
+(defvar nskk--dict-save-inhibited nil
+  "Non-nil while saving the user dictionary is temporarily inhibited.
+The tutorial sets this while its mini dictionary replaces the real
+`user-dict-entry' Prolog facts; saving during that window would
+overwrite the personal dictionary file with tutorial data.")
+
 ;;;###autoload
 (defun nskk-dict-save-user-dictionary ()
-  "Save user dictionary to `nskk-dict-user-dictionary-file'."
+  "Save user dictionary to `nskk-dict-user-dictionary-file'.
+Does nothing while `nskk--dict-save-inhibited' is non-nil."
   (interactive)
+  (if nskk--dict-save-inhibited
+      (message "NSKK: User dictionary save inhibited (tutorial active)")
+    (nskk--dict-save-user-dictionary-1)))
+
+(defun nskk--dict-save-user-dictionary-1 ()
+  "Write the current user-dictionary facts to disk unconditionally."
   (when (and nskk-dict-user-dictionary-file nskk--user-dict-index)
+    ;; The personal dictionary records what the user types; keep newly
+    ;; created files and directories private (existing modes are kept).
     (let ((dir (file-name-directory nskk-dict-user-dictionary-file)))
       (unless (file-directory-p dir)
-        (make-directory dir t)))
-    (with-temp-file nskk-dict-user-dictionary-file
+        (with-file-modes #o700
+          (make-directory dir t))))
+    (nskk-dict-with-atomic-file nskk-dict-user-dictionary-file
       (insert ";; -*- mode: fundamental; coding: utf-8 -*-\n")
       (insert ";; NSKK user dictionary\n")
       (insert ";; okuri-nasi entries.\n")
@@ -748,7 +799,12 @@ are empty/invalid or when the Prolog unregistration query fails."
             (let ((safe-cands (seq-remove
                                (lambda (c) (string-match-p "[\n\r/]" c))
                                candidates)))
-              (when (and (not (string-match-p "[\n\r]" key))
+              ;; Never drop data silently: SKK-format-breaking candidates
+              ;; are skipped, but the user should know.
+              (when (< (length safe-cands) (length candidates))
+                (message "NSKK: %d candidate(s) for %s not saved (contain / or newline)"
+                         (- (length candidates) (length safe-cands)) key))
+              (when (and (not (string-match-p nskk--dict-invalid-key-regexp key))
                          safe-cands)
                 (insert (format "%s /%s/\n"
                                 key

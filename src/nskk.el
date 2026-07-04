@@ -110,6 +110,10 @@
 (declare-function nskk--current-kakutei-state "nskk-keymap")
 (declare-function nskk--maybe-load-azik-style "nskk-input")
 (declare-function nskk--dict-maybe-save "nskk-dictionary")
+(declare-function nskk-search-load-learning-data "nskk-search")
+(declare-function nskk-search-save-learning-data "nskk-search")
+(declare-function nskk-study-load "nskk-study")
+(declare-function nskk-study-save "nskk-study")
 (declare-function nskk-handle-ctrl-a "nskk-keymap")
 (declare-function nskk-handle-ctrl-e "nskk-keymap")
 (declare-function nskk-handle-tab "nskk-keymap")
@@ -202,6 +206,19 @@ This provides global bindings that work even when nskk-mode is not yet active."
 
 ;; Internal implementation functions
 
+(defvar nskk--learning-loaded nil
+  "Non-nil once learning data has been loaded in this Emacs session.
+Guards `nskk--enable' so that learning data is loaded only once, not on
+every buffer activation.")
+
+(defun nskk--save-learning-data ()
+  "Save learning data (and study data when loaded) on Emacs exit.
+Registered on `kill-emacs-hook' by `nskk--enable' when
+`nskk-search-auto-save-learning' is non-nil."
+  (nskk-search-save-learning-data)
+  (when (featurep 'nskk-study)
+    (nskk-study-save)))
+
 (defun nskk--enable ()
   "Enable NSKK in current buffer."
   (nskk-debug-message "NSKK is enabled in buffer: %s" (buffer-name))
@@ -235,6 +252,15 @@ This provides global bindings that work even when nskk-mode is not yet active."
   (nskk--maybe-load-azik-style)
   ;; Register save-on-exit hook; add-hook deduplicates same symbol safely
   (add-hook 'kill-emacs-hook #'nskk--dict-maybe-save)
+  ;; Persist learning data: load once on first enable, save on Emacs exit.
+  (when nskk-search-auto-save-learning
+    (unless nskk--learning-loaded
+      (setq nskk--learning-loaded t)
+      (nskk-search-load-learning-data)
+      ;; Study (contextual learning) is optional; persist it only when loaded.
+      (when (featurep 'nskk-study)
+        (nskk-study-load)))
+    (add-hook 'kill-emacs-hook #'nskk--save-learning-data))
   (nskk--setup-buffer)
   (nskk--cursor-color-save)
   (nskk-modeline-update))

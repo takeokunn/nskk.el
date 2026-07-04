@@ -43,7 +43,13 @@ No external ELPA packages required.
 - Same conversion markers (▽ for preedit, ▼ for conversion)
 
 * Installation
-** use-package
+** MELPA
+#+begin_src elisp
+;; After nskk is available on MELPA:
+(use-package nskk
+  :ensure t)
+#+end_src
+** From source
 #+begin_src elisp
 (use-package nskk
   :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest
