@@ -12,6 +12,7 @@ SRC = src/nskk-cps-macros.el src/nskk-prolog.el src/nskk-trie.el \
        src/nskk-server.el src/nskk-program-dictionary.el src/nskk-azik.el \
        src/nskk-annotation.el src/nskk-context.el src/nskk-inline.el \
        src/nskk-isearch.el src/nskk-region.el src/nskk-show-mode.el \
+       src/nskk-study.el src/nskk-tutorial.el \
        src/nskk.el
 
 # Unit test files

@@ -5,7 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
 ;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
