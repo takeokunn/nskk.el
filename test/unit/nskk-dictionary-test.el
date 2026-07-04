@@ -46,7 +46,11 @@
     (should (get 'nskk-dictionary 'group-documentation)))
 
   (nskk-it "nskk-dict-user-dictionary-file defaults to ~/.nskk/jisyo"
-    (should (equal (default-value 'nskk-dict-user-dictionary-file)
+    ;; Check the declared defcustom standard value, not the current value:
+    ;; the test framework redirects the live variable to a temp path so
+    ;; batch runs never touch the real personal dictionary.
+    (should (equal (eval (car (get 'nskk-dict-user-dictionary-file
+                                   'standard-value)))
                    (expand-file-name "~/.nskk/jisyo")))))
 
 (nskk-describe "error condition chains"
@@ -719,7 +723,62 @@
              (nskk-dict-modified nil)
              (nskk-jisyo-update-hook (list (lambda () (setq hook-called t)))))
         (nskk-dict-register-word "てすと" "テスト")
-        (should hook-called)))))
+        (should hook-called))))
+
+  (nskk-it "rejects keys that would corrupt the SKK file format"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let ((nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        ;; Space and slash break the "KEY /cand/" line format; newlines
+        ;; break the line structure itself.
+        (should (null (nskk-dict-register-word "て すと" "テスト")))
+        (should (null (nskk-dict-register-word "て/すと" "テスト")))
+        (should (null (nskk-dict-register-word "て\nすと" "テスト")))
+        (should-not nskk-dict-modified))))
+
+  (nskk-it "rejects keys containing leaked preedit markers"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let ((nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        (should (null (nskk-dict-register-word "▽てすと" "テスト")))
+        (should (null (nskk-dict-register-word "▼てすと" "テスト")))
+        (should-not nskk-dict-modified))))
+
+  (nskk-it "save is a no-op while nskk--dict-save-inhibited is non-nil"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let* ((tmp (make-temp-file "nskk-save-inhibit-"))
+             (nskk-dict-user-dictionary-file tmp)
+             (nskk--user-dict-index 'user)
+             (nskk-dict-modified t)
+             (nskk--dict-save-inhibited t))
+        (unwind-protect
+            (progn
+              (nskk-prolog-assert '((user-dict-entry "みに" ("ミニ"))))
+              (nskk-dict-save-user-dictionary)
+              ;; Nothing written, modified flag untouched.
+              (should (= 0 (file-attribute-size (file-attributes tmp))))
+              (should nskk-dict-modified)
+              ;; Lifting the inhibit writes normally.
+              (setq nskk--dict-save-inhibited nil)
+              (nskk-dict-save-user-dictionary)
+              (should (> (file-attribute-size (file-attributes tmp)) 0))
+              (should-not nskk-dict-modified))
+          (delete-file tmp)))))
+
+  (nskk-it "registered okuri-ari style key is found by stem lookup (round-trip)"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (let ((nskk--user-dict-index nil)
+            (nskk-dict-modified nil))
+        ;; Okurigana registration stores the dictionary key ("はしr"),
+        ;; which the okuri-ari lookup finds by appending consonants.
+        ;; (Single-char stems skip okuri-ari search by design.)
+        (nskk-dict-register-word "はしr" "走")
+        (let ((result (nskk-dict-lookup "はし")))
+          (should (member "走" result)))))))
 
 ;;; Section 8: CPS /k variant tests
 

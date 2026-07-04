@@ -5,7 +5,6 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
 ;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
@@ -1196,7 +1195,7 @@ Called from `post-command-hook'."
 (defun nskk-tutorial-quit ()
   "Quit the tutorial and restore Prolog state."
   (interactive)
-  (when (yes-or-no-p "チュートリアルを終了しますか？ ")
+  (when (yes-or-no-p "チュートリアルを終了しますか? ")
     (kill-buffer (current-buffer))))
 
 (defun nskk-tutorial--reset-mode ()
@@ -1258,15 +1257,20 @@ within this buffer for practicing SKK operations.
   (setq buffer-read-only nil)
   (add-hook 'post-command-hook #'nskk-tutorial--validate-exercises nil t)
   (add-hook 'kill-buffer-hook #'nskk-tutorial--on-kill nil t)
-  ;; Prevent dict save during tutorial
-  (remove-hook 'kill-emacs-hook #'nskk--dict-maybe-save))
+  ;; Prevent dict save during tutorial: the mini dictionary replaces the
+  ;; real user-dict facts, so saving would overwrite the personal jisyo.
+  ;; A flag is used instead of removing `nskk--dict-maybe-save' from
+  ;; `kill-emacs-hook' because `nskk--enable' (run by the `nskk-mode 1'
+  ;; that follows in the entry point) re-adds that hook, silently undoing
+  ;; a remove-hook based protection.
+  (setq nskk--dict-save-inhibited t))
 
 (defun nskk-tutorial--on-kill ()
-  "Buffer kill hook: restore Prolog state and re-register dict save hook."
+  "Buffer kill hook: restore Prolog state and re-enable dict saving."
   (when nskk-mode
     (ignore-errors (nskk-mode -1)))
   (nskk-tutorial--restore-prolog-state)
-  (add-hook 'kill-emacs-hook #'nskk--dict-maybe-save))
+  (setq nskk--dict-save-inhibited nil))
 
 
 ;;;;
