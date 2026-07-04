@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -205,6 +204,27 @@ because Emacs Lisp `&optional' applies to all parameters after the first."
 
 ;;; Okuri-type filtering
 
+(defun nskk--search-derive-okuri (key)
+  "Return the okurigana suffix of KEY, or nil when KEY is okuri-nasi.
+An SKK okuri-ari key ends with a single ASCII lower-case letter that
+directly follows a non-ASCII kana character (e.g. \"わるi\" -> \"i\",
+\"うごk\" -> \"k\").  Keys shorter than two characters, keys whose final
+character is not in [a-z], or keys whose penultimate character is ASCII
+are treated as okuri-nasi and yield nil.
+
+The returned string populates the `okuri' slot of `nskk-dict-entry' so
+that `nskk--search-match-okuri-type-p' can classify entries.  The
+classifier only distinguishes empty/nil (okuri-nasi) from non-empty
+\(okuri-ari), so the exact suffix string is informational."
+  (let ((len (length key)))
+    (and (>= len 2)
+         (let ((last (aref key (1- len)))
+               (prev (aref key (- len 2))))
+           ;; Final char ASCII lower-case AND preceding char non-ASCII kana.
+           (and (<= ?a last ?z)
+                (>= prev 128)
+                (substring key (1- len)))))))
+
 (defun nskk--search-match-okuri-type-p (okuri-type entry-okuri)
   "Return non-nil if ENTRY-OKURI matches OKURI-TYPE filter.
 OKURI-TYPE is \\='okuri-ari, \\='okuri-nasi, or nil (match all).
@@ -228,7 +248,8 @@ The /k variant calls ON-FOUND with the entry, ON-NOT-FOUND otherwise."
                        (nskk-prolog-query-value
                         `(,pred ,query \?candidates) '\?candidates)))
          (entry      (when candidates
-                       (make-nskk-dict-entry :key query :candidates candidates))))
+                       (make-nskk-dict-entry :key query :candidates candidates
+                                             :okuri (nskk--search-derive-okuri query)))))
     (nskk-debug-log "[SEARCH] exact: query=%s found=%s" query (and candidates t))
     (if (and entry
              (nskk--search-match-okuri-type-p okuri-type (nskk-dict-entry-okuri entry)))
@@ -269,7 +290,8 @@ The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
                             (cons (car pair)
                                   (make-nskk-dict-entry
                                    :key (car pair)
-                                   :candidates (cdr pair))))
+                                   :candidates (cdr pair)
+                                   :okuri (nskk--search-derive-okuri (car pair)))))
                           raw-results))
          (processed (nskk--search-post-process-results results okuri-type limit)))
     (nskk-debug-log "[SEARCH] prefix: query=%s results=%d" query (length results))
@@ -320,7 +342,9 @@ The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
             (cl-loop for sol   in (nskk-prolog-query `(,pred \?k \?candidates))
                      for key    = (nskk-prolog-walk '\?k sol)
                      for cands  = (nskk-prolog-walk '\?candidates sol)
-                     for entry  = (make-nskk-dict-entry :key key :candidates cands)
+                     for entry  = (make-nskk-dict-entry
+                                   :key key :candidates cands
+                                   :okuri (nskk--search-derive-okuri key))
                      when (string-search query key)
                        collect (cons key entry))))
          (processed (nskk--search-post-process-results results okuri-type limit)))
@@ -347,7 +371,8 @@ the integer Levenshtein distance from QUERY."
                      for distance  = (nskk--search-levenshtein-distance query key)
                      when (<= distance nskk-search-fuzzy-threshold)
                        collect (cons key (cons (make-nskk-dict-entry
-                                                :key key :candidates cands)
+                                                :key key :candidates cands
+                                                :okuri (nskk--search-derive-okuri key))
                                                distance)))))
          ;; Pipeline: deduplicate (keep closest) → sort by distance → limit
          (deduped (nskk--search-dedup raw #'car
@@ -441,6 +466,39 @@ the integer Levenshtein distance from QUERY."
     (_ nil)))
 
 
+;;; Search cache invalidation
+
+;; The cache passed to `nskk-search-with-cache' is caller-owned; this module
+;; keeps no singleton.  To flush every live cache when the dictionary changes
+;; we register each cache the first time it is used.  Weak keys ensure a cache
+;; drops out of the registry once the caller stops referencing it, so the
+;; registry never keeps a cache alive on its own.
+(defvar nskk--search-registered-caches
+  (make-hash-table :test 'eq :weakness 'key)
+  "Weak registry of caches passed to `nskk-search-with-cache'.
+Keys are cache objects; values are unused.  Iterated by
+`nskk--search-flush-caches' to invalidate every live search cache when
+the dictionary or learning data changes.")
+
+(defun nskk--search-register-cache (cache)
+  "Record CACHE in `nskk--search-registered-caches' for later flushing."
+  (puthash cache t nskk--search-registered-caches))
+
+(defun nskk--search-flush-caches ()
+  "Clear every registered search cache.
+Installed on `nskk-jisyo-update-hook' at load time and also invoked after
+`nskk-search-learn', so dictionary mutations (word registration or
+unregistration) and learning-score updates never return stale cached
+candidates.  A full clear is used because it is cheap relative to the
+cost of a stale hit."
+  (maphash (lambda (cache _)
+             (when (nskk-cache-p cache)
+               (nskk-cache-clear cache)))
+           nskk--search-registered-caches))
+
+;; Dictionary mutations run `nskk-jisyo-update-hook' (see nskk-dictionary.el).
+(add-hook 'nskk-jisyo-update-hook #'nskk--search-flush-caches)
+
 ;;; Learning data management
 
 ;;;###autoload
@@ -451,8 +509,11 @@ the integer Levenshtein distance from QUERY."
       (progn
         (let ((dir (file-name-directory nskk-search-learning-file)))
           (unless (file-directory-p dir)
-            (make-directory dir t)))
-        (with-temp-file nskk-search-learning-file
+            ;; Learning scores record the user's conversion history; keep
+            ;; the directory private when this code has to create it.
+            (with-file-modes #o700
+              (make-directory dir t))))
+        (nskk-dict-with-atomic-file nskk-search-learning-file
           ;; Query all learning scores and serialize as (reading candidate score) tuples
           (let ((solutions (nskk-prolog-query '(learning-score \?r \?c \?s))))
             (prin1
@@ -515,7 +576,9 @@ calculator) are silently skipped -- equivalent to AquaSKK SetAvoidStudy."
         (nskk-debug-log "[SEARCH] learn: query=%s word=%s new-score=%d" query word new-score)
         (when old-score
           (nskk-prolog-retract `(learning-score ,query ,word ,old-score)))
-        (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score)))))))
+        (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score)))
+        ;; Scores feed candidate ordering, so any cached result is now stale.
+        (nskk--search-flush-caches)))))
 
 ;;; Cache-backed search
 
@@ -538,6 +601,8 @@ invoked) but does NOT fire on cache hits.  Consumers expecting the hook
 to fire on every returned result should query `nskk-search' directly."
   (unless (nskk-cache-p cache)
     (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
+  ;; Track CACHE so `nskk--search-flush-caches' can invalidate it on change.
+  (nskk--search-register-cache cache)
   (let ((cache-key (nskk--search-cache-key query search-type okuri-type)))
     (<-or cached nskk-cache-get cache cache-key
       :found (progn
