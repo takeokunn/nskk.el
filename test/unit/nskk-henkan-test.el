@@ -2549,7 +2549,36 @@
                           (run-hook-with-args #'ignore))
           (nskk--exhaust-candidates/k (lambda () (setq on-done-called t))))
         (should (equal registration-text "かんじ"))
-        (should on-done-called)))))
+        (should on-done-called))))
+
+  (nskk-it "registers under the okurigana dict key, showing stem*kana in the prompt"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'hiragana))
+            (nskk--conversion-start-marker (make-marker))
+            (nskk--conversion-overlay nil)
+            (nskk--henkan-candidate-list-active t)
+            registration-text display-reading)
+        (insert nskk-henkan-active-marker "ほけ")
+        (set-marker nskk--conversion-start-marker (point-min))
+        (goto-char (point-max))
+        ;; Overlay covers the stem "ほ"; the okuri kana "け" follows it.
+        (setq nskk--conversion-overlay (make-overlay 2 3))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk-state-set-candidates nskk-current-state '("褒"))
+        (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+        (nskk-state-put-metadata nskk-current-state 'okurigana-query "ほk")
+        (nskk-with-mocks ((nskk-start-registration/k
+                           (lambda (text on-done _ignored)
+                             (setq registration-text text
+                                   display-reading nskk--registration-display-reading)
+                             (funcall on-done nil)))  ; registration cancelled
+                          (nskk--wrap-to-first-candidate #'ignore)
+                          (run-hook-with-args #'ignore))
+          (nskk--exhaust-candidates/k #'ignore))
+        ;; Dictionary key, not the display form, must be registered:
+        ;; lookup appends okuri consonants to the stem ("ほ" + "k").
+        (should (equal registration-text "ほk"))
+        (should (equal display-reading "ほ*け"))))))
 
 ;;;
 ;;; nskk-cancel-conversion/k Tests
@@ -4228,6 +4257,38 @@
       (should (string-match-p "▼漢字"
                               (buffer-substring-no-properties
                                (point-min) (point-max))))))
+
+  (nskk-it "restores the okurigana suffix after the candidate"
+    (with-temp-buffer
+      (setq-local nskk-current-state (nskk-state-create 'hiragana))
+      ;; Committed okurigana conversion: candidate "書" + okuri "く".
+      (insert "書く")
+      (setq nskk--last-kakutei-record
+            (list :reading "かk"
+                  :candidates '("書" "描")
+                  :index 0
+                  :committed-text "書く"
+                  :okuri-kana "く"
+                  :buffer-start 1
+                  :buffer-end 3
+                  :mode 'hiragana
+                  :registered-p nil
+                  :registered-reading nil
+                  :registered-word nil))
+      (nskk-undo-kakutei)
+      ;; The okurigana kana must survive the undo: ▼ + 書 + く.
+      (should (equal "▼書く"
+                     (buffer-substring-no-properties
+                      (point-min) (point-max))))
+      ;; Overlay covers only the candidate, not the okuri kana.
+      (should (overlayp nskk--conversion-overlay))
+      (should (= (overlay-end nskk--conversion-overlay) 3))
+      ;; Okurigana metadata restored for consistent follow-up commits.
+      (should (nskk-state-get-metadata nskk-current-state
+                                       'okurigana-in-progress))
+      (should (equal "かk"
+                     (nskk-state-get-metadata nskk-current-state
+                                              'okurigana-query)))))
 
   (nskk-it "does not revert when buffer text has changed"
     (with-temp-buffer
