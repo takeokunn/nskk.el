@@ -647,7 +647,51 @@
         (nskk-mode 0)
         (should (null nskk-mode))
         (should (null nskk--saved-cursor-color))
-        (should (null nskk--last-cursor-color))))))
+        (should (null nskk--last-cursor-color)))))
+
+  (nskk-it "two nskk buffers: disabling one keeps the saved color, disabling the last restores it"
+    ;; Regression for the frame-global cursor bug.  Cursor color is a frame
+    ;; parameter shared by all buffers, so nskk--saved-cursor-color and
+    ;; nskk--last-cursor-color are frame-global (plain defvar).  With nskk
+    ;; enabled in two buffers, disabling the FIRST must NOT restore the frame
+    ;; color (the second buffer still relies on it); only disabling the LAST
+    ;; nskk buffer restores and clears the bookkeeping.
+    (nskk-prolog-test-with-isolated-db
+      ;; Assert (dict-initialized) BEFORE enabling nskk-mode so nskk--enable
+      ;; skips file-backed dictionary initialization.
+      (nskk-prolog-assert '((dict-initialized)))
+      (let ((buf-a (generate-new-buffer " *nskk-cursor-a*"))
+            (buf-b (generate-new-buffer " *nskk-cursor-b*"))
+            (nskk-use-color-cursor t)
+            (nskk--saved-cursor-color nil)
+            (nskk--last-cursor-color nil))
+        (unwind-protect
+            (cl-letf (((symbol-function 'nskk-candidate-show-list) #'ignore)
+                      ((symbol-function 'nskk-candidate-hide-list) #'ignore))
+              ;; Enable nskk in the first buffer: saves the pre-nskk color once.
+              (with-current-buffer buf-a (nskk-mode 1))
+              (let ((saved-original nskk--saved-cursor-color))
+                ;; In batch mode there is no real frame color, so the save
+                ;; stores the sentinel t; the point is that it is now non-nil.
+                (should saved-original)
+                ;; Enable nskk in the second buffer: save is idempotent, so the
+                ;; original captured by buf-a is left untouched.
+                (with-current-buffer buf-b (nskk-mode 1))
+                (should (eq nskk--saved-cursor-color saved-original))
+                ;; Disable the FIRST buffer while the second is still active:
+                ;; the guard skips restore, so the saved color survives.
+                (with-current-buffer buf-a (nskk-mode 0))
+                (should (null (buffer-local-value 'nskk-mode buf-a)))
+                (should (buffer-local-value 'nskk-mode buf-b))
+                (should (eq nskk--saved-cursor-color saved-original))
+                ;; Disable the LAST buffer: now restore runs and clears both
+                ;; frame-global bookkeeping slots.
+                (with-current-buffer buf-b (nskk-mode 0))
+                (should (null (buffer-local-value 'nskk-mode buf-b)))
+                (should (null nskk--saved-cursor-color))
+                (should (null nskk--last-cursor-color))))
+          (when (buffer-live-p buf-a) (kill-buffer buf-a))
+          (when (buffer-live-p buf-b) (kill-buffer buf-b)))))))
 
 
 (provide 'nskk-mode-transition-e2e-test)

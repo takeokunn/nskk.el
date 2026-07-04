@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 ;;
@@ -67,13 +66,19 @@
 ;; Optional: nskk-show-mode provides inline mode indicator on mode change.
 (declare-function nskk-show-mode-display "nskk-show-mode")
 
-(defvar-local nskk--last-cursor-color nil
-  "Last cursor color applied, to avoid redundant `set-cursor-color' calls.")
+(defvar nskk--last-cursor-color nil
+  "Last cursor color applied, to avoid redundant `set-cursor-color' calls.
+Frame-global (not buffer-local): the cursor color is a frame parameter
+shared by every buffer, so its bookkeeping must be shared too.")
 
-(defvar-local nskk--saved-cursor-color nil
-  "Cursor color in effect before nskk-mode first changed it in this buffer.
+(defvar nskk--saved-cursor-color nil
+  "Cursor color in effect before nskk-mode first changed the frame.
+Frame-global (not buffer-local): `set-cursor-color' mutates frame-global
+state, so a single shared slot tracks the pre-nskk color across all
+buffers.  The first buffer to enable nskk saves the true original; later
+buffers see a non-nil value and leave it untouched.
 Nil means no color has been saved yet.  A string means the pre-nskk color.
-The symbol `t' means the color was nil at save time (TTY / batch frame).")
+The symbol t means the color was nil at save time (TTY / batch frame).")
 
 ;;;; Face Definitions
 
@@ -212,29 +217,49 @@ is unbound."
         (setq nskk--last-cursor-color color)))))
 
 (defun nskk--cursor-color-save ()
-  "Save the frame cursor color before nskk changes it.
+  "Save the frame cursor color before it is changed by nskk.
 Idempotent: saves only when `nskk--saved-cursor-color' is nil (not yet saved).
-Stores `t' when the frame has no cursor color (TTY / batch frame) so the
-nil slot can continue to mean \"not yet saved\".
+Stores the symbol t when the frame has no cursor color (TTY / batch
+frame) so the nil slot can continue to mean \"not yet saved\".
 Does nothing when `nskk-use-color-cursor' is nil."
   (when (and nskk-use-color-cursor
              (null nskk--saved-cursor-color))
     (setq nskk--saved-cursor-color
           (or (frame-parameter nil 'cursor-color) t))))
 
+(defun nskk--other-nskk-buffers-active-p ()
+  "Return non-nil if a buffer other than the current one has `nskk-mode' on.
+Used to guard `nskk--cursor-color-restore': because the cursor color is
+frame-global, restoring the pre-nskk color while another nskk buffer is
+still active would clobber that buffer's cursor.  Only the last nskk
+buffer to be disabled should restore the frame color.
+`nskk-mode' is defined by `define-minor-mode' in the top-level nskk.el,
+a higher layer; when it is unbound no buffer can have nskk active, so
+this returns nil."
+  (and (boundp 'nskk-mode)
+       (catch 'found
+         (dolist (buf (buffer-list))
+           (when (and (not (eq buf (current-buffer)))
+                      (buffer-local-value 'nskk-mode buf))
+             (throw 'found t))))))
+
 (defun nskk--cursor-color-restore ()
   "Restore the cursor color saved by `nskk--cursor-color-save'.
-Calls `set-cursor-color' when the saved value is a string.
-Resets both `nskk--saved-cursor-color' and `nskk--last-cursor-color' to nil
-regardless of `nskk-use-color-cursor', so re-enabling nskk applies
-the correct color from a clean slate.
+No-op when another buffer still has `nskk-mode' active: the cursor color
+is frame-global, so the saved color and bookkeeping are left intact for
+the remaining nskk buffers and only reset when the last one is disabled.
+When this is the last active nskk buffer, calls `set-cursor-color' when
+the saved value is a string and resets both `nskk--saved-cursor-color'
+and `nskk--last-cursor-color' to nil regardless of `nskk-use-color-cursor',
+so re-enabling nskk applies the correct color from a clean slate.
 Does not call `set-cursor-color' when `nskk-use-color-cursor' is nil or
-when the saved color was nil (TTY / batch frame, sentinel `t')."
-  (when (and nskk-use-color-cursor
-             (stringp nskk--saved-cursor-color))
-    (set-cursor-color nskk--saved-cursor-color))
-  (setq nskk--saved-cursor-color nil
-        nskk--last-cursor-color nil))
+when the saved color was nil (TTY / batch frame, sentinel t)."
+  (unless (nskk--other-nskk-buffers-active-p)
+    (when (and nskk-use-color-cursor
+               (stringp nskk--saved-cursor-color))
+      (set-cursor-color nskk--saved-cursor-color))
+    (setq nskk--saved-cursor-color nil
+          nskk--last-cursor-color nil)))
 
 (provide 'nskk-modeline)
 
