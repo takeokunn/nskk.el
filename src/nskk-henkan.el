@@ -5,8 +5,7 @@
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
-;; Version: 0.1.0
-;; Keywords: i18n
+;; Keywords: i18n convenience
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -477,6 +476,14 @@ always pass both continuation arguments explicitly."
 (defconst nskk-henkan-active-marker-regexp (regexp-quote nskk-henkan-active-marker)
   "Pre-computed regexp for henkan-active marker.")
 
+(defvar nskk--registration-display-reading nil
+  "Display-format reading shown in the registration prompt, or nil.
+Okurigana registrations bind this to the \"stem*kana\" display form
+\(e.g. \"ほ*け\") while the reading passed to `nskk-start-registration'
+is the dictionary key (e.g. \"ほk\").  The dictionary key is what lookup
+uses, so it must be what gets registered; the display form is only for
+the minibuffer prompt.")
+
 (defconst nskk-okurigana-marker-regexp (regexp-quote nskk-okurigana-marker)
   "Pre-computed regexp for okurigana boundary marker.")
 
@@ -752,6 +759,7 @@ through to `undo'."
             (candidates     (plist-get record :candidates))
             (index          (plist-get record :index))
             (committed-text (plist-get record :committed-text))
+            (okuri-kana     (plist-get record :okuri-kana))
             (buf-start      (plist-get record :buffer-start))
             (buf-end        (plist-get record :buffer-end))
             (registered-p   (plist-get record :registered-p))
@@ -775,10 +783,14 @@ through to `undo'."
               (let ((candidate (nth index candidates)))
                 (when candidate
                   (insert (substring-no-properties candidate))))
-              ;; Set up conversion overlay.
+              ;; Set up conversion overlay.  The overlay covers only the
+              ;; candidate; okurigana kana is re-inserted after it, matching
+              ;; the live ▼ layout so a re-commit captures the suffix again.
               (let ((ov-start (+ buf-start
                                  (length nskk-henkan-active-marker)))
                     (ov-end   (point)))
+                (when okuri-kana
+                  (insert okuri-kana))
                 (nskk--set-conversion-start-marker buf-start)
                 (nskk--update-overlay
                  ov-start ov-end (nth index candidates)))
@@ -794,7 +806,12 @@ through to `undo'."
                  nskk-current-state 'active)
                 (nskk-state-put-metadata
                  nskk-current-state
-                 'henkan-reading reading)))
+                 'henkan-reading reading)
+                (when okuri-kana
+                  (nskk-state-put-metadata
+                   nskk-current-state 'okurigana-in-progress t)
+                  (nskk-state-put-metadata
+                   nskk-current-state 'okurigana-query reading))))
           (message "NSKK: Cannot undo kakutei -- buffer has changed"))))))
 
 (defun nskk--invalidate-undo-kakutei ()
@@ -1135,6 +1152,7 @@ in place and will immediately follow the inserted candidate."
                       :candidates candidates
                       :index index
                       :committed-text committed-with-okuri
+                      :okuri-kana okuri-kana
                       :buffer-start start
                       :buffer-end (point)
                       :mode mode
@@ -1421,13 +1439,16 @@ candidates are found."
             (nskk--apply-okuri-candidates start text-start preedit-end candidates query)
             (funcall on-found candidates))
           (lambda ()
-            (let ((reading (nskk--build-okuri-registration-reading
-                            text-start preedit-end query)))
+            ;; Register under the dictionary key QUERY (e.g. "ほk"), the
+            ;; same key lookup uses; the "stem*kana" form is display-only.
+            (let ((nskk--registration-display-reading
+                   (nskk--build-okuri-registration-reading
+                    text-start preedit-end query)))
               (nskk--remove-okuri-marker (or text-start start) preedit-end)
-              (nskk-start-registration/k reading
+              (nskk-start-registration/k query
                 (lambda (registered)
                   (if registered
-                      (nskk--insert-registered-and-reset registered start on-register reading)
+                      (nskk--insert-registered-and-reset registered start on-register query)
                     (funcall on-not-found)))
                 #'ignore)))))
       on-not-found)))
@@ -1561,8 +1582,12 @@ Delegates to `nskk--start-conversion-normal' for the main pipeline."
                  (nskk-state-get-okurigana nskk-current-state))))
     (if okuri
         (let ((preedit-end (save-excursion
-                             (search-backward nskk-okurigana-marker nil t)
-                             (1+ (point)))))
+                             ;; When no * marker exists (okurigana state set
+                             ;; but marker already consumed), fall back to
+                             ;; point instead of a bogus (1+ (point)).
+                             (if (search-backward nskk-okurigana-marker nil t)
+                                 (1+ (point))
+                               (point)))))
           (nskk-with-current-state
             (nskk-state-set-okurigana nskk-current-state nil))
           (nskk--trigger-okuri-conversion/k okuri preedit-end on-found on-not-found on-register))
@@ -1587,10 +1612,10 @@ DEPTH 1 → \"[辞書登録] READING: \", DEPTH 2 → \"[[辞書登録]] READING
 
 (defun nskk--read-registration-entry-with-kana (prompt)
   "Read a registration entry from the minibuffer for PROMPT with nskk-mode active.
-Sets up a dedicated keymap so RET and C-j commit the current conversion
-instead of exiting with a raw newline, and so C-g aborts the registration
-via `abort-recursive-edit' instead of cascading to the preedit-clear
-handler in `nskk-mode-map'."
+Sets up a dedicated keymap so \\`RET' and \\`C-j' commit the current
+conversion instead of exiting with a raw newline, and so \\`C-g' aborts
+the registration via `abort-recursive-edit' instead of cascading to the
+preedit-clear handler in `nskk-mode-map'."
   (let* ((exit-fn (lambda ()
                     (interactive)
                     (let ((phase (nskk--compute-phase)))
@@ -1615,14 +1640,15 @@ handler in `nskk-mode-map'."
 (defun nskk--read-registration-entry (reading)
   "Read a registration entry for READING from the minibuffer.
 Returns the entered non-empty string, or nil if the user cancels
-\(empty input or C-g).
+\(empty input or \\`C-g').
 Uses `nskk-use-kana-in-registration' to choose the input method."
   (condition-case nil
-      (let ((entry (if nskk-use-kana-in-registration
-                      (nskk--read-registration-entry-with-kana
-                       (nskk--registration-prompt nskk--registration-depth reading))
-                    (read-from-minibuffer
-                     (nskk--registration-prompt nskk--registration-depth reading)))))
+      (let* ((shown (or nskk--registration-display-reading reading))
+             (entry (if nskk-use-kana-in-registration
+                        (nskk--read-registration-entry-with-kana
+                         (nskk--registration-prompt nskk--registration-depth shown))
+                      (read-from-minibuffer
+                       (nskk--registration-prompt nskk--registration-depth shown)))))
         (and (not (string-empty-p entry)) entry))
     (quit nil)))
 
@@ -1700,16 +1726,19 @@ If the user cancels, wrap around to the first candidate in list display."
          (text (when (and text-start (> (point) text-start))
                  (buffer-substring-no-properties text-start (point)))))
     (if text
-        (let ((reading
-               (if (nskk-with-current-state
-                     (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
-                   (let* ((query (nskk-with-current-state
-                                   (nskk-state-get-metadata nskk-current-state 'okurigana-query)))
-                          (okuri-kana (buffer-substring-no-properties
-                                       (overlay-end nskk--conversion-overlay) (point)))
-                          (stem (substring query 0 (- (length query) 1))))
-                     (concat stem nskk-okurigana-marker okuri-kana))
-                 text)))
+        (let* ((query (and (nskk-with-current-state
+                             (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
+                           (nskk-with-current-state
+                             (nskk-state-get-metadata nskk-current-state 'okurigana-query))))
+               ;; Register under the dictionary key ("ほk" for okurigana,
+               ;; the plain reading otherwise) — the key lookup uses.
+               (reading (if (stringp query) query text))
+               (nskk--registration-display-reading
+                (when (stringp query)
+                  (let ((okuri-kana (buffer-substring-no-properties
+                                     (overlay-end nskk--conversion-overlay) (point)))
+                        (stem (substring query 0 (- (length query) 1))))
+                    (concat stem nskk-okurigana-marker okuri-kana)))))
           (nskk-start-registration/k reading
             (lambda (registered)
               (if registered
