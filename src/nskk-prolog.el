@@ -1108,6 +1108,7 @@ per-key database, index, and cache mappings."
 
   (cl-defstruct (nskk--prolog-transaction-journal
                (:constructor nskk--prolog-make-transaction-journal))
+  "Journal used to roll back a Prolog database transaction."
   key
   database-head
   database-tail
