@@ -96,6 +96,41 @@
           ,rollback)
         (signal (car condition) (cdr condition))))))
 
+(defun nskk-cache--key-equal-p (left right)
+  "Return non-nil when cache keys LEFT and RIGHT are structurally equal.
+Unlike `equal', this comparison terminates for circular conses and vectors."
+  (let ((pending (list (cons left right)))
+        (seen (make-hash-table :test #'eq)))
+    (catch 'different
+      (while pending
+        (let* ((pair (pop pending))
+               (left-part (car pair))
+               (right-part (cdr pair))
+               (seen-rights (gethash left-part seen)))
+          (unless (or (eq left-part right-part)
+                      (memq right-part seen-rights))
+            (puthash left-part (cons right-part seen-rights) seen)
+            (cond
+             ((and (consp left-part) (consp right-part))
+              (push (cons (car left-part) (car right-part)) pending)
+              (push (cons (cdr left-part) (cdr right-part)) pending))
+             ((or (consp left-part) (consp right-part))
+              (throw 'different nil))
+             ((and (vectorp left-part) (vectorp right-part)
+                   (= (length left-part) (length right-part)))
+              (dotimes (index (length left-part))
+                (push (cons (aref left-part index)
+                            (aref right-part index))
+                      pending)))
+             ((or (vectorp left-part) (vectorp right-part))
+              (throw 'different nil))
+             ((not (equal left-part right-part))
+              (throw 'different nil))))))
+      t)))
+
+(define-hash-table-test 'nskk-cache-key-equal
+  #'nskk-cache--key-equal-p #'sxhash-equal)
+
 (defgroup nskk-cache nil
   "Cache settings for NSKK."
   :prefix "nskk-cache-"
@@ -301,7 +336,7 @@ Slots:
     (nskk-cache-lru--create
      :capacity capacity
      :size     0
-     :hash     (make-hash-table :test 'equal :size capacity)
+     :hash     (make-hash-table :test 'nskk-cache-key-equal :size capacity)
      :head     head
      :tail     tail
      :hits     0
@@ -514,7 +549,7 @@ No-op when the min-freq bucket is absent or empty."
   (nskk-cache-lfu--create
    :capacity capacity
    :size     0
-   :hash     (make-hash-table :test 'equal :size capacity)
+   :hash     (make-hash-table :test 'nskk-cache-key-equal :size capacity)
    :freq     (make-hash-table :test 'equal :size capacity)
    :min-freq 0
    :hits     0
@@ -547,7 +582,7 @@ Updates min-freq when the old minimum frequency bucket becomes empty."
        cache key old-freq new-freq))
     (let ((bucket (gethash new-freq freq-table)))
       (unless bucket
-        (setq bucket (make-hash-table :test 'equal :size 4))
+        (setq bucket (make-hash-table :test 'nskk-cache-key-equal :size 4))
         (puthash new-freq bucket freq-table))
       (puthash key t bucket))))
 
