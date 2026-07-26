@@ -1,109 +1,149 @@
 ;;; nskk-show-mode-test.el --- Tests for nskk-show-mode.el -*- lexical-binding: t; -*-
-
 ;; Copyright (C) 2026 NSKK Authors
-
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test
-
 ;; This file is part of NSKK.
-
 ;;; Commentary:
-
 ;; Tests for nskk-show-mode.el covering:
 ;; - Function existence (fboundp)
 ;; - Customization variables
 ;; - nskk--show-mode-indicator-string for each mode
 ;; - nskk--show-mode-hide cleanup behavior
 ;; - nskk-show-mode-display guard conditions
-
 ;;; Code:
-
 (require 'ert)
+
 (require 'cl-lib)
+
 (require 'nskk-show-mode)
+
 (require 'nskk-state)
+
 (require 'nskk-prolog)
+
 (require 'nskk-test-framework)
+
 (require 'nskk-test-macros)
 
-;;;; Function Existence
+(defmacro nskk-show-mode-test-with-tooltip-runtime (&rest body)
+  "Run BODY with deterministic tooltip and timer implementations."
+  (declare (indent 0)
+           (debug t))
+  `(let ((nskk--show-mode-tooltip-owner nil)
+        (nskk--show-mode-tooltip-generation 0)
+        (nskk--show-mode-tooltip-timer nil)
+        (nskk-show-mode-test--tooltip-hide-count 0))
+    (cl-letf
+      (((symbol-function 'display-graphic-p)
+          (lambda (&rest _)
+            t))
+        ((symbol-function 'posn-at-point)
+          (lambda (&rest _)
+            '(mock-position)))
+        ((symbol-function 'tooltip-show)
+          (lambda (&rest _)
+            nil))
+        ((symbol-function 'tooltip-hide)
+          (lambda ()
+            (cl-incf nskk-show-mode-test--tooltip-hide-count)))
+        ((symbol-function 'run-with-timer)
+          (lambda (_seconds _repeat function &rest args)
+            (vector function args nil)))
+        ((symbol-function 'timerp)
+          (lambda (object)
+            (and (vectorp object) (= (length object) 3))))
+        ((symbol-function 'cancel-timer)
+          (lambda (timer)
+            (aset timer 2 t))))
+      (unwind-protect (progn
+          ,@body)
+        (when nskk--show-mode-tooltip-owner
+          (nskk--show-mode-release-tooltip nskk--show-mode-tooltip-owner nil))))))
 
-(nskk-describe "nskk-show-mode function existence"
-  (nskk-it "nskk-show-mode-display is defined"
+;;;; Function Existence
+(nskk-describe
+  "nskk-show-mode function existence"
+  (nskk-it
+    "nskk-show-mode-display is defined"
     (should (fboundp 'nskk-show-mode-display)))
-  (nskk-it "nskk--show-mode-indicator-string is defined"
+  (nskk-it
+    "nskk--show-mode-indicator-string is defined"
     (should (fboundp 'nskk--show-mode-indicator-string)))
-  (nskk-it "nskk--show-mode-hide is defined"
+  (nskk-it
+    "nskk--show-mode-hide is defined"
     (should (fboundp 'nskk--show-mode-hide))))
 
 ;;;; Customization
-
-(nskk-describe "nskk-show-mode customization variables"
-  (nskk-it "nskk-show-mode-show is defined as a boolean defcustom"
+(nskk-describe
+  "nskk-show-mode customization variables"
+  (nskk-it
+    "nskk-show-mode-show is defined as a boolean defcustom"
     (should (boundp 'nskk-show-mode-show)))
-  (nskk-it "nskk-show-mode-style is defined"
+  (nskk-it
+    "nskk-show-mode-style is defined"
     (should (boundp 'nskk-show-mode-style)))
-  (nskk-it "nskk-show-mode-duration is a number"
+  (nskk-it
+    "nskk-show-mode-duration is a number"
     (should (numberp nskk-show-mode-duration)))
-  (nskk-it "nskk-show-mode-style is one of valid choices"
+  (nskk-it
+    "nskk-show-mode-style is one of valid choices"
     (should (memq nskk-show-mode-style '(inline tooltip)))))
 
 ;;;; Indicator String
-
-(nskk-describe "nskk--show-mode-indicator-string"
-  (nskk-it "returns nil for unknown mode"
+(nskk-describe
+  "nskk--show-mode-indicator-string"
+  (nskk-it
+    "returns nil for unknown mode"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (should (null (nskk--show-mode-indicator-string 'nonexistent-mode)))))
-
-  (nskk-it "returns a string for hiragana mode"
+  (nskk-it
+    "returns a string for hiragana mode"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((result (nskk--show-mode-indicator-string 'hiragana)))
         (should (stringp result)))))
-
-  (nskk-it "returns a string for katakana mode"
+  (nskk-it
+    "returns a string for katakana mode"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((result (nskk--show-mode-indicator-string 'katakana)))
         (should (stringp result)))))
-
-  (nskk-it "result is bracket-wrapped"
+  (nskk-it
+    "result is bracket-wrapped"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((result (nskk--show-mode-indicator-string 'hiragana)))
         (when result
           (should (string-prefix-p "[" result))
           (should (string-suffix-p "]" result))))))
-
-  (nskk-it "returns a string for ascii mode"
+  (nskk-it
+    "returns a string for ascii mode"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((result (nskk--show-mode-indicator-string 'ascii)))
         (should (stringp result)))))
-
-  (nskk-it "returns a string for jisx0208-latin mode"
+  (nskk-it
+    "returns a string for jisx0208-latin mode"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((result (nskk--show-mode-indicator-string 'jisx0208-latin)))
         (should (stringp result)))))
-
-  (nskk-it "returns a string for abbrev mode"
+  (nskk-it
+    "returns a string for abbrev mode"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((result (nskk--show-mode-indicator-string 'abbrev)))
         (should (stringp result)))))
-
-  (nskk-it "result has face property applied"
+  (nskk-it
+    "result has face property applied"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((result (nskk--show-mode-indicator-string 'hiragana)))
         (when result
-          (should (eq (get-text-property 0 'face result)
-                      'nskk-show-mode-inline-face)))))))
+          (should (eq (get-text-property 0 'face result) 'nskk-show-mode-inline-face)))))))
 
 ;;;; Display Guards
-
 (nskk-describe "nskk-show-mode-display no-op conditions"
   (nskk-it "is a no-op when nskk-show-mode-show is nil"
     (nskk-prolog-test-with-isolated-db
@@ -126,7 +166,6 @@
                         (error err))))))))
 
 ;;;; Hide Cleanup
-
 (nskk-describe "nskk--show-mode-hide"
   (nskk-it "is safe to call when overlay is nil"
     (with-temp-buffer
@@ -144,63 +183,126 @@
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil))
         (nskk--show-mode-hide)
-        (should (null nskk--show-mode-last-mode))))))
+        (should (null nskk--show-mode-last-mode)))))
+
+  (nskk-it "continues tooltip release when deleting the overlay errors"
+  (with-temp-buffer
+    (let* ((overlay (make-overlay (point) (point)))
+           (timer (run-with-timer 60 nil #'ignore))
+           (real-delete-overlay (symbol-function 'delete-overlay))
+           (real-cancel-timer (symbol-function 'cancel-timer))
+           (nskk--show-mode-overlay overlay)
+           (nskk--show-mode-timer timer)
+           (nskk--show-mode-last-mode 'hiragana)
+           cancel-called
+           tooltip-release-called
+           caught)
+      (unwind-protect
+          (progn
+            (cl-letf (((symbol-function 'delete-overlay)
+                       (lambda (_overlay)
+                         (error "overlay deletion failed")))
+                      ((symbol-function 'cancel-timer)
+                       (lambda (_timer)
+                         (setq cancel-called t)))
+                      ((symbol-function 'nskk--show-mode-release-tooltip)
+                       (lambda (_owner _hide)
+                         (setq tooltip-release-called t))))
+              (condition-case condition
+                  (nskk--show-mode-hide)
+                (error
+                 (setq caught condition))))
+            (should (eq (car caught) 'error))
+            (should cancel-called)
+            (should tooltip-release-called)
+            (should-not nskk--show-mode-last-mode)
+            (should-not nskk--show-mode-overlay)
+            (should-not nskk--show-mode-timer))
+        (funcall real-delete-overlay overlay)
+        (funcall real-cancel-timer timer)))))
+
+
+  (nskk-it "invalidates last-mode when cancelling the timer quits"
+    (with-temp-buffer
+      (let* ((overlay (make-overlay (point) (point)))
+             (timer (run-with-timer 60 nil #'ignore))
+             (real-cancel-timer (symbol-function 'cancel-timer))
+             (nskk--show-mode-overlay overlay)
+             (nskk--show-mode-timer timer)
+             (nskk--show-mode-last-mode 'hiragana)
+             caught)
+        (unwind-protect
+            (progn
+              (cl-letf (((symbol-function 'cancel-timer)
+                         (lambda (_timer)
+                           (signal 'quit nil))))
+                (condition-case condition
+                    (nskk--show-mode-hide-inline)
+                  (quit
+                   (setq caught condition))))
+              (should (eq (car caught) 'quit))
+              (should-not (overlay-buffer overlay))
+              (should-not nskk--show-mode-last-mode)
+              (should-not nskk--show-mode-overlay)
+              (should-not nskk--show-mode-timer))
+          (funcall real-cancel-timer timer))))))
 
 ;;;; Exact Indicator String Content
-
-(nskk-deftest-table show-mode-indicator-exact-strings
-  :columns (mode expected-content)
-  :rows ((hiragana       "かな")
-         (katakana       "カナ")
-         (ascii          "SKK")
-         (jisx0208-latin "全英")
-         (abbrev         "aA"))
-  :description "nskk--show-mode-indicator-string returns exact [DISPLAY] bracket string"
+(nskk-deftest-table
+  show-mode-indicator-exact-strings
+  :columns
+  (mode expected-content)
+  :rows
+  ((hiragana "かな")
+    (katakana "カナ")
+    (ascii "SKK")
+    (jisx0208-latin "全英")
+    (abbrev "aA"))
+  :description
+  "nskk--show-mode-indicator-string returns exact [DISPLAY] bracket string"
   :body
   (nskk-prolog-test-with-isolated-db
     (nskk-state-initialize-prolog)
-    (should (equal (nskk--show-mode-indicator-string mode)
-                   (propertize (format "[%s]" expected-content)
-                               'face 'nskk-show-mode-inline-face)))))
+    (should
+      (equal
+        (nskk--show-mode-indicator-string mode)
+        (propertize (format "[%s]" expected-content) 'face 'nskk-show-mode-inline-face)))))
 
 ;;;; nskk--show-mode-display-inline
-
-(nskk-describe "nskk--show-mode-display-inline"
-  (nskk-it "creates an overlay in the current buffer"
+(nskk-describe
+  "nskk--show-mode-display-inline"
+  (nskk-it
+    "creates an overlay in the current buffer"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil)
             (nskk-show-mode-duration 60))
         (nskk--show-mode-display-inline "[か]")
-        (unwind-protect
-            (should (overlayp nskk--show-mode-overlay))
+        (unwind-protect (should (overlayp nskk--show-mode-overlay))
           (when (timerp nskk--show-mode-timer)
             (cancel-timer nskk--show-mode-timer))))))
-
-  (nskk-it "sets after-string property to the indicator string"
+  (nskk-it
+    "sets after-string property to the indicator string"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil)
             (nskk-show-mode-duration 60))
         (nskk--show-mode-display-inline "[か]")
-        (unwind-protect
-            (should (equal (overlay-get nskk--show-mode-overlay 'after-string)
-                           "[か]"))
+        (unwind-protect (should (equal (overlay-get nskk--show-mode-overlay 'after-string) "[か]"))
           (when (timerp nskk--show-mode-timer)
             (cancel-timer nskk--show-mode-timer))))))
-
-  (nskk-it "schedules a timer for auto-hide"
+  (nskk-it
+    "schedules a timer for auto-hide"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil)
             (nskk-show-mode-duration 60))
         (nskk--show-mode-display-inline "[か]")
-        (unwind-protect
-            (should (timerp nskk--show-mode-timer))
+        (unwind-protect (should (timerp nskk--show-mode-timer))
           (when (timerp nskk--show-mode-timer)
             (cancel-timer nskk--show-mode-timer))))))
-
-  (nskk-it "cancels and replaces previous timer on second call"
+  (nskk-it
+    "cancels and replaces previous timer on second call"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil)
@@ -209,24 +311,47 @@
         (nskk--show-mode-display-inline "[か]")
         (setq first-timer nskk--show-mode-timer)
         (nskk--show-mode-display-inline "[ア]")
-        (unwind-protect
-            (should (not (eq first-timer nskk--show-mode-timer)))
+        (unwind-protect (should (not (eq first-timer nskk--show-mode-timer)))
           (when (timerp nskk--show-mode-timer)
             (cancel-timer nskk--show-mode-timer))))))
-
-  (nskk-it "overlay priority is 100"
+  (nskk-it
+    "overlay priority is 100"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil)
             (nskk-show-mode-duration 60))
         (nskk--show-mode-display-inline "[か]")
-        (unwind-protect
-            (should (= (overlay-get nskk--show-mode-overlay 'priority) 100))
+        (unwind-protect (should (= (overlay-get nskk--show-mode-overlay 'priority) 100))
           (when (timerp nskk--show-mode-timer)
-            (cancel-timer nskk--show-mode-timer)))))))
+            (cancel-timer nskk--show-mode-timer))))))
+  (nskk-it
+    "clears old inline state when tooltip release quits"
+    (with-temp-buffer
+      (let* ((overlay (make-overlay (point) (point)))
+             (timer (run-with-timer 60 nil #'ignore))
+             (real-cancel-timer (symbol-function 'cancel-timer))
+             (nskk--show-mode-overlay overlay)
+             (nskk--show-mode-timer timer)
+             (nskk--show-mode-last-mode 'hiragana)
+             caught)
+        (unwind-protect (progn
+            (cl-letf
+              (((symbol-function 'nskk--show-mode-release-tooltip)
+                  (lambda (_owner _hide)
+                    (signal 'quit nil))))
+              (condition-case
+                condition
+                (nskk--show-mode-display-inline "[ア]")
+                (quit
+                  (setq caught condition))))
+            (should (eq (car caught) 'quit))
+            (should-not (overlay-buffer overlay))
+            (should-not nskk--show-mode-last-mode)
+            (should-not nskk--show-mode-overlay)
+            (should-not nskk--show-mode-timer))
+          (funcall real-cancel-timer timer))))))
 
 ;;;; nskk--show-mode-hide cancels timer
-
 (nskk-describe "nskk--show-mode-hide timer handling"
   (nskk-it "cancels pending timer when one exists"
     (with-temp-buffer
@@ -253,7 +378,6 @@
         (should (null nskk--show-mode-overlay))))))
 
 ;;;; nskk-show-mode-display integration
-
 (nskk-describe "nskk-show-mode-display integration"
   (nskk-it "updates nskk--show-mode-last-mode after first display"
     (nskk-prolog-test-with-isolated-db
@@ -290,28 +414,403 @@
             (should (= call-count 0)))))))
 
   (nskk-it "re-displays when mode changes"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-state-initialize-prolog)
-      (with-temp-buffer
-        (setq nskk-current-state (nskk-state-create 'katakana))
-        (let ((nskk-show-mode-show t)
-              (nskk-show-mode-style 'inline)
-              (nskk-show-mode-duration 60)
-              (nskk--show-mode-overlay nil)
-              (nskk--show-mode-timer nil)
-              (nskk--show-mode-last-mode 'hiragana)  ; different from current
-              (call-count 0))
-          (cl-letf (((symbol-function 'nskk--show-mode-display-inline)
-                     (lambda (_s) (cl-incf call-count))))
-            (nskk-show-mode-display)
-            (should (= call-count 1))))))))
+  (nskk-prolog-test-with-isolated-db
+    (nskk-state-initialize-prolog)
+    (with-temp-buffer
+      (setq nskk-current-state (nskk-state-create 'katakana))
+      (let ((nskk-show-mode-show t)
+            (nskk-show-mode-style 'inline)
+            (nskk-show-mode-duration 60)
+            (nskk--show-mode-overlay nil)
+            (nskk--show-mode-timer nil)
+            (nskk--show-mode-last-mode 'hiragana)
+            (call-count 0))
+        (cl-letf (((symbol-function 'nskk--show-mode-display-inline)
+                   (lambda (_s) (cl-incf call-count))))
+          (nskk-show-mode-display)
+          (should (= call-count 1)))))))
+
+(nskk-it "retries the same mode after tooltip display errors"
+  (nskk-prolog-test-with-isolated-db
+    (nskk-state-initialize-prolog)
+    (with-temp-buffer
+      (setq nskk-current-state (nskk-state-create 'hiragana))
+      (let ((nskk-show-mode-show t)
+            (nskk-show-mode-style 'tooltip)
+            (nskk-show-mode-duration 60)
+            (nskk--show-mode-last-mode nil))
+        (nskk-show-mode-test-with-tooltip-runtime
+          (cl-letf (((symbol-function 'tooltip-show)
+                     (lambda (&rest _)
+                       (error "tooltip display failed"))))
+            (should-error (nskk-show-mode-display) :type 'error))
+          (should-not nskk--show-mode-last-mode)
+          (nskk-show-mode-display)
+          (should (eq nskk--show-mode-last-mode 'hiragana)))))))
+
+(nskk-it "retries the same mode after tooltip timer scheduling quits"
+  (nskk-prolog-test-with-isolated-db
+    (nskk-state-initialize-prolog)
+    (with-temp-buffer
+      (setq nskk-current-state (nskk-state-create 'hiragana))
+      (let ((nskk-show-mode-show t)
+            (nskk-show-mode-style 'tooltip)
+            (nskk-show-mode-duration 60)
+            (nskk--show-mode-last-mode nil)
+            caught)
+        (nskk-show-mode-test-with-tooltip-runtime
+          (cl-letf (((symbol-function 'run-with-timer)
+                     (lambda (&rest _)
+                       (signal 'quit nil))))
+            (condition-case condition
+                (nskk-show-mode-display)
+              (quit
+               (setq caught condition))))
+          (should (eq (car caught) 'quit))
+          (should-not nskk--show-mode-last-mode)
+          (nskk-show-mode-display)
+          (should (eq nskk--show-mode-last-mode 'hiragana)))))))
+)
 
 ;;;; Face Definitions
+;;;; Tooltip Global Ownership
+(nskk-describe
+  "nskk tooltip global ownership"
+  (nskk-it
+    "replaces a same-buffer tooltip and ignores its stale callback"
+    (nskk-show-mode-test-with-tooltip-runtime
+      (with-temp-buffer
+        (let ((nskk-show-mode-duration 60))
+          (nskk--show-mode-display-tooltip "[か]")
+          (let* ((first-generation nskk--show-mode-tooltip-generation)
+                 (first-timer nskk--show-mode-tooltip-timer)
+                 (first-callback (aref first-timer 0))
+                 (first-args (aref first-timer 1)))
+            (nskk--show-mode-display-tooltip "[ア]")
+            (should (aref first-timer 2))
+            (should (eq nskk--show-mode-tooltip-owner (current-buffer)))
+            (should (> nskk--show-mode-tooltip-generation first-generation))
+            (should-not (eq nskk--show-mode-tooltip-timer first-timer))
+            (apply first-callback first-args)
+            (should (eq nskk--show-mode-tooltip-owner (current-buffer)))
+            (should nskk--show-mode-tooltip-timer)
+            (should (= nskk-show-mode-test--tooltip-hide-count 0))
+            (let ((current-timer nskk--show-mode-tooltip-timer))
+              (apply (aref current-timer 0) (aref current-timer 1)))
+            (should-not nskk--show-mode-tooltip-owner)
+            (should-not nskk--show-mode-tooltip-timer)
+            (should (= nskk-show-mode-test--tooltip-hide-count 1)))))))
+  (nskk-it
+    "transfers ownership across buffers and ignores the old callback"
+    (nskk-show-mode-test-with-tooltip-runtime
+      (let ((first-buffer (generate-new-buffer " *nskk-tooltip-first*"))
+            (second-buffer (generate-new-buffer " *nskk-tooltip-second*")))
+        (unwind-protect (progn
+            (with-current-buffer first-buffer (nskk--show-mode-display-tooltip "[か]"))
+            (let* ((first-timer nskk--show-mode-tooltip-timer)
+                   (first-callback (aref first-timer 0))
+                   (first-args (aref first-timer 1)))
+              (with-current-buffer second-buffer (nskk--show-mode-display-tooltip "[ア]"))
+              (should (aref first-timer 2))
+              (should (eq nskk--show-mode-tooltip-owner second-buffer))
+              (with-current-buffer
+                first-buffer
+                (should-not (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+              (with-current-buffer
+                second-buffer
+                (should (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+              (apply first-callback first-args)
+              (should (eq nskk--show-mode-tooltip-owner second-buffer))
+              (should (= nskk-show-mode-test--tooltip-hide-count 0))
+              (let ((current-timer nskk--show-mode-tooltip-timer))
+                (apply (aref current-timer 0) (aref current-timer 1)))
+              (should-not nskk--show-mode-tooltip-owner)
+              (should (= nskk-show-mode-test--tooltip-hide-count 1))))
+          (when (buffer-live-p first-buffer)
+            (kill-buffer first-buffer))
+          (when (buffer-live-p second-buffer)
+            (kill-buffer second-buffer))))))
+  (nskk-it
+    "does not hide a tooltip owned by another buffer"
+    (nskk-show-mode-test-with-tooltip-runtime
+      (let ((owner (generate-new-buffer " *nskk-tooltip-owner*"))
+            (other (generate-new-buffer " *nskk-tooltip-other*")))
+        (unwind-protect (progn
+            (with-current-buffer owner (nskk--show-mode-display-tooltip "[か]"))
+            (let ((owner-timer nskk--show-mode-tooltip-timer))
+              (with-current-buffer other (nskk--show-mode-hide))
+              (should (eq nskk--show-mode-tooltip-owner owner))
+              (should (eq nskk--show-mode-tooltip-timer owner-timer))
+              (should-not (aref owner-timer 2))
+              (should (= nskk-show-mode-test--tooltip-hide-count 0))))
+          (when (buffer-live-p owner)
+            (kill-buffer owner))
+          (when (buffer-live-p other)
+            (kill-buffer other))))))
+  (nskk-it
+    "releases a tooltip when its owner buffer is killed"
+    (nskk-show-mode-test-with-tooltip-runtime
+      (let ((owner (generate-new-buffer " *nskk-tooltip-killed-owner*")))
+        (unwind-protect (progn
+            (with-current-buffer owner (nskk--show-mode-display-tooltip "[か]"))
+            (let ((owner-timer nskk--show-mode-tooltip-timer))
+              (kill-buffer owner)
+              (should-not nskk--show-mode-tooltip-owner)
+              (should-not nskk--show-mode-tooltip-timer)
+              (should (aref owner-timer 2))
+              (should (= nskk-show-mode-test--tooltip-hide-count 1))))
+          (when (buffer-live-p owner)
+            (kill-buffer owner))))))
+  (nskk-it
+    "releases a same-buffer tooltip before displaying inline"
+    (nskk-show-mode-test-with-tooltip-runtime
+      (with-temp-buffer
+        (nskk--show-mode-display-tooltip "[か]")
+        (let ((tooltip-timer nskk--show-mode-tooltip-timer))
+          (nskk--show-mode-display-inline "[ア]")
+          (should-not nskk--show-mode-tooltip-owner)
+          (should-not nskk--show-mode-tooltip-timer)
+          (should (aref tooltip-timer 2))
+          (should (= nskk-show-mode-test--tooltip-hide-count 1))
+          (should (overlayp nskk--show-mode-overlay))
+          (should nskk--show-mode-timer)
+          (nskk--show-mode-hide-inline)))))
+  (nskk-it
+    "fails closed when replacement display signals an error"
+    (nskk-show-mode-test-with-tooltip-runtime
+      (let ((old-owner (generate-new-buffer " *nskk-tooltip-old*"))
+            (new-owner (generate-new-buffer " *nskk-tooltip-new*")))
+        (unwind-protect (progn
+            (with-current-buffer old-owner (nskk--show-mode-display-tooltip "[か]"))
+            (let* ((old-timer nskk--show-mode-tooltip-timer)
+                   (old-callback (aref old-timer 0))
+                   (old-args (aref old-timer 1)))
+              (cl-letf
+                (((symbol-function 'tooltip-show)
+                    (lambda (&rest _)
+                      (error "tooltip display failed"))))
+                (with-current-buffer
+                  new-owner
+                  (should-error (nskk--show-mode-display-tooltip "[ア]") :type 'error)))
+              (should-not nskk--show-mode-tooltip-owner)
+              (should-not nskk--show-mode-tooltip-timer)
+              (should (aref old-timer 2))
+              (with-current-buffer
+                old-owner
+                (should-not (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+              (with-current-buffer
+                new-owner
+                (should-not (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+              (should (= nskk-show-mode-test--tooltip-hide-count 1))
+              (apply old-callback old-args)
+              (should (= nskk-show-mode-test--tooltip-hide-count 1))))
+          (when (buffer-live-p old-owner)
+            (kill-buffer old-owner))
+          (when (buffer-live-p new-owner)
+            (kill-buffer new-owner))))))
+  (nskk-context
+    "failure cleanup"
+    (nskk-it
+      "fails closed when tooltip timer scheduling signals quit"
+      (nskk-show-mode-test-with-tooltip-runtime
+        (let ((owner (generate-new-buffer " *nskk-tooltip-timer-failure*"))
+              caught)
+          (unwind-protect (progn
+              (cl-letf
+                (((symbol-function 'run-with-timer)
+                    (lambda (&rest _)
+                      (signal 'quit nil))))
+                (condition-case
+                  condition
+                  (with-current-buffer owner (nskk--show-mode-display-tooltip "[か]"))
+                  (quit
+                    (setq caught condition))))
+              (should (eq (car caught) 'quit))
+              (should-not nskk--show-mode-tooltip-owner)
+              (should-not nskk--show-mode-tooltip-timer)
+              (with-current-buffer
+                owner
+                (should-not (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+              (should (= nskk-show-mode-test--tooltip-hide-count 1)))
+            (when (buffer-live-p owner)
+              (kill-buffer owner))))))
+    (nskk-it
+      "releases global tooltip when inline cleanup errors"
+      (nskk-show-mode-test-with-tooltip-runtime
+        (let ((old-owner (generate-new-buffer " *nskk-tooltip-cleanup-old*"))
+              (new-owner (generate-new-buffer " *nskk-tooltip-cleanup-new*"))
+              old-timer
+              inline-overlay
+              inline-timer
+              caught)
+          (unwind-protect (progn
+              (with-current-buffer old-owner (nskk--show-mode-display-tooltip "[か]"))
+              (setq old-timer nskk--show-mode-tooltip-timer)
+              (with-current-buffer
+                new-owner
+                (setq inline-overlay (make-overlay (point) (point))
+                      inline-timer (vector #'ignore nil nil)
+                      nskk--show-mode-overlay inline-overlay
+                      nskk--show-mode-timer inline-timer
+                      nskk--show-mode-last-mode 'hiragana)
+                (cl-letf
+                  (((symbol-function 'delete-overlay)
+                      (lambda (_overlay)
+                        (error "inline cleanup failed"))))
+                  (condition-case
+                    condition
+                    (nskk--show-mode-display-tooltip "[ア]")
+                    (error
+                      (setq caught condition))))
+                (should-not nskk--show-mode-overlay)
+                (should-not nskk--show-mode-timer)
+                (should-not nskk--show-mode-last-mode))
+              (should (eq (car caught) 'error))
+              (should (aref inline-timer 2))
+              (should (aref old-timer 2))
+              (should-not nskk--show-mode-tooltip-owner)
+              (should-not nskk--show-mode-tooltip-timer)
+              (with-current-buffer
+                old-owner
+                (should-not (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+              (should (= nskk-show-mode-test--tooltip-hide-count 1)))
+            (when (overlayp inline-overlay)
+              (delete-overlay inline-overlay))
+            (when (buffer-live-p old-owner)
+              (kill-buffer old-owner))
+            (when (buffer-live-p new-owner)
+              (kill-buffer new-owner))))))
+    (nskk-it
+      "removes inline state when timer scheduling signals quit"
+      (with-temp-buffer
+        (let ((nskk-show-mode-duration 60)
+              (nskk--show-mode-last-mode 'hiragana)
+              (nskk--show-mode-tooltip-owner nil)
+              (nskk--show-mode-tooltip-generation 0)
+              (nskk--show-mode-tooltip-timer nil)
+              caught)
+          (cl-letf
+            (((symbol-function 'run-with-timer)
+                (lambda (&rest _)
+                  (signal 'quit nil))))
+            (condition-case
+              condition
+              (nskk--show-mode-display-inline "[か]")
+              (quit
+                (setq caught condition))))
+          (should (eq (car caught) 'quit))
+          (should-not nskk--show-mode-overlay)
+          (should-not nskk--show-mode-timer)
+          (should-not nskk--show-mode-last-mode)
+          (should-not (overlays-at (point))))))
+    (nskk-it
+      "fails closed when replacing an owner whose cancellation quits"
+      (nskk-show-mode-test-with-tooltip-runtime
+        (let ((old-owner (generate-new-buffer " *nskk-tooltip-cancel-failure-old*"))
+              (new-owner (generate-new-buffer " *nskk-tooltip-cancel-failure-new*"))
+              caught)
+          (unwind-protect (progn
+              (with-current-buffer old-owner (nskk--show-mode-display-tooltip "[か]"))
+              (let* ((old-timer nskk--show-mode-tooltip-timer)
+                     (old-callback (aref old-timer 0))
+                     (old-args (aref old-timer 1)))
+                (cl-letf
+                  (((symbol-function 'cancel-timer)
+                      (lambda (timer)
+                        (if (eq timer old-timer) (signal 'quit nil)
+                          (aset timer 2 t)))))
+                  (condition-case
+                    condition
+                    (with-current-buffer new-owner (nskk--show-mode-display-tooltip "[ア]"))
+                    (quit
+                      (setq caught condition))))
+                (should (eq (car caught) 'quit))
+                (should-not nskk--show-mode-tooltip-owner)
+                (should-not nskk--show-mode-tooltip-timer)
+                (should-not (aref old-timer 2))
+                (with-current-buffer
+                  old-owner
+                  (should-not (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+                (with-current-buffer
+                  new-owner
+                  (should-not (memq #'nskk--show-mode-tooltip-owner-killed kill-buffer-hook)))
+                (should (= nskk-show-mode-test--tooltip-hide-count 1))
+                (apply old-callback old-args)
+                (should (= nskk-show-mode-test--tooltip-hide-count 1))))
+            (when (buffer-live-p old-owner)
+              (kill-buffer old-owner))
+            (when (buffer-live-p new-owner)
+              (kill-buffer new-owner))))))))
 
-(nskk-describe "nskk-show-mode-inline-face"
-  (nskk-it "is defined as a face"
-    (should (facep 'nskk-show-mode-inline-face))))
+;;;; Face Definitions
+(nskk-describe
+  "nskk-show-mode-inline-face"
+  (nskk-it "is defined as a face" (should (facep 'nskk-show-mode-inline-face))))
 
-(provide 'nskk-show-mode-test)
+(progn
+  (nskk-describe "nskk inline timer generations"
+    (nskk-it "ignores an A callback after B replaces it and accepts B callback"
+      (nskk-show-mode-test-with-tooltip-runtime
+        (with-temp-buffer
+          (let ((nskk-show-mode-duration 60)
+                (nskk--show-mode-inline-generation 0))
+            (nskk--show-mode-display-inline "[A]")
+            (let* ((first-timer nskk--show-mode-timer)
+                   (first-callback (aref first-timer 0))
+                   (first-args (aref first-timer 1)))
+              (nskk--show-mode-display-inline "[B]")
+              (let ((second-overlay nskk--show-mode-overlay)
+                    (second-timer nskk--show-mode-timer))
+                (should (aref first-timer 2))
+                (should (eq (aref second-timer 0)
+                            #'nskk--show-mode-inline-timeout))
+                (apply first-callback first-args)
+                (should (eq nskk--show-mode-overlay second-overlay))
+                (should (eq nskk--show-mode-timer second-timer))
+                (should (equal (overlay-get second-overlay 'after-string)
+                               "[B]"))
+                (apply (aref second-timer 0) (aref second-timer 1))
+                (should-not nskk--show-mode-overlay)
+                (should-not nskk--show-mode-timer)))))))
+
+    (nskk-it "manual clear invalidates its pending callback"
+      (nskk-show-mode-test-with-tooltip-runtime
+        (with-temp-buffer
+          (let ((nskk-show-mode-duration 60)
+                (nskk--show-mode-inline-generation 0))
+            (nskk--show-mode-display-inline "[A]")
+            (let* ((timer nskk--show-mode-timer)
+                   (callback (aref timer 0))
+                   (args (aref timer 1))
+                   (generation nskk--show-mode-inline-generation))
+              (nskk--show-mode-clear-inline)
+              (setq nskk--show-mode-last-mode 'sentinel)
+              (should (> nskk--show-mode-inline-generation generation))
+              (apply callback args)
+              (should (eq nskk--show-mode-last-mode 'sentinel))
+              (should-not nskk--show-mode-overlay)
+              (should-not nskk--show-mode-timer))))))
+
+    (nskk-it "callback from a killed owner buffer is harmless"
+      (nskk-show-mode-test-with-tooltip-runtime
+        (let ((owner (generate-new-buffer " *nskk-inline-owner*"))
+              timer)
+          (unwind-protect
+              (progn
+                (with-current-buffer owner
+                  (setq nskk-show-mode-duration 60)
+                  (nskk--show-mode-display-inline "[A]")
+                  (setq timer nskk--show-mode-timer))
+                (kill-buffer owner)
+                (should-not
+                 (condition-case condition
+                     (progn
+                       (apply (aref timer 0) (aref timer 1))
+                       nil)
+                   ((error quit) condition))))
+            (when (buffer-live-p owner)
+              (kill-buffer owner)))))))
+
+  (provide 'nskk-show-mode-test))
 
 ;;; nskk-show-mode-test.el ends here

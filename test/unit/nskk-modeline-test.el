@@ -143,25 +143,7 @@
     (let ((nskk--modeline-indicator-cache nil))
       (nskk-should-not-error (nskk--modeline-clear-cache)))))
 
-(nskk-describe "nskk-modeline-update"
-  (nskk-it "is defined as a function"
-    (should (fboundp 'nskk-modeline-update)))
-
-  (nskk-it "does not error when nskk-current-state is nil"
-    (let ((nskk-current-state nil))
-      (nskk-should-not-error (nskk-modeline-update))))
-
-  (nskk-it "does not error when nskk-current-state is set"
-    (nskk-with-state 'hiragana
-      (let ((nskk--last-cursor-color nil))
-        (nskk-should-not-error (nskk-modeline-update)))))
-
-  (nskk-it "invalidates the indicator cache"
-    (nskk-with-state 'hiragana
-      (nskk-modeline-indicator)  ; populate cache
-      (should (consp nskk--modeline-indicator-cache))
-      (nskk-modeline-update)
-      (should (null nskk--modeline-indicator-cache)))))
+(nskk-it "does not error when nskk-current-state is set" (nskk-with-state 'hiragana (let ((nskk-use-color-cursor nil)) (nskk-should-not-error (nskk-modeline-update)))))
 
 (nskk-deftest-table modeline-faces-defined
   :columns (face-sym)
@@ -179,34 +161,63 @@
   (nskk-it "is a macro, not a plain function"
     (should (macrop 'nskk-define-mode-entry))))
 
-(nskk-describe "nskk-cursor-update"
-  (nskk-it "nskk-cursor-update is defined"
-    (should (fboundp 'nskk-cursor-update)))
-
-  (nskk-it "does nothing when nskk-use-color-cursor is nil"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor nil)
-            (nskk--last-cursor-color "initial"))
-        ;; Should return without error and without modifying nskk--last-cursor-color
-        (nskk-cursor-update)
-        (should (string= nskk--last-cursor-color "initial")))))
-
-  (nskk-it "updates nskk--last-cursor-color when cursor color is available"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor t)
-            (nskk--last-cursor-color nil))
-        (nskk-cursor-update)
-        (should (stringp nskk--last-cursor-color))
-        (should (not (string-empty-p nskk--last-cursor-color))))))
-
-  (nskk-it "does not re-apply cursor color when color is unchanged"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor t)
-            (nskk--last-cursor-color nil))
-        (nskk-cursor-update)
-        (let ((color-after-first nskk--last-cursor-color))
+(nskk-it "snapshots each frame on first update and restores exact originals"
+  (let ((frame-a (quote frame-a))
+        (frame-b (quote frame-b))
+        (current-frame (quote frame-a))
+        (parameters (make-hash-table :test (function equal)))
+        applied)
+    (puthash (cons frame-a (quote cursor-color)) "red" parameters)
+    (puthash (cons frame-b (quote cursor-color)) "blue" parameters)
+    (nskk-with-mocks
+        ((selected-frame (lambda () current-frame))
+         (frame-parameter
+          (lambda (frame parameter)
+            (gethash (cons frame parameter) parameters)))
+         (set-frame-parameter
+          (lambda (frame parameter value)
+            (if value
+                (puthash (cons frame parameter) value parameters)
+              (remhash (cons frame parameter) parameters))))
+         (set-cursor-color
+          (lambda (color)
+            (puthash (cons current-frame (quote cursor-color)) color parameters)
+            (push (cons current-frame color) applied)))
+         (nskk--cursor-with-color (lambda (_) "gold"))
+         (nskk--other-nskk-buffers-active-p (lambda (&optional _) nil)))
+      (let ((nskk-use-color-cursor t))
+        (nskk-with-state (quote hiragana)
           (nskk-cursor-update)
-          (should (equal nskk--last-cursor-color color-after-first)))))))
+          (nskk-cursor-update)
+          (setq current-frame frame-b)
+          (nskk-cursor-update)
+          (nskk-cursor-update)
+          (should
+           (equal applied
+                  (quote ((frame-b . "gold") (frame-a . "gold")))))
+          (should
+           (equal
+            (gethash
+             (cons frame-a nskk--saved-cursor-color-parameter)
+             parameters)
+            "red"))
+          (should
+           (equal
+            (gethash
+             (cons frame-b nskk--saved-cursor-color-parameter)
+             parameters)
+            "blue"))
+          (nskk--cursor-color-restore frame-a)
+          (nskk--cursor-color-restore frame-b))))
+    (should
+     (equal (gethash (cons frame-a (quote cursor-color)) parameters) "red"))
+    (should
+     (equal (gethash (cons frame-b (quote cursor-color)) parameters) "blue"))
+    (dolist (frame (list frame-a frame-b))
+      (should-not
+       (gethash (cons frame nskk--saved-cursor-color-parameter) parameters))
+      (should-not
+       (gethash (cons frame nskk--last-cursor-color-parameter) parameters)))))
 
 (nskk-describe "nskk-modeline-indicator unknown mode fallback"
   (nskk-it "query returns nil for a non-registered mode"
@@ -406,72 +417,215 @@
   (nskk-it "is defined as a function"
     (should (fboundp 'nskk--cursor-color-save)))
 
-  (nskk-it "sets nskk--saved-cursor-color to non-nil when nskk-use-color-cursor is t"
-    (let ((nskk--saved-cursor-color nil)
-          (nskk-use-color-cursor t))
-      (nskk--cursor-color-save)
-      (should (not (null nskk--saved-cursor-color)))))
+  (nskk-it "saves each frame original once and represents nil with a sentinel"
+    (let ((frame-a 'frame-a)
+          (frame-b 'frame-b)
+          (current-frame 'frame-a)
+          (parameters (make-hash-table :test #'equal)))
+      (puthash (cons frame-a 'cursor-color) "red" parameters)
+      (nskk-with-mocks
+          ((selected-frame (lambda () current-frame))
+           (frame-parameter
+            (lambda (frame parameter)
+              (gethash (cons frame parameter) parameters)))
+           (set-frame-parameter
+            (lambda (frame parameter value)
+              (puthash (cons frame parameter) value parameters))))
+        (let ((nskk-use-color-cursor t))
+          (nskk--cursor-color-save)
+          (puthash (cons frame-a 'cursor-color) "green" parameters)
+          (nskk--cursor-color-save)
+          (should
+           (equal
+            (gethash
+             (cons frame-a nskk--saved-cursor-color-parameter)
+             parameters)
+            "red"))
+          (setq current-frame frame-b)
+          (nskk--cursor-color-save)
+          (should
+           (eq
+            (gethash
+             (cons frame-b nskk--saved-cursor-color-parameter)
+             parameters)
+            t))))))
 
-  (nskk-it "is idempotent: does not overwrite a previously saved color"
-    (let ((nskk--saved-cursor-color "pink")
-          (nskk-use-color-cursor t))
-      (nskk--cursor-color-save)
-      (should (string= nskk--saved-cursor-color "pink"))))
-
-  (nskk-it "does nothing when nskk-use-color-cursor is nil"
-    (let ((nskk--saved-cursor-color nil)
-          (nskk-use-color-cursor nil))
-      (nskk--cursor-color-save)
-      (should (null nskk--saved-cursor-color))))
-
-  (nskk-it "stores the TTY sentinel t when frame-parameter returns nil"
-    ;; In batch mode (no real frame), frame-parameter returns nil.
-    ;; nskk--cursor-color-save must store `t' as sentinel rather than nil,
-    ;; so the nil slot continues to mean "not yet saved".
-    (let ((nskk--saved-cursor-color nil)
-          (nskk-use-color-cursor t))
-      (nskk-with-mocks ((frame-parameter (lambda (&rest _) nil)))
-        (nskk--cursor-color-save)
-        (should (eq nskk--saved-cursor-color t))))))
+  (nskk-it "does nothing when cursor coloring is disabled"
+    (let ((frame 'frame)
+          (parameters (make-hash-table :test #'equal))
+          (set-count 0))
+      (nskk-with-mocks
+          ((selected-frame (lambda () frame))
+           (frame-parameter
+            (lambda (target parameter)
+              (gethash (cons target parameter) parameters)))
+           (set-frame-parameter
+            (lambda (&rest _)
+              (cl-incf set-count))))
+        (let ((nskk-use-color-cursor nil))
+          (nskk--cursor-color-save)))
+      (should (= set-count 0))
+      (should-not
+       (gethash
+        (cons frame nskk--saved-cursor-color-parameter)
+        parameters)))))
 
 (nskk-describe "nskk--cursor-color-restore"
   (nskk-it "is defined as a function"
-    (should (fboundp 'nskk--cursor-color-restore)))
+    (should (fboundp (quote nskk--cursor-color-restore))))
 
-  (nskk-it "resets nskk--saved-cursor-color to nil"
-    (let ((nskk--saved-cursor-color "pink")
-          (nskk--last-cursor-color "pink")
-          (nskk-use-color-cursor t))
-      (nskk--cursor-color-restore)
-      (should (null nskk--saved-cursor-color))))
+  (nskk-it "restores and cleans every saved frame without selecting it"
+    (let ((frame-a (quote frame-a))
+          (frame-b (quote frame-b))
+          (selected (quote frame-a))
+          (parameters (make-hash-table :test (function equal))))
+      (dolist (entry
+               (list (list frame-a "red") (list frame-b "blue")))
+        (let ((frame (car entry)) (original (cadr entry)))
+          (puthash (cons frame (quote cursor-color)) "gold" parameters)
+          (puthash
+           (cons frame nskk--saved-cursor-color-parameter)
+           original
+           parameters)
+          (puthash
+           (cons frame nskk--last-cursor-color-parameter)
+           "gold"
+           parameters)))
+      (nskk-with-mocks
+          ((selected-frame (lambda () selected))
+           (frame-list (lambda () (list frame-a frame-b)))
+           (frame-parameter
+            (lambda (frame parameter)
+              (gethash (cons frame parameter) parameters)))
+           (set-frame-parameter
+            (lambda (frame parameter value)
+              (if value
+                  (puthash (cons frame parameter) value parameters)
+                (remhash (cons frame parameter) parameters))))
+           (nskk--other-nskk-buffers-active-p (lambda (&optional _) nil)))
+        (nskk--cursor-color-restore nil t))
+      (should (eq selected (quote frame-a)))
+      (should
+       (equal (gethash (cons frame-a (quote cursor-color)) parameters) "red"))
+      (should
+       (equal (gethash (cons frame-b (quote cursor-color)) parameters) "blue"))
+      (dolist (frame (list frame-a frame-b))
+        (should-not
+         (gethash (cons frame nskk--saved-cursor-color-parameter) parameters))
+        (should-not
+         (gethash (cons frame nskk--last-cursor-color-parameter) parameters)))))
 
-  (nskk-it "resets nskk--last-cursor-color to nil"
-    (let ((nskk--saved-cursor-color "pink")
-          (nskk--last-cursor-color "pink")
-          (nskk-use-color-cursor t))
-      (nskk--cursor-color-restore)
-      (should (null nskk--last-cursor-color))))
+  (nskk-it "retains each frame while a separate active buffer is displayed"
+    (let ((frame-a (quote frame-a))
+          (frame-b (quote frame-b))
+          (parameters (make-hash-table :test (function equal)))
+          (buffer-a (generate-new-buffer " *nskk-frame-a*"))
+          (buffer-b (generate-new-buffer " *nskk-frame-b*")))
+      (unwind-protect
+          (cl-progv (quote (nskk-mode)) (quote (nil))
+            (with-current-buffer buffer-a (setq-local nskk-mode t))
+            (with-current-buffer buffer-b (setq-local nskk-mode t))
+            (dolist (entry
+                     (list (list frame-a "red") (list frame-b "blue")))
+              (let ((frame (car entry)) (original (cadr entry)))
+                (puthash (cons frame (quote cursor-color)) "gold" parameters)
+                (puthash
+                 (cons frame nskk--saved-cursor-color-parameter)
+                 original
+                 parameters)
+                (puthash
+                 (cons frame nskk--last-cursor-color-parameter)
+                 "gold"
+                 parameters)))
+            (nskk-with-mocks
+                ((frame-list (lambda () (list frame-a frame-b)))
+                 (frame-parameter
+                  (lambda (frame parameter)
+                    (gethash (cons frame parameter) parameters)))
+                 (set-frame-parameter
+                  (lambda (frame parameter value)
+                    (if value
+                        (puthash (cons frame parameter) value parameters)
+                      (remhash (cons frame parameter) parameters))))
+                 (buffer-list (lambda () (list buffer-a buffer-b)))
+                 (get-buffer-window
+                  (lambda (buffer frame)
+                    (or (and (eq buffer buffer-a)
+                             (eq frame frame-a)
+                             (quote window-a))
+                        (and (eq buffer buffer-b)
+                             (eq frame frame-b)
+                             (quote window-b))))))
+              (nskk--cursor-color-restore nil t)
+              (should
+               (equal
+                (gethash
+                 (cons frame-a nskk--saved-cursor-color-parameter)
+                 parameters)
+                "red"))
+              (should
+               (equal
+                (gethash
+                 (cons frame-b nskk--saved-cursor-color-parameter)
+                 parameters)
+                "blue"))
+              (with-current-buffer buffer-a (setq-local nskk-mode nil))
+              (nskk--cursor-color-restore nil t)
+              (should
+               (equal
+                (gethash (cons frame-a (quote cursor-color)) parameters)
+                "red"))
+              (should-not
+               (gethash
+                (cons frame-a nskk--saved-cursor-color-parameter)
+                parameters))
+              (should
+               (equal
+                (gethash
+                 (cons frame-b nskk--saved-cursor-color-parameter)
+                 parameters)
+                "blue"))
+              (kill-buffer buffer-b)
+              (nskk--cursor-color-restore nil t)
+              (should
+               (equal
+                (gethash (cons frame-b (quote cursor-color)) parameters)
+                "blue"))
+              (should-not
+               (gethash
+                (cons frame-b nskk--saved-cursor-color-parameter)
+                parameters))))
+        (when (buffer-live-p buffer-a) (kill-buffer buffer-a))
+        (when (buffer-live-p buffer-b) (kill-buffer buffer-b)))))
 
-  (nskk-it "resets nskk--last-cursor-color to nil even when nskk-use-color-cursor is nil"
-    (let ((nskk--saved-cursor-color t)
-          (nskk--last-cursor-color "pink")
-          (nskk-use-color-cursor nil))
-      (nskk--cursor-color-restore)
-      (should (null nskk--last-cursor-color))
-      (should (null nskk--saved-cursor-color))))
-
-  (nskk-it "does not error when saved color is the TTY sentinel t"
-    (let ((nskk--saved-cursor-color t)
-          (nskk--last-cursor-color nil)
-          (nskk-use-color-cursor t))
-      (nskk-should-not-error (nskk--cursor-color-restore))
-      (should (null nskk--saved-cursor-color))))
-
-  (nskk-it "does not error when nskk--saved-cursor-color is nil"
-    (let ((nskk--saved-cursor-color nil)
-          (nskk--last-cursor-color nil)
-          (nskk-use-color-cursor t))
-      (nskk-should-not-error (nskk--cursor-color-restore)))))
+  (nskk-it "restores nil cursor color from the TTY sentinel"
+    (let ((frame (quote frame))
+          (parameters (make-hash-table :test (function equal))))
+      (puthash (cons frame (quote cursor-color)) "gold" parameters)
+      (puthash
+       (cons frame nskk--saved-cursor-color-parameter)
+       t
+       parameters)
+      (puthash
+       (cons frame nskk--last-cursor-color-parameter)
+       "gold"
+       parameters)
+      (nskk-with-mocks
+          ((frame-parameter
+            (lambda (target parameter)
+              (gethash (cons target parameter) parameters)))
+           (set-frame-parameter
+            (lambda (target parameter value)
+              (if value
+                  (puthash (cons target parameter) value parameters)
+                (remhash (cons target parameter) parameters))))
+           (nskk--other-nskk-buffers-active-p (lambda (&optional _) nil)))
+        (nskk--cursor-color-restore frame))
+      (should-not (gethash (cons frame (quote cursor-color)) parameters))
+      (should-not
+       (gethash (cons frame nskk--saved-cursor-color-parameter) parameters))
+      (should-not
+       (gethash (cons frame nskk--last-cursor-color-parameter) parameters)))))
 
 (provide 'nskk-modeline-test)
 

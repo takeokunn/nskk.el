@@ -1,29 +1,21 @@
 ;;; nskk-dictionary.el --- Dictionary module for NSKK -*- lexical-binding: t; -*-
-
 ;; Copyright (C) 2026 NSKK Contributors
-
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n convenience
-
 ;; This file is NOT part of GNU Emacs.
-
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 ;;; Commentary:
-
 ;; Dictionary loading and lookup for NSKK (Layer 1: Core Engine).
 ;;
 ;; Layer position: L1 (Core Engine) -- depends on nskk-prolog and nskk-cps-macros.
@@ -64,47 +56,71 @@
 ;; - `nskk-dict-load-ja-dic'              -- load Emacs built-in ja-dic data
 ;; - `nskk-dict-save-user-dictionary'     -- persist user dictionary to file
 ;; - `nskk-dict-initialize'               -- initialize all dictionaries
-
 ;;; Code:
-
 (require 'cl-lib)
+
 (require 'subr-x)
+
 (require 'nskk-prolog)
+
 (require 'nskk-cps-macros)
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
+
 ;; Optional: annotation support
 (declare-function nskk-annotation-initialize "nskk-annotation")
+
 (declare-function nskk--annotation-load-from-candidates "nskk-annotation")
 
-(defgroup nskk-dictionary nil
+(defgroup
+  nskk-dictionary
+  nil
   "Dictionary and search settings."
-  :prefix "nskk-dict-"
-  :group 'nskk)
+  :prefix
+  "nskk-dict-"
+  :group
+  'nskk)
 
-(defcustom nskk-dict-user-dictionary-file
+(defcustom
+  nskk-dict-user-dictionary-file
   (expand-file-name "~/.nskk/jisyo")
   "Path to the user dictionary file for storing registered words."
-  :type 'file
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-dictionary)
+  :type
+  'file
+  :package-version
+  '(nskk . "0.1.0")
+  :group
+  'nskk-dictionary)
 
-(defcustom nskk-dict-system-dictionary-files nil
+(defcustom
+  nskk-dict-system-dictionary-files
+  nil
   "List of system dictionary files to load.
 When nil, NSKK auto-detects dictionary paths from nix profiles
 and common system locations."
-  :type '(repeat file)
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-dictionary)
+  :type
+  '(repeat file)
+  :package-version
+  '(nskk . "0.1.0")
+  :group
+  'nskk-dictionary)
 
-(defcustom nskk-dict-cache-enabled t
+(defcustom
+  nskk-dict-cache-enabled
+  t
   "When non-nil, enable on-disk caching for system dictionaries."
-  :type 'boolean
-  :safe #'booleanp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-dictionary)
+  :type
+  'boolean
+  :safe
+  #'booleanp
+  :package-version
+  '(nskk . "0.1.0")
+  :group
+  'nskk-dictionary)
 
-(defcustom nskk-dict-use-ja-dic 'auto
+(defcustom
+  nskk-dict-use-ja-dic
+  'auto
   "Control whether Emacs's built-in ja-dic is used as the system dictionary.
 Only consulted when `nskk-dict-system-dictionary-files' is nil.
 
@@ -114,88 +130,191 @@ Possible values:
   t               -- always use ja-dic, skipping auto-detection entirely.
   nil             -- never use ja-dic; only auto-detected or explicitly
                       configured SKK-JISYO files are loaded."
-  :type '(choice (const :tag "Auto-detect first, ja-dic fallback" auto)
-                 (const :tag "Always use ja-dic" t)
-                 (const :tag "Never use ja-dic" nil))
-  :safe (lambda (v) (memq v '(auto t nil)))
-  :package-version '(nskk . "0.2.0")
-  :group 'nskk-dictionary)
+  :type
+  '(choice
+    (const :tag "Auto-detect first, ja-dic fallback" auto)
+    (const :tag "Always use ja-dic" t)
+    (const :tag "Never use ja-dic" nil))
+  :safe
+  (lambda (v)
+    (memq v '(auto t nil)))
+  :package-version
+  '(nskk . "0.2.0")
+  :group
+  'nskk-dictionary)
 
-(defcustom nskk-large-dictionary nil
+(defcustom
+  nskk-large-dictionary
+  nil
   "Path to large SKK dictionary file, or nil to disable."
-  :type '(choice file (const nil))
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-dictionary)
+  :type
+  '(choice file (const nil))
+  :package-version
+  '(nskk . "0.1.0")
+  :group
+  'nskk-dictionary)
 
 (defvar nskk-jisyo-update-hook nil
-  "Hook run when dictionary is updated.")
+  "Hook run while a dictionary update crosses its publication boundary.
+User registration is transactional: the first `error' or `quit' stops later
+observers, rolls back NSKK's internal registration state, and propagates the
+original condition.  Best-effort update paths may instead report ordinary
+errors per observer.  Hook functions must manage their own external effects;
+NSKK can roll back only its internal dictionary and search-cache state.")
 
 ;;; Section 1: Error types
-
 (define-error 'nskk-dict-error "Dictionary error")
+(define-error 'nskk-dict-rollback-incomplete
+	      "Dictionary rollback remains incomplete"
+	      'nskk-dict-error)
 
 ;;; Atomic file writing
 
+(defun nskk--dict-file-identifier (path)
+  "Return the device and inode identifier for PATH, or nil if unavailable."
+  (when-let* ((attributes (file-attributes path 'integer)))
+    (file-attribute-file-identifier attributes)))
+
+(defun nskk--dict-call-with-atomic-file (path writer &optional on-commit)
+  "Call WRITER in a temporary buffer and atomically replace PATH.
+WRITER fills the temporary buffer.  Its complete contents are passed to
+\`make-temp-file' so creation and writing do not reopen a named temporary
+file.  ON-COMMIT, when non-nil, runs after the rename commits and before quits
+are re-enabled.  A condition signaled after the underlying rename is
+recognized by comparing file identifiers, so the callback still runs before
+the original condition is re-signaled."
+  (when (file-symlink-p path)
+    (signal 'file-error (list "Refusing to replace symbolic link" path)))
+  (when (and (file-exists-p path) (not (file-regular-p path)))
+    (signal 'file-error (list "Refusing to replace non-regular file" path)))
+  (let* ((old-modes (and (file-exists-p path) (file-modes path)))
+         (prefix (concat (expand-file-name path) "."))
+         (temp nil)
+         (temp-identifier nil)
+         (primary-condition nil)
+         (cleanup-condition nil)
+         result)
+    (unwind-protect
+        (condition-case condition
+            (progn
+              (with-temp-buffer
+                (funcall writer)
+                (setq temp
+                      (with-file-modes #o600
+                        (make-temp-file prefix nil nil (buffer-string)))))
+              (setq temp-identifier (nskk--dict-file-identifier temp))
+              (unless temp-identifier
+                (signal 'file-error
+                        (list "Cannot identify atomic temporary file" temp)))
+              (when old-modes
+                (set-file-modes temp old-modes))
+              (unless (equal temp-identifier
+                             (nskk--dict-file-identifier temp))
+                (signal 'file-error
+                        (list "Atomic temporary file identity changed" temp)))
+              (let ((rename-condition nil)
+                    rename-result)
+                (let ((inhibit-quit t))
+                  (condition-case condition
+                      (setq rename-result (rename-file temp path t))
+                    ((error quit)
+                     (setq rename-condition condition)))
+                  (if (or (null rename-condition)
+                          (condition-case nil
+                              (equal temp-identifier
+                                     (nskk--dict-file-identifier path))
+                            ((error quit) nil)))
+                      (progn
+                        (setq result rename-result)
+                        (when on-commit
+                          (funcall on-commit))
+                        (when rename-condition
+                          (signal (car rename-condition)
+                                  (cdr rename-condition))))
+                    (signal (car rename-condition)
+                            (cdr rename-condition))))))
+          ((error quit)
+           (setq primary-condition condition)))
+      (let ((inhibit-quit t))
+        (condition-case condition
+            (when (and temp-identifier
+                       (equal temp-identifier
+                              (nskk--dict-file-identifier temp)))
+              (delete-file temp))
+          ((error quit)
+           (setq cleanup-condition condition)))))
+    (cond
+     (primary-condition
+      (signal (car primary-condition) (cdr primary-condition)))
+     (cleanup-condition
+      (signal (car cleanup-condition) (cdr cleanup-condition)))
+     (t result))))
+
 (defmacro nskk-dict-with-atomic-file (path &rest body)
-  "Write BODY's temp-buffer output to PATH atomically and privately.
-Like `with-temp-file', but the content is first written to a
-same-directory temp file (created with 600 permissions by
-`make-temp-file') and then renamed over PATH, so a crash or full disk
-mid-write can never leave PATH truncated.  Used for the persisted user
-data files (jisyo, study data, learning scores) and the dict cache."
-  (declare (indent 1) (debug (form body)))
-  (let ((path-sym (make-symbol "path"))
-        (tmp-sym  (make-symbol "tmp")))
-    `(let* ((,path-sym ,path)
-            (,tmp-sym  (make-temp-file (concat ,path-sym "."))))
-       (unwind-protect
-           (progn
-             (with-temp-file ,tmp-sym ,@body)
-             (rename-file ,tmp-sym ,path-sym t))
-         (when (file-exists-p ,tmp-sym)
-           (delete-file ,tmp-sym))))))
+  "Write BODY output to PATH atomically and privately.
+Like \`with-temp-file', but the complete content is written while
+\`make-temp-file' exclusively creates a same-directory temporary file, then
+renamed over PATH.  Existing target modes are preserved.  Refuses to replace
+a symbolic link or an existing non-regular file."
+  (declare (indent 1)
+           (debug (form body)))
+  `(nskk--dict-call-with-atomic-file
+    ,path
+    (lambda ()
+      ,@body)))
 
 ;;; Section 2: Prolog infrastructure
-
 ;; Dictionary source facts: (dict-source source-symbol predicate-name)
 ;; These map source symbols to their Prolog predicate names
-(nskk-prolog-define-fact-table dict-source (:arity 2 :index :hash)
-  (user user-dict-entry)
-  (system system-dict-entry)
-  (kakutei kakutei-dict-entry))
+(nskk-prolog-define-fact-table
+    dict-source
+    (:arity 2 :index :hash)
+    (user user-dict-entry)
+    (system system-dict-entry)
+    (kakutei kakutei-dict-entry))
 
 ;; Bridge rule: unified lookup across all dictionary sources
 ;; User dictionary has priority (first clause wins on first solution)
 (nskk-prolog-<- (dict-entry \?k \?c) (user-dict-entry \?k \?c))
+
 (nskk-prolog-<- (dict-entry \?k \?c) (system-dict-entry \?k \?c))
 
 ;; List membership helper (needed for dict-register rule)
 (nskk-prolog-<- (member \?x (\?x . \?_)))
+
 (nskk-prolog-<- (member \?x (\?_ . \?rest)) (member \?x \?rest))
 
 ;; Dictionary registration rule using assertz/retract builtins
 ;; Clause 1: update existing entry, prepend word if not already present
-(nskk-prolog-<- (dict-register \?reading \?word)
+(nskk-prolog-<-
+  (dict-register \?reading \?word)
   (user-dict-entry \?reading \?existing)
   (not (member \?word \?existing))
   (retract (user-dict-entry \?reading \?existing))
   (assertz (user-dict-entry \?reading (\?word . \?existing))))
+
 ;; Clause 2: word already exists in entry, no-op success
-(nskk-prolog-<- (dict-register \?reading \?word)
+(nskk-prolog-<-
+  (dict-register \?reading \?word)
   (user-dict-entry \?reading \?existing)
   (member \?word \?existing))
+
 ;; Clause 3: no entry exists yet, create new one
-(nskk-prolog-<- (dict-register \?reading \?word)
+(nskk-prolog-<-
+  (dict-register \?reading \?word)
   (not (user-dict-entry \?reading \?_))
   (assertz (user-dict-entry \?reading (\?word))))
 
 ;; Dictionary unregistration rule using retract/assertz builtins
 ;; Clause 1: word is the sole candidate, retract entire entry
-(nskk-prolog-<- (dict-unregister \?reading \?word)
+(nskk-prolog-<-
+  (dict-unregister \?reading \?word)
   (user-dict-entry \?reading (\?word))
   (retract (user-dict-entry \?reading (\?word))))
+
 ;; Clause 2: remove word from multi-candidate entry (keep remaining)
-(nskk-prolog-<- (dict-unregister \?reading \?word)
+(nskk-prolog-<-
+  (dict-unregister \?reading \?word)
   (user-dict-entry \?reading \?existing)
   (member \?word \?existing)
   (retract (user-dict-entry \?reading \?existing))
@@ -204,18 +323,21 @@ data files (jisyo, study data, learning scores) and the dict cache."
 
 ;; List element removal helper (needed for dict-unregister rule)
 (nskk-prolog-<- (remove-element \?x (\?x . \?rest) \?rest))
-(nskk-prolog-<- (remove-element \?x (\?y . \?tail) (\?y . \?result))
+
+(nskk-prolog-<-
+  (remove-element \?x (\?y . \?tail) (\?y . \?result))
   (remove-element \?x \?tail \?result))
 
 ;;; Section 3: Data structures
-
-(cl-defstruct nskk-dict-entry
+(cl-defstruct
+  nskk-dict-entry
   "Dictionary entry structure."
   (key nil)
   (candidates nil)
   (okuri nil))
 
-(cl-defstruct nskk-dict-index
+(cl-defstruct
+  nskk-dict-index
   "Dictionary index structure.
 Lookup is performed via the Prolog database using PREDICATE.
 PREDICATE is a symbol naming the Prolog predicate (e.g., \\='system-dict-entry)
@@ -223,52 +345,380 @@ with arity 2: (predicate key candidates-list)."
   (predicate nil))
 
 ;;; Section 4: Elisp helpers (replacing removed Prolog predicates)
+(defun nskk--dict-merge-candidate-lists (candidate-lists)
+  "Merge CANDIDATE-LISTS in order, removing `equal' duplicates.
+The first equal candidate object is retained and input lists are not modified."
+  (let ((seen (make-hash-table :test #'equal))
+        result)
+    (dolist (candidates candidate-lists)
+      (dolist (candidate candidates)
+        (unless (gethash candidate seen)
+          (puthash candidate t seen)
+          (push candidate result))))
+    (nreverse result)))
 
 (defun nskk--dict-collect-candidates (solutions)
   "Collect and deduplicate candidates from Prolog SOLUTIONS.
 SOLUTIONS is a list of substitution environments from `nskk-prolog-query'.
-Returns a deduplicated list of candidate strings."
-  (cl-loop for sol in solutions
-           for cands = (nskk-prolog-walk '\?c sol)
-           when cands append cands into acc
-           finally return (delete-dups acc)))
+Returns candidates in solution order, retaining the first equal object."
+  (nskk--dict-merge-candidate-lists
+    (cl-loop
+      for
+      sol
+      in
+      solutions
+      for
+      candidates
+      =
+      (nskk-prolog-walk '\?c sol)
+      when
+      candidates
+      collect
+      candidates)))
 
 (defun nskk--dict-cache-source-valid-p (stored-files)
   "Return non-nil if STORED-FILES match current system dictionary configuration.
 Compares sorted STORED-FILES against sorted `nskk-dict-system-dictionary-files'
 so that reordering of dictionary paths does not invalidate the cache."
-  (equal (sort (copy-sequence stored-files) #'string<)
-         (sort (copy-sequence nskk-dict-system-dictionary-files) #'string<)))
+  (equal
+    (sort (copy-sequence stored-files) #'string<)
+    (sort (copy-sequence nskk-dict-system-dictionary-files) #'string<)))
+
+(defun nskk--dict-run-notification-hook (hook label)
+  "Run notification HOOK, reporting each ordinary error with LABEL.
+Each hook function is invoked separately so one failure does not block later
+observers.  A `quit' condition is deliberately allowed to escape unchanged."
+  (run-hook-wrapped
+    hook
+    (lambda (function)
+      (condition-case
+        err
+        (funcall function)
+        (error (message "NSKK: %s error: %s" label (error-message-string err))))
+      nil)))
 
 (defun nskk--dict-run-update-hook ()
-  "Run `nskk-jisyo-update-hook' with error protection."
-  (condition-case err
-      (run-hooks 'nskk-jisyo-update-hook)
-    (error (message "NSKK: jisyo-update-hook error: %s"
-                    (error-message-string err)))))
+  "Run `nskk-jisyo-update-hook' as an isolated notification boundary."
+  (nskk--dict-run-notification-hook 'nskk-jisyo-update-hook "jisyo-update-hook"))
+
+(defvar nskk--dict-pending-rollbacks (make-hash-table :test #'equal)
+  "Rollback state retained until every failed storage region is restored.")
+
+(defun nskk--dict-pending-rollback (owner)
+  "Return pending rollback state for OWNER, or nil."
+  (gethash owner nskk--dict-pending-rollbacks))
+
+(defun nskk--dict-clear-pending-rollback (owner)
+  "Discard retained rollback state for OWNER."
+  (remhash owner nskk--dict-pending-rollbacks))
+
+(defun nskk--dict-rollback-diagnostic (owner primary failures)
+  "Format a rollback diagnostic for OWNER, PRIMARY, and FAILURES."
+  (format
+   "Rollback for %S after %S is incomplete; unrestored regions: %s"
+   owner primary
+   (mapconcat
+    (lambda (failure)
+      (format "%S=%S" (car failure) (cdr failure)))
+    failures
+    ", ")))
+
+(defun nskk--dict-warn-rollback-incomplete (owner primary failures)
+  "Warn that rollback for OWNER after PRIMARY left FAILURES.
+A warning failure must never replace the primary publication condition."
+  (condition-case nil
+      (let ((inhibit-quit t))
+        (display-warning
+         'nskk
+         (nskk--dict-rollback-diagnostic owner primary failures)
+         :error))
+    ((error quit) nil)))
+
+(defun nskk--dict-run-rollback (owner primary restorers)
+  "Run RESTORERS independently after PRIMARY for OWNER.
+Each RESTORERS entry is (REGION . FUNCTION).  Retain only failed
+restorers so their captured snapshots remain available for retry."
+  (let (failed-restorers failures)
+    (dolist (restorer restorers)
+      (condition-case failure
+          (let ((inhibit-quit t))
+            (funcall (cdr restorer)))
+        ((error quit)
+         (push restorer failed-restorers)
+         (push (cons (car restorer) failure) failures))))
+    (setq failed-restorers (nreverse failed-restorers)
+          failures (nreverse failures))
+    (if failures
+        (let ((pending
+               (list :primary primary
+                     :restorers failed-restorers
+                     :failures failures)))
+          (puthash owner pending nskk--dict-pending-rollbacks)
+          (nskk--dict-warn-rollback-incomplete owner primary failures)
+          pending)
+      (nskk--dict-clear-pending-rollback owner)
+      nil)))
+
+(defun nskk--dict-retry-pending-rollback (owner)
+  "Retry every retained failed rollback region for OWNER.
+Return updated pending state, or nil after complete recovery."
+  (when-let* ((pending (nskk--dict-pending-rollback owner)))
+    (nskk--dict-run-rollback
+     owner
+     (plist-get pending :primary)
+     (plist-get pending :restorers))))
+
+(defun nskk--dict-ensure-rollback-complete (owner)
+  "Retry OWNER rollback and signal if any region remains unrestored."
+  (when-let* ((pending (nskk--dict-retry-pending-rollback owner)))
+    (let* ((primary (plist-get pending :primary))
+           (failures (plist-get pending :failures))
+           (payload
+            (list :owner owner
+                  :primary primary
+                  :failures failures)))
+      (signal
+       'nskk-dict-rollback-incomplete
+       (list
+        (nskk--dict-rollback-diagnostic owner primary failures)
+        payload)))))
+
+(defun nskk--dict-rollback-and-resignal (owner primary restorers)
+  "Rollback OWNER with RESTORERS, then re-signal PRIMARY unchanged."
+  (nskk--dict-run-rollback owner primary restorers)
+  (signal (car primary) (cdr primary)))
+
+(defconst
+  nskk--dict-storage-missing
+  (make-symbol "missing")
+  "Sentinel for an absent predicate storage entry.")
+
+(defun nskk--dict-predicate-snapshot (key)
+  "Return an exact snapshot of Prolog storage entries for KEY only."
+  (let ((missing nskk--dict-storage-missing))
+    (vector
+      missing
+      key
+      (gethash key nskk--prolog-database missing)
+      (gethash key nskk--prolog-database-tails missing)
+      (gethash key nskk--prolog-index-config missing)
+      (gethash key nskk--prolog-hash-indices missing)
+      (gethash key nskk--prolog-trie-indices missing)
+      (gethash key nskk--prolog-index-bucket-tail-cache missing))))
+
+(defun nskk--dict-apply-predicate-snapshot (snapshot)
+  "Apply SNAPSHOT without changing storage for any other predicate."
+  (let ((missing (aref snapshot 0))
+        (key (aref snapshot 1))
+        (inhibit-quit t))
+    (dolist (entry
+        (list
+          (cons nskk--prolog-database (aref snapshot 2))
+          (cons nskk--prolog-database-tails (aref snapshot 3))
+          (cons nskk--prolog-index-config (aref snapshot 4))
+          (cons nskk--prolog-hash-indices (aref snapshot 5))
+          (cons nskk--prolog-trie-indices (aref snapshot 6))
+          (cons nskk--prolog-index-bucket-tail-cache (aref snapshot 7))))
+      (if (eq (cdr entry) missing) (remhash key (car entry))
+        (puthash key (cdr entry) (car entry))))))
+
+(defun nskk--dict-stage-predicate-entries (predicate entries &optional existing-clauses)
+  "Build PREDICATE facts for ENTRIES in isolated Prolog storage.
+EXISTING-CLAUSES are asserted before ENTRIES for append-style loads."
+  (let ((nskk--prolog-database (make-hash-table :test #'equal))
+        (nskk--prolog-database-tails (make-hash-table :test #'equal))
+        (nskk--prolog-index-config (make-hash-table :test #'equal))
+        (nskk--prolog-hash-indices (make-hash-table :test #'equal))
+        (nskk--prolog-trie-indices (make-hash-table :test #'equal))
+        (nskk--prolog-index-bucket-tail-cache (make-hash-table :test #'equal)))
+    (nskk-prolog-set-index predicate 2 :trie)
+    (dolist (clause existing-clauses)
+      (nskk-prolog-assert clause))
+    (nskk-prolog-trie-bulk-assert predicate 2 entries)
+    (nskk--dict-predicate-snapshot (nskk--prolog-clause-key predicate 2))))
+
+(defun nskk--dict-publish-staged-predicate (staged)
+  "Publish STAGED predicate storage."
+  (nskk--dict-apply-predicate-snapshot staged))
+
+(defun nskk--dict-commit-staged-predicate (staged &optional prepare)
+  "Run PREPARE and atomically publish STAGED predicate storage.
+Restore the previous predicate storage if either step signals an error or quit."
+  (let* ((key (aref staged 1))
+         (owner (list 'nskk--dict-commit-staged-predicate key)))
+    (nskk--dict-ensure-rollback-complete owner)
+    (let ((previous (nskk--dict-predicate-snapshot key)))
+      (condition-case condition
+          (prog1
+              (progn
+                (when prepare
+                  (funcall prepare))
+                (nskk--dict-publish-staged-predicate staged))
+            (nskk--dict-clear-pending-rollback owner))
+        ((error quit)
+         (nskk--dict-rollback-and-resignal
+          owner
+          condition
+          (list
+           (cons
+            'predicate
+            (lambda ()
+              (nskk--dict-apply-predicate-snapshot previous))))))))))
+
+(defun nskk--dict-replace-predicate-entries (predicate entries)
+  "Atomically replace PREDICATE/2 with ENTRIES."
+  (nskk--dict-commit-staged-predicate
+    (nskk--dict-stage-predicate-entries predicate entries)))
+
+(defun nskk--dict-append-predicate-entries (predicate entries)
+  "Atomically append ENTRIES to PREDICATE/2.
+Database and warm index-bucket appends run in O(length ENTRIES).  A bucket
+created outside this function pays a one-time tail discovery cost.  A fresh
+predicate receives a trie index; existing index strategy is retained."
+  (let* ((key (nskk--prolog-clause-key predicate 2))
+         (missing nskk--dict-storage-missing)
+         (previous (nskk--dict-predicate-snapshot key))
+         (old-database-head (gethash key nskk--prolog-database))
+         (old-database-tail (gethash key nskk--prolog-database-tails))
+         (old-database-tail-cdr (and old-database-tail (cdr old-database-tail)))
+         (clauses nil)
+         (clauses-tail nil)
+         (groups (make-hash-table :test #'equal))
+         (group-order nil)
+         (database-append-tail nil)
+         (index-splices nil)
+         (cache-changes nil)
+         (committed nil))
+    (unwind-protect (progn
+        (dolist (entry entries)
+          (when (stringp (car entry))
+            (let* ((clause (list (list predicate (car entry) (cdr entry))))
+                   (database-cell (list clause))
+                   (first-arg (car entry))
+                   (group (gethash first-arg groups)))
+              (if clauses-tail (setcdr clauses-tail database-cell)
+                (setq clauses database-cell))
+              (setq clauses-tail database-cell)
+              (if group (let ((index-cell (list clause)))
+                  (setcdr (aref group 1) index-cell)
+                  (aset group 1 index-cell))
+                (let ((index-cell (list clause)))
+                  (puthash first-arg (vector index-cell index-cell) groups)
+                  (push first-arg group-order))))))
+        (let ((inhibit-quit t))
+          (unless (or (gethash key nskk--prolog-index-config) old-database-head)
+            (nskk-prolog-set-index predicate 2 :trie))
+          (let* ((type (gethash key nskk--prolog-index-config))
+                 (indexed-p (memq type '(:hash :trie)))
+                 (index (and indexed-p (nskk--prolog-transaction-index key type)))
+                 (cache-entry
+                (and indexed-p (gethash key nskk--prolog-index-bucket-tail-cache missing)))
+                 (cache-buckets
+                (and
+                  (vectorp cache-entry)
+                  (= (length cache-entry) 3)
+                  (eq (aref cache-entry 0) type)
+                  (eq (aref cache-entry 1) index)
+                  (hash-table-p (aref cache-entry 2))
+                  (aref cache-entry 2))))
+            (when clauses
+              (if old-database-head (progn
+                  (unless old-database-tail
+                    (error "Missing database tail for %s" key))
+                  (setq database-append-tail old-database-tail)
+                  (setcdr old-database-tail clauses))
+                (puthash key clauses nskk--prolog-database))
+              (puthash key clauses-tail nskk--prolog-database-tails))
+            (when indexed-p
+              (dolist (first-arg group-order)
+                (let* ((group (gethash first-arg groups))
+                       (group-head (aref group 0))
+                       (group-tail (aref group 1))
+                       (old-bucket (nskk--prolog-transaction-index-bucket type index first-arg))
+                       (old-tail-info (and cache-buckets (gethash first-arg cache-buckets missing)))
+                       (old-tail-info-present-p (and cache-buckets (not (eq old-tail-info missing)))))
+                  (when cache-buckets
+                    (push
+                      (vector cache-buckets first-arg old-tail-info-present-p old-tail-info)
+                      cache-changes))
+                  (let* ((old-tail (nskk--prolog-index-bucket-tail key type index first-arg old-bucket))
+                         (old-tail-cdr (and old-tail (cdr old-tail)))
+                         (new-bucket (or old-bucket group-head)))
+                    (push
+                      (vector type index first-arg old-bucket old-tail old-tail-cdr)
+                      index-splices)
+                    (when old-tail
+                      (setcdr old-tail group-head))
+                    (nskk--prolog-transaction-set-index-bucket type index first-arg new-bucket)
+                    (nskk--prolog-index-cache-set-bucket
+                      key
+                      type
+                      index
+                      first-arg
+                      new-bucket
+                      group-tail))))
+              (unless indexed-p
+                (remhash key nskk--prolog-index-bucket-tail-cache)))
+            (when quit-flag
+              (signal 'quit nil)))
+          (setq committed t)))
+      (let ((inhibit-quit t))
+        (if committed (setq previous nil
+                database-append-tail nil
+                index-splices nil
+                cache-changes nil)
+          (dolist (change cache-changes)
+            (let ((buckets (aref change 0))
+                  (first-arg (aref change 1)))
+              (if (aref change 2) (puthash first-arg (aref change 3) buckets)
+                (remhash first-arg buckets))))
+          (dolist (splice index-splices)
+            (when (aref splice 4)
+              (setcdr (aref splice 4) (aref splice 5)))
+            (nskk--prolog-transaction-set-index-bucket
+              (aref splice 0)
+              (aref splice 1)
+              (aref splice 2)
+              (aref splice 3)))
+          (when database-append-tail
+            (setcdr database-append-tail old-database-tail-cdr))
+          (nskk--dict-apply-predicate-snapshot previous))))))
 
 (defun nskk--dict-load-from-cache ()
-  "Load system dictionary from on-disk cache into Prolog.
-Returns entry count on success, or 0 if cache is unavailable."
+  "Replace system dictionary facts from a fully validated on-disk cache.
+Returns entry count on success, or 0 if cache is unavailable or invalid."
   (let ((entries (nskk--dict-load-system-dict-from-cache)))
-    (if entries
-        (progn
-          (nskk-prolog-trie-bulk-assert 'system-dict-entry 2 entries)
-          (message "NSKK: Loaded %d entries from cache" (length entries))
-          (length entries))
+    (if entries (progn
+        (nskk--dict-replace-predicate-entries 'system-dict-entry entries)
+        (message "NSKK: Loaded %d entries from cache" (length entries))
+        (length entries))
       0)))
 
 (defun nskk--dict-load-from-files (dict-files)
-  "Parse DICT-FILES and load all entries into Prolog as system-dict-entry/2.
-Returns entry count (0 if no readable files or no entries found)."
-  (let ((all-entries (cl-loop for file in dict-files
-                               when (file-readable-p file)
-                               append (nskk--dict-parse-file-to-entries file))))
-    (when all-entries
-      (nskk-prolog-trie-bulk-assert 'system-dict-entry 2 all-entries)
-    (when nskk-dict-cache-enabled
-      (nskk--dict-save-system-dict-cache all-entries dict-files)))
-    (length all-entries)))
+  "Transactionally replace system facts from DICT-FILES.
+Return the entry count, or 0 without changing facts when any read, staging,
+cache publication, or predicate publication step fails."
+  (condition-case
+    err
+    (let ((all-entries
+          (cl-loop
+            for
+            file
+            in
+            dict-files
+            append
+            (nskk--dict-parse-file-to-entries-strict file))))
+      (when all-entries
+        (let ((staged (nskk--dict-stage-predicate-entries 'system-dict-entry all-entries)))
+          (nskk--dict-commit-staged-predicate
+            staged
+            (when nskk-dict-cache-enabled
+              (lambda ()
+                (nskk--dict-save-system-dict-cache all-entries dict-files))))))
+      (length all-entries))
+    (error
+      (message "NSKK: Dictionary load failed (%s)" (error-message-string err))
+      0)))
 
 (defvar nskk--dict-ja-dic-code-table nil
   "Hash table mapping ja-dic compact kana codes to Emacs characters.")
@@ -277,16 +727,33 @@ Returns entry count (0 if no readable files or no entries found)."
   "Decode ja-dic compact key CODES into an NSKK reading string."
   (unless nskk--dict-ja-dic-code-table
     (setq nskk--dict-ja-dic-code-table (make-hash-table :test #'eql))
-    (cl-loop for ch from #x3041 to #x3096
-             for jis = (encode-char ch 'japanese-jisx0208)
-             when jis do (puthash (- (logand jis #xFF) 32) ch nskk--dict-ja-dic-code-table)))
-  (apply #'string
-         (mapcar (lambda (code)
-                   (cond ((zerop code) ?ー)
-                         ((< code 0) (- code))
-                         (t (or (gethash code nskk--dict-ja-dic-code-table)
-                                (error "NSKK: Unknown ja-dic compact code %S" code)))))
-                 codes)))
+    (cl-loop
+      for
+      ch
+      from
+      #x3041
+      to
+      #x3096
+      for
+      jis
+      =
+      (encode-char ch 'japanese-jisx0208)
+      when
+      jis
+      do
+      (puthash (- (logand jis #xFF) 32) ch nskk--dict-ja-dic-code-table)))
+  (apply
+    #'string
+    (mapcar
+      (lambda (code)
+        (cond
+          ((zerop code) ?ー)
+          ((< code 0) (- code))
+          (t
+            (or
+              (gethash code nskk--dict-ja-dic-code-table)
+              (error "NSKK: Unknown ja-dic compact code %S" code)))))
+      codes)))
 
 (defun nskk--dict-ja-dic-flatten-node (node prefix)
   "Recursively flatten ja-dic NODE using PREFIX compact codes.
@@ -294,59 +761,62 @@ Candidates at each leaf are stored as-is from the ja-dic tree.
 For `skkdic-okuri-nasi', the stored order matches SKK-JISYO.L order.
 For `skkdic-okuri-ari', `skkdic-extract-conversion-data' reverses
 candidates via cons-accumulation; callers must reverse them back."
-  (let* ((code (car node))
-         (rest (cdr node))
-         (path (append prefix (list code)))
-         (cands (car rest))
-         (entries nil))
-    (when (and (listp cands) (stringp (car cands)))
-      (push (cons (nskk--dict-ja-dic-decode-key path) cands) entries)
-      (setq rest (cdr rest)))
-    (when (eq (car rest) t) (setq rest (cdr rest)))
-    (dolist (child rest)
-      (when (consp child)
-        (setq entries (nconc entries (nskk--dict-ja-dic-flatten-node child path)))))
-    entries))
+  (let (entries)
+    (cl-labels ((walk (current current-prefix)
+                  (let* ((code (car current))
+                 (rest (cdr current))
+                 (path (append current-prefix (list code)))
+                 (candidates (car rest)))
+            (when (and (listp candidates) (stringp (car candidates)))
+              (push (cons (nskk--dict-ja-dic-decode-key path) candidates) entries)
+              (setq rest (cdr rest)))
+            (when (eq (car rest) t)
+              (setq rest (cdr rest)))
+            (dolist (child rest)
+              (when (consp child)
+                (walk child path))))))
+      (walk node prefix))
+    (nreverse entries)))
 
 (defun nskk--dict-ja-dic-flatten-tree (tree &optional reverse-candidates)
   "Flatten ja-dic TREE into a list of (key . candidates) entries.
 When REVERSE-CANDIDATES is non-nil, reverse each entry's candidate list.
 This is needed for `skkdic-okuri-ari' where `skkdic-extract-conversion-data'
 stores candidates in reversed order via cons-accumulation."
-  (let ((entries (cl-loop for node in (cdr tree)
-                          when (consp node)
-                          nconc (nskk--dict-ja-dic-flatten-node node nil))))
-    (if reverse-candidates
-        (mapcar (lambda (entry)
-                  (cons (car entry) (reverse (cdr entry))))
-                entries)
+  (let (entries)
+    (dolist (node (cdr tree))
+      (when (consp node)
+        (dolist (entry (nskk--dict-ja-dic-flatten-node node nil))
+          (push entry entries))))
+    (setq entries (nreverse entries))
+    (if reverse-candidates (mapcar
+        (lambda (entry)
+          (cons (car entry) (reverse (cdr entry))))
+        entries)
       entries)))
 
 (defun nskk-dict-load-ja-dic ()
   "Load Emacs built-in `ja-dic' data as `system-dict-entry' facts.
 Returns `system' when entries were loaded successfully, or nil otherwise."
-  (condition-case err
-      (when (load-library "ja-dic/ja-dic")
-        (let ((entries (append (when (boundp 'skkdic-okuri-nasi)
-                                 (nskk--dict-ja-dic-flatten-tree skkdic-okuri-nasi))
-                               (when (boundp 'skkdic-okuri-ari)
-                                 (nskk--dict-ja-dic-flatten-tree skkdic-okuri-ari t)))))
-          (when entries
-            (nskk-prolog-retract-all 'system-dict-entry 2)
-            (nskk-prolog-set-index 'system-dict-entry 2 :trie)
-            (nskk-prolog-trie-bulk-assert 'system-dict-entry 2 entries)
-            (message "NSKK: Loaded ja-dic system dictionary (%d entries)"
-                     (length entries))
-            'system)))
+  (condition-case
+    err
+    (when (load-library "ja-dic/ja-dic")
+      (let ((entries
+            (append
+              (when (boundp 'skkdic-okuri-nasi)
+                (nskk--dict-ja-dic-flatten-tree skkdic-okuri-nasi))
+              (when (boundp 'skkdic-okuri-ari)
+                (nskk--dict-ja-dic-flatten-tree skkdic-okuri-ari t)))))
+        (when entries
+          (nskk--dict-replace-predicate-entries 'system-dict-entry entries)
+          (message "NSKK: Loaded ja-dic system dictionary (%d entries)" (length entries))
+          'system)))
     (error
-     (message "NSKK: Could not load ja-dic (%s)"
-              (error-message-string err))
-     nil)))
+      (message "NSKK: Could not load ja-dic (%s)" (error-message-string err))
+      nil)))
 
 ;;; Section 5: I/O and lifecycle
-
 ;;; Dictionary Parsing
-
 (defun nskk-dict-parse-line (line)
   "Parse a single SKK dictionary LINE.
 Returns (key . candidates-list) or nil for comments/invalid lines.
@@ -389,9 +859,7 @@ also registers any candidate annotations found in the line."
 If CANDIDATE-STR contains ';', returns (text-before-semi . text-after-semi).
 Otherwise returns (CANDIDATE-STR . nil)."
   (let ((semi (string-search ";" candidate-str)))
-    (if semi
-        (cons (substring candidate-str 0 semi)
-              (substring candidate-str (1+ semi)))
+    (if semi (cons (substring candidate-str 0 semi) (substring candidate-str (1+ semi)))
       (cons candidate-str nil))))
 
 (defun nskk--dict-parse-candidates-with-annotations (str)
@@ -404,87 +872,490 @@ For \"/漢字;a kanji/感じ/\", returns:
       (mapcar #'nskk--dict-split-candidate-annotation parts))))
 
 ;;; Dictionary Loading
+(defconst
+  nskk--dict-cache-max-bytes
+  (* 128 1024 1024)
+  "Maximum accepted dictionary cache size in bytes.")
+
+(defun nskk--dict-insert-file-contents-pinned
+    (file resolved-file attributes max-bytes &optional allow-symlink)
+  "Insert a validated regular FILE through a pinned hard-link snapshot.
+RESOLVED-FILE and ATTRIBUTES describe the target validated by the caller.
+Read at most MAX-BYTES bytes.  Reject symbolic FILE unless ALLOW-SYMLINK
+is non-nil.  If no safe hard-link snapshot can be made, read directly only
+when both the lexical and canonical local paths are immutable."
+  (cl-labels
+      ((pin-identity
+         (value)
+         (and value
+              (list
+               (file-attribute-device-number value)
+               (file-attribute-inode-number value)
+               (file-attribute-size value)
+               (file-attribute-modification-time value))))
+       (full-identity
+         (value)
+         (and value
+              (append
+               (pin-identity value)
+               (list (file-attribute-status-change-time value)))))
+       (current-resolved-file
+         ()
+         (condition-case nil
+             (file-truename file)
+           (file-error nil)))
+       (parent-directories
+         (path)
+         (let ((directory
+                (directory-file-name
+                 (file-name-directory (expand-file-name path))))
+               parent
+               result)
+           (while directory
+             (push directory result)
+             (setq parent
+                   (directory-file-name
+                    (file-name-directory directory)))
+             (setq directory
+                   (unless (equal parent directory) parent)))
+           (nreverse result)))
+       (handled-file-name-p
+         (path)
+         (cl-some
+          (lambda (operation)
+            (find-file-name-handler path operation))
+          '(insert-file-contents
+  file-attributes
+  file-truename
+  file-writable-p
+  file-symlink-p
+  file-regular-p
+  file-directory-p
+  file-modes
+  file-acl
+  make-temp-file
+  set-file-modes
+  add-name-to-file
+  delete-directory)))
+       (local-unhandled-file-p
+         (path)
+         (and (not (file-remote-p path))
+              (not (handled-file-name-p path))))
+       (safe-directory-entry-controller-p
+    (directory)
+    (condition-case nil
+        (let* ((directory-attributes
+                (and (local-unhandled-file-p directory)
+                     (file-attributes directory 'integer)))
+               (modes
+                (and directory-attributes
+                     (file-modes directory)))
+               (acl
+                (and directory-attributes
+                     (file-acl directory)))
+               (owner
+                (and directory-attributes
+                     (file-attribute-user-id directory-attributes))))
+          (and directory-attributes
+               (integerp modes)
+               (file-directory-p directory)
+               (null acl)
+               (or (equal owner 0)
+                   (equal owner (user-uid)))
+               (or (zerop (logand modes #o022))
+                   (not (zerop (logand modes #o1000))))))
+      (file-error nil)))
+  (safe-directory-ancestry-p
+    (directory)
+    (let ((canonical
+           (and (local-unhandled-file-p directory)
+                (condition-case nil
+                    (file-truename directory)
+                  (file-error nil)))))
+      (and canonical
+           (local-unhandled-file-p canonical)
+           (cl-every
+            #'safe-directory-entry-controller-p
+            (delete-dups
+             (append
+              (parent-directories directory)
+              (parent-directories canonical)))))))
+  (safe-snapshot-base-p
+    (directory)
+    (condition-case nil
+        (let* ((directory-attributes
+                (and (local-unhandled-file-p directory)
+                     (file-attributes directory 'integer)))
+               (modes
+                (and directory-attributes
+                     (file-modes directory)))
+               (acl
+                (and directory-attributes
+                     (file-acl directory))))
+          (and directory-attributes
+               (integerp modes)
+               (file-directory-p directory)
+               (file-writable-p directory)
+               (null acl)
+               (safe-directory-ancestry-p directory)
+               (or
+                (and
+                 (equal
+                  (file-attribute-user-id directory-attributes)
+                  (user-uid))
+                 (zerop (logand modes #o022)))
+                (and
+                 (zerop
+                  (file-attribute-user-id directory-attributes))
+                 (not (zerop (logand modes #o1000)))))))
+      (file-error nil)))
+       (safe-source-snapshot-parent-p
+  (directory)
+  (condition-case nil
+      (let* ((directory-attributes
+              (and (local-unhandled-file-p directory)
+                   (file-attributes directory (quote integer))))
+             (modes
+              (and directory-attributes
+                   (file-modes directory)))
+             (acl
+              (and directory-attributes
+                   (file-acl directory))))
+        (and directory-attributes
+             (integerp modes)
+             (file-directory-p directory)
+             (not (file-symlink-p directory))
+             (file-writable-p directory)
+             (null acl)
+             (safe-directory-ancestry-p directory)
+             (equal
+              (file-attribute-user-id directory-attributes)
+              (user-uid))
+             (zerop (logand modes #o022))
+             (equal
+              (file-attribute-device-number directory-attributes)
+              (file-attribute-device-number attributes))))
+    (file-error nil)))
+       (private-snapshot-directory-p
+  (directory)
+  (condition-case nil
+      (let* ((directory-attributes
+              (and (local-unhandled-file-p directory)
+                   (file-attributes directory (quote integer))))
+             (modes
+              (and directory-attributes
+                   (file-modes directory)))
+             (acl
+              (and directory-attributes
+                   (file-acl directory))))
+        (and directory-attributes
+             (integerp modes)
+             (file-directory-p directory)
+             (not (file-symlink-p directory))
+             (null acl)
+             (safe-directory-ancestry-p directory)
+             (equal
+              (file-attribute-user-id directory-attributes)
+              (user-uid))
+             (= (logand modes #o777) #o700)))
+    (file-error nil)))
+       (stable-direct-source-p
+  (expected-identity)
+  (let* ((current-resolved (current-resolved-file))
+         (current-attributes
+          (and current-resolved
+               (file-attributes resolved-file (quote integer))))
+         (current-size
+          (and current-attributes
+               (file-attribute-size current-attributes))))
+    (and (local-unhandled-file-p file)
+         (local-unhandled-file-p resolved-file)
+         (safe-directory-ancestry-p file)
+         (safe-directory-ancestry-p resolved-file)
+         current-attributes
+         (integerp current-size)
+         (<= current-size max-bytes)
+         (file-regular-p resolved-file)
+         (or allow-symlink (not (file-symlink-p file)))
+         (equal resolved-file current-resolved)
+         (equal expected-identity
+                (full-identity current-attributes))
+         (not (file-writable-p resolved-file))
+         (cl-every
+          (lambda (directory)
+            (not (file-writable-p directory)))
+          (append
+           (parent-directories file)
+           (parent-directories resolved-file)))))))
+    (let* ((source-local-p
+            (and (local-unhandled-file-p file)
+                 (local-unhandled-file-p resolved-file)))
+           (size (and attributes (file-attribute-size attributes)))
+           (expected-pin-identity (pin-identity attributes))
+           (expected-full-identity (full-identity attributes))
+           (source-snapshot-directories
+            (and source-local-p
+                 (cl-remove-if-not
+                  #'safe-source-snapshot-parent-p
+                  (parent-directories resolved-file))))
+           (snapshot-bases
+            (and source-local-p
+                 (cl-remove-if-not
+                  #'safe-snapshot-base-p
+                  (delete-dups
+                   (cons
+                    (directory-file-name
+                     (expand-file-name temporary-file-directory))
+                    source-snapshot-directories))))))
+      (unless (and source-local-p
+                   attributes
+                   expected-full-identity
+                   (integerp size)
+                   (integerp max-bytes)
+                   (>= max-bytes 0)
+                   (file-regular-p resolved-file)
+                   (or allow-symlink (not (file-symlink-p file)))
+                   (equal resolved-file (current-resolved-file)))
+        (error "NSKK: File is not a stable local regular file"))
+      (when (> size max-bytes)
+        (error "NSKK: File exceeds %d-byte limit" max-bytes))
+      (unless
+          (catch 'read-through-snapshot
+            (dolist (snapshot-base snapshot-bases)
+              (let (snapshot-directory snapshot-file linked)
+                (unwind-protect
+                    (progn
+                      (condition-case nil
+                          (progn
+                            (setq snapshot-directory
+                                  (make-temp-file
+                                   (expand-file-name
+                                    "nskk-pinned-read-"
+                                    snapshot-base)
+                                   t))
+                            (set-file-modes snapshot-directory #o700)
+                            (unless
+                                (private-snapshot-directory-p
+                                 snapshot-directory)
+                              (error
+                               "NSKK: Snapshot directory is not private"))
+                            (setq snapshot-file
+                                  (expand-file-name
+                                   "contents"
+                                   snapshot-directory))
+                            (add-name-to-file resolved-file snapshot-file)
+                            (setq linked t))
+                        (error nil))
+                      (when linked
+                        (when (file-symlink-p snapshot-file)
+                          (error
+                           "NSKK: Pinned snapshot is a symbolic link"))
+                        (let* ((snapshot-before
+                                (file-attributes snapshot-file 'integer))
+                               (source-before
+                                (file-attributes resolved-file 'integer))
+                               (pinned-identity
+                                (full-identity snapshot-before)))
+                          (unless
+                              (and snapshot-before
+                                   source-before
+                                   (file-regular-p snapshot-file)
+                                   (file-regular-p resolved-file)
+                                   (not (file-symlink-p snapshot-file))
+                                   (or allow-symlink
+                                       (not (file-symlink-p file)))
+                                   (equal resolved-file
+                                          (current-resolved-file))
+                                   (equal expected-pin-identity
+                                          (pin-identity snapshot-before))
+                                   (equal pinned-identity
+                                          (full-identity source-before)))
+                            (error "NSKK: File changed before pinned read"))
+                          (let ((contents
+                                 (with-temp-buffer
+                                   (set-buffer-multibyte nil)
+                                   (let ((coding-system-for-read
+                                          'no-conversion))
+                                     (insert-file-contents
+                                      snapshot-file
+                                      nil
+                                      0
+                                      (1+ max-bytes)))
+                                   (when (> (buffer-size) max-bytes)
+                                     (error
+                                      "NSKK: File exceeds %d-byte limit"
+                                      max-bytes))
+                                   (let ((snapshot-after
+                                          (file-attributes
+                                           snapshot-file 'integer))
+                                         (source-after
+                                          (file-attributes
+                                           resolved-file 'integer)))
+                                     (unless
+                                         (and
+                                          snapshot-after
+                                          source-after
+                                          (file-regular-p snapshot-file)
+                                          (file-regular-p resolved-file)
+                                          (not
+                                           (file-symlink-p snapshot-file))
+                                          (or
+                                           allow-symlink
+                                           (not (file-symlink-p file)))
+                                          (equal
+                                           resolved-file
+                                           (current-resolved-file))
+                                          (equal
+                                           pinned-identity
+                                           (full-identity snapshot-after))
+                                          (equal
+                                           pinned-identity
+                                           (full-identity source-after)))
+                                       (error
+                                        "NSKK: File changed during pinned read")))
+                                   (buffer-string))))
+                            (set-buffer-multibyte nil)
+                            (insert contents)
+                            (throw 'read-through-snapshot t)))))
+                  (when snapshot-directory
+                    (ignore-errors
+                      (delete-directory snapshot-directory t)))))))
+        (unless (stable-direct-source-p expected-full-identity)
+          (error "NSKK: Cannot safely read unpinned file"))
+        (let ((contents
+               (with-temp-buffer
+                 (set-buffer-multibyte nil)
+                 (let ((coding-system-for-read 'no-conversion))
+                   (insert-file-contents
+                    resolved-file nil 0 (1+ max-bytes)))
+                 (when (> (buffer-size) max-bytes)
+                   (error
+                    "NSKK: File exceeds %d-byte limit"
+                    max-bytes))
+                 (unless (stable-direct-source-p expected-full-identity)
+                   (error "NSKK: File changed during unpinned read"))
+                 (buffer-string))))
+          (set-buffer-multibyte nil)
+          (insert contents))))))
+
+  (defun nskk--dict-insert-file-contents-bounded (file coding-system)
+    "Insert regular FILE into the current empty buffer within the byte limit.
+CODING-SYSTEM nil means auto-detection.  Symbolic links to regular files
+are supported.  Pin the resolved target before the bounded read so path
+replacement cannot redirect the read to a FIFO or another file."
+    (unless (file-regular-p file)
+      (error "NSKK: Dictionary file is not a regular file"))
+    (let* ((resolved-file (file-truename file))
+           (attributes (file-attributes resolved-file 'integer)))
+      (nskk--dict-insert-file-contents-pinned
+       file resolved-file attributes nskk--dict-cache-max-bytes t)
+      (set-buffer-multibyte t)
+      (decode-coding-region
+       (point-min)
+       (point-max)
+       (or coding-system 'undecided))))
+
+(defun nskk--dict-parse-file-to-entries-strict (file &optional coding-system)
+  "Parse FILE to entries using CODING-SYSTEM.
+Signal any validation or I/O error."
+  (unless (and (stringp file) (file-readable-p file))
+    (error "NSKK: Dictionary file is not readable"))
+  (let ((entries nil))
+    (with-temp-buffer
+      (nskk--dict-insert-file-contents-bounded file coding-system)
+      (goto-char (point-min))
+      (while
+        (not (eobp))
+        (let ((parsed
+              (nskk-dict-parse-line
+                (buffer-substring-no-properties (line-beginning-position) (line-end-position)))))
+          (when parsed
+            (push parsed entries)))
+        (forward-line 1)))
+    (nreverse entries)))
 
 (defun nskk--dict-parse-file-to-entries (file &optional coding-system)
-  "Parse SKK dictionary FILE into a list of (key . candidates-list) pairs.
-CODING-SYSTEM defaults to nil (auto-detect).
-Returns the parsed entries list, or nil if FILE is not readable.
-Does not modify the Prolog database."
-  (when (and (stringp file) (file-readable-p file))
-    (let ((entries nil)
-          (coding coding-system))
-      (with-temp-buffer
-        (let ((coding-system-for-read coding))
-          (insert-file-contents file))
-        (goto-char (point-min))
-        (while (not (eobp))
-          (let ((parsed (nskk-dict-parse-line
-                         (buffer-substring-no-properties
-                          (line-beginning-position) (line-end-position)))))
-            (when parsed
-              (push parsed entries)))
-          (forward-line 1)))
-      (nreverse entries))))
+  "Parse SKK dictionary FILE using CODING-SYSTEM.
+Do not modify the Prolog database.  Return parsed entries, or nil when FILE is
+unreadable, too large, or invalid."
+  (condition-case
+    nil
+    (nskk--dict-parse-file-to-entries-strict file coding-system)
+    (error nil)))
 
 (defun nskk-dict-load-file (file &optional coding-system predicate-name)
   "Load SKK dictionary from FILE into Prolog as PREDICATE-NAME/2 facts.
-PREDICATE-NAME defaults to \\='system-dict-entry.
+PREDICATE-NAME defaults to system-dict-entry.
 CODING-SYSTEM defaults to nil which lets Emacs auto-detect encoding.
-
-Uses `nskk-prolog-assert' per entry (not bulk-assert) so that the flat
-clause database is also populated.  This is required for variable-key
-enumeration (e.g. `nskk-dict-save-user-dictionary' queries
-\\='(user-dict-entry ?k ?c)') to work correctly.  For large read-only
-system dictionaries, use `nskk-prolog-trie-bulk-assert' directly after
-`nskk--dict-parse-file-to-entries'.
-
-Returns PREDICATE-NAME symbol on success, or nil when FILE has no valid
-entries or cannot be read."
+Returns PREDICATE-NAME on success, or nil when FILE is invalid, too large,
+unreadable, or contains no valid entries."
   (when (and (stringp file) (file-readable-p file))
-    (let* ((pred (or predicate-name 'system-dict-entry))
-           (entries (nskk--dict-parse-file-to-entries file coding-system)))
-      (when entries
-        (nskk-prolog-set-index pred 2 :trie)
-        (dolist (entry entries)
-          (nskk-prolog-assert (list (list pred (car entry) (cdr entry)))))
-        pred))))
+    (condition-case
+      nil
+      (let* ((pred (or predicate-name 'system-dict-entry))
+             (entries (nskk--dict-parse-file-to-entries-strict file coding-system)))
+        (when entries
+          (nskk--dict-append-predicate-entries pred entries)
+          pred))
+      (error nil))))
 
-(defun/k nskk-dict-load-system-dictionaries ()
-  "Load system dictionaries from `nskk-dict-system-dictionary-files'.
-Asserts all entries as \\='system-dict-entry/2 Prolog facts via trie index.
-When `nskk-dict-cache-enabled' is non-nil and the cache is valid, loads from
-the on-disk cache to avoid re-parsing dictionary files.
-Calls ON-FOUND with \\='system if entries loaded; ON-NOT-FOUND otherwise."
-  (let ((dict-files nskk-dict-system-dictionary-files))
-    ;; Clear any previously loaded system dict facts
-    (nskk-prolog-retract-all 'system-dict-entry 2)
-    ;; Ensure trie index exists after retract-all
-    (nskk-prolog-set-index 'system-dict-entry 2 :trie)
-    (let ((loaded (if (and nskk-dict-cache-enabled
-                           (nskk--dict-cache-valid-p dict-files))
-                      (nskk--dict-load-from-cache)
-                    (nskk--dict-load-from-files dict-files))))
-      (if (> loaded 0)
-          (progn
-            (message "NSKK: Dictionary initialization is complete (%d entries)" loaded)
-            (succeed 'system))
-        (message "NSKK: No system dictionaries found")
-        (fail)))))
-
-(defun nskk-dict-load-user-dictionary ()
-  "Load user dictionary from `nskk-dict-user-dictionary-file'.
-Returns \\='user if loaded, or nil if not found."
-  (when (and nskk-dict-user-dictionary-file
-             (file-readable-p nskk-dict-user-dictionary-file))
-    (message "NSKK: Loading user dictionary from %s"
-             nskk-dict-user-dictionary-file)
-    ;; Clear any previously loaded user dict facts
-    (nskk-prolog-retract-all 'user-dict-entry 2)
-    (when (nskk-dict-load-file nskk-dict-user-dictionary-file nil 'user-dict-entry)
-      'user)))
+(defun/k
+  nskk-dict-load-system-dictionaries
+  ()
+  "Load system dictionaries from configured files or a validated cache.
+Existing system facts are preserved when neither source yields entries.
+Calls ON-FOUND with the symbol system if entries loaded; ON-NOT-FOUND otherwise."
+  (let* ((dict-files nskk-dict-system-dictionary-files)
+         (loaded
+        (if (and nskk-dict-cache-enabled (nskk--dict-cache-valid-p dict-files)) (nskk--dict-load-from-cache)
+          (nskk--dict-load-from-files dict-files))))
+    (if (> loaded 0) (progn
+        (message "NSKK: Dictionary initialization is complete (%d entries)" loaded)
+        (succeed (quote system)))
+      (message "NSKK: No system dictionaries found")
+      (fail))))
 
 ;;; On-disk cache for system dictionaries
+(defun nskk--dict-parse-user-file-to-entries (file)
+  "Parse and validate all user dictionary lines in FILE.
+Return entries only when FILE contains at least one valid entry and no
+invalid data lines.  Comments and blank lines are ignored."
+  (when (and (stringp file) (file-readable-p file))
+    (condition-case
+      nil
+      (with-temp-buffer
+        (nskk--dict-insert-file-contents-bounded file nil)
+        (let ((entries nil)
+              (valid t))
+          (goto-char (point-min))
+          (while
+            (and valid (not (eobp)))
+            (let ((line
+                  (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
+              (unless (or (string-empty-p (string-trim line)) (string-prefix-p ";;" line))
+                (let ((entry (nskk-dict-parse-line line)))
+                  (if entry (push entry entries)
+                    (setq valid nil)))))
+            (forward-line 1))
+          (when (and valid entries)
+            (nreverse entries))))
+      (error nil))))
 
+(defun nskk-dict-load-user-dictionary ()
+  "Load the configured user dictionary.
+Returns the symbol user if loaded, or nil if not found or invalid.
+Existing user dictionary facts are preserved unless the entire file
+validates and contains at least one entry."
+  (when (and
+      nskk-dict-user-dictionary-file
+      (file-readable-p nskk-dict-user-dictionary-file))
+    (message "NSKK: Loading user dictionary from %s" nskk-dict-user-dictionary-file)
+    (let ((entries (nskk--dict-parse-user-file-to-entries nskk-dict-user-dictionary-file)))
+      (when entries
+        (nskk--dict-replace-predicate-entries 'user-dict-entry entries)
+        'user))))
+
+;;; On-disk cache for system dictionaries
 (defun nskk--dict-cache-file-path ()
   "Return the path to the on-disk system dictionary cache."
   (expand-file-name "nskk/dict-cache.eld" user-emacs-directory))
@@ -494,21 +1365,22 @@ Returns \\='user if loaded, or nil if not found."
 Returns nil both when FILE cannot be stat'd (missing, unreadable, or broken
 symlink) and when FILE is newer than or equal to CACHE-MTIME."
   (let ((attr (file-attributes file)))
-    (and attr
-         (time-less-p
-          (file-attribute-modification-time attr)
-          cache-mtime))))
+    (and attr (time-less-p (file-attribute-modification-time attr) cache-mtime))))
 
 (defun nskk--dict-cache-valid-p (dict-files)
   "Return non-nil if the cache file exists and is newer than all DICT-FILES."
   (let ((cache-path (nskk--dict-cache-file-path)))
-    (and dict-files
-         (let ((cache-attr (file-attributes cache-path)))
-           (and cache-attr
-                (file-readable-p cache-path)
-                (let ((cache-mtime (file-attribute-modification-time cache-attr)))
-                  (cl-every (lambda (f) (nskk--dict-file-older-than f cache-mtime))
-                            dict-files)))))))
+    (and
+      dict-files
+      (let ((cache-attr (file-attributes cache-path)))
+        (and
+          cache-attr
+          (file-readable-p cache-path)
+          (let ((cache-mtime (file-attribute-modification-time cache-attr)))
+            (cl-every
+              (lambda (f)
+                (nskk--dict-file-older-than f cache-mtime))
+              dict-files)))))))
 
 (defun nskk--dict-save-system-dict-cache (entries dict-files)
   "Serialize ENTRIES to the on-disk cache.
@@ -516,47 +1388,90 @@ ENTRIES is a list of (kana . candidates-list) pairs.
 DICT-FILES is the list of source files used to build the cache."
   (let ((cache-path (nskk--dict-cache-file-path)))
     (make-directory (file-name-directory cache-path) t)
-    (nskk-dict-with-atomic-file cache-path
-      (prin1 (list :version 1
-                   :source-files dict-files
-                   :entries entries)
-             (current-buffer)))
+    (nskk-dict-with-atomic-file
+      cache-path
+      (prin1
+        (list :version 1 :source-files dict-files :entries entries)
+        (current-buffer)))
     (message "NSKK: Cached %d entries to %s" (length entries) cache-path)))
 
-(defun nskk--dict-load-system-dict-from-cache ()
-  "Load system dictionary entries from the on-disk cache.
-Returns a list of (kana . candidates-list) pairs, or nil on failure
-or if the stored source files no longer match the current configuration.
+(defvar read-eval nil
+  "Control read-time evaluation while reading Lisp data.")
 
-Validates `:source-files' stored in the cache against
-`nskk-dict-system-dictionary-files' using `nskk--dict-cache-source-valid-p'.
-Both lists are sorted before comparison so that reordering of dictionary
-paths does not invalidate the cache (FR-009)."
+(defun nskk--dict-cache-entry-p (entry)
+  "Return non-nil when ENTRY has the serialized cache entry schema."
+  (and
+    (consp entry)
+    (stringp (car entry))
+    (not (string-empty-p (car entry)))
+    (proper-list-p (cdr entry))
+    (consp (cdr entry))
+    (cl-every
+      (lambda (candidate)
+        (and (stringp candidate) (not (string-empty-p candidate))))
+      (cdr entry))))
+
+(defun nskk--dict-cache-data-entries (data)
+  "Return validated entries from cache DATA, or nil."
+  (when (and (proper-list-p data) (= (length data) 6))
+    (let ((keys (cl-loop for (key _value) on data by (function cddr) collect key))
+          (version (plist-get data :version))
+          (stored (plist-get data :source-files))
+          (entries (plist-get data :entries)))
+      (when (and
+          (= (length (delete-dups (copy-sequence keys))) 3)
+          (cl-every
+            (lambda (key)
+              (memq key (quote (:version :source-files :entries))))
+            keys)
+          (eql version 1)
+          (proper-list-p stored)
+          (consp stored)
+          (cl-every (function stringp) stored)
+          (proper-list-p entries)
+          (consp entries)
+          (cl-every (function nskk--dict-cache-entry-p) entries)
+          (nskk--dict-cache-source-valid-p stored))
+        entries))))
+
+(defun nskk--dict-load-system-dict-from-cache ()
+  "Load and fully validate system dictionary entries from disk cache.
+Returns a list of entry pairs, or nil on any size, syntax, schema, or
+source configuration failure."
   (let ((cache-path (nskk--dict-cache-file-path)))
-    (condition-case err
-        (with-temp-buffer
-          (insert-file-contents cache-path)
-          (let* ((data (read (current-buffer)))
-                 (version (plist-get data :version))
-                 (stored (plist-get data :source-files))
-                 (entries (plist-get data :entries)))
-            (when (and (eql version 1)
-                       stored
-                       entries
-                       (nskk--dict-cache-source-valid-p stored))
-              entries)))
+    (condition-case
+      err
+      (let* ((attributes (file-attributes cache-path))
+             (size (and attributes (file-attribute-size attributes))))
+        (when (and size (<= size nskk--dict-cache-max-bytes))
+          (with-temp-buffer
+            (nskk--dict-insert-file-contents-bounded cache-path nil)
+            (let ((read-eval nil)
+                  (read-circle nil))
+              (goto-char (point-min))
+              (let ((data (read (current-buffer))))
+                (skip-chars-forward " \\t\\r\\n")
+                (when (eobp)
+                  (nskk--dict-cache-data-entries data)))))))
       (error
-       (message "NSKK: Cache read failed (%s), reloading from source"
-                (error-message-string err))
-       nil))))
+        (message
+          "NSKK: Cache read failed (%s), reloading from source"
+          (error-message-string err))
+        nil))))
 
 ;;; Global Dictionary State
+(defvar nskk-dict-initialize-hook nil
+  "Hook run after dictionary initialization is published successfully.
+An ordinary error is reported per function without blocking later observers;
+a `quit' condition propagates unchanged and stops the remaining functions.")
 
 (defvar nskk--system-dict-index nil
   "Non-nil when system dictionary is loaded.
-Value is the source symbol \\='system.")
+Value is the source symbol system.")
 
-(defsubst nskk-dict-system-index ()
+(defsubst
+  nskk-dict-system-index
+  ()
   "Return the system dictionary index, or nil if not initialized."
   nskk--system-dict-index)
 
@@ -564,12 +1479,14 @@ Value is the source symbol \\='system.")
   "Non-nil when user dictionary is loaded.
 Value is the source symbol \\='user.")
 
-(defconst nskk--dict-system-probe-paths
-  (list (expand-file-name "~/.nix-profile/share/skk/SKK-JISYO.L")
-        "/run/current-system/sw/share/skk/SKK-JISYO.L"
-        "/usr/share/skk/SKK-JISYO.L"
-        "/usr/local/share/skk/SKK-JISYO.L"
-        "/opt/homebrew/share/skk/SKK-JISYO.L")
+(defconst
+  nskk--dict-system-probe-paths
+  (list
+    (expand-file-name "~/.nix-profile/share/skk/SKK-JISYO.L")
+    "/run/current-system/sw/share/skk/SKK-JISYO.L"
+    "/usr/share/skk/SKK-JISYO.L"
+    "/usr/local/share/skk/SKK-JISYO.L"
+    "/opt/homebrew/share/skk/SKK-JISYO.L")
   "Candidate paths probed for system SKK dictionary files.
 All readable paths from this list are returned by
 `nskk--dict-detect-system-dictionaries'.")
@@ -581,17 +1498,21 @@ Also includes `nskk-large-dictionary' when non-nil.
 Returns a list of readable dictionary file paths."
   (let* ((nix-profiles (getenv "NIX_PROFILES"))
          (nix-profile-paths
-          (when nix-profiles
-            (mapcar (lambda (p) (expand-file-name "share/skk/SKK-JISYO.L" p))
-                    (split-string nix-profiles))))
+        (when nix-profiles
+          (mapcar
+            (lambda (p)
+              (expand-file-name "share/skk/SKK-JISYO.L" p))
+            (split-string nix-profiles))))
          (large-dict-paths
-          (when nskk-large-dictionary
-            (list nskk-large-dictionary)))
+        (when nskk-large-dictionary
+          (list nskk-large-dictionary)))
          (candidates
-          (append nskk--dict-system-probe-paths
-                  nix-profile-paths
-                  large-dict-paths)))
-    (delete-dups (cl-remove-if-not (lambda (p) (and (stringp p) (file-readable-p p))) candidates))))
+        (append nskk--dict-system-probe-paths nix-profile-paths large-dict-paths)))
+    (delete-dups
+      (cl-remove-if-not
+        (lambda (p)
+          (and (stringp p) (file-readable-p p)))
+        candidates))))
 
 (defvar nskk--dict-okuri-consonants nil
   "Cached list of okuri-ari consonant character codes.
@@ -645,46 +1566,49 @@ the \\='(dict-initialized) Prolog fact first, then reinitializes."
   (nskk-dict-load-kakutei-dictionary)
   ;; Mark initialization complete (whether or not system dict was found).
   ;; This prevents repeated re-initialization across buffer enables.
-  (nskk-prolog-assert '((dict-initialized)))
+  (progn
+    (nskk-prolog-assert '((dict-initialized)))
+    (nskk--dict-run-notification-hook
+     'nskk-dict-initialize-hook "dict-initialize-hook"))
   (message "NSKK: Dictionary initialization is complete"))
 
-(defun/k nskk--dict-lookup-okuri-ari (key)
+(defun/k
+  nskk--dict-lookup-okuri-ari
+  (key)
   "Look up KEY for okuri-ari entries by appending each okuri consonant.
-Returns combined unique candidates from all matching entries via on-found,
-or calls on-not-found if no candidates are found."
-  (let* ((consonants nskk--dict-okuri-consonants)
-         (all-candidates
-          (cl-loop for c in consonants
-                   for okuri-key = (concat key (string c))
-                   for solutions = (nskk-prolog-query `(dict-entry ,okuri-key \?cands))
-                   when solutions
-                   nconc (cl-loop for sol in solutions
-                                  for cands = (nskk-prolog-walk '\?cands sol)
-                                  when cands append cands))))
-    (if all-candidates
-        (succeed (cl-remove-duplicates all-candidates :test #'equal))
-      (fail))))
+Returns candidates in consonant and solution order, retaining the first equal
+candidate object, or calls on-not-found if no candidates are found."
+  (let (candidate-lists)
+    (dolist (consonant nskk--dict-okuri-consonants)
+      (let* ((okuri-key (concat key (string consonant)))
+             (solutions (nskk-prolog-query `(dict-entry ,okuri-key \?cands))))
+        (dolist (solution solutions)
+          (let ((candidates (nskk-prolog-walk '\?cands solution)))
+            (when candidates
+              (push candidates candidate-lists))))))
+    (let ((candidates (nskk--dict-merge-candidate-lists (nreverse candidate-lists))))
+      (if candidates (succeed candidates)
+        (fail)))))
 
-(defun/k nskk--dict-do-lookup (key)
+(defun/k
+  nskk--dict-do-lookup
+  (key)
   "Internal: perform the actual Prolog lookup for KEY.
 User dictionary results take priority via clause ordering.
-
-When the length of KEY is greater than 1, also searches for okuri-ari
-entries by appending all okurigana consonants to KEY in turn.
-Results from both searches are combined via `cl-union'.
-Calls ON-FOUND with candidates when non-empty; ON-NOT-FOUND otherwise."
-  (let* ((okuri-nasi (nskk--dict-collect-candidates
-                       (nskk-prolog-query `(dict-entry ,key \?c))))
-         (candidates (if (> (length key) 1)
-                         (cl-union okuri-nasi
-                                   (nskk--dict-lookup-okuri-ari key)
-                                   :test #'equal)
-                       okuri-nasi)))
-    (if candidates
-        (succeed candidates)
+For keys without an explicit trailing lowercase okuri marker, also try
+okuri-ari entries by appending each configured consonant."
+  (let* ((okuri-nasi
+        (nskk--dict-collect-candidates (nskk-prolog-query `(dict-entry ,key \?c))))
+         (candidates
+        (if (and (> (length key) 1) (not (string-match-p "[a-z]\\'" key))) (nskk--dict-merge-candidate-lists
+            (list okuri-nasi (nskk--dict-lookup-okuri-ari key)))
+          okuri-nasi)))
+    (if candidates (succeed candidates)
       (fail))))
 
-(defun/k nskk-dict-lookup (key)
+(defun/k
+  nskk-dict-lookup
+  (key)
   "Look up KEY in loaded dictionaries via Prolog bridge rule.
 Returns list of candidates or nil.
 User dictionary results take priority via clause ordering.
@@ -696,72 +1620,146 @@ consonants appended to KEY.  Results from both searches are combined."
   (succeed candidates))
 
 ;;; User Dictionary Modification
-
 (defvar nskk-dict-modified nil
   "Non-nil when the user dictionary has unsaved modifications.")
 
 (defun nskk--dict-register-impl (reading word)
-  "Attempt to register WORD for READING in the Prolog user dictionary.
-Returns t on success (Prolog dict-register/2 succeeded), nil on failure."
-  (unless nskk--user-dict-index
-    ;; Load any on-disk entries before the first registration: the save
-    ;; path overwrites `nskk-dict-user-dictionary-file' with the current
-    ;; Prolog facts, so registering into an empty database and saving
-    ;; would silently drop every entry not yet loaded from the file.
-    (setq nskk--user-dict-index (nskk-dict-load-user-dictionary))
-    (unless nskk--user-dict-index
-      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-      (setq nskk--user-dict-index 'user)))
-  (when (nskk-prolog-holds-p `(dict-register ,reading ,word))
-    (setq nskk-dict-modified t)
-    (nskk--dict-run-update-hook)
-    (message "NSKK: Registered %s -> %s" reading word)
-    t))
+  "Attempt to register WORD for READING as one atomic publication.
+Returns t when Prolog dict-register/2, every update hook, and the success
+message complete.  Returns nil only when the valid Prolog query has no
+solution.  An `error' or `quit' from lazy loading, Prolog mutation, hooks, or
+the message boundary restores the exact internal predicate, index marker,
+dirty flag, and registered search caches before propagating the condition."
+  (let* ((key (nskk--prolog-clause-key 'user-dict-entry 2))
+         (owner (list 'nskk--dict-register-impl key)))
+    (nskk--dict-ensure-rollback-complete owner)
+    (let* ((previous-key-state (nskk--prolog-capture-key-state key reading t))
+           (previous-user-index nskk--user-dict-index)
+           (previous-modified nskk-dict-modified)
+           (cache-snapshotter
+            (and (fboundp 'nskk--search-cache-snapshots)
+                 (symbol-function 'nskk--search-cache-snapshots)))
+           (cache-restorer
+            (and (fboundp 'nskk--search-restore-cache-snapshot)
+                 (symbol-function 'nskk--search-restore-cache-snapshot)))
+           (cache-snapshots
+            (and cache-snapshotter cache-restorer
+                 (funcall cache-snapshotter))))
+      (condition-case condition
+          (prog1
+              (progn
+                (nskk--prolog-prepare-key-state-index-tail
+                 previous-key-state)
+                (unless nskk--user-dict-index
+                  ;; Loading is part of this transaction: a later failure must
+                  ;; not publish either the loaded facts or its index marker.
+                  (setq nskk--user-dict-index
+                        (nskk-dict-load-user-dictionary))
+                  (unless nskk--user-dict-index
+                    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                    (setq nskk--user-dict-index 'user)))
+                (when (nskk-prolog-holds-p
+                       `(dict-register ,reading ,word))
+                  (setq nskk-dict-modified t)
+                  ;; Registration hooks are the publication boundary.  Unlike
+                  ;; best-effort notifications, the first failure aborts the
+                  ;; transaction and prevents later hooks and the message.
+                  (run-hooks 'nskk-jisyo-update-hook)
+                  (message "NSKK: Registered %s -> %s"
+                           (substring-no-properties reading)
+                           (substring-no-properties word))
+                  t))
+            (nskk--dict-clear-pending-rollback owner))
+        ((error quit)
+         (nskk--dict-rollback-and-resignal
+          owner condition
+          (list
+           (cons 'user-dict-predicate
+                 (lambda ()
+                   (nskk--prolog-restore-key-state previous-key-state)))
+           (cons 'user-dict-index
+                 (lambda ()
+                   (setq nskk--user-dict-index previous-user-index)))
+           (cons 'modified
+                 (lambda ()
+                   (setq nskk-dict-modified previous-modified)))
+           (cons 'search-caches
+                 (lambda ()
+                   (dolist (snapshot cache-snapshots)
+                     (funcall cache-restorer snapshot)))))))))))
 
-(defconst nskk--dict-invalid-key-regexp "[\n\r /▽▼]"
-  "Characters rejected in user-dictionary keys.
-Whitespace, slash and newlines would corrupt the SKK file format
-\(\"KEY /cand1/cand2/\" per line); the ▽/▼ markers indicate preedit
-text leaked into a reading and must never reach the dictionary.")
+(progn
+  (defconst nskk--dict-invalid-entry-message
+    "Invalid user dictionary entry"
+    "Fixed safe message used when a dictionary entry cannot be serialized.")
+
+  (defun nskk--dict-valid-field-p (value allow-space)
+    "Return non-nil when VALUE is safe for one SKK dictionary field.
+ALLOW-SPACE permits ordinary spaces, as required for candidate words."
+    (and (stringp value)
+         (not (string-empty-p value))
+         (cl-loop for character across value
+                  always (and (> character 31)
+                              (/= character 127)
+                              (or allow-space (/= character 32))
+                              (not (memq character (list ?/ ?\; ?▽ ?▼)))))))
+
+  (defun nskk--dict-valid-key-p (key)
+    "Return non-nil when KEY is representable as one SKK dictionary key."
+    (nskk--dict-valid-field-p key nil))
+
+  (defun nskk--dict-valid-word-p (word)
+    "Return non-nil when WORD is representable as one SKK candidate.
+Candidates may contain ordinary spaces but not slash, semicolon, preedit
+markers, ASCII controls U+0000 through U+001F, or U+007F."
+    (nskk--dict-valid-field-p word t)))
 
 (defun/k nskk-dict-register-word (reading word)
   "Register WORD as a conversion candidate for READING in user dictionary.
-Uses the Prolog dict-register rule which handles both new entries
-and updates to existing entries via assertz/retract builtins.
-Returns non-nil (t) on success; calls on-not-found when READING or WORD
-are empty/invalid, when READING contains characters that would corrupt
-the SKK dictionary format (see `nskk--dict-invalid-key-regexp'), or
-when the Prolog registration query fails."
-  (if (and (stringp reading) (not (string-empty-p reading))
-           (not (string-match-p nskk--dict-invalid-key-regexp reading))
-           (stringp word)   (not (string-empty-p word))
-           (nskk--dict-register-impl reading word))
+Signals `nskk-dict-error` with a fixed safe message before any dictionary
+state is observed or changed when READING or WORD cannot be serialized.
+Otherwise uses the Prolog dict-register rule and returns non-nil on success;
+calls on-not-found only when the valid registration query has no solution."
+  (unless (and (nskk--dict-valid-key-p reading)
+               (nskk--dict-valid-word-p word))
+    (signal (quote nskk-dict-error)
+            (list nskk--dict-invalid-entry-message)))
+  (if (nskk--dict-register-impl reading word)
       (succeed t)
     (fail)))
 
 (defun nskk--dict-unregister-impl (reading word)
   "Attempt to unregister WORD for READING from the Prolog user dictionary.
 Returns t on success (Prolog dict-unregister/2 succeeded), nil on failure."
-  (when (and nskk--user-dict-index
-             (nskk-prolog-holds-p `(dict-unregister ,reading ,word)))
+  (when (and
+      nskk--user-dict-index
+      (nskk-prolog-holds-p `(dict-unregister ,reading ,word)))
     (setq nskk-dict-modified t)
     (nskk--dict-run-update-hook)
-    (message "NSKK: Unregistered %s -> %s" reading word)
+    (message "NSKK: Unregistered %s -> %s"
+             (substring-no-properties reading)
+             (substring-no-properties word))
     t))
 
-(defun/k nskk-dict-unregister-word (reading word)
+(defun/k
+  nskk-dict-unregister-word
+  (reading word)
   "Unregister WORD as a conversion candidate for READING from user dictionary.
 Uses the Prolog dict-unregister rule which removes the word from an
 existing entry (or retracts the entire entry if it was the sole candidate).
 Returns non-nil (t) on success; calls on-not-found when READING or WORD
 are empty/invalid or when the Prolog unregistration query fails."
-  (if (and (stringp reading) (not (string-empty-p reading))
-           (stringp word)   (not (string-empty-p word))
-           (nskk--dict-unregister-impl reading word))
-      (succeed t)
+  (if (and
+      (stringp reading)
+      (not (string-empty-p reading))
+      (stringp word)
+      (not (string-empty-p word))
+      (nskk--dict-unregister-impl reading word)) (succeed t)
     (fail)))
 
 ;;; User Dictionary Save
+(defvar nskk--persistence-inhibited nil
+  "Non-nil while all NSKK persistence writes are temporarily inhibited.")
 
 (defvar nskk--dict-save-inhibited nil
   "Non-nil while saving the user dictionary is temporarily inhibited.
@@ -772,58 +1770,65 @@ overwrite the personal dictionary file with tutorial data.")
 ;;;###autoload
 (defun nskk-dict-save-user-dictionary ()
   "Save user dictionary to `nskk-dict-user-dictionary-file'.
-Does nothing while `nskk--dict-save-inhibited' is non-nil."
+Does nothing while NSKK persistence is inhibited."
   (interactive)
-  (if nskk--dict-save-inhibited
-      (message "NSKK: User dictionary save inhibited (tutorial active)")
+  (if (or nskk--dict-save-inhibited nskk--persistence-inhibited) (message "NSKK: User dictionary save inhibited (tutorial active)")
     (nskk--dict-save-user-dictionary-1)))
 
 (defun nskk--dict-save-user-dictionary-1 ()
-  "Write the current user-dictionary facts to disk unconditionally."
+  "Write the current user-dictionary facts to disk unconditionally.
+The complete snapshot is validated before any directory, temporary file, or
+output file is created.  Invalid entries signal `nskk-dict-error` with a
+fixed safe message while preserving the dirty state and stored snapshot."
   (when (and nskk-dict-user-dictionary-file nskk--user-dict-index)
-    ;; The personal dictionary records what the user types; keep newly
-    ;; created files and directories private (existing modes are kept).
-    (let ((dir (file-name-directory nskk-dict-user-dictionary-file)))
-      (unless (file-directory-p dir)
-        (with-file-modes #o700
-          (make-directory dir t))))
-    (nskk-dict-with-atomic-file nskk-dict-user-dictionary-file
-      (insert ";; -*- mode: fundamental; coding: utf-8 -*-\n")
-      (insert ";; NSKK user dictionary\n")
-      (insert ";; okuri-nasi entries.\n")
-      ;; Single query fetches all key+candidates pairs (eliminates N+1 pattern)
-      (dolist (binding (nskk-prolog-query-bindings '(user-dict-entry \?k \?c) '(\?k \?c)))
-        (let ((key        (car binding))
+    (let ((bindings
+           (nskk-prolog-query-bindings
+            (quote (user-dict-entry \?k \?c)) (quote (\?k \?c)))))
+      ;; Validate the complete snapshot before creating a directory or file.
+      (dolist (binding bindings)
+        (let ((key (car binding))
               (candidates (cadr binding)))
-          (when (and key candidates)
-            (let ((safe-cands (seq-remove
-                               (lambda (c) (string-match-p "[\n\r/]" c))
-                               candidates)))
-              ;; Never drop data silently: SKK-format-breaking candidates
-              ;; are skipped, but the user should know.
-              (when (< (length safe-cands) (length candidates))
-                (message "NSKK: %d candidate(s) for %s not saved (contain / or newline)"
-                         (- (length candidates) (length safe-cands)) key))
-              (when (and (not (string-match-p nskk--dict-invalid-key-regexp key))
-                         safe-cands)
-                (insert (format "%s /%s/\n"
-                                key
-                                (string-join safe-cands "/")))))))))
-    (message "NSKK: User dictionary saved to %s"
-             nskk-dict-user-dictionary-file)
-    (setq nskk-dict-modified nil)))
+          (unless (and (nskk--dict-valid-key-p key)
+                       (proper-list-p candidates)
+                       candidates
+                       (seq-every-p (function nskk--dict-valid-word-p)
+                                    candidates))
+            (signal (quote nskk-dict-error)
+                    (list nskk--dict-invalid-entry-message)))))
+      ;; The personal dictionary records what the user types; keep newly
+      ;; created files and directories private (existing modes are kept).
+      (let ((dir (file-name-directory nskk-dict-user-dictionary-file)))
+        (unless (file-directory-p dir)
+          (with-file-modes #o700
+            (make-directory dir t))))
+      (nskk--dict-call-with-atomic-file
+       nskk-dict-user-dictionary-file
+       (lambda ()
+         (insert ";; -*- mode: fundamental; coding: utf-8 -*-\n")
+         (insert ";; NSKK user dictionary\n")
+         (insert ";; okuri-nasi entries.\n")
+         (dolist (binding bindings)
+           (let ((key (car binding))
+                 (candidates (cadr binding)))
+             (insert (format "%s /%s/\n"
+                             key
+                             (string-join candidates "/"))))))
+       (lambda ()
+         (setq nskk-dict-modified nil)))
+      (message "NSKK: User dictionary saved to %s"
+               nskk-dict-user-dictionary-file))))
 
 (defun nskk--dict-maybe-save ()
   "Save user dictionary if it has unsaved modifications.
 Called from `kill-emacs-hook' to persist registrations on Emacs exit."
   (when nskk-dict-modified
-    (condition-case err
-        (nskk-dict-save-user-dictionary)
-      (error (message "NSKK: Failed to save user dictionary: %s"
-                      (error-message-string err))))))
+    (condition-case
+      err
+      (nskk-dict-save-user-dictionary)
+      (error
+        (message "NSKK: Failed to save user dictionary: %s" (error-message-string err))))))
 
 ;;;; Confirmed Dictionary (確定辞書) Support
-
 (defvar nskk--kakutei-dict-loaded nil
   "Non-nil when the confirmed (kakutei) dictionary has been loaded.")
 
@@ -833,18 +1838,38 @@ The confirmed dictionary contains entries that are committed immediately
 without candidate selection.  Entries are loaded as \\='kakutei-dict-entry/2
 Prolog facts with trie indexing.
 Returns \\='kakutei if loaded, nil otherwise."
-  (when (and (boundp 'nskk-kakutei-jisyo)
-             nskk-kakutei-jisyo
-             (file-readable-p nskk-kakutei-jisyo))
+  (when (and
+      (boundp 'nskk-kakutei-jisyo)
+      nskk-kakutei-jisyo
+      (file-readable-p nskk-kakutei-jisyo))
     (message "NSKK: Loading kakutei dictionary from %s" nskk-kakutei-jisyo)
-    (nskk-prolog-retract-all 'kakutei-dict-entry 2)
-    (nskk-prolog-set-index 'kakutei-dict-entry 2 :trie)
-    (when-let* ((entries (nskk--dict-parse-file-to-entries nskk-kakutei-jisyo)))
-      (dolist (entry entries)
-        (nskk-prolog-assert (list (list 'kakutei-dict-entry
-                                       (car entry) (cdr entry)))))
-      (setq nskk--kakutei-dict-loaded t)
-      'kakutei)))
+    (condition-case
+      condition
+      (when-let*
+        ((entries (nskk--dict-parse-file-to-entries-strict nskk-kakutei-jisyo)))
+        (let* ((key (nskk--prolog-clause-key 'kakutei-dict-entry 2))
+               (previous (nskk--dict-predicate-snapshot key))
+               (previous-loaded nskk--kakutei-dict-loaded)
+               (committed nil))
+          (unwind-protect (let ((staged
+                  (nskk--dict-stage-predicate-entries
+                    'kakutei-dict-entry
+                    nil
+                    (mapcar
+                      (lambda (entry)
+                        (list (list 'kakutei-dict-entry (car entry) (cdr entry))))
+                      entries))))
+              (let ((inhibit-quit t))
+                (nskk--dict-publish-staged-predicate staged)
+                (setq nskk--kakutei-dict-loaded t))
+              (setq committed t)
+              'kakutei)
+            (unless committed
+              (let ((inhibit-quit t))
+                (nskk--dict-apply-predicate-snapshot previous)
+                (setq nskk--kakutei-dict-loaded previous-loaded))))))
+      (error nil)
+      (quit (signal (car condition) (cdr condition))))))
 
 (defun/k nskk-dict-lookup-kakutei (reading)
   "Look up READING in the confirmed dictionary.

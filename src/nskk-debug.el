@@ -120,13 +120,21 @@ The first %s is the timestamp, the second %s is the message text.")
   "Format FORMAT-STRING with ARGS list.
 Calls ON-FOUND with the formatted string on success.
 Calls ON-NOT-FOUND on format error, after issuing a `display-warning'.  [CPS]"
-  (condition-case err
-      (funcall on-found (apply #'format format-string args))
-    (error
-     (display-warning 'nskk
-                      (format "Debug logging error: %s" (error-message-string err))
-                      :warning)
-     (funcall on-not-found))))
+  (let* (format-error
+         (formatted
+          (condition-case err
+              (apply #'format format-string args)
+            (error
+             (setq format-error err)
+             nil))))
+    (if format-error
+        (progn
+          (display-warning 'nskk
+                           (format "Debug logging error: %s"
+                                   (error-message-string format-error))
+                           :warning)
+          (funcall on-not-found))
+      (funcall on-found formatted))))
 
 (defun nskk--debug-format (format-string args)
   "Format FORMAT-STRING with ARGS list.  Return nil on format error."

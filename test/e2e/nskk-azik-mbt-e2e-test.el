@@ -62,14 +62,11 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'nskk-e2e-helpers)
-(require 'nskk-azik-chaos-e2e-test)
-(require 'nskk-state)
+(require 'nskk-azik-chaos-helpers)
 (require 'nskk-henkan)
 (require 'nskk-input)
 (require 'nskk-azik)
 (require 'nskk-converter)
-(require 'nskk-azik-e2e-test)
-
 ;;;;
 ;;;; Abstract State Observer
 ;;;;

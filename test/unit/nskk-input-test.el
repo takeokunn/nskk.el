@@ -860,45 +860,59 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     ;; - no kana has been written to the preedit buffer (nskk--has-preedit = nil)
     (with-temp-buffer
       (nskk-input-test-with-romaji
-        (nskk-input-test-with-state 'hiragana
-          (let ((nskk-converter-auto-start-henkan t))
-            ;; Type X to start henkan and put "x" into romaji buffer
-            (nskk-process-japanese-input ?X 1)
-            ;; At this point: ▽ in buffer, "x" in romaji buffer, no kana yet
-            (nskk-then
-             ;; H should be classified as normalize-vowel-p=t, not okurigana
-             (cl-destructuring-bind (_eff _henkan-start normalize-vowel-p)
-                 (nskk--compute-effective-char ?H)
-               (should normalize-vowel-p))))))))
+       (nskk-input-test-with-state 'hiragana
+                                   (let ((nskk-converter-auto-start-henkan t))
+                                     ;; Type X to start henkan and put "x" into romaji buffer
+                                     (nskk-process-japanese-input ?X 1)
+                                     ;; At this point: ▽ in buffer, "x" in romaji buffer, no kana yet
+                                     (nskk-then
+                                       ;; H should be classified as normalize-vowel-p=t, not okurigana
+                                       (cl-destructuring-bind (_eff _henkan-start normalize-vowel-p)
+                                           (nskk--compute-effective-char ?H)
+                                         (should normalize-vowel-p))))))))
 
   (nskk-it "does not produce ▽* when typing Xh"
     ;; Full integration: X then H should NOT produce ▽* (okurigana with empty reading)
     (with-temp-buffer
       (nskk-input-test-with-romaji
-        (nskk-input-test-with-state 'hiragana
-          (let ((nskk-converter-auto-start-henkan t))
-            (nskk-given (progn
-                          (nskk-process-japanese-input ?X 1)
-                          (nskk-process-japanese-input ?H 1)))
-            (nskk-then
-             ;; Buffer must NOT contain the okurigana marker (*) with nothing before it
-             (should-not (string-match-p (regexp-quote (concat nskk-henkan-on-marker nskk-okurigana-marker))
-                                         (buffer-string)))))))))
+       (nskk-input-test-with-state 'hiragana
+                                   (let ((nskk-converter-auto-start-henkan t))
+                                     (nskk-given (progn
+                                                   (nskk-process-japanese-input ?X 1)
+                                                   (nskk-process-japanese-input ?H 1)))
+                                     (nskk-then
+                                       ;; Buffer must NOT contain the okurigana marker (*) with nothing before it
+                                       (should-not (string-match-p (regexp-quote (concat nskk-henkan-on-marker nskk-okurigana-marker))
+                                                                   (buffer-string)))))))))
 
   (nskk-it "uppercase consonant DOES trigger okurigana when kana is already in preedit"
     ;; Sanity check: Ka then K must still produce ▽か* (okurigana is correct here)
     (with-temp-buffer
       (nskk-input-test-with-romaji
-        (nskk-input-test-with-state 'hiragana
-          (let ((nskk-converter-auto-start-henkan t))
-            (nskk-given (progn
-                          (nskk-process-japanese-input ?K 1)  ; start ▽, romaji "k"
-                          (nskk-process-japanese-input ?a 1)  ; complete to ▽か
-                          (nskk-process-japanese-input ?K 1))) ; trigger okurigana → ▽か*
-            (nskk-then
-             ;; Buffer must contain ▽ + か + * (okurigana marker)
-             (should (string-match-p (regexp-quote (concat nskk-henkan-on-marker "か" nskk-okurigana-marker))
-                                     (buffer-string))))))))))
+       (nskk-input-test-with-state 'hiragana
+                                   (let ((nskk-converter-auto-start-henkan t))
+                                     (nskk-given (progn
+                                                   (nskk-process-japanese-input ?K 1)  ; start ▽, romaji "k"
+                                                   (nskk-process-japanese-input ?a 1)  ; complete to ▽か
+                                                   (nskk-process-japanese-input ?K 1))) ; trigger okurigana → ▽か*
+                                     (nskk-then
+                                       ;; Buffer must contain ▽ + か + * (okurigana marker)
+                                       (should (string-match-p (regexp-quote (concat nskk-henkan-on-marker "か" nskk-okurigana-marker))
+                                                               (buffer-string)))))))))
+  (nskk-it "skips context classification for lowercase input"
+    (let ((nskk-converter-auto-start-henkan t)
+          (context-calls 0))
+      (cl-letf (((symbol-function 'nskk--conversion-start-active-p)
+                 (lambda () (cl-incf context-calls)))
+                ((symbol-function 'nskk-prolog-holds-p)
+                 (lambda (&rest _) (cl-incf context-calls)))
+                ((symbol-function 'nskk--has-preedit)
+                 (lambda () (cl-incf context-calls)))
+                ((symbol-function 'nskk-prolog-query-value)
+                 (lambda (&rest _) (cl-incf context-calls))))
+        (should (equal (nskk--compute-effective-char ?a) (list ?a nil nil)))
+        (should (= context-calls 0)))))
+  )
 
 (nskk-describe "deferred vowel-shadow continuation policy"
   (nskk-it "attaches uppercase-vowel continuation policy only for ch/sh/th"
@@ -1057,10 +1071,42 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                 'nn-double)))
 
   (nskk-it "returns azik-deferred when doubled consonant has complete AZIK result"
-    ;; azik-deferred: same char doubled, not a sokuon-blocker, result is a kana string
-    ;; ?k is not in the sokuon-blocker Prolog table, so same-ok is true
     (should (eq (nskk--classify-romaji-input ?k ?k '("きん" . ""))
-                'azik-deferred))))
+                'azik-deferred)))
+
+  (nskk-it "skips hatsuon checks and memoizes repeated dispatch"
+    (let ((hatsuon-calls 0)
+          (lookup-calls 0)
+          (context-calls 0)
+          (class-calls 0)
+          (query-value (symbol-function 'nskk-prolog-query-value)))
+      (clrhash nskk--romaji-classify-cache)
+      (unwind-protect
+          (cl-letf (((symbol-function 'nskk-prolog-holds-p)
+                     (lambda (&rest _) (cl-incf hatsuon-calls) nil))
+                    ((symbol-function 'nskk-converter-lookup)
+                     (lambda (&rest _) (cl-incf lookup-calls) nil))
+                    ((symbol-function 'nskk-prolog-query-value)
+                     (lambda (goal variable)
+                       (pcase (car goal)
+                         ('doubled-context (cl-incf context-calls))
+                         ('romaji-classify (cl-incf class-calls)))
+                       (funcall query-value goal variable))))
+            (should (eq (nskk--classify-romaji-input ?a nil nil) 'no-match))
+            (should (eq (nskk--classify-romaji-input ?a nil nil) 'no-match))
+            (should (= hatsuon-calls 0))
+            (should (= lookup-calls 0))
+            (should (= context-calls 1))
+            (should (= class-calls 1)))
+      (clrhash nskk--romaji-classify-cache))))
+
+  (nskk-it "invalidates memoized dispatches when either rule table is reinitialized"
+    (dolist (initializer '(nskk--init-romaji-classify-rules
+                           nskk--init-doubled-context-rules))
+      (clrhash nskk--romaji-classify-cache)
+      (puthash '(sentinel) 'stale nskk--romaji-classify-cache)
+      (funcall initializer)
+      (should (= (hash-table-count nskk--romaji-classify-cache) 0)))))
 
 ;;;
 ;;; Fullwidth-Char Prolog Table Tests
@@ -1301,7 +1347,125 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (insert "きん")
         (setq nskk--deferred-azik-state (cons ?k "きん"))
         (nskk-convert-input-to-kana ?a)
-        (should (null nskk--deferred-azik-state))))))
+        (should (null nskk--deferred-azik-state)))))
+
+  (nskk-it "restores entry state when a before-change hook errors"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (let* ((payload (cons ?k "きん"))
+               (romaji (copy-sequence "entry"))
+               (nskk--deferred-azik-state payload)
+               (nskk--romaji-buffer romaji)
+               (calls 0))
+          (insert "AきんZ")
+          (goto-char 4)
+          (add-hook
+           'before-change-functions
+           (lambda (&rest _)
+             (setq calls (1+ calls))
+             (when (= calls 1)
+               (error "injected before-change failure")))
+           nil t)
+          (should-error
+           (nskk--apply-one-deferred-correction
+            'nskk--deferred-azik-state ?a t))
+          (should (equal (buffer-string) "AきんZ"))
+          (should (= (point) 4))
+          (should (eq nskk--deferred-azik-state payload))
+          (should (eq nskk--romaji-buffer romaji))))))
+
+  (nskk-it "restores entry state when an after-change hook quits"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (let* ((payload (cons ?k "きん"))
+               (romaji (copy-sequence "entry"))
+               (nskk--deferred-azik-state payload)
+               (nskk--romaji-buffer romaji)
+               (calls 0)
+               (caught nil))
+          (insert "AきんZ")
+          (goto-char 4)
+          (add-hook
+           'after-change-functions
+           (lambda (&rest _)
+             (setq calls (1+ calls))
+             (when (= calls 1)
+               (signal 'quit '(injected after-change quit))))
+           nil t)
+          (condition-case _
+              (nskk--apply-one-deferred-correction
+               'nskk--deferred-azik-state ?a t)
+            (quit (setq caught t)))
+          (should caught)
+          (should (equal (buffer-string) "AきんZ"))
+          (should (= (point) 4))
+          (should (eq nskk--deferred-azik-state payload))
+          (should (eq nskk--romaji-buffer romaji))))))
+
+  (nskk-it "restores entry state when the buffer is read-only"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (let* ((payload (cons ?k "きん"))
+               (romaji (copy-sequence "entry"))
+               (nskk--deferred-azik-state payload)
+               (nskk--romaji-buffer romaji))
+          (insert "AきんZ")
+          (goto-char 4)
+          (let ((buffer-read-only t))
+            (should-error
+             (nskk--apply-one-deferred-correction
+              'nskk--deferred-azik-state ?a t)))
+          (should (equal (buffer-string) "AきんZ"))
+          (should (= (point) 4))
+          (should (eq nskk--deferred-azik-state payload))
+          (should (eq nskk--romaji-buffer romaji))))))
+
+  (nskk-it "avoids full-buffer snapshots for large non-vowel input"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (let* ((large-prefix (make-string (* 1024 1024) ?x))
+               (payload (cons ?k "きん"))
+               (romaji (copy-sequence "entry"))
+               (nskk--deferred-azik-state payload)
+               (nskk--romaji-buffer romaji)
+               (entry-point nil)
+               (full-buffer-substring-calls 0)
+               (original-buffer-substring
+                (symbol-function (quote buffer-substring))))
+          (insert large-prefix "きん")
+          (goto-char (point-max))
+          (setq entry-point (point))
+          (cl-letf (((symbol-function (quote buffer-substring))
+                     (lambda (start end)
+                       (when (and (= start (point-min))
+                                  (= end (point-max)))
+                         (cl-incf full-buffer-substring-calls))
+                       (funcall original-buffer-substring start end))))
+            (nskk--apply-one-deferred-correction
+             (quote nskk--deferred-azik-state) ?s t))
+          (should (= full-buffer-substring-calls 0))
+          (should (= (buffer-size) (+ (length large-prefix) 2)))
+          (should (eq (char-after (point-min)) ?x))
+          (should (equal (buffer-substring (- (point-max) 2) (point-max))
+                         "きん"))
+          (should (= (point) entry-point))
+          (should-not nskk--deferred-azik-state)
+          (should (eq nskk--romaji-buffer romaji))))))
+
+  (nskk-it "commits deletion insertion romaji and state together"
+    (nskk-input-test-with-romaji
+      (with-temp-buffer
+        (let* ((payload (cons ?k "きん"))
+               (nskk--deferred-azik-state payload)
+               (nskk--romaji-buffer "entry"))
+          (insert "AきんZ")
+          (goto-char 4)
+          (nskk--apply-one-deferred-correction
+           'nskk--deferred-azik-state ?a t)
+          (should (equal (buffer-string) "AっZ"))
+          (should (= (point) 3))
+          (should-not nskk--deferred-azik-state)
+          (should (equal nskk--romaji-buffer "k")))))))
 
 ;;;
 ;;; nskk--apply-colon-okuri-correction Tests

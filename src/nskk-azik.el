@@ -269,8 +269,7 @@ Two parallel sets of rows are provided:
   These use g as a y-substitute, the original AZIK design.
 - y-prefix youon: ny/ky/hy/my/ry/gy/jy/by/py
   These add AZIK extension keys (hatsuon z/k/j/d/l, diphthong q/h/w/p)
-  to standard romaji y-prefix youon sequences.  e.g. ryp → りょう.")
-)
+  to standard romaji y-prefix youon sequences.  e.g. ryp → りょう."))
 
 (defconst nskk--azik-compound-rules
   '(("kak" "かく") ("kaq" "かい") ("kakz" "かかん")
@@ -340,6 +339,9 @@ rules in the hash (not demoted to :incomplete) and instead use the
 the next character is a vowel, the emission is retroactively replaced by the
 longer standard-romaji rule.
 Rebuilt from scratch on each call to `nskk--azik-finalize-hash-table'.")
+
+(add-to-list 'nskk--converter-style-transaction-hash-tables
+             'nskk--azik-vowel-shadow-set)
 
 (defun/done nskk--azik-init-char-facts ()
   "Assert azik-vowel-char/1 for each Japanese romaji vowel character code.
@@ -445,16 +447,34 @@ Performs two passes using azik-key-extends/2 facts:
   (?ア) (?イ) (?ウ) (?エ) (?オ)
   (?ー))
 
+(progn
+  (defvar nskk--azik-toggle-key-state nil
+    "Last AZIK toggle key and its displaced binding as (KEY . BINDING).")
+  (add-to-list 'nskk--converter-style-transaction-variables
+               'nskk--azik-toggle-key-state))
+
 (defun nskk--setup-azik-toggle-key ()
   "Set up AZIK toggle key binding based on keyboard type.
 Binds @ for jp106 keyboard or [ for us101 keyboard to
 `nskk-toggle-japanese-mode' in `nskk-mode-map'.
-Falls back to `@' for unrecognized keyboard types."
+Restores the displaced binding when the keyboard type changes."
   (when (boundp 'nskk-mode-map)
-    (let ((key (or (nskk-prolog-query-value
-                    `(azik-toggle-key ,nskk-azik-keyboard-type \?k) '\?k)
-                   "@")))
-      (keymap-set nskk-mode-map key #'nskk-toggle-japanese-mode))))
+    (let* ((key (or (nskk-prolog-query-value
+                     `(azik-toggle-key ,nskk-azik-keyboard-type \?k) '\?k)
+                    "@"))
+           (target #'nskk-toggle-japanese-mode)
+           (old-key (car-safe nskk--azik-toggle-key-state))
+           (old-binding (cdr-safe nskk--azik-toggle-key-state)))
+      (when (and old-key
+                 (not (equal old-key key))
+                 (eq (lookup-key nskk-mode-map old-key) target))
+        (if old-binding
+            (keymap-set nskk-mode-map old-key old-binding)
+          (keymap-unset nskk-mode-map old-key t)))
+      (let ((current (lookup-key nskk-mode-map key)))
+        (unless (and (equal old-key key) (eq current target))
+          (setq nskk--azik-toggle-key-state (cons key current)))
+        (keymap-set nskk-mode-map key target)))))
 
 ;;;; Main Initialization
 
@@ -599,12 +619,16 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
     (puthash (car rule) (cadr rule) nskk--romaji-table))
 
   ;; Apply user overrides last so they take precedence over built-ins.
-  ;; Unlike compound rules (hash only), user rules go through
-  ;; `nskk-converter-add-rule' which also asserts romaji-to-kana/2 Prolog
-  ;; facts, making them queryable via `nskk-converter-get-rule'.
+  ;; Canonicalize user rules as azik-rule/2 facts behind the generic bridge,
+  ;; then mirror them into the conversion hash for direct lookup.
   (dolist (rule nskk-azik-conversion-table)
     (when (nskk--azik-conversion-rule-p rule)
-      (nskk-converter-add-rule (car rule) (cadr rule))))
+      (let* ((owned-rule (nskk-prolog-copy-term rule))
+             (romaji (car owned-rule))
+             (kana (cadr owned-rule)))
+        (while (nskk-prolog-retract `(azik-rule ,romaji \?_)))
+        (nskk-prolog-assert `((azik-rule ,romaji ,kana)))
+        (puthash romaji kana nskk--romaji-table))))
 
   (nskk--setup-azik-toggle-key))
 

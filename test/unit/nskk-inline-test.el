@@ -179,6 +179,30 @@
             (should (overlayp nskk--inline-overlay))
           (nskk-delete-overlay nskk--inline-overlay))))))
 
-(provide 'nskk-inline-test)
+(nskk-describe "untrusted inline display properties"
+    (nskk-it "sanitizes horizontal and vertical copies before applying inline face"
+      (dolist (spec '((nskk--inline-build-horizontal " 候補")
+                      (nskk--inline-build-vertical "\n候補")))
+        (let* ((source (propertize "候補"
+                                  'display "spoofed"
+                                  'keymap (make-sparse-keymap)
+                                  'local-map (make-sparse-keymap)
+                                  'mouse-face 'highlight
+                                  'help-echo "untrusted"
+                                  'face 'error
+                                  'nskk-no-learn t))
+               (source-copy (copy-sequence source))
+               (rendered (funcall (car spec) source)))
+          (should (equal (substring-no-properties rendered) (cadr spec)))
+          (dolist (property '(display keymap local-map mouse-face help-echo))
+            (should-not
+             (text-property-not-all 0 (length rendered) property nil rendered)))
+          (dotimes (index (length rendered))
+            (should (eq (get-text-property index 'face rendered)
+                        'nskk-inline-face)))
+          (should (equal source source-copy))
+          (should (eq (get-text-property 0 'face source) 'error))
+          (should (eq (get-text-property 0 'nskk-no-learn source) t))))))
+  (provide 'nskk-inline-test)
 
 ;;; nskk-inline-test.el ends here

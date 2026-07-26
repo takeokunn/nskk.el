@@ -105,6 +105,9 @@ the first candidate before confirming."
 
 ;;;; Kakutei History Ring (global)
 
+(defconst nskk--study-max-file-size (* 10 1024 1024)
+  "Maximum number of bytes accepted from the study data file.")
+
 (defvar nskk--study-kakutei-ring nil
   "Ring of recent kakutei entries for study context.
 Each entry is a plist (:word WORD :point POINT :buffer BUFFER).
@@ -202,51 +205,107 @@ of the list.  Returns the (possibly reordered) candidate list."
 (defun nskk-study-save ()
   "Save study association data to `nskk-study-file'."
   (interactive)
-  (condition-case err
-      (progn
-        (let ((dir (file-name-directory nskk-study-file)))
-          (unless (file-directory-p dir)
-            ;; Study data records the user's conversion history; keep the
-            ;; directory private when this code has to create it.
-            (with-file-modes #o700
-              (make-directory dir t))))
-        (nskk-dict-with-atomic-file nskk-study-file
-          (let ((solutions (nskk-prolog-query '(study-association \?p \?r \?c))))
-            (prin1
-             (mapcar (lambda (sol)
-                       (list (nskk-prolog-walk '\?p sol)
-                             (nskk-prolog-walk '\?r sol)
-                             (nskk-prolog-walk '\?c sol)))
-                     solutions)
-             (current-buffer)))
-          (message "NSKK: Study data saved")))
-    (error
-     (message "NSKK: Failed to save study data: %s" (error-message-string err)))))
+  (if nskk--persistence-inhibited
+      (message "NSKK: Study data save inhibited (tutorial active)")
+    (condition-case err
+        (progn
+          (let ((dir (file-name-directory nskk-study-file)))
+            (unless (file-directory-p dir)
+              ;; Study data records the user's conversion history; keep the
+              ;; directory private when this code has to create it.
+              (with-file-modes #o700
+                (make-directory dir t))))
+          (nskk-dict-with-atomic-file nskk-study-file
+            (let ((solutions
+                   (nskk-prolog-query '(study-association \?p \?r \?c))))
+              (prin1
+               (mapcar (lambda (sol)
+                         (list (nskk-prolog-walk '\?p sol)
+                               (nskk-prolog-walk '\?r sol)
+                               (nskk-prolog-walk '\?c sol)))
+                       solutions)
+               (current-buffer))))
+          (message "NSKK: Study data saved"))
+      (error
+       (message "NSKK: Failed to save study data: %s"
+                (error-message-string err))))))
 
 ;;;###autoload
 (defun nskk-study-load ()
   "Load study association data from `nskk-study-file'."
   (interactive)
-  (when (file-readable-p nskk-study-file)
-    (let ((size (file-attribute-size
-                 (file-attributes nskk-study-file))))
-      (if (and size (> size (* 10 1024 1024)))
-          (message "NSKK: Study file too large (%d bytes), skipping load" size)
-        (condition-case err
-            (when-let* ((data (with-temp-buffer
-                                (insert-file-contents nskk-study-file)
-                                (read (current-buffer)))))
-              (unless (listp data)
-                (error "Expected list, got %s" (type-of data)))
-              (dolist (entry data)
-                (pcase entry
-                  (`(,(and (pred stringp) prev)
-                     ,(and (pred stringp) reading)
-                     ,(and (pred stringp) cand))
-                   (nskk-prolog-assert
-                    (list `(study-association ,prev ,reading ,cand)))))))
-          (error
-           (message "NSKK: Failed to load study data: %s" (error-message-string err))))))))
+  (let ((owner 'nskk-study-load))
+    (condition-case err
+        (progn
+          (nskk--dict-ensure-rollback-complete owner)
+          (cond
+           ((file-symlink-p nskk-study-file)
+            (error "Refusing symbolic-link study file: %s" nskk-study-file))
+           ((and (file-regular-p nskk-study-file)
+                 (file-readable-p nskk-study-file))
+            (let* ((attributes (file-attributes nskk-study-file 'integer))
+                   (size (and attributes (file-attribute-size attributes))))
+              (unless attributes
+                (error "Study file disappeared before it could be read"))
+              (when (file-symlink-p nskk-study-file)
+                (error "Study file changed to a symbolic link before read"))
+              (unless (file-regular-p nskk-study-file)
+                (error "Study file changed to a non-regular file before read"))
+              (if (and size (> size nskk--study-max-file-size))
+                  (message "NSKK: Study file too large (%d bytes), skipping load" size)
+                (let* ((data
+                        (let ((read-eval nil)
+                              (read-circle nil))
+                          (ignore read-eval read-circle)
+                          (with-temp-buffer
+                            (nskk--dict-insert-file-contents-pinned
+                             nskk-study-file
+                             (file-truename nskk-study-file)
+                             attributes
+                             nskk--study-max-file-size)
+                            (set-buffer-multibyte t)
+                            (decode-coding-region
+                             (point-min) (point-max) 'undecided)
+                            (goto-char (point-min))
+                            (let ((value (read (current-buffer))))
+                              (condition-case nil
+                                  (progn
+                                    (read (current-buffer))
+                                    (error "Expected exactly one data form"))
+                                (end-of-file value))))))
+                       (_ (unless (proper-list-p data)
+                            (error "Expected proper list, got %s" (type-of data))))
+                       (facts
+                        (mapcar
+                         (lambda (entry)
+                           (pcase entry
+                             (`(,(and (pred stringp) prev)
+                                ,(and (pred stringp) reading)
+                                ,(and (pred stringp) cand))
+                              `(study-association ,prev ,reading ,cand))
+                             (_ (error "Invalid study entry: %S" entry))))
+                         data)))
+                  (let* ((key (nskk--prolog-clause-key 'study-association 3))
+                         (previous (nskk--dict-predicate-snapshot key)))
+                    (condition-case condition
+                        (prog1
+                            (progn
+                              (nskk-prolog-retract-all 'study-association 3)
+                              (dolist (fact facts)
+                                (nskk-prolog-assert (list fact))))
+                          (nskk--dict-clear-pending-rollback owner))
+                      ((error quit)
+                       (nskk--dict-rollback-and-resignal
+                        owner
+                        condition
+                        (list
+                         (cons
+                          'predicate
+                          (lambda ()
+                            (nskk--dict-apply-predicate-snapshot
+                             previous)))))))))))))) (error
+	  (message "NSKK: Failed to load study data: %s"
+                   (error-message-string err))))))
 
 (provide 'nskk-study)
 

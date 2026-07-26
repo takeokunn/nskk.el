@@ -146,7 +146,11 @@
       (should (eq (nskk-cache-lru-node-next head) tail))
       (should (eq (nskk-cache-lru-node-prev tail) head))
       (should (null (nskk-cache-lru-node-prev head)))
-      (should (null (nskk-cache-lru-node-next tail))))))
+      (should (null (nskk-cache-lru-node-next tail)))))
+
+  (nskk-it "rejects non-positive and non-integer capacities"
+    (dolist (capacity '(0 -1 nil 1.5 "10" t))
+      (should-error (nskk-cache-lru-create capacity) :type 'user-error))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; LRU cache: basic operations
@@ -332,7 +336,11 @@
         (should (= (nskk-cache-lfu-capacity cache) capacity))
         (should (= (nskk-cache-lfu-size cache) 0))
         (should (= (nskk-cache-lfu-hits cache) 0))
-        (should (= (nskk-cache-lfu-misses cache) 0))))))
+        (should (= (nskk-cache-lfu-misses cache) 0)))))
+
+  (nskk-it "rejects non-positive and non-integer capacities"
+    (dolist (capacity '(0 -1 nil 1.5 "10" t))
+      (should-error (nskk-cache-lfu-create capacity) :type 'user-error))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; LFU cache: basic operations
@@ -412,7 +420,6 @@
           (nskk-cache-lfu--bucket-any-key/k bucket
             (lambda (k) (setq result k))
             (lambda () (setq result :not-found)))
-          ;; Any key in the bucket is acceptable
           (should (member result '("k1" "k2"))))))
 
     (nskk-it "calls on-not-found for an empty bucket"
@@ -420,27 +427,61 @@
             (called nil))
         (nskk-cache-lfu--bucket-any-key/k bucket
           (lambda (_k) (setq called :found))
-          (lambda ()   (setq called :not-found)))
-        (should (eq called :not-found)))))
+          (lambda () (setq called :not-found)))
+        (should (eq called :not-found))))
+
+    (nskk-it "stops after one callback in a large same-frequency bucket"
+      (let* ((entry-count 4096)
+             (cache (nskk-cache-lfu-create entry-count))
+             (callback-count 0)
+             (original-maphash (symbol-function 'maphash)))
+        (dotimes (key entry-count)
+          (nskk-cache-lfu-put cache key key))
+        (should
+         (= (hash-table-count
+             (gethash 1 (nskk-cache-lfu-freq cache)))
+            entry-count))
+        (cl-letf
+            (((symbol-function 'maphash)
+              (lambda (function table)
+                (funcall
+                 original-maphash
+                 (lambda (key value)
+                   (cl-incf callback-count)
+                   (funcall function key value))
+                 table))))
+          (nskk-cache-lfu--evict-min-freq cache))
+        (should (= callback-count 1))
+        (should (= (nskk-cache-lfu-size cache) (1- entry-count))))))
 
   (nskk-describe "nskk-cache-lfu--evict-min-freq"
     (nskk-it "evicts one entry and decrements size"
       (let ((cache (nskk-cache-lfu-create 2)))
         (nskk-cache-lfu-put cache "key1" "v1")
         (nskk-cache-lfu-put cache "key2" "v2")
-        ;; Both at freq 1; evict one
         (nskk-cache-lfu--evict-min-freq cache)
         (should (= (nskk-cache-lfu-size cache) 1))
-        ;; Exactly one of the two keys survives
-        (let ((surviving (cl-count-if #'identity
-                           (list (nskk-cache-lfu-get cache "key1")
-                                 (nskk-cache-lfu-get cache "key2")))))
+        (let ((surviving
+               (cl-count-if
+                #'identity
+                (list
+                 (nskk-cache-lfu-get cache "key1")
+                 (nskk-cache-lfu-get cache "key2")))))
           (should (= surviving 1)))))
 
     (nskk-it "is a no-op when the cache is empty"
       (let ((cache (nskk-cache-lfu-create 10)))
         (nskk-cache-lfu--evict-min-freq cache)
-        (should (= (nskk-cache-lfu-size cache) 0))))))
+        (should (= (nskk-cache-lfu-size cache) 0)))))
+
+  (nskk-it "treats nil as a found key in a non-empty bucket"
+    (let ((bucket (make-hash-table :test 'equal))
+          (result :unset))
+      (puthash nil t bucket)
+      (nskk-cache-lfu--bucket-any-key/k bucket
+        (lambda (key) (setq result (list :found key)))
+        (lambda () (setq result '(:not-found))))
+      (should (equal result '(:found nil))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; LFU cache: eviction
@@ -531,7 +572,35 @@
                           (list (nskk-cache-lfu-get cache "key1")
                                 (nskk-cache-lfu-get cache "key2")
                                 (nskk-cache-lfu-get cache "key3")))))
-         (should (= surviving 2)))))))
+         (should (= surviving 2))))))
+
+  (nskk-it "capacity-1 cache evicts a nil key for a non-nil key"
+    (let ((cache (nskk-cache-lfu-create 1)))
+      (nskk-cache-lfu-put cache nil "nil-value")
+      (should (<= (nskk-cache-lfu-size cache)
+                  (nskk-cache-lfu-capacity cache)))
+      (nskk-cache-lfu-put cache "next" "next-value")
+      (should (= (nskk-cache-lfu-size cache) 1))
+      (should (<= (nskk-cache-lfu-size cache)
+                  (nskk-cache-lfu-capacity cache)))
+      (should (= (hash-table-count (nskk-cache-lfu-hash cache)) 1))
+      (should (eq (gethash nil (nskk-cache-lfu-hash cache) :missing)
+                  :missing))
+      (should (equal (nskk-cache-lfu-get cache "next") "next-value"))))
+
+  (nskk-it "capacity-1 cache evicts a non-nil key for a nil key"
+    (let ((cache (nskk-cache-lfu-create 1)))
+      (nskk-cache-lfu-put cache "first" "first-value")
+      (should (<= (nskk-cache-lfu-size cache)
+                  (nskk-cache-lfu-capacity cache)))
+      (nskk-cache-lfu-put cache nil "nil-value")
+      (should (= (nskk-cache-lfu-size cache) 1))
+      (should (<= (nskk-cache-lfu-size cache)
+                  (nskk-cache-lfu-capacity cache)))
+      (should (= (hash-table-count (nskk-cache-lfu-hash cache)) 1))
+      (should (eq (gethash "first" (nskk-cache-lfu-hash cache) :missing)
+                  :missing))
+      (should (equal (nskk-cache-lfu-get cache nil) "nil-value")))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; LFU cache: statistics
@@ -660,6 +729,21 @@
           (should (null (nskk-cache-lfu-get cache "prefix:b")))
           (should (string= (nskk-cache-lfu-get cache "other") "vc")))))))
 
+  (nskk-it "matches only string keys in LRU and LFU caches"
+    (dolist (cache (list (nskk-cache-lru-create 8)
+                         (nskk-cache-lfu-create 8)))
+      (nskk-cache-put cache nil "nil-value")
+      (nskk-cache-put cache 'symbol-key "symbol-value")
+      (nskk-cache-put cache "dict:match" "matched-value")
+      (nskk-cache-put cache "other:string" "other-value")
+      (let ((deleted (nskk-cache-invalidate-pattern cache "^dict:")))
+        (should (equal deleted '("dict:match")))
+        (should (equal (nskk-cache-get cache nil) "nil-value"))
+        (should (equal (nskk-cache-get cache 'symbol-key) "symbol-value"))
+        (should (equal (nskk-cache-get cache "other:string") "other-value"))
+        (should (null (nskk-cache-get cache "dict:match")))
+        (should (= (nskk-cache-size cache) 3)))))
+
   (nskk-it "returns empty list when no keys match"
     (let ((cache (nskk-cache-lru-create nskk--test-default-cache-capacity)))
       (nskk-given (nskk-cache-lru-put cache "key1" "value1"))
@@ -741,7 +825,17 @@
       (nskk-given (nskk-cache-put cache "key1" "value1"))
       (nskk-then
        (should (string= (nskk-cache-get cache "key1") "value1"))
-       (should (nskk-cache-lfu-p cache))))))
+       (should (nskk-cache-lfu-p cache)))))
+
+  (nskk-it "rejects invalid :capacity and :size values"
+    (dolist (type '(lru lfu))
+      (dolist (capacity '(0 -1 nil 1.5 "10" t))
+        (should-error
+         (nskk-cache-create :type type :capacity capacity)
+         :type 'user-error)
+        (should-error
+         (nskk-cache-create :type type :size capacity)
+         :type 'user-error)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk-cache-create/k: CPS wrapper
@@ -777,7 +871,19 @@
   (nskk-it "signals user-error for an unknown type (propagates from nskk-cache-create)"
     (should-error
      (nskk-cache-create/k #'identity nil :type 'bogus :capacity 10)
-     :type 'user-error)))
+     :type 'user-error))
+
+  (nskk-it "propagates user-error for invalid :capacity and :size values"
+    (dolist (type '(lru lfu))
+      (dolist (capacity '(0 -1 nil 1.5 "10" t))
+        (should-error
+         (nskk-cache-create/k
+          #'identity #'ignore :type type :capacity capacity)
+         :type 'user-error)
+        (should-error
+         (nskk-cache-create/k
+          #'identity #'ignore :type type :size capacity)
+         :type 'user-error)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk-cache-get/k: CPS interface and falsy-value correctness
@@ -1440,6 +1546,399 @@
         (should (gethash "k2" b1-after))
         (should-not (gethash "k1" b1-after))))))
 
-(provide 'nskk-cache-test)
+(progn
+  (defun nskk-cache-test--expect-signal (condition thunk)
+    "Call THUNK and require it to signal CONDITION."
+    (let ((caught
+           (condition-case err
+               (progn
+                 (funcall thunk)
+                 nil)
+             (error err)
+             (quit err))))
+      (should (consp caught))
+      (should (eq (car caught) condition))))
+
+  (defun nskk-cache-test--fault-after-call (symbol condition thunk)
+    "Call THUNK with SYMBOL signaling CONDITION after its real mutation."
+    (let ((original (symbol-function symbol)))
+      (cl-letf (((symbol-function symbol)
+                 (lambda (&rest args)
+                   (prog1 (apply original args)
+                     (signal condition nil)))))
+        (nskk-cache-test--expect-signal condition thunk))))
+
+  (defun nskk-cache-test--only-key (table)
+    "Return the sole physical key in TABLE."
+    (let (keys)
+      (maphash (lambda (key _value) (push key keys)) table)
+      (should (= 1 (length keys)))
+      (car keys)))
+
+  (defun nskk-cache-test--primary-table (cache)
+    "Return CACHE's primary key table."
+    (if (nskk-cache-lru-p cache)
+        (nskk-cache-lru-hash cache)
+      (nskk-cache-lfu-hash cache)))
+
+  (defun nskk-cache-test--stored-key (cache)
+    "Return the sole physical key owned by CACHE."
+    (let* ((table (nskk-cache-test--primary-table cache))
+           (record (gethash (nskk-cache-test--only-key table) table)))
+      (if (nskk-cache-lru-p cache)
+          (nskk-cache-lru-node-key record)
+        (nskk-cache-lfu-entry-key record))))
+
+  (defun nskk-cache-test--make-transaction-fixture (strategy)
+    "Create a two-entry STRATEGY cache and capture its exact object graph."
+    (let* ((cache (nskk-cache-create :type strategy :capacity 2))
+           (a-value (list :a strategy))
+           (b-value (list :b strategy)))
+      (nskk-cache-put cache "a" a-value)
+      (nskk-cache-put cache "b" b-value)
+      (if (eq strategy 'lru)
+          (list :cache cache
+                :a-record (gethash "a" (nskk-cache-lru-hash cache))
+                :b-record (gethash "b" (nskk-cache-lru-hash cache))
+                :a-value a-value
+                :b-value b-value)
+        (list :cache cache
+              :a-record (gethash "a" (nskk-cache-lfu-hash cache))
+              :b-record (gethash "b" (nskk-cache-lfu-hash cache))
+              :bucket (gethash 1 (nskk-cache-lfu-freq cache))
+              :a-value a-value
+              :b-value b-value))))
+
+  (defun nskk-cache-test--assert-transaction-fixture (strategy fixture)
+    "Assert that FIXTURE retains the exact STRATEGY cache object graph."
+    (let* ((cache (plist-get fixture :cache))
+           (a-record (plist-get fixture :a-record))
+           (b-record (plist-get fixture :b-record))
+           (a-value (plist-get fixture :a-value))
+           (b-value (plist-get fixture :b-value)))
+      (if (eq strategy 'lru)
+          (let ((table (nskk-cache-lru-hash cache))
+                (head (nskk-cache-lru-head cache))
+                (tail (nskk-cache-lru-tail cache)))
+            (should (= 2 (nskk-cache-lru-size cache)))
+            (should (= 2 (hash-table-count table)))
+            (should (eq (gethash "a" table) a-record))
+            (should (eq (gethash "b" table) b-record))
+            (should (eq (nskk-cache-lru-node-value a-record) a-value))
+            (should (eq (nskk-cache-lru-node-value b-record) b-value))
+            (should (eq (nskk-cache-lru-node-next head) b-record))
+            (should (eq (nskk-cache-lru-node-prev b-record) head))
+            (should (eq (nskk-cache-lru-node-next b-record) a-record))
+            (should (eq (nskk-cache-lru-node-prev a-record) b-record))
+            (should (eq (nskk-cache-lru-node-next a-record) tail))
+            (should (eq (nskk-cache-lru-node-prev tail) a-record))
+            (should (= 0 (nskk-cache-lru-hits cache)))
+            (should (= 0 (nskk-cache-lru-misses cache))))
+        (let ((table (nskk-cache-lfu-hash cache))
+              (freq-table (nskk-cache-lfu-freq cache))
+              (bucket (plist-get fixture :bucket)))
+          (should (= 2 (nskk-cache-lfu-size cache)))
+          (should (= 2 (hash-table-count table)))
+          (should (= 1 (hash-table-count freq-table)))
+          (should (eq (gethash "a" table) a-record))
+          (should (eq (gethash "b" table) b-record))
+          (should (eq (gethash 1 freq-table) bucket))
+          (should (= 2 (hash-table-count bucket)))
+          (should (gethash "a" bucket))
+          (should (gethash "b" bucket))
+          (should (eq (nskk-cache-lfu-entry-value a-record) a-value))
+          (should (eq (nskk-cache-lfu-entry-value b-record) b-value))
+          (should (= 1 (nskk-cache-lfu-entry-frequency a-record)))
+          (should (= 1 (nskk-cache-lfu-entry-frequency b-record)))
+          (should (= 1 (nskk-cache-lfu-min-freq cache)))
+          (should (= 0 (nskk-cache-lfu-hits cache)))
+          (should (= 0 (nskk-cache-lfu-misses cache)))))))
+
+  (ert-deftest nskk-cache-adversarial-owned-arbitrary-keys-and-values ()
+    (dolist (strategy '(lru lfu))
+      (let ((cache (nskk-cache-create :type strategy :capacity 1)))
+        (dotimes (index 20)
+          (let* ((key (format "key-%02d" index))
+                 (lookup (copy-sequence key))
+                 (value (list strategy index)))
+            (nskk-cache-put cache key value)
+            (should-not (eq (nskk-cache-test--stored-key cache) key))
+            (aset key 0 ?X)
+            (should (eq (nskk-cache-get cache lookup) value))
+            (should (= 1 (nskk-cache-size cache)))
+            (should (= 1 (hash-table-count
+                          (nskk-cache-test--primary-table cache))))))
+        (let* ((leaf (copy-sequence "shared"))
+               (key (list leaf leaf))
+               (lookup (list "shared" "shared"))
+               (value (list :shared strategy)))
+          (nskk-cache-put cache key value)
+          (let ((stored-key (nskk-cache-test--stored-key cache)))
+            (should-not (eq stored-key key))
+            (should-not (eq (car stored-key) leaf))
+            (should (eq (car stored-key) (cadr stored-key))))
+          (aset leaf 0 ?X)
+          (should (eq (nskk-cache-get cache lookup) value)))
+        (let* ((key (list "cycle"))
+               (lookup (list "cycle"))
+               (value (list :cycle strategy)))
+          (setcdr key key)
+          (setcdr lookup lookup)
+          (nskk-cache-put cache key value)
+          (let ((stored-key (nskk-cache-test--stored-key cache)))
+            (should-not (eq stored-key key))
+            (should (eq (cdr stored-key) stored-key)))
+          (setcar key "changed")
+          (should (eq (nskk-cache-get cache lookup) value)))
+        (let* ((key (list "update"))
+               (lookup (list "update"))
+               (old-value (list :old strategy))
+               (new-value (vector :new strategy)))
+          (nskk-cache-put cache key old-value)
+          (nskk-cache-put cache lookup new-value)
+          (should-not (eq (nskk-cache-test--stored-key cache) lookup))
+          (should (eq (nskk-cache-get cache key) new-value))
+          (should (= 1 (nskk-cache-size cache)))))))
+
+  (ert-deftest nskk-cache-adversarial-key-copy-failure-is-atomic ()
+    (dolist (strategy '(lru lfu))
+      (dolist (condition '(error quit))
+        (let ((fixture
+               (nskk-cache-test--make-transaction-fixture strategy)))
+          (cl-letf (((symbol-function 'nskk-prolog-copy-term)
+                     (lambda (_term) (signal condition nil))))
+            (nskk-cache-test--expect-signal
+             condition
+             (lambda ()
+               (nskk-cache-put (plist-get fixture :cache)
+                               (list "c")
+                               (list :new strategy)))))
+          (nskk-cache-test--assert-transaction-fixture
+           strategy fixture)))))
+
+  (ert-deftest nskk-cache-adversarial-lru-helper-fault-rolls-back ()
+    (dolist (condition '(error quit))
+      (dolist (case '((nskk-cache-lru--move-to-head get)
+                      (nskk-cache-lru--remove-node invalidate)
+                      (nskk-cache-lru--add-to-head put)
+                      (nskk-cache-lru--remove-tail put)))
+        (dotimes (_iteration 3)
+          (let* ((fixture
+                  (nskk-cache-test--make-transaction-fixture 'lru))
+                 (cache (plist-get fixture :cache))
+                 (symbol (car case))
+                 (operation (cadr case))
+                 (recovery-value (list :recovery condition operation)))
+            (nskk-cache-test--fault-after-call
+             symbol condition
+             (lambda ()
+               (pcase operation
+                 ('get (nskk-cache-get cache "a"))
+                 ('invalidate (nskk-cache-invalidate cache "a"))
+                 ('put (nskk-cache-put cache "c" (list :new condition))))))
+            (nskk-cache-test--assert-transaction-fixture
+             'lru fixture)
+            (nskk-cache-put cache "c" recovery-value)
+            (should (eq (nskk-cache-get cache "c") recovery-value))
+            (let* ((table (nskk-cache-lru-hash cache))
+                   (head (nskk-cache-lru-head cache))
+                   (tail (nskk-cache-lru-tail cache))
+                   (a-record (plist-get fixture :a-record))
+                   (b-record (plist-get fixture :b-record))
+                   (b-value (plist-get fixture :b-value))
+                   (c-record (gethash "c" table)))
+              (should (= 2 (nskk-cache-lru-size cache)))
+              (should (= 2 (hash-table-count table)))
+              (should-not (gethash "a" table))
+              (should-not (eq c-record a-record))
+              (should (eq (gethash "b" table) b-record))
+              (should (eq (nskk-cache-lru-node-value b-record) b-value))
+              (should (eq (nskk-cache-lru-node-value c-record)
+                          recovery-value))
+              (should (eq (nskk-cache-lru-node-next head) c-record))
+              (should (eq (nskk-cache-lru-node-prev c-record) head))
+              (should (eq (nskk-cache-lru-node-next c-record) b-record))
+              (should (eq (nskk-cache-lru-node-prev b-record) c-record))
+              (should (eq (nskk-cache-lru-node-next b-record) tail))
+              (should (eq (nskk-cache-lru-node-prev tail) b-record))
+              (should (= 1 (nskk-cache-lru-hits cache)))
+              (should (= 0 (nskk-cache-lru-misses cache)))))))))
+
+  (ert-deftest nskk-cache-adversarial-lfu-helper-fault-rolls-back ()
+    (dolist (condition '(error quit))
+      (dolist (case '((nskk-cache-lfu--remove-from-freq-bucket get)
+                      (nskk-cache-lfu--update-freq get)
+                      (nskk-cache-lfu--evict-min-freq put)
+                      (nskk-cache-lfu--bucket-any-key/k put)
+                      (remhash invalidate)))
+        (let* ((fixture
+                (nskk-cache-test--make-transaction-fixture 'lfu))
+               (cache (plist-get fixture :cache))
+               (symbol (car case))
+               (operation (cadr case)))
+          (nskk-cache-test--fault-after-call
+           symbol condition
+           (lambda ()
+             (pcase operation
+               ('get (nskk-cache-get cache "a"))
+               ('invalidate (nskk-cache-invalidate cache "a"))
+               ('put (nskk-cache-put cache "c" (list :new condition))))))
+          (nskk-cache-test--assert-transaction-fixture
+           'lfu fixture)))))
+
+  (ert-deftest nskk-cache-adversarial-prepared-get-contract ()
+  (dolist (strategy (quote (lru lfu)))
+    (let* ((cache (nskk-cache-create :type strategy :capacity 2))
+           (stored (list :stored strategy))
+           (prepared (list :prepared strategy))
+           (preparer-input nil)
+           (preparer-calls 0)
+           (found-calls 0)
+           (miss-calls 0)
+           (received nil))
+      (nskk-cache-put cache "a" stored)
+      (nskk-cache-get-prepared/k
+       cache "a"
+       (lambda (value)
+         (setq preparer-input value)
+         (cl-incf preparer-calls)
+         prepared)
+       (lambda (value)
+         (setq received value)
+         (cl-incf found-calls))
+       (lambda () (cl-incf miss-calls)))
+      (should (eq preparer-input stored))
+      (should (eq received prepared))
+      (should (= preparer-calls 1))
+      (should (= found-calls 1))
+      (should (= miss-calls 0))
+      (should (= (plist-get (nskk-cache-stats cache) :hits) 1)))
+    (let ((cache (nskk-cache-create :type strategy :capacity 2))
+          (preparer-calls 0)
+          (found-calls 0)
+          (miss-calls 0)
+          (received :unset))
+      (nskk-cache-put cache "nil" nil)
+      (nskk-cache-get-prepared/k
+       cache "nil"
+       (lambda (value)
+         (should (null value))
+         (cl-incf preparer-calls)
+         :prepared-nil)
+       (lambda (value)
+         (setq received value)
+         (cl-incf found-calls))
+       (lambda () (cl-incf miss-calls)))
+      (should (eq received :prepared-nil))
+      (should (= preparer-calls 1))
+      (should (= found-calls 1))
+      (should (= miss-calls 0)))
+    (let ((cache (nskk-cache-create :type strategy :capacity 2))
+          (preparer-calls 0)
+          (found-calls 0)
+          (miss-calls 0))
+      (nskk-cache-get-prepared/k
+       cache "missing"
+       (lambda (value)
+         (cl-incf preparer-calls)
+         value)
+       (lambda (_value) (cl-incf found-calls))
+       (lambda () (cl-incf miss-calls)))
+      (should (= preparer-calls 0))
+      (should (= found-calls 0))
+      (should (= miss-calls 1))
+      (should (= (plist-get (nskk-cache-stats cache) :misses) 1)))
+    (let* ((cache (nskk-cache-create :type strategy :capacity 2))
+           (stored (list :legacy strategy))
+           (nil-found 0)
+           (miss-found 0))
+      (nskk-cache-put cache "value" stored)
+      (nskk-cache-put cache "nil" nil)
+      (should (eq (nskk-cache-get cache "value") stored))
+      (nskk-cache-get/k
+       cache "nil"
+       (lambda (value)
+         (should (null value))
+         (cl-incf nil-found))
+       (lambda () (should nil)))
+      (nskk-cache-get/k
+       cache "missing"
+       (lambda (_value) (should nil))
+       (lambda () (cl-incf miss-found)))
+      (should (= nil-found 1))
+      (should (= miss-found 1)))))
+
+  (ert-deftest nskk-cache-adversarial-preparer-fault-is-atomic ()
+  (dolist (strategy (quote (lru lfu)))
+    (dolist (condition (quote (error quit)))
+      (let* ((fixture (nskk-cache-test--make-transaction-fixture strategy))
+             (cache (plist-get fixture :cache))
+             (stored (plist-get fixture :a-value))
+             (prepared (list :retry strategy condition))
+             (preparer-input nil)
+             (preparer-calls 0)
+             (found-calls 0)
+             (miss-calls 0)
+             (received nil))
+        (dotimes (attempt 3)
+          (nskk-cache-test--expect-signal
+           condition
+           (lambda ()
+             (nskk-cache-get-prepared/k
+              cache "a"
+              (lambda (value)
+                (setq preparer-input value)
+                (cl-incf preparer-calls)
+                (signal condition (list :prepared-hit-fault attempt)))
+              (lambda (_value) (cl-incf found-calls))
+              (lambda () (cl-incf miss-calls)))))
+          (should (eq preparer-input stored))
+          (should (= preparer-calls (1+ attempt)))
+          (should (= found-calls 0))
+          (should (= miss-calls 0))
+          (nskk-cache-test--assert-transaction-fixture strategy fixture))
+        (nskk-cache-get-prepared/k
+         cache "a"
+         (lambda (value)
+           (setq preparer-input value)
+           (cl-incf preparer-calls)
+           prepared)
+         (lambda (value)
+           (setq received value)
+           (cl-incf found-calls))
+         (lambda () (cl-incf miss-calls)))
+        (should (eq preparer-input stored))
+        (should (eq received prepared))
+        (should (= preparer-calls 4))
+        (should (= found-calls 1))
+        (should (= miss-calls 0))
+        (if (eq strategy (quote lru))
+            (let ((a-record (plist-get fixture :a-record))
+                  (b-record (plist-get fixture :b-record))
+                  (head (nskk-cache-lru-head cache))
+                  (tail (nskk-cache-lru-tail cache)))
+              (should (eq (nskk-cache-lru-node-next head) a-record))
+              (should (eq (nskk-cache-lru-node-prev a-record) head))
+              (should (eq (nskk-cache-lru-node-next a-record) b-record))
+              (should (eq (nskk-cache-lru-node-prev b-record) a-record))
+              (should (eq (nskk-cache-lru-node-next b-record) tail))
+              (should (eq (nskk-cache-lru-node-prev tail) b-record))
+              (should (= (nskk-cache-lru-hits cache) 1))
+              (should (= (nskk-cache-lru-misses cache) 0)))
+          (let* ((a-record (plist-get fixture :a-record))
+                 (b-record (plist-get fixture :b-record))
+                 (freq-table (nskk-cache-lfu-freq cache))
+                 (bucket-one (gethash 1 freq-table))
+                 (bucket-two (gethash 2 freq-table)))
+            (should (= (nskk-cache-lfu-entry-frequency a-record) 2))
+            (should (= (nskk-cache-lfu-entry-frequency b-record) 1))
+            (should-not (gethash "a" bucket-one))
+            (should (gethash "b" bucket-one))
+            (should (gethash "a" bucket-two))
+            (should (= (nskk-cache-lfu-min-freq cache) 1))
+            (should (= (nskk-cache-lfu-hits cache) 1))
+            (should (= (nskk-cache-lfu-misses cache) 0))))))))
+
+  (provide (quote nskk-cache-test)))
 
 ;;; nskk-cache-test.el ends here

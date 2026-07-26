@@ -212,6 +212,125 @@
         (nskk-zenkaku-katakana-region (point-min) (point-max))
         (should (equal (buffer-string) original))))))
 
-(provide 'nskk-region-test)
+(defconst nskk-region-test--interactive-cases
+  '((nskk-hiragana-region "アイウ" "あいう")
+    (nskk-katakana-region "あいう" "アイウ")
+    (nskk-hankaku-katakana-region "アイウ" "ｱｲｳ")
+    (nskk-zenkaku-katakana-region "ｱｲｳ" "アイウ")
+    (nskk-jisx0208-latin-region "abc" "ａｂｃ")
+    (nskk-latin-region "ａｂｃ" "abc"))
+  "Interactive region conversion command test cases.")
+
+(ert-deftest nskk-region-test/inactive-region-signals-without-modification ()
+  "Signal a user error and preserve the buffer when no region is active."
+  (dolist (entry nskk-region-test--interactive-cases)
+    (let ((command (nth 0 entry))
+          (input (nth 1 entry)))
+      (with-temp-buffer
+        (insert input)
+        (let ((before (buffer-string))
+              (transient-mark-mode t)
+              (mark-active nil))
+          (should-error (call-interactively command) :type 'user-error)
+          (should (equal (buffer-string) before)))))))
+
+(ert-deftest nskk-region-test/active-region-normal-direction ()
+  "Convert every command with point after mark."
+  (dolist (entry nskk-region-test--interactive-cases)
+    (let ((command (nth 0 entry))
+          (input (nth 1 entry))
+          (expected (nth 2 entry)))
+      (with-temp-buffer
+        (insert input)
+        (let ((transient-mark-mode t))
+          (goto-char (point-max))
+          (push-mark (point-min) t t)
+          (should (use-region-p))
+          (call-interactively command)
+          (should (equal (buffer-string) expected)))))))
+
+(ert-deftest nskk-region-test/active-region-reverse-direction ()
+  "Convert every command with point before mark."
+  (dolist (entry nskk-region-test--interactive-cases)
+    (let ((command (nth 0 entry))
+          (input (nth 1 entry))
+          (expected (nth 2 entry)))
+      (with-temp-buffer
+        (insert input)
+        (let ((transient-mark-mode t))
+          (push-mark (point-max) t t)
+          (goto-char (point-min))
+          (should (use-region-p))
+          (call-interactively command)
+          (should (equal (buffer-string) expected)))))))
+
+(ert-deftest nskk-region-test/change-group-restores-region-on-hook-failures ()
+  "Restore text and active-region state for every injected hook failure."
+  (dolist (entry nskk-region-test--interactive-cases)
+    (dolist (phase '(before after))
+      (dolist (condition '(error quit))
+        (let ((command (nth 0 entry))
+              (input (nth 1 entry)))
+          (with-temp-buffer
+            (insert input)
+            (goto-char (point-max))
+            (push-mark (point-min) t t)
+            (setq mark-active t)
+            (let ((before-text (buffer-string))
+                  (before-point (point))
+                  (before-mark (mark))
+                  (before-mark-active mark-active)
+                  (before-change-functions
+                   (when (eq phase 'before)
+                     (list
+                      (lambda (&rest _)
+                        (signal condition
+                                '(injected-region-conversion))))))
+                  (after-change-functions
+                   (when (eq phase 'after)
+                     (list
+                      (lambda (&rest _)
+                        (signal condition
+                                '(injected-region-conversion)))))))
+              (let ((caught
+                     (condition-case condition-data
+                         (progn
+                           (funcall command (point-min) (point-max))
+                           nil)
+                       (quit condition-data)
+                       (error condition-data))))
+                (should
+                 (equal caught
+                        (list condition
+                              'injected-region-conversion)))
+                (should (equal (buffer-string) before-text))
+                (should (= (point) before-point))
+                (should (= (mark) before-mark))
+                (should (eq mark-active before-mark-active))))))))))
+
+(ert-deftest nskk-region-test/read-only-restores-active-region-state ()
+  "Leave text and active-region state intact in read-only buffers."
+  (dolist (entry nskk-region-test--interactive-cases)
+    (let ((command (nth 0 entry))
+          (input (nth 1 entry)))
+      (with-temp-buffer
+        (insert input)
+        (goto-char (point-max))
+        (push-mark (point-min) t t)
+        (setq mark-active t)
+        (let ((before-text (buffer-string))
+              (before-point (point))
+              (before-mark (mark))
+              (before-mark-active mark-active)
+              (buffer-read-only t))
+          (should-error
+           (funcall command (point-min) (point-max))
+           :type 'buffer-read-only)
+          (should (equal (buffer-string) before-text))
+          (should (= (point) before-point))
+          (should (= (mark) before-mark))
+          (should (eq mark-active before-mark-active)))))))
+
+(provide (quote nskk-region-test))
 
 ;;; nskk-region-test.el ends here

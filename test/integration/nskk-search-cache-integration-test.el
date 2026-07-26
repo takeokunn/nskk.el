@@ -158,23 +158,20 @@
   (nskk-it "first search is a cache miss; second is a cache hit"
     (nskk-with-mock-dict nil
       (let* ((cache (nskk-cache-create :type 'lru :capacity 100))
-             (cache-key "かんじ:exact:none")
-             ;; First call: cache miss, result fetched from Prolog
              (result1 (nskk-search-with-cache cache nskk--system-dict-index "かんじ")))
         (nskk-then
           (should (nskk-dict-entry-p result1))
-          ;; After the miss the key should now be in the cache
-          (should (nskk-cache-get cache cache-key))
-          ;; Stats: 1 miss from the first nskk-search-with-cache call
           (let ((stats (nskk-cache-stats cache)))
-            (should (>= (plist-get stats :misses) 1))))
-        ;; Second call: cache hit, same object returned
+            (should (= (plist-get stats :size) 1))
+            (should (= (plist-get stats :misses) 1))
+            (should (= (plist-get stats :hits) 0))))
         (let ((result2 (nskk-search-with-cache cache nskk--system-dict-index "かんじ")))
           (nskk-then
             (nskk-should-equal result1 result2)
-            ;; After the second call the hit counter must have incremented
             (let ((stats (nskk-cache-stats cache)))
-              (should (>= (plist-get stats :hits) 1))))))))
+              (should (= (plist-get stats :size) 1))
+              (should (= (plist-get stats :misses) 1))
+              (should (= (plist-get stats :hits) 1))))))))
 
   (nskk-it "search-with-cache returns nil for a missing key and does not cache nil"
     (nskk-with-mock-dict nil
@@ -202,39 +199,68 @@
 ;;;
 
 (nskk-describe "search learning"
-
-  (nskk-it "learning increments the Prolog learning-score fact for a candidate"
+  (nskk-it "increments frequency count"
     (nskk-prolog-test-with-isolated-db
-      (nskk-with-mock-dict nil
-        (nskk-given
-          ;; Verify no prior learning score exists for this pair
-          (let ((score-before
-                 (nskk-prolog-query-value
-                  '(learning-score "かんじ" "感じ" \?s) '\?s)))
-            (should (null score-before))))
-        (nskk-when
-          (nskk-search-learn "かんじ" "感じ"))
-        (nskk-then
-          (let ((score-after
-                 (nskk-prolog-query-value
-                  '(learning-score "かんじ" "感じ" \?s) '\?s)))
-            (should (= score-after 1)))))))
+      (nskk-given
+        (should (= 0 (nskk--search-candidate-score "よみ" "候補"))))
+      (nskk-when
+        (nskk-search-learn "よみ" "候補"))
+      (nskk-then
+        (should (= 1 (nskk--search-candidate-score "よみ" "候補"))))
+      (nskk-when
+        (nskk-search-learn "よみ" "候補"))
+      (nskk-then
+        (should (= 2 (nskk--search-candidate-score "よみ" "候補"))))))
 
-  (nskk-it "repeated learning calls increment the score each time"
+  (nskk-it "score affects result ordering"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
-      (nskk-with-mock-dict nil
-        (nskk-when
-          (nskk-search-learn "かんじ" "漢字")
-          (nskk-search-learn "かんじ" "漢字")
-          (nskk-search-learn "かんじ" "漢字"))
-        (nskk-then
-          (let ((score
-                 (nskk-prolog-query-value
-                  '(learning-score "かんじ" "漢字" \?s) '\?s)))
-            (should (= score 3)))))))
+      (nskk-with-mock-dict '(("かんじ" "漢字")
+                             ("かんたん" "簡単"))
+        (let* ((nskk-search-sort-method 'frequency)
+               (before
+                (nskk-search-prefix
+                 nskk--system-dict-index "かん" nil nil))
+               (target (car (last before)))
+               (reading (car target))
+               (candidate
+                (car (nskk-dict-entry-candidates (cdr target)))))
+          (nskk-given
+            (should (= (length before) 2))
+            (should-not (equal reading (caar before))))
+          (nskk-when
+            (nskk-search-learn reading candidate))
+          (nskk-then
+            (let ((after
+                   (nskk-search-prefix
+                    nskk--system-dict-index "かん" nil nil)))
+              (should (equal reading (caar after)))))))))
 
-)
+  (nskk-it "learning flushes cached prefix results and reapplies learned ordering"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-with-mock-dict nil
+        (let* ((nskk-search-sort-method 'frequency)
+               (cache (nskk-cache-create :type 'lru :capacity 100))
+               (before
+                (nskk-search-with-cache
+                 cache nskk--system-dict-index "に" 'prefix nil))
+               (target (car (last before)))
+               (reading (car target))
+               (candidate
+                (car (nskk-dict-entry-candidates (cdr target)))))
+          (nskk-given
+            (should (> (length before) 1))
+            (should (= (nskk-cache-size cache) 1))
+            (should-not (equal reading (caar before))))
+          (nskk-when
+            (nskk-search-learn reading candidate))
+          (nskk-then
+            (should (= (nskk-cache-size cache) 0))
+            (let ((after
+                   (nskk-search-with-cache
+                    cache nskk--system-dict-index "に" 'prefix nil)))
+              (should (equal reading (caar after)))
+              (should (= (nskk-cache-size cache) 1)))))))))
 
 
 ;;;

@@ -137,7 +137,56 @@
       (nskk-with-azik-style
         ;; With us101, the toggle key should be "[", not "@"
         (when (boundp 'nskk-mode-map)
-          (should (lookup-key nskk-mode-map "[")))))))
+          (should (lookup-key nskk-mode-map "["))))))
+
+  (nskk-it "moves toggle binding bidirectionally and restores displaced bindings"
+    (let ((nskk-mode-map (make-sparse-keymap))
+          (nskk--azik-toggle-key-state nil))
+      (cl-progv '(nskk-mode-map) (list nskk-mode-map)
+        (nskk-prolog-test-with-isolated-db
+          (nskk-prolog-assert '((azik-toggle-key jp106 "@")))
+          (nskk-prolog-assert '((azik-toggle-key us101 "[")))
+          (keymap-set nskk-mode-map "@" #'beginning-of-line)
+          (keymap-set nskk-mode-map "[" #'end-of-line)
+          (keymap-set nskk-mode-map "C-c u" #'ignore)
+          (let ((nskk-azik-keyboard-type 'jp106))
+            (nskk--setup-azik-toggle-key)
+            (nskk--setup-azik-toggle-key))
+          (should (eq (lookup-key nskk-mode-map "@")
+                      #'nskk-toggle-japanese-mode))
+          (should (eq (lookup-key nskk-mode-map "[") #'end-of-line))
+          (should (eq (lookup-key nskk-mode-map (kbd "C-c u")) #'ignore))
+          (let ((nskk-azik-keyboard-type 'us101))
+            (nskk--setup-azik-toggle-key)
+            (nskk--setup-azik-toggle-key))
+          (should (eq (lookup-key nskk-mode-map "@") #'beginning-of-line))
+          (should (eq (lookup-key nskk-mode-map "[")
+                      #'nskk-toggle-japanese-mode))
+          (should (eq (lookup-key nskk-mode-map (kbd "C-c u")) #'ignore))
+          (let ((nskk-azik-keyboard-type 'jp106))
+            (nskk--setup-azik-toggle-key))
+          (should (eq (lookup-key nskk-mode-map "@")
+                      #'nskk-toggle-japanese-mode))
+          (should (eq (lookup-key nskk-mode-map "[") #'end-of-line))
+          (should (eq (lookup-key nskk-mode-map (kbd "C-c u")) #'ignore))))))
+
+  (nskk-it "preserves a user replacement made while a toggle key is active"
+    (let ((nskk-mode-map (make-sparse-keymap))
+          (nskk--azik-toggle-key-state nil))
+      (cl-progv '(nskk-mode-map) (list nskk-mode-map)
+        (nskk-prolog-test-with-isolated-db
+          (nskk-prolog-assert '((azik-toggle-key jp106 "@")))
+          (nskk-prolog-assert '((azik-toggle-key us101 "[")))
+          (keymap-set nskk-mode-map "@" #'beginning-of-line)
+          (let ((nskk-azik-keyboard-type 'jp106))
+            (nskk--setup-azik-toggle-key)
+            (keymap-set nskk-mode-map "@" #'forward-char)
+            (nskk--setup-azik-toggle-key))
+          (let ((nskk-azik-keyboard-type 'us101))
+            (nskk--setup-azik-toggle-key))
+          (should (eq (lookup-key nskk-mode-map "@") #'forward-char))
+          (should (eq (lookup-key nskk-mode-map "[")
+                      #'nskk-toggle-japanese-mode)))))))
 
 (nskk-describe "AZIK custom conversion table"
   (nskk-it "is a customizable variable with no extra rules by default"
@@ -150,7 +199,16 @@
       (nskk-with-azik-style
         (should (equal (nskk-convert-romaji "ka") "カスタム"))
         (should (equal (nskk-convert-romaji "qz") "くす"))
-        (should (equal (nskk-convert-romaji "ki") "き"))))))
+        (should (equal (nskk-convert-romaji "ki") "き")))))
+
+  (nskk-it "normalizes a new rule behind the generic AZIK bridge"
+    (let ((nskk-azik-conversion-table '(("qz" "くす"))))
+      (nskk-with-azik-style
+        (should (equal (nskk-convert-romaji "qz") "くす"))
+        (should (equal (nskk-converter-get-rule "qz") "くす"))
+        (should (equal (nskk-prolog-query-value
+                        '(azik-rule "qz" \?kana) '\?kana)
+                       "くす"))))))
 
 (nskk-describe "AZIK custom conversion table robustness"
   (nskk-it "ignores malformed user entries while still applying valid ones"
@@ -2264,6 +2322,150 @@
   (nskk-it "should NOT register other chars like a"
     (nskk-with-azik-style
       (should-not (nskk-prolog-holds-p '(azik-colon-trigger-char ?a))))))
+
+(defmacro nskk-test-with-azik-transaction-state (&rest body)
+  "Run BODY with isolated AZIK transaction state."
+  (declare (indent 0)
+           (debug t))
+  `(let ((nskk--romaji-table (make-hash-table :test 'equal))
+         (nskk--prolog-database (make-hash-table :test 'equal))
+         (nskk--prolog-database-tails (make-hash-table :test 'equal))
+         (nskk--prolog-index-config (make-hash-table :test 'equal))
+         (nskk--prolog-hash-indices (make-hash-table :test 'equal))
+         (nskk--prolog-trie-indices (make-hash-table :test 'equal))
+         (nskk--prolog-index-bucket-tail-cache
+          (make-hash-table :test 'equal))
+         (nskk--azik-vowel-shadow-set (make-hash-table :test 'equal))
+         (nskk--style-registry (copy-tree nskk--style-registry))
+         (nskk--converter-style-transaction-hash-tables
+          (copy-sequence nskk--converter-style-transaction-hash-tables))
+         (nskk--converter-style-transaction-variables
+          (copy-sequence nskk--converter-style-transaction-variables))
+         (nskk--azik-toggle-key-state nil)
+         (nskk-mode-map (make-sparse-keymap))
+         (nskk-azik-keyboard-type 'us101))
+     (add-to-list
+      'nskk--converter-style-transaction-hash-tables
+      'nskk--azik-vowel-shadow-set)
+     (add-to-list
+      'nskk--converter-style-transaction-variables
+      'nskk--azik-toggle-key-state)
+     (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
+     (nskk-converter-add-rule "old" "旧")
+     (nskk-prolog-set-index 'transaction-sentinel 1 :hash)
+     (progn
+       (nskk-prolog-assert '((transaction-sentinel intact)))
+       (nskk-prolog-assert '((azik-toggle-key us101 "[")))
+       (nskk-prolog-assert '((azik-toggle-key jp106 "@"))))
+     (puthash "old-shadow" t nskk--azik-vowel-shadow-set)
+     (define-key nskk-mode-map (kbd "C-c o") 'ignore)
+     (cl-progv '(nskk-mode-map)
+         (list nskk-mode-map)
+       ,@body)))
+(defun nskk-test--azik-transaction-references ()
+  "Return the live AZIK transaction state references."
+  (list
+   nskk--romaji-table
+   nskk--prolog-database
+   nskk--prolog-database-tails
+   nskk--prolog-index-config
+   nskk--prolog-hash-indices
+   nskk--prolog-trie-indices
+   nskk--prolog-index-bucket-tail-cache
+   nskk--azik-vowel-shadow-set))
+(defun nskk-test--azik-load-style-condition (style)
+  "Load STYLE and return the signaled condition type, if any."
+  (condition-case
+    condition
+    (progn
+      (nskk-converter-load-style style)
+      nil)
+    (quit (car condition))
+    (error (car condition))))
+(defun nskk-test--should-retain-azik-transaction-state (references mode-map mode-map-copy)
+  "Assert exact rollback to REFERENCES and MODE-MAP-COPY."
+  (cl-mapc
+    (lambda (before after)
+      (should (eq before after)))
+    references
+    (nskk-test--azik-transaction-references))
+  (should (eq mode-map nskk-mode-map))
+  (should (equal mode-map-copy nskk-mode-map))
+  (should (equal (nskk-converter-get-rule "old") "旧"))
+  (should-not (nskk-converter-get-rule "new"))
+  (should (gethash "old-shadow" nskk--azik-vowel-shadow-set))
+  (should-not (gethash "new-shadow" nskk--azik-vowel-shadow-set))
+  (should (eq (lookup-key nskk-mode-map (kbd "C-c o")) 'ignore))
+  (should (nskk-prolog-holds-p '(transaction-sentinel intact))))
+(defun nskk-test--signal-during-azik-style (condition)
+  "Mutate staged AZIK state, then signal CONDITION when non-nil."
+  (nskk-converter-add-rule "new" "新")
+  (puthash "new-shadow" t nskk--azik-vowel-shadow-set)
+  (define-key nskk-mode-map (kbd "C-c n") 'next-line)
+  (when condition
+    (signal condition nil)))
+(nskk-describe
+  "AZIK style transactions"
+  (nskk-it
+    "rolls back exact state after initializer error and quit"
+    (dolist (condition '(error quit))
+      (nskk-test-with-azik-transaction-state
+        (nskk-converter-register-style
+          'transaction-signal
+          (apply-partially #'nskk-test--signal-during-azik-style condition))
+        (let ((references (nskk-test--azik-transaction-references))
+              (mode-map nskk-mode-map)
+              (mode-map-copy (copy-keymap nskk-mode-map)))
+          (should
+            (eq (nskk-test--azik-load-style-condition 'transaction-signal) condition))
+          (nskk-test--should-retain-azik-transaction-state
+            references
+            mode-map
+            mode-map-copy)))))
+  (nskk-it
+    "rolls back exact state after publish error and quit"
+    (dolist (condition '(error quit))
+      (nskk-test-with-azik-transaction-state
+        (nskk-converter-register-style
+          'transaction-publish-failure
+          (apply-partially #'nskk-test--signal-during-azik-style nil))
+        (let ((references (nskk-test--azik-transaction-references))
+              (mode-map nskk-mode-map)
+              (mode-map-copy (copy-keymap nskk-mode-map)))
+          (cl-letf
+            (((symbol-function 'nskk--converter-replace-keymap-contents)
+                (apply-partially
+                  (lambda (signaled-condition target source)
+                    (setcdr target (cdr source))
+                    (signal signaled-condition nil))
+                  condition)))
+            (should
+              (eq
+                (nskk-test--azik-load-style-condition 'transaction-publish-failure)
+                condition)))
+          (nskk-test--should-retain-azik-transaction-state
+            references
+            mode-map
+            mode-map-copy)))))
+  (nskk-it
+    "commits AZIK stores while preserving keymap identity and facts"
+    (nskk-test-with-azik-transaction-state
+      (let ((references (nskk-test--azik-transaction-references))
+            (mode-map nskk-mode-map))
+        (should (eq (nskk-converter-load-style 'azik) 'azik))
+        (cl-mapc
+          (lambda (before after)
+            (should-not (eq before after)))
+          references
+          (nskk-test--azik-transaction-references))
+        (should (eq mode-map nskk-mode-map))
+        (should-not (nskk-converter-get-rule "old"))
+        (should (equal (nskk-converter-get-rule "kz") "かん"))
+        (should-not (gethash "old-shadow" nskk--azik-vowel-shadow-set))
+        (should (gethash "sh" nskk--azik-vowel-shadow-set))
+        (should (eq (lookup-key nskk-mode-map (kbd "C-c o")) 'ignore))
+        (should (eq (lookup-key nskk-mode-map (kbd "[")) 'nskk-toggle-japanese-mode))
+        (should (nskk-prolog-holds-p '(transaction-sentinel intact)))))))
 
 (provide 'nskk-azik-test)
 

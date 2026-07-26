@@ -91,21 +91,27 @@
 (require 'nskk-custom)
 (require 'nskk-debug nil t)
 
+(defvar nskk--learning-loaded)
+
+(defconst nskk--search-learning-max-file-size (* 10 1024 1024)
+  "Maximum number of bytes accepted from the learning data file.")
+
 (defvar nskk-search-jisyo-hook nil
   "Hook run after a successful dictionary search via `nskk-search'.
 Each function is called with no arguments.  The hook fires only on
 success (when a result is found); failed searches and direct calls to
 `nskk-search-exact', `nskk-search-prefix', etc. do not trigger it.
 The hook does not fire on cache hits via `nskk-search-with-cache'.
-Hook functions must not signal errors; errors are silently suppressed
-to protect the CPS continuation chain.")
+An ordinary error is reported per function without blocking later observers;
+a `quit' condition propagates unchanged and stops the remaining functions.")
 
 (defvar nskk-save-history-hook nil
   "Hook run after learning data is successfully saved.
 The save is performed by `nskk-search-save-learning-data'.
-Each function is called with no
-arguments.  The hook fires only on successful save; I/O errors
-suppress both the save and this hook.")
+Each function is called with no arguments.  The hook fires only on successful
+save; I/O errors suppress both the save and this hook.  An ordinary hook error
+is reported per function without blocking later observers; a `quit' condition
+propagates unchanged and stops the remaining functions.")
 
 ;;; Error definitions
 
@@ -158,11 +164,25 @@ suppress both the save and this hook.")
 
 ;;; Unified search interface
 
-(defun nskk--search-run-post-hook ()
-  "Fire `nskk-search-jisyo-hook' after a successful search.
-Errors in hook functions are suppressed to protect the CPS chain."
-  (when nskk-search-jisyo-hook
-    (ignore-errors (run-hooks 'nskk-search-jisyo-hook))))
+(defun nskk--search-run-notification-hook (hook label)
+    "Run notification HOOK, reporting each ordinary error with LABEL.
+Each hook function is invoked separately so one failure does not block later
+observers.  A `quit' condition is deliberately allowed to escape unchanged."
+    (run-hook-wrapped
+     hook
+     (lambda (function)
+       (condition-case err
+           (funcall function)
+         (error
+          (message "NSKK: %s error: %s"
+                   label (error-message-string err))))
+       nil)))
+
+  (defun nskk--search-run-post-hook ()
+    "Fire `nskk-search-jisyo-hook' after a successful search.
+Ordinary hook errors are reported per function; `quit' propagates unchanged."
+    (nskk--search-run-notification-hook
+     'nskk-search-jisyo-hook "search-jisyo-hook"))
 
 (defun/k nskk-search (index query &optional search-type okuri-type limit)
   "Search dictionary INDEX for QUERY.
@@ -260,8 +280,8 @@ The /k variant calls ON-FOUND with the entry, ON-NOT-FOUND otherwise."
 
 (defun nskk--search-post-process-results (results okuri-type limit)
   "Apply standard post-processing to RESULTS.
-Filters by OKURI-TYPE via Prolog `entry-matches-okuri-filter/2', removes
-duplicates, applies LIMIT, and sorts by `nskk-search-sort-method'.
+Filters by OKURI-TYPE via Prolog entry-matches-okuri-filter/2, removes
+duplicates, sorts by nskk-search-sort-method, and then applies LIMIT.
 Returns the processed result list."
   (let* ((filtered (if okuri-type
                        (cl-remove-if-not
@@ -270,11 +290,12 @@ Returns the processed result list."
                            okuri-type (nskk-dict-entry-okuri (cdr result))))
                         results)
                      results))
-         (unique  (nskk--search-dedup filtered))
-         (limited (if (and limit (> (length unique) limit))
-                      (seq-take unique limit)
-                    unique)))
-    (nskk--search-sort-results limited)))
+         (unique (nskk--search-dedup filtered)))
+    (cond
+     ((null limit) (nskk--search-sort-results unique))
+     ((<= limit 0) nil)
+     ((>= limit (length unique)) (nskk--search-sort-results unique))
+     (t (nskk--search-top-results unique limit)))))
 
 (defun/k nskk-search-prefix (index query okuri-type limit)
   "Perform prefix match search in INDEX for QUERY.
@@ -328,32 +349,30 @@ Used for both ordinary and fuzzy results:
 
 (defun/k nskk-search-partial (index query okuri-type limit)
   "Perform partial match search in INDEX for QUERY.
-OKURI-TYPE specifies okurigana filtering: \\='okuri-ari, \\='okuri-nasi, or nil.
+OKURI-TYPE specifies okurigana filtering: okuri-ari, okuri-nasi, or nil.
 LIMIT is the maximum number of results.
-Returns a list of (KEY . `nskk-dict-entry') pairs in the sync wrapper,
+Returns a list of (KEY . nskk-dict-entry) pairs in the sync wrapper,
 or nil when no results remain after filtering.
 The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
   (let* ((pred (nskk-dict-index-predicate index))
-         ;; Collect all substring matches, then delegate filtering / dedup /
-         ;; limit / sort to the shared post-process pipeline (consistent with
-         ;; prefix and exact search paths).
          (results
           (when pred
-            (cl-loop for sol   in (nskk-prolog-query `(,pred \?k \?candidates))
-                     for key    = (nskk-prolog-walk '\?k sol)
-                     for cands  = (nskk-prolog-walk '\?candidates sol)
-                     for entry  = (make-nskk-dict-entry
-                                   :key key :candidates cands
-                                   :okuri (nskk--search-derive-okuri key))
+            (cl-loop for sol in (nskk-prolog-query `(,pred \?k \?candidates))
+                     for key = (nskk-prolog-walk (quote \?k) sol)
+                     for cands = (nskk-prolog-walk (quote \?candidates) sol)
                      when (string-search query key)
-                       collect (cons key entry))))
+                     collect (cons key
+                                   (make-nskk-dict-entry
+                                    :key key
+                                    :candidates cands
+                                    :okuri (nskk--search-derive-okuri key))))))
          (processed (nskk--search-post-process-results results okuri-type limit)))
     (if processed (succeed processed) (fail))))
 
 ;;; Fuzzy search
 
 (defun/k nskk-search-fuzzy (index query limit)
-  "Perform fuzzy search in INDEX for QUERY using Levenshtein distance.
+  "Perform fuzzy search in INDEX for QUERY using bounded Levenshtein distance.
 LIMIT is the maximum number of results.
 Returns a list in the sync wrapper, or nil when no match is within
 `nskk-search-fuzzy-threshold'.  The /k variant calls ON-FOUND with the list
@@ -368,7 +387,7 @@ the integer Levenshtein distance from QUERY."
             (cl-loop for sol      in (nskk-prolog-query `(,pred \?k \?candidates))
                      for key       = (nskk-prolog-walk '\?k sol)
                      for cands     = (nskk-prolog-walk '\?candidates sol)
-                     for distance  = (nskk--search-levenshtein-distance query key)
+                     for distance  = (nskk--search-levenshtein-distance-bounded query key nskk-search-fuzzy-threshold)
                      when (<= distance nskk-search-fuzzy-threshold)
                        collect (cons key (cons (make-nskk-dict-entry
                                                 :key key :candidates cands
@@ -384,47 +403,168 @@ the integer Levenshtein distance from QUERY."
                     sorted)))
     (if results (succeed results) (fail))))
 
-(defun nskk--search-levenshtein-distance (s1 s2)
-  "Compute Levenshtein distance between S1 and S2."
-  (let* ((len1 (length s1))
-         (len2 (length s2))
-         ;; Dynamic programming table: dp[i][j] = edit distance for s1[0..i) vs s2[0..j)
-         (dp (make-vector (1+ len1) nil)))
+(defun nskk--search-levenshtein-distance-bounded (s1 s2 max-distance)
+  "Return the edit distance between S1 and S2 up to MAX-DISTANCE.
+Return one more than MAX-DISTANCE when the exact distance exceeds the bound.
+Use two banded rows and reject impossible length differences before allocation."
+  (if (< max-distance 0)
+      (1+ max-distance)
+    (let* ((a (if (< (length s1) (length s2)) s2 s1))
+           (b (if (< (length s1) (length s2)) s1 s2))
+           (len-a (length a))
+           (len-b (length b))
+           (sentinel (1+ max-distance)))
+      (if (> (- len-a len-b) max-distance)
+          sentinel
+        (let ((previous (make-vector (1+ len-b) sentinel))
+              (current (make-vector (1+ len-b) sentinel)))
+          (dotimes (j (1+ (min len-b max-distance)))
+            (aset previous j j))
+          (dotimes (i len-a)
+            (let* ((row (1+ i))
+                   (start (max 1 (- row max-distance)))
+                   (end (min len-b (+ row max-distance)))
+                   (previous-end (min len-b (+ i max-distance))))
+              (aset current (1- start) (if (= start 1) row sentinel))
+              (when (> end previous-end)
+                (aset previous end sentinel))
+              (cl-loop for j from start to end
+                       for cost = (if (char-equal (aref a i) (aref b (1- j))) 0 1)
+                       do (aset current j
+                                (min (1+ (aref previous j))
+                                     (1+ (aref current (1- j)))
+                                     (+ (aref previous (1- j)) cost)))))
+            (let ((swap previous))
+              (setq previous current
+                    current swap)))
+          (min sentinel (aref previous len-b)))))))
 
-    ;; Initialize table rows
-    (dotimes (i (1+ len1))
-      (aset dp i (make-vector (1+ len2) 0)))
-
-    ;; Base cases: empty prefix distances
-    (dotimes (i (1+ len1))
-      (aset (aref dp i) 0 i))
-    (dotimes (j (1+ len2))
-      (aset (aref dp 0) j j))
-
-    ;; Fill via recurrence: min(insertion, deletion, substitution)
-    (dotimes (i len1)
-      (dotimes (j len2)
-        (let ((cost (if (char-equal (aref s1 i) (aref s2 j)) 0 1)))
-          (aset (aref dp (1+ i)) (1+ j)
-                (min
-                 (1+ (aref (aref dp i) (1+ j)))      ; insertion
-                 (1+ (aref (aref dp (1+ i)) j))       ; deletion
-                 (+ (aref (aref dp i) j) cost))))))    ; substitution
-
-    ;; Return final distance
-    (aref (aref dp len1) len2)))
+  (defun nskk--search-levenshtein-distance (s1 s2)
+  "Compute the exact Levenshtein distance between S1 and S2 with two rows."
+  (let* ((a
+          (if (< (length s1) (length s2)) s2
+            s1))
+         (b
+          (if (< (length s1) (length s2)) s1
+            s2))
+         (len-a (length a))
+         (len-b (length b))
+         (previous (make-vector (1+ len-b) 0))
+         (current (make-vector (1+ len-b) 0)))
+    (dotimes (j (1+ len-b))
+      (aset previous j j))
+    (dotimes (i len-a)
+      (aset current 0 (1+ i))
+      (dotimes (j len-b)
+        (let ((cost
+               (if (char-equal (aref a i) (aref b j)) 0
+                 1)))
+          (aset
+           current
+           (1+ j)
+           (min
+            (1+ (aref previous (1+ j)))
+            (1+ (aref current j))
+            (+ (aref previous j) cost)))))
+      (let ((swap previous))
+        (setq previous current
+              current swap)))
+    (aref previous len-b)))
 
 ;;; Sort functions
 
-(defun/k nskk--search-sort-results (results)
-  "Sort search RESULTS according to `nskk-search-sort-method'."
-  (let ((method (if (nskk-prolog-holds-p `(search-sort-method ,nskk-search-sort-method))
-                    nskk-search-sort-method
-                  'none)))
-    (pcase method
+(defun nskk--search-effective-sort-method ()
+    "Return the validated search sort method."
+    (if (nskk-prolog-holds-p `(search-sort-method ,nskk-search-sort-method))
+        nskk-search-sort-method
+      'none))
+
+  (defun nskk--search-top-results (results limit)
+  "Return the best LIMIT RESULTS in stable full-sort order."
+  (let ((method (nskk--search-effective-sort-method)))
+    (if (eq method 'none)
+        (seq-take results limit)
+      (let ((heap (make-vector limit nil))
+            (size 0))
+        (cl-labels
+            ((candidate-better-p
+              (key index ranked)
+              (let ((right-key (aref ranked 0))
+                    (right-index (aref ranked 1)))
+                (pcase method
+                  ('frequency
+                   (or (> key right-key)
+                       (and (= key right-key)
+                            (< index right-index))))
+                  ('kana
+                   (or (string< key right-key)
+                       (and (string= key right-key)
+                            (< index right-index)))))))
+             (better-p
+              (left right)
+              (candidate-better-p (aref left 0) (aref left 1) right))
+             (worse-p (left right) (better-p right left))
+             (swap (left right)
+               (let ((value (aref heap left)))
+                 (aset heap left (aref heap right))
+                 (aset heap right value)))
+             (sift-up
+              (position)
+              (while (> position 0)
+                (let ((parent (/ (1- position) 2)))
+                  (if (worse-p (aref heap position) (aref heap parent))
+                      (progn
+                        (swap position parent)
+                        (setq position parent))
+                    (setq position 0)))))
+             (sift-down
+              (position)
+              (let ((continue t))
+                (while continue
+                  (let ((left (1+ (* 2 position))))
+                    (if (>= left size)
+                        (setq continue nil)
+                      (let* ((right (1+ left))
+                             (worst
+                              (if (and (< right size)
+                                       (worse-p (aref heap right)
+                                                (aref heap left)))
+                                  right
+                                left)))
+                        (if (worse-p (aref heap worst)
+                                     (aref heap position))
+                            (progn
+                              (swap position worst)
+                              (setq position worst))
+                          (setq continue nil)))))))))
+          ;; Keep the worst retained result at the root for O(log LIMIT) replacement.
+          (cl-loop
+           for result in results
+           for index from 0
+           for key = (if (eq method 'frequency)
+                         (nskk--search-reading-score (car result) (cdr result))
+                       (car result))
+           do
+           (if (< size limit)
+               (progn
+                 (aset heap size (vector key index result))
+                 (sift-up size)
+                 (cl-incf size))
+             (when (candidate-better-p key index (aref heap 0))
+               (aset heap 0 (vector key index result))
+               (sift-down 0))))
+          (let (selected)
+            (dotimes (index size)
+              (push (aref heap index) selected))
+            (mapcar (lambda (ranked) (aref ranked 2))
+                    (sort selected #'better-p))))))))
+
+  (defun/k nskk--search-sort-results (results)
+    "Sort search RESULTS according to the configured method."
+    (pcase (nskk--search-effective-sort-method)
       ('frequency (succeed (nskk--search-sort-prefix-results results)))
       ('kana      (succeed (nskk-search-sort-by-kana-order results)))
-      (_          (succeed results)))))
+      (_          (succeed results))))
 
 (defun nskk-search-sort-by-kana-order (results)
   "Sort RESULTS in Japanese kana order."
@@ -498,6 +638,92 @@ cost of a stale hit."
 
 ;; Dictionary mutations run `nskk-jisyo-update-hook' (see nskk-dictionary.el).
 (add-hook 'nskk-jisyo-update-hook #'nskk--search-flush-caches)
+  (add-hook 'nskk-dict-initialize-hook #'nskk--search-flush-caches)
+
+  (defun nskk--search-hash-table-snapshot (table)
+    "Return TABLE and its exact key/value entries for rollback."
+    (let (entries)
+      (maphash (lambda (key value)
+                 (push (cons key value) entries))
+               table)
+      (cons table entries)))
+
+  (defun nskk--search-restore-hash-table-snapshot (snapshot)
+    "Restore the hash table recorded in SNAPSHOT in place."
+    (let ((table (car snapshot)))
+      (clrhash table)
+      (dolist (entry (cdr snapshot))
+        (puthash (car entry) (cdr entry) table))))
+
+  (defun nskk--search-cache-snapshot (cache)
+    "Return an exact rollback snapshot for CACHE."
+    (cond
+     ((nskk-cache-lru-p cache)
+      (let ((head (nskk-cache-lru-head cache))
+            (tail (nskk-cache-lru-tail cache)))
+        (vector 'lru
+                cache
+                (nskk-cache-lru-capacity cache)
+                (nskk-cache-lru-size cache)
+                (nskk--search-hash-table-snapshot
+                 (nskk-cache-lru-hash cache))
+                head
+                tail
+                (nskk-cache-lru-node-next head)
+                (nskk-cache-lru-node-prev tail)
+                (nskk-cache-lru-hits cache)
+                (nskk-cache-lru-misses cache))))
+     ((nskk-cache-lfu-p cache)
+      (vector 'lfu
+              cache
+              (nskk-cache-lfu-capacity cache)
+              (nskk-cache-lfu-size cache)
+              (nskk--search-hash-table-snapshot
+               (nskk-cache-lfu-hash cache))
+              (nskk--search-hash-table-snapshot
+               (nskk-cache-lfu-freq cache))
+              (nskk-cache-lfu-min-freq cache)
+              (nskk-cache-lfu-hits cache)
+              (nskk-cache-lfu-misses cache)))))
+
+  (defun nskk--search-restore-cache-snapshot (snapshot)
+    "Restore CACHE state recorded in SNAPSHOT in place."
+    (pcase (aref snapshot 0)
+      ('lru
+       (let ((cache (aref snapshot 1))
+             (head (aref snapshot 5))
+             (tail (aref snapshot 6)))
+         (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
+         (setf (nskk-cache-lru-capacity cache) (aref snapshot 2)
+               (nskk-cache-lru-size cache) (aref snapshot 3)
+               (nskk-cache-lru-hash cache) (car (aref snapshot 4))
+               (nskk-cache-lru-head cache) head
+               (nskk-cache-lru-tail cache) tail
+               (nskk-cache-lru-node-next head) (aref snapshot 7)
+               (nskk-cache-lru-node-prev tail) (aref snapshot 8)
+               (nskk-cache-lru-hits cache) (aref snapshot 9)
+               (nskk-cache-lru-misses cache) (aref snapshot 10))))
+      ('lfu
+       (let ((cache (aref snapshot 1)))
+         (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
+         (nskk--search-restore-hash-table-snapshot (aref snapshot 5))
+         (setf (nskk-cache-lfu-capacity cache) (aref snapshot 2)
+               (nskk-cache-lfu-size cache) (aref snapshot 3)
+               (nskk-cache-lfu-hash cache) (car (aref snapshot 4))
+               (nskk-cache-lfu-freq cache) (car (aref snapshot 5))
+               (nskk-cache-lfu-min-freq cache) (aref snapshot 6)
+               (nskk-cache-lfu-hits cache) (aref snapshot 7)
+               (nskk-cache-lfu-misses cache) (aref snapshot 8))))))
+
+  (defun nskk--search-cache-snapshots ()
+    "Snapshot every registered search cache for transactional rollback."
+    (let (snapshots)
+      (maphash (lambda (cache _)
+                 (when-let* ((snapshot
+                              (nskk--search-cache-snapshot cache)))
+                   (push snapshot snapshots)))
+               nskk--search-registered-caches)
+      snapshots))
 
 ;;; Learning data management
 
@@ -505,115 +731,246 @@ cost of a stale hit."
 (defun nskk-search-save-learning-data ()
   "Save learning data from Prolog facts to `nskk-search-learning-file'."
   (interactive)
-  (condition-case err
-      (progn
-        (let ((dir (file-name-directory nskk-search-learning-file)))
-          (unless (file-directory-p dir)
-            ;; Learning scores record the user's conversion history; keep
-            ;; the directory private when this code has to create it.
-            (with-file-modes #o700
-              (make-directory dir t))))
-        (nskk-dict-with-atomic-file nskk-search-learning-file
-          ;; Query all learning scores and serialize as (reading candidate score) tuples
-          (let ((solutions (nskk-prolog-query '(learning-score \?r \?c \?s))))
-            (prin1
-             (mapcar (lambda (sol)
-                       (list (nskk-prolog-walk '\?r sol)
-                             (nskk-prolog-walk '\?c sol)
-                             (nskk-prolog-walk '\?s sol)))
-                     solutions)
-             (current-buffer)))
-          (message "NSKK: Learning data saved")
-          (run-hooks 'nskk-save-history-hook)))
-    (error
-     (message "NSKK: Failed to save learning data: %s" (error-message-string err)))))
+  (if nskk--persistence-inhibited
+      (message "NSKK: Learning data save inhibited (tutorial active)")
+    (when
+        (condition-case err
+            (progn
+              (let ((dir (file-name-directory nskk-search-learning-file)))
+                (unless (file-directory-p dir)
+                  ;; Learning scores record the user's conversion history; keep
+                  ;; the directory private when this code has to create it.
+                  (with-file-modes #o700
+                    (make-directory dir t))))
+              (nskk-dict-with-atomic-file nskk-search-learning-file
+                (let ((solutions (nskk-prolog-query '(learning-score \?r \?c \?s))))
+                  (prin1
+                   (mapcar (lambda (sol)
+                             (list (nskk-prolog-walk '\?r sol)
+                                   (nskk-prolog-walk '\?c sol)
+                                   (nskk-prolog-walk '\?s sol)))
+                           solutions)
+                   (current-buffer))))
+              t)
+          (error
+           (message "NSKK: Failed to save learning data: %s"
+                    (error-message-string err))
+           nil))
+      (message "NSKK: Learning data saved")
+      (nskk--search-run-notification-hook 'nskk-save-history-hook "save-history-hook"))))
 
 ;;;###autoload
 (defun nskk-search-load-learning-data ()
   "Load learning data from `nskk-search-learning-file'.
 Restore the `learning-score' Prolog facts serialized by
-`nskk-search-save-learning-data'.  This is the inverse operation,
-allowing learning to persist across Emacs sessions."
+`nskk-search-save-learning-data'.  Reject non-regular or unstable files,
+stage and validate every record, then publish the result transactionally."
   (interactive)
-  (when (file-readable-p nskk-search-learning-file)
-    (let ((size (file-attribute-size
-                 (file-attributes nskk-search-learning-file))))
-      (if (and size (> size (* 10 1024 1024)))
-          (message "NSKK: Learning file too large (%d bytes), skipping load" size)
-        (condition-case err
-            (when-let* ((data (with-temp-buffer
-                                (insert-file-contents nskk-search-learning-file)
-                                (read (current-buffer)))))
-              (unless (listp data)
-                (error "Expected list, got %s" (type-of data)))
-              (dolist (entry data)
-                (pcase entry
-                  (`(,(and (pred stringp) reading)
-                     ,(and (pred stringp) word)
-                     ,(and (pred integerp) score))
-                   (nskk-prolog-assert
-                    (list `(learning-score ,reading ,word ,score)))))))
-          (error
-           (message "NSKK: Failed to load learning data: %s"
-                    (error-message-string err))))))))
+  (let ((file nskk-search-learning-file)
+        (owner 'nskk-search-load-learning-data))
+    (condition-case err
+        (progn
+          (nskk--dict-ensure-rollback-complete owner)
+          (cond
+           ((file-symlink-p file)
+            (error "Refusing symbolic-link learning file: %s" file))
+           ((not (file-exists-p file)) nil)
+           ((not (file-regular-p file))
+            (error "Learning data is not a regular file: %s" file))
+           ((not (file-readable-p file)) nil)
+           (t
+            (let* ((attributes (file-attributes file 'integer))
+                   (size (and attributes
+                              (file-attribute-size attributes))))
+              (unless attributes
+                (error "Cannot inspect learning file: %s" file))
+              (unless (integerp size)
+                (error "Invalid learning file size: %S" size))
+              (when (> size nskk--search-learning-max-file-size)
+                (error "Learning file exceeds %d-byte limit"
+                       nskk--search-learning-max-file-size))
+              (let* ((data
+                      (let ((read-eval nil)
+                            (read-circle nil))
+                        (ignore read-eval read-circle)
+                        (with-temp-buffer
+                          (nskk--dict-insert-file-contents-pinned
+                           file
+                           (file-truename file)
+                           attributes
+                           nskk--search-learning-max-file-size)
+                          (set-buffer-multibyte t)
+                          (decode-coding-region
+                           (point-min) (point-max) 'undecided)
+                          (goto-char (point-min))
+                          (let ((value (read (current-buffer))))
+                            (condition-case nil
+                                (progn
+                                  (read (current-buffer))
+                                  (error "Expected exactly one data form"))
+                              (end-of-file value))))))
+                     (_ (unless (proper-list-p data)
+                          (error "Expected proper list, got %s" (type-of data))))
+                     (facts
+                      (mapcar
+                       (lambda (entry)
+                         (pcase entry
+                           (`(,(and (pred stringp) reading)
+                              ,(and (pred stringp) word)
+                              ,(and (pred integerp) score))
+                            `(learning-score ,reading ,word ,score))
+                           (_ (error "Invalid learning entry: %S" entry))))
+                       data))
+                     (key (nskk--prolog-clause-key 'learning-score 3))
+                     (previous (nskk--dict-predicate-snapshot key))
+                     (cache-snapshots (nskk--search-cache-snapshots))
+                     (loaded-was-bound (boundp 'nskk--learning-loaded))
+                     (loaded-value
+                      (and loaded-was-bound
+                           (symbol-value 'nskk--learning-loaded))))
+                (condition-case condition
+                    (prog1
+                        (progn
+                          (nskk-prolog-retract-all 'learning-score 3)
+                          (dolist (fact facts)
+                            (nskk-prolog-assert (list fact)))
+                          (nskk--search-flush-caches))
+                      (nskk--dict-clear-pending-rollback owner))
+                  ((error quit)
+                   (let ((index 0))
+                     (nskk--dict-rollback-and-resignal
+                      owner
+                      condition
+                      (append
+                       (list
+                        (cons
+                         'predicate
+                         (lambda ()
+                           (nskk--dict-apply-predicate-snapshot previous))))
+                       (mapcar
+                        (lambda (snapshot)
+                          (prog1
+                              (cons
+                               (list 'cache index)
+                               (lambda ()
+                                 (nskk--search-restore-cache-snapshot snapshot)))
+                            (setq index (1+ index))))
+                        cache-snapshots)
+                       (list
+                        (cons
+                         'loaded-binding
+                         (lambda ()
+                           (if loaded-was-bound
+                               (set 'nskk--learning-loaded loaded-value)
+                             (when (boundp 'nskk--learning-loaded)
+                               (makunbound
+                                'nskk--learning-loaded))))))))))))))))
+      (error
+       (message "NSKK: Failed to load learning data: %s"
+                (error-message-string err))))))
 
 (defun/done nskk-search-learn (query candidate &optional context)
   "Record that CANDIDATE was selected for QUERY.
 _CONTEXT is reserved for future use.
 Stores learning score as a Prolog learning-score/3 fact.
 
-Candidates marked with the `nskk-no-learn' text property (e.g. those
-produced by built-in program dictionary handlers such as the date or
-calculator) are silently skipped -- equivalent to AquaSKK SetAvoidStudy."
+Candidates marked with the nskk-no-learn text property are skipped."
   (ignore context)
   (let ((word (if (stringp candidate) candidate (car candidate))))
-    ;; Skip learning for no-learn candidates early (before Prolog queries).
-    ;; Built-in program dict handlers mark candidates with `nskk-no-learn' t.
     (when (and word (not (get-text-property 0 'nskk-no-learn word)))
       (let* ((old-score (nskk-prolog-query-value
-                         `(learning-score ,query ,word \?s) '\?s))
-             (new-score (1+ (or old-score 0))))
-        (nskk-debug-log "[SEARCH] learn: query=%s word=%s new-score=%d" query word new-score)
-        (when old-score
-          (nskk-prolog-retract `(learning-score ,query ,word ,old-score)))
-        (nskk-prolog-assert (list `(learning-score ,query ,word ,new-score)))
-        ;; Scores feed candidate ordering, so any cached result is now stale.
-        (nskk--search-flush-caches)))))
+                         (list 'learning-score query word '\?s) '\?s))
+             (old-fact (and old-score
+                            (list 'learning-score query word old-score)))
+             (new-score (1+ (or old-score 0)))
+             (new-fact (list 'learning-score query word new-score)))
+        (nskk--prolog-replace-clause-transaction
+         old-fact (list new-fact)
+         (lambda ()
+           (nskk-debug-log
+            "[SEARCH] learn: query=%s word=%s new-score=%d"
+            query word new-score)
+           (nskk--search-flush-caches)
+           nil))))))
 
 ;;; Cache-backed search
 
-(defun nskk--search-cache-key (query search-type okuri-type)
-  "Generate cache key string from QUERY, SEARCH-TYPE, and OKURI-TYPE."
-  (format "%s:%s:%s"
-          query
-          (or search-type 'exact)
-          (or okuri-type 'none)))
+(defun nskk--search-cache-key (index query search-type okuri-type &optional limit)
+  "Generate a cache key for INDEX, QUERY, SEARCH-TYPE, OKURI-TYPE, and LIMIT."
+  (let ((type (or search-type (quote exact))))
+    (list :predicate (nskk-dict-index-predicate index)
+          :query query
+          :search-type type
+          :okuri-type (or okuri-type (quote none))
+          :limit (or limit (quote none))
+          :sort-method nskk-search-sort-method
+          :fuzzy-threshold (and (eq type (quote fuzzy))
+                                nskk-search-fuzzy-threshold))))
 
-(defun/k nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
-  "Search INDEX for QUERY using CACHE for result caching.
+(defun nskk--search-copy-cache-value (value)
+    "Return a detached copy of cache VALUE.
+Signal wrong-type-argument when VALUE contains a hash table.  The traversal
+is cycle-safe and includes string text-property values."
+    (let ((seen (make-hash-table :test (function eq)))
+          (pending (list value)))
+      (while pending
+        (let ((current (pop pending)))
+          (unless (gethash current seen)
+            (puthash current t seen)
+            (cond
+             ((hash-table-p current)
+              (signal (quote wrong-type-argument)
+                      (list (quote nskk-search-cache-value-without-hash-tables-p)
+                            current)))
+             ((functionp current) nil)
+             ((consp current)
+              (push (car current) pending)
+              (push (cdr current) pending))
+             ((stringp current)
+              (let ((position 0)
+                    (limit (length current)))
+                (while (< position limit)
+                  (let ((properties (text-properties-at position current)))
+                    (while properties
+                      (setq properties (cdr properties))
+                      (push (car properties) pending)
+                      (setq properties (cdr properties))))
+                  (setq position
+                        (next-property-change position current limit)))))
+             ((bool-vector-p current) nil)
+             ((recordp current)
+              (let ((index 1))
+                (while (< index (length current))
+                  (push (aref current index) pending)
+                  (setq index (1+ index)))))
+             ((vectorp current)
+              (let ((index 0))
+                (while (< index (length current))
+                  (push (aref current index) pending)
+                  (setq index (1+ index)))))))))
+      (nskk-prolog-copy-term value)))
+
+  (defun/k nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
+    "Search INDEX for QUERY using CACHE for result caching.
 Returns the cached or fresh result via ON-FOUND when candidates exist,
 or calls ON-NOT-FOUND when no candidates are found.
-SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to `nskk-search' on cache miss.
-Sync wrapper returns the same value shape as `nskk-search'.
+SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to the underlying search on
+cache miss.  The sync wrapper returns the same value shape.
 
-NOTE: `nskk-search-jisyo-hook' fires on cache misses (when `nskk-search' is
-invoked) but does NOT fire on cache hits.  Consumers expecting the hook
-to fire on every returned result should query `nskk-search' directly."
-  (unless (nskk-cache-p cache)
-    (signal 'wrong-type-argument (list 'nskk-cache-p cache)))
-  ;; Track CACHE so `nskk--search-flush-caches' can invalidate it on change.
-  (nskk--search-register-cache cache)
-  (let ((cache-key (nskk--search-cache-key query search-type okuri-type)))
-    (<-or cached nskk-cache-get cache cache-key
-      :found (progn
-               (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
-               (succeed cached))
-      :fail  (progn
-               (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
-               (<-seq [result (nskk-search index query search-type okuri-type limit)]
-                 (progn
-                   (nskk-cache-put cache cache-key result)
-                   (succeed result)))))))
+The jisyo hook fires on cache misses, but does not fire on cache hits."
+    (unless (nskk-cache-p cache)
+      (signal (quote wrong-type-argument) (list (quote nskk-cache-p) cache)))
+    (nskk--search-register-cache cache)
+    (let ((cache-key (nskk--search-cache-key index query search-type okuri-type limit)))
+      (<-or cached nskk-cache-get-prepared cache cache-key
+            (function nskk--search-copy-cache-value)
+        :found (progn
+                 (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
+                 (succeed cached))
+        :fail (progn
+                (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
+                (<-seq [result (nskk-search index query search-type okuri-type limit)]
+                  (let* ((canonical-result (nskk--search-copy-cache-value result)) (public-result (nskk--search-copy-cache-value canonical-result))) (nskk-cache-put cache cache-key canonical-result) (succeed public-result)))))))
 
 (provide 'nskk-search)
 

@@ -34,10 +34,13 @@
 ;; Usage:
 ;;   make bench
 ;;
+;; Each scenario gets a capped 1% warm-up, followed by three independently
+;; GC-reset samples.  The table reports the median and range; set the positive
+;; integer environment variable NSKK_BENCH_SAMPLES to override the sample count.
+;;
 ;; Output format (per benchmark):
-;;   LAYER  SCENARIO                              N       ms/op    GC
-;;   ----   ------------------------------------  ------  -------  --
-;;   L0     prolog-holds-p (hash hit)             10000   0.001ms   0
+;;   LAYER  SCENARIO                  N    S    median       min..max ms/op  GC
+;;   L0     prolog-holds-p hash-hit   10000  3    0.0010ms    0.0009..0.0011    0
 
 ;;; Code:
 
@@ -49,20 +52,44 @@
 
 ;;;; ── Benchmark Infrastructure ────────────────────────────────────────────────
 
-(defvar nskk-bench--results nil
-  "Accumulated benchmark result plists, newest first.
-Each plist has :layer :name :n :ms-per-op :gc-count.")
+(defvar nskk-bench--results nil "Accumulated benchmark result plists, newest first.\nEach plist stores the sample count, median and range in milliseconds per\noperation, and the total garbage collections across samples.")
 
 (defun nskk-bench--run (layer name n thunk)
-  "Run THUNK N times and record the result under LAYER / NAME."
-  (garbage-collect)
-  (let* ((raw   (benchmark-run n (funcall thunk)))
-         (total (car raw))
-         (gc    (cadr raw))
-         (ms-op (* 1000.0 (/ total n)))
-         (plist (list :layer layer :name name :n n :ms-per-op ms-op :gc-count gc)))
-    (push plist nskk-bench--results)
-    plist))
+  "Run THUNK N times per sample and record LAYER / NAME statistics.
+The sample count defaults to three and can be overridden with the positive
+integer environment variable NSKK_BENCH_SAMPLES."
+  (let* ((configured (getenv "NSKK_BENCH_SAMPLES"))
+         (samples (if (and configured
+                           (string-match-p "^[1-9][0-9]*$" configured))
+                      (string-to-number configured)
+                    3))
+         (warmup-n (min 1000 (max 1 (/ n 100))))
+         timings
+         gc-counts)
+    (dotimes (_ warmup-n)
+      (funcall thunk))
+    (dotimes (_ samples)
+      (garbage-collect)
+      (let ((raw (benchmark-run n (funcall thunk))))
+        (push (* 1000.0 (/ (car raw) n)) timings)
+        (push (cadr raw) gc-counts)))
+    (setq timings (sort timings (function <)))
+    (let* ((middle (/ samples 2))
+           (median (if (cl-oddp samples)
+                       (nth middle timings)
+                     (/ (+ (nth (1- middle) timings)
+                           (nth middle timings))
+                        2.0)))
+           (plist (list :layer layer
+                        :name name
+                        :n n
+                        :samples samples
+                        :ms-per-op median
+                        :min-ms-per-op (car timings)
+                        :max-ms-per-op (car (last timings))
+                        :gc-count (apply (function +) gc-counts))))
+      (push plist nskk-bench--results)
+      plist)))
 
 (defmacro nskk-bench (layer name n &rest body)
   "Benchmark BODY (N iterations) under LAYER / NAME."
@@ -74,20 +101,23 @@ Each plist has :layer :name :n :ms-per-op :gc-count.")
 (defun nskk-bench-report ()
   "Print benchmark results as an aligned ASCII table."
   (let ((results (nreverse (copy-sequence nskk-bench--results))))
-    (message "%-5s  %-44s  %6s  %10s  %3s"
-             "LAYER" "SCENARIO" "N" "ms/op" "GC")
-    (message "%s" (make-string 76 ?─))
+    (message "%-5s  %-40s  %6s  %3s  %10s  %21s  %3s"
+             "LAYER" "SCENARIO" "N" "S" "median" "min..max ms/op" "GC")
+    (message "%s" (make-string 101 ?-))
     (let (last-layer)
       (dolist (r results)
         (let ((layer (plist-get r :layer)))
           (when (and last-layer (not (equal last-layer layer)))
             (message ""))
           (setq last-layer layer)
-          (message "%-5s  %-44s  %6d  %10.4fms  %3d"
+          (message "%-5s  %-40s  %6d  %3d  %9.4fms  %9.4f..%-9.4f  %3d"
                    layer
                    (plist-get r :name)
                    (plist-get r :n)
+                   (plist-get r :samples)
                    (plist-get r :ms-per-op)
+                   (plist-get r :min-ms-per-op)
+                   (plist-get r :max-ms-per-op)
                    (plist-get r :gc-count)))))))
 
 ;;;; ── L0: Prolog Engine ────────────────────────────────────────────────────────
@@ -357,27 +387,61 @@ Each plist has :layer :name :n :ms-per-op :gc-count.")
         (nskk-search idx "かんじ"))
 
       ;; Result sorting — called after every successful search
-      (let ((results '(("かんじ" "漢字" nil)
-                       ("かんじ" "感じ" nil)
-                       ("かんじ" "幹事" nil))))
-        (nskk-bench "L3" "search-sort-results (3 entries)" 10000
-          (nskk--search-sort-results results)))
+      (progn
+        (let ((results '(("かんじ" "漢字" nil)
+                         ("かんじ" "感じ" nil)
+                         ("かんじ" "幹事" nil))))
+          (nskk-bench "L3" "search-sort-results (3 entries)" 10000
+            (nskk--search-sort-results results)))
+        (let ((large-results
+               (cl-loop for index below 10000
+                        for key = (format "%05d" (- 10000 index))
+                        collect (cons key nil)))
+              (nskk-search-sort-method 'kana))
+          (nskk-bench "L3" "search post-process top-k (10000, limit=10)" 100
+            (nskk--search-post-process-results large-results nil 10))))
 
       ;; Levenshtein distance alone — inner loop of fuzzy search
       (nskk-bench "L3" "levenshtein-distance (かんじ vs かんし)" 10000
         (nskk--search-levenshtein-distance "かんじ" "かんし"))
 
-      (nskk-bench "L3" "levenshtein-distance (longer strings)" 3000
-        (nskk--search-levenshtein-distance "にほんごにゅうりょく" "にほんご"))
+      (let ((long-source (make-string 256 ?a))
+            (short-source (make-string 32 ?a))
+            (near-source (concat (make-string 255 ?a) "b")))
+        (nskk-bench "L3" "levenshtein-distance (longer strings)" 3000
+          (nskk--search-levenshtein-distance
+           "にほんごにゅうりょく" "にほんご"))
+        (nskk-bench "L3" "levenshtein bounded length-reject (large mismatch)" 3000
+          (nskk--search-levenshtein-distance-bounded
+           long-source short-source 2))
+        (nskk-bench "L3" "levenshtein exact (large mismatch baseline)" 3000
+          (nskk--search-levenshtein-distance long-source short-source))
+        (nskk-bench "L3" "levenshtein bounded near-match (same length)" 3000
+          (nskk--search-levenshtein-distance-bounded
+           long-source near-source 2))
+        (nskk-bench "L3" "levenshtein exact near-match baseline" 3000
+          (nskk--search-levenshtein-distance long-source near-source)))
 
       ;; Cache integration: cold miss vs warm hit
       (let ((cache (nskk-cache-create :type 'lru :capacity 128)))
-        (nskk-bench "L3" "search-with-cache (cold miss)" 1000
-          (nskk-search-with-cache cache idx "かんじ"))
+        (nskk-bench "L3" "search-with-cache (cold miss, fresh cache)" 1000
+          (nskk-search-with-cache
+           (nskk-cache-create :type 'lru :capacity 128) idx "かんじ"))
         ;; Warm the cache first
         (nskk-search-with-cache cache idx "かんじ")
         (nskk-bench "L3" "search-with-cache (warm hit)" 5000
-          (nskk-search-with-cache cache idx "かんじ"))))))
+          (nskk-search-with-cache cache idx "かんじ"))
+        (nskk-prolog-test-with-isolated-db
+          (nskk-prolog-retract-all 'learning-score 3)
+          (nskk-prolog-set-index 'learning-score 3 :hash)
+          (dotimes (index 10000)
+            (nskk-prolog-assert
+             (list (list 'learning-score
+                         (format "query-%05d" index)
+                         "candidate"
+                         1))))
+          (nskk-bench "L3" "search-learn transaction (10000 facts)" 10
+            (nskk-search-learn "query-05000" "candidate")))))))
 
 ;;;; ── L4a: Input Processing ────────────────────────────────────────────────────
 
@@ -530,39 +594,36 @@ Each plist has :layer :name :n :ms-per-op :gc-count.")
   "Run all NSKK benchmarks and print a summary table."
   (setq nskk-bench--results nil)
   (message "")
-  (message "══ NSKK Benchmarks ══════════════════════════════════════════════════════")
-  (message "  Emacs %s  |  %s" emacs-version (format-time-string "%Y-%m-%d %H:%M:%S"))
+  (message "== NSKK Benchmarks =====================================================")
+  (message "  Emacs: %s" emacs-version)
+  (message "  System: %s (%s), %s processors"
+           system-configuration system-type
+           (if (fboundp (quote num-processors)) (num-processors) "unknown"))
+  (message "  GC threshold: %s bytes" gc-cons-threshold)
+  (message "  Samples: %s (override with NSKK_BENCH_SAMPLES)"
+           (let ((configured (getenv "NSKK_BENCH_SAMPLES"))) (if (and configured (string-match-p "^[1-9][0-9]*$" configured)) (string-to-number configured) 3)))
+  (message "  Started: %s" (format-time-string "%Y-%m-%d %H:%M:%S %z"))
   (message "")
-
-  (message "▶ L0: Prolog Engine")
+  (message "> L0: Prolog Engine")
   (nskk-bench-run-l0)
-
-  (message "▶ L1: Romaji Converter")
+  (message "> L1: Romaji Converter")
   (nskk-bench-run-l1)
-
-  (message "▶ L2a: State Management")
+  (message "> L2a: State Management")
   (nskk-bench-run-l2a)
-
-  (message "▶ L2b: Kana Utilities")
+  (message "> L2b: Kana Utilities")
   (nskk-bench-run-l2b)
-
-  (message "▶ L2c: Cache Layer")
+  (message "> L2c: Cache Layer")
   (nskk-bench-run-l2c)
-
-  (message "▶ L3: Dictionary Search")
+  (message "> L3: Dictionary Search")
   (nskk-bench-run-l3)
-
-  (message "▶ L4a: Input Processing")
+  (message "> L4a: Input Processing")
   (nskk-bench-run-l4a)
-
-  (message "▶ L4b: Henkan Pipeline")
+  (message "> L4b: Henkan Pipeline")
   (nskk-bench-run-l4b)
-
-  (message "▶ E2E: Keystroke Simulation")
+  (message "> E2E: Keystroke Simulation")
   (nskk-bench-run-e2e)
-
   (message "")
-  (message "══ Results ══════════════════════════════════════════════════════════════")
+  (message "== Results =============================================================")
   (message "")
   (nskk-bench-report)
   (message ""))

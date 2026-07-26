@@ -689,19 +689,142 @@
           (should (member "テスト" result)))
         (should nskk-dict-modified))))
 
-  (nskk-it "returns nil silently for empty reading"
-    (nskk-prolog-test-with-isolated-db
-      (let ((nskk--user-dict-index nil)
-            (nskk-dict-modified nil))
-        (should (null (nskk-dict-register-word "" "テスト")))
-        (should-not nskk-dict-modified))))
+  (nskk-it "rejects an empty reading with the fixed dictionary error"
+  (nskk-prolog-test-with-isolated-db
+    (let ((condition
+           (condition-case error
+               (progn
+                 (nskk-dict-register-word "" "候補")
+                 nil)
+             (nskk-dict-error error))))
+      (should
+       (equal condition
+              '(nskk-dict-error "Invalid user dictionary entry")))
+      (should
+       (equal (error-message-string condition)
+              "Dictionary error: \"Invalid user dictionary entry\"")))))
 
-  (nskk-it "returns nil silently for empty word"
+  (progn
+  (nskk-it "rejects an empty word with the fixed dictionary error"
+  (nskk-prolog-test-with-isolated-db
+    (let ((condition
+           (condition-case error
+               (progn
+                 (nskk-dict-register-word "よみ" "")
+                 nil)
+             (nskk-dict-error error))))
+      (should
+       (equal condition
+              '(nskk-dict-error "Invalid user dictionary entry")))
+      (should
+       (equal (error-message-string condition)
+              "Dictionary error: \"Invalid user dictionary entry\"")))))
+
+  (nskk-it "rejects unrepresentable words before observable mutation"
+  (nskk-prolog-test-with-isolated-db
+    (let* ((nskk--search-registered-caches
+            (make-hash-table :test 'eq :weakness 'key))
+           (cache (nskk-cache-create :type 'lru :capacity 4))
+           (hook-calls 0)
+           (nskk-jisyo-update-hook
+            (list (lambda () (cl-incf hook-calls))
+                  #'nskk--search-flush-caches))
+           (nskk--user-dict-index 'user)
+           (nskk-dict-modified 'preserved)
+           (dictionary-file
+            (make-temp-file "nskk-register-boundary-" nil ".skk"))
+           (nskk-dict-user-dictionary-file dictionary-file)
+           (clause-key
+            (nskk--prolog-clause-key 'user-dict-entry 2))
+           before
+           before-file)
+      (unwind-protect
+          (progn
+            (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+            (nskk-prolog-assert
+             '((user-dict-entry "てすと" ("既存"))))
+            (nskk-cache-put cache "cached" "value")
+            (nskk--search-register-cache cache)
+            (with-temp-file dictionary-file
+              (insert "unchanged" (string 0 127) "\n"))
+            (setq before
+                  (nskk--dict-predicate-snapshot clause-key)
+                  before-file
+                  (with-temp-buffer
+                    (insert-file-contents-literally dictionary-file)
+                    (buffer-string)))
+            (dolist
+                (case
+                 (list
+                  (cons "slash" "不/正")
+                  (cons "semicolon" "不;正")
+                  (cons "newline" "不\n正")
+                  (cons "tab" "不\t正")
+                  (cons "carriage-return" "不\r正")
+                  (cons "NUL" (concat "不" (string 0) "正"))
+                  (cons "DEL" (concat "不" (string 127) "正"))
+                  (cons "preedit-open" "不▽正")
+                  (cons "preedit-select" "不▼正")
+                  (cons "empty" "")
+                  (cons "non-string" 42)))
+              (ert-info ((format "%s candidate" (car case)))
+                (let ((condition
+                       (condition-case error
+                           (progn
+                             (nskk-dict-register-word "てすと" (cdr case))
+                             nil)
+                         (nskk-dict-error error))))
+                  (should
+                   (equal condition
+                          '(nskk-dict-error
+                            "Invalid user dictionary entry")))
+                  (should
+                   (equal
+                    (error-message-string condition)
+                    "Dictionary error: \"Invalid user dictionary entry\"")))))
+            (let ((after
+                   (nskk--dict-predicate-snapshot clause-key)))
+              (dotimes (slot (1- (length before)))
+                (should
+                 (eq (aref before (1+ slot))
+                     (aref after (1+ slot))))))
+            (should
+             (nskk-prolog-holds-p
+              '(user-dict-entry "てすと" ("既存"))))
+            (should (eq nskk-dict-modified 'preserved))
+            (should (= hook-calls 0))
+            (should (= (nskk-cache-size cache) 1))
+            (should (equal (nskk-cache-get cache "cached") "value"))
+            (should
+             (equal before-file
+                    (with-temp-buffer
+                      (insert-file-contents-literally dictionary-file)
+                      (buffer-string)))))
+        (when (file-exists-p dictionary-file)
+          (delete-file dictionary-file))))))
+
+  (nskk-it "round-trips valid Unicode and spaces through save and reload"
     (nskk-prolog-test-with-isolated-db
-      (let ((nskk--user-dict-index nil)
-            (nskk-dict-modified nil))
-        (should (null (nskk-dict-register-word "てすと" "")))
-        (should-not nskk-dict-modified))))
+      (let* ((reading "ゆにこーど")
+             (word "候 補😀")
+             (dictionary-file
+              (make-temp-file "nskk-register-roundtrip-" nil ".skk"))
+             (nskk-dict-user-dictionary-file dictionary-file)
+             (nskk--user-dict-index 'user)
+             (nskk-dict-modified nil))
+        (unwind-protect
+            (progn
+              (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+              (should (nskk-dict-register-word reading word))
+              (should nskk-dict-modified)
+              (nskk-dict-save-user-dictionary)
+              (should-not nskk-dict-modified)
+              (nskk-prolog-retract-all 'user-dict-entry 2)
+              (setq nskk--user-dict-index nil)
+              (should (eq (nskk-dict-load-user-dictionary) 'user))
+              (should (member word (nskk-dict-lookup reading))))
+          (when (file-exists-p dictionary-file)
+            (delete-file dictionary-file)))))))
 
   (nskk-it "registers additional words to an existing entry"
     (nskk-prolog-test-with-isolated-db
@@ -715,36 +838,440 @@
           (should (member "感じ" result)))
         (should nskk-dict-modified))))
 
+  (progn
   (nskk-it "runs nskk-jisyo-update-hook after successful registration"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
       (let* ((hook-called nil)
-             (nskk--user-dict-index nil)
+             (nskk--user-dict-index 'user)
              (nskk-dict-modified nil)
-             (nskk-jisyo-update-hook (list (lambda () (setq hook-called t)))))
-        (nskk-dict-register-word "てすと" "テスト")
-        (should hook-called))))
+             (nskk-jisyo-update-hook
+              (list (lambda () (setq hook-called t)))))
+        (should (nskk-dict-register-word "てすと" "テスト"))
+        (should hook-called)
+        (should nskk-dict-modified))))
 
-  (nskk-it "rejects keys that would corrupt the SKK file format"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-      (let ((nskk--user-dict-index nil)
-            (nskk-dict-modified nil))
-        ;; Space and slash break the "KEY /cand/" line format; newlines
-        ;; break the line structure itself.
-        (should (null (nskk-dict-register-word "て すと" "テスト")))
-        (should (null (nskk-dict-register-word "て/すと" "テスト")))
-        (should (null (nskk-dict-register-word "て\nすと" "テスト")))
-        (should-not nskk-dict-modified))))
+  (nskk-it "rolls back hook and message faults while leaving prior external effects explicit"
+    (dolist (stage '(hook message))
+      (dolist (kind '(error quit))
+        (ert-info ((format "%s at %s boundary" kind stage))
+          (nskk-prolog-test-with-isolated-db
+            (let* ((nskk--search-registered-caches
+                    (make-hash-table :test 'eq :weakness 'key))
+                   (cache (nskk-cache-create :type 'lru :capacity 4))
+                   (events nil)
+                   (later-hooks 0)
+                   (message-calls 0)
+                   (fault-data (list "registration publication fault" stage kind))
+                   (nskk-jisyo-update-hook
+                    (list
+                     (lambda ()
+                       ;; External effects are intentionally not claimed to be
+                       ;; reversible; only NSKK's internal state is restored.
+                       (push 'external-effect events)
+                       (nskk-cache-clear cache))
+                     (lambda ()
+                       (push 'fault-boundary events)
+                       (when (eq stage 'hook)
+                         (signal kind fault-data)))
+                     (lambda ()
+                       (push 'later-observer events)
+                       (cl-incf later-hooks))))
+                   (nskk--user-dict-index 'user)
+                   (nskk-dict-modified 'preserved)
+                   (dictionary-file
+                    (make-temp-file "nskk-register-publication-" nil ".skk"))
+                   (nskk-dict-user-dictionary-file dictionary-file)
+                   (clause-key
+                    (nskk--prolog-clause-key 'user-dict-entry 2))
+                   before
+                   before-file
+                   cache-hash
+                   cache-head
+                   cache-tail)
+              (unwind-protect
+                  (progn
+                    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                    (nskk-prolog-assert
+                     '((user-dict-entry "既存" ("候補"))))
+                    (nskk-cache-put cache "cached" "value")
+                    (nskk--search-register-cache cache)
+                    (with-temp-file dictionary-file
+                      (insert "unchanged" (string 0 127) "\n"))
+                    (setq before
+                          (nskk--dict-predicate-snapshot clause-key)
+                          before-file
+                          (with-temp-buffer
+                            (insert-file-contents-literally dictionary-file)
+                            (buffer-string))
+                          cache-hash (nskk-cache-lru-hash cache)
+                          cache-head (nskk-cache-lru-head cache)
+                          cache-tail (nskk-cache-lru-tail cache))
+                    (let ((condition
+                           (cl-letf
+                               (((symbol-function 'message)
+                                 (lambda (&rest _arguments)
+                                   (cl-incf message-calls)
+                                   (when (eq stage 'message)
+                                     (signal kind fault-data)))))
+                             (condition-case error
+                                 (progn
+                                   (nskk-dict-register-word "再試験" "成功")
+                                   nil)
+                               ((error quit) error)))))
+                      (should (equal condition (cons kind fault-data))))
+                    (let ((after
+                           (nskk--dict-predicate-snapshot clause-key)))
+                      (dotimes (slot (1- (length before)))
+                        (should
+                         (eq (aref before (1+ slot))
+                             (aref after (1+ slot))))))
+                    (should
+                     (nskk-prolog-holds-p
+                      '(user-dict-entry "既存" ("候補"))))
+                    (should-not
+                     (nskk-prolog-holds-p
+                      '(user-dict-entry "再試験" ("成功"))))
+                    (should (eq nskk--user-dict-index 'user))
+                    (should (eq nskk-dict-modified 'preserved))
+                    (should (eq (nskk-cache-lru-hash cache) cache-hash))
+                    (should (eq (nskk-cache-lru-head cache) cache-head))
+                    (should (eq (nskk-cache-lru-tail cache) cache-tail))
+                    (should (= (nskk-cache-size cache) 1))
+                    (should (equal (nskk-cache-get cache "cached") "value"))
+                    (should
+                     (equal before-file
+                            (with-temp-buffer
+                              (insert-file-contents-literally dictionary-file)
+                              (buffer-string))))
+                    (if (eq stage 'hook)
+                        (progn
+                          (should
+                           (equal (reverse events)
+                                  '(external-effect fault-boundary)))
+                          (should (= later-hooks 0))
+                          (should (= message-calls 0)))
+                      (should
+                       (equal (reverse events)
+                              '(external-effect fault-boundary later-observer)))
+                      (should (= later-hooks 1))
+                      (should (= message-calls 1)))
+                    (let ((nskk-jisyo-update-hook nil))
+                      (should
+                       (nskk-dict-register-word "再試験" "成功")))
+                    (should (member "成功" (nskk-dict-lookup "再試験")))
+                    (should nskk-dict-modified))
+                (when (file-exists-p dictionary-file)
+                  (delete-file dictionary-file))))))))))
 
-  (nskk-it "rejects keys containing leaked preedit markers"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-      (let ((nskk--user-dict-index nil)
-            (nskk-dict-modified nil))
-        (should (null (nskk-dict-register-word "▽てすと" "テスト")))
-        (should (null (nskk-dict-register-word "▼てすと" "テスト")))
-        (should-not nskk-dict-modified))))
+  (nskk-it "rejects unrepresentable readings before observable mutation"
+  (nskk-prolog-test-with-isolated-db
+    (let* ((nskk--search-registered-caches
+            (make-hash-table :test 'eq :weakness 'key))
+           (cache (nskk-cache-create :type 'lru :capacity 4))
+           (hook-calls 0)
+           (nskk-jisyo-update-hook
+            (list (lambda () (cl-incf hook-calls))
+                  #'nskk--search-flush-caches))
+           (nskk--user-dict-index 'user)
+           (nskk-dict-modified 'preserved)
+           (dictionary-file
+            (make-temp-file "nskk-register-reading-boundary-" nil ".skk"))
+           (nskk-dict-user-dictionary-file dictionary-file)
+           (clause-key
+            (nskk--prolog-clause-key 'user-dict-entry 2))
+           before
+           before-file)
+      (unwind-protect
+          (progn
+            (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+            (nskk-prolog-assert
+             '((user-dict-entry "てすと" ("既存"))))
+            (nskk-cache-put cache "cached" "value")
+            (nskk--search-register-cache cache)
+            (with-temp-file dictionary-file
+              (insert "unchanged" (string 0 127) "\n"))
+            (setq before
+                  (nskk--dict-predicate-snapshot clause-key)
+                  before-file
+                  (with-temp-buffer
+                    (insert-file-contents-literally dictionary-file)
+                    (buffer-string)))
+            (dolist
+                (case
+                 (list
+                  (cons "space" "不 正")
+                  (cons "slash" "不/正")
+                  (cons "semicolon" "不;正")
+                  (cons "newline" "不\n正")
+                  (cons "tab" "不\t正")
+                  (cons "carriage-return" "不\r正")
+                  (cons "NUL" (concat "不" (string 0) "正"))
+                  (cons "DEL" (concat "不" (string 127) "正"))
+                  (cons "preedit-open" "不▽正")
+                  (cons "preedit-select" "不▼正")
+                  (cons "empty" "")
+                  (cons "non-string" 42)))
+              (ert-info ((format "%s reading" (car case)))
+                (let ((condition
+                       (condition-case error
+                           (progn
+                             (nskk-dict-register-word (cdr case) "候補")
+                             nil)
+                         (nskk-dict-error error))))
+                  (should
+                   (equal condition
+                          '(nskk-dict-error
+                            "Invalid user dictionary entry")))
+                  (should
+                   (equal
+                    (error-message-string condition)
+                    "Dictionary error: \"Invalid user dictionary entry\"")))))
+            (let ((after
+                   (nskk--dict-predicate-snapshot clause-key)))
+              (dotimes (slot (1- (length before)))
+                (should
+                 (eq (aref before (1+ slot))
+                     (aref after (1+ slot))))))
+            (should
+             (nskk-prolog-holds-p
+              '(user-dict-entry "てすと" ("既存"))))
+            (should (eq nskk-dict-modified 'preserved))
+            (should (= hook-calls 0))
+            (should (= (nskk-cache-size cache) 1))
+            (should (equal (nskk-cache-get cache "cached") "value"))
+            (should
+             (equal before-file
+                    (with-temp-buffer
+                      (insert-file-contents-literally dictionary-file)
+                      (buffer-string)))))
+        (when (file-exists-p dictionary-file)
+          (delete-file dictionary-file))))))
+
+  (progn
+  (nskk-it "rolls back repeated retract, assert, and query faults after mutation"
+    (dolist (stage '(retract assert query))
+      (dolist (kind '(error quit))
+        (ert-info ((format "%s fault after %s" kind stage))
+          (nskk-prolog-test-with-isolated-db
+            (let* ((nskk--search-registered-caches
+                    (make-hash-table :test 'eq :weakness 'key))
+                   (cache (nskk-cache-create :type 'lru :capacity 4))
+                   (hook-calls 0)
+                   (fault-calls 0)
+                   (nskk-jisyo-update-hook
+                    (list (lambda () (cl-incf hook-calls))))
+                   (nskk--user-dict-index 'user)
+                   (nskk-dict-modified 'preserved)
+                   (dictionary-file
+                    (make-temp-file "nskk-register-storage-" nil ".skk"))
+                   (nskk-dict-user-dictionary-file dictionary-file)
+                   (clause-key
+                    (nskk--prolog-clause-key 'user-dict-entry 2))
+                   (fault-data (list "registration storage fault" stage kind))
+                   (real-retract (symbol-function 'nskk-prolog-retract))
+                   (real-assert (symbol-function 'nskk-prolog-assert))
+                   (real-query (symbol-function 'nskk-prolog-holds-p))
+                   before
+                   before-file
+                   cache-hash
+                   cache-head
+                   cache-tail)
+              (unwind-protect
+                  (progn
+                    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                    (nskk-prolog-assert
+                     '((user-dict-entry "再試験" ("既存候補"))))
+                    (nskk-cache-put cache "cached" "value")
+                    (nskk--search-register-cache cache)
+                    (with-temp-file dictionary-file
+                      (insert "unchanged" (string 0 127) "\n"))
+                    (setq before
+                          (nskk--dict-predicate-snapshot clause-key)
+                          before-file
+                          (with-temp-buffer
+                            (insert-file-contents-literally dictionary-file)
+                            (buffer-string))
+                          cache-hash (nskk-cache-lru-hash cache)
+                          cache-head (nskk-cache-lru-head cache)
+                          cache-tail (nskk-cache-lru-tail cache))
+                    (cl-labels
+                        ((fault ()
+                           (cl-incf fault-calls)
+                           (signal kind fault-data))
+                         (register ()
+                           (condition-case condition
+                               (progn
+                                 (nskk-dict-register-word "再試験" "成功")
+                                 nil)
+                             ((error quit) condition)))
+                         (attempt ()
+                           (pcase stage
+                             ('retract
+                              (cl-letf
+                                  (((symbol-function 'nskk-prolog-retract)
+                                    (lambda (&rest arguments)
+                                      (prog1
+                                          (apply real-retract arguments)
+                                        (fault)))))
+                                (register)))
+                             ('assert
+                              (cl-letf
+                                  (((symbol-function 'nskk-prolog-assert)
+                                    (lambda (&rest arguments)
+                                      (prog1
+                                          (apply real-assert arguments)
+                                        (fault)))))
+                                (register)))
+                             ('query
+                              (cl-letf
+                                  (((symbol-function 'nskk-prolog-holds-p)
+                                    (lambda (&rest arguments)
+                                      (prog1
+                                          (apply real-query arguments)
+                                        (fault)))))
+                                (register))))))
+                      (dotimes (_ 2)
+                        (let ((condition (attempt)))
+                          (should
+                           (equal condition (cons kind fault-data))))
+                        (let ((after
+                               (nskk--dict-predicate-snapshot clause-key)))
+                          (dotimes (slot (1- (length before)))
+                            (should
+                             (eq (aref before (1+ slot))
+                                 (aref after (1+ slot))))))
+                        (should
+                         (funcall real-query
+                                  '(user-dict-entry "再試験" ("既存候補"))))
+                        (should-not
+                         (funcall real-query
+                                  '(user-dict-entry "再試験" ("成功"))))
+                        (should (eq nskk--user-dict-index 'user))
+                        (should (eq nskk-dict-modified 'preserved))
+                        (should (= hook-calls 0))
+                        (should (eq (nskk-cache-lru-hash cache) cache-hash))
+                        (should (eq (nskk-cache-lru-head cache) cache-head))
+                        (should (eq (nskk-cache-lru-tail cache) cache-tail))
+                        (should (= (nskk-cache-size cache) 1))
+                        (should
+                         (equal before-file
+                                (with-temp-buffer
+                                  (insert-file-contents-literally dictionary-file)
+                                  (buffer-string)))))
+                      (should (= fault-calls 2)))
+                    (should
+                     (nskk-dict-register-word "再試験" "成功"))
+                    (should (member "成功" (nskk-dict-lookup "再試験")))
+                    (should nskk-dict-modified)
+                    (should (= hook-calls 1)))
+                (when (file-exists-p dictionary-file)
+                  (delete-file dictionary-file)))))))))
+
+  (nskk-it "rolls back lazy-load and index-construction faults before retry"
+    (dolist (stage '(load index))
+      (dolist (kind '(error quit))
+        (ert-info ((format "%s fault after %s" kind stage))
+          (nskk-prolog-test-with-isolated-db
+            (let* ((nskk--search-registered-caches
+                    (make-hash-table :test 'eq :weakness 'key))
+                   (cache (nskk-cache-create :type 'lru :capacity 4))
+                   (hook-calls 0)
+                   (fault-calls 0)
+                   (nskk-jisyo-update-hook
+                    (list (lambda () (cl-incf hook-calls))))
+                   (nskk--user-dict-index nil)
+                   (nskk-dict-modified 'preserved)
+                   (dictionary-file
+                    (make-temp-file "nskk-register-lazy-" nil ".skk"))
+                   (nskk-dict-user-dictionary-file
+                    (and (eq stage 'load) dictionary-file))
+                   (clause-key
+                    (nskk--prolog-clause-key 'user-dict-entry 2))
+                   (fault-data (list "registration lazy fault" stage kind))
+                   (real-load
+                    (symbol-function 'nskk-dict-load-user-dictionary))
+                   (real-index (symbol-function 'nskk-prolog-set-index))
+                   (real-query (symbol-function 'nskk-prolog-holds-p))
+                   before
+                   before-file
+                   cache-hash
+                   cache-head
+                   cache-tail)
+              (unwind-protect
+                  (progn
+                    (with-temp-file dictionary-file
+                      (insert ";; okuri-nasi entries.\nよみ /既存/\n"))
+                    (nskk-cache-put cache "cached" "value")
+                    (nskk--search-register-cache cache)
+                    (setq before
+                          (nskk--dict-predicate-snapshot clause-key)
+                          before-file
+                          (with-temp-buffer
+                            (insert-file-contents-literally dictionary-file)
+                            (buffer-string))
+                          cache-hash (nskk-cache-lru-hash cache)
+                          cache-head (nskk-cache-lru-head cache)
+                          cache-tail (nskk-cache-lru-tail cache))
+                    (let ((condition
+                           (condition-case error
+                               (progn
+                                 (pcase stage
+                                   ('load
+                                    (cl-letf
+                                        (((symbol-function
+                                           'nskk-dict-load-user-dictionary)
+                                          (lambda ()
+                                            (prog1 (funcall real-load)
+                                              (cl-incf fault-calls)
+                                              (signal kind fault-data)))))
+                                      (nskk-dict-register-word
+                                       "再試験" "成功")))
+                                   ('index
+                                    (cl-letf
+                                        (((symbol-function
+                                           'nskk-prolog-set-index)
+                                          (lambda (&rest arguments)
+                                            (prog1
+                                                (apply real-index arguments)
+                                              (cl-incf fault-calls)
+                                              (signal kind fault-data)))))
+                                      (nskk-dict-register-word
+                                       "再試験" "成功"))))
+                                 nil)
+                             ((error quit) error))))
+                      (should (equal condition (cons kind fault-data))))
+                    (should (= fault-calls 1))
+                    (let ((after
+                           (nskk--dict-predicate-snapshot clause-key)))
+                      (dotimes (slot (1- (length before)))
+                        (should
+                         (eq (aref before (1+ slot))
+                             (aref after (1+ slot))))))
+                    (should-not
+                     (funcall real-query
+                              '(user-dict-entry "再試験" ("成功"))))
+                    (should (eq nskk--user-dict-index nil))
+                    (should (eq nskk-dict-modified 'preserved))
+                    (should (= hook-calls 0))
+                    (should (eq (nskk-cache-lru-hash cache) cache-hash))
+                    (should (eq (nskk-cache-lru-head cache) cache-head))
+                    (should (eq (nskk-cache-lru-tail cache) cache-tail))
+                    (should (= (nskk-cache-size cache) 1))
+                    (should
+                     (equal before-file
+                            (with-temp-buffer
+                              (insert-file-contents-literally dictionary-file)
+                              (buffer-string))))
+                    (should
+                     (nskk-dict-register-word "再試験" "成功"))
+                    (should (member "成功" (nskk-dict-lookup "再試験")))
+                    (when (eq stage 'load)
+                      (should (member "既存" (nskk-dict-lookup "よみ"))))
+                    (should nskk-dict-modified)
+                    (should (= hook-calls 1)))
+                (when (file-exists-p dictionary-file)
+                  (delete-file dictionary-file))))))))))
 
   (nskk-it "save is a no-op while nskk--dict-save-inhibited is non-nil"
     (nskk-prolog-test-with-isolated-db
@@ -822,15 +1349,47 @@
                                    #'ignore)
         (should done-called))))
 
-  (nskk-it "does not call on-done for invalid empty reading"
+  (nskk-it "rejects invalid fields without invoking either continuation"
     (nskk-prolog-test-with-isolated-db
-      (let ((done-called nil)
-            (nskk--user-dict-index nil)
-            (nskk-dict-modified nil))
-        (nskk-dict-register-word/k "" "テスト"
-                                   (lambda () (setq done-called t))
-                                   #'ignore)
-        (should-not done-called))))
+      (let* ((found-calls 0)
+            (not-found-calls 0)
+            (hook-calls 0)
+            (nskk-jisyo-update-hook
+             (list (lambda () (cl-incf hook-calls))))
+            (nskk--user-dict-index 'user)
+            (nskk-dict-modified 'preserved))
+        (dolist (arguments '(("" "テスト") ("てすと" "")))
+          (let ((condition
+                 (condition-case error
+                     (progn
+                       (nskk-dict-register-word/k
+                        (car arguments) (cadr arguments)
+                        (lambda (_) (cl-incf found-calls))
+                        (lambda () (cl-incf not-found-calls)))
+                       nil)
+                   (nskk-dict-error error))))
+            (should
+             (equal condition
+                    '(nskk-dict-error "Invalid user dictionary entry")))))
+        (should (= found-calls 0))
+        (should (= not-found-calls 0))
+        (should (= hook-calls 0))
+        (should (eq nskk-dict-modified 'preserved)))))
+
+  (nskk-it "uses not-found only for a valid query without a solution"
+    (let ((found-calls 0)
+          (not-found-calls 0))
+      (cl-letf (((symbol-function 'nskk--dict-register-impl)
+                 (lambda (reading word)
+                   (should (equal reading "ゆうこう"))
+                   (should (equal word "候補"))
+                   nil)))
+        (nskk-dict-register-word/k
+         "ゆうこう" "候補"
+         (lambda (_) (cl-incf found-calls))
+         (lambda () (cl-incf not-found-calls))))
+      (should (= found-calls 0))
+      (should (= not-found-calls 1))))
 
   (nskk-it "signals an error when on-found is nil"
     (should-error
@@ -1054,6 +1613,124 @@
 ;;; nskk--dict-lookup-okuri-ari
 ;;;
 
+(nskk-describe "stable dictionary candidate merging"
+  (nskk-it "keeps solution order, first identity, nil, and input lists"
+    (let* ((first (propertize "same" 'source 'first))
+           (duplicate (propertize "same" 'source 'later))
+           (first-list (list first nil "first-only"))
+           (second-list (list duplicate nil "second-only"))
+           (first-tail (cdr first-list))
+           (second-tail (cdr second-list))
+           (first-before (copy-sequence first-list))
+           (second-before (copy-sequence second-list))
+           (solutions `((one . ,first-list) (empty) (two . ,second-list)))
+           result)
+      (cl-letf (((symbol-function 'nskk-prolog-walk)
+                 (lambda (_variable solution)
+                   (cdr (assq solution solutions)))))
+        (setq result (nskk--dict-collect-candidates '(one empty two))))
+      (should
+       (equal
+        (mapcar (lambda (candidate)
+                  (and candidate (substring-no-properties candidate)))
+                result)
+        '("same" nil "first-only" "second-only")))
+      (should (eq (car result) first))
+      (should (eq (get-text-property 0 'source (car result)) 'first))
+      (should (equal first-list first-before))
+      (should (equal second-list second-before))
+      (should (eq (cdr first-list) first-tail))
+      (should (eq (cdr second-list) second-tail))
+      (should-error
+       (nskk--dict-merge-candidate-lists '(invalid-candidate-list)))))
+
+  (nskk-it "uses one hash probe per input candidate at 5000 candidates"
+    (let* ((first (cl-loop for index below 2500
+                           collect (format "candidate-%d" index)))
+           (second (mapcar #'copy-sequence first))
+           (real-gethash (symbol-function 'gethash))
+           (real-puthash (symbol-function 'puthash))
+           (probes 0)
+           (inserts 0)
+           result)
+      (cl-letf (((symbol-function 'gethash)
+                 (lambda (key table &optional default)
+                   (setq probes (1+ probes))
+                   (funcall real-gethash key table default)))
+                ((symbol-function 'puthash)
+                 (lambda (key value table)
+                   (setq inserts (1+ inserts))
+                   (funcall real-puthash key value table))))
+        (setq result
+              (nskk--dict-merge-candidate-lists (list first second))))
+      (should (= probes 5000))
+      (should (= inserts 2500))
+      (should (= (length result) 2500))
+      (should (equal result first))))
+
+  (nskk-it "preserves consonant and solution order for okuri-ari"
+    (let* ((nskk--dict-okuri-consonants '(?k ?g))
+           (first (propertize "same" 'source 'okuri-k))
+           (duplicate (propertize "same" 'source 'okuri-g))
+           (candidate-map
+            `((k-one . (,first "k-one"))
+              (k-two . ("k-two"))
+              (g-one . (,duplicate "g-one"))))
+           result)
+      (cl-letf (((symbol-function 'nskk-prolog-query)
+                 (lambda (query)
+                   (pcase (nth 1 query)
+                     ("rootk" '(k-one k-two))
+                     ("rootg" '(g-one))
+                     (_ nil))))
+                ((symbol-function 'nskk-prolog-walk)
+                 (lambda (_variable solution)
+                   (cdr (assq solution candidate-map)))))
+        (setq result (nskk--dict-lookup-okuri-ari "root")))
+      (should
+       (equal (mapcar #'substring-no-properties result)
+              '("same" "k-one" "k-two" "g-one")))
+      (should (eq (car result) first))
+      (should (eq (get-text-property 0 'source (car result)) 'okuri-k))))
+
+  (nskk-it "keeps okuri-nasi candidates ahead of okuri-ari candidates"
+    (let* ((first (propertize "same" 'source 'okuri-nasi))
+           (duplicate (propertize "same" 'source 'okuri-ari))
+           result)
+      (cl-letf (((symbol-function 'nskk-prolog-query)
+                 (lambda (&rest _arguments) nil))
+                ((symbol-function 'nskk--dict-collect-candidates)
+                 (lambda (_solutions) (list first "plain")))
+                ((symbol-function 'nskk--dict-lookup-okuri-ari)
+                 (lambda (_key) (list duplicate "okuri"))))
+        (setq result (nskk--dict-do-lookup "よみ")))
+      (should
+       (equal (mapcar #'substring-no-properties result)
+              '("same" "plain" "okuri")))
+      (should (eq (car result) first))
+      (should
+       (eq (get-text-property 0 'source (car result)) 'okuri-nasi)))))
+
+(nskk-describe "linear ja-dic flattening"
+  (nskk-it "visits 5000 wide child leaves once in source order"
+    (let* ((children
+            (cl-loop for index below 5000
+                     collect
+                     (list index (list (format "candidate-%d" index)))))
+           (root (append (list -1 nil) children))
+           (tree (list 'test root))
+           (decodes 0)
+           result)
+      (cl-letf (((symbol-function 'nskk--dict-ja-dic-decode-key)
+                 (lambda (path)
+                   (setq decodes (1+ decodes))
+                   (number-to-string (car (last path))))))
+        (setq result (nskk--dict-ja-dic-flatten-tree tree)))
+      (should (= decodes 5000))
+      (should (= (length result) 5000))
+      (should (equal (caar result) "0"))
+      (should (equal (car (car (last result))) "4999"))
+      (should (eq (cdar result) (cadr (car children)))))))
 (nskk-describe "nskk--dict-lookup-okuri-ari"
   (nskk-it "finds candidates when an okuri-ari entry exists in the database"
     (nskk-with-mock-dict '(("かんk" . ("感k")))
@@ -1456,41 +2133,84 @@
 ;;;; nskk-dict-load-kakutei-dictionary tests
 
 (defmacro nskk-test-with-kakutei-file (entries &rest body)
-  "Execute BODY with a temp SKK file containing ENTRIES loaded as kakutei dict.
+    "Execute BODY with a temp SKK file containing ENTRIES loaded as kakutei dict.
 ENTRIES is a list of (reading . (candidate1 candidate2 ...)) cons cells.
 The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
-  (declare (indent 1))
-  `(nskk-prolog-test-with-isolated-db
-     (let* ((tmpfile (make-temp-file "nskk-test-kakutei-" nil ".jisyo"))
-            (nskk-kakutei-jisyo tmpfile)
-            (nskk--kakutei-dict-loaded nil))
-       (unwind-protect
-           (progn
-             (with-temp-file tmpfile
-               (insert ";; -*- coding: utf-8 -*-\n")
-               (insert ";; okuri-nasi entries.\n")
-               (dolist (e ,entries)
-                 (insert (car e) " /"
-                         (string-join (cdr e) "/")
-                         "/\n")))
-             ,@body)
-         (when (file-exists-p tmpfile)
-           (delete-file tmpfile))
-         (nskk-prolog-retract-all 'kakutei-dict-entry 2)
-         (setq nskk--kakutei-dict-loaded nil)))))
+    (declare (indent 1))
+    `(nskk-prolog-test-with-isolated-db
+       (let* ((tmpfile (make-temp-file "nskk-test-kakutei-" nil ".jisyo"))
+              (nskk-kakutei-jisyo tmpfile)
+              (nskk--kakutei-dict-loaded nil)
+              (nskk--prolog-index-bucket-tail-cache
+               (make-hash-table :test #'equal)))
+         (unwind-protect
+             (progn
+               (with-temp-file tmpfile
+                 (insert ";; -*- coding: utf-8 -*-\n")
+                 (insert ";; okuri-nasi entries.\n")
+                 (dolist (e ,entries)
+                   (insert (car e) " /"
+                           (string-join (cdr e) "/")
+                           "/\n")))
+               ,@body)
+           (when (file-exists-p tmpfile)
+             (delete-file tmpfile))
+           (nskk-prolog-retract-all 'kakutei-dict-entry 2)
+           (setq nskk--kakutei-dict-loaded nil)))))
+
+  (defun nskk-test--seed-kakutei-state ()
+    "Seed and return the exact live state guarded by kakutei loading."
+    (let* ((key (nskk--prolog-clause-key 'kakutei-dict-entry 2))
+           (cache-value (list 'old-kakutei-tail-cache)))
+      (nskk-prolog-set-index 'kakutei-dict-entry 2 :trie)
+      (nskk-prolog-assert
+       '((kakutei-dict-entry "ふるい" ("古い"))))
+      (nskk-prolog-assert
+       '((kakutei-dict-entry "むかし" ("昔"))))
+      (puthash key cache-value nskk--prolog-index-bucket-tail-cache)
+      (vector key
+              (nskk--dict-predicate-snapshot key)
+              cache-value
+              nskk--kakutei-dict-loaded)))
+
+  (defun nskk-test--should-preserve-kakutei-state (state)
+    "Assert that the live kakutei state remains reference-identical to STATE."
+    (let* ((key (aref state 0))
+           (before (aref state 1))
+           (after (nskk--dict-predicate-snapshot key)))
+      (dotimes (slot (1- (length before)))
+        (should (eq (aref before (1+ slot))
+                    (aref after (1+ slot)))))
+      (should (eq (aref state 2)
+                  (gethash key nskk--prolog-index-bucket-tail-cache)))
+      (should (eq (aref state 3) nskk--kakutei-dict-loaded))
+      (should (nskk-prolog-holds-p
+               '(kakutei-dict-entry "ふるい" ("古い"))))
+      (should (nskk-prolog-holds-p
+               '(kakutei-dict-entry "むかし" ("昔"))))
+      (should-not (nskk-prolog-holds-p
+                   '(kakutei-dict-entry "あたらしい" ("新しい"))))))
 
 (nskk-describe "nskk-dict-load-kakutei-dictionary"
-  (nskk-it "returns nil when nskk-kakutei-jisyo is nil"
+  (nskk-it "preserves exact state when nskk-kakutei-jisyo is nil"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk-kakutei-jisyo nil)
-            (nskk--kakutei-dict-loaded nil))
-        (should (null (nskk-dict-load-kakutei-dictionary))))))
+            (nskk--kakutei-dict-loaded 'previous)
+            (nskk--prolog-index-bucket-tail-cache
+             (make-hash-table :test #'equal)))
+        (let ((state (nskk-test--seed-kakutei-state)))
+          (should (null (nskk-dict-load-kakutei-dictionary)))
+          (nskk-test--should-preserve-kakutei-state state)))))
 
-  (nskk-it "returns nil when file does not exist"
+  (nskk-it "preserves exact state when file does not exist"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk-kakutei-jisyo "/nonexistent/path/kakutei.jisyo")
-            (nskk--kakutei-dict-loaded nil))
-        (should (null (nskk-dict-load-kakutei-dictionary))))))
+            (nskk--kakutei-dict-loaded 'previous)
+            (nskk--prolog-index-bucket-tail-cache
+             (make-hash-table :test #'equal)))
+        (let ((state (nskk-test--seed-kakutei-state)))
+          (should (null (nskk-dict-load-kakutei-dictionary)))
+          (nskk-test--should-preserve-kakutei-state state)))))
 
   (nskk-it "returns 'kakutei when file exists and has entries"
     (nskk-test-with-kakutei-file '(("てすと" "テスト"))
@@ -1507,7 +2227,146 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
       (let ((result (nskk-prolog-query-value
                      '(kakutei-dict-entry "てすと" \?c) '\?c)))
         (should result)
-        (should (member "テスト" result))))))
+        (should (member "テスト" result)))))
+
+  (nskk-it "preserves exact state for an empty dictionary"
+    (nskk-test-with-kakutei-file nil
+      (setq nskk--kakutei-dict-loaded 'previous)
+      (let ((state (nskk-test--seed-kakutei-state)))
+        (should (null (nskk-dict-load-kakutei-dictionary)))
+        (nskk-test--should-preserve-kakutei-state state))))
+
+  (nskk-it "preserves exact state after parse errors and quits"
+    (dolist (kind '(error quit))
+      (nskk-test-with-kakutei-file '(("あたらしい" "新しい"))
+        (setq nskk--kakutei-dict-loaded 'previous)
+        (let ((state (nskk-test--seed-kakutei-state))
+              (data (list "kakutei parse failure" kind)))
+          (cl-letf
+              (((symbol-function 'nskk--dict-parse-file-to-entries-strict)
+                (lambda (&rest _)
+                  (signal kind data))))
+            (let ((result
+                   (condition-case condition
+                       (nskk-dict-load-kakutei-dictionary)
+                     (quit condition))))
+              (if (eq kind 'quit)
+                  (should (equal result (cons kind data)))
+                (should (null result)))))
+          (nskk-test--should-preserve-kakutei-state state)))))
+
+  (nskk-it "preserves exact state after index setup errors and quits"
+    (dolist (kind '(error quit))
+      (nskk-test-with-kakutei-file '(("あたらしい" "新しい"))
+        (setq nskk--kakutei-dict-loaded 'previous)
+        (let ((state (nskk-test--seed-kakutei-state))
+              (real-set-index
+               (symbol-function 'nskk-prolog-set-index))
+              (data (list "kakutei index failure" kind)))
+          (cl-letf
+              (((symbol-function 'nskk-prolog-set-index)
+                (lambda (&rest args)
+                  (apply real-set-index args)
+                  (signal kind data))))
+            (let ((result
+                   (condition-case condition
+                       (nskk-dict-load-kakutei-dictionary)
+                     (quit condition))))
+              (if (eq kind 'quit)
+                  (should (equal result (cons kind data)))
+                (should (null result)))))
+          (nskk-test--should-preserve-kakutei-state state)))))
+
+  (nskk-it "preserves exact state after assertion errors and quits"
+    (dolist (kind '(error quit))
+      (nskk-test-with-kakutei-file '(("あたらしい" "新しい"))
+        (setq nskk--kakutei-dict-loaded 'previous)
+        (let ((state (nskk-test--seed-kakutei-state))
+              (real-assert
+               (symbol-function 'nskk-prolog-assert))
+              (calls 0)
+              (data (list "kakutei assertion failure" kind)))
+          (cl-letf
+              (((symbol-function 'nskk-prolog-assert)
+                (lambda (&rest args)
+                  (setq calls (1+ calls))
+                  (apply real-assert args)
+                  (when (= calls 1)
+                    (signal kind data)))))
+            (let ((result
+                   (condition-case condition
+                       (nskk-dict-load-kakutei-dictionary)
+                     (quit condition))))
+              (if (eq kind 'quit)
+                  (should (equal result (cons kind data)))
+                (should (null result)))))
+          (should (= calls 1))
+          (nskk-test--should-preserve-kakutei-state state)))))
+
+  (nskk-it "preserves exact state after publication errors and quits"
+    (dolist (kind '(error quit))
+      (nskk-test-with-kakutei-file '(("あたらしい" "新しい"))
+        (setq nskk--kakutei-dict-loaded 'previous)
+        (let ((state (nskk-test--seed-kakutei-state))
+              (real-publish
+               (symbol-function 'nskk--dict-publish-staged-predicate))
+              (data (list "kakutei publication failure" kind)))
+          (cl-letf
+              (((symbol-function 'nskk--dict-publish-staged-predicate)
+                (lambda (staged)
+                  (funcall real-publish staged)
+                  (signal kind data))))
+            (let ((result
+                   (condition-case condition
+                       (nskk-dict-load-kakutei-dictionary)
+                     (quit condition))))
+              (if (eq kind 'quit)
+                  (should (equal result (cons kind data)))
+                (should (null result)))))
+          (nskk-test--should-preserve-kakutei-state state)))))
+
+  (nskk-it "replaces the complete live state only after successful staging"
+    (nskk-test-with-kakutei-file
+        '(("あたらしい" "新しい")
+          ("つぎ" "次"))
+      (setq nskk--kakutei-dict-loaded 'previous)
+      (let* ((state (nskk-test--seed-kakutei-state))
+             (key (aref state 0))
+             (before (aref state 1)))
+        (should (eq (nskk-dict-load-kakutei-dictionary) 'kakutei))
+        (should nskk--kakutei-dict-loaded)
+        (should-not
+         (nskk-prolog-holds-p
+          '(kakutei-dict-entry "ふるい" ("古い"))))
+        (should-not
+         (nskk-prolog-holds-p
+          '(kakutei-dict-entry "むかし" ("昔"))))
+        (should
+         (nskk-prolog-holds-p
+          '(kakutei-dict-entry "あたらしい" ("新しい"))))
+        (should
+         (nskk-prolog-holds-p
+          '(kakutei-dict-entry "つぎ" ("次"))))
+        (let* ((after (nskk--dict-predicate-snapshot key))
+               (new-index (aref after 6))
+               (new-cache (aref after 7)))
+          (should (vectorp new-cache))
+          (should (= (length new-cache) 3))
+          (should (eq (aref new-cache 0) :trie))
+          (should (eq (aref new-cache 1) new-index))
+          (dolist (slot '(2 3 6 7))
+            (should-not
+             (eq (aref before slot)
+                 (aref after slot))))
+          (cl-letf (((symbol-function 'last)
+                     (lambda (&rest _)
+                       (error "warm staged append scanned a bucket"))))
+            (nskk--dict-append-predicate-entries
+             'kakutei-dict-entry
+             '(("あたらしい" "追加"))))
+          (should
+           (nskk-prolog-holds-p
+            '(kakutei-dict-entry "あたらしい" ("追加")))))))))
 
 ;;;; nskk-dict-lookup-kakutei/k tests
 
@@ -1562,36 +2421,2158 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
 ;;;
 
 (nskk-describe "nskk-dict-save-user-dictionary sanitization"
-  (nskk-it "skips keys containing newline when saving"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-assert '((user-dict-entry "bad\nkey" ("候補"))))
-      (nskk-prolog-assert '((user-dict-entry "よみ" ("候補"))))
-      (let ((nskk-dict-user-dictionary-file (make-temp-file "nskk-test-dict"))
-            (nskk--user-dict-index t))
-        (unwind-protect
-            (progn
-              (nskk-dict-save-user-dictionary)
-              (let ((content (with-temp-buffer
-                               (insert-file-contents nskk-dict-user-dictionary-file)
-                               (buffer-string))))
-                (should (string-match-p "よみ" content))
-                (should-not (string-match-p "bad" content))))
-          (delete-file nskk-dict-user-dictionary-file)))))
+  (nskk-it "rejects every prohibited internal key and candidate value atomically"
+    (let ((control-cases
+           (mapcar
+            (lambda (code)
+              (cons (format "U+%04X" code)
+                    (concat "不" (string code) "正")))
+            (number-sequence 0 31))))
+      (dolist (role '(key candidate))
+        (dolist
+            (case
+             (append
+              control-cases
+              (list
+               (cons "U+007F" (concat "不" (string 127) "正"))
+               (cons "slash" "不/正")
+               (cons "semicolon" "不;正")
+               (cons "hiragana preedit marker" "不▽正")
+               (cons "katakana preedit marker" "不▼正")
+               (cons "empty" "")
+               (cons "non-string" 42))
+              (when (eq role 'key)
+                (list (cons "ordinary space" "不 正")))))
+          (ert-info ((format "%s in %s" (car case) role))
+            (nskk-prolog-test-with-isolated-db
+              (let* ((invalid (cdr case))
+                     (key (if (eq role 'key) invalid "よみ"))
+                     (candidates
+                      (if (eq role 'candidate)
+                          (list "正常" invalid "正常2")
+                        '("候補")))
+                     (bindings (list (list key candidates)))
+                     (dictionary-file
+                      (make-temp-file "nskk-save-field-boundary-" nil ".skk"))
+                     (nskk-dict-user-dictionary-file dictionary-file)
+                     (nskk--user-dict-index 'user)
+                     (nskk-dict-modified 'preserved)
+                     (clause-key
+                      (nskk--prolog-clause-key 'user-dict-entry 2))
+                     before
+                     before-file)
+                (unwind-protect
+                    (progn
+                      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                      (nskk-prolog-assert
+                       '((user-dict-entry "既存" ("既存候補"))))
+                      (with-temp-file dictionary-file
+                        (insert "unchanged" (string 0 127) "\n"))
+                      (setq before
+                            (nskk--dict-predicate-snapshot clause-key)
+                            before-file
+                            (with-temp-buffer
+                              (insert-file-contents-literally dictionary-file)
+                              (buffer-string)))
+                      (let ((condition
+                             (cl-letf
+                                 (((symbol-function
+                                    'nskk-prolog-query-bindings)
+                                   (lambda (&rest _arguments) bindings)))
+                               (condition-case error
+                                   (progn
+                                     (nskk-dict-save-user-dictionary)
+                                     nil)
+                                 (nskk-dict-error error)))))
+                        (should
+                         (equal condition
+                                '(nskk-dict-error
+                                  "Invalid user dictionary entry"))))
+                      (let ((after
+                             (nskk--dict-predicate-snapshot clause-key)))
+                        (dotimes (slot (1- (length before)))
+                          (should
+                           (eq (aref before (1+ slot))
+                               (aref after (1+ slot))))))
+                      (should
+                       (nskk-prolog-holds-p
+                        '(user-dict-entry "既存" ("既存候補"))))
+                      (should (equal bindings (list (list key candidates))))
+                      (should (eq nskk--user-dict-index 'user))
+                      (should (eq nskk-dict-modified 'preserved))
+                      (should
+                       (equal before-file
+                              (with-temp-buffer
+                                (insert-file-contents-literally dictionary-file)
+                                (buffer-string)))))
+                  (when (file-exists-p dictionary-file)
+                    (delete-file dictionary-file))))))))))
 
-  (nskk-it "skips candidates containing / when saving"
+  (nskk-it "rejects malformed candidate collections before replacing output"
+    (dolist (candidates (list nil 42 '("正常" . "tail")))
+      (ert-info ((format "candidate collection %S" candidates))
+        (nskk-prolog-test-with-isolated-db
+          (let* ((dictionary-file
+                  (make-temp-file "nskk-save-collection-boundary-" nil ".skk"))
+                 (nskk-dict-user-dictionary-file dictionary-file)
+                 (nskk--user-dict-index 'user)
+                 (nskk-dict-modified 'preserved)
+                 (clause-key
+                  (nskk--prolog-clause-key 'user-dict-entry 2))
+                 before
+                 before-file)
+            (unwind-protect
+                (progn
+                  (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                  (nskk-prolog-assert
+                   (list
+                    (list 'user-dict-entry "よみ" candidates)))
+                  (with-temp-file dictionary-file
+                    (insert "unchanged" (string 0 127) "\n"))
+                  (setq before
+                        (nskk--dict-predicate-snapshot clause-key)
+                        before-file
+                        (with-temp-buffer
+                          (insert-file-contents-literally dictionary-file)
+                          (buffer-string)))
+                  (let ((condition
+                         (condition-case error
+                             (progn
+                               (nskk-dict-save-user-dictionary)
+                               nil)
+                           (nskk-dict-error error))))
+                    (should
+                     (equal condition
+                            '(nskk-dict-error
+                              "Invalid user dictionary entry"))))
+                  (let ((after
+                         (nskk--dict-predicate-snapshot clause-key)))
+                    (dotimes (slot (1- (length before)))
+                      (should
+                       (eq (aref before (1+ slot))
+                           (aref after (1+ slot))))))
+                  (should (eq nskk--user-dict-index 'user))
+                  (should (eq nskk-dict-modified 'preserved))
+                  (should
+                   (equal before-file
+                          (with-temp-buffer
+                            (insert-file-contents-literally dictionary-file)
+                            (buffer-string)))))
+              (when (file-exists-p dictionary-file)
+                (delete-file dictionary-file))))))))
+
+  (nskk-it "does not create a parent directory, temp file, or output on invalid input"
     (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-assert '((user-dict-entry "よみ" ("正常" "不/正" "正常2"))))
-      (let ((nskk-dict-user-dictionary-file (make-temp-file "nskk-test-dict"))
-            (nskk--user-dict-index t))
+      (let* ((root (make-temp-file "nskk-save-preflight-" t))
+             (parent (expand-file-name "nested/deeper" root))
+             (dictionary-file (expand-file-name "user.skk" parent))
+             (nskk-dict-user-dictionary-file dictionary-file)
+             (nskk--user-dict-index 'user)
+             (nskk-dict-modified 'preserved)
+             (clause-key
+              (nskk--prolog-clause-key 'user-dict-entry 2))
+             before)
         (unwind-protect
             (progn
-              (nskk-dict-save-user-dictionary)
-              (let ((content (with-temp-buffer
-                               (insert-file-contents nskk-dict-user-dictionary-file)
-                               (buffer-string))))
-                (should (string-match-p "正常" content))
-                (should-not (string-match-p "不/正" content))))
-          (delete-file nskk-dict-user-dictionary-file))))))
+              (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+              (nskk-prolog-assert
+               '((user-dict-entry "既存" ("既存候補"))))
+              (nskk-prolog-assert
+               '((user-dict-entry "bad/reading" ("候補"))))
+              (setq before
+                    (nskk--dict-predicate-snapshot clause-key))
+              (let ((condition
+                     (condition-case error
+                         (progn
+                           (nskk-dict-save-user-dictionary)
+                           nil)
+                       (nskk-dict-error error))))
+                (should
+                 (equal condition
+                        '(nskk-dict-error
+                          "Invalid user dictionary entry"))))
+              (let ((after
+                     (nskk--dict-predicate-snapshot clause-key)))
+                (dotimes (slot (1- (length before)))
+                  (should
+                   (eq (aref before (1+ slot))
+                       (aref after (1+ slot))))))
+              (should-not (file-directory-p parent))
+              (should-not (file-exists-p dictionary-file))
+              (should-not
+               (directory-files root nil directory-files-no-dot-files-regexp))
+              (should (eq nskk--user-dict-index 'user))
+              (should (eq nskk-dict-modified 'preserved)))
+          (when (file-directory-p root)
+            (delete-directory root t)))))))
+
+(nskk-describe "dictionary transactional loading and cache hardening"
+  (nskk-it "replaces user facts only after each complete valid load"
+    (nskk-prolog-test-with-isolated-db
+      (let ((temp-file (make-temp-file "nskk-user-reload-" nil ".skk")))
+	(unwind-protect
+	    (let ((nskk-dict-user-dictionary-file temp-file))
+	      (with-temp-file temp-file
+		(insert "ふるい /古い/" (string 10)))
+	      (should (eq (nskk-dict-load-user-dictionary) (quote user)))
+	      (should (nskk-prolog-holds-p
+		       (quote (user-dict-entry "ふるい" ("古い")))))
+	      (with-temp-file temp-file
+		(insert "あたらしい /新しい/" (string 10)))
+	      (should (eq (nskk-dict-load-user-dictionary) (quote user)))
+	      (should-not (nskk-prolog-holds-p
+			   (quote (user-dict-entry "ふるい" ("古い")))))
+	      (should (nskk-prolog-holds-p
+		       (quote (user-dict-entry "あたらしい" ("新しい"))))))
+	  (delete-file temp-file)))))
+
+  (nskk-it "preserves user facts for empty or malformed input"
+    (nskk-prolog-test-with-isolated-db
+      (let ((temp-file (make-temp-file "nskk-user-invalid-" nil ".skk")))
+	(unwind-protect
+	    (progn
+	      (nskk-prolog-set-index (quote user-dict-entry) 2 :trie)
+	      (nskk-prolog-assert
+	       (quote ((user-dict-entry "きぞん" ("既存")))))
+	      (let ((nskk-dict-user-dictionary-file temp-file))
+		(dolist (content
+			 (list "" "ただしくない行"
+			       (concat "せいじょう /正常/" (string 10) "不正")))
+		  (with-temp-file temp-file (insert content))
+		  (should-not (nskk-dict-load-user-dictionary))
+		  (should (nskk-prolog-holds-p
+			   (quote (user-dict-entry "きぞん" ("既存"))))))))
+	  (delete-file temp-file)))))
+
+  (nskk-it "rejects malformed dotted circular and multiple cache forms"
+    (let* ((temp-file (make-temp-file "nskk-cache-invalid-" nil ".eld"))
+	   (nskk-dict-system-dictionary-files (quote ("/dict"))))
+      (unwind-protect
+	  (nskk-with-mocks ((nskk--dict-cache-file-path
+			     (lambda () temp-file)))
+	    (dolist (content
+		     (quote ("("
+			     "(a . b)"
+			     "#1=(#1#)"
+			     "nil nil"
+			     "(:version 1 :source-files (/dict) :entries ((a 1)))")))
+	      (with-temp-file temp-file (insert content))
+	      (should-not (nskk--dict-load-system-dict-from-cache))))
+	(delete-file temp-file))))
+
+  (nskk-it "rejects oversized cache without changing system facts"
+    (nskk-prolog-test-with-isolated-db
+      (let ((temp-file (make-temp-file "nskk-cache-large-" nil ".eld")))
+	(unwind-protect
+	    (progn
+	      (with-temp-file temp-file (insert "0123456789"))
+	      (nskk-prolog-set-index (quote system-dict-entry) 2 :trie)
+	      (nskk-prolog-assert
+	       (quote ((system-dict-entry "きぞん" ("既存")))))
+	      (let ((nskk--dict-cache-max-bytes 8)
+		    (nskk-dict-system-dictionary-files (quote ("/dict"))))
+		(nskk-with-mocks ((nskk--dict-cache-file-path
+				   (lambda () temp-file)))
+		  (should (= (nskk--dict-load-from-cache) 0))
+		  (should (nskk-prolog-holds-p
+			   (quote (system-dict-entry "きぞん" ("既存"))))))))
+	  (delete-file temp-file)))))
+
+  (nskk-it "refuses to replace a symbolic-link output path"
+    (let* ((temp-dir (make-temp-file "nskk-atomic-link-" t))
+           (target (expand-file-name "target" temp-dir))
+           (output (expand-file-name "output" temp-dir)))
+      (unwind-protect
+          (progn
+            (with-temp-file target (insert "old"))
+            (make-symbolic-link target output)
+            (should-error
+             (nskk-dict-with-atomic-file output (insert "new"))
+             :type (quote file-error))
+            (with-temp-buffer
+              (insert-file-contents target)
+              (should (equal (buffer-string) "old"))))
+        (delete-directory temp-dir t))))
+
+  (nskk-it "refuses to replace a directory output path before writing"
+    (let ((output (make-temp-file "nskk-atomic-directory-" t))
+          (body-called nil))
+      (unwind-protect
+          (progn
+            (should-error
+             (nskk-dict-with-atomic-file output
+               (setq body-called t)
+               (insert "new"))
+             :type (quote file-error))
+            (should-not body-called)
+            (should (file-directory-p output)))
+        (delete-directory output t))))
+
+  (nskk-it "refuses to replace a FIFO output path before writing"
+    (let ((output
+           (make-temp-name
+            (expand-file-name "nskk-atomic-fifo-"
+                              temporary-file-directory)))
+          (body-called nil))
+      (skip-unless (executable-find "mkfifo"))
+      (unwind-protect
+          (progn
+            (unless
+                (= 0 (call-process "mkfifo" nil nil nil output))
+              (ert-skip "mkfifo cannot create a FIFO"))
+            (should-error
+             (nskk-dict-with-atomic-file output
+               (setq body-called t)
+               (insert "new"))
+             :type (quote file-error))
+            (should-not body-called)
+            (should (file-exists-p output))
+            (should-not (file-regular-p output)))
+        (when (file-exists-p output)
+          (delete-file output))))))
+
+  (nskk-describe "bounded transactional dictionary reads"
+    (nskk-it "rejects post-read byte overflow without changing ordinary facts"
+      (nskk-prolog-test-with-isolated-db
+        (let ((file (make-temp-file "nskk-bounded-" nil ".skk")))
+          (unwind-protect
+              (progn
+                (with-temp-file file (insert "x"))
+                (nskk-prolog-set-index (quote bounded-dict-entry) 2 :trie)
+                (nskk-prolog-assert
+                 (quote ((bounded-dict-entry "existing" ("value")))))
+                (let ((nskk--dict-cache-max-bytes 8))
+                  (nskk-with-mocks
+                      ((insert-file-contents
+                        (lambda (&rest _args) (insert "123456789"))))
+                    (should-not
+                     (nskk-dict-load-file file nil
+                                          (quote bounded-dict-entry)))))
+                (should
+                 (nskk-prolog-holds-p
+                  (quote (bounded-dict-entry "existing" ("value"))))))
+            (delete-file file)))))
+
+    (nskk-it "preserves user facts when reading fails after partial insertion"
+      (nskk-prolog-test-with-isolated-db
+        (let ((file (make-temp-file "nskk-partial-" nil ".skk")))
+          (unwind-protect
+              (progn
+                (nskk-prolog-set-index (quote user-dict-entry) 2 :trie)
+                (nskk-prolog-assert
+                 (quote ((user-dict-entry "existing" ("value")))))
+                (let ((nskk-dict-user-dictionary-file file))
+                  (nskk-with-mocks
+                      ((insert-file-contents
+                        (lambda (&rest _args)
+                          (insert "partial")
+                          (error "simulated read failure"))))
+                    (should-not (nskk-dict-load-user-dictionary))))
+                (should
+                 (nskk-prolog-holds-p
+                  (quote (user-dict-entry "existing" ("value"))))))
+            (delete-file file)))))
+
+    (nskk-it "preserves system facts and cache when a source exceeds the limit"
+      (nskk-prolog-test-with-isolated-db
+        (let ((source (make-temp-file "nskk-system-large-" nil ".skk"))
+              (cache (make-temp-file "nskk-system-cache-" nil ".eld")))
+          (unwind-protect
+              (progn
+                (with-temp-file source (insert "123456789"))
+                (with-temp-file cache (insert "unchanged"))
+                (nskk-prolog-set-index (quote system-dict-entry) 2 :trie)
+                (nskk-prolog-assert
+                 (quote ((system-dict-entry "existing" ("value")))))
+                (let ((nskk--dict-cache-max-bytes 8)
+                      (nskk-dict-cache-enabled t))
+                  (nskk-with-mocks
+                      ((nskk--dict-cache-file-path (lambda () cache)))
+                    (should (= 0 (nskk--dict-load-from-files
+                                  (list source))))))
+                (should
+                 (nskk-prolog-holds-p
+                  (quote (system-dict-entry "existing" ("value")))))
+                (with-temp-buffer
+                  (insert-file-contents cache)
+                  (should (equal (buffer-string) "unchanged"))))
+            (delete-file source)
+            (delete-file cache))))))
+
+  (nskk-describe "bounded binary cache read boundaries"
+    (nskk-it "decodes multibyte data whose encoded bytes exactly equal the limit"
+      (let ((file (make-temp-file "nskk-bounded-multibyte-" nil ".skk")))
+        (unwind-protect
+            (progn
+              (let ((coding-system-for-write (quote utf-8-unix)))
+                (with-temp-file file
+                  (insert "あ")))
+              (let ((nskk--dict-cache-max-bytes 3))
+                (with-temp-buffer
+                  (nskk--dict-insert-file-contents-bounded
+                   file (quote utf-8-unix))
+                  (should (equal (buffer-string) "あ")))))
+          (delete-file file))))
+
+    (nskk-it "reads limit plus one byte and rejects growth after stat"
+      (let ((file (make-temp-file "nskk-bounded-growth-" nil ".skk"))
+            (seen-end nil))
+        (unwind-protect
+            (progn
+              (with-temp-file file
+                (insert "1234"))
+              (let ((nskk--dict-cache-max-bytes 4))
+                (nskk-with-mocks
+                    ((insert-file-contents
+                      (lambda (_file &optional _visit _begin end &rest _args)
+                        (setq seen-end end)
+                        (insert "12345"))))
+                  (with-temp-buffer
+                    (should-error
+                     (nskk--dict-insert-file-contents-bounded file nil)
+                     :type (quote error)))))
+              (should (= seen-end 5)))
+          (delete-file file))))
+
+    (nskk-it "rejects trailing non-whitespace after an otherwise valid cache form"
+      (let ((file (make-temp-file "nskk-cache-trailing-" nil ".eld"))
+            (nskk-dict-system-dictionary-files (quote ("/dict"))))
+        (unwind-protect
+            (progn
+              (with-temp-file file
+                (prin1
+                 (list :version 1
+                       :source-files (quote ("/dict"))
+                       :entries nil)
+                 (current-buffer))
+                (insert " trailing-garbage"))
+              (nskk-with-mocks
+                  ((nskk--dict-cache-file-path (lambda () file)))
+                (should-not (nskk--dict-load-system-dict-from-cache))))
+          (delete-file file)))))
+  (nskk-describe "dictionary initialization hooks"
+  (nskk-it "runs the initialization hook after loading completes"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-dict-system-dictionary-files nil)
+            (nskk-dict-use-ja-dic nil)
+            (nskk-dict-user-dictionary-file nil)
+            (nskk--system-dict-index nil)
+            (nskk--user-dict-index nil)
+            (nskk-dict-initialize-hook nil)
+            (hook-calls 0))
+        (add-hook 'nskk-dict-initialize-hook
+                  (lambda () (cl-incf hook-calls)))
+        (nskk-with-mocks
+            ((nskk--dict-detect-system-dictionaries (lambda () nil))
+             (nskk-dict-load-user-dictionary (lambda () nil))
+             (nskk-dict-load-kakutei-dictionary (lambda () nil)))
+          (nskk-dict-initialize)
+          (should (= 1 hook-calls))))))
+
+  (nskk-it "continues initialization observers after an ordinary hook error"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((events nil)
+             (nskk-dict-system-dictionary-files nil)
+             (nskk-dict-use-ja-dic nil)
+             (nskk-dict-user-dictionary-file nil)
+             (nskk--system-dict-index nil)
+             (nskk--user-dict-index nil)
+             (nskk-dict-initialize-hook (list #'nskk--search-flush-caches))
+             (messages nil)
+             (flushes 0))
+        (with-temp-buffer
+          (setq-local nskk-dict-initialize-hook
+                      (list
+                       (lambda ()
+                         (push 'local-failure events)
+                         (error "initialize hook failure"))
+                       (lambda () (push 'local-observer events))
+                       t))
+          (nskk-with-mocks
+              ((nskk--dict-detect-system-dictionaries (lambda () nil))
+               (nskk-dict-load-user-dictionary (lambda () nil))
+               (nskk-dict-load-kakutei-dictionary (lambda () nil))
+               (nskk--search-flush-caches
+                (lambda ()
+                  (push 'global-cache-invalidation events)
+                  (cl-incf flushes)))
+               (message
+                (lambda (fmt &rest args)
+                  (push (apply #'format fmt args) messages))))
+            (nskk-dict-initialize)))
+        (should (nskk-prolog-holds-p '(dict-initialized)))
+        (should
+         (equal (nreverse events)
+                '(local-failure local-observer global-cache-invalidation)))
+        (should (= 1 flushes))
+        (should
+         (cl-some
+          (lambda (text)
+            (string-match-p "dict-initialize-hook error" text))
+          messages)))))
+
+  (nskk-it "propagates initialization hook quit before later observers"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((events nil)
+             (nskk-dict-system-dictionary-files nil)
+             (nskk-dict-use-ja-dic nil)
+             (nskk-dict-user-dictionary-file nil)
+             (nskk--system-dict-index nil)
+             (nskk--user-dict-index nil)
+             (nskk-dict-initialize-hook
+              (list (lambda () (push 'global-observer events))))
+             caught)
+        (with-temp-buffer
+          (setq-local nskk-dict-initialize-hook
+                      (list
+                       (lambda ()
+                         (push 'quit events)
+                         (signal 'quit '("initialize hook quit" payload)))
+                       (lambda () (push 'later-local-observer events))
+                       t))
+          (nskk-with-mocks
+              ((nskk--dict-detect-system-dictionaries (lambda () nil))
+               (nskk-dict-load-user-dictionary (lambda () nil))
+               (nskk-dict-load-kakutei-dictionary (lambda () nil)))
+            (setq caught
+                  (condition-case signal-condition
+                      (nskk-dict-initialize)
+                    (quit signal-condition)))))
+        (should (equal caught '(quit "initialize hook quit" payload)))
+        (should (equal (nreverse events) '(quit)))
+        (should (nskk-prolog-holds-p '(dict-initialized)))))))
+
+  (nskk-describe "explicit okuri marker lookup"
+    (nskk-it "does not append another consonant to an explicit marker"
+      (nskk-with-prolog-entries
+          ((user-dict-entry "うごk" ("direct")))
+        (nskk-with-mocks
+            ((nskk--dict-lookup-okuri-ari
+              (lambda (&rest _)
+                (error "Explicit marker triggered okuri lookup"))))
+          (should (member "direct" (nskk-dict-lookup "うごk")))))))
+
+(nskk-describe "bounded dictionary regular-file boundary"
+	       (nskk-it "rejects a FIFO before attempting any read"
+			(let ((fifo (make-temp-name
+				     (expand-file-name
+				      "nskk-dictionary-fifo-"
+				      temporary-file-directory)))
+			      (read-called nil))
+			  (skip-unless (executable-find "mkfifo"))
+			  (unwind-protect
+			      (progn
+				(should
+				 (= 0 (call-process "mkfifo" nil nil nil fifo)))
+				(cl-letf
+				    (((symbol-function 'insert-file-contents)
+				      (lambda (&rest _)
+					(setq read-called t)
+					(error "FIFO read attempted"))))
+				  (with-temp-buffer
+				    (should-error
+				     (nskk--dict-insert-file-contents-bounded fifo nil)
+				     :type 'error)))
+				(should-not read-called))
+			    (when (file-exists-p fifo)
+			      (delete-file fifo)))))
+
+	       (nskk-it "continues to read a symlink to a regular file"
+			(let* ((directory
+				(make-temp-file "nskk-dictionary-link-" t))
+			       (target (expand-file-name "target.skk" directory))
+			       (link (expand-file-name "link.skk" directory)))
+			  (unwind-protect
+			      (progn
+				(with-temp-file target
+				  (insert "regular"))
+				(make-symbolic-link target link)
+				(with-temp-buffer
+				  (nskk--dict-insert-file-contents-bounded link 'utf-8-unix)
+				  (should (equal (buffer-string) "regular"))))
+			    (delete-directory directory t))))
+
+	       (nskk-it "reads an owned regular file from a read-only parent directory"
+			(let* ((directory
+				(make-temp-file "nskk-dictionary-read-only-parent-" t))
+			       (file (expand-file-name "dictionary.skk" directory)))
+			  (unwind-protect
+			      (progn
+				(with-temp-file file
+				  (insert "regular"))
+				(set-file-modes directory #o555)
+				(with-temp-buffer
+				  (nskk--dict-insert-file-contents-bounded file nil)
+				  (should (equal (buffer-string) "regular"))))
+			    (set-file-modes directory #o700)
+			    (delete-directory directory t))))
+
+	       (nskk-it "fails closed without a source read when hard-link policy denies pinning"
+			  (let ((file (make-temp-file "nskk-dict-pin-policy-"))
+				(buffer (generate-new-buffer " *nskk-dict-pin-policy*"))
+				(source-read-called nil))
+			    (unwind-protect
+				(progn
+				  (with-temp-file file
+				    (insert "original\n"))
+				  (with-current-buffer buffer
+				    (insert "sentinel")
+				    (cl-letf (((symbol-function 'add-name-to-file)
+					       (lambda (&rest _args)
+						 (signal 'file-error
+							 '("Operation not permitted"
+							   "protected_hardlinks policy"))))
+					      ((symbol-function 'insert-file-contents)
+					       (lambda (&rest _args)
+						 (setq source-read-called t)
+						 (error "source path must not be read"))))
+				      (let ((condition
+					     (should-error
+					      (nskk--dict-insert-file-contents-bounded file nil)
+					      :type 'error)))
+					(should
+					 (string-match-p
+					  "Cannot safely read unpinned file"
+					  (error-message-string condition)))))
+				    (should-not source-read-called)
+				    (should (equal (buffer-string) "sentinel"))))
+			      (when (buffer-live-p buffer)
+				(kill-buffer buffer))
+			      (ignore-errors (delete-file file)))))
+
+		 (nskk-it "rejects a symbolic-link snapshot before any read"
+			  (let ((file (make-temp-file "nskk-dict-symlink-snapshot-"))
+				(buffer (generate-new-buffer " *nskk-dict-symlink-snapshot*"))
+				(read-called nil))
+			    (unwind-protect
+				(progn
+				  (with-temp-file file
+				    (insert "original\n"))
+				  (with-current-buffer buffer
+				    (insert "sentinel")
+				    (cl-letf (((symbol-function 'add-name-to-file)
+					       (lambda (_old new &optional _ok-if-already-exists)
+						 (make-symbolic-link file new)))
+					      ((symbol-function 'insert-file-contents)
+					       (lambda (&rest _args)
+						 (setq read-called t)
+						 (error "symbolic snapshot read attempted"))))
+				      (let ((condition
+					     (should-error
+					      (nskk--dict-insert-file-contents-bounded file nil)
+					      :type 'error)))
+					(should
+					 (string-match-p
+					  "Pinned snapshot is a symbolic link"
+					  (error-message-string condition)))))
+				    (should-not read-called)
+				    (should (equal (buffer-string) "sentinel"))))
+			      (when (buffer-live-p buffer)
+				(kill-buffer buffer))
+			      (ignore-errors (delete-file file)))))
+(nskk-it "reads through a normal hard-link pin in a root-owned sticky base"
+  (let* ((directory (make-temp-file "nskk-dict-normal-pin-" t))
+         (snapshot-base (make-temp-file "nskk-dict-root-sticky-" t))
+         (snapshot-base-normalized
+          (directory-file-name (expand-file-name snapshot-base)))
+         (snapshot-base-true
+          (directory-file-name (file-truename snapshot-base)))
+         (add-destinations nil)
+         (real-file-attributes (symbol-function 'file-attributes))
+         (real-file-modes (symbol-function 'file-modes))
+         (real-add-name-to-file (symbol-function 'add-name-to-file)))
+    (unwind-protect
+        (let ((file (expand-file-name "dictionary" directory))
+              (temporary-file-directory snapshot-base))
+          (with-temp-file file
+            (insert "pinned\n"))
+          (with-temp-buffer
+            (cl-letf (((symbol-function 'file-attributes)
+                       (lambda (path &optional id-format)
+                         (let ((attributes
+                                (funcall real-file-attributes path id-format))
+                               (normalized
+                                (directory-file-name
+                                 (expand-file-name path))))
+                           (if (member normalized
+                                       (list snapshot-base-normalized
+                                             snapshot-base-true))
+                               (let ((copy (copy-sequence attributes)))
+                                 (setcar (nthcdr 2 copy) 0)
+                                 copy)
+                             attributes))))
+                      ((symbol-function 'file-modes)
+                       (lambda (path &optional flag)
+                         (let ((normalized
+                                (directory-file-name
+                                 (expand-file-name path))))
+                           (if (member normalized
+                                       (list snapshot-base-normalized
+                                             snapshot-base-true))
+                               #o1777
+                             (funcall real-file-modes path flag)))))
+                      ((symbol-function 'add-name-to-file)
+                       (lambda (old new &optional ok-if-already-exists)
+                         (push new add-destinations)
+                         (funcall real-add-name-to-file
+                                  old new ok-if-already-exists))))
+              (nskk--dict-insert-file-contents-bounded file nil)
+              (should (equal (buffer-string) "pinned\n"))))
+          (should (= (length add-destinations) 1))
+          (should
+           (string-prefix-p
+            (file-name-as-directory snapshot-base-normalized)
+            (car add-destinations))))
+      (ignore-errors (delete-directory snapshot-base t))
+      (ignore-errors (delete-directory directory t)))))
+(nskk-it "falls back from a cross-device temp pin to a source-side pin"
+  (let ((directory (make-temp-file "nskk-dict-source-pin-" t))
+        (snapshot-base (make-temp-file "nskk-dict-temp-pin-" t))
+        (add-calls 0)
+        (real-add-name-to-file (symbol-function (quote add-name-to-file))))
+    (unwind-protect
+        (let ((file (expand-file-name "dictionary" directory))
+              (temporary-file-directory snapshot-base))
+          (with-temp-file file
+            (insert "source-side\n"))
+          (with-temp-buffer
+            (cl-letf (((symbol-function (quote add-name-to-file))
+                       (lambda (old new &optional ok-if-already-exists)
+                         (cl-incf add-calls)
+                         (if (= add-calls 1)
+                             (signal (quote file-error)
+                                     (quote ("Invalid cross-device link")))
+                           (funcall real-add-name-to-file
+                                    old new ok-if-already-exists)))))
+              (nskk--dict-insert-file-contents-bounded file nil)
+              (should (equal (buffer-string) "source-side\n"))))
+          (should (= add-calls 2)))
+      (ignore-errors (delete-directory snapshot-base t))
+      (ignore-errors (delete-directory directory t)))))
+(nskk-it "uses the immutable direct fallback after all pins are denied"
+  (let ((directory (make-temp-file "nskk-dict-direct-fallback-" t))
+        (add-calls 0)
+        (pinning t)
+        (real-file-writable-p (symbol-function 'file-writable-p)))
+    (unwind-protect
+        (let ((file (expand-file-name "dictionary" directory)))
+          (with-temp-file file
+            (insert "direct\n"))
+          (with-temp-buffer
+            (cl-letf (((symbol-function 'file-writable-p)
+                       (lambda (path)
+                         (and pinning
+                              (funcall real-file-writable-p path))))
+                      ((symbol-function 'add-name-to-file)
+                       (lambda (&rest _args)
+                         (cl-incf add-calls)
+                         (setq pinning nil)
+                         (signal 'file-error
+                                 '("Operation not permitted")))))
+              (nskk--dict-insert-file-contents-bounded file nil)
+              (should (equal (buffer-string) "direct\n"))))
+          (should (> add-calls 0)))
+      (ignore-errors (delete-directory directory t)))))
+(nskk-it "rejects a mutable direct path without reading the source"
+  (let ((directory (make-temp-file "nskk-dict-mutable-direct-" t))
+        (buffer (generate-new-buffer " *nskk-dict-mutable-direct*"))
+        (add-calls 0)
+        (source-read-called nil))
+    (unwind-protect
+        (let ((file (expand-file-name "dictionary" directory)))
+          (with-temp-file file
+            (insert "mutable\n"))
+          (with-current-buffer buffer
+            (insert "sentinel")
+            (cl-letf (((symbol-function 'add-name-to-file)
+                       (lambda (&rest _args)
+                         (cl-incf add-calls)
+                         (signal 'file-error
+                                 '("Operation not permitted"))))
+                      ((symbol-function 'insert-file-contents)
+                       (lambda (&rest _args)
+                         (setq source-read-called t)
+                         (error "source path must not be read"))))
+              (let ((condition
+                     (should-error
+                      (nskk--dict-insert-file-contents-bounded file nil)
+                      :type 'error)))
+                (should
+                 (string-match-p
+                  "Cannot safely read unpinned file"
+                  (error-message-string condition)))))
+            (should (equal (buffer-string) "sentinel")))
+          (should (> add-calls 0))
+          (should-not source-read-called))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer))
+      (ignore-errors (delete-directory directory t)))))
+(nskk-it "rejects unsafe snapshot bases before temporary-file, link, or read I/O"
+  (let* ((source-directory (make-temp-file "nskk-dict-unsafe-base-source-" t))
+         (ancestor (make-temp-file "nskk-dict-unsafe-base-parent-" t))
+         (snapshot-base (expand-file-name "private" ancestor))
+         (file (expand-file-name "dictionary" source-directory))
+         (real-file-attributes (symbol-function 'file-attributes))
+         (real-file-modes (symbol-function 'file-modes))
+         (real-file-acl (symbol-function 'file-acl)))
+    (unwind-protect
+        (progn
+          (make-directory snapshot-base)
+          (set-file-modes ancestor #o700)
+          (set-file-modes snapshot-base #o700)
+          (with-temp-file file
+            (insert "unsafe-base\n"))
+          (dolist (case '(untrusted-sticky untrusted-ancestor base-acl ancestor-acl))
+            (let ((temporary-file-directory snapshot-base)
+                  (make-temp-calls 0)
+                  (link-calls 0)
+                  (read-calls 0))
+              (cl-letf
+                  (((symbol-function 'file-attributes)
+                    (lambda (path &optional id-format)
+                      (let ((attrs (funcall real-file-attributes path id-format))
+                            (normalized (directory-file-name
+                                         (expand-file-name path))))
+                        (if (and attrs
+                                 (or (and (eq case 'untrusted-sticky)
+                                          (equal normalized snapshot-base))
+                                     (and (eq case 'untrusted-ancestor)
+                                          (equal normalized ancestor))))
+                            (let ((copy (copy-tree attrs)))
+                              (setcar (nthcdr 2 copy) 4242)
+                              copy)
+                          attrs))))
+                   ((symbol-function 'file-modes)
+                    (lambda (path)
+                      (if (and (eq case 'untrusted-sticky)
+                               (equal (directory-file-name
+                                       (expand-file-name path))
+                                      snapshot-base))
+                          #o1777
+                        (funcall real-file-modes path))))
+                   ((symbol-function 'file-acl)
+                    (lambda (path)
+                      (let ((normalized (directory-file-name
+                                         (expand-file-name path))))
+                        (if (or (and (eq case 'base-acl)
+                                     (equal normalized snapshot-base))
+                                (and (eq case 'ancestor-acl)
+                                     (equal normalized ancestor)))
+                            '((mock . acl))
+                          (funcall real-file-acl path)))))
+                   ((symbol-function 'file-writable-p)
+                    (lambda (path)
+                      (let ((normalized (directory-file-name
+                                         (expand-file-name path))))
+                        (or (equal normalized snapshot-base)
+                            (equal normalized file)
+                            (equal normalized
+                                   (directory-file-name
+                                    (file-truename file)))))))
+                   ((symbol-function 'make-temp-file)
+                    (lambda (&rest _args)
+                      (cl-incf make-temp-calls)
+                      (error "unsafe base reached make-temp-file")))
+                   ((symbol-function 'add-name-to-file)
+                    (lambda (&rest _args)
+                      (cl-incf link-calls)
+                      (error "unsafe base reached add-name-to-file")))
+                   ((symbol-function 'insert-file-contents)
+                    (lambda (&rest _args)
+                      (cl-incf read-calls)
+                      (error "unsafe base reached insert-file-contents"))))
+                (with-temp-buffer
+                  (should-error
+                   (nskk--dict-insert-file-contents-bounded file nil)
+                   :type 'error)))
+              (should (= make-temp-calls 0))
+              (should (= link-calls 0))
+              (should (equal (list case read-calls) (list case 0))))))
+      (ignore-errors (delete-directory ancestor t))
+      (ignore-errors (delete-directory source-directory t)))))
+(nskk-it "rejects immutable direct fallback below an untrusted 0700 parent without reading"
+  (let* ((directory (make-temp-file "nskk-dict-untrusted-direct-parent-" t))
+         (snapshot-base (make-temp-file "nskk-dict-untrusted-direct-temp-" t))
+         (file (expand-file-name "dictionary" directory))
+         (buffer (generate-new-buffer " *nskk-dict-untrusted-direct*"))
+         (real-file-attributes (symbol-function (quote file-attributes)))
+         (real-file-writable-p (symbol-function (quote file-writable-p)))
+         (pinning t)
+         (add-calls 0)
+         (read-calls 0))
+    (unwind-protect
+        (progn
+          (set-file-modes directory #o700)
+          (with-temp-file file
+            (insert "untrusted-parent\n"))
+          (with-current-buffer buffer
+            (insert "sentinel")
+            (let ((temporary-file-directory snapshot-base))
+              (cl-letf
+                  (((symbol-function (quote file-attributes))
+                    (lambda (path &optional id-format)
+                      (let ((attrs (funcall real-file-attributes path id-format)))
+                        (if (and attrs
+                                 (equal (directory-file-name
+                                         (expand-file-name path))
+                                        directory))
+                            (let ((copy (copy-tree attrs)))
+                              (setcar (nthcdr 2 copy) 4242)
+                              copy)
+                          attrs))))
+                   ((symbol-function (quote file-writable-p))
+                    (lambda (path)
+                      (and pinning
+                           (funcall real-file-writable-p path))))
+                   ((symbol-function (quote add-name-to-file))
+                    (lambda (&rest _args)
+                      (cl-incf add-calls)
+                      (setq pinning nil)
+                      (signal (quote file-error)
+                              (quote ("Operation not permitted")))))
+                   ((symbol-function (quote insert-file-contents))
+                    (lambda (&rest _args)
+                      (cl-incf read-calls)
+                      (error "untrusted direct source was read"))))
+                (should-error
+                 (nskk--dict-insert-file-contents-bounded file nil)
+                 :type (quote error))))
+            (should (equal (buffer-string) "sentinel")))
+          (should (> add-calls 0))
+          (should (= read-calls 0)))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer))
+      (ignore-errors (delete-directory snapshot-base t))
+      (ignore-errors (delete-directory directory t)))))
+
+(nskk-it "leaves the caller buffer unchanged when post-read validation fails"
+  (let* ((directory (make-temp-file "nskk-dict-post-read-source-" t))
+         (snapshot-base (make-temp-file "nskk-dict-post-read-temp-" t))
+         (file (expand-file-name "dictionary" directory))
+         (buffer (generate-new-buffer " *nskk-dict-post-read-atomic*"))
+         (real-file-attributes (symbol-function (quote file-attributes)))
+         (real-insert-file-contents
+          (symbol-function (quote insert-file-contents)))
+         (read-complete nil)
+         (read-calls 0))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "validated\n"))
+          (with-current-buffer buffer
+            (insert "sentinel")
+            (let ((temporary-file-directory snapshot-base))
+              (cl-letf
+                  (((symbol-function (quote insert-file-contents))
+                    (lambda (path &rest args)
+                      (prog1
+                          (apply real-insert-file-contents path args)
+                        (cl-incf read-calls)
+                        (setq read-complete t))))
+                   ((symbol-function (quote file-attributes))
+                    (lambda (path &optional id-format)
+                      (let ((attrs (funcall real-file-attributes path id-format)))
+                        (if (and attrs
+                                 read-complete
+                                 (equal (file-name-nondirectory path) "contents"))
+                            (let ((copy (copy-tree attrs)))
+                              (setcar (nthcdr 7 copy)
+                                      (1+ (file-attribute-size attrs)))
+                              copy)
+                          attrs)))))
+                (should-error
+                 (nskk--dict-insert-file-contents-bounded file nil)
+                 :type (quote error))))
+            (should (equal (buffer-string) "sentinel")))
+          (should (= read-calls 1)))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer))
+      (ignore-errors (delete-directory snapshot-base t))
+      (ignore-errors (delete-directory directory t)))))
+
+
+
+	       (nskk-it "does not hang when a validated file is replaced by a FIFO"
+			(let* ((mkfifo (executable-find "mkfifo"))
+			       (file (make-temp-file "nskk-dictionary-fifo-race-"))
+			       (root (or (locate-dominating-file default-directory "src")
+					 default-directory))
+			       (source-directory (expand-file-name "src" root))
+			       (emacs (expand-file-name invocation-name invocation-directory))
+			       (child-form
+				(prin1-to-string
+				 `(progn
+				    (setq load-prefer-newer t)
+				    (require 'cl-lib)
+				    (require 'nskk-dictionary)
+				    (let ((real-add-name-to-file
+					   (symbol-function 'add-name-to-file)))
+				      (condition-case condition
+					  (progn
+					    (cl-letf
+						(((symbol-function 'add-name-to-file)
+						  (lambda (old new &optional ok-if-already-exists)
+						    (delete-file old)
+						    (unless
+							(= 0 (call-process
+							      ,mkfifo nil nil nil old))
+						      (error "mkfifo failed"))
+						    (funcall
+						     real-add-name-to-file
+						     old new ok-if-already-exists))))
+					      (with-temp-buffer
+						(nskk--dict-insert-file-contents-bounded
+						 ,file nil)))
+					    (kill-emacs 12))
+					(error
+					 (princ (error-message-string condition))
+					 (kill-emacs 0)))))))
+			       (buffer (generate-new-buffer " *nskk-fifo-race*"))
+			       process)
+			  (skip-unless mkfifo)
+			  (unwind-protect
+			      (progn
+				(with-temp-file file
+				  (insert "regular"))
+				(setq process
+				      (make-process
+				       :name "nskk-fifo-race"
+				       :buffer buffer
+				       :command
+				       (list emacs "-Q" "--batch"
+					     "-L" source-directory
+					     "--eval" child-form)
+				       :connection-type 'pipe
+				       :noquery t))
+				(let ((deadline (+ (float-time) 5.0)))
+				  (while (and (process-live-p process)
+					      (< (float-time) deadline))
+				    (accept-process-output process 0.05))
+				  (when (process-live-p process)
+				    (delete-process process)
+				    (ert-fail "Pinned read hung after FIFO replacement")))
+				(let ((output (with-current-buffer buffer (buffer-string))))
+				  (should (= (process-exit-status process) 0))
+				  (should
+				   (string-match-p
+				    (concat
+				     "NSKK: \\(?:Cannot safely read unpinned file"
+				     "\\|File changed before pinned read\\)")
+				    output))))
+			    (when (and process (process-live-p process))
+			      (delete-process process))
+			    (when (buffer-live-p buffer)
+			      (kill-buffer buffer))
+			    (when (file-exists-p file)
+			      (delete-file file))))))
+
+    (nskk-describe "incremental dictionary append identity"
+  (nskk-it "preserves database and index cons identity and order"
+    (dolist (type '(:hash :trie nil))
+      (nskk-prolog-test-with-isolated-db
+        (let* ((nskk--prolog-index-bucket-tail-cache
+                (make-hash-table :test #'equal))
+               (predicate
+                (intern (format "append-identity-%s" (or type "none"))))
+               (key (nskk--prolog-clause-key predicate 2)))
+          (when type
+            (nskk-prolog-set-index predicate 2 type))
+          (nskk-prolog-assert
+           (list (list predicate "same" '("old-1"))))
+          (nskk-prolog-assert
+           (list (list predicate "other" '("old-2"))))
+          (let* ((database (gethash key nskk--prolog-database))
+                 (database-second (cdr database))
+                 (database-tail
+                  (gethash key nskk--prolog-database-tails))
+                 (index
+                  (and type
+                       (nskk--prolog-transaction-index key type)))
+                 (bucket
+                  (and type
+                       (nskk--prolog-transaction-index-bucket
+                        type index "same")))
+                 (bucket-tail (and bucket (last bucket))))
+            (nskk--dict-append-predicate-entries
+             predicate
+             '(("same" "new-1")
+               ("new" "new-2")))
+            (let ((appended (gethash key nskk--prolog-database)))
+              (should (eq appended database))
+              (should (eq (cdr appended) database-second))
+              (should
+               (eq (cdr database-tail) (nthcdr 2 appended)))
+              (should
+               (equal
+                (mapcar (lambda (clause) (cadr (car clause)))
+                        appended)
+                '("same" "other" "same" "new")))
+              (should
+               (eq (gethash key nskk--prolog-database-tails)
+                   (last appended))))
+            (if type
+                (let ((appended-bucket
+                       (nskk--prolog-transaction-index-bucket
+                        type index "same")))
+                  (should
+                   (eq index
+                       (nskk--prolog-transaction-index key type)))
+                  (should (eq appended-bucket bucket))
+                  (should
+                   (eq (cdr bucket-tail)
+                       (cdr appended-bucket)))
+                  (should
+                   (equal
+                    (mapcar
+                     (lambda (clause) (cadr (car clause)))
+                     appended-bucket)
+                    '("same" "same")))
+                  (should
+                   (gethash key
+                            nskk--prolog-index-bucket-tail-cache)))
+              (should-not
+               (gethash key nskk--prolog-index-config))
+              (should-not
+               (gethash key
+                        nskk--prolog-index-bucket-tail-cache)))))))))
+(nskk-describe "incremental dictionary append strategies and cache"
+  (nskk-it "retains empty strategies and defaults fresh predicates to trie"
+    (dolist (type '(:hash :trie :list))
+      (nskk-prolog-test-with-isolated-db
+        (let* ((nskk--prolog-index-bucket-tail-cache
+                (make-hash-table :test #'equal))
+               (predicate
+                (intern (format "append-strategy-%s" type)))
+               (key (nskk--prolog-clause-key predicate 2)))
+          (nskk-prolog-set-index predicate 2 type)
+          (nskk--dict-append-predicate-entries
+           predicate '(("key" "value")))
+          (should (eq (gethash key nskk--prolog-index-config) type))
+          (should
+           (equal
+            (gethash key nskk--prolog-database)
+            (list (list (list predicate "key" '("value")))))))))
+    (nskk-prolog-test-with-isolated-db
+      (let* ((nskk--prolog-index-bucket-tail-cache
+              (make-hash-table :test #'equal))
+             (predicate 'append-fresh-default)
+             (key (nskk--prolog-clause-key predicate 2)))
+        (nskk--dict-append-predicate-entries
+         predicate '(("key" "value")))
+        (should (eq (gethash key nskk--prolog-index-config) :trie))
+        (should (gethash key nskk--prolog-trie-indices)))))
+
+  (nskk-it "uses cached bucket tails for repeated duplicate-key appends"
+    (dolist (type '(:hash :trie))
+      (nskk-prolog-test-with-isolated-db
+        (let* ((nskk--prolog-index-bucket-tail-cache
+                (make-hash-table :test #'equal))
+               (predicate
+                (intern (format "append-warm-tail-%s" type)))
+               (key (nskk--prolog-clause-key predicate 2))
+               (entries
+                (cl-loop repeat 256 collect '("same" "new"))))
+          (nskk-prolog-set-index predicate 2 type)
+          (nskk--dict-append-predicate-entries
+           predicate '(("same" "old")))
+          (cl-letf (((symbol-function 'last)
+                     (lambda (&rest _)
+                       (error "warm append scanned a bucket"))))
+            (nskk--dict-append-predicate-entries predicate entries))
+          (should
+           (= (length (gethash key nskk--prolog-database)) 257))))))
+
+  (nskk-it "invalidates stale tails after an external append"
+    (dolist (type '(:hash :trie))
+      (nskk-prolog-test-with-isolated-db
+        (let* ((nskk--prolog-index-bucket-tail-cache
+                (make-hash-table :test #'equal))
+               (predicate
+                (intern (format "append-cache-invalidate-%s" type)))
+               (key (nskk--prolog-clause-key predicate 2)))
+          (nskk-prolog-set-index predicate 2 type)
+          (nskk--dict-append-predicate-entries
+           predicate '(("same" "initial")))
+          (let* ((index (nskk--prolog-transaction-index key type))
+                 (initial-cell
+                  (nskk--prolog-transaction-index-bucket
+                   type index "same"))
+                 (cache-entry
+                  (gethash
+                   key nskk--prolog-index-bucket-tail-cache))
+                 (cache-buckets (aref cache-entry 2))
+                 (tail-info (gethash "same" cache-buckets))
+                 (cached-tail (aref tail-info 1))
+                 (external-clause
+                  (list (list predicate "same" '("external"))))
+                 (external-cell (list external-clause))
+                 (real-last (symbol-function 'last))
+                 (last-calls 0))
+            (should (= (length cache-entry) 3))
+            (should (eq (aref cache-entry 0) type))
+            (should (eq (aref cache-entry 1) index))
+            (should (eq (aref tail-info 0) initial-cell))
+            (should (eq cached-tail initial-cell))
+            (should-not (cdr cached-tail))
+            (setcdr cached-tail external-cell)
+            (should (eq (cdr cached-tail) external-cell))
+            (cl-letf (((symbol-function 'last)
+                       (lambda (&rest args)
+                         (setq last-calls (1+ last-calls))
+                         (apply real-last args))))
+              (nskk--dict-append-predicate-entries
+               predicate '(("same" "final"))))
+            (should (= last-calls 1))
+            (let* ((bucket
+                    (nskk--prolog-transaction-index-bucket
+                     type index "same"))
+                   (final-cell (cdr external-cell))
+                   (updated-entry
+                    (gethash
+                     key nskk--prolog-index-bucket-tail-cache))
+                   (updated-info
+                    (gethash "same" (aref updated-entry 2)))
+                   (updated-tail (aref updated-info 1)))
+              (should (eq bucket initial-cell))
+              (should (eq (cdr initial-cell) external-cell))
+              (should (eq (cdr external-cell) final-cell))
+              (should-not (cdr final-cell))
+              (should
+               (equal
+                (mapcar (lambda (clause) (caddr (car clause))) bucket)
+                '(("initial") ("external") ("final"))))
+              (should (eq (aref updated-info 0) bucket))
+              (should (eq updated-tail final-cell))
+              (should-not (cdr updated-tail))
+              (setq last-calls 0)
+              (cl-letf (((symbol-function 'last)
+                         (lambda (&rest args)
+                           (setq last-calls (1+ last-calls))
+                           (apply real-last args))))
+                (nskk--dict-append-predicate-entries
+                 predicate '(("same" "warm"))))
+              (should (= last-calls 0))
+              (let ((warm-cell (cdr final-cell)))
+                (should (eq (cdr final-cell) warm-cell))
+                (should-not (cdr warm-cell))
+                (should
+                 (equal
+                  (mapcar (lambda (clause) (caddr (car clause))) bucket)
+                  '(("initial") ("external") ("final") ("warm"))))
+                (remhash key nskk--prolog-index-bucket-tail-cache)
+                (setq last-calls 0)
+                (cl-letf (((symbol-function 'last)
+                           (lambda (&rest args)
+                             (setq last-calls (1+ last-calls))
+                             (apply real-last args))))
+                  (nskk--dict-append-predicate-entries
+                   predicate '(("same" "cold"))))
+                (should (= last-calls 1))
+                (let* ((cold-cell (cdr warm-cell))
+                       (cold-entry
+                        (gethash
+                         key nskk--prolog-index-bucket-tail-cache))
+                       (cold-info
+                        (gethash "same" (aref cold-entry 2)))
+                       (cold-tail (aref cold-info 1)))
+                  (should (eq (cdr warm-cell) cold-cell))
+                  (should-not (cdr cold-cell))
+                  (should
+                   (equal
+                    (mapcar
+                     (lambda (clause) (caddr (car clause)))
+                     bucket)
+                    '(("initial")
+                      ("external")
+                      ("final")
+                      ("warm")
+                      ("cold"))))
+                  (should (eq (aref cold-info 0) bucket))
+                  (should (eq cold-tail cold-cell))
+                  (should-not (cdr cold-tail)))))))))))
+(nskk-describe "incremental public dictionary loads"
+  (nskk-it "reuses the existing database spine across repeated file loads"
+    (nskk-prolog-test-with-isolated-db
+      (let ((first-file (make-temp-file "nskk-append-first-" nil ".skk"))
+            (second-file (make-temp-file "nskk-append-second-" nil ".skk"))
+            (predicate 'append-public-load))
+        (unwind-protect
+            (let* ((nskk--prolog-index-bucket-tail-cache
+                    (make-hash-table :test #'equal))
+                   (key (nskk--prolog-clause-key predicate 2)))
+              (with-temp-file first-file
+                (insert "first /one/\n"))
+              (with-temp-file second-file
+                (insert "second /two/\n"))
+              (should
+               (eq (nskk-dict-load-file first-file nil predicate)
+                   predicate))
+              (let ((database (gethash key nskk--prolog-database))
+                    (database-tail
+                     (gethash key nskk--prolog-database-tails)))
+                (should
+                 (eq (nskk-dict-load-file second-file nil predicate)
+                     predicate))
+                (let ((appended (gethash key nskk--prolog-database)))
+                  (should (eq appended database))
+                  (should (eq (cdr database-tail) (cdr appended)))
+                  (should
+                   (equal
+                    (mapcar (lambda (clause) (cadr (car clause)))
+                            appended)
+                    '("first" "second"))))))
+          (when (file-exists-p first-file)
+            (delete-file first-file))
+          (when (file-exists-p second-file)
+            (delete-file second-file)))))))
+(nskk-describe "incremental append setup rollback"
+  (nskk-it "restores a fresh predicate after index setup errors and quits"
+    (dolist (kind '(error quit))
+      (nskk-prolog-test-with-isolated-db
+        (let* ((nskk--prolog-index-bucket-tail-cache
+                (make-hash-table :test #'equal))
+               (predicate
+                (intern (format "append-setup-rollback-%s" kind)))
+               (key (nskk--prolog-clause-key predicate 2))
+               (before (nskk--dict-predicate-snapshot key))
+               (real-set-index
+                (symbol-function 'nskk-prolog-set-index))
+               (data (list "append setup rollback" kind))
+               (caught nil))
+          (cl-letf
+              (((symbol-function 'nskk-prolog-set-index)
+                (lambda (&rest args)
+                  (apply real-set-index args)
+                  (signal kind data))))
+            (condition-case condition
+                (nskk--dict-append-predicate-entries
+                 predicate '(("key" "candidate")))
+              ((error quit) (setq caught condition))))
+          (should (eq (car caught) kind))
+          (should (equal (cdr caught) data))
+          (let ((after (nskk--dict-predicate-snapshot key)))
+            (dotimes (slot (1- (length before)))
+              (should
+               (eq (aref before (1+ slot))
+                   (aref after (1+ slot))))))
+          (should-not
+           (gethash key nskk--prolog-index-bucket-tail-cache)))))))
+(nskk-describe "incremental append partial publication rollback"
+  (nskk-it "restores exact spines after indexed publication errors and quits"
+    (dolist (type '(:hash :trie))
+      (dolist (kind '(error quit))
+        (nskk-prolog-test-with-isolated-db
+          (let* ((nskk--prolog-index-bucket-tail-cache
+                  (make-hash-table :test #'equal))
+                 (predicate
+                  (intern
+                   (format "append-partial-%s-%s" type kind)))
+                 (key (nskk--prolog-clause-key predicate 2))
+                 (data (list "append partial rollback" type kind))
+                 (caught nil)
+                 (calls 0))
+            (nskk-prolog-set-index predicate 2 type)
+            (nskk--dict-append-predicate-entries
+             predicate '(("same" "old")))
+            (let* ((before (nskk--dict-predicate-snapshot key))
+                   (previous-cache
+                    (gethash key
+                             nskk--prolog-index-bucket-tail-cache))
+                   (database
+                    (gethash key nskk--prolog-database))
+                   (database-tail
+                    (gethash key nskk--prolog-database-tails))
+                   (index
+                    (nskk--prolog-transaction-index key type))
+                   (bucket
+                    (nskk--prolog-transaction-index-bucket
+                     type index "same"))
+                   (bucket-tail (last bucket))
+                   (real-set-bucket
+                    (symbol-function
+                     'nskk--prolog-transaction-set-index-bucket)))
+              (cl-letf
+                  (((symbol-function
+                     'nskk--prolog-transaction-set-index-bucket)
+                    (lambda (&rest args)
+                      (apply real-set-bucket args)
+                      (setq calls (1+ calls))
+                      (when (= calls 2)
+                        (signal kind data)))))
+                (condition-case condition
+                    (nskk--dict-append-predicate-entries
+                     predicate
+                     '(("same" "candidate")
+                       ("new" "candidate")))
+                  ((error quit) (setq caught condition))))
+              (should (eq (car caught) kind))
+              (should (equal (cdr caught) data))
+              (let ((after (nskk--dict-predicate-snapshot key)))
+                (dotimes (slot (1- (length before)))
+                  (should
+                   (eq (aref before (1+ slot))
+                       (aref after (1+ slot))))))
+              (should (eq database
+                          (gethash key nskk--prolog-database)))
+              (should (eq database-tail
+                          (gethash key
+                                   nskk--prolog-database-tails)))
+              (should-not (cdr database-tail))
+              (should
+               (eq index
+                   (nskk--prolog-transaction-index key type)))
+              (should
+               (eq bucket
+                   (nskk--prolog-transaction-index-bucket
+                    type index "same")))
+              (should-not (cdr bucket-tail))
+              (should-not
+               (nskk--prolog-transaction-index-bucket
+                type index "new"))
+              (should
+               (eq previous-cache
+                   (gethash key
+                            nskk--prolog-index-bucket-tail-cache))))))))))
+(nskk-describe "incremental append deferred quit rollback"
+  (nskk-it "undoes all mutations when a pending quit is observed"
+    (dolist (type '(:hash :trie nil))
+      (nskk-prolog-test-with-isolated-db
+        (let* ((nskk--prolog-index-bucket-tail-cache
+                (make-hash-table :test #'equal))
+               (predicate
+                (intern
+                 (format "append-deferred-quit-%s"
+                         (or type "none"))))
+               (key (nskk--prolog-clause-key predicate 2))
+               (caught nil))
+          (if type
+              (progn
+                (nskk-prolog-set-index predicate 2 type)
+                (nskk--dict-append-predicate-entries
+                 predicate '(("same" "old"))))
+            (nskk-prolog-assert
+             (list (list predicate "same" '("old")))))
+          (let* ((before (nskk--dict-predicate-snapshot key))
+                 (previous-cache
+                  (gethash key nskk--prolog-index-bucket-tail-cache))
+                 (database
+                  (gethash key nskk--prolog-database))
+                 (database-tail
+                  (gethash key nskk--prolog-database-tails))
+                 (index
+                  (and type
+                       (nskk--prolog-transaction-index key type)))
+                 (bucket
+                  (and type
+                       (nskk--prolog-transaction-index-bucket
+                        type index "same")))
+                 (bucket-tail (and bucket (last bucket))))
+            (let ((quit-flag t)
+                  (inhibit-quit t))
+              (condition-case condition
+                  (nskk--dict-append-predicate-entries
+                   predicate
+                   '(("same" "candidate")
+                     ("new" "candidate")))
+                (quit (setq caught condition quit-flag nil))))
+            (should (eq (car caught) 'quit))
+            (let ((after (nskk--dict-predicate-snapshot key)))
+              (dotimes (slot (1- (length before)))
+                (should
+                 (eq (aref before (1+ slot))
+                     (aref after (1+ slot))))))
+            (should
+             (eq database (gethash key nskk--prolog-database)))
+            (should
+             (eq database-tail
+                 (gethash key nskk--prolog-database-tails)))
+            (should-not (cdr database-tail))
+            (should
+             (eq previous-cache
+                 (gethash key
+                          nskk--prolog-index-bucket-tail-cache)))
+            (if type
+                (progn
+                  (should
+                   (eq index
+                       (nskk--prolog-transaction-index key type)))
+                  (should
+                   (eq bucket
+                       (nskk--prolog-transaction-index-bucket
+                        type index "same")))
+                  (should-not (cdr bucket-tail))
+                  (should-not
+                   (nskk--prolog-transaction-index-bucket
+                    type index "new")))
+              (should-not
+               (gethash key nskk--prolog-index-config)))))))))
+(nskk-describe "dictionary predicate publication rollback boundaries"
+    (nskk-it "restores exact facts after bulk cache and publish errors and quits"
+      (dolist (kind '(error quit))
+        (dolist (stage '(bulk cache publish))
+          (nskk-prolog-test-with-isolated-db
+            (let* ((predicate 'system-dict-entry)
+                   (key (nskk--prolog-clause-key predicate 2))
+                   (data (list "dictionary rollback" stage kind))
+                   (caught nil)
+                   (before nil))
+              (nskk-prolog-set-index predicate 2 :trie)
+              (nskk-prolog-assert
+               '((system-dict-entry "existing" ("value"))))
+              (setq before (nskk--dict-predicate-snapshot key))
+              (pcase stage
+                ('bulk
+                 (let ((real-bulk
+                        (symbol-function 'nskk-prolog-trie-bulk-assert)))
+                   (cl-letf
+                       (((symbol-function 'nskk-prolog-trie-bulk-assert)
+                         (lambda (&rest args)
+                           (apply real-bulk args)
+                           (signal kind data))))
+                     (condition-case condition
+                         (nskk--dict-replace-predicate-entries
+                          predicate
+                          '(("replacement" ("candidate"))))
+                       ((error quit) (setq caught condition))))))
+                ('cache
+                 (let ((staged
+                        (nskk--dict-stage-predicate-entries
+                         predicate
+                         '(("replacement" ("candidate"))))))
+                   (cl-letf
+                       (((symbol-function 'nskk--dict-save-system-dict-cache)
+                         (lambda (&rest _)
+                           (signal kind data))))
+                     (condition-case condition
+                         (nskk--dict-commit-staged-predicate
+                          staged
+                          (lambda ()
+                            (nskk--dict-save-system-dict-cache nil nil)))
+                       ((error quit) (setq caught condition))))))
+                ('publish
+                 (let ((staged
+                        (nskk--dict-stage-predicate-entries
+                         predicate
+                         '(("replacement" ("candidate")))))
+                       (real-publish
+                        (symbol-function
+                         'nskk--dict-publish-staged-predicate)))
+                   (cl-letf
+                       (((symbol-function 'nskk--dict-publish-staged-predicate)
+                         (lambda (candidate)
+                           (funcall real-publish candidate)
+                           (signal kind data))))
+                     (condition-case condition
+                         (nskk--dict-commit-staged-predicate staged)
+                       ((error quit) (setq caught condition)))))))
+              (should (eq (car caught) kind))
+              (should (equal (cdr caught) data))
+              (should
+               (equal (cl-subseq before 1)
+                      (cl-subseq
+                       (nskk--dict-predicate-snapshot key) 1)))
+              (should
+               (nskk-prolog-holds-p
+                '(system-dict-entry "existing" ("value"))))
+              (should-not
+               (nskk-prolog-holds-p
+                '(system-dict-entry "replacement" ("candidate"))))))))))
+
+  (defconst nskk-dictionary-test--display-attack-properties
+    '(display keymap local-map mouse-face help-echo face)
+    "Text properties that untrusted dictionary display copies must remove.")
+
+  (defun nskk-dictionary-test--attack-string (text)
+    "Return TEXT carrying hostile display properties and no-learn metadata."
+    (propertize text
+                'display "spoofed"
+                'keymap 'spoof-keymap
+                'local-map 'spoof-local-map
+                'mouse-face 'highlight
+                'help-echo "spoof help"
+                'face 'error
+                'nskk-no-learn t))
+
+  (defun nskk-dictionary-test--should-be-display-safe (text)
+    "Assert that TEXT has no hostile display properties."
+    (dolist (property nskk-dictionary-test--display-attack-properties)
+      (should-not
+       (text-property-not-all 0 (length text) property nil text))))
+
+  (defun nskk-dictionary-test--should-retain-attack-properties (text)
+    "Assert that the hostile properties and metadata remain on source TEXT."
+    (should (equal (get-text-property 0 'display text) "spoofed"))
+    (should (eq (get-text-property 0 'keymap text) 'spoof-keymap))
+    (should (eq (get-text-property 0 'local-map text) 'spoof-local-map))
+    (should (eq (get-text-property 0 'mouse-face text) 'highlight))
+    (should (equal (get-text-property 0 'help-echo text) "spoof help"))
+    (should (eq (get-text-property 0 'face text) 'error))
+    (should (eq (get-text-property 0 'nskk-no-learn text) t)))
+
+  (nskk-describe "untrusted dictionary display properties"
+    (nskk-it "sanitizes register messages without changing Prolog arguments"
+      (let* ((reading
+              (nskk-dictionary-test--attack-string "よみ"))
+             (word
+              (nskk-dictionary-test--attack-string "候補"))
+             (nskk--user-dict-index t)
+             (nskk-dict-modified nil)
+             (query nil)
+             (rendered nil)
+             (hook-called nil)
+             (nskk-jisyo-update-hook
+              (list (lambda () (setq hook-called t)))))
+        (cl-letf
+            (((symbol-function 'nskk-prolog-holds-p)
+              (lambda (candidate)
+                (setq query candidate)
+                t))
+             ((symbol-function 'message)
+              (lambda (format-string &rest args)
+                (setq rendered
+                      (apply #'format format-string args)))))
+          (should (nskk--dict-register-impl reading word)))
+        (should (equal rendered "NSKK: Registered よみ -> 候補"))
+        (nskk-dictionary-test--should-be-display-safe rendered)
+        (should (eq (car query) 'dict-register))
+        (should (eq (cadr query) reading))
+        (should (eq (caddr query) word))
+        (should hook-called)
+        (should nskk-dict-modified)
+        (nskk-dictionary-test--should-retain-attack-properties reading)
+        (nskk-dictionary-test--should-retain-attack-properties word)))
+
+    (nskk-it "sanitizes unregister messages without changing Prolog arguments"
+      (let* ((reading
+              (nskk-dictionary-test--attack-string "よみ"))
+             (word
+              (nskk-dictionary-test--attack-string "候補"))
+             (nskk--user-dict-index t)
+             (nskk-dict-modified nil)
+             (query nil)
+             (rendered nil)
+             (hook-called nil))
+        (cl-letf
+            (((symbol-function 'nskk-prolog-holds-p)
+              (lambda (candidate)
+                (setq query candidate)
+                t))
+             ((symbol-function 'nskk--dict-run-update-hook)
+              (lambda ()
+                (setq hook-called t)))
+             ((symbol-function 'message)
+              (lambda (format-string &rest args)
+                (setq rendered
+                      (apply #'format format-string args)))))
+          (should (nskk--dict-unregister-impl reading word)))
+        (should (equal rendered "NSKK: Unregistered よみ -> 候補"))
+        (nskk-dictionary-test--should-be-display-safe rendered)
+        (should (eq (car query) 'dict-unregister))
+        (should (eq (cadr query) reading))
+        (should (eq (caddr query) word))
+        (should hook-called)
+        (should nskk-dict-modified)
+        (nskk-dictionary-test--should-retain-attack-properties reading)
+        (nskk-dictionary-test--should-retain-attack-properties word)))
+
+    (nskk-it "sanitizes save preflight errors without changing bindings"
+      (let* ((key
+              (nskk-dictionary-test--attack-string "よみ"))
+             (invalid
+              (nskk-dictionary-test--attack-string "不/\n正"))
+             (bindings (list (list key (list invalid))))
+             (nskk-dict-user-dictionary-file
+              (make-temp-file "nskk-display-safe-save-" nil ".skk"))
+             (nskk--user-dict-index t)
+             (nskk-dict-modified t)
+             (query nil)
+             (variables nil)
+             (condition nil)
+             before-file)
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-dict-user-dictionary-file
+                (insert "unchanged" (string 0 127) "\n"))
+              (setq before-file
+                    (with-temp-buffer
+                      (insert-file-contents-literally
+                       nskk-dict-user-dictionary-file)
+                      (buffer-string)))
+              (cl-letf
+                  (((symbol-function 'nskk-prolog-query-bindings)
+                    (lambda (candidate requested-variables)
+                      (setq query candidate
+                            variables requested-variables)
+                      bindings)))
+                (condition-case error
+                    (nskk--dict-save-user-dictionary-1)
+                  (nskk-dict-error
+                   (setq condition error))))
+              (should
+               (equal condition
+                      '(nskk-dict-error
+                        "Invalid user dictionary entry")))
+              (let ((rendered (error-message-string condition)))
+                (should
+                 (equal rendered
+                        "Dictionary error: \"Invalid user dictionary entry\""))
+                (nskk-dictionary-test--should-be-display-safe rendered))
+              (should
+               (equal query
+                      '(user-dict-entry \?k \?c)))
+              (should (equal variables '(\?k \?c)))
+              (should (eq (caar bindings) key))
+              (should (eq (caadar bindings) invalid))
+              (should nskk-dict-modified)
+              (should
+               (equal before-file
+                      (with-temp-buffer
+                        (insert-file-contents-literally
+                         nskk-dict-user-dictionary-file)
+                        (buffer-string))))
+              (nskk-dictionary-test--should-retain-attack-properties key)
+              (nskk-dictionary-test--should-retain-attack-properties invalid))
+          (when (file-exists-p nskk-dict-user-dictionary-file)
+            (delete-file nskk-dict-user-dictionary-file))))))
+
+  (nskk-describe "rollback secondary failure retention"
+    (nskk-it "retains only failed regions and blocks publication until retry succeeds"
+      (dolist (kind '(error quit))
+        (let* ((owner (list 'rollback-helper kind))
+               (primary (list kind "primary publication failure" 'payload))
+               (predicate-fails t)
+               (publication-count 0)
+               events
+               caught
+               next-condition)
+          (unwind-protect
+              (progn
+                (nskk--dict-clear-pending-rollback owner)
+                (cl-letf (((symbol-function 'display-warning)
+                           (lambda (&rest _)
+                             (signal kind '("warning failure")))))
+                  (condition-case condition
+                      (nskk--dict-rollback-and-resignal
+                       owner
+                       primary
+                       (list
+                        (cons
+                         'predicate
+                         (lambda ()
+                           (push 'predicate events)
+                           (when predicate-fails
+                             (error "predicate rollback failure"))))
+                        (cons
+                         '(cache 0)
+                         (lambda ()
+                           (push 'cache events)))
+                        (cons
+                         'loaded-binding
+                         (lambda ()
+                           (push 'loaded-binding events)))))
+                    ((error quit)
+                     (setq caught condition)))
+                  (should (equal caught primary))
+                  (should
+                   (equal events '(loaded-binding cache predicate)))
+                  (let ((pending (nskk--dict-pending-rollback owner)))
+                    (should pending)
+                    (should
+                     (equal
+                      (mapcar #'car (plist-get pending :restorers))
+                      '(predicate)))
+                    (should
+                     (equal
+                      (mapcar #'car (plist-get pending :failures))
+                      '(predicate))))
+                  (condition-case condition
+                      (progn
+                        (nskk--dict-ensure-rollback-complete owner)
+                        (cl-incf publication-count))
+                    (nskk-dict-rollback-incomplete
+                     (setq next-condition condition)))
+                  (should (= publication-count 0))
+                  (let ((payload (caddr next-condition)))
+                    (should (equal (plist-get payload :owner) owner))
+                    (should (equal (plist-get payload :primary) primary))
+                    (should
+                     (equal
+                      (mapcar #'car (plist-get payload :failures))
+                      '(predicate))))
+                  (setq predicate-fails nil)
+                  (should-not (nskk--dict-retry-pending-rollback owner))
+                  (should-not (nskk--dict-pending-rollback owner))
+                  (should
+                   (equal
+                    events
+                    '(predicate predicate loaded-binding cache predicate)))))
+            (nskk--dict-clear-pending-rollback owner))))))
+(defun nskk-dictionary-test--file-bytes (path)
+  "Return the literal contents of PATH."
+  (with-temp-buffer (insert-file-contents-literally path) (buffer-string)))
+(defun nskk-dictionary-test--capture-condition (thunk)
+  "Call THUNK and return its error or quit condition."
+  (condition-case
+      condition
+      (progn
+        (funcall thunk)
+        nil)
+    ((error quit) condition)))
+(nskk-describe
+ "dictionary atomic save adversarial fixture"
+ (nskk-it
+  "passes complete TEXT to exclusive creation and preserves modes"
+  (let* ((temp-dir (make-temp-file "nskk-atomic-text-" t))
+         (output (expand-file-name "user.skk" temp-dir))
+         (original-make-temp-file (symbol-function 'make-temp-file))
+         calls
+         created-modes
+         created-identifiers)
+    (unwind-protect (cl-letf
+		     (((symbol-function 'make-temp-file)
+                       (lambda (prefix &optional dir-flag suffix text)
+			 (let ((temp (funcall original-make-temp-file prefix dir-flag suffix text)))
+			   (push (list prefix dir-flag suffix text) calls)
+			   (push (logand (file-modes temp) #o777) created-modes)
+			   (push (nskk--dict-file-identifier temp) created-identifiers)
+			   temp))))
+		     (nskk--dict-call-with-atomic-file
+		      output
+		      (lambda ()
+			(insert "first")))
+		     (should
+		      (equal
+                       (car calls)
+                       (list (concat (expand-file-name output) ".") nil nil "first")))
+		     (should (= (car created-modes) #o600))
+		     (should (= (logand (file-modes output) #o777) #o600))
+		     (should (equal (nskk-dictionary-test--file-bytes output) "first"))
+		     (should (equal (nskk--dict-file-identifier output) (car created-identifiers)))
+		     (set-file-modes output #o640)
+		     (nskk--dict-call-with-atomic-file
+		      output
+		      (lambda ()
+			(insert "second")))
+		     (should (equal (cadddr (car calls)) "second"))
+		     (should (= (car created-modes) #o600))
+		     (should (= (logand (file-modes output) #o777) #o640))
+		     (should (equal (nskk-dictionary-test--file-bytes output) "second")))
+      (when (file-directory-p temp-dir)
+        (delete-directory temp-dir t)))))
+ (nskk-it
+  "runs the commit callback with quits inhibited"
+  (let* ((temp-dir (make-temp-file "nskk-atomic-callback-" t))
+         (output (expand-file-name "user.skk" temp-dir))
+         (dirty 'preserved)
+         callback-inhibit)
+    (unwind-protect (progn
+		      (nskk--dict-call-with-atomic-file
+		       output
+		       (lambda ()
+			 (insert "committed"))
+		       (lambda ()
+			 (setq callback-inhibit inhibit-quit
+			       dirty nil)))
+		      (should callback-inhibit)
+		      (should-not dirty)
+		      (should (equal (nskk-dictionary-test--file-bytes output) "committed")))
+      (when (file-directory-p temp-dir)
+        (delete-directory temp-dir t)))))
+ (nskk-it
+  "does not delete attacker files on opaque creation failures"
+  (dolist (kind '(error quit))
+    (ert-info
+     ((format "%S" kind))
+     (let* ((temp-dir (make-temp-file "nskk-atomic-create-fault-" t))
+            (output (expand-file-name "user.skk" temp-dir))
+            (attacker (concat output ".attacker"))
+            (dirty 'preserved)
+            (fault-data (list 'make-temp-file 'text-write kind 73))
+            old-identifier
+            caught)
+       (unwind-protect (progn
+			 (with-temp-file output (insert "old"))
+			 (with-temp-file attacker (insert "attacker"))
+			 (setq old-identifier (nskk--dict-file-identifier output))
+			 (setq caught (cl-letf
+				       (((symbol-function 'make-temp-file)
+					 (lambda (&rest _arguments)
+					   (signal kind fault-data))))
+				       (nskk-dictionary-test--capture-condition
+					(lambda ()
+					  (nskk--dict-call-with-atomic-file
+					   output
+					   (lambda ()
+					     (insert "must-not-publish"))
+					   (lambda ()
+					     (setq dirty nil)))))))
+			 (should (eq (car caught) kind))
+			 (should (equal (cdr caught) fault-data))
+			 (should (eq dirty 'preserved))
+			 (should (equal (nskk--dict-file-identifier output) old-identifier))
+			 (should (equal (nskk-dictionary-test--file-bytes output) "old"))
+			 (should (equal (nskk-dictionary-test--file-bytes attacker) "attacker")))
+         (when (file-directory-p temp-dir)
+           (delete-directory temp-dir t)))))))
+ (nskk-it
+  "leaves a post-return replacement unowned and unpublished"
+  (let* ((temp-dir (make-temp-file "nskk-atomic-replace-" t))
+         (output (expand-file-name "user.skk" temp-dir))
+         (dirty 'preserved)
+         (original-make-temp-file (symbol-function 'make-temp-file))
+         (original-set-file-modes (symbol-function 'set-file-modes))
+         temp
+         old-identifier
+         caught)
+    (unwind-protect (progn
+		      (with-temp-file output (insert "old"))
+		      (set-file-modes output #o640)
+		      (setq old-identifier (nskk--dict-file-identifier output))
+		      (setq caught (cl-letf
+				    (((symbol-function 'make-temp-file)
+				      (lambda (&rest arguments)
+					(setq temp (apply original-make-temp-file arguments))))
+				     ((symbol-function 'set-file-modes)
+				      (lambda (path mode &optional flag)
+					(if (equal path temp) (progn
+								(delete-file path)
+								(with-temp-file path (insert "attacker"))
+								(funcall original-set-file-modes path #o600 flag))
+					  (funcall original-set-file-modes path mode flag)))))
+				    (nskk-dictionary-test--capture-condition
+				     (lambda ()
+				       (nskk--dict-call-with-atomic-file
+					output
+					(lambda ()
+					  (insert "must-not-publish"))
+					(lambda ()
+					  (setq dirty nil)))))))
+		      (should
+		       (equal caught (list 'file-error "Atomic temporary file identity changed" temp)))
+		      (should (eq dirty 'preserved))
+		      (should (equal (nskk--dict-file-identifier output) old-identifier))
+		      (should (equal (nskk-dictionary-test--file-bytes output) "old"))
+		      (should (file-exists-p temp))
+		      (should (equal (nskk-dictionary-test--file-bytes temp) "attacker")))
+      (when (file-directory-p temp-dir)
+        (delete-directory temp-dir t)))))
+ (nskk-it
+  "preserves the exact condition across precommit mode and id faults"
+  (dolist (fault
+           '(file-modes set-file-modes identifier-capture identifier-verify rename-file))
+    (dolist (kind '(error quit))
+      (ert-info
+       ((format "%S %S" fault kind))
+       (let* ((temp-dir (make-temp-file "nskk-atomic-precommit-" t))
+              (output (expand-file-name "user.skk" temp-dir))
+              (dirty 'preserved)
+              (original-make-temp-file (symbol-function 'make-temp-file))
+              (original-file-modes (symbol-function 'file-modes))
+              (original-set-file-modes (symbol-function 'set-file-modes))
+              (original-identifier (symbol-function 'nskk--dict-file-identifier))
+              (original-rename-file (symbol-function 'rename-file))
+              (fault-data (list fault kind 73))
+              temp
+              temp-identifier-calls
+              old-identifier
+              caught)
+         (unwind-protect (progn
+			   (with-temp-file output (insert "old"))
+			   (set-file-modes output #o640)
+			   (setq old-identifier (nskk--dict-file-identifier output))
+			   (setq caught (cl-letf
+					 (((symbol-function 'make-temp-file)
+					   (lambda (&rest arguments)
+					     (setq temp (apply original-make-temp-file arguments))))
+					  ((symbol-function 'file-modes)
+					   (lambda (path)
+					     (if (and (eq fault 'file-modes) (equal path output)) (signal kind fault-data)
+					       (funcall original-file-modes path))))
+					  ((symbol-function 'set-file-modes)
+					   (lambda (&rest arguments)
+					     (if (and (eq fault 'set-file-modes) (equal (car arguments) temp)) (signal kind fault-data)
+					       (apply original-set-file-modes arguments))))
+					  ((symbol-function 'nskk--dict-file-identifier)
+					   (lambda (path)
+					     (if (equal path temp) (progn
+								     (setq temp-identifier-calls (1+ (or temp-identifier-calls 0)))
+								     (if (or
+									  (and (eq fault 'identifier-capture) (= temp-identifier-calls 1))
+									  (and (eq fault 'identifier-verify) (= temp-identifier-calls 2))) (signal kind fault-data)
+								       (funcall original-identifier path)))
+					       (funcall original-identifier path))))
+					  ((symbol-function 'rename-file)
+					   (lambda (&rest arguments)
+					     (if (eq fault 'rename-file) (signal kind fault-data)
+					       (apply original-rename-file arguments)))))
+					 (nskk-dictionary-test--capture-condition
+					  (lambda ()
+					    (nskk--dict-call-with-atomic-file
+					     output
+					     (lambda ()
+					       (insert "must-not-publish"))
+					     (lambda ()
+					       (setq dirty nil)))))))
+			   (should (eq (car caught) kind))
+			   (should (equal (cdr caught) fault-data))
+			   (should (eq dirty 'preserved))
+			   (should (equal (nskk--dict-file-identifier output) old-identifier))
+			   (should (equal (nskk-dictionary-test--file-bytes output) "old"))
+			   (should (= (logand (file-modes output) #o777) #o640))
+			   (if (eq fault 'identifier-capture) (progn
+								(should (file-exists-p temp))
+								(should (equal (nskk-dictionary-test--file-bytes temp) "must-not-publish")))
+			     (should-not (and temp (file-exists-p temp))))
+			   (nskk--dict-call-with-atomic-file
+			    output
+			    (lambda ()
+			      (insert "retry"))
+			    (lambda ()
+			      (setq dirty nil)))
+			   (should-not dirty)
+			   (should (equal (nskk-dictionary-test--file-bytes output) "retry"))
+			   (should (= (logand (file-modes output) #o777) #o640)))
+           (when (file-directory-p temp-dir)
+             (delete-directory temp-dir t))))))))
+ (nskk-it
+  "publishes and clears dirty state on rename after-faults"
+  (dolist (kind '(error quit))
+    (ert-info
+     ((format "%S" kind))
+     (let* ((temp-dir (make-temp-file "nskk-atomic-rename-after-" t))
+            (output (expand-file-name "user.skk" temp-dir))
+            (dirty 'preserved)
+            (original-make-temp-file (symbol-function 'make-temp-file))
+            (original-rename-file (symbol-function 'rename-file))
+            (fault-data (list 'rename-file 'after kind 73))
+            temp-identifier
+            callback-inhibit
+            caught)
+       (unwind-protect (progn
+			 (with-temp-file output (insert "old"))
+			 (set-file-modes output #o640)
+			 (setq caught (cl-letf
+				       (((symbol-function 'make-temp-file)
+					 (lambda (&rest arguments)
+					   (let ((temp (apply original-make-temp-file arguments)))
+					     (setq temp-identifier (nskk--dict-file-identifier temp))
+					     temp)))
+					((symbol-function 'rename-file)
+					 (lambda (&rest arguments)
+					   (prog1
+					       (apply original-rename-file arguments)
+					     (signal kind fault-data)))))
+				       (nskk-dictionary-test--capture-condition
+					(lambda ()
+					  (nskk--dict-call-with-atomic-file
+					   output
+					   (lambda ()
+					     (insert "committed"))
+					   (lambda ()
+					     (setq callback-inhibit inhibit-quit
+						   dirty nil)))))))
+			 (should (eq (car caught) kind))
+			 (should (equal (cdr caught) fault-data))
+			 (should callback-inhibit)
+			 (should-not dirty)
+			 (should (equal (nskk-dictionary-test--file-bytes output) "committed"))
+			 (should (equal (nskk--dict-file-identifier output) temp-identifier))
+			 (should (= (logand (file-modes output) #o777) #o640))
+			 (should
+			  (equal
+			   (directory-files temp-dir nil directory-files-no-dot-files-regexp)
+			   '("user.skk"))))
+         (when (file-directory-p temp-dir)
+           (delete-directory temp-dir t)))))))
+ (nskk-it
+  "keeps committed state across save-message before and after faults"
+  (dolist (position '(before after))
+    (dolist (kind '(error quit))
+      (ert-info
+       ((format "%S %S" position kind))
+       (let* ((temp-dir (make-temp-file "nskk-atomic-message-" t))
+              (output (expand-file-name "user.skk" temp-dir))
+              (nskk-dict-user-dictionary-file output)
+              (nskk--user-dict-index 'user)
+              (nskk-dict-modified t)
+              (original-message (symbol-function 'message))
+              (fault-data (list 'message position kind 73))
+              caught)
+         (unwind-protect (progn
+			   (with-temp-file output (insert "old"))
+			   (set-file-modes output #o640)
+			   (setq caught (cl-letf
+					 (((symbol-function 'nskk-prolog-query-bindings)
+					   (lambda (&rest _arguments)
+					     '(("reading" ("candidate")))))
+					  ((symbol-function 'message)
+					   (lambda (format-string &rest arguments)
+					     (if (equal format-string "NSKK: User dictionary saved to %s") (progn
+													     (when (eq position 'after)
+													       (apply original-message format-string arguments))
+													     (signal kind fault-data))
+					       (apply original-message format-string arguments)))))
+					 (nskk-dictionary-test--capture-condition #'nskk--dict-save-user-dictionary-1)))
+			   (should (eq (car caught) kind))
+			   (should (equal (cdr caught) fault-data))
+			   (should-not nskk-dict-modified)
+			   (should
+			    (string-match-p "reading /candidate/" (nskk-dictionary-test--file-bytes output)))
+			   (should (= (logand (file-modes output) #o777) #o640))
+			   (should
+			    (equal
+			     (directory-files temp-dir nil directory-files-no-dot-files-regexp)
+			     '("user.skk"))))
+           (when (file-directory-p temp-dir)
+             (delete-directory temp-dir t))))))))
+ (nskk-it
+  "cleans with quits inhibited without masking the primary fault"
+  (dolist (primary-kind '(error quit))
+    (dolist (cleanup-kind '(error quit))
+      (ert-info
+       ((format "%S then %S" primary-kind cleanup-kind))
+       (let* ((temp-dir (make-temp-file "nskk-atomic-cleanup-" t))
+              (output (expand-file-name "user.skk" temp-dir))
+              (dirty 'preserved)
+              (original-delete-file (symbol-function 'delete-file))
+              (primary-data (list 'rename-file primary-kind 73))
+              (cleanup-data (list 'delete-file cleanup-kind 91))
+              cleanup-called
+              cleanup-inhibit
+              caught)
+         (unwind-protect (progn
+			   (with-temp-file output (insert "old"))
+			   (setq caught (cl-letf
+					 (((symbol-function 'rename-file)
+					   (lambda (&rest _arguments)
+					     (signal primary-kind primary-data)))
+					  ((symbol-function 'delete-file)
+					   (lambda (&rest arguments)
+					     (setq cleanup-called t
+						   cleanup-inhibit inhibit-quit)
+					     (prog1
+						 (apply original-delete-file arguments)
+					       (signal cleanup-kind cleanup-data)))))
+					 (nskk-dictionary-test--capture-condition
+					  (lambda ()
+					    (nskk--dict-call-with-atomic-file
+					     output
+					     (lambda ()
+					       (insert "must-not-publish"))
+					     (lambda ()
+					       (setq dirty nil)))))))
+			   (should (eq (car caught) primary-kind))
+			   (should (equal (cdr caught) primary-data))
+			   (should cleanup-called)
+			   (should cleanup-inhibit)
+			   (should (eq dirty 'preserved))
+			   (should (equal (nskk-dictionary-test--file-bytes output) "old"))
+			   (should
+			    (equal
+			     (directory-files temp-dir nil directory-files-no-dot-files-regexp)
+			     '("user.skk"))))
+           (when (file-directory-p temp-dir)
+             (delete-directory temp-dir t)))))))))
 
 (provide 'nskk-dictionary-test)
 

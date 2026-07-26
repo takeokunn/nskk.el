@@ -152,6 +152,76 @@
 ;;;;
 
 (nskk-describe "nskk-trie-delete"
+ (nskk-context "cyclic path atomicity"
+   (nskk-it "rejects a self-cycle unchanged and deletes normally after repair"
+     (let* ((trie (nskk-trie-create))
+            (root (nskk-trie-root trie))
+            (root-children (make-hash-table :test #'eql))
+            (node-children (make-hash-table :test #'eql))
+            (node (nskk-trie-node--create
+                   :children node-children
+                   :value :kept
+                   :is-end t
+                   :count 1)))
+       (setf (nskk-trie-node-children root) root-children
+             (nskk-trie-size trie) 1)
+       (puthash ?a node root-children)
+       (puthash ?a node node-children)
+       (should-error (nskk-trie-delete trie "aa") :type 'error)
+       (should (= (nskk-trie-size trie) 1))
+       (should (eq (nskk-trie-root trie) root))
+       (should (eq (nskk-trie-node-children root) root-children))
+       (should (= (nskk-trie-node-count root) 0))
+       (should-not (nskk-trie-node-is-end root))
+       (should-not (nskk-trie-node-value root))
+       (should (eq (gethash ?a root-children) node))
+       (should (eq (nskk-trie-node-children node) node-children))
+       (should (= (nskk-trie-node-count node) 1))
+       (should (nskk-trie-node-is-end node))
+       (should (eq (nskk-trie-node-value node) :kept))
+       (should (eq (gethash ?a node-children) node))
+       (should (eq (nskk-trie-lookup trie "aa") :kept))
+       (let ((leaf (nskk-trie-node--create
+                    :value :replacement
+                    :is-end t
+                    :count 1)))
+         (setf (nskk-trie-node-is-end node) nil
+               (nskk-trie-node-value node) nil)
+         (puthash ?a leaf node-children)
+         (should (eq (nskk-trie-delete trie "aa") t))
+         (should (= (nskk-trie-size trie) 0))
+         (should-not (gethash ?a root-children)))))
+   (nskk-it "rejects a root back-edge without changing nodes or edges"
+     (let* ((trie (nskk-trie-create))
+            (root (nskk-trie-root trie))
+            (root-children (make-hash-table :test #'eql))
+            (node-children (make-hash-table :test #'eql))
+            (node (nskk-trie-node--create
+                   :children node-children
+                   :value :node-kept
+                   :is-end nil
+                   :count 1)))
+       (setf (nskk-trie-node-children root) root-children
+             (nskk-trie-node-value root) :root-kept
+             (nskk-trie-node-is-end root) t
+             (nskk-trie-node-count root) 1
+             (nskk-trie-size trie) 1)
+       (puthash ?a node root-children)
+       (puthash ?a root node-children)
+       (should-error (nskk-trie-delete trie "aa") :type 'error)
+       (should (= (nskk-trie-size trie) 1))
+       (should (eq (nskk-trie-root trie) root))
+       (should (eq (nskk-trie-node-children root) root-children))
+       (should (= (nskk-trie-node-count root) 1))
+       (should (nskk-trie-node-is-end root))
+       (should (eq (nskk-trie-node-value root) :root-kept))
+       (should (eq (gethash ?a root-children) node))
+       (should (eq (nskk-trie-node-children node) node-children))
+       (should (= (nskk-trie-node-count node) 1))
+       (should-not (nskk-trie-node-is-end node))
+       (should (eq (nskk-trie-node-value node) :node-kept))
+       (should (eq (gethash ?a node-children) root))
+       (should (eq (nskk-trie-lookup trie "aa") :root-kept)))))
   (nskk-context "deleting a present key"
     (nskk-it "returns t when the key exists"
       (let ((trie (nskk-trie-create)))
@@ -183,24 +253,51 @@
         (should (= (nskk-trie-size trie) 1)))))
 
   (nskk-context "shared-prefix safety"
-    (nskk-it "deleting a longer key does not affect the shorter prefix key"
-      (let ((trie (nskk-trie-create)))
-        (nskk-trie-insert trie "ka"  "か")
-        (nskk-trie-insert trie "kan" "かん")
-        (nskk-trie-delete trie "kan")
-        (should (equal (nskk-trie-lookup trie "ka") "か"))))
+    (nskk-it "deleting a longer key preserves shorter values and exact counts"
+      (let* ((trie (nskk-trie-create))
+             (root (nskk-trie-root trie)))
+        (nskk-trie-insert trie "ka" :short)
+        (nskk-trie-insert trie "kan" :long)
+        (let* ((k-node (gethash ?k (nskk-trie-node-children root)))
+               (a-node (gethash ?a (nskk-trie-node-children k-node)))
+               (n-node (gethash ?n (nskk-trie-node-children a-node))))
+          (should (= (nskk-trie-node-count k-node) 2))
+          (should (= (nskk-trie-node-count a-node) 2))
+          (should (= (nskk-trie-node-count n-node) 1))
+          (should (eq (nskk-trie-delete trie "kan") t))
+          (should (= (nskk-trie-size trie) 1))
+          (should (eq (nskk-trie-lookup trie "ka") :short))
+          (should (null (nskk-trie-lookup trie "kan")))
+          (should (= (nskk-trie-node-count k-node) 1))
+          (should (= (nskk-trie-node-count a-node) 1))
+          (should (nskk-trie-node-is-end a-node))
+          (should (eq (nskk-trie-node-value a-node) :short))
+          (should (null (gethash ?n (nskk-trie-node-children a-node)))))))
 
-    (nskk-it "deleting a shorter key does not affect the longer key sharing that prefix"
-      (let ((trie (nskk-trie-create)))
-        (nskk-trie-insert trie "ka"  "か")
-        (nskk-trie-insert trie "kan" "かん")
-        (nskk-trie-delete trie "ka")
-        (should (equal (nskk-trie-lookup trie "kan") "かん"))))
+    (nskk-it "deleting a shorter key preserves longer values and exact counts"
+      (let* ((trie (nskk-trie-create))
+             (root (nskk-trie-root trie)))
+        (nskk-trie-insert trie "ka" :short)
+        (nskk-trie-insert trie "kan" :long)
+        (let* ((k-node (gethash ?k (nskk-trie-node-children root)))
+               (a-node (gethash ?a (nskk-trie-node-children k-node)))
+               (n-node (gethash ?n (nskk-trie-node-children a-node))))
+          (should (eq (nskk-trie-delete trie "ka") t))
+          (should (= (nskk-trie-size trie) 1))
+          (should (null (nskk-trie-lookup trie "ka")))
+          (should (eq (nskk-trie-lookup trie "kan") :long))
+          (should (= (nskk-trie-node-count k-node) 1))
+          (should (= (nskk-trie-node-count a-node) 1))
+          (should (= (nskk-trie-node-count n-node) 1))
+          (should-not (nskk-trie-node-is-end a-node))
+          (should (null (nskk-trie-node-value a-node)))
+          (should (nskk-trie-node-is-end n-node))
+          (should (eq (nskk-trie-node-value n-node) :long)))))
 
     (nskk-it "after deleting shorter key, lookup of it returns nil"
       (let ((trie (nskk-trie-create)))
-        (nskk-trie-insert trie "ka"  "か")
-        (nskk-trie-insert trie "kan" "かん")
+        (nskk-trie-insert trie "ka" "short")
+        (nskk-trie-insert trie "kan" "long")
         (nskk-trie-delete trie "ka")
         (should (null (nskk-trie-lookup trie "ka"))))))
 
@@ -209,7 +306,92 @@
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "solo" "alone")
         (nskk-trie-delete trie "solo")
-        (should (= (nskk-trie-size trie) 0))))))
+        (should (= (nskk-trie-size trie) 0)))))
+
+  (nskk-context "deep iterative deletion"
+    (nskk-it "deletes and reuses a 5000-character key without orphaned prefixes"
+      (let* ((key (make-string 5000 ?x))
+             (trie (nskk-trie-create))
+             (root (nskk-trie-root trie)))
+        (nskk-trie-insert trie key :first)
+        (should (gethash ?x (nskk-trie-node-children root)))
+        (should (eq (nskk-trie-delete trie key) t))
+        (should (= (nskk-trie-size trie) 0))
+        (should (null (nskk-trie-lookup trie key)))
+        (should (null (gethash ?x (nskk-trie-node-children root))))
+        (nskk-trie-insert trie key :second)
+        (should (= (nskk-trie-size trie) 1))
+        (should (eq (nskk-trie-lookup trie key) :second))
+        (should (= (nskk-trie-node-count
+                    (gethash ?x (nskk-trie-node-children root)))
+                   1))
+        (should (eq (nskk-trie-delete trie key) t))
+        (should (= (nskk-trie-size trie) 0))
+        (should (null (gethash ?x (nskk-trie-node-children root)))))))
+
+  (nskk-context "atomic path preparation"
+    (nskk-it "leaves the complete trie unchanged when preparation signals and retries normally"
+      (let ((original-make-vector (symbol-function 'make-vector)))
+        (dolist (condition (quote (error quit)))
+          (let* ((key "atomic")
+                 (trie (nskk-trie-create))
+                 (root (nskk-trie-root trie))
+                 (nodes (make-vector (1+ (length key)) nil))
+                 (index 0)
+                 (calls 0)
+                 (caught nil)
+                 (states nil)
+                 (size-before nil))
+            (nskk-trie-insert trie key :value)
+            (aset nodes 0 root)
+            (while (< index (length key))
+              (aset nodes
+                    (1+ index)
+                    (gethash (aref key index)
+                             (nskk-trie-node-children (aref nodes index))))
+              (cl-incf index))
+            (setq size-before (nskk-trie-size trie))
+            (setq states
+                  (mapcar
+                   (lambda (node)
+                     (list (nskk-trie-node-children node)
+                           (nskk-trie-node-count node)
+                           (nskk-trie-node-is-end node)
+                           (nskk-trie-node-value node)))
+                   (append nodes nil)))
+            (cl-letf (((symbol-function 'make-vector)
+                       (lambda (size initial-element)
+                         (cl-incf calls)
+                         (if (= calls 2)
+                             (signal condition nil)
+                           (funcall original-make-vector
+                                    size initial-element)))))
+              (setq caught
+                    (condition-case err
+                        (progn
+                          (nskk-trie-delete trie key)
+                          :no-signal)
+                      ((error quit) (car err)))))
+            (should (eq caught condition))
+            (should (= calls 2))
+            (should (= (nskk-trie-size trie) size-before))
+            (should (eq (nskk-trie-root trie) root))
+            (should (eq (nskk-trie-lookup trie key) :value))
+            (dotimes (node-index (length nodes))
+              (let ((node (aref nodes node-index))
+                    (state (nth node-index states)))
+                (should (eq (nskk-trie-node-children node)
+                            (nth 0 state)))
+                (should (= (nskk-trie-node-count node)
+                           (nth 1 state)))
+                (should (eq (nskk-trie-node-is-end node)
+                            (nth 2 state)))
+                (should (equal (nskk-trie-node-value node)
+                               (nth 3 state)))))
+            (should (eq (nskk-trie-delete trie key) t))
+            (should (= (nskk-trie-size trie) 0))
+            (should-not (nskk-trie-lookup trie key))
+            (should-not (gethash ?a (nskk-trie-node-children root)))))))))
 
 ;;;;
 ;;;; 4. prefix-search

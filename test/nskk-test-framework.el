@@ -1,28 +1,20 @@
 ;;; nskk-test-framework.el --- NSKK Test Framework using ERT  -*- lexical-binding: t; -*-
-
 ;; Copyright (C) 2026 NSKK Authors
-
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: i18n
 ;; Homepage: https://github.com/takeokunn/nskk.el
-
 ;; This file is part of NSKK.
-
 ;; NSKK is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
 ;; NSKK is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
 ;; You should have received a copy of the GNU General Public License
 ;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
-
 ;;; Commentary:
-
 ;; This file provides a comprehensive test framework for NSKK using ERT
 ;; (Emacs Lisp Regression Testing). It includes test helpers and utilities
 ;; to support TDD (Test-Driven Development) and PBT (Property-Based
@@ -32,39 +24,60 @@
 ;; - ERT-based test framework
 ;; - Test environment setup/teardown
 ;; - Property-based testing support
-
 ;;; Code:
+(progn
+  (defvar nskk-test--persistence-directory
+    (file-name-as-directory (make-temp-file "nskk-test-persistence-" t))
+    "Temporary root for all persistence performed by the test process.")
+
+  (defun nskk-test--cleanup-persistence-directory ()
+    "Remove the test process persistence directory."
+    (when (and
+           (file-directory-p nskk-test--persistence-directory)
+           (file-in-directory-p nskk-test--persistence-directory
+                                temporary-file-directory))
+      (delete-directory nskk-test--persistence-directory t)))
+
+  (add-hook 'kill-emacs-hook #'nskk-test--cleanup-persistence-directory t))
+
+(setq user-emacs-directory nskk-test--persistence-directory)
 
 (require 'ert)
+
 (require 'subr-x)
+
 (require 'nskk-dictionary)
+
 (require 'nskk-prolog)
+
 (require 'nskk-trie)
-(eval-when-compile (require 'cl-lib))
+
+(eval-when-compile
+  (require 'cl-lib))
 
 ;; Load all NSKK modules and initialize their Prolog predicates once for the
 ;; test session.  This mirrors what `nskk--enable' does at mode activation
 ;; time, but without dictionary loading or buffer-local setup.
 (require 'nskk-state)
+
 (require 'nskk-kana)
+
 (require 'nskk-henkan)
+
 (require 'nskk-input)
+
 (require 'nskk-converter)
 
 ;; Disable loading of large system dictionaries (like ja-dic) by default in
 ;; tests. Most unit and integration tests only need small mock dictionaries.
 (setq nskk-dict-use-ja-dic nil)
 
-;; Isolate the user dictionary from the developer's real ~/.nskk/jisyo.
-;; Registration tests set `nskk-dict-modified', and `nskk--dict-maybe-save'
-;; fires from `kill-emacs-hook' when the batch ERT run exits, overwriting
-;; whatever `nskk-dict-user-dictionary-file' points at with the in-memory
-;; Prolog facts.  A non-existent temp path keeps loads a no-op (matching
-;; the previous behavior for tests that bind the variable to nil) while
-;; redirecting any save away from the real personal dictionary.
-(setq nskk-dict-user-dictionary-file
-      (make-temp-name (expand-file-name "nskk-test-jisyo-"
-                                        temporary-file-directory)))
+;; Keep every writable dictionary, learning, and study path under the test
+;; process root.  The derived dictionary cache follows `user-emacs-directory'.
+;; Saving from `kill-emacs-hook' therefore cannot overwrite personal data.
+(setq nskk-dict-user-dictionary-file (expand-file-name "nskk/jisyo" nskk-test--persistence-directory)
+      nskk-search-learning-file (expand-file-name "nskk/learning.dat" nskk-test--persistence-directory)
+      nskk-study-file (expand-file-name "nskk/study.dat" nskk-test--persistence-directory))
 
 ;; NOTE: The initialization calls below are guarded by idempotency flags
 ;; (e.g., `nskk--state-prolog-initialized').  If you `eval-buffer' this
@@ -72,59 +85,72 @@
 ;; you first reset them manually.  See `nskk-prolog-test-with-isolated-db'
 ;; in this file for the complete list of flags to reset.
 (nskk-state-initialize-prolog)
-(nskk-kana-initialize)
-(nskk-henkan-initialize)
-(nskk-input-initialize)
-(nskk-converter-initialize)
 
+(nskk-kana-initialize)
+
+(nskk-henkan-initialize)
+
+(nskk-input-initialize)
+
+(nskk-converter-initialize)
 
 ;;;;
 ;;;; Test Framework Configuration
 ;;;;
-
-(defgroup nskk-test nil
+(defgroup
+  nskk-test
+  nil
   "NSKK test framework configuration."
-  :prefix "nskk-test-"
-  :group 'nskk)
+  :prefix
+  "nskk-test-"
+  :group
+  'nskk)
 
-(defcustom nskk-test-verbose nil
+(defcustom
+  nskk-test-verbose
+  nil
   "Enable verbose test output."
-  :type 'boolean
-  :group 'nskk-test)
+  :type
+  'boolean
+  :group
+  'nskk-test)
 
-(defcustom nskk-test-property-runs 100
+(defcustom
+  nskk-test-property-runs
+  100
   "Default number of runs for property-based tests."
-  :type 'integer
-  :group 'nskk-test)
-
+  :type
+  'integer
+  :group
+  'nskk-test)
 
 ;;;;
 ;;;; Test State Management
 ;;;;
-
 (defvar nskk--test-mode nil
   "Non-nil when running in test mode.")
 
 (defvar nskk--test-state nil
   "Current test state information.")
 
-(cl-defstruct nskk-test-state
+(cl-defstruct
+  nskk-test-state
   "Test state container."
   (name nil :read-only t)
   (start-time nil)
   (end-time nil))
 
-
 ;;;;
 ;;;; Test Environment Setup
 ;;;;
-
 (defun nskk--test-setup ()
   "Setup test environment before each test."
   (setq nskk--test-mode t
         nskk--test-state (make-nskk-test-state
-                         :name (or (ert-running-test) 'unknown)
-                         :start-time (current-time)))
+      :name
+      (or (ert-running-test) 'unknown)
+      :start-time
+      (current-time)))
   (when nskk-test-verbose
     (message "[NSKK Test] Setup: %s" (ert-test-name (ert-running-test)))))
 
@@ -135,75 +161,72 @@
   (when nskk-test-verbose
     (message "[NSKK Test] Teardown: %s" (ert-test-name (ert-running-test)))))
 
-
 ;;;;
 ;;;; Test Definition Macros
 ;;;;
-
 (defmacro nskk-deftest (name docstring &rest body)
   "Define an NSKK test with NAME, DOCSTRING, and BODY."
-  (declare (indent 2) (doc-string 2))
-  `(ert-deftest ,(intern (format "nskk-test-%s" name)) ()
-     ,docstring
-     (let ((nskk--test-mode t)
-           (nskk--test-state nil))
-       (nskk--test-setup)
-       (unwind-protect
-           (progn
-             ,@body)
-         (nskk--test-teardown)))))
+  (declare (indent 2)
+           (doc-string 2))
+  `(ert-deftest
+    ,(intern (format "nskk-test-%s" name))
+    ()
+    ,docstring
+    (let ((nskk--test-mode t)
+          (nskk--test-state nil))
+      (nskk--test-setup)
+      (unwind-protect (progn
+          ,@body)
+        (nskk--test-teardown)))))
 
 (defmacro nskk-deftest-unit (name docstring &rest body)
   "Define a unit test."
-  (declare (indent 2) (doc-string 2))
-  `(ert-deftest ,(intern (format "nskk-unit-%s" name)) ()
-     ,docstring
-     (let ((nskk--test-mode t))
-       (nskk--test-setup)
-       (unwind-protect
-           (progn
-             ,@body)
-         (nskk--test-teardown)))))
+  (declare (indent 2)
+           (doc-string 2))
+  `(ert-deftest
+    ,(intern (format "nskk-unit-%s" name))
+    ()
+    ,docstring
+    (let ((nskk--test-mode t))
+      (nskk--test-setup)
+      (unwind-protect (progn
+          ,@body)
+        (nskk--test-teardown)))))
 
 (defmacro nskk-deftest-performance (name docstring &rest body)
   "Define a performance test."
-  (declare (indent 2) (doc-string 2))
-  `(ert-deftest ,(intern (format "nskk-performance-%s" name)) ()
-     ,docstring
-     (let ((nskk--test-mode t)
-           (nskk--test-start-time (current-time)))
-       (nskk--test-setup)
-       (unwind-protect
-           (progn
-             ,@body
-             (let ((elapsed (float-time
-                             (time-subtract (current-time)
-                                           nskk--test-start-time))))
-               (message "[NSKK Performance] %s: %.3fms" ',name (* 1000 elapsed))))
-         (nskk--test-teardown)))))
-
+  (declare (indent 2)
+           (doc-string 2))
+  `(ert-deftest
+    ,(intern (format "nskk-performance-%s" name))
+    ()
+    ,docstring
+    (let ((nskk--test-mode t)
+          (nskk--test-start-time (current-time)))
+      (nskk--test-setup)
+      (unwind-protect (progn
+          ,@body
+          (let ((elapsed (float-time (time-subtract (current-time) nskk--test-start-time))))
+            (message "[NSKK Performance] %s: %.3fms" ',name (* 1000 elapsed))))
+        (nskk--test-teardown)))))
 
 ;;;;
 ;;;; Test Assertions
 ;;;;
-
 (defun nskk-assert-approx-equal (a b &optional epsilon)
   "Assert that A and B are approximately equal within EPSILON."
   (let ((eps (or epsilon 0.001)))
     (unless (< (abs (- a b)) eps)
-      (ert-fail (format "Not approximately equal: %S vs %S (epsilon: %s)"
-                        a b eps)))))
+      (ert-fail (format "Not approximately equal: %S vs %S (epsilon: %s)" a b eps)))))
 
 (defun nskk-assert-strings-equal (a b)
   "Assert that strings A and B are equal, with detailed error message."
   (unless (equal a b)
     (ert-fail (format "Strings differ:\nExpected: %S\nActual:   %S" a b))))
 
-
 ;;;;
 ;;;; Test Data Generators
 ;;;;
-
 (defvar nskk--test-generators nil
   "Registry of test data generators.")
 
@@ -218,202 +241,362 @@
       (apply generator args))))
 
 ;; Predefined generators
-(nskk-register-generator 'romaji-string
+(nskk-register-generator
+  'romaji-string
   (lambda (&optional length)
-    (let ((chars '("a" "i" "u" "e" "o"
-                   "ka" "ki" "ku" "ke" "ko"
-                   "sa" "shi" "su" "se" "so"
-                   "ta" "chi" "tsu" "te" "to"
-                   "na" "ni" "nu" "ne" "no"))
+    (let ((chars
+          '("a"
+            "i"
+            "u"
+            "e"
+            "o"
+            "ka"
+            "ki"
+            "ku"
+            "ke"
+            "ko"
+            "sa"
+            "shi"
+            "su"
+            "se"
+            "so"
+            "ta"
+            "chi"
+            "tsu"
+            "te"
+            "to"
+            "na"
+            "ni"
+            "nu"
+            "ne"
+            "no"))
           (len (or length (+ 1 (random 10)))))
-      (mapconcat 'identity
-                 (cl-loop repeat len
-                          collect (nth (random (length chars)) chars))
-                 ""))))
+      (mapconcat
+        'identity
+        (cl-loop repeat len collect (nth (random (length chars)) chars))
+        ""))))
 
-(nskk-register-generator 'hiragana-string
+(nskk-register-generator
+  'hiragana-string
   (lambda (&optional length)
-    (let ((chars '("あ" "い" "う" "え" "お"
-                   "か" "き" "く" "け" "こ"
-                   "さ" "し" "す" "せ" "そ"
-                   "た" "ち" "つ" "て" "と"
-                   "な" "に" "ぬ" "ね" "の"))
+    (let ((chars
+          '("あ"
+            "い"
+            "う"
+            "え"
+            "お"
+            "か"
+            "き"
+            "く"
+            "け"
+            "こ"
+            "さ"
+            "し"
+            "す"
+            "せ"
+            "そ"
+            "た"
+            "ち"
+            "つ"
+            "て"
+            "と"
+            "な"
+            "に"
+            "ぬ"
+            "ね"
+            "の"))
           (len (or length (+ 1 (random 10)))))
       (string-join
-                 (cl-loop repeat len
-                          collect (nth (random (length chars)) chars))
-                 ""))))
+        (cl-loop repeat len collect (nth (random (length chars)) chars))
+        ""))))
 
-(nskk-register-generator 'kanji-string
+(nskk-register-generator
+  'kanji-string
   (lambda (&optional length)
-    (let ((chars '("漢" "字" "変" "換" "日" "本" "語"
-                   "入" "力" "シ" "ス" "テ" "ム"))
+    (let ((chars
+          '("漢" "字" "変" "換" "日" "本" "語" "入" "力" "シ" "ス" "テ" "ム"))
           (len (or length (+ 1 (random 5)))))
       (string-join
-                 (cl-loop repeat len
-                          collect (nth (random (length chars)) chars))
-                 ""))))
-
-
-
+        (cl-loop repeat len collect (nth (random (length chars)) chars))
+        ""))))
 
 ;;;;
 ;;;; Prolog Test Isolation
 ;;;;
+(defun nskk-prolog-test--copy-trie-node (node copies)
+  "Return a graph copy of trie NODE using identity map COPIES."
+  (nskk-prolog-test--copy-object node copies))
 
-(defun nskk-prolog-test--copy-trie-node (node)
-  "Return a deep copy of trie NODE and all its descendants.
-Recursively copies the children hash-table so mutations in one test
-do not bleed into the saved copy."
-  (let ((new (nskk-trie-node--create
-              :is-end  (nskk-trie-node-is-end node)
-              :value   (nskk-trie-node-value node)
-              :count   (nskk-trie-node-count node))))
-    (when-let* ((children (nskk-trie-node-children node)))
-      (let ((new-children (make-hash-table :test 'eq
-                                           :size (hash-table-count children))))
-        (maphash (lambda (ch child)
-                   (puthash ch (nskk-prolog-test--copy-trie-node child)
-                            new-children))
-                 children)
-        (setf (nskk-trie-node-children new) new-children)))
-    new))
+(defun nskk-prolog-test--copy-trie (trie copies)
+  "Return a graph copy of TRIE using identity map COPIES."
+  (nskk-prolog-test--copy-object trie copies))
 
-(defun nskk-prolog-test--copy-trie (trie)
-  "Return a deep copy of TRIE.
-The root node and all descendant nodes are recursively duplicated so
-that `nskk-trie-insert' and `nskk-trie-delete' in the
-test body cannot mutate the saved snapshot."
-  (nskk-trie--create-internal
-   :root (nskk-prolog-test--copy-trie-node (nskk-trie-root trie))
-   :size (nskk-trie-size trie)))
+(defun nskk-prolog-test--copy-object (object copies)
+  "Return a nonrecursive graph copy of OBJECT using identity map COPIES.
+Conses, records, vectors, strings and hash tables are allocated before their
+edges are traversed.  String text-property values share the same identity map,
+and hash entries are strongly snapshotted before the destination is allocated."
+  (let ((missing (make-symbol "missing"))
+        (pending (list object))
+        composites
+        hash-tables)
+    (while pending
+      (let ((current (pop pending)))
+        (when (eq (gethash current copies missing) missing)
+          (cond
+           ((consp current)
+            (puthash current (cons nil nil) copies)
+            (push current composites)
+            (push (car current) pending)
+            (push (cdr current) pending))
+           ((hash-table-p current)
+            (let (entries)
+              (let ((gc-cons-threshold most-positive-fixnum))
+                (maphash
+                 (lambda (key value)
+                   (push (cons key value) entries))
+                 current))
+              (puthash
+               current
+               (make-hash-table
+                :test (hash-table-test current)
+                :size (max 1 (hash-table-size current))
+                :rehash-size (hash-table-rehash-size current)
+                :rehash-threshold (hash-table-rehash-threshold current)
+                :weakness (hash-table-weakness current))
+               copies)
+              (push (cons current entries) hash-tables)
+              (dolist (entry entries)
+                (push (car entry) pending)
+                (push (cdr entry) pending))))
+           ((bool-vector-p current)
+            (puthash current (copy-sequence current) copies))
+           ((stringp current)
+            (puthash current (substring-no-properties current) copies)
+            (push current composites)
+            (let ((position 0)
+                  (limit (length current)))
+              (while (< position limit)
+                (let* ((next (next-property-change position current limit))
+                       (properties (text-properties-at position current)))
+                  (while properties
+                    (push (cadr properties) pending)
+                    (setq properties (cddr properties)))
+                  (setq position next)))))
+           ((recordp current)
+            (puthash current (copy-sequence current) copies)
+            (push current composites)
+            (let ((index 1))
+              (while (< index (length current))
+                (push (aref current index) pending)
+                (setq index (1+ index)))))
+           ((vectorp current)
+            (puthash current (make-vector (length current) nil) copies)
+            (push current composites)
+            (let ((index 0))
+              (while (< index (length current))
+                (push (aref current index) pending)
+                (setq index (1+ index)))))
+           (t
+            (puthash current current copies))))))
+    (cl-labels
+        ((copy-of
+          (value)
+          (let ((copy (gethash value copies missing)))
+            (if (eq copy missing) value copy))))
+      (dolist (current composites)
+        (let ((new (gethash current copies)))
+          (cond
+           ((consp current)
+            (setcar new (copy-of (car current)))
+            (setcdr new (copy-of (cdr current))))
+           ((stringp current)
+            (let ((position 0)
+                  (limit (length current)))
+              (while (< position limit)
+                (let* ((next (next-property-change position current limit))
+                       (properties (copy-sequence
+                                    (text-properties-at position current)))
+                       (cursor properties))
+                  (while cursor
+                    (setcar (cdr cursor) (copy-of (cadr cursor)))
+                    (setq cursor (cddr cursor)))
+                  (set-text-properties position next properties new)
+                  (setq position next)))))
+           ((recordp current)
+            (let ((index 1))
+              (while (< index (length current))
+                (aset new index (copy-of (aref current index)))
+                (setq index (1+ index)))))
+           ((vectorp current)
+            (let ((index 0))
+              (while (< index (length current))
+                (aset new index (copy-of (aref current index)))
+                (setq index (1+ index))))))))
+      (dolist (table-and-entries hash-tables)
+        (let ((new (gethash (car table-and-entries) copies)))
+          (dolist (entry (cdr table-and-entries))
+            (puthash (copy-of (car entry))
+                     (copy-of (cdr entry))
+                     new))))
+      (copy-of object))))
 
-(defun nskk-prolog-test--copy-hash-table (ht)
-  "Deep-copy hash table HT for test isolation.
-Lists are shallow-copied with `copy-sequence'.  Trie structures are
-recursively deep-copied so that in-place mutations in the test body
-do not persist through restoration.  Nested hash tables (used as Prolog
-index stores, e.g. for hash-indexed predicates like `dict-annotation')
-are recursively deep-copied so mutations to index entries do not leak
-across tests via shared references.  All other values are shared by
-reference."
-  (let ((new (make-hash-table :test (hash-table-test ht)
-                              :size (hash-table-size ht))))
-    (maphash (lambda (k v)
-               (puthash k (cond
-                           ((nskk-trie-p v)
-                            (nskk-prolog-test--copy-trie v))
-                           ((hash-table-p v)
-                            (nskk-prolog-test--copy-hash-table v))
-                           ((sequencep v)
-                            (copy-sequence v))
-                           (t v))
-                        new))
-             ht)
-    new))
+  (defun nskk-prolog-test--copy-hash-table (table copies)
+    "Return a graph copy of hash TABLE using identity map COPIES."
+    (nskk-prolog-test--copy-object table copies))
+
+  (defun nskk-prolog-test--restore-state (saved-stores saved-flags)
+    "Restore SAVED-STORES and SAVED-FLAGS after attempting every target."
+    (let ((inhibit-quit t)
+          first-condition)
+      (cl-labels
+          ((attempt
+            (operation)
+            (condition-case condition
+                (funcall operation)
+              (t
+               (unless first-condition
+                 (setq first-condition condition))))))
+        (dolist (entry (append saved-stores saved-flags))
+          (let ((symbol (nth 0 entry))
+                (was-bound (nth 1 entry))
+                (value (nth 2 entry))
+                (watchers (nth 3 entry)))
+            (dolist (watcher
+                     (copy-sequence (get-variable-watchers symbol)))
+              (attempt
+               (lambda ()
+                 (remove-variable-watcher symbol watcher))))
+            (attempt
+             (lambda ()
+               (if was-bound
+                   (set symbol value)
+                 (makunbound symbol))))
+            (dolist (watcher
+                     (copy-sequence (get-variable-watchers symbol)))
+              (attempt
+               (lambda ()
+                 (remove-variable-watcher symbol watcher))))
+            (dolist (watcher (reverse (copy-sequence watchers)))
+              (attempt
+               (lambda ()
+                 (add-variable-watcher symbol watcher)))))))
+      (when first-condition
+        (signal (car first-condition) (cdr first-condition)))))
 
 (defmacro nskk-prolog-test-with-isolated-db (&rest body)
-  "Execute BODY with an isolated Prolog database.
-Saves and restores the global database so tests don't leak.
-
-After restoration `nskk--prolog-database-tails' is re-derived from
-the actual last cons cells of the restored database rather than from
-a saved shallow copy.  This maintains the O(1)-append head/tail
-invariant: `copy-sequence' creates a new list spine, so a separately
-saved tail copy would point to cons cells that are no longer the
-true end of the chain, causing silent append failures.
-
-`nskk--user-dict-index' and `nskk--system-dict-index' are also saved
-and restored because `nskk-dict-register-word' sets them as a side
-effect via `setq', and the change would otherwise persist globally
-after the test ends."
+  "Execute BODY with an isolated Prolog object graph.
+All identity-bearing stores are restored exactly after normal return, error,
+or quit.  A single identity map keeps copied database and index clauses `eq'
+while separating every mutable cons, vector, string, hash table, and trie
+from the saved graph.  Database tails are rebuilt against the copied spine,
+and the index bucket tail cache starts empty."
   (declare (indent 0))
-  `(let ((saved-db              (nskk-prolog-test--copy-hash-table nskk--prolog-database))
-         (saved-idx             (nskk-prolog-test--copy-hash-table nskk--prolog-index-config))
-         (saved-hash            (nskk-prolog-test--copy-hash-table nskk--prolog-hash-indices))
-         (saved-trie            (nskk-prolog-test--copy-hash-table nskk--prolog-trie-indices))
-         (saved-counter         nskk--prolog-var-counter)
-         (saved-user-dict       nskk--user-dict-index)
-         (saved-system-dict     nskk--system-dict-index)
-         ;; Save all *-initialized flags so each isolated DB gets fresh Prolog
-         ;; fact table initialization.  Without this, after the first test
-         ;; restores the Prolog DB all fact-populating functions are skipped
-         ;; because their idempotency guard remains t, leaving the fresh DB
-         ;; empty of those facts (e.g. semicolon-key-action, japanese-mode).
-         (saved-input-init      (and (boundp 'nskk--input-initialized)
-                                     nskk--input-initialized))
-         (saved-state-init      (and (boundp 'nskk--state-prolog-initialized)
-                                     nskk--state-prolog-initialized))
-         (saved-henkan-init     (and (boundp 'nskk--henkan-initialized)
-                                     nskk--henkan-initialized))
-         (saved-kana-init       (and (boundp 'nskk--kana-initialized)
-                                     nskk--kana-initialized))
-         (saved-converter-init  (and (boundp 'nskk--converter-initialized)
-                                     nskk--converter-initialized))
-         (saved-cand-init       (and (boundp 'nskk--candidate-key-facts-initialized)
-                                     nskk--candidate-key-facts-initialized))
-         (saved-annotation-init (and (boundp 'nskk--annotation-initialized)
-                                     nskk--annotation-initialized)))
-     (when (boundp 'nskk--input-initialized)
-       (setq nskk--input-initialized nil))
-     (when (boundp 'nskk--state-prolog-initialized)
-       (setq nskk--state-prolog-initialized nil))
-     (when (boundp 'nskk--henkan-initialized)
-       (setq nskk--henkan-initialized nil))
-     (when (boundp 'nskk--kana-initialized)
-       (setq nskk--kana-initialized nil))
-     (when (boundp 'nskk--converter-initialized)
-       (setq nskk--converter-initialized nil))
-     (when (boundp 'nskk--candidate-key-facts-initialized)
-       (setq nskk--candidate-key-facts-initialized nil))
-     (when (boundp 'nskk--annotation-initialized)
-       (setq nskk--annotation-initialized nil))
-     (unwind-protect
-         (progn ,@body)
-       (setq nskk--prolog-database    saved-db
-             nskk--prolog-index-config saved-idx
-             nskk--prolog-hash-indices saved-hash
-             nskk--prolog-trie-indices saved-trie
-             nskk--prolog-var-counter  saved-counter
-             nskk--user-dict-index     saved-user-dict
-             nskk--system-dict-index   saved-system-dict)
-       (when (boundp 'nskk--input-initialized)
-         (setq nskk--input-initialized saved-input-init))
-       (when (boundp 'nskk--state-prolog-initialized)
-         (setq nskk--state-prolog-initialized saved-state-init))
-       (when (boundp 'nskk--henkan-initialized)
-         (setq nskk--henkan-initialized saved-henkan-init))
-       (when (boundp 'nskk--kana-initialized)
-         (setq nskk--kana-initialized saved-kana-init))
-       (when (boundp 'nskk--converter-initialized)
-         (setq nskk--converter-initialized saved-converter-init))
-       (when (boundp 'nskk--candidate-key-facts-initialized)
-         (setq nskk--candidate-key-facts-initialized saved-cand-init))
-       (when (boundp 'nskk--annotation-initialized)
-         (setq nskk--annotation-initialized saved-annotation-init))
-       ;; Re-derive database-tails from the now-restored database.
-       ;; `copy-sequence' on a list creates a new cons-cell spine, so any
-       ;; separately saved tail would point to cells that are not the actual
-       ;; end of the restored chain.  Walking to (last v) guarantees the
-       ;; tail pointer stays consistent with the head pointer.
-       (let ((new-tails (make-hash-table :test 'equal :size 128)))
-         (maphash (lambda (k v)
-                    (when v (puthash k (last v) new-tails)))
-                  nskk--prolog-database)
-         (setq nskk--prolog-database-tails new-tails)))))
+  (let ((saved-stores (cl-gensym "saved-stores-"))
+        (saved-flags (cl-gensym "saved-flags-"))
+        (copies (cl-gensym "copies-"))
+        (isolated-db (cl-gensym "isolated-db-"))
+        (isolated-index (cl-gensym "isolated-index-"))
+        (isolated-hash (cl-gensym "isolated-hash-"))
+        (isolated-trie (cl-gensym "isolated-trie-"))
+        (isolated-tails (cl-gensym "isolated-tails-"))
+        (isolated-tail-cache (cl-gensym "isolated-tail-cache-"))
+        (store-symbol (cl-gensym "store-symbol-"))
+        (flag-symbol (cl-gensym "flag-symbol-"))
+        (tail-key (cl-gensym "tail-key-"))
+        (tail-facts (cl-gensym "tail-facts-"))
+        (store-entry (cl-gensym "store-entry-"))
+        (flag-entry (cl-gensym "flag-entry-")))
+    `(let*
+         ((,saved-stores
+           (mapcar
+            (lambda (,store-symbol)
+              (list ,store-symbol
+                    t
+                    (symbol-value ,store-symbol)
+                    (copy-sequence
+                     (get-variable-watchers ,store-symbol))))
+            (quote
+             (nskk--prolog-database
+              nskk--prolog-database-tails
+              nskk--prolog-index-config
+              nskk--prolog-hash-indices
+              nskk--prolog-trie-indices
+              nskk--prolog-index-bucket-tail-cache
+              nskk--prolog-var-counter
+              nskk--user-dict-index
+              nskk--system-dict-index))))
+          (,saved-flags
+           (mapcar
+            (lambda (,flag-symbol)
+              (list ,flag-symbol
+                    (boundp ,flag-symbol)
+                    (and (boundp ,flag-symbol)
+                         (symbol-value ,flag-symbol))
+                    (copy-sequence
+                     (get-variable-watchers ,flag-symbol))))
+            (quote
+             (nskk--input-initialized
+              nskk--state-prolog-initialized
+              nskk--henkan-initialized
+              nskk--kana-initialized
+              nskk--converter-initialized
+              nskk--candidate-key-facts-initialized
+              nskk--annotation-initialized))))
+          (,copies (make-hash-table :test (quote eq)))
+          (,isolated-db
+           (nskk-prolog-test--copy-object
+            nskk--prolog-database ,copies))
+          (,isolated-index
+           (nskk-prolog-test--copy-object
+            nskk--prolog-index-config ,copies))
+          (,isolated-hash
+           (nskk-prolog-test--copy-object
+            nskk--prolog-hash-indices ,copies))
+          (,isolated-trie
+           (nskk-prolog-test--copy-object
+            nskk--prolog-trie-indices ,copies))
+          (,isolated-tails
+           (make-hash-table
+            :test (hash-table-test nskk--prolog-database-tails)
+            :size (max 1 (hash-table-size nskk--prolog-database-tails))))
+          (,isolated-tail-cache
+           (make-hash-table
+            :test (hash-table-test nskk--prolog-index-bucket-tail-cache)
+            :size (max 1
+                       (hash-table-size
+                        nskk--prolog-index-bucket-tail-cache)))))
+       (maphash
+        (lambda (,tail-key ,tail-facts)
+          (when ,tail-facts
+            (puthash ,tail-key (last ,tail-facts) ,isolated-tails)))
+        ,isolated-db)
+       (unwind-protect
+           (progn
+             (setq nskk--prolog-database ,isolated-db
+                   nskk--prolog-database-tails ,isolated-tails
+                   nskk--prolog-index-config ,isolated-index
+                   nskk--prolog-hash-indices ,isolated-hash
+                   nskk--prolog-trie-indices ,isolated-trie
+                   nskk--prolog-index-bucket-tail-cache
+                   ,isolated-tail-cache)
+             (dolist (,flag-entry ,saved-flags)
+               (when (nth 1 ,flag-entry)
+                 (set (car ,flag-entry) nil)))
+             ,@body)
+         (nskk-prolog-test--restore-state ,saved-stores ,saved-flags)))))
 
 ;;;;
 ;;;; Shared Test Fixtures
 ;;;;
-
-(defconst nskk--test-minimal-dict '(("あ" . ("亜")))
+(defconst
+  nskk--test-minimal-dict
+  '(("あ" . ("亜")))
   "Minimal stub dictionary for E2E tests that don't need specific readings.")
-
 
 ;;;;
 ;;;; Mock Dictionary Helpers
 ;;;;
-
 (defun nskk-test-create-mock-dict (&optional entries)
   "Create a mock dictionary index with ENTRIES via Prolog facts.
 ENTRIES is an alist of (key . candidates-list).
@@ -423,26 +606,25 @@ WARNING: This function asserts facts under the production predicate
 `user-dict-entry'.  Always call within `nskk-prolog-test-with-isolated-db'
 or `nskk-with-mock-dict' to prevent Prolog database pollution."
   (let ((default-entries
-         '(("かんじ" . ("漢字" "感じ" "幹事"))
-           ("にほんご" . ("日本語"))
-           ("にほん" . ("日本" "二本"))
-           ("ひらがな" . ("平仮名"))
-           ("かたかな" . ("片仮名"))
-           ("へんかん" . ("変換"))
-           ("にゅうりょく" . ("入力"))
-           ("もじ" . ("文字"))
-           ("さくら" . ("桜"))
-           ("やま" . ("山"))
-           ("かわ" . ("川" "河"))
-           ("はな" . ("花" "鼻"))
-           ("あめ" . ("雨" "飴"))))
+        '(("かんじ" . ("漢字" "感じ" "幹事"))
+          ("にほんご" . ("日本語"))
+          ("にほん" . ("日本" "二本"))
+          ("ひらがな" . ("平仮名"))
+          ("かたかな" . ("片仮名"))
+          ("へんかん" . ("変換"))
+          ("にゅうりょく" . ("入力"))
+          ("もじ" . ("文字"))
+          ("さくら" . ("桜"))
+          ("やま" . ("山"))
+          ("かわ" . ("川" "河"))
+          ("はな" . ("花" "鼻"))
+          ("あめ" . ("雨" "飴"))))
         (pred 'user-dict-entry))
     (nskk-prolog-retract-all pred 2)
     (nskk-prolog-set-index pred 2 :trie)
     (dolist (entry (or entries default-entries))
       (nskk-prolog-assert (list (list pred (car entry) (cdr entry)))))
-    (make-nskk-dict-index
-     :predicate pred)))
+    (make-nskk-dict-index :predicate pred)))
 
 (defmacro nskk-with-mock-dict (entries &rest body)
   "Execute BODY with a mock dictionary installed.
@@ -463,7 +645,6 @@ initialized."
 ;;;;
 ;;;; Convenience Test Macros
 ;;;;
-
 (defmacro nskk-with-test-buffer (mode &rest body)
   "Execute BODY in a temp buffer with `nskk-mode' enabled.
 MODE is an optional initial mode symbol such as \\='hiragana, \\='katakana,
@@ -475,13 +656,13 @@ default (ascii) mode that `nskk-mode' starts in.
 test failures do not leave the buffer in a broken state."
   (declare (indent 1))
   `(with-temp-buffer
-     (nskk-mode 1)
-     (when ,mode
-       (let ((setter (intern (format "nskk-set-mode-%s" (symbol-name ,mode)))))
-         (funcall setter)))
-     (unwind-protect
-         (progn ,@body)
-       (nskk-mode -1))))
+    (nskk-mode 1)
+    (when ,mode
+      (let ((setter (intern (format "nskk-set-mode-%s" (symbol-name ,mode)))))
+        (funcall setter)))
+    (unwind-protect (progn
+        ,@body)
+      (nskk-mode -1))))
 
 (defmacro nskk-with-state (mode &rest body)
   "Execute BODY with `nskk-current-state' bound to a fresh state for MODE.
@@ -490,8 +671,10 @@ Unlike `nskk-with-test-buffer', this does not open a buffer or enable
 state struct (e.g., modeline, cursor colour).  When MODE is nil,
 `nskk-current-state' is bound to nil."
   (declare (indent 1))
-  `(let ((nskk-current-state (when ,mode (nskk-state-create ,mode))))
-     ,@body))
+  `(let ((nskk-current-state
+        (when ,mode
+          (nskk-state-create ,mode))))
+    ,@body))
 
 (defmacro nskk-with-mocks (bindings &rest body)
   "Execute BODY with function mocks defined by BINDINGS.
@@ -506,10 +689,12 @@ Example:
     (nskk-kakutei)
     (should (string= (buffer-string) \"確定\")))"
   (declare (indent 1))
-  `(cl-letf ,(mapcar (lambda (b)
-                       `((symbol-function ',(car b)) ,(cadr b)))
-                     bindings)
-     ,@body))
+  `(cl-letf
+    ,(mapcar
+      (lambda (b)
+        `((symbol-function ',(car b)) ,(cadr b)))
+      bindings)
+    ,@body))
 
 (defmacro nskk-with-prolog-entries (entries &rest body)
   "Execute BODY in an isolated Prolog database pre-loaded with ENTRIES.
@@ -524,20 +709,17 @@ Example:
       (should (nskk-search idx \"かんじ\" \\='exact))))"
   (declare (indent 1))
   `(nskk-prolog-test-with-isolated-db
-     ,@(mapcar (lambda (e)
-                 `(progn
-                    (nskk-prolog-set-index ',(nth 0 e) 2 :trie)
-                    (nskk-prolog-assert (list (list ',(nth 0 e)
-                                                   ,(nth 1 e)
-                                                   ',(nth 2 e))))))
-               entries)
-     ,@body))
-
+    ,@(mapcar
+      (lambda (e)
+        `(progn
+          (nskk-prolog-set-index ',(nth 0 e) 2 :trie)
+          (nskk-prolog-assert (list (list ',(nth 0 e) ,(nth 1 e) ',(nth 2 e))))))
+      entries)
+    ,@body))
 
 ;;;;
 ;;;; Domain-Specific Assertions
 ;;;;
-
 (defmacro nskk-should-mode (expected-mode)
   "Assert that the current nskk mode equals EXPECTED-MODE.
 Reads `nskk-current-state' and compares with `nskk-state-mode'."
@@ -556,14 +738,12 @@ Reads `nskk-current-state' and compares with `nskk-state-mode'."
 EXPECTED is a list of candidate strings; RESULT is the value returned by a
 search function such as `nskk-search'."
   `(progn
-     (should (nskk-dict-entry-p ,result))
-     (should (equal (nskk-dict-entry-candidates ,result) ,expected))))
-
+    (should (nskk-dict-entry-p ,result))
+    (should (equal (nskk-dict-entry-candidates ,result) ,expected))))
 
 ;;;;
 ;;;; Mock skkserv Helper
 ;;;;
-
 ;; `nskk-keymap' is needed for `nskk-self-insert', used by the
 ;; integration session helpers below.
 (require 'nskk-keymap)
@@ -572,46 +752,252 @@ search function such as `nskk-search'."
 ;; Load it here so the mock helper below can reference that variable.
 (require 'nskk-server)
 
+(defun nskk--server-mock-child-form (responses ready-file)
+  "Return the form run by the external mock skkserv child.
+RESPONSES is an alist of (KEY . RESPONSE-STRING) pairs.
+READY-FILE receives the strict startup line after the listener is ready."
+  `(progn
+    (require 'subr-x)
+    (let ((responses ',responses)
+          (server nil))
+      (unwind-protect (progn
+          (setq server (make-network-process
+              :name
+              " nskk-mock-skkserv-listener"
+              :buffer
+              nil
+              :family
+              'ipv4
+              :host
+              "127.0.0.1"
+              :service
+              t
+              :server
+              t
+              :noquery
+              t
+              :coding
+              ',nskk-server-coding-system
+              :log
+              (lambda (_server client _message)
+                (set-process-query-on-exit-flag client nil)
+                (process-put client 'nskk--server-mock-pending ""))
+              :filter
+              (lambda (client string)
+                (let ((pending
+                      (concat (or (process-get client 'nskk--server-mock-pending) "") string))
+                      (continue t))
+                  (while
+                    (and continue (> (length pending) 0) (process-live-p client))
+                    (pcase
+                      (aref pending 0)
+                      (?0
+                        (setq pending (substring pending 1))
+                        (delete-process client))
+                      (?1
+                        (let ((space-pos (string-search " " pending 1)))
+                          (if (not space-pos) (setq continue nil)
+                            (let* ((key (substring pending 1 space-pos))
+                                   (response (or (cdr (assoc key responses)) (concat "4" key " \n"))))
+                              (setq pending (substring pending (1+ space-pos)))
+                              (process-send-string client response)))))
+                      (_
+                        (setq pending "")
+                        (delete-process client))))
+                  (when (process-live-p client)
+                    (process-put client 'nskk--server-mock-pending pending))))))
+          (set-process-query-on-exit-flag server nil)
+          (let ((coding-system-for-write 'utf-8-unix))
+            (with-temp-buffer
+              (insert (format "READY %d\n" (process-contact server :service)))
+              (write-region (point-min) (point-max) ,ready-file nil 'silent)))
+          (while (process-live-p server) (accept-process-output nil 1.0)))
+        (when (and server (process-live-p server))
+          (delete-process server))))))
+
+(progn
+  (defmacro nskk--server-mock-accept-with-budget
+      (process remaining-budget-ms max-slice-ms)
+    "Wait for PROCESS using and reducing REMAINING-BUDGET-MS.
+The finite positive wait is capped at MAX-SLICE-MS and deducted before
+calling `accept-process-output'."
+    (declare (debug t))
+    (let ((slice-ms (make-symbol "slice-ms")))
+      `(let ((,slice-ms
+              (min ,remaining-budget-ms ,max-slice-ms)))
+         (when (> ,slice-ms 0)
+           (setq ,remaining-budget-ms
+                 (- ,remaining-budget-ms ,slice-ms))
+           (accept-process-output
+            ,process
+            (/ (float ,slice-ms) 1000.0)
+            nil
+            t)))))
+
+  (defun nskk--server-mock-bounded-filter (process string)
+    "Retain the bounded diagnostic tail from STRING for PROCESS."
+    (let* ((limit (or (process-get process 'nskk--server-mock-limit) 4096))
+           (output (or (process-get process 'nskk--server-mock-output) ""))
+           (combined (concat output string)))
+      (if (<= (length combined) limit)
+          (process-put process 'nskk--server-mock-output combined)
+        (process-put
+         process
+         'nskk--server-mock-output
+         (substring combined (- (length combined) limit)))
+        (process-put process 'nskk--server-mock-output-overflow t)))))
+
+(defun nskk--server-mock-read-ready-line (ready-file limit)
+  "Read at most LIMIT characters from READY-FILE.
+Return :overflow when the file contains more than LIMIT characters."
+  (condition-case
+    nil
+    (with-temp-buffer
+      (let ((coding-system-for-read 'utf-8-unix))
+        (insert-file-contents ready-file nil 0 (1+ limit)))
+      (if (> (buffer-size) limit) :overflow
+        (buffer-string)))
+    (file-error nil)))
+
+(defun nskk--server-mock-process-sentinel (process _event)
+  "Release resources owned by a started external mock server PROCESS."
+  (when (process-get process 'nskk--server-mock-started)
+    (let ((stderr-process (process-get process 'nskk--server-mock-stderr-process)))
+      (when (and stderr-process (process-live-p stderr-process))
+        (delete-process stderr-process))
+      (process-put process 'nskk--server-mock-stderr-process nil))))
+
+(defun nskk--server-mock-diagnostic (process stderr-process)
+  "Return bounded startup diagnostics for PROCESS and STDERR-PROCESS."
+  (let ((stdout (and process (process-get process 'nskk--server-mock-output)))
+        (stdout-overflow
+        (and process (process-get process 'nskk--server-mock-output-overflow)))
+        (stderr
+        (and stderr-process (process-get stderr-process 'nskk--server-mock-output)))
+        (stderr-overflow
+        (and
+          stderr-process
+          (process-get stderr-process 'nskk--server-mock-output-overflow))))
+    (format
+      ": status=%S stdout-tail=%S%s stderr-tail=%S%s"
+      (if process (process-status process)
+        'not-started)
+      (or stdout "")
+      (if stdout-overflow " [truncated]"
+        "")
+      (or stderr "")
+      (if stderr-overflow " [truncated]"
+        ""))))
+
 (defun nskk--server-start-mock-server (responses)
-  "Start an in-process mock skkserv and return (server-proc . port).
+  "Start an external mock skkserv and return (PROCESS . PORT).
 RESPONSES is an alist of (KEY . RESPONSE-STRING) pairs.
 For keys not in RESPONSES the server sends a not-found \\='4...\\=' reply.
 
 This helper is shared by both `nskk-server-integration-test' and
 `nskk-server-henkan-integration-test'.  Always call in an
-`unwind-protect' that deletes the returned server process."
-  (let ((srv (make-network-process
-              :name " nskk-mock-skkserv"
-              :buffer nil
-              :family 'ipv4
-              :host "127.0.0.1"
-              :service t
-              :server t
-              :noquery t
-              :coding nskk-server-coding-system
-              :filter
-              (lambda (client string)
-                (when (not (string-empty-p string))
-                  (let ((cmd (aref string 0)))
-                    (cond
-                     ((= cmd ?0)
-                      (delete-process client))
-                     ((= cmd ?1)
-                      (let* ((rest (substring string 1))
-                             (space-pos (string-search " " rest))
-                             (key (if space-pos
-                                      (substring rest 0 space-pos)
-                                    rest))
-                             (response (or (cdr (assoc key responses))
-                                          (concat "4" key " \n"))))
-                        (process-send-string client response))))))))))
-    (cons srv (process-contact srv :service))))
-
+`unwind-protect' that deletes the returned process."
+  (let ((program (expand-file-name invocation-name invocation-directory))
+ (ready-file nil)
+ (stderr-process nil)
+ (process nil)
+ (remaining-budget-ms 5000)
+ (started nil)
+ (startup-problem nil)
+ port)
+    (unwind-protect (progn
+        (setq ready-file (make-temp-file "nskk-mock-ready-"))
+        (set-file-modes ready-file #o600)
+        (setq stderr-process (make-pipe-process
+            :name
+            " nskk-mock-skkserv-stderr"
+            :buffer
+            nil
+            :noquery
+            t
+            :coding
+            'utf-8-unix
+            :filter
+            #'nskk--server-mock-bounded-filter))
+        (process-put stderr-process 'nskk--server-mock-limit 4096)
+        (setq process (make-process
+            :name
+            " nskk-mock-skkserv"
+            :buffer
+            nil
+            :stderr
+            stderr-process
+            :command
+            (list
+              program
+              "--quick"
+              "--batch"
+              "--eval"
+              (prin1-to-string (nskk--server-mock-child-form responses ready-file)))
+            :connection-type
+            'pipe
+            :coding
+            'utf-8-unix
+            :noquery
+            t
+            :filter
+            #'nskk--server-mock-bounded-filter))
+        (process-put process 'nskk--server-mock-limit 256)
+        (process-put process 'nskk--server-mock-stderr-process stderr-process)
+        (set-process-sentinel process #'nskk--server-mock-process-sentinel)
+        (while
+ (and
+  (process-live-p process)
+  (not port)
+  (not startup-problem)
+  (> remaining-budget-ms 0))
+ (nskk--server-mock-accept-with-budget
+  process remaining-budget-ms 50)
+ (let ((ready-line
+        (nskk--server-mock-read-ready-line ready-file 128)))
+  (cond
+   ((eq ready-line :overflow)
+    (setq startup-problem "ready line exceeded 128 characters"))
+   ((or (null ready-line) (string-empty-p ready-line)))
+   ((and
+     (string-prefix-p "READY " ready-line)
+     (string-suffix-p "\n" ready-line)
+     (> (length ready-line) 7)
+     (cl-every
+      (lambda (char)
+       (<= ?0 char ?9))
+      (substring ready-line 6 -1)))
+    (let ((candidate
+           (string-to-number (substring ready-line 6 -1))))
+     (if (<= 1 candidate 65535)
+         (setq port candidate)
+       (setq startup-problem
+             "ready port was outside 1..65535"))))
+   ((string-suffix-p "\n" ready-line)
+    (setq startup-problem "ready line was malformed")))))
+        (when (process-live-p stderr-process) (nskk--server-mock-accept-with-budget stderr-process remaining-budget-ms 50))
+        (unless (and port (process-live-p process))
+          (error
+            "Mock skkserv failed to start%s%s"
+            (if startup-problem (concat ": " startup-problem)
+              "")
+            (nskk--server-mock-diagnostic process stderr-process)))
+        (process-put process 'nskk--server-mock-started t)
+        (delete-file ready-file)
+        (setq ready-file nil)
+        (setq started t)
+        (cons process port))
+      (unless started
+        (when (and process (process-live-p process))
+          (ignore-errors (delete-process process)))
+        (when (and stderr-process (process-live-p stderr-process))
+          (ignore-errors (delete-process stderr-process))))
+      (when (and ready-file (file-exists-p ready-file))
+        (ignore-errors (delete-file ready-file))))))
 
 ;;;;
 ;;;; Integration Session Helpers
 ;;;;
-
 (defmacro nskk-integration-with-session (mode &rest body)
   "Execute BODY in a full NSKK session initialized to MODE.
 Sets up a temporary buffer with a fresh state struct, empty romaji buffer,
@@ -619,12 +1005,12 @@ and initialized romaji table.  Suitable for integration tests that exercise
 the full input pipeline without enabling `nskk-mode'."
   (declare (indent 1))
   `(with-temp-buffer
-     (let ((nskk-current-state (nskk-state-create ,mode))
-           (nskk--conversion-overlay nil)
-           (nskk--romaji-buffer "")
-           (nskk-converter-auto-start-henkan t))
-       (nskk--initialize-romaji-table)
-       ,@body)))
+    (let ((nskk-current-state (nskk-state-create ,mode))
+          (nskk--conversion-overlay nil)
+          (nskk--romaji-buffer "")
+          (nskk-converter-auto-start-henkan t))
+      (nskk--initialize-romaji-table)
+      ,@body)))
 
 (defun nskk--integration-type-char (char)
   "Simulate typing CHAR via `nskk-self-insert' in an integration session."
@@ -636,12 +1022,12 @@ the full input pipeline without enabling `nskk-mode'."
 Restores the standard romaji table after BODY completes so that
 subsequent non-AZIK tests are not affected."
   (declare (indent 1))
-  `(nskk-integration-with-session ,mode
-     (nskk-converter-load-style 'azik)
-     (unwind-protect
-         (progn ,@body)
-       (nskk-converter-load-style 'standard))))
-
+  `(nskk-integration-with-session
+    ,mode
+    (nskk-converter-load-style 'azik)
+    (unwind-protect (progn
+        ,@body)
+      (nskk-converter-load-style 'standard))))
 
 (provide 'nskk-test-framework)
 

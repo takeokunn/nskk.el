@@ -39,10 +39,11 @@
   "Create a test dict-index backed by Prolog facts.
 ENTRIES-ALIST is ((key . candidates-list) ...) for exact-match entries.
 TRIE-ENTRIES is ((key . candidates-list) ...) for trie-indexed entries.
-PRED-NAME is the Prolog predicate symbol (defaults to a unique
-generated symbol)."
-  (let* ((pred (or pred-name (intern (format "test-dict-%d" (abs (random))))))
+PRED-NAME is the Prolog predicate symbol (defaults to
+`nskk-search-test-dict').  Existing facts for the predicate are replaced."
+  (let* ((pred (or pred-name (quote nskk-search-test-dict)))
          (all-entries (append entries-alist trie-entries)))
+    (nskk-prolog-retract-all pred 2)
     (nskk-prolog-set-index pred 2 :trie)
     (dolist (pair all-entries)
       (let ((key (car pair))
@@ -71,7 +72,62 @@ generated symbol)."
     (nskk-with-prolog-entries ((test-default-dict "key" ("value")))
       (let* ((index (make-nskk-dict-index :predicate 'test-default-dict))
              (result (nskk-search index "key")))
-        (nskk-should-candidates '("value") result)))))
+        (nskk-should-candidates '("value") result))))
+
+  (nskk-it "continues post-search observers after an ordinary error"
+    (let ((events nil)
+          (messages nil)
+          (flushes 0)
+          (nskk-search-jisyo-hook (list #'nskk--search-flush-caches)))
+      (with-temp-buffer
+        (setq-local nskk-search-jisyo-hook
+                    (list
+                     (lambda ()
+                       (push 'local-failure events)
+                       (error "post hook failure"))
+                     (lambda () (push 'local-observer events))
+                     t))
+        (nskk-with-mocks
+            ((nskk--search-flush-caches
+              (lambda ()
+                (push 'global-cache-invalidation events)
+                (cl-incf flushes)))
+             (message
+              (lambda (fmt &rest args)
+                (push (apply #'format fmt args) messages))))
+          (nskk--search-run-post-hook)))
+      (should
+       (equal (nreverse events)
+              '(local-failure local-observer global-cache-invalidation)))
+      (should (= 1 flushes))
+      (should
+       (cl-some
+        (lambda (text)
+          (string-match-p "search-jisyo-hook error" text))
+        messages))))
+
+  (nskk-it "propagates post-search quit before later observers"
+    (let ((condition '(quit "post hook quit" payload))
+          (events nil)
+          (nskk-search-jisyo-hook
+           (list (lambda () (push 'global-observer events))))
+          caught)
+      (with-temp-buffer
+        (setq-local nskk-search-jisyo-hook
+                    (list
+                     (lambda ()
+                       (push 'quit events)
+                       (signal (car condition) (cdr condition)))
+                     (lambda () (push 'local-observer events))
+                     t))
+        (setq caught
+              (condition-case signal-condition
+                  (progn
+                    (nskk--search-run-post-hook)
+                    nil)
+                (quit signal-condition))))
+      (should (equal caught condition))
+      (should (equal events '(quit))))))
 
 ;;;
 ;;; nskk-search prefix match
@@ -475,40 +531,76 @@ generated symbol)."
 ;;;
 
 (nskk-describe "nskk--search-post-process-results"
-  (nskk-it "deduplicates results keeping first occurrence"
-    (let* ((e1 (make-nskk-dict-entry :key "a" :candidates '("v1")))
-           (e2 (make-nskk-dict-entry :key "b" :candidates '("v2")))
-           (e3 (make-nskk-dict-entry :key "a" :candidates '("v3")))
-           (results (list (cons "a" e1) (cons "b" e2) (cons "a" e3)))
-           (processed (nskk--search-post-process-results results nil nil)))
-      (should (= (length processed) 2))
-      (should (assoc "a" processed))
-      (should (assoc "b" processed))))
+    (nskk-it "deduplicates results keeping first occurrence"
+      (let* ((e1 (make-nskk-dict-entry :key "a" :candidates '("v1")))
+             (e2 (make-nskk-dict-entry :key "b" :candidates '("v2")))
+             (e3 (make-nskk-dict-entry :key "a" :candidates '("v3")))
+             (results (list (cons "a" e1) (cons "b" e2) (cons "a" e3)))
+             (processed (nskk--search-post-process-results results nil nil)))
+        (should (= (length processed) 2))
+        (should (assoc "a" processed))
+        (should (assoc "b" processed))))
 
-  (nskk-it "applies limit after deduplication"
-    (let* ((entries (mapcar (lambda (k)
-                              (cons k (make-nskk-dict-entry :key k :candidates (list k))))
-                            '("a" "b" "c" "d" "e")))
-           (processed (nskk--search-post-process-results entries nil 3)))
-      (should (= (length processed) 3))))
+    (nskk-it "applies limit after deduplication"
+      (let* ((entries (mapcar (lambda (k)
+                                (cons k (make-nskk-dict-entry :key k :candidates (list k))))
+                              '("a" "b" "c" "d" "e")))
+             (processed (nskk--search-post-process-results entries nil 3)))
+        (should (= (length processed) 3))))
 
-  (nskk-it "returns all results when limit is nil"
-    (let* ((entries (mapcar (lambda (k)
-                              (cons k (make-nskk-dict-entry :key k :candidates (list k))))
-                            '("a" "b" "c")))
-           (processed (nskk--search-post-process-results entries nil nil)))
-      (should (= (length processed) 3))))
+    (nskk-it "returns all results when limit is nil"
+      (let* ((entries (mapcar (lambda (k)
+                                (cons k (make-nskk-dict-entry :key k :candidates (list k))))
+                              '("a" "b" "c")))
+             (processed (nskk--search-post-process-results entries nil nil)))
+        (should (= (length processed) 3))))
 
-  (nskk-it "filters by okuri-nasi type"
-    (let* ((e-plain (make-nskk-dict-entry :key "a" :candidates '("v1")))
-           (e-okuri (make-nskk-dict-entry :key "b" :candidates '("v2") :okuri "し"))
-           (results (list (cons "a" e-plain) (cons "b" e-okuri)))
-           (processed (nskk--search-post-process-results results 'okuri-nasi nil)))
-      (should (= (length processed) 1))
-      (should (assoc "a" processed))))
+    (nskk-it "filters by okuri-nasi type"
+      (let* ((e-plain (make-nskk-dict-entry :key "a" :candidates '("v1")))
+             (e-okuri (make-nskk-dict-entry :key "b" :candidates '("v2") :okuri "し"))
+             (results (list (cons "a" e-plain) (cons "b" e-okuri)))
+             (processed (nskk--search-post-process-results results 'okuri-nasi nil)))
+        (should (= (length processed) 1))
+        (should (assoc "a" processed))))
 
-  (nskk-it "returns nil for empty input"
-    (should (null (nskk--search-post-process-results nil nil nil)))))
+    (nskk-it "returns nil for empty input"
+      (should (null (nskk--search-post-process-results nil nil nil))))
+
+    (nskk-it "preserves source order for frequency ties at the cutoff"
+      (let ((nskk-search-sort-method 'frequency)
+            (entries '(("first") ("second") ("third"))))
+        (cl-letf (((symbol-function 'nskk--search-reading-score)
+                   (lambda (_reading _entry) 0)))
+          (should
+           (equal (mapcar #'car
+                          (nskk--search-post-process-results entries nil 2))
+                  '("first" "second")))))))
+
+  (nskk-property-test-seeded search-post-process-limited-equivalent
+      ((k1 search-query)
+       (k2 search-query)
+       (k3 search-query)
+       (k4 search-query)
+       (k5 search-query))
+      (let ((entries (list (cons (format "%s-0" k1) nil)
+                           (cons (format "%s-1" k2) nil)
+                           (cons (format "%s-2" k3) nil)
+                           (cons (format "%s-3" k4) nil)
+                           (cons (format "%s-4" k5) nil))))
+        (cl-letf (((symbol-function 'nskk--search-reading-score)
+                   (lambda (reading _entry) (mod (length reading) 3))))
+          (cl-every
+           (lambda (method)
+             (let* ((nskk-search-sort-method method)
+                    (full (nskk--search-post-process-results entries nil nil)))
+               (cl-every
+                (lambda (limit)
+                  (equal (nskk--search-post-process-results entries nil limit)
+                         (seq-take full limit)))
+                '(-1 0 1 2 3 4 5 6))))
+           '(frequency kana none))))
+      40
+      47)
 
 ;;;
 ;;; Cache Key Generation Tests
@@ -517,60 +609,40 @@ generated symbol)."
 ;; Top-level defconst: shared across multiple nskk-describe blocks below.
 ;; Defined here (not inside any describe block) so it is interned at load time
 ;; and visible to all test cases without being re-evaluated per-test.
-(defconst nskk-search-test--all-cache-key-queries
-  '(("query1" exact   nil)
-    ("query1" prefix  nil)
-    ("query1" exact   okuri-ari)
-    ("query1" exact   okuri-nasi)
-    ("query2" exact   nil)
-    ("query1" fuzzy   nil)
-    ("query1" partial okuri-ari))
-  "All (QUERY TYPE OKURI-TYPE) triples used by PBT-004 to verify cache key
-uniqueness.  Each triple represents a distinct parameter combination; the
-test asserts that every triple produces a key different from all others
-in this list.")
-
 (nskk-describe "nskk--search-cache-key"
-  (nskk-it "generates distinct string keys for different parameter combinations"
-    (let ((key1 (nskk--search-cache-key "query" 'exact nil))
-          (key2 (nskk--search-cache-key "query" 'prefix nil))
-          (key3 (nskk--search-cache-key "query" 'exact 'okuri-ari)))
-      (should (stringp key1))
-      (should (stringp key2))
-      (should (stringp key3))
-      ;; Different parameters should produce different keys
-      (should (not (equal key1 key2)))
-      (should (not (equal key1 key3)))))
-
-  (nskk-it "generates a string containing 'exact' and 'none' for nil parameters"
-    (let ((key (nskk--search-cache-key "query" nil nil)))
-      (should (stringp key))
-      (should (string-match-p "exact" key))
-      (should (string-match-p "none" key))))
-
-  ;; PBT-004 -- Cache key uniqueness (table-driven)
-  (nskk-deftest-table search-cache-key-uniqueness
-    :columns (query type okuri _label)
-    :rows (("query1" exact   nil         "exact-no-okuri")
-           ("query1" prefix  nil         "prefix-no-okuri")
-           ("query1" exact   okuri-ari   "exact-okuri-ari")
-           ("query1" exact   okuri-nasi  "exact-okuri-nasi")
-           ("query2" exact   nil         "different-query")
-           ("query1" fuzzy   nil         "fuzzy-no-okuri")
-           ("query1" partial okuri-ari   "partial-okuri-ari"))
-    :body (let* ((this-key (nskk--search-cache-key query type okuri))
-                 (other-keys (mapcar (lambda (row)
-                                       (nskk--search-cache-key (nth 0 row)
-                                                                (nth 1 row)
-                                                                (nth 2 row)))
-                                     (cl-remove-if (lambda (row)
-                                                     (and (equal (nth 0 row) query)
-                                                          (eq (nth 1 row) type)
-                                                          (eq (nth 2 row) okuri)))
-                                                   nskk-search-test--all-cache-key-queries))))
-            (should (stringp this-key))
-            (dolist (other other-keys)
-              (should (not (equal this-key other)))))))
+  (nskk-it "includes every result-shaping argument"
+    (let* ((index (make-nskk-dict-index :predicate 'cache-key-test))
+           (base (nskk--search-cache-key index "query" 'exact nil))
+           (variants (list
+                      (nskk--search-cache-key index "other" 'exact nil)
+                      (nskk--search-cache-key index "query" 'prefix nil)
+                      (nskk--search-cache-key index "query" 'exact 'okuri-ari)
+                      (nskk--search-cache-key index "query" 'exact nil 2))))
+      (should (proper-list-p base))
+      (dolist (variant variants)
+        (should-not (equal base variant)))))
+  (nskk-it "includes dictionary identity and sort method"
+    (let ((index-a (make-nskk-dict-index :predicate 'cache-key-a))
+          (index-b (make-nskk-dict-index :predicate 'cache-key-b)))
+      (should-not
+       (equal (nskk--search-cache-key index-a "query" 'exact nil)
+              (nskk--search-cache-key index-b "query" 'exact nil)))
+      (let ((nskk-search-sort-method 'kana))
+        (should-not
+         (equal (nskk--search-cache-key index-a "query" 'exact nil)
+                (let ((nskk-search-sort-method 'none))
+                  (nskk--search-cache-key index-a "query" 'exact nil)))))))
+  (nskk-it "includes fuzzy threshold only for fuzzy searches"
+    (let ((index (make-nskk-dict-index :predicate 'cache-key-fuzzy)))
+      (let ((nskk-search-fuzzy-threshold 1))
+        (should-not
+         (equal (nskk--search-cache-key index "query" 'fuzzy nil)
+                (let ((nskk-search-fuzzy-threshold 2))
+                  (nskk--search-cache-key index "query" 'fuzzy nil))))
+        (should
+         (equal (nskk--search-cache-key index "query" 'exact nil)
+                (let ((nskk-search-fuzzy-threshold 2))
+                  (nskk--search-cache-key index "query" 'exact nil))))))))
 
 ;;;
 ;;; Cache Integration Tests
@@ -578,87 +650,154 @@ in this list.")
 
 (nskk-describe "nskk-search-with-cache"
   (nskk-it "returns correct result on both cache miss and cache hit"
-    ;; Not wrapped in nskk-prolog-test-with-isolated-db because the cache
-    ;; dispatch system (cache-dispatch-fn/3 facts) must remain intact.
-    ;; Each call to nskk-search-test--make-index uses a unique predicate name,
-    ;; so there is no test-pollution risk.
-    (let* ((cache (nskk-cache-lru-create 100))
-           (index (nskk-search-test--make-index '(("test" . ("value"))))))
-      ;; First search (cache miss)
-      (let ((result (nskk-search-with-cache cache index "test" 'exact)))
-        (nskk-should-candidates '("value") result))
-      ;; Second search (cache hit)
-      (let ((result (nskk-search-with-cache cache index "test" 'exact)))
-        (nskk-should-candidates '("value") result))
-      ;; Verify cache statistics
-      (let ((stats (nskk-cache-stats cache)))
-        (should (= (plist-get stats :hits) 1))
-        (should (= (plist-get stats :size) 1)))))
+    (nskk-prolog-test-with-isolated-db
+      (let* ((cache (nskk-cache-lru-create 100))
+             (index (nskk-search-test--make-index '(("test" . ("value"))))))
+        (let ((result (nskk-search-with-cache cache index "test" 'exact)))
+          (nskk-should-candidates '("value") result))
+        (let ((result (nskk-search-with-cache cache index "test" 'exact)))
+          (nskk-should-candidates '("value") result))
+        (let ((stats (nskk-cache-stats cache)))
+          (should (= (plist-get stats :hits) 1))
+          (should (= (plist-get stats :size) 1))))))
 
   (nskk-it "works with a Prolog trie dict index"
-    ;; Not wrapped in nskk-prolog-test-with-isolated-db because the cache
-    ;; dispatch system (cache-dispatch-fn/3 facts) must remain intact.
-    ;; The predicate 'cache-test-dict is unique to this test and is
-    ;; re-asserted on each run, so there is no test-pollution risk.
-    (let* ((cache (nskk-cache-lru-create 100))
-           (pred 'cache-test-dict)
-           (index (progn
-                    (nskk-prolog-set-index pred 2 :trie)
-                    (nskk-prolog-assert `((,pred "key" ("trie-value"))))
-                    (make-nskk-dict-index :predicate pred))))
-      (let ((result (nskk-search-with-cache cache index "key" 'exact)))
-        (nskk-should-candidates '("trie-value") result))))
+    (nskk-prolog-test-with-isolated-db
+      (let* ((cache (nskk-cache-lru-create 100))
+             (index
+              (nskk-search-test--make-index
+               '(("key" . ("trie-value")))
+               nil
+               'cache-test-dict)))
+        (let ((result (nskk-search-with-cache cache index "key" 'exact)))
+          (nskk-should-candidates '("trie-value") result)))))
 
   (nskk-it "signals wrong-type-argument for an invalid cache"
     (nskk-prolog-test-with-isolated-db
       (let ((index (nskk-search-test--make-index '(("a" . ("1"))))))
         (should-error (nskk-search-with-cache "not-a-cache" index "a")
-                      :type 'wrong-type-argument)))))
+                      :type 'wrong-type-argument))))
+  (nskk-it "caches distinct results for different limits"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((cache (nskk-cache-lru-create 100))
+             (index (nskk-search-test--make-index
+                     nil
+                     '(("aa" . ("1")) ("ab" . ("2"))
+                       ("ac" . ("3")) ("ad" . ("4")))))
+             (limit-2 (nskk-search-with-cache cache index "a" 'prefix nil 2))
+             (limit-4 (nskk-search-with-cache cache index "a" 'prefix nil 4)))
+        (should (= (length limit-2) 2))
+        (should (= (length limit-4) 4))
+        (should (= (plist-get (nskk-cache-stats cache) :size) 2)))))
+  (nskk-it "owns mutable cache keys and results across misses and hits"
+    (let* ((cache (nskk-cache-lru-create 100))
+           (index (make-nskk-dict-index :predicate 'cache-alias-test))
+           (query (copy-sequence "mutable-query"))
+           (fresh-query (copy-sequence query))
+           (metadata (list (copy-sequence "metadata")))
+           (text (copy-sequence "candidate"))
+           (shared (cons nil nil))
+           (produced (cons nil nil))
+           (search-count 0))
+      (add-text-properties 0 (length text)
+                           (list 'nskk-test-metadata metadata)
+                           text)
+      (setcar shared text)
+      (setcdr shared shared)
+      (setcar produced shared)
+      (setcdr produced shared)
+      (cl-letf (((symbol-function 'nskk-search/k)
+                 (lambda (_index _query _search-type _okuri-type _limit
+                                  on-found _on-not-found)
+                   (cl-incf search-count)
+                   (funcall on-found produced))))
+        (let ((miss-result
+               (nskk-search-with-cache cache index query 'exact)))
+          (should-not (eq miss-result produced))
+          (should (= search-count 1))
+          (should (= (nskk-cache-size cache) 1)))
+        (aset query 0 ?X)
+        (aset text 0 ?X)
+        (setcar metadata "changed")
+        (let ((first-hit
+               (nskk-search-with-cache cache index fresh-query 'exact)))
+          (should (= search-count 1))
+          (should (= (nskk-cache-size cache) 1))
+          (should-not (eq first-hit produced))
+          (should (eq (car first-hit) (cdr first-hit)))
+          (let* ((hit-shared (car first-hit))
+                 (hit-text (car hit-shared))
+                 (hit-metadata
+                  (get-text-property 0 'nskk-test-metadata hit-text)))
+            (should (eq (cdr hit-shared) hit-shared))
+            (should (string= hit-text "candidate"))
+            (should (equal hit-metadata '("metadata")))
+            (should-not (eq hit-text text))
+            (should-not (eq hit-metadata metadata))
+            (aset hit-text 0 ?Y)
+            (setcar hit-metadata "hit-changed"))
+          (let* ((second-hit
+                  (nskk-search-with-cache cache index fresh-query 'exact))
+                 (hit-shared (car second-hit))
+                 (hit-text (car hit-shared))
+                 (hit-metadata
+                  (get-text-property 0 'nskk-test-metadata hit-text)))
+            (should (= search-count 1))
+            (should (= (nskk-cache-size cache) 1))
+            (should-not (eq second-hit first-hit))
+            (should-not (eq hit-shared (car first-hit)))
+            (should (eq hit-shared (cdr second-hit)))
+            (should (eq (cdr hit-shared) hit-shared))
+            (should (string= hit-text "candidate"))
+            (should (equal hit-metadata '("metadata"))))))))
+)
 
 ;;;
 ;;; Cache invalidation on dictionary change
 ;;;
 
 (nskk-describe "nskk-search-with-cache invalidation"
-  ;; Not wrapped in nskk-prolog-test-with-isolated-db: the cache dispatch
-  ;; facts (cache-dispatch-fn/3) must remain intact.  A unique predicate name
-  ;; keeps the dictionary facts asserted here from polluting other tests.
   (nskk-it "returns the new candidate after nskk-jisyo-update-hook fires"
-    (let* ((cache (nskk-cache-lru-create 100))
-           (pred (intern (format "flush-test-dict-%d" (abs (random)))))
-           (index (progn
-                    (nskk-prolog-set-index pred 2 :trie)
-                    (nskk-prolog-assert (list (list pred "かんじ" '("旧"))))
-                    (make-nskk-dict-index :predicate pred))))
-      ;; Prime the cache with the current (old) candidate.
-      (nskk-should-candidates
-       '("旧") (nskk-search-with-cache cache index "かんじ" 'exact))
-      ;; The dictionary content changes underneath the cache.
-      (nskk-prolog-retract (list pred "かんじ" '("旧")))
-      (nskk-prolog-assert (list (list pred "かんじ" '("新"))))
-      ;; Before invalidation the stale candidate is still served from cache.
-      (nskk-should-candidates
-       '("旧") (nskk-search-with-cache cache index "かんじ" 'exact))
-      ;; A dictionary mutation runs nskk-jisyo-update-hook (as
-      ;; nskk-dict-register-word/unregister-word do via
-      ;; nskk--dict-run-update-hook), which flushes registered search caches.
-      (run-hooks 'nskk-jisyo-update-hook)
-      (nskk-should-candidates
-       '("新") (nskk-search-with-cache cache index "かんじ" 'exact))))
+    (nskk-prolog-test-with-isolated-db
+      (let* ((cache (nskk-cache-lru-create 100))
+             (pred 'nskk-search-flush-test-dict)
+             (index
+              (nskk-search-test--make-index
+               '(("かんじ" . ("旧"))) nil pred)))
+        ;; Prime the cache with the current (old) candidate.
+        (nskk-should-candidates
+         '("旧") (nskk-search-with-cache cache index "かんじ" 'exact))
+        ;; The dictionary content changes underneath the cache.
+        (nskk-prolog-retract (list pred "かんじ" '("旧")))
+        (nskk-prolog-assert (list (list pred "かんじ" '("新"))))
+        ;; Before invalidation the stale candidate is still served from cache.
+        (nskk-should-candidates
+         '("旧") (nskk-search-with-cache cache index "かんじ" 'exact))
+        ;; Dictionary mutation hooks flush registered search caches.
+        (run-hooks 'nskk-jisyo-update-hook)
+        (nskk-should-candidates
+         '("新") (nskk-search-with-cache cache index "かんじ" 'exact)))))
 
   (nskk-it "flushes registered caches after nskk-search-learn"
-    (let* ((cache (nskk-cache-lru-create 100))
-           (pred (intern (format "learn-flush-dict-%d" (abs (random)))))
-           (index (progn
-                    (nskk-prolog-set-index pred 2 :trie)
-                    (nskk-prolog-assert (list (list pred "かんじ" '("漢字"))))
-                    (make-nskk-dict-index :predicate pred))))
-      ;; Register the cache by using it once.
-      (nskk-search-with-cache cache index "かんじ" 'exact)
-      (should (= (nskk-cache-size cache) 1))
-      ;; Recording a selection changes scores, so the cache must be flushed.
-      (nskk-search-learn "かんじ" "漢字")
-      (should (= (nskk-cache-size cache) 0)))))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'learning-score 3)
+      (let* ((cache (nskk-cache-lru-create 100))
+             (pred 'nskk-search-learn-flush-test-dict)
+             (index
+              (nskk-search-test--make-index
+               '(("かんじ" . ("漢字"))) nil pred)))
+        (nskk-should-candidates
+         '("漢字") (nskk-search-with-cache cache index "かんじ" 'exact))
+        ;; With the registered cache still populated, changing the underlying
+        ;; fact alone would leave the stale candidate in place.
+        (nskk-prolog-retract (list pred "かんじ" '("漢字")))
+        (nskk-prolog-assert (list (list pred "かんじ" '("新漢字"))))
+        (nskk-should-candidates
+         '("漢字") (nskk-search-with-cache cache index "かんじ" 'exact))
+        ;; Learning a candidate flushes every registered cache.
+        (nskk-search-learn "かんじ" "漢字")
+        (nskk-should-candidates
+         '("新漢字") (nskk-search-with-cache cache index "かんじ" 'exact))))))
 
 ;;;
 ;;; Candidate Word Extraction Tests
@@ -786,6 +925,36 @@ in this list.")
                   '(learning-score "かんじ" "漢字" \?s) '\?s)
                  4))))
 
+  (progn
+  (nskk-it "does not call public assert or retract while learning"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'learning-score 3)
+      (nskk-prolog-assert '((learning-score "かんじ" "漢字" 3)))
+      (cl-letf (((symbol-function 'nskk-prolog-assert)
+                 (lambda (&rest _arguments)
+                   (error "Public assert must not be called")))
+                ((symbol-function 'nskk-prolog-retract)
+                 (lambda (&rest _arguments)
+                   (error "Public retract must not be called"))))
+        (nskk-search-learn "かんじ" "漢字"))
+      (should
+       (equal
+        (nskk-prolog-query-all-values
+         '(learning-score "かんじ" "漢字" \?s) '\?s)
+        '(4)))))
+
+  (nskk-it "replaces only the first matching duplicate"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'learning-score 3)
+      (nskk-prolog-assert '((learning-score "かんじ" "漢字" 7)))
+      (nskk-prolog-assert '((learning-score "かんじ" "漢字" 7)))
+      (nskk-search-learn "かんじ" "漢字")
+      (should
+       (equal
+        (nskk-prolog-query-all-values
+         '(learning-score "かんじ" "漢字" \?s) '\?s)
+        '(7 8))))))
+
   (nskk-it "works with cons cell candidates (extracts car)"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'learning-score 3)
@@ -846,19 +1015,401 @@ in this list.")
 ;;; Learning Data: Save / Load Tests
 ;;;
 
-(nskk-describe "nskk-search learning data persistence"
-  (nskk-it "handles write errors gracefully without signaling"
+(defun nskk-search-test--transaction-index (index-type key)
+    (pcase index-type
+      (:hash (gethash key nskk--prolog-hash-indices))
+      (:trie (gethash key nskk--prolog-trie-indices))))
+
+  (defun nskk-search-test--transaction-index-bucket
+      (index-type index reading)
+    (pcase index-type
+      (:hash (gethash reading index))
+      (:trie (nskk-trie-lookup index reading))))
+
+  (defun nskk-search-test--cons-cells (list)
+    (let (cells)
+      (while list
+        (push list cells)
+        (setq list (cdr list)))
+      (nreverse cells)))
+
+  (defun nskk-search-test--should-eq-spine (before after)
+    (should (= (length before) (length after)))
+    (cl-mapc
+     (lambda (before-cell after-cell)
+       (should (eq before-cell after-cell)))
+     before after))
+
+  (defun nskk-search-test--assert-rollback-identity
+      (index-type clauses operation expected-condition)
     (nskk-prolog-test-with-isolated-db
-      (let* ((nskk-search-learning-file "/nonexistent/dir/learning.dat")
-             (messages nil))
-        (nskk-with-mocks ((message (lambda (fmt &rest args)
-                                     (push (apply #'format fmt args) messages))))
-          ;; Should NOT signal an error
-          (should-not (condition-case _err
-                          (progn (nskk-search-save-learning-data) nil)
-                        (error t)))
-          ;; Should have emitted a failure message
-          (should (cl-some (lambda (m) (string-match-p "Failed" m)) messages)))))))
+      (nskk-prolog-set-index
+       'learning-score 3 (or index-type :list))
+      (nskk-prolog-retract-all 'learning-score 3)
+      (dolist (clause clauses)
+        (nskk-prolog-assert clause))
+      (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+             (database-head (gethash key nskk--prolog-database))
+             (database-tail (gethash key nskk--prolog-database-tails))
+             (database-cells
+              (nskk-search-test--cons-cells database-head))
+             (database-copy (copy-tree database-head))
+             (index
+              (and index-type
+                   (nskk-search-test--transaction-index
+                    index-type key)))
+             (index-bucket
+              (and index-type
+                   (nskk-search-test--transaction-index-bucket
+                    index-type index "query")))
+             (index-cells
+              (nskk-search-test--cons-cells index-bucket))
+             (index-copy (copy-tree index-bucket))
+             caught)
+        (setq caught
+              (condition-case condition
+                  (progn (funcall operation) nil)
+                ((error quit) condition)))
+        (should (equal caught expected-condition))
+        (should
+         (eq database-head
+             (gethash key nskk--prolog-database)))
+        (should
+         (eq database-tail
+             (gethash key nskk--prolog-database-tails)))
+        (nskk-search-test--should-eq-spine
+         database-cells
+         (nskk-search-test--cons-cells
+          (gethash key nskk--prolog-database)))
+        (should
+         (equal database-copy
+                (gethash key nskk--prolog-database)))
+        (when index-type
+          (let* ((after-index
+                  (nskk-search-test--transaction-index
+                   index-type key))
+                 (after-bucket
+                  (nskk-search-test--transaction-index-bucket
+                   index-type after-index "query")))
+            (should (eq index after-index))
+            (should (eq index-bucket after-bucket))
+            (nskk-search-test--should-eq-spine
+             index-cells
+             (nskk-search-test--cons-cells after-bucket))
+            (should (equal index-copy after-bucket)))))))
+
+  (nskk-describe "nskk-search-learn rollback"
+  (nskk-it "restores every existing position for every index strategy"
+    (let ((positions
+           (list
+            '(((learning-score "query" "target" 7)))
+            '(((learning-score "query" "target" 7))
+              ((learning-score "query" "later-a" 1))
+              ((learning-score "query" "later-b" 2)))
+            '(((learning-score "query" "earlier" 1))
+              ((learning-score "query" "target" 7))
+              ((learning-score "query" "later" 2)))
+            '(((learning-score "query" "earlier-a" 1))
+              ((learning-score "query" "earlier-b" 2))
+              ((learning-score "query" "target" 7))))))
+      (dolist (index-type '(nil :hash :trie))
+        (dolist (clauses positions)
+          (nskk-search-test--assert-rollback-identity
+           index-type clauses
+           (lambda ()
+             (cl-letf
+                 (((symbol-function 'nskk--search-flush-caches)
+                   (lambda ()
+                     (signal
+                      'error
+                      '("Injected cache flush failure")))))
+               (nskk-search-learn "query" "target")))
+           '(error "Injected cache flush failure"))))))
+
+  (nskk-it "removes a rolled-back new clause for every index strategy"
+    (let ((positions
+           (list
+            nil
+            '(((learning-score "query" "other-a" 1))
+              ((learning-score "query" "other-b" 2))))))
+      (dolist (index-type '(nil :hash :trie))
+        (dolist (clauses positions)
+          (nskk-search-test--assert-rollback-identity
+           index-type clauses
+           (lambda ()
+             (cl-letf
+                 (((symbol-function 'nskk--search-flush-caches)
+                   (lambda ()
+                     (signal
+                      'error
+                      '("Injected new-clause failure")))))
+               (nskk-search-learn "query" "target")))
+           '(error "Injected new-clause failure"))))))
+
+  (nskk-it "restores identity and re-signals quit after cache mutation"
+    (nskk-search-test--assert-rollback-identity
+     :hash
+     '(((learning-score "query" "earlier" 1))
+       ((learning-score "query" "target" 7))
+       ((learning-score "query" "later" 2)))
+     (lambda ()
+       (cl-letf
+           (((symbol-function 'nskk--search-flush-caches)
+             (lambda ()
+               (signal 'quit '(injected-cache-quit)))))
+         (nskk-search-learn "query" "target")))
+     '(quit injected-cache-quit)))
+
+  (nskk-it "restores identity when debug logging fails"
+    (nskk-search-test--assert-rollback-identity
+     :trie
+     '(((learning-score "query" "earlier" 1))
+       ((learning-score "query" "target" 7))
+       ((learning-score "query" "later" 2)))
+     (lambda ()
+       (cl-letf
+           (((symbol-function 'nskk-debug-log)
+             (lambda (&rest _arguments)
+               (signal 'error '(injected-debug-failure)))))
+         (nskk-search-learn "query" "target")))
+     '(error injected-debug-failure)))
+
+  (nskk-it "rolls back after puthash mutates and then signals"
+  (dolist (condition '((error injected-puthash-error)
+                       (quit injected-puthash-quit)))
+    (let ((original-puthash (symbol-function 'puthash))
+          (database-puthash-calls 0))
+      (nskk-search-test--assert-rollback-identity
+       :hash
+       '(((learning-score "query" "earlier" 1))
+         ((learning-score "query" "target" 7))
+         ((learning-score "query" "later" 2)))
+       (lambda ()
+         (let ((database nskk--prolog-database))
+           (cl-letf (((symbol-function 'puthash)
+                      (lambda (key value table)
+                        (prog1 (funcall original-puthash key value table)
+                          (when (eq table database)
+                            (cl-incf database-puthash-calls)
+                            (when (= database-puthash-calls 1)
+                              (signal (car condition)
+                                      (cdr condition))))))))
+             (nskk-search-learn "query" "target"))))
+       condition)
+      (should (> database-puthash-calls 1)))))
+
+  (nskk-it "rolls back after an index setter mutates and then signals"
+    (dolist (index-type '(:hash :trie))
+      (dolist (condition '((error injected-index-setter-error)
+                           (quit injected-index-setter-quit)))
+        (let ((original-setter
+               (symbol-function
+                'nskk--prolog-transaction-set-index-bucket))
+              (setter-calls 0))
+          (nskk-search-test--assert-rollback-identity
+           index-type
+           '(((learning-score "query" "earlier" 1))
+             ((learning-score "query" "target" 7))
+             ((learning-score "query" "later" 2)))
+           (lambda ()
+             (cl-letf
+                 (((symbol-function
+                    'nskk--prolog-transaction-set-index-bucket)
+                   (lambda (type index first-arg bucket)
+                     (prog1
+                         (funcall original-setter
+                                  type index first-arg bucket)
+                       (cl-incf setter-calls)
+                       (when (= setter-calls 1)
+                         (signal (car condition)
+                                 (cdr condition)))))))
+               (nskk-search-learn "query" "target")))
+           condition)
+          (should (= setter-calls 2))))))
+
+  (nskk-it "commits with a nil callback without exposing a journal"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'learning-score 3 :hash)
+      (nskk-prolog-assert
+       '((learning-score "query" "target" 7)))
+      (should-not
+       (nskk--prolog-replace-clause-transaction
+        '(learning-score "query" "target" 7)
+        '((learning-score "query" "target" 8))))
+      (should
+       (= 8
+          (nskk-prolog-query-value
+           '(learning-score "query" "target" \?score)
+           '\?score)))))
+
+  (nskk-it "keeps the committed graph when a wrapper signals after helper return"
+    (dolist (condition '((error injected-after-commit-error)
+                         (quit injected-after-commit-quit)))
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-set-index 'learning-score 3 :hash)
+        (nskk-prolog-retract-all 'learning-score 3)
+        (nskk-prolog-assert
+         '((learning-score "query" "target" 7)))
+        (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+               (index (gethash key nskk--prolog-hash-indices))
+               (old-database-cell
+                (gethash key nskk--prolog-database))
+               (old-index-cell (gethash "query" index))
+               (original-helper
+                (symbol-function
+                 'nskk--prolog-replace-clause-transaction))
+               caught)
+          (cl-letf
+              (((symbol-function
+                 'nskk--prolog-replace-clause-transaction)
+                (lambda (&rest arguments)
+                  (prog1 (apply original-helper arguments)
+                    (signal (car condition) (cdr condition))))))
+            (setq caught
+                  (condition-case signal-condition
+                      (progn
+                        (nskk-search-learn "query" "target")
+                        nil)
+                    ((error quit) signal-condition))))
+          (should (equal caught condition))
+          (should
+           (= 8
+              (nskk-prolog-query-value
+               '(learning-score "query" "target" \?score)
+               '\?score)))
+          (let ((new-database-cell
+                 (gethash key nskk--prolog-database))
+                (new-index-cell (gethash "query" index)))
+            (should-not (eq old-database-cell new-database-cell))
+            (should-not (eq old-index-cell new-index-cell))
+            (should (eq (car new-database-cell)
+                        (car new-index-cell)))
+            (should
+             (eq new-database-cell
+                 (gethash key nskk--prolog-database-tails)))))))))
+
+  (nskk-describe "nskk-search learning data persistence"
+    (nskk-it "handles write errors gracefully without signaling"
+      (nskk-prolog-test-with-isolated-db
+        (let* ((nskk-search-learning-file
+                "/nonexistent/dir/learning.dat")
+               (messages nil))
+          (nskk-with-mocks
+              ((message
+                (lambda (fmt &rest args)
+                  (push (apply #'format fmt args) messages))))
+            (should-not
+             (condition-case _err
+                 (progn
+                   (nskk-search-save-learning-data)
+                   nil)
+               (error t)))
+            (should
+             (cl-some
+              (lambda (message)
+                (string-match-p "Failed" message))
+              messages))))))
+
+    (nskk-it "runs the save hook after the new file is published"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'learning-score 3)
+        (nskk-prolog-assert
+         '((learning-score "published-reading" "published-candidate" 7)))
+        (let ((nskk-search-learning-file
+               (make-temp-file "nskk-learning-published-" nil ".dat"))
+              observed)
+          (unwind-protect
+              (let ((nskk-save-history-hook
+                     (list
+                      (lambda ()
+                        (setq observed
+                              (with-temp-buffer
+                                (insert-file-contents
+                                 nskk-search-learning-file)
+                                (read (current-buffer))))))))
+                (nskk-search-save-learning-data)
+                (should
+                 (member '("published-reading" "published-candidate" 7)
+                         observed)))
+            (when (file-exists-p nskk-search-learning-file)
+              (delete-file nskk-search-learning-file))))))
+
+    (nskk-it "reports save hook errors, continues observers, and keeps published data"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'learning-score 3)
+        (nskk-prolog-assert
+         '((learning-score "error-reading" "error-candidate" 8)))
+        (let ((nskk-search-learning-file
+               (make-temp-file "nskk-learning-hook-error-" nil ".dat"))
+              (messages nil)
+              observed)
+          (unwind-protect
+              (let ((nskk-save-history-hook
+                     (list
+                      (lambda () (error "history hook failure"))
+                      (lambda ()
+                        (setq observed
+                              (with-temp-buffer
+                                (insert-file-contents
+                                 nskk-search-learning-file)
+                                (read (current-buffer))))))))
+                (nskk-with-mocks
+                    ((message
+                      (lambda (fmt &rest args)
+                        (push (apply #'format fmt args) messages))))
+                  (nskk-search-save-learning-data))
+                (should
+                 (member '("error-reading" "error-candidate" 8) observed))
+                (should
+                 (member
+                  '("error-reading" "error-candidate" 8)
+                  (with-temp-buffer
+                    (insert-file-contents nskk-search-learning-file)
+                    (read (current-buffer)))))
+                (should
+                 (cl-some
+                  (lambda (text)
+                    (string-match-p "save-history-hook error" text))
+                  messages))
+                (should-not
+                 (cl-some
+                  (lambda (text) (string-match-p "Failed" text))
+                  messages)))
+            (when (file-exists-p nskk-search-learning-file)
+              (delete-file nskk-search-learning-file))))))
+
+    (nskk-it "propagates save hook quit and stops later observers"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'learning-score 3)
+        (nskk-prolog-assert
+         '((learning-score "quit-reading" "quit-candidate" 9)))
+        (let ((nskk-search-learning-file
+               (make-temp-file "nskk-learning-hook-quit-" nil ".dat"))
+              (condition '(quit "history hook quit" payload))
+              (observer-called nil)
+              caught)
+          (unwind-protect
+              (let ((nskk-save-history-hook
+                     (list
+                      (lambda ()
+                        (signal (car condition) (cdr condition)))
+                      (lambda () (setq observer-called t)))))
+                (setq caught
+                      (condition-case signal-condition
+                          (progn
+                            (nskk-search-save-learning-data)
+                            nil)
+                        (quit signal-condition)))
+                (should (equal caught condition))
+                (should-not observer-called)
+                (should
+                 (member
+                  '("quit-reading" "quit-candidate" 9)
+                  (with-temp-buffer
+                    (insert-file-contents nskk-search-learning-file)
+                    (read (current-buffer))))))
+            (when (file-exists-p nskk-search-learning-file)
+              (delete-file nskk-search-learning-file)))))))
 
 
 ;;;
@@ -978,17 +1529,25 @@ in this list.")
   50)
 
 ;; PBT-009 — cache key is always a non-empty string for any query
-(nskk-property-test search-cache-key-always-string
+(nskk-property-test search-cache-key-always-structural
   ((q search-query))
-  (let ((key (nskk--search-cache-key q 'exact nil)))
-    (and (stringp key) (not (string-empty-p key))))
+  (let ((key (nskk--search-cache-key
+              (make-nskk-dict-index :predicate 'pbt-cache-key)
+              q 'exact nil)))
+    (and (proper-list-p key)
+         (equal q (plist-get key :query))))
   30)
 
 ;; PBT-010 — cache key contains the query string
-(nskk-property-test search-cache-key-contains-query
+(nskk-property-test search-cache-key-distinguishes-dictionaries
   ((q search-query))
-  (let ((key (nskk--search-cache-key q 'exact nil)))
-    (string-match-p (regexp-quote q) key))
+  (not
+   (equal (nskk--search-cache-key
+           (make-nskk-dict-index :predicate 'pbt-cache-key-a)
+           q 'exact nil)
+          (nskk--search-cache-key
+           (make-nskk-dict-index :predicate 'pbt-cache-key-b)
+           q 'exact nil)))
   30)
 
 ;; PBT-011 — nskk-search-learn always increments the score by 1
@@ -1036,10 +1595,12 @@ in this list.")
   (nskk-it "all four search types produce distinct keys for the same query"
     (dotimes (_ 20)
       (nskk-for-all ((q search-query))
-        (let ((keys (mapcar (lambda (type)
-                              (nskk--search-cache-key q type nil))
-                            '(exact prefix partial fuzzy))))
-          (should (= (length keys) (length (cl-remove-duplicates keys :test #'equal)))))))))
+        (let* ((index (make-nskk-dict-index :predicate 'cache-key-format-test))
+               (keys (mapcar (lambda (type)
+                               (nskk--search-cache-key index q type nil))
+                             '(exact prefix partial fuzzy))))
+          (should (= (length keys)
+                     (length (cl-remove-duplicates keys :test #'equal)))))))))
 
 ;; PBT-014 — nskk-search-sort-by-kana-order: sorted output is ordered by string<
 ;;
@@ -1414,7 +1975,7 @@ of keys under `string<' regardless of the input order."
         (let* ((index     (make-nskk-dict-index :predicate 'cps-cache-falsy-empty-test))
                (cache     (nskk-cache-create :type 'lru :capacity 10))
                ;; Compute the same key nskk-search-with-cache uses internally.
-               (cache-key (nskk--search-cache-key "あ" 'exact nil))
+               (cache-key (nskk--search-cache-key index "あ" 'exact nil))
                found-val
                not-found-called)
           ;; Store "" as a cached result — a falsy value that must trigger on-found.
@@ -1432,7 +1993,7 @@ of keys under `string<' regardless of the input order."
       (nskk-with-prolog-entries ((cps-cache-falsy-nil-test "い" ("以")))
         (let* ((index     (make-nskk-dict-index :predicate 'cps-cache-falsy-nil-test))
                (cache     (nskk-cache-create :type 'lru :capacity 10))
-               (cache-key (nskk--search-cache-key "い" 'exact nil))
+               (cache-key (nskk--search-cache-key index "い" 'exact nil))
                found-called
                not-found-called)
           (nskk-cache-put cache cache-key nil)
@@ -1440,7 +2001,107 @@ of keys under `string<' regardless of the input order."
                                     (lambda (_v) (setq found-called t))
                                     (lambda ()   (setq not-found-called t)))
           (should found-called)
-          (should-not not-found-called))))))
+          (should-not not-found-called)))))
+  (nskk-it "copies three times on miss and once on hit"
+    (let* ((cache (nskk-cache-lru-create 10))
+           (index (make-nskk-dict-index :predicate 'cache-copy-count-test))
+           (produced (list (copy-sequence "candidate")))
+           (original-copy (symbol-function 'nskk-prolog-copy-term))
+           (copy-count 0)
+           (put-count 0)
+           (search-count 0)
+           first-result
+           second-result)
+      (cl-letf (((symbol-function 'nskk-search/k)
+                 (lambda (_index _query _search-type _okuri-type _limit
+                                  on-found _on-not-found)
+                   (cl-incf search-count)
+                   (funcall on-found produced)))
+                ((symbol-function 'nskk-prolog-copy-term)
+                 (lambda (object)
+                   (cl-incf copy-count)
+                   (funcall original-copy object)))
+                ((symbol-function 'nskk-cache-put)
+                 (lambda (target key value)
+                   (cl-incf put-count)
+                   (nskk-cache-lru-put target key value))))
+        (nskk-search-with-cache/k
+         cache index "copy-count-query" 'exact nil nil
+         (lambda (result) (setq first-result result))
+         (lambda () (should nil)))
+        (progn (should-not (eq first-result produced)) (should (equal first-result produced)))
+        (should (= copy-count 3))
+        (should (= search-count 1))
+        (should (= (nskk-cache-lru-size cache) 1))
+        (should (= put-count 1))
+        (let ((copies-after-miss copy-count))
+          (nskk-search-with-cache/k
+           cache index "copy-count-query" 'exact nil nil
+           (lambda (result) (setq second-result result))
+           (lambda () (should nil)))
+          (should (= (- copy-count copies-after-miss) 1)))
+        (should (= copy-count 4))
+        (should (= search-count 1))
+        (should (= (nskk-cache-lru-size cache) 1))
+        (should (= put-count 1))
+        (should-not (eq second-result produced))
+        (should-not (eq second-result first-result))
+        (should (equal second-result produced)))))
+  (nskk-it "keeps cache unchanged when canonicalization signals error or quit"
+    (dolist (case '((1 (error "copy failure" first))
+                    (1 (quit copy-failure first))
+                    (2 (error "copy failure" second))
+                    (2 (quit copy-failure second))))
+      (let* ((fault-at (car case))
+             (expected (cadr case))
+             (cache (nskk-cache-lru-create 10))
+             (index (make-nskk-dict-index :predicate 'cache-copy-fault-test))
+             (stable-key (list :stable))
+             (stable-value (list (copy-sequence "stable")))
+             (produced (list (copy-sequence "candidate")))
+             (original-copy (symbol-function 'nskk-prolog-copy-term))
+             (copy-count 0)
+             (put-count 0)
+             (search-count 0)
+             received)
+        (nskk-cache-put cache stable-key stable-value)
+        (let ((stable-before (nskk-cache-get cache stable-key))
+              (size-before (nskk-cache-size cache)))
+          (should (eq stable-before stable-value))
+          (cl-letf (((symbol-function 'nskk-search/k)
+                     (lambda (_index _query _search-type _okuri-type _limit
+                                      on-found _on-not-found)
+                       (cl-incf search-count)
+                       (funcall on-found produced)))
+                    ((symbol-function 'nskk-prolog-copy-term)
+                     (lambda (object)
+                       (cl-incf copy-count)
+                       (if (= copy-count fault-at)
+                           (signal (car expected) (cdr expected))
+                         (funcall original-copy object))))
+                    ((symbol-function 'nskk-cache-put)
+                     (lambda (&rest _args)
+                       (cl-incf put-count)
+                       (error "cache put called after copy failure"))))
+            (setq received
+                  (condition-case condition
+                      (progn
+                        (nskk-search-with-cache/k
+                         cache index "fault-query" 'exact nil nil
+                         (lambda (_result) (should nil))
+                         (lambda () (should nil)))
+                        nil)
+                    (error condition)
+                    (quit condition))))
+          (should (equal received expected))
+          (should (= copy-count fault-at))
+          (should (= put-count 0))
+          (should (= search-count 1))
+          (should (= (nskk-cache-size cache) size-before))
+          (let ((stable-after (nskk-cache-get cache stable-key)))
+            (should (eq stable-after stable-before))
+            (should (equal stable-after '("stable"))))))))
+)
 
 ;; PBT-015 — nskk-search-with-cache/k calls exactly one callback per invocation
 (nskk-property-test search-cache-k-mutual-exclusion
@@ -1522,39 +2183,981 @@ of keys under `string<' regardless of the input order."
 ;;; Learning data persistence (save / load round-trip)
 
 (nskk-describe "nskk-search-load-learning-data"
-  (nskk-it "round-trips learning scores through save and load"
+  (nskk-it "round-trips learning scores without duplicates on repeated loads"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk-search-learning-file (make-temp-file "nskk-learning" nil ".dat")))
         (unwind-protect
             (progn
-              (nskk-prolog-retract-all 'learning-score 3)
-              ;; Two candidates for the reading "ゆき"; "優響" has the higher score.
-              (nskk-prolog-assert (list '(learning-score "ゆき" "優響" 3)))
-              (nskk-prolog-assert (list '(learning-score "ゆき" "雪" 1)))
+              (nskk-prolog-retract-all (quote learning-score) 3)
+              (nskk-prolog-assert (list (quote (learning-score "ゆき" "優響" 3))))
+              (nskk-prolog-assert (list (quote (learning-score "ゆき" "雪" 1))))
               (nskk-search-save-learning-data)
-              ;; Wipe in-memory scores, then reload from the file.
-              (nskk-prolog-retract-all 'learning-score 3)
-              (should (null (nskk-prolog-query-value
-                             '(learning-score "ゆき" "優響" \?s) '\?s)))
+              (nskk-prolog-retract-all (quote learning-score) 3)
+              (nskk-search-load-learning-data)
               (nskk-search-load-learning-data)
               (should (= 3 (nskk-prolog-query-value
-                            '(learning-score "ゆき" "優響" \?s) '\?s)))
+                            (quote (learning-score "ゆき" "優響" \?s))
+                            (quote \?s))))
               (should (= 1 (nskk-prolog-query-value
-                            '(learning-score "ゆき" "雪" \?s) '\?s))))
+                            (quote (learning-score "ゆき" "雪" \?s))
+                            (quote \?s))))
+              (should (= 2 (length
+                            (nskk-prolog-query
+                             (quote (learning-score \?r \?c \?s)))))))
           (delete-file nskk-search-learning-file)))))
 
-  (nskk-it "is a no-op when the learning file does not exist"
+  (nskk-it "preserves existing scores when an entry is malformed"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk-search-learning-file
-             (expand-file-name "nskk-nonexistent-learning.dat"
-                               temporary-file-directory)))
-        (when (file-exists-p nskk-search-learning-file)
-          (delete-file nskk-search-learning-file))
-        (nskk-prolog-retract-all 'learning-score 3)
-        (nskk-search-load-learning-data)
-        (should (null (nskk-prolog-query-value
-                       '(learning-score "ゆき" "優響" \?s) '\?s)))))))
+             (make-temp-file "nskk-learning-invalid" nil ".dat")))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (prin1 (quote (("bad" "entry" "not-an-integer")))
+                       (current-buffer)))
+              (nskk-prolog-retract-all (quote learning-score) 3)
+              (nskk-prolog-assert
+               (quote ((learning-score "existing" "candidate" 7))))
+              (nskk-search-load-learning-data)
+              (should (= 7 (nskk-prolog-query-value
+                            (quote (learning-score "existing" "candidate" \?s))
+                            (quote \?s))))
+              (should (= 1 (length
+                            (nskk-prolog-query
+                             (quote (learning-score \?r \?c \?s)))))))
+          (delete-file nskk-search-learning-file)))))
 
-(provide 'nskk-search-test)
+  (nskk-it "restores existing scores when asserting a loaded fact fails"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-assert" nil ".dat")))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (prin1 '(("new" "candidate" 1)) (current-buffer)))
+              (nskk-prolog-retract-all 'learning-score 3)
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (let ((original-assert (symbol-function 'nskk-prolog-assert))
+                    assert-attempted)
+                (cl-letf (((symbol-function 'nskk-prolog-assert)
+                           (lambda (clauses)
+                             (if (equal clauses
+                                        '((learning-score "new" "candidate" 1)))
+                                 (progn
+                                   (setq assert-attempted t)
+                                   (error "Injected load assert failure"))
+                               (funcall original-assert clauses)))))
+                  (nskk-search-load-learning-data))
+                (should assert-attempted))
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s)))
+              (should-not
+               (nskk-prolog-holds-p
+                '(learning-score "new" "candidate" 1)))
+              (should (= 1 (length
+                            (nskk-prolog-query
+                             '(learning-score \?r \?c \?s))))))
+          (delete-file nskk-search-learning-file)))))
+
+  (nskk-it "preserves existing scores when the file grows past the size limit"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-growing" nil ".dat"))
+            (nskk--search-learning-max-file-size 8))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (prin1 (quote (("new" "candidate" 1))) (current-buffer)))
+              (nskk-prolog-retract-all (quote learning-score) 3)
+              (nskk-prolog-assert
+               (quote ((learning-score "existing" "candidate" 7))))
+              (cl-letf (((symbol-function (quote file-attribute-size))
+                         (lambda (_attributes) 1)))
+                (nskk-search-load-learning-data))
+              (should (= 7 (nskk-prolog-query-value
+                            (quote (learning-score "existing" "candidate" \?s))
+                            (quote \?s))))
+              (should (= 1 (length
+                            (nskk-prolog-query
+                             (quote (learning-score \?r \?c \?s)))))))
+          (delete-file nskk-search-learning-file))))))
+(nskk-describe "nskk-search-load-learning-data security boundaries"
+  (nskk-it "rejects a symbolic link before attempting to read it"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((directory (make-temp-file "nskk-learning-link" t))
+             (target (expand-file-name "target.dat" directory))
+             (nskk-search-learning-file
+              (expand-file-name "learning.dat" directory))
+             read-attempted)
+        (unwind-protect
+            (progn
+              (with-temp-file target
+                (prin1 '(("new" "candidate" 1)) (current-buffer)))
+              (make-symbolic-link target nskk-search-learning-file)
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (cl-letf (((symbol-function 'insert-file-contents)
+                         (lambda (&rest _)
+                           (setq read-attempted t)
+                           (error "Unexpected read"))))
+                (nskk-search-load-learning-data))
+              (should-not read-attempted)
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s))))
+          (delete-directory directory t)))))
+
+  (nskk-it "rejects a FIFO without entering a blocking read"
+    (unless (executable-find "mkfifo")
+      (ert-skip "mkfifo is unavailable"))
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-fifo" nil ".dat"))
+            read-attempted)
+        (unwind-protect
+            (progn
+              (delete-file nskk-search-learning-file)
+              (should (= 0 (call-process "mkfifo" nil nil nil
+                                         nskk-search-learning-file)))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (cl-letf (((symbol-function 'insert-file-contents)
+                         (lambda (&rest _)
+                           (setq read-attempted t)
+                           (error "Unexpected read"))))
+                (nskk-search-load-learning-data))
+              (should-not read-attempted)
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s))))
+          (when (file-exists-p nskk-search-learning-file)
+            (delete-file nskk-search-learning-file))))))
+
+  (nskk-it "rejects an oversized file before attempting to read it"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-oversize" nil ".dat"))
+            (nskk--search-learning-max-file-size 8)
+            read-attempted)
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (insert "0123456789"))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (cl-letf (((symbol-function 'insert-file-contents)
+                         (lambda (&rest _)
+                           (setq read-attempted t)
+                           (error "Unexpected read"))))
+                (nskk-search-load-learning-data))
+              (should-not read-attempted)
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s))))
+          (delete-file nskk-search-learning-file)))))
+
+  (nskk-it "rejects atomic replacement while the file is being read"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-replaced" nil ".dat"))
+            (replacement
+             (make-temp-file "nskk-learning-replacement" nil ".dat")))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (prin1 '(("staged" "candidate" 1)) (current-buffer)))
+              (with-temp-file replacement
+                (prin1 '(("replacement" "candidate" 2)) (current-buffer)))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (let ((original-insert
+                     (symbol-function 'insert-file-contents)))
+                (cl-letf (((symbol-function 'insert-file-contents)
+                           (lambda (&rest arguments)
+                             (prog1 (apply original-insert arguments)
+                               (rename-file replacement
+                                            nskk-search-learning-file t)))))
+                  (nskk-search-load-learning-data)))
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s)))
+              (should-not
+               (nskk-prolog-holds-p
+                '(learning-score "staged" "candidate" 1)))
+              (should-not
+               (nskk-prolog-holds-p
+                '(learning-score "replacement" "candidate" 2))))
+          (when (file-exists-p nskk-search-learning-file)
+            (delete-file nskk-search-learning-file))
+          (when (file-exists-p replacement)
+            (delete-file replacement))))))
+
+  (nskk-it "rejects stable-path metadata changes during the read"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-changing" nil ".dat"))
+            (attribute-reads 0))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (prin1 '(("changed" "candidate" 1)) (current-buffer)))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (let ((original-attributes (symbol-function 'file-attributes))
+ (expected-file (expand-file-name nskk-search-learning-file))
+ (expected-resolved-file (file-truename nskk-search-learning-file)))
+                (cl-letf (((symbol-function 'file-attributes)
+                           (lambda (filename &optional id-format)
+                             (let ((attributes
+                                    (funcall original-attributes
+                                             filename id-format)))
+                               (when (and attributes
+                                          (eq id-format 'integer)
+                                          (or (equal (expand-file-name filename) expected-file)
+    (equal (expand-file-name filename) expected-resolved-file))
+                                          (> (cl-incf attribute-reads) 1))
+                                 (setq attributes (copy-tree attributes))
+                                 (setf (nth 5 attributes)
+                                       (time-add (nth 5 attributes) 1)))
+                               attributes))))
+                  (nskk-search-load-learning-data)))
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s)))
+              (should-not
+               (nskk-prolog-holds-p
+                '(learning-score "changed" "candidate" 1))))
+          (delete-file nskk-search-learning-file)))))
+  (nskk-it "fails closed without source fallback or state changes when pinning fails"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((nskk-search-learning-file
+              (make-temp-file "nskk-learning-unpinnable" nil ".dat"))
+             (nskk--search-registered-caches
+              (make-hash-table :test 'eq :weakness 'key))
+             (cache (nskk-cache-lru-create 4))
+             (nskk--learning-loaded 'before-pin-failure)
+             read-attempted
+             diagnostic)
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (prin1 '(("new" "candidate" 1)) (current-buffer)))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (nskk-cache-lru-put cache "sentinel" 'preserved)
+              (nskk-cache-lru-get cache "sentinel")
+              (nskk--search-register-cache cache)
+              (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+                     (predicate-before
+                      (nskk--dict-predicate-snapshot key))
+                     (cache-hash (nskk-cache-lru-hash cache))
+                     (cache-head (nskk-cache-lru-head cache))
+                     (cache-tail (nskk-cache-lru-tail cache))
+                     (head-next (nskk-cache-lru-node-next cache-head))
+                     (tail-prev (nskk-cache-lru-node-prev cache-tail))
+                     (cache-node (gethash "sentinel" cache-hash))
+                     (cache-size (nskk-cache-lru-size cache))
+                     (cache-hits (nskk-cache-lru-hits cache))
+                     (cache-misses (nskk-cache-lru-misses cache)))
+                (cl-letf (((symbol-function 'add-name-to-file)
+                           (lambda (&rest _arguments)
+                             (signal 'file-error
+                                     '("Invalid cross-device link"))))
+                          ((symbol-function 'insert-file-contents)
+                           (lambda (&rest _arguments)
+                             (setq read-attempted t)
+                             (error "Unexpected source read")))
+                          ((symbol-function 'message)
+                           (lambda (format-string &rest arguments)
+                             (setq diagnostic
+                                   (apply #'format-message
+                                          format-string arguments))
+                             nil)))
+                  (nskk-search-load-learning-data))
+                (should-not read-attempted)
+                (should (stringp diagnostic))
+                (should (string-match-p
+                         "NSKK: Cannot safely read unpinned file"
+                         diagnostic))
+                (let ((predicate-after
+                       (nskk--dict-predicate-snapshot key)))
+                  (dotimes (index (length predicate-before))
+                    (should (eq (aref predicate-before index)
+                                (aref predicate-after index)))))
+                (should (= 7 (nskk-prolog-query-value
+                              '(learning-score "existing" "candidate" \?s)
+                              '\?s)))
+                (should-not
+                 (nskk-prolog-holds-p
+                  '(learning-score "new" "candidate" 1)))
+                (should (eq cache-hash (nskk-cache-lru-hash cache)))
+                (should (eq cache-head (nskk-cache-lru-head cache)))
+                (should (eq cache-tail (nskk-cache-lru-tail cache)))
+                (should (eq head-next
+                            (nskk-cache-lru-node-next cache-head)))
+                (should (eq tail-prev
+                            (nskk-cache-lru-node-prev cache-tail)))
+                (should (eq cache-node (gethash "sentinel" cache-hash)))
+                (should (= cache-size (nskk-cache-lru-size cache)))
+                (should (= cache-hits (nskk-cache-lru-hits cache)))
+                (should (= cache-misses (nskk-cache-lru-misses cache)))
+                (should (eq 'before-pin-failure
+                            nskk--learning-loaded))))
+          (delete-file nskk-search-learning-file)))))
+
+  (nskk-it "disables reader evaluation despite an ambient read-eval binding"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-read-eval" nil ".dat")))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (insert "#.(progn (put 'nskk-search-test/read-eval "
+                        "'executed t) '((\"evil\" \"candidate\" 1)))"))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (let ((read-eval t))
+                (nskk-search-load-learning-data))
+              (should-not (get 'nskk-search-test/read-eval 'executed))
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s)))
+              (should-not
+               (nskk-prolog-holds-p
+                '(learning-score "evil" "candidate" 1))))
+          (put 'nskk-search-test/read-eval 'executed nil)
+          (delete-file nskk-search-learning-file)))))
+  (nskk-it "rejects shared reader syntax despite an ambient read-circle binding"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((nskk-search-learning-file
+              (make-temp-file "nskk-learning-read-circle" nil ".dat"))
+             (nskk--search-registered-caches
+              (make-hash-table :test 'eq :weakness 'key))
+             (cache (nskk-cache-lru-create 4))
+             (nskk--learning-loaded 'before-shared-read))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (insert "(#1=(\"evil\" \"candidate\" 1) #1#)"))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (nskk-cache-lru-put cache "sentinel" 'preserved)
+              (nskk-cache-lru-get cache "sentinel")
+              (nskk--search-register-cache cache)
+              (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+                     (predicate-before
+                      (nskk--dict-predicate-snapshot key))
+                     (cache-hash (nskk-cache-lru-hash cache))
+                     (cache-head (nskk-cache-lru-head cache))
+                     (cache-tail (nskk-cache-lru-tail cache))
+                     (head-next (nskk-cache-lru-node-next cache-head))
+                     (tail-prev (nskk-cache-lru-node-prev cache-tail))
+                     (cache-node (gethash "sentinel" cache-hash))
+                     (cache-size (nskk-cache-lru-size cache))
+                     (cache-hits (nskk-cache-lru-hits cache))
+                     (cache-misses (nskk-cache-lru-misses cache))
+                     (read-circle t))
+                (nskk-search-load-learning-data)
+                (let ((predicate-after
+                       (nskk--dict-predicate-snapshot key)))
+                  (dotimes (index (length predicate-before))
+                    (should (eq (aref predicate-before index)
+                                (aref predicate-after index)))))
+                (should (= 7 (nskk-prolog-query-value
+                              '(learning-score "existing" "candidate" \?s)
+                              '\?s)))
+                (should-not
+                 (nskk-prolog-holds-p
+                  '(learning-score "evil" "candidate" 1)))
+                (should (eq cache-hash (nskk-cache-lru-hash cache)))
+                (should (eq cache-head (nskk-cache-lru-head cache)))
+                (should (eq cache-tail (nskk-cache-lru-tail cache)))
+                (should (eq head-next
+                            (nskk-cache-lru-node-next cache-head)))
+                (should (eq tail-prev
+                            (nskk-cache-lru-node-prev cache-tail)))
+                (should (eq cache-node (gethash "sentinel" cache-hash)))
+                (should (= cache-size (nskk-cache-lru-size cache)))
+                (should (= cache-hits (nskk-cache-lru-hits cache)))
+                (should (= cache-misses (nskk-cache-lru-misses cache)))
+                (should (eq 'before-shared-read nskk--learning-loaded))))
+          (delete-file nskk-search-learning-file)))))
+
+  (nskk-it "rolls back exact publication state on error and quit"
+    (let ((nskk-search-learning-file
+           (make-temp-file "nskk-learning-publication" nil ".dat"))
+          (loaded-originally-bound (boundp 'nskk--learning-loaded))
+          (loaded-original-value
+           (and (boundp 'nskk--learning-loaded)
+                (symbol-value 'nskk--learning-loaded))))
+      (unwind-protect
+          (progn
+            (with-temp-file nskk-search-learning-file
+              (prin1 '(("new" "candidate" 1)) (current-buffer)))
+            (dolist (fault '(error quit))
+              (nskk-prolog-test-with-isolated-db
+                (let* ((nskk--search-registered-caches
+                        (make-hash-table :test 'eq :weakness 'key))
+                       (cache (nskk-cache-lru-create 4)))
+                  (nskk-prolog-assert
+                   '((learning-score "existing" "candidate" 7)))
+                  (nskk-cache-lru-put cache "a" 1)
+                  (nskk-cache-lru-put cache "b" 2)
+                  (nskk-cache-lru-get cache "a")
+                  (nskk--search-register-cache cache)
+                  (if (eq fault 'error)
+                      (set 'nskk--learning-loaded 'before-publication)
+                    (when (boundp 'nskk--learning-loaded)
+                      (makunbound 'nskk--learning-loaded)))
+                  (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+                         (predicate-before
+                          (nskk--dict-predicate-snapshot key))
+                         (loaded-was-bound
+                          (boundp 'nskk--learning-loaded))
+                         (loaded-value
+                          (and loaded-was-bound
+                               (symbol-value 'nskk--learning-loaded)))
+                         (cache-hash (nskk-cache-lru-hash cache))
+                         (cache-head (nskk-cache-lru-head cache))
+                         (cache-tail (nskk-cache-lru-tail cache))
+                         (head-next
+                          (nskk-cache-lru-node-next cache-head))
+                         (tail-prev
+                          (nskk-cache-lru-node-prev cache-tail))
+                         (node-a (gethash "a" cache-hash))
+                         (node-b (gethash "b" cache-hash))
+                         (cache-size (nskk-cache-lru-size cache))
+                         (cache-hits (nskk-cache-lru-hits cache))
+                         (cache-misses (nskk-cache-lru-misses cache))
+                         (original-flush
+                          (symbol-function 'nskk--search-flush-caches)))
+                    (cl-letf (((symbol-function 'nskk--search-flush-caches)
+                               (lambda ()
+                                 (funcall original-flush)
+                                 (set 'nskk--learning-loaded
+                                      'during-publication)
+                                 (signal fault
+                                         '("Injected publication fault")))))
+                      (if (eq fault 'error)
+                          (nskk-search-load-learning-data)
+                        (should
+                         (eq 'quit
+                             (condition-case nil
+                                 (progn
+                                   (nskk-search-load-learning-data)
+                                   'returned)
+                               (quit 'quit))))))
+                    (let ((predicate-after
+                           (nskk--dict-predicate-snapshot key)))
+                      (dotimes (index (length predicate-before))
+                        (should (eq (aref predicate-before index)
+                                    (aref predicate-after index)))))
+                    (should (= 7 (nskk-prolog-query-value
+                                  '(learning-score
+                                    "existing" "candidate" \?s)
+                                  '\?s)))
+                    (should-not
+                     (nskk-prolog-holds-p
+                      '(learning-score "new" "candidate" 1)))
+                    (should (eq cache-hash (nskk-cache-lru-hash cache)))
+                    (should (eq cache-head (nskk-cache-lru-head cache)))
+                    (should (eq cache-tail (nskk-cache-lru-tail cache)))
+                    (should (eq head-next
+                                (nskk-cache-lru-node-next cache-head)))
+                    (should (eq tail-prev
+                                (nskk-cache-lru-node-prev cache-tail)))
+                    (should (eq node-a (gethash "a" cache-hash)))
+                    (should (eq node-b (gethash "b" cache-hash)))
+                    (should (= cache-size (nskk-cache-lru-size cache)))
+                    (should (= cache-hits (nskk-cache-lru-hits cache)))
+                    (should (= cache-misses
+                               (nskk-cache-lru-misses cache)))
+                    (if loaded-was-bound
+                        (progn
+                          (should (boundp 'nskk--learning-loaded))
+                          (should
+                           (eq loaded-value
+                               (symbol-value 'nskk--learning-loaded))))
+                      (should-not (boundp 'nskk--learning-loaded))))))))
+        (if loaded-originally-bound
+            (set 'nskk--learning-loaded loaded-original-value)
+          (when (boundp 'nskk--learning-loaded)
+            (makunbound 'nskk--learning-loaded)))
+        (delete-file nskk-search-learning-file)))))
+
+
+(nskk-describe "bounded Levenshtein distance"
+    (nskk-it "matches exact distance at and below the boundary"
+      (dolist (case (quote (("abc" "abc" 0)
+                            ("abc" "axc" 1)
+                            ("kitten" "sitting" 3)
+                            ("かんじ" "かんき" 1))))
+        (let ((actual (nskk--search-levenshtein-distance
+                       (nth 0 case) (nth 1 case)))
+              (bound (nth 2 case)))
+          (should (= actual bound))
+          (should (= actual
+                     (nskk--search-levenshtein-distance-bounded
+                      (nth 0 case) (nth 1 case) bound))))))
+
+    (nskk-it "returns the sentinel above the boundary"
+      (should (= 2 (nskk--search-levenshtein-distance-bounded
+                    "kitten" "sitting" 1)))
+      (should (= 3 (nskk--search-levenshtein-distance-bounded
+                    "" "abcdef" 2)))
+      (should (= 1 (nskk--search-levenshtein-distance-bounded
+                    "abc" "abd" 0))))
+
+    (nskk-it "agrees with exact distance for every sufficient bound"
+      (dolist (pair (quote (("" "")
+                             ("a" "")
+                             ("abc" "yabd")
+                             ("Saturday" "Sunday")
+                             ("にほんご" "にほん"))))
+        (let* ((exact (nskk--search-levenshtein-distance
+                       (car pair) (cadr pair)))
+               (bounded (nskk--search-levenshtein-distance-bounded
+                         (car pair) (cadr pair) exact)))
+          (should (= exact bounded))))))
+
+  (nskk-describe "search performance regressions"
+    (nskk-it "sorts the full result set before applying limit"
+      (let* ((nskk-search-sort-method 'kana)
+             (entries (mapcar
+                       (lambda (key)
+                         (cons key (make-nskk-dict-entry
+                                    :key key :candidates (list key))))
+                       '("う" "あ" "い")))
+             (processed (nskk--search-post-process-results entries nil 2)))
+        (should (equal '("あ" "い") (mapcar #'car processed)))))
+
+    (nskk-it "constructs entries only for partial-search matches"
+      (nskk-prolog-test-with-isolated-db
+        (let* ((index (nskk-search-test--make-index
+                       '(("miss-a" . ("A"))
+                         ("target-hit" . ("B"))
+                         ("miss-c" . ("C")))))
+               (constructor (symbol-function 'make-nskk-dict-entry))
+               (calls 0))
+          (cl-letf (((symbol-function 'make-nskk-dict-entry)
+                     (lambda (&rest arguments)
+                       (cl-incf calls)
+                       (apply constructor arguments))))
+            (should (= 1 (length (nskk-search-partial index "target" nil nil))))
+            (should (= 1 calls)))))))
+
+  (nskk-describe "search cache invalidation after learning load"
+    (nskk-it "flushes registered caches after a successful load"
+      (nskk-prolog-test-with-isolated-db
+        (let ((nskk-search-learning-file
+               (make-temp-file "nskk-learning-valid" nil ".dat"))
+              (flushes 0))
+          (unwind-protect
+              (progn
+                (with-temp-file nskk-search-learning-file
+                  (prin1 '(("reading" "candidate" 1)) (current-buffer)))
+                (cl-letf (((symbol-function 'nskk--search-flush-caches)
+                           (lambda () (cl-incf flushes))))
+                  (nskk-search-load-learning-data))
+                (should (= 1 flushes)))
+            (delete-file nskk-search-learning-file)))))
+
+    (nskk-it "does not flush caches when validation fails"
+      (nskk-prolog-test-with-isolated-db
+        (let ((nskk-search-learning-file
+               (make-temp-file "nskk-learning-invalid" nil ".dat"))
+              (flushes 0))
+          (unwind-protect
+              (progn
+                (with-temp-file nskk-search-learning-file
+                  (prin1 '(("reading" "candidate" invalid)) (current-buffer)))
+                (cl-letf (((symbol-function 'nskk--search-flush-caches)
+                           (lambda () (cl-incf flushes))))
+                  (nskk-search-load-learning-data))
+                (should (= 0 flushes)))
+            (delete-file nskk-search-learning-file))))))
+
+  (nskk-describe "bounded Levenshtein exhaustive regression"
+    (nskk-it "matches exact distance or the boundary sentinel"
+      (let ((strings '("" "a" "b" "aa" "ab" "ba" "bb")))
+        (dolist (left strings)
+          (dolist (right strings)
+            (dotimes (bound 4)
+              (let* ((exact (nskk--search-levenshtein-distance left right))
+                     (expected (if (<= exact bound) exact (1+ bound))))
+                (should
+                 (= expected
+                    (nskk--search-levenshtein-distance-bounded
+                     left right bound))))))))))
+
+  (progn
+  (defun nskk-search-test--cache-state-asserter (cache)
+    "Return a closure that asserts CACHE retains its physical state."
+    (cond
+     ((nskk-cache-lru-p cache)
+      (let* ((capacity (nskk-cache-lru-capacity cache))
+             (size (nskk-cache-lru-size cache))
+             (hash (nskk-cache-lru-hash cache))
+             (head (nskk-cache-lru-head cache))
+             (tail (nskk-cache-lru-tail cache))
+             (hits (nskk-cache-lru-hits cache))
+             (misses (nskk-cache-lru-misses cache))
+             (head-state
+              (vector (nskk-cache-lru-node-key head)
+                      (nskk-cache-lru-node-value head)
+                      (nskk-cache-lru-node-prev head)
+                      (nskk-cache-lru-node-next head)))
+             (tail-state
+              (vector (nskk-cache-lru-node-key tail)
+                      (nskk-cache-lru-node-value tail)
+                      (nskk-cache-lru-node-prev tail)
+                      (nskk-cache-lru-node-next tail)))
+             rows)
+        (maphash
+         (lambda (key node)
+           (push (vector key node
+                         (nskk-cache-lru-node-key node)
+                         (nskk-cache-lru-node-value node)
+                         (nskk-cache-lru-node-prev node)
+                         (nskk-cache-lru-node-next node))
+                 rows))
+         hash)
+        (lambda (&optional hit-delta miss-delta)
+          (should (= (nskk-cache-lru-capacity cache) capacity))
+          (should (= (nskk-cache-lru-size cache) size))
+          (should (eq (nskk-cache-lru-hash cache) hash))
+          (should (eq (nskk-cache-lru-head cache) head))
+          (should (eq (nskk-cache-lru-tail cache) tail))
+          (should (= (nskk-cache-lru-hits cache)
+                     (+ hits (or hit-delta 0))))
+          (should (= (nskk-cache-lru-misses cache)
+                     (+ misses (or miss-delta 0))))
+          (should (= (hash-table-count hash) (length rows)))
+          (should (eq (nskk-cache-lru-node-key head) (aref head-state 0)))
+          (should (eq (nskk-cache-lru-node-value head) (aref head-state 1)))
+          (should (eq (nskk-cache-lru-node-prev head) (aref head-state 2)))
+          (should (eq (nskk-cache-lru-node-next head) (aref head-state 3)))
+          (should (eq (nskk-cache-lru-node-key tail) (aref tail-state 0)))
+          (should (eq (nskk-cache-lru-node-value tail) (aref tail-state 1)))
+          (should (eq (nskk-cache-lru-node-prev tail) (aref tail-state 2)))
+          (should (eq (nskk-cache-lru-node-next tail) (aref tail-state 3)))
+          (dolist (row rows)
+            (let ((node (aref row 1)))
+              (should (eq (gethash (aref row 0) hash) node))
+              (should (eq (nskk-cache-lru-node-key node) (aref row 2)))
+              (should (eq (nskk-cache-lru-node-value node) (aref row 3)))
+              (should (eq (nskk-cache-lru-node-prev node) (aref row 4)))
+              (should (eq (nskk-cache-lru-node-next node) (aref row 5))))))))
+     ((nskk-cache-lfu-p cache)
+      (let* ((capacity (nskk-cache-lfu-capacity cache))
+             (size (nskk-cache-lfu-size cache))
+             (hash (nskk-cache-lfu-hash cache))
+             (freq (nskk-cache-lfu-freq cache))
+             (min-freq (nskk-cache-lfu-min-freq cache))
+             (hits (nskk-cache-lfu-hits cache))
+             (misses (nskk-cache-lfu-misses cache))
+             entry-rows
+             freq-rows)
+        (maphash
+         (lambda (key entry)
+           (push (vector key entry
+                         (nskk-cache-lfu-entry-key entry)
+                         (nskk-cache-lfu-entry-value entry)
+                         (nskk-cache-lfu-entry-frequency entry))
+                 entry-rows))
+         hash)
+        (maphash
+         (lambda (frequency bucket)
+           (push (vector frequency bucket) freq-rows))
+         freq)
+        (lambda (&optional hit-delta miss-delta)
+          (should (= (nskk-cache-lfu-capacity cache) capacity))
+          (should (= (nskk-cache-lfu-size cache) size))
+          (should (eq (nskk-cache-lfu-hash cache) hash))
+          (should (eq (nskk-cache-lfu-freq cache) freq))
+          (should (= (nskk-cache-lfu-min-freq cache) min-freq))
+          (should (= (nskk-cache-lfu-hits cache)
+                     (+ hits (or hit-delta 0))))
+          (should (= (nskk-cache-lfu-misses cache)
+                     (+ misses (or miss-delta 0))))
+          (should (= (hash-table-count hash) (length entry-rows)))
+          (should (= (hash-table-count freq) (length freq-rows)))
+          (dolist (row entry-rows)
+            (let ((entry (aref row 1)))
+              (should (eq (gethash (aref row 0) hash) entry))
+              (should (eq (nskk-cache-lfu-entry-key entry) (aref row 2)))
+              (should (eq (nskk-cache-lfu-entry-value entry) (aref row 3)))
+              (should (= (nskk-cache-lfu-entry-frequency entry) (aref row 4)))))
+          (dolist (row freq-rows)
+            (should (eq (gethash (aref row 0) freq) (aref row 1)))))))
+     (t
+      (error "Unsupported cache type: %S" cache))))
+
+  (defun nskk-search-test--make-supported-cache-value ()
+    "Build a cyclic value spanning every supported mutable container."
+    (let* ((shared (list (copy-sequence "shared")))
+           (cycle (cons shared nil))
+           (text (copy-sequence "text"))
+           (bits (bool-vector t nil t))
+           (vector (vector shared bits nil))
+           (record (make-nskk-dict-entry
+                    :key text :candidates shared :okuri vector))
+           (root (list cycle cycle text bits vector record shared)))
+      (setcdr cycle cycle)
+      (aset vector 2 record)
+      (put-text-property 0 1 'nskk-search-adversarial-property vector text)
+      root))
+
+  (defun nskk-search-test--assert-supported-cache-copy (copy original)
+    "Assert COPY is a detached topology-preserving copy of ORIGINAL."
+    (let* ((copy-cycle (nth 0 copy))
+           (copy-text (nth 2 copy))
+           (copy-bits (nth 3 copy))
+           (copy-vector (nth 4 copy))
+           (copy-record (nth 5 copy))
+           (copy-shared (nth 6 copy))
+           (original-cycle (nth 0 original))
+           (original-text (nth 2 original))
+           (original-bits (nth 3 original))
+           (original-vector (nth 4 original))
+           (original-record (nth 5 original))
+           (original-shared (nth 6 original)))
+      (should-not (eq copy original))
+      (should (eq copy-cycle (nth 1 copy)))
+      (should (eq (cdr copy-cycle) copy-cycle))
+      (should (eq (car copy-cycle) copy-shared))
+      (should (eq (aref copy-vector 0) copy-shared))
+      (should (eq (aref copy-vector 1) copy-bits))
+      (should (eq (aref copy-vector 2) copy-record))
+      (should (eq (nskk-dict-entry-key copy-record) copy-text))
+      (should (eq (nskk-dict-entry-candidates copy-record) copy-shared))
+      (should (eq (nskk-dict-entry-okuri copy-record) copy-vector))
+      (should (eq (get-text-property
+                   0 'nskk-search-adversarial-property copy-text)
+                  copy-vector))
+      (should (string= copy-text original-text))
+      (should (string= (car copy-shared) (car original-shared)))
+      (should (equal copy-bits original-bits))
+      (should-not (eq copy-cycle original-cycle))
+      (should-not (eq copy-text original-text))
+      (should-not (eq copy-bits original-bits))
+      (should-not (eq copy-vector original-vector))
+      (should-not (eq copy-record original-record))
+      (should-not (eq copy-shared original-shared))
+      (should-not (eq (car copy-shared) (car original-shared)))))
+
+  (defun nskk-search-test--only-cache-value (cache)
+    "Return the value of CACHE's sole entry without recording a hit."
+    (let (value)
+      (maphash
+       (lambda (_key entry)
+         (setq value
+               (if (nskk-cache-lru-p cache)
+                   (nskk-cache-lru-node-value entry)
+                 (nskk-cache-lfu-entry-value entry))))
+       (if (nskk-cache-lru-p cache)
+           (nskk-cache-lru-hash cache)
+         (nskk-cache-lfu-hash cache)))
+      value))
+
+  (defun nskk-search-test--unsupported-cache-value (shape)
+    "Build an unsupported cache value for SHAPE."
+    (let ((table (make-hash-table :test (function eq))))
+      (puthash 'sentinel 'value table)
+      (pcase shape
+        ('top table)
+        ('nested (list :outer (vector table)))
+        ('text-property
+         (let ((text (copy-sequence "property")))
+           (put-text-property
+            0 1 'nskk-search-adversarial-property table text)
+           text))
+        ('cycle
+         (let ((cycle (cons table nil)))
+           (setcdr cycle cycle)
+           cycle))
+        (_ (error "Unsupported shape: %S" shape)))))
+
+  (ert-deftest nskk-search-adversarial-supported-graph-is-fresh-on-every-hit ()
+    (dolist (strategy '(lru lfu))
+      (let* ((cache (nskk-cache-create :type strategy :capacity 8))
+             (index (make-nskk-dict-index
+                     :predicate 'nskk-search-adversarial-supported))
+             (source (nskk-search-test--make-supported-cache-value))
+             (original-put (symbol-function 'nskk-cache-put))
+             (search-count 0)
+             (put-count 0)
+             (callback-count 0)
+             miss-result
+             first-hit
+             second-hit)
+        (cl-letf (((symbol-function 'nskk-search/k)
+                   (lambda (_index _query _search-type _okuri-type _limit
+                                    on-found _on-not-found)
+                     (cl-incf search-count)
+                     (funcall on-found source)))
+                  ((symbol-function 'nskk-cache-put)
+                   (lambda (&rest arguments)
+                     (cl-incf put-count)
+                     (apply original-put arguments))))
+          (nskk-search-with-cache/k
+           cache index "supported" 'exact nil nil
+           (lambda (result)
+             (cl-incf callback-count)
+             (setq miss-result result))
+           (lambda () (should nil)))
+          (nskk-search-with-cache/k
+           cache index "supported" 'exact nil nil
+           (lambda (result)
+             (cl-incf callback-count)
+             (setq first-hit result))
+           (lambda () (should nil)))
+          (nskk-search-with-cache/k
+           cache index "supported" 'exact nil nil
+           (lambda (result)
+             (cl-incf callback-count)
+             (setq second-hit result))
+           (lambda () (should nil))))
+        (let ((stored (nskk-search-test--only-cache-value cache))
+              (stats (nskk-cache-stats cache)))
+          (nskk-search-test--assert-supported-cache-copy miss-result stored)
+          (nskk-search-test--assert-supported-cache-copy stored source)
+          (nskk-search-test--assert-supported-cache-copy first-hit stored)
+          (nskk-search-test--assert-supported-cache-copy second-hit stored)
+          (should-not (eq first-hit second-hit))
+          (aset (car (nth 6 first-hit)) 0 ?X)
+          (aset (nth 2 first-hit) 0 ?X)
+          (aset (nth 4 first-hit) 0 :mutated)
+          (should (string= (car (nth 6 second-hit)) "shared"))
+          (should (string= (nth 2 second-hit) "text"))
+          (should (eq (aref (nth 4 second-hit) 0) (nth 6 second-hit)))
+          (should (string= (car (nth 6 stored)) "shared"))
+          (should (string= (nth 2 stored) "text"))
+          (should (string= (car (nth 6 source)) "shared"))
+          (should (string= (nth 2 source) "text"))
+          (should (= search-count 1))
+          (should (= put-count 1))
+          (should (= callback-count 3))
+          (should (= (plist-get stats :size) 1))
+          (should (= (plist-get stats :hits) 2))
+          (should (= (plist-get stats :misses) 1))))))
+
+  (ert-deftest nskk-search-adversarial-hit-copy-fault-is-atomic-and-retryable ()
+    (dolist (strategy '(lru lfu))
+      (dolist (condition-type '(error quit))
+        (let* ((cache (nskk-cache-create :type strategy :capacity 8))
+               (index (make-nskk-dict-index
+                       :predicate 'nskk-search-adversarial-hit-fault))
+               (cache-key
+                (nskk--search-cache-key index "hit-fault" 'exact nil nil))
+               (cached (nskk-search-test--make-supported-cache-value))
+               (original-copy (symbol-function 'nskk-prolog-copy-term))
+               (search-count 0)
+               (put-count 0)
+               (callback-count 0)
+               retry-result)
+          (nskk-cache-put cache cache-key cached)
+          (nskk-cache-put cache (list :other strategy condition-type) :stable)
+          (let ((assert-state
+                 (nskk-search-test--cache-state-asserter cache)))
+            (cl-letf (((symbol-function 'nskk-search/k)
+                       (lambda (&rest _arguments)
+                         (cl-incf search-count)
+                         (error "search called on cache hit")))
+                      ((symbol-function 'nskk-cache-put)
+                       (lambda (&rest _arguments)
+                         (cl-incf put-count)
+                         (error "put called on cache hit"))))
+              (dotimes (_ 3)
+                (let (received)
+                  (cl-letf (((symbol-function 'nskk-prolog-copy-term)
+                             (lambda (object)
+                               (if (eq object cached)
+                                   (signal condition-type '(injected-hit-copy-fault))
+                                 (funcall original-copy object)))))
+                    (setq received
+                          (condition-case condition
+                              (progn
+                                (nskk-search-with-cache/k
+                                 cache index "hit-fault" 'exact nil nil
+                                 (lambda (_result) (cl-incf callback-count))
+                                 (lambda () (cl-incf callback-count)))
+                                nil)
+                            (error condition)
+                            (quit condition))))
+                  (should (eq (car received) condition-type))
+                  (should (= callback-count 0))
+                  (funcall assert-state 0 0)))
+              (nskk-search-with-cache/k
+               cache index "hit-fault" 'exact nil nil
+               (lambda (result)
+                 (cl-incf callback-count)
+                 (setq retry-result result))
+               (lambda () (cl-incf callback-count))))
+            (should (= search-count 0))
+            (should (= put-count 0))
+            (should (= callback-count 1))
+            (nskk-search-test--assert-supported-cache-copy retry-result cached)
+            (let ((stats (nskk-cache-stats cache)))
+              (should (= (plist-get stats :hits) 1))
+              (should (= (plist-get stats :misses) 0))))))))
+
+  (ert-deftest nskk-search-adversarial-miss-copy-fault-is-atomic-and-retryable () (dolist (strategy (quote (lru lfu))) (dolist (condition-type (quote (error quit))) (dolist (fault-at (quote (1 2))) (let* ((cache (nskk-cache-create :type strategy :capacity 8)) (index (make-nskk-dict-index :predicate (quote nskk-search-adversarial-miss-fault))) (produced (nskk-search-test--make-supported-cache-value)) (assert-state (nskk-search-test--cache-state-asserter cache)) (original-copy (symbol-function (quote nskk-prolog-copy-term))) (original-put (symbol-function (quote nskk-cache-put))) (search-count 0) (copy-count 0) (put-count 0) (callback-count 0) received retry-result) (cl-letf (((symbol-function (quote nskk-search/k)) (lambda (_index _query _search-type _okuri-type _limit on-found _on-not-found) (cl-incf search-count) (funcall on-found produced))) ((symbol-function (quote nskk-prolog-copy-term)) (lambda (object) (cl-incf copy-count) (if (= copy-count fault-at) (signal condition-type (quote (injected-miss-copy-fault))) (funcall original-copy object)))) ((symbol-function (quote nskk-cache-put)) (lambda (&rest arguments) (cl-incf put-count) (apply original-put arguments)))) (setq received (condition-case condition (progn (nskk-search-with-cache/k cache index "miss-fault" (quote exact) nil nil (lambda (_result) (cl-incf callback-count)) (lambda () (cl-incf callback-count))) nil) (error condition) (quit condition)))) (should (eq (car received) condition-type)) (should (= search-count 1)) (should (= copy-count fault-at)) (should (= put-count 0)) (should (= callback-count 0)) (funcall assert-state 0 1) (cl-letf (((symbol-function (quote nskk-search/k)) (lambda (_index _query _search-type _okuri-type _limit on-found _on-not-found) (cl-incf search-count) (funcall on-found produced))) ((symbol-function (quote nskk-cache-put)) (lambda (&rest arguments) (cl-incf put-count) (apply original-put arguments)))) (nskk-search-with-cache/k cache index "miss-fault" (quote exact) nil nil (lambda (result) (cl-incf callback-count) (setq retry-result result)) (lambda () (cl-incf callback-count)))) (should (= search-count 2)) (should (= put-count 1)) (should (= callback-count 1)) (let ((stored (nskk-search-test--only-cache-value cache)) (stats (nskk-cache-stats cache))) (nskk-search-test--assert-supported-cache-copy stored produced) (nskk-search-test--assert-supported-cache-copy retry-result stored) (should (= (plist-get stats :hits) 0)) (should (= (plist-get stats :misses) 2)) (should (= (plist-get stats :size) 1))))))))
+
+  (ert-deftest nskk-search-adversarial-hash-rejection-precedes-publication ()
+    (dolist (strategy '(lru lfu))
+      (dolist (phase '(hit miss))
+        (dolist (shape '(top nested text-property cycle))
+          (let* ((cache (nskk-cache-create :type strategy :capacity 8))
+                 (index (make-nskk-dict-index
+                         :predicate 'nskk-search-adversarial-hash))
+                 (query (format "hash-%s-%s" phase shape))
+                 (cache-key
+                  (nskk--search-cache-key index query 'exact nil nil))
+                 (unsupported
+                  (nskk-search-test--unsupported-cache-value shape))
+                 (original-copy (symbol-function 'nskk-prolog-copy-term))
+                 (search-count 0)
+                 (copy-count 0)
+                 (put-count 0)
+                 (callback-count 0)
+                 received)
+            (when (eq phase 'hit)
+              (nskk-cache-put cache cache-key unsupported))
+            (let ((assert-state
+                   (nskk-search-test--cache-state-asserter cache)))
+              (cl-letf (((symbol-function 'nskk-search/k)
+                         (lambda (_index _query _search-type _okuri-type _limit
+                                          on-found _on-not-found)
+                           (cl-incf search-count)
+                           (funcall on-found unsupported)))
+                        ((symbol-function 'nskk-prolog-copy-term)
+                         (lambda (object)
+                           (cl-incf copy-count)
+                           (funcall original-copy object)))
+                        ((symbol-function 'nskk-cache-put)
+                         (lambda (&rest _arguments)
+                           (cl-incf put-count)
+                           (error "put called for unsupported value"))))
+                (setq received
+                      (condition-case condition
+                          (progn
+                            (nskk-search-with-cache/k
+                             cache index query 'exact nil nil
+                             (lambda (_result) (cl-incf callback-count))
+                             (lambda () (cl-incf callback-count)))
+                            nil)
+                        (error condition)
+                        (quit condition))))
+              (should (eq (car received) 'wrong-type-argument))
+              (should (= search-count (if (eq phase 'miss) 1 0)))
+              (should (= copy-count 0))
+              (should (= put-count 0))
+              (should (= callback-count 0))
+              (funcall assert-state 0 (if (eq phase 'miss) 1 0))))))))
+
+  (provide (quote nskk-search-test)))
 
 ;;; nskk-search-test.el ends here

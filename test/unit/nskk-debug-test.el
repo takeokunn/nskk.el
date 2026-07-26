@@ -183,6 +183,94 @@
 ;;; nskk-debug-message function
 
 (nskk-describe "nskk-debug-message function"
+  (nskk-it "propagates on-found error and quit without fallback"
+    (dolist (injected-condition '((error injected-on-found-error)
+                                  (quit injected-on-found-quit)))
+      (let ((on-found-count 0)
+            (on-not-found-count 0)
+            condition-data)
+        (setq condition-data
+              (condition-case data
+                  (progn
+                    (nskk--debug-format/k
+                     "%s" '("formatted")
+                     (lambda (_message)
+                       (cl-incf on-found-count)
+                       (signal (car injected-condition)
+                               (cdr injected-condition)))
+                     (lambda ()
+                       (cl-incf on-not-found-count)))
+                    nil)
+                (error data)
+                (quit data)))
+        (should (equal condition-data injected-condition))
+        (should (= on-found-count 1))
+        (should (= on-not-found-count 0)))))
+
+  (nskk-it "warns and invokes only on-not-found once for format errors"
+    (let* ((injected-format-string (copy-sequence "injected format"))
+           (injected-data '("injected format error"))
+           (original-format (symbol-function 'format))
+           (on-found-count 0)
+           (on-not-found-count 0)
+           (warning-count 0)
+           warning-arguments)
+      (cl-letf (((symbol-function 'format)
+                 (lambda (template &rest arguments)
+                   (if (eq template injected-format-string)
+                       (signal 'error injected-data)
+                     (apply original-format template arguments))))
+                ((symbol-function 'display-warning)
+                 (lambda (type message &optional level _buffer-name)
+                   (cl-incf warning-count)
+                   (setq warning-arguments (list type message level)))))
+        (should
+         (eq (nskk--debug-format/k
+              injected-format-string nil
+              (lambda (_message)
+                (cl-incf on-found-count)
+                'found)
+              (lambda ()
+                (cl-incf on-not-found-count)
+                'not-found))
+             'not-found)))
+      (should (= on-found-count 0))
+      (should (= on-not-found-count 1))
+      (should (= warning-count 1))
+      (should (eq (car warning-arguments) 'nskk))
+      (should (string-match-p "injected format error"
+                              (cadr warning-arguments)))
+      (should (eq (caddr warning-arguments) :warning))))
+
+  (nskk-it "propagates on-not-found error and quit without re-entry"
+    (dolist (injected-condition '((error injected-on-not-found-error)
+                                  (quit injected-on-not-found-quit)))
+      (let ((on-found-count 0)
+            (on-not-found-count 0)
+            (warning-count 0)
+            condition-data)
+        (cl-letf (((symbol-function 'display-warning)
+                   (lambda (&rest _arguments)
+                     (cl-incf warning-count))))
+          (setq condition-data
+                (condition-case data
+                    (progn
+                      (nskk--debug-format/k
+                       "%d" nil
+                       (lambda (_message)
+                         (cl-incf on-found-count))
+                       (lambda ()
+                         (cl-incf on-not-found-count)
+                         (signal (car injected-condition)
+                                 (cdr injected-condition))))
+                      nil)
+                  (error data)
+                  (quit data))))
+        (should (equal condition-data injected-condition))
+        (should (= on-found-count 0))
+        (should (= on-not-found-count 1))
+        (should (= warning-count 1)))))
+
   (nskk-it "does nothing when debug is disabled"
     (with-debug-disabled
       (nskk-when (nskk-debug-message "Should not appear: %s" "x"))
