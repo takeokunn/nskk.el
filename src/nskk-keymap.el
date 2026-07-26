@@ -751,41 +751,106 @@ Checks AZIK deferred state and romaji buffer in priority order:
 DA > DV > CP > CD > romaji-buffer.
 SP is excluded: it has no visible buffer artifact to retract.
 Returns non-nil if backspace was consumed (caller must not delete further).
-Caller is responsible for preedit boundary checks after retraction."
-  (cond
-   ;; 1. DA: deferred-azik-state -- delete tentative kana
-   ((and (boundp 'nskk--deferred-azik-state) nskk--deferred-azik-state)
-    (delete-char (- (length (cdr nskk--deferred-azik-state))))
-    (setq nskk--deferred-azik-state nil)
-    t)
-   ;; 2. DV: deferred-vowel-shadow-state -- delete tentative kana
-   ((and (boundp 'nskk--deferred-vowel-shadow-state)
-         nskk--deferred-vowel-shadow-state)
-    (delete-char (- (length (nskk--deferred-state-kana
-                             nskk--deferred-vowel-shadow-state))))
-    (setq nskk--deferred-vowel-shadow-state nil)
-    t)
-   ;; 3. CP: colon-okuri-pending -- delete `*' marker
-   ((and (boundp 'nskk--azik-colon-okuri-pending)
-         nskk--azik-colon-okuri-pending)
-    (delete-char -1)
-    (setq nskk--azik-colon-okuri-pending nil)
-    t)
-   ;; 4. CD: colon-okuri-deferred -- delete placeholder, reset romaji
-   ((and (boundp 'nskk--azik-colon-okuri-deferred)
-         nskk--azik-colon-okuri-deferred)
-    (delete-char (- (length (cdr nskk--azik-colon-okuri-deferred))))
-    (setq nskk--azik-colon-okuri-deferred nil)
-    (nskk--reset-romaji-buffer)
-    t)
-   ;; 5. Non-empty romaji buffer -- delete last char, update overlay
-   ((and (boundp 'nskk--romaji-buffer)
-         (not (string-empty-p nskk--romaji-buffer)))
-    (setq nskk--romaji-buffer (substring nskk--romaji-buffer 0 -1))
-    (if (string-empty-p nskk--romaji-buffer)
-        (nskk--clear-pending-romaji)
-      (nskk--show-pending-romaji nskk--romaji-buffer))
-    t)))
+Caller is responsible for preedit boundary checks after retraction.
+On error or quit, restores the buffer, point, pending states, romaji buffer,
+and pending-romaji overlay to their entry values."
+  (let* ((entry-buffer (current-buffer))
+         (entry-point (point))
+         (state-vars '(nskk--deferred-azik-state
+                       nskk--deferred-vowel-shadow-state
+                       nskk--azik-colon-okuri-pending
+                       nskk--azik-colon-okuri-deferred
+                       nskk--romaji-buffer))
+         (state-snapshot
+          (mapcar
+           (lambda (var)
+             (list var (boundp var)
+                   (and (boundp var) (symbol-value var))))
+           state-vars))
+         (overlay-var 'nskk--pending-romaji-overlay)
+         (overlay-bound-p (boundp overlay-var))
+         (entry-overlay
+          (and overlay-bound-p (symbol-value overlay-var)))
+         (entry-overlay-buffer
+          (and (overlayp entry-overlay) (overlay-buffer entry-overlay)))
+         (entry-overlay-start
+          (and entry-overlay-buffer (overlay-start entry-overlay)))
+         (entry-overlay-end
+          (and entry-overlay-buffer (overlay-end entry-overlay)))
+         (entry-overlay-properties
+          (and (overlayp entry-overlay)
+               (overlay-properties entry-overlay))))
+    (condition-case err
+        (atomic-change-group
+          (cond
+           ((and (boundp 'nskk--deferred-azik-state)
+                 nskk--deferred-azik-state)
+            (delete-char (- (length (cdr nskk--deferred-azik-state))))
+            (setq nskk--deferred-azik-state nil)
+            t)
+           ((and (boundp 'nskk--deferred-vowel-shadow-state)
+                 nskk--deferred-vowel-shadow-state)
+            (delete-char (- (length (nskk--deferred-state-kana
+                                     nskk--deferred-vowel-shadow-state))))
+            (setq nskk--deferred-vowel-shadow-state nil)
+            t)
+           ((and (boundp 'nskk--azik-colon-okuri-pending)
+                 nskk--azik-colon-okuri-pending)
+            (delete-char -1)
+            (setq nskk--azik-colon-okuri-pending nil)
+            t)
+           ((and (boundp 'nskk--azik-colon-okuri-deferred)
+                 nskk--azik-colon-okuri-deferred)
+            (delete-char
+             (- (length (cdr nskk--azik-colon-okuri-deferred))))
+            (setq nskk--azik-colon-okuri-deferred nil)
+            (nskk--reset-romaji-buffer)
+            t)
+           ((and (boundp 'nskk--romaji-buffer)
+                 (not (string-empty-p nskk--romaji-buffer)))
+            (setq nskk--romaji-buffer
+                  (substring nskk--romaji-buffer 0 -1))
+            (if (string-empty-p nskk--romaji-buffer)
+                (nskk--clear-pending-romaji)
+              (nskk--show-pending-romaji nskk--romaji-buffer))
+            t)))
+      ((error quit)
+       (let ((inhibit-quit t)
+             (inhibit-modification-hooks t))
+         (with-current-buffer entry-buffer
+           (dolist (entry state-snapshot)
+             (if (nth 1 entry)
+                 (set (car entry) (nth 2 entry))
+               (when (boundp (car entry))
+                 (makunbound (car entry)))))
+           (let ((current-overlay
+                  (and (boundp overlay-var)
+                       (symbol-value overlay-var))))
+             (when (and (overlayp current-overlay)
+                        (not (eq current-overlay entry-overlay)))
+               (delete-overlay current-overlay)))
+           (if overlay-bound-p
+               (set overlay-var entry-overlay)
+             (when (boundp overlay-var)
+               (makunbound overlay-var)))
+           (when (overlayp entry-overlay)
+             (let ((properties (overlay-properties entry-overlay)))
+               (while properties
+                 (overlay-put entry-overlay (pop properties) nil)
+                 (pop properties)))
+             (let ((properties entry-overlay-properties))
+               (while properties
+                 (overlay-put entry-overlay
+                              (pop properties)
+                              (pop properties))))
+             (if entry-overlay-buffer
+                 (move-overlay entry-overlay
+                               entry-overlay-start
+                               entry-overlay-end
+                               entry-overlay-buffer)
+               (delete-overlay entry-overlay)))
+           (goto-char entry-point)))
+       (signal (car err) (cdr err))))))
 
 (defun nskk--backspace-in-preedit ()
   "Delete pending romaji, AZIK deferred state, or last preedit char.

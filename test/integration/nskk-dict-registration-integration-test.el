@@ -86,21 +86,151 @@
         (nskk-when  (nskk-dict-register-word "にほん" "日本"))
         (nskk-then  (should (eq nskk-dict-modified t))))))
 
-  (nskk-it "registering with an empty reading string is a no-op and does not error"
+  (nskk-it "rejects every prohibited registration field before observable effects"
     (nskk-prolog-test-with-isolated-db
-      (let ((nskk--user-dict-index 'user)
-            (nskk-dict-modified nil))
-        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-        (nskk-when  (should-not (nskk-dict-register-word "" "テスト")))
-        (nskk-then  (should (null nskk-dict-modified))))))
+      (let* ((dictionary-file
+              (make-temp-file "nskk-register-invalid-" nil ".skk"))
+             (nskk-dict-user-dictionary-file dictionary-file)
+             (nskk--user-dict-index 'user)
+             (nskk-dict-modified 'preserved)
+             (hook-calls nil)
+             (nskk-jisyo-update-hook
+              (list (lambda () (push 'called hook-calls))))
+             (shared-invalid
+              (append
+               (mapcar #'string
+                       (append (number-sequence 0 31) '(127)))
+               '("/" ";" "▽" "▼")))
+             (cases
+              (append
+               (mapcar (lambda (value)
+                         (list (concat "よ" value "み") "候補"))
+                       shared-invalid)
+               (mapcar (lambda (value)
+                         (list "よみ" (concat "候" value "補")))
+                       shared-invalid)
+               '(("" "候補")
+                 (42 "候補")
+                 ("よ み" "候補")
+                 ("よみ" "")
+                 ("よみ" 42)))))
+        (unwind-protect
+            (progn
+              (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+              (nskk-prolog-assert
+               '((user-dict-entry "既存" ("既存候補"))))
+              (with-temp-file dictionary-file
+                (set-buffer-multibyte nil)
+                (insert "literal-before"))
+              (let ((before
+                     (nskk--dict-predicate-snapshot
+                      (nskk--prolog-clause-key 'user-dict-entry 2))))
+                (dolist (case cases)
+                  (let ((condition
+                         (condition-case err
+                             (progn
+                               (nskk-dict-register-word
+                                (car case) (cadr case))
+                               nil)
+                           (nskk-dict-error err))))
+                    (should
+                     (equal condition
+                            '(nskk-dict-error
+                              "Invalid user dictionary entry")))
+                    (should
+                     (equal
+                      (nskk--dict-predicate-snapshot
+                       (nskk--prolog-clause-key 'user-dict-entry 2))
+                      before))
+                    (should (eq nskk--user-dict-index 'user))
+                    (should (eq nskk-dict-modified 'preserved))
+                    (should-not hook-calls)
+                    (should
+                     (equal
+                      (with-temp-buffer
+                        (set-buffer-multibyte nil)
+                        (insert-file-contents-literally
+                         dictionary-file)
+                        (buffer-string))
+                      "literal-before")))))
+              (should
+               (equal (nskk-dict-lookup "既存")
+                      '("既存候補"))))
+          (when (file-exists-p dictionary-file)
+            (delete-file dictionary-file))))))
 
-  (nskk-it "registering an empty word string is a no-op and does not error"
-    (nskk-prolog-test-with-isolated-db
-      (let ((nskk--user-dict-index 'user)
-            (nskk-dict-modified nil))
-        (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-        (nskk-when  (should-not (nskk-dict-register-word "てすと" "")))
-        (nskk-then  (should (null nskk-dict-modified))))))
+  (progn
+    (nskk-it "round-trips Unicode and ordinary word spaces through persistence"
+      (nskk-prolog-test-with-isolated-db
+        (let* ((reading "ゆにこーど")
+               (word "候 補😀")
+               (dictionary-file
+                (make-temp-file "nskk-register-roundtrip-" nil ".skk"))
+               (nskk-dict-user-dictionary-file dictionary-file)
+               (nskk--user-dict-index 'user)
+               (nskk-dict-modified nil))
+          (unwind-protect
+              (progn
+                (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                (should (nskk-dict-register-word reading word))
+                (should nskk-dict-modified)
+                (nskk-dict-save-user-dictionary)
+                (should-not nskk-dict-modified)
+                (nskk-prolog-retract-all 'user-dict-entry 2)
+                (setq nskk--user-dict-index nil)
+                (should
+                 (eq (nskk-dict-load-user-dictionary) 'user))
+                (should (member word (nskk-dict-lookup reading))))
+            (when (file-exists-p dictionary-file)
+              (delete-file dictionary-file))))))
+
+    (nskk-it "refuses malformed internal facts without replacing the dictionary file"
+      (nskk-prolog-test-with-isolated-db
+        (let* ((dictionary-file
+                (make-temp-file "nskk-save-invalid-" nil ".skk"))
+               (nskk-dict-user-dictionary-file dictionary-file)
+               (nskk--user-dict-index 'user)
+               (nskk-dict-modified 'preserved))
+          (unwind-protect
+              (progn
+                (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                (nskk-prolog-assert
+                 '((user-dict-entry "正常" ("正常候補"))))
+                (nskk-prolog-assert
+                 '((user-dict-entry "不正" ("候/補"))))
+                (with-temp-file dictionary-file
+                  (set-buffer-multibyte nil)
+                  (insert "literal-before"))
+                (let* ((before
+                        (nskk--dict-predicate-snapshot
+                         (nskk--prolog-clause-key 'user-dict-entry 2)))
+                       (condition
+                        (condition-case err
+                            (progn
+                              (nskk-dict-save-user-dictionary)
+                              nil)
+                          (nskk-dict-error err))))
+                  (should
+                   (equal condition
+                          '(nskk-dict-error
+                            "Invalid user dictionary entry")))
+                  (should
+                   (equal
+                    (nskk--dict-predicate-snapshot
+                     (nskk--prolog-clause-key 'user-dict-entry 2))
+                    before))
+                  (should (eq nskk--user-dict-index 'user))
+                  (should (eq nskk-dict-modified 'preserved))
+                  (should
+                   (equal
+                    (with-temp-buffer
+                      (set-buffer-multibyte nil)
+                      (insert-file-contents-literally
+                       dictionary-file)
+                      (buffer-string))
+                    "literal-before"))))
+            (when (file-exists-p dictionary-file)
+              (delete-file dictionary-file)))))))
 
   (nskk-it "nskk-jisyo-update-hook is called after a successful registration"
     (nskk-prolog-test-with-isolated-db

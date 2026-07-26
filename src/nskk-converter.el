@@ -106,11 +106,16 @@
 
 ;; Romaji conversion table
 ;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)
+(defvar nskk-mode-map)
 (defvar nskk--romaji-table
-  (make-hash-table :test 'equal :size 200)
+  (make-hash-table :test (quote equal) :size 200)
   "Romaji to kana conversion table.
 Used as a cache by AZIK and for hash-based lookups.  The Prolog trie
-is the primary source of truth for `nskk-converter-lookup'.")
+is the primary source of truth for nskk-converter-lookup.")
+
+(defconst nskk--converter-missing
+  (make-symbol "nskk-converter-missing")
+  "Private sentinel distinguishing a missing romaji entry from stored nil.")
 
 (defvar nskk--style-registry '((standard . nskk--initialize-romaji-table))
   "Registry mapping style symbols to their initialization functions.
@@ -223,31 +228,43 @@ Also populates `nskk--romaji-table' hash table for AZIK and input lookups."
   (nskk-prolog-bulk-facts romaji-to-kana nskk--standard-romaji-rules))
 
 (defun nskk--converter-populate-incomplete-markers ()
-  "Populate `nskk--romaji-table' with :incomplete for all proper romaji prefixes.
+  "Populate the romaji table with :incomplete for all proper prefixes.
 Auto-derived from the complete romaji entries already in the table."
   (let (keys)
-    (maphash (lambda (k _v) (when (stringp k) (push k keys)))
-             nskk--romaji-table)
+    (maphash
+     (lambda (key _value)
+       (when (stringp key)
+         (push key keys)))
+     nskk--romaji-table)
     (dolist (romaji keys)
-      (let ((len (length romaji)))
-        (dotimes (i (1- len))
-          (let ((prefix (substring romaji 0 (1+ i))))
-            (unless (gethash prefix nskk--romaji-table)
-              (puthash prefix :incomplete nskk--romaji-table))))))))
+      (dotimes (index (1- (length romaji)))
+        (let ((prefix (substring romaji 0 (1+ index))))
+          (when (eq (gethash prefix nskk--romaji-table
+                             nskk--converter-missing)
+                    nskk--converter-missing)
+            (puthash prefix :incomplete nskk--romaji-table)))))))
+
+(defun nskk--converter-lookup-raw (romaji)
+  "Return the internal ROMAJI lookup result without copying it.
+Callers must treat returned strings as read-only."
+  (when (stringp romaji)
+    (let ((result (gethash romaji nskk--romaji-table
+                           nskk--converter-missing)))
+      (if (eq result nskk--converter-missing)
+          (when (nskk-prolog-trie-has-prefix-p
+                 (quote romaji-to-kana) 2 romaji)
+            :incomplete)
+        result))))
 
 (defun nskk-converter-lookup (romaji)
   "Look up ROMAJI in the romaji-to-kana conversion system.
-Returns kana string if ROMAJI is a complete rule, :incomplete if ROMAJI
-is a proper prefix of some rule, or nil if no match.
-Uses the hash table for O(1) exact-match lookups (includes both standard
-and AZIK rules), falling back to the Prolog trie for prefix detection."
-  (when (stringp romaji)
-    (let ((result (gethash romaji nskk--romaji-table)))
-      (pcase result
-        ((pred stringp) result)
-        (':incomplete   :incomplete)
-        (_              (when (nskk-prolog-trie-has-prefix-p 'romaji-to-kana 2 romaji)
-                          :incomplete))))))
+Return a fresh detached kana string for a complete rule, :incomplete for a
+proper prefix, or nil for no match.  The hash table handles O(1) exact
+lookups, with the Prolog trie used for prefix detection."
+  (let ((result (nskk--converter-lookup-raw romaji)))
+    (if (stringp result)
+        (nskk-prolog-copy-term result)
+      result)))
 
 (defconst nskk--romaji-char-max 127
   "Maximum ASCII character code accepted as romaji input.
@@ -276,7 +293,7 @@ to override sokuon via `nskk-converter-lookup')."
        (<= c0 nskk--romaji-char-max)
        (= c0 (aref remaining 1))
        (not (nskk-prolog-holds-p `(sokuon-blocker ,c0)))
-       (not (nskk-converter-lookup (substring remaining 0 2)))))
+       (not (nskk--converter-lookup-raw (substring remaining 0 2)))))
 
 (defun/3k nskk--convert-step-n (remaining)
     (on-kana on-partial on-fail)
@@ -368,7 +385,7 @@ Uses `nskk-converter-lookup' for each candidate prefix length (4 down to 1)."
       (funcall on-fail)
     (cl-loop for len from (min 4 (length romaji)) downto 1
              for prefix = (substring romaji 0 len)
-             for result = (nskk-converter-lookup prefix)
+             for result = (nskk--converter-lookup-raw prefix)
              when (stringp result)
              return (funcall on-match result (substring romaji len))
              when (eq result :incomplete)
@@ -396,19 +413,73 @@ The sync wrapper returns the list on success, nil on failure."
         (if result (succeed result) (fail)))
     (fail)))
 
+(defun nskk--converter-find-hash-entry (key)
+  "Return the physical equal hash entry for KEY, or nil if absent."
+  (catch 'found
+    (maphash
+     (lambda (actual-key value)
+       (when (equal actual-key key)
+         (throw 'found (list actual-key value))))
+     nskk--romaji-table)
+    nil))
+
+(defun nskk--converter-call-with-hash-journal (lookup-key operation)
+  "Call OPERATION and restore LOOKUP-KEY's exact entry on error or quit."
+  (let ((entry (nskk--converter-find-hash-entry lookup-key)))
+    (condition-case condition
+        (funcall operation)
+      ((error quit)
+       (let ((inhibit-quit t))
+         (remhash lookup-key nskk--romaji-table)
+         (when entry
+           (puthash (car entry) (cadr entry) nskk--romaji-table)))
+       (signal (car condition) (cdr condition))))))
+
+(defun nskk--converter-replace-hash-entry (lookup-key new-key value)
+  "Replace LOOKUP-KEY with physical NEW-KEY mapped to VALUE."
+  (remhash lookup-key nskk--romaji-table)
+  (puthash new-key value nskk--romaji-table))
+
+(defun nskk--converter-delete-hash-entry (lookup-key)
+  "Delete the hash entry equal to LOOKUP-KEY."
+  (remhash lookup-key nskk--romaji-table))
+
 (defun/done nskk-converter-add-rule (romaji kana)
-  "Add ROMAJI -> KANA mapping to hash table and Prolog database.
-Retracts any existing fact for ROMAJI first so overrides replace
-the old value in the trie rather than appending a duplicate."
-  (puthash romaji kana nskk--romaji-table)
-  (when (stringp kana)
-    (nskk-prolog-retract (list 'romaji-to-kana romaji '\?_))
-    (nskk-prolog-assert (list (list 'romaji-to-kana romaji kana)))))
+  "Add a caller-detached ROMAJI -> KANA mapping atomically.
+String mappings replace the first matching Prolog clause in the same
+transaction as the hash publication.  Non-string KANA values retain identity
+and affect only the hash table."
+  (if (stringp kana)
+      (let* ((owned-rule (nskk-prolog-copy-term (cons romaji kana)))
+             (owned-romaji (car owned-rule))
+             (owned-kana (cdr owned-rule)))
+        (nskk--converter-call-with-hash-journal
+         owned-romaji
+         (lambda ()
+           (nskk--prolog-replace-clause-transaction
+            (list 'romaji-to-kana owned-romaji '\?_)
+            (list (list 'romaji-to-kana owned-romaji owned-kana))
+            (lambda ()
+              (nskk--converter-replace-hash-entry
+               owned-romaji owned-romaji owned-kana))))))
+    (let ((owned-romaji (nskk-prolog-copy-term romaji)))
+      (nskk--converter-call-with-hash-journal
+       owned-romaji
+       (lambda ()
+         (nskk--converter-replace-hash-entry
+          owned-romaji owned-romaji kana))))))
 
 (defun/done nskk-converter-remove-rule (romaji)
-  "Remove ROMAJI from hash table and Prolog database."
-  (remhash romaji nskk--romaji-table)
-  (nskk-prolog-retract (list 'romaji-to-kana romaji '\?_)))
+  "Remove ROMAJI atomically from the hash table and Prolog database."
+  (let ((owned-romaji (nskk-prolog-copy-term romaji)))
+    (nskk--converter-call-with-hash-journal
+     owned-romaji
+     (lambda ()
+       (nskk--prolog-replace-clause-transaction
+        (list 'romaji-to-kana owned-romaji '\?_)
+        nil
+        (lambda ()
+          (nskk--converter-delete-hash-entry owned-romaji)))))))
 
 (defun/k nskk-converter-get-rule (romaji)
   "Return the value mapped to ROMAJI in the conversion table.
@@ -425,22 +496,384 @@ INIT-FN is called with no arguments and should populate the romaji table
 via `nskk-converter-add-rule'.  Called for side effects."
   (setf (alist-get style nskk--style-registry) init-fn))
 
-(defun/k nskk-converter-load-style (style)
-  "Load romaji rules for STYLE.
-Clears existing Prolog facts and repopulates from the registered init function.
-Valid styles are defined in `nskk--style-registry'.
-On success, calls on-found with the STYLE symbol.
-On failure (unregistered STYLE), calls on-not-found with no arguments.
-The sync wrapper returns the style symbol on success, or nil for unknown style."
+(progn
+  (defvar nskk--converter-style-transaction-hash-tables nil
+    "Additional hash-table variables included in style transactions.")
+  (defvar nskk--converter-style-transaction-variables nil
+    "Additional replacement-only variables included in style transactions.
+Registered initializers must replace these values rather than mutate the
+objects reachable from their pre-transaction values."))
+(defun nskk--converter-empty-hash-table-copy (table)
+  "Return an empty hash table with the same parameters as TABLE."
+  (let ((copy (copy-hash-table table)))
+    (clrhash copy)
+    copy))
+(defun nskk--converter-copy-prolog-state ()
+  "Copy the complete Prolog state while preserving index consistency."
+  (let ((database
+         (nskk--converter-empty-hash-table-copy nskk--prolog-database))
+        (database-tails
+         (nskk--converter-empty-hash-table-copy nskk--prolog-database-tails))
+        (index-config (copy-hash-table nskk--prolog-index-config))
+        (hash-indices
+         (nskk--converter-empty-hash-table-copy nskk--prolog-hash-indices))
+        (trie-indices
+         (nskk--converter-empty-hash-table-copy nskk--prolog-trie-indices))
+        (index-bucket-tail-cache
+         (nskk--converter-empty-hash-table-copy
+          nskk--prolog-index-bucket-tail-cache)))
+    (maphash
+     (lambda (key clauses)
+       (puthash key (copy-tree clauses) database))
+     nskk--prolog-database)
+    (maphash
+     (lambda (key clauses)
+       (when clauses
+         (puthash key (last clauses) database-tails)))
+     database)
+    (let ((nskk--prolog-database database)
+          (nskk--prolog-database-tails database-tails)
+          (nskk--prolog-index-config index-config)
+          (nskk--prolog-hash-indices hash-indices)
+          (nskk--prolog-trie-indices trie-indices)
+          (nskk--prolog-index-bucket-tail-cache index-bucket-tail-cache))
+      (maphash
+       (lambda (key type)
+         (pcase type
+           (:hash (puthash key (make-hash-table :test (quote equal))
+                           hash-indices))
+           (:trie (puthash key (nskk-trie-create) trie-indices))
+           (:list nil)
+           (_ (error "Unsupported Prolog index type: %S" type)))
+         (dolist (clause (gethash key database))
+           (nskk--prolog-index-add key clause)))
+       index-config))
+    (list database database-tails index-config hash-indices trie-indices
+          index-bucket-tail-cache)))
+(defun nskk--converter-stage-style-state (init-fn)
+  "Run INIT-FN against isolated converter state and return that state."
+  (let*
+      ((store-values
+        (list
+         (nskk--converter-empty-hash-table-copy nskk--romaji-table)
+         nskk--prolog-database
+         nskk--prolog-database-tails
+         nskk--prolog-index-config
+         nskk--prolog-hash-indices
+         nskk--prolog-trie-indices
+         nskk--prolog-index-bucket-tail-cache))
+       (root-symbols
+        '(nskk--romaji-table
+          nskk--prolog-database
+          nskk--prolog-database-tails
+          nskk--prolog-index-config
+          nskk--prolog-hash-indices
+          nskk--prolog-trie-indices
+          nskk--prolog-index-bucket-tail-cache))
+       (extension-registry
+        (delete-dups
+         (copy-sequence nskk--converter-style-transaction-hash-tables)))
+       (_validated-extensions
+        (dolist (symbol extension-registry)
+          (unless (symbolp symbol)
+            (error "Invalid style transaction hash-table variable: %S" symbol))))
+       (extension-symbols
+        (cl-remove-if-not #'boundp extension-registry))
+       (extension-values
+        (mapcar
+         (lambda (symbol)
+           (let ((value (symbol-value symbol)))
+             (unless (hash-table-p value)
+               (error "Style transaction variable is not a hash table: %S"
+                      symbol))
+             value))
+         extension-symbols))
+       (transaction-symbols
+        (delete-dups
+         (copy-sequence nskk--converter-style-transaction-variables)))
+       (_validated-transaction-symbols
+        (dolist (symbol transaction-symbols)
+          (unless (and (symbolp symbol)
+                       (not (memq symbol root-symbols))
+                       (not (memq symbol extension-registry))
+                       (not (eq symbol 'nskk-mode-map)))
+            (error "Invalid replacement-only style transaction variable: %S"
+                   symbol))))
+       (transaction-boundness (mapcar #'boundp transaction-symbols))
+       (unbound-variable-sentinel
+        (make-symbol "style-transaction-variable-unbound"))
+       (transaction-values
+        (cl-mapcar
+         (lambda (symbol bound-p)
+           (if bound-p
+               (symbol-value symbol)
+             unbound-variable-sentinel))
+         transaction-symbols
+         transaction-boundness))
+       (mode-map-bound-p (boundp 'nskk-mode-map))
+       (mode-map-value
+        (when mode-map-bound-p
+          (let ((value (symbol-value 'nskk-mode-map)))
+            (unless (or (null value) (keymapp value))
+              (error "Nskk-mode-map is not a keymap: %S" value))
+            value)))
+       (copied-state
+        (nskk-prolog-copy-term
+         (list store-values extension-values
+               (when mode-map-bound-p mode-map-value))))
+       (copied-store-values (nth 0 copied-state))
+       (copied-extension-values (nth 1 copied-state))
+       (copied-mode-map
+        (when mode-map-bound-p
+          (nth 2 copied-state)))
+       (unbound-mode-map-sentinel (make-symbol "nskk-mode-map-unbound"))
+       (symbols
+        (append root-symbols
+                extension-symbols
+                transaction-symbols
+                (list 'nskk-mode-map)))
+       (values
+        (append copied-store-values
+                copied-extension-values
+                transaction-values
+                (list
+                 (if mode-map-bound-p
+                     copied-mode-map
+                   unbound-mode-map-sentinel)))))
+    (cl-progv symbols values
+      (cl-mapc
+       (lambda (symbol bound-p)
+         (unless bound-p
+           (makunbound symbol)))
+       transaction-symbols
+       transaction-boundness)
+      (unless mode-map-bound-p
+        (makunbound 'nskk-mode-map))
+      (nskk-prolog-retract-all 'romaji-to-kana 2)
+      (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
+      (funcall init-fn)
+      (nskk--converter-populate-incomplete-markers)
+      (let ((staged-mode-map-bound-p (boundp 'nskk-mode-map)))
+        (when staged-mode-map-bound-p
+          (let ((value (symbol-value 'nskk-mode-map)))
+            (unless (or (null value) (keymapp value))
+              (error "Nskk-mode-map is not a keymap: %S" value))))
+        (list
+         :romaji-table nskk--romaji-table
+         :prolog-database nskk--prolog-database
+         :prolog-database-tails nskk--prolog-database-tails
+         :prolog-index-config nskk--prolog-index-config
+         :prolog-hash-indices nskk--prolog-hash-indices
+         :prolog-trie-indices nskk--prolog-trie-indices
+         :prolog-index-bucket-tail-cache
+         nskk--prolog-index-bucket-tail-cache
+         :extension-hash-tables
+         (mapcar
+          (lambda (symbol)
+            (cons symbol (symbol-value symbol)))
+          extension-symbols)
+         :transaction-variables
+         (mapcar
+          (lambda (symbol)
+            (list symbol
+                  (boundp symbol)
+                  (and (boundp symbol) (symbol-value symbol))))
+          transaction-symbols)
+         :mode-map-bound-p staged-mode-map-bound-p
+         :mode-map
+         (when staged-mode-map-bound-p
+           (symbol-value 'nskk-mode-map)))))))
+(defun nskk--converter-replace-keymap-contents (target source)
+  "Replace TARGET contents with SOURCE while retaining TARGET identity."
+  (unless (and (consp target) (keymapp target) (consp source) (keymapp source))
+    (error "Cannot publish invalid keymap state"))
+  (setcdr target (cdr source)))
+(defun nskk--converter-publish-style-state (state)
+  "Atomically publish a detached copy of staged converter STATE."
+  (let* ((root-symbols
+          (list
+           (quote nskk--romaji-table)
+           (quote nskk--prolog-database)
+           (quote nskk--prolog-database-tails)
+           (quote nskk--prolog-index-config)
+           (quote nskk--prolog-hash-indices)
+           (quote nskk--prolog-trie-indices)
+           (quote nskk--prolog-index-bucket-tail-cache)))
+         (staged-tables
+          (list
+           (plist-get state :romaji-table)
+           (plist-get state :prolog-database)
+           (plist-get state :prolog-database-tails)
+           (plist-get state :prolog-index-config)
+           (plist-get state :prolog-hash-indices)
+           (plist-get state :prolog-trie-indices)
+           (plist-get state :prolog-index-bucket-tail-cache)))
+         (staged-extensions (plist-get state :extension-hash-tables))
+         (staged-variables (plist-get state :transaction-variables))
+         (mode-map-bound-p (plist-get state :mode-map-bound-p))
+         (staged-mode-map (plist-get state :mode-map))
+         (mode-map-symbol (quote nskk-mode-map)))
+    (unless (cl-every (function hash-table-p) staged-tables)
+      (error "Cannot publish invalid converter table state"))
+    (dolist (entry staged-extensions)
+      (unless (and (consp entry)
+                   (symbolp (car entry))
+                   (hash-table-p (cdr entry)))
+        (error "Cannot publish invalid extension state: %S" entry)))
+    (let ((seen-symbols nil))
+      (dolist (entry staged-variables)
+        (unless (and (proper-list-p entry)
+                     (= (length entry) 3)
+                     (symbolp (car entry))
+                     (memq (nth 1 entry) (quote (nil t)))
+                     (not (memq (car entry) seen-symbols))
+                     (not (memq (car entry) root-symbols))
+                     (not (assq (car entry) staged-extensions))
+                     (not (eq (car entry) mode-map-symbol)))
+          (error "Cannot publish invalid transaction variable state: %S"
+                 entry))
+        (push (car entry) seen-symbols)))
+    (when (and mode-map-bound-p
+               (not (or (null staged-mode-map)
+                        (keymapp staged-mode-map))))
+      (error "Cannot publish invalid mode map state"))
+    (let* ((prepared-state
+            (nskk-prolog-copy-term
+             (list staged-tables staged-extensions
+                   (when mode-map-bound-p staged-mode-map))))
+           (tables (nth 0 prepared-state))
+           (extensions (nth 1 prepared-state))
+           (variables (mapcar (function copy-sequence) staged-variables))
+           (new-mode-map
+            (when mode-map-bound-p
+              (nth 2 prepared-state))))
+      (unless (cl-every (function hash-table-p) tables)
+        (error "Cannot publish invalid copied converter table state"))
+      (dolist (entry extensions)
+        (unless (and (consp entry)
+                     (symbolp (car entry))
+                     (hash-table-p (cdr entry)))
+          (error "Cannot publish invalid copied extension state: %S" entry)))
+      (when (and mode-map-bound-p
+                 (not (or (null new-mode-map)
+                          (keymapp new-mode-map))))
+        (error "Cannot publish invalid copied mode map state"))
+      (let* ((old-tables (mapcar (function symbol-value) root-symbols))
+             (old-extensions
+              (mapcar
+               (lambda (entry)
+                 (cons (car entry) (symbol-value (car entry))))
+               extensions))
+             (old-variables
+              (mapcar
+               (lambda (entry)
+                 (let ((symbol (car entry)))
+                   (list symbol
+                         (boundp symbol)
+                         (and (boundp symbol) (symbol-value symbol)))))
+               variables))
+             (old-mode-map-bound-p (boundp mode-map-symbol))
+             (old-mode-map
+              (when old-mode-map-bound-p
+                (symbol-value mode-map-symbol))))
+        (when (and old-mode-map-bound-p
+                   (not (or (null old-mode-map)
+                            (keymapp old-mode-map))))
+          (error "Cannot replace invalid public mode map state"))
+        (let ((old-mode-map-car
+               (when (consp old-mode-map)
+                 (car old-mode-map)))
+              (old-mode-map-cdr
+               (when (consp old-mode-map)
+                 (cdr old-mode-map)))
+              (mode-map-contents-replaced-p nil))
+          (cl-labels
+              ((restore-with-retry
+                (operation)
+                (let ((attempt 0)
+                      (restored-p nil))
+                  (while (and (< attempt 2) (not restored-p))
+                    (setq attempt (1+ attempt))
+                    (condition-case nil
+                        (progn
+                          (funcall operation)
+                          (setq restored-p t))
+                      ((error quit) nil)))
+                  restored-p))
+               (publish-variable
+                (entry)
+                (if (nth 1 entry)
+                    (set (car entry) (nth 2 entry))
+                  (makunbound (car entry)))))
+            (condition-case condition
+                (let ((inhibit-quit t))
+                  (cl-mapc
+                   (lambda (symbol value)
+                     (set symbol value))
+                   root-symbols
+                   tables)
+                  (dolist (entry extensions)
+                    (set (car entry) (cdr entry)))
+                  (dolist (entry variables)
+                    (publish-variable entry))
+                  (cond
+                   ((not mode-map-bound-p)
+                    (makunbound mode-map-symbol))
+                   ((and (consp old-mode-map)
+                         (consp new-mode-map))
+                    (setq mode-map-contents-replaced-p t)
+                    (nskk--converter-replace-keymap-contents
+                     old-mode-map
+                     new-mode-map))
+                   (t
+                    (set mode-map-symbol new-mode-map))))
+              ((error quit)
+               (let ((inhibit-quit t))
+                 (cl-mapc
+                  (lambda (symbol value)
+                    (restore-with-retry
+                     (lambda ()
+                       (set symbol value))))
+                  root-symbols
+                  old-tables)
+                 (dolist (entry old-extensions)
+                   (restore-with-retry
+                    (lambda ()
+                      (set (car entry) (cdr entry)))))
+                 (dolist (entry old-variables)
+                   (restore-with-retry
+                    (lambda ()
+                      (publish-variable entry))))
+                 (when mode-map-contents-replaced-p
+                   (restore-with-retry
+                    (lambda ()
+                      (setcar old-mode-map old-mode-map-car)))
+                   (restore-with-retry
+                    (lambda ()
+                      (setcdr old-mode-map old-mode-map-cdr))))
+                 (restore-with-retry
+                  (if old-mode-map-bound-p
+                      (lambda ()
+                        (set mode-map-symbol old-mode-map))
+                    (lambda ()
+                      (makunbound mode-map-symbol)))))
+               (signal (car condition) (cdr condition))))))))))
+(defun/k
+  nskk-converter-load-style
+  (style)
+  "Load romaji conversion STYLE into the converter atomically.
+
+STYLE is a symbol registered via `nskk-converter-register-style'.  The
+initializer and incomplete-marker finalization run against isolated converter,
+Prolog, extension, and keymap state.  Nothing is published if either step
+signals an error or quit.  On success the staged state is published while
+retaining the identity of `nskk-mode-map'.
+
+Returns succeed(STYLE) on success, or fail() if STYLE is not registered."
   (let ((init-fn (alist-get style nskk--style-registry)))
-    (if init-fn
-        (progn
-          (clrhash nskk--romaji-table)
-          (nskk-prolog-retract-all 'romaji-to-kana 2)
-          (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
-          (funcall init-fn)
-          (nskk--converter-populate-incomplete-markers)
-          (succeed style))
+    (if init-fn (let ((state (nskk--converter-stage-style-state init-fn)))
+        (nskk--converter-publish-style-state state)
+        (succeed style))
       (fail))))
 
 (defmacro nskk-converter-define-style (name docstring &rest rules)

@@ -189,6 +189,110 @@ Initialization order:
            (remove-hook 'nskk-henkan-hide-candidates-functions
                         #'nskk-candidate-hide-list))))))
 
+(progn
+  (defun nskk-e2e--snapshot-hash-table-variable (symbol)
+  "Snapshot SYMBOL's exact binding and hash-table contents."
+  (unless (symbolp symbol)
+    (error "Invalid style hash-table variable: %S" symbol))
+  (let ((bound-p (boundp symbol)))
+    (when (and bound-p (not (hash-table-p (symbol-value symbol))))
+      (error "Style variable is not a hash table: %S" symbol))
+    (list symbol
+          bound-p
+          (and bound-p (symbol-value symbol))
+          (and bound-p
+               (nskk-prolog-copy-term (symbol-value symbol))))))
+
+  (defun nskk-e2e--restore-hash-table-variable (snapshot)
+    "Restore a hash-table variable from SNAPSHOT."
+    (pcase-let ((`(,symbol ,bound-p ,value ,contents) snapshot))
+      (when bound-p
+        (clrhash value)
+        (maphash (lambda (key item)
+                   (puthash key item value))
+                 contents))
+      (if bound-p
+          (set symbol value)
+        (makunbound symbol))))
+
+  (defun nskk-e2e--snapshot-style-variable (symbol)
+    "Snapshot replacement-only style variable SYMBOL."
+    (unless (symbolp symbol)
+      (error "Invalid style transaction variable: %S" symbol))
+    (let ((bound-p (boundp symbol)))
+      (list symbol bound-p (and bound-p (symbol-value symbol)))))
+
+  (defun nskk-e2e--restore-style-variable (snapshot)
+    "Restore a replacement-only style variable from SNAPSHOT."
+    (pcase-let ((`(,symbol ,bound-p ,value) snapshot))
+      (if bound-p
+          (set symbol value)
+        (makunbound symbol))))
+
+  (defun nskk-e2e--snapshot-mode-map ()
+    "Snapshot `nskk-mode-map' binding, identity, and contents."
+    (let ((bound-p (boundp 'nskk-mode-map)))
+      (when (and bound-p
+                 (symbol-value 'nskk-mode-map)
+                 (not (and (consp (symbol-value 'nskk-mode-map))
+                           (keymapp (symbol-value 'nskk-mode-map)))))
+        (error "Invalid nskk-mode-map: %S" (symbol-value 'nskk-mode-map)))
+      (let ((value (and bound-p (symbol-value 'nskk-mode-map))))
+        (list bound-p
+              value
+              (and (consp value) (car value))
+              (and (consp value) (cdr value))))))
+
+  (defun nskk-e2e--restore-mode-map (snapshot)
+    "Restore `nskk-mode-map' from SNAPSHOT."
+    (pcase-let ((`(,bound-p ,value ,head ,tail) snapshot))
+      (when (consp value)
+        (setcar value head)
+        (setcdr value tail))
+      (if bound-p
+          (set 'nskk-mode-map value)
+        (makunbound 'nskk-mode-map))))
+
+  (defmacro nskk-e2e-with-azik-buffer (initial-mode dict-entries &rest body)
+    "Run BODY in an isolated AZIK-enabled E2E buffer.
+INITIAL-MODE and DICT-ENTRIES are passed to `nskk-e2e-with-buffer'.
+The caller's Prolog database and registered non-Prolog transaction state are
+restored exactly after normal return, error, or quit."
+    (declare (indent 2) (debug t))
+    `(nskk-prolog-test-with-isolated-db
+       (let* ((nskk-converter-romaji-style 'azik)
+              (hash-table-symbols
+               (delete-dups
+                (append
+                 '(nskk--romaji-table
+                   nskk--prolog-database
+                   nskk--prolog-database-tails
+                   nskk--prolog-index-config
+                   nskk--prolog-hash-indices
+                   nskk--prolog-trie-indices
+                   nskk--prolog-index-bucket-tail-cache)
+                 (copy-sequence
+                  nskk--converter-style-transaction-hash-tables))))
+              (hash-table-snapshots
+               (mapcar #'nskk-e2e--snapshot-hash-table-variable
+                       hash-table-symbols))
+              (style-variable-snapshots
+               (mapcar #'nskk-e2e--snapshot-style-variable
+                       (delete-dups
+                        (copy-sequence
+                         nskk--converter-style-transaction-variables))))
+              (mode-map-snapshot (nskk-e2e--snapshot-mode-map)))
+         (unwind-protect
+             (progn
+               (nskk-converter-load-style 'azik)
+               (nskk-e2e-with-buffer ,initial-mode ,dict-entries
+                 ,@body))
+           (mapc #'nskk-e2e--restore-hash-table-variable
+                 hash-table-snapshots)
+           (mapc #'nskk-e2e--restore-style-variable
+                 style-variable-snapshots)
+           (nskk-e2e--restore-mode-map mode-map-snapshot))))))
+
 ;;;;
 ;;;; Input Helper
 ;;;;

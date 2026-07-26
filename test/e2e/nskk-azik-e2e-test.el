@@ -73,53 +73,6 @@
 ;;;; AZIK Buffer Helper Macro
 ;;;;
 
-(defmacro nskk-e2e-with-azik-buffer (initial-mode dict-entries &rest body)
-  "Like `nskk-e2e-with-buffer' but with AZIK romaji style activated.
-INITIAL-MODE is the starting mode symbol (e.g., \\='hiragana) or nil.
-DICT-ENTRIES is an alist of (reading . candidates-list) or nil for defaults.
-BODY is executed inside the AZIK-enabled buffer environment.
-
-Activation sequence:
-  1. Set `nskk-converter-romaji-style' to \\='azik via let-binding.
-  2. Call `nskk-converter-load-style' \\='azik to populate the romaji hash.
-  3. Run `nskk-e2e-with-buffer' with INITIAL-MODE and DICT-ENTRIES.
-  4. Restore the standard romaji table after BODY via unwind-protect.
-
-This ensures:
-  - AZIK rules (;->っ, :->ー, hatsuon, double-vowel, youon, etc.) are active.
-  - `nskk-converter-romaji-style' is \\='azik so Prolog-dispatched functions
-    (nskk-handle-q-key, nskk-handle-semicolon-key) also detect AZIK style.
-  - Standard romaji table is restored after the test, preventing cross-test
-    contamination."
-  (declare (indent 2) (debug t))
-  `(let* ((nskk-converter-romaji-style 'azik)
-          ;; Save @/[ binding before AZIK init modifies nskk-mode-map.
-          ;; The toggle key is determined by nskk-azik-keyboard-type (default "@").
-          (nskk--azik-e2e-toggle-key
-           (if (and (boundp 'nskk-azik-keyboard-type)
-                    (eq nskk-azik-keyboard-type 'us101)) "[" "@"))
-          (nskk--azik-e2e-saved-binding
-           (when (boundp 'nskk-mode-map)
-             (lookup-key nskk-mode-map nskk--azik-e2e-toggle-key))))
-     (nskk-converter-load-style 'azik)
-     (unwind-protect
-         (nskk-e2e-with-buffer ,initial-mode ,dict-entries
-           ,@body)
-       (nskk-converter-load-style 'standard)
-       ;; Retract azik-rule/2 facts explicitly.  nskk-converter-load-style only
-       ;; retracts romaji-to-kana/2; azik-rule/2 facts persist if not cleared.
-       ;; Without this, the global Prolog DB retains AZIK facts after teardown,
-       ;; polluting subsequent unit tests that expect an empty azik-rule/2 table.
-       (nskk-prolog-retract-all 'azik-rule 2)
-       ;; Restore the AZIK toggle key binding to prevent cross-test contamination.
-       ;; Without this, @ remains bound to nskk-toggle-japanese-mode globally,
-       ;; causing subsequent non-AZIK tests to drop @ characters.
-       (when (boundp 'nskk-mode-map)
-         (if nskk--azik-e2e-saved-binding
-             (keymap-set nskk-mode-map nskk--azik-e2e-toggle-key
-                         nskk--azik-e2e-saved-binding)
-           (keymap-unset nskk-mode-map nskk--azik-e2e-toggle-key t))))))
-
 ;;;;
 ;;;; Section 1: AZIK Semicolon as っ
 ;;;;
@@ -1800,7 +1753,16 @@ This ensures:
       (nskk-e2e-with-azik-buffer 'hiragana nil
         (nskk-e2e-type "w")
         (nskk-e2e-type "v")
-        (nskk-e2e-assert-buffer "わかす")))))
+        (nskk-e2e-assert-buffer "わかす"))))
+
+  (nskk-it "qz custom rule initializes through the canonical AZIK bridge"
+    (let ((nskk-azik-conversion-table '(("qz" "くす"))))
+      (nskk-e2e-with-azik-buffer 'hiragana nil
+        (should (equal (nskk-converter-lookup "qz") "くす"))
+        (should (equal (nskk-converter-get-rule "qz") "くす"))
+        (should (equal (nskk-prolog-query-value
+                        '(azik-rule "qz" \?kana) '\?kana)
+                       "くす"))))))
 
 (provide 'nskk-azik-e2e-test)
 

@@ -551,147 +551,60 @@
 ;;;; nskk-mode disable cleans up conversion state
 ;;;;
 
-(nskk-describe "nskk-mode disable cleans up conversion state"
-  (nskk-it "idle state: buffer unchanged after nskk-mode disable"
-    ;; Starting in hiragana with no conversion in progress.
-    ;; "a" directly commits あ with no preedit; C-j from idle inserts a newline.
-    ;; Together they leave buffer as "あ\n" in a clean idle state.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "a")
-      (nskk-e2e-type "C-j")
-      (nskk-e2e-assert-henkan-phase nil)
-      (nskk-e2e-assert-not-converting)
-      (let ((content-before (buffer-string)))
-        (nskk-mode 0)
-        ;; Buffer content must be unchanged; nskk-mode and state are gone.
-        (should (null nskk-mode))
-        (should (null nskk-current-state))
-        (should (equal (buffer-string) content-before)))))
-
-  (nskk-it "preedit (▽) phase: marker and text removed after nskk-mode disable"
-    ;; Typing an uppercase letter enters preedit (▽) phase.
-    ;; Disabling nskk-mode while in ▽ state must call nskk-cancel-preedit,
-    ;; which deletes the ▽ marker and all accumulated preedit text, leaving
-    ;; the buffer empty.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "Ka")
-      (nskk-e2e-assert-henkan-phase 'on
-        "After 'Ka': should be in ▽ preedit before nskk-mode disable")
-      (nskk-mode 0)
-      ;; nskk-cancel-preedit deletes from conversion-start to point,
-      ;; removing the ▽ marker and the preedit kana text entirely.
-      (should (null nskk-mode))
-      (should (null nskk-current-state))
-      (should (equal (buffer-string) ""))))
-
-  (nskk-it "converting (▼) phase: marker removed, kana reading remains after nskk-mode disable"
-    ;; "Kanji" + SPC → ▼ phase with candidate "漢字" (from default dict).
-    ;; Disabling nskk-mode calls nskk-cancel-conversion-to-reading, which
-    ;; removes the ▼ marker and overlay, leaving the kana reading "かんじ"
-    ;; in the buffer.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "Kanji")
-      (nskk-e2e-assert-henkan-phase 'on)
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-assert-henkan-phase 'active
-        "After SPC: should be in ▼ converting phase before nskk-mode disable")
-      (nskk-e2e-assert-converting)
-      (nskk-mode 0)
-      ;; nskk-cancel-conversion-to-reading removed the ▼ overlay and marker;
-      ;; the kana reading text is left behind in the buffer.
-      (should (null nskk-mode))
-      (should (null nskk-current-state))
-      (should (string-match-p "かんじ" (buffer-string)))))
-
-  (nskk-it "pending romaji: cleared after nskk-mode disable"
-    ;; If the user types an incomplete romaji consonant (e.g. "k") then
-    ;; disables nskk-mode, nskk--clear-conversion-context (called unconditionally
-    ;; in nskk--disable) must reset nskk--romaji-buffer and its display overlay.
-    ;; "k" only lives in nskk--romaji-buffer and never appears in the buffer.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-e2e-type "k")
-      ;; Incomplete romaji: henkan-phase stays nil (no preedit triggered).
-      (nskk-e2e-assert-henkan-phase nil)
-      (nskk-mode 0)
-      (should (null nskk-mode))
-      (should (null nskk-current-state))
-      ;; No characters from the incomplete keystroke appear in the buffer.
-      (should (equal (buffer-string) ""))))
-
-  (nskk-it "disable resets nskk--saved-cursor-color and nskk--last-cursor-color"
-    ;; After disabling nskk-mode, both cursor-color tracking variables must be
-    ;; nil so that re-enabling starts from a clean slate.
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-mode 0)
-      (should (null nskk-mode))
-      (should (null nskk--saved-cursor-color))
-      (should (null nskk--last-cursor-color))))
-
-  (nskk-it "re-enable after disable starts with clean cursor color state"
-    ;; Disable then re-enable nskk-mode. On re-enable, nskk--cursor-color-save
-    ;; must save a fresh color (idempotency guard starts from nil after restore).
-    (nskk-e2e-with-buffer 'hiragana nil
-      (nskk-mode 0)
-      (should (null nskk--saved-cursor-color))
-      (nskk-mode 1)
-      ;; After re-enable, nskk--saved-cursor-color must be non-nil again.
-      (should nskk-mode)
-      (should (not (null nskk--saved-cursor-color)))))
-
-  (nskk-it "disable is safe when nskk-use-color-cursor is nil"
-    ;; When nskk-use-color-cursor is nil, nskk--cursor-color-save skips saving
-    ;; (nskk--saved-cursor-color stays nil through enable). On disable,
-    ;; nskk--cursor-color-restore must still reset both vars without error.
-    (let ((nskk-use-color-cursor nil))
-      (nskk-e2e-with-buffer 'hiragana nil
-        (nskk-mode 0)
-        (should (null nskk-mode))
-        (should (null nskk--saved-cursor-color))
-        (should (null nskk--last-cursor-color)))))
-
-  (nskk-it "two nskk buffers: disabling one keeps the saved color, disabling the last restores it"
-    ;; Regression for the frame-global cursor bug.  Cursor color is a frame
-    ;; parameter shared by all buffers, so nskk--saved-cursor-color and
-    ;; nskk--last-cursor-color are frame-global (plain defvar).  With nskk
-    ;; enabled in two buffers, disabling the FIRST must NOT restore the frame
-    ;; color (the second buffer still relies on it); only disabling the LAST
-    ;; nskk buffer restores and clears the bookkeeping.
-    (nskk-prolog-test-with-isolated-db
-      ;; Assert (dict-initialized) BEFORE enabling nskk-mode so nskk--enable
-      ;; skips file-backed dictionary initialization.
-      (nskk-prolog-assert '((dict-initialized)))
-      (let ((buf-a (generate-new-buffer " *nskk-cursor-a*"))
-            (buf-b (generate-new-buffer " *nskk-cursor-b*"))
-            (nskk-use-color-cursor t)
-            (nskk--saved-cursor-color nil)
-            (nskk--last-cursor-color nil))
-        (unwind-protect
-            (cl-letf (((symbol-function 'nskk-candidate-show-list) #'ignore)
-                      ((symbol-function 'nskk-candidate-hide-list) #'ignore))
-              ;; Enable nskk in the first buffer: saves the pre-nskk color once.
-              (with-current-buffer buf-a (nskk-mode 1))
-              (let ((saved-original nskk--saved-cursor-color))
-                ;; In batch mode there is no real frame color, so the save
-                ;; stores the sentinel t; the point is that it is now non-nil.
-                (should saved-original)
-                ;; Enable nskk in the second buffer: save is idempotent, so the
-                ;; original captured by buf-a is left untouched.
-                (with-current-buffer buf-b (nskk-mode 1))
-                (should (eq nskk--saved-cursor-color saved-original))
-                ;; Disable the FIRST buffer while the second is still active:
-                ;; the guard skips restore, so the saved color survives.
-                (with-current-buffer buf-a (nskk-mode 0))
-                (should (null (buffer-local-value 'nskk-mode buf-a)))
-                (should (buffer-local-value 'nskk-mode buf-b))
-                (should (eq nskk--saved-cursor-color saved-original))
-                ;; Disable the LAST buffer: now restore runs and clears both
-                ;; frame-global bookkeeping slots.
-                (with-current-buffer buf-b (nskk-mode 0))
-                (should (null (buffer-local-value 'nskk-mode buf-b)))
-                (should (null nskk--saved-cursor-color))
-                (should (null nskk--last-cursor-color))))
-          (when (buffer-live-p buf-a) (kill-buffer buf-a))
-          (when (buffer-live-p buf-b) (kill-buffer buf-b)))))))
+(nskk-it "two displayed NSKK buffers share one frame snapshot until the last disables"
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-assert '((dict-initialized)))
+    (let ((buf-a (generate-new-buffer " *nskk-cursor-a*"))
+          (buf-b (generate-new-buffer " *nskk-cursor-b*"))
+          (frame (selected-frame))
+          (nskk-use-color-cursor t))
+      (set-frame-parameter frame nskk--saved-cursor-color-parameter nil)
+      (set-frame-parameter frame nskk--last-cursor-color-parameter nil)
+      (unwind-protect
+          (cl-letf (((symbol-function 'nskk-candidate-show-list) #'ignore)
+                    ((symbol-function 'nskk-candidate-hide-list) #'ignore)
+                    ((symbol-function 'get-buffer-window)
+                     (lambda (buffer target-frame)
+                       (and (eq buffer buf-b)
+                            (eq target-frame frame)
+                            'fake-window))))
+            (with-current-buffer buf-a
+              (nskk-mode 1))
+            (let ((saved-original
+                   (frame-parameter
+                    frame nskk--saved-cursor-color-parameter)))
+              (should saved-original)
+              (with-current-buffer buf-b
+                (nskk-mode 1))
+              (should
+               (eq
+                (frame-parameter
+                 frame nskk--saved-cursor-color-parameter)
+                saved-original))
+              (with-current-buffer buf-a
+                (nskk-mode 0))
+              (should-not (buffer-local-value 'nskk-mode buf-a))
+              (should (buffer-local-value 'nskk-mode buf-b))
+              (should
+               (eq
+                (frame-parameter
+                 frame nskk--saved-cursor-color-parameter)
+                saved-original))
+              (with-current-buffer buf-b
+                (nskk-mode 0))
+              (should-not (buffer-local-value 'nskk-mode buf-b))
+              (should-not
+               (frame-parameter
+                frame nskk--saved-cursor-color-parameter))
+              (should-not
+               (frame-parameter
+                frame nskk--last-cursor-color-parameter))))
+        (when (buffer-live-p buf-a)
+          (kill-buffer buf-a))
+        (when (buffer-live-p buf-b)
+          (kill-buffer buf-b))
+        (set-frame-parameter frame nskk--saved-cursor-color-parameter nil)
+        (set-frame-parameter frame nskk--last-cursor-color-parameter nil)))))
 
 
 (provide 'nskk-mode-transition-e2e-test)

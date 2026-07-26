@@ -573,6 +573,145 @@
        (lambda () (setq not-found-called t)))
       (should not-found-called))))
 
-(provide 'nskk-candidate-window-test)
+(nskk-describe "untrusted candidate display properties"
+    (nskk-it "sanitizes candidate-list copies before applying trusted faces"
+      (let* ((source (propertize "候補"
+                                'display "spoofed"
+                                'keymap (make-sparse-keymap)
+                                'local-map (make-sparse-keymap)
+                                'mouse-face 'highlight
+                                'help-echo "untrusted"
+                                'face 'error
+                                'nskk-no-learn t))
+             (source-copy (copy-sequence source))
+             (rendered (nskk--candidate-build-string (list source) '(?a) 0)))
+        (should (equal (substring-no-properties rendered) "\na:候補"))
+        (dolist (property '(display keymap local-map mouse-face help-echo))
+          (should-not
+           (text-property-not-all 0 (length rendered) property nil rendered)))
+        (should-not (get-text-property 0 'face rendered))
+        (should (eq (get-text-property 1 'face rendered)
+                    'nskk-candidate-key-face))
+        (should (eq (get-text-property 2 'face rendered)
+                    'nskk-candidate-key-face))
+        (let ((index 3))
+          (while (< index (length rendered))
+            (should (eq (get-text-property index 'face rendered)
+                        'nskk-candidate-face))
+            (setq index (1+ index))))
+        (should (equal source source-copy))
+        (should (eq (get-text-property 0 'face source) 'error))
+        (should (eq (get-text-property 0 'nskk-no-learn source) t))))
+    (nskk-it "removes every attack property from tooltip copies"
+      (let* ((first (propertize "候補"
+                               'display "spoofed first"
+                               'keymap (make-sparse-keymap)
+                               'local-map (make-sparse-keymap)
+                               'mouse-face 'highlight
+                               'help-echo "first help"
+                               'face 'error
+                               'nskk-no-learn t))
+             (second (propertize "次"
+                                'display "spoofed second"
+                                'keymap (make-sparse-keymap)
+                                'local-map (make-sparse-keymap)
+                                'mouse-face 'highlight
+                                'help-echo "second help"
+                                'face 'error
+                                'nskk-no-learn t))
+             (first-copy (copy-sequence first))
+             (second-copy (copy-sequence second))
+             (rendered
+              (nskk--candidate-build-tooltip-string (list first second))))
+        (should (equal rendered "候補\n次"))
+        (dolist (property '(display keymap local-map mouse-face help-echo face))
+          (should-not
+           (text-property-not-all 0 (length rendered) property nil rendered)))
+        (should (equal first first-copy))
+        (should (equal second second-copy))
+        (should (eq (get-text-property 0 'nskk-no-learn first) t))
+        (should (eq (get-text-property 0 'nskk-no-learn second) t)))))
+  (progn
+    (defun nskk-test--candidate-show-fault (stage condition)
+      "Assert transactional recovery for STAGE signaling CONDITION."
+      (with-temp-buffer
+        (let* ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+               (nskk-henkan-number-to-display-candidates 3)
+               (nskk--candidate-overlay
+                (unless (eq stage 'make)
+                  (make-overlay (point-min) (point-min))))
+               (nskk--candidate-list-active (not (eq stage 'make)))
+               (saved-overlay nskk--candidate-overlay)
+               (payload (list stage condition))
+               (original-make (symbol-function 'make-overlay))
+               (original-move (symbol-function 'move-overlay))
+               (original-put (symbol-function 'overlay-put))
+               caught)
+          (unwind-protect
+              (progn
+                (cl-letf
+                    (((symbol-function 'make-overlay)
+                      (lambda (&rest args)
+                        (if (eq stage 'make)
+                            (signal condition (list payload))
+                          (apply original-make args))))
+                     ((symbol-function 'move-overlay)
+                      (lambda (&rest args)
+                        (prog1 (apply original-move args)
+                          (when (eq stage 'move)
+                            (signal condition (list payload))))))
+                     ((symbol-function 'overlay-put)
+                      (lambda (&rest args)
+                        (prog1 (apply original-put args)
+                          (when (eq stage 'put)
+                            (signal condition (list payload)))))))
+                  (setq caught
+                        (condition-case signaled
+                            (progn
+                              (nskk-candidate-show-list '("one" "two") 0)
+                              nil)
+                          ((error quit) signaled))))
+                (should (eq (car caught) condition))
+                (should (eq (cadr caught) payload))
+                (should-not nskk--candidate-list-active)
+                (should (null nskk--candidate-overlay))
+                (when saved-overlay
+                  (should (null (overlay-buffer saved-overlay))))
+                (should (equal (nskk-candidate-show-list '("retry") 0)
+                               '("retry")))
+                (should nskk--candidate-list-active)
+                (should (overlayp nskk--candidate-overlay))
+                (nskk-candidate-hide-list)
+                (should-not nskk--candidate-list-active)
+                (should (null nskk--candidate-overlay)))
+            (when (overlayp nskk--candidate-overlay)
+              (delete-overlay nskk--candidate-overlay))))))
+
+    (nskk-describe "candidate list transaction faults"
+      (nskk-it "rolls back make, move, and put errors and quits, then retries"
+        (dolist (stage '(make move put))
+          (dolist (condition '(error quit))
+            (nskk-test--candidate-show-fault stage condition)))))
+
+    (nskk-describe "candidate hide repairs drift"
+      (nskk-it "deletes a live overlay even when active is nil"
+        (with-temp-buffer
+          (let* ((nskk--candidate-overlay
+                  (make-overlay (point-min) (point-min)))
+                 (saved-overlay nskk--candidate-overlay)
+                 (nskk--candidate-list-active nil))
+            (nskk-candidate-hide-list)
+            (should (null nskk--candidate-overlay))
+            (should-not nskk--candidate-list-active)
+            (should (null (overlay-buffer saved-overlay))))))
+
+      (nskk-it "clears a stale non-overlay and active flag"
+        (let ((nskk--candidate-overlay 'stale)
+              (nskk--candidate-list-active t))
+          (nskk-candidate-hide-list)
+          (should (null nskk--candidate-overlay))
+          (should-not nskk--candidate-list-active))))
+
+    (provide 'nskk-candidate-window-test))
 
 ;;; nskk-candidate-window-test.el ends here

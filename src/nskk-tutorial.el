@@ -852,7 +852,10 @@ Each element is t (completed) or nil (pending).")
   "List of (BEG-MARKER . END-MARKER) pairs for result display areas.")
 
 (defvar-local nskk-tutorial--saved-prolog-db nil
-  "Saved Prolog database hash table for restoration on exit.")
+    "Saved Prolog database hash table for restoration on exit.")
+
+  (defvar-local nskk-tutorial--saved-prolog-tails nil
+    "Saved Prolog database tail table for restoration on exit.")
 
 (defvar-local nskk-tutorial--saved-prolog-idx nil
   "Saved Prolog index config for restoration on exit.")
@@ -861,7 +864,13 @@ Each element is t (completed) or nil (pending).")
   "Saved Prolog hash indices for restoration on exit.")
 
 (defvar-local nskk-tutorial--saved-prolog-trie nil
-  "Saved Prolog trie indices for restoration on exit.")
+    "Saved Prolog trie indices for restoration on exit.")
+
+  (defvar-local nskk-tutorial--saved-prolog-bucket-tail-cache nil
+    "Saved Prolog index bucket tail cache for restoration on exit.")
+
+  (defvar-local nskk-tutorial--saved-prolog-active-mutation-keys nil
+    "Saved Prolog active mutation keys for restoration on exit.")
 
 (defvar-local nskk-tutorial--saved-prolog-counter nil
   "Saved Prolog variable counter for restoration on exit.")
@@ -875,102 +884,329 @@ Each element is t (completed) or nil (pending).")
 (defvar-local nskk-tutorial--saved-init-flags nil
   "Alist of saved initialization flags for restoration on exit.")
 
+(defvaralias 'nskk-tutorial--owner 'nskk--activation-lock-owner
+  "Live buffer that owns the process-wide tutorial transaction.")
+
+(defvar-local nskk-tutorial--owns-transaction nil
+  "Non-nil when this buffer owns the tutorial transaction.")
+
+(defvar-local nskk-tutorial--saved-persistence-inhibited nil
+  "Value of `nskk--persistence-inhibited' before tutorial startup.")
+
+(defvar-local nskk-tutorial--saved-dict-save-inhibited nil
+  "Value of `nskk--dict-save-inhibited' before tutorial startup.")
+
+(defvar-local nskk-tutorial--dict-state-saved-p nil
+  "Non-nil while this buffer owns a saved dictionary state.")
+
+  (defvar-local nskk-tutorial--dict-rollback-diagnostic nil
+  "Details of the latest failed dictionary rollback, or nil.
+A non-nil value is a plist with :primary and :rollback conditions.")
+
 
 ;;;;
 ;;;; Prolog DB Isolation
 ;;;;
 
-(defun nskk-tutorial--copy-hash-table (ht)
-  "Deep-copy hash table HT for Prolog DB isolation.
-Lists are shallow-copied.  Trie structures and nested hash tables
-are recursively deep-copied."
-  (let ((new (make-hash-table :test (hash-table-test ht)
-                              :size (hash-table-size ht))))
-    (maphash (lambda (k v)
-               (puthash k (pcase v
-                            ((pred nskk-trie-p)
-                             (nskk-tutorial--copy-trie v))
-                            ((pred hash-table-p)
-                             (nskk-tutorial--copy-hash-table v))
-                            ((pred sequencep)
-                             (copy-sequence v))
-                            (_ v))
-                        new))
-             ht)
-    new))
+(defun nskk-tutorial--copy-object-graph (object memo)
+  "Copy mutable OBJECT iteratively, preserving graph identity through MEMO."
+  (let ((missing (make-symbol "missing"))
+        (pending (list object))
+        composites
+        char-tables
+        hash-tables)
+    (while pending
+      (let ((current (pop pending)))
+        (when (eq (gethash current memo missing) missing)
+          (cond
+           ((consp current)
+            (puthash current (cons nil nil) memo)
+            (push current composites)
+            (push (car current) pending)
+            (push (cdr current) pending))
+           ((hash-table-p current)
+            (puthash
+             current
+             (make-hash-table
+              :test (hash-table-test current)
+              :size (max 1 (hash-table-size current))
+              :rehash-size (hash-table-rehash-size current)
+              :rehash-threshold (hash-table-rehash-threshold current)
+              :weakness (hash-table-weakness current))
+             memo)
+            (let (entries)
+              (let ((gc-cons-threshold most-positive-fixnum))
+                (maphash
+                 (lambda (key value)
+                   (push (cons key value) entries))
+                 current))
+              (push (cons current entries) hash-tables)
+              (dolist (entry entries)
+                (push (car entry) pending)
+                (push (cdr entry) pending))))
+           ((bool-vector-p current)
+            (puthash current (copy-sequence current) memo))
+           ((stringp current)
+            (puthash current (substring-no-properties current) memo)
+            (push current composites)
+            (let ((position 0)
+                  (limit (length current)))
+              (while (< position limit)
+                (let ((properties (text-properties-at position current))
+                      (next (next-property-change position current limit)))
+                  (while properties
+                    (push (cadr properties) pending)
+                    (setq properties (cddr properties)))
+                  (setq position next)))))
+           ((char-table-p current)
+            (let* ((copy (copy-sequence current))
+                   (parent (char-table-parent current))
+                   (default (char-table-range current nil))
+                   (extra-count
+                    (let ((index 0))
+                      (condition-case nil
+                          (while t
+                            (char-table-extra-slot current index)
+                            (setq index (1+ index)))
+                        (args-out-of-range index))))
+                   (extras (make-vector extra-count nil))
+                   entries)
+              (set-char-table-parent copy nil)
+              (set-char-table-range copy nil missing)
+              (puthash current copy memo)
+              (map-char-table
+               (lambda (range value)
+                 (unless (eq value missing)
+                   (push (cons (if (consp range)
+                                   (cons (car range) (cdr range))
+                                 range)
+                               value)
+                         entries)))
+               copy)
+              (dotimes (index extra-count)
+                (let ((value (char-table-extra-slot current index)))
+                  (aset extras index value)
+                  (push value pending)))
+              (push (list current parent default extras entries) char-tables)
+              (push parent pending)
+              (push default pending)
+              (dolist (entry entries)
+                (push (cdr entry) pending))))
+           ((recordp current)
+            (puthash current (copy-sequence current) memo)
+            (push current composites)
+            (let ((index 1))
+              (while (< index (length current))
+                (push (aref current index) pending)
+                (setq index (1+ index)))))
+           ((vectorp current)
+            (puthash current (copy-sequence current) memo)
+            (push current composites)
+            (let ((index 0))
+              (while (< index (length current))
+                (push (aref current index) pending)
+                (setq index (1+ index)))))))))
+    (cl-flet ((copy-of
+               (value)
+               (let ((copy (gethash value memo missing)))
+                 (if (eq copy missing) value copy))))
+      (dolist (current composites)
+        (let ((copy (gethash current memo)))
+          (cond
+           ((consp current)
+            (setcar copy (copy-of (car current)))
+            (setcdr copy (copy-of (cdr current))))
+           ((stringp current)
+            (let ((position 0)
+                  (limit (length current)))
+              (while (< position limit)
+                (let ((properties (text-properties-at position current))
+                      (next (next-property-change position current limit))
+                      copied-properties)
+                  (while properties
+                    (push (car properties) copied-properties)
+                    (push (copy-of (cadr properties)) copied-properties)
+                    (setq properties (cddr properties)))
+                  (set-text-properties
+                   position next (nreverse copied-properties) copy)
+                  (setq position next)))))
+           ((recordp current)
+            (let ((index 1))
+              (while (< index (length current))
+                (aset copy index (copy-of (aref current index)))
+                (setq index (1+ index)))))
+           ((vectorp current)
+            (let ((index 0))
+              (while (< index (length current))
+                (aset copy index (copy-of (aref current index)))
+                (setq index (1+ index))))))))
+      (dolist (table-snapshot char-tables)
+        (let* ((current (nth 0 table-snapshot))
+               (parent (nth 1 table-snapshot))
+               (default (nth 2 table-snapshot))
+               (extras (nth 3 table-snapshot))
+               (entries (nth 4 table-snapshot))
+               (copy (gethash current memo)))
+          (set-char-table-range copy nil (copy-of default))
+          (dotimes (index (length extras))
+            (set-char-table-extra-slot
+             copy index (copy-of (aref extras index))))
+          (dolist (entry entries)
+            (set-char-table-range copy (car entry) (copy-of (cdr entry))))
+          (set-char-table-parent copy (copy-of parent))))
+      (dolist (table-snapshot hash-tables)
+        (let ((copy (gethash (car table-snapshot) memo)))
+          (dolist (entry (cdr table-snapshot))
+            (puthash (copy-of (car entry)) (copy-of (cdr entry)) copy))))
+      (copy-of object))))
 
-(defun nskk-tutorial--copy-trie-node (node)
-  "Return a deep copy of trie NODE and all descendants."
-  (let ((new (nskk-trie-node--create
-              :is-end  (nskk-trie-node-is-end node)
-              :value   (nskk-trie-node-value node)
-              :count   (nskk-trie-node-count node))))
-    (when-let* ((children (nskk-trie-node-children node)))
-      (let ((new-children (make-hash-table :test 'eq
-                                           :size (hash-table-count children))))
-        (maphash (lambda (ch child)
-                   (puthash ch (nskk-tutorial--copy-trie-node child)
-                            new-children))
-                 children)
-        (setf (nskk-trie-node-children new) new-children)))
-    new))
+(defun nskk-tutorial--publish-dict-state
+      (state init-flags dict-save-inhibited persistence-inhibited)
+    "Publish dictionary STATE with INIT-FLAGS.
+Use DICT-SAVE-INHIBITED and PERSISTENCE-INHIBITED for transaction state."
+    (setq nskk--prolog-database (aref state 0)
+          nskk--prolog-database-tails (aref state 1)
+          nskk--prolog-index-config (aref state 2)
+          nskk--prolog-hash-indices (aref state 3)
+          nskk--prolog-trie-indices (aref state 4)
+          nskk--prolog-index-bucket-tail-cache (aref state 5)
+          nskk--prolog-var-counter (aref state 6))
+    (when (boundp (quote nskk--prolog-active-mutation-keys))
+      (setq nskk--prolog-active-mutation-keys (aref state 7)))
+    (setq nskk--user-dict-index (aref state 8)
+          nskk--system-dict-index (aref state 9))
+    (pcase-dolist (`(,symbol . ,value) init-flags)
+      (set symbol value))
+    (setq nskk--dict-save-inhibited dict-save-inhibited
+          nskk--persistence-inhibited persistence-inhibited))
 
-(defun nskk-tutorial--copy-trie (trie)
-  "Return a deep copy of TRIE."
-  (nskk-trie--create-internal
-   :root (nskk-tutorial--copy-trie-node (nskk-trie-root trie))
-   :size (nskk-trie-size trie)))
+  (defun nskk-tutorial--save-dict-state ()
+  "Save dictionary state and publish an isolated working graph.
+On publication failure, restore the original state and re-signal the primary
+condition.  If rollback also fails, retain its diagnostic and the snapshot."
+  (when nskk-tutorial--dict-state-saved-p
+    (error "Tutorial dictionary state is already saved"))
+  (let* ((init-flags
+          (mapcar (lambda (symbol)
+                    (cons symbol (symbol-value symbol)))
+                  (quote (nskk--input-initialized
+                          nskk--state-prolog-initialized
+                          nskk--henkan-initialized
+                          nskk--kana-initialized
+                          nskk--converter-initialized
+                          nskk--candidate-key-facts-initialized
+                          nskk--annotation-initialized))))
+         (dict-save-inhibited nskk--dict-save-inhibited)
+         (persistence-inhibited nskk--persistence-inhibited)
+         (original-state
+          (vector nskk--prolog-database
+                  nskk--prolog-database-tails
+                  nskk--prolog-index-config
+                  nskk--prolog-hash-indices
+                  nskk--prolog-trie-indices
+                  nskk--prolog-index-bucket-tail-cache
+                  nskk--prolog-var-counter
+                  (and (boundp
+                        (quote nskk--prolog-active-mutation-keys))
+                       nskk--prolog-active-mutation-keys)
+                  nskk--user-dict-index
+                  nskk--system-dict-index))
+         (working-state
+          (nskk-tutorial--copy-object-graph
+           original-state (make-hash-table :test (quote eq)))))
+    (let ((inhibit-quit t))
+      (setq nskk-tutorial--saved-prolog-db (aref original-state 0)
+            nskk-tutorial--saved-prolog-tails (aref original-state 1)
+            nskk-tutorial--saved-prolog-idx (aref original-state 2)
+            nskk-tutorial--saved-prolog-hash (aref original-state 3)
+            nskk-tutorial--saved-prolog-trie (aref original-state 4)
+            nskk-tutorial--saved-prolog-bucket-tail-cache
+            (aref original-state 5)
+            nskk-tutorial--saved-prolog-counter (aref original-state 6)
+            nskk-tutorial--saved-prolog-active-mutation-keys
+            (aref original-state 7)
+            nskk-tutorial--saved-user-dict (aref original-state 8)
+            nskk-tutorial--saved-system-dict (aref original-state 9)
+            nskk-tutorial--saved-init-flags init-flags
+            nskk-tutorial--saved-dict-save-inhibited dict-save-inhibited
+            nskk-tutorial--saved-persistence-inhibited persistence-inhibited
+            nskk-tutorial--dict-state-saved-p t)
+      (condition-case primary-condition
+          (nskk-tutorial--publish-dict-state working-state init-flags t t)
+        ((error quit)
+         (let (rollback-condition)
+           (condition-case condition-data
+               (nskk-tutorial--publish-dict-state
+                original-state init-flags
+                dict-save-inhibited persistence-inhibited)
+             ((error quit)
+              (setq rollback-condition condition-data)))
+           (if rollback-condition
+               (progn
+                 (setq nskk-tutorial--dict-rollback-diagnostic
+                       (list :primary primary-condition
+                             :rollback rollback-condition))
+                 (condition-case nil
+                     (display-warning
+                      'nskk-tutorial
+                      (format
+                       "Tutorial publication failed with %S; rollback failed with %S"
+                       primary-condition rollback-condition)
+                      :error)
+                   ((error quit) nil)))
+             (setq nskk-tutorial--dict-state-saved-p nil
+                   nskk-tutorial--saved-prolog-db nil
+                   nskk-tutorial--saved-prolog-tails nil
+                   nskk-tutorial--saved-prolog-idx nil
+                   nskk-tutorial--saved-prolog-hash nil
+                   nskk-tutorial--saved-prolog-trie nil
+                   nskk-tutorial--saved-prolog-bucket-tail-cache nil
+                   nskk-tutorial--saved-prolog-active-mutation-keys nil
+                   nskk-tutorial--saved-prolog-counter nil
+                   nskk-tutorial--saved-user-dict nil
+                   nskk-tutorial--saved-system-dict nil
+                   nskk-tutorial--saved-init-flags nil
+                   nskk-tutorial--saved-dict-save-inhibited nil
+                   nskk-tutorial--saved-persistence-inhibited nil
+                   nskk-tutorial--dict-rollback-diagnostic nil))
+           (signal (car primary-condition)
+                   (cdr primary-condition))))))))
 
-(defun nskk-tutorial--save-prolog-state ()
-  "Save current Prolog database state for later restoration."
-  (setq nskk-tutorial--saved-prolog-db
-        (nskk-tutorial--copy-hash-table nskk--prolog-database)
-        nskk-tutorial--saved-prolog-idx
-        (nskk-tutorial--copy-hash-table nskk--prolog-index-config)
-        nskk-tutorial--saved-prolog-hash
-        (nskk-tutorial--copy-hash-table nskk--prolog-hash-indices)
-        nskk-tutorial--saved-prolog-trie
-        (nskk-tutorial--copy-hash-table nskk--prolog-trie-indices)
-        nskk-tutorial--saved-prolog-counter
-        nskk--prolog-var-counter
-        nskk-tutorial--saved-user-dict
-        (and (boundp 'nskk--user-dict-index) nskk--user-dict-index)
-        nskk-tutorial--saved-system-dict
-        (and (boundp 'nskk--system-dict-index) nskk--system-dict-index)
-        nskk-tutorial--saved-init-flags
-        (mapcar (lambda (sym)
-                  (cons sym (and (boundp sym) (symbol-value sym))))
-                '(nskk--input-initialized
-                  nskk--state-prolog-initialized
-                  nskk--henkan-initialized
-                  nskk--kana-initialized
-                  nskk--converter-initialized
-                  nskk--candidate-key-facts-initialized
-                  nskk--annotation-initialized))))
-
-(defun nskk-tutorial--restore-prolog-state ()
-  "Restore previously saved Prolog database state."
-  (when nskk-tutorial--saved-prolog-db
-    (setq nskk--prolog-database    nskk-tutorial--saved-prolog-db
-          nskk--prolog-index-config nskk-tutorial--saved-prolog-idx
-          nskk--prolog-hash-indices nskk-tutorial--saved-prolog-hash
-          nskk--prolog-trie-indices nskk-tutorial--saved-prolog-trie
-          nskk--prolog-var-counter  nskk-tutorial--saved-prolog-counter)
-    (when (boundp 'nskk--user-dict-index)
-      (setq nskk--user-dict-index nskk-tutorial--saved-user-dict))
-    (when (boundp 'nskk--system-dict-index)
-      (setq nskk--system-dict-index nskk-tutorial--saved-system-dict))
-    ;; Restore initialization flags
-    (pcase-dolist (`(,sym . ,val) nskk-tutorial--saved-init-flags)
-      (when (boundp sym)
-        (set sym val)))
-    ;; Re-derive database-tails from the restored database
-    (let ((new-tails (make-hash-table :test 'equal :size 128)))
-      (maphash (lambda (k v)
-                 (when v (puthash k (last v) new-tails)))
-               nskk--prolog-database)
-      (setq nskk--prolog-database-tails new-tails))
-    (setq nskk-tutorial--saved-prolog-db nil)))
+(defun nskk-tutorial--restore-dict-state ()
+  "Restore dictionary state from the current buffer's snapshot.
+Keep the snapshot intact if publication fails so callers can retry."
+  (when nskk-tutorial--dict-state-saved-p
+    (let ((init-flags nskk-tutorial--saved-init-flags))
+      (nskk-tutorial--publish-dict-state
+       (vector nskk-tutorial--saved-prolog-db
+               nskk-tutorial--saved-prolog-tails
+               nskk-tutorial--saved-prolog-idx
+               nskk-tutorial--saved-prolog-hash
+               nskk-tutorial--saved-prolog-trie
+               nskk-tutorial--saved-prolog-bucket-tail-cache
+               nskk-tutorial--saved-prolog-counter
+               nskk-tutorial--saved-prolog-active-mutation-keys
+               nskk-tutorial--saved-user-dict
+               nskk-tutorial--saved-system-dict)
+       init-flags
+       nskk-tutorial--saved-dict-save-inhibited
+       nskk-tutorial--saved-persistence-inhibited)
+      (let ((inhibit-quit t))
+        (setq nskk-tutorial--dict-state-saved-p nil
+              nskk-tutorial--saved-prolog-db nil
+              nskk-tutorial--saved-prolog-tails nil
+              nskk-tutorial--saved-prolog-idx nil
+              nskk-tutorial--saved-prolog-hash nil
+              nskk-tutorial--saved-prolog-trie nil
+              nskk-tutorial--saved-prolog-bucket-tail-cache nil
+              nskk-tutorial--saved-prolog-active-mutation-keys nil
+              nskk-tutorial--saved-prolog-counter nil
+              nskk-tutorial--saved-user-dict nil
+              nskk-tutorial--saved-system-dict nil
+              nskk-tutorial--saved-init-flags nil
+              nskk-tutorial--saved-dict-save-inhibited nil
+              nskk-tutorial--saved-persistence-inhibited nil
+              nskk-tutorial--dict-rollback-diagnostic nil)))))
 
 (defun nskk-tutorial--install-mini-dict ()
   "Install the mini dictionary for tutorial exercises.
@@ -1251,26 +1487,68 @@ within this buffer for practicing SKK operations.
 \\{nskk-tutorial-mode-map}"
   :group 'nskk
   (setq header-line-format '(:eval (nskk-tutorial--header-line)))
-  ;; Disable buffer-read-only inherited from special-mode.
-  ;; We rely on text property `read-only' for per-region protection instead,
-  ;; because nskk-mode needs to write into editable input areas.
   (setq buffer-read-only nil)
   (add-hook 'post-command-hook #'nskk-tutorial--validate-exercises nil t)
   (add-hook 'kill-buffer-hook #'nskk-tutorial--on-kill nil t)
-  ;; Prevent dict save during tutorial: the mini dictionary replaces the
-  ;; real user-dict facts, so saving would overwrite the personal jisyo.
-  ;; A flag is used instead of removing `nskk--dict-maybe-save' from
-  ;; `kill-emacs-hook' because `nskk--enable' (run by the `nskk-mode 1'
-  ;; that follows in the entry point) re-adds that hook, silently undoing
-  ;; a remove-hook based protection.
-  (setq nskk--dict-save-inhibited t))
+  (add-hook 'change-major-mode-hook
+            #'nskk-tutorial--on-major-mode-change nil t))
+
+(defun nskk-tutorial--acquire-ownership ()
+  "Acquire process-wide ownership for the current tutorial buffer."
+  (when (and nskk-tutorial--owner
+             (not (buffer-live-p nskk-tutorial--owner)))
+    (setq nskk-tutorial--owner nil))
+  (when (buffer-live-p nskk-tutorial--owner)
+    (user-error "An NSKK tutorial session is already active"))
+  (let ((active-buffer
+         (cl-find-if
+          (lambda (buffer)
+            (and (buffer-live-p buffer)
+                 (not (eq buffer (current-buffer)))))
+          nskk--active-buffers)))
+    (when active-buffer
+      (user-error "Cannot start tutorial while NSKK is active in %s"
+                  (buffer-name active-buffer))))
+  (setq nskk-tutorial--owner (current-buffer)
+        nskk-tutorial--owns-transaction t))
+
+(defun nskk-tutorial--release-ownership ()
+  "Release tutorial ownership held by the current buffer."
+  (unwind-protect
+      (when (and nskk-tutorial--owns-transaction
+                 (eq nskk-tutorial--owner (current-buffer)))
+        (setq nskk-tutorial--owner nil))
+    (setq nskk-tutorial--owns-transaction nil)))
+
+(defun nskk-tutorial--rollback ()
+  "Disable NSKK, restore global state, and release tutorial ownership."
+  (let (first-condition)
+    (condition-case condition-data
+        (when nskk-mode
+          (nskk-mode -1))
+      ((error quit)
+       (setq first-condition condition-data)))
+    (condition-case condition-data
+        (nskk-tutorial--restore-dict-state)
+      ((error quit)
+       (unless first-condition
+         (setq first-condition condition-data))))
+    (unless nskk-tutorial--dict-state-saved-p
+      (condition-case condition-data
+          (nskk-tutorial--release-ownership)
+        ((error quit)
+         (unless first-condition
+           (setq first-condition condition-data)))))
+    (when first-condition
+      (signal (car first-condition) (cdr first-condition)))))
 
 (defun nskk-tutorial--on-kill ()
-  "Buffer kill hook: restore Prolog state and re-enable dict saving."
-  (when nskk-mode
-    (ignore-errors (nskk-mode -1)))
-  (nskk-tutorial--restore-prolog-state)
-  (setq nskk--dict-save-inhibited nil))
+  "Rollback all state owned by a tutorial buffer when it is killed."
+  (nskk-tutorial--rollback))
+
+(defun nskk-tutorial--on-major-mode-change ()
+  "Rollback tutorial state before changing the buffer's major mode."
+  (nskk-tutorial--rollback))
 
 
 ;;;;
@@ -1279,24 +1557,70 @@ within this buffer for practicing SKK operations.
 
 ;;;###autoload
 (defun nskk-tutorial ()
-  "Start the NSKK interactive tutorial.
+  "Start the NSKK interactive tutorial transactionally.
 Opens a dedicated buffer with lessons teaching core SKK operations.
 A bundled mini dictionary ensures predictable conversion results.
 
-The user's personal dictionary is not affected; the Prolog database
-is saved on entry and restored when the tutorial buffer is killed."
+The user\047s personal dictionary is not affected; the dictionary state
+is restored when the tutorial buffer is killed or startup fails."
   (interactive)
-  (if-let* ((buf (get-buffer nskk-tutorial--buffer-name)))
-      (pop-to-buffer buf)
-    (let ((buf (get-buffer-create nskk-tutorial--buffer-name)))
-      (with-current-buffer buf
-        (nskk-tutorial--save-prolog-state)
-        (nskk-tutorial--install-mini-dict)
-        (nskk-tutorial-mode)
-        (nskk-mode 1)
-        (nskk-tutorial--reset-mode)
-        (nskk-tutorial--render-lesson))
-      (pop-to-buffer buf))))
+  (when (get-buffer nskk-tutorial--buffer-name)
+    (user-error "An NSKK tutorial session is already active"))
+  (let ((buf (get-buffer-create nskk-tutorial--buffer-name)))
+    (condition-case error-data
+        (progn
+          (with-current-buffer buf
+            (nskk-tutorial-mode)
+            (nskk-tutorial--acquire-ownership)
+            (nskk-tutorial--save-dict-state)
+            (nskk-tutorial--install-mini-dict)
+            (nskk-mode 1)
+            ;; Tutorial rollback must run before NSKK hooks that may signal.
+            (remove-hook (quote kill-buffer-hook)
+                         (function nskk-tutorial--on-kill) t)
+            (add-hook (quote kill-buffer-hook)
+                      (function nskk-tutorial--on-kill) nil t)
+            (remove-hook (quote change-major-mode-hook)
+                         (function nskk-tutorial--on-major-mode-change) t)
+            (add-hook (quote change-major-mode-hook)
+                      (function nskk-tutorial--on-major-mode-change) nil t)
+            (nskk-tutorial--reset-mode)
+            (nskk-tutorial--render-lesson))
+          (pop-to-buffer buf))
+      ((error quit)
+       (let ((original-condition error-data)
+             cleanup-condition
+             cleanup-complete)
+         (cl-labels
+             ((attempt
+               (function)
+               (condition-case condition-data
+                   (funcall function)
+                 ((error quit)
+                  (unless cleanup-condition
+                    (setq cleanup-condition condition-data))))))
+           (when (buffer-live-p buf)
+             (with-current-buffer buf
+               (attempt (function nskk-tutorial--rollback))
+               (setq cleanup-complete
+                     (not nskk-tutorial--dict-state-saved-p))
+               (when cleanup-complete
+                 (attempt
+                  (lambda ()
+                    (remove-hook (quote kill-buffer-hook)
+                                 (function nskk-tutorial--on-kill) t)))
+                 (attempt
+                  (lambda ()
+                    (remove-hook
+                     (quote change-major-mode-hook)
+                     (function nskk-tutorial--on-major-mode-change) t)))))
+             (when cleanup-complete
+               (attempt
+                (lambda ()
+                  (when (buffer-live-p buf)
+                    (kill-buffer buf))))))
+           (signal (car original-condition)
+                   (cdr original-condition))))))))
 
 (provide 'nskk-tutorial)
 

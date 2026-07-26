@@ -1,28 +1,20 @@
 ;;; nskk-converter-test.el --- Example Converter Tests for NSKK  -*- lexical-binding: t; -*-
-
 ;; Copyright (C) 2026 NSKK Authors
-
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: Japanese, input, method, test, converter
 ;; Homepage: https://github.com/takeokunn/nskk.el
-
 ;; This file is part of NSKK.
-
 ;; NSKK is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
 ;; NSKK is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
 ;; You should have received a copy of the GNU General Public License
 ;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
-
 ;;; Commentary:
-
 ;; This file provides unit tests for the NSKK converter component.
 ;;
 ;; Test categories:
@@ -43,17 +35,20 @@
 ;; - Seeded PBTs: convert/k, romaji/k, get-rule/k, completions/k, step-n invariant
 ;; - Regression tests: double consonant, n-conversion, palatal, long strings, fallback path
 ;; - Performance tests: basic, complex, batch, long-input
-
 ;;; Code:
-
 (require 'ert)
-(require 'nskk-test-framework)
-(require 'nskk-test-macros)
-(require 'nskk-converter)  ; Assumes converter implementation exists
-(require 'nskk-kana)
-(require 'nskk-pbt-generators)
-(require 'cl-lib)
 
+(require 'nskk-test-framework)
+
+(require 'nskk-test-macros)
+
+(require 'nskk-converter) ; Assumes converter implementation exists
+
+(require 'nskk-kana)
+
+(require 'nskk-pbt-generators)
+
+(progn (require (quote cl-lib)) (defvar nskk-mode-map))
 
 (nskk-describe "romaji basic conversion"
   (nskk-deftest-table converter-vowels
@@ -222,11 +217,9 @@
       (should (equal (nskk-converter-get-rule "ka") "か"))
       (should (equal (nskk-convert-romaji "ka") "か")))))
 
-
 ;;;;
 ;;;; Property-Based Tests: Conversion Properties
 ;;;;
-
 (nskk-property-test conversion-output-never-expands
   ((input romaji-string))
   ;; Romaji-to-kana conversion never produces more characters than the input.
@@ -286,7 +279,6 @@
      long-input-conversion 5000
      (dotimes (_ 1000)
        (nskk-convert-romaji test-string)))))
-
 
 (nskk-describe "ddskk punctuation rules"
   (nskk-deftest-table converter-basic-punctuation
@@ -363,22 +355,22 @@
     ;; Trailing isolated consonant: appended as-is
     (should (equal (nskk-convert-romaji "kak") "かk"))))
 
-
-
 ;;;;
 ;;;; Test Suite Organization
 ;;;;
-
 (declare-function nskk-performance-conversion-basic-performance nil)
+
 (declare-function nskk-performance-conversion-complex-performance nil)
+
 (declare-function nskk-performance-conversion-batch-performance nil)
+
 (declare-function nskk-performance-conversion-long-input-performance nil)
+
 (nskk-test-suite converter-performance
   nskk-performance-conversion-basic-performance
   nskk-performance-conversion-complex-performance
   nskk-performance-conversion-batch-performance
   nskk-performance-conversion-long-input-performance)
-
 
 (nskk-describe "converter-convert function"
   (nskk-it "returns kana and empty remainder for a complete romaji match"
@@ -804,12 +796,9 @@
         (lambda () nil))
       (should (equal got-kana "にゅ")))))
 
-
-
 ;;;
 ;;; Property-Based Tests
 ;;;
-
 ;; Conversion determinism: same input always produces same output.
 (nskk-property-test conversion-pbt-determinism
   ((input romaji-string))
@@ -850,7 +839,6 @@
 ;;;
 ;;; Seeded Property-Based Tests (new)
 ;;;
-
 ;; Property: nskk-converter-convert returns nil or a cons where car is a string.
 (nskk-property-test-seeded converter-pbt-convert-returns-string-or-nil
   ((input romaji-basic))
@@ -879,7 +867,6 @@
   50 1003)
 
 ;; TR-008: Seeded consistency PBTs for CPS vs sync variants.
-
 ;; Property: nskk-converter-convert/k is consistent with its sync wrapper.
 ;; The callbacks mirror what the sync wrapper uses internally.
 (nskk-property-test-seeded converter-pbt-convert/k-consistent-with-sync
@@ -931,7 +918,6 @@
 ;;;
 ;;; Table-driven tests using nskk-should-convert-to
 ;;;
-
 ;; Ten known conversions not already covered by existing tests above.
 (nskk-deftest-table converter-should-convert-to-known-cases
   :columns (romaji expected)
@@ -951,7 +937,6 @@
 ;;;
 ;;; FR-T-009: nskk--standard-romaji-rules content tests
 ;;;
-
 (nskk-describe "nskk--standard-romaji-rules content"
   (nskk-it "is a non-empty list"
     (should (listp nskk--standard-romaji-rules))
@@ -1071,7 +1056,6 @@
 ;;;
 ;;; nskk-converter-define-rules
 ;;;
-
 (nskk-describe "nskk-converter-define-rules"
   (nskk-it "is a macro (not a plain function)"
     (should (macrop 'nskk-converter-define-rules)))
@@ -1103,11 +1087,9 @@
       (should (progn (nskk-converter-define-rules) t)))))
 
 ;;; nskk--convert-step-n/k behavior is tested above via CPS variant tests.
-
 ;;;
 ;;; nskk-convert-romaji--internal/k CPS variant
 ;;;
-
 (nskk-describe "nskk-convert-romaji--internal/k"
   (nskk-it "calls on-done with the converted kana string"
     (let (result)
@@ -1146,7 +1128,6 @@
 ;;;
 ;;; defun/done /k variant tests
 ;;;
-
 (nskk-describe "defun/done /k variants"
   (nskk-it "nskk-converter-remove-rule/k calls on-done with no arguments"
     (nskk-prolog-test-with-isolated-db
@@ -1178,7 +1159,6 @@
 ;;;
 ;;; nskk--converter-populate-incomplete-markers
 ;;;
-
 (nskk-describe "nskk--converter-populate-incomplete-markers"
   (nskk-it "marks romaji prefixes as :incomplete in the conversion table"
     ;; After initialization, prefixes like \"k\", \"sh\", \"ts\" must be :incomplete.
@@ -1198,7 +1178,6 @@
 ;;;
 ;;; nskk--sokuon-p unit tests
 ;;;
-
 (nskk-describe "nskk--sokuon-p"
   (nskk-it "returns non-nil for doubled k (kka)"
     (should (nskk--sokuon-p ?k "kka")))
@@ -1237,11 +1216,9 @@
     ;; ?あ = #x3042, well above 128; ASCII guard must exclude it
     (should-not (nskk--sokuon-p ?あ "ああ"))))
 
-
 ;;;
 ;;; nskk--convert-step/k unit tests
 ;;;
-
 (nskk-describe "nskk--convert-step/k"
   ;; on-kana: sokuon branch
   (nskk-it "calls on-kana with (っ ka) for doubled k (kka)"
@@ -1398,11 +1375,9 @@
       (should (equal got-kana "ん"))
       (should (equal got-rest "nk")))))
 
-
 ;;;
 ;;; Seeded PBTs for nskk--convert-step/k
 ;;;
-
 ;; Property: nskk--convert-step/k always calls exactly one continuation.
 (nskk-property-test-seeded convert-step/k-pbt-calls-exactly-one-continuation
   ((input romaji-basic))
@@ -1447,7 +1422,6 @@
   50 4003)
 
 ;;; Prolog fact table initialization tests
-
 (nskk-describe "sokuon-blocker and hatsuon-blocker Prolog tables"
   (nskk-it "Vowels a i u e o are in sokuon-blocker table after initialization."
     (nskk-prolog-test-with-isolated-db
@@ -1535,6 +1509,1293 @@
       (should-not (nskk-prolog-holds-p `(uppercase-vowel-char ,?S)))
       (should-not (nskk-prolog-holds-p `(uppercase-vowel-char ,?T))))))
 
-(provide 'nskk-converter-test)
+(defmacro nskk-test-with-style-transaction-state (&rest body)
+  "Run BODY with isolated converter style transaction state."
+  (declare (indent 0)
+           (debug t))
+  `(let ((nskk--romaji-table (make-hash-table :test 'equal))
+         (nskk--prolog-database (make-hash-table :test 'equal))
+         (nskk--prolog-database-tails (make-hash-table :test 'equal))
+         (nskk--prolog-index-config (make-hash-table :test 'equal))
+         (nskk--prolog-hash-indices (make-hash-table :test 'equal))
+         (nskk--prolog-trie-indices (make-hash-table :test 'equal))
+         (nskk--prolog-index-bucket-tail-cache
+          (make-hash-table :test 'equal))
+         (nskk--style-registry (copy-tree nskk--style-registry))
+         (nskk--converter-style-transaction-hash-tables nil)
+         (nskk--converter-style-transaction-variables nil))
+     (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
+     (nskk-converter-add-rule "old" "旧")
+     (nskk-prolog-set-index 'transaction-sentinel 1 :hash)
+     (nskk-prolog-assert '((transaction-sentinel intact)))
+     ,@body))
+
+(defun nskk-test--converter-style-state-references ()
+  "Return the converter transaction state references."
+  (list
+    nskk--romaji-table
+    nskk--prolog-database
+    nskk--prolog-database-tails
+    nskk--prolog-index-config
+    nskk--prolog-hash-indices
+    nskk--prolog-trie-indices
+    nskk--prolog-index-bucket-tail-cache))
+
+(defun nskk-test--should-retain-converter-style-state (references)
+  "Assert that REFERENCES are still the live transaction state."
+  (cl-mapc
+    (lambda (before after)
+      (should (eq before after)))
+    references
+    (nskk-test--converter-style-state-references)))
+
+(defun nskk-test--load-style-condition (style)
+  "Load STYLE and return the signaled condition type, if any."
+  (condition-case
+    condition
+    (progn
+      (nskk-converter-load-style style)
+      nil)
+    (quit (car condition))
+    (error (car condition))))
+
+(nskk-describe
+  "style loading transactions"
+  (nskk-it
+    "rolls back initializer errors and quits"
+    (dolist (condition (quote (error quit)))
+      (nskk-test-with-style-transaction-state
+        (let ((references (nskk-test--converter-style-state-references)))
+          (nskk-converter-register-style
+            (quote failing-initializer)
+            (lambda ()
+              (nskk-converter-add-rule "new" "新")
+              (nskk-prolog-assert (quote ((style-staged partial))))
+              (signal condition nil)))
+          (should
+            (eq (nskk-test--load-style-condition (quote failing-initializer)) condition))
+          (nskk-test--should-retain-converter-style-state references)
+          (should (equal (nskk-converter-get-rule "old") "旧"))
+          (should-not (nskk-converter-get-rule "new"))
+          (should (nskk-prolog-holds-p (quote (transaction-sentinel intact))))
+          (should-not (nskk-prolog-holds-p (quote (style-staged partial))))))))
+  (nskk-it
+    "rolls back finalizer errors and quits"
+    (dolist (condition (quote (error quit)))
+      (nskk-test-with-style-transaction-state
+        (let ((references (nskk-test--converter-style-state-references)))
+          (nskk-converter-register-style
+            (quote failing-finalizer)
+            (lambda ()
+              (nskk-converter-add-rule "new" "新")))
+          (cl-letf
+            (((symbol-function (quote nskk--converter-populate-incomplete-markers))
+                (lambda ()
+                  (nskk-prolog-assert (quote ((finalizer-staged partial))))
+                  (signal condition nil))))
+            (should
+              (eq (nskk-test--load-style-condition (quote failing-finalizer)) condition)))
+          (nskk-test--should-retain-converter-style-state references)
+          (should (equal (nskk-converter-get-rule "old") "旧"))
+          (should-not (nskk-converter-get-rule "new"))
+          (should (nskk-prolog-holds-p (quote (transaction-sentinel intact))))
+          (should-not (nskk-prolog-holds-p (quote (finalizer-staged partial))))))))
+  (nskk-it
+    "does not mutate state for an unknown style"
+    (nskk-test-with-style-transaction-state
+      (let ((references (nskk-test--converter-style-state-references)))
+        (should-not (nskk-converter-load-style (quote transaction-unknown)))
+        (nskk-test--should-retain-converter-style-state references)
+        (should (equal (nskk-converter-get-rule "old") "旧"))
+        (should (nskk-prolog-holds-p (quote (transaction-sentinel intact)))))))
+  (nskk-it
+    "publishes staged stores and preserves unrelated indexed facts"
+    (nskk-test-with-style-transaction-state
+      (let ((references (nskk-test--converter-style-state-references)))
+        (nskk-converter-register-style
+          (quote transaction-success)
+          (lambda ()
+            (nskk-converter-add-rule "new" "新")
+            (nskk-prolog-assert (quote ((style-committed complete))))))
+        (should
+          (eq
+            (nskk-converter-load-style (quote transaction-success))
+            (quote transaction-success)))
+        (cl-mapc
+          (lambda (before after)
+            (should-not (eq before after)))
+          references
+          (nskk-test--converter-style-state-references))
+        (should-not (nskk-converter-get-rule "old"))
+        (should (equal (nskk-converter-get-rule "new") "新"))
+        (should (nskk-prolog-holds-p (quote (transaction-sentinel intact))))
+        (should (nskk-prolog-holds-p (quote (style-committed complete)))))))
+  (nskk-it
+    "restores exact state when keymap publication signals"
+    (dolist (condition (quote (error quit)))
+      (nskk-test-with-style-transaction-state
+        (let* ((references (nskk-test--converter-style-state-references))
+               (mode-map-reference
+              (let ((map (make-sparse-keymap)))
+                (define-key map (kbd "C-c o") (function ignore))
+                map))
+               (mode-map-car (car mode-map-reference))
+               (mode-map-cdr (cdr mode-map-reference))
+               (extension-symbol (quote nskk-test--converter-extension-table))
+               (extension-table (make-hash-table :test (quote equal)))
+               (nskk--converter-style-transaction-hash-tables (list extension-symbol))
+               (active-style nskk-converter-romaji-style)
+               (condition-data (list "publication failure" (make-symbol "payload")))
+               (replace-keymap-contents
+              (symbol-function (quote nskk--converter-replace-keymap-contents)))
+               signaled)
+          (puthash (quote old) (quote intact) extension-table)
+          (cl-progv
+            (list extension-symbol (quote nskk-mode-map))
+            (list extension-table mode-map-reference)
+            (nskk-converter-register-style
+              (quote failing-publication)
+              (lambda ()
+                (nskk-converter-add-rule "new" "新")
+                (nskk-prolog-assert (quote ((style-published partial))))
+                (puthash (quote new) (quote partial) (symbol-value extension-symbol))
+                (define-key
+                  (symbol-value (quote nskk-mode-map))
+                  (kbd "C-c n")
+                  (function ignore))))
+            (cl-letf
+              (((symbol-function (quote nskk--converter-replace-keymap-contents))
+                  (lambda (target source)
+                    (funcall replace-keymap-contents target source)
+                    (setcar target (quote corrupted-keymap-head))
+                    (setcdr target (list (quote corrupted-keymap-tail)))
+                    (signal condition condition-data))))
+              (setq signaled (condition-case
+                  caught
+                  (progn
+                    (nskk-converter-load-style (quote failing-publication))
+                    nil)
+                  (quit caught)
+                  (error caught))))
+            (should (eq (car signaled) condition))
+            (should (eq (cdr signaled) condition-data))
+            (nskk-test--should-retain-converter-style-state references)
+            (should (eq (symbol-value (quote nskk-mode-map)) mode-map-reference))
+            (should (eq (car mode-map-reference) mode-map-car))
+            (should (eq (cdr mode-map-reference) mode-map-cdr))
+            (should (eq (symbol-value extension-symbol) extension-table))
+            (should (eq (gethash (quote old) extension-table) (quote intact)))
+            (should-not (gethash (quote new) extension-table))
+            (should (eq nskk-converter-romaji-style active-style))
+            (should (equal (nskk-converter-get-rule "old") "旧"))
+            (should-not (nskk-converter-get-rule "new"))
+            (should (nskk-prolog-holds-p (quote (transaction-sentinel intact))))
+            (should-not (nskk-prolog-holds-p (quote (style-published partial)))))))))
+  (nskk-it
+  "keeps public state untouched when publication preparation signals"
+  (dolist (condition-symbol '(error quit))
+    (nskk-test-with-style-transaction-state
+      (let* ((references (nskk-test--converter-style-state-references))
+             (mode-map-reference
+              (let ((map (make-sparse-keymap)))
+                (define-key map (kbd "C-c C-t") #'ignore)
+                map))
+             (mode-map-car (car mode-map-reference))
+             (mode-map-cdr (cdr mode-map-reference))
+             (extension-symbol
+              'nskk-test--converter-preparation-fault-extension-table)
+             (extension-table (make-hash-table :test 'equal))
+             (nskk--converter-style-transaction-hash-tables
+              (list extension-symbol))
+             (condition-payload (make-symbol "payload"))
+             (condition-data (list "preparation failure" condition-payload))
+             (replace-calls 0)
+             state
+             signaled)
+        (puthash 'old 'intact extension-table)
+        (cl-progv
+            (list extension-symbol 'nskk-mode-map)
+            (list extension-table mode-map-reference)
+          (setq state (nskk--converter-stage-style-state #'ignore))
+          (cl-letf (((symbol-function 'nskk-prolog-copy-term)
+                     (lambda (_term)
+                       (signal condition-symbol condition-data)))
+                    ((symbol-function
+                      'nskk--converter-replace-keymap-contents)
+                     (lambda (&rest _arguments)
+                       (setq replace-calls (1+ replace-calls)))))
+            (setq signaled
+                  (condition-case caught
+                      (progn
+                        (nskk--converter-publish-style-state state)
+                        nil)
+                    (quit caught)
+                    (error caught))))
+          (should (eq (car signaled) condition-symbol))
+          (should (eq (cdr signaled) condition-data))
+          (should (= replace-calls 0))
+          (nskk-test--should-retain-converter-style-state references)
+          (should (eq (symbol-value extension-symbol) extension-table))
+          (should (eq (gethash 'old extension-table) 'intact))
+          (should (eq (symbol-value 'nskk-mode-map) mode-map-reference))
+          (should (eq (car mode-map-reference) mode-map-car))
+          (should (eq (cdr mode-map-reference) mode-map-cdr))
+          (should (equal (nskk-converter-get-rule "old") "旧"))
+          (should
+           (nskk-prolog-holds-p '(transaction-sentinel intact))))))))
+(nskk-it
+  "preserves cross-state aliases and detaches retained staged graphs"
+  (nskk-test-with-style-transaction-state
+    (let* ((references (nskk-test--converter-style-state-references))
+           (shared (cons 'cross-shared nil))
+           (extension-symbol
+            'nskk-test--converter-cross-state-extension-table)
+           (extension-table (make-hash-table :test 'equal))
+           (mode-map-reference (make-sparse-keymap))
+           (nskk--converter-style-transaction-hash-tables
+            (list extension-symbol))
+           state
+           retained-staged-shared)
+      (setcdr shared shared)
+      (puthash 'nskk-test-cross-shared shared nskk--prolog-index-config)
+      (puthash 'nskk-test-cross-shared shared extension-table)
+      (setcdr mode-map-reference
+              (cons (cons 'nskk-test-cross-shared shared)
+                    (cdr mode-map-reference)))
+      (let ((mode-map-car (car mode-map-reference))
+            (mode-map-cdr (cdr mode-map-reference)))
+        (cl-progv
+            (list extension-symbol 'nskk-mode-map)
+            (list extension-table mode-map-reference)
+          (setq
+           state
+           (nskk--converter-stage-style-state
+            (lambda ()
+              (let* ((staged-store
+                      (gethash
+                       'nskk-test-cross-shared
+                       nskk--prolog-index-config))
+                     (staged-extension
+                      (gethash
+                       'nskk-test-cross-shared
+                       (symbol-value extension-symbol)))
+                     (staged-map-value
+                      (cdr
+                       (assq
+                        'nskk-test-cross-shared
+                        (cdr (symbol-value 'nskk-mode-map))))))
+                (should (eq staged-store staged-extension))
+                (should (eq staged-store staged-map-value))
+                (should-not (eq staged-store shared))
+                (should (eq (cdr staged-store) staged-store))
+                (setq retained-staged-shared staged-store)))))
+          (nskk-test--should-retain-converter-style-state references)
+          (should (eq (symbol-value extension-symbol) extension-table))
+          (should (eq (symbol-value 'nskk-mode-map) mode-map-reference))
+          (should (eq (car mode-map-reference) mode-map-car))
+          (should (eq (cdr mode-map-reference) mode-map-cdr))
+          (let* ((staged-store
+                  (gethash
+                   'nskk-test-cross-shared
+                   (plist-get state :prolog-index-config)))
+                 (staged-extension-table
+                  (cdr
+                   (assq
+                    extension-symbol
+                    (plist-get state :extension-hash-tables))))
+                 (staged-extension
+                  (gethash
+                   'nskk-test-cross-shared
+                   staged-extension-table))
+                 (staged-mode-map (plist-get state :mode-map))
+                 (staged-map-value
+                  (cdr
+                   (assq
+                    'nskk-test-cross-shared
+                    (cdr staged-mode-map)))))
+            (should (eq staged-store retained-staged-shared))
+            (should (eq staged-store staged-extension))
+            (should (eq staged-store staged-map-value))
+            (should (eq (cdr staged-store) staged-store))
+            (nskk--converter-publish-style-state state)
+            (let* ((public-store
+                    (gethash
+                     'nskk-test-cross-shared
+                     nskk--prolog-index-config))
+                   (public-extension-table
+                    (symbol-value extension-symbol))
+                   (public-extension
+                    (gethash
+                     'nskk-test-cross-shared
+                     public-extension-table))
+                   (public-map-value
+                    (cdr
+                     (assq
+                      'nskk-test-cross-shared
+                      (cdr mode-map-reference)))))
+              (should
+               (eq (symbol-value 'nskk-mode-map) mode-map-reference))
+              (should (eq public-store public-extension))
+              (should (eq public-store public-map-value))
+              (should-not (eq public-store retained-staged-shared))
+              (should (eq (cdr public-store) public-store))
+              (setcar retained-staged-shared 'staged-mutated)
+              (puthash
+               'nskk-test-retained
+               retained-staged-shared
+               (plist-get state :prolog-index-config))
+              (puthash
+               'nskk-test-retained
+               retained-staged-shared
+               staged-extension-table)
+              (setcdr
+               staged-mode-map
+               (cons
+                (cons 'nskk-test-retained retained-staged-shared)
+                (cdr staged-mode-map)))
+              (should (eq (car public-store) 'cross-shared))
+              (should-not
+               (gethash
+                'nskk-test-retained
+                nskk--prolog-index-config))
+              (should-not
+               (gethash
+                'nskk-test-retained
+                public-extension-table))
+              (should-not
+               (assq
+                'nskk-test-retained
+                (cdr mode-map-reference))))))))))
+(nskk-it
+    "deeply isolates staged extension graphs across initializer faults and retry"
+    (dolist (condition-symbol (quote (error quit)))
+      (nskk-test-with-style-transaction-state
+        (let* ((references (nskk-test--converter-style-state-references))
+               (extension-symbol (quote nskk-test--converter-deep-extension-table))
+               (extension-table
+              (make-hash-table
+                :test
+                (quote equal)
+                :size
+                31
+                :rehash-size
+                1.7
+                :rehash-threshold
+                0.75))
+               (key (list (quote key)))
+               (shared (list (quote shared)))
+               (nested
+              (make-hash-table
+                :test
+                (quote eq)
+                :size
+                17
+                :rehash-size
+                2.0
+                :rehash-threshold
+                0.8))
+               (backlink (copy-sequence "payload"))
+               (payload (vector shared shared nested backlink nil))
+               (condition-payload (make-symbol "payload"))
+               (condition-data (list "initializer failure" condition-payload))
+               (nskk--converter-style-transaction-hash-tables (list extension-symbol))
+               (active-style nskk-converter-romaji-style)
+               extension-metadata
+               (attempt 0)
+               first-staged
+               retry-staged
+               signaled)
+          (aset payload 4 payload)
+          (add-text-properties
+            0
+            (length backlink)
+            (list (quote backlink) payload)
+            backlink)
+          (puthash shared key nested)
+          (puthash key payload extension-table)
+          (setq extension-metadata (list
+              (hash-table-test extension-table)
+              (hash-table-size extension-table)
+              (hash-table-rehash-size extension-table)
+              (hash-table-rehash-threshold extension-table)
+              (hash-table-weakness extension-table)))
+          (cl-progv
+            (list extension-symbol)
+            (list extension-table)
+            (nskk-converter-register-style
+              (quote deep-staging-retry)
+              (lambda ()
+                (setq attempt (1+ attempt))
+                (let ((staged-table (symbol-value extension-symbol))
+                      staged-key)
+                  (maphash
+                    (lambda (candidate _value)
+                      (when (equal candidate key)
+                        (setq staged-key candidate)))
+                    staged-table)
+                  (let* ((staged-payload (gethash staged-key staged-table))
+                         (staged-shared (aref staged-payload 0))
+                         (staged-nested (aref staged-payload 2))
+                         (staged-backlink (aref staged-payload 3)))
+                    (should-not (eq staged-table extension-table))
+                    (should-not (eq staged-key key))
+                    (should-not (eq staged-payload payload))
+                    (should-not (eq staged-shared shared))
+                    (should-not (eq staged-nested nested))
+                    (should-not (eq staged-backlink backlink))
+                    (should (eq (aref staged-payload 0) (aref staged-payload 1)))
+                    (should (eq (aref staged-payload 4) staged-payload))
+                    (should (eq (gethash staged-shared staged-nested) staged-key))
+                    (should
+                      (eq (get-text-property 0 (quote backlink) staged-backlink) staged-payload))
+                    (should
+                      (equal
+                        (list
+                          (hash-table-test staged-table)
+                          (hash-table-size staged-table)
+                          (hash-table-rehash-size staged-table)
+                          (hash-table-rehash-threshold staged-table)
+                          (hash-table-weakness staged-table))
+                        extension-metadata))
+                    (should (= (hash-table-count staged-table) 1))
+                    (should (= (hash-table-count staged-nested) 1))
+                    (should (equal staged-key (quote (key))))
+                    (should (equal staged-shared (quote (shared))))
+                    (should-not (gethash (quote partial) staged-table))
+                    (should-not (gethash (quote partial) staged-nested))
+                    (should-not (get-text-property 0 (quote mutation) staged-backlink))
+                    (if (= attempt 1) (progn
+                        (setq first-staged staged-table)
+                        (setcar staged-key (quote mutated-key))
+                        (setcar staged-shared (quote mutated-shared))
+                        (aset staged-payload 4 nil)
+                        (puthash (quote partial) (quote mutation) staged-nested)
+                        (put-text-property 0 1 (quote mutation) (quote partial) staged-backlink)
+                        (puthash (quote partial) staged-payload staged-table)
+                        (signal condition-symbol condition-data))
+                      (setq retry-staged staged-table)
+                      (puthash (quote retry) (quote success) staged-table))))))
+            (setq signaled (condition-case
+                caught
+                (progn
+                  (nskk-converter-load-style (quote deep-staging-retry))
+                  nil)
+                (quit caught)
+                (error caught)))
+            (should (eq (car signaled) condition-symbol))
+            (should (eq (cdr signaled) condition-data))
+            (should (eq (cadr (cdr signaled)) condition-payload))
+            (nskk-test--should-retain-converter-style-state references)
+            (should (eq nskk-converter-romaji-style active-style))
+            (should (eq (symbol-value extension-symbol) extension-table))
+            (let (stored-key)
+              (maphash
+                (lambda (candidate _value)
+                  (setq stored-key candidate))
+                extension-table)
+              (should (eq stored-key key)))
+            (should (eq (gethash key extension-table) payload))
+            (should (eq (aref payload 0) shared))
+            (should (eq (aref payload 1) shared))
+            (should (eq (aref payload 2) nested))
+            (should (eq (aref payload 3) backlink))
+            (should (eq (aref payload 4) payload))
+            (should (eq (gethash shared nested) key))
+            (should (eq (get-text-property 0 (quote backlink) backlink) payload))
+            (should (equal key (quote (key))))
+            (should (equal shared (quote (shared))))
+            (should (= (hash-table-count extension-table) 1))
+            (should (= (hash-table-count nested) 1))
+            (should-not (gethash (quote partial) extension-table))
+            (should-not (gethash (quote partial) nested))
+            (should-not (get-text-property 0 (quote mutation) backlink))
+            (should
+              (equal
+                (list
+                  (hash-table-test extension-table)
+                  (hash-table-size extension-table)
+                  (hash-table-rehash-size extension-table)
+                  (hash-table-rehash-threshold extension-table)
+                  (hash-table-weakness extension-table))
+                extension-metadata))
+            (should
+              (eq
+                (nskk-converter-load-style (quote deep-staging-retry))
+                (quote deep-staging-retry)))
+            (should (= attempt 2))
+            (should first-staged)
+            (should retry-staged)
+            (should-not (eq first-staged retry-staged))
+            (progn
+  (should-not (eq (symbol-value extension-symbol) retry-staged))
+  (should (eq (gethash (quote retry) (symbol-value extension-symbol))
+              (quote success)))
+  (puthash (quote retained-mutation) (quote staged) retry-staged)
+  (should-not
+   (gethash (quote retained-mutation) (symbol-value extension-symbol))))
+            (should-not (eq retry-staged extension-table))
+            (should (eq (gethash (quote retry) retry-staged) (quote success)))
+            (should (eq (gethash key extension-table) payload))
+            (should (eq (aref payload 4) payload))
+            (should-not (gethash (quote partial) extension-table))))))))
+
+(progn
+  (defun nskk-test--converter-catch-condition (operation)
+    "Call OPERATION and return an error or quit condition."
+    (condition-case
+      condition
+      (progn
+        (funcall operation)
+        nil)
+      (quit condition)
+      (error condition)))
+  (defun nskk-test--converter-rule-state (romaji)
+    "Return identity-sensitive Prolog state for ROMAJI."
+    (let* ((key "romaji-to-kana/2")
+           (index (gethash key nskk--prolog-trie-indices))
+           (bucket (and index (nskk-trie-lookup index romaji)))
+           (cache-entry (gethash key nskk--prolog-index-bucket-tail-cache))
+           (cache-info (and cache-entry (gethash romaji (aref cache-entry 2)))))
+      (list
+        (gethash key nskk--prolog-database)
+        (gethash key nskk--prolog-database-tails)
+        index
+        bucket
+        cache-entry
+        cache-info)))
+  (defun nskk-test--converter-should-retain-rule-state (before romaji)
+    "Assert that BEFORE is still the exact Prolog state for ROMAJI."
+    (cl-mapc
+      (lambda (old current)
+        (should (eq old current)))
+      before
+      (nskk-test--converter-rule-state romaji)))
+  (nskk-describe
+    "converter rule ownership and transactions"
+    (nskk-it
+      "detaches cyclic shared string property graphs and returns fresh strings"
+      (nskk-prolog-test-with-isolated-db
+        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal)))
+              (romaji (copy-sequence "own"))
+              (kana (copy-sequence "K仮名"))
+              (shared (cons (quote payload) nil)))
+          (nskk-prolog-clear-database)
+          (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+          (setcdr shared shared)
+          (add-text-properties 0 1 (list (quote payload) shared) romaji)
+          (add-text-properties 0 1 (list (quote payload) shared) kana)
+          (nskk-converter-add-rule romaji kana)
+          (let* ((entry (nskk--converter-find-hash-entry "own"))
+                 (stored-romaji (car entry))
+                 (stored-kana (cadr entry))
+                 (stored-key-property (get-text-property 0 (quote payload) stored-romaji))
+                 (stored-value-property (get-text-property 0 (quote payload) stored-kana)))
+            (should-not (eq stored-romaji romaji))
+            (should-not (eq stored-kana kana))
+            (should-not (eq stored-key-property shared))
+            (should (eq stored-key-property stored-value-property))
+            (should (eq (cdr stored-key-property) stored-key-property))
+            (should
+              (eq
+                stored-kana
+                (nth 2 (car (car (gethash "romaji-to-kana/2" nskk--prolog-database))))))
+            (aset romaji 0 ?X)
+            (aset kana 0 ?X)
+            (let* ((first (nskk-converter-lookup "own"))
+                   (second (nskk-converter-lookup "own"))
+                   (first-property (get-text-property 0 (quote payload) first))
+                   (second-property (get-text-property 0 (quote payload) second)))
+              (should (equal first stored-kana))
+              (should (equal second stored-kana))
+              (should-not (eq first stored-kana))
+              (should-not (eq first second))
+              (should-not (eq first-property stored-key-property))
+              (should-not (eq first-property second-property))
+              (should (eq (cdr first-property) first-property))
+              (should (eq (cdr second-property) second-property))
+              (aset first 0 ?X)
+              (should (equal second stored-kana))
+              (should (equal (nskk-converter-get-rule "own") stored-kana)))))))
+    (nskk-it
+      "distinguishes present nil, incomplete, and non-string identities"
+      (nskk-prolog-test-with-isolated-db
+        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal)))
+              (object (list (quote non-string))))
+          (nskk-prolog-clear-database)
+          (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+          (nskk-converter-add-rule "nil-key" nil)
+          (nskk-converter-add-rule "nil-keyx" "長")
+          (nskk-converter-add-rule "object" object)
+          (nskk--converter-populate-incomplete-markers)
+          (let ((nil-entry (nskk--converter-find-hash-entry "nil-key"))
+                (object-entry (nskk--converter-find-hash-entry "object")))
+            (should nil-entry)
+            (should-not (cadr nil-entry))
+            (should-not (nskk--converter-lookup-raw "nil-key"))
+            (should (eq (nskk-converter-lookup "nil-key") nil))
+            (should (equal (nskk-converter-lookup "nil-keyx") "長"))
+            (should (eq (nskk-converter-lookup "nil-") :incomplete))
+            (should (eq (cadr object-entry) object))
+            (should (eq (nskk-converter-lookup "object") object))
+            (should-not
+              (nskk-prolog-query (list (quote romaji-to-kana) "object" (quote \?kana))))))))
+    (nskk-it
+      "keeps non-string values out of Prolog and detaches their keys"
+      (nskk-prolog-test-with-isolated-db
+        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal)))
+              (romaji (copy-sequence "metadata"))
+              (value (list (quote metadata))))
+          (nskk-prolog-clear-database)
+          (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+          (let ((prolog-before (nskk-test--converter-rule-state "metadata")))
+            (nskk-converter-add-rule romaji value)
+            (let ((entry (nskk--converter-find-hash-entry "metadata")))
+              (should-not (eq (car entry) romaji))
+              (should (eq (cadr entry) value))
+              (should (eq (nskk-converter-lookup "metadata") value)))
+            (nskk-test--converter-should-retain-rule-state prolog-before "metadata")))))
+    (nskk-it
+      "replaces and removes only the first matching Prolog clause"
+      (nskk-prolog-test-with-isolated-db
+        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
+          (nskk-prolog-clear-database)
+          (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+          (let ((first (list (list (quote romaji-to-kana) "duplicate" "一")))
+                (second (list (list (quote romaji-to-kana) "duplicate" "二")))
+                (survivor (list (list (quote romaji-to-kana) "other" "他"))))
+            (nskk-prolog-assert first)
+            (nskk-prolog-assert second)
+            (nskk-prolog-assert survivor)
+            (nskk-converter-add-rule "duplicate" "新")
+            (let ((database (gethash "romaji-to-kana/2" nskk--prolog-database)))
+              (should (equal (car database) second))
+              (should (equal (cadr database) survivor))
+              (should
+                (equal
+                  (car (car (last database)))
+                  (list (quote romaji-to-kana) "duplicate" "新"))))
+            (should
+              (equal
+                (nskk-prolog-query-value
+                  (list (quote romaji-to-kana) "duplicate" (quote \?kana))
+                  (quote \?kana))
+                "二"))
+            (should (equal (nskk-converter-lookup "duplicate") "新"))
+            (nskk-converter-remove-rule "duplicate")
+            (should
+              (equal
+                (nskk-prolog-query-value
+                  (list (quote romaji-to-kana) "duplicate" (quote \?kana))
+                  (quote \?kana))
+                "新"))
+            (should-not (nskk--converter-find-hash-entry "duplicate"))))))
+    (nskk-it
+      "restores exact hash entries for every journal failure boundary"
+      (dolist (state (quote (absent present-nil present-value)))
+        (dolist (fault-type (quote (error quit)))
+          (dolist (timing (quote (before after)))
+            (let* ((nskk--romaji-table (make-hash-table :test (quote equal)))
+                   (old-key (copy-sequence "journal"))
+                   (old-value (and (eq state (quote present-value)) (list (quote old-value))))
+                   (marker (list state fault-type timing)))
+              (unless (eq state (quote absent))
+                (puthash old-key old-value nskk--romaji-table))
+              (let ((caught
+                    (nskk-test--converter-catch-condition
+                      (lambda ()
+                        (nskk--converter-call-with-hash-journal
+                          (copy-sequence "journal")
+                          (lambda ()
+                            (when (eq timing (quote before))
+                              (signal fault-type (list marker)))
+                            (nskk--converter-replace-hash-entry
+                              "journal"
+                              (copy-sequence "journal")
+                              (list (quote new-value)))
+                            (signal fault-type (list marker))))))))
+                (should (eq (car caught) fault-type))
+                (should (eq (cadr caught) marker))
+                (if (eq state (quote absent)) (progn
+                    (should (= (hash-table-count nskk--romaji-table) 0))
+                    (should-not (nskk--converter-find-hash-entry "journal")))
+                  (let ((entry (nskk--converter-find-hash-entry "journal")))
+                    (should (= (hash-table-count nskk--romaji-table) 1))
+                    (should (eq (car entry) old-key))
+                    (should (eq (cadr entry) old-value))))))))))
+    (nskk-it
+      "does not mutate either store when caller graph copying fails"
+      (dolist (operation (quote (add remove)))
+        (dolist (fault-type (quote (error quit)))
+          (nskk-prolog-test-with-isolated-db
+            (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+                  (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
+              (nskk-prolog-clear-database)
+              (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+              (nskk-converter-add-rule "copy-failure" "旧")
+              (let* ((entry-before (nskk--converter-find-hash-entry "copy-failure"))
+                     (state-before (nskk-test--converter-rule-state "copy-failure"))
+                     (marker (list operation fault-type))
+                     caught)
+                (cl-letf
+                  (((symbol-function (quote nskk-prolog-copy-term))
+                      (lambda (_term)
+                        (signal fault-type (list marker)))))
+                  (setq caught (nskk-test--converter-catch-condition
+                      (lambda ()
+                        (if (eq operation (quote add)) (nskk-converter-add-rule "copy-failure" "新")
+                          (nskk-converter-remove-rule "copy-failure"))))))
+                (should (eq (car caught) fault-type))
+                (should (eq (cadr caught) marker))
+                (let ((entry-after (nskk--converter-find-hash-entry "copy-failure")))
+                  (should (eq (car entry-after) (car entry-before)))
+                  (should (eq (cadr entry-after) (cadr entry-before))))
+                (nskk-test--converter-should-retain-rule-state state-before "copy-failure")
+                (if (eq operation (quote add)) (progn
+                    (nskk-converter-add-rule "copy-failure" "新")
+                    (should (equal (nskk-converter-lookup "copy-failure") "新")))
+                  (nskk-converter-remove-rule "copy-failure")
+                  (should-not (nskk--converter-find-hash-entry "copy-failure")))))))))
+    (nskk-it
+      "rolls back add callbacks before and after hash publication"
+      (dolist (fault-type (quote (error quit)))
+        (dolist (timing (quote (before after)))
+          (nskk-prolog-test-with-isolated-db
+            (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+                  (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
+              (nskk-prolog-clear-database)
+              (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+              (nskk-converter-add-rule "atomic-add" "旧")
+              (let* ((entry-before (nskk--converter-find-hash-entry "atomic-add"))
+                     (state-before (nskk-test--converter-rule-state "atomic-add"))
+                     (marker (list fault-type timing))
+                     (original (symbol-function (quote nskk--converter-replace-hash-entry)))
+                     caught)
+                (cl-letf
+                  (((symbol-function (quote nskk--converter-replace-hash-entry))
+                      (lambda (lookup-key new-key value)
+                        (when (eq timing (quote before))
+                          (signal fault-type (list marker)))
+                        (funcall original lookup-key new-key value)
+                        (signal fault-type (list marker)))))
+                  (setq caught (nskk-test--converter-catch-condition
+                      (lambda ()
+                        (nskk-converter-add-rule "atomic-add" "新")))))
+                (should (eq (car caught) fault-type))
+                (should (eq (cadr caught) marker))
+                (let ((entry-after (nskk--converter-find-hash-entry "atomic-add")))
+                  (should (eq (car entry-after) (car entry-before)))
+                  (should (eq (cadr entry-after) (cadr entry-before))))
+                (nskk-test--converter-should-retain-rule-state state-before "atomic-add")
+                (should
+                  (equal
+                    (nskk-prolog-query-value
+                      (list (quote romaji-to-kana) "atomic-add" (quote \?kana))
+                      (quote \?kana))
+                    "旧"))
+                (nskk-converter-add-rule "atomic-add" "新")
+                (should (equal (nskk-converter-lookup "atomic-add") "新"))))))))
+    (nskk-it
+      "rolls back remove callbacks before and after hash deletion"
+      (dolist (fault-type (quote (error quit)))
+        (dolist (timing (quote (before after)))
+          (nskk-prolog-test-with-isolated-db
+            (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+                  (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
+              (nskk-prolog-clear-database)
+              (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+              (nskk-converter-add-rule "atomic-remove" "旧")
+              (let* ((entry-before (nskk--converter-find-hash-entry "atomic-remove"))
+                     (state-before (nskk-test--converter-rule-state "atomic-remove"))
+                     (marker (list fault-type timing))
+                     (original (symbol-function (quote nskk--converter-delete-hash-entry)))
+                     caught)
+                (cl-letf
+                  (((symbol-function (quote nskk--converter-delete-hash-entry))
+                      (lambda (lookup-key)
+                        (when (eq timing (quote before))
+                          (signal fault-type (list marker)))
+                        (funcall original lookup-key)
+                        (signal fault-type (list marker)))))
+                  (setq caught (nskk-test--converter-catch-condition
+                      (lambda ()
+                        (nskk-converter-remove-rule "atomic-remove")))))
+                (should (eq (car caught) fault-type))
+                (should (eq (cadr caught) marker))
+                (let ((entry-after (nskk--converter-find-hash-entry "atomic-remove")))
+                  (should (eq (car entry-after) (car entry-before)))
+                  (should (eq (cadr entry-after) (cadr entry-before))))
+                (nskk-test--converter-should-retain-rule-state state-before "atomic-remove")
+                (should
+                  (equal
+                    (nskk-prolog-query-value
+                      (list (quote romaji-to-kana) "atomic-remove" (quote \?kana))
+                      (quote \?kana))
+                    "旧"))
+                (nskk-converter-remove-rule "atomic-remove")
+                (should-not (nskk--converter-find-hash-entry "atomic-remove")))))))))
+  (progn
+  (nskk-describe
+    "unbound mode map style transactions"
+    (nskk-it
+      "preserves true unbound reads and unmodified staging"
+      (nskk-test-with-style-transaction-state
+        (let (state)
+          (cl-progv
+              (list (quote nskk-mode-map))
+              (list (make-symbol "outer-mode-map"))
+            (makunbound (quote nskk-mode-map))
+            (should-not (boundp (quote nskk-mode-map)))
+            (setq state
+                  (nskk--converter-stage-style-state
+                   (lambda ()
+                     (should-not (boundp (quote nskk-mode-map)))
+                     (should-error
+                      (symbol-value (quote nskk-mode-map))
+                      :type (quote void-variable)))))
+            (should-not (boundp (quote nskk-mode-map)))
+            (should-not (plist-get state :mode-map-bound-p))
+            (should-not (plist-get state :mode-map))
+            (setq state
+                  (nskk--converter-stage-style-state (function ignore)))
+            (should-not (boundp (quote nskk-mode-map)))
+            (should-not (plist-get state :mode-map-bound-p))
+            (should-not (plist-get state :mode-map))))))
+    (nskk-it
+      "contains initializer assignments across faults and retry"
+      (dolist (condition-symbol (quote (error quit)))
+        (nskk-test-with-style-transaction-state
+          (let ((assigned-map (make-sparse-keymap))
+                (condition-data (list "initializer failure" condition-symbol))
+                retry-map
+                state
+                signaled)
+            (cl-progv
+                (list (quote nskk-mode-map))
+                (list (make-symbol "outer-mode-map"))
+              (makunbound (quote nskk-mode-map))
+              (setq signaled
+                    (condition-case caught
+                        (progn
+                          (nskk--converter-stage-style-state
+                           (lambda ()
+                             (setq nskk-mode-map assigned-map)
+                             (should (boundp (quote nskk-mode-map)))
+                             (should
+                              (eq (symbol-value (quote nskk-mode-map))
+                                  assigned-map))
+                             (signal condition-symbol condition-data)))
+                          nil)
+                      (quit caught)
+                      (error caught)))
+              (should (eq (car signaled) condition-symbol))
+              (should (eq (cdr signaled) condition-data))
+              (should-not (boundp (quote nskk-mode-map)))
+              (setq retry-map (make-sparse-keymap))
+              (setq state
+                    (nskk--converter-stage-style-state
+                     (lambda ()
+                       (setq nskk-mode-map retry-map))))
+              (should-not (boundp (quote nskk-mode-map)))
+              (should (plist-get state :mode-map-bound-p))
+              (should (eq (plist-get state :mode-map) retry-map)))))))
+    (nskk-it
+      "publishes a detached initializer map and retains its shell"
+      (nskk-test-with-style-transaction-state
+        (let* ((extension-symbol
+                (quote nskk-test--converter-unbound-mode-map-extension))
+               (extension-table (make-hash-table :test (quote equal)))
+               (nskk--converter-style-transaction-hash-tables
+                (list extension-symbol))
+               assigned-map
+               public-shell
+               shared
+               staged-extension
+               staged-shared
+               state)
+          (cl-progv
+              (list extension-symbol (quote nskk-mode-map))
+              (list extension-table (make-symbol "outer-mode-map"))
+            (makunbound (quote nskk-mode-map))
+            (setq state
+                  (nskk--converter-stage-style-state
+                   (lambda ()
+                     (setq assigned-map (make-sparse-keymap))
+                     (setq shared (cons (quote unbound-shared) nil))
+                     (setcdr shared shared)
+                     (puthash "unbound-shared" shared nskk--romaji-table)
+                     (puthash "unbound-shared" shared
+                              (symbol-value extension-symbol))
+                     (setcdr assigned-map
+                             (cons
+                              (cons (quote nskk-test-unbound-shared) shared)
+                              (cdr assigned-map)))
+                     (setq nskk-mode-map assigned-map))))
+            (should-not (boundp (quote nskk-mode-map)))
+            (should (plist-get state :mode-map-bound-p))
+            (should (eq (plist-get state :mode-map) assigned-map))
+            (setq staged-shared
+                  (gethash "unbound-shared"
+                           (plist-get state :romaji-table)))
+            (setq staged-extension
+                  (cdr
+                   (assq extension-symbol
+                         (plist-get state :extension-hash-tables))))
+            (should (eq staged-shared shared))
+            (should (eq (gethash "unbound-shared" staged-extension)
+                        staged-shared))
+            (should
+             (eq
+              (cdr
+               (assq (quote nskk-test-unbound-shared)
+                     (cdr (plist-get state :mode-map))))
+              staged-shared))
+            (should (eq (cdr staged-shared) staged-shared))
+            (nskk--converter-publish-style-state state)
+            (should (boundp (quote nskk-mode-map)))
+            (setq public-shell (symbol-value (quote nskk-mode-map)))
+            (should-not (eq public-shell assigned-map))
+            (let* ((public-shared
+                    (gethash "unbound-shared" nskk--romaji-table))
+                   (public-extension
+                    (gethash "unbound-shared"
+                             (symbol-value extension-symbol)))
+                   (public-map-shared
+                    (cdr
+                     (assq (quote nskk-test-unbound-shared)
+                           (cdr public-shell)))))
+              (should (eq public-shared public-extension))
+              (should (eq public-shared public-map-shared))
+              (should-not (eq public-shared staged-shared))
+              (should (eq (cdr public-shared) public-shared))
+              (setcar staged-shared (quote retained-mutated))
+              (setcdr assigned-map
+                      (cons
+                       (cons (quote nskk-test-retained) staged-shared)
+                       (cdr assigned-map)))
+              (should (eq (car public-shared) (quote unbound-shared)))
+              (should-not
+               (assq (quote nskk-test-retained) (cdr public-shell))))
+            (let ((retry-state
+                   (nskk--converter-stage-style-state
+                    (lambda ()
+                      (define-key
+                       (symbol-value (quote nskk-mode-map))
+                       [f24]
+                       (function ignore))))))
+              (should (eq (symbol-value (quote nskk-mode-map))
+                          public-shell))
+              (should-not (lookup-key public-shell [f24]))
+              (nskk--converter-publish-style-state retry-state)
+              (should (eq (symbol-value (quote nskk-mode-map))
+                          public-shell))
+              (should (eq (lookup-key public-shell [f24])
+                          (function ignore)))))))))
+  (progn
+  (nskk-describe
+    "mode map binding state publication"
+    (nskk-it
+      "publishes every boundness and value transition"
+      (dolist (transition
+               (quote ((unbound map)
+                       (bound-nil bound-nil)
+                       (bound-nil map)
+                       (map bound-nil)
+                       (map map)
+                       (map unbound)
+                       (bound-nil unbound)
+                       (unbound unbound))))
+        (nskk-test-with-style-transaction-state
+          (let* ((initial-kind (nth 0 transition))
+                 (target-kind (nth 1 transition))
+                 (initial-map (make-sparse-keymap))
+                 (target-map (make-sparse-keymap))
+                 state
+                 published-map)
+            (define-key initial-map [f20] (function ignore))
+            (define-key target-map [f21] (function forward-char))
+            (cl-progv
+                (list (quote nskk-mode-map))
+                (list (make-symbol "outer-mode-map"))
+              (pcase initial-kind
+                ((quote unbound)
+                 (makunbound (quote nskk-mode-map)))
+                ((quote bound-nil)
+                 (set (quote nskk-mode-map) nil))
+                ((quote map)
+                 (set (quote nskk-mode-map) initial-map)))
+              (setq state
+                    (nskk--converter-stage-style-state
+                     (lambda ()
+                       (pcase target-kind
+                         ((quote unbound)
+                          (makunbound (quote nskk-mode-map)))
+                         ((quote bound-nil)
+                          (set (quote nskk-mode-map) nil))
+                         ((quote map)
+                          (set (quote nskk-mode-map) target-map))))))
+              (pcase initial-kind
+                ((quote unbound)
+                 (should-not (boundp (quote nskk-mode-map))))
+                ((quote bound-nil)
+                 (should (boundp (quote nskk-mode-map)))
+                 (should-not (symbol-value (quote nskk-mode-map))))
+                ((quote map)
+                 (should (eq (symbol-value (quote nskk-mode-map))
+                             initial-map))))
+              (should
+               (eq (plist-get state :mode-map-bound-p)
+                   (not (eq target-kind (quote unbound)))))
+              (pcase target-kind
+                ((quote unbound)
+                 (should-not (plist-get state :mode-map)))
+                ((quote bound-nil)
+                 (should-not (plist-get state :mode-map)))
+                ((quote map)
+                 (should (eq (plist-get state :mode-map) target-map))))
+              (nskk--converter-publish-style-state state)
+              (pcase target-kind
+                ((quote unbound)
+                 (should-not (boundp (quote nskk-mode-map))))
+                ((quote bound-nil)
+                 (should (boundp (quote nskk-mode-map)))
+                 (should-not (symbol-value (quote nskk-mode-map))))
+                ((quote map)
+                 (should (boundp (quote nskk-mode-map)))
+                 (setq published-map
+                       (symbol-value (quote nskk-mode-map)))
+                 (if (eq initial-kind (quote map))
+                     (should (eq published-map initial-map))
+                   (should-not (eq published-map target-map)))
+                 (should (eq (lookup-key published-map [f21])
+                             (function forward-char)))))))))))
+  (progn
+  (nskk-describe
+    "style publication cleanup faults"
+    (nskk-it
+      "preserves the original condition across one-shot cleanup faults"
+      (dolist (original-condition (quote (error quit)))
+        (dolist (cleanup-condition (quote (error quit)))
+          (dolist (cleanup-position (quote (before after)))
+            (nskk-test-with-style-transaction-state
+              (let* ((extension-a
+                      (quote nskk-test--converter-cleanup-extension-a))
+                     (extension-b
+                      (quote nskk-test--converter-cleanup-extension-b))
+                     (old-extension-a
+                      (make-hash-table :test (quote equal)))
+                     (old-extension-b
+                      (make-hash-table :test (quote equal)))
+                     (nskk--converter-style-transaction-hash-tables
+                      (list extension-a extension-b))
+                     (old-map (make-sparse-keymap))
+                     (original-data
+                      (list "original publication failure"
+                            original-condition))
+                     (cleanup-data
+                      (list "cleanup failure" cleanup-condition))
+                     (references
+                      (nskk-test--converter-style-state-references))
+                     original-replace
+                     cleanup-watcher
+                     old-map-car
+                     old-map-cdr
+                     cleanup-p
+                     cleanup-faulted-p
+                     cleanup-setting-p
+                     caught
+                     state)
+                (define-key old-map [f19] (function backward-char))
+                (setq old-map-car (car old-map))
+                (setq old-map-cdr (cdr old-map))
+                (puthash "old-a" t old-extension-a)
+                (puthash "old-b" t old-extension-b)
+                (cl-progv
+                    (list extension-a extension-b
+                          (quote nskk-mode-map))
+                    (list old-extension-a old-extension-b old-map)
+                  (setq state
+                        (nskk--converter-stage-style-state
+                         (lambda ()
+                           (puthash "new" t
+                                    (symbol-value extension-a))
+                           (puthash "new" t
+                                    (symbol-value extension-b))
+                           (define-key
+                            (symbol-value (quote nskk-mode-map))
+                            [f22]
+                            (function forward-char)))))
+                  (setq original-replace
+                        (symbol-function
+                         (quote nskk--converter-replace-keymap-contents)))
+                  (setq cleanup-watcher
+                        (lambda (symbol value operation _where)
+                          (when (and cleanup-p
+                                     (eq operation (quote set))
+                                     (eq symbol extension-a)
+                                     (not cleanup-faulted-p)
+                                     (not cleanup-setting-p))
+                            (setq cleanup-faulted-p t)
+                            (when (eq cleanup-position (quote after))
+                              (setq cleanup-setting-p t)
+                              (unwind-protect
+                                  (set symbol value)
+                                (setq cleanup-setting-p nil)))
+                            (signal cleanup-condition cleanup-data))))
+                  (unwind-protect
+                      (progn
+                        (add-variable-watcher extension-a cleanup-watcher)
+                        (cl-letf
+                            (((symbol-function
+                               (quote
+                                nskk--converter-replace-keymap-contents))
+                              (lambda (target source)
+                                (funcall original-replace target source)
+                                (setq cleanup-p t)
+                                (signal original-condition original-data))))
+                          (setq caught
+                                (condition-case condition
+                                    (progn
+                                      (nskk--converter-publish-style-state
+                                       state)
+                                      nil)
+                                  (quit condition)
+                                  (error condition)))))
+                    (remove-variable-watcher extension-a cleanup-watcher))
+                  (should (eq (car caught) original-condition))
+                  (should (eq (cdr caught) original-data))
+                  (should cleanup-faulted-p)
+                  (nskk-test--should-retain-converter-style-state
+                   references)
+                  (should (eq (symbol-value extension-a)
+                              old-extension-a))
+                  (should (eq (symbol-value extension-b)
+                              old-extension-b))
+                  (should-not (gethash "new" old-extension-a))
+                  (should-not (gethash "new" old-extension-b))
+                  (should (boundp (quote nskk-mode-map)))
+                  (should (eq (symbol-value (quote nskk-mode-map))
+                              old-map))
+                  (should (eq (car old-map) old-map-car))
+                  (should (eq (cdr old-map) old-map-cdr))
+                  (should-not (lookup-key old-map [f22]))
+                  (nskk--converter-publish-style-state state)
+                  (should (eq (symbol-value (quote nskk-mode-map))
+                              old-map))
+                  (should (eq (lookup-key old-map [f22])
+                              (function forward-char)))
+                  (should
+                   (gethash "new" (symbol-value extension-a)))
+                  (should
+                   (gethash "new" (symbol-value extension-b)))))))))))
+  (progn
+  (nskk-describe
+    "persistent style publication cleanup faults"
+    (nskk-it
+      "maximizes restoration and keeps the state retryable"
+      (dolist (original-condition (quote (error quit)))
+        (nskk-test-with-style-transaction-state
+          (let* ((extension-a
+                  (quote nskk-test--converter-persistent-extension-a))
+                 (extension-b
+                  (quote nskk-test--converter-persistent-extension-b))
+                 (old-extension-a
+                  (make-hash-table :test (quote equal)))
+                 (old-extension-b
+                  (make-hash-table :test (quote equal)))
+                 (nskk--converter-style-transaction-hash-tables
+                  (list extension-a extension-b))
+                 (old-map (make-sparse-keymap))
+                 (original-data
+                  (list "persistent publication failure"
+                        original-condition))
+                 (references
+                  (nskk-test--converter-style-state-references))
+                 original-replace
+                 cleanup-watcher
+                 old-map-car
+                 old-map-cdr
+                 cleanup-p
+                 (extension-fault-count 0)
+                 caught
+                 state)
+            (define-key old-map [f18] (function backward-char))
+            (setq old-map-car (car old-map))
+            (setq old-map-cdr (cdr old-map))
+            (puthash "old-a" t old-extension-a)
+            (puthash "old-b" t old-extension-b)
+            (cl-progv
+                (list extension-a extension-b
+                      (quote nskk-mode-map))
+                (list old-extension-a old-extension-b old-map)
+              (setq state
+                    (nskk--converter-stage-style-state
+                     (lambda ()
+                       (puthash "new" t (symbol-value extension-a))
+                       (puthash "new" t (symbol-value extension-b))
+                       (define-key
+                        (symbol-value (quote nskk-mode-map))
+                        [f23]
+                        (function forward-char)))))
+              (setq original-replace
+                    (symbol-function
+                     (quote nskk--converter-replace-keymap-contents)))
+              (setq cleanup-watcher
+                    (lambda (symbol _value operation _where)
+                      (when (and cleanup-p
+                                 (eq operation (quote set))
+                                 (eq symbol extension-a))
+                        (setq extension-fault-count
+                              (1+ extension-fault-count))
+                        (error "persistent extension cleanup failure"))))
+              (unwind-protect
+                  (progn
+                    (add-variable-watcher extension-a cleanup-watcher)
+                    (cl-letf
+                        (((symbol-function
+                           (quote
+                            nskk--converter-replace-keymap-contents))
+                          (lambda (target source)
+                            (funcall original-replace target source)
+                            (setq cleanup-p t)
+                            (signal original-condition original-data))))
+                      (setq caught
+                            (condition-case condition
+                                (progn
+                                  (nskk--converter-publish-style-state
+                                   state)
+                                  nil)
+                              (quit condition)
+                              (error condition)))))
+                (remove-variable-watcher extension-a cleanup-watcher))
+              (should (eq (car caught) original-condition))
+              (should (eq (cdr caught) original-data))
+              (should (= extension-fault-count 2))
+              (nskk-test--should-retain-converter-style-state
+               references)
+              (should-not (eq (symbol-value extension-a)
+                              old-extension-a))
+              (should (gethash "new" (symbol-value extension-a)))
+              (should (eq (symbol-value extension-b)
+                          old-extension-b))
+              (should-not (gethash "new" old-extension-b))
+              (should (boundp (quote nskk-mode-map)))
+              (should (eq (symbol-value (quote nskk-mode-map))
+                          old-map))
+              (should (eq (car old-map) old-map-car))
+              (should (eq (cdr old-map) old-map-cdr))
+              (should-not (lookup-key old-map [f23]))
+              (nskk--converter-publish-style-state state)
+              (should (eq (symbol-value (quote nskk-mode-map))
+                          old-map))
+              (should (eq (lookup-key old-map [f23])
+                          (function forward-char)))
+              (should (gethash "new" (symbol-value extension-a)))
+              (should
+               (gethash "new" (symbol-value extension-b)))))))))
+  (provide (quote nskk-converter-test)))))))
 
 ;;; nskk-converter-test.el ends here

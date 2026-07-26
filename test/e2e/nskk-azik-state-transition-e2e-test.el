@@ -75,7 +75,7 @@
 
 (require 'ert)
 (require 'cl-lib)
-(require 'nskk-e2e-helpers)
+(require 'nskk-test-macros) (require 'nskk-e2e-helpers)
 (require 'nskk-state)
 (require 'nskk-henkan)
 (require 'nskk-input)

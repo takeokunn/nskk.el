@@ -182,18 +182,19 @@
 (nskk-describe "conversion pipeline"
 
   (nskk-it "SPC after preedit triggers conversion and commits first candidate"
-    (nskk-integration-with-session 'hiragana
-      (nskk-when  (nskk--integration-type-char ?A))
-      (nskk-then  (should (nskk--conversion-start-active-p)))
-      (nskk-with-mocks ((nskk-core-search/k
-                         (lambda (_k _t _l on-found _on-not-found)
-                           (funcall on-found '("亜" "阿")))))
-        (nskk-when (let ((last-command-event ? ))
-                     (nskk-handle-space)))
-        (nskk-then (should (nskk-converting-p)))
-        (nskk-when (nskk-handle-return))
-        (nskk-then (should-not (nskk-converting-p))
-                   (nskk-should-equal "亜" (buffer-string))))))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-integration-with-session 'hiragana
+        (nskk-when  (nskk--integration-type-char ?A))
+        (nskk-then  (should (nskk--conversion-start-active-p)))
+        (nskk-with-mocks ((nskk-core-search/k
+                           (lambda (_k _t _l on-found _on-not-found)
+                             (funcall on-found '("亜" "阿")))))
+          (nskk-when (let ((last-command-event ? ))
+                       (nskk-handle-space)))
+          (nskk-then (should (nskk-converting-p)))
+          (nskk-when (nskk-handle-return))
+          (nskk-then (should-not (nskk-converting-p))
+                     (nskk-should-equal "亜" (buffer-string)))))))
 
   (nskk-it "canceling conversion exits converting state"
     (nskk-integration-with-session 'hiragana

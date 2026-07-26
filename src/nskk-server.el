@@ -159,8 +159,12 @@ be non-nil for the log entries to appear."
 ;;;; Internal State
 
 (defvar nskk--server-process nil
-  "Active skkserv network process object, or nil when disconnected.
+    "Active skkserv network process object, or nil when disconnected.
 Managed by `nskk-server-open' and `nskk-server-close'.")
+
+  (defvar nskk--server-pending-cleanups nil
+    "Owned server resources waiting for a later cleanup attempt.
+Each entry is a cons of (PROCESS . BUFFER).  Either component may be nil.")
 
 (defconst nskk--server-buffer-name " *nskk-server*"
   "Name of the working buffer for skkserv I/O.")
@@ -198,51 +202,222 @@ Used to avoid duplicate registrations (idempotent guard).")
   "Return non-nil if the skkserv connection is active.
 Checks both the Emacs process status and the Prolog server-state/1 fact.
 Returns nil when not connected or when `nskk--server-process' is nil."
-  (if (and nskk--server-process
+  (if (and (processp nskk--server-process)
            (eq (process-status nskk--server-process) 'open)
            (nskk-prolog-holds-p '(server-state open)))
       (succeed t)
     (fail)))
 
-(defun nskk--server-make-connection ()
-  "Open a raw TCP connection to the configured skkserv instance.
+(defun nskk--server-process-filter (proc chunk)
+  "Retain a bounded first response line from PROC's decoded CHUNK.
+Set the `nskk-response-overflow' process property instead of inserting a
+chunk that would exceed `nskk--server-max-response-size'."
+  (unless (or (process-get proc 'nskk-response-overflow)
+              (process-get proc 'nskk-response-complete))
+    (let* ((newline (string-search "\n" chunk))
+           (response-chunk (if newline
+                               (substring chunk 0 (1+ newline))
+                             chunk))
+           (output-bytes (or (process-get proc 'nskk-response-bytes) 0))
+           (new-size (+ output-bytes (string-bytes response-chunk))))
+      (if (> new-size nskk--server-max-response-size)
+          (process-put proc 'nskk-response-overflow t)
+        (process-put proc 'nskk-response-bytes new-size)
+        (when-let* ((buf (process-buffer proc))
+                    ((buffer-live-p buf)))
+          (with-current-buffer buf
+            (insert response-chunk)))
+        (when newline
+          (process-put proc 'nskk-response-complete t))))))
+
+(defun nskk--server-live-owned-process (proc)
+    "Return PROC while its ownership still needs to be retained."
+    (condition-case nil
+        (and (processp proc) (process-live-p proc) proc)
+      ((error quit) (and (processp proc) proc))))
+
+  (defun nskk--server-live-owned-buffer (buffer)
+    "Return BUFFER while its ownership still needs to be retained."
+    (condition-case nil
+        (and (bufferp buffer) (buffer-live-p buffer) buffer)
+      ((error quit) (and (bufferp buffer) buffer))))
+
+  (defun nskk--server-register-pending-cleanup (proc buffer)
+    "Retain ownership of PROC and BUFFER for a later cleanup attempt."
+    (when (or proc buffer)
+      (unless (cl-find-if
+               (lambda (entry)
+                 (and (eq (car entry) proc)
+                      (eq (cdr entry) buffer)))
+               nskk--server-pending-cleanups)
+        (push (cons proc buffer) nskk--server-pending-cleanups))
+      (condition-case nil
+          (progn
+            (unless (memq #'nskk-server-close kill-emacs-hook)
+              (add-hook 'kill-emacs-hook #'nskk-server-close))
+            (setq nskk--server-kill-emacs-hook-registered t))
+        ((error quit) nil))))
+
+  (defun nskk--server-cleanup-owned-resources (proc buffer)
+    "Best-effort cleanup of owned PROC and BUFFER.
+Return a cons containing the resources that still require cleanup."
+    (let ((inhibit-quit t)
+          delete-completed
+          kill-completed)
+      ;; A first call can fail before taking effect.  Retry once, but do not
+      ;; repeat calls that returned normally.
+      (dotimes (_attempt 2)
+        (unless delete-completed
+          (condition-case nil
+              (when (and proc
+                         (or (not (processp proc))
+                             (process-live-p proc)))
+                (delete-process proc)
+                (setq delete-completed t))
+            ((error quit) nil))))
+      (dotimes (_attempt 2)
+        (unless kill-completed
+          (condition-case nil
+              (when (and (bufferp buffer) (buffer-live-p buffer))
+                (with-current-buffer buffer
+                  (let ((kill-buffer-hook nil)
+                        (kill-buffer-query-functions nil)
+                        (buffer-offer-save nil))
+                    (kill-buffer buffer)))
+                (setq kill-completed t))
+            ((error quit) nil))))
+      (let ((live-proc (nskk--server-live-owned-process proc))
+            (live-buffer (nskk--server-live-owned-buffer buffer)))
+        (and (or live-proc live-buffer)
+             (cons live-proc live-buffer)))))
+
+  (defun nskk--server-drain-pending-cleanups ()
+    "Retry all pending cleanup entries and return non-nil when none remain."
+    (let ((pending nskk--server-pending-cleanups))
+      (setq nskk--server-pending-cleanups nil)
+      (dolist (entry pending)
+        (when-let* ((residual
+                     (nskk--server-cleanup-owned-resources
+                      (car entry) (cdr entry))))
+          (nskk--server-register-pending-cleanup
+           (car residual) (cdr residual))))
+      (null nskk--server-pending-cleanups)))
+
+  (defun nskk--server-cleanup-connection-attempt (proc buffer owned-buffer)
+    "Release resources from one failed connection attempt.
+Kill BUFFER only when OWNED-BUFFER is non-nil, and retain live remnants."
+    (when-let* ((residual
+                 (nskk--server-cleanup-owned-resources
+                  proc (and owned-buffer buffer))))
+      (nskk--server-register-pending-cleanup
+       (car residual) (cdr residual)))
+    (null nskk--server-pending-cleanups))
+
+  (defun nskk--server-prolog-state-snapshot ()
+  "Snapshot only the Prolog storage entries for server-state/1."
+  (let* ((key (nskk--prolog-clause-key 'server-state 1))
+         (missing (make-symbol "missing")))
+    (vector missing
+            key
+            (gethash key nskk--prolog-database missing)
+            (gethash key nskk--prolog-database-tails missing)
+            (gethash key nskk--prolog-index-config missing)
+            (gethash key nskk--prolog-hash-indices missing)
+            (gethash key nskk--prolog-trie-indices missing)
+            (gethash key nskk--prolog-index-bucket-tail-cache missing))))
+
+  (defun nskk--server-restore-prolog-state (snapshot)
+  "Restore the server-state/1 storage entries from SNAPSHOT."
+  (let ((missing (aref snapshot 0))
+        (key (aref snapshot 1))
+        (inhibit-quit t))
+    (dolist (entry
+             (list
+              (cons nskk--prolog-database (aref snapshot 2))
+              (cons nskk--prolog-database-tails (aref snapshot 3))
+              (cons nskk--prolog-index-config (aref snapshot 4))
+              (cons nskk--prolog-hash-indices (aref snapshot 5))
+              (cons nskk--prolog-trie-indices (aref snapshot 6))
+              (cons nskk--prolog-index-bucket-tail-cache (aref snapshot 7))))
+      (if (eq (cdr entry) missing)
+          (remhash key (car entry))
+        (puthash key (cdr entry) (car entry))))))
+
+  (defun nskk--server-make-connection ()
+    "Open a raw TCP connection to the configured skkserv instance.
 Returns the process object on success, or nil if the connection fails.
 
-Connects asynchronously with `:nowait' so that a host which blackholes
-incoming SYNs cannot freeze Emacs for the OS-level connect timeout
-\(~75 seconds) on every lookup.  After initiating the connection, the
-process status is polled with `accept-process-output' until it becomes
-\\='open, bounded by `nskk-server-timeout'.  If the deadline passes or the
-status becomes \\='failed or \\='closed, the half-open process is deleted
-and nil is returned (treated by callers as a connection failure).
-
-Binds coding system for both read and write directions.  Because the
-connection is plain TCP (no TLS negotiation), `:nowait' is safe here."
-  (condition-case err
-      (let* ((coding-system-for-read  nskk-server-coding-system)
-             (coding-system-for-write nskk-server-coding-system)
-             (proc (open-network-stream
-                    "nskk-server"
-                    (get-buffer-create nskk--server-buffer-name)
-                    nskk-server-host
-                    nskk-server-portnum
-                    :type 'plain
-                    :nowait t))
-             (deadline (+ (float-time) nskk-server-timeout)))
-        (while (and (eq (process-status proc) 'connect)
-                    (< (float-time) deadline))
-          (accept-process-output proc 0.1))
-        (if (eq (process-status proc) 'open)
-            proc
-          (nskk-debug-message
-           "nskk-server-open: connection to %s:%d not established (status=%s)"
-           nskk-server-host nskk-server-portnum (process-status proc))
-          (delete-process proc)
-          nil))
-    (error
-     (nskk-debug-message "nskk-server-open: connection failed: %s"
-                         (error-message-string err))
-     nil)))
+Connect asynchronously and bound every poll by a finite remaining wait
+budget.  Every poll consumes the exact slice passed to
+`accept-process-output', so wall-clock adjustments cannot extend the
+connection attempt.  PROC remains the wait return condition while normal
+process event dispatch stays enabled, allowing the asynchronous connection
+sentinel to transition the process out of `connect'.  A process and buffer
+created by this attempt are released if any initialization step signals or
+the connection does not open."
+    (let ((proc nil)
+          (buffer nil)
+          (owned-buffer nil)
+          (completed nil))
+      (unwind-protect
+          (condition-case err
+              (let* ((coding-system-for-read nskk-server-coding-system)
+                     (coding-system-for-write nskk-server-coding-system)
+                     (remaining-wait nil))
+                (setq owned-buffer
+                      (not (buffer-live-p
+                            (get-buffer nskk--server-buffer-name))))
+                (setq buffer (get-buffer-create nskk--server-buffer-name))
+                (setq proc (open-network-stream
+                            "nskk-server"
+                            buffer
+                            nskk-server-host
+                            nskk-server-portnum
+                            :type
+                            'plain
+                            :nowait
+                            t))
+                (when (processp proc)
+                  (process-put proc 'nskk-server-owned-buffer
+                               (and owned-buffer buffer))
+                  (set-process-filter proc #'nskk--server-process-filter)
+                  (process-put proc 'nskk-response-bytes 0)
+                  (process-put proc 'nskk-response-overflow nil)
+                  (process-put proc 'nskk-response-complete nil))
+                (setq remaining-wait
+                      (cond
+                       ((not (numberp nskk-server-timeout))
+                        (signal 'wrong-type-argument
+                                (list 'numberp nskk-server-timeout)))
+                       ((and (> nskk-server-timeout 0)
+                             (= (- nskk-server-timeout
+                                   nskk-server-timeout)
+                                0))
+                        nskk-server-timeout)
+                       (t 0)))
+                (while (and (eq (process-status proc) 'connect)
+                            (> remaining-wait 0))
+                  (let ((slice (min 0.1 remaining-wait)))
+                    (setq remaining-wait
+                          (max 0 (- remaining-wait slice)))
+                    (accept-process-output proc slice nil nil)))
+                (if (eq (process-status proc) 'open)
+                    (prog1 proc
+                      (setq completed t))
+                  (nskk-debug-message
+                   "nskk-server-open: connection to %s:%d not established (status=%s)"
+                   nskk-server-host
+                   nskk-server-portnum
+                   (process-status proc))
+                  nil))
+            (error
+             (nskk-debug-message
+              "nskk-server-open: connection failed: %s"
+              (error-message-string err))
+             nil))
+        (unless completed
+          (nskk--server-cleanup-connection-attempt
+           proc buffer owned-buffer)))))
 
 (defun/done nskk--server-configure-process (proc)
   "Configure PROC after a successful connection.
@@ -260,35 +435,115 @@ fact to \\='open."
                       nskk-server-host nskk-server-portnum))
 
 (defun/k nskk-server-open ()
-  "Open a TCP connection to the configured skkserv instance.
-Connects to `nskk-server-host':`nskk-server-portnum'.  On success,
-calls `nskk--server-configure-process' to set up the connection and
-update Prolog state, then succeeds with the process object.
+  "Open or reuse a TCP connection to the configured skkserv instance.
+When the current connection is live, succeeds with that process without
+reconnecting.  Otherwise connects to `nskk-server-host':`nskk-server-portnum',
+configures the new process, updates Prolog state, and succeeds with it.
 Returns nil (via sync wrapper) or fails if disabled or connection fails."
   (if nskk-server-enable
-      (let ((proc (nskk--server-make-connection)))
-        (if proc
-            (progn
-              (nskk--server-configure-process proc)
-              (succeed proc))
-          (fail)))
+      (if (not (nskk--server-drain-pending-cleanups))
+          (fail)
+        (if (nskk-server-live-p)
+            (succeed nskk--server-process)
+          (let ((cleanup-required (processp nskk--server-process)))
+            (when cleanup-required
+              (nskk-server-close))
+            (if (or nskk--server-pending-cleanups
+                    (and cleanup-required nskk--server-process))
+                (fail)
+              (let* ((previous-process nskk--server-process)
+                     (hook-was-registered
+                      nskk--server-kill-emacs-hook-registered)
+                     (hook-was-present
+                      (memq #'nskk-server-close kill-emacs-hook))
+                     (prolog-snapshot (nskk--server-prolog-state-snapshot))
+                     (proc (nskk--server-make-connection)))
+                (if proc
+                    (let* ((buffer (if (processp proc)
+                                       (process-buffer proc)
+                                     (get-buffer nskk--server-buffer-name)))
+                           (owned-process (not (eq proc previous-process)))
+                           (owned-buffer
+                            (let ((owned
+                                   (and owned-process
+                                        (processp proc)
+                                        (process-get
+                                         proc 'nskk-server-owned-buffer))))
+                              (when owned
+                                (process-put
+                                 proc 'nskk-server-owned-buffer buffer))
+                              owned)))
+                      (condition-case condition
+                          (nskk--server-configure-process proc)
+                        ((error quit)
+                         (condition-case nil
+                             (if hook-was-present
+                                 (add-hook
+                                  'kill-emacs-hook #'nskk-server-close)
+                               (remove-hook
+                                'kill-emacs-hook #'nskk-server-close))
+                           ((error quit) nil))
+                         (setq nskk--server-kill-emacs-hook-registered
+                               hook-was-registered)
+                         (setq nskk--server-process previous-process)
+                         (when owned-process
+                           (nskk--server-cleanup-connection-attempt
+                            proc buffer owned-buffer))
+                         (nskk--server-restore-prolog-state prolog-snapshot)
+                         (signal (car condition) (cdr condition))))
+                      (succeed proc))
+                  (fail)))))))
     (fail)))
 
 (defun/done nskk-server-close ()
-  "Send disconnect command to skkserv and clean up the connection.
-Sends the protocol command \\='0\\=' to terminate the session cleanly,
-kills the process and working buffer, and updates the Prolog
-server-state/1 fact to \\='closed.
-Safe to call when not connected (idempotent)."
-  (when (nskk-server-live-p)
-    (ignore-errors (process-send-string nskk--server-process "0")))
-  (when nskk--server-process
-    (ignore-errors (delete-process nskk--server-process))
-    (setq nskk--server-process nil))
-  (when-let* ((buf (get-buffer nskk--server-buffer-name)))
-    (kill-buffer buf))
-  (nskk-prolog-retract-all 'server-state 1)
-  (nskk-prolog-assert '((server-state closed)))
+  "Send disconnect command and drain all resources owned by the server.
+The active handle and every pending cleanup entry are reclaimed together.
+Cleanup faults are swallowed, but live remnants remain registered so a later
+close or open call can retry without creating another connection."
+  (let* ((proc nskk--server-process)
+         (pending-only (and (null proc) nskk--server-pending-cleanups))
+         (buffer
+          (and (processp proc)
+               (let ((owned
+                      (process-get proc 'nskk-server-owned-buffer)))
+                 (if (bufferp owned)
+                     owned
+                   (process-buffer proc)))))
+         (owned-buffer
+          (and (processp proc)
+               (process-get proc 'nskk-server-owned-buffer)))
+         (active-cleanup-pending
+          (and proc (nskk-prolog-holds-p '(server-state closed))))
+         (live
+          (and (not active-cleanup-pending)
+               proc
+               (nskk-server-live-p)))
+         (prolog-snapshot
+          (and (not active-cleanup-pending)
+               (not pending-only)
+               (nskk--server-prolog-state-snapshot))))
+    (unless (or active-cleanup-pending pending-only)
+      (condition-case condition
+          (progn
+            (nskk-prolog-retract-all 'server-state 1)
+            (nskk-prolog-assert '((server-state closed))))
+        ((error quit)
+         (nskk--server-restore-prolog-state prolog-snapshot)
+         (signal (car condition) (cdr condition)))))
+    (let ((inhibit-quit t))
+      (condition-case nil
+          (when live
+            (process-send-string proc "0"))
+        ((error quit) nil))
+      (condition-case nil
+          (when (processp proc)
+            (set-process-query-on-exit-flag proc nil))
+        ((error quit) nil))
+      (when proc
+        (nskk--server-register-pending-cleanup
+         proc (and owned-buffer buffer))
+        (setq nskk--server-process nil))
+      (nskk--server-drain-pending-cleanups)))
   (nskk-debug-message "nskk-server-close: disconnected"))
 
 (defun/k nskk-server-ensure-open ()
@@ -307,16 +562,57 @@ be established."
 
 ;;;; Protocol Implementation
 
+(defun nskk--server-key-safe-for-coding-p (key coding-system)
+  "Return non-nil when KEY is a lossless skkserv token in CODING-SYSTEM."
+  (and (stringp key)
+       (not (string-empty-p key))
+       coding-system
+       (coding-system-p coding-system)
+       (not
+        (cl-some
+         (lambda (char)
+           (or (<= char #x20)
+               (<= #x7f char #x9f)
+               (memq (get-char-code-property char 'general-category)
+                     '(Zs Zl Zp))))
+         key))
+       (condition-case nil
+           (let ((encoded (encode-coding-string key coding-system)))
+             (and (string= key
+                           (decode-coding-string encoded coding-system))
+                  (not
+                   (cl-some
+                    (lambda (byte)
+                      (or (<= byte #x20)
+                          (= byte #x7f)))
+                    encoded))))
+         (error nil))))
+
+(defun nskk--server-process-safe-for-coding-p (process line)
+  "Return non-nil when PROCESS can safely encode LINE.
+
+Compare base coding systems so EOL variants remain compatible."
+  (condition-case nil
+      (and nskk-server-coding-system
+           (coding-system-p nskk-server-coding-system)
+           (process-live-p process)
+           (let ((actual (cdr (process-coding-system process))))
+             (and actual
+                  (eq (coding-system-base actual)
+                      (coding-system-base nskk-server-coding-system))
+                  (nskk--server-key-safe-for-coding-p
+                   line nskk-server-coding-system))))
+    ((error quit) nil)))
+
 (defun/k nskk--server-lookup-guards-p (key)
   "Succeed when KEY is safe to send to skkserv, fail otherwise.
-String conditions checked synchronously: `nskk-server-enable' is non-nil,
-KEY is a non-empty string, and KEY contains no whitespace or control
-characters (which would cause protocol desync).
+String conditions checked synchronously: `nskk-server-enable' is non-nil
+and KEY is a non-empty token that encodes losslessly without skkserv
+delimiter bytes under `nskk-server-coding-system'.
 Then chains to `nskk-server-live-p/k' for connection liveness."
   (if (and nskk-server-enable
-           (stringp key)
-           (not (string-empty-p key))
-           (not (string-match-p "[\x00-\x1F\x7F ]" key)))
+           (nskk--server-key-safe-for-coding-p
+            key nskk-server-coding-system))
       (<- live-check nskk-server-live-p)
     (fail)))
 
@@ -334,7 +630,8 @@ response prefix: \\='found\\=' prefix (\\\"1\\\") yields candidates,
 any other prefix fails.
 
 Strips annotations (\\\"word;note\\\" -> \\\"word\\\") via
-`nskk--server-strip-annotation'.
+`nskk--server-strip-annotation'.  Candidates containing C0, DEL, or C1
+control characters are rejected.
 
 Succeeds with the candidate list when at least one candidate is found.
 Fails for not-found responses, empty responses, or non-string inputs."
@@ -342,81 +639,139 @@ Fails for not-found responses, empty responses, or non-string inputs."
            (not (string-empty-p response))
            (nskk-prolog-holds-p
             `(server-response-type ,(substring response 0 1) found)))
-      (let* ((body  (string-trim-right (substring response 1) "[\r\n]+"))
+      (let* ((body (string-trim-right (substring response 1) "[\r\n]+"))
              (parts (split-string body "/" t))
              (candidates
               (delq nil
-                    (mapcar (lambda (s)
-                              (let ((trimmed (string-trim s)))
-                                (unless (string-empty-p trimmed)
-                                  (nskk--server-strip-annotation trimmed))))
-                            parts))))
+                    (mapcar
+                     (lambda (candidate)
+                       (unless (cl-some (lambda (char) (or (<= char #x1f) (<= #x7f char #x9f))) candidate)
+                         (let* ((trimmed (string-trim candidate))
+                                (stripped
+                                 (nskk--server-strip-annotation trimmed)))
+                           (unless (string-empty-p stripped)
+                             stripped))))
+                     parts))))
         (if candidates (succeed candidates) (fail)))
     (fail)))
 
-(defun/k nskk--server-await-response (proc buf deadline)
-  "Poll PROC via BUF for a complete skkserv response line until DEADLINE.
-Polls at 0.1-second intervals using `accept-process-output'.
+(defun/k nskk--server-await-response (proc buf wait-budget)
+  "Poll PROC via BUF for one response line within WAIT-BUDGET seconds.
+Polls in slices of at most 0.1 seconds using `accept-process-output'.
+Each poll consumes the exact slice from a finite remaining wait budget, so
+wall-clock adjustments cannot extend the wait.  Non-positive and non-finite
+numeric budgets are treated as zero; non-numeric budgets signal before
+polling.
 
-Searches the process buffer directly for the terminating newline instead
-of copying its whole contents on every poll, and enforces
-`nskk--server-max-response-size' as an upper bound on the accumulated
-reply.  When that cap is exceeded without a newline, the response is
-treated as a protocol error: the connection is reset via
-`nskk-server-close' and the function fails.
+The response is rejected before newline detection when the process filter or
+accumulated buffer exceeds `nskk--server-max-response-size'.  On success,
+only the first protocol line, including its terminating newline, is returned.
+Timeouts, disconnects, incomplete responses, and oversized responses reset
+the connection via `nskk-server-close'.
 
-Succeeds with the accumulated response string (containing a newline).
-Fails on timeout, disconnection, or oversized response."
-  (let ((found nil)
-        (overflow nil))
-    (while (and (not found)
+Succeeds with the first complete response line.
+Fails after resetting the connection on any incomplete or invalid reply."
+  (let ((line-end nil)
+        (overflow (and (processp proc)
+                       (process-get proc 'nskk-response-overflow)))
+        (remaining-wait
+         (cond
+          ((not (numberp wait-budget))
+           (signal 'wrong-type-argument (list 'numberp wait-budget)))
+          ((and (> wait-budget 0)
+                (= (- wait-budget wait-budget) 0))
+           wait-budget)
+          (t 0))))
+    (while (and (not line-end)
                 (not overflow)
                 (nskk-server-live-p)
-                (< (float-time) deadline))
-      (accept-process-output proc 0.1)
+                (> remaining-wait 0))
+      (let ((slice (min 0.1 remaining-wait)))
+        (setq remaining-wait
+              (max 0 (- remaining-wait slice)))
+        (accept-process-output proc slice nil t))
+      (setq overflow
+            (and (processp proc)
+                 (process-get proc 'nskk-response-overflow)))
       (with-current-buffer buf
         (goto-char (point-min))
         (cond
-         ((search-forward "\n" nil t) (setq found t))
-         ((> (buffer-size) nskk--server-max-response-size)
-          (setq overflow t)))))
+         ((or overflow
+              (> (- (position-bytes (point-max))
+                    (position-bytes (point-min)))
+                 nskk--server-max-response-size))
+          (setq overflow t))
+         ((search-forward "\n" nil t)
+          (setq line-end (point))))))
     (cond
-     (overflow
-      (nskk-debug-message
-       "nskk-server-lookup: response exceeded %d bytes without newline; resetting connection"
-       nskk--server-max-response-size)
+     (line-end
+      (succeed
+       (with-current-buffer buf
+         (buffer-substring-no-properties (point-min) line-end))))
+     (t
+      (when overflow
+        (nskk-debug-message
+         "nskk-server-lookup: response exceeded %d bytes; resetting connection"
+         nskk--server-max-response-size))
       (nskk-server-close)
-      (fail))
-     (found (succeed (with-current-buffer buf (buffer-string))))
-     (t (fail)))))
+      (fail)))))
 
 (defun/k nskk--server-with-response (key)
   "Send skkserv command 1 for KEY, await the response.
-Erases the I/O buffer, sends the protocol request \"1KEY \", then
-delegates to `nskk--server-await-response/k' to poll for the reply.
+Before any I/O or process-state mutation, verifies that the explicit
+configured coding system and actual process output coding have the same base,
+and that the actual output coding can encode KEY losslessly without skkserv
+delimiter bytes.
+
+Erases the I/O buffer, resets its byte-limit state, sends the command-1
+request, then delegates to `nskk--server-await-response/k' with the finite
+timeout budget.
 
 When `nskk-server-report-response' is non-nil, logs elapsed time.
 
+After a send attempt, any non-local exit before response completion discards
+the connection so a partial response cannot desynchronize the next request.
+Cleanup failures never replace the original condition.
+
 Succeeds with the raw response string.
-Fails on network error or timeout."
-  (let ((resp (condition-case err
-                  (let* ((proc       nskk--server-process)
-                         (buf        (process-buffer proc))
-                         (start-time (float-time))
-                         (deadline   (+ start-time nskk-server-timeout)))
-                    (with-current-buffer buf (erase-buffer))
-                    (process-send-string proc (concat "1" key " "))
-                    (let ((r (nskk--server-await-response proc buf deadline)))
-                      (when nskk-server-report-response
-                        (nskk-debug-message
-                         "nskk-server-lookup: key=%s elapsed=%.3fms"
-                         key (* 1000 (- (float-time) start-time))))
-                      r))
-                (error
-                 (nskk-debug-message "nskk-server-lookup: error for key=%s: %s"
-                                     key (error-message-string err))
-                 nil))))
-    (if resp (succeed resp) (fail))))
+Fails on validation error, network error, or timeout."
+  (let ((proc nskk--server-process))
+    (if (not (nskk--server-process-safe-for-coding-p proc key))
+        (fail)
+      (let ((request-started nil)
+            (response-complete nil))
+        (let ((resp
+               (condition-case err
+                   (unwind-protect
+                       (let* ((buf (process-buffer proc))
+                              (start-time
+                               (and nskk-server-report-response
+                                    (float-time))))
+                         (with-current-buffer buf (erase-buffer))
+                         (when (processp proc)
+                           (process-put proc 'nskk-response-bytes 0)
+                           (process-put proc 'nskk-response-overflow nil)
+                           (process-put proc 'nskk-response-complete nil))
+                         (setq request-started t)
+                         (process-send-string proc (concat "1" key " "))
+                         (let ((r (nskk--server-await-response
+                                   proc buf nskk-server-timeout)))
+                           (setq response-complete t)
+                           (when nskk-server-report-response
+                             (nskk-debug-message
+                              "nskk-server-lookup: key=%s elapsed=%.3fms"
+                              key (* 1000 (- (float-time) start-time))))
+                           r))
+                     (when (and request-started (not response-complete))
+                       (condition-case nil
+                           (nskk-server-close)
+                         ((error quit) nil))))
+                 (error
+                  (nskk-debug-message
+                   "nskk-server-lookup: error for key=%s: %s"
+                   key (error-message-string err))
+                  nil))))
+          (if resp (succeed resp) (fail)))))))
 
 (defun/k nskk-server-lookup (key)
   "Look up KEY in the skkserv dictionary using command 1.

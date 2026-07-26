@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-26
+
+### Added
+
+- Added shared E2E helpers and comprehensive regression coverage for dictionary
+  parsing and registration, conversion, search and caching, skkserv, the
+  embedded Prolog engine, input modes, state transitions, and tutorial flows.
+- Added benchmark coverage for representative input-dispatch and end-to-end
+  conversion paths.
+
+### Changed
+
+- Hardened dictionary, conversion, search, skkserv, program-dictionary, and
+  Prolog behavior, including cache ownership and rollback semantics, malformed
+  input handling, timeout accounting, and resource cleanup.
+- Changed external program dictionaries to treat a non-zero process exit as a
+  lookup miss instead of accepting any stdout produced before the failure.
+- Strengthened release gates so byte compilation, Checkdoc, and package-lint
+  failures stop the build, and package-lint checks every source module.
+
+### Fixed
+
+- Fixed program-dictionary subprocess output loss when a process exits before
+  its final stdout chunk is delivered to the process filter.
+- Fixed stale romaji classification results after Prolog classification rules
+  are reinitialized.
+- Fixed AZIK E2E coverage so the standalone suite is run directly rather than
+  relying on incidental loading from another test file.
+
+### Security
+
+- Bounded stdout and stderr from program-dictionary subprocesses and skkserv
+  responses, with deterministic timeout and process cleanup behavior.
+- Kept program-dictionary arguments out of shell interpolation, terminated
+  verified subprocess groups on failure, and restricted isolated calculation
+  results to one safe, size-limited value while rejecting circular reader
+  syntax.
+
+### Performance
+
+- Memoized the finite Prolog-backed romaji doubled-context and classification
+  dispatch. Source benchmarks measured 60.0-92.6% lower classification time
+  and 33.0-52.5% lower end-to-end conversion time in the tested scenarios.
+
 ## [0.2.2] - 2026-07-04
 
 ### Fixed
@@ -135,3 +179,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Zero byte-compile warnings**: All source and test files compile clean.
 - **`:package-version` completeness**: All `defcustom`/`defface` entries carry
   `:package-version '(nskk . "0.1.0")`.
+
+[Unreleased]: https://github.com/takeokunn/nskk.el/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/takeokunn/nskk.el/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/takeokunn/nskk.el/releases/tag/v0.2.2
+Earlier published artifacts and release notes are available from
+[GitHub Releases](https://github.com/takeokunn/nskk.el/releases).

@@ -472,17 +472,101 @@
           (let ((depth-before nskk--registration-depth))
             (nskk-e2e-type "Shinki")
             (nskk-e2e-type "SPC")
-            (should (= nskk--registration-depth depth-before))))))))
+            (should (= nskk--registration-depth depth-before)))))))
 
-;; TODO(issue-38-followup): Deferred E2E coverage for C-g registration abort.
-;; These ACs require real-keypress dispatch (execute-kbd-macro / unread-command-events)
-;; which is infeasible in --batch (read-from-minibuffer reads from stdin in batch mode).
-;; Revisit when an interactive test harness is available, or as manual QA.
-;;   - AZIK pending states (DA/DV/CP/CD/SP/sticky-shift) inside registration minibuffer
-;;   - C-g during ▼ active conversion or list phase inside minibuffer
-;;   - C-g while katakana / abbrev / ascii / latin / jisx0208-latin mode is active
-;;   - Outer-buffer regression guards (preedit/converting/abbrev arms of nskk-handle-cancel)
-;;   - dcomp dynamic-completion overlay two-stage C-g semantics
+  (nskk-it "uses the production registration C-g map for every input state"
+    (let ((cases
+           (quote ((pending nskk--deferred-azik-state)
+                   (pending nskk--deferred-vowel-shadow-state)
+                   (pending nskk--azik-colon-okuri-pending)
+                   (pending nskk--azik-colon-okuri-deferred)
+                   (pending nskk--azik-sokuon-okuri-kana-pending)
+                   (pending nskk--sticky-shift-pending)
+                   (phase active)
+                   (phase list)
+                   (mode hiragana)
+                   (mode katakana)
+                   (mode abbrev)
+                   (mode ascii)
+                   (mode latin)
+                   (mode jisx0208-latin))))
+          (pending-symbols
+           (quote (nskk--deferred-azik-state
+                   nskk--deferred-vowel-shadow-state
+                   nskk--azik-colon-okuri-pending
+                   nskk--azik-colon-okuri-deferred
+                   nskk--azik-sokuon-okuri-kana-pending
+                   nskk--sticky-shift-pending)))
+          (case-count 0))
+      (dolist (case-spec cases)
+        (let ((kind (car case-spec))
+              (value (cadr case-spec)))
+          (nskk-e2e-with-buffer (quote hiragana) nil
+            (nskk-e2e-type "Shinki")
+            (let* ((nskk-use-kana-in-registration t)
+                   (outer-buffer (current-buffer))
+                   (outer-state nskk-current-state)
+                   (outer-phase (nskk-state-henkan-phase nskk-current-state))
+                   (outer-mode (nskk-current-mode))
+                   (outer-text (buffer-string))
+                   (outer-depth nskk--registration-depth)
+                   (outer-pending-values
+                    (mapcar (lambda (symbol)
+                              (cons symbol (symbol-value symbol)))
+                            pending-symbols))
+                   (setup-count 0))
+              (cl-letf (((symbol-function (quote read-from-minibuffer))
+                         (lambda (&rest _args)
+                           (with-temp-buffer
+                             (run-hooks (quote minibuffer-setup-hook))
+                             (cl-incf setup-count)
+                             (should nskk-mode)
+                             (should (eq (nskk-current-mode) (quote hiragana)))
+                             (dolist (symbol pending-symbols)
+                               (set (make-local-variable symbol) nil))
+                             (pcase kind
+                               ((quote pending)
+                                (set (make-local-variable value) t))
+                               ((quote phase)
+                                (nskk-state-force-henkan-phase nskk-current-state value)
+                                (setq-local nskk--henkan-candidate-list-active
+                                            (eq value (quote list))))
+                               ((quote mode)
+                                (nskk--set-mode value))
+                               (_ (ert-fail (format "Unknown case: %S" case-spec))))
+                             (dolist (symbol pending-symbols)
+                               (should (eq (not (null (symbol-value symbol)))
+                                           (and (eq kind (quote pending))
+                                                (eq symbol value)))))
+                             (when (eq kind (quote phase))
+                               (should (eq (nskk-state-henkan-phase nskk-current-state)
+                                           value)))
+                             (when (eq kind (quote mode))
+                               (should (eq (nskk-current-mode) value)))
+                             (let ((registration-map
+                                    (cdr (assq (quote nskk-mode)
+                                               minor-mode-overriding-map-alist))))
+                               (should (keymapp registration-map))
+                               (should (eq (lookup-key registration-map (kbd "C-g"))
+                                           (function abort-recursive-edit)))
+                               (should (eq (key-binding (kbd "C-g"))
+                                           (function abort-recursive-edit))))
+                             (signal (quote quit) nil)))))
+                (should-not (nskk--read-registration-entry "しんき")))
+              (should (= setup-count 1))
+              (should (eq (current-buffer) outer-buffer))
+              (should (eq nskk-current-state outer-state))
+              (should (eq (nskk-state-henkan-phase nskk-current-state) outer-phase))
+              (should (eq (nskk-current-mode) outer-mode))
+              (should (equal (buffer-string) outer-text))
+              (should (= nskk--registration-depth outer-depth))
+              (should (equal (mapcar (lambda (symbol)
+                                       (cons symbol (symbol-value symbol)))
+                                     pending-symbols)
+                             outer-pending-values))))
+          (cl-incf case-count)))
+      (should (= case-count (length cases)))))
+)
 
 (provide 'nskk-registration-e2e-test)
 

@@ -600,7 +600,7 @@ standard observer semantics such as `post-self-insert-hook'."
 Converts ASCII characters (SPC and !-~) to their JIS X 0208 full-width
 equivalents via Prolog fullwidth-char/2 rule.
 Space (SPC) maps to ideographic space (U+3000); printable ASCII
-characters (! through ~) map to FF01-FF5E via offset +#xFEE0.
+characters (! through ~) map to FF01-FF5E via offset +65248.
 
 Note: char code 95 (underscore) is handled directly in Elisp because the
 Prolog engine uses integer 95 as the anonymous-variable sentinel (?_),
@@ -714,25 +714,27 @@ Results:
   `henkan-start'    -- IS-HENKAN-START=t; effective-char=(downcase char)
   `normalize-vowel' -- NORMALIZE-VOWEL-P=t; effective-char=(downcase char)
   `normal'          -- both flags nil; effective-char=char unchanged"
-  (let* ((upper-ready  (and (characterp char) (<= ?A char) (<= char ?Z)
-                            nskk-converter-auto-start-henkan))
-         (conv-active  (nskk--conversion-start-active-p))
-         (buf-nonempty (not (string-empty-p nskk--romaji-buffer)))
-         (vowel-or-ctx (or (nskk-prolog-holds-p `(uppercase-vowel-char ,char))
-                           (not (nskk--has-preedit))
-                           (nskk-with-current-state
-                             (nskk-state-get-okurigana nskk-current-state))))
-         (class (nskk-prolog-query-value
-                 `(effective-char-class ,'\?class
-                                        ,(nskk--bool-sym upper-ready)
-                                        ,(nskk--bool-sym conv-active)
-                                        ,(nskk--bool-sym buf-nonempty)
-                                        ,(nskk--bool-sym vowel-or-ctx))
-                 '\?class)))
-    (pcase class
-      ('henkan-start    (succeed (list (downcase char) t   nil)))
-      ('normalize-vowel (succeed (list (downcase char) nil t)))
-      (_                (succeed (list char             nil nil))))))
+  (let ((upper-ready (and (characterp char) (<= ?A char) (<= char ?Z)
+                          nskk-converter-auto-start-henkan)))
+    (if (not upper-ready)
+        (succeed (list char nil nil))
+      (let* ((conv-active (nskk--conversion-start-active-p))
+             (buf-nonempty (not (string-empty-p nskk--romaji-buffer)))
+             (vowel-or-ctx (or (nskk-prolog-holds-p `(uppercase-vowel-char ,char))
+                               (not (nskk--has-preedit))
+                               (nskk-with-current-state
+                                 (nskk-state-get-okurigana nskk-current-state))))
+             (class (nskk-prolog-query-value
+                     `(effective-char-class ,'\?class
+                                            ,(nskk--bool-sym upper-ready)
+                                            ,(nskk--bool-sym conv-active)
+                                            ,(nskk--bool-sym buf-nonempty)
+                                            ,(nskk--bool-sym vowel-or-ctx))
+                     '\?class)))
+        (pcase class
+          ('henkan-start    (succeed (list (downcase char) t   nil)))
+          ('normalize-vowel (succeed (list (downcase char) nil t)))
+          (_                (succeed (list char             nil nil))))))))
 
 (defun/done nskk--fire-azik-colon-okuri (char)
   "Handle AZIK colon-okurigana fire: pending consonant CHAR arrives.
@@ -923,11 +925,11 @@ or `no-result' otherwise."
     (_                       'no-result)))
 
 (defvar nskk--romaji-classify-cache
-  (make-hash-table :test 'equal :size 16)
+  (make-hash-table :test 'equal :size 64)
   "Memoization cache for `nskk--classify-romaji-input'.
-Keys are (DOUBLED-ELIGIBLE . RESULT-TYPE) cons cells; values are the
-classification symbol returned by the romaji-classify/3 Prolog query.
-At most 15 entries (5 doubled-eligible × 3 result-type combinations).
+Keys are tagged lists for either doubled-context/6 inputs or
+romaji-classify/3 inputs; values are their classification symbols.
+The finite input space has at most 48 context keys and 15 class keys.
 Cleared whenever `nskk--init-romaji-classify-rules' reasserts the table.")
 
 (defun/done nskk--init-romaji-classify-rules ()
@@ -993,43 +995,53 @@ Returns one of: `nn-double', `azik-deferred', `match', `n-consonant',
 `sokuon', `incomplete', or `no-match'.
 
 Two-stage Prolog dispatch:
-  1. Query `doubled-context/6' with five pre-computed boolean symbols to
-     obtain the `doubled-eligible' classification (replaces the 5-arm cond).
-  2. Query `romaji-classify/3' with doubled-eligible and result-type for the
-     final class (memoized in `nskk--romaji-classify-cache').
+  1. Query `doubled-context/6' with five pre-computed boolean symbols.
+  2. Query `romaji-classify/3' for the final class.
 
-Pre-computed boolean inputs for doubled-context/6:
-  LAST-IS-N   -- last buffer char is `n'
-  CHAR-IS-N   -- current char is `n'
-  SAME-OK     -- same char doubled AND not in sokuon-blockers
-  N-OK        -- char not in hatsuon-blockers AND
-                 direct n+char lookup not :incomplete"
-  (let* ((result-type      (nskk--romaji-result-type result))
-         (last-is-n        (eql last-buf-char ?n))
-         (char-is-n        (eql char ?n))
-         (same-ok          (and (eql last-buf-char char)
-                                 (not (nskk-prolog-holds-p `(sokuon-blocker ,char)))
-                                 (not (eq (nskk-converter-lookup
-                                           (string last-buf-char char))
-                                          :incomplete))))
-         (n-ok             (and (not (nskk-prolog-holds-p `(hatsuon-blocker ,char)))
-                                (not (eq (nskk-converter-lookup (string ?n char)) :incomplete))))
-         (doubled-eligible (or (nskk-prolog-query-value
-                                `(doubled-context ,'\?de
-                                                  ,(nskk--bool-sym last-is-n)
-                                                  ,(nskk--bool-sym char-is-n)
-                                                  ,(nskk--bool-sym same-ok)
-                                                  ,(nskk--bool-sym n-ok)
-                                                  ,result-type)
-                                '\?de)
-                               'not-eligible))
-         (cache-key        (cons doubled-eligible result-type)))
-    (or (gethash cache-key nskk--romaji-classify-cache)
+Both finite dispatches are memoized in `nskk--romaji-classify-cache'.
+The cache is cleared whenever the classification rules are reasserted."
+  (let* ((result-type (nskk--romaji-result-type result))
+         (last-is-n (eql last-buf-char ?n))
+         (char-is-n (eql char ?n))
+         (same-ok (and (eql last-buf-char char)
+                       (not (nskk-prolog-holds-p `(sokuon-blocker ,char)))
+                       (not (eq (nskk-converter-lookup
+                                 (string last-buf-char char))
+                                :incomplete))))
+         (n-ok (and last-is-n
+                    (not (nskk-prolog-holds-p `(hatsuon-blocker ,char)))
+                    (not (eq (nskk-converter-lookup (string ?n char))
+                             :incomplete))))
+         (last-is-n-sym (nskk--bool-sym last-is-n))
+         (char-is-n-sym (nskk--bool-sym char-is-n))
+         (same-ok-sym (nskk--bool-sym same-ok))
+         (n-ok-sym (nskk--bool-sym n-ok))
+         (context-key (list 'doubled-context
+                            last-is-n-sym char-is-n-sym
+                            same-ok-sym n-ok-sym result-type))
+         (doubled-eligible
+          (or (gethash context-key nskk--romaji-classify-cache)
+              (let ((value
+                     (or (nskk-prolog-query-value
+                          `(doubled-context ,'\?de
+                                            ,last-is-n-sym
+                                            ,char-is-n-sym
+                                            ,same-ok-sym
+                                            ,n-ok-sym
+                                            ,result-type)
+                          '\?de)
+                         'not-eligible)))
+                (puthash context-key value nskk--romaji-classify-cache)
+                value)))
+         (class-key (list 'romaji-classify doubled-eligible result-type)))
+    (or (gethash class-key nskk--romaji-classify-cache)
         (let ((class (or (nskk-prolog-query-value
-                          `(romaji-classify ,'\?class ,doubled-eligible ,result-type)
+                          `(romaji-classify ,'\?class
+                                            ,doubled-eligible
+                                            ,result-type)
                           '\?class)
                          'no-match)))
-          (puthash cache-key class nskk--romaji-classify-cache)
+          (puthash class-key class nskk--romaji-classify-cache)
           class))))
 
 ;; Classification taxonomy for `nskk-convert-input-to-kana/k':
@@ -1071,18 +1083,32 @@ optionally inserts っ (when INSERT-SOKUON-P is non-nil), and resets
 `nskk--romaji-buffer' to the key portion of the deferred state (for retroactive
 processing with the vowel).
 KEY can be a character (via `char-to-string') or a string (used as-is).
-A non-vowel CHAR clears the state without correction."
+A non-vowel CHAR clears the state without correction.  A failed vowel
+correction restores the buffer, point, state payload, and romaji buffer."
   (let ((state (symbol-value state-var)))
     (when state
-      (let ((deferred-key (nskk--deferred-state-key state))
-            (deferred-kana (nskk--deferred-state-kana state)))
-        (set state-var nil)
-        (when (nskk-prolog-holds-p `(vowel-char ,char))
-          (delete-char (- (length deferred-kana)))
-          (when insert-sokuon-p (insert "っ"))
-          (setq nskk--romaji-buffer
-                (if (stringp deferred-key) deferred-key
-                  (char-to-string deferred-key))))))))
+      (if (not (nskk-prolog-holds-p `(vowel-char ,char)))
+          (set state-var nil)
+        (let ((deferred-key (nskk--deferred-state-key state))
+              (deferred-kana (nskk--deferred-state-kana state))
+              (entry-point (point))
+              (entry-romaji nskk--romaji-buffer))
+          (condition-case err
+              (atomic-change-group
+                (delete-char (- (length deferred-kana)))
+                (when insert-sokuon-p
+                  (insert "っ"))
+                (setq nskk--romaji-buffer
+                      (if (stringp deferred-key)
+                          deferred-key
+                        (char-to-string deferred-key)))
+                (set state-var nil))
+            ((error quit)
+             (let ((inhibit-quit t))
+               (set state-var state)
+               (setq nskk--romaji-buffer entry-romaji)
+               (goto-char entry-point))
+             (signal (car err) (cdr err)))))))))
 
 (defun/done nskk--apply-deferred-azik-correction (char)
   "Apply retroactive sokuon correction when a deferred AZIK state is pending.
@@ -1385,7 +1411,9 @@ Arguments (pre-computed boolean symbols `yes'/`no', or `result-type' values):
   N-OK        -- last=n path: char not in hatsuon-blockers AND
                  direct two-char lookup not :incomplete (yes/no)
   RESULT-TYPE -- `match', `incomplete', or `no-result'
-Result (first arg): doubled-eligible symbol for romaji-classify/3."
+Result (first arg): doubled-eligible symbol for romaji-classify/3.
+Also clears `nskk--romaji-classify-cache' so stale memoized lookups are evicted."
+  (clrhash nskk--romaji-classify-cache)
   (nskk-prolog-define-fact-table doubled-context (:arity 6 :index :list)
     ;; Priority 1: n+n — most specific n-prefix rule
     (nn              yes yes \?so \?no \?rt)
@@ -1422,7 +1450,7 @@ Result (first arg): char class symbol."
   "Assert fullwidth-char/2 rules for full-width character mapping.
 Space (U+0020) maps to ideographic space (U+3000).
 Printable ASCII (U+0021-U+007E, excluding U+005F underscore) maps to the
-full-width range (U+FF01-U+FF5E) via arithmetic offset +#xFEE0 (65248)
+full-width range (U+FF01-U+FF5E) via arithmetic offset +65248 (65248)
 using the is/2 built-in.
 
 Uses :list index (full clause scan) so the arithmetic rule with a variable
@@ -1435,7 +1463,7 @@ handled directly in `nskk-insert-fullwidth-char' instead."
   (nskk-prolog-set-index 'fullwidth-char 2 :list)
   ;; Space (U+0020) → ideographic space (U+3000)
   (nskk-prolog-assert '((fullwidth-char 32 12288)))
-  ;; Printable ASCII U+0021-U+007E via arithmetic +#xFEE0
+  ;; Printable ASCII U+0021-U+007E via arithmetic +65248
   ;; Char 95 (underscore) is handled outside Prolog; see nskk-insert-fullwidth-char.
   (nskk-prolog-<- (fullwidth-char \?c \?fw)
     (>= \?c 33) (<= \?c 126) (not (= \?c 95))

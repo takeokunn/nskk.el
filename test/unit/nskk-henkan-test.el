@@ -42,6 +42,51 @@
 ;;; henkan initialization
 ;;;
 
+(nskk-describe "stable candidate merging"
+  (nskk-it "preserves order, first identity, properties, and input lists"
+    (let* ((first (propertize "same" 'source 'primary))
+           (duplicate (propertize "same" 'source 'secondary))
+           (primary (list first "primary-only"))
+           (secondary (list duplicate "secondary-only"))
+           (primary-tail (cdr primary))
+           (secondary-tail (cdr secondary))
+           (primary-before (copy-sequence primary))
+           (secondary-before (copy-sequence secondary))
+           (result
+            (nskk--merge-candidates-user-first primary secondary)))
+      (should (equal (mapcar #'substring-no-properties result)
+                     '("same" "primary-only" "secondary-only")))
+      (should (eq (car result) first))
+      (should (eq (get-text-property 0 'source (car result)) 'primary))
+      (should (equal primary primary-before))
+      (should (equal secondary secondary-before))
+      (should (eq (cdr primary) primary-tail))
+      (should (eq (cdr secondary) secondary-tail))))
+
+  (nskk-it "uses one hash probe per input candidate at 5000 candidates"
+    (let* ((primary
+            (cl-loop for index below 2500
+                     collect (format "candidate-%d" index)))
+           (secondary (mapcar #'copy-sequence primary))
+           (real-gethash (symbol-function 'gethash))
+           (real-puthash (symbol-function 'puthash))
+           (probes 0)
+           (inserts 0)
+           result)
+      (cl-letf (((symbol-function 'gethash)
+                 (lambda (key table &optional default)
+                   (setq probes (1+ probes))
+                   (funcall real-gethash key table default)))
+                ((symbol-function 'puthash)
+                 (lambda (key value table)
+                   (setq inserts (1+ inserts))
+                   (funcall real-puthash key value table))))
+        (setq result
+              (nskk--merge-candidates-user-first primary secondary)))
+      (should (= probes 5000))
+      (should (= inserts 2500))
+      (should (= (length result) 2500))
+      (should (equal result primary)))))
 (nskk-describe "henkan initialization"
   (nskk-it "provides the nskk-henkan feature"
     (should (featurep 'nskk-henkan)))
@@ -1498,9 +1543,30 @@
       (let ((nskk--test-dismiss-call-count 0)
             (nskk--henkan-candidate-list-active t)
             (nskk-henkan-hide-candidates-functions
-             (list (lambda () (cl-incf nskk--test-dismiss-call-count)))))
+             (lambda () (cl-incf nskk--test-dismiss-call-count))))
         (nskk--dismiss-candidate-list)
         (should (= nskk--test-dismiss-call-count 1)))))
+
+  (nskk-it "runs every cleanup and re-signals the first error or quit fail-closed"
+    (dolist (injected '((error dismiss-error payload)
+                        (quit dismiss-quit payload)))
+      (with-temp-buffer
+        (let ((cleanup-order nil)
+              (nskk--henkan-candidate-list-active t)
+              caught)
+          (let ((nskk-henkan-hide-candidates-functions
+                 (list (lambda ()
+                         (push 'first cleanup-order)
+                         (signal (car injected) (cdr injected)))
+                       (lambda ()
+                         (push 'second cleanup-order)))))
+            (condition-case condition
+                (nskk--dismiss-candidate-list)
+              ((error quit)
+               (setq caught condition))))
+          (should (equal caught injected))
+          (should (equal cleanup-order '(second first)))
+          (should-not nskk--henkan-candidate-list-active)))))
 
   (nskk-it "is idempotent when list is already nil"
     (with-temp-buffer
@@ -2201,15 +2267,264 @@
             (nskk--dcomp-prefix nil)
             (nskk--dcomp-index 0))
         (nskk--clear-conversion-context)
-        (should-not nskk--henkan-candidate-list-active)))))
+        (should-not nskk--henkan-candidate-list-active))))
+
+  (nskk-it "runs every cleanup after hide/inline faults and preserves the first condition"
+    (dolist (invocation '(direct mode-switch))
+      (dolist (injection '(hide-first hide-second inline))
+        (dolist (condition-type '(error quit))
+          (ert-info ((format "invocation=%S injection=%S condition=%S"
+                             invocation injection condition-type))
+            (with-temp-buffer
+              (insert "x")
+              (let* ((nskk-current-state (nskk-state-create 'hiragana))
+                     (conversion-overlay
+                      (make-overlay (point-min) (point-max)))
+                     (pending-overlay
+                      (make-overlay (point-min) (point-max)))
+                     (dcomp-overlay
+                      (make-overlay (point-min) (point-max)))
+                     (inline-overlay
+                      (make-overlay (point-min) (point-max)))
+                     (marker (copy-marker (point-min)))
+                     (nskk--conversion-overlay conversion-overlay)
+                     (nskk--pending-romaji-overlay pending-overlay)
+                     (nskk--dcomp-multiple-overlay dcomp-overlay)
+                     (nskk--inline-overlay inline-overlay)
+                     (nskk--conversion-start-marker marker)
+                     (nskk--romaji-buffer "dirty")
+                     (nskk--dcomp-candidates '("dirty"))
+                     (nskk--dcomp-prefix "dirty")
+                     (nskk--dcomp-index 1)
+                     (nskk--henkan-candidate-list-active t)
+                     (nskk--numeric-mode t)
+                     (nskk--sticky-shift-pending 'okurigana)
+                     (nskk--deferred-azik-state '(dirty))
+                     (nskk--deferred-vowel-shadow-state '(dirty))
+                     (nskk--azik-colon-okuri-pending t)
+                     (nskk--azik-colon-okuri-deferred '(dirty))
+                     (nskk--azik-sokuon-okuri-kana-pending t)
+                     (primary-payload (list 'primary-payload))
+                     (primary-data (list "primary-cleanup" primary-payload))
+                     (secondary-data
+                      (list "secondary-cleanup" (list 'secondary-payload)))
+                     (secondary-type
+                      (if (eq condition-type 'error) 'quit 'error))
+                     (expected-mode
+                      (if (eq invocation 'mode-switch)
+                          'katakana
+                        'hiragana))
+                     callback-overlays
+                     cleanup-order
+                     cleanup-inhibit-quit
+                     caught)
+                (setf (nskk-state-candidates nskk-current-state) '("A" "B")
+                      (nskk-state-current-index nskk-current-state) 1
+                      (nskk-state-metadata nskk-current-state)
+                      '(okurigana "k" okurigana-in-progress t))
+                (nskk-state-force-henkan-phase nskk-current-state 'active)
+                (cl-labels
+                    ((record-cleanup (name)
+                       (push name cleanup-order)
+                       (push inhibit-quit cleanup-inhibit-quit))
+                     (recreate-early-state ()
+                       (let ((overlay
+                              (make-overlay (point-min) (point-max))))
+                         (push overlay callback-overlays)
+                         (setq nskk--conversion-overlay overlay))))
+                  (let ((nskk-henkan-hide-candidates-functions
+                         (list
+                          (lambda ()
+                            (record-cleanup 'hide-first)
+                            (when (eq injection 'hide-first)
+                              (recreate-early-state)
+                              (signal condition-type primary-data)))
+                          (lambda ()
+                            (record-cleanup 'hide-second)
+                            (when (eq injection 'hide-second)
+                              (recreate-early-state)
+                              (signal condition-type primary-data))))))
+                    (cl-letf (((symbol-function 'nskk-inline-hide)
+                               (lambda ()
+                                 (record-cleanup 'inline)
+                                 (setq nskk--henkan-candidate-list-active t)
+                                 (if (eq injection 'inline)
+                                     (progn
+                                       (recreate-early-state)
+                                       (signal condition-type primary-data))
+                                   (signal secondary-type secondary-data)))))
+                      (condition-case condition
+                          (pcase invocation
+                            ('direct
+                             (nskk--clear-conversion-context))
+                            ('mode-switch
+                             (nskk--set-mode 'katakana)))
+                        ((error quit)
+                         (setq caught condition))))))
+                (should caught)
+                (should (eq (car caught) condition-type))
+                (should (eq (cdr caught) primary-data))
+                (should (eq (caddr caught) primary-payload))
+                (should (equal (nreverse cleanup-order)
+                               '(hide-first hide-second inline)))
+                (should (= (length cleanup-inhibit-quit) 3))
+                (should-not (memq nil cleanup-inhibit-quit))
+                (should-not nskk--conversion-overlay)
+                (should-not (overlay-buffer conversion-overlay))
+                (dolist (overlay callback-overlays)
+                  (should-not (overlay-buffer overlay)))
+                (should-not nskk--pending-romaji-overlay)
+                (should-not (overlay-buffer pending-overlay))
+                (should-not nskk--dcomp-multiple-overlay)
+                (should-not (overlay-buffer dcomp-overlay))
+                (should-not nskk--inline-overlay)
+                (should-not (overlay-buffer inline-overlay))
+                (should-not (marker-position marker))
+                (should (equal nskk--romaji-buffer ""))
+                (should-not nskk--dcomp-candidates)
+                (should-not nskk--dcomp-prefix)
+                (should (= nskk--dcomp-index 0))
+                (should-not nskk--henkan-candidate-list-active)
+                (should-not nskk--numeric-mode)
+                (should-not nskk--sticky-shift-pending)
+                (should-not nskk--deferred-azik-state)
+                (should-not nskk--deferred-vowel-shadow-state)
+                (should-not nskk--azik-colon-okuri-pending)
+                (should-not nskk--azik-colon-okuri-deferred)
+                (should-not nskk--azik-sokuon-okuri-kana-pending)
+                (should-not
+                 (nskk-state-candidates nskk-current-state))
+                (should (= (nskk-state-current-index nskk-current-state) 0))
+                (should-not
+                 (nskk-state-henkan-phase nskk-current-state))
+                (should-not
+                 (plist-get (nskk-state-metadata nskk-current-state)
+                            'okurigana))
+                (should-not
+                 (plist-get (nskk-state-metadata nskk-current-state)
+                            'okurigana-in-progress))
+                (should (eq (nskk-state-mode nskk-current-state)
+                            expected-mode))))))))))
 
 ;;;
 ;;; nskk--wrap-to-first-candidate Tests
 ;;;
 
+(nskk-describe "nskk--show-candidate-list-next"
+  (nskk-it "rolls back state and cleans up after show hook errors and quits"
+    (dolist (injected '((error next-show-error payload)
+                        (quit next-show-quit payload)))
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--henkan-count 17)
+              (nskk-henkan-number-to-display-candidates 2)
+              (nskk-henkan-show-candidates-keys '(?a ?s))
+              (nskk--henkan-candidate-list-active t)
+              cleanup-order
+              observed)
+          (nskk-state-set-candidates
+           nskk-current-state '("A" "B" "C" "D" "E"))
+          (nskk-state-force-henkan-phase nskk-current-state 'list)
+          (setf (nskk-state-current-index nskk-current-state) 1)
+          (let ((nskk-henkan-show-candidates-functions
+                 (lambda (_candidates index)
+                   (setq observed
+                         (list index
+                               (nskk-state-current-index nskk-current-state)
+                               (nskk-state-henkan-phase nskk-current-state)
+                               nskk--henkan-count
+                               nskk--henkan-candidate-list-active))
+                   (setf (nskk-state-current-index nskk-current-state) 4
+                         (nskk-state-henkan-phase nskk-current-state)
+                         'registration)
+                   (setq nskk--henkan-count -1)
+                   (signal (car injected) (cdr injected))))
+                (nskk-henkan-hide-candidates-functions
+                 (list
+                  (lambda ()
+                    (push 'first cleanup-order)
+                    (setf (nskk-state-current-index nskk-current-state) 4
+                          (nskk-state-henkan-phase nskk-current-state)
+                          'registration)
+                    (setq nskk--henkan-count -2
+                          nskk--henkan-candidate-list-active t)
+                    (signal 'error '(cleanup-error payload)))
+                  (lambda ()
+                    (push 'second cleanup-order)
+                    (setq nskk--henkan-candidate-list-active t)))))
+            (let ((caught
+                   (condition-case condition
+                       (progn
+                         (nskk--show-candidate-list-next)
+                         nil)
+                     ((error quit) condition))))
+              (should (equal caught injected))))
+          (should (equal observed '(3 3 list 17 t)))
+          (should (equal cleanup-order '(second first)))
+          (should (= (nskk-state-current-index nskk-current-state) 1))
+          (should (eq (nskk-state-henkan-phase nskk-current-state) 'list))
+          (should (= nskk--henkan-count 17))
+          (should-not nskk--henkan-candidate-list-active))))))
+
+(nskk-describe "nskk--show-candidate-list-prev"
+  (nskk-it "rolls back state and cleans up after show hook errors and quits"
+    (dolist (injected '((error prev-show-error payload)
+                        (quit prev-show-quit payload)))
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--henkan-count 19)
+              (nskk-henkan-number-to-display-candidates 2)
+              (nskk-henkan-show-candidates-keys '(?a ?s))
+              (nskk--henkan-candidate-list-active t)
+              cleanup-order
+              observed)
+          (nskk-state-set-candidates
+           nskk-current-state '("A" "B" "C" "D" "E"))
+          (nskk-state-force-henkan-phase nskk-current-state 'list)
+          (setf (nskk-state-current-index nskk-current-state) 3)
+          (let ((nskk-henkan-show-candidates-functions
+                 (lambda (_candidates index)
+                   (setq observed
+                         (list index
+                               (nskk-state-current-index nskk-current-state)
+                               (nskk-state-henkan-phase nskk-current-state)
+                               nskk--henkan-count
+                               nskk--henkan-candidate-list-active))
+                   (setf (nskk-state-current-index nskk-current-state) 4
+                         (nskk-state-henkan-phase nskk-current-state)
+                         'registration)
+                   (setq nskk--henkan-count -1)
+                   (signal (car injected) (cdr injected))))
+                (nskk-henkan-hide-candidates-functions
+                 (list
+                  (lambda ()
+                    (push 'first cleanup-order)
+                    (setf (nskk-state-current-index nskk-current-state) 4
+                          (nskk-state-henkan-phase nskk-current-state)
+                          'registration)
+                    (setq nskk--henkan-count -2
+                          nskk--henkan-candidate-list-active t)
+                    (signal 'error '(cleanup-error payload)))
+                  (lambda ()
+                    (push 'second cleanup-order)
+                    (setq nskk--henkan-candidate-list-active t)))))
+            (let ((caught
+                   (condition-case condition
+                       (progn
+                         (nskk--show-candidate-list-prev)
+                         nil)
+                     ((error quit) condition))))
+              (should (equal caught injected))))
+          (should (equal observed '(1 1 list 19 t)))
+          (should (equal cleanup-order '(second first)))
+          (should (= (nskk-state-current-index nskk-current-state) 3))
+          (should (eq (nskk-state-henkan-phase nskk-current-state) 'list))
+          (should (= nskk--henkan-count 19))
+          (should-not nskk--henkan-candidate-list-active))))))
+
 (nskk-describe "nskk--wrap-to-first-candidate"
   ;; nskk--wrap-to-first-candidate calls nskk-state-set-henkan-phase with 'list.
-  ;; Valid transition to 'list requires starting from 'active phase (active→list).
+  ;; Valid transition to 'list requires starting from 'active phase.
   (nskk-it "resets index to 0 and updates henkan-count to threshold"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
@@ -2220,7 +2535,7 @@
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (setf (nskk-state-current-index nskk-current-state) 2)
         (nskk-with-mocks ((run-hook-with-args #'ignore))
-          (nskk--wrap-to-first-candidate))
+	  (nskk--wrap-to-first-candidate))
         (should (= (nskk-state-current-index nskk-current-state) 0))
         (should (= nskk--henkan-count nskk-henkan-show-candidates-nth)))))
 
@@ -2233,7 +2548,7 @@
         (nskk-state-set-candidates nskk-current-state '("A"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((run-hook-with-args #'ignore))
-          (nskk--wrap-to-first-candidate))
+	  (nskk--wrap-to-first-candidate))
         (should (eq (nskk-state-henkan-phase nskk-current-state) 'list))
         (should nskk--henkan-candidate-list-active))))
 
@@ -2247,10 +2562,64 @@
         (nskk-state-set-candidates nskk-current-state '("X" "Y"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((run-hook-with-args
-                           (lambda (_hook &rest args) (setq captured-args args))))
-          (nskk--wrap-to-first-candidate))
+                           (lambda (_hook &rest args)
+                             (setq captured-args args))))
+	  (nskk--wrap-to-first-candidate))
         (should (equal (car captured-args) '("X" "Y")))
-        (should (= (cadr captured-args) 0))))))
+        (should (= (cadr captured-args) 0)))))
+
+  (nskk-it "rolls back state and cleans up after show hook errors and quits"
+    (dolist (injected '((error wrap-show-error payload)
+                        (quit wrap-show-quit payload)))
+      (with-temp-buffer
+        (let ((nskk-current-state (nskk-state-create 'hiragana))
+              (nskk--henkan-count 7)
+              (nskk-henkan-show-candidates-nth 3)
+              (nskk--henkan-candidate-list-active t)
+              cleanup-order
+              observed)
+          (nskk-state-set-candidates nskk-current-state '("A" "B" "C"))
+          (nskk-state-force-henkan-phase nskk-current-state 'active)
+          (setf (nskk-state-current-index nskk-current-state) 2)
+          (let ((nskk-henkan-show-candidates-functions
+                 (lambda (_candidates index)
+                   (setq observed
+                         (list index
+                               (nskk-state-current-index nskk-current-state)
+                               (nskk-state-henkan-phase nskk-current-state)
+                               nskk--henkan-count
+                               nskk--henkan-candidate-list-active))
+                   (setf (nskk-state-current-index nskk-current-state) 1
+                         (nskk-state-henkan-phase nskk-current-state)
+                         'registration)
+                   (setq nskk--henkan-count -1)
+                   (signal (car injected) (cdr injected))))
+                (nskk-henkan-hide-candidates-functions
+                 (list
+                  (lambda ()
+                    (push 'first cleanup-order)
+                    (setf (nskk-state-current-index nskk-current-state) 1
+                          (nskk-state-henkan-phase nskk-current-state)
+                          'registration)
+                    (setq nskk--henkan-count -2
+                          nskk--henkan-candidate-list-active t)
+                    (signal 'error '(cleanup-error payload)))
+                  (lambda ()
+                    (push 'second cleanup-order)
+                    (setq nskk--henkan-candidate-list-active t)))))
+            (let ((caught
+                   (condition-case condition
+                       (progn
+                         (nskk--wrap-to-first-candidate)
+                         nil)
+                     ((error quit) condition))))
+              (should (equal caught injected))))
+          (should (equal observed '(0 0 list 3 t)))
+          (should (equal cleanup-order '(second first)))
+          (should (= (nskk-state-current-index nskk-current-state) 2))
+          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))
+          (should (= nskk--henkan-count 7))
+          (should-not nskk--henkan-candidate-list-active))))))
 
 ;;;
 ;;; nskk-cancel-conversion-to-reading Tests
@@ -3160,20 +3529,12 @@
 ;;; Integration: registration → dict → subsequent conversion
 ;;;
 
-;; Task 3: registration roundtrip integration test.
+;; Task 3: registration roundtrip coverage.
 ;;
-;; The full roundtrip (registration input → dict insert → conversion re-query)
-;; requires interactive minibuffer input and real Prolog DB isolation, making it
-;; fragile as a pure unit test.  We therefore split it into two focused tests:
-;;
-;;   3a. Verify that `nskk-start-conversion/k' fires the registration path when
-;;       no candidates exist, by checking that `nskk-start-registration/k' is
-;;       called with the correct reading.
-;;
-;;   3b. Verify that after `nskk-dict-register-word' adds a word to the dict,
-;;       a subsequent `nskk-core-search/k' call for the same reading returns
-;;       the registered word via on-found.  This uses `nskk-prolog-test-with-isolated-db'
-;;       so the registered fact is scoped to the test.
+;; Tests 3a and 3b cover the registration and dictionary lookup seams at unit
+;; level.  The complete registration-to-reuse flow is covered by
+;; `registered word is committed and dict entry persists for immediate reuse'
+;; in test/e2e/nskk-registration-e2e-test.el:258.
 
 (nskk-describe "henkan registration roundtrip"
   (nskk-it "3a: start-conversion fires registration path for unknown reading"
@@ -3226,19 +3587,7 @@
                   (lambda (cands) (setq found-candidates cands))
                   #'ignore)
                 (should (member "未登録" found-candidates)))
-            (nskk-mode -1))))))
-
-  (nskk-it "STUB: full interactive registration roundtrip (requires E2E infrastructure)"
-    ;; TODO: implement as an E2E test using nskk-e2e-with-buffer once the E2E
-    ;; infrastructure supports injecting minibuffer input for registration.
-    ;; The full flow to test:
-    ;;   1. Start with a reading not in any dict (e.g. "ぜったいにない").
-    ;;   2. Press SPC → nskk-start-conversion → no candidates → registration opens.
-    ;;   3. Type "ZettaiNai" in minibuffer → nskk-dict-register-word is called.
-    ;;   4. Press SPC again for the same reading → registered word appears as candidate.
-    ;; Skipping here because read-from-minibuffer cannot be reliably fed input
-    ;; via nskk-e2e-type in batch mode without additional E2E helper support.
-    (should t)))
+            (nskk-mode -1)))))))
 
 ;;;
 ;;; Detection Tests: Uppercase A-Z
@@ -3709,7 +4058,231 @@
           (lambda (r) (setq result r))
           (lambda () (error "on-not-found must not be called"))))
       (should (null result))
-      (should (= nskk--registration-depth 0)))))
+      (should (= nskk--registration-depth 0))))
+
+  (nskk-it "preserves the primary condition and all surrounding state across cleanup faults"
+    (dolist (primary-type '(error quit))
+      (dolist (cleanup-type '(error quit))
+        (dolist (timing '(before after))
+          (with-temp-buffer
+            (let* ((nskk-current-state (nskk-state-create 'abbrev))
+                   (nskk--registration-depth 0)
+                   (marker (copy-marker (point-min)))
+                   (marker-position (marker-position marker))
+                   (conversion-overlay (make-overlay (point-min) (point-min)))
+                   (pending-overlay (make-overlay (point-min) (point-min)))
+                   (inline-overlay (make-overlay (point-min) (point-min)))
+                   (candidates (list "candidate-1" "candidate-2"))
+                   (azik-deferred (list 'azik-deferred))
+                   (deferred-azik-state (list 'deferred-azik-state))
+                   (deferred-vowel-state (list 'deferred-vowel-state))
+                   (nskk--conversion-start-marker marker)
+                   (nskk--conversion-overlay conversion-overlay)
+                   (nskk--pending-romaji-overlay pending-overlay)
+                   (nskk--inline-overlay inline-overlay)
+                   (nskk--henkan-candidate-list-active t)
+                   (nskk--henkan-count 4)
+                   (nskk--romaji-buffer "k")
+                   (nskk--azik-colon-okuri-pending t)
+                   (nskk--azik-colon-okuri-deferred azik-deferred)
+                   (nskk--azik-sokuon-okuri-kana-pending t)
+                   (nskk--deferred-azik-state deferred-azik-state)
+                   (nskk--deferred-vowel-shadow-state deferred-vowel-state)
+                   (nskk--sticky-shift-pending t)
+                   (nskk--numeric-mode t)
+                   (primary-payload (list 'primary-payload))
+                   (primary-data (list "primary-condition" primary-payload))
+                   (inline-data (list "inline-cleanup" (list 'inline-payload)))
+                   (phase-data (list "phase-cleanup" (list 'phase-payload)))
+                   (real-force
+                    (symbol-function 'nskk-state-force-henkan-phase))
+                   (cleanup-inhibit-quit nil)
+                   (inline-calls 0)
+                   (restore-calls 0)
+                   callback-called
+                   caught)
+              (setf (nskk-state-candidates nskk-current-state) candidates
+                    (nskk-state-current-index nskk-current-state) 1
+                    (nskk-state-previous-mode nskk-current-state) 'katakana)
+              (nskk-state-force-henkan-phase nskk-current-state 'on)
+              (cl-letf (((symbol-function 'nskk-inline-show-registration-badge)
+                         #'ignore)
+                        ((symbol-function 'nskk--read-registration-entry)
+                         (lambda (_reading)
+                           (signal primary-type primary-data)))
+                        ((symbol-function 'nskk-inline-hide)
+                         (lambda ()
+                           (cl-incf inline-calls)
+                           (push inhibit-quit cleanup-inhibit-quit)
+                           (when (eq timing 'after)
+                             (delete-overlay nskk--inline-overlay)
+                             (setq nskk--inline-overlay nil))
+                           (signal cleanup-type inline-data)))
+                        ((symbol-function 'nskk-state-force-henkan-phase)
+                         (lambda (state phase)
+                           (if (eq phase 'registration)
+                               (funcall real-force state phase)
+                             (cl-incf restore-calls)
+                             (push inhibit-quit cleanup-inhibit-quit)
+                             (when (eq timing 'after)
+                               (funcall real-force state phase))
+                             (signal (if (eq cleanup-type 'error)
+                                         'quit
+                                       'error)
+                                     phase-data)))))
+                (condition-case condition
+                    (nskk--run-registration-session/k "reading"
+                      (lambda (_result) (setq callback-called t))
+                      #'ignore)
+                  ((error quit)
+                   (setq caught condition))))
+              (should (eq (car caught) primary-type))
+              (should (eq (cdr caught) primary-data))
+              (should (eq (caddr caught) primary-payload))
+              (should (= inline-calls 1))
+              (should (= restore-calls 1))
+              (should-not (memq nil cleanup-inhibit-quit))
+              (should-not callback-called)
+              (should (= nskk--registration-depth 0))
+              (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
+              (should-not nskk--inline-overlay)
+              (should-not (overlay-buffer inline-overlay))
+              (should (eq nskk--conversion-start-marker marker))
+              (should (= (marker-position marker) marker-position))
+              (should (eq nskk--conversion-overlay conversion-overlay))
+              (should (eq (overlay-buffer conversion-overlay) (current-buffer)))
+              (should (eq nskk--pending-romaji-overlay pending-overlay))
+              (should (eq (overlay-buffer pending-overlay) (current-buffer)))
+              (should nskk--henkan-candidate-list-active)
+              (should (eq (nskk-state-candidates nskk-current-state)
+                          candidates))
+              (should (= (nskk-state-current-index nskk-current-state) 1))
+              (should (= nskk--henkan-count 4))
+              (should (equal nskk--romaji-buffer "k"))
+              (should nskk--azik-colon-okuri-pending)
+              (should (eq nskk--azik-colon-okuri-deferred azik-deferred))
+              (should nskk--azik-sokuon-okuri-kana-pending)
+              (should (eq nskk--deferred-azik-state deferred-azik-state))
+              (should (eq nskk--deferred-vowel-shadow-state
+                          deferred-vowel-state))
+              (should nskk--sticky-shift-pending)
+              (should nskk--numeric-mode)
+              (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+              (should
+               (eq (nskk-state-previous-mode nskk-current-state) 'katakana))))))))
+
+  (nskk-it "re-signals the first cleanup condition after a successful body"
+    (dolist (cleanup-type '(error quit))
+      (dolist (timing '(before after))
+        (with-temp-buffer
+          (let* ((nskk-current-state (nskk-state-create 'hiragana))
+                 (nskk--registration-depth 0)
+                 (inline-overlay (make-overlay (point-min) (point-min)))
+                 (nskk--inline-overlay inline-overlay)
+                 (first-payload (list 'first-cleanup-payload))
+                 (first-data (list "first-cleanup" first-payload))
+                 (later-data (list "later-cleanup" (list 'later-payload)))
+                 (real-force
+                  (symbol-function 'nskk-state-force-henkan-phase))
+                 (cleanup-inhibit-quit nil)
+                 (commit-calls 0)
+                 callback-called
+                 caught)
+            (nskk-state-force-henkan-phase nskk-current-state 'on)
+            (cl-letf (((symbol-function 'nskk-inline-show-registration-badge)
+                       #'ignore)
+                      ((symbol-function 'nskk--read-registration-entry)
+                       (lambda (_reading) "word"))
+                      ((symbol-function 'nskk--commit-registration-word)
+                       (lambda (_reading _entry)
+                         (cl-incf commit-calls)))
+                      ((symbol-function 'nskk-inline-hide)
+                       (lambda ()
+                         (push inhibit-quit cleanup-inhibit-quit)
+                         (when (eq timing 'after)
+                           (delete-overlay nskk--inline-overlay)
+                           (setq nskk--inline-overlay nil))
+                         (signal cleanup-type first-data)))
+                      ((symbol-function 'nskk-state-force-henkan-phase)
+                       (lambda (state phase)
+                         (if (eq phase 'registration)
+                             (funcall real-force state phase)
+                           (push inhibit-quit cleanup-inhibit-quit)
+                           (funcall real-force state phase)
+                           (signal (if (eq cleanup-type 'error)
+                                       'quit
+                                     'error)
+                                   later-data)))))
+              (condition-case condition
+                  (nskk--run-registration-session/k "reading"
+                    (lambda (_result) (setq callback-called t))
+                    #'ignore)
+                ((error quit)
+                 (setq caught condition))))
+            (should (= commit-calls 1))
+            (should-not callback-called)
+            (should (eq (car caught) cleanup-type))
+            (should (eq (cdr caught) first-data))
+            (should (eq (caddr caught) first-payload))
+            (should-not (memq nil cleanup-inhibit-quit))
+            (should (= nskk--registration-depth 0))
+            (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
+            (should-not nskk--inline-overlay)
+            (should-not (overlay-buffer inline-overlay)))))))
+
+  (nskk-it "allows a clean retry after a failed session"
+    (with-temp-buffer
+      (let* ((nskk-current-state (nskk-state-create 'hiragana))
+             (nskk--registration-depth 0)
+             (inline-overlay (make-overlay (point-min) (point-min)))
+             (nskk--inline-overlay inline-overlay)
+             (primary-payload (list 'retry-primary-payload))
+             (primary-data (list "retry-primary" primary-payload))
+             (cleanup-data (list "retry-cleanup"))
+             (attempts 0)
+             (hide-calls 0)
+             (results nil)
+             caught)
+        (nskk-state-force-henkan-phase nskk-current-state 'on)
+        (cl-letf (((symbol-function 'nskk-inline-show-registration-badge)
+                   #'ignore)
+                  ((symbol-function 'nskk--read-registration-entry)
+                   (lambda (_reading)
+                     (cl-incf attempts)
+                     (if (= attempts 1)
+                         (signal 'error primary-data)
+                       "word")))
+                  ((symbol-function 'nskk--commit-registration-word)
+                   #'ignore)
+                  ((symbol-function 'nskk-inline-hide)
+                   (lambda ()
+                     (cl-incf hide-calls)
+                     (if (= hide-calls 1)
+                         (signal 'quit cleanup-data)
+                       (when (overlayp nskk--inline-overlay)
+                         (delete-overlay nskk--inline-overlay))
+                       (setq nskk--inline-overlay nil)))))
+          (condition-case condition
+              (nskk--run-registration-session/k "reading"
+                (lambda (result) (push result results))
+                #'ignore)
+            ((error quit)
+             (setq caught condition)))
+          (should (eq (car caught) 'error))
+          (should (eq (cdr caught) primary-data))
+          (should (eq (caddr caught) primary-payload))
+          (should (= nskk--registration-depth 0))
+          (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
+          (should-not nskk--inline-overlay)
+          (should-not (overlay-buffer inline-overlay))
+          (nskk--run-registration-session/k "reading"
+            (lambda (result) (push result results))
+            #'ignore))
+        (should (= attempts 2))
+        (should (= hide-calls 2))
+        (should (equal results '("word")))
+        (should (= nskk--registration-depth 0))
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))))))
 
 ;;;
 ;;; nskk--read-registration-entry Tests
@@ -4312,24 +4885,24 @@
     (with-temp-buffer
       (setq-local nskk-current-state (nskk-state-create 'hiragana))
       (insert "modified")
-      (setq nskk--last-kakutei-record
-            (list :reading "かんじ"
-                  :candidates '("漢字")
-                  :index 0
-                  :committed-text "漢字"
-                  :buffer-start 1
-                  :buffer-end 3
-                  :mode 'hiragana
-                  :registered-p nil
-                  :registered-reading nil
-                  :registered-word nil))
-      (nskk-undo-kakutei)
-      ;; Record invalidated even on mismatch
-      (should (null nskk--last-kakutei-record))
-      ;; Buffer should be unchanged (mismatch guard)
-      (should (equal "modified"
-                     (buffer-substring-no-properties
-                      (point-min) (point-max))))))
+      (let ((record
+             (list :reading "かんじ"
+                   :candidates '("漢字")
+                   :index 0
+                   :committed-text "漢字"
+                   :buffer-start 1
+                   :buffer-end 3
+                   :mode 'hiragana
+                   :registered-p nil
+                   :registered-reading nil
+                   :registered-word nil)))
+        (setq nskk--last-kakutei-record record)
+        (nskk-undo-kakutei)
+        ;; A mismatch is not a completed undo and must remain retryable.
+        (should (eq record nskk--last-kakutei-record))
+        (should (equal "modified"
+                       (buffer-substring-no-properties
+                        (point-min) (point-max)))))))
 
   (nskk-it "unregisters a word when registered-p is set"
     (nskk-prolog-test-with-isolated-db
@@ -4487,6 +5060,691 @@
           (should (member "かんが" completions))
           (should-not (member "きょう" completions)))))))
 
-(provide 'nskk-henkan-test)
+(ert-deftest nskk-undo-kakutei-test/restores-owned-state-on-failure ()
+  "Restore every owned object after each injectable undo failure."
+  (dolist (spec '((before-change error)
+                  (before-change quit)
+                  (after-change error)
+                  (after-change quit)
+                  (unregister-before error)
+                  (unregister-before quit)
+                  (unregister-after error)
+                  (unregister-after quit)
+                  (overlay error)
+                  (overlay quit)
+                  (state error)
+                  (state quit)
+                  (read-only buffer-read-only)))
+    (let ((phase (car spec))
+          (failure-type (cadr spec)))
+      (ert-info ((format "phase=%S condition=%S" phase failure-type))
+        (nskk-prolog-test-with-isolated-db
+          (let ((nskk--user-dict-index 'user)
+                (nskk-dict-modified nil))
+            (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+            (nskk-dict-register-word "てすと" "既存")
+            (nskk-dict-register-word "てすと" "テスト")
+            (setq nskk-dict-modified nil)
+            (with-temp-buffer
+              (let* ((state-candidates (list "元候補"))
+                     (metadata-value (list 'owned-metadata))
+                     (state-metadata
+                      (list 'owned-object metadata-value))
+                     (state (nskk-state-create 'hiragana))
+                     (record
+                      (list :reading "てすと"
+                            :candidates '("テスト")
+                            :index 0
+                            :committed-text "テスト"
+                            :buffer-start 1
+                            :buffer-end 4
+                            :mode 'hiragana
+                            :registered-p t
+                            :registered-reading "てすと"
+                            :registered-word "テスト"))
+                     marker
+                     overlay)
+                (setf (nskk-state-candidates state) state-candidates
+                      (nskk-state-current-index state) 7
+                      (nskk-state-henkan-phase state) 'on
+                      (nskk-state-metadata state) state-metadata)
+                (setq-local nskk-current-state state)
+                (insert "テスト")
+                (goto-char 2)
+                (setq marker (copy-marker 2 t)
+                      nskk--conversion-start-marker marker
+                      overlay (make-overlay 2 3 nil nil t)
+                      nskk--conversion-overlay overlay
+                      nskk--last-kakutei-record record)
+                (let ((overlay-value (list 'owned-overlay-property)))
+                  (overlay-put overlay 'face 'bold)
+                  (overlay-put overlay 'nskk-test-object overlay-value)
+                  (let* ((saved-text (buffer-string))
+                         (saved-point (point))
+                         (saved-state (copy-sequence state))
+                         (saved-marker-buffer (marker-buffer marker))
+                         (saved-marker-position (marker-position marker))
+                         (saved-marker-insertion-type
+                          (marker-insertion-type marker))
+                         (saved-overlay-buffer (overlay-buffer overlay))
+                         (saved-overlay-start (overlay-start overlay))
+                         (saved-overlay-end (overlay-end overlay))
+                         (saved-overlay-properties
+                          (copy-sequence (overlay-properties overlay)))
+                         (saved-dict-candidates
+                          (copy-tree (nskk-dict-lookup "てすと")))
+                         (saved-dict-modified nskk-dict-modified)
+                         (real-unregister
+                          (symbol-function
+                           'nskk-dict-unregister-word))
+                         (real-update-overlay
+                          (symbol-function 'nskk--update-overlay))
+                         (real-put-metadata
+                          (symbol-function 'nskk-state-put-metadata)))
+                    (setq-local before-change-functions
+                                (when (eq phase 'before-change)
+                                  (list
+                                   (lambda (&rest _)
+                                     (signal failure-type
+                                             '("injected"))))))
+                    (setq-local after-change-functions
+                                (when (eq phase 'after-change)
+                                  (list
+                                   (lambda (&rest _)
+                                     (signal failure-type
+                                             '("injected"))))))
+                    (setq buffer-read-only (eq phase 'read-only))
+                    (cl-letf
+                        (((symbol-function
+                           'nskk-dict-unregister-word)
+                          (lambda (reading word)
+                            (pcase phase
+                              ('unregister-before
+                               (signal failure-type '("injected")))
+                              ('unregister-after
+                               (prog1
+                                   (funcall real-unregister reading word)
+                                 (signal failure-type '("injected"))))
+                              (_
+                               (funcall real-unregister reading word)))))
+                         ((symbol-function 'nskk--update-overlay)
+                          (lambda (&rest args)
+                            (prog1 (apply real-update-overlay args)
+                              (when (eq phase 'overlay)
+                                (signal failure-type '("injected"))))))
+                         ((symbol-function 'nskk-state-put-metadata)
+                          (lambda (target key value)
+                            (prog1
+                                (funcall real-put-metadata
+                                         target key value)
+                              (when (and (eq phase 'state)
+                                         (eq key 'henkan-reading))
+                                (signal failure-type '("injected")))))))
+                      (let (caught)
+                        (condition-case err
+                            (nskk-undo-kakutei)
+                          ((error quit)
+                           (setq caught (car err))))
+                        (should (eq failure-type caught))))
+                    (should (equal saved-text (buffer-string)))
+                    (should (= saved-point (point)))
+                    (should (eq state nskk-current-state))
+                    (should (equal saved-state nskk-current-state))
+                    (should (eq state-candidates
+                                (nskk-state-candidates
+                                 nskk-current-state)))
+                    (should (eq state-metadata
+                                (nskk-state-metadata
+                                 nskk-current-state)))
+                    (should (eq metadata-value
+                                (plist-get
+                                 (nskk-state-metadata
+                                  nskk-current-state)
+                                 'owned-object)))
+                    (should (eq marker
+                                nskk--conversion-start-marker))
+                    (should (eq saved-marker-buffer
+                                (marker-buffer marker)))
+                    (should (= saved-marker-position
+                               (marker-position marker)))
+                    (should (eq saved-marker-insertion-type
+                                (marker-insertion-type marker)))
+                    (should (eq overlay nskk--conversion-overlay))
+                    (should (eq saved-overlay-buffer
+                                (overlay-buffer overlay)))
+                    (should (= saved-overlay-start
+                               (overlay-start overlay)))
+                    (should (= saved-overlay-end
+                               (overlay-end overlay)))
+                    (should (equal saved-overlay-properties
+                                   (overlay-properties overlay)))
+                    (should (eq overlay-value
+                                (overlay-get overlay
+                                             'nskk-test-object)))
+                    (should (eq record nskk--last-kakutei-record))
+                    (should (equal saved-dict-candidates
+                                   (nskk-dict-lookup "てすと")))
+                    (should (eq saved-dict-modified
+                                nskk-dict-modified))))))))))))
+
+(nskk-describe "untrusted henkan display properties"
+    (nskk-it "sanitizes the dictionary registration prompt copy"
+      (let* ((reading (propertize "よみ"
+                                 'display "spoofed"
+                                 'keymap (make-sparse-keymap)
+                                 'local-map (make-sparse-keymap)
+                                 'mouse-face 'highlight
+                                 'help-echo "untrusted"
+                                 'face 'error
+                                 'nskk-no-learn t))
+             (reading-copy (copy-sequence reading))
+             (prompt (nskk--registration-prompt 1 reading)))
+        (should (equal prompt "[辞書登録] よみ: "))
+        (dolist (property '(display keymap local-map mouse-face help-echo face))
+          (should-not
+           (text-property-not-all 0 (length prompt) property nil prompt)))
+        (should (equal reading reading-copy))
+        (should (eq (get-text-property 0 'nskk-no-learn reading) t))))
+    (nskk-it "sanitizes dcomp copies before applying trusted faces"
+      (let* ((first (propertize "かんじ"
+                               'display "spoofed first"
+                               'keymap (make-sparse-keymap)
+                               'local-map (make-sparse-keymap)
+                               'mouse-face 'highlight
+                               'help-echo "first help"
+                               'face 'error
+                               'nskk-no-learn t))
+             (second (propertize "かんせい"
+                                'display "spoofed second"
+                                'keymap (make-sparse-keymap)
+                                'local-map (make-sparse-keymap)
+                                'mouse-face 'highlight
+                                'help-echo "second help"
+                                'face 'error
+                                'nskk-no-learn t))
+             (first-copy (copy-sequence first))
+             (second-copy (copy-sequence second))
+             (rendered
+              (nskk--dcomp-multiple-build-string
+               (list first second) 0 "かん")))
+        (should (equal (substring-no-properties rendered)
+                       "  かんじ\n  かんせい"))
+        (dolist (property '(display keymap local-map mouse-face help-echo))
+          (should-not
+           (text-property-not-all 0 (length rendered) property nil rendered)))
+        (dolist (index '(0 1 5 6 7))
+          (should-not (get-text-property index 'face rendered)))
+        (dolist (index '(2 3 4))
+          (should (eq (get-text-property index 'face rendered)
+                      'nskk-dcomp-multiple-selected-face)))
+        (dolist (index '(8 9))
+          (should (eq (get-text-property index 'face rendered)
+                      'nskk-dcomp-multiple-face)))
+        (dolist (index '(10 11))
+          (should (eq (get-text-property index 'face rendered)
+                      'nskk-dcomp-multiple-trailing-face)))
+        (should (equal first first-copy))
+        (should (equal second second-copy))
+        (should (eq (get-text-property 0 'nskk-no-learn first) t))
+        (should (eq (get-text-property 0 'nskk-no-learn second) t))))
+    (nskk-it "sanitizes purge confirmation without changing state values"
+      (let* ((candidate (propertize "候補"
+                                   'display "spoofed candidate"
+                                   'keymap (make-sparse-keymap)
+                                   'local-map (make-sparse-keymap)
+                                   'mouse-face 'highlight
+                                   'help-echo "candidate help"
+                                   'face 'error
+                                   'nskk-no-learn t))
+             (reading (propertize "よみ"
+                                 'display "spoofed reading"
+                                 'keymap (make-sparse-keymap)
+                                 'local-map (make-sparse-keymap)
+                                 'mouse-face 'highlight
+                                 'help-echo "reading help"
+                                 'face 'error
+                                 'nskk-no-learn t))
+             (candidate-copy (copy-sequence candidate))
+             (reading-copy (copy-sequence reading))
+             (nskk-current-state (nskk-state-create 'hiragana))
+             prompt)
+        (nskk-state-set-candidates nskk-current-state (list candidate))
+        (setf (nskk-state-current-index nskk-current-state) 0)
+        (nskk-state-put-metadata
+         nskk-current-state 'henkan-reading reading)
+        (cl-letf (((symbol-function 'nskk-converting-p) (lambda () t))
+                  ((symbol-function 'yes-or-no-p)
+                   (lambda (actual-prompt)
+                     (setq prompt actual-prompt)
+                     nil)))
+          (nskk-purge-from-jisyo))
+        (should (equal prompt "Really purge \"候補\" (よみ)? "))
+        (dolist (property '(display keymap local-map mouse-face help-echo face))
+          (should-not
+           (text-property-not-all 0 (length prompt) property nil prompt)))
+        (should (eq (car (nskk-state-candidates nskk-current-state))
+                    candidate))
+        (should (eq (nskk-state-get-metadata
+                     nskk-current-state 'henkan-reading)
+                    reading))
+        (should (equal candidate candidate-copy))
+        (should (equal reading reading-copy))
+        (should (eq (get-text-property 0 'nskk-no-learn candidate) t))
+        (should (eq (get-text-property 0 'nskk-no-learn reading) t)))))
+  (progn
+  (defconst nskk-test--commit-cleanup-flags
+    '(nskk--azik-colon-okuri-pending
+      nskk--azik-colon-okuri-deferred
+      nskk--azik-sokuon-okuri-kana-pending
+      nskk--deferred-azik-state
+      nskk--deferred-vowel-shadow-state
+      nskk--sticky-shift-pending))
+
+  (defun nskk-test--call-with-failure-safe-commit-fixture
+      (mode list-active candidate reading callback)
+    (with-temp-buffer
+      (let* ((state (nskk-state-create mode))
+             (candidates (list candidate "次"))
+             (nskk-current-state state)
+             (nskk--conversion-start-marker (make-marker))
+             (nskk--conversion-overlay nil)
+             (nskk--pending-romaji-overlay nil)
+             (nskk--romaji-buffer "dirty")
+             (nskk--henkan-count 4)
+             (nskk--henkan-candidate-list-active list-active)
+             (nskk--azik-colon-okuri-pending t)
+             (nskk--azik-colon-okuri-deferred t)
+             (nskk--azik-sokuon-okuri-kana-pending t)
+             (nskk--deferred-azik-state t)
+             (nskk--deferred-vowel-shadow-state t)
+             (nskk--sticky-shift-pending t)
+             (nskk--numeric-mode (eq mode 'abbrev))
+             (nskk--last-kakutei-record nil)
+             (nskk-henkan-hide-candidates-functions nil))
+        (setf (nskk-state-previous-mode state) 'hiragana)
+        (insert nskk-henkan-active-marker
+                (substring-no-properties candidate))
+        (set-marker nskk--conversion-start-marker (point-min))
+        (setq nskk--conversion-overlay
+              (make-overlay
+               (+ (point-min) (length nskk-henkan-active-marker))
+               (point-max))
+              nskk--pending-romaji-overlay
+              (make-overlay (point-max) (point-max)))
+        (nskk-state-set-candidates state candidates)
+        (setf (nskk-state-current-index state) 0)
+        (nskk-state-force-henkan-phase state 'active)
+        (nskk-state-put-metadata state 'henkan-reading reading)
+        (goto-char (point-max))
+        (funcall callback
+                 candidate mode reading state candidates
+                 nskk--conversion-overlay nskk--pending-romaji-overlay))))
+
+  (defun nskk-test--redirty-commit-cleanup-state ()
+    (if (overlayp nskk--conversion-overlay)
+        (move-overlay nskk--conversion-overlay (point-min) (point-max))
+      (setq nskk--conversion-overlay
+            (make-overlay (point-min) (point-max))))
+    (if (overlayp nskk--pending-romaji-overlay)
+        (move-overlay nskk--pending-romaji-overlay (point-max) (point-max))
+      (setq nskk--pending-romaji-overlay
+            (make-overlay (point-max) (point-max))))
+    (nskk--set-conversion-start-marker (point-min))
+    (setq nskk--romaji-buffer "redirtied"
+          nskk--henkan-count 9
+          nskk--henkan-candidate-list-active t)
+    (dolist (symbol nskk-test--commit-cleanup-flags)
+      (set symbol t))
+    (nskk-state-set-candidates nskk-current-state '("汚染" "状態"))
+    (setf (nskk-state-current-index nskk-current-state) 1)
+    (nskk-state-force-henkan-phase nskk-current-state 'list)
+    (nskk-state-put-metadata nskk-current-state 'okurigana t)
+    (nskk-state-put-metadata
+     nskk-current-state 'okurigana-in-progress t))
+
+  (progn
+  (defun nskk-test--assert-failure-safe-commit-clean-and-undo
+      (candidate original-mode reading original-state original-candidates
+                 original-overlay original-pending-overlay)
+    (should (equal (buffer-string)
+                   (substring-no-properties candidate)))
+    (should (eq nskk-current-state original-state))
+    (should-not (overlay-buffer original-overlay))
+    (should-not (overlay-buffer original-pending-overlay))
+    (should-not nskk--conversion-overlay)
+    (should-not nskk--pending-romaji-overlay)
+    (should (markerp nskk--conversion-start-marker))
+    (should-not (marker-position nskk--conversion-start-marker))
+    (should (equal nskk--romaji-buffer ""))
+    (should (= nskk--henkan-count 0))
+    (should-not nskk--henkan-candidate-list-active)
+    (dolist (symbol nskk-test--commit-cleanup-flags)
+      (should-not (symbol-value symbol)))
+    (should-not (nskk-state-candidates nskk-current-state))
+    (should (= (nskk-state-current-index nskk-current-state) 0))
+    (should-not (nskk-state-henkan-phase nskk-current-state))
+    (should-not
+     (nskk-state-get-metadata nskk-current-state 'okurigana))
+    (should-not
+     (nskk-state-get-metadata
+      nskk-current-state 'okurigana-in-progress))
+    (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+    (should-not nskk--numeric-mode)
+    (let ((record nskk--last-kakutei-record))
+      (should record)
+      (should (eq (plist-get record :candidates) original-candidates))
+      (should (eq (plist-get record :mode) original-mode))
+      (should (equal (plist-get record :reading) reading))
+      (should (equal (plist-get record :committed-text)
+                     (substring-no-properties candidate)))
+      (should (= (plist-get record :buffer-start) (point-min)))
+      (should (= (plist-get record :buffer-end) (point-max))))
+    (nskk-undo-kakutei)
+    (should-not nskk--last-kakutei-record)
+    (should (eq nskk-current-state original-state))
+    (should (equal (buffer-string)
+                   (concat nskk-henkan-active-marker
+                           (substring-no-properties candidate))))
+    (should (eq (nskk-state-candidates nskk-current-state)
+                original-candidates))
+    (should (= (nskk-state-current-index nskk-current-state) 0))
+    (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))
+    (should (equal
+             (nskk-state-get-metadata
+              nskk-current-state 'henkan-reading)
+             reading))
+    (should (eq (nskk-state-mode nskk-current-state) original-mode))
+    (should (marker-position nskk--conversion-start-marker))
+    (should (overlay-buffer nskk--conversion-overlay)))
+
+  (progn
+  (ert-deftest nskk-test-commit-learning-fault-matrix ()
+    (dolist (list-active '(nil t))
+      (dolist (mode '(hiragana abbrev))
+        (dolist (failure-type '(error quit))
+          (dolist (stage '(study search))
+            (ert-info
+                ((format "list=%S mode=%S failure=%S stage=%S"
+                         list-active mode failure-type stage))
+              (let ((candidate (propertize "候補" 'source 'original))
+                    (reading "よみ")
+                    (study-calls 0)
+                    (search-calls 0)
+                    (first-hide-calls 0)
+                    (second-hide-calls 0)
+                    caught)
+                (nskk-test--call-with-failure-safe-commit-fixture
+                 mode list-active candidate reading
+                 (lambda (fixture-candidate fixture-mode fixture-reading
+                          fixture-state fixture-candidates
+                          fixture-overlay fixture-pending-overlay)
+                   (setq nskk-henkan-hide-candidates-functions
+                         (list (lambda () (cl-incf first-hide-calls))
+                               (lambda () (cl-incf second-hide-calls))))
+                   (cl-letf
+                       (((symbol-function 'nskk-study-after-kakutei)
+                         (lambda (&rest _args)
+                           (cl-incf study-calls)
+                           (when (eq stage 'study)
+                             (signal failure-type
+                                     '(nskk-test-learning-fault payload)))))
+                        ((symbol-function 'nskk-search-learn)
+                         (lambda (&rest _args)
+                           (cl-incf search-calls)
+                           (when (eq stage 'search)
+                             (signal failure-type
+                                     '(nskk-test-learning-fault payload))))))
+                     (condition-case condition
+                         (nskk-commit-current)
+                       ((error quit)
+                        (setq caught condition))))
+                   (should
+                    (equal caught
+                           (list failure-type
+                                 'nskk-test-learning-fault 'payload)))
+                   (should (= first-hide-calls 1))
+                   (should (= second-hide-calls 1))
+                   (should (= study-calls 1))
+                   (should (= search-calls
+                              (if (eq stage 'search) 1 0)))
+                   (should (eq (get-text-property
+                                0 'source fixture-candidate)
+                               'original))
+                   (nskk-test--assert-failure-safe-commit-clean-and-undo
+                    fixture-candidate fixture-mode fixture-reading
+                    fixture-state fixture-candidates fixture-overlay
+                    fixture-pending-overlay))))))))))
+
+  (progn
+  (ert-deftest nskk-test-commit-cleanup-fault-matrix ()
+    (dolist (list-active '(nil t))
+      (dolist (mode '(hiragana abbrev))
+        (dolist (failure-type '(error quit))
+          (dolist (stage '(hide overlay marker romaji azik state abbrev))
+            (ert-info
+                ((format "list=%S mode=%S failure=%S stage=%S"
+                         list-active mode failure-type stage))
+              (let ((candidate (propertize "候補" 'source 'original))
+                    (reading "よみ")
+                    (study-calls 0)
+                    (search-calls 0)
+                    (first-hide-calls 0)
+                    (second-hide-calls 0)
+                    (faulted nil)
+                    caught)
+                (nskk-test--call-with-failure-safe-commit-fixture
+                 mode list-active candidate reading
+                 (lambda (fixture-candidate fixture-mode fixture-reading
+                          fixture-state fixture-candidates
+                          fixture-overlay fixture-pending-overlay)
+                   (let ((real-delete-overlay
+                          (symbol-function 'delete-overlay))
+                         (real-clear-marker
+                          (symbol-function
+                           'nskk--clear-conversion-start-marker))
+                         (real-reset-romaji
+                          (symbol-function 'nskk--reset-romaji-buffer))
+                         (real-clear-azik
+                          (symbol-function
+                           'nskk--clear-azik-pending-state))
+                         (real-set-candidates
+                          (symbol-function 'nskk-state-set-candidates))
+                         (real-restore-abbrev
+                          (symbol-function 'nskk--restore-abbrev-mode)))
+                     (setq nskk-henkan-hide-candidates-functions
+                           (list
+                            (lambda ()
+                              (cl-incf first-hide-calls)
+                              (when (and (eq stage 'hide) (not faulted))
+                                (setq faulted t)
+                                (nskk-test--redirty-commit-cleanup-state)
+                                (signal
+                                 failure-type
+                                 '(nskk-test-cleanup-fault payload))))
+                            (lambda () (cl-incf second-hide-calls))))
+                     (cl-letf
+                         (((symbol-function 'delete-overlay)
+                           (lambda (overlay)
+                             (prog1 (funcall real-delete-overlay overlay)
+                               (when (and (eq stage 'overlay) (not faulted))
+                                 (setq faulted t)
+                                 (nskk-test--redirty-commit-cleanup-state)
+                                 (signal
+                                  failure-type
+                                  '(nskk-test-cleanup-fault payload))))))
+                          ((symbol-function
+                            'nskk--clear-conversion-start-marker)
+                           (lambda ()
+                             (prog1 (funcall real-clear-marker)
+                               (when (and (eq stage 'marker) (not faulted))
+                                 (setq faulted t)
+                                 (nskk-test--redirty-commit-cleanup-state)
+                                 (signal
+                                  failure-type
+                                  '(nskk-test-cleanup-fault payload))))))
+                          ((symbol-function 'nskk--reset-romaji-buffer)
+                           (lambda ()
+                             (prog1 (funcall real-reset-romaji)
+                               (when (and (eq stage 'romaji) (not faulted))
+                                 (setq faulted t)
+                                 (nskk-test--redirty-commit-cleanup-state)
+                                 (signal
+                                  failure-type
+                                  '(nskk-test-cleanup-fault payload))))))
+                          ((symbol-function 'nskk--clear-azik-pending-state)
+                           (lambda ()
+                             (prog1 (funcall real-clear-azik)
+                               (when (and (eq stage 'azik) (not faulted))
+                                 (setq faulted t)
+                                 (nskk-test--redirty-commit-cleanup-state)
+                                 (signal
+                                  failure-type
+                                  '(nskk-test-cleanup-fault payload))))))
+                          ((symbol-function 'nskk-state-set-candidates)
+                           (lambda (state candidates)
+                             (prog1
+                                 (funcall real-set-candidates state candidates)
+                               (when (and (eq stage 'state) (not faulted))
+                                 (setq faulted t)
+                                 (nskk-test--redirty-commit-cleanup-state)
+                                 (signal
+                                  failure-type
+                                  '(nskk-test-cleanup-fault payload))))))
+                          ((symbol-function 'nskk--restore-abbrev-mode)
+                           (lambda (was-abbrev)
+                             (prog1 (funcall real-restore-abbrev was-abbrev)
+                               (when (and (eq stage 'abbrev) (not faulted))
+                                 (setq faulted t)
+                                 (nskk-test--redirty-commit-cleanup-state)
+                                 (signal
+                                  failure-type
+                                  '(nskk-test-cleanup-fault payload))))))
+                          ((symbol-function 'nskk-study-after-kakutei)
+                           (lambda (&rest _args)
+                             (cl-incf study-calls)))
+                          ((symbol-function 'nskk-search-learn)
+                           (lambda (&rest _args)
+                             (cl-incf search-calls))))
+                       (condition-case condition
+                           (nskk-commit-current)
+                         ((error quit)
+                          (setq caught condition)))))
+                   (should faulted)
+                   (should
+                    (equal caught
+                           (list failure-type
+                                 'nskk-test-cleanup-fault 'payload)))
+                   (should (= first-hide-calls 1))
+                   (should (= second-hide-calls 1))
+                   (should (= study-calls 0))
+                   (should (= search-calls 0))
+                   (nskk-test--assert-failure-safe-commit-clean-and-undo
+                    fixture-candidate fixture-mode fixture-reading
+                    fixture-state fixture-candidates fixture-overlay
+                    fixture-pending-overlay))))))))))
+
+  (progn
+  (ert-deftest nskk-test-commit-cleanup-preserves-first-condition ()
+    (let ((candidate (propertize "候補" 'source 'original))
+          (reading "よみ")
+          (study-calls 0)
+          (search-calls 0)
+          (first-hide-calls 0)
+          (second-hide-calls 0)
+          (romaji-faulted nil)
+          caught)
+      (nskk-test--call-with-failure-safe-commit-fixture
+       'abbrev t candidate reading
+       (lambda (fixture-candidate fixture-mode fixture-reading
+                fixture-state fixture-candidates fixture-overlay
+                fixture-pending-overlay)
+         (let ((real-reset-romaji
+                (symbol-function 'nskk--reset-romaji-buffer)))
+           (setq nskk-henkan-hide-candidates-functions
+                 (list
+                  (lambda ()
+                    (cl-incf first-hide-calls)
+                    (nskk-test--redirty-commit-cleanup-state)
+                    (signal 'error
+                            '(nskk-test-first-cleanup-fault payload)))
+                  (lambda () (cl-incf second-hide-calls))))
+           (cl-letf
+               (((symbol-function 'nskk--reset-romaji-buffer)
+                 (lambda ()
+                   (prog1 (funcall real-reset-romaji)
+                     (unless romaji-faulted
+                       (setq romaji-faulted t)
+                       (nskk-test--redirty-commit-cleanup-state)
+                       (signal 'quit
+                               '(nskk-test-later-cleanup-fault payload))))))
+                ((symbol-function 'nskk-study-after-kakutei)
+                 (lambda (&rest _args)
+                   (cl-incf study-calls)))
+                ((symbol-function 'nskk-search-learn)
+                 (lambda (&rest _args)
+                   (cl-incf search-calls))))
+             (condition-case condition
+                 (nskk-commit-current)
+               ((error quit)
+                (setq caught condition)))))
+         (should
+          (equal caught
+                 '(error nskk-test-first-cleanup-fault payload)))
+         (should (= first-hide-calls 1))
+         (should (= second-hide-calls 1))
+         (should romaji-faulted)
+         (should (= study-calls 0))
+         (should (= search-calls 0))
+         (nskk-test--assert-failure-safe-commit-clean-and-undo
+          fixture-candidate fixture-mode fixture-reading fixture-state
+          fixture-candidates fixture-overlay fixture-pending-overlay)))))
+
+  (progn
+  (ert-deftest nskk-test-commit-normal-no-reading-no-learn ()
+    (dolist (scenario '(normal no-reading no-learn))
+      (ert-info ((format "scenario=%S" scenario))
+        (let* ((reading (unless (eq scenario 'no-reading) "よみ"))
+               (candidate
+                (propertize "候補"
+                            'source 'original
+                            'nskk-no-learn (eq scenario 'no-learn)))
+               study-args
+               search-args
+               result)
+          (nskk-test--call-with-failure-safe-commit-fixture
+           'hiragana nil candidate reading
+           (lambda (fixture-candidate fixture-mode fixture-reading
+                    fixture-state fixture-candidates fixture-overlay
+                    fixture-pending-overlay)
+             (cl-letf
+                 (((symbol-function 'nskk-study-after-kakutei)
+                   (lambda (&rest args)
+                     (setq study-args args)))
+                  ((symbol-function 'nskk-search-learn)
+                   (lambda (&rest args)
+                     (setq search-args args))))
+               (setq result (nskk-commit-current)))
+             (should (eq result fixture-candidate))
+             (if fixture-reading
+                 (progn
+                   (should (equal (car study-args) fixture-reading))
+                   (should (eq (cadr study-args) fixture-candidate))
+                   (should (= (nth 2 study-args) 0))
+                   (should (equal (car search-args) fixture-reading))
+                   (should (eq (cadr search-args) fixture-candidate)))
+               (should-not study-args)
+               (should-not search-args))
+             (should
+              (eq (get-text-property 0 'source fixture-candidate)
+                  'original))
+             (should
+              (eq (get-text-property 0 'nskk-no-learn fixture-candidate)
+                  (eq scenario 'no-learn)))
+             (nskk-test--assert-failure-safe-commit-clean-and-undo
+              fixture-candidate fixture-mode fixture-reading fixture-state
+              fixture-candidates fixture-overlay
+              fixture-pending-overlay)))))))
+
+  (provide 'nskk-henkan-test)))))))
 
 ;;; nskk-henkan-test.el ends here

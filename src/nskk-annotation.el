@@ -135,8 +135,9 @@ as returned by `nskk--dict-parse-candidates-with-annotations'."
   "Return formatted annotation string for display in echo area.
 Wraps ANNOTATION text in brackets with `nskk-annotation-face' applied."
   (when (and annotation (not (string-empty-p annotation)))
-    (propertize (concat " [" annotation "]")
-                'face 'nskk-annotation-face)))
+    (propertize
+     (concat " [" (substring-no-properties annotation) "]")
+     'face 'nskk-annotation-face)))
 
 ;;;; Public API
 
@@ -144,13 +145,14 @@ Wraps ANNOTATION text in brackets with `nskk-annotation-face' applied."
   "Display annotation for CANDIDATE with READING if available.
 Looks up annotation via `nskk-annotation-lookup' and shows it in the echo
 area alongside the candidate text.  No-op when `nskk-show-annotation' is nil."
+  (setq nskk--annotation-current nil)
   (when nskk-show-annotation
     (let ((annotation (nskk-annotation-lookup reading candidate)))
       (setq nskk--annotation-current annotation)
       (when (and annotation nskk--annotation-visible)
         (when-let* ((ann-str (nskk--annotation-format annotation)))
           (let ((message-log-max nil))
-            (message "%s%s" candidate ann-str)))))))
+            (message "%s%s" (substring-no-properties candidate) ann-str)))))))
 
 (defun nskk-annotation-clear ()
   "Clear the current annotation state."

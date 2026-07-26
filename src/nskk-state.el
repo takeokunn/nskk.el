@@ -284,8 +284,9 @@ Sync wrapper returns VALUE, or nil when STATE is invalid or KEY is unknown.
 The /k variant calls ON-FOUND with VALUE on success, ON-NOT-FOUND otherwise."
   (if (nskk-state-p state)
       (let ((key-sym (if (stringp key) (intern key) key)))
-        (let ((result
-               (pcase key-sym
+        (let* ((known-key-p t)
+               (result
+                (pcase key-sym
                  ('mode         (nskk-state-set-mode state value))
                  ('henkan-phase (nskk-state-set-henkan-phase state value))
                  ('input-buffer     (setf (nskk-state-input-buffer     state) value) value)
@@ -298,8 +299,8 @@ The /k variant calls ON-FOUND with VALUE on success, ON-NOT-FOUND otherwise."
                  ('undo-stack       (setf (nskk-state-undo-stack       state) value) value)
                  ('redo-stack       (setf (nskk-state-redo-stack       state) value) value)
                  ('metadata         (setf (nskk-state-metadata         state) value) value)
-                 (_ nil))))
-          (if result (succeed result) (fail))))
+                 (_ (setq known-key-p nil)))))
+          (if known-key-p (succeed result) (fail))))
     (fail)))
 
 ;;;; State Slot Defaults — static cache, no Prolog round-trip per create/reset
@@ -485,10 +486,10 @@ queries.  The Prolog facts remain authoritative; this is a read-only cache."
   "Append CHAR to STATE's input buffer.
 CHAR must be a valid character (integer).
 Returns the new buffer string on success, nil on failure.
-Uses `concat' with a list to avoid intermediate string allocation.
+Uses `concat' with a one-character list; `concat' allocates a new result
+string.
 Defensive: coerces a non-string buffer to \"\" rather than propagating
-corrupt state.  This guards against buffer corruption from external mutation
-while remaining allocation-free on the normal (string) path."
+corrupt state.  This guards against buffer corruption from external mutation."
   (if (and (nskk-state-p state) (characterp char))
       (let* ((raw (nskk-state-input-buffer state))
              (buf (if (stringp raw) raw ""))
@@ -678,12 +679,15 @@ VAR is mutated via `setq' when a new overlay is created."
               do (overlay-put ,var prop val))))
 
 (defmacro nskk-delete-overlay (var)
-  "Delete the overlay in VAR and set VAR to nil.
-Safe to call when VAR is nil or not an overlay (idempotent)."
+  "Delete the overlay in VAR and clear VAR before deleting it.
+Safe to call when VAR is nil or not an overlay (idempotent).  Clearing
+VAR first ensures cleanup failures cannot leave a stale reference."
   (declare (indent 0) (debug t))
-  `(when (overlayp ,var)
-     (delete-overlay ,var)
-     (setq ,var nil)))
+  (let ((old-overlay (gensym "nskk-old-overlay")))
+    `(let ((,old-overlay ,var))
+       (setq ,var nil)
+       (when (overlayp ,old-overlay)
+         (delete-overlay ,old-overlay)))))
 
 (defmacro nskk-ensure-marker (var pos)
   "Move or create a marker for VAR positioned at POS in the current buffer.

@@ -110,13 +110,13 @@ falling back to point."
 (defun nskk--inline-build-horizontal (candidate)
   "Build inline display string for CANDIDATE (horizontal style).
 Shows candidate as a grayed-out suffix after the preedit text."
-  (propertize (concat " " candidate)
+  (propertize (concat " " (substring-no-properties candidate))
               'face 'nskk-inline-face))
 
 (defun nskk--inline-build-vertical (candidate)
   "Build inline display string for CANDIDATE (vertical style).
 Shows candidate on the next line below the preedit text."
-  (propertize (concat "\n" candidate)
+  (propertize (concat "\n" (substring-no-properties candidate))
               'face 'nskk-inline-face))
 
 ;;;; Public API

@@ -49,6 +49,7 @@ INTEGRATION_SRC = test/integration/nskk-integration-test.el \
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
 E2E_SRC = test/e2e/nskk-abbrev-e2e-test.el \
            test/e2e/nskk-azik-chaos-e2e-test.el \
+           test/e2e/nskk-azik-e2e-test.el \
            test/e2e/nskk-azik-mbt-e2e-test.el \
            test/e2e/nskk-azik-state-transition-e2e-test.el \
            test/e2e/nskk-dcomp-e2e-test.el \
@@ -69,7 +70,7 @@ all: compile
 compile:
 	$(BATCH) $(LOAD_PATH) \
 	  --eval "(setq byte-compile-error-on-warn t)" \
-	  $(foreach f,$(SRC),--eval "(byte-compile-file \"$(f)\")")
+	  $(foreach f,$(SRC),--eval "(unless (byte-compile-file \"$(f)\") (kill-emacs 1))")
 
 test: compile
 	$(BATCH) $(LOAD_PATH) \
@@ -124,7 +125,7 @@ lint: lint-checkdoc
 
 lint-checkdoc:
 	$(BATCH) $(LOAD_PATH) \
-	  $(foreach f,$(SRC),--eval "(checkdoc-file \"$(f)\")")
+	  $(foreach f,$(SRC),--eval "(progn (setq checkdoc-pending-errors nil) (with-current-buffer (find-file-noselect \"$(f)\") (checkdoc-current-buffer t)) (when checkdoc-pending-errors (with-current-buffer \"*Style Warnings*\" (princ (buffer-string))) (kill-emacs 1)))")
 
 PACKAGE_LINT_CACHE := $(CURDIR)/.package-lint-cache
 
@@ -139,7 +140,17 @@ package-lint:
 	      (package-refresh-contents) \
 	      (package-install 'package-lint)))" \
 	  -l package-lint \
-	  -f package-lint-batch-and-exit src/nskk.el
+	  --eval "(progn \
+	    (setq package-lint-main-file (expand-file-name \"src/nskk.el\")) \
+	    (setq package-lint--sane-prefixes \
+	      (concat \"\\\\(?:\" package-lint--sane-prefixes \"\\\\|\" \
+	        (regexp-opt '(\"defun/k\" \"defun/done\" \"defun/3k\" \"read-eval\" \
+	          \"nskk--cps-transform-call/cc\" \"nskk-prolog-unify/k\" \
+	          \"nskk--debug-format/k\" \"nskk--convert-loop/k\" \
+	          \"nskk--run-registration-session/k\" \
+	          \"nskk-program-dict-lookup/k\") 'symbols) \
+	        \"\\\\'\\\\)\")))" \
+	  -f package-lint-batch-and-exit $(SRC)
 
 clean:
 	rm -f *.elc src/*.elc test/*.elc test/integration/*.elc test/unit/*.elc test/e2e/*.elc

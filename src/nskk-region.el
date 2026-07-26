@@ -42,7 +42,7 @@
 ;;
 ;; All commands operate on the current region (mark..point) and replace it
 ;; with the converted text.  If the region is not active, the commands do
-;; nothing and show a message.
+;; not modify the buffer and signal a `user-error'.
 
 ;;; Code:
 
@@ -51,16 +51,33 @@
 
 ;;;; Internal Helpers
 
+(defun nskk--region-bounds ()
+  "Return normalized bounds of the active region for interactive commands."
+  (unless (use-region-p)
+    (user-error "No active region"))
+  (list (region-beginning) (region-end)))
+
 (defun nskk--region-convert (beg end converter)
   "Convert text from BEG to END using CONVERTER function.
 CONVERTER takes a string and returns the converted string.
-Replaces the region text with the converted result."
-  (let* ((text (buffer-substring-no-properties beg end))
-         (converted (funcall converter text)))
-    (when converted
-      (delete-region beg end)
-      (goto-char beg)
-      (insert converted))))
+Replaces the region text with the converted result.
+On failure, restore point, mark, and mark activation exactly."
+  (let ((saved-point (point))
+        (saved-mark (mark t))
+        (saved-mark-active mark-active))
+    (condition-case err
+        (atomic-change-group
+          (let* ((text (buffer-substring-no-properties beg end))
+                 (converted (funcall converter text)))
+            (when converted
+              (delete-region beg end)
+              (goto-char beg)
+              (insert converted))))
+      ((error quit)
+       (goto-char saved-point)
+       (set-marker (mark-marker) saved-mark)
+       (setq mark-active saved-mark-active)
+       (signal (car err) (cdr err))))))
 
 (defun nskk--ascii-char-to-zenkaku (char)
   "Convert ASCII CHAR (integer) to full-width Unicode equivalent.
@@ -104,7 +121,7 @@ Returns a string of the converted character."
   "Convert katakana characters in region BEG to END to hiragana.
 Operates on the active region when called interactively.
 This is the nskk.el equivalent of ddskk's `skk-hiragana-region'."
-  (interactive "r")
+  (interactive (nskk--region-bounds))
   (nskk--region-convert beg end #'nskk-kana-string-katakana-to-hiragana))
 
 ;;;###autoload
@@ -112,21 +129,21 @@ This is the nskk.el equivalent of ddskk's `skk-hiragana-region'."
   "Convert hiragana characters in region BEG to END to katakana.
 Operates on the active region when called interactively.
 This is the nskk.el equivalent of ddskk's `skk-katakana-region'."
-  (interactive "r")
+  (interactive (nskk--region-bounds))
   (nskk--region-convert beg end #'nskk-kana-string-hiragana-to-katakana))
 
 ;;;###autoload
 (defun nskk-hankaku-katakana-region (beg end)
   "Convert full-width katakana in region BEG to END to half-width katakana.
 Operates on the active region when called interactively."
-  (interactive "r")
+  (interactive (nskk--region-bounds))
   (nskk--region-convert beg end #'nskk-kana-zenkaku-to-hankaku))
 
 ;;;###autoload
 (defun nskk-zenkaku-katakana-region (beg end)
   "Convert half-width katakana in region BEG to END to full-width katakana.
 Operates on the active region when called interactively."
-  (interactive "r")
+  (interactive (nskk--region-bounds))
   (nskk--region-convert beg end #'nskk-kana-hankaku-to-zenkaku))
 
 ;;;###autoload
@@ -134,7 +151,7 @@ Operates on the active region when called interactively."
   "Convert ASCII in region BEG to END to full-width (JIS X 0208) equivalents.
 Converts printable ASCII (0x20-0x7E) to full-width Unicode variants.
 Equivalent of ddskk's `skk-jisx0208-latin-region'."
-  (interactive "r")
+  (interactive (nskk--region-bounds))
   (nskk--region-convert beg end #'nskk--string-ascii-to-zenkaku))
 
 ;;;###autoload
@@ -142,7 +159,7 @@ Equivalent of ddskk's `skk-jisx0208-latin-region'."
   "Convert full-width latin in region BEG to END to ASCII equivalents.
 Converts full-width ASCII variants (U+FF01-U+FF5E) and ideographic
 space (U+3000) to basic ASCII.  Equivalent of ddskk's `skk-latin-region'."
-  (interactive "r")
+  (interactive (nskk--region-bounds))
   (nskk--region-convert beg end #'nskk--string-zenkaku-to-ascii))
 
 (provide 'nskk-region)

@@ -198,6 +198,49 @@
             (should-not (nskk-candidate-list-active-p))))))))
 
 
-(provide 'nskk-candidate-window-integration-test)
+(progn
+  (nskk-describe "Candidate window transactional hook recovery"
+    (nskk-it "recovers from overlay-put quit and retries through the show hook"
+      (with-temp-buffer
+        (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+              (nskk-henkan-number-to-display-candidates 7)
+              (nskk-henkan-show-candidates-functions nil)
+              (payload (list 'candidate-overlay-put-quit))
+              (original-overlay-put (symbol-function 'overlay-put))
+              saved-overlay
+              caught)
+          (add-hook 'nskk-henkan-show-candidates-functions
+                    #'nskk-candidate-show-list)
+          (unwind-protect
+              (progn
+                (cl-letf (((symbol-function 'overlay-put)
+                           (lambda (overlay property value)
+                             (prog1
+                                 (funcall original-overlay-put
+                                          overlay property value)
+                               (setq saved-overlay overlay)
+                               (signal 'quit (list payload))))))
+                  (condition-case condition
+                      (run-hook-with-args
+                       'nskk-henkan-show-candidates-functions
+                       '("candidate-a" "candidate-b") 0)
+                    (quit
+                     (setq caught condition))))
+                (should (eq (car caught) 'quit))
+                (should (eq (cadr caught) payload))
+                (should-not nskk--candidate-list-active)
+                (should-not nskk--candidate-overlay)
+                (should (overlayp saved-overlay))
+                (should-not (overlay-buffer saved-overlay))
+                (run-hook-with-args
+                 'nskk-henkan-show-candidates-functions
+                 '("candidate-a" "candidate-b") 0)
+                (should (nskk-candidate-list-active-p))
+                (should (overlayp nskk--candidate-overlay)))
+            (remove-hook 'nskk-henkan-show-candidates-functions
+                         #'nskk-candidate-show-list)
+            (nskk-candidate-hide-list))))))
+
+  (provide 'nskk-candidate-window-integration-test))
 
 ;;; nskk-candidate-window-integration-test.el ends here

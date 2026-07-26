@@ -142,7 +142,7 @@ Returns a string starting with \\n to appear below the preedit line."
                            collect (concat
                                     (propertize (format "%c:" key)
                                                 'face 'nskk-candidate-key-face)
-                                    (propertize cand
+                                    (propertize (substring-no-properties cand)
                                                 'face 'nskk-candidate-face))))
          (body   (string-join entries " "))
          (suffix (when (> remaining 0) (format " [残り %d]" remaining))))
@@ -171,34 +171,46 @@ Returns a plist with:
 
 ;;;; Public API
 
-(defun/k nskk-candidate-show-list (candidates current-index)
-  "Display CANDIDATES via overlay starting at CURRENT-INDEX.
+(progn
+  (defun nskk--candidate-clear-list-state ()
+    "Clear candidate overlay state even when the active flag drifted."
+    (setq nskk--candidate-list-active nil)
+    (nskk-delete-overlay nskk--candidate-overlay))
+
+  (defun/k nskk-candidate-show-list (candidates current-index)
+    "Display CANDIDATES via overlay starting at CURRENT-INDEX.
 
 Shows candidates with home-row selection keys and a [残り N] remaining
 count when more candidates exist beyond the current page.
 Returns the page candidates (a sublist of CANDIDATES) for key mapping.
 CURRENT-INDEX must be aligned to a page boundary (a multiple of PER-PAGE),
 as computed by the henkan pipeline."
-  (let* ((keys nskk-henkan-show-candidates-keys)
-         (per-page (min nskk-henkan-number-to-display-candidates (length keys)))
-         (page (nskk--candidate-page-slice candidates current-index per-page))
-         (page-candidates (plist-get page :slice))
-         (remaining (plist-get page :remaining))
-         (after-str (nskk--candidate-build-string page-candidates keys remaining))
-         (anchor (nskk--candidate-overlay-anchor)))
-    (nskk-ensure-overlay nskk--candidate-overlay anchor anchor 'after-string after-str)
-    (setq nskk--candidate-list-active t)
-    (succeed page-candidates)))
+    (let* ((keys nskk-henkan-show-candidates-keys)
+           (per-page (min nskk-henkan-number-to-display-candidates (length keys)))
+           (page (nskk--candidate-page-slice candidates current-index per-page))
+           (page-candidates (plist-get page :slice))
+           (remaining (plist-get page :remaining))
+           (after-str (nskk--candidate-build-string page-candidates keys remaining))
+           (anchor (nskk--candidate-overlay-anchor)))
+      (condition-case condition
+          (progn
+            (nskk-ensure-overlay nskk--candidate-overlay anchor anchor
+                                 'after-string after-str)
+            (setq nskk--candidate-list-active t))
+        ((error quit)
+         (condition-case nil
+             (nskk--candidate-clear-list-state)
+           ((error quit) nil))
+         (signal (car condition) (cdr condition))))
+      (succeed page-candidates))))
 
 (defun/k nskk-candidate-list-active-p ()
   "Return non-nil if the candidate list overlay is currently displayed."
   (succeed nskk--candidate-list-active))
 
 (defun/done nskk-candidate-hide-list ()
-  "Hide the candidate list by deleting its overlay."
-  (when nskk--candidate-list-active
-    (nskk-delete-overlay nskk--candidate-overlay)
-    (setq nskk--candidate-list-active nil)))
+  "Hide the candidate list and repair any overlay state drift."
+  (nskk--candidate-clear-list-state))
 
 (defun/k nskk-candidate-list-select-by-key (key candidates current-index)
   "Return the absolute index of the candidate selected by KEY.
@@ -221,7 +233,7 @@ selection key or if the resulting index is out of range."
 (defun nskk--candidate-build-tooltip-string (page-candidates)
   "Build tooltip string for PAGE-CANDIDATES.
 Returns a multi-line string with one candidate per line."
-  (string-join page-candidates "\n"))
+  (string-join (mapcar #'substring-no-properties page-candidates) "\n"))
 
 (defun/k nskk-candidate-show-tooltip (candidates current-index)
   "Display CANDIDATES via tooltip starting at CURRENT-INDEX.

@@ -979,6 +979,87 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     :not-found ()
       (ert-fail "Expected on-found for nskk-state-set/k"))
 
+  (nskk-it "nskk-state-set/k treats nil as success for a present key"
+    (let ((state (nskk-state-create))
+          (found-calls 0)
+          (not-found-calls 0)
+          (result :not-called))
+      (nskk-state-set/k
+       state 'metadata nil
+       (lambda (value)
+         (setq found-calls (1+ found-calls)
+               result value))
+       (lambda ()
+         (setq not-found-calls (1+ not-found-calls))))
+      (should (= found-calls 1))
+      (should (= not-found-calls 0))
+      (should-not result)
+      (should-not (nskk-state-metadata state))))
+
+  (nskk-it "nskk-state-set/k calls only not-found for an unknown key"
+    (let ((state (nskk-state-create))
+          (found-calls 0)
+          (not-found-calls 0))
+      (nskk-state-set state 'metadata '(:kept t))
+      (nskk-state-set/k
+       state 'definitely-unknown :ignored
+       (lambda (_value)
+         (setq found-calls (1+ found-calls)))
+       (lambda ()
+         (setq not-found-calls (1+ not-found-calls))))
+      (should (= found-calls 0))
+      (should (= not-found-calls 1))
+      (should (equal (nskk-state-metadata state) '(:kept t)))))
+
+  (nskk-it "nskk-state-set/k propagates validation errors without continuations"
+    (let ((state (nskk-state-create 'ascii))
+          (found-calls 0)
+          (not-found-calls 0))
+      (should-error
+       (nskk-state-set/k
+        state 'mode 'invalid-mode
+        (lambda (_value)
+          (setq found-calls (1+ found-calls)))
+        (lambda ()
+          (setq not-found-calls (1+ not-found-calls))))
+       :type 'error)
+      (should (= found-calls 0))
+      (should (= not-found-calls 0))
+      (should (eq (nskk-state-mode state) 'ascii))))
+
+  (nskk-it "nskk-state-set/k propagates error and quit from the selected continuation"
+    (dolist (condition '(error quit))
+      (dolist (row '((metadata nil found)
+                     (definitely-unknown :ignored not-found)))
+        (let* ((state (nskk-state-create))
+               (key (nth 0 row))
+               (value (nth 1 row))
+               (selected (nth 2 row))
+               (found-calls 0)
+               (not-found-calls 0)
+               (payload (list condition selected))
+               caught)
+          (setq caught
+                (condition-case signaled
+                    (progn
+                      (nskk-state-set/k
+                       state key value
+                       (lambda (_result)
+                         (setq found-calls (1+ found-calls))
+                         (when (eq selected 'found)
+                           (signal condition (list payload))))
+                       (lambda ()
+                         (setq not-found-calls (1+ not-found-calls))
+                         (when (eq selected 'not-found)
+                           (signal condition (list payload)))))
+                      nil)
+                  ((error quit) signaled)))
+          (should (eq (car caught) condition))
+          (should (eq (cadr caught) payload))
+          (should (= found-calls (if (eq selected 'found) 1 0)))
+          (should (= not-found-calls
+                     (if (eq selected 'not-found) 1 0)))))))
+
   (nskk-it-k "nskk-state-append-input/k appends one character"
     (nskk-state-append-input/k (nskk-state-create) ?a)
     :found (result)
@@ -1892,7 +1973,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (let ((ov (make-overlay (point-min) (point-max))))
         (should (overlayp ov))
         (nskk-delete-overlay ov)
-        ;; The variable must be nil after deletion
         (should (null ov)))))
 
   (nskk-it "the overlay object is no longer live after deletion"
@@ -1900,8 +1980,35 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (let* ((ov (make-overlay (point-min) (point-max)))
              (ov-copy ov))
         (nskk-delete-overlay ov)
-        ;; overlay-buffer of a deleted overlay returns nil
-        (should (null (overlay-buffer ov-copy)))))))
+        (should (null (overlay-buffer ov-copy))))))
+
+  (nskk-it "repairs a non-overlay drift value to nil"
+    (let ((ov 'stale-overlay-reference))
+      (nskk-delete-overlay ov)
+      (should (null ov))))
+
+  (nskk-it "clears the variable before re-signaling delete error or quit"
+    (dolist (condition '(error quit))
+      (with-temp-buffer
+        (let* ((ov (make-overlay (point-min) (point-max)))
+               (saved-overlay ov)
+               (payload (list condition))
+               (original-delete (symbol-function 'delete-overlay))
+               caught)
+          (unwind-protect
+              (cl-letf (((symbol-function 'delete-overlay)
+                         (lambda (_overlay)
+                           (signal condition (list payload)))))
+                (setq caught
+                      (condition-case signaled
+                          (progn
+                            (nskk-delete-overlay ov)
+                            nil)
+                        ((error quit) signaled)))
+                (should (eq (car caught) condition))
+                (should (eq (cadr caught) payload))
+                (should (null ov)))
+            (funcall original-delete saved-overlay)))))))
 
 ;;;
 ;;; nskk-ensure-marker Tests
