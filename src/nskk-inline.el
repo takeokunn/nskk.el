@@ -27,7 +27,7 @@
 ;; Inline candidate display for NSKK (Layer 5: Presentation).
 ;;
 ;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-custom,
-;;   and nskk-cps-macros.
+;;   nskk-prolog, and nskk-cps-macros.
 ;;
 ;; When `nskk-show-inline' is non-nil, displays conversion candidates
 ;; inline in the buffer rather than in the echo area.  This is the nskk.el
@@ -55,6 +55,7 @@
 (require 'nskk-state)
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
+(require 'nskk-prolog)
 
 ;;;; Customization
 
@@ -119,6 +120,12 @@ Shows candidate on the next line below the preedit text."
   (propertize (concat "\n" (substring-no-properties candidate))
               'face 'nskk-inline-face))
 
+;;;; Internal
+
+(defun nskk--inline-finalize ()
+  "Unconditionally remove the inline overlay during terminal cleanup."
+  (nskk-delete-overlay nskk--inline-overlay))
+
 ;;;; Public API
 
 (defun/done nskk-inline-show-candidate (candidate)
@@ -151,6 +158,13 @@ registration mode."
       (nskk-ensure-overlay nskk--inline-overlay anchor anchor
         'after-string (concat "\n" badge)
         'priority 98))))
+
+(nskk-prolog-register-presentation-action 'cleanup 'nskk-inline-hide)
+(nskk-prolog-register-presentation-action 'finalize 'nskk--inline-finalize)
+(nskk-prolog-register-presentation-action
+ 'show-candidate 'nskk-inline-show-candidate)
+(nskk-prolog-register-presentation-action
+ 'show-registration-badge 'nskk-inline-show-registration-badge)
 
 (provide 'nskk-inline)
 
