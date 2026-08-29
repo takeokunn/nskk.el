@@ -62,8 +62,11 @@
 (require 'subr-x)
 
 (require 'nskk-prolog)
+(require 'nskk-dict-transaction)
 
 (require 'nskk-cps-macros)
+(declare-function nskk--search-cache-snapshots "nskk-search")
+(declare-function nskk--search-restore-cache-snapshot "nskk-search" (snapshot))
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
 
@@ -163,11 +166,6 @@ errors per observer.  Hook functions must manage their own external effects;
 NSKK can roll back only its internal dictionary and search-cache state.")
 
 ;;; Section 1: Error types
-(define-error 'nskk-dict-error "Dictionary error")
-(define-error 'nskk-dict-rollback-incomplete
-	      "Dictionary rollback remains incomplete"
-	      'nskk-dict-error)
-
 ;;; Atomic file writing
 
 (defun nskk--dict-file-identifier (path)
@@ -401,127 +399,6 @@ observers.  A `quit' condition is deliberately allowed to escape unchanged."
   "Run `nskk-jisyo-update-hook' as an isolated notification boundary."
   (nskk--dict-run-notification-hook 'nskk-jisyo-update-hook "jisyo-update-hook"))
 
-(defvar nskk--dict-pending-rollbacks (make-hash-table :test #'equal)
-  "Rollback state retained until every failed storage region is restored.")
-
-(defun nskk--dict-pending-rollback (owner)
-  "Return pending rollback state for OWNER, or nil."
-  (gethash owner nskk--dict-pending-rollbacks))
-
-(defun nskk--dict-clear-pending-rollback (owner)
-  "Discard retained rollback state for OWNER."
-  (remhash owner nskk--dict-pending-rollbacks))
-
-(defun nskk--dict-rollback-diagnostic (owner primary failures)
-  "Format a rollback diagnostic for OWNER, PRIMARY, and FAILURES."
-  (format
-   "Rollback for %S after %S is incomplete; unrestored regions: %s"
-   owner primary
-   (mapconcat
-    (lambda (failure)
-      (format "%S=%S" (car failure) (cdr failure)))
-    failures
-    ", ")))
-
-(defun nskk--dict-warn-rollback-incomplete (owner primary failures)
-  "Warn that rollback for OWNER after PRIMARY left FAILURES.
-A warning failure must never replace the primary publication condition."
-  (condition-case nil
-      (let ((inhibit-quit t))
-        (display-warning
-         'nskk
-         (nskk--dict-rollback-diagnostic owner primary failures)
-         :error))
-    ((error quit) nil)))
-
-(defun nskk--dict-run-rollback (owner primary restorers)
-  "Run RESTORERS independently after PRIMARY for OWNER.
-Each RESTORERS entry is (REGION . FUNCTION).  Retain only failed
-restorers so their captured snapshots remain available for retry."
-  (let (failed-restorers failures)
-    (dolist (restorer restorers)
-      (condition-case failure
-          (let ((inhibit-quit t))
-            (funcall (cdr restorer)))
-        ((error quit)
-         (push restorer failed-restorers)
-         (push (cons (car restorer) failure) failures))))
-    (setq failed-restorers (nreverse failed-restorers)
-          failures (nreverse failures))
-    (if failures
-        (let ((pending
-               (list :primary primary
-                     :restorers failed-restorers
-                     :failures failures)))
-          (puthash owner pending nskk--dict-pending-rollbacks)
-          (nskk--dict-warn-rollback-incomplete owner primary failures)
-          pending)
-      (nskk--dict-clear-pending-rollback owner)
-      nil)))
-
-(defun nskk--dict-retry-pending-rollback (owner)
-  "Retry every retained failed rollback region for OWNER.
-Return updated pending state, or nil after complete recovery."
-  (when-let* ((pending (nskk--dict-pending-rollback owner)))
-    (nskk--dict-run-rollback
-     owner
-     (plist-get pending :primary)
-     (plist-get pending :restorers))))
-
-(defun nskk--dict-ensure-rollback-complete (owner)
-  "Retry OWNER rollback and signal if any region remains unrestored."
-  (when-let* ((pending (nskk--dict-retry-pending-rollback owner)))
-    (let* ((primary (plist-get pending :primary))
-           (failures (plist-get pending :failures))
-           (payload
-            (list :owner owner
-                  :primary primary
-                  :failures failures)))
-      (signal
-       'nskk-dict-rollback-incomplete
-       (list
-        (nskk--dict-rollback-diagnostic owner primary failures)
-        payload)))))
-
-(defun nskk--dict-rollback-and-resignal (owner primary restorers)
-  "Rollback OWNER with RESTORERS, then re-signal PRIMARY unchanged."
-  (nskk--dict-run-rollback owner primary restorers)
-  (signal (car primary) (cdr primary)))
-
-(defconst
-  nskk--dict-storage-missing
-  (make-symbol "missing")
-  "Sentinel for an absent predicate storage entry.")
-
-(defun nskk--dict-predicate-snapshot (key)
-  "Return an exact snapshot of Prolog storage entries for KEY only."
-  (let ((missing nskk--dict-storage-missing))
-    (vector
-      missing
-      key
-      (gethash key nskk--prolog-database missing)
-      (gethash key nskk--prolog-database-tails missing)
-      (gethash key nskk--prolog-index-config missing)
-      (gethash key nskk--prolog-hash-indices missing)
-      (gethash key nskk--prolog-trie-indices missing)
-      (gethash key nskk--prolog-index-bucket-tail-cache missing))))
-
-(defun nskk--dict-apply-predicate-snapshot (snapshot)
-  "Apply SNAPSHOT without changing storage for any other predicate."
-  (let ((missing (aref snapshot 0))
-        (key (aref snapshot 1))
-        (inhibit-quit t))
-    (dolist (entry
-        (list
-          (cons nskk--prolog-database (aref snapshot 2))
-          (cons nskk--prolog-database-tails (aref snapshot 3))
-          (cons nskk--prolog-index-config (aref snapshot 4))
-          (cons nskk--prolog-hash-indices (aref snapshot 5))
-          (cons nskk--prolog-trie-indices (aref snapshot 6))
-          (cons nskk--prolog-index-bucket-tail-cache (aref snapshot 7))))
-      (if (eq (cdr entry) missing) (remhash key (car entry))
-        (puthash key (cdr entry) (car entry))))))
-
 (defun nskk--dict-stage-predicate-entries (predicate entries &optional existing-clauses)
   "Build PREDICATE facts for ENTRIES in isolated Prolog storage.
 EXISTING-CLAUSES are asserted before ENTRIES for append-style loads."
@@ -535,35 +412,35 @@ EXISTING-CLAUSES are asserted before ENTRIES for append-style loads."
     (dolist (clause existing-clauses)
       (nskk-prolog-assert clause))
     (nskk-prolog-trie-bulk-assert predicate 2 entries)
-    (nskk--dict-predicate-snapshot (nskk--prolog-clause-key predicate 2))))
+    (nskk-dict-transaction-predicate-snapshot (nskk--prolog-clause-key predicate 2))))
 
 (defun nskk--dict-publish-staged-predicate (staged)
   "Publish STAGED predicate storage."
-  (nskk--dict-apply-predicate-snapshot staged))
+  (nskk-dict-transaction-apply-predicate-snapshot staged))
 
 (defun nskk--dict-commit-staged-predicate (staged &optional prepare)
   "Run PREPARE and atomically publish STAGED predicate storage.
 Restore the previous predicate storage if either step signals an error or quit."
   (let* ((key (aref staged 1))
          (owner (list 'nskk--dict-commit-staged-predicate key)))
-    (nskk--dict-ensure-rollback-complete owner)
-    (let ((previous (nskk--dict-predicate-snapshot key)))
+    (nskk-dict-transaction-ensure-rollback-complete owner)
+    (let ((previous (nskk-dict-transaction-predicate-snapshot key)))
       (condition-case condition
           (prog1
               (progn
                 (when prepare
                   (funcall prepare))
                 (nskk--dict-publish-staged-predicate staged))
-            (nskk--dict-clear-pending-rollback owner))
+            (nskk-dict-transaction-clear-pending-rollback owner))
         ((error quit)
-         (nskk--dict-rollback-and-resignal
+         (nskk-dict-transaction-rollback-and-resignal
           owner
           condition
           (list
            (cons
             'predicate
             (lambda ()
-              (nskk--dict-apply-predicate-snapshot previous))))))))))
+              (nskk-dict-transaction-apply-predicate-snapshot previous))))))))))
 
 (defun nskk--dict-replace-predicate-entries (predicate entries)
   "Atomically replace PREDICATE/2 with ENTRIES."
@@ -576,8 +453,8 @@ Database and warm index-bucket appends run in O(length ENTRIES).  A bucket
 created outside this function pays a one-time tail discovery cost.  A fresh
 predicate receives a trie index; existing index strategy is retained."
   (let* ((key (nskk--prolog-clause-key predicate 2))
-         (missing nskk--dict-storage-missing)
-         (previous (nskk--dict-predicate-snapshot key))
+         (missing nskk-dict-transaction--storage-missing)
+         (previous (nskk-dict-transaction-predicate-snapshot key))
          (old-database-head (gethash key nskk--prolog-database))
          (old-database-tail (gethash key nskk--prolog-database-tails))
          (old-database-tail-cdr (and old-database-tail (cdr old-database-tail)))
@@ -682,7 +559,7 @@ predicate receives a trie index; existing index strategy is retained."
               (aref splice 3)))
           (when database-append-tail
             (setcdr database-append-tail old-database-tail-cdr))
-          (nskk--dict-apply-predicate-snapshot previous))))))
+          (nskk-dict-transaction-apply-predicate-snapshot previous))))))
 
 (defun nskk--dict-load-from-cache ()
   "Replace system dictionary facts from a fully validated on-disk cache.
@@ -877,368 +754,7 @@ For \"/漢字;a kanji/感じ/\", returns:
   (* 128 1024 1024)
   "Maximum accepted dictionary cache size in bytes.")
 
-(defun nskk--dict-insert-file-contents-pinned
-    (file resolved-file attributes max-bytes &optional allow-symlink)
-  "Insert a validated regular FILE through a pinned hard-link snapshot.
-RESOLVED-FILE and ATTRIBUTES describe the target validated by the caller.
-Read at most MAX-BYTES bytes.  Reject symbolic FILE unless ALLOW-SYMLINK
-is non-nil.  If no safe hard-link snapshot can be made, read directly only
-when both the lexical and canonical local paths are immutable."
-  (cl-labels
-      ((pin-identity
-         (value)
-         (and value
-              (list
-               (file-attribute-device-number value)
-               (file-attribute-inode-number value)
-               (file-attribute-size value)
-               (file-attribute-modification-time value))))
-       (full-identity
-         (value)
-         (and value
-              (append
-               (pin-identity value)
-               (list (file-attribute-status-change-time value)))))
-       (current-resolved-file
-         ()
-         (condition-case nil
-             (file-truename file)
-           (file-error nil)))
-       (parent-directories
-         (path)
-         (let ((directory
-                (directory-file-name
-                 (file-name-directory (expand-file-name path))))
-               parent
-               result)
-           (while directory
-             (push directory result)
-             (setq parent
-                   (directory-file-name
-                    (file-name-directory directory)))
-             (setq directory
-                   (unless (equal parent directory) parent)))
-           (nreverse result)))
-       (handled-file-name-p
-         (path)
-         (cl-some
-          (lambda (operation)
-            (find-file-name-handler path operation))
-          '(insert-file-contents
-  file-attributes
-  file-truename
-  file-writable-p
-  file-symlink-p
-  file-regular-p
-  file-directory-p
-  file-modes
-  file-acl
-  make-temp-file
-  set-file-modes
-  add-name-to-file
-  delete-directory)))
-       (local-unhandled-file-p
-         (path)
-         (and (not (file-remote-p path))
-              (not (handled-file-name-p path))))
-       (safe-directory-entry-controller-p
-    (directory)
-    (condition-case nil
-        (let* ((directory-attributes
-                (and (local-unhandled-file-p directory)
-                     (file-attributes directory 'integer)))
-               (modes
-                (and directory-attributes
-                     (file-modes directory)))
-               (acl
-                (and directory-attributes
-                     (file-acl directory)))
-               (owner
-                (and directory-attributes
-                     (file-attribute-user-id directory-attributes))))
-          (and directory-attributes
-               (integerp modes)
-               (file-directory-p directory)
-               (null acl)
-               (or (equal owner 0)
-                   (equal owner (user-uid)))
-               (or (zerop (logand modes #o022))
-                   (not (zerop (logand modes #o1000))))))
-      (file-error nil)))
-  (safe-directory-ancestry-p
-    (directory)
-    (let ((canonical
-           (and (local-unhandled-file-p directory)
-                (condition-case nil
-                    (file-truename directory)
-                  (file-error nil)))))
-      (and canonical
-           (local-unhandled-file-p canonical)
-           (cl-every
-            #'safe-directory-entry-controller-p
-            (delete-dups
-             (append
-              (parent-directories directory)
-              (parent-directories canonical)))))))
-  (safe-snapshot-base-p
-    (directory)
-    (condition-case nil
-        (let* ((directory-attributes
-                (and (local-unhandled-file-p directory)
-                     (file-attributes directory 'integer)))
-               (modes
-                (and directory-attributes
-                     (file-modes directory)))
-               (acl
-                (and directory-attributes
-                     (file-acl directory))))
-          (and directory-attributes
-               (integerp modes)
-               (file-directory-p directory)
-               (file-writable-p directory)
-               (null acl)
-               (safe-directory-ancestry-p directory)
-               (or
-                (and
-                 (equal
-                  (file-attribute-user-id directory-attributes)
-                  (user-uid))
-                 (zerop (logand modes #o022)))
-                (and
-                 (zerop
-                  (file-attribute-user-id directory-attributes))
-                 (not (zerop (logand modes #o1000)))))))
-      (file-error nil)))
-       (safe-source-snapshot-parent-p
-  (directory)
-  (condition-case nil
-      (let* ((directory-attributes
-              (and (local-unhandled-file-p directory)
-                   (file-attributes directory (quote integer))))
-             (modes
-              (and directory-attributes
-                   (file-modes directory)))
-             (acl
-              (and directory-attributes
-                   (file-acl directory))))
-        (and directory-attributes
-             (integerp modes)
-             (file-directory-p directory)
-             (not (file-symlink-p directory))
-             (file-writable-p directory)
-             (null acl)
-             (safe-directory-ancestry-p directory)
-             (equal
-              (file-attribute-user-id directory-attributes)
-              (user-uid))
-             (zerop (logand modes #o022))
-             (equal
-              (file-attribute-device-number directory-attributes)
-              (file-attribute-device-number attributes))))
-    (file-error nil)))
-       (private-snapshot-directory-p
-  (directory)
-  (condition-case nil
-      (let* ((directory-attributes
-              (and (local-unhandled-file-p directory)
-                   (file-attributes directory (quote integer))))
-             (modes
-              (and directory-attributes
-                   (file-modes directory)))
-             (acl
-              (and directory-attributes
-                   (file-acl directory))))
-        (and directory-attributes
-             (integerp modes)
-             (file-directory-p directory)
-             (not (file-symlink-p directory))
-             (null acl)
-             (safe-directory-ancestry-p directory)
-             (equal
-              (file-attribute-user-id directory-attributes)
-              (user-uid))
-             (= (logand modes #o777) #o700)))
-    (file-error nil)))
-       (stable-direct-source-p
-  (expected-identity)
-  (let* ((current-resolved (current-resolved-file))
-         (current-attributes
-          (and current-resolved
-               (file-attributes resolved-file (quote integer))))
-         (current-size
-          (and current-attributes
-               (file-attribute-size current-attributes))))
-    (and (local-unhandled-file-p file)
-         (local-unhandled-file-p resolved-file)
-         (safe-directory-ancestry-p file)
-         (safe-directory-ancestry-p resolved-file)
-         current-attributes
-         (integerp current-size)
-         (<= current-size max-bytes)
-         (file-regular-p resolved-file)
-         (or allow-symlink (not (file-symlink-p file)))
-         (equal resolved-file current-resolved)
-         (equal expected-identity
-                (full-identity current-attributes))
-         (not (file-writable-p resolved-file))
-         (cl-every
-          (lambda (directory)
-            (not (file-writable-p directory)))
-          (append
-           (parent-directories file)
-           (parent-directories resolved-file)))))))
-    (let* ((source-local-p
-            (and (local-unhandled-file-p file)
-                 (local-unhandled-file-p resolved-file)))
-           (size (and attributes (file-attribute-size attributes)))
-           (expected-pin-identity (pin-identity attributes))
-           (expected-full-identity (full-identity attributes))
-           (source-snapshot-directories
-            (and source-local-p
-                 (cl-remove-if-not
-                  #'safe-source-snapshot-parent-p
-                  (parent-directories resolved-file))))
-           (snapshot-bases
-            (and source-local-p
-                 (cl-remove-if-not
-                  #'safe-snapshot-base-p
-                  (delete-dups
-                   (cons
-                    (directory-file-name
-                     (expand-file-name temporary-file-directory))
-                    source-snapshot-directories))))))
-      (unless (and source-local-p
-                   attributes
-                   expected-full-identity
-                   (integerp size)
-                   (integerp max-bytes)
-                   (>= max-bytes 0)
-                   (file-regular-p resolved-file)
-                   (or allow-symlink (not (file-symlink-p file)))
-                   (equal resolved-file (current-resolved-file)))
-        (error "NSKK: File is not a stable local regular file"))
-      (when (> size max-bytes)
-        (error "NSKK: File exceeds %d-byte limit" max-bytes))
-      (unless
-          (catch 'read-through-snapshot
-            (dolist (snapshot-base snapshot-bases)
-              (let (snapshot-directory snapshot-file linked)
-                (unwind-protect
-                    (progn
-                      (condition-case nil
-                          (progn
-                            (setq snapshot-directory
-                                  (make-temp-file
-                                   (expand-file-name
-                                    "nskk-pinned-read-"
-                                    snapshot-base)
-                                   t))
-                            (set-file-modes snapshot-directory #o700)
-                            (unless
-                                (private-snapshot-directory-p
-                                 snapshot-directory)
-                              (error
-                               "NSKK: Snapshot directory is not private"))
-                            (setq snapshot-file
-                                  (expand-file-name
-                                   "contents"
-                                   snapshot-directory))
-                            (add-name-to-file resolved-file snapshot-file)
-                            (setq linked t))
-                        (error nil))
-                      (when linked
-                        (when (file-symlink-p snapshot-file)
-                          (error
-                           "NSKK: Pinned snapshot is a symbolic link"))
-                        (let* ((snapshot-before
-                                (file-attributes snapshot-file 'integer))
-                               (source-before
-                                (file-attributes resolved-file 'integer))
-                               (pinned-identity
-                                (full-identity snapshot-before)))
-                          (unless
-                              (and snapshot-before
-                                   source-before
-                                   (file-regular-p snapshot-file)
-                                   (file-regular-p resolved-file)
-                                   (not (file-symlink-p snapshot-file))
-                                   (or allow-symlink
-                                       (not (file-symlink-p file)))
-                                   (equal resolved-file
-                                          (current-resolved-file))
-                                   (equal expected-pin-identity
-                                          (pin-identity snapshot-before))
-                                   (equal pinned-identity
-                                          (full-identity source-before)))
-                            (error "NSKK: File changed before pinned read"))
-                          (let ((contents
-                                 (with-temp-buffer
-                                   (set-buffer-multibyte nil)
-                                   (let ((coding-system-for-read
-                                          'no-conversion))
-                                     (insert-file-contents
-                                      snapshot-file
-                                      nil
-                                      0
-                                      (1+ max-bytes)))
-                                   (when (> (buffer-size) max-bytes)
-                                     (error
-                                      "NSKK: File exceeds %d-byte limit"
-                                      max-bytes))
-                                   (let ((snapshot-after
-                                          (file-attributes
-                                           snapshot-file 'integer))
-                                         (source-after
-                                          (file-attributes
-                                           resolved-file 'integer)))
-                                     (unless
-                                         (and
-                                          snapshot-after
-                                          source-after
-                                          (file-regular-p snapshot-file)
-                                          (file-regular-p resolved-file)
-                                          (not
-                                           (file-symlink-p snapshot-file))
-                                          (or
-                                           allow-symlink
-                                           (not (file-symlink-p file)))
-                                          (equal
-                                           resolved-file
-                                           (current-resolved-file))
-                                          (equal
-                                           pinned-identity
-                                           (full-identity snapshot-after))
-                                          (equal
-                                           pinned-identity
-                                           (full-identity source-after)))
-                                       (error
-                                        "NSKK: File changed during pinned read")))
-                                   (buffer-string))))
-                            (set-buffer-multibyte nil)
-                            (insert contents)
-                            (throw 'read-through-snapshot t)))))
-                  (when snapshot-directory
-                    (ignore-errors
-                      (delete-directory snapshot-directory t)))))))
-        (unless (stable-direct-source-p expected-full-identity)
-          (error "NSKK: Cannot safely read unpinned file"))
-        (let ((contents
-               (with-temp-buffer
-                 (set-buffer-multibyte nil)
-                 (let ((coding-system-for-read 'no-conversion))
-                   (insert-file-contents
-                    resolved-file nil 0 (1+ max-bytes)))
-                 (when (> (buffer-size) max-bytes)
-                   (error
-                    "NSKK: File exceeds %d-byte limit"
-                    max-bytes))
-                 (unless (stable-direct-source-p expected-full-identity)
-                   (error "NSKK: File changed during unpinned read"))
-                 (buffer-string))))
-          (set-buffer-multibyte nil)
-          (insert contents))))))
-
-  (defun nskk--dict-insert-file-contents-bounded (file coding-system)
+(defun nskk--dict-insert-file-contents-bounded (file coding-system)
     "Insert regular FILE into the current empty buffer within the byte limit.
 CODING-SYSTEM nil means auto-detection.  Symbolic links to regular files
 are supported.  Pin the resolved target before the bounded read so path
@@ -1247,7 +763,7 @@ replacement cannot redirect the read to a FIFO or another file."
       (error "NSKK: Dictionary file is not a regular file"))
     (let* ((resolved-file (file-truename file))
            (attributes (file-attributes resolved-file 'integer)))
-      (nskk--dict-insert-file-contents-pinned
+      (nskk-dict-transaction-insert-file-contents-pinned
        file resolved-file attributes nskk--dict-cache-max-bytes t)
       (set-buffer-multibyte t)
       (decode-coding-region
@@ -1632,19 +1148,11 @@ the message boundary restores the exact internal predicate, index marker,
 dirty flag, and registered search caches before propagating the condition."
   (let* ((key (nskk--prolog-clause-key 'user-dict-entry 2))
          (owner (list 'nskk--dict-register-impl key)))
-    (nskk--dict-ensure-rollback-complete owner)
+    (nskk-dict-transaction-ensure-rollback-complete owner)
     (let* ((previous-key-state (nskk--prolog-capture-key-state key reading t))
            (previous-user-index nskk--user-dict-index)
            (previous-modified nskk-dict-modified)
-           (cache-snapshotter
-            (and (fboundp 'nskk--search-cache-snapshots)
-                 (symbol-function 'nskk--search-cache-snapshots)))
-           (cache-restorer
-            (and (fboundp 'nskk--search-restore-cache-snapshot)
-                 (symbol-function 'nskk--search-restore-cache-snapshot)))
-           (cache-snapshots
-            (and cache-snapshotter cache-restorer
-                 (funcall cache-snapshotter))))
+           (cache-snapshots (nskk--search-cache-snapshots)))
       (condition-case condition
           (prog1
               (progn
@@ -1669,9 +1177,9 @@ dirty flag, and registered search caches before propagating the condition."
                            (substring-no-properties reading)
                            (substring-no-properties word))
                   t))
-            (nskk--dict-clear-pending-rollback owner))
+            (nskk-dict-transaction-clear-pending-rollback owner))
         ((error quit)
-         (nskk--dict-rollback-and-resignal
+         (nskk-dict-transaction-rollback-and-resignal
           owner condition
           (list
            (cons 'user-dict-predicate
@@ -1686,7 +1194,7 @@ dirty flag, and registered search caches before propagating the condition."
            (cons 'search-caches
                  (lambda ()
                    (dolist (snapshot cache-snapshots)
-                     (funcall cache-restorer snapshot)))))))))))
+                     (nskk--search-restore-cache-snapshot snapshot)))))))))))
 
 (progn
   (defconst nskk--dict-invalid-entry-message
@@ -1848,7 +1356,7 @@ Returns \\='kakutei if loaded, nil otherwise."
       (when-let*
         ((entries (nskk--dict-parse-file-to-entries-strict nskk-kakutei-jisyo)))
         (let* ((key (nskk--prolog-clause-key 'kakutei-dict-entry 2))
-               (previous (nskk--dict-predicate-snapshot key))
+               (previous (nskk-dict-transaction-predicate-snapshot key))
                (previous-loaded nskk--kakutei-dict-loaded)
                (committed nil))
           (unwind-protect (let ((staged
@@ -1866,7 +1374,7 @@ Returns \\='kakutei if loaded, nil otherwise."
               'kakutei)
             (unless committed
               (let ((inhibit-quit t))
-                (nskk--dict-apply-predicate-snapshot previous)
+                (nskk-dict-transaction-apply-predicate-snapshot previous)
                 (setq nskk--kakutei-dict-loaded previous-loaded))))))
       (error nil)
       (quit (signal (car condition) (cdr condition))))))
