@@ -86,6 +86,7 @@
 (require 'subr-x)
 (require 'nskk-cps-macros)
 (require 'nskk-dictionary)
+(require 'nskk-dict-transaction)
 (require 'nskk-cache)
 (require 'nskk-prolog)
 (require 'nskk-custom)
@@ -770,7 +771,7 @@ stage and validate every record, then publish the result transactionally."
         (owner 'nskk-search-load-learning-data))
     (condition-case err
         (progn
-          (nskk--dict-ensure-rollback-complete owner)
+          (nskk-dict-transaction-ensure-rollback-complete owner)
           (cond
            ((file-symlink-p file)
             (error "Refusing symbolic-link learning file: %s" file))
@@ -789,40 +790,19 @@ stage and validate every record, then publish the result transactionally."
               (when (> size nskk--search-learning-max-file-size)
                 (error "Learning file exceeds %d-byte limit"
                        nskk--search-learning-max-file-size))
-              (let* ((data
-                      (let ((read-eval nil)
-                            (read-circle nil))
-                        (ignore read-eval read-circle)
-                        (with-temp-buffer
-                          (nskk--dict-insert-file-contents-pinned
-                           file
-                           (file-truename file)
-                           attributes
-                           nskk--search-learning-max-file-size)
-                          (set-buffer-multibyte t)
-                          (decode-coding-region
-                           (point-min) (point-max) 'undecided)
-                          (goto-char (point-min))
-                          (let ((value (read (current-buffer))))
-                            (condition-case nil
-                                (progn
-                                  (read (current-buffer))
-                                  (error "Expected exactly one data form"))
-                              (end-of-file value))))))
-                     (_ (unless (proper-list-p data)
-                          (error "Expected proper list, got %s" (type-of data))))
-                     (facts
-                      (mapcar
+              (let* ((facts
+                      (nskk-dict-transaction-read-entries
+                       file (file-truename file) attributes
+                       nskk--search-learning-max-file-size
                        (lambda (entry)
                          (pcase entry
                            (`(,(and (pred stringp) reading)
                               ,(and (pred stringp) word)
                               ,(and (pred integerp) score))
                             `(learning-score ,reading ,word ,score))
-                           (_ (error "Invalid learning entry: %S" entry))))
-                       data))
+                           (_ (error "Invalid learning entry: %S" entry))))))
                      (key (nskk--prolog-clause-key 'learning-score 3))
-                     (previous (nskk--dict-predicate-snapshot key))
+                     (previous (nskk-dict-transaction-predicate-snapshot key))
                      (cache-snapshots (nskk--search-cache-snapshots))
                      (loaded-was-bound (boundp 'nskk--learning-loaded))
                      (loaded-value
@@ -835,10 +815,10 @@ stage and validate every record, then publish the result transactionally."
                           (dolist (fact facts)
                             (nskk-prolog-assert (list fact)))
                           (nskk--search-flush-caches))
-                      (nskk--dict-clear-pending-rollback owner))
+                      (nskk-dict-transaction-clear-pending-rollback owner))
                   ((error quit)
                    (let ((index 0))
-                     (nskk--dict-rollback-and-resignal
+                     (nskk-dict-transaction-rollback-and-resignal
                       owner
                       condition
                       (append
@@ -846,7 +826,7 @@ stage and validate every record, then publish the result transactionally."
                         (cons
                          'predicate
                          (lambda ()
-                           (nskk--dict-apply-predicate-snapshot previous))))
+                           (nskk-dict-transaction-apply-predicate-snapshot previous))))
                        (mapcar
                         (lambda (snapshot)
                           (prog1
