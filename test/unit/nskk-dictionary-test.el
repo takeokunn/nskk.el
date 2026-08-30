@@ -735,7 +735,7 @@
             (make-temp-file "nskk-register-boundary-" nil ".skk"))
            (nskk-dict-user-dictionary-file dictionary-file)
            (clause-key
-            (nskk--prolog-clause-key 'user-dict-entry 2))
+            (nskk-prolog-clause-key 'user-dict-entry 2))
            before
            before-file)
       (unwind-protect
@@ -883,7 +883,7 @@
                     (make-temp-file "nskk-register-publication-" nil ".skk"))
                    (nskk-dict-user-dictionary-file dictionary-file)
                    (clause-key
-                    (nskk--prolog-clause-key 'user-dict-entry 2))
+                    (nskk-prolog-clause-key 'user-dict-entry 2))
                    before
                    before-file
                    cache-hash
@@ -979,7 +979,7 @@
             (make-temp-file "nskk-register-reading-boundary-" nil ".skk"))
            (nskk-dict-user-dictionary-file dictionary-file)
            (clause-key
-            (nskk--prolog-clause-key 'user-dict-entry 2))
+            (nskk-prolog-clause-key 'user-dict-entry 2))
            before
            before-file)
       (unwind-protect
@@ -1067,7 +1067,7 @@
                     (make-temp-file "nskk-register-storage-" nil ".skk"))
                    (nskk-dict-user-dictionary-file dictionary-file)
                    (clause-key
-                    (nskk--prolog-clause-key 'user-dict-entry 2))
+                    (nskk-prolog-clause-key 'user-dict-entry 2))
                    (fault-data (list "registration storage fault" stage kind))
                    (real-retract (symbol-function 'nskk-prolog-retract))
                    (real-assert (symbol-function 'nskk-prolog-assert))
@@ -1187,7 +1187,7 @@
                    (nskk-dict-user-dictionary-file
                     (and (eq stage 'load) dictionary-file))
                    (clause-key
-                    (nskk--prolog-clause-key 'user-dict-entry 2))
+                    (nskk-prolog-clause-key 'user-dict-entry 2))
                    (fault-data (list "registration lazy fault" stage kind))
                    (real-load
                     (symbol-function 'nskk-dict-load-user-dictionary))
@@ -2140,34 +2140,34 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
     `(nskk-prolog-test-with-isolated-db
        (let* ((tmpfile (make-temp-file "nskk-test-kakutei-" nil ".jisyo"))
               (nskk-kakutei-jisyo tmpfile)
-              (nskk--kakutei-dict-loaded nil)
-              (nskk--prolog-index-bucket-tail-cache
-               (make-hash-table :test #'equal)))
-         (unwind-protect
-             (progn
-               (with-temp-file tmpfile
-                 (insert ";; -*- coding: utf-8 -*-\n")
-                 (insert ";; okuri-nasi entries.\n")
-                 (dolist (e ,entries)
-                   (insert (car e) " /"
-                           (string-join (cdr e) "/")
-                           "/\n")))
-               ,@body)
-           (when (file-exists-p tmpfile)
-             (delete-file tmpfile))
-           (nskk-prolog-retract-all 'kakutei-dict-entry 2)
-           (setq nskk--kakutei-dict-loaded nil)))))
+              (nskk--kakutei-dict-loaded nil))
+         (nskk-prolog-with-database-fields
+             ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+           (unwind-protect
+               (progn
+                 (with-temp-file tmpfile
+                   (insert ";; -*- coding: utf-8 -*-\n")
+                   (insert ";; okuri-nasi entries.\n")
+                   (dolist (e ,entries)
+                     (insert (car e) " /"
+                             (string-join (cdr e) "/")
+                             "/\n")))
+                 ,@body)
+             (when (file-exists-p tmpfile)
+               (delete-file tmpfile))
+             (nskk-prolog-retract-all 'kakutei-dict-entry 2)
+             (setq nskk--kakutei-dict-loaded nil))))))
 
   (defun nskk-test--seed-kakutei-state ()
     "Seed and return the exact live state guarded by kakutei loading."
-    (let* ((key (nskk--prolog-clause-key 'kakutei-dict-entry 2))
+    (let* ((key (nskk-prolog-clause-key 'kakutei-dict-entry 2))
            (cache-value (list 'old-kakutei-tail-cache)))
       (nskk-prolog-set-index 'kakutei-dict-entry 2 :trie)
       (nskk-prolog-assert
        '((kakutei-dict-entry "ふるい" ("古い"))))
       (nskk-prolog-assert
        '((kakutei-dict-entry "むかし" ("昔"))))
-      (puthash key cache-value nskk--prolog-index-bucket-tail-cache)
+      (puthash key cache-value (nskk-prolog-index-bucket-tail-cache))
       (vector key
               (nskk-dict-transaction-predicate-snapshot key)
               cache-value
@@ -2182,7 +2182,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
         (should (eq (aref before (1+ slot))
                     (aref after (1+ slot)))))
       (should (eq (aref state 2)
-                  (gethash key nskk--prolog-index-bucket-tail-cache)))
+                  (gethash key (nskk-prolog-index-bucket-tail-cache))))
       (should (eq (aref state 3) nskk--kakutei-dict-loaded))
       (should (nskk-prolog-holds-p
                '(kakutei-dict-entry "ふるい" ("古い"))))
@@ -2195,22 +2195,22 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
   (nskk-it "preserves exact state when nskk-kakutei-jisyo is nil"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk-kakutei-jisyo nil)
-            (nskk--kakutei-dict-loaded 'previous)
-            (nskk--prolog-index-bucket-tail-cache
-             (make-hash-table :test #'equal)))
-        (let ((state (nskk-test--seed-kakutei-state)))
-          (should (null (nskk-dict-load-kakutei-dictionary)))
-          (nskk-test--should-preserve-kakutei-state state)))))
+            (nskk--kakutei-dict-loaded 'previous))
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let ((state (nskk-test--seed-kakutei-state)))
+            (should (null (nskk-dict-load-kakutei-dictionary)))
+            (nskk-test--should-preserve-kakutei-state state))))))
 
   (nskk-it "preserves exact state when file does not exist"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk-kakutei-jisyo "/nonexistent/path/kakutei.jisyo")
-            (nskk--kakutei-dict-loaded 'previous)
-            (nskk--prolog-index-bucket-tail-cache
-             (make-hash-table :test #'equal)))
-        (let ((state (nskk-test--seed-kakutei-state)))
-          (should (null (nskk-dict-load-kakutei-dictionary)))
-          (nskk-test--should-preserve-kakutei-state state)))))
+            (nskk--kakutei-dict-loaded 'previous))
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let ((state (nskk-test--seed-kakutei-state)))
+            (should (null (nskk-dict-load-kakutei-dictionary)))
+            (nskk-test--should-preserve-kakutei-state state))))))
 
   (nskk-it "returns 'kakutei when file exists and has entries"
     (nskk-test-with-kakutei-file '(("てすと" "テスト"))
@@ -2458,7 +2458,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                      (nskk--user-dict-index 'user)
                      (nskk-dict-modified 'preserved)
                      (clause-key
-                      (nskk--prolog-clause-key 'user-dict-entry 2))
+                      (nskk-prolog-clause-key 'user-dict-entry 2))
                      before
                      before-file)
                 (unwind-protect
@@ -2518,7 +2518,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                  (nskk--user-dict-index 'user)
                  (nskk-dict-modified 'preserved)
                  (clause-key
-                  (nskk--prolog-clause-key 'user-dict-entry 2))
+                  (nskk-prolog-clause-key 'user-dict-entry 2))
                  before
                  before-file)
             (unwind-protect
@@ -2570,7 +2570,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
              (nskk--user-dict-index 'user)
              (nskk-dict-modified 'preserved)
              (clause-key
-              (nskk--prolog-clause-key 'user-dict-entry 2))
+              (nskk-prolog-clause-key 'user-dict-entry 2))
              before)
         (unwind-protect
             (progn
@@ -3470,34 +3470,34 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
   (nskk-it "preserves database and index cons identity and order"
     (dolist (type '(:hash :trie nil))
       (nskk-prolog-test-with-isolated-db
-        (let* ((nskk--prolog-index-bucket-tail-cache
-                (make-hash-table :test #'equal))
-               (predicate
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let* ((predicate
                 (intern (format "append-identity-%s" (or type "none"))))
-               (key (nskk--prolog-clause-key predicate 2)))
+               (key (nskk-prolog-clause-key predicate 2)))
           (when type
             (nskk-prolog-set-index predicate 2 type))
           (nskk-prolog-assert
            (list (list predicate "same" '("old-1"))))
           (nskk-prolog-assert
            (list (list predicate "other" '("old-2"))))
-          (let* ((database (gethash key nskk--prolog-database))
+          (let* ((database (gethash key (nskk-prolog-database)))
                  (database-second (cdr database))
                  (database-tail
-                  (gethash key nskk--prolog-database-tails))
+                  (gethash key (nskk-prolog-database-tails)))
                  (index
                   (and type
-                       (nskk--prolog-transaction-index key type)))
+                       (nskk-prolog-transaction-index key type)))
                  (bucket
                   (and type
-                       (nskk--prolog-transaction-index-bucket
+                       (nskk-prolog-transaction-index-bucket
                         type index "same")))
                  (bucket-tail (and bucket (last bucket))))
             (nskk--dict-append-predicate-entries
              predicate
              '(("same" "new-1")
                ("new" "new-2")))
-            (let ((appended (gethash key nskk--prolog-database)))
+            (let ((appended (gethash key (nskk-prolog-database))))
               (should (eq appended database))
               (should (eq (cdr appended) database-second))
               (should
@@ -3508,15 +3508,15 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                         appended)
                 '("same" "other" "same" "new")))
               (should
-               (eq (gethash key nskk--prolog-database-tails)
+               (eq (gethash key (nskk-prolog-database-tails))
                    (last appended))))
             (if type
                 (let ((appended-bucket
-                       (nskk--prolog-transaction-index-bucket
+                       (nskk-prolog-transaction-index-bucket
                         type index "same")))
                   (should
                    (eq index
-                       (nskk--prolog-transaction-index key type)))
+                       (nskk-prolog-transaction-index key type)))
                   (should (eq appended-bucket bucket))
                   (should
                    (eq (cdr bucket-tail)
@@ -3529,47 +3529,47 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                     '("same" "same")))
                   (should
                    (gethash key
-                            nskk--prolog-index-bucket-tail-cache)))
+                            (nskk-prolog-index-bucket-tail-cache))))
               (should-not
-               (gethash key nskk--prolog-index-config))
+               (gethash key (nskk-prolog-index-config)))
               (should-not
                (gethash key
-                        nskk--prolog-index-bucket-tail-cache)))))))))
+                        (nskk-prolog-index-bucket-tail-cache)))))))))))
 (nskk-describe "incremental dictionary append strategies and cache"
   (nskk-it "retains empty strategies and defaults fresh predicates to trie"
     (dolist (type '(:hash :trie :list))
       (nskk-prolog-test-with-isolated-db
-        (let* ((nskk--prolog-index-bucket-tail-cache
-                (make-hash-table :test #'equal))
-               (predicate
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let* ((predicate
                 (intern (format "append-strategy-%s" type)))
-               (key (nskk--prolog-clause-key predicate 2)))
+               (key (nskk-prolog-clause-key predicate 2)))
           (nskk-prolog-set-index predicate 2 type)
           (nskk--dict-append-predicate-entries
            predicate '(("key" "value")))
-          (should (eq (gethash key nskk--prolog-index-config) type))
+          (should (eq (gethash key (nskk-prolog-index-config)) type))
           (should
            (equal
-            (gethash key nskk--prolog-database)
-            (list (list (list predicate "key" '("value")))))))))
+            (gethash key (nskk-prolog-database))
+            (list (list (list predicate "key" '("value"))))))))))
     (nskk-prolog-test-with-isolated-db
-      (let* ((nskk--prolog-index-bucket-tail-cache
-              (make-hash-table :test #'equal))
-             (predicate 'append-fresh-default)
-             (key (nskk--prolog-clause-key predicate 2)))
+      (nskk-prolog-with-database-fields
+          ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+        (let* ((predicate 'append-fresh-default)
+             (key (nskk-prolog-clause-key predicate 2)))
         (nskk--dict-append-predicate-entries
          predicate '(("key" "value")))
-        (should (eq (gethash key nskk--prolog-index-config) :trie))
-        (should (gethash key nskk--prolog-trie-indices)))))
+        (should (eq (gethash key (nskk-prolog-index-config)) :trie))
+        (should (gethash key (nskk-prolog-trie-indices)))))))
 
   (nskk-it "uses cached bucket tails for repeated duplicate-key appends"
     (dolist (type '(:hash :trie))
       (nskk-prolog-test-with-isolated-db
-        (let* ((nskk--prolog-index-bucket-tail-cache
-                (make-hash-table :test #'equal))
-               (predicate
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let* ((predicate
                 (intern (format "append-warm-tail-%s" type)))
-               (key (nskk--prolog-clause-key predicate 2))
+               (key (nskk-prolog-clause-key predicate 2))
                (entries
                 (cl-loop repeat 256 collect '("same" "new"))))
           (nskk-prolog-set-index predicate 2 type)
@@ -3580,26 +3580,26 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                        (error "warm append scanned a bucket"))))
             (nskk--dict-append-predicate-entries predicate entries))
           (should
-           (= (length (gethash key nskk--prolog-database)) 257))))))
+           (= (length (gethash key (nskk-prolog-database))) 257)))))))
 
   (nskk-it "invalidates stale tails after an external append"
     (dolist (type '(:hash :trie))
       (nskk-prolog-test-with-isolated-db
-        (let* ((nskk--prolog-index-bucket-tail-cache
-                (make-hash-table :test #'equal))
-               (predicate
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let* ((predicate
                 (intern (format "append-cache-invalidate-%s" type)))
-               (key (nskk--prolog-clause-key predicate 2)))
+               (key (nskk-prolog-clause-key predicate 2)))
           (nskk-prolog-set-index predicate 2 type)
           (nskk--dict-append-predicate-entries
            predicate '(("same" "initial")))
-          (let* ((index (nskk--prolog-transaction-index key type))
+          (let* ((index (nskk-prolog-transaction-index key type))
                  (initial-cell
-                  (nskk--prolog-transaction-index-bucket
+                  (nskk-prolog-transaction-index-bucket
                    type index "same"))
                  (cache-entry
                   (gethash
-                   key nskk--prolog-index-bucket-tail-cache))
+                   key (nskk-prolog-index-bucket-tail-cache)))
                  (cache-buckets (aref cache-entry 2))
                  (tail-info (gethash "same" cache-buckets))
                  (cached-tail (aref tail-info 1))
@@ -3624,12 +3624,12 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                predicate '(("same" "final"))))
             (should (= last-calls 1))
             (let* ((bucket
-                    (nskk--prolog-transaction-index-bucket
+                    (nskk-prolog-transaction-index-bucket
                      type index "same"))
                    (final-cell (cdr external-cell))
                    (updated-entry
                     (gethash
-                     key nskk--prolog-index-bucket-tail-cache))
+                     key (nskk-prolog-index-bucket-tail-cache)))
                    (updated-info
                     (gethash "same" (aref updated-entry 2)))
                    (updated-tail (aref updated-info 1)))
@@ -3659,7 +3659,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                  (equal
                   (mapcar (lambda (clause) (caddr (car clause))) bucket)
                   '(("initial") ("external") ("final") ("warm"))))
-                (remhash key nskk--prolog-index-bucket-tail-cache)
+                (remhash key (nskk-prolog-index-bucket-tail-cache))
                 (setq last-calls 0)
                 (cl-letf (((symbol-function 'last)
                            (lambda (&rest args)
@@ -3671,7 +3671,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                 (let* ((cold-cell (cdr warm-cell))
                        (cold-entry
                         (gethash
-                         key nskk--prolog-index-bucket-tail-cache))
+                         key (nskk-prolog-index-bucket-tail-cache)))
                        (cold-info
                         (gethash "same" (aref cold-entry 2)))
                        (cold-tail (aref cold-info 1)))
@@ -3689,7 +3689,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                       ("cold"))))
                   (should (eq (aref cold-info 0) bucket))
                   (should (eq cold-tail cold-cell))
-                  (should-not (cdr cold-tail)))))))))))
+                  (should-not (cdr cold-tail))))))))))))
 (nskk-describe "incremental public dictionary loads"
   (nskk-it "reuses the existing database spine across repeated file loads"
     (nskk-prolog-test-with-isolated-db
@@ -3697,9 +3697,9 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
             (second-file (make-temp-file "nskk-append-second-" nil ".skk"))
             (predicate 'append-public-load))
         (unwind-protect
-            (let* ((nskk--prolog-index-bucket-tail-cache
-                    (make-hash-table :test #'equal))
-                   (key (nskk--prolog-clause-key predicate 2)))
+            (nskk-prolog-with-database-fields
+                ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+              (let* ((key (nskk-prolog-clause-key predicate 2)))
               (with-temp-file first-file
                 (insert "first /one/\n"))
               (with-temp-file second-file
@@ -3707,20 +3707,20 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               (should
                (eq (nskk-dict-load-file first-file nil predicate)
                    predicate))
-              (let ((database (gethash key nskk--prolog-database))
+              (let ((database (gethash key (nskk-prolog-database)))
                     (database-tail
-                     (gethash key nskk--prolog-database-tails)))
+                     (gethash key (nskk-prolog-database-tails))))
                 (should
                  (eq (nskk-dict-load-file second-file nil predicate)
                      predicate))
-                (let ((appended (gethash key nskk--prolog-database)))
+                (let ((appended (gethash key (nskk-prolog-database))))
                   (should (eq appended database))
                   (should (eq (cdr database-tail) (cdr appended)))
                   (should
                    (equal
                     (mapcar (lambda (clause) (cadr (car clause)))
                             appended)
-                    '("first" "second"))))))
+                    '("first" "second")))))))
           (when (file-exists-p first-file)
             (delete-file first-file))
           (when (file-exists-p second-file)
@@ -3729,11 +3729,11 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
   (nskk-it "restores a fresh predicate after index setup errors and quits"
     (dolist (kind '(error quit))
       (nskk-prolog-test-with-isolated-db
-        (let* ((nskk--prolog-index-bucket-tail-cache
-                (make-hash-table :test #'equal))
-               (predicate
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let* ((predicate
                 (intern (format "append-setup-rollback-%s" kind)))
-               (key (nskk--prolog-clause-key predicate 2))
+               (key (nskk-prolog-clause-key predicate 2))
                (before (nskk-dict-transaction-predicate-snapshot key))
                (real-set-index
                 (symbol-function 'nskk-prolog-set-index))
@@ -3756,18 +3756,18 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                (eq (aref before (1+ slot))
                    (aref after (1+ slot))))))
           (should-not
-           (gethash key nskk--prolog-index-bucket-tail-cache)))))))
+           (gethash key (nskk-prolog-index-bucket-tail-cache)))))))))
 (nskk-describe "incremental append partial publication rollback"
   (nskk-it "restores exact spines after indexed publication errors and quits"
     (dolist (type '(:hash :trie))
       (dolist (kind '(error quit))
         (nskk-prolog-test-with-isolated-db
-          (let* ((nskk--prolog-index-bucket-tail-cache
-                  (make-hash-table :test #'equal))
-                 (predicate
+          (nskk-prolog-with-database-fields
+              ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+            (let* ((predicate
                   (intern
                    (format "append-partial-%s-%s" type kind)))
-                 (key (nskk--prolog-clause-key predicate 2))
+                 (key (nskk-prolog-clause-key predicate 2))
                  (data (list "append partial rollback" type kind))
                  (caught nil)
                  (calls 0))
@@ -3777,23 +3777,23 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
             (let* ((before (nskk-dict-transaction-predicate-snapshot key))
                    (previous-cache
                     (gethash key
-                             nskk--prolog-index-bucket-tail-cache))
+                             (nskk-prolog-index-bucket-tail-cache)))
                    (database
-                    (gethash key nskk--prolog-database))
+                    (gethash key (nskk-prolog-database)))
                    (database-tail
-                    (gethash key nskk--prolog-database-tails))
+                    (gethash key (nskk-prolog-database-tails)))
                    (index
-                    (nskk--prolog-transaction-index key type))
+                    (nskk-prolog-transaction-index key type))
                    (bucket
-                    (nskk--prolog-transaction-index-bucket
+                    (nskk-prolog-transaction-index-bucket
                      type index "same"))
                    (bucket-tail (last bucket))
                    (real-set-bucket
                     (symbol-function
-                     'nskk--prolog-transaction-set-index-bucket)))
+                     'nskk-prolog-transaction-set-index-bucket)))
               (cl-letf
                   (((symbol-function
-                     'nskk--prolog-transaction-set-index-bucket)
+                     'nskk-prolog-transaction-set-index-bucket)
                     (lambda (&rest args)
                       (apply real-set-bucket args)
                       (setq calls (1+ calls))
@@ -3813,37 +3813,37 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                    (eq (aref before (1+ slot))
                        (aref after (1+ slot))))))
               (should (eq database
-                          (gethash key nskk--prolog-database)))
+                          (gethash key (nskk-prolog-database))))
               (should (eq database-tail
                           (gethash key
-                                   nskk--prolog-database-tails)))
+                                   (nskk-prolog-database-tails))))
               (should-not (cdr database-tail))
               (should
                (eq index
-                   (nskk--prolog-transaction-index key type)))
+                   (nskk-prolog-transaction-index key type)))
               (should
                (eq bucket
-                   (nskk--prolog-transaction-index-bucket
+                   (nskk-prolog-transaction-index-bucket
                     type index "same")))
               (should-not (cdr bucket-tail))
               (should-not
-               (nskk--prolog-transaction-index-bucket
+               (nskk-prolog-transaction-index-bucket
                 type index "new"))
               (should
                (eq previous-cache
                    (gethash key
-                            nskk--prolog-index-bucket-tail-cache))))))))))
+                            (nskk-prolog-index-bucket-tail-cache))))))))))))
 (nskk-describe "incremental append deferred quit rollback"
   (nskk-it "undoes all mutations when a pending quit is observed"
     (dolist (type '(:hash :trie nil))
       (nskk-prolog-test-with-isolated-db
-        (let* ((nskk--prolog-index-bucket-tail-cache
-                (make-hash-table :test #'equal))
-               (predicate
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test #'equal)))
+          (let* ((predicate
                 (intern
                  (format "append-deferred-quit-%s"
                          (or type "none"))))
-               (key (nskk--prolog-clause-key predicate 2))
+               (key (nskk-prolog-clause-key predicate 2))
                (caught nil))
           (if type
               (progn
@@ -3854,17 +3854,17 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
              (list (list predicate "same" '("old")))))
           (let* ((before (nskk-dict-transaction-predicate-snapshot key))
                  (previous-cache
-                  (gethash key nskk--prolog-index-bucket-tail-cache))
+                  (gethash key (nskk-prolog-index-bucket-tail-cache)))
                  (database
-                  (gethash key nskk--prolog-database))
+                  (gethash key (nskk-prolog-database)))
                  (database-tail
-                  (gethash key nskk--prolog-database-tails))
+                  (gethash key (nskk-prolog-database-tails)))
                  (index
                   (and type
-                       (nskk--prolog-transaction-index key type)))
+                       (nskk-prolog-transaction-index key type)))
                  (bucket
                   (and type
-                       (nskk--prolog-transaction-index-bucket
+                       (nskk-prolog-transaction-index-bucket
                         type index "same")))
                  (bucket-tail (and bucket (last bucket))))
             (let ((quit-flag t)
@@ -3882,37 +3882,37 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                  (eq (aref before (1+ slot))
                      (aref after (1+ slot))))))
             (should
-             (eq database (gethash key nskk--prolog-database)))
+             (eq database (gethash key (nskk-prolog-database))))
             (should
              (eq database-tail
-                 (gethash key nskk--prolog-database-tails)))
+                 (gethash key (nskk-prolog-database-tails))))
             (should-not (cdr database-tail))
             (should
              (eq previous-cache
                  (gethash key
-                          nskk--prolog-index-bucket-tail-cache)))
+                          (nskk-prolog-index-bucket-tail-cache))))
             (if type
                 (progn
                   (should
                    (eq index
-                       (nskk--prolog-transaction-index key type)))
+                       (nskk-prolog-transaction-index key type)))
                   (should
                    (eq bucket
-                       (nskk--prolog-transaction-index-bucket
+                       (nskk-prolog-transaction-index-bucket
                         type index "same")))
                   (should-not (cdr bucket-tail))
                   (should-not
-                   (nskk--prolog-transaction-index-bucket
+                   (nskk-prolog-transaction-index-bucket
                     type index "new")))
               (should-not
-               (gethash key nskk--prolog-index-config)))))))))
+               (gethash key (nskk-prolog-index-config)))))))))))
 (nskk-describe "dictionary predicate publication rollback boundaries"
     (nskk-it "restores exact facts after bulk cache and publish errors and quits"
       (dolist (kind '(error quit))
         (dolist (stage '(bulk cache publish))
           (nskk-prolog-test-with-isolated-db
             (let* ((predicate 'system-dict-entry)
-                   (key (nskk--prolog-clause-key predicate 2))
+                   (key (nskk-prolog-clause-key predicate 2))
                    (data (list "dictionary rollback" stage kind))
                    (caught nil)
                    (before nil))

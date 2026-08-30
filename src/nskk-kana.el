@@ -441,6 +441,13 @@ Always succeeds."
   "Non-nil when zenkaku/hankaku Prolog facts have been populated from hash tables.
 Classification predicates and Prolog range rules are asserted at load time.")
 
+;; Registration protocol: declare this module's initialized-flag symbol,
+;; unconditionally at load time, so generic test/reset infrastructure can
+;; enumerate it via a fact query instead of a hardcoded symbol list,
+;; regardless of whether this module's own lazy Prolog initializer has
+;; run yet.
+(nskk-prolog-<- (module-initialized-flag nskk--kana-initialized))
+
 (defun/done nskk-kana-initialize ()
   "Populate Prolog facts from the zenkaku/hankaku hash tables.
 Classification predicates and Prolog range rules are installed at module
@@ -465,6 +472,11 @@ Idempotent: subsequent calls are no-ops."
       (hiragana      normalize   identity)
       (katakana      normalize   nskk-kana-string-katakana-to-hiragana)
       (katakana-半角  normalize   nskk--hankaku-to-hiragana))
+
+    ;; Registration protocol: declare this module's initialized-flag symbol
+    ;; so generic test/reset infrastructure can enumerate it via a fact
+    ;; query instead of a hardcoded symbol list.
+    (nskk-prolog-<- (module-initialized-flag nskk--kana-initialized))
 
     (setq nskk--kana-initialized t)))
 

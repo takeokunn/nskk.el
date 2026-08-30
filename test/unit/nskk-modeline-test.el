@@ -207,8 +207,8 @@
              (cons frame-b nskk--saved-cursor-color-parameter)
              parameters)
             "blue"))
-          (nskk--cursor-color-restore frame-a)
-          (nskk--cursor-color-restore frame-b))))
+          (nskk-cursor-color-restore frame-a)
+          (nskk-cursor-color-restore frame-b))))
     (should
      (equal (gethash (cons frame-a (quote cursor-color)) parameters) "red"))
     (should
@@ -413,9 +413,9 @@
     (let ((color (nskk--cursor-with-color 'nonexistent-mode)))
       (should-not color))))
 
-(nskk-describe "nskk--cursor-color-save"
+(nskk-describe "nskk-cursor-color-save"
   (nskk-it "is defined as a function"
-    (should (fboundp 'nskk--cursor-color-save)))
+    (should (fboundp 'nskk-cursor-color-save)))
 
   (nskk-it "saves each frame original once and represents nil with a sentinel"
     (let ((frame-a 'frame-a)
@@ -432,9 +432,9 @@
             (lambda (frame parameter value)
               (puthash (cons frame parameter) value parameters))))
         (let ((nskk-use-color-cursor t))
-          (nskk--cursor-color-save)
+          (nskk-cursor-color-save)
           (puthash (cons frame-a 'cursor-color) "green" parameters)
-          (nskk--cursor-color-save)
+          (nskk-cursor-color-save)
           (should
            (equal
             (gethash
@@ -442,7 +442,7 @@
              parameters)
             "red"))
           (setq current-frame frame-b)
-          (nskk--cursor-color-save)
+          (nskk-cursor-color-save)
           (should
            (eq
             (gethash
@@ -463,16 +463,16 @@
             (lambda (&rest _)
               (cl-incf set-count))))
         (let ((nskk-use-color-cursor nil))
-          (nskk--cursor-color-save)))
+          (nskk-cursor-color-save)))
       (should (= set-count 0))
       (should-not
        (gethash
         (cons frame nskk--saved-cursor-color-parameter)
         parameters)))))
 
-(nskk-describe "nskk--cursor-color-restore"
+(nskk-describe "nskk-cursor-color-restore"
   (nskk-it "is defined as a function"
-    (should (fboundp (quote nskk--cursor-color-restore))))
+    (should (fboundp (quote nskk-cursor-color-restore))))
 
   (nskk-it "restores and cleans every saved frame without selecting it"
     (let ((frame-a (quote frame-a))
@@ -503,7 +503,7 @@
                   (puthash (cons frame parameter) value parameters)
                 (remhash (cons frame parameter) parameters))))
            (nskk--other-nskk-buffers-active-p (lambda (&optional _) nil)))
-        (nskk--cursor-color-restore nil t))
+        (nskk-cursor-color-restore nil t))
       (should (eq selected (quote frame-a)))
       (should
        (equal (gethash (cons frame-a (quote cursor-color)) parameters) "red"))
@@ -556,7 +556,7 @@
                         (and (eq buffer buffer-b)
                              (eq frame frame-b)
                              (quote window-b))))))
-              (nskk--cursor-color-restore nil t)
+              (nskk-cursor-color-restore nil t)
               (should
                (equal
                 (gethash
@@ -570,7 +570,7 @@
                  parameters)
                 "blue"))
               (with-current-buffer buffer-a (setq-local nskk-mode nil))
-              (nskk--cursor-color-restore nil t)
+              (nskk-cursor-color-restore nil t)
               (should
                (equal
                 (gethash (cons frame-a (quote cursor-color)) parameters)
@@ -586,7 +586,7 @@
                  parameters)
                 "blue"))
               (kill-buffer buffer-b)
-              (nskk--cursor-color-restore nil t)
+              (nskk-cursor-color-restore nil t)
               (should
                (equal
                 (gethash (cons frame-b (quote cursor-color)) parameters)
@@ -620,7 +620,7 @@
                   (puthash (cons target parameter) value parameters)
                 (remhash (cons target parameter) parameters))))
            (nskk--other-nskk-buffers-active-p (lambda (&optional _) nil)))
-        (nskk--cursor-color-restore frame))
+        (nskk-cursor-color-restore frame))
       (should-not (gethash (cons frame (quote cursor-color)) parameters))
       (should-not
        (gethash (cons frame nskk--saved-cursor-color-parameter) parameters))

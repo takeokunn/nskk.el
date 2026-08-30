@@ -54,7 +54,7 @@
 ;;     `nskk--with-japanese-mode/k' which performs implicit kakutei (kakutei)
 ;;     first via `mode-switch-preaction/2', then executes the mode action.
 ;;     Falls through to `self-insert-command' when not in a Japanese mode.
-;; - `nskk--classify-state'      -- returns a rich 6-value classification via
+;; - `nskk-classify-state'      -- returns a rich 6-value classification via
 ;;     `state-classify/4' Prolog table lookup on three orthogonal features
 ;;     (`converting', `preedit-japanese', `preedit-pending',
 ;;     `preedit-marker', `idle-japanese', `idle-direct') as the single
@@ -108,22 +108,25 @@
 (declare-function nskk-handle-q-key "nskk-input")
 (declare-function nskk--azik-complete-match-p "nskk-input")
 (declare-function nskk--romaji-has-match-p "nskk-input")
-(declare-function nskk--deferred-state-kana "nskk-input" (state))
+(declare-function nskk-deferred-state-kana "nskk-input" (state))
 (declare-function nskk-process-japanese-input "nskk-input")
 (declare-function nskk-set-mode-numeric "nskk-input")
 (declare-function nskk--try-candidate-selection/k "nskk-input" (char on-found on-not-found))
 (defvar nskk-mode)                    ;; Forward declaration from nskk.el
 (defvar nskk-converter-romaji-style)
-(defvar nskk--romaji-buffer)          ;; Forward declaration from nskk-state.el
-;; AZIK deferred state variables from nskk-input.el
-(defvar nskk--deferred-azik-state)
-(defvar nskk--deferred-vowel-shadow-state)
-(defvar nskk--azik-colon-okuri-pending)
-(defvar nskk--azik-colon-okuri-deferred)
+;; AZIK deferred state accessors from nskk-input.el
+(declare-function nskk-deferred-azik-state "nskk-input" ())
+(declare-function nskk-set-deferred-azik-state "nskk-input" (value))
+(declare-function nskk-deferred-vowel-shadow-state "nskk-input" ())
+(declare-function nskk-set-deferred-vowel-shadow-state "nskk-input" (value))
+(declare-function nskk-azik-colon-okuri-pending "nskk-input" ())
+(declare-function nskk-set-azik-colon-okuri-pending "nskk-input" (value))
+(declare-function nskk-azik-colon-okuri-deferred "nskk-input" ())
+(declare-function nskk-set-azik-colon-okuri-deferred "nskk-input" (value))
 ;; Functions in nskk-henkan.el
 (declare-function nskk-converting-p "nskk-henkan")
-(declare-function nskk--has-preedit "nskk-henkan")
-(declare-function nskk--get-conversion-start "nskk-henkan")
+(declare-function nskk-has-preedit "nskk-henkan")
+(declare-function nskk-get-conversion-start "nskk-henkan")
 (declare-function nskk-start-conversion "nskk-henkan")
 (declare-function nskk-next-candidate "nskk-henkan")
 (declare-function nskk-commit-current "nskk-henkan")
@@ -132,10 +135,10 @@
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
 (declare-function nskk-rollback-conversion "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
-(declare-function nskk--clear-azik-pending-state "nskk-henkan")
-(declare-function nskk--show-pending-romaji "nskk-henkan")
-(declare-function nskk--clear-pending-romaji "nskk-henkan")
-(declare-function nskk--reset-romaji-buffer "nskk-henkan")
+(declare-function nskk-clear-azik-pending-state "nskk-henkan")
+(declare-function nskk-show-pending-romaji "nskk-henkan")
+(declare-function nskk-clear-pending-romaji "nskk-henkan")
+(declare-function nskk-reset-romaji-buffer "nskk-henkan")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
 (declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
@@ -217,7 +220,7 @@
 
 ;; kakutei-idle-state/2: (MODE IDLE-STATE)
 ;; Maps a Japanese/direct mode symbol to its kakutei idle-state keyword.
-;; Used by `nskk--current-kakutei-state' to classify the idle arm via a
+;; Used by `nskk-current-kakutei-state' to classify the idle arm via a
 ;; single O(1) hash lookup instead of a 3-branch cond.
 (nskk-prolog-define-fact-table kakutei-idle-state (:arity 2 :index :hash)
   (hiragana       hiragana-idle)
@@ -276,7 +279,7 @@
 ;; The single source of truth for state classification, expressed as a
 ;; declarative decision table.  Maps three orthogonal feature dimensions
 ;; (phase, text-presence, mode-category) to the rich 6-value classification.
-;; Queried by `nskk--classify-state'.
+;; Queried by `nskk-classify-state'.
 (nskk-prolog-define-fact-table state-classify (:arity 4 :index :hash)
   ;; converting: always `converting' regardless of text or mode
   (converting has-text japanese     converting)
@@ -302,19 +305,19 @@
   (idle       has-text other        idle-direct)
   (idle       no-text  other        idle-direct))
 
-(defun nskk--compute-phase ()
+(defun nskk-compute-phase ()
   "Return the current henkan phase: `converting', `henkan-on', or `idle'.
 Uses `nskk-converting-p' for converting detection (matches
 `converting-phase/1' Prolog fact table), then checks
-`nskk--get-conversion-start' for henkan-on.  Returns `idle' otherwise."
+`nskk-get-conversion-start' for henkan-on.  Returns `idle' otherwise."
   (cond
    ((nskk-converting-p) 'converting)
-   ((and nskk-current-state (nskk--get-conversion-start)) 'henkan-on)
+   ((and nskk-current-state (nskk-get-conversion-start)) 'henkan-on)
    (t 'idle)))
 
 (defun nskk--compute-text-presence ()
   "Return `has-text' if preedit text exists past the marker, `no-text' otherwise."
-  (if (nskk--has-preedit) 'has-text 'no-text))
+  (if (nskk-has-preedit) 'has-text 'no-text))
 
 (defun nskk--compute-mode-category ()
   "Return the current mode category: `japanese', `marker-mode', or `other'.
@@ -326,7 +329,7 @@ Returns `other' when no state exists."
           'other)
     'other))
 
-(defun nskk--classify-state ()
+(defun nskk-classify-state ()
   "Return a rich state classification symbol for the current NSKK state.
 Returns one of:
   `converting'       -- henkan-active (▼ phase)
@@ -339,13 +342,13 @@ Returns one of:
 
 This is the single source of truth for state classification.  All other
 classifiers (`nskk--current-key-state', `nskk--japanese-mode-class',
-`nskk--current-kakutei-state') are derived from this function via Prolog
+`nskk-current-kakutei-state') are derived from this function via Prolog
 mapping tables.
 
 Computes three orthogonal feature dimensions (phase, text-presence,
 mode-category) and queries `state-classify/4' for the classification."
   (or (nskk-prolog-query-value
-       `(state-classify ,(nskk--compute-phase)
+       `(state-classify ,(nskk-compute-phase)
                         ,(nskk--compute-text-presence)
                         ,(nskk--compute-mode-category)
                         \?c)
@@ -355,9 +358,9 @@ mode-category) and queries `state-classify/4' for the classification."
 (defun nskk--current-key-state ()
   "Return current key dispatch state: `converting', `preedit', or `normal'.
 Queries `key-state-map/2' to reduce the rich classification from
-`nskk--classify-state' to a simple 3-value dispatch state."
+`nskk-classify-state' to a simple 3-value dispatch state."
   (or (nskk-prolog-query-value
-       `(key-state-map ,(nskk--classify-state) \?s) '\?s)
+       `(key-state-map ,(nskk-classify-state) \?s) '\?s)
       'normal))
 
 ;; kakutei-active-state/3: (CLASSIFICATION TEXT-PRESENCE KAKUTEI-STATE)
@@ -375,26 +378,25 @@ Queries `key-state-map/2' to reduce the rich classification from
   (preedit-pending   no-text  preedit)
   (preedit-marker    has-text preedit))
 
-(defun/k nskk--current-kakutei-state ()
+(defun/k nskk-current-kakutei-state ()
   "Return kakutei dispatch state for `kakutei-action/2' Prolog query.
 States (in priority order):
   `converting'     -- henkan-active (▼ phase)
   `preedit'        -- henkan-on (▽ phase)
-  `romaji-pending' -- incomplete romaji in `nskk--romaji-buffer'
+  `romaji-pending' -- incomplete romaji in `nskk-state-romaji-buffer'
   `hiragana-idle'  -- hiragana mode, no pending input
   `katakana-idle'  -- katakana/katakana-han mode, no pending input
   `direct-idle'    -- ascii/latin/jisx0208-latin/abbrev, no pending input
 
 Queries `kakutei-active-state/3' for converting/preedit states, then
 falls through to romaji-pending check, then to `kakutei-idle-state/2'."
-  (let* ((cls  (nskk--classify-state))
+  (let* ((cls  (nskk-classify-state))
          (text (nskk--compute-text-presence))
          (active (nskk-prolog-query-value
                   `(kakutei-active-state ,cls ,text \?s) '\?s)))
     (if active
         (succeed active)
-      (if (and (boundp 'nskk--romaji-buffer)
-               (not (string-empty-p nskk--romaji-buffer)))
+      (if (not (string-empty-p (nskk-state-romaji-buffer)))
           (succeed 'romaji-pending)
         (succeed (or (and nskk-current-state
                           (nskk-prolog-query-value
@@ -420,20 +422,20 @@ Returns one of:
   `other'            -- ASCII/latin/abbrev mode, or no state
 
 Queries `mode-class-map/2' to map the rich classification from
-`nskk--classify-state' to the mode-switch class symbol."
+`nskk-classify-state' to the mode-switch class symbol."
   (or (nskk-prolog-query-value
-       `(mode-class-map ,(nskk--classify-state) \?c) '\?c)
+       `(mode-class-map ,(nskk-classify-state) \?c) '\?c)
       'other))
 
 ;;;; Commit-by-Phase Helper
 
-(defun nskk--commit-by-phase ()
+(defun nskk-commit-by-phase ()
   "Commit the current NSKK state, dispatching based on classify-state.
 Queries `mode-switch-preaction/2' for the action matching the current
 state classification and executes it via `nskk--execute-preaction'.
 No-op when classify-state maps to `noop' or `fallback'."
   (let ((preact (nskk-prolog-query-value
-                 `(mode-switch-preaction ,(nskk--classify-state) \?a) '\?a)))
+                 `(mode-switch-preaction ,(nskk-classify-state) \?a) '\?a)))
     (unless (eq preact 'fallback)
       (nskk--execute-preaction preact))))
 
@@ -550,21 +552,21 @@ In ASCII mode or when NSKK state is inactive, falls through to
 
 Dispatched via `q-key-dispatch/3' Prolog table."
   :interactive t
-  (let* ((cls (nskk--classify-state))
+  (let* ((cls (nskk-classify-state))
          (style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
          (action (nskk-prolog-query-value
                   `(q-key-dispatch ,cls ,style \?a) '\?a)))
     (pcase action
       ('fire-romaji     (if (and (eq cls 'preedit-japanese)
-                                 (string-empty-p nskk--romaji-buffer)
+                                 (string-empty-p (nskk-state-romaji-buffer))
                                  (not (eq style 'azik)))
                             (nskk-henkan-kakutei-convert-script)
                           (nskk-handle-q-key)))
       ('convert-script  (nskk-henkan-kakutei-convert-script))
-      ('mode-switch     (let ((saved-romaji nskk--romaji-buffer))
+      ('mode-switch     (let ((saved-romaji (nskk-state-romaji-buffer)))
                           (nskk--with-japanese-mode/k
                            (lambda (_)
-                             (setq nskk--romaji-buffer saved-romaji)
+                             (nskk-state-set-romaji-buffer saved-romaji)
                              (nskk-handle-q-key))
                            (lambda () (self-insert-command 1)))))
       (_                (self-insert-command 1)))))
@@ -683,7 +685,7 @@ ERROR-TYPE, if non-nil, is the error to suppress via `nskk--safe-nav-command'."
                     `(call-interactively ,nav-cmd))))
     `(nskk-define-key-handler ,key
        ,docstring
-       (',kakutei-action (nskk--commit-by-phase) ,nav-form)
+       (',kakutei-action (nskk-commit-by-phase) ,nav-form)
        (',nav-action ,nav-form))))
 
 (nskk-define-key-handler ctrl-n
@@ -693,7 +695,7 @@ In preedit (▽) mode, commits then moves down.
 In normal mode, delegates to \\[next-line]."
   ('next-candidate (nskk-next-candidate))
   ('kakutei-then-next-line
-   (nskk--commit-by-phase)
+   (nskk-commit-by-phase)
    (nskk--safe-nav-command #'next-line end-of-buffer))
   ('next-line
    (nskk--safe-nav-command #'next-line end-of-buffer)))
@@ -705,7 +707,7 @@ In preedit (▽) mode, commits then moves up.
 In normal mode, delegates to \\[previous-line]."
   ('previous-candidate (nskk-previous-candidate))
   ('kakutei-then-previous-line
-   (nskk--commit-by-phase)
+   (nskk-commit-by-phase)
    (nskk--safe-nav-command #'previous-line beginning-of-buffer))
   ('previous-line
    (nskk--safe-nav-command #'previous-line beginning-of-buffer)))
@@ -743,7 +745,7 @@ Otherwise clears any residual AZIK deferred state and calls
 `keyboard-quit'."
   ('rollback-to-reading (nskk-rollback-conversion))
   ('cancel-preedit (nskk-cancel-preedit))
-  (_ (nskk--clear-azik-pending-state) (keyboard-quit)))
+  (_ (nskk-clear-azik-pending-state) (keyboard-quit)))
 
 (defun nskk--backspace-retract-pending ()
   "Retract one pending input state if any is active.
@@ -756,21 +758,19 @@ On error or quit, restores the buffer, point, pending states, romaji buffer,
 and pending-romaji overlay to their entry values."
   (let* ((entry-buffer (current-buffer))
          (entry-point (point))
-         (state-vars '(nskk--deferred-azik-state
-                       nskk--deferred-vowel-shadow-state
-                       nskk--azik-colon-okuri-pending
-                       nskk--azik-colon-okuri-deferred
-                       nskk--romaji-buffer))
+         (state-accessors '((nskk-deferred-azik-state . nskk-set-deferred-azik-state)
+                            (nskk-deferred-vowel-shadow-state . nskk-set-deferred-vowel-shadow-state)
+                            (nskk-azik-colon-okuri-pending . nskk-set-azik-colon-okuri-pending)
+                            (nskk-azik-colon-okuri-deferred . nskk-set-azik-colon-okuri-deferred)))
          (state-snapshot
           (mapcar
-           (lambda (var)
-             (list var (boundp var)
-                   (and (boundp var) (symbol-value var))))
-           state-vars))
-         (overlay-var 'nskk--pending-romaji-overlay)
-         (overlay-bound-p (boundp overlay-var))
-         (entry-overlay
-          (and overlay-bound-p (symbol-value overlay-var)))
+           (lambda (pair)
+             (let ((getter (car pair)))
+               (list getter (fboundp getter)
+                     (and (fboundp getter) (funcall getter)))))
+           state-accessors))
+         (entry-romaji (nskk-state-romaji-buffer))
+         (entry-overlay (nskk-state-pending-romaji-overlay))
          (entry-overlay-buffer
           (and (overlayp entry-overlay) (overlay-buffer entry-overlay)))
          (entry-overlay-start
@@ -783,56 +783,50 @@ and pending-romaji overlay to their entry values."
     (condition-case err
         (atomic-change-group
           (cond
-           ((and (boundp 'nskk--deferred-azik-state)
-                 nskk--deferred-azik-state)
-            (delete-char (- (length (cdr nskk--deferred-azik-state))))
-            (setq nskk--deferred-azik-state nil)
+           ((and (fboundp 'nskk-deferred-azik-state)
+                 (nskk-deferred-azik-state))
+            (delete-char (- (length (cdr (nskk-deferred-azik-state)))))
+            (nskk-set-deferred-azik-state nil)
             t)
-           ((and (boundp 'nskk--deferred-vowel-shadow-state)
-                 nskk--deferred-vowel-shadow-state)
-            (delete-char (- (length (nskk--deferred-state-kana
-                                     nskk--deferred-vowel-shadow-state))))
-            (setq nskk--deferred-vowel-shadow-state nil)
+           ((and (fboundp 'nskk-deferred-vowel-shadow-state)
+                 (nskk-deferred-vowel-shadow-state))
+            (delete-char (- (length (nskk-deferred-state-kana
+                                     (nskk-deferred-vowel-shadow-state)))))
+            (nskk-set-deferred-vowel-shadow-state nil)
             t)
-           ((and (boundp 'nskk--azik-colon-okuri-pending)
-                 nskk--azik-colon-okuri-pending)
+           ((and (fboundp 'nskk-azik-colon-okuri-pending)
+                 (nskk-azik-colon-okuri-pending))
             (delete-char -1)
-            (setq nskk--azik-colon-okuri-pending nil)
+            (nskk-set-azik-colon-okuri-pending nil)
             t)
-           ((and (boundp 'nskk--azik-colon-okuri-deferred)
-                 nskk--azik-colon-okuri-deferred)
+           ((and (fboundp 'nskk-azik-colon-okuri-deferred)
+                 (nskk-azik-colon-okuri-deferred))
             (delete-char
-             (- (length (cdr nskk--azik-colon-okuri-deferred))))
-            (setq nskk--azik-colon-okuri-deferred nil)
-            (nskk--reset-romaji-buffer)
+             (- (length (cdr (nskk-azik-colon-okuri-deferred)))))
+            (nskk-set-azik-colon-okuri-deferred nil)
+            (nskk-reset-romaji-buffer)
             t)
-           ((and (boundp 'nskk--romaji-buffer)
-                 (not (string-empty-p nskk--romaji-buffer)))
-            (setq nskk--romaji-buffer
-                  (substring nskk--romaji-buffer 0 -1))
-            (if (string-empty-p nskk--romaji-buffer)
-                (nskk--clear-pending-romaji)
-              (nskk--show-pending-romaji nskk--romaji-buffer))
+           ((not (string-empty-p (nskk-state-romaji-buffer)))
+            (nskk-state-set-romaji-buffer
+             (substring (nskk-state-romaji-buffer) 0 -1))
+            (if (string-empty-p (nskk-state-romaji-buffer))
+                (nskk-clear-pending-romaji)
+              (nskk-show-pending-romaji (nskk-state-romaji-buffer)))
             t)))
       ((error quit)
        (let ((inhibit-quit t)
              (inhibit-modification-hooks t))
          (with-current-buffer entry-buffer
            (dolist (entry state-snapshot)
-             (if (nth 1 entry)
-                 (set (car entry) (nth 2 entry))
-               (when (boundp (car entry))
-                 (makunbound (car entry)))))
-           (let ((current-overlay
-                  (and (boundp overlay-var)
-                       (symbol-value overlay-var))))
+             (let ((setter (cdr (assq (car entry) state-accessors))))
+               (when (or (nth 1 entry) (fboundp (car entry)))
+                 (funcall setter (nth 2 entry)))))
+           (nskk-state-set-romaji-buffer entry-romaji)
+           (let ((current-overlay (nskk-state-pending-romaji-overlay)))
              (when (and (overlayp current-overlay)
                         (not (eq current-overlay entry-overlay)))
                (delete-overlay current-overlay)))
-           (if overlay-bound-p
-               (set overlay-var entry-overlay)
-             (when (boundp overlay-var)
-               (makunbound overlay-var)))
+           (nskk-state-set-pending-romaji-overlay entry-overlay)
            (when (overlayp entry-overlay)
              (let ((properties (overlay-properties entry-overlay)))
                (while properties
@@ -857,7 +851,7 @@ and pending-romaji overlay to their entry values."
 Called when backspace is pressed in preedit state.
 Priority: DA > DV > CP > CD > romaji-buffer > buffer text.
 If point drifted left of preedit boundary, clamp it instead."
-  (let* ((start (nskk--get-conversion-start))
+  (let* ((start (nskk-get-conversion-start))
          (preedit-min (and start (+ start (length nskk-henkan-on-marker)))))
     (when preedit-min
       (cond

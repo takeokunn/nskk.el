@@ -169,7 +169,7 @@ Adds hooks and advice to enable Japanese isearch."
             (advice-add 'isearch-message-prefix :around
                         #'nskk--isearch-prompt-advice))
           (nskk--isearch-reconcile-resource-state '(t t t))
-          (unless (equal (nskk--isearch-resource-state) '(t t t))
+          (unless (equal (nskk-isearch-resource-state) '(t t t))
             (error "Failed to install NSKK isearch integration"))
           (nskk--isearch-set-ownership-state
            (cl-mapcar (lambda (was-present was-owned)
@@ -185,7 +185,7 @@ Adds hooks and advice to enable Japanese isearch."
          (signal condition-symbol condition-payload))))))
 
 (progn
-  (defun nskk--isearch-resource-state ()
+  (defun nskk-isearch-resource-state ()
     "Return the installed state of NSKK's three isearch resources."
     (list (and (memq #'nskk--isearch-setup isearch-mode-hook) t)
           (and (memq #'nskk--isearch-teardown isearch-mode-end-hook) t)
@@ -207,7 +207,7 @@ Adds hooks and advice to enable Japanese isearch."
 
   (defun nskk--isearch-transaction-state ()
     "Return physical and ownership state for isearch resources."
-    (list (nskk--isearch-resource-state)
+    (list (nskk-isearch-resource-state)
           (nskk--isearch-ownership-state)))
 
   (defun nskk--isearch-desired-resource-state (transaction-state)
@@ -223,7 +223,7 @@ Adds hooks and advice to enable Japanese isearch."
      (cl-mapcar (lambda (owned present)
                   (and owned present))
                 owned-before
-                (nskk--isearch-resource-state))))
+                (nskk-isearch-resource-state))))
 
   (defun nskk--isearch-watcher-present-p ()
     "Return non-nil when NSKK's enable watcher is installed."
@@ -277,15 +277,15 @@ re-pollutes an earlier resource is repaired without looping forever."
           condition-data)
       (while (and keep-going
                   (< attempts 4)
-                  (not (equal (nskk--isearch-resource-state) state)))
-        (let ((before (nskk--isearch-resource-state)))
+                  (not (equal (nskk-isearch-resource-state) state)))
+        (let ((before (nskk-isearch-resource-state)))
           (condition-case new-condition
               (nskk--isearch-restore-resource-state state)
             ((error quit)
              (unless condition-data
                (setq condition-data new-condition))))
           (setq attempts (1+ attempts))
-          (let ((after (nskk--isearch-resource-state)))
+          (let ((after (nskk-isearch-resource-state)))
             (when (or (equal after state)
                       (equal after before))
               (setq keep-going nil)))))
@@ -301,11 +301,11 @@ re-pollutes an earlier resource is repaired without looping forever."
       (while (and keep-going
                   (< attempts 5)
                   (not (equal
-                        (append (nskk--isearch-resource-state)
+                        (append (nskk-isearch-resource-state)
                                 (list (nskk--isearch-watcher-present-p)))
                         (append resource-state (list watcher-present)))))
         (let ((before
-               (append (nskk--isearch-resource-state)
+               (append (nskk-isearch-resource-state)
                        (list (nskk--isearch-watcher-present-p)))))
           (condition-case new-condition
               (nskk--isearch-reconcile-resource-state resource-state)
@@ -319,7 +319,7 @@ re-pollutes an earlier resource is repaired without looping forever."
                (setq condition-data new-condition))))
           (setq attempts (1+ attempts))
           (let ((after
-                 (append (nskk--isearch-resource-state)
+                 (append (nskk-isearch-resource-state)
                          (list (nskk--isearch-watcher-present-p)))))
             (when (or (equal after
                              (append resource-state

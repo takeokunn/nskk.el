@@ -851,29 +851,9 @@ Each element is t (completed) or nil (pending).")
 (defvar-local nskk-tutorial--result-markers nil
   "List of (BEG-MARKER . END-MARKER) pairs for result display areas.")
 
-(defvar-local nskk-tutorial--saved-prolog-db nil
-    "Saved Prolog database hash table for restoration on exit.")
-
-  (defvar-local nskk-tutorial--saved-prolog-tails nil
-    "Saved Prolog database tail table for restoration on exit.")
-
-(defvar-local nskk-tutorial--saved-prolog-idx nil
-  "Saved Prolog index config for restoration on exit.")
-
-(defvar-local nskk-tutorial--saved-prolog-hash nil
-  "Saved Prolog hash indices for restoration on exit.")
-
-(defvar-local nskk-tutorial--saved-prolog-trie nil
-    "Saved Prolog trie indices for restoration on exit.")
-
-  (defvar-local nskk-tutorial--saved-prolog-bucket-tail-cache nil
-    "Saved Prolog index bucket tail cache for restoration on exit.")
-
-  (defvar-local nskk-tutorial--saved-prolog-active-mutation-keys nil
-    "Saved Prolog active mutation keys for restoration on exit.")
-
-(defvar-local nskk-tutorial--saved-prolog-counter nil
-  "Saved Prolog variable counter for restoration on exit.")
+(defvar-local nskk-tutorial--saved-prolog-state nil
+  "Saved opaque Prolog state snapshot for restoration on exit.
+See `nskk-prolog-state-snapshot'.")
 
 (defvar-local nskk-tutorial--saved-user-dict nil
   "Saved user dict index for restoration on exit.")
@@ -884,7 +864,7 @@ Each element is t (completed) or nil (pending).")
 (defvar-local nskk-tutorial--saved-init-flags nil
   "Alist of saved initialization flags for restoration on exit.")
 
-(defvaralias 'nskk-tutorial--owner 'nskk--activation-lock-owner
+(defvaralias 'nskk-tutorial--owner 'nskk-activation-lock-owner
   "Live buffer that owns the process-wide tutorial transaction.")
 
 (defvar-local nskk-tutorial--owns-transaction nil
@@ -1064,17 +1044,9 @@ A non-nil value is a plist with :primary and :rollback conditions.")
       (state init-flags dict-save-inhibited persistence-inhibited)
     "Publish dictionary STATE with INIT-FLAGS.
 Use DICT-SAVE-INHIBITED and PERSISTENCE-INHIBITED for transaction state."
-    (setq nskk--prolog-database (aref state 0)
-          nskk--prolog-database-tails (aref state 1)
-          nskk--prolog-index-config (aref state 2)
-          nskk--prolog-hash-indices (aref state 3)
-          nskk--prolog-trie-indices (aref state 4)
-          nskk--prolog-index-bucket-tail-cache (aref state 5)
-          nskk--prolog-var-counter (aref state 6))
-    (when (boundp (quote nskk--prolog-active-mutation-keys))
-      (setq nskk--prolog-active-mutation-keys (aref state 7)))
-    (setq nskk--user-dict-index (aref state 8)
-          nskk--system-dict-index (aref state 9))
+    (nskk-prolog-state-restore (aref state 0))
+    (nskk-dict-set-user-index (aref state 1))
+    (nskk-dict-set-system-index (aref state 2))
     (pcase-dolist (`(,symbol . ,value) init-flags)
       (set symbol value))
     (setq nskk--dict-save-inhibited dict-save-inhibited
@@ -1086,47 +1058,29 @@ On publication failure, restore the original state and re-signal the primary
 condition.  If rollback also fails, retain its diagnostic and the snapshot."
   (when nskk-tutorial--dict-state-saved-p
     (error "Tutorial dictionary state is already saved"))
-  (let* ((init-flags
+  (let* ((original-state
+          (vector (nskk-prolog-state-snapshot)
+                  (nskk-dict-user-index)
+                  (nskk-dict-system-index)))
+         ;; Computed AFTER the snapshot above, deliberately: this query's
+         ;; own proving/unification touches `nskk--prolog-var-counter' as a
+         ;; side effect (FR-010's `module-initialized-flag' lookup), and the
+         ;; published working graph must be a byte-for-byte-faithful copy
+         ;; of the state as it existed before this function ran anything.
+         (init-flags
           (mapcar (lambda (symbol)
                     (cons symbol (symbol-value symbol)))
-                  (quote (nskk--input-initialized
-                          nskk--state-prolog-initialized
-                          nskk--henkan-initialized
-                          nskk--kana-initialized
-                          nskk--converter-initialized
-                          nskk--candidate-key-facts-initialized
-                          nskk--annotation-initialized))))
+                  (nskk-prolog-query-all-values
+                   '(module-initialized-flag \?f) '\?f)))
          (dict-save-inhibited nskk--dict-save-inhibited)
          (persistence-inhibited nskk--persistence-inhibited)
-         (original-state
-          (vector nskk--prolog-database
-                  nskk--prolog-database-tails
-                  nskk--prolog-index-config
-                  nskk--prolog-hash-indices
-                  nskk--prolog-trie-indices
-                  nskk--prolog-index-bucket-tail-cache
-                  nskk--prolog-var-counter
-                  (and (boundp
-                        (quote nskk--prolog-active-mutation-keys))
-                       nskk--prolog-active-mutation-keys)
-                  nskk--user-dict-index
-                  nskk--system-dict-index))
          (working-state
           (nskk-tutorial--copy-object-graph
            original-state (make-hash-table :test (quote eq)))))
     (let ((inhibit-quit t))
-      (setq nskk-tutorial--saved-prolog-db (aref original-state 0)
-            nskk-tutorial--saved-prolog-tails (aref original-state 1)
-            nskk-tutorial--saved-prolog-idx (aref original-state 2)
-            nskk-tutorial--saved-prolog-hash (aref original-state 3)
-            nskk-tutorial--saved-prolog-trie (aref original-state 4)
-            nskk-tutorial--saved-prolog-bucket-tail-cache
-            (aref original-state 5)
-            nskk-tutorial--saved-prolog-counter (aref original-state 6)
-            nskk-tutorial--saved-prolog-active-mutation-keys
-            (aref original-state 7)
-            nskk-tutorial--saved-user-dict (aref original-state 8)
-            nskk-tutorial--saved-system-dict (aref original-state 9)
+      (setq nskk-tutorial--saved-prolog-state (aref original-state 0)
+            nskk-tutorial--saved-user-dict (aref original-state 1)
+            nskk-tutorial--saved-system-dict (aref original-state 2)
             nskk-tutorial--saved-init-flags init-flags
             nskk-tutorial--saved-dict-save-inhibited dict-save-inhibited
             nskk-tutorial--saved-persistence-inhibited persistence-inhibited
@@ -1155,14 +1109,7 @@ condition.  If rollback also fails, retain its diagnostic and the snapshot."
                       :error)
                    ((error quit) nil)))
              (setq nskk-tutorial--dict-state-saved-p nil
-                   nskk-tutorial--saved-prolog-db nil
-                   nskk-tutorial--saved-prolog-tails nil
-                   nskk-tutorial--saved-prolog-idx nil
-                   nskk-tutorial--saved-prolog-hash nil
-                   nskk-tutorial--saved-prolog-trie nil
-                   nskk-tutorial--saved-prolog-bucket-tail-cache nil
-                   nskk-tutorial--saved-prolog-active-mutation-keys nil
-                   nskk-tutorial--saved-prolog-counter nil
+                   nskk-tutorial--saved-prolog-state nil
                    nskk-tutorial--saved-user-dict nil
                    nskk-tutorial--saved-system-dict nil
                    nskk-tutorial--saved-init-flags nil
@@ -1178,14 +1125,7 @@ Keep the snapshot intact if publication fails so callers can retry."
   (when nskk-tutorial--dict-state-saved-p
     (let ((init-flags nskk-tutorial--saved-init-flags))
       (nskk-tutorial--publish-dict-state
-       (vector nskk-tutorial--saved-prolog-db
-               nskk-tutorial--saved-prolog-tails
-               nskk-tutorial--saved-prolog-idx
-               nskk-tutorial--saved-prolog-hash
-               nskk-tutorial--saved-prolog-trie
-               nskk-tutorial--saved-prolog-bucket-tail-cache
-               nskk-tutorial--saved-prolog-counter
-               nskk-tutorial--saved-prolog-active-mutation-keys
+       (vector nskk-tutorial--saved-prolog-state
                nskk-tutorial--saved-user-dict
                nskk-tutorial--saved-system-dict)
        init-flags
@@ -1193,14 +1133,7 @@ Keep the snapshot intact if publication fails so callers can retry."
        nskk-tutorial--saved-persistence-inhibited)
       (let ((inhibit-quit t))
         (setq nskk-tutorial--dict-state-saved-p nil
-              nskk-tutorial--saved-prolog-db nil
-              nskk-tutorial--saved-prolog-tails nil
-              nskk-tutorial--saved-prolog-idx nil
-              nskk-tutorial--saved-prolog-hash nil
-              nskk-tutorial--saved-prolog-trie nil
-              nskk-tutorial--saved-prolog-bucket-tail-cache nil
-              nskk-tutorial--saved-prolog-active-mutation-keys nil
-              nskk-tutorial--saved-prolog-counter nil
+              nskk-tutorial--saved-prolog-state nil
               nskk-tutorial--saved-user-dict nil
               nskk-tutorial--saved-system-dict nil
               nskk-tutorial--saved-init-flags nil
@@ -1438,8 +1371,7 @@ Called from `post-command-hook'."
   "Reset NSKK to hiragana mode in the tutorial buffer."
   (when (and nskk-mode (boundp 'nskk-current-state) nskk-current-state)
     (nskk--set-mode 'hiragana)
-    (when (boundp 'nskk--romaji-buffer)
-      (setq nskk--romaji-buffer ""))
+    (nskk-state-set-romaji-buffer "")
     (nskk-modeline-update)))
 
 (defun nskk-tutorial--maybe-navigate (direction)
@@ -1505,7 +1437,7 @@ within this buffer for practicing SKK operations.
           (lambda (buffer)
             (and (buffer-live-p buffer)
                  (not (eq buffer (current-buffer)))))
-          nskk--active-buffers)))
+          (nskk-active-buffers))))
     (when active-buffer
       (user-error "Cannot start tutorial while NSKK is active in %s"
                   (buffer-name active-buffer))))

@@ -358,7 +358,7 @@ integer environment variable NSKK_BENCH_SAMPLES."
 (defun nskk-bench-run-l3 ()
   "Benchmark L3: dictionary search hot paths (mock dict, 13 entries)."
   (nskk-with-mock-dict nil
-    (let ((idx nskk--system-dict-index))
+    (let ((idx (nskk-dict-system-index)))
 
       ;; Exact search — the primary henkan trigger
       (nskk-bench "L3" "search-exact (hit: かんじ)" 5000
@@ -456,21 +456,25 @@ integer environment variable NSKK_BENCH_SAMPLES."
 
   ;; Romaji input classification — called once per keypress in Japanese mode
   ;; Each case exercises a different branch of the priority dispatch.
-  (let ((nskk--romaji-buffer ""))
-    (nskk-bench "L4a" "classify-romaji-input (match: result of a)" 30000
-      (nskk--classify-romaji-input ?a nil (nskk-converter-convert "a")))
+  (let ((nskk-bench--saved-romaji-buffer (nskk-state-romaji-buffer)))
+    (nskk-state-set-romaji-buffer "")
+    (unwind-protect
+        (progn
+          (nskk-bench "L4a" "classify-romaji-input (match: result of a)" 30000
+            (nskk--classify-romaji-input ?a nil (nskk-converter-convert "a")))
 
-    (nskk-bench "L4a" "classify-romaji-input (incomplete: k)" 30000
-      (nskk--classify-romaji-input ?k nil (nskk-converter-convert "k")))
+          (nskk-bench "L4a" "classify-romaji-input (incomplete: k)" 30000
+            (nskk--classify-romaji-input ?k nil (nskk-converter-convert "k")))
 
-    (nskk-bench "L4a" "classify-romaji-input (sokuon: kk)" 30000
-      (nskk--classify-romaji-input ?k ?k (nskk-converter-convert "kk")))
+          (nskk-bench "L4a" "classify-romaji-input (sokuon: kk)" 30000
+            (nskk--classify-romaji-input ?k ?k (nskk-converter-convert "kk")))
 
-    (nskk-bench "L4a" "classify-romaji-input (nn-double)" 30000
-      (nskk--classify-romaji-input ?n ?n (nskk-converter-convert "nn")))
+          (nskk-bench "L4a" "classify-romaji-input (nn-double)" 30000
+            (nskk--classify-romaji-input ?n ?n (nskk-converter-convert "nn")))
 
-    (nskk-bench "L4a" "classify-romaji-input (n+consonant: nm)" 30000
-      (nskk--classify-romaji-input ?m ?n (nskk-converter-convert "nm"))))
+          (nskk-bench "L4a" "classify-romaji-input (n+consonant: nm)" 30000
+            (nskk--classify-romaji-input ?m ?n (nskk-converter-convert "nm"))))
+      (nskk-state-set-romaji-buffer nskk-bench--saved-romaji-buffer)))
 
   ;; compute-effective-char — called once per keypress to detect henkan-start
   (nskk-bench "L4a" "compute-effective-char (lowercase a)" 30000
@@ -486,27 +490,27 @@ integer environment variable NSKK_BENCH_SAMPLES."
 
     (nskk-bench "L4a" "convert-input-to-kana (a → あ, clean buf)" 20000
       (progn
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (nskk-convert-input-to-kana ?a)))
 
     (nskk-bench "L4a" "convert-input-to-kana (k, incomplete)" 20000
       (progn
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (nskk-convert-input-to-kana ?k)))
 
     (nskk-bench "L4a" "convert-input-to-kana (a after k → か)" 20000
       (progn
-        (setq nskk--romaji-buffer "k")
+        (nskk-state-set-romaji-buffer "k")
         (nskk-convert-input-to-kana ?a)))
 
     (nskk-bench "L4a" "convert-input-to-kana (nn → ん)" 20000
       (progn
-        (setq nskk--romaji-buffer "n")
+        (nskk-state-set-romaji-buffer "n")
         (nskk-convert-input-to-kana ?n)))
 
     (nskk-bench "L4a" "convert-input-to-kana (kk → っ, sokuon)" 20000
       (progn
-        (setq nskk--romaji-buffer "k")
+        (nskk-state-set-romaji-buffer "k")
         (nskk-convert-input-to-kana ?k)))
 
     (nskk-mode -1)))
@@ -549,14 +553,14 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "E2E" "type 'a' hiragana (→ あ)" 10000
       (progn
         (erase-buffer)
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (nskk-process-japanese-input ?a 1)))
 
     ;; Typing "ka" → inserts か (consonant+vowel pair)
     (nskk-bench "E2E" "type 'ka' hiragana (→ か)" 5000
       (progn
         (erase-buffer)
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (nskk-process-japanese-input ?k 1)
         (nskk-process-japanese-input ?a 1)))
 
@@ -564,7 +568,7 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "E2E" "type 'shi' hiragana (→ し)" 5000
       (progn
         (erase-buffer)
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (nskk-process-japanese-input ?s 1)
         (nskk-process-japanese-input ?h 1)
         (nskk-process-japanese-input ?i 1)))
@@ -573,7 +577,7 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "E2E" "type 'nihongo' hiragana (→ にほんご)" 1000
       (progn
         (erase-buffer)
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (dolist (ch (string-to-list "nihongo"))
           (nskk-process-japanese-input ch 1))))
 
@@ -581,7 +585,7 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "E2E" "type 'kka' hiragana (→ っか, sokuon)" 5000
       (progn
         (erase-buffer)
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (nskk-process-japanese-input ?k 1)
         (nskk-process-japanese-input ?k 1)
         (nskk-process-japanese-input ?a 1)))

@@ -102,6 +102,16 @@
 ;; - `nskk-state-transition/k'          -- on-found(t) / on-not-found()
 ;; - `nskk-state-next-candidate/k'      -- on-candidate(cand) / on-empty()
 ;; - `nskk-state-previous-candidate/k'  -- on-candidate(cand) / on-empty()
+;;
+;; Shared buffer-local state accessors (single owner: this module):
+;; - `nskk-state-romaji-buffer' / `nskk-state-set-romaji-buffer'
+;; - `nskk-state-conversion-start-marker' / `nskk-state-set-conversion-start-marker'
+;; - `nskk-state-conversion-overlay' / `nskk-state-set-conversion-overlay'
+;; - `nskk-state-pending-romaji-overlay' / `nskk-state-set-pending-romaji-overlay'
+;; - `nskk-state-candidate-overlay' / `nskk-state-set-candidate-overlay'
+;; - `nskk-state-dcomp-multiple-overlay' / `nskk-state-set-dcomp-multiple-overlay'
+;; - `nskk-state-henkan-count' / `nskk-state-set-henkan-count'
+;; - `nskk-state-registration-depth' / `nskk-state-set-registration-depth'
 
 ;;; Code:
 
@@ -705,8 +715,54 @@ already a marker.  In both cases the marker is moved to POS unconditionally."
 (defvar-local nskk--registration-depth 0
   "Current nesting depth of dictionary registration.")
 
+;;;; Shared Buffer-Local State — Accessor API
+;;
+;; Each of the 8 buffer-local variables above (`nskk--romaji-buffer' through
+;; `nskk--registration-depth') has a getter/setter pair generated below by
+;; `nskk-define-buffer-local-accessor'.  Other modules go through these
+;; accessors rather than referencing the `nskk--*' variables directly, so
+;; state.el remains their single owner.  No nil/unset distinction is needed
+;; here (unlike `nskk-state-get'/`nskk-state-set' dispatching on an arbitrary
+;; KEY): each accessor targets one fixed, always-bound `defvar-local', so
+;; there is no "unknown slot" case to distinguish from "known slot, nil
+;; value" -- a plain getter/setter pair is the complete, correct API.
+
+(defmacro nskk-define-buffer-local-accessor (var)
+  "Generate a getter/setter pair for buffer-local VAR.
+VAR must already be declared via `defvar-local' with an `nskk--' prefix.
+Creates:
+  `nskk-state-VAR'     ()      -- return the current value
+  `nskk-state-set-VAR' (value) -- set VAR to VALUE and return VALUE"
+  (declare (indent 0) (debug t))
+  (let* ((name (string-remove-prefix "nskk--" (symbol-name var)))
+         (getter (intern (format "nskk-state-%s" name)))
+         (setter (intern (format "nskk-state-set-%s" name))))
+    `(progn
+       (defun ,getter ()
+         ,(format "Return the current value of `%s'." var)
+         ,var)
+       (defun ,setter (value)
+         ,(format "Set `%s' to VALUE and return VALUE." var)
+         (setq ,var value)))))
+
+(nskk-define-buffer-local-accessor nskk--romaji-buffer)
+(nskk-define-buffer-local-accessor nskk--conversion-start-marker)
+(nskk-define-buffer-local-accessor nskk--conversion-overlay)
+(nskk-define-buffer-local-accessor nskk--pending-romaji-overlay)
+(nskk-define-buffer-local-accessor nskk--candidate-overlay)
+(nskk-define-buffer-local-accessor nskk--dcomp-multiple-overlay)
+(nskk-define-buffer-local-accessor nskk--henkan-count)
+(nskk-define-buffer-local-accessor nskk--registration-depth)
+
 (defvar nskk--state-prolog-initialized nil
   "Non-nil when state machine Prolog predicates have been initialized.")
+
+;; Registration protocol: declare this module's initialized-flag symbol,
+;; unconditionally at load time, so generic test/reset infrastructure can
+;; enumerate it via a fact query instead of a hardcoded symbol list,
+;; regardless of whether this module's own lazy Prolog initializer has
+;; run yet.
+(nskk-prolog-<- (module-initialized-flag nskk--state-prolog-initialized))
 
 (defun/done nskk-state-initialize-prolog ()
   "Initialize NSKK state machine Prolog predicates (idempotent).

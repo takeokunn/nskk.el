@@ -50,7 +50,7 @@
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         (nskk-given (nskk-henkan-pipeline--setup-kanji-preedit))
-        (nskk-then  (should (nskk--conversion-start-active-p)))
+        (nskk-then  (should (nskk-conversion-start-active-p)))
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
         (nskk-then
@@ -78,7 +78,7 @@
           (nskk-handle-return))
         (nskk-then
           (should-not (nskk-converting-p))
-          (should-not (nskk--conversion-start-active-p))
+          (should-not (nskk-conversion-start-active-p))
           (nskk-should-equal "漢字" (buffer-string))))))
 
   (nskk-it "pressing SPC again during conversion advances to the next candidate 感じ"
@@ -123,7 +123,7 @@
         (nskk-when  (nskk-handle-cancel))
         (nskk-then
           (should-not (nskk-converting-p))
-          (should (nskk--conversion-start-active-p))
+          (should (nskk-conversion-start-active-p))
           (nskk-should-equal "▽かんじ" (buffer-string))))))
 
   (nskk-it "a word with a single dictionary candidate converts and commits correctly"
@@ -149,7 +149,7 @@
         (nskk-then
           (should (null (nskk-state-candidates nskk-current-state)))
           (should (= (nskk-state-current-index nskk-current-state) 0))
-          (nskk-should-equal "" nskk--romaji-buffer))))))
+          (nskk-should-equal "" (nskk-state-romaji-buffer)))))))
 
 ;;;
 ;;; Property-Based Tests
@@ -216,7 +216,7 @@
         ;; Type "Ka" → preedit ▽か
         (nskk-given (nskk--integration-type-char ?K)
                     (nskk--integration-type-char ?a))
-        (nskk-then  (should (nskk--conversion-start-active-p)))
+        (nskk-then  (should (nskk-conversion-start-active-p)))
         ;; Tab triggers dynamic completion from preedit "か"
         (nskk-when  (nskk-dynamic-complete))
         ;; The preedit should now contain a completion (longer than "か" or same)

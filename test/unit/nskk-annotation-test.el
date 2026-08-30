@@ -211,12 +211,12 @@
 
 ;;;; Load from Candidates Helper
 
-(nskk-describe "nskk--annotation-load-from-candidates"
+(nskk-describe "nskk-annotation-load-from-candidates"
   (nskk-it "registers annotations from pair list"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--annotation-initialized nil))
         (nskk-annotation-initialize)
-        (nskk--annotation-load-from-candidates
+        (nskk-annotation-load-from-candidates
          "よみ"
          '(("候補1" . "annotation1") ("候補2" . nil) ("候補3" . "annotation3")))
         (should (equal (nskk-annotation-lookup "よみ" "候補1") "annotation1"))
@@ -227,7 +227,7 @@
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--annotation-initialized nil))
         (nskk-annotation-initialize)
-        (nskk--annotation-load-from-candidates
+        (nskk-annotation-load-from-candidates
          "よみ"
          '(("候補" . "")))
         (should (null (nskk-annotation-lookup "よみ" "候補")))))))

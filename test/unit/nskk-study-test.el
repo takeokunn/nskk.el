@@ -536,7 +536,7 @@
               (prin1 '(("new" "reading" "candidate")) (current-buffer)))
             (let ((nskk-study-file file))
               (nskk-prolog-test-with-isolated-db
-               (let ((key (nskk--prolog-clause-key 'study-association 3))
+               (let ((key (nskk-prolog-clause-key 'study-association 3))
                      (rollback-called 0)
                      rollback-inhibited)
                  (nskk-prolog-retract-all 'study-association 3)
@@ -577,7 +577,7 @@
               (prin1 '(("new" "reading" "candidate")) (current-buffer)))
             (let ((nskk-study-file file))
               (nskk-prolog-test-with-isolated-db
-               (let ((key (nskk--prolog-clause-key 'study-association 3))
+               (let ((key (nskk-prolog-clause-key 'study-association 3))
                      (rollback-called 0)
                      rollback-inhibited)
                  (nskk-prolog-retract-all 'study-association 3)
@@ -633,7 +633,7 @@
  (real-retract (symbol-function 'nskk-prolog-retract-all)))
             (let ((nskk-study-file file))
               (nskk-prolog-test-with-isolated-db
-                (let ((key (nskk--prolog-clause-key
+                (let ((key (nskk-prolog-clause-key
                             'study-association 3)))
                   (nskk-prolog-retract-all 'study-association 3)
                   (nskk-prolog-assert

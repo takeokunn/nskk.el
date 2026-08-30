@@ -104,7 +104,7 @@
 ;; nskk-mode-map is defined in nskk-keymap.el (L5), loaded before AZIK style init.
 (defvar nskk-mode-map)
 (declare-function nskk-toggle-japanese-mode "nskk-input")
-(declare-function nskk--initialize-romaji-table "nskk-converter")
+(declare-function nskk-initialize-romaji-table "nskk-converter")
 
 (defgroup nskk-azik nil
   "AZIK extended romaji input settings."
@@ -319,7 +319,7 @@ Called after all azik-rule/2 facts have been asserted.
 all azik-rule facts into the hash.  AZIK entries override any conflicting
 standard entries (e.g. xa).
 
-We use `puthash' directly into `nskk--romaji-table' rather than
+We use `puthash' directly into `nskk-romaji-table' rather than
 `nskk-converter-add-rule' because the Prolog facts already exist
 \(`nskk-converter-add-rule' would double-assert them).  This step is
 purely a hash-cache sync from the Prolog truth source."
@@ -327,7 +327,7 @@ purely a hash-cache sync from the Prolog truth source."
     (let ((romaji (car binding))
           (kana   (cadr binding)))
       (when (and (stringp romaji) (stringp kana))
-        (puthash romaji kana nskk--romaji-table)))))
+        (puthash romaji kana (nskk-romaji-table))))))
 
 (defvar nskk--azik-vowel-shadow-set (make-hash-table :test 'equal)
   "Set of AZIK rule keys that are vowel-only-shadowed.
@@ -340,8 +340,12 @@ the next character is a vowel, the emission is retroactively replaced by the
 longer standard-romaji rule.
 Rebuilt from scratch on each call to `nskk--azik-finalize-hash-table'.")
 
-(add-to-list 'nskk--converter-style-transaction-hash-tables
+(nskk-converter-register-style-transaction-hash-table
              'nskk--azik-vowel-shadow-set)
+
+(defun nskk-azik-vowel-shadow-set ()
+  "Return the current AZIK vowel-shadowed key set hash table."
+  nskk--azik-vowel-shadow-set)
 
 (defun/done nskk--azik-init-char-facts ()
   "Assert azik-vowel-char/1 for each Japanese romaji vowel character code.
@@ -371,7 +375,7 @@ Must be called after `nskk--azik-sync-to-romaji-hash'."
                (unless (gethash pair seen)
                  (puthash pair t seen)
                  (nskk-prolog-assert `((azik-key-extends ,pfx ,ch)))))))))
-     nskk--romaji-table)))
+     (nskk-romaji-table))))
 
 (defun/k nskk--azik-classify-key (key)
   "Classify romaji KEY for prefix-restore using Prolog shadow rules.
@@ -405,7 +409,7 @@ Performs two passes using azik-key-extends/2 facts:
       (let ((pfx (nskk-prolog-walk '\?pfx subst)))
         (when (and (stringp pfx) (not (gethash pfx registered)))
           (puthash pfx t registered)
-          (unless (gethash pfx nskk--romaji-table)
+          (unless (gethash pfx (nskk-romaji-table))
             (nskk-converter-add-rule pfx :incomplete))))))
   (maphash
    (lambda (k v)
@@ -414,9 +418,9 @@ Performs two passes using azik-key-extends/2 facts:
          (lambda (kind)
            (pcase kind
              (:vowel-shadow (puthash k t nskk--azik-vowel-shadow-set))
-             (:incomplete   (puthash k :incomplete nskk--romaji-table))))
+             (:incomplete   (puthash k :incomplete (nskk-romaji-table)))))
          #'ignore)))
-   nskk--romaji-table))
+   (nskk-romaji-table)))
 
 ;;;; AZIK Toggle Key Setup
 
@@ -450,7 +454,7 @@ Performs two passes using azik-key-extends/2 facts:
 (progn
   (defvar nskk--azik-toggle-key-state nil
     "Last AZIK toggle key and its displaced binding as (KEY . BINDING).")
-  (add-to-list 'nskk--converter-style-transaction-variables
+  (nskk-converter-register-style-transaction-variable
                'nskk--azik-toggle-key-state))
 
 (defun nskk--setup-azik-toggle-key ()
@@ -478,22 +482,15 @@ Restores the displaced binding when the keyboard type changes."
 
 ;;;; Main Initialization
 
-(defun/done nskk--init-azik-rules ()
-  "Initialize AZIK romaji rules.
-Sets up standard romaji as base, then asserts AZIK-specific rules
-into the azik-rule/2 Prolog predicate.  A bridge rule connects
-azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
-The hash table is populated from azik-rule/2 for hot-path lookups."
-
-  (nskk--initialize-romaji-table)
-
-  ;; Set up azik-rule/2 predicate (index before assert).
-  (nskk-prolog-retract-all 'azik-rule 2)
-  (nskk-prolog-set-index 'azik-rule 2 :hash)
-
-  ;; Assert all AZIK rule categories directly as Prolog facts.
-  ;; Prolog is the single source of truth; the hash is a read cache.
-
+(defun nskk--azik-init-core-and-compat-rules ()
+  "Assert the AZIK core, ergonomic, and ddskk-compatibility rule facts.
+Covers everything not already handled by
+`nskk--azik-init-extension-rows'/`nskk--azik-init-youon-rows': special
+keys, consonant compatibility, same-finger alternatives, word shortcuts,
+foreign-word/hatsuon/double-vowel extensions, and ddskk-compatible
+suffix/shortcut/small-kana/arrow rules.  Split out of
+`nskk--init-azik-rules' as a pure data-declaration block with no
+sequencing dependency on the rest of that function."
   ;; Special keys: ; → っ (geminate stop), : → ー (prolonged sound).
   (nskk-prolog-deffacts azik-rule
     (";" "っ")
@@ -503,9 +500,6 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (nskk-prolog-deffacts azik-rule
     ("xa" "しゃ") ("xi" "し") ("xu" "しゅ") ("xe" "しぇ") ("xo" "しょ")
     ("ca" "ちゃ") ("ci" "ち") ("cu" "ちゅ") ("ce" "ちぇ") ("co" "ちょ"))
-
-  (nskk--azik-init-extension-rows)  ; hatsuon + double vowel
-  (nskk--azik-init-youon-rows)      ; g-sub + y-prefix youon
 
   ;; Same-finger alternatives (f suffix for ergonomic consonant alternatives).
   ;; hf=ふ avoids the h→u same-hand sequence (h and f share the left index finger).
@@ -583,7 +577,26 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;; JP106-specific: + → っ for Shift+; key.
   (when (and (boundp 'nskk-azik-keyboard-type)
              (eq nskk-azik-keyboard-type 'jp106))
-    (nskk-prolog-<- (azik-rule "+" "っ")))
+    (nskk-prolog-<- (azik-rule "+" "っ"))))
+
+(defun/done nskk--init-azik-rules ()
+  "Initialize AZIK romaji rules.
+Sets up standard romaji as base, then asserts AZIK-specific rules
+into the azik-rule/2 Prolog predicate.  A bridge rule connects
+azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
+The hash table is populated from azik-rule/2 for hot-path lookups."
+
+  (nskk-initialize-romaji-table)
+
+  ;; Set up azik-rule/2 predicate (index before assert).
+  (nskk-prolog-retract-all 'azik-rule 2)
+  (nskk-prolog-set-index 'azik-rule 2 :hash)
+
+  ;; Assert all AZIK rule categories directly as Prolog facts.
+  ;; Prolog is the single source of truth; the hash is a read cache.
+  (nskk--azik-init-extension-rows)  ; hatsuon + double vowel
+  (nskk--azik-init-youon-rows)      ; g-sub + y-prefix youon
+  (nskk--azik-init-core-and-compat-rules)
 
   ;; Bridge rule — AZIK rules are also romaji-to-kana.
   ;; The variable first arg (?r) is NOT trie-indexed; use azik-rule/2
@@ -616,7 +629,7 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   ;; Inserting after finalize ensures 2-char prefixes like "ka" remain
   ;; complete, enabling sequences like xhkak → しゅうかく.
   (dolist (rule nskk--azik-compound-rules)
-    (puthash (car rule) (cadr rule) nskk--romaji-table))
+    (puthash (car rule) (cadr rule) (nskk-romaji-table)))
 
   ;; Apply user overrides last so they take precedence over built-ins.
   ;; Canonicalize user rules as azik-rule/2 facts behind the generic bridge,
@@ -628,7 +641,7 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
              (kana (cadr owned-rule)))
         (while (nskk-prolog-retract `(azik-rule ,romaji \?_)))
         (nskk-prolog-assert `((azik-rule ,romaji ,kana)))
-        (puthash romaji kana nskk--romaji-table))))
+        (puthash romaji kana (nskk-romaji-table)))))
 
   (nskk--setup-azik-toggle-key))
 

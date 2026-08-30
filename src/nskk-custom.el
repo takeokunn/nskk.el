@@ -288,7 +288,7 @@ These keys allow direct candidate selection in the overlay candidate list."
 
 (defcustom nskk-max-registration-depth 3
   "Maximum nesting depth for recursive word registration.
-When `nskk--registration-depth' reaches this value, further
+When `nskk-state-registration-depth' reaches this value, further
 registration attempts are silently ignored."
   :type 'natnum
   :safe #'natnump

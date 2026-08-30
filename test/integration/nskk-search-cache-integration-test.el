@@ -142,7 +142,7 @@
 
   (nskk-it "exact match search returns expected candidates from mock dictionary"
     (nskk-with-mock-dict nil
-      (let ((entry (nskk-search-exact nskk--system-dict-index "かんじ" nil)))
+      (let ((entry (nskk-search-exact (nskk-dict-system-index) "かんじ" nil)))
         (nskk-then
           (should (nskk-dict-entry-p entry))
           (let ((candidates (nskk-dict-entry-candidates entry)))
@@ -152,20 +152,20 @@
 
   (nskk-it "exact match search returns nil for a key not in the dictionary"
     (nskk-with-mock-dict nil
-      (let ((entry (nskk-search-exact nskk--system-dict-index "ほげほげほげ" nil)))
+      (let ((entry (nskk-search-exact (nskk-dict-system-index) "ほげほげほげ" nil)))
         (nskk-then (should (null entry))))))
 
   (nskk-it "first search is a cache miss; second is a cache hit"
     (nskk-with-mock-dict nil
       (let* ((cache (nskk-cache-create :type 'lru :capacity 100))
-             (result1 (nskk-search-with-cache cache nskk--system-dict-index "かんじ")))
+             (result1 (nskk-search-with-cache cache (nskk-dict-system-index) "かんじ")))
         (nskk-then
           (should (nskk-dict-entry-p result1))
           (let ((stats (nskk-cache-stats cache)))
             (should (= (plist-get stats :size) 1))
             (should (= (plist-get stats :misses) 1))
             (should (= (plist-get stats :hits) 0))))
-        (let ((result2 (nskk-search-with-cache cache nskk--system-dict-index "かんじ")))
+        (let ((result2 (nskk-search-with-cache cache (nskk-dict-system-index) "かんじ")))
           (nskk-then
             (nskk-should-equal result1 result2)
             (let ((stats (nskk-cache-stats cache)))
@@ -176,7 +176,7 @@
   (nskk-it "search-with-cache returns nil for a missing key and does not cache nil"
     (nskk-with-mock-dict nil
       (let* ((cache (nskk-cache-create :type 'lru :capacity 100))
-             (result (nskk-search-with-cache cache nskk--system-dict-index "ほげほげほげ")))
+             (result (nskk-search-with-cache cache (nskk-dict-system-index) "ほげほげほげ")))
         (nskk-then
           (should (null result))
           (should (= (nskk-cache-size cache) 0))))))
@@ -184,8 +184,8 @@
   (nskk-it "independent keys are cached separately without interference"
     (nskk-with-mock-dict nil
       (let ((cache (nskk-cache-create :type 'lru :capacity 100)))
-        (let ((e1 (nskk-search-with-cache cache nskk--system-dict-index "かんじ"))
-              (e2 (nskk-search-with-cache cache nskk--system-dict-index "さくら")))
+        (let ((e1 (nskk-search-with-cache cache (nskk-dict-system-index) "かんじ"))
+              (e2 (nskk-search-with-cache cache (nskk-dict-system-index) "さくら")))
           (nskk-then
             (should (nskk-dict-entry-p e1))
             (should (nskk-dict-entry-p e2))
@@ -220,7 +220,7 @@
         (let* ((nskk-search-sort-method 'frequency)
                (before
                 (nskk-search-prefix
-                 nskk--system-dict-index "かん" nil nil))
+                 (nskk-dict-system-index) "かん" nil nil))
                (target (car (last before)))
                (reading (car target))
                (candidate
@@ -233,7 +233,7 @@
           (nskk-then
             (let ((after
                    (nskk-search-prefix
-                    nskk--system-dict-index "かん" nil nil)))
+                    (nskk-dict-system-index) "かん" nil nil)))
               (should (equal reading (caar after)))))))))
 
   (nskk-it "learning flushes cached prefix results and reapplies learned ordering"
@@ -243,7 +243,7 @@
                (cache (nskk-cache-create :type 'lru :capacity 100))
                (before
                 (nskk-search-with-cache
-                 cache nskk--system-dict-index "に" 'prefix nil))
+                 cache (nskk-dict-system-index) "に" 'prefix nil))
                (target (car (last before)))
                (reading (car target))
                (candidate
@@ -258,7 +258,7 @@
             (should (= (nskk-cache-size cache) 0))
             (let ((after
                    (nskk-search-with-cache
-                    cache nskk--system-dict-index "に" 'prefix nil)))
+                    cache (nskk-dict-system-index) "に" 'prefix nil)))
               (should (equal reading (caar after)))
               (should (= (nskk-cache-size cache) 1)))))))))
 
@@ -336,7 +336,7 @@
 
   (nskk-it "nskk-search dispatches to exact-match search and returns an entry"
     (nskk-with-mock-dict nil
-      (let ((result (nskk-search nskk--system-dict-index "かんじ" 'exact)))
+      (let ((result (nskk-search (nskk-dict-system-index) "かんじ" 'exact)))
         (nskk-then
           (should (nskk-dict-entry-p result))
           (should (member "漢字" (nskk-dict-entry-candidates result)))))))
@@ -345,7 +345,7 @@
     (nskk-with-mock-dict nil
       (nskk-then
         (should-error
-         (nskk-search nskk--system-dict-index "かんじ" 'bogus-type)
+         (nskk-search (nskk-dict-system-index) "かんじ" 'bogus-type)
          :type 'nskk-dict-search-invalid-query))))
 
   (nskk-it "nskk-search signals nskk-dict-search-invalid-index for a non-index argument"
@@ -358,14 +358,14 @@
     (nskk-with-mock-dict nil
       (nskk-then
         (should-error
-         (nskk-search nskk--system-dict-index "" 'exact)
+         (nskk-search (nskk-dict-system-index) "" 'exact)
          :type 'nskk-dict-search-invalid-query))))
 
   (nskk-it "nskk-search-with-cache signals wrong-type-argument for a non-cache object"
     (nskk-with-mock-dict nil
       (nskk-then
         (should-error
-         (nskk-search-with-cache "not-a-cache" nskk--system-dict-index "かんじ")
+         (nskk-search-with-cache "not-a-cache" (nskk-dict-system-index) "かんじ")
          :type 'wrong-type-argument)))))
 
 

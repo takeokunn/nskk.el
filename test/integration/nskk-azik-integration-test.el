@@ -142,7 +142,7 @@
   (nskk-it "uppercase S in AZIK mode sets the preedit marker"
     (nskk-azik-with-session 'hiragana
       (nskk-when (nskk--integration-type-char ?S))
-      (nskk-then (should (nskk--conversion-start-active-p))
+      (nskk-then (should (nskk-conversion-start-active-p))
                  (should (string-prefix-p "▽" (buffer-string))))))
 
   (nskk-it "uppercase S followed by r produces ▽する in preedit"
@@ -150,7 +150,7 @@
       (nskk-when (progn
                    (nskk--integration-type-char ?S)
                    (nskk--integration-type-char ?r)))
-      (nskk-then (should (nskk--conversion-start-active-p))
+      (nskk-then (should (nskk-conversion-start-active-p))
                  (nskk-should-equal "▽する" (buffer-string))))))
 
 ;;;
@@ -174,7 +174,7 @@
           (dolist (pattern all-patterns)
             ;; Reset all input state before each pattern.
             (erase-buffer)
-            (setq nskk--romaji-buffer "")
+            (nskk-state-set-romaji-buffer "")
             (nskk-state-clear-input nskk-current-state)
             ;; Type each character of the pattern.
             (condition-case err

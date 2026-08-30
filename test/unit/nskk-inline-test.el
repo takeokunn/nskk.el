@@ -92,8 +92,8 @@
     (with-temp-buffer
       (insert "abc")
       (goto-char 2)
-      (let ((nskk--conversion-overlay nil))
-        (should (= (nskk--inline-anchor) (point)))))))
+      (nskk-state-set-conversion-overlay nil)
+      (should (= (nskk--inline-anchor) (point))))))
 
 ;;;; Show Candidate Guards
 
@@ -123,8 +123,8 @@
     (with-temp-buffer
       (insert "あ")
       (let ((nskk-show-inline t)
-            (nskk--inline-overlay nil)
-            (nskk--conversion-overlay nil))
+            (nskk--inline-overlay nil))
+        (nskk-state-set-conversion-overlay nil)
         (nskk-inline-show-candidate "亜")
         (unwind-protect
             (should (overlayp nskk--inline-overlay))
@@ -134,8 +134,8 @@
     (with-temp-buffer
       (insert "あ")
       (let ((nskk-show-inline 'vertical)
-            (nskk--inline-overlay nil)
-            (nskk--conversion-overlay nil))
+            (nskk--inline-overlay nil))
+        (nskk-state-set-conversion-overlay nil)
         (nskk-inline-show-candidate "亜")
         (unwind-protect
             (should (overlayp nskk--inline-overlay))
@@ -172,8 +172,8 @@
     (with-temp-buffer
       (insert "あ")
       (let ((nskk-show-inline t)
-            (nskk--inline-overlay nil)
-            (nskk--conversion-overlay nil))
+            (nskk--inline-overlay nil))
+        (nskk-state-set-conversion-overlay nil)
         (nskk-inline-show-registration-badge)
         (unwind-protect
             (should (overlayp nskk--inline-overlay))

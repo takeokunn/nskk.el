@@ -315,16 +315,16 @@ Kill BUFFER only when OWNED-BUFFER is non-nil, and retain live remnants."
 
   (defun nskk--server-prolog-state-snapshot ()
   "Snapshot only the Prolog storage entries for server-state/1."
-  (let* ((key (nskk--prolog-clause-key 'server-state 1))
+  (let* ((key (nskk-prolog-clause-key 'server-state 1))
          (missing (make-symbol "missing")))
     (vector missing
             key
-            (gethash key nskk--prolog-database missing)
-            (gethash key nskk--prolog-database-tails missing)
-            (gethash key nskk--prolog-index-config missing)
-            (gethash key nskk--prolog-hash-indices missing)
-            (gethash key nskk--prolog-trie-indices missing)
-            (gethash key nskk--prolog-index-bucket-tail-cache missing))))
+            (gethash key (nskk-prolog-database) missing)
+            (gethash key (nskk-prolog-database-tails) missing)
+            (gethash key (nskk-prolog-index-config) missing)
+            (gethash key (nskk-prolog-hash-indices) missing)
+            (gethash key (nskk-prolog-trie-indices) missing)
+            (gethash key (nskk-prolog-index-bucket-tail-cache) missing))))
 
   (defun nskk--server-restore-prolog-state (snapshot)
   "Restore the server-state/1 storage entries from SNAPSHOT."
@@ -333,12 +333,12 @@ Kill BUFFER only when OWNED-BUFFER is non-nil, and retain live remnants."
         (inhibit-quit t))
     (dolist (entry
              (list
-              (cons nskk--prolog-database (aref snapshot 2))
-              (cons nskk--prolog-database-tails (aref snapshot 3))
-              (cons nskk--prolog-index-config (aref snapshot 4))
-              (cons nskk--prolog-hash-indices (aref snapshot 5))
-              (cons nskk--prolog-trie-indices (aref snapshot 6))
-              (cons nskk--prolog-index-bucket-tail-cache (aref snapshot 7))))
+              (cons (nskk-prolog-database) (aref snapshot 2))
+              (cons (nskk-prolog-database-tails) (aref snapshot 3))
+              (cons (nskk-prolog-index-config) (aref snapshot 4))
+              (cons (nskk-prolog-hash-indices) (aref snapshot 5))
+              (cons (nskk-prolog-trie-indices) (aref snapshot 6))
+              (cons (nskk-prolog-index-bucket-tail-cache) (aref snapshot 7))))
       (if (eq (cdr entry) missing)
           (remhash key (car entry))
         (puthash key (cdr entry) (car entry))))))

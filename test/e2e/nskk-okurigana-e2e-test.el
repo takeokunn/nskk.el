@@ -390,7 +390,7 @@
 ;;;; Regression Tests: Pending Romaji Discard on Okurigana Trigger
 ;;
 ;; Bug (fixed in nskk-henkan.el lines 733-754): when a pending incomplete
-;; romaji consonant (e.g. "k", "sh") was in nskk--romaji-buffer at the moment
+;; romaji consonant (e.g. "k", "sh") was in nskk-state-romaji-buffer at the moment
 ;; an okurigana trigger (uppercase letter) arrived, the raw consonant was
 ;; inserted into the buffer before the * okurigana marker, producing
 ;; e.g. "▽かk*" instead of "▽か*".
@@ -476,7 +476,7 @@
 ;; even when no kana had been written to the preedit yet.
 ;;
 ;; Fix: normalize-vowel-p now also covers uppercase consonants when
-;; nskk--has-preedit is nil (no kana committed to preedit buffer yet).
+;; nskk-has-preedit is nil (no kana committed to preedit buffer yet).
 ;;
 ;; Input sequence for T-E3 (XH in standard mode):
 ;;   X   → starts henkan (▽), romaji buffer = "x" (pending incomplete), no kana
@@ -1408,7 +1408,7 @@
     ;; When nskk-start-conversion/k is called and the SPC okurigana path fires
     ;; (pending okurigana detected), the on-found continuation must be called
     ;; so the caller knows conversion succeeded.  Currently the okuri branch
-    ;; in nskk-start-conversion/k calls nskk--trigger-okuri-conversion as a
+    ;; in nskk-start-conversion/k calls nskk-trigger-okuri-conversion as a
     ;; side effect but never invokes on-found.
     (let ((dict '(("かk" . ("書" "掛"))))
           (on-found-called nil))

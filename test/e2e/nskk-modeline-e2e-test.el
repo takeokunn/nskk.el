@@ -215,7 +215,7 @@
       (dolist (dmode '(ascii latin))
         (nskk-e2e-with-buffer jmode nil
           (let ((jp-indicator (nskk-modeline-indicator)))
-            (nskk--set-mode dmode)
+            (nskk-set-mode dmode)
             (nskk-modeline-update)
             (should (not (equal jp-indicator (nskk-modeline-indicator))))))))))
 
