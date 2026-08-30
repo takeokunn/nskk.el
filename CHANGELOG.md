@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - Unreleased
+
+### Added
+
+- Added a public accessor API (getter/setter function pairs) for
+  previously private cross-module state in the Prolog engine, buffer-local
+  editing state, converter/AZIK rule state, dictionary indices, search
+  caches, show-mode overlays, and the henkan/input/keymap subsystem,
+  replacing direct cross-module access to private `nskk--*` symbols
+  throughout the source tree.
+- Added `nskk-prolog-state-variables`, `nskk-dict-index-variables`, and
+  matching reflection constants so generic snapshot/restore and test
+  machinery can enumerate tracked state without naming private symbols.
+- Added `nskk-dict-transaction.el`, extracting the dictionary's
+  transactional load/save/rollback machinery into its own module.
+
+### Changed
+
+- Eliminated cross-module references to private (`nskk--*`) symbols across
+  the source tree, unifying state ownership behind the new accessor API
+  and a Prolog-fact registration protocol (module-initialized flags,
+  clearable-input variables, presentation actions) in place of hardcoded
+  cross-module knowledge. Internal architecture only; no existing public
+  API was renamed or removed.
+- Decomposed `nskk--init-azik-rules` by extracting its flat AZIK rule-data
+  tables into a dedicated function; other long functions were reviewed and
+  left intact where splitting would relocate, not reduce, shared
+  transactional or CPS-macro-sensitive state.
+
+### Fixed
+
+- Fixed a state-snapshot ordering bug in the tutorial dictionary-state
+  guard where a Prolog fact query's side effect on the internal Prolog
+  variable counter could be captured as part of the snapshot it was
+  supposed to precede.
+
+### Removed
+
+- Removed a dead, zero-caller private helper
+  (`nskk--converter-copy-prolog-state`) from the converter module.
+
 ## [0.3.0] - 2026-07-26
 
 ### Added
