@@ -75,6 +75,10 @@
 ;; - `nskk-prolog-set-index'        -- configure index strategy (:hash/:trie/:list)
 ;; - `nskk-prolog-trie-prefix-search' -- prefix search via trie index
 ;;
+;; Presentation actions:
+;; - `nskk-prolog-register-presentation-action' -- register an action callback
+;; - `nskk-prolog-presentation-actions'         -- return callbacks for an action
+;;
 ;; Term inspection:
 ;; - `nskk-prolog-variable-p'       -- test for Prolog variable symbol
 ;; - `nskk-prolog-ground-p'         -- test for ground (variable-free) term
@@ -121,6 +125,15 @@
 (require 'cl-lib)
 (eval-when-compile (require 'nskk-cps-macros))
 (require 'nskk-trie)
+
+(defvar nskk--presentation-action-table-initialized nil
+  "Non-nil when the `presentation-action/2' table is initialized.")
+
+(defvar nskk--presentation-actions nil
+  "Registered presentation actions retained across database resets.")
+
+(defvar nskk--presentation-action-cache nil
+  "Cached presentation actions grouped by action in registration order.")
 
 ;;;; Variable Representation
 
@@ -1448,6 +1461,7 @@ mappings are restored; the replacement index is staged before publication."
   (clrhash nskk--prolog-hash-indices)
   (clrhash nskk--prolog-trie-indices)
   (clrhash nskk--prolog-index-bucket-tail-cache)
+  (setq nskk--presentation-action-table-initialized nil)
   (setq nskk--prolog-var-counter 0))
 
 ;;;; Query API
@@ -1711,6 +1725,45 @@ ambiguity: ground queries return (nil) on success vs nil on failure."
   (declare (indent 1) (debug t))
   `(when (nskk-prolog-query ,query)
      ,@body))
+
+(defun nskk--prolog-ensure-presentation-actions ()
+  (unless nskk--presentation-action-table-initialized
+    (nskk-prolog-set-index 'presentation-action 2 :list)
+    (dolist (registration nskk--presentation-actions)
+      (nskk-prolog-assert
+       (list (list 'presentation-action
+                    (car registration)
+                    (cdr registration)))))
+    (setq nskk--presentation-action-table-initialized t)))
+
+;;;; Presentation Action API
+
+(defun nskk--prolog-presentation-action-cache-add (action callback)
+  "Add CALLBACK to the cached callbacks for ACTION."
+  (let ((entry (assq action nskk--presentation-action-cache)))
+    (if entry
+        (setcdr entry (append (cdr entry) (list callback)))
+      (setq nskk--presentation-action-cache
+            (append nskk--presentation-action-cache
+                    (list (cons action (list callback))))))))
+
+(defun nskk-prolog-register-presentation-action (action callback)
+  "Register CALLBACK for presentation ACTION.
+ACTION and CALLBACK are symbols stored as a `presentation-action/2' fact."
+  (unless (member (cons action callback) nskk--presentation-actions)
+    (setq nskk--presentation-actions
+          (append nskk--presentation-actions (list (cons action callback))))
+    (nskk--prolog-presentation-action-cache-add action callback)
+    (if nskk--presentation-action-table-initialized
+        (nskk-prolog-assert
+         (list (list 'presentation-action action callback)))
+      (nskk--prolog-ensure-presentation-actions))))
+
+(defun nskk-prolog-presentation-actions (action)
+  "Return callbacks registered for presentation ACTION in registration order.
+Duplicate registrations are collapsed so each callback is returned once."
+  (nskk--prolog-ensure-presentation-actions)
+  (copy-sequence (cdr (assq action nskk--presentation-action-cache))))
 
 (provide 'nskk-prolog)
 

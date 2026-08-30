@@ -57,6 +57,7 @@
 ;;
 ;; External Prolog tables queried by this module:
 ;;   clearable-input-var/1       -- defined in nskk-input.el; input state vars cleared on reset
+;;   presentation-action/2       -- callbacks registered by presentation modules
 ;;
 ;; Key macros:
 ;;   `nskk-without-modification'      -- inhibit undo/modification hooks in body
@@ -760,7 +761,7 @@ leaking into the next preedit context."
 (defun nskk--clear-conversion-context ()
   "Clear all conversion and input context for mode switching or mode disable.
 Called by `nskk--disable' (mode teardown) and mode-switch commands.
-Clears: conversion overlay, candidate list display, inline overlay (if
+Clears: conversion overlay, candidate list display, presentation state (if
 present), conversion-start-marker, romaji-buffer, dynamic completion
 state (dcomp-candidates, dcomp-prefix, dcomp-index, dcomp-multiple-overlay),
 all AZIK/sticky/numeric input state variables via the `clearable-input-var/1'
@@ -782,9 +783,8 @@ unchanged.  Does not reset the input mode."
       (run-cleanup (lambda ()
                      (nskk-delete-overlay nskk--conversion-overlay)))
       (run-cleanup #'nskk--dismiss-candidate-list)
-      (run-cleanup (lambda ()
-                     (when (fboundp 'nskk-inline-hide)
-                       (nskk-inline-hide))))
+      (dolist (callback (nskk-prolog-presentation-actions 'cleanup))
+        (run-cleanup (lambda () (when (fboundp callback) (funcall callback)))))
       (run-cleanup
        (lambda ()
          (nskk-when-bound-and nskk--conversion-start-marker markerp
@@ -800,6 +800,8 @@ unchanged.  Does not reset the input mode."
                nskk--dcomp-index 0)))
       (run-cleanup (lambda ()
                      (nskk-delete-overlay nskk--dcomp-multiple-overlay)))
+      (dolist (callback (nskk-prolog-presentation-actions 'finalize))
+        (run-cleanup (lambda () (when (fboundp callback) (funcall callback)))))
       (run-cleanup
        (lambda ()
          (setq clearable-input-vars
@@ -823,15 +825,6 @@ unchanged.  Does not reset the input mode."
                      (nskk-delete-overlay nskk--pending-romaji-overlay)))
       (run-cleanup (lambda ()
                      (nskk-delete-overlay nskk--dcomp-multiple-overlay)))
-      (run-cleanup
-       (lambda ()
-         (when (boundp 'nskk--inline-overlay)
-           (let ((overlay (symbol-value 'nskk--inline-overlay)))
-             (if (overlayp overlay)
-                 (unwind-protect
-                     (delete-overlay overlay)
-                   (set 'nskk--inline-overlay nil))
-               (set 'nskk--inline-overlay nil))))))
       (run-cleanup
        (lambda ()
          (nskk-when-bound-and nskk--conversion-start-marker markerp
@@ -1305,7 +1298,7 @@ of the preedit reading text so that `nskk--has-preedit' returns t."
 (defun/k nskk-next-candidate ()
   "Select next conversion candidate.
 For the first N-1 candidates (N = `nskk-henkan-show-candidates-nth'),
-show candidates inline one-by-one with the ▼ overlay.  On the Nth press,
+show candidates one-by-one with the ▼ overlay.  On the Nth press,
 switch to overlay candidate list display below the conversion region.
 Uses Prolog `candidate-nav-next-action/3' to dispatch the navigation mode."
   :interactive t
@@ -1334,7 +1327,8 @@ Uses Prolog `candidate-nav-next-action/3' to dispatch the navigation mode."
 (defun/k nskk-previous-candidate ()
   "Select previous conversion candidate.
 In candidate list display mode, shows the previous page.
-In inline mode, decrements the counter and shows the previous candidate.
+In single-candidate mode, decrements the counter and shows the previous
+candidate.
 Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
   :interactive t
   (nskk-debug-log "[HENKAN] prev-candidate: direction=prev")
@@ -1376,7 +1370,7 @@ the buffer.  For okurigana conversions the kana suffix (e.g. \"く\" in
 in place and will immediately follow the inserted candidate."
   :interactive t
   (nskk-debug-log "[HENKAN] commit-current")
-  ;; Inline nskk-with-conversion-context + nskk-with-current-state so the
+  ;; Use nskk-with-conversion-context + nskk-with-current-state so the
   ;; defun/k CPS transformer can see and transform (succeed) directly.
   ;; Project macros are not reliably visible to macroexpand in the CPS
   ;; transformer during byte-compilation.
@@ -1536,9 +1530,8 @@ where `nskk-current-state' is guaranteed valid."
                           (point))))
         (setf (nskk-state-current-index nskk-current-state) new-index)
         (nskk--update-overlay text-start end candidate)
-        ;; Show inline candidate if configured
-        (when (fboundp 'nskk-inline-show-candidate)
-          (nskk-inline-show-candidate candidate))))))
+        (dolist (callback (nskk-prolog-presentation-actions 'show-candidate))
+          (when (fboundp callback) (funcall callback candidate)))))))
 
 (defun nskk--show-candidate-list-next ()
   "Show next page of candidates in overlay list below the conversion region.
@@ -2027,8 +2020,9 @@ when a cleanup callback mutates state before signaling.  Delegates input to
         (cl-incf nskk--registration-depth)
         (condition-case condition
             (progn
-              (when (fboundp 'nskk-inline-show-registration-badge)
-                (nskk-inline-show-registration-badge))
+              (dolist (callback (nskk-prolog-presentation-actions
+                                 'show-registration-badge))
+                (when (fboundp callback) (funcall callback)))
               (let ((entry (nskk--read-registration-entry reading)))
                 (when entry
                   (setq result entry)
@@ -2046,8 +2040,13 @@ when a cleanup callback mutates state before signaling.  Delegates input to
             (run-cleanup (lambda ()
                            (cl-decf nskk--registration-depth)))
             (run-cleanup (lambda ()
-                           (when (fboundp 'nskk-inline-hide)
-                             (nskk-inline-hide))))
+                           (dolist (callback (nskk-prolog-presentation-actions
+                                              'cleanup))
+                             (when (fboundp callback) (funcall callback)))))
+            (run-cleanup (lambda ()
+                           (dolist (callback (nskk-prolog-presentation-actions
+                                              'finalize))
+                             (when (fboundp callback) (funcall callback)))))
             (run-cleanup
              (lambda ()
                (nskk-with-current-state
@@ -2057,17 +2056,9 @@ when a cleanup callback mutates state before signaling.  Delegates input to
             ;; Re-assert the session invariants without invoking them again.
             (run-cleanup (lambda ()
                            (setq nskk--registration-depth prev-depth)))
-            (run-cleanup
-             (lambda ()
-               (when (boundp 'nskk--inline-overlay)
-                 (let ((overlay (symbol-value 'nskk--inline-overlay)))
-                   (if (overlayp overlay)
-                       (unwind-protect
-                           (delete-overlay overlay)
-                         (set 'nskk--inline-overlay nil))
-                     (set 'nskk--inline-overlay nil))))))
-            (run-cleanup (lambda ()
-                           (setf (nskk-state-henkan-phase state) prev-phase)))))
+             (run-cleanup
+              (lambda ()
+                (setf (nskk-state-henkan-phase state) prev-phase)))))
         (when first-condition
           (signal (car first-condition) (cdr first-condition)))
         (funcall on-found result))
@@ -2212,7 +2203,7 @@ Returns a multi-line string starting with \\n."
      "\n")))
 
 (defun nskk--dcomp-multiple-show (candidates selected-index prefix)
-  "Display dcomp multiple candidate list inline below preedit.
+  "Display dcomp multiple candidate list below preedit.
 CANDIDATES is the full list; SELECTED-INDEX is current selection; PREFIX
 is the original preedit prefix for display styling."
   (when (and (boundp 'nskk-dcomp-multiple-activate)
@@ -2234,7 +2225,7 @@ for dict keys that start with the current reading and replaces
 the preedit with the first match.  Subsequent calls cycle through
 all matches.
 When `nskk-dcomp-multiple-activate' is non-nil, also displays all
-matching candidates inline below the preedit text."
+matching candidates below the preedit text."
   (let ((preedit (nskk-preedit-string)))
     (when (and preedit (not (string-empty-p preedit)))
       (cond
@@ -2413,7 +2404,7 @@ Idempotent: subsequent calls are no-ops."
       (mapcar (lambda (c) (list c (downcase c))) (number-sequence ?A ?Z)))
 
     ;; Vowel okurigana chars: immediately convertible without a following character.
-    ;; Separating this as a fact table (data) rather than an inline memq (logic)
+    ;; Separating this as a fact table (data) rather than a local memq (logic)
     ;; allows Prolog-level composition with okurigana-char rules.
     (nskk-prolog-define-fact-table vowel-okurigana-char (:arity 1 :index :hash)
       (?a) (?i) (?u) (?e) (?o))
