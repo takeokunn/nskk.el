@@ -154,20 +154,20 @@
 
   (nskk-it "clears pending romaji buffer in hiragana and stays in hiragana"
     (nskk-with-test-buffer 'hiragana
-      (nskk-given (setq nskk--romaji-buffer "k"))
+      (nskk-given (nskk-state-set-romaji-buffer "k"))
       (nskk-when  (nskk-kakutei))
       (nskk-then
-       (should (string= nskk--romaji-buffer ""))
+       (should (string= (nskk-state-romaji-buffer) ""))
        (nskk-should-mode 'hiragana))))
 
   (nskk-it "clears pending romaji buffer in katakana and stays in katakana"
     ;; romaji-pending has higher priority than katakana-idle in the state classifier,
     ;; so C-j with pending romaji does NOT switch mode to hiragana.
     (nskk-with-test-buffer 'katakana
-      (nskk-given (setq nskk--romaji-buffer "k"))
+      (nskk-given (nskk-state-set-romaji-buffer "k"))
       (nskk-when  (nskk-kakutei))
       (nskk-then
-       (should (string= nskk--romaji-buffer ""))
+       (should (string= (nskk-state-romaji-buffer) ""))
        (nskk-should-mode 'katakana))))
 
   (nskk-it "commits current candidate when in converting state"
@@ -180,8 +180,8 @@
   (nskk-it "commits preedit text when in preedit state"
     (nskk-with-test-buffer 'hiragana
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1))
                         (nskk-henkan-kakutei (lambda () (insert "変換"))))
         (nskk-kakutei)
         (nskk-should-buffer "変換")))))
@@ -385,15 +385,15 @@
       (insert "▼かんじ!!")   ; positions: 1=▼, 2=か, 3=ん, 4=じ, 5=!, 6=!, 7=(eob)
       (let ((nskk-mode t)
             (nskk-current-state (nskk-state-create 'hiragana))
-            (commit-called nil)
-            (nskk--conversion-overlay (make-overlay 1 5)))
+            (commit-called nil))
+        (nskk-state-set-conversion-overlay (make-overlay 1 5))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (nskk--set-conversion-start-marker 1)
+        (nskk-set-conversion-start-marker 1)
         (goto-char 6)  ; point > overlay-end(5)
         (nskk-with-mocks ((nskk-commit-current (lambda () (setq commit-called t)))
                           (nskk-modeline-update (lambda () nil)))
           (nskk--post-command-handler))
-        (delete-overlay nskk--conversion-overlay)
+        (delete-overlay (nskk-state-conversion-overlay))
         (should commit-called))))
 
   (nskk-it "commits when point moves inside the overlay (between conv-start and overlay-end)"
@@ -401,15 +401,15 @@
       (insert "▼かんじ")   ; overlay will span [1, 5]
       (let ((nskk-mode t)
             (nskk-current-state (nskk-state-create 'hiragana))
-            (commit-called nil)
-            (nskk--conversion-overlay (make-overlay 1 5)))
+            (commit-called nil))
+        (nskk-state-set-conversion-overlay (make-overlay 1 5))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (nskk--set-conversion-start-marker 1)
+        (nskk-set-conversion-start-marker 1)
         (goto-char 3)  ; inside overlay [1,5], not at overlay-end
         (nskk-with-mocks ((nskk-commit-current (lambda () (setq commit-called t)))
                           (nskk-modeline-update (lambda () nil)))
           (nskk--post-command-handler))
-        (delete-overlay nskk--conversion-overlay)
+        (delete-overlay (nskk-state-conversion-overlay))
         (should commit-called))))
 
   (nskk-it "does not commit when point is exactly at overlay-end"
@@ -417,15 +417,15 @@
       (insert "▼かんじ")   ; overlay will span [1, 5]
       (let ((nskk-mode t)
             (nskk-current-state (nskk-state-create 'hiragana))
-            (commit-called nil)
-            (nskk--conversion-overlay (make-overlay 1 5)))
+            (commit-called nil))
+        (nskk-state-set-conversion-overlay (make-overlay 1 5))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (nskk--set-conversion-start-marker 1)
+        (nskk-set-conversion-start-marker 1)
         (goto-char 5)  ; exactly at overlay-end
         (nskk-with-mocks ((nskk-commit-current (lambda () (setq commit-called t)))
                           (nskk-modeline-update (lambda () nil)))
           (nskk--post-command-handler))
-        (delete-overlay nskk--conversion-overlay)
+        (delete-overlay (nskk-state-conversion-overlay))
         (should-not commit-called)))))
 
 (nskk-describe "nskk--enable cursor rollback"
@@ -536,11 +536,11 @@
                    (lambda (_) "gold"))
                   ((symbol-function (quote nskk--other-nskk-buffers-active-p))
                    (lambda (&optional _) nil))
-                  ((symbol-function (quote nskk--clear-conversion-context))
+                  ((symbol-function (quote nskk-clear-conversion-context))
                    (function ignore))
                   ((symbol-function (quote nskk--cleanup-buffer))
                    (function ignore))
-                  ((symbol-function (quote nskk--show-mode-hide))
+                  ((symbol-function (quote nskk-show-mode-hide))
                    (function ignore))
                   ((symbol-function (quote nskk--release-candidate-resources))
                    (function ignore)))
@@ -573,9 +573,9 @@
               (lambda () (cl-incf observer-calls)))
     (with-temp-buffer
       (nskk-mode 1)
-      (setq nskk--show-mode-overlay (make-overlay (point) (point))
-            nskk--show-mode-timer (run-with-timer 60 nil #'ignore))
-      (let ((timer nskk--show-mode-timer))
+      (nskk-show-mode-set-overlay (make-overlay (point) (point)))
+      (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
+      (let ((timer (nskk-show-mode-timer)))
         (add-hook
          'nskk-mode-off-hook
          (lambda ()
@@ -589,8 +589,8 @@
         (should (= observer-calls 1))
         (should-not nskk-mode)
         (should-not nskk-current-state)
-        (should-not nskk--show-mode-overlay)
-        (should-not nskk--show-mode-timer)
+        (should-not (nskk-show-mode-overlay))
+        (should-not (nskk-show-mode-timer))
         (should-not (memq timer timer-list))
         (should-not (memq #'nskk--pre-command-handler pre-command-hook))
         (should-not (memq #'nskk--post-command-handler post-command-hook))
@@ -607,7 +607,7 @@
        (lambda () (signal 'error '(later-hook-payload)))
        nil
        t)
-      (cl-letf (((symbol-function 'nskk--clear-conversion-context)
+      (cl-letf (((symbol-function 'nskk-clear-conversion-context)
                  (lambda ()
                    (signal 'nskk-test-teardown-error '(earlier-payload)))))
         (should
@@ -629,13 +629,13 @@
   (with-temp-buffer
     (let ((buffer (current-buffer)))
       (nskk-mode 1)
-      (setq nskk--show-mode-overlay (make-overlay (point) (point))
-            nskk--show-mode-timer (run-with-timer 60 nil #'ignore))
-      (let ((timer nskk--show-mode-timer))
+      (nskk-show-mode-set-overlay (make-overlay (point) (point)))
+      (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
+      (let ((timer (nskk-show-mode-timer)))
         (fundamental-mode)
         (should-not nskk-current-state)
-        (should-not nskk--show-mode-overlay)
-        (should-not nskk--show-mode-timer)
+        (should-not (nskk-show-mode-overlay))
+        (should-not (nskk-show-mode-timer))
         (should-not (memq timer timer-list))
         (should-not (memq buffer nskk--active-buffers)))))))
 
@@ -666,9 +666,9 @@
               (lambda () (cl-incf observer-calls)))
     (with-temp-buffer
       (nskk-mode 1)
-      (setq nskk--show-mode-overlay (make-overlay (point) (point))
-            nskk--show-mode-timer (run-with-timer 60 nil #'ignore))
-      (let ((timer nskk--show-mode-timer)
+      (nskk-show-mode-set-overlay (make-overlay (point) (point)))
+      (nskk-show-mode-set-timer (run-with-timer 60 nil #'ignore))
+      (let ((timer (nskk-show-mode-timer))
             condition-data)
         (add-hook
          'nskk-mode-off-hook
@@ -685,8 +685,8 @@
         (should (= observer-calls 1))
         (should-not nskk-mode)
         (should-not nskk-current-state)
-        (should-not nskk--show-mode-overlay)
-        (should-not nskk--show-mode-timer)
+        (should-not (nskk-show-mode-overlay))
+        (should-not (nskk-show-mode-timer))
         (should-not (memq timer timer-list))
         (should-not (memq #'nskk--pre-command-handler pre-command-hook))
         (should-not (memq #'nskk--post-command-handler post-command-hook))
@@ -767,7 +767,7 @@
              (nskk-input-initialize (t nil nil))
              (nskk--acquire-candidate-resources (t nil t))
              (nskk-isearch-setup (t t nil))
-             (nskk--maybe-load-azik-style (t t t))))
+             (nskk-maybe-load-azik-style (t t t))))
           (case-count 0))
       (unwind-protect
           (dolist (initial-mode-value '(nil t))
@@ -873,7 +873,7 @@
                               (eq (and (memq 'nskk-mode local-minor-modes) t)
                                   initial-minor-membership))
                              (should
-                              (equal (nskk--isearch-resource-state)
+                              (equal (nskk-isearch-resource-state)
                                      resource-state))
                              (should
                               (equal (nskk--isearch-ownership-state)
@@ -885,7 +885,7 @@
                              (nskk-mode 1)
                              (should nskk-mode)
                              (should
-                              (equal (nskk--isearch-resource-state)
+                              (equal (nskk-isearch-resource-state)
                                      '(t t t)))
                              (should
                               (equal

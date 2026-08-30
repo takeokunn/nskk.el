@@ -89,14 +89,14 @@ most constraining condition: in those states the set of meaningful next
 inputs is very different from the base phase they are overlaid upon."
   (let* ((phase (and (bound-and-true-p nskk-current-state)
                      (nskk-state-henkan-phase nskk-current-state)))
-         (has-azik-def   (and (boundp 'nskk--deferred-azik-state)
-                              nskk--deferred-azik-state))
-         (has-vs-def     (and (boundp 'nskk--deferred-vowel-shadow-state)
-                              nskk--deferred-vowel-shadow-state))
-         (has-colon-pend (and (boundp 'nskk--azik-colon-okuri-pending)
-                              nskk--azik-colon-okuri-pending))
-         (has-colon-def  (and (boundp 'nskk--azik-colon-okuri-deferred)
-                              nskk--azik-colon-okuri-deferred)))
+         (has-azik-def   (and (fboundp 'nskk-deferred-azik-state)
+                              (nskk-deferred-azik-state)))
+         (has-vs-def     (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                              (nskk-deferred-vowel-shadow-state)))
+         (has-colon-pend (and (fboundp 'nskk-azik-colon-okuri-pending)
+                              (nskk-azik-colon-okuri-pending)))
+         (has-colon-def  (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                              (nskk-azik-colon-okuri-deferred))))
     (cond
      ;; Deferred overlay states take priority over the base phase.
      (has-azik-def   'azik-deferred)
@@ -214,7 +214,7 @@ Optional LAST-EVENT is the string event just dispatched.  When provided,
 event-specific invariants are also checked:
   I6 – After \"C-g\", nskk--deferred-azik-state and
        nskk--deferred-vowel-shadow-state must both be nil.
-  I7 – After \";\" or \":\", nskk--romaji-buffer must be empty.
+  I7 – After \";\" or \":\", nskk-state-romaji-buffer must be empty.
 
 Invariants always checked:
   I1 – (nskk-current-mode) is one of the six valid NSKK modes.
@@ -246,22 +246,22 @@ Invariants always checked:
 
     ;; I2: at most one deferred state variable may be non-nil at once.
     (let ((deferred-count
-           (+ (if (and (boundp 'nskk--deferred-azik-state)
-                       nskk--deferred-azik-state) 1 0)
-              (if (and (boundp 'nskk--deferred-vowel-shadow-state)
-                       nskk--deferred-vowel-shadow-state) 1 0)
-              (if (and (boundp 'nskk--azik-colon-okuri-deferred)
-                       nskk--azik-colon-okuri-deferred) 1 0))))
+           (+ (if (and (fboundp 'nskk-deferred-azik-state)
+                       (nskk-deferred-azik-state)) 1 0)
+              (if (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                       (nskk-deferred-vowel-shadow-state)) 1 0)
+              (if (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                       (nskk-azik-colon-okuri-deferred)) 1 0))))
       (when (> deferred-count 1)
         (push (format "I2: %d deferred state vars non-nil simultaneously \
 (azik=%S vs=%S colon=%S)"
                       deferred-count
-                      (and (boundp 'nskk--deferred-azik-state)
-                           nskk--deferred-azik-state)
-                      (and (boundp 'nskk--deferred-vowel-shadow-state)
-                           nskk--deferred-vowel-shadow-state)
-                      (and (boundp 'nskk--azik-colon-okuri-deferred)
-                           nskk--azik-colon-okuri-deferred))
+                      (and (fboundp 'nskk-deferred-azik-state)
+                           (nskk-deferred-azik-state))
+                      (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                           (nskk-deferred-vowel-shadow-state))
+                      (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                           (nskk-azik-colon-okuri-deferred)))
               violations)))
 
     ;; I4: when phase is nil (idle), buffer must not contain ▽ or ▼.
@@ -274,12 +274,12 @@ Invariants always checked:
 
     ;; I6: after C-g, DA and DV deferred state must be nil.
     ;; nskk-cancel-preedit and nskk-rollback-conversion both call
-    ;; nskk--clear-azik-pending-state, which clears these variables.
+    ;; nskk-clear-azik-pending-state, which clears these variables.
     (when (equal last-event "C-g")
-      (let ((da (and (boundp 'nskk--deferred-azik-state)
-                     nskk--deferred-azik-state))
-            (dv (and (boundp 'nskk--deferred-vowel-shadow-state)
-                     nskk--deferred-vowel-shadow-state)))
+      (let ((da (and (fboundp 'nskk-deferred-azik-state)
+                     (nskk-deferred-azik-state)))
+            (dv (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                     (nskk-deferred-vowel-shadow-state))))
         (when da
           (push (format "I6: nskk--deferred-azik-state non-nil after C-g: %S" da)
                 violations))
@@ -290,10 +290,9 @@ Invariants always checked:
     ;; I7: after ";" or ":", romaji buffer must be empty.
     ;; Both are single-char complete AZIK rules that consume the entire buffer.
     (when (and (member last-event '(";" ":"))
-               (boundp 'nskk--romaji-buffer)
-               (not (string-empty-p nskk--romaji-buffer)))
+               (not (string-empty-p (nskk-state-romaji-buffer))))
       (push (format "I7: non-empty romaji buffer after %S: %S"
-                    last-event nskk--romaji-buffer)
+                    last-event (nskk-state-romaji-buffer))
             violations))
 
     (nreverse violations)))
@@ -400,13 +399,13 @@ regardless of the AZIK deferred state overlays."
           (condition-case nil
               (nskk-e2e--dispatch-event 7)  ; second C-g
             (error nil) (quit nil))
-          ;; DA/DV are cleared by C-g via `nskk--clear-azik-pending-state'
+          ;; DA/DV are cleared by C-g via `nskk-clear-azik-pending-state'
           ;; (FR-001 fix) when preedit is active.  This setq guards the
           ;; idle-C-g case where no cancel-preedit fires.
-          (when (boundp 'nskk--deferred-azik-state)
-            (setq nskk--deferred-azik-state nil))
-          (when (boundp 'nskk--deferred-vowel-shadow-state)
-            (setq nskk--deferred-vowel-shadow-state nil))
+          (when (fboundp 'nskk-deferred-azik-state)
+            (nskk-set-deferred-azik-state nil))
+          (when (fboundp 'nskk-deferred-vowel-shadow-state)
+            (nskk-set-deferred-vowel-shadow-state nil))
           ;; Assert idle: phase nil, no colon-okurigana flags.
           (let* ((phase (and (bound-and-true-p nskk-current-state)
                              (nskk-state-henkan-phase nskk-current-state)))
@@ -455,14 +454,14 @@ internal state — the operation is idempotent on the state machine."
         (let* ((abs-before (nskk--mbt-observe-state))
                (phase-before (and (bound-and-true-p nskk-current-state)
                                   (nskk-state-henkan-phase nskk-current-state)))
-               (azik-def-before  (and (boundp 'nskk--deferred-azik-state)
-                                      nskk--deferred-azik-state))
-               (vs-def-before    (and (boundp 'nskk--deferred-vowel-shadow-state)
-                                      nskk--deferred-vowel-shadow-state))
-               (colon-pend-before (and (boundp 'nskk--azik-colon-okuri-pending)
-                                       nskk--azik-colon-okuri-pending))
-               (colon-def-before  (and (boundp 'nskk--azik-colon-okuri-deferred)
-                                       nskk--azik-colon-okuri-deferred)))
+               (azik-def-before  (and (fboundp 'nskk-deferred-azik-state)
+                                      (nskk-deferred-azik-state)))
+               (vs-def-before    (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                                      (nskk-deferred-vowel-shadow-state)))
+               (colon-pend-before (and (fboundp 'nskk-azik-colon-okuri-pending)
+                                       (nskk-azik-colon-okuri-pending)))
+               (colon-def-before  (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                                       (nskk-azik-colon-okuri-deferred))))
           ;; Only check if we actually started in idle.
           (when (eq abs-before 'idle)
             ;; Dispatch C-g: expected to signal keyboard-quit; absorb.
@@ -472,14 +471,14 @@ internal state — the operation is idempotent on the state machine."
             (let* ((abs-after  (nskk--mbt-observe-state))
                    (phase-after (and (bound-and-true-p nskk-current-state)
                                      (nskk-state-henkan-phase nskk-current-state)))
-                   (azik-def-after   (and (boundp 'nskk--deferred-azik-state)
-                                          nskk--deferred-azik-state))
-                   (vs-def-after     (and (boundp 'nskk--deferred-vowel-shadow-state)
-                                          nskk--deferred-vowel-shadow-state))
-                   (colon-pend-after  (and (boundp 'nskk--azik-colon-okuri-pending)
-                                           nskk--azik-colon-okuri-pending))
-                   (colon-def-after   (and (boundp 'nskk--azik-colon-okuri-deferred)
-                                           nskk--azik-colon-okuri-deferred)))
+                   (azik-def-after   (and (fboundp 'nskk-deferred-azik-state)
+                                          (nskk-deferred-azik-state)))
+                   (vs-def-after     (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                                          (nskk-deferred-vowel-shadow-state)))
+                   (colon-pend-after  (and (fboundp 'nskk-azik-colon-okuri-pending)
+                                           (nskk-azik-colon-okuri-pending)))
+                   (colon-def-after   (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                                           (nskk-azik-colon-okuri-deferred))))
               (when (or (not (eq abs-after 'idle))
                         (not (eq phase-after phase-before))
                         (not (equal azik-def-after   azik-def-before))
@@ -538,12 +537,12 @@ state-arms might fire in the same handler call."
                   (nskk--azik-chaos--dispatch-keys event)
                 (error nil) (quit nil))
               ;; Check I2: deferred exclusivity.
-              (let* ((azik-def   (and (boundp 'nskk--deferred-azik-state)
-                                      nskk--deferred-azik-state))
-                     (vs-def     (and (boundp 'nskk--deferred-vowel-shadow-state)
-                                      nskk--deferred-vowel-shadow-state))
-                     (colon-def  (and (boundp 'nskk--azik-colon-okuri-deferred)
-                                      nskk--azik-colon-okuri-deferred))
+              (let* ((azik-def   (and (fboundp 'nskk-deferred-azik-state)
+                                      (nskk-deferred-azik-state)))
+                     (vs-def     (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                                      (nskk-deferred-vowel-shadow-state)))
+                     (colon-def  (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                                      (nskk-azik-colon-okuri-deferred)))
                      (cnt (+ (if azik-def  1 0)
                              (if vs-def    1 0)
                              (if colon-def 1 0))))
@@ -563,10 +562,10 @@ state-arms might fire in the same handler call."
                   (nskk--azik-chaos--reset-to-idle)))
               ;; Check I6: after C-g, DA and DV must be nil.
               (when (equal event "C-g")
-                (let ((da (and (boundp 'nskk--deferred-azik-state)
-                               nskk--deferred-azik-state))
-                      (dv (and (boundp 'nskk--deferred-vowel-shadow-state)
-                               nskk--deferred-vowel-shadow-state)))
+                (let ((da (and (fboundp 'nskk-deferred-azik-state)
+                               (nskk-deferred-azik-state)))
+                      (dv (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                               (nskk-deferred-vowel-shadow-state))))
                   (when (or da dv)
                     (push (list :run      run
                                 :seed     seed

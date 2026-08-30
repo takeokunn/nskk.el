@@ -229,14 +229,14 @@
                 (should (eq (car caught) 'quit))
                 (should (eq (cadr caught) payload))
                 (should-not nskk--candidate-list-active)
-                (should-not nskk--candidate-overlay)
+                (should-not (nskk-state-candidate-overlay))
                 (should (overlayp saved-overlay))
                 (should-not (overlay-buffer saved-overlay))
                 (run-hook-with-args
                  'nskk-henkan-show-candidates-functions
                  '("candidate-a" "candidate-b") 0)
                 (should (nskk-candidate-list-active-p))
-                (should (overlayp nskk--candidate-overlay)))
+                (should (overlayp (nskk-state-candidate-overlay))))
             (remove-hook 'nskk-henkan-show-candidates-functions
                          #'nskk-candidate-show-list)
             (nskk-candidate-hide-list))))))

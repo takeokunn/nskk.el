@@ -435,7 +435,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
         (nskk-e2e-type "SPC")
         (nskk-e2e-type "SPC"))
       (nskk-then
-        (should nskk--henkan-candidate-list-active))))
+        (should (nskk-henkan-candidate-list-active)))))
 
   (nskk-it "is still in converting state while in list phase"
     ;; nskk-converting-p returns t for all henkan phases including 'list.
@@ -464,7 +464,7 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
           (nskk-e2e-type "SPC")) ; SPC#4: select-next (count=4 < 5)
         (nskk-then
           (nskk-e2e-assert-henkan-phase 'active "Phase must be 'active before SPC x5")
-          (should-not nskk--henkan-candidate-list-active))))))
+          (should-not (nskk-henkan-candidate-list-active)))))))
 
 ;;;;
 ;;;; Key Selection in List Phase
@@ -640,9 +640,9 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-e2e-type "Kanji")
       (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
-      (should nskk--henkan-candidate-list-active)
+      (should (nskk-henkan-candidate-list-active))
       (nskk-e2e-type "C-g")
-      (should-not nskk--henkan-candidate-list-active))))
+      (should-not (nskk-henkan-candidate-list-active)))))
 
 ;;;;
 ;;;; RET in List Phase (Commit Current Candidate)
@@ -773,9 +773,9 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-e2e-type "Kanji")
       (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
-      (should nskk--henkan-candidate-list-active)
+      (should (nskk-henkan-candidate-list-active))
       (nskk-e2e-type "DEL")
-      (should-not nskk--henkan-candidate-list-active))))
+      (should-not (nskk-henkan-candidate-list-active)))))
 
 ;;;;
 ;;;; SPC in List Phase (Next Page)
@@ -848,7 +848,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (nskk-e2e-type "SPC")  ; SPC#5 → list phase
         (nskk-e2e-type "SPC")  ; SPC#6 → exhaust → cancel → candidate-list-active=t
         (nskk-e2e-assert-henkan-phase 'list)
-        (should nskk--henkan-candidate-list-active))))
+        (should (nskk-henkan-candidate-list-active)))))
 
   ;; Strategy B (11-cand dict): SPC#6 goes to page 2 without exhaustion.
   ;; per-page = min(7, 7) = 7; current-index=3 after SPC#5.
@@ -985,10 +985,10 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC")  ; list phase
-      (should nskk--henkan-candidate-list-active)
+      (should (nskk-henkan-candidate-list-active))
       (nskk-e2e-type "x")    ; prev page at page-0
       (nskk-e2e-type "x")    ; again at page-0
-      (should nskk--henkan-candidate-list-active))))
+      (should (nskk-henkan-candidate-list-active)))))
 
 ;;;;
 ;;;; SPC Exhaustion → Registration (and Cancel Wraps Back)
@@ -1066,7 +1066,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-type "SPC")  ; SPC#5 → list
       (nskk-e2e-type "SPC")  ; SPC#6 → exhaust → cancel → active=t
       (nskk-e2e-assert-henkan-phase 'list)
-      (should nskk--henkan-candidate-list-active)))
+      (should (nskk-henkan-candidate-list-active))))
 
   (nskk-it "two successive exhaustion cycles both wrap back to list phase"
     ;; SPC#6 → exhaust → cancel → index=0, list phase.
@@ -1196,11 +1196,11 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-type "g")
       (nskk-e2e-assert-henkan-phase 'on "After 'Kag': should be in ▽ preedit")
       ;; Romaji buffer should contain "g" (pending consonant).
-      (should (equal nskk--romaji-buffer "g"))
+      (should (equal (nskk-state-romaji-buffer) "g"))
       ;; Press BS: should clear pending romaji, NOT delete committed kana.
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "▽か" "DEL with pending romaji: must clear romaji, not delete kana")
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       (nskk-e2e-assert-henkan-phase 'on "After DEL of pending romaji: still in ▽ preedit")))
 
   (nskk-it "deletes committed kana when no pending romaji (existing behavior preserved)"
@@ -1210,7 +1210,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Ka")
       (nskk-e2e-assert-henkan-phase 'on "After 'Ka': should be in ▽ preedit")
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       ;; First DEL: no pending romaji, so delete committed kana か.
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "▽" "1st DEL with no pending romaji: delete committed kana")

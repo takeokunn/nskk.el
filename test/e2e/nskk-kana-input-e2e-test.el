@@ -507,9 +507,9 @@
     ;; BS should clear "k" from romaji buffer and overlay, not delete buffer text.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "k")
-      (should (equal nskk--romaji-buffer "k"))
+      (should (equal (nskk-state-romaji-buffer) "k"))
       (nskk-e2e-type "DEL")
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       (nskk-e2e-assert-buffer "" "DEL with pending romaji: must clear romaji, not delete text")))
 
   (nskk-it "clears pending romaji without deleting committed kana"
@@ -519,9 +519,9 @@
       (nskk-e2e-type "ka")
       (nskk-e2e-assert-buffer "か")
       (nskk-e2e-type "g")
-      (should (equal nskk--romaji-buffer "g"))
+      (should (equal (nskk-state-romaji-buffer) "g"))
       (nskk-e2e-type "DEL")
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       (nskk-e2e-assert-buffer "か" "DEL must clear pending 'g', not delete committed か")))
 
   (nskk-it "truncates multi-char romaji then clears on second BS"
@@ -530,21 +530,21 @@
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "ka")
       (nskk-e2e-type "s")
-      (should (equal nskk--romaji-buffer "s"))
+      (should (equal (nskk-state-romaji-buffer) "s"))
       (nskk-e2e-type "h")
-      (should (equal nskk--romaji-buffer "sh"))
+      (should (equal (nskk-state-romaji-buffer) "sh"))
       (nskk-e2e-type "DEL")
-      (should (equal nskk--romaji-buffer "s"))
+      (should (equal (nskk-state-romaji-buffer) "s"))
       (nskk-e2e-assert-buffer "か" "1st DEL: truncate 'sh' to 's', か remains")
       (nskk-e2e-type "DEL")
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       (nskk-e2e-assert-buffer "か" "2nd DEL: clear 's', か still remains")))
 
   (nskk-it "falls through to delete committed text when no pending state"
     ;; Type "ka" (→ か), no pending romaji.  BS deletes か.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "ka")
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "" "DEL with no pending state: delete committed か")))
 
@@ -553,9 +553,9 @@
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "ka")
       (nskk-e2e-type "k")
-      (should (equal nskk--romaji-buffer "k"))
+      (should (equal (nskk-state-romaji-buffer) "k"))
       (nskk-e2e-type "DEL")
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       (nskk-e2e-assert-buffer "か" "1st DEL: clear pending 'k'")
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "" "2nd DEL: delete committed か"))))

@@ -28,6 +28,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'ert)
 (require 'nskk-input)
 (require 'nskk-state)
@@ -41,19 +42,29 @@
 ;;; Helper Macros
 ;;;
 
+;; `nskk-state-romaji-buffer' et al. are plain getter/setter pairs, not
+;; `setf'-places.  Registering simple setters here (test-file-local; does not
+;; touch nskk-state.el) lets `cl-letf' dynamically bind and restore them the
+;; same way tests used to `let'-bind the underlying `nskk--*' variables
+;; directly, before those variables became private to nskk-state.el.
+(gv-define-simple-setter nskk-state-romaji-buffer nskk-state-set-romaji-buffer)
+(gv-define-simple-setter nskk-state-conversion-start-marker nskk-state-set-conversion-start-marker)
+(gv-define-simple-setter nskk-state-conversion-overlay nskk-state-set-conversion-overlay)
+(gv-define-simple-setter nskk-state-henkan-count nskk-state-set-henkan-count)
+
 ;; NOTE: `nskk-input-test-with-state' is intentionally NOT replaced by the
 ;; framework's `nskk-with-state'.  The framework macro only binds
 ;; `nskk-current-state', whereas input tests additionally need
-;; `nskk--conversion-overlay' reset to nil so that overlay residue from a
+;; `nskk-state-conversion-overlay' reset to nil so that overlay residue from a
 ;; prior test assertion cannot affect the next test.  The two macros are
 ;; therefore NOT equivalent for this file.
 (defmacro nskk-input-test-with-state (initial-mode &rest body)
   "Execute BODY with a fresh state initialized to INITIAL-MODE.
-Also resets `nskk--conversion-overlay' to nil for test isolation."
+Also resets `nskk-state-conversion-overlay' to nil for test isolation."
   (declare (indent 1))
-  `(let ((nskk-current-state (nskk-state-create ,initial-mode))
-         (nskk--conversion-overlay nil))
-     ,@body))
+  `(let ((nskk-current-state (nskk-state-create ,initial-mode)))
+     (cl-letf (((nskk-state-conversion-overlay) nil))
+       ,@body)))
 
 (defmacro nskk-input-test-with-romaji (&rest body)
   "Execute BODY with a fresh romaji buffer and standard romaji and classify tables.
@@ -65,11 +76,11 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 `incomplete' rather than `no-match'."
   (declare (indent 0))
   `(progn
-     (nskk--initialize-romaji-table)
+     (nskk-initialize-romaji-table)
      (nskk--converter-populate-incomplete-markers)
      (nskk-prolog-retract-all 'romaji-classify 3)
      (nskk--init-romaji-classify-rules)
-     (let ((nskk--romaji-buffer ""))
+     (cl-letf (((nskk-state-romaji-buffer) ""))
        ,@body)))
 
 ;;;
@@ -108,32 +119,32 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 (nskk-describe "nskk-convert-input-to-kana behavior"
   (nskk-it "converts a single vowel to hiragana"
-    (let ((nskk--romaji-buffer ""))
+    (cl-letf (((nskk-state-romaji-buffer) ""))
       (let ((result (nskk-convert-input-to-kana ?a)))
         (should (stringp result))
         (should (equal result "あ")))))
 
   (nskk-it "returns empty string for incomplete consonant input"
-    (let ((nskk--romaji-buffer ""))
+    (cl-letf (((nskk-state-romaji-buffer) ""))
       (let ((result (nskk-convert-input-to-kana ?k)))
         (should (stringp result))
         (should (equal result ""))
-        (should (equal nskk--romaji-buffer "k")))))
+        (should (equal (nskk-state-romaji-buffer) "k")))))
 
   (nskk-it "converts consonant + vowel to kana"
-    (let ((nskk--romaji-buffer ""))
+    (cl-letf (((nskk-state-romaji-buffer) ""))
       (nskk-convert-input-to-kana ?k)
       (let ((result (nskk-convert-input-to-kana ?a)))
         (should (stringp result))
         (should (equal result "か"))
-        (should (equal nskk--romaji-buffer "")))))
+        (should (equal (nskk-state-romaji-buffer) "")))))
 
   (nskk-context "all five vowels"
     (nskk-deftest-table input-kana-vowels
       :description "Each vowel converts to its hiragana counterpart"
       :columns (char expected)
       :rows ((?a "あ") (?i "い") (?u "う") (?e "え") (?o "お"))
-      :body (let ((nskk--romaji-buffer ""))
+      :body (cl-letf (((nskk-state-romaji-buffer) ""))
               (should (equal (nskk-convert-input-to-kana char) expected))))))
 
 ;;;
@@ -200,27 +211,27 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   (nskk-it "creates a new overlay when none exists"
     (with-temp-buffer
       (insert "test text")
-      (let ((nskk--conversion-overlay nil))
+      (cl-letf (((nskk-state-conversion-overlay) nil))
         (nskk-given (nskk--update-overlay 1 5 "converted"))
         (nskk-then
-         (should (overlayp nskk--conversion-overlay))
-         (should (equal (overlay-get nskk--conversion-overlay 'display) "converted"))
-         (should (eq (overlay-get nskk--conversion-overlay 'face) 'highlight)))
-        (delete-overlay nskk--conversion-overlay))))
+         (should (overlayp (nskk-state-conversion-overlay)))
+         (should (equal (overlay-get (nskk-state-conversion-overlay) 'display) "converted"))
+         (should (eq (overlay-get (nskk-state-conversion-overlay) 'face) 'highlight)))
+        (delete-overlay (nskk-state-conversion-overlay)))))
 
   (nskk-it "reuses and moves existing overlay"
     (with-temp-buffer
       (insert "test text here")
-      (let ((nskk--conversion-overlay nil))
+      (cl-letf (((nskk-state-conversion-overlay) nil))
         (nskk--update-overlay 1 5 "first")
-        (let ((ov nskk--conversion-overlay))
+        (let ((ov (nskk-state-conversion-overlay)))
           (nskk-given (nskk--update-overlay 6 10 "second"))
           (nskk-then
-           (should (eq nskk--conversion-overlay ov))
-           (should (equal (overlay-get nskk--conversion-overlay 'display) "second"))
-           (should (= (overlay-start nskk--conversion-overlay) 6))
-           (should (= (overlay-end nskk--conversion-overlay) 10))))
-        (delete-overlay nskk--conversion-overlay))))
+           (should (eq (nskk-state-conversion-overlay) ov))
+           (should (equal (overlay-get (nskk-state-conversion-overlay) 'display) "second"))
+           (should (= (overlay-start (nskk-state-conversion-overlay)) 6))
+           (should (= (overlay-end (nskk-state-conversion-overlay)) 10))))
+        (delete-overlay (nskk-state-conversion-overlay)))))
 
 )
 
@@ -276,7 +287,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "test")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -425,11 +436,11 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 (nskk-describe "conversion command guards with uninitialized state"
   (nskk-it "nskk-convert handles nil marker gracefully"
-    (let ((nskk-current-state nil)
-          (nskk--conversion-start-marker nil))
-      (with-temp-buffer
-        (nskk-when (nskk-convert))
-        (nskk-then (should-not (nskk-converting-p))))))
+    (let ((nskk-current-state nil))
+      (cl-letf (((nskk-state-conversion-start-marker) nil))
+        (with-temp-buffer
+          (nskk-when (nskk-convert))
+          (nskk-then (should-not (nskk-converting-p)))))))
 
   (nskk-it "nskk-cancel-conversion handles nil state gracefully"
     (let ((nskk-current-state nil))
@@ -450,9 +461,9 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 ;;;
 
 (nskk-describe "mode queries with nil state"
-  (nskk-it "nskk--set-mode signals user-error when state is nil"
+  (nskk-it "nskk-set-mode signals user-error when state is nil"
     (let ((nskk-current-state nil))
-      (nskk-then (should-error (nskk--set-mode 'hiragana) :type 'user-error))))
+      (nskk-then (should-error (nskk-set-mode 'hiragana) :type 'user-error))))
 
   (nskk-it "nskk-state-get-mode returns nil safely"
     (let ((nskk-current-state nil))
@@ -496,10 +507,10 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
   (nskk-it "mode is unchanged after a no-op conversion attempt"
     (nskk-input-test-with-state 'hiragana
-      (let ((mode-before (nskk-state-mode nskk-current-state))
-            (nskk--conversion-start-marker nil))
-        (with-temp-buffer
-          (nskk-convert))
+      (let ((mode-before (nskk-state-mode nskk-current-state)))
+        (cl-letf (((nskk-state-conversion-start-marker) nil))
+          (with-temp-buffer
+            (nskk-convert)))
         (should (eq (nskk-state-mode nskk-current-state) mode-before))))))
 
 ;;;
@@ -510,14 +521,14 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   (nskk-it "n+consonant sequence (kanji) emits ん before the consonant"
     (nskk-input-test-with-romaji
       (should (equal (nskk-convert-input-to-kana ?k) ""))
-      (should (equal nskk--romaji-buffer "k"))
+      (should (equal (nskk-state-romaji-buffer) "k"))
       (should (equal (nskk-convert-input-to-kana ?a) "か"))
-      (should (equal nskk--romaji-buffer ""))
+      (should (equal (nskk-state-romaji-buffer) ""))
       (should (equal (nskk-convert-input-to-kana ?n) ""))
-      (should (equal nskk--romaji-buffer "n"))
+      (should (equal (nskk-state-romaji-buffer) "n"))
       (let ((result (nskk-convert-input-to-kana ?j)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "j")))
+        (should (equal (nskk-state-romaji-buffer) "j")))
       (should (equal (nskk-convert-input-to-kana ?i) "じ"))))
 
   (nskk-it "nk emits ん and leaves k in buffer"
@@ -525,7 +536,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?k)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "k")))
+        (should (equal (nskk-state-romaji-buffer) "k")))
       (should (equal (nskk-convert-input-to-kana ?a) "か"))))
 
   (nskk-it "n + vowel does NOT trigger n+consonant rule"
@@ -539,7 +550,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?y)))
         (should (equal result ""))
-        (should (equal nskk--romaji-buffer "ny")))))
+        (should (equal (nskk-state-romaji-buffer) "ny")))))
 
   (nskk-it "nn produces ん"
     (nskk-input-test-with-romaji
@@ -559,7 +570,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (should (equal (nskk-convert-input-to-kana ?k) ""))
       (let ((result (nskk-convert-input-to-kana ?k)))
         (should (equal result "っ"))
-        (should (equal nskk--romaji-buffer "k")))
+        (should (equal (nskk-state-romaji-buffer) "k")))
       (should (equal (nskk-convert-input-to-kana ?a) "か"))))
 
   (nskk-it "double vowels do NOT trigger sokuon"
@@ -579,14 +590,14 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?n)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "")))))
+        (should (equal (nskk-state-romaji-buffer) "")))))
 
   (nskk-it "nna converts to んあ (DDSKK-compatible: nn clears buffer)"
     (nskk-input-test-with-romaji
       (nskk-convert-input-to-kana ?n)
       (let ((result1 (nskk-convert-input-to-kana ?n)))
         (should (equal result1 "ん"))
-        (should (equal nskk--romaji-buffer "")))
+        (should (equal (nskk-state-romaji-buffer) "")))
       (let ((result2 (nskk-convert-input-to-kana ?a)))
         (should (equal result2 "あ")))))
 
@@ -595,7 +606,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-convert-input-to-kana ?n)
       (let ((result1 (nskk-convert-input-to-kana ?n)))
         (should (equal result1 "ん"))
-        (should (equal nskk--romaji-buffer "")))
+        (should (equal (nskk-state-romaji-buffer) "")))
       (let ((result2 (nskk-convert-input-to-kana ?i)))
         (should (equal result2 "い")))))
 
@@ -604,10 +615,10 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-convert-input-to-kana ?n)
       (let ((result (nskk-convert-input-to-kana ?n)))
         (should (equal result "ん"))
-        (should (equal nskk--romaji-buffer "")))
+        (should (equal (nskk-state-romaji-buffer) "")))
       (let ((result2 (nskk-convert-input-to-kana ?k)))
         (should (equal result2 ""))
-        (should (equal nskk--romaji-buffer "k")))))
+        (should (equal (nskk-state-romaji-buffer) "k")))))
 
   (nskk-it "nnn: second nn emits ん, third n is pending (DDSKK-compatible)"
     (nskk-input-test-with-romaji
@@ -616,7 +627,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (should (equal result1 "ん")))
       (let ((result2 (nskk-convert-input-to-kana ?n)))
         (should (equal result2 ""))
-        (should (equal nskk--romaji-buffer "n"))))))
+        (should (equal (nskk-state-romaji-buffer) "n"))))))
 
 (nskk-describe "sokuon (っ) doubled-consonant rule"
   (nskk-deftest-table input-sokuon-doubles
@@ -627,7 +638,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
             (nskk-convert-input-to-kana consonant)
             (let ((result (nskk-convert-input-to-kana consonant)))
               (should (equal result "っ"))
-              (should (equal nskk--romaji-buffer (char-to-string consonant))))
+              (should (equal (nskk-state-romaji-buffer) (char-to-string consonant))))
             (should (equal (nskk-convert-input-to-kana vowel) expected-kana)))))
 
 ;;;
@@ -638,7 +649,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   (nskk-it "standalone n stays in buffer as incomplete romaji"
     (nskk-input-test-with-romaji
       (should (equal (nskk-convert-input-to-kana ?n) ""))
-      (should (equal nskk--romaji-buffer "n")))))
+      (should (equal (nskk-state-romaji-buffer) "n")))))
 
 ;;;
 ;;; Conversion Start Marker Tests
@@ -647,76 +658,76 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 (nskk-describe "conversion start marker"
   (nskk-it "is nil by default"
     (with-temp-buffer
-      (should (null nskk--conversion-start-marker))))
+      (should (null (nskk-state-conversion-start-marker)))))
 
   (nskk-it "set-conversion-start-marker creates a marker at the given position"
     (with-temp-buffer
       (insert "hello")
-      (nskk-given (nskk--set-conversion-start-marker 3))
+      (nskk-given (nskk-set-conversion-start-marker 3))
       (nskk-then
-       (should (markerp nskk--conversion-start-marker))
-       (should (= (marker-position nskk--conversion-start-marker) 3)))))
+       (should (markerp (nskk-state-conversion-start-marker)))
+       (should (= (marker-position (nskk-state-conversion-start-marker)) 3)))))
 
   (nskk-it "set-conversion-start-marker reuses the existing marker object"
     (with-temp-buffer
       (insert "hello")
-      (nskk--set-conversion-start-marker 2)
-      (let ((first-marker nskk--conversion-start-marker))
-        (nskk-given (nskk--set-conversion-start-marker 4))
+      (nskk-set-conversion-start-marker 2)
+      (let ((first-marker (nskk-state-conversion-start-marker)))
+        (nskk-given (nskk-set-conversion-start-marker 4))
         (nskk-then
-         (should (eq nskk--conversion-start-marker first-marker))
-         (should (= (marker-position nskk--conversion-start-marker) 4))))))
+         (should (eq (nskk-state-conversion-start-marker) first-marker))
+         (should (= (marker-position (nskk-state-conversion-start-marker)) 4))))))
 
   (nskk-it "clear-conversion-start-marker unsets the marker position"
     (with-temp-buffer
       (insert "hello")
-      (nskk--set-conversion-start-marker 3)
-      (should (marker-position nskk--conversion-start-marker))
+      (nskk-set-conversion-start-marker 3)
+      (should (marker-position (nskk-state-conversion-start-marker)))
       (nskk-given (nskk--clear-conversion-start-marker))
       (nskk-then
-       (should (markerp nskk--conversion-start-marker))
-       (should (null (marker-position nskk--conversion-start-marker))))))
+       (should (markerp (nskk-state-conversion-start-marker)))
+       (should (null (marker-position (nskk-state-conversion-start-marker)))))))
 
   (nskk-it "conversion-start-active-p reflects marker state"
     (with-temp-buffer
       (insert "hello")
-      (should-not (nskk--conversion-start-active-p))
-      (nskk--set-conversion-start-marker 2)
-      (should (nskk--conversion-start-active-p))
+      (should-not (nskk-conversion-start-active-p))
+      (nskk-set-conversion-start-marker 2)
+      (should (nskk-conversion-start-active-p))
       (nskk--clear-conversion-start-marker)
-      (should-not (nskk--conversion-start-active-p))))
+      (should-not (nskk-conversion-start-active-p))))
 
   (nskk-it "get-conversion-start returns marker position"
     (with-temp-buffer
       (insert "hello")
-      (nskk--set-conversion-start-marker 3)
-      (should (= (nskk--get-conversion-start) 3))))
+      (nskk-set-conversion-start-marker 3)
+      (should (= (nskk-get-conversion-start) 3))))
 
   (nskk-it "get-conversion-start returns nil when no marker is set"
     (with-temp-buffer
-      (should (null (nskk--get-conversion-start))))))
+      (should (null (nskk-get-conversion-start))))))
 
 ;;;
 ;;; Has-Preedit Tests with Marker
 ;;;
 
-(nskk-describe "nskk--has-preedit behavior"
+(nskk-describe "nskk-has-preedit behavior"
   (nskk-it "returns non-nil when point is past the marker + marker length"
     (with-temp-buffer
       (insert (concat nskk-henkan-on-marker "hello"))
-      (nskk--set-conversion-start-marker 1)
-      (should (nskk--has-preedit))))
+      (nskk-set-conversion-start-marker 1)
+      (should (nskk-has-preedit))))
 
   (nskk-it "returns nil when point equals marker + marker length (no text after)"
     (with-temp-buffer
       (insert nskk-henkan-on-marker)
-      (nskk--set-conversion-start-marker 1)
-      (should-not (nskk--has-preedit))))
+      (nskk-set-conversion-start-marker 1)
+      (should-not (nskk-has-preedit))))
 
   (nskk-it "returns nil when no marker is set"
     (with-temp-buffer
       (insert "hello")
-      (should-not (nskk--has-preedit)))))
+      (should-not (nskk-has-preedit)))))
 
 ;;;
 ;;; Commit Clears Marker Tests
@@ -727,22 +738,22 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "test")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
         (nskk-when  (nskk-commit-current))
-        (nskk-then  (should-not (nskk--conversion-start-active-p))))))
+        (nskk-then  (should-not (nskk-conversion-start-active-p))))))
 
   (nskk-it "rollback keeps the start marker active (returns to preedit)"
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "test")
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
         (nskk-when  (nskk-rollback-conversion))
-        (nskk-then  (should (nskk--conversion-start-active-p)))))))
+        (nskk-then  (should (nskk-conversion-start-active-p)))))))
 
 ;;;
 ;;; Start Conversion Tests
@@ -761,7 +772,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
                       (nskk-state-force-henkan-phase nskk-current-state 'on)
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert (concat nskk-henkan-on-marker "xyznonexistent"))))
         (nskk-with-mocks ((read-from-minibuffer (lambda (_prompt &rest _args) "")))
           (nskk-when (nskk-start-conversion))
@@ -772,7 +783,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
                       (nskk-state-force-henkan-phase nskk-current-state 'on)
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert (concat nskk-henkan-on-marker "myreading"))))
         (nskk-with-mocks ((read-from-minibuffer (lambda (_prompt &rest _args) "registered-word"))
                           (nskk-dict-register-word (lambda (_reading _word) nil)))
@@ -785,7 +796,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert (concat nskk-henkan-on-marker "test"))
                       (nskk-state-set-henkan-phase nskk-current-state 'on)))
         (nskk-with-mocks ((nskk-core-search/k
@@ -797,11 +808,11 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
            (should (equal (nskk-state-candidates nskk-current-state) '("result1" "result2")))
            (should (= (nskk-state-current-index nskk-current-state) 0))
            (should (string-match-p nskk-henkan-active-marker (buffer-string)))
-           (should (overlayp nskk--conversion-overlay))
-           (should (equal (overlay-get nskk--conversion-overlay 'display) "result1"))
+           (should (overlayp (nskk-state-conversion-overlay)))
+           (should (equal (overlay-get (nskk-state-conversion-overlay) 'display) "result1"))
            (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))
-          (when (overlayp nskk--conversion-overlay)
-            (delete-overlay nskk--conversion-overlay)))))))
+          (when (overlayp (nskk-state-conversion-overlay))
+            (delete-overlay (nskk-state-conversion-overlay))))))))
 
 ;;;
 ;;; Uppercase Letter Henkan Start Tests
@@ -814,7 +825,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (let ((nskk-converter-auto-start-henkan t))
           (nskk-given (nskk-process-japanese-input ?K 1))
           (nskk-then
-           (should (nskk--conversion-start-active-p))
+           (should (nskk-conversion-start-active-p))
            (should (string-match-p nskk-henkan-on-marker (buffer-string)))
            (should (eq (nskk-state-henkan-phase nskk-current-state) 'on)))))))
 
@@ -826,23 +837,23 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
             (nskk-given (nskk-process-japanese-input ?A 1))
             (nskk-then
              (should (equal (buffer-string) (concat nskk-henkan-on-marker "あ")))
-             (should (nskk--conversion-start-active-p))))))))
+             (should (nskk-conversion-start-active-p))))))))
 
   (nskk-it "does not reset the marker on a second uppercase letter"
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (let ((nskk-converter-auto-start-henkan t))
           (nskk-process-japanese-input ?K 1)
-          (let ((first-pos (nskk--get-conversion-start)))
+          (let ((first-pos (nskk-get-conversion-start)))
             (nskk-process-japanese-input ?a 1)
-            (should (= (nskk--get-conversion-start) first-pos)))))))
+            (should (= (nskk-get-conversion-start) first-pos)))))))
 
   (nskk-it "is disabled when nskk-converter-auto-start-henkan is nil"
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (let ((nskk-converter-auto-start-henkan nil))
           (nskk-given (nskk-process-japanese-input ?K 1))
-          (nskk-then  (should-not (nskk--conversion-start-active-p))))))))
+          (nskk-then  (should-not (nskk-conversion-start-active-p))))))))
 
 ;;;
 ;;; Regression: Xh => ▽* (uppercase consonant with pending romaji, no kana yet)
@@ -857,7 +868,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     ;; Simulate the state inside nskk--compute-effective-char:
     ;; - conversion is active (▽ marker set)
     ;; - romaji buffer has "x" (a pending consonant, no complete kana yet)
-    ;; - no kana has been written to the preedit buffer (nskk--has-preedit = nil)
+    ;; - no kana has been written to the preedit buffer (nskk-has-preedit = nil)
     (with-temp-buffer
       (nskk-input-test-with-romaji
        (nskk-input-test-with-state 'hiragana
@@ -902,11 +913,11 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   (nskk-it "skips context classification for lowercase input"
     (let ((nskk-converter-auto-start-henkan t)
           (context-calls 0))
-      (cl-letf (((symbol-function 'nskk--conversion-start-active-p)
+      (cl-letf (((symbol-function 'nskk-conversion-start-active-p)
                  (lambda () (cl-incf context-calls)))
                 ((symbol-function 'nskk-prolog-holds-p)
                  (lambda (&rest _) (cl-incf context-calls)))
-                ((symbol-function 'nskk--has-preedit)
+                ((symbol-function 'nskk-has-preedit)
                  (lambda () (cl-incf context-calls)))
                 ((symbol-function 'nskk-prolog-query-value)
                  (lambda (&rest _) (cl-incf context-calls))))
@@ -955,7 +966,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "test")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -966,13 +977,13 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "test")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)
-                      (setq nskk--henkan-count 3)))
+                      (nskk-state-set-henkan-count 3)))
         (nskk-when  (nskk-commit-current))
-        (nskk-then  (should (= nskk--henkan-count 0)))))))
+        (nskk-then  (should (= (nskk-state-henkan-count) 0)))))))
 
 ;;;
 ;;; Rollback Marker Cleanup Tests
@@ -983,7 +994,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert (concat nskk-henkan-active-marker "test"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
         (nskk-when  (nskk-rollback-conversion))
@@ -995,7 +1006,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert (concat nskk-henkan-on-marker "test"))
                       (nskk-state-force-henkan-phase nskk-current-state 'on)))
         (nskk-when  (nskk-rollback-conversion))
@@ -1013,7 +1024,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   (if (not (string-empty-p input))
       (let ((char (aref input 0)))
         (condition-case nil
-            (let ((nskk--romaji-buffer ""))
+            (cl-letf (((nskk-state-romaji-buffer) ""))
               (nskk-convert-input-to-kana char)
               t)
           (error nil)))
@@ -1237,7 +1248,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (with-temp-buffer
       (nskk-input-test-with-state 'hiragana
         (nskk-when (nskk-set-mode-abbrev))
-        (nskk-then (should (nskk--conversion-start-active-p)))))))
+        (nskk-then (should (nskk-conversion-start-active-p)))))))
 
 ;;;
 ;;; nskk-set-mode-numeric Tests
@@ -1355,24 +1366,24 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (let* ((payload (cons ?k "きん"))
                (romaji (copy-sequence "entry"))
                (nskk--deferred-azik-state payload)
-               (nskk--romaji-buffer romaji)
                (calls 0))
-          (insert "AきんZ")
-          (goto-char 4)
-          (add-hook
-           'before-change-functions
-           (lambda (&rest _)
-             (setq calls (1+ calls))
-             (when (= calls 1)
-               (error "injected before-change failure")))
-           nil t)
-          (should-error
-           (nskk--apply-one-deferred-correction
-            'nskk--deferred-azik-state ?a t))
-          (should (equal (buffer-string) "AきんZ"))
-          (should (= (point) 4))
-          (should (eq nskk--deferred-azik-state payload))
-          (should (eq nskk--romaji-buffer romaji))))))
+          (cl-letf (((nskk-state-romaji-buffer) romaji))
+            (insert "AきんZ")
+            (goto-char 4)
+            (add-hook
+             'before-change-functions
+             (lambda (&rest _)
+               (setq calls (1+ calls))
+               (when (= calls 1)
+                 (error "injected before-change failure")))
+             nil t)
+            (should-error
+             (nskk--apply-one-deferred-correction
+              'nskk--deferred-azik-state ?a t))
+            (should (equal (buffer-string) "AきんZ"))
+            (should (= (point) 4))
+            (should (eq nskk--deferred-azik-state payload))
+            (should (eq (nskk-state-romaji-buffer) romaji)))))))
 
   (nskk-it "restores entry state when an after-change hook quits"
     (nskk-input-test-with-romaji
@@ -1380,45 +1391,45 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (let* ((payload (cons ?k "きん"))
                (romaji (copy-sequence "entry"))
                (nskk--deferred-azik-state payload)
-               (nskk--romaji-buffer romaji)
                (calls 0)
                (caught nil))
-          (insert "AきんZ")
-          (goto-char 4)
-          (add-hook
-           'after-change-functions
-           (lambda (&rest _)
-             (setq calls (1+ calls))
-             (when (= calls 1)
-               (signal 'quit '(injected after-change quit))))
-           nil t)
-          (condition-case _
-              (nskk--apply-one-deferred-correction
-               'nskk--deferred-azik-state ?a t)
-            (quit (setq caught t)))
-          (should caught)
-          (should (equal (buffer-string) "AきんZ"))
-          (should (= (point) 4))
-          (should (eq nskk--deferred-azik-state payload))
-          (should (eq nskk--romaji-buffer romaji))))))
+          (cl-letf (((nskk-state-romaji-buffer) romaji))
+            (insert "AきんZ")
+            (goto-char 4)
+            (add-hook
+             'after-change-functions
+             (lambda (&rest _)
+               (setq calls (1+ calls))
+               (when (= calls 1)
+                 (signal 'quit '(injected after-change quit))))
+             nil t)
+            (condition-case _
+                (nskk--apply-one-deferred-correction
+                 'nskk--deferred-azik-state ?a t)
+              (quit (setq caught t)))
+            (should caught)
+            (should (equal (buffer-string) "AきんZ"))
+            (should (= (point) 4))
+            (should (eq nskk--deferred-azik-state payload))
+            (should (eq (nskk-state-romaji-buffer) romaji)))))))
 
   (nskk-it "restores entry state when the buffer is read-only"
     (nskk-input-test-with-romaji
       (with-temp-buffer
         (let* ((payload (cons ?k "きん"))
                (romaji (copy-sequence "entry"))
-               (nskk--deferred-azik-state payload)
-               (nskk--romaji-buffer romaji))
-          (insert "AきんZ")
-          (goto-char 4)
-          (let ((buffer-read-only t))
-            (should-error
-             (nskk--apply-one-deferred-correction
-              'nskk--deferred-azik-state ?a t)))
-          (should (equal (buffer-string) "AきんZ"))
-          (should (= (point) 4))
-          (should (eq nskk--deferred-azik-state payload))
-          (should (eq nskk--romaji-buffer romaji))))))
+               (nskk--deferred-azik-state payload))
+          (cl-letf (((nskk-state-romaji-buffer) romaji))
+            (insert "AきんZ")
+            (goto-char 4)
+            (let ((buffer-read-only t))
+              (should-error
+               (nskk--apply-one-deferred-correction
+                'nskk--deferred-azik-state ?a t)))
+            (should (equal (buffer-string) "AきんZ"))
+            (should (= (point) 4))
+            (should (eq nskk--deferred-azik-state payload))
+            (should (eq (nskk-state-romaji-buffer) romaji)))))))
 
   (nskk-it "avoids full-buffer snapshots for large non-vowel input"
     (nskk-input-test-with-romaji
@@ -1427,45 +1438,45 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                (payload (cons ?k "きん"))
                (romaji (copy-sequence "entry"))
                (nskk--deferred-azik-state payload)
-               (nskk--romaji-buffer romaji)
                (entry-point nil)
                (full-buffer-substring-calls 0)
                (original-buffer-substring
                 (symbol-function (quote buffer-substring))))
-          (insert large-prefix "きん")
-          (goto-char (point-max))
-          (setq entry-point (point))
-          (cl-letf (((symbol-function (quote buffer-substring))
-                     (lambda (start end)
-                       (when (and (= start (point-min))
-                                  (= end (point-max)))
-                         (cl-incf full-buffer-substring-calls))
-                       (funcall original-buffer-substring start end))))
-            (nskk--apply-one-deferred-correction
-             (quote nskk--deferred-azik-state) ?s t))
-          (should (= full-buffer-substring-calls 0))
-          (should (= (buffer-size) (+ (length large-prefix) 2)))
-          (should (eq (char-after (point-min)) ?x))
-          (should (equal (buffer-substring (- (point-max) 2) (point-max))
-                         "きん"))
-          (should (= (point) entry-point))
-          (should-not nskk--deferred-azik-state)
-          (should (eq nskk--romaji-buffer romaji))))))
+          (cl-letf (((nskk-state-romaji-buffer) romaji))
+            (insert large-prefix "きん")
+            (goto-char (point-max))
+            (setq entry-point (point))
+            (cl-letf (((symbol-function (quote buffer-substring))
+                       (lambda (start end)
+                         (when (and (= start (point-min))
+                                    (= end (point-max)))
+                           (cl-incf full-buffer-substring-calls))
+                         (funcall original-buffer-substring start end))))
+              (nskk--apply-one-deferred-correction
+               (quote nskk--deferred-azik-state) ?s t))
+            (should (= full-buffer-substring-calls 0))
+            (should (= (buffer-size) (+ (length large-prefix) 2)))
+            (should (eq (char-after (point-min)) ?x))
+            (should (equal (buffer-substring (- (point-max) 2) (point-max))
+                           "きん"))
+            (should (= (point) entry-point))
+            (should-not nskk--deferred-azik-state)
+            (should (eq (nskk-state-romaji-buffer) romaji)))))))
 
   (nskk-it "commits deletion insertion romaji and state together"
     (nskk-input-test-with-romaji
       (with-temp-buffer
         (let* ((payload (cons ?k "きん"))
-               (nskk--deferred-azik-state payload)
-               (nskk--romaji-buffer "entry"))
-          (insert "AきんZ")
-          (goto-char 4)
-          (nskk--apply-one-deferred-correction
-           'nskk--deferred-azik-state ?a t)
-          (should (equal (buffer-string) "AっZ"))
-          (should (= (point) 3))
-          (should-not nskk--deferred-azik-state)
-          (should (equal nskk--romaji-buffer "k")))))))
+               (nskk--deferred-azik-state payload))
+          (cl-letf (((nskk-state-romaji-buffer) "entry"))
+            (insert "AきんZ")
+            (goto-char 4)
+            (nskk--apply-one-deferred-correction
+             'nskk--deferred-azik-state ?a t)
+            (should (equal (buffer-string) "AっZ"))
+            (should (= (point) 3))
+            (should-not nskk--deferred-azik-state)
+            (should (equal (nskk-state-romaji-buffer) "k"))))))))
 
 ;;;
 ;;; nskk--apply-colon-okuri-correction Tests
@@ -1493,9 +1504,9 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (with-temp-buffer
         (insert "t")
         (setq nskk--azik-colon-okuri-deferred (cons ?t "t"))
-        (setq nskk--romaji-buffer "")
+        (nskk-state-set-romaji-buffer "")
         (nskk--apply-colon-okuri-correction ?e)
-        (should (equal nskk--romaji-buffer "t")))))
+        (should (equal (nskk-state-romaji-buffer) "t")))))
 
   (nskk-it "deferred state is cleared after vowel correction"
     ;; nskk--azik-colon-okuri-deferred must be nil after the correction fires.
@@ -1528,12 +1539,12 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (insert "か")
         (setq nskk--azik-colon-okuri-pending t)
         (setq nskk--azik-colon-okuri-deferred nil)
-        (setq nskk--romaji-buffer "k")
+        (nskk-state-set-romaji-buffer "k")
         (nskk--apply-colon-okuri-correction ?e)
         ;; Buffer unchanged
         (should (string= (buffer-string) "か"))
         ;; Romaji buffer unchanged
-        (should (equal nskk--romaji-buffer "k")))))
+        (should (equal (nskk-state-romaji-buffer) "k")))))
 
   (nskk-it "is a no-op when both pending and deferred are nil"
     ;; When neither flag is set the function must be a true no-op.
@@ -1547,16 +1558,16 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 (nskk-describe "nskk--emit-hatsuon-prefix/k CPS behavior"
   (nskk-it "calls on-kana with ん when buffer ends in n"
-    (let ((nskk--romaji-buffer "n")
-          (result nil))
-      (nskk--emit-hatsuon-prefix/k "k" (lambda (kana) (setq result kana)) #'ignore)
-      (should (equal result "ん"))
-      (should (equal nskk--romaji-buffer "k"))))
+    (cl-letf (((nskk-state-romaji-buffer) "n"))
+      (let ((result nil))
+        (nskk--emit-hatsuon-prefix/k "k" (lambda (kana) (setq result kana)) #'ignore)
+        (should (equal result "ん"))
+        (should (equal (nskk-state-romaji-buffer) "k")))))
 
   (nskk-it "updates romaji buffer to new-buffer-value"
-    (let ((nskk--romaji-buffer "n"))
+    (cl-letf (((nskk-state-romaji-buffer) "n"))
       (nskk--emit-hatsuon-prefix/k "" #'ignore #'ignore)
-      (should (equal nskk--romaji-buffer "")))))
+      (should (equal (nskk-state-romaji-buffer) "")))))
 
 ;;;
 ;;; Property-Based: Fullwidth Mapping Invariant
@@ -1628,7 +1639,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         ;; The ▽ marker should be in the buffer
         (should (string-match-p nskk-henkan-on-marker (buffer-string)))
         ;; The conversion start marker should be set
-        (should (nskk--conversion-start-active-p)))))
+        (should (nskk-conversion-start-active-p)))))
 
   (nskk-it "sets henkan phase to on"
     (nskk-prolog-test-with-isolated-db
@@ -1700,7 +1711,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (nskk-mode 1)
         (let ((done nil))
           ;; Mock out the okuri conversion to avoid the full pipeline
-          (nskk-with-mocks ((nskk--trigger-okuri-conversion #'ignore))
+          (nskk-with-mocks ((nskk-trigger-okuri-conversion #'ignore))
             (nskk-state-set-okurigana nskk-current-state "k")
             (nskk--emit-converted-kana/k "か" 1 (lambda () (setq done t)))
             (should done))))))
@@ -1937,18 +1948,18 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (let ((nskk-converter-romaji-style 'normal)
-              (nskk--romaji-buffer ""))
-          (should-not (nskk--azik-complete-match-p ?a))))))
+        (let ((nskk-converter-romaji-style 'normal))
+          (cl-letf (((nskk-state-romaji-buffer) ""))
+            (should-not (nskk--azik-complete-match-p ?a)))))))
 
   (nskk-it "returns nil for an incomplete sequence even in AZIK mode"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (let ((nskk-converter-romaji-style 'azik)
-              (nskk--romaji-buffer ""))
-          ;; A control character like \x01 should never be in the romaji table
-          (should-not (nskk--azik-complete-match-p 1)))))))
+        (let ((nskk-converter-romaji-style 'azik))
+          (cl-letf (((nskk-state-romaji-buffer) ""))
+            ;; A control character like \x01 should never be in the romaji table
+            (should-not (nskk--azik-complete-match-p 1))))))))
 
 ;;;
 ;;; nskk--activate-preedit-mode
@@ -1979,29 +1990,29 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (let ((_start-pt (point)))
           (nskk-without-modification
             (nskk--activate-preedit-mode))
-          (should (nskk--conversion-start-active-p)))))))
+          (should (nskk-conversion-start-active-p)))))))
 
 ;;;
-;;; nskk--maybe-load-azik-style
+;;; nskk-maybe-load-azik-style
 ;;;
 
-(nskk-describe "nskk--maybe-load-azik-style"
+(nskk-describe "nskk-maybe-load-azik-style"
   (nskk-it "calls nskk-converter-load-style when azik feature is loaded and style is azik"
     (unless (featurep 'nskk-azik)
       (ert-skip "nskk-azik feature not available"))
-    ;; nskk--maybe-load-azik-style is defun/done — it returns nil.
+    ;; nskk-maybe-load-azik-style is defun/done — it returns nil.
     ;; Verify the side effect: nskk-converter-load-style is called with 'azik.
     (let* ((called-with nil)
            (nskk-converter-romaji-style 'azik))
       (nskk-with-mocks ((nskk-converter-load-style (lambda (style) (setq called-with style))))
-        (nskk--maybe-load-azik-style))
+        (nskk-maybe-load-azik-style))
       (should (eq called-with 'azik))))
 
   (nskk-it "does nothing when romaji style is not azik"
     (let* ((called nil)
            (nskk-converter-romaji-style 'standard))
       (nskk-with-mocks ((nskk-converter-load-style (lambda (_style) (setq called t))))
-        (nskk--maybe-load-azik-style))
+        (nskk-maybe-load-azik-style))
       (should (null called)))))
 
 ;;;
@@ -2111,17 +2122,17 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 (nskk-describe "nskk--emit-hatsuon-prefix"
   (nskk-context "n+n case"
-    (nskk-it "n+n case: sets nskk--romaji-buffer to n"
-      ;; nskk--romaji-buffer is defvar-local; bind it for isolation.
-      (let ((nskk--romaji-buffer "n"))
+    (nskk-it "n+n case: sets the romaji buffer to n"
+      ;; The romaji buffer is owned by nskk-state.el; bind it via cl-letf for isolation.
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (let ((result (nskk--emit-hatsuon-prefix "n")))
           ;; Buffer must be updated to the new value "n".
-          (nskk-should-equal "n" nskk--romaji-buffer)
+          (nskk-should-equal "n" (nskk-state-romaji-buffer))
           ;; Result must end with ん.
           (should (string-suffix-p "\u3093" result)))))
 
     (nskk-it "n+n case: return value is ん (prefix-kana is empty)"
-      (let ((nskk--romaji-buffer "n"))
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (let ((result (nskk--emit-hatsuon-prefix "n")))
           ;; When buffer was just "n", prefix-without-n is "", so prefix-kana
           ;; is "" and the full result is just ん.
@@ -2129,47 +2140,47 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
   (nskk-context "n+consonant case"
     (nskk-it "n+consonant case: sets buffer to the new consonant"
-      (let ((nskk--romaji-buffer "n"))
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (nskk--emit-hatsuon-prefix "k")
-        (nskk-should-equal "k" nskk--romaji-buffer)))
+        (nskk-should-equal "k" (nskk-state-romaji-buffer))))
 
     (nskk-it "n+consonant case: return value is ん"
-      (let ((nskk--romaji-buffer "n"))
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (let ((result (nskk--emit-hatsuon-prefix "k")))
           (nskk-should-equal "\u3093" result)))))
 
   (nskk-context "new-buffer-value storage"
-    (nskk-it "the new-buffer-value argument is always stored in nskk--romaji-buffer"
-      (let ((nskk--romaji-buffer "n"))
+    (nskk-it "the new-buffer-value argument is always stored in the romaji buffer"
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (nskk--emit-hatsuon-prefix "m")
-        (nskk-should-equal "m" nskk--romaji-buffer))
-      (let ((nskk--romaji-buffer "n"))
+        (nskk-should-equal "m" (nskk-state-romaji-buffer)))
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (nskk--emit-hatsuon-prefix "abc")
-        (nskk-should-equal "abc" nskk--romaji-buffer))))
+        (nskk-should-equal "abc" (nskk-state-romaji-buffer)))))
 
   (nskk-context "prefix conversion"
     (nskk-it "when buffer is sn prefix-without-n is s and result still contains ん"
       ;; nskk-converter-convert "s" returns (:incomplete . "s"), which is not a
       ;; string result, so prefix-kana must be "".  Verify the function does not
       ;; signal and still emits ん.
-      (let ((nskk--romaji-buffer "sn"))
+      (cl-letf (((nskk-state-romaji-buffer) "sn"))
         (let ((result (nskk--emit-hatsuon-prefix "n")))
           ;; Result must still contain ん.
           (should (string-suffix-p "\u3093" result))
           ;; Buffer is updated to the new-buffer-value.
-          (nskk-should-equal "n" nskk--romaji-buffer))))
+          (nskk-should-equal "n" (nskk-state-romaji-buffer)))))
 
     (nskk-it "when buffer ends with n and prefix-without-n is empty result is just ん"
-      (let ((nskk--romaji-buffer "n"))
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (nskk-should-equal "\u3093" (nskk--emit-hatsuon-prefix "t")))))
 
   (nskk-context "error safety"
     (nskk-it "does not signal an error for typical inputs"
-      (let ((nskk--romaji-buffer "n"))
+      (cl-letf (((nskk-state-romaji-buffer) "n"))
         (should (nskk-should-not-error (nskk--emit-hatsuon-prefix "n")))
-        (setq nskk--romaji-buffer "n")
+        (nskk-state-set-romaji-buffer "n")
         (should (nskk-should-not-error (nskk--emit-hatsuon-prefix "k")))
-        (setq nskk--romaji-buffer "sn")
+        (nskk-state-set-romaji-buffer "sn")
         (should (nskk-should-not-error (nskk--emit-hatsuon-prefix "n")))))))
 
 ;;;
@@ -2220,10 +2231,10 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 ;; kana sequence or left an incomplete consonant pending.
 (nskk-property-test-seeded input-pbt-romaji-clear-idempotent
   ((ch lowercase-char))
-  (let ((nskk--romaji-buffer ""))
+  (cl-letf (((nskk-state-romaji-buffer) ""))
     (nskk-convert-input-to-kana (aref ch 0))
-    (setq nskk--romaji-buffer "")
-    (string= nskk--romaji-buffer ""))
+    (nskk-state-set-romaji-buffer "")
+    (string= (nskk-state-romaji-buffer) ""))
   30 42)
 
 ;; Process-input never errors: for any single lowercase ASCII character,
@@ -2398,7 +2409,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
               ;; Simulate preedit-on by setting henkan-phase to 'on.
               (nskk-state-set-henkan-phase nskk-current-state 'on)
               ;; Prime the romaji buffer with \"n\".
-              (let ((nskk--romaji-buffer "n"))
+              (cl-letf (((nskk-state-romaji-buffer) "n"))
                 (let ((result (nskk-convert-input-to-kana/k
                                ?j
                                (lambda (kana) kana)
@@ -2406,7 +2417,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                   ;; AZIK hatsuon fires: nj → ぬん.
                   (should (equal result "\u306c\u3093"))
                   ;; romaji buffer is cleared after a complete match.
-                  (should (equal nskk--romaji-buffer "")))))
+                  (should (equal (nskk-state-romaji-buffer) "")))))
           (nskk-converter-load-style 'standard)
           (nskk-prolog-retract-all 'azik-rule 2)))))
 
@@ -2422,13 +2433,13 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
             (nskk-input-test-with-state 'hiragana
               ;; henkan-phase is nil (idle) by default.
               ;; Prime the romaji buffer with \"n\".
-              (let* ((nskk--romaji-buffer "n")
-                     (result (nskk-convert-input-to-kana/k
+              (cl-letf (((nskk-state-romaji-buffer) "n"))
+                (let ((result (nskk-convert-input-to-kana/k
                               ?j
                               (lambda (kana) kana)
-                              (lambda () nil))))
-                ;; AZIK hatsuon match: nj → ぬん.
-                (should (equal result "\u306c\u3093"))))
+                               (lambda () nil))))
+                  ;; AZIK hatsuon match: nj → ぬん.
+                  (should (equal result "\u306c\u3093")))))
           (nskk-converter-load-style 'standard)
           (nskk-prolog-retract-all 'azik-rule 2)))))
 
@@ -2443,13 +2454,13 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (unwind-protect
             (nskk-input-test-with-state 'hiragana
               (nskk-state-set-henkan-phase nskk-current-state 'on)
-              (let ((nskk--romaji-buffer "n"))
+              (cl-letf (((nskk-state-romaji-buffer) "n"))
                 (let ((result (nskk-convert-input-to-kana/k
                                ?z
                                (lambda (kana) kana)
                                (lambda () nil))))
                   (should (equal result "\u306a\u3093"))
-                  (should (equal nskk--romaji-buffer "")))))
+                  (should (equal (nskk-state-romaji-buffer) "")))))
           (nskk-converter-load-style 'standard)
           (nskk-prolog-retract-all 'azik-rule 2))))))
 

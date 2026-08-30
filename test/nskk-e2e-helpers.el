@@ -174,16 +174,16 @@ Initialization order:
          (nskk-mode 1)
          ;; Set initial mode after nskk-mode activation.
          (when ,initial-mode
-           (nskk--set-mode ,initial-mode))
+           (nskk-set-mode ,initial-mode))
          ;; Clear any residual romaji buffer.
-         (setq nskk--romaji-buffer "")
+         (nskk-state-set-romaji-buffer "")
          (unwind-protect
              (progn ,@body)
            (ignore-errors (nskk-mode -1))
            ;; Clear any events we produced, so the next test starts clean.
            (setq unread-command-events nil)
            ;; Reset non-buffer-local globals that leak between tests.
-           (setq nskk--henkan-candidate-list-active nil)
+           (nskk-set-henkan-candidate-list-active nil)
            (remove-hook 'nskk-henkan-show-candidates-functions
                         #'nskk-candidate-show-list)
            (remove-hook 'nskk-henkan-hide-candidates-functions
@@ -261,18 +261,11 @@ restored exactly after normal return, error, or quit."
     (declare (indent 2) (debug t))
     `(nskk-prolog-test-with-isolated-db
        (let* ((nskk-converter-romaji-style 'azik)
+              (nskk-e2e--romaji-table-before (nskk-romaji-table))
               (hash-table-symbols
                (delete-dups
-                (append
-                 '(nskk--romaji-table
-                   nskk--prolog-database
-                   nskk--prolog-database-tails
-                   nskk--prolog-index-config
-                   nskk--prolog-hash-indices
-                   nskk--prolog-trie-indices
-                   nskk--prolog-index-bucket-tail-cache)
-                 (copy-sequence
-                  nskk--converter-style-transaction-hash-tables))))
+                (copy-sequence
+                 (nskk-converter-style-transaction-hash-tables))))
               (hash-table-snapshots
                (mapcar #'nskk-e2e--snapshot-hash-table-variable
                        hash-table-symbols))
@@ -280,13 +273,14 @@ restored exactly after normal return, error, or quit."
                (mapcar #'nskk-e2e--snapshot-style-variable
                        (delete-dups
                         (copy-sequence
-                         nskk--converter-style-transaction-variables))))
+                         (nskk-converter-style-transaction-variables)))))
               (mode-map-snapshot (nskk-e2e--snapshot-mode-map)))
          (unwind-protect
              (progn
                (nskk-converter-load-style 'azik)
                (nskk-e2e-with-buffer ,initial-mode ,dict-entries
                  ,@body))
+           (nskk-set-romaji-table nskk-e2e--romaji-table-before)
            (mapc #'nskk-e2e--restore-hash-table-variable
                  hash-table-snapshots)
            (mapc #'nskk-e2e--restore-style-variable
@@ -392,9 +386,8 @@ Use for post-commit state, not during ▼ conversion (use overlay assertion)."
 (defun nskk-e2e-assert-overlay-shows (expected &optional message)
   "Assert that the conversion overlay displays EXPECTED text.
 Use this during ▼ (henkan-active) phase to check the current candidate."
-  (let ((actual (when (and (boundp 'nskk--conversion-overlay)
-                           (overlayp nskk--conversion-overlay))
-                  (overlay-get nskk--conversion-overlay 'display))))
+  (let ((actual (when (overlayp (nskk-state-conversion-overlay))
+                  (overlay-get (nskk-state-conversion-overlay) 'display))))
     (unless (equal actual expected)
       (ert-fail (format "%sOverlay display mismatch:\n  Expected: %S\n  Actual:   %S"
                         (if message (concat message "\n") "")

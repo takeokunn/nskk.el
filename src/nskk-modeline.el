@@ -205,7 +205,7 @@ applied to that frame.  Does nothing when cursor coloring is disabled or
     (when-let* ((mode (nskk-state-mode nskk-current-state))
                 (color (nskk--cursor-with-color mode))
                 (frame (selected-frame)))
-      (nskk--cursor-color-save frame)
+      (nskk-cursor-color-save frame)
       (unless
           (equal
            color
@@ -214,7 +214,7 @@ applied to that frame.  Does nothing when cursor coloring is disabled or
         (set-frame-parameter
          frame nskk--last-cursor-color-parameter color)))))
 
-(defun nskk--cursor-color-save (&optional frame)
+(defun nskk-cursor-color-save (&optional frame)
   "Save FRAME cursor color before NSKK changes it.
 FRAME defaults to the selected frame.  Each frame keeps its own idempotent
 snapshot.  The sentinel t records a nil cursor color so nil continues to
@@ -242,8 +242,8 @@ because this predicate is called while that buffer is being disabled."
                         (get-buffer-window buf target-frame))
                (throw 'found t)))))))
 
-(defun nskk--cursor-color-restore (&optional frame all-frames)
-  "Restore cursor colors saved by `nskk--cursor-color-save`.
+(defun nskk-cursor-color-restore (&optional frame all-frames)
+  "Restore cursor colors saved by `nskk-cursor-color-save`.
 FRAME defaults to the selected frame.  When ALL-FRAMES is non-nil,
 consider every live frame with an NSKK snapshot.  A frame is retained
 while another active NSKK buffer is displayed there.  Otherwise its exact
@@ -252,7 +252,7 @@ saved color and bookkeeping parameters are restored without selecting it."
       (dolist (target-frame (frame-list))
         (when (frame-parameter
                target-frame nskk--saved-cursor-color-parameter)
-          (nskk--cursor-color-restore target-frame)))
+          (nskk-cursor-color-restore target-frame)))
     (let* ((target-frame (or frame (selected-frame)))
            (saved-color
             (frame-parameter

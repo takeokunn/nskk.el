@@ -481,12 +481,12 @@
 ;;;
 ;;; Root cause (pre-fix): In ▼ converting state with okurigana-in-progress
 ;;; metadata set, the old combined `nskk--implicit-kakutei-needed-p' returned
-;;; nil for uppercase N, so it accumulated "n" in nskk--romaji-buffer.  When q
+;;; nil for uppercase N, so it accumulated "n" in nskk-state-romaji-buffer.  When q
 ;;; arrives, the mode-switch preaction (nskk-commit-current) calls
 ;;; nskk-henkan-do-reset which wipes the romaji buffer.  nskk-handle-q-key
 ;;; then sees an empty buffer → buf-state=empty → insert-n action → inserts ん.
 ;;;
-;;; Fix: in the mode-switch arm of nskk-handle-q, save nskk--romaji-buffer
+;;; Fix: in the mode-switch arm of nskk-handle-q, save nskk-state-romaji-buffer
 ;;; before the preaction commit fires and restore it after commit but before
 ;;; nskk-handle-q-key runs.
 ;;;
@@ -562,7 +562,7 @@
       (nskk-e2e-type "C-f")
       (nskk-e2e-assert-henkan-phase nil)
       ;; colon-pending must be cleared.
-      (should (not (bound-and-true-p nskk--azik-colon-okuri-pending)))))
+      (should (not (and (fboundp 'nskk-azik-colon-okuri-pending) (nskk-azik-colon-okuri-pending))))))
 
   (nskk-it "after colon-arm + C-f, next key starts normal preedit not colon-pending"
     ;; Verifies that a stale colon-pending flag does not corrupt the next
@@ -592,7 +592,7 @@
       ;; ':' should extend with ー, NOT arm okurigana
       (nskk-e2e-type ":")
       (should (string-search "あー" (buffer-string)))
-      (should (not (bound-and-true-p nskk--azik-colon-okuri-pending)))))
+      (should (not (and (fboundp 'nskk-azik-colon-okuri-pending) (nskk-azik-colon-okuri-pending))))))
 
   (nskk-it "Ka: produces ▽かー via plain-vowel exclusion from azik-arm-eligible"
     ;; 'か' is NOT a plain vowel kana, so ':' after Ka arms okurigana.
@@ -604,7 +604,7 @@
       (should (string-search "あい" (buffer-string)))
       (nskk-e2e-type ":")
       (should (string-search "あいー" (buffer-string)))
-      (should (not (bound-and-true-p nskk--azik-colon-okuri-pending)))))
+      (should (not (and (fboundp 'nskk-azik-colon-okuri-pending) (nskk-azik-colon-okuri-pending))))))
 
   (nskk-it "Ka: still arms colon-okurigana (か is not plain vowel)"
     ;; 'か' is a consonant+vowel kana, so ':' after Ka must arm okurigana.
@@ -616,7 +616,7 @@
         (nskk-e2e-assert-henkan-phase 'on)
         (should (string-search "か" (buffer-string)))
         (nskk-e2e-type ":")
-        (should (bound-and-true-p nskk--azik-colon-okuri-pending))))))
+        (should (and (fboundp 'nskk-azik-colon-okuri-pending) (nskk-azik-colon-okuri-pending)))))))
 
 (nskk-describe "AZIK hatsuon rules fire in preedit (Nz → なん)"
   ;; Regression tests for the 'Nz → んz' bug.

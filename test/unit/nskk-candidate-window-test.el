@@ -191,16 +191,16 @@
     (with-temp-buffer
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
             (nskk-henkan-number-to-display-candidates 7))
-        (should (null nskk--candidate-overlay))
+        (should (null (nskk-state-candidate-overlay)))
         (nskk-candidate-show-list '("漢字" "感じ" "幹事") 0)
-        (should (overlayp nskk--candidate-overlay)))))
+        (should (overlayp (nskk-state-candidate-overlay))))))
 
   (nskk-it "sets an after-string on the overlay starting with newline"
     (with-temp-buffer
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
             (nskk-henkan-number-to-display-candidates 3))
         (nskk-candidate-show-list '("候補1" "候補2") 0)
-        (let ((after-str (overlay-get nskk--candidate-overlay 'after-string)))
+        (let ((after-str (overlay-get (nskk-state-candidate-overlay) 'after-string)))
           (should (stringp after-str))
           (should (string-prefix-p "\n" after-str))))))
 
@@ -209,7 +209,7 @@
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
             (nskk-henkan-number-to-display-candidates 3))
         (nskk-candidate-show-list '("漢字" "感じ") 0)
-        (let ((after-str (overlay-get nskk--candidate-overlay 'after-string)))
+        (let ((after-str (overlay-get (nskk-state-candidate-overlay) 'after-string)))
           (should (string-match-p "漢字" after-str))
           (should (string-match-p "感じ" after-str))))))
 
@@ -220,11 +220,11 @@
             (candidates '("一" "二" "三" "四" "五")))
         ;; First call creates overlay
         (nskk-candidate-show-list candidates 0)
-        (let ((first-overlay nskk--candidate-overlay))
+        (let ((first-overlay (nskk-state-candidate-overlay)))
           (should (overlayp first-overlay))
           ;; Second call (page 2) must reuse — not create a new overlay
           (nskk-candidate-show-list candidates 3)
-          (should (eq nskk--candidate-overlay first-overlay))))))
+          (should (eq (nskk-state-candidate-overlay) first-overlay))))))
 
   (nskk-it "updates after-string content when page changes"
     (with-temp-buffer
@@ -232,9 +232,9 @@
             (nskk-henkan-number-to-display-candidates 3)
             (candidates '("一" "二" "三" "四" "五")))
         (nskk-candidate-show-list candidates 0)
-        (let ((str-page1 (overlay-get nskk--candidate-overlay 'after-string)))
+        (let ((str-page1 (overlay-get (nskk-state-candidate-overlay) 'after-string)))
           (nskk-candidate-show-list candidates 3)
-          (let ((str-page2 (overlay-get nskk--candidate-overlay 'after-string)))
+          (let ((str-page2 (overlay-get (nskk-state-candidate-overlay) 'after-string)))
             (should-not (string= str-page1 str-page2))
             (should (string-match-p "四" str-page2)))))))
 
@@ -243,12 +243,15 @@
       (insert "test text")
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
             (nskk-henkan-number-to-display-candidates 3)
-            (nskk--conversion-overlay (make-overlay 1 5)))
+            (saved-conversion-overlay (nskk-state-conversion-overlay))
+            (fake-overlay (make-overlay 1 5)))
         (unwind-protect
             (progn
+              (nskk-state-set-conversion-overlay fake-overlay)
               (nskk-candidate-show-list '("候補") 0)
-              (should (= (overlay-start nskk--candidate-overlay) 5)))
-          (delete-overlay nskk--conversion-overlay)))))
+              (should (= (overlay-start (nskk-state-candidate-overlay)) 5)))
+          (delete-overlay fake-overlay)
+          (nskk-state-set-conversion-overlay saved-conversion-overlay)))))
 
   (nskk-it "shows [残り N] in after-string when candidates remain"
     (with-temp-buffer
@@ -256,7 +259,7 @@
             (nskk-henkan-number-to-display-candidates 3)
             (candidates '("一" "二" "三" "四" "五")))
         (nskk-candidate-show-list candidates 0)
-        (let ((after-str (overlay-get nskk--candidate-overlay 'after-string)))
+        (let ((after-str (overlay-get (nskk-state-candidate-overlay) 'after-string)))
           ;; 5 candidates, page size 3, so 2 remain
           (should (string-match-p "残り" after-str))
           (should (string-match-p "2" after-str))))))
@@ -268,7 +271,7 @@
             (candidates '("一" "二" "三")))
         ;; 3 candidates, page size 7 -- all fit, remaining = 0
         (nskk-candidate-show-list candidates 0)
-        (let ((after-str (overlay-get nskk--candidate-overlay 'after-string)))
+        (let ((after-str (overlay-get (nskk-state-candidate-overlay) 'after-string)))
           (should (stringp after-str))
           (should-not (string-match-p "残り" after-str))))))
 
@@ -277,49 +280,63 @@
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
             (nskk-henkan-number-to-display-candidates 7))
         (nskk-candidate-show-list '("test") 0)
-        (should (overlayp nskk--candidate-overlay))
+        (should (overlayp (nskk-state-candidate-overlay)))
         (nskk-candidate-hide-list)
         ;; Overlay variable must be nil after hide
-        (should (null nskk--candidate-overlay)))))
+        (should (null (nskk-state-candidate-overlay))))))
 
   (nskk-it "falls back to point when conversion overlay is absent"
     (with-temp-buffer
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
             (nskk-henkan-number-to-display-candidates 3)
-            ;; Ensure no conversion overlay is set
-            (nskk--conversion-overlay nil))
-        (nskk-candidate-show-list '("候補") 0)
-        ;; Should succeed and create an overlay (at point fallback)
-        (should (overlayp nskk--candidate-overlay)))))
+            (saved-conversion-overlay (nskk-state-conversion-overlay)))
+        (unwind-protect
+            (progn
+              ;; Ensure no conversion overlay is set
+              (nskk-state-set-conversion-overlay nil)
+              (nskk-candidate-show-list '("候補") 0)
+              ;; Should succeed and create an overlay (at point fallback)
+              (should (overlayp (nskk-state-candidate-overlay))))
+          (nskk-state-set-conversion-overlay saved-conversion-overlay)))))
 
-  (nskk-it "is cleaned up after nskk--clear-conversion-context"
+  (nskk-it "is cleaned up after nskk-clear-conversion-context"
     (with-temp-buffer
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
             (nskk-henkan-number-to-display-candidates 7)
-            ;; Provide the minimal state variables nskk--clear-conversion-context
-            ;; accesses so it does not error in a plain temp buffer.
-            (nskk--conversion-overlay nil)
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil))
-        ;; Show the candidate list so the overlay exists and active flag is set.
-        (nskk-candidate-show-list '("漢字" "感じ" "幹事") 0)
-        (should nskk--candidate-list-active)
-        (should (overlayp nskk--candidate-overlay))
-        ;; Wire hide function into the hook, mirroring what nskk--enable does.
-        (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
+            (saved-conversion-overlay (nskk-state-conversion-overlay))
+            (saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (saved-romaji-buffer (nskk-state-romaji-buffer))
+            (saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
         (unwind-protect
-            (nskk-with-current-state
-              ;; nskk--clear-conversion-context calls run-hook-with-args on
-              ;; nskk-henkan-hide-candidates-functions, which invokes
-              ;; nskk-candidate-hide-list and should clear the overlay state.
-              (nskk--clear-conversion-context)
-              ;; Candidate list active flag must be cleared.
-              (should-not nskk--candidate-list-active)
-              ;; Candidate overlay must be deleted and set to nil.
-              (should (null nskk--candidate-overlay)))
-          (remove-hook 'nskk-henkan-hide-candidates-functions
-                       #'nskk-candidate-hide-list))))))
+            (progn
+              ;; Provide the minimal state variables nskk-clear-conversion-context
+              ;; accesses so it does not error in a plain temp buffer.
+              (nskk-state-set-conversion-overlay nil)
+              (nskk-state-set-conversion-start-marker (make-marker))
+              (nskk-state-set-romaji-buffer "")
+              (nskk-state-set-pending-romaji-overlay nil)
+              ;; Show the candidate list so the overlay exists and active flag is set.
+              (nskk-candidate-show-list '("漢字" "感じ" "幹事") 0)
+              (should nskk--candidate-list-active)
+              (should (overlayp (nskk-state-candidate-overlay)))
+              ;; Wire hide function into the hook, mirroring what nskk--enable does.
+              (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
+              (unwind-protect
+                  (nskk-with-current-state
+                    ;; nskk-clear-conversion-context calls run-hook-with-args on
+                    ;; nskk-henkan-hide-candidates-functions, which invokes
+                    ;; nskk-candidate-hide-list and should clear the overlay state.
+                    (nskk-clear-conversion-context)
+                    ;; Candidate list active flag must be cleared.
+                    (should-not nskk--candidate-list-active)
+                    ;; Candidate overlay must be deleted and set to nil.
+                    (should (null (nskk-state-candidate-overlay))))
+                (remove-hook 'nskk-henkan-hide-candidates-functions
+                             #'nskk-candidate-hide-list)))
+          (nskk-state-set-conversion-overlay saved-conversion-overlay)
+          (nskk-state-set-conversion-start-marker saved-conversion-start-marker)
+          (nskk-state-set-romaji-buffer saved-romaji-buffer)
+          (nskk-state-set-pending-romaji-overlay saved-pending-romaji-overlay))))))
 
 (nskk-describe "Prolog key selection facts"
   (nskk-it "candidate-selection-key Prolog facts are initialized at load time"
@@ -458,34 +475,46 @@
                        `(candidate-selection-key ,?a \?pos))))))))
 
 ;;;
-;;; nskk--candidate-overlay-anchor
+;;; nskk--candidate-anchor-position
 ;;;
 
-(nskk-describe "nskk--candidate-overlay-anchor"
-  (nskk-it "returns point when nskk--conversion-overlay is nil"
+(nskk-describe "nskk--candidate-anchor-position"
+  (nskk-it "returns point when the conversion overlay is nil"
     (with-temp-buffer
       (insert "test")
       (goto-char 3)
-      (let ((nskk--conversion-overlay nil))
-        (should (= (nskk--candidate-overlay-anchor) 3)))))
+      (let ((saved-conversion-overlay (nskk-state-conversion-overlay)))
+        (unwind-protect
+            (progn
+              (nskk-state-set-conversion-overlay nil)
+              (should (= (nskk--candidate-anchor-position) 3)))
+          (nskk-state-set-conversion-overlay saved-conversion-overlay)))))
 
   (nskk-it "returns overlay-end when conversion overlay exists"
     (with-temp-buffer
       (insert "abcdef")
-      (let* ((ov (make-overlay 2 5))
-             (nskk--conversion-overlay ov))
-        (should (= (nskk--candidate-overlay-anchor) 5))
-        (delete-overlay ov))))
+      (let ((saved-conversion-overlay (nskk-state-conversion-overlay))
+            (ov (make-overlay 2 5)))
+        (unwind-protect
+            (progn
+              (nskk-state-set-conversion-overlay ov)
+              (should (= (nskk--candidate-anchor-position) 5)))
+          (delete-overlay ov)
+          (nskk-state-set-conversion-overlay saved-conversion-overlay)))))
 
   (nskk-it "falls back to point when overlay is deleted"
     (with-temp-buffer
       (insert "abcdef")
       (goto-char 4)
-      (let* ((ov (make-overlay 2 5))
-             (nskk--conversion-overlay ov))
-        (delete-overlay ov)
-        ;; After deletion, overlay is no longer live so falls back to point
-        (should (= (nskk--candidate-overlay-anchor) 4))))))
+      (let ((saved-conversion-overlay (nskk-state-conversion-overlay))
+            (ov (make-overlay 2 5)))
+        (unwind-protect
+            (progn
+              (nskk-state-set-conversion-overlay ov)
+              (delete-overlay ov)
+              ;; After deletion, overlay is no longer live so falls back to point
+              (should (= (nskk--candidate-anchor-position) 4)))
+          (nskk-state-set-conversion-overlay saved-conversion-overlay))))))
 
 ;;;
 ;;; FR-T-008 — nskk--candidate-page-slice
@@ -637,16 +666,17 @@
       (with-temp-buffer
         (let* ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
                (nskk-henkan-number-to-display-candidates 3)
-               (nskk--candidate-overlay
+               (nskk--candidate-list-active (not (eq stage 'make)))
+               (saved-candidate-overlay (nskk-state-candidate-overlay))
+               (fixture-overlay
                 (unless (eq stage 'make)
                   (make-overlay (point-min) (point-min))))
-               (nskk--candidate-list-active (not (eq stage 'make)))
-               (saved-overlay nskk--candidate-overlay)
                (payload (list stage condition))
                (original-make (symbol-function 'make-overlay))
                (original-move (symbol-function 'move-overlay))
                (original-put (symbol-function 'overlay-put))
                caught)
+          (nskk-state-set-candidate-overlay fixture-overlay)
           (unwind-protect
               (progn
                 (cl-letf
@@ -674,18 +704,19 @@
                 (should (eq (car caught) condition))
                 (should (eq (cadr caught) payload))
                 (should-not nskk--candidate-list-active)
-                (should (null nskk--candidate-overlay))
-                (when saved-overlay
-                  (should (null (overlay-buffer saved-overlay))))
+                (should (null (nskk-state-candidate-overlay)))
+                (when fixture-overlay
+                  (should (null (overlay-buffer fixture-overlay))))
                 (should (equal (nskk-candidate-show-list '("retry") 0)
                                '("retry")))
                 (should nskk--candidate-list-active)
-                (should (overlayp nskk--candidate-overlay))
+                (should (overlayp (nskk-state-candidate-overlay)))
                 (nskk-candidate-hide-list)
                 (should-not nskk--candidate-list-active)
-                (should (null nskk--candidate-overlay)))
-            (when (overlayp nskk--candidate-overlay)
-              (delete-overlay nskk--candidate-overlay))))))
+                (should (null (nskk-state-candidate-overlay))))
+            (when (overlayp (nskk-state-candidate-overlay))
+              (delete-overlay (nskk-state-candidate-overlay)))
+            (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
 
     (nskk-describe "candidate list transaction faults"
       (nskk-it "rolls back make, move, and put errors and quits, then retries"
@@ -696,21 +727,28 @@
     (nskk-describe "candidate hide repairs drift"
       (nskk-it "deletes a live overlay even when active is nil"
         (with-temp-buffer
-          (let* ((nskk--candidate-overlay
-                  (make-overlay (point-min) (point-min)))
-                 (saved-overlay nskk--candidate-overlay)
+          (let* ((saved-candidate-overlay (nskk-state-candidate-overlay))
+                 (fixture-overlay (make-overlay (point-min) (point-min)))
                  (nskk--candidate-list-active nil))
-            (nskk-candidate-hide-list)
-            (should (null nskk--candidate-overlay))
-            (should-not nskk--candidate-list-active)
-            (should (null (overlay-buffer saved-overlay))))))
+            (nskk-state-set-candidate-overlay fixture-overlay)
+            (unwind-protect
+                (progn
+                  (nskk-candidate-hide-list)
+                  (should (null (nskk-state-candidate-overlay)))
+                  (should-not nskk--candidate-list-active)
+                  (should (null (overlay-buffer fixture-overlay))))
+              (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
 
       (nskk-it "clears a stale non-overlay and active flag"
-        (let ((nskk--candidate-overlay 'stale)
+        (let ((saved-candidate-overlay (nskk-state-candidate-overlay))
               (nskk--candidate-list-active t))
-          (nskk-candidate-hide-list)
-          (should (null nskk--candidate-overlay))
-          (should-not nskk--candidate-list-active))))
+          (unwind-protect
+              (progn
+                (nskk-state-set-candidate-overlay 'stale)
+                (nskk-candidate-hide-list)
+                (should (null (nskk-state-candidate-overlay)))
+                (should-not nskk--candidate-list-active))
+            (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
 
     (provide 'nskk-candidate-window-test))
 

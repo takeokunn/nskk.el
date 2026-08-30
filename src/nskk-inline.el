@@ -47,7 +47,7 @@
 ;; controlled by `nskk-show-inline' being non-nil.
 ;;
 ;; Prolog predicates maintained by this module: none.
-;; State is tracked via the shared `nskk--conversion-overlay' in nskk-state.el.
+;; State is tracked via the shared `nskk-state-conversion-overlay' in nskk-state.el.
 
 ;;; Code:
 
@@ -102,10 +102,10 @@ Declared in nskk-inline.el since this overlay is managed entirely here.")
 
 (defun nskk--inline-anchor ()
   "Return the buffer position to anchor the inline display overlay.
-Uses the end of `nskk--conversion-overlay' when available,
+Uses the end of `nskk-state-conversion-overlay' when available,
 falling back to point."
-  (or (and (overlayp nskk--conversion-overlay)
-           (overlay-end nskk--conversion-overlay))
+  (or (and (overlayp (nskk-state-conversion-overlay))
+           (overlay-end (nskk-state-conversion-overlay)))
       (point)))
 
 (defun nskk--inline-build-horizontal (candidate)

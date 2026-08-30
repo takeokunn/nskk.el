@@ -68,6 +68,10 @@
 
 (require 'nskk-converter)
 
+(require 'nskk-candidate-window)
+
+(require 'nskk-annotation)
+
 ;; Disable loading of large system dictionaries (like ja-dic) by default in
 ;; tests. Most unit and integration tests only need small mock dictionaries.
 (setq nskk-dict-use-ja-dic nil)
@@ -82,8 +86,10 @@
 ;; NOTE: The initialization calls below are guarded by idempotency flags
 ;; (e.g., `nskk--state-prolog-initialized').  If you `eval-buffer' this
 ;; file after editing, those flags will prevent re-initialization unless
-;; you first reset them manually.  See `nskk-prolog-test-with-isolated-db'
-;; in this file for the complete list of flags to reset.
+;; you first reset them manually.  Each owning module registers its flag
+;; symbol as a `module-initialized-flag/1' Prolog fact at load time; query
+;; `(nskk-prolog-query-all-values (quote (module-initialized-flag ?f)) (quote ?f))'
+;; for the complete, current list rather than trusting this comment.
 (nskk-state-initialize-prolog)
 
 (nskk-kana-initialize)
@@ -516,16 +522,9 @@ and the index bucket tail cache starts empty."
                     (symbol-value ,store-symbol)
                     (copy-sequence
                      (get-variable-watchers ,store-symbol))))
-            (quote
-             (nskk--prolog-database
-              nskk--prolog-database-tails
-              nskk--prolog-index-config
-              nskk--prolog-hash-indices
-              nskk--prolog-trie-indices
-              nskk--prolog-index-bucket-tail-cache
-              nskk--prolog-var-counter
-              nskk--user-dict-index
-              nskk--system-dict-index))))
+            (append
+             (butlast nskk-prolog-state-variables)
+             nskk-dict-index-variables)))
           (,saved-flags
            (mapcar
             (lambda (,flag-symbol)
@@ -535,37 +534,31 @@ and the index bucket tail cache starts empty."
                          (symbol-value ,flag-symbol))
                     (copy-sequence
                      (get-variable-watchers ,flag-symbol))))
-            (quote
-             (nskk--input-initialized
-              nskk--state-prolog-initialized
-              nskk--henkan-initialized
-              nskk--kana-initialized
-              nskk--converter-initialized
-              nskk--candidate-key-facts-initialized
-              nskk--annotation-initialized))))
+            (nskk-prolog-query-all-values
+             '(module-initialized-flag \?f) '\?f)))
           (,copies (make-hash-table :test (quote eq)))
           (,isolated-db
            (nskk-prolog-test--copy-object
-            nskk--prolog-database ,copies))
+            (nskk-prolog-database) ,copies))
           (,isolated-index
            (nskk-prolog-test--copy-object
-            nskk--prolog-index-config ,copies))
+            (nskk-prolog-index-config) ,copies))
           (,isolated-hash
            (nskk-prolog-test--copy-object
-            nskk--prolog-hash-indices ,copies))
+            (nskk-prolog-hash-indices) ,copies))
           (,isolated-trie
            (nskk-prolog-test--copy-object
-            nskk--prolog-trie-indices ,copies))
+            (nskk-prolog-trie-indices) ,copies))
           (,isolated-tails
            (make-hash-table
-            :test (hash-table-test nskk--prolog-database-tails)
-            :size (max 1 (hash-table-size nskk--prolog-database-tails))))
+            :test (hash-table-test (nskk-prolog-database-tails))
+            :size (max 1 (hash-table-size (nskk-prolog-database-tails)))))
           (,isolated-tail-cache
            (make-hash-table
-            :test (hash-table-test nskk--prolog-index-bucket-tail-cache)
+            :test (hash-table-test (nskk-prolog-index-bucket-tail-cache))
             :size (max 1
                        (hash-table-size
-                        nskk--prolog-index-bucket-tail-cache)))))
+                        (nskk-prolog-index-bucket-tail-cache))))))
        (maphash
         (lambda (,tail-key ,tail-facts)
           (when ,tail-facts
@@ -573,13 +566,11 @@ and the index bucket tail cache starts empty."
         ,isolated-db)
        (unwind-protect
            (progn
-             (setq nskk--prolog-database ,isolated-db
-                   nskk--prolog-database-tails ,isolated-tails
-                   nskk--prolog-index-config ,isolated-index
-                   nskk--prolog-hash-indices ,isolated-hash
-                   nskk--prolog-trie-indices ,isolated-trie
-                   nskk--prolog-index-bucket-tail-cache
-                   ,isolated-tail-cache)
+             (cl-mapc #'set
+                      (butlast (butlast nskk-prolog-state-variables))
+                      (list ,isolated-db ,isolated-tails ,isolated-index
+                            ,isolated-hash ,isolated-trie
+                            ,isolated-tail-cache))
              (dolist (,flag-entry ,saved-flags)
                (when (nth 1 ,flag-entry)
                  (set (car ,flag-entry) nil)))
@@ -626,6 +617,9 @@ or `nskk-with-mock-dict' to prevent Prolog database pollution."
       (nskk-prolog-assert (list (list pred (car entry) (cdr entry)))))
     (make-nskk-dict-index :predicate pred)))
 
+(gv-define-simple-setter nskk-dict-system-index nskk-dict-set-system-index)
+(gv-define-simple-setter nskk-dict-user-index nskk-dict-set-user-index)
+
 (defmacro nskk-with-mock-dict (entries &rest body)
   "Execute BODY with a mock dictionary installed.
 ENTRIES is an alist of (key . candidates-list) or nil for defaults.
@@ -636,8 +630,8 @@ that guards relying on `nskk-prolog-holds-p' see the mock as
 initialized."
   (declare (indent 1))
   `(nskk-prolog-test-with-isolated-db
-     (let ((nskk--system-dict-index (nskk-test-create-mock-dict ,entries))
-           (nskk--user-dict-index nil))
+     (cl-letf (((nskk-dict-system-index) (nskk-test-create-mock-dict ,entries))
+               ((nskk-dict-user-index) nil))
        ;; Assert dict-initialized so Prolog-based init guards pass
        (nskk-prolog-assert '((dict-initialized)))
        ,@body)))
@@ -1006,10 +1000,10 @@ the full input pipeline without enabling `nskk-mode'."
   (declare (indent 1))
   `(with-temp-buffer
     (let ((nskk-current-state (nskk-state-create ,mode))
-          (nskk--conversion-overlay nil)
-          (nskk--romaji-buffer "")
           (nskk-converter-auto-start-henkan t))
-      (nskk--initialize-romaji-table)
+      (nskk-state-set-conversion-overlay nil)
+      (nskk-state-set-romaji-buffer "")
+      (nskk-initialize-romaji-table)
       ,@body)))
 
 (defun nskk--integration-type-char (char)

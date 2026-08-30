@@ -8,7 +8,7 @@
 ;; - Function existence (fboundp)
 ;; - Customization variables
 ;; - nskk--show-mode-indicator-string for each mode
-;; - nskk--show-mode-hide cleanup behavior
+;; - nskk-show-mode-hide cleanup behavior
 ;; - nskk-show-mode-display guard conditions
 ;;; Code:
 (require 'ert)
@@ -70,8 +70,8 @@
     "nskk--show-mode-indicator-string is defined"
     (should (fboundp 'nskk--show-mode-indicator-string)))
   (nskk-it
-    "nskk--show-mode-hide is defined"
-    (should (fboundp 'nskk--show-mode-hide))))
+    "nskk-show-mode-hide is defined"
+    (should (fboundp 'nskk-show-mode-hide))))
 
 ;;;; Customization
 (nskk-describe
@@ -166,7 +166,7 @@
                         (error err))))))))
 
 ;;;; Hide Cleanup
-(nskk-describe "nskk--show-mode-hide"
+(nskk-describe "nskk-show-mode-hide"
   (nskk-it "is safe to call when overlay is nil"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
@@ -174,7 +174,7 @@
             (nskk--show-mode-last-mode nil))
         ;; Should not signal an error
         (should-not (condition-case err
-                        (progn (nskk--show-mode-hide) nil)
+                        (progn (nskk-show-mode-hide) nil)
                       (error err))))))
 
   (nskk-it "clears last-mode after hide"
@@ -182,7 +182,7 @@
       (setq nskk--show-mode-last-mode 'hiragana)
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil))
-        (nskk--show-mode-hide)
+        (nskk-show-mode-hide)
         (should (null nskk--show-mode-last-mode)))))
 
   (nskk-it "continues tooltip release when deleting the overlay errors"
@@ -209,7 +209,7 @@
                        (lambda (_owner _hide)
                          (setq tooltip-release-called t))))
               (condition-case condition
-                  (nskk--show-mode-hide)
+                  (nskk-show-mode-hide)
                 (error
                  (setq caught condition))))
             (should (eq (car caught) 'error))
@@ -351,8 +351,8 @@
             (should-not nskk--show-mode-timer))
           (funcall real-cancel-timer timer))))))
 
-;;;; nskk--show-mode-hide cancels timer
-(nskk-describe "nskk--show-mode-hide timer handling"
+;;;; nskk-show-mode-hide cancels timer
+(nskk-describe "nskk-show-mode-hide timer handling"
   (nskk-it "cancels pending timer when one exists"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
@@ -362,7 +362,7 @@
         (nskk--show-mode-display-inline "[か]")
         ;; Timer was created
         (should (timerp nskk--show-mode-timer))
-        (nskk--show-mode-hide)
+        (nskk-show-mode-hide)
         ;; Timer was cancelled and cleared
         (should (null nskk--show-mode-timer)))))
 
@@ -374,7 +374,7 @@
             (nskk-show-mode-duration 60))
         (nskk--show-mode-display-inline "[か]")
         (should (overlayp nskk--show-mode-overlay))
-        (nskk--show-mode-hide)
+        (nskk-show-mode-hide)
         (should (null nskk--show-mode-overlay))))))
 
 ;;;; nskk-show-mode-display integration
@@ -538,7 +538,7 @@
         (unwind-protect (progn
             (with-current-buffer owner (nskk--show-mode-display-tooltip "[か]"))
             (let ((owner-timer nskk--show-mode-tooltip-timer))
-              (with-current-buffer other (nskk--show-mode-hide))
+              (with-current-buffer other (nskk-show-mode-hide))
               (should (eq nskk--show-mode-tooltip-owner owner))
               (should (eq nskk--show-mode-tooltip-timer owner-timer))
               (should-not (aref owner-timer 2))

@@ -81,7 +81,7 @@
 ;;
 ;;   2. `nskk--current-key-state' (nskk-keymap.el):
 ;;      In abbrev mode with a conversion-start marker set, this now returns
-;;      `preedit' even when `nskk--has-preedit' is false (i.e. the marker
+;;      `preedit' even when `nskk-has-preedit' is false (i.e. the marker
 ;;      was set but point hasn't moved past the ▽ yet).  This makes SPC
 ;;      trigger `nskk-start-conversion' rather than self-insert.  The
 ;;      complementary guard inside `nskk-start-conversion' itself makes

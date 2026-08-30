@@ -53,8 +53,11 @@
   "Execute BODY with a fresh state initialized to INITIAL-MODE."
   (declare (indent 1))
   `(let ((nskk-current-state (nskk-state-create ,initial-mode))
-         (nskk--romaji-buffer ""))
-     ,@body))
+         (nskk-input-routing-test--saved-romaji-buffer (nskk-state-romaji-buffer)))
+     (nskk-state-set-romaji-buffer "")
+     (unwind-protect
+         (progn ,@body)
+       (nskk-state-set-romaji-buffer nskk-input-routing-test--saved-romaji-buffer))))
 
 ;;;;
 ;;;; Generator for direct-insert modes

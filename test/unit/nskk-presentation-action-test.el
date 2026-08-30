@@ -15,7 +15,7 @@
 ;; nskk-henkan no longer references nskk-inline directly.  Inline registers
 ;; its cleanup (`nskk-inline-hide') and terminal-finalize
 ;; (`nskk--inline-finalize') callbacks via the `presentation-action/2' fact
-;; table, and `nskk--clear-conversion-context' enumerates and runs them.
+;; table, and `nskk-clear-conversion-context' enumerates and runs them.
 ;;
 ;; This file verifies the terminal-cleanup invariant: when a registered
 ;; cleanup callback signals, the finalize stage still removes the inline
@@ -42,30 +42,30 @@
              (pending-overlay (make-overlay (point-min) (point-max)))
              (dcomp-overlay (make-overlay (point-min) (point-max)))
              (inline-overlay (make-overlay (point-min) (point-max)))
-             (nskk--conversion-overlay conversion-overlay)
-             (nskk--pending-romaji-overlay pending-overlay)
-             (nskk--dcomp-multiple-overlay dcomp-overlay)
              (nskk--inline-overlay inline-overlay)
-             (nskk--conversion-start-marker nil)
-             (nskk--romaji-buffer "")
              (nskk--dcomp-candidates nil)
              (nskk--dcomp-prefix nil)
              (nskk--dcomp-index 0)
              (nskk--henkan-candidate-list-active nil)
              caught)
+        (nskk-state-set-conversion-overlay conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay pending-overlay)
+        (nskk-state-set-dcomp-multiple-overlay dcomp-overlay)
+        (nskk-state-set-conversion-start-marker nil)
+        (nskk-state-set-romaji-buffer "")
         (cl-letf (((symbol-function 'nskk-inline-hide)
                    (lambda () (signal 'error '(cleanup-fault payload)))))
           (setq caught
                 (condition-case condition
-                    (progn (nskk--clear-conversion-context) nil)
+                    (progn (nskk-clear-conversion-context) nil)
                   (error condition))))
         (should (eq (car caught) 'error))
         (should (equal (cdr caught) '(cleanup-fault payload)))
-        (should-not nskk--conversion-overlay)
+        (should-not (nskk-state-conversion-overlay))
         (should-not (overlay-buffer conversion-overlay))
-        (should-not nskk--pending-romaji-overlay)
+        (should-not (nskk-state-pending-romaji-overlay))
         (should-not (overlay-buffer pending-overlay))
-        (should-not nskk--dcomp-multiple-overlay)
+        (should-not (nskk-state-dcomp-multiple-overlay))
         (should-not (overlay-buffer dcomp-overlay))
         (should-not nskk--inline-overlay)
         (should-not (overlay-buffer inline-overlay))))))

@@ -65,15 +65,15 @@
 (require 'nskk-dict-transaction)
 
 (require 'nskk-cps-macros)
-(declare-function nskk--search-cache-snapshots "nskk-search")
-(declare-function nskk--search-restore-cache-snapshot "nskk-search" (snapshot))
+(declare-function nskk-search-cache-snapshots "nskk-search")
+(declare-function nskk-search-restore-cache-snapshot "nskk-search" (snapshot))
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
 
 ;; Optional: annotation support
 (declare-function nskk-annotation-initialize "nskk-annotation")
 
-(declare-function nskk--annotation-load-from-candidates "nskk-annotation")
+(declare-function nskk-annotation-load-from-candidates "nskk-annotation")
 
 (defgroup
   nskk-dictionary
@@ -402,17 +402,18 @@ observers.  A `quit' condition is deliberately allowed to escape unchanged."
 (defun nskk--dict-stage-predicate-entries (predicate entries &optional existing-clauses)
   "Build PREDICATE facts for ENTRIES in isolated Prolog storage.
 EXISTING-CLAUSES are asserted before ENTRIES for append-style loads."
-  (let ((nskk--prolog-database (make-hash-table :test #'equal))
-        (nskk--prolog-database-tails (make-hash-table :test #'equal))
-        (nskk--prolog-index-config (make-hash-table :test #'equal))
-        (nskk--prolog-hash-indices (make-hash-table :test #'equal))
-        (nskk--prolog-trie-indices (make-hash-table :test #'equal))
-        (nskk--prolog-index-bucket-tail-cache (make-hash-table :test #'equal)))
+  (nskk-prolog-with-database-fields
+      ((database (make-hash-table :test #'equal))
+       (database-tails (make-hash-table :test #'equal))
+       (index-config (make-hash-table :test #'equal))
+       (hash-indices (make-hash-table :test #'equal))
+       (trie-indices (make-hash-table :test #'equal))
+       (index-bucket-tail-cache (make-hash-table :test #'equal)))
     (nskk-prolog-set-index predicate 2 :trie)
     (dolist (clause existing-clauses)
       (nskk-prolog-assert clause))
     (nskk-prolog-trie-bulk-assert predicate 2 entries)
-    (nskk-dict-transaction-predicate-snapshot (nskk--prolog-clause-key predicate 2))))
+    (nskk-dict-transaction-predicate-snapshot (nskk-prolog-clause-key predicate 2))))
 
 (defun nskk--dict-publish-staged-predicate (staged)
   "Publish STAGED predicate storage."
@@ -452,11 +453,11 @@ Restore the previous predicate storage if either step signals an error or quit."
 Database and warm index-bucket appends run in O(length ENTRIES).  A bucket
 created outside this function pays a one-time tail discovery cost.  A fresh
 predicate receives a trie index; existing index strategy is retained."
-  (let* ((key (nskk--prolog-clause-key predicate 2))
+  (let* ((key (nskk-prolog-clause-key predicate 2))
          (missing nskk-dict-transaction--storage-missing)
          (previous (nskk-dict-transaction-predicate-snapshot key))
-         (old-database-head (gethash key nskk--prolog-database))
-         (old-database-tail (gethash key nskk--prolog-database-tails))
+         (old-database-head (gethash key (nskk-prolog-database)))
+         (old-database-tail (gethash key (nskk-prolog-database-tails)))
          (old-database-tail-cdr (and old-database-tail (cdr old-database-tail)))
          (clauses nil)
          (clauses-tail nil)
@@ -483,13 +484,13 @@ predicate receives a trie index; existing index strategy is retained."
                   (puthash first-arg (vector index-cell index-cell) groups)
                   (push first-arg group-order))))))
         (let ((inhibit-quit t))
-          (unless (or (gethash key nskk--prolog-index-config) old-database-head)
+          (unless (or (gethash key (nskk-prolog-index-config)) old-database-head)
             (nskk-prolog-set-index predicate 2 :trie))
-          (let* ((type (gethash key nskk--prolog-index-config))
+          (let* ((type (gethash key (nskk-prolog-index-config)))
                  (indexed-p (memq type '(:hash :trie)))
-                 (index (and indexed-p (nskk--prolog-transaction-index key type)))
+                 (index (and indexed-p (nskk-prolog-transaction-index key type)))
                  (cache-entry
-                (and indexed-p (gethash key nskk--prolog-index-bucket-tail-cache missing)))
+                (and indexed-p (gethash key (nskk-prolog-index-bucket-tail-cache) missing)))
                  (cache-buckets
                 (and
                   (vectorp cache-entry)
@@ -504,21 +505,21 @@ predicate receives a trie index; existing index strategy is retained."
                     (error "Missing database tail for %s" key))
                   (setq database-append-tail old-database-tail)
                   (setcdr old-database-tail clauses))
-                (puthash key clauses nskk--prolog-database))
-              (puthash key clauses-tail nskk--prolog-database-tails))
+                (puthash key clauses (nskk-prolog-database)))
+              (puthash key clauses-tail (nskk-prolog-database-tails)))
             (when indexed-p
               (dolist (first-arg group-order)
                 (let* ((group (gethash first-arg groups))
                        (group-head (aref group 0))
                        (group-tail (aref group 1))
-                       (old-bucket (nskk--prolog-transaction-index-bucket type index first-arg))
+                       (old-bucket (nskk-prolog-transaction-index-bucket type index first-arg))
                        (old-tail-info (and cache-buckets (gethash first-arg cache-buckets missing)))
                        (old-tail-info-present-p (and cache-buckets (not (eq old-tail-info missing)))))
                   (when cache-buckets
                     (push
                       (vector cache-buckets first-arg old-tail-info-present-p old-tail-info)
                       cache-changes))
-                  (let* ((old-tail (nskk--prolog-index-bucket-tail key type index first-arg old-bucket))
+                  (let* ((old-tail (nskk-prolog-index-bucket-tail key type index first-arg old-bucket))
                          (old-tail-cdr (and old-tail (cdr old-tail)))
                          (new-bucket (or old-bucket group-head)))
                     (push
@@ -526,8 +527,8 @@ predicate receives a trie index; existing index strategy is retained."
                       index-splices)
                     (when old-tail
                       (setcdr old-tail group-head))
-                    (nskk--prolog-transaction-set-index-bucket type index first-arg new-bucket)
-                    (nskk--prolog-index-cache-set-bucket
+                    (nskk-prolog-transaction-set-index-bucket type index first-arg new-bucket)
+                    (nskk-prolog-index-cache-set-bucket
                       key
                       type
                       index
@@ -535,7 +536,7 @@ predicate receives a trie index; existing index strategy is retained."
                       new-bucket
                       group-tail))))
               (unless indexed-p
-                (remhash key nskk--prolog-index-bucket-tail-cache)))
+                (remhash key (nskk-prolog-index-bucket-tail-cache))))
             (when quit-flag
               (signal 'quit nil)))
           (setq committed t)))
@@ -552,7 +553,7 @@ predicate receives a trie index; existing index strategy is retained."
           (dolist (splice index-splices)
             (when (aref splice 4)
               (setcdr (aref splice 4) (aref splice 5)))
-            (nskk--prolog-transaction-set-index-bucket
+            (nskk-prolog-transaction-set-index-bucket
               (aref splice 0)
               (aref splice 1)
               (aref splice 2)
@@ -714,10 +715,10 @@ also registers any candidate annotations found in the line."
         (when (and candidates
                    (boundp 'nskk-show-annotation)
                    nskk-show-annotation
-                   (fboundp 'nskk--annotation-load-from-candidates))
+                   (fboundp 'nskk-annotation-load-from-candidates))
           (let ((with-annots (nskk--dict-parse-candidates-with-annotations
                               candidates-str)))
-            (nskk--annotation-load-from-candidates key with-annots)))
+            (nskk-annotation-load-from-candidates key with-annots)))
         (when candidates
           (cons key candidates))))))
 
@@ -991,9 +992,28 @@ Value is the source symbol system.")
   "Return the system dictionary index, or nil if not initialized."
   nskk--system-dict-index)
 
+(defun nskk-dict-set-system-index (value)
+  "Set the system dictionary index to VALUE and return VALUE."
+  (setq nskk--system-dict-index value))
+
 (defvar nskk--user-dict-index nil
   "Non-nil when user dictionary is loaded.
 Value is the source symbol \\='user.")
+
+(defsubst nskk-dict-user-index ()
+  "Return the user dictionary index, or nil if not initialized."
+  nskk--user-dict-index)
+
+(defun nskk-dict-set-user-index (value)
+  "Set the user dictionary index to VALUE and return VALUE."
+  (setq nskk--user-dict-index value))
+
+(defconst nskk-dict-index-variables
+  '(nskk--user-dict-index nskk--system-dict-index)
+  "Symbols of the two dictionary-index state variables.
+For code that needs symbol-level access to this state -- e.g. generic
+save/restore machinery that operates on a list of symbols -- rather
+than the getter/setter accessors above.")
 
 (defconst
   nskk--dict-system-probe-paths
@@ -1146,17 +1166,17 @@ message complete.  Returns nil only when the valid Prolog query has no
 solution.  An `error' or `quit' from lazy loading, Prolog mutation, hooks, or
 the message boundary restores the exact internal predicate, index marker,
 dirty flag, and registered search caches before propagating the condition."
-  (let* ((key (nskk--prolog-clause-key 'user-dict-entry 2))
+  (let* ((key (nskk-prolog-clause-key 'user-dict-entry 2))
          (owner (list 'nskk--dict-register-impl key)))
     (nskk-dict-transaction-ensure-rollback-complete owner)
-    (let* ((previous-key-state (nskk--prolog-capture-key-state key reading t))
+    (let* ((previous-key-state (nskk-prolog-capture-key-state key reading t))
            (previous-user-index nskk--user-dict-index)
            (previous-modified nskk-dict-modified)
-           (cache-snapshots (nskk--search-cache-snapshots)))
+           (cache-snapshots (nskk-search-cache-snapshots)))
       (condition-case condition
           (prog1
               (progn
-                (nskk--prolog-prepare-key-state-index-tail
+                (nskk-prolog-prepare-key-state-index-tail
                  previous-key-state)
                 (unless nskk--user-dict-index
                   ;; Loading is part of this transaction: a later failure must
@@ -1184,7 +1204,7 @@ dirty flag, and registered search caches before propagating the condition."
           (list
            (cons 'user-dict-predicate
                  (lambda ()
-                   (nskk--prolog-restore-key-state previous-key-state)))
+                   (nskk-prolog-restore-key-state previous-key-state)))
            (cons 'user-dict-index
                  (lambda ()
                    (setq nskk--user-dict-index previous-user-index)))
@@ -1194,7 +1214,7 @@ dirty flag, and registered search caches before propagating the condition."
            (cons 'search-caches
                  (lambda ()
                    (dolist (snapshot cache-snapshots)
-                     (nskk--search-restore-cache-snapshot snapshot)))))))))))
+                     (nskk-search-restore-cache-snapshot snapshot)))))))))))
 
 (progn
   (defconst nskk--dict-invalid-entry-message
@@ -1355,7 +1375,7 @@ Returns \\='kakutei if loaded, nil otherwise."
       condition
       (when-let*
         ((entries (nskk--dict-parse-file-to-entries-strict nskk-kakutei-jisyo)))
-        (let* ((key (nskk--prolog-clause-key 'kakutei-dict-entry 2))
+        (let* ((key (nskk-prolog-clause-key 'kakutei-dict-entry 2))
                (previous (nskk-dict-transaction-predicate-snapshot key))
                (previous-loaded nskk--kakutei-dict-loaded)
                (committed nil))

@@ -1514,32 +1514,32 @@
   (declare (indent 0)
            (debug t))
   `(let ((nskk--romaji-table (make-hash-table :test 'equal))
-         (nskk--prolog-database (make-hash-table :test 'equal))
-         (nskk--prolog-database-tails (make-hash-table :test 'equal))
-         (nskk--prolog-index-config (make-hash-table :test 'equal))
-         (nskk--prolog-hash-indices (make-hash-table :test 'equal))
-         (nskk--prolog-trie-indices (make-hash-table :test 'equal))
-         (nskk--prolog-index-bucket-tail-cache
-          (make-hash-table :test 'equal))
          (nskk--style-registry (copy-tree nskk--style-registry))
          (nskk--converter-style-transaction-hash-tables nil)
          (nskk--converter-style-transaction-variables nil))
-     (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
-     (nskk-converter-add-rule "old" "旧")
-     (nskk-prolog-set-index 'transaction-sentinel 1 :hash)
-     (nskk-prolog-assert '((transaction-sentinel intact)))
-     ,@body))
+     (nskk-prolog-with-database-fields
+         ((database (make-hash-table :test 'equal))
+          (database-tails (make-hash-table :test 'equal))
+          (index-config (make-hash-table :test 'equal))
+          (hash-indices (make-hash-table :test 'equal))
+          (trie-indices (make-hash-table :test 'equal))
+          (index-bucket-tail-cache (make-hash-table :test 'equal)))
+       (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
+       (nskk-converter-add-rule "old" "旧")
+       (nskk-prolog-set-index 'transaction-sentinel 1 :hash)
+       (nskk-prolog-assert '((transaction-sentinel intact)))
+       ,@body)))
 
 (defun nskk-test--converter-style-state-references ()
   "Return the converter transaction state references."
   (list
     nskk--romaji-table
-    nskk--prolog-database
-    nskk--prolog-database-tails
-    nskk--prolog-index-config
-    nskk--prolog-hash-indices
-    nskk--prolog-trie-indices
-    nskk--prolog-index-bucket-tail-cache))
+    (nskk-prolog-database)
+    (nskk-prolog-database-tails)
+    (nskk-prolog-index-config)
+    (nskk-prolog-hash-indices)
+    (nskk-prolog-trie-indices)
+    (nskk-prolog-index-bucket-tail-cache)))
 
 (defun nskk-test--should-retain-converter-style-state (references)
   "Assert that REFERENCES are still the live transaction state."
@@ -1757,7 +1757,7 @@
            state
            retained-staged-shared)
       (setcdr shared shared)
-      (puthash 'nskk-test-cross-shared shared nskk--prolog-index-config)
+      (puthash 'nskk-test-cross-shared shared (nskk-prolog-index-config))
       (puthash 'nskk-test-cross-shared shared extension-table)
       (setcdr mode-map-reference
               (cons (cons 'nskk-test-cross-shared shared)
@@ -1774,7 +1774,7 @@
               (let* ((staged-store
                       (gethash
                        'nskk-test-cross-shared
-                       nskk--prolog-index-config))
+                       (nskk-prolog-index-config)))
                      (staged-extension
                       (gethash
                        'nskk-test-cross-shared
@@ -1821,7 +1821,7 @@
             (let* ((public-store
                     (gethash
                      'nskk-test-cross-shared
-                     nskk--prolog-index-config))
+                     (nskk-prolog-index-config)))
                    (public-extension-table
                     (symbol-value extension-symbol))
                    (public-extension
@@ -1857,7 +1857,7 @@
               (should-not
                (gethash
                 'nskk-test-retained
-                nskk--prolog-index-config))
+                (nskk-prolog-index-config)))
               (should-not
                (gethash
                 'nskk-test-retained
@@ -2052,13 +2052,13 @@
   (defun nskk-test--converter-rule-state (romaji)
     "Return identity-sensitive Prolog state for ROMAJI."
     (let* ((key "romaji-to-kana/2")
-           (index (gethash key nskk--prolog-trie-indices))
+           (index (gethash key (nskk-prolog-trie-indices)))
            (bucket (and index (nskk-trie-lookup index romaji)))
-           (cache-entry (gethash key nskk--prolog-index-bucket-tail-cache))
+           (cache-entry (gethash key (nskk-prolog-index-bucket-tail-cache)))
            (cache-info (and cache-entry (gethash romaji (aref cache-entry 2)))))
       (list
-        (gethash key nskk--prolog-database)
-        (gethash key nskk--prolog-database-tails)
+        (gethash key (nskk-prolog-database))
+        (gethash key (nskk-prolog-database-tails))
         index
         bucket
         cache-entry
@@ -2075,12 +2075,13 @@
     (nskk-it
       "detaches cyclic shared string property graphs and returns fresh strings"
       (nskk-prolog-test-with-isolated-db
-        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
-              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal)))
-              (romaji (copy-sequence "own"))
-              (kana (copy-sequence "K仮名"))
-              (shared (cons (quote payload) nil)))
-          (nskk-prolog-clear-database)
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test (quote equal))))
+          (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+                (romaji (copy-sequence "own"))
+                (kana (copy-sequence "K仮名"))
+                (shared (cons (quote payload) nil)))
+            (nskk-prolog-clear-database)
           (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
           (setcdr shared shared)
           (add-text-properties 0 1 (list (quote payload) shared) romaji)
@@ -2099,7 +2100,7 @@
             (should
               (eq
                 stored-kana
-                (nth 2 (car (car (gethash "romaji-to-kana/2" nskk--prolog-database))))))
+                (nth 2 (car (car (gethash "romaji-to-kana/2" (nskk-prolog-database)))))))
             (aset romaji 0 ?X)
             (aset kana 0 ?X)
             (let* ((first (nskk-converter-lookup "own"))
@@ -2116,54 +2117,57 @@
               (should (eq (cdr second-property) second-property))
               (aset first 0 ?X)
               (should (equal second stored-kana))
-              (should (equal (nskk-converter-get-rule "own") stored-kana)))))))
+              (should (equal (nskk-converter-get-rule "own") stored-kana))))))))
     (nskk-it
       "distinguishes present nil, incomplete, and non-string identities"
       (nskk-prolog-test-with-isolated-db
-        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
-              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal)))
-              (object (list (quote non-string))))
-          (nskk-prolog-clear-database)
-          (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
-          (nskk-converter-add-rule "nil-key" nil)
-          (nskk-converter-add-rule "nil-keyx" "長")
-          (nskk-converter-add-rule "object" object)
-          (nskk--converter-populate-incomplete-markers)
-          (let ((nil-entry (nskk--converter-find-hash-entry "nil-key"))
-                (object-entry (nskk--converter-find-hash-entry "object")))
-            (should nil-entry)
-            (should-not (cadr nil-entry))
-            (should-not (nskk--converter-lookup-raw "nil-key"))
-            (should (eq (nskk-converter-lookup "nil-key") nil))
-            (should (equal (nskk-converter-lookup "nil-keyx") "長"))
-            (should (eq (nskk-converter-lookup "nil-") :incomplete))
-            (should (eq (cadr object-entry) object))
-            (should (eq (nskk-converter-lookup "object") object))
-            (should-not
-              (nskk-prolog-query (list (quote romaji-to-kana) "object" (quote \?kana))))))))
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test (quote equal))))
+          (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+                (object (list (quote non-string))))
+            (nskk-prolog-clear-database)
+            (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+            (nskk-converter-add-rule "nil-key" nil)
+            (nskk-converter-add-rule "nil-keyx" "長")
+            (nskk-converter-add-rule "object" object)
+            (nskk--converter-populate-incomplete-markers)
+            (let ((nil-entry (nskk--converter-find-hash-entry "nil-key"))
+                  (object-entry (nskk--converter-find-hash-entry "object")))
+              (should nil-entry)
+              (should-not (cadr nil-entry))
+              (should-not (nskk--converter-lookup-raw "nil-key"))
+              (should (eq (nskk-converter-lookup "nil-key") nil))
+              (should (equal (nskk-converter-lookup "nil-keyx") "長"))
+              (should (eq (nskk-converter-lookup "nil-") :incomplete))
+              (should (eq (cadr object-entry) object))
+              (should (eq (nskk-converter-lookup "object") object))
+              (should-not
+                (nskk-prolog-query (list (quote romaji-to-kana) "object" (quote \?kana)))))))))
     (nskk-it
       "keeps non-string values out of Prolog and detaches their keys"
       (nskk-prolog-test-with-isolated-db
-        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
-              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal)))
-              (romaji (copy-sequence "metadata"))
-              (value (list (quote metadata))))
-          (nskk-prolog-clear-database)
-          (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
-          (let ((prolog-before (nskk-test--converter-rule-state "metadata")))
-            (nskk-converter-add-rule romaji value)
-            (let ((entry (nskk--converter-find-hash-entry "metadata")))
-              (should-not (eq (car entry) romaji))
-              (should (eq (cadr entry) value))
-              (should (eq (nskk-converter-lookup "metadata") value)))
-            (nskk-test--converter-should-retain-rule-state prolog-before "metadata")))))
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test (quote equal))))
+          (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
+                (romaji (copy-sequence "metadata"))
+                (value (list (quote metadata))))
+            (nskk-prolog-clear-database)
+            (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+            (let ((prolog-before (nskk-test--converter-rule-state "metadata")))
+              (nskk-converter-add-rule romaji value)
+              (let ((entry (nskk--converter-find-hash-entry "metadata")))
+                (should-not (eq (car entry) romaji))
+                (should (eq (cadr entry) value))
+                (should (eq (nskk-converter-lookup "metadata") value)))
+              (nskk-test--converter-should-retain-rule-state prolog-before "metadata"))))))
     (nskk-it
       "replaces and removes only the first matching Prolog clause"
       (nskk-prolog-test-with-isolated-db
-        (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
-              (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
-          (nskk-prolog-clear-database)
-          (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
+        (nskk-prolog-with-database-fields
+            ((index-bucket-tail-cache (make-hash-table :test (quote equal))))
+          (let ((nskk--romaji-table (make-hash-table :test (quote equal))))
+            (nskk-prolog-clear-database)
+            (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
           (let ((first (list (list (quote romaji-to-kana) "duplicate" "一")))
                 (second (list (list (quote romaji-to-kana) "duplicate" "二")))
                 (survivor (list (list (quote romaji-to-kana) "other" "他"))))
@@ -2171,7 +2175,7 @@
             (nskk-prolog-assert second)
             (nskk-prolog-assert survivor)
             (nskk-converter-add-rule "duplicate" "新")
-            (let ((database (gethash "romaji-to-kana/2" nskk--prolog-database)))
+            (let ((database (gethash "romaji-to-kana/2" (nskk-prolog-database))))
               (should (equal (car database) second))
               (should (equal (cadr database) survivor))
               (should
@@ -2192,7 +2196,7 @@
                   (list (quote romaji-to-kana) "duplicate" (quote \?kana))
                   (quote \?kana))
                 "新"))
-            (should-not (nskk--converter-find-hash-entry "duplicate"))))))
+            (should-not (nskk--converter-find-hash-entry "duplicate")))))))
     (nskk-it
       "restores exact hash entries for every journal failure boundary"
       (dolist (state (quote (absent present-nil present-value)))
@@ -2231,8 +2235,9 @@
       (dolist (operation (quote (add remove)))
         (dolist (fault-type (quote (error quit)))
           (nskk-prolog-test-with-isolated-db
-            (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
-                  (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
+            (nskk-prolog-with-database-fields
+                ((index-bucket-tail-cache (make-hash-table :test (quote equal))))
+              (let ((nskk--romaji-table (make-hash-table :test (quote equal))))
               (nskk-prolog-clear-database)
               (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
               (nskk-converter-add-rule "copy-failure" "旧")
@@ -2258,14 +2263,15 @@
                     (nskk-converter-add-rule "copy-failure" "新")
                     (should (equal (nskk-converter-lookup "copy-failure") "新")))
                   (nskk-converter-remove-rule "copy-failure")
-                  (should-not (nskk--converter-find-hash-entry "copy-failure")))))))))
+                  (should-not (nskk--converter-find-hash-entry "copy-failure"))))))))))
     (nskk-it
       "rolls back add callbacks before and after hash publication"
       (dolist (fault-type (quote (error quit)))
         (dolist (timing (quote (before after)))
           (nskk-prolog-test-with-isolated-db
-            (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
-                  (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
+            (nskk-prolog-with-database-fields
+                ((index-bucket-tail-cache (make-hash-table :test (quote equal))))
+              (let ((nskk--romaji-table (make-hash-table :test (quote equal))))
               (nskk-prolog-clear-database)
               (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
               (nskk-converter-add-rule "atomic-add" "旧")
@@ -2297,14 +2303,15 @@
                       (quote \?kana))
                     "旧"))
                 (nskk-converter-add-rule "atomic-add" "新")
-                (should (equal (nskk-converter-lookup "atomic-add") "新"))))))))
+                (should (equal (nskk-converter-lookup "atomic-add") "新")))))))))
     (nskk-it
       "rolls back remove callbacks before and after hash deletion"
       (dolist (fault-type (quote (error quit)))
         (dolist (timing (quote (before after)))
           (nskk-prolog-test-with-isolated-db
-            (let ((nskk--romaji-table (make-hash-table :test (quote equal)))
-                  (nskk--prolog-index-bucket-tail-cache (make-hash-table :test (quote equal))))
+            (nskk-prolog-with-database-fields
+                ((index-bucket-tail-cache (make-hash-table :test (quote equal))))
+              (let ((nskk--romaji-table (make-hash-table :test (quote equal))))
               (nskk-prolog-clear-database)
               (nskk-prolog-set-index (quote romaji-to-kana) 2 :trie)
               (nskk-converter-add-rule "atomic-remove" "旧")
@@ -2336,7 +2343,7 @@
                       (quote \?kana))
                     "旧"))
                 (nskk-converter-remove-rule "atomic-remove")
-                (should-not (nskk--converter-find-hash-entry "atomic-remove")))))))))
+                (should-not (nskk--converter-find-hash-entry "atomic-remove"))))))))))
   (progn
   (nskk-describe
     "unbound mode map style transactions"

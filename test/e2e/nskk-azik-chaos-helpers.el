@@ -120,19 +120,18 @@ buffer.  This allows multiple chaos scenarios to run inside one
   ;; Wipe buffer content
   (erase-buffer)
   ;; Clear any partial romaji
-  (when (boundp 'nskk--romaji-buffer)
-    (setq nskk--romaji-buffer ""))
+  (nskk-state-set-romaji-buffer "")
   ;; Clear all AZIK deferred states
-  (when (boundp 'nskk--deferred-azik-state)
-    (setq nskk--deferred-azik-state nil))
-  (when (boundp 'nskk--deferred-vowel-shadow-state)
-    (setq nskk--deferred-vowel-shadow-state nil))
-  (when (boundp 'nskk--azik-colon-okuri-pending)
-    (setq nskk--azik-colon-okuri-pending nil))
-  (when (boundp 'nskk--azik-colon-okuri-deferred)
-    (setq nskk--azik-colon-okuri-deferred nil))
-  (when (boundp 'nskk--azik-sokuon-okuri-kana-pending)
-    (setq nskk--azik-sokuon-okuri-kana-pending nil)))
+  (when (fboundp 'nskk-deferred-azik-state)
+    (nskk-set-deferred-azik-state nil))
+  (when (fboundp 'nskk-deferred-vowel-shadow-state)
+    (nskk-set-deferred-vowel-shadow-state nil))
+  (when (fboundp 'nskk-azik-colon-okuri-pending)
+    (nskk-set-azik-colon-okuri-pending nil))
+  (when (fboundp 'nskk-azik-colon-okuri-deferred)
+    (nskk-set-azik-colon-okuri-deferred nil))
+  (when (fboundp 'nskk-azik-sokuon-okuri-kana-pending)
+    (nskk-set-azik-sokuon-okuri-kana-pending nil)))
 
 (provide 'nskk-azik-chaos-helpers)
 

@@ -96,7 +96,7 @@
           ,rollback)
         (signal (car condition) (cdr condition))))))
 
-(defun nskk-cache--key-equal-p (left right)
+(defun nskk--cache-key-equal-p (left right)
   "Return non-nil when cache keys LEFT and RIGHT are structurally equal.
 Unlike `equal', this comparison terminates for circular conses and vectors."
   (let ((pending (list (cons left right)))
@@ -129,7 +129,7 @@ Unlike `equal', this comparison terminates for circular conses and vectors."
       t)))
 
 (define-hash-table-test 'nskk-cache-key-equal
-  #'nskk-cache--key-equal-p #'sxhash-equal)
+  #'nskk--cache-key-equal-p #'sxhash-equal)
 
 (defgroup nskk-cache nil
   "Cache settings for NSKK."
