@@ -6,7 +6,7 @@ LOAD_PATH = -L src -L test -L test/integration -L test/unit -L test/e2e
 # All source files (core + optional extension modules)
 SRC = src/nskk-cps-macros.el src/nskk-prolog.el src/nskk-trie.el \
        src/nskk-custom.el src/nskk-debug.el \
-       src/nskk-kana.el src/nskk-converter.el src/nskk-cache.el src/nskk-dictionary.el src/nskk-search.el \
+       src/nskk-kana.el src/nskk-converter.el src/nskk-cache.el src/nskk-dict-transaction.el src/nskk-dictionary.el src/nskk-search.el \
        src/nskk-state.el src/nskk-henkan.el src/nskk-input.el \
        src/nskk-keymap.el src/nskk-modeline.el src/nskk-candidate-window.el \
        src/nskk-server.el src/nskk-program-dictionary.el src/nskk-azik.el \
@@ -148,7 +148,7 @@ package-lint:
 	          \"nskk--cps-transform-call/cc\" \"nskk-prolog-unify/k\" \
 	          \"nskk--debug-format/k\" \"nskk--convert-loop/k\" \
 	          \"nskk--run-registration-session/k\" \
-	          \"nskk-program-dict-lookup/k\") 'symbols) \
+	          \"nskk-program-dict-lookup/k\" \"nskk-dict-transaction-read-entries\" \"nskk-dict-transaction-predicate-snapshot\" \"nskk-dict-transaction-apply-predicate-snapshot\" \"nskk-dict-transaction-ensure-rollback-complete\" \"nskk-dict-transaction-clear-pending-rollback\" \"nskk-dict-transaction-rollback-and-resignal\" \"nskk-dict-transaction-pending-rollback\" \"nskk-dict-transaction-retry-pending-rollback\" \"nskk-dict-transaction-insert-file-contents-pinned\") 'symbols) \
 	        \"\\\\'\\\\)\")))" \
 	  -f package-lint-batch-and-exit $(SRC)
 

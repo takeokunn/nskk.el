@@ -26,7 +26,8 @@
 
 ;; Contextual word association learning for NSKK (Layer 2: Domain).
 ;;
-;; Layer position: L2 (Domain) -- depends on nskk-prolog (L0) and nskk-custom (L0).
+;; Layer position: L2 (Domain) -- depends on nskk-prolog, nskk-dictionary,
+;;   nskk-dict-transaction, and nskk-custom.
 ;;
 ;; Implements skk-study-style contextual learning: when a user confirms a
 ;; candidate, the system records an association between the previously
@@ -54,6 +55,7 @@
 (require 'seq)
 (require 'nskk-prolog)
 (require 'nskk-dictionary)
+(require 'nskk-dict-transaction)
 
 ;;;; Customization
 
@@ -237,7 +239,7 @@ of the list.  Returns the (possibly reordered) candidate list."
   (let ((owner 'nskk-study-load))
     (condition-case err
         (progn
-          (nskk--dict-ensure-rollback-complete owner)
+          (nskk-dict-transaction-ensure-rollback-complete owner)
           (cond
            ((file-symlink-p nskk-study-file)
             (error "Refusing symbolic-link study file: %s" nskk-study-file))
@@ -253,56 +255,35 @@ of the list.  Returns the (possibly reordered) candidate list."
                 (error "Study file changed to a non-regular file before read"))
               (if (and size (> size nskk--study-max-file-size))
                   (message "NSKK: Study file too large (%d bytes), skipping load" size)
-                (let* ((data
-                        (let ((read-eval nil)
-                              (read-circle nil))
-                          (ignore read-eval read-circle)
-                          (with-temp-buffer
-                            (nskk--dict-insert-file-contents-pinned
-                             nskk-study-file
-                             (file-truename nskk-study-file)
-                             attributes
-                             nskk--study-max-file-size)
-                            (set-buffer-multibyte t)
-                            (decode-coding-region
-                             (point-min) (point-max) 'undecided)
-                            (goto-char (point-min))
-                            (let ((value (read (current-buffer))))
-                              (condition-case nil
-                                  (progn
-                                    (read (current-buffer))
-                                    (error "Expected exactly one data form"))
-                                (end-of-file value))))))
-                       (_ (unless (proper-list-p data)
-                            (error "Expected proper list, got %s" (type-of data))))
-                       (facts
-                        (mapcar
+                (let* ((facts
+                        (nskk-dict-transaction-read-entries
+                         nskk-study-file (file-truename nskk-study-file)
+                         attributes nskk--study-max-file-size
                          (lambda (entry)
                            (pcase entry
                              (`(,(and (pred stringp) prev)
                                 ,(and (pred stringp) reading)
                                 ,(and (pred stringp) cand))
                               `(study-association ,prev ,reading ,cand))
-                             (_ (error "Invalid study entry: %S" entry))))
-                         data)))
+                             (_ (error "Invalid study entry: %S" entry)))))))
                   (let* ((key (nskk--prolog-clause-key 'study-association 3))
-                         (previous (nskk--dict-predicate-snapshot key)))
+                         (previous (nskk-dict-transaction-predicate-snapshot key)))
                     (condition-case condition
                         (prog1
                             (progn
                               (nskk-prolog-retract-all 'study-association 3)
                               (dolist (fact facts)
                                 (nskk-prolog-assert (list fact))))
-                          (nskk--dict-clear-pending-rollback owner))
+                          (nskk-dict-transaction-clear-pending-rollback owner))
                       ((error quit)
-                       (nskk--dict-rollback-and-resignal
+                       (nskk-dict-transaction-rollback-and-resignal
                         owner
                         condition
                         (list
                          (cons
                           'predicate
                           (lambda ()
-                            (nskk--dict-apply-predicate-snapshot
+                            (nskk-dict-transaction-apply-predicate-snapshot
                              previous)))))))))))))) (error
 	  (message "NSKK: Failed to load study data: %s"
                    (error-message-string err))))))
