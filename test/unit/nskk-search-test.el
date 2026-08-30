@@ -2451,7 +2451,7 @@ of keys under `string<' regardless of the input order."
               (nskk--search-register-cache cache)
               (let* ((key (nskk--prolog-clause-key 'learning-score 3))
                      (predicate-before
-                      (nskk--dict-predicate-snapshot key))
+                      (nskk-dict-transaction-predicate-snapshot key))
                      (cache-hash (nskk-cache-lru-hash cache))
                      (cache-head (nskk-cache-lru-head cache))
                      (cache-tail (nskk-cache-lru-tail cache))
@@ -2482,7 +2482,7 @@ of keys under `string<' regardless of the input order."
                          "NSKK: Cannot safely read unpinned file"
                          diagnostic))
                 (let ((predicate-after
-                       (nskk--dict-predicate-snapshot key)))
+                       (nskk-dict-transaction-predicate-snapshot key)))
                   (dotimes (index (length predicate-before))
                     (should (eq (aref predicate-before index)
                                 (aref predicate-after index)))))
@@ -2548,7 +2548,7 @@ of keys under `string<' regardless of the input order."
               (nskk--search-register-cache cache)
               (let* ((key (nskk--prolog-clause-key 'learning-score 3))
                      (predicate-before
-                      (nskk--dict-predicate-snapshot key))
+                      (nskk-dict-transaction-predicate-snapshot key))
                      (cache-hash (nskk-cache-lru-hash cache))
                      (cache-head (nskk-cache-lru-head cache))
                      (cache-tail (nskk-cache-lru-tail cache))
@@ -2561,7 +2561,7 @@ of keys under `string<' regardless of the input order."
                      (read-circle t))
                 (nskk-search-load-learning-data)
                 (let ((predicate-after
-                       (nskk--dict-predicate-snapshot key)))
+                       (nskk-dict-transaction-predicate-snapshot key)))
                   (dotimes (index (length predicate-before))
                     (should (eq (aref predicate-before index)
                                 (aref predicate-after index)))))
@@ -2613,7 +2613,7 @@ of keys under `string<' regardless of the input order."
                       (makunbound 'nskk--learning-loaded)))
                   (let* ((key (nskk--prolog-clause-key 'learning-score 3))
                          (predicate-before
-                          (nskk--dict-predicate-snapshot key))
+                          (nskk-dict-transaction-predicate-snapshot key))
                          (loaded-was-bound
                           (boundp 'nskk--learning-loaded))
                          (loaded-value
@@ -2650,7 +2650,7 @@ of keys under `string<' regardless of the input order."
                                    'returned)
                                (quit 'quit))))))
                     (let ((predicate-after
-                           (nskk--dict-predicate-snapshot key)))
+                           (nskk-dict-transaction-predicate-snapshot key)))
                       (dotimes (index (length predicate-before))
                         (should (eq (aref predicate-before index)
                                     (aref predicate-after index)))))

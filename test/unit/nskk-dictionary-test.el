@@ -748,7 +748,7 @@
             (with-temp-file dictionary-file
               (insert "unchanged" (string 0 127) "\n"))
             (setq before
-                  (nskk--dict-predicate-snapshot clause-key)
+                  (nskk-dict-transaction-predicate-snapshot clause-key)
                   before-file
                   (with-temp-buffer
                     (insert-file-contents-literally dictionary-file)
@@ -783,7 +783,7 @@
                     (error-message-string condition)
                     "Dictionary error: \"Invalid user dictionary entry\"")))))
             (let ((after
-                   (nskk--dict-predicate-snapshot clause-key)))
+                   (nskk-dict-transaction-predicate-snapshot clause-key)))
               (dotimes (slot (1- (length before)))
                 (should
                  (eq (aref before (1+ slot))
@@ -899,7 +899,7 @@
                     (with-temp-file dictionary-file
                       (insert "unchanged" (string 0 127) "\n"))
                     (setq before
-                          (nskk--dict-predicate-snapshot clause-key)
+                          (nskk-dict-transaction-predicate-snapshot clause-key)
                           before-file
                           (with-temp-buffer
                             (insert-file-contents-literally dictionary-file)
@@ -921,7 +921,7 @@
                                ((error quit) error)))))
                       (should (equal condition (cons kind fault-data))))
                     (let ((after
-                           (nskk--dict-predicate-snapshot clause-key)))
+                           (nskk-dict-transaction-predicate-snapshot clause-key)))
                       (dotimes (slot (1- (length before)))
                         (should
                          (eq (aref before (1+ slot))
@@ -992,7 +992,7 @@
             (with-temp-file dictionary-file
               (insert "unchanged" (string 0 127) "\n"))
             (setq before
-                  (nskk--dict-predicate-snapshot clause-key)
+                  (nskk-dict-transaction-predicate-snapshot clause-key)
                   before-file
                   (with-temp-buffer
                     (insert-file-contents-literally dictionary-file)
@@ -1028,7 +1028,7 @@
                     (error-message-string condition)
                     "Dictionary error: \"Invalid user dictionary entry\"")))))
             (let ((after
-                   (nskk--dict-predicate-snapshot clause-key)))
+                   (nskk-dict-transaction-predicate-snapshot clause-key)))
               (dotimes (slot (1- (length before)))
                 (should
                  (eq (aref before (1+ slot))
@@ -1087,7 +1087,7 @@
                     (with-temp-file dictionary-file
                       (insert "unchanged" (string 0 127) "\n"))
                     (setq before
-                          (nskk--dict-predicate-snapshot clause-key)
+                          (nskk-dict-transaction-predicate-snapshot clause-key)
                           before-file
                           (with-temp-buffer
                             (insert-file-contents-literally dictionary-file)
@@ -1136,7 +1136,7 @@
                           (should
                            (equal condition (cons kind fault-data))))
                         (let ((after
-                               (nskk--dict-predicate-snapshot clause-key)))
+                               (nskk-dict-transaction-predicate-snapshot clause-key)))
                           (dotimes (slot (1- (length before)))
                             (should
                              (eq (aref before (1+ slot))
@@ -1205,7 +1205,7 @@
                     (nskk-cache-put cache "cached" "value")
                     (nskk--search-register-cache cache)
                     (setq before
-                          (nskk--dict-predicate-snapshot clause-key)
+                          (nskk-dict-transaction-predicate-snapshot clause-key)
                           before-file
                           (with-temp-buffer
                             (insert-file-contents-literally dictionary-file)
@@ -1243,7 +1243,7 @@
                       (should (equal condition (cons kind fault-data))))
                     (should (= fault-calls 1))
                     (let ((after
-                           (nskk--dict-predicate-snapshot clause-key)))
+                           (nskk-dict-transaction-predicate-snapshot clause-key)))
                       (dotimes (slot (1- (length before)))
                         (should
                          (eq (aref before (1+ slot))
@@ -2169,7 +2169,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
        '((kakutei-dict-entry "むかし" ("昔"))))
       (puthash key cache-value nskk--prolog-index-bucket-tail-cache)
       (vector key
-              (nskk--dict-predicate-snapshot key)
+              (nskk-dict-transaction-predicate-snapshot key)
               cache-value
               nskk--kakutei-dict-loaded)))
 
@@ -2177,7 +2177,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
     "Assert that the live kakutei state remains reference-identical to STATE."
     (let* ((key (aref state 0))
            (before (aref state 1))
-           (after (nskk--dict-predicate-snapshot key)))
+           (after (nskk-dict-transaction-predicate-snapshot key)))
       (dotimes (slot (1- (length before)))
         (should (eq (aref before (1+ slot))
                     (aref after (1+ slot)))))
@@ -2347,7 +2347,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
         (should
          (nskk-prolog-holds-p
           '(kakutei-dict-entry "つぎ" ("次"))))
-        (let* ((after (nskk--dict-predicate-snapshot key))
+        (let* ((after (nskk-dict-transaction-predicate-snapshot key))
                (new-index (aref after 6))
                (new-cache (aref after 7)))
           (should (vectorp new-cache))
@@ -2469,7 +2469,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                       (with-temp-file dictionary-file
                         (insert "unchanged" (string 0 127) "\n"))
                       (setq before
-                            (nskk--dict-predicate-snapshot clause-key)
+                            (nskk-dict-transaction-predicate-snapshot clause-key)
                             before-file
                             (with-temp-buffer
                               (insert-file-contents-literally dictionary-file)
@@ -2489,7 +2489,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                                 '(nskk-dict-error
                                   "Invalid user dictionary entry"))))
                       (let ((after
-                             (nskk--dict-predicate-snapshot clause-key)))
+                             (nskk-dict-transaction-predicate-snapshot clause-key)))
                         (dotimes (slot (1- (length before)))
                           (should
                            (eq (aref before (1+ slot))
@@ -2530,7 +2530,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                   (with-temp-file dictionary-file
                     (insert "unchanged" (string 0 127) "\n"))
                   (setq before
-                        (nskk--dict-predicate-snapshot clause-key)
+                        (nskk-dict-transaction-predicate-snapshot clause-key)
                         before-file
                         (with-temp-buffer
                           (insert-file-contents-literally dictionary-file)
@@ -2546,7 +2546,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                             '(nskk-dict-error
                               "Invalid user dictionary entry"))))
                   (let ((after
-                         (nskk--dict-predicate-snapshot clause-key)))
+                         (nskk-dict-transaction-predicate-snapshot clause-key)))
                     (dotimes (slot (1- (length before)))
                       (should
                        (eq (aref before (1+ slot))
@@ -2580,7 +2580,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               (nskk-prolog-assert
                '((user-dict-entry "bad/reading" ("候補"))))
               (setq before
-                    (nskk--dict-predicate-snapshot clause-key))
+                    (nskk-dict-transaction-predicate-snapshot clause-key))
               (let ((condition
                      (condition-case error
                          (progn
@@ -2592,7 +2592,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                         '(nskk-dict-error
                           "Invalid user dictionary entry"))))
               (let ((after
-                     (nskk--dict-predicate-snapshot clause-key)))
+                     (nskk-dict-transaction-predicate-snapshot clause-key)))
                 (dotimes (slot (1- (length before)))
                   (should
                    (eq (aref before (1+ slot))
@@ -3734,7 +3734,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                (predicate
                 (intern (format "append-setup-rollback-%s" kind)))
                (key (nskk--prolog-clause-key predicate 2))
-               (before (nskk--dict-predicate-snapshot key))
+               (before (nskk-dict-transaction-predicate-snapshot key))
                (real-set-index
                 (symbol-function 'nskk-prolog-set-index))
                (data (list "append setup rollback" kind))
@@ -3750,7 +3750,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               ((error quit) (setq caught condition))))
           (should (eq (car caught) kind))
           (should (equal (cdr caught) data))
-          (let ((after (nskk--dict-predicate-snapshot key)))
+          (let ((after (nskk-dict-transaction-predicate-snapshot key)))
             (dotimes (slot (1- (length before)))
               (should
                (eq (aref before (1+ slot))
@@ -3774,7 +3774,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
             (nskk-prolog-set-index predicate 2 type)
             (nskk--dict-append-predicate-entries
              predicate '(("same" "old")))
-            (let* ((before (nskk--dict-predicate-snapshot key))
+            (let* ((before (nskk-dict-transaction-predicate-snapshot key))
                    (previous-cache
                     (gethash key
                              nskk--prolog-index-bucket-tail-cache))
@@ -3807,7 +3807,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                   ((error quit) (setq caught condition))))
               (should (eq (car caught) kind))
               (should (equal (cdr caught) data))
-              (let ((after (nskk--dict-predicate-snapshot key)))
+              (let ((after (nskk-dict-transaction-predicate-snapshot key)))
                 (dotimes (slot (1- (length before)))
                   (should
                    (eq (aref before (1+ slot))
@@ -3852,7 +3852,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                  predicate '(("same" "old"))))
             (nskk-prolog-assert
              (list (list predicate "same" '("old")))))
-          (let* ((before (nskk--dict-predicate-snapshot key))
+          (let* ((before (nskk-dict-transaction-predicate-snapshot key))
                  (previous-cache
                   (gethash key nskk--prolog-index-bucket-tail-cache))
                  (database
@@ -3876,7 +3876,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                      ("new" "candidate")))
                 (quit (setq caught condition quit-flag nil))))
             (should (eq (car caught) 'quit))
-            (let ((after (nskk--dict-predicate-snapshot key)))
+            (let ((after (nskk-dict-transaction-predicate-snapshot key)))
               (dotimes (slot (1- (length before)))
                 (should
                  (eq (aref before (1+ slot))
@@ -3919,7 +3919,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               (nskk-prolog-set-index predicate 2 :trie)
               (nskk-prolog-assert
                '((system-dict-entry "existing" ("value"))))
-              (setq before (nskk--dict-predicate-snapshot key))
+              (setq before (nskk-dict-transaction-predicate-snapshot key))
               (pcase stage
                 ('bulk
                  (let ((real-bulk
@@ -3970,7 +3970,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               (should
                (equal (cl-subseq before 1)
                       (cl-subseq
-                       (nskk--dict-predicate-snapshot key) 1)))
+                       (nskk-dict-transaction-predicate-snapshot key) 1)))
               (should
                (nskk-prolog-holds-p
                 '(system-dict-entry "existing" ("value"))))
@@ -4147,12 +4147,12 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                next-condition)
           (unwind-protect
               (progn
-                (nskk--dict-clear-pending-rollback owner)
+                (nskk-dict-transaction-clear-pending-rollback owner)
                 (cl-letf (((symbol-function 'display-warning)
                            (lambda (&rest _)
                              (signal kind '("warning failure")))))
                   (condition-case condition
-                      (nskk--dict-rollback-and-resignal
+                      (nskk-dict-transaction-rollback-and-resignal
                        owner
                        primary
                        (list
@@ -4175,7 +4175,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                   (should (equal caught primary))
                   (should
                    (equal events '(loaded-binding cache predicate)))
-                  (let ((pending (nskk--dict-pending-rollback owner)))
+                  (let ((pending (nskk-dict-transaction-pending-rollback owner)))
                     (should pending)
                     (should
                      (equal
@@ -4187,7 +4187,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                       '(predicate))))
                   (condition-case condition
                       (progn
-                        (nskk--dict-ensure-rollback-complete owner)
+                        (nskk-dict-transaction-ensure-rollback-complete owner)
                         (cl-incf publication-count))
                     (nskk-dict-rollback-incomplete
                      (setq next-condition condition)))
@@ -4200,13 +4200,13 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                       (mapcar #'car (plist-get payload :failures))
                       '(predicate))))
                   (setq predicate-fails nil)
-                  (should-not (nskk--dict-retry-pending-rollback owner))
-                  (should-not (nskk--dict-pending-rollback owner))
+                  (should-not (nskk-dict-transaction-retry-pending-rollback owner))
+                  (should-not (nskk-dict-transaction-pending-rollback owner))
                   (should
                    (equal
                     events
                     '(predicate predicate loaded-binding cache predicate)))))
-            (nskk--dict-clear-pending-rollback owner))))))
+            (nskk-dict-transaction-clear-pending-rollback owner))))))
 (defun nskk-dictionary-test--file-bytes (path)
   "Return the literal contents of PATH."
   (with-temp-buffer (insert-file-contents-literally path) (buffer-string)))

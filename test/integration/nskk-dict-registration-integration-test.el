@@ -123,7 +123,7 @@
                 (set-buffer-multibyte nil)
                 (insert "literal-before"))
               (let ((before
-                     (nskk--dict-predicate-snapshot
+                     (nskk-dict-transaction-predicate-snapshot
                       (nskk--prolog-clause-key 'user-dict-entry 2))))
                 (dolist (case cases)
                   (let ((condition
@@ -139,7 +139,7 @@
                               "Invalid user dictionary entry")))
                     (should
                      (equal
-                      (nskk--dict-predicate-snapshot
+                      (nskk-dict-transaction-predicate-snapshot
                        (nskk--prolog-clause-key 'user-dict-entry 2))
                       before))
                     (should (eq nskk--user-dict-index 'user))
@@ -202,7 +202,7 @@
                   (set-buffer-multibyte nil)
                   (insert "literal-before"))
                 (let* ((before
-                        (nskk--dict-predicate-snapshot
+                        (nskk-dict-transaction-predicate-snapshot
                          (nskk--prolog-clause-key 'user-dict-entry 2)))
                        (condition
                         (condition-case err
@@ -216,7 +216,7 @@
                             "Invalid user dictionary entry")))
                   (should
                    (equal
-                    (nskk--dict-predicate-snapshot
+                    (nskk-dict-transaction-predicate-snapshot
                      (nskk--prolog-clause-key 'user-dict-entry 2))
                     before))
                   (should (eq nskk--user-dict-index 'user))

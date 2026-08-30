@@ -499,6 +499,8 @@ when both the lexical and canonical local paths are immutable."
 (defalias 'nskk-dict-transaction-ensure-rollback-complete 'nskk-dict-transaction--ensure-rollback-complete)
 (defalias 'nskk-dict-transaction-clear-pending-rollback 'nskk-dict-transaction--clear-pending-rollback)
 (defalias 'nskk-dict-transaction-rollback-and-resignal 'nskk-dict-transaction--rollback-and-resignal)
+(defalias 'nskk-dict-transaction-pending-rollback 'nskk-dict-transaction--pending-rollback)
+(defalias 'nskk-dict-transaction-retry-pending-rollback 'nskk-dict-transaction--retry-pending-rollback)
 (defalias 'nskk-dict-transaction-insert-file-contents-pinned 'nskk-dict-transaction--insert-file-contents-pinned)
 
 (provide 'nskk-dict-transaction)
