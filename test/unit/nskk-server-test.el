@@ -2483,9 +2483,10 @@ Restores server-state to closed in an unwind-protect."
         (dolist (phase '(retract assert))
           (dolist (kind '(error quit))
             (nskk-prolog-test-with-isolated-db
-              (let* ((nskk--prolog-index-bucket-tail-cache
-                      (make-hash-table :test 'equal))
-                     (buffer
+              (nskk-prolog-with-database-fields
+                  ((index-bucket-tail-cache
+                    (make-hash-table :test 'equal)))
+              (let* ((buffer
                       (generate-new-buffer
                        (format " *nskk-close-publish-%s-%s*" phase kind)))
                      (proc
@@ -2509,23 +2510,23 @@ Restores server-state to closed in an unwind-protect."
                       (funcall real-assert '((server-state open)))
                       (let* ((key "server-state/1")
                              (database-head
-                              (gethash key nskk--prolog-database))
+                              (gethash key (nskk-prolog-database)))
                              (database-tail
-                              (gethash key nskk--prolog-database-tails))
+                              (gethash key (nskk-prolog-database-tails)))
                              (index
-                              (gethash key nskk--prolog-hash-indices))
+                              (gethash key (nskk-prolog-hash-indices)))
                              (bucket (gethash 'open index))
                              (bucket-tail (last bucket))
                              (cache-entry
                               (gethash
-                               key nskk--prolog-index-bucket-tail-cache))
+                               key (nskk-prolog-index-bucket-tail-cache)))
                              (cache-buckets (aref cache-entry 2))
                              (cache-info (gethash 'open cache-buckets))
                              (database-copy (copy-tree database-head))
                              (bucket-copy (copy-tree bucket))
                              (lookup-copy
                               (copy-tree
-                               (nskk--prolog-get-clauses
+                               (nskk-prolog-get-clauses
                                 'server-state '(open) nil)))
                              (before
                               (nskk--server-prolog-state-snapshot)))
@@ -2577,18 +2578,18 @@ Restores server-state to closed in an unwind-protect."
                                  (aref after (+ position 2))))))
                         (should
                          (eq database-head
-                             (gethash key nskk--prolog-database)))
+                             (gethash key (nskk-prolog-database))))
                         (should
                          (eq database-tail
-                             (gethash key nskk--prolog-database-tails)))
+                             (gethash key (nskk-prolog-database-tails))))
                         (should
                          (eq index
-                             (gethash key nskk--prolog-hash-indices)))
+                             (gethash key (nskk-prolog-hash-indices))))
                         (should (eq bucket (gethash 'open index)))
                         (should
                          (eq cache-entry
                              (gethash
-                              key nskk--prolog-index-bucket-tail-cache)))
+                              key (nskk-prolog-index-bucket-tail-cache))))
                         (should (eq cache-buckets (aref cache-entry 2)))
                         (should (eq cache-info
                                     (gethash 'open cache-buckets)))
@@ -2598,17 +2599,17 @@ Restores server-state to closed in an unwind-protect."
                         (should (equal bucket-copy bucket))
                         (should
                          (equal lookup-copy
-                                (nskk--prolog-get-clauses
+                                (nskk-prolog-get-clauses
                                  'server-state '(open) nil)))
                         (funcall real-assert '((server-state open)))
                         (let* ((new-database-tail
-                                (gethash key nskk--prolog-database-tails))
+                                (gethash key (nskk-prolog-database-tails)))
                                (new-bucket-tail (last bucket))
                                (new-cache-info
                                 (gethash 'open cache-buckets)))
                           (should
                            (eq database-head
-                               (gethash key nskk--prolog-database)))
+                               (gethash key (nskk-prolog-database))))
                           (should (eq (cdr database-tail)
                                       new-database-tail))
                           (should (eq bucket (gethash 'open index)))
@@ -2616,14 +2617,14 @@ Restores server-state to closed in an unwind-protect."
                           (should
                            (eq cache-entry
                                (gethash
-                                key nskk--prolog-index-bucket-tail-cache)))
+                                key (nskk-prolog-index-bucket-tail-cache))))
                           (should (eq cache-buckets (aref cache-entry 2)))
                           (should (eq bucket (aref new-cache-info 0)))
                           (should
                            (eq new-bucket-tail (aref new-cache-info 1)))
                           (should
                            (= (length
-                               (nskk--prolog-get-clauses
+                               (nskk-prolog-get-clauses
                                 'server-state '(open) nil))
                               3)))))
                   (when (process-live-p proc)
@@ -2632,7 +2633,7 @@ Restores server-state to closed in an unwind-protect."
                   (when (buffer-live-p buffer)
                     (let ((kill-buffer-hook nil)
                           (kill-buffer-query-functions nil))
-                      (kill-buffer buffer))))))))))
+                      (kill-buffer buffer)))))))))))
 
     (nskk-it "retries pre-effect teardown faults without repeating completed effects"
       (let ((real-send (symbol-function 'process-send-string))

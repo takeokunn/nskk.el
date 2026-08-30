@@ -115,6 +115,22 @@ module that owns them (nskk-show-mode.el manages this overlay's lifecycle).")
   "Timer for auto-hiding the mode indicator overlay.
 Cancelled and re-created each time the mode indicator is displayed.")
 
+(defun nskk-show-mode-overlay ()
+  "Return the current mode-indicator overlay, or nil."
+  nskk--show-mode-overlay)
+
+(defun nskk-show-mode-set-overlay (value)
+  "Set the mode-indicator overlay to VALUE and return VALUE."
+  (setq nskk--show-mode-overlay value))
+
+(defun nskk-show-mode-timer ()
+  "Return the current mode-indicator auto-hide timer, or nil."
+  nskk--show-mode-timer)
+
+(defun nskk-show-mode-set-timer (value)
+  "Set the mode-indicator auto-hide timer to VALUE and return VALUE."
+  (setq nskk--show-mode-timer value))
+
 (progn
   (defvar-local
     nskk--show-mode-last-mode
@@ -245,7 +261,7 @@ re-signaling the first failure."
   "Release the global tooltip when its owner buffer is killed."
   (nskk--show-mode-release-tooltip (current-buffer) t))
 
-(defun nskk--show-mode-hide ()
+(defun nskk-show-mode-hide ()
   "Hide indicators owned by the current buffer.
 A tooltip owned by another buffer is left untouched."
   (let ((owner (current-buffer)))

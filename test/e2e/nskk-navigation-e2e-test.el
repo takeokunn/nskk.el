@@ -401,7 +401,7 @@
 ;; These tests exercise the `nskk--post-command-handler` safety net path,
 ;; which commits conversion when an unbound command moves point away from
 ;; the overlay boundary.  Unlike sections 1–9 (which test bound keys that
-;; call `nskk--commit-by-phase` explicitly), these simulate the interactive
+;; call `nskk-commit-by-phase` explicitly), these simulate the interactive
 ;; command loop: pre-command-hook → command → post-command-hook.
 
 (defmacro nskk-e2e--simulate-unbound-command (command)
@@ -504,7 +504,7 @@ Saves point in `nskk--point-before-command', runs COMMAND via
       (nskk-e2e-type "C-f")
       ;; After fix: henkan-kakutei ran, state is clean.
       (nskk-e2e-assert-henkan-phase nil)
-      (should (null (nskk--get-conversion-start)))
+      (should (null (nskk-get-conversion-start)))
       ;; ▽ marker must be gone from the buffer.
       (should (not (string-search nskk-henkan-on-marker (buffer-string))))))
 
@@ -528,7 +528,7 @@ Saves point in `nskk--point-before-command', runs COMMAND via
       (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
       (nskk-e2e-type "C-b")
       (nskk-e2e-assert-henkan-phase nil)
-      (should (null (nskk--get-conversion-start))))))
+      (should (null (nskk-get-conversion-start))))))
 
 (provide 'nskk-navigation-e2e-test)
 

@@ -365,10 +365,10 @@
 
 (nskk-describe "C-j clears pending romaji"
   (nskk-it "clears single pending romaji consonant"
-    ;; Typing "k" in hiragana mode leaves "k" pending in nskk--romaji-buffer
+    ;; Typing "k" in hiragana mode leaves "k" pending in nskk-state-romaji-buffer
     ;; (no kana emitted yet — incomplete sequence).
     ;; C-j dispatches to clear-romaji action via kakutei-action/2,
-    ;; which resets nskk--romaji-buffer to "" and stays in hiragana.
+    ;; which resets nskk-state-romaji-buffer to "" and stays in hiragana.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "k")
       ;; After "k": pending romaji, buffer still empty (shown via overlay only)
@@ -380,7 +380,7 @@
 
   (nskk-it "clears incomplete compound romaji sequence"
     ;; "sh" is an incomplete compound — "sh" alone has no kana mapping,
-    ;; so nskk--romaji-buffer holds "sh".
+    ;; so nskk-state-romaji-buffer holds "sh".
     ;; C-j clears it; mode stays hiragana; buffer remains empty.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "sh")

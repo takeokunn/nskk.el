@@ -92,7 +92,13 @@
 (require 'nskk-custom)
 (require 'nskk-debug nil t)
 
-(defvar nskk--learning-loaded)
+;; nskk.el is the top-level orchestrator and requires this file (transitively
+;; via nskk-henkan), so this file cannot `require' nskk.el back without a
+;; circular dependency.  By the time these are actually called at runtime,
+;; nskk.el has always finished loading; `declare-function' only silences the
+;; byte-compiler, it does not load anything.
+(declare-function nskk-learning-loaded "nskk" ())
+(declare-function nskk-set-learning-loaded "nskk" (value))
 
 (defconst nskk--search-learning-max-file-size (* 10 1024 1024)
   "Maximum number of bytes accepted from the learning data file.")
@@ -687,7 +693,7 @@ cost of a stale hit."
               (nskk-cache-lfu-hits cache)
               (nskk-cache-lfu-misses cache)))))
 
-  (defun nskk--search-restore-cache-snapshot (snapshot)
+  (defun nskk-search-restore-cache-snapshot (snapshot)
     "Restore CACHE state recorded in SNAPSHOT in place."
     (pcase (aref snapshot 0)
       ('lru
@@ -716,7 +722,7 @@ cost of a stale hit."
                (nskk-cache-lfu-hits cache) (aref snapshot 7)
                (nskk-cache-lfu-misses cache) (aref snapshot 8))))))
 
-  (defun nskk--search-cache-snapshots ()
+  (defun nskk-search-cache-snapshots ()
     "Snapshot every registered search cache for transactional rollback."
     (let (snapshots)
       (maphash (lambda (cache _)
@@ -801,13 +807,10 @@ stage and validate every record, then publish the result transactionally."
                               ,(and (pred integerp) score))
                             `(learning-score ,reading ,word ,score))
                            (_ (error "Invalid learning entry: %S" entry))))))
-                     (key (nskk--prolog-clause-key 'learning-score 3))
+                     (key (nskk-prolog-clause-key 'learning-score 3))
                      (previous (nskk-dict-transaction-predicate-snapshot key))
-                     (cache-snapshots (nskk--search-cache-snapshots))
-                     (loaded-was-bound (boundp 'nskk--learning-loaded))
-                     (loaded-value
-                      (and loaded-was-bound
-                           (symbol-value 'nskk--learning-loaded))))
+                     (cache-snapshots (nskk-search-cache-snapshots))
+                     (loaded-value (nskk-learning-loaded)))
                 (condition-case condition
                     (prog1
                         (progn
@@ -833,18 +836,14 @@ stage and validate every record, then publish the result transactionally."
                               (cons
                                (list 'cache index)
                                (lambda ()
-                                 (nskk--search-restore-cache-snapshot snapshot)))
+                                 (nskk-search-restore-cache-snapshot snapshot)))
                             (setq index (1+ index))))
                         cache-snapshots)
                        (list
                         (cons
                          'loaded-binding
                          (lambda ()
-                           (if loaded-was-bound
-                               (set 'nskk--learning-loaded loaded-value)
-                             (when (boundp 'nskk--learning-loaded)
-                               (makunbound
-                                'nskk--learning-loaded))))))))))))))))
+                           (nskk-set-learning-loaded loaded-value))))))))))))))
       (error
        (message "NSKK: Failed to load learning data: %s"
                 (error-message-string err))))))
@@ -864,7 +863,7 @@ Candidates marked with the nskk-no-learn text property are skipped."
                             (list 'learning-score query word old-score)))
              (new-score (1+ (or old-score 0)))
              (new-fact (list 'learning-score query word new-score)))
-        (nskk--prolog-replace-clause-transaction
+        (nskk-prolog-replace-clause-transaction
          old-fact (list new-fact)
          (lambda ()
            (nskk-debug-log

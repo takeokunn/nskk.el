@@ -7,7 +7,7 @@
   (nskk-prolog-retract-all 'nskk-transaction-test 2)
   (nskk-prolog-assert '((nskk-transaction-test "before" value)))
   (let ((snapshot (nskk-dict-transaction-predicate-snapshot
-                   (nskk--prolog-clause-key 'nskk-transaction-test 2))))
+                   (nskk-prolog-clause-key 'nskk-transaction-test 2))))
     (nskk-prolog-retract-all 'nskk-transaction-test 2)
     (nskk-dict-transaction-apply-predicate-snapshot snapshot)
     (should (nskk-prolog-query '(nskk-transaction-test "before" value)))))

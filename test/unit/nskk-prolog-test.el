@@ -1559,16 +1559,16 @@ the database in the same state as before the assertion."
         (should (functionp (gethash kind nskk--prolog-builtin-table)))))))
 
 ;;;
-;;; nskk--prolog-index-add / nskk--prolog-index-remove
+;;; nskk-prolog-index-add / nskk--prolog-index-remove
 ;;;
 
-(nskk-describe "nskk--prolog-index-add"
+(nskk-describe "nskk-prolog-index-add"
   (nskk-it "completes without error for a predicate with no index config"
     (nskk-prolog-test-with-isolated-db
       (let* ((clause '((test-noindex-pred "a" "b")))
              (key (nskk--prolog-head-key (car clause))))
         ;; Calling directly with a key that has no index config is a no-op
-        (should (null (nskk--prolog-index-add key clause))))))
+        (should (null (nskk-prolog-index-add key clause))))))
 
   (nskk-it "is called implicitly during assert and enables query to succeed"
     (nskk-prolog-test-with-isolated-db
@@ -1590,19 +1590,19 @@ the database in the same state as before the assertion."
       (should-not (nskk-prolog-query '(test-remove-fact "x" "y"))))))
 
 ;;;
-;;; nskk--prolog-get-clauses
+;;; nskk-prolog-get-clauses
 ;;;
 
-(nskk-describe "nskk--prolog-get-clauses"
+(nskk-describe "nskk-prolog-get-clauses"
   (nskk-it "returns clauses for a predicate after assertion"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-assert '((test-get-clauses-pred "a" "b")))
-      (let ((clauses (nskk--prolog-get-clauses 'test-get-clauses-pred '("a" "b") nil)))
+      (let ((clauses (nskk-prolog-get-clauses 'test-get-clauses-pred '("a" "b") nil)))
         (should clauses))))
 
   (nskk-it "returns nil for a predicate with no clauses"
     (nskk-prolog-test-with-isolated-db
-      (should-not (nskk--prolog-get-clauses 'nonexistent-pred-xyz '() nil)))))
+      (should-not (nskk-prolog-get-clauses 'nonexistent-pred-xyz '() nil)))))
 
 ;;;
 ;;; nskk--prolog-prove-internal
@@ -1651,17 +1651,17 @@ the database in the same state as before the assertion."
         (should (eq result 'no-solution))))))
 
 ;;;
-;;; nskk--prolog-clause-key
+;;; nskk-prolog-clause-key
 ;;;
 
 (nskk-deftest-table prolog-clause-key-format
-  :description "nskk--prolog-clause-key formats predicate/arity as 'pred/N' string"
+  :description "nskk-prolog-clause-key formats predicate/arity as 'pred/N' string"
   :columns (pred arity expected)
   :rows ((foo     2 "foo/2")
          (bar     0 "bar/0")
          (my-pred 3 "my-pred/3")
          ("pred"  1 "pred/1"))
-  :body (should (equal (nskk--prolog-clause-key pred arity) expected)))
+  :body (should (equal (nskk-prolog-clause-key pred arity) expected)))
 
 ;;;
 ;;; nskk--prolog-head-key
@@ -2351,7 +2351,7 @@ the database in the same state as before the assertion."
                  (updated-clause (list updated-head)))
             (nskk-prolog-set-index predicate 2 index-type)
             (nskk-prolog-assert old-clause)
-            (nskk--prolog-replace-clause-transaction missing-head new-clause)
+            (nskk-prolog-replace-clause-transaction missing-head new-clause)
             (should (equal (nskk-prolog-query-value
                             (list predicate "old" (quote \?value))
                             (quote \?value))
@@ -2372,7 +2372,7 @@ the database in the same state as before the assertion."
                 (should (equal bucket (list new-clause)))
                 (should (eq (aref cache-info 0) bucket))
                 (should (eq (aref cache-info 1) (last bucket)))))
-            (nskk--prolog-replace-clause-transaction new-head updated-clause)
+            (nskk-prolog-replace-clause-transaction new-head updated-clause)
             (should-not (nskk-prolog-query new-head))
             (should (equal (nskk-prolog-query-value
                             (list predicate "old" (quote \?value))
@@ -2434,7 +2434,7 @@ the database in the same state as before the assertion."
                    (callback-count 0))
               (should
                (eq :deleted
-                   (nskk--prolog-replace-clause-transaction
+                   (nskk-prolog-replace-clause-transaction
                     variable-pattern nil
                     (lambda ()
                       (setq callback-count (1+ callback-count))
@@ -2465,7 +2465,7 @@ the database in the same state as before the assertion."
                           (list duplicate-clause survivor-clause)))
                   (should (eq (aref cache-info 0) bucket-after))
                   (should (eq (aref cache-info 1) (last bucket-after)))))
-              (nskk--prolog-replace-clause-transaction solo-head nil)
+              (nskk-prolog-replace-clause-transaction solo-head nil)
               (let ((database-after (gethash key nskk--prolog-database)))
                 (should
                  (equal database-after
@@ -2507,7 +2507,7 @@ the database in the same state as before the assertion."
                      (callback-count 0))
                 (should
                  (eq :no-match
-                     (nskk--prolog-replace-clause-transaction
+                     (nskk-prolog-replace-clause-transaction
                       (list predicate "missing" (quote absent)) nil
                       (lambda ()
                         (setq callback-count (1+ callback-count))
@@ -2567,7 +2567,7 @@ the database in the same state as before the assertion."
                        (signal fault-type nil))
                      result))))
              (condition-case condition
-                 (nskk--prolog-replace-clause-transaction
+                 (nskk-prolog-replace-clause-transaction
                   '(replace-fault "a" old)
                   '((replace-fault "a" new)))
                ((error quit)
@@ -2633,7 +2633,7 @@ the database in the same state as before the assertion."
                        callback-observed
                        caught)
                   (condition-case condition
-                      (nskk--prolog-replace-clause-transaction
+                      (nskk-prolog-replace-clause-transaction
                        variable-pattern nil
                        (lambda ()
                          (setq callback-count (1+ callback-count))
@@ -2674,7 +2674,7 @@ the database in the same state as before the assertion."
                   (let ((recovery-callback-count 0))
                     (should
                      (eq :recovered
-                         (nskk--prolog-replace-clause-transaction
+                         (nskk-prolog-replace-clause-transaction
                           variable-pattern nil
                           (lambda ()
                             (setq recovery-callback-count
@@ -2731,10 +2731,10 @@ the database in the same state as before the assertion."
                (cache-buckets (aref cache-entry 2))
                (cache-bucket (gethash "a" cache-buckets))
                (original-index-add
-                (symbol-function 'nskk--prolog-index-add))
+                (symbol-function 'nskk-prolog-index-add))
                faulted
                caught)
-          (cl-letf (((symbol-function 'nskk--prolog-index-add)
+          (cl-letf (((symbol-function 'nskk-prolog-index-add)
                      (lambda (inner-key clause)
                        (prog1 (funcall original-index-add inner-key clause)
                          (setq faulted t)
@@ -2908,7 +2908,7 @@ the database in the same state as before the assertion."
                (index (gethash key nskk--prolog-hash-indices))
                (bucket (gethash "a" index)))
           (should-error
-           (nskk--prolog-replace-clause-transaction
+           (nskk-prolog-replace-clause-transaction
             '(callback-guard "a" old)
             '((callback-guard "a" replacement))
             (lambda ()
@@ -2947,7 +2947,7 @@ the database in the same state as before the assertion."
     (nskk-prolog-set-index 'callback-main 2 :hash)
     (nskk-prolog-assert '((callback-main "a" old)))
     (let (callback-ran)
-      (nskk--prolog-replace-clause-transaction
+      (nskk-prolog-replace-clause-transaction
        '(callback-main "a" old)
        '((callback-main "a" replacement))
        (lambda ()
@@ -2974,7 +2974,7 @@ the database in the same state as before the assertion."
      (string-match-p
       "(memq\\_>"
       (prin1-to-string
-       (symbol-function 'nskk--prolog-index-bucket-tail))))
+       (symbol-function 'nskk-prolog-index-bucket-tail))))
     (cl-letf (((symbol-function 'last)
                (lambda (&rest _args)
                  (error "hot assert called last"))))
@@ -3012,8 +3012,8 @@ the database in the same state as before the assertion."
                          first-arg))))))
               (should (eq database-clause index-clause))
               database-clause)))
-        (let* ((hash-key (nskk--prolog-clause-key 'isolation-hash 2))
-               (trie-key (nskk--prolog-clause-key 'isolation-trie 2))
+        (let* ((hash-key (nskk-prolog-clause-key 'isolation-hash 2))
+               (trie-key (nskk-prolog-clause-key 'isolation-trie 2))
                (outer-hash
                 (current-clause hash-key :hash "hash"))
                (outer-trie
@@ -3173,7 +3173,7 @@ the database in the same state as before the assertion."
 (ert-deftest nskk-prolog-isolation-copies-long-shared-bucket-without-recursion ()
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-clear-database)
-      (let* ((key (nskk--prolog-clause-key 'isolation-long 2))
+      (let* ((key (nskk-prolog-clause-key 'isolation-long 2))
              (database-bucket nil)
              (index-bucket nil)
              (index (make-hash-table :test 'equal)))
@@ -3214,7 +3214,7 @@ the database in the same state as before the assertion."
   (ert-deftest nskk-prolog-isolation-copies-text-property-value-graph ()
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-clear-database)
-      (let* ((key (nskk--prolog-clause-key 'isolation-text 1))
+      (let* ((key (nskk-prolog-clause-key 'isolation-text 1))
              (owner (copy-sequence "owner!!"))
              (payload (copy-sequence "payload!")))
         (add-text-properties 0 5 (list 'isolation-payload payload) owner)
@@ -3315,15 +3315,22 @@ the database in the same state as before the assertion."
   (ert-deftest nskk-prolog-isolation-watcher-cleanup-continues-and-resignals ()
     (nskk-prolog-test-with-isolated-db
       (let* ((database-before nskk--prolog-database)
-             (counter-before (list 'counter-before))
+             ;; Must be a real number, not an arbitrary sentinel object like
+             ;; the other -before values below: the isolation macro's own
+             ;; `saved-flags' setup now runs a `module-initialized-flag'
+             ;; Prolog query (FR-010), and proving touches
+             ;; `nskk--prolog-var-counter' for variable renaming, so it must
+             ;; stay numerically valid even while this test is deliberately
+             ;; corrupting it to verify identity-preserving restore.
+             (counter-before -972837465)
              (system-index-before (list 'system-index-before))
              (annotation-before (list 'annotation-before))
              (watcher (lambda (&rest _arguments)))
              (set-function (symbol-function 'set))
              expected-watchers)
         (setq nskk--prolog-var-counter counter-before
-              nskk--system-dict-index system-index-before
               nskk--annotation-initialized annotation-before)
+        (nskk-dict-set-system-index system-index-before)
         (add-variable-watcher 'nskk--prolog-database watcher)
         (setq expected-watchers
               (copy-sequence
@@ -3339,12 +3346,12 @@ the database in the same state as before the assertion."
                      (should-error
                       (nskk-prolog-test-with-isolated-db
                         (setq nskk--prolog-var-counter 'dirty-counter
-                              nskk--system-dict-index 'dirty-index
-                              nskk--annotation-initialized 'dirty-annotation))
+                              nskk--annotation-initialized 'dirty-annotation)
+                        (nskk-dict-set-system-index 'dirty-index))
                       :type 'error)))
                 (should (equal (cadr condition) "blocked database restore"))
                 (should (eq nskk--prolog-var-counter counter-before))
-                (should (eq nskk--system-dict-index system-index-before))
+                (should (eq (nskk-dict-system-index) system-index-before))
                 (should (eq nskk--annotation-initialized annotation-before))
                 (should (equal
                          (get-variable-watchers 'nskk--prolog-database)
@@ -3505,7 +3512,7 @@ the database in the same state as before the assertion."
                    (setq calls (1+ calls))
                    (funcall copy-function object))))
         (nskk-prolog-assert clause))
-      (let* ((key (nskk--prolog-clause-key 'copy-assert 2))
+      (let* ((key (nskk-prolog-clause-key 'copy-assert 2))
              (index (gethash key nskk--prolog-hash-indices)))
         (setq database-clause
               (car (gethash key nskk--prolog-database))
@@ -3525,7 +3532,7 @@ the database in the same state as before the assertion."
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-clear-database)
       (nskk-prolog-set-index 'copy-failure 2 :hash)
-      (let* ((key (nskk--prolog-clause-key 'copy-failure 2))
+      (let* ((key (nskk-prolog-clause-key 'copy-failure 2))
              (index (gethash key nskk--prolog-hash-indices))
              (database-count (hash-table-count nskk--prolog-database))
              (tails-count
@@ -3677,7 +3684,7 @@ the database in the same state as before the assertion."
           (puthash 'self source-table source-table)
           (nskk-prolog-set-index predicate 2 index-type)
           (nskk-prolog-assert clause)
-          (let* ((key (nskk--prolog-clause-key predicate 2))
+          (let* ((key (nskk-prolog-clause-key predicate 2))
                  (database-clause
                   (car (gethash key nskk--prolog-database)))
                  (index
@@ -3727,7 +3734,7 @@ the database in the same state as before the assertion."
           (nskk-prolog-clear-database)
           (nskk-prolog-set-index 'copy-puthash 2 :hash)
           (nskk-prolog-assert '((copy-puthash "old" old)))
-          (let* ((key (nskk--prolog-clause-key 'copy-puthash 2))
+          (let* ((key (nskk-prolog-clause-key 'copy-puthash 2))
                  (index (gethash key nskk--prolog-hash-indices))
                  (old-index-bucket (gethash "old" index))
                  (index-count (hash-table-count index))

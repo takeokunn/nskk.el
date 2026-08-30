@@ -1017,8 +1017,8 @@ PRED-NAME is the Prolog predicate symbol (defaults to
 
 (defun nskk-search-test--transaction-index (index-type key)
     (pcase index-type
-      (:hash (gethash key nskk--prolog-hash-indices))
-      (:trie (gethash key nskk--prolog-trie-indices))))
+      (:hash (gethash key (nskk-prolog-hash-indices)))
+      (:trie (gethash key (nskk-prolog-trie-indices)))))
 
   (defun nskk-search-test--transaction-index-bucket
       (index-type index reading)
@@ -1048,9 +1048,9 @@ PRED-NAME is the Prolog predicate symbol (defaults to
       (nskk-prolog-retract-all 'learning-score 3)
       (dolist (clause clauses)
         (nskk-prolog-assert clause))
-      (let* ((key (nskk--prolog-clause-key 'learning-score 3))
-             (database-head (gethash key nskk--prolog-database))
-             (database-tail (gethash key nskk--prolog-database-tails))
+      (let* ((key (nskk-prolog-clause-key 'learning-score 3))
+             (database-head (gethash key (nskk-prolog-database)))
+             (database-tail (gethash key (nskk-prolog-database-tails)))
              (database-cells
               (nskk-search-test--cons-cells database-head))
              (database-copy (copy-tree database-head))
@@ -1073,17 +1073,17 @@ PRED-NAME is the Prolog predicate symbol (defaults to
         (should (equal caught expected-condition))
         (should
          (eq database-head
-             (gethash key nskk--prolog-database)))
+             (gethash key (nskk-prolog-database))))
         (should
          (eq database-tail
-             (gethash key nskk--prolog-database-tails)))
+             (gethash key (nskk-prolog-database-tails))))
         (nskk-search-test--should-eq-spine
          database-cells
          (nskk-search-test--cons-cells
-          (gethash key nskk--prolog-database)))
+          (gethash key (nskk-prolog-database))))
         (should
          (equal database-copy
-                (gethash key nskk--prolog-database)))
+                (gethash key (nskk-prolog-database))))
         (when index-type
           (let* ((after-index
                   (nskk-search-test--transaction-index
@@ -1185,7 +1185,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to
          ((learning-score "query" "target" 7))
          ((learning-score "query" "later" 2)))
        (lambda ()
-         (let ((database nskk--prolog-database))
+         (let ((database (nskk-prolog-database)))
            (cl-letf (((symbol-function 'puthash)
                       (lambda (key value table)
                         (prog1 (funcall original-puthash key value table)
@@ -1204,7 +1204,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to
                            (quit injected-index-setter-quit)))
         (let ((original-setter
                (symbol-function
-                'nskk--prolog-transaction-set-index-bucket))
+                'nskk-prolog-transaction-set-index-bucket))
               (setter-calls 0))
           (nskk-search-test--assert-rollback-identity
            index-type
@@ -1214,7 +1214,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to
            (lambda ()
              (cl-letf
                  (((symbol-function
-                    'nskk--prolog-transaction-set-index-bucket)
+                    'nskk-prolog-transaction-set-index-bucket)
                    (lambda (type index first-arg bucket)
                      (prog1
                          (funcall original-setter
@@ -1233,7 +1233,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to
       (nskk-prolog-assert
        '((learning-score "query" "target" 7)))
       (should-not
-       (nskk--prolog-replace-clause-transaction
+       (nskk-prolog-replace-clause-transaction
         '(learning-score "query" "target" 7)
         '((learning-score "query" "target" 8))))
       (should
@@ -1250,18 +1250,18 @@ PRED-NAME is the Prolog predicate symbol (defaults to
         (nskk-prolog-retract-all 'learning-score 3)
         (nskk-prolog-assert
          '((learning-score "query" "target" 7)))
-        (let* ((key (nskk--prolog-clause-key 'learning-score 3))
-               (index (gethash key nskk--prolog-hash-indices))
+        (let* ((key (nskk-prolog-clause-key 'learning-score 3))
+               (index (gethash key (nskk-prolog-hash-indices)))
                (old-database-cell
-                (gethash key nskk--prolog-database))
+                (gethash key (nskk-prolog-database)))
                (old-index-cell (gethash "query" index))
                (original-helper
                 (symbol-function
-                 'nskk--prolog-replace-clause-transaction))
+                 'nskk-prolog-replace-clause-transaction))
                caught)
           (cl-letf
               (((symbol-function
-                 'nskk--prolog-replace-clause-transaction)
+                 'nskk-prolog-replace-clause-transaction)
                 (lambda (&rest arguments)
                   (prog1 (apply original-helper arguments)
                     (signal (car condition) (cdr condition))))))
@@ -1278,7 +1278,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to
                '(learning-score "query" "target" \?score)
                '\?score)))
           (let ((new-database-cell
-                 (gethash key nskk--prolog-database))
+                 (gethash key (nskk-prolog-database)))
                 (new-index-cell (gethash "query" index)))
             (should-not (eq old-database-cell new-database-cell))
             (should-not (eq old-index-cell new-index-cell))
@@ -1286,7 +1286,7 @@ PRED-NAME is the Prolog predicate symbol (defaults to
                         (car new-index-cell)))
             (should
              (eq new-database-cell
-                 (gethash key nskk--prolog-database-tails)))))))))
+                 (gethash key (nskk-prolog-database-tails))))))))))
 
   (nskk-describe "nskk-search learning data persistence"
     (nskk-it "handles write errors gracefully without signaling"
@@ -2449,9 +2449,9 @@ of keys under `string<' regardless of the input order."
               (nskk-cache-lru-put cache "sentinel" 'preserved)
               (nskk-cache-lru-get cache "sentinel")
               (nskk--search-register-cache cache)
-              (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+              (let* ((key (nskk-prolog-clause-key 'learning-score 3))
                      (predicate-before
-                      (nskk--dict-predicate-snapshot key))
+                      (nskk-dict-transaction-predicate-snapshot key))
                      (cache-hash (nskk-cache-lru-hash cache))
                      (cache-head (nskk-cache-lru-head cache))
                      (cache-tail (nskk-cache-lru-tail cache))
@@ -2482,7 +2482,7 @@ of keys under `string<' regardless of the input order."
                          "NSKK: Cannot safely read unpinned file"
                          diagnostic))
                 (let ((predicate-after
-                       (nskk--dict-predicate-snapshot key)))
+                       (nskk-dict-transaction-predicate-snapshot key)))
                   (dotimes (index (length predicate-before))
                     (should (eq (aref predicate-before index)
                                 (aref predicate-after index)))))
@@ -2504,7 +2504,7 @@ of keys under `string<' regardless of the input order."
                 (should (= cache-hits (nskk-cache-lru-hits cache)))
                 (should (= cache-misses (nskk-cache-lru-misses cache)))
                 (should (eq 'before-pin-failure
-                            nskk--learning-loaded))))
+                            (nskk-learning-loaded)))))
           (delete-file nskk-search-learning-file)))))
 
   (nskk-it "disables reader evaluation despite an ambient read-eval binding"
@@ -2546,9 +2546,9 @@ of keys under `string<' regardless of the input order."
               (nskk-cache-lru-put cache "sentinel" 'preserved)
               (nskk-cache-lru-get cache "sentinel")
               (nskk--search-register-cache cache)
-              (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+              (let* ((key (nskk-prolog-clause-key 'learning-score 3))
                      (predicate-before
-                      (nskk--dict-predicate-snapshot key))
+                      (nskk-dict-transaction-predicate-snapshot key))
                      (cache-hash (nskk-cache-lru-hash cache))
                      (cache-head (nskk-cache-lru-head cache))
                      (cache-tail (nskk-cache-lru-tail cache))
@@ -2561,7 +2561,7 @@ of keys under `string<' regardless of the input order."
                      (read-circle t))
                 (nskk-search-load-learning-data)
                 (let ((predicate-after
-                       (nskk--dict-predicate-snapshot key)))
+                       (nskk-dict-transaction-predicate-snapshot key)))
                   (dotimes (index (length predicate-before))
                     (should (eq (aref predicate-before index)
                                 (aref predicate-after index)))))
@@ -2582,16 +2582,13 @@ of keys under `string<' regardless of the input order."
                 (should (= cache-size (nskk-cache-lru-size cache)))
                 (should (= cache-hits (nskk-cache-lru-hits cache)))
                 (should (= cache-misses (nskk-cache-lru-misses cache)))
-                (should (eq 'before-shared-read nskk--learning-loaded))))
+                (should (eq 'before-shared-read (nskk-learning-loaded)))))
           (delete-file nskk-search-learning-file)))))
 
   (nskk-it "rolls back exact publication state on error and quit"
     (let ((nskk-search-learning-file
            (make-temp-file "nskk-learning-publication" nil ".dat"))
-          (loaded-originally-bound (boundp 'nskk--learning-loaded))
-          (loaded-original-value
-           (and (boundp 'nskk--learning-loaded)
-                (symbol-value 'nskk--learning-loaded))))
+          (loaded-original-value (nskk-learning-loaded)))
       (unwind-protect
           (progn
             (with-temp-file nskk-search-learning-file
@@ -2607,18 +2604,14 @@ of keys under `string<' regardless of the input order."
                   (nskk-cache-lru-put cache "b" 2)
                   (nskk-cache-lru-get cache "a")
                   (nskk--search-register-cache cache)
-                  (if (eq fault 'error)
-                      (set 'nskk--learning-loaded 'before-publication)
-                    (when (boundp 'nskk--learning-loaded)
-                      (makunbound 'nskk--learning-loaded)))
-                  (let* ((key (nskk--prolog-clause-key 'learning-score 3))
+                  (nskk-set-learning-loaded
+                   (if (eq fault 'error)
+                       'before-publication-error
+                     'before-publication-quit))
+                  (let* ((key (nskk-prolog-clause-key 'learning-score 3))
                          (predicate-before
-                          (nskk--dict-predicate-snapshot key))
-                         (loaded-was-bound
-                          (boundp 'nskk--learning-loaded))
-                         (loaded-value
-                          (and loaded-was-bound
-                               (symbol-value 'nskk--learning-loaded)))
+                          (nskk-dict-transaction-predicate-snapshot key))
+                         (loaded-value (nskk-learning-loaded))
                          (cache-hash (nskk-cache-lru-hash cache))
                          (cache-head (nskk-cache-lru-head cache))
                          (cache-tail (nskk-cache-lru-tail cache))
@@ -2636,8 +2629,8 @@ of keys under `string<' regardless of the input order."
                     (cl-letf (((symbol-function 'nskk--search-flush-caches)
                                (lambda ()
                                  (funcall original-flush)
-                                 (set 'nskk--learning-loaded
-                                      'during-publication)
+                                 (nskk-set-learning-loaded
+                                  'during-publication)
                                  (signal fault
                                          '("Injected publication fault")))))
                       (if (eq fault 'error)
@@ -2650,7 +2643,7 @@ of keys under `string<' regardless of the input order."
                                    'returned)
                                (quit 'quit))))))
                     (let ((predicate-after
-                           (nskk--dict-predicate-snapshot key)))
+                           (nskk-dict-transaction-predicate-snapshot key)))
                       (dotimes (index (length predicate-before))
                         (should (eq (aref predicate-before index)
                                     (aref predicate-after index)))))
@@ -2674,17 +2667,8 @@ of keys under `string<' regardless of the input order."
                     (should (= cache-hits (nskk-cache-lru-hits cache)))
                     (should (= cache-misses
                                (nskk-cache-lru-misses cache)))
-                    (if loaded-was-bound
-                        (progn
-                          (should (boundp 'nskk--learning-loaded))
-                          (should
-                           (eq loaded-value
-                               (symbol-value 'nskk--learning-loaded))))
-                      (should-not (boundp 'nskk--learning-loaded))))))))
-        (if loaded-originally-bound
-            (set 'nskk--learning-loaded loaded-original-value)
-          (when (boundp 'nskk--learning-loaded)
-            (makunbound 'nskk--learning-loaded)))
+                    (should (eq loaded-value (nskk-learning-loaded))))))))
+        (nskk-set-learning-loaded loaded-original-value)
         (delete-file nskk-search-learning-file)))))
 
 

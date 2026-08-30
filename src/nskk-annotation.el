@@ -97,6 +97,13 @@ When nil, annotations are suppressed even if `nskk-show-annotation' is t.")
 (defvar nskk--annotation-initialized nil
   "Non-nil when `dict-annotation/3' Prolog facts have been registered.")
 
+;; Registration protocol: declare this module's initialized-flag symbol,
+;; unconditionally at load time, so generic test/reset infrastructure can
+;; enumerate it via a fact query instead of a hardcoded symbol list,
+;; regardless of whether this module's own lazy Prolog initializer has
+;; run yet.
+(nskk-prolog-<- (module-initialized-flag nskk--annotation-initialized))
+
 (defun nskk-annotation-initialize ()
   "Initialize Prolog infrastructure for annotation storage.
 Sets up the `dict-annotation/3' hash-indexed fact table.
@@ -119,7 +126,7 @@ Returns the annotation string or nil if none registered."
 
 ;;;; Annotation Loading from Dictionary
 
-(defun nskk--annotation-load-from-candidates (reading candidates-with-annots)
+(defun nskk-annotation-load-from-candidates (reading candidates-with-annots)
   "Register annotations from CANDIDATES-WITH-ANNOTS for READING.
 CANDIDATES-WITH-ANNOTS is a list of (candidate . annotation-or-nil) pairs
 as returned by `nskk--dict-parse-candidates-with-annotations'."

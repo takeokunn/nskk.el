@@ -266,7 +266,7 @@ of the list.  Returns the (possibly reordered) candidate list."
                                 ,(and (pred stringp) cand))
                               `(study-association ,prev ,reading ,cand))
                              (_ (error "Invalid study entry: %S" entry)))))))
-                  (let* ((key (nskk--prolog-clause-key 'study-association 3))
+                  (let* ((key (nskk-prolog-clause-key 'study-association 3))
                          (previous (nskk-dict-transaction-predicate-snapshot key)))
                     (condition-case condition
                         (prog1

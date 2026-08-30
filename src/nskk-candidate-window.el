@@ -40,12 +40,14 @@
 ;;
 ;; Display mechanism:
 ;; - Uses an overlay `after-string' on a zero-length overlay anchored at the
-;;   end of `nskk--conversion-overlay'.  The after-string begins with \n so
-;;   the candidate list appears on the line below the preedit text.
+;;   end of the overlay returned by `nskk-state-conversion-overlay'.  The
+;;   after-string begins with \n so the candidate list appears on the line
+;;   below the preedit text.
 ;; - Works on both terminal (TUI) and graphical (GUI) displays.
 ;; - Zero external dependencies; uses Emacs built-in overlay API.
-;; - The overlay variable `nskk--candidate-overlay' is declared in
-;;   nskk-state.el (project convention: all overlay vars live there).
+;; - The overlay is owned by nskk-state.el and accessed here via
+;;   `nskk-state-candidate-overlay' / `nskk-state-set-candidate-overlay'
+;;   (project convention: all overlay vars live there).
 ;;
 ;; Prolog predicates maintained by this module:
 ;; - `candidate-selection-key'/2: (candidate-selection-key KEY POSITION)
@@ -82,15 +84,19 @@
 (require 'nskk-cps-macros)
 (eval-and-compile (require 'nskk-state))
 
-(defvar nskk--conversion-overlay)  ;; defined in nskk-state.el
-(defvar nskk--candidate-overlay)   ;; defined in nskk-state.el
-
 ;;;; Prolog Candidate Key Selection Facts
 
 (defvar nskk--candidate-key-facts-initialized nil
   "Non-nil when `candidate-selection-key'/2 Prolog facts have been asserted.
 
 Guards against duplicate assertions on file reload (e.g. `eval-buffer').")
+
+;; Registration protocol: declare this module's initialized-flag symbol,
+;; unconditionally at load time, so generic test/reset infrastructure can
+;; enumerate it via a fact query instead of a hardcoded symbol list,
+;; regardless of whether this module's own lazy Prolog initializer has
+;; run yet.
+(nskk-prolog-<- (module-initialized-flag nskk--candidate-key-facts-initialized))
 
 (defun nskk--candidate-init-key-facts ()
   "Initialize Prolog facts for `candidate-selection-key'/2.
@@ -148,13 +154,14 @@ Returns a string starting with \\n to appear below the preedit line."
          (suffix (when (> remaining 0) (format " [残り %d]" remaining))))
     (concat "\n" body suffix)))
 
-(defun nskk--candidate-overlay-anchor ()
+(defun nskk--candidate-anchor-position ()
   "Return the buffer position to anchor the candidate overlay.
-Uses the end of `nskk--conversion-overlay' when available,
-falling back to point when the conversion overlay is absent or deleted."
-  (or (and (overlayp nskk--conversion-overlay)
-           (overlay-end nskk--conversion-overlay))
-      (point)))
+Uses the end of the overlay returned by `nskk-state-conversion-overlay'
+when available, falling back to point when the conversion overlay is
+absent or deleted."
+  (let ((overlay (nskk-state-conversion-overlay)))
+    (or (and (overlayp overlay) (overlay-end overlay))
+        (point))))
 
 (defun nskk--candidate-page-slice (candidates start-index per-page)
   "Return a plist describing one page of CANDIDATES.
@@ -175,7 +182,13 @@ Returns a plist with:
   (defun nskk--candidate-clear-list-state ()
     "Clear candidate overlay state even when the active flag drifted."
     (setq nskk--candidate-list-active nil)
-    (nskk-delete-overlay nskk--candidate-overlay))
+    ;; Commit the cleared state before deleting, mirroring `nskk-delete-overlay's
+    ;; setq-before-delete ordering so a fault-injected `delete-overlay' cannot
+    ;; leave state pointing at an overlay that is mid-deletion.
+    (let ((ov (nskk-state-candidate-overlay)))
+      (nskk-state-set-candidate-overlay nil)
+      (when (overlayp ov)
+        (delete-overlay ov))))
 
   (defun/k nskk-candidate-show-list (candidates current-index)
     "Display CANDIDATES via overlay starting at CURRENT-INDEX.
@@ -191,11 +204,19 @@ as computed by the henkan pipeline."
            (page-candidates (plist-get page :slice))
            (remaining (plist-get page :remaining))
            (after-str (nskk--candidate-build-string page-candidates keys remaining))
-           (anchor (nskk--candidate-overlay-anchor)))
+           (anchor (nskk--candidate-anchor-position)))
       (condition-case condition
           (progn
-            (nskk-ensure-overlay nskk--candidate-overlay anchor anchor
-                                 'after-string after-str)
+            ;; Commit a freshly-created overlay to state immediately, before
+            ;; `overlay-put' below, so a fault mid-`overlay-put' still finds
+            ;; the overlay in state and `nskk--candidate-clear-list-state' can
+            ;; roll it back instead of leaking it.
+            (let ((ov (nskk-state-candidate-overlay)))
+              (if (overlayp ov)
+                  (move-overlay ov anchor anchor (current-buffer))
+                (setq ov (make-overlay anchor anchor))
+                (nskk-state-set-candidate-overlay ov))
+              (overlay-put ov 'after-string after-str))
             (setq nskk--candidate-list-active t))
         ((error quit)
          (condition-case nil

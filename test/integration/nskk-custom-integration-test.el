@@ -169,7 +169,7 @@
   (nskk-it "with sort-method none, result order equals insertion order"
     (nskk-with-mock-dict '(("あい" . ("愛" "藍" "哀")))
       (let ((nskk-search-sort-method 'none)
-            (idx nskk--system-dict-index))
+            (idx (nskk-dict-system-index)))
         (let ((entry (nskk-search-exact idx "あい" nil)))
           (when (nskk-dict-entry-p entry)
             ;; With sort none, candidates should be in dict order
@@ -178,7 +178,7 @@
   (nskk-it "with sort-method kana, nskk--search-sort-results returns a list"
     (nskk-with-mock-dict '(("こ" . ("子")) ("あ" . ("亜")) ("か" . ("下")))
       (let ((nskk-search-sort-method 'kana)
-            (idx nskk--system-dict-index))
+            (idx (nskk-dict-system-index)))
         (let ((results (nskk-search-prefix idx "あ" nil nil)))
           ;; prefix on "あ" returns at least the "あ" entry
           (should (or (null results) (listp results)))))))
@@ -186,7 +186,7 @@
   (nskk-it "with sort-method frequency, nskk--search-sort-results returns a list"
     (nskk-with-mock-dict '(("あ" . ("亜" "吾")))
       (let ((nskk-search-sort-method 'frequency)
-            (idx nskk--system-dict-index))
+            (idx (nskk-dict-system-index)))
         (let ((results (nskk-search-prefix idx "あ" nil nil)))
           (should (or (null results) (listp results))))))))
 
@@ -203,7 +203,7 @@
   (nskk-it "let-binding to 0 disables fuzzy matching"
     (nskk-with-mock-dict '(("かんじ" . ("漢字")))
       (let ((nskk-search-fuzzy-threshold 0)
-            (idx nskk--system-dict-index))
+            (idx (nskk-dict-system-index)))
         ;; "かん" is distance 1 from "かんじ"; threshold 0 means no fuzzy hits
         (let ((results (nskk-search-fuzzy idx "かん" nil)))
           (should (null results))))))
@@ -211,7 +211,7 @@
   (nskk-it "let-binding to 1 allows distance-1 matches"
     (nskk-with-mock-dict '(("かんじ" . ("漢字")))
       (let ((nskk-search-fuzzy-threshold 1)
-            (idx nskk--system-dict-index))
+            (idx (nskk-dict-system-index)))
         ;; "かんじ" has distance 0 from itself, so it must appear
         (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
           (should results)))))
@@ -219,7 +219,7 @@
   (nskk-it "threshold 2 includes entries within distance 2"
     (nskk-with-mock-dict '(("かんじ" . ("漢字")) ("かんき" . ("感激")))
       (let ((nskk-search-fuzzy-threshold 2)
-            (idx nskk--system-dict-index))
+            (idx (nskk-dict-system-index)))
         ;; "かんじ" and "かんき" are distance 1 apart; both within threshold 2
         (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
           (should results)

@@ -1,0 +1,139 @@
+emacs -Q --batch -L src -L test -L test/integration -L test/unit -L test/e2e \
+	  --eval "(setq byte-compile-error-on-warn t)" \
+	  --eval "(unless (byte-compile-file \"src/nskk-cps-macros.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-prolog.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-trie.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-custom.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-debug.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-kana.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-converter.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-cache.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-dictionary.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-search.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-state.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-henkan.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-input.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-keymap.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-modeline.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-candidate-window.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-server.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-program-dictionary.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-azik.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-annotation.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-context.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-inline.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-isearch.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-region.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-show-mode.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-study.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk-tutorial.el\") (kill-emacs 1))" --eval "(unless (byte-compile-file \"src/nskk.el\") (kill-emacs 1))"
+Running benchmarks...
+emacs -Q --batch -L src -L test -L test/integration -L test/unit -L test/e2e -L test/bench \
+	  -l test/nskk-test-macros.el \
+	  -l test/nskk-test-framework.el \
+	  -l test/nskk-e2e-helpers.el \
+	  -l test/bench/nskk-bench.el
+
+== NSKK Benchmarks =====================================================
+  Emacs: 31.1
+  System: aarch64-apple-darwin25.5.0 (darwin), 16 processors
+  GC threshold: 800000 bytes
+  Samples: 3 (override with NSKK_BENCH_SAMPLES)
+  Started: 2026-08-29 17:15:40 +0900
+
+> L0: Prolog Engine
+> L1: Romaji Converter
+> L2a: State Management
+> L2b: Kana Utilities
+> L2c: Cache Layer
+> L3: Dictionary Search
+> L4a: Input Processing
+NSKK: Dictionary initialization is complete
+> L4b: Henkan Pipeline
+> E2E: Keystroke Simulation
+
+== Results =============================================================
+
+LAYER  SCENARIO                                       N    S      median         min..max ms/op   GC
+-----------------------------------------------------------------------------------------------------
+L0     prolog-holds-p hash-hit (valid-mode hiragana)   50000    3     0.0101ms     0.0098..0.0111       8
+L0     prolog-holds-p hash-miss (valid-mode bogus)   50000    3     0.0067ms     0.0066..0.0070       0
+L0     prolog-query-value (input-route hiragana)   50000    3     0.0032ms     0.0032..0.0039       0
+L0     prolog-holds-p (valid-henkan-phase on)     50000    3     0.0012ms     0.0012..0.0013       0
+L0     prolog-holds-p (henkan-mode-phase on)      50000    3     0.0014ms     0.0012..0.0015       0
+
+L1     converter-convert complete (ka→か)         50000    3     0.0002ms     0.0002..0.0002       0
+L1     converter-convert complete (shi→し)        50000    3     0.0002ms     0.0002..0.0003       0
+L1     converter-convert incomplete (k)           50000    3     0.0002ms     0.0002..0.0003       0
+L1     converter-convert no-match (1)             50000    3     0.0006ms     0.0006..0.0006       0
+L1     converter-lookup (ka)                      50000    3     0.0004ms     0.0004..0.0005       0
+L1     converter-lookup (miss: zz)                50000    3     0.0005ms     0.0005..0.0005       0
+L1     converter-get-possible-completions (k)     10000    3     0.0098ms     0.0095..0.0132       0
+
+L2a    state-create                                1000    3     0.0009ms     0.0009..0.0009       0
+L2a    state-p (valid struct)                    100000    3     0.0001ms     0.0001..0.0001       0
+L2a    state-p (nil input)                       100000    3     0.0001ms     0.0001..0.0001       0
+L2a    state-get (mode)                           50000    3     0.0003ms     0.0003..0.0003       0
+L2a    state-get (input-buffer)                   50000    3     0.0004ms     0.0004..0.0004       0
+L2a    state-set (input-buffer)                   50000    3     0.0002ms     0.0002..0.0002       0
+L2a    state-valid-mode-p (hit: hiragana)         50000    3     0.0001ms     0.0001..0.0001       0
+L2a    state-valid-mode-p (miss: bogus)           50000    3     0.0001ms     0.0001..0.0001       0
+L2a    state-append-input (buf-len=0)             50000    3     0.0010ms     0.0010..0.0014       0
+L2a    state-append-input (buf-len=5)             50000    3     0.0012ms     0.0012..0.0013       0
+L2a    state-append-input (buf-len=20)            50000    3     0.0017ms     0.0013..0.0019       0
+L2a    state-append-input (buf-len=50)            20000    3     0.0016ms     0.0014..0.0019       0
+L2a    state-delete-last-char (buf=ka)            50000    3     0.0013ms     0.0013..0.0018       0
+L2a    state-delete-last-char (empty buf)         50000    3     0.0010ms     0.0010..0.0011       0
+L2a    state-henkan-on-p (nil phase)              50000    3     0.0001ms     0.0001..0.0003       0
+L2a    state-henkan-active-p (nil phase)          50000    3     0.0001ms     0.0001..0.0001       0
+L2a    state-henkan-on-p (on phase)               50000    3     0.0002ms     0.0001..0.0002       0
+L2a    state-in-henkan-mode-p (on phase)          50000    3     0.0017ms     0.0013..0.0024       0
+L2a    state-set-henkan-phase (nil→on)            10000    3     0.0013ms     0.0012..0.0014       0
+L2a    state-force-henkan-phase (bypass validation)   20000    3     0.0010ms     0.0009..0.0011       0
+L2a    state-transition (hiragana→katakana)       10000    3     0.0011ms     0.0011..0.0011       0
+L2a    state-reset (10 slot defaults via Prolog)    5000    3     0.0014ms     0.0014..0.0015       0
+L2a    state-next-candidate (5 candidates)        50000    3     0.0003ms     0.0003..0.0011       0
+L2a    state-previous-candidate (5 candidates)    50000    3     0.0002ms     0.0002..0.0002       0
+L2a    state-current-candidate (5 candidates)     50000    3     0.0002ms     0.0002..0.0002       0
+L2a    state-get-metadata (okurigana, unset)      50000    3     0.0002ms     0.0002..0.0002       0
+L2a    state-put-metadata (okurigana)             50000    3     0.0011ms     0.0011..0.0014       0
+
+L2b    kana-hiragana-to-katakana (1 char: か)     50000    3     0.0003ms     0.0003..0.0005       0
+L2b    kana-hiragana-to-katakana (3 chars: かんじ)   50000    3     0.0005ms     0.0004..0.0005       0
+L2b    kana-hiragana-to-katakana (10 chars)       20000    3     0.0007ms     0.0007..0.0007       0
+L2b    kana-zenkaku-to-hankaku (1 char: カ)       50000    3     0.0002ms     0.0002..0.0002       0
+L2b    kana-zenkaku-to-hankaku (3 chars: カンジ)   50000    3     0.0004ms     0.0004..0.0005       0
+
+L2c    cache-lru-get (hit)                        50000    3     0.0006ms     0.0006..0.0006       0
+L2c    cache-lru-get (miss)                       50000    3     0.0003ms     0.0003..0.0003       0
+L2c    cache-lru-put (new key)                    20000    3     0.0010ms     0.0010..0.0011       0
+L2c    cache-lru-put (overwrite existing)         20000    3     0.0010ms     0.0009..0.0011       0
+L2c    cache-lfu-get (hit)                        50000    3     0.0010ms     0.0010..0.0010       0
+L2c    cache-lfu-get (miss)                       50000    3     0.0003ms     0.0003..0.0003       0
+L2c    cache-lfu-put (new key)                    20000    3     0.0022ms     0.0018..0.0023       0
+L2c    cache-get unified LRU (hit)                20000    3     0.0010ms     0.0009..0.0010       0
+L2c    cache-get unified LRU (miss)               20000    3     0.0004ms     0.0004..0.0005       0
+
+L3     search-exact (hit: かんじ)                  5000    3     0.0130ms     0.0124..0.0149       0
+L3     search-exact (miss: xxxxxxx)                5000    3     0.0010ms     0.0010..0.0011       0
+L3     search-prefix (に, limit=5)                 5000    3     0.0204ms     0.0191..0.0254       0
+L3     search-prefix (か, limit=5)                 5000    3     0.0163ms     0.0142..0.0209       0
+L3     search-partial (か, limit=5)                2000    3     0.0529ms     0.0491..0.0657       0
+L3     search-fuzzy (かんし, limit=3)               500    3     0.0558ms     0.0532..0.0878       0
+L3     search dispatcher (exact, かんじ)           3000    3     0.0150ms     0.0135..0.0194       0
+L3     search-sort-results (3 entries)            10000    3     0.0019ms     0.0018..0.0019       0
+L3     search post-process top-k (10000, limit=10)     100    3     8.4815ms     8.4610..8.5235       0
+L3     levenshtein-distance (かんじ vs かんし)    10000    3     0.0007ms     0.0007..0.0010       0
+L3     levenshtein-distance (longer strings)       3000    3     0.0027ms     0.0027..0.0036       0
+L3     levenshtein bounded length-reject (large mismatch)    3000    3     0.0001ms     0.0001..0.0002       0
+L3     levenshtein exact (large mismatch baseline)    3000    3     0.3154ms     0.2653..0.3267       0
+L3     levenshtein bounded near-match (same length)    3000    3     0.0525ms     0.0520..0.0540       0
+L3     levenshtein exact near-match baseline       3000    3     2.1957ms     1.9984..2.3134       0
+L3     search-with-cache (cold miss, fresh cache)    1000    3     0.0396ms     0.0387..0.0439       0
+L3     search-with-cache (warm hit)                5000    3     0.0072ms     0.0068..0.0076       0
+L3     search-learn transaction (10000 facts)        10    3     5.3636ms     4.9242..5.7375       0
+
+L4a    fullwidth prolog-query-value (hit: A)     100000    3     0.0085ms     0.0079..0.0095       0
+L4a    fullwidth prolog-query-value (SPC)        100000    3     0.0020ms     0.0020..0.0020       0
+L4a    classify-romaji-input (match: result of a)   30000    3     0.0003ms     0.0003..0.0003       0
+L4a    classify-romaji-input (incomplete: k)      30000    3     0.0003ms     0.0003..0.0003       0
+L4a    classify-romaji-input (sokuon: kk)         30000    3     0.0016ms     0.0016..0.0016       0
+L4a    classify-romaji-input (nn-double)          30000    3     0.0022ms     0.0022..0.0022       0
+L4a    classify-romaji-input (n+consonant: nm)    30000    3     0.0016ms     0.0016..0.0018       0
+L4a    compute-effective-char (lowercase a)       30000    3     0.0001ms     0.0001..0.0001       0
+L4a    compute-effective-char (uppercase A, no conv)   30000    3     0.0054ms     0.0053..0.0054       0
+L4a    convert-input-to-kana (a → あ, clean buf)   20000    3     0.0008ms     0.0008..0.0021       0
+L4a    convert-input-to-kana (k, incomplete)      20000    3     0.0008ms     0.0007..0.0008       0
+L4a    convert-input-to-kana (a after k → か)     20000    3     0.0008ms     0.0008..0.0008       0
+L4a    convert-input-to-kana (nn → ん)            20000    3     0.0027ms     0.0027..0.0031       0
+L4a    convert-input-to-kana (kk → っ, sokuon)    20000    3     0.0021ms     0.0021..0.0021       0
+
+L4b    converting-p (not converting, nil phase)   50000    3     0.0001ms     0.0001..0.0001       0
+L4b    preedit-string (empty, no marker)          20000    3     0.0001ms     0.0001..0.0001       0
+L4b    core-search (exact, かんじ)                 1000    3     0.1108ms     0.1104..0.1154       0
+L4b    core-search (miss, xxxxxxx)                 1000    3     0.0102ms     0.0098..0.0103       0
+
+E2E    type 'a' hiragana (→ あ)                   10000    3     0.0133ms     0.0131..0.0149       0
+E2E    type 'ka' hiragana (→ か)                   5000    3     0.0235ms     0.0231..0.0242       0
+E2E    type 'shi' hiragana (→ し)                  5000    3     0.0329ms     0.0327..0.0335       0
+E2E    type 'nihongo' hiragana (→ にほんご)        1000    3     0.0885ms     0.0866..0.1099       0
+E2E    type 'kka' hiragana (→ っか, sokuon)        5000    3     0.0394ms     0.0378..0.0396       0
+
+NSKK: Learning data saved
+real 98.95
+user 92.46
+sys 1.25

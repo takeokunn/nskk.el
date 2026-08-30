@@ -109,12 +109,12 @@ PARSER is called for each entry in the single serialized data form."
   "Return an exact snapshot of Prolog storage entries for KEY only."
   (let ((missing nskk-dict-transaction--storage-missing))
     (vector missing key
-            (gethash key nskk--prolog-database missing)
-            (gethash key nskk--prolog-database-tails missing)
-            (gethash key nskk--prolog-index-config missing)
-            (gethash key nskk--prolog-hash-indices missing)
-            (gethash key nskk--prolog-trie-indices missing)
-            (gethash key nskk--prolog-index-bucket-tail-cache missing))))
+            (gethash key (nskk-prolog-database) missing)
+            (gethash key (nskk-prolog-database-tails) missing)
+            (gethash key (nskk-prolog-index-config) missing)
+            (gethash key (nskk-prolog-hash-indices) missing)
+            (gethash key (nskk-prolog-trie-indices) missing)
+            (gethash key (nskk-prolog-index-bucket-tail-cache) missing))))
 
 (defun nskk-dict-transaction--apply-predicate-snapshot (snapshot)
   "Apply SNAPSHOT without changing storage for any other predicate."
@@ -122,12 +122,12 @@ PARSER is called for each entry in the single serialized data form."
         (key (aref snapshot 1))
         (inhibit-quit t))
     (dolist (entry
-             (list (cons nskk--prolog-database (aref snapshot 2))
-                   (cons nskk--prolog-database-tails (aref snapshot 3))
-                   (cons nskk--prolog-index-config (aref snapshot 4))
-                   (cons nskk--prolog-hash-indices (aref snapshot 5))
-                   (cons nskk--prolog-trie-indices (aref snapshot 6))
-                   (cons nskk--prolog-index-bucket-tail-cache (aref snapshot 7))))
+             (list (cons (nskk-prolog-database) (aref snapshot 2))
+                   (cons (nskk-prolog-database-tails) (aref snapshot 3))
+                   (cons (nskk-prolog-index-config) (aref snapshot 4))
+                   (cons (nskk-prolog-hash-indices) (aref snapshot 5))
+                   (cons (nskk-prolog-trie-indices) (aref snapshot 6))
+                   (cons (nskk-prolog-index-bucket-tail-cache) (aref snapshot 7))))
       (if (eq (cdr entry) missing)
           (remhash key (car entry))
         (puthash key (cdr entry) (car entry))))))
@@ -500,6 +500,8 @@ when both the lexical and canonical local paths are immutable."
 (defalias 'nskk-dict-transaction-clear-pending-rollback 'nskk-dict-transaction--clear-pending-rollback)
 (defalias 'nskk-dict-transaction-rollback-and-resignal 'nskk-dict-transaction--rollback-and-resignal)
 (defalias 'nskk-dict-transaction-insert-file-contents-pinned 'nskk-dict-transaction--insert-file-contents-pinned)
+(defalias 'nskk-dict-transaction-pending-rollback 'nskk-dict-transaction--pending-rollback)
+(defalias 'nskk-dict-transaction-retry-pending-rollback 'nskk-dict-transaction--retry-pending-rollback)
 
 (provide 'nskk-dict-transaction)
 ;;; nskk-dict-transaction.el ends here

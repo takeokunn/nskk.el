@@ -165,13 +165,13 @@
   (nskk-it "typing A starts henkan with ▽あ"
     (nskk-integration-with-session 'hiragana
       (nskk-when  (nskk--integration-type-char ?A))
-      (nskk-then  (should (nskk--conversion-start-active-p))
+      (nskk-then  (should (nskk-conversion-start-active-p))
                   (nskk-should-equal "▽あ" (buffer-string)))))
 
   (nskk-it "typing K then a starts henkan with ▽か"
     (nskk-integration-with-session 'hiragana
       (nskk-when  (nskk--integration-type-char ?K))
-      (nskk-then  (should (nskk--conversion-start-active-p)))
+      (nskk-then  (should (nskk-conversion-start-active-p)))
       (nskk-when  (nskk--integration-type-char ?a))
       (nskk-then  (nskk-should-equal "▽か" (buffer-string))))))
 
@@ -185,7 +185,7 @@
     (nskk-prolog-test-with-isolated-db
       (nskk-integration-with-session 'hiragana
         (nskk-when  (nskk--integration-type-char ?A))
-        (nskk-then  (should (nskk--conversion-start-active-p)))
+        (nskk-then  (should (nskk-conversion-start-active-p)))
         (nskk-with-mocks ((nskk-core-search/k
                            (lambda (_k _t _l on-found _on-not-found)
                              (funcall on-found '("亜" "阿")))))
@@ -238,16 +238,16 @@
       (nskk-then (should (nskk-converting-p)))
       (nskk-when (nskk-handle-return))
       (nskk-then (should-not (nskk-converting-p))
-                 (should-not (nskk--conversion-start-active-p))
-                 (nskk-should-equal "" nskk--romaji-buffer)
+                 (should-not (nskk-conversion-start-active-p))
+                 (nskk-should-equal "" (nskk-state-romaji-buffer))
                  (should (null (nskk-state-candidates nskk-current-state))))))
 
   (nskk-it "mode switch clears romaji buffer"
     (nskk-integration-with-session 'hiragana
       (nskk--integration-type-char ?k)
-      (nskk-then (nskk-should-equal "k" nskk--romaji-buffer))
+      (nskk-then (nskk-should-equal "k" (nskk-state-romaji-buffer)))
       (nskk-when (nskk-handle-q))
-      (nskk-then (nskk-should-equal "" nskk--romaji-buffer)))))
+      (nskk-then (nskk-should-equal "" (nskk-state-romaji-buffer))))))
 
 ;;;
 ;;; Backspace Handling Tests
@@ -261,7 +261,7 @@
       (nskk--integration-type-char ?a)
       (nskk-then  (nskk-should-equal "▽か" (buffer-string)))
       (nskk-when  (nskk-handle-backspace))
-      (nskk-then  (should (nskk--conversion-start-active-p))
+      (nskk-then  (should (nskk-conversion-start-active-p))
                   (should-not (string-suffix-p "か" (buffer-string)))
                   (nskk-should-equal "▽" (buffer-string)))))
 
@@ -274,7 +274,7 @@
       (nskk-then  (nskk-should-equal "▽" (buffer-string)))
       ;; Second DEL: empty preedit → cancel preedit
       (nskk-when  (nskk-handle-backspace))
-      (nskk-then  (should-not (nskk--conversion-start-active-p))
+      (nskk-then  (should-not (nskk-conversion-start-active-p))
                   (nskk-should-equal "" (buffer-string)))))
 
   (nskk-it "DEL in normal mode deletes the preceding character"
@@ -294,9 +294,9 @@
     (nskk-integration-with-session 'hiragana
       (nskk--integration-type-char ?A)
       (nskk-then  (nskk-should-equal "▽あ" (buffer-string))
-                  (should (nskk--conversion-start-active-p)))
+                  (should (nskk-conversion-start-active-p)))
       (nskk-when  (nskk-handle-cancel))
-      (nskk-then  (should-not (nskk--conversion-start-active-p))
+      (nskk-then  (should-not (nskk-conversion-start-active-p))
                   (nskk-should-equal "" (buffer-string))))))
 
 ;;;

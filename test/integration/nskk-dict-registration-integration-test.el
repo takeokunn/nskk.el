@@ -123,8 +123,8 @@
                 (set-buffer-multibyte nil)
                 (insert "literal-before"))
               (let ((before
-                     (nskk--dict-predicate-snapshot
-                      (nskk--prolog-clause-key 'user-dict-entry 2))))
+                     (nskk-dict-transaction-predicate-snapshot
+                      (nskk-prolog-clause-key 'user-dict-entry 2))))
                 (dolist (case cases)
                   (let ((condition
                          (condition-case err
@@ -139,10 +139,10 @@
                               "Invalid user dictionary entry")))
                     (should
                      (equal
-                      (nskk--dict-predicate-snapshot
-                       (nskk--prolog-clause-key 'user-dict-entry 2))
+                      (nskk-dict-transaction-predicate-snapshot
+                       (nskk-prolog-clause-key 'user-dict-entry 2))
                       before))
-                    (should (eq nskk--user-dict-index 'user))
+                    (should (eq (nskk-dict-user-index) 'user))
                     (should (eq nskk-dict-modified 'preserved))
                     (should-not hook-calls)
                     (should
@@ -177,7 +177,7 @@
                 (nskk-dict-save-user-dictionary)
                 (should-not nskk-dict-modified)
                 (nskk-prolog-retract-all 'user-dict-entry 2)
-                (setq nskk--user-dict-index nil)
+                (nskk-dict-set-user-index nil)
                 (should
                  (eq (nskk-dict-load-user-dictionary) 'user))
                 (should (member word (nskk-dict-lookup reading))))
@@ -202,8 +202,8 @@
                   (set-buffer-multibyte nil)
                   (insert "literal-before"))
                 (let* ((before
-                        (nskk--dict-predicate-snapshot
-                         (nskk--prolog-clause-key 'user-dict-entry 2)))
+                        (nskk-dict-transaction-predicate-snapshot
+                         (nskk-prolog-clause-key 'user-dict-entry 2)))
                        (condition
                         (condition-case err
                             (progn
@@ -216,10 +216,10 @@
                             "Invalid user dictionary entry")))
                   (should
                    (equal
-                    (nskk--dict-predicate-snapshot
-                     (nskk--prolog-clause-key 'user-dict-entry 2))
+                    (nskk-dict-transaction-predicate-snapshot
+                     (nskk-prolog-clause-key 'user-dict-entry 2))
                     before))
-                  (should (eq nskk--user-dict-index 'user))
+                  (should (eq (nskk-dict-user-index) 'user))
                   (should (eq nskk-dict-modified 'preserved))
                   (should
                    (equal
@@ -285,46 +285,46 @@
             (nskk-given
               (with-current-buffer buf-a
                 (setq-local nskk-current-state (nskk-state-create 'hiragana))
-                (setq-local nskk--romaji-buffer ""))
+                (nskk-state-set-romaji-buffer ""))
               (with-current-buffer buf-b
                 (setq-local nskk-current-state (nskk-state-create 'hiragana))
-                (setq-local nskk--romaji-buffer "")))
+                (nskk-state-set-romaji-buffer "")))
             (nskk-when
               (with-current-buffer buf-a
                 (nskk-state-append-input nskk-current-state ?か)
-                (setq-local nskk--romaji-buffer "k")))
+                (nskk-state-set-romaji-buffer "k")))
             (nskk-then
               (with-current-buffer buf-b
                 (nskk-should-equal "" (nskk-state-input-buffer nskk-current-state))
-                (nskk-should-equal "" nskk--romaji-buffer))
+                (nskk-should-equal "" (nskk-state-romaji-buffer)))
               (with-current-buffer buf-a
                 (nskk-should-equal "か" (nskk-state-input-buffer nskk-current-state))
-                (nskk-should-equal "k" nskk--romaji-buffer))))
+                (nskk-should-equal "k" (nskk-state-romaji-buffer)))))
         (kill-buffer buf-a)
         (kill-buffer buf-b))))
 
-  (nskk-it "nskk--romaji-buffer is independent per buffer"
+  (nskk-it "nskk-state-romaji-buffer is independent per buffer"
     (let ((buf-a (generate-new-buffer " *nskk-test-romaji-a*"))
           (buf-b (generate-new-buffer " *nskk-test-romaji-b*")))
       (unwind-protect
           (progn
             (nskk-given
               (with-current-buffer buf-a
-                (setq-local nskk--romaji-buffer ""))
+                (nskk-state-set-romaji-buffer ""))
               (with-current-buffer buf-b
-                (setq-local nskk--romaji-buffer "")))
+                (nskk-state-set-romaji-buffer "")))
             (nskk-when
               (with-current-buffer buf-a
-                (setq nskk--romaji-buffer "ka")))
+                (nskk-state-set-romaji-buffer "ka")))
             (nskk-then
               (with-current-buffer buf-b
-                (nskk-should-equal "" nskk--romaji-buffer)))
+                (nskk-should-equal "" (nskk-state-romaji-buffer))))
             (nskk-when
               (with-current-buffer buf-b
-                (setq nskk--romaji-buffer "shi")))
+                (nskk-state-set-romaji-buffer "shi")))
             (nskk-then
               (with-current-buffer buf-a
-                (nskk-should-equal "ka" nskk--romaji-buffer))))
+                (nskk-should-equal "ka" (nskk-state-romaji-buffer)))))
         (kill-buffer buf-a)
         (kill-buffer buf-b))))
 

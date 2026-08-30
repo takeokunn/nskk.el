@@ -346,7 +346,7 @@
 ;;;;
 
 ;; Regression: nskk--sticky-shift-pending was not cleared by
-;; nskk--clear-azik-pending-state, causing a stale 'immediate state
+;; nskk-clear-azik-pending-state, causing a stale 'immediate state
 ;; after cancel or kakutei.  The next ";" would fire Arm 1
 ;; (double-semicolon cancel) instead of Arm 5 (new ▽).
 

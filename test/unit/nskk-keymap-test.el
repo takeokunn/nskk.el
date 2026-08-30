@@ -27,6 +27,23 @@
 (require 'nskk)  ; needed for nskk-mode-map
 
 ;;;
+;;; State Accessor Test Helper
+;;;
+
+(defmacro nskk-test-with-romaji-buffer (value &rest body)
+  "Execute BODY with the current buffer's romaji buffer set to VALUE.
+Restores the prior value on exit via `unwind-protect', since the romaji
+buffer is accessor-only buffer-local state owned by `nskk-state.el'."
+  (declare (indent 1))
+  (let ((saved (make-symbol "saved")))
+    `(let ((,saved (nskk-state-romaji-buffer)))
+       (unwind-protect
+           (progn
+             (nskk-state-set-romaji-buffer ,value)
+             ,@body)
+         (nskk-state-set-romaji-buffer ,saved)))))
+
+;;;
 ;;; Nav Handler Test Helpers
 ;;;
 
@@ -49,7 +66,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
        (let ((commit-called nil)
              (nav-called nil))
          (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                           (nskk--has-preedit (lambda () nil))
+                           (nskk-has-preedit (lambda () nil))
                            (nskk-commit-current (lambda () (setq commit-called t)))
                            (,nav-fn (lambda (&rest _) (interactive) (setq nav-called t))))
            (call-interactively ',handler))
@@ -59,7 +76,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
      (nskk-it ,(format "calls %s when not converting (normal state)" nav-fn)
        (let ((nav-called nil))
          (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                           (nskk--has-preedit (lambda () nil))
+                           (nskk-has-preedit (lambda () nil))
                            (,nav-fn (lambda (&rest _) (interactive) (setq nav-called t))))
            (let ((nskk-current-state (nskk-state-create)))
              (call-interactively ',handler)))
@@ -68,7 +85,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
      (nskk-it ,(format "calls %s when nskk-current-state is nil" nav-fn)
        (let ((nav-called nil))
          (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                           (nskk--has-preedit (lambda () nil))
+                           (nskk-has-preedit (lambda () nil))
                            (,nav-fn (lambda (&rest _) (interactive) (setq nav-called t))))
            (let ((nskk-current-state nil))
              (call-interactively ',handler)))
@@ -79,8 +96,8 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
              (kakutei-called nil)
              (nav-called nil))
          (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                           (nskk--has-preedit (lambda () t))
-                           (nskk--get-conversion-start (lambda () 1))
+                           (nskk-has-preedit (lambda () t))
+                           (nskk-get-conversion-start (lambda () 1))
                            (nskk-commit-current (lambda () (setq commit-called t)))
                            (nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
                            (,nav-fn (lambda (&rest _) (interactive) (setq nav-called t))))
@@ -248,7 +265,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "preedit")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -260,7 +277,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?q))
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           (insert "\u25BDemai")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-when (nskk-handle-q))
@@ -273,9 +290,9 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
               (nskk-converter-romaji-style 'azik)
-              (nskk--romaji-buffer "")
               (delegated nil))
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-romaji-buffer "")
+          (nskk-set-conversion-start-marker (point-min))
           (insert "▽か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (cl-letf (((symbol-function 'nskk-handle-q-key) (lambda () (setq delegated t)))
@@ -287,9 +304,9 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
               (nskk-converter-romaji-style 'roman)
-              (nskk--romaji-buffer "")
               (converted nil))
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-state-set-romaji-buffer "")
+          (nskk-set-conversion-start-marker (point-min))
           (insert "▽か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (cl-letf (((symbol-function 'nskk-henkan-kakutei-convert-script) (lambda () (setq converted t)))
@@ -322,7 +339,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "preedit")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -336,7 +353,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?l))
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           (insert "\u25BDemai")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-when (nskk-handle-l))
@@ -347,7 +364,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-context "AZIK table priority"
     (nskk-it "fires romaji via azik-complete-match-p even when romaji buffer is empty"
       ;; nskk--romaji-has-match-p has an empty-buffer guard that always returns nil
-      ;; when nskk--romaji-buffer is "".  A standalone AZIK rule for 'l' (e.g. a
+      ;; when (nskk-state-romaji-buffer) is "".  A standalone AZIK rule for 'l' (e.g. a
       ;; custom "l" -> "ん" mapping) would therefore silently fall through to
       ;; latin-mode.  Fix: nskk-handle-l now checks nskk--azik-complete-match-p
       ;; first; that function has no empty-buffer guard and covers this case.
@@ -405,7 +422,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "preedit")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -419,7 +436,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?L))
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           (insert "\u25BDemai")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-when (nskk-handle-upper-l))
@@ -478,7 +495,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?/))
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           (insert "\u25BDhttp:")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-when (nskk-handle-slash))
@@ -500,14 +517,14 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (let ((last-command-event ?x))
         (nskk-when (nskk-handle-x))
         (nskk-then
-         (should (equal nskk--romaji-buffer "x"))
+         (should (equal (nskk-state-romaji-buffer) "x"))
          (should (equal (buffer-string) ""))))))
 
   (nskk-it "calls nskk-previous-candidate when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (prev-candidate-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -534,7 +551,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-it "starts conversion when preedit exists"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "\u25BDtest")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-core-search/k
@@ -542,14 +559,14 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
                              (funcall on-found '("result")))))
           (nskk-when (nskk-handle-space))
           (nskk-then (should (nskk-converting-p)))
-          (when (overlayp nskk--conversion-overlay)
-            (delete-overlay nskk--conversion-overlay))))))
+          (when (overlayp (nskk-state-conversion-overlay))
+            (delete-overlay (nskk-state-conversion-overlay)))))))
 
   (nskk-it "calls nskk-next-candidate when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (next-candidate-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -576,7 +593,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "preedit")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -598,7 +615,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
             (kakutei-called nil)
             (newline-called nil))
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "▽か")
                       (nskk-state-set-henkan-phase nskk-current-state 'on)))
         (nskk-with-mocks ((nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
@@ -661,18 +678,22 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 
   (nskk-it "calls keyboard-quit when not converting"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--conversion-start-marker nil)
-          (quit-called nil))
-      (nskk-with-mocks ((keyboard-quit (lambda () (setq quit-called t))))
-        (nskk-when (nskk-handle-cancel))
-        (nskk-then (should quit-called)))))
+          (quit-called nil)
+          (saved-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            (nskk-with-mocks ((keyboard-quit (lambda () (setq quit-called t))))
+              (nskk-when (nskk-handle-cancel))
+              (nskk-then (should quit-called))))
+        (nskk-state-set-conversion-start-marker saved-marker))))
 
   (nskk-it "calls nskk-rollback-conversion when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (rollback-called nil))
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "preedit")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -684,62 +705,62 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
     (let ((cancel-called nil)
           (nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1))
                         (nskk-cancel-preedit (lambda () (setq cancel-called t))))
         (nskk-handle-cancel))
       (should cancel-called))))
 
 ;;;
-;;; nskk--current-kakutei-state Tests
+;;; nskk-current-kakutei-state Tests
 ;;;
 
-(nskk-describe "nskk--current-kakutei-state behavior"
+(nskk-describe "nskk-current-kakutei-state behavior"
   (nskk-it "returns 'converting when nskk-converting-p is true"
     (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                      (nskk--has-preedit (lambda () nil)))
-      (should (eq (nskk--current-kakutei-state) 'converting))))
+                      (nskk-has-preedit (lambda () nil)))
+      (should (eq (nskk-current-kakutei-state) 'converting))))
 
-  (nskk-it "returns 'preedit when nskk--has-preedit is true"
+  (nskk-it "returns 'preedit when nskk-has-preedit is true"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1)))
-        (should (eq (nskk--current-kakutei-state) 'preedit)))))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1)))
+        (should (eq (nskk-current-kakutei-state) 'preedit)))))
 
-  (nskk-it "returns 'romaji-pending when nskk--romaji-buffer is non-empty"
+  (nskk-it "returns 'romaji-pending when (nskk-state-romaji-buffer) is non-empty"
     (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk--has-preedit (lambda () nil)))
-      (let ((nskk--romaji-buffer "k"))
-        (should (eq (nskk--current-kakutei-state) 'romaji-pending)))))
+                      (nskk-has-preedit (lambda () nil)))
+      (nskk-test-with-romaji-buffer "k"
+        (should (eq (nskk-current-kakutei-state) 'romaji-pending)))))
 
   (nskk-it "returns 'hiragana-idle in hiragana mode with no pending input"
     (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk--has-preedit (lambda () nil)))
-      (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer ""))
-        (should (eq (nskk--current-kakutei-state) 'hiragana-idle)))))
+                      (nskk-has-preedit (lambda () nil)))
+      (let ((nskk-current-state (nskk-state-create 'hiragana)))
+        (nskk-test-with-romaji-buffer ""
+          (should (eq (nskk-current-kakutei-state) 'hiragana-idle))))))
 
   (nskk-it "returns 'katakana-idle in fullwidth katakana mode"
     (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk--has-preedit (lambda () nil)))
-      (let ((nskk-current-state (nskk-state-create 'katakana))
-            (nskk--romaji-buffer ""))
-        (should (eq (nskk--current-kakutei-state) 'katakana-idle)))))
+                      (nskk-has-preedit (lambda () nil)))
+      (let ((nskk-current-state (nskk-state-create 'katakana)))
+        (nskk-test-with-romaji-buffer ""
+          (should (eq (nskk-current-kakutei-state) 'katakana-idle))))))
 
   (nskk-it "returns 'katakana-idle in half-width katakana mode"
     (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk--has-preedit (lambda () nil)))
-      (let ((nskk-current-state (nskk-state-create 'katakana-半角))
-            (nskk--romaji-buffer ""))
-        (should (eq (nskk--current-kakutei-state) 'katakana-idle)))))
+                      (nskk-has-preedit (lambda () nil)))
+      (let ((nskk-current-state (nskk-state-create 'katakana-半角)))
+        (nskk-test-with-romaji-buffer ""
+          (should (eq (nskk-current-kakutei-state) 'katakana-idle))))))
 
   (nskk-it "returns 'direct-idle in ascii mode with no pending input"
     (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk--has-preedit (lambda () nil)))
-      (let ((nskk-current-state (nskk-state-create 'ascii))
-            (nskk--romaji-buffer ""))
-        (should (eq (nskk--current-kakutei-state) 'direct-idle))))))
+                      (nskk-has-preedit (lambda () nil)))
+      (let ((nskk-current-state (nskk-state-create 'ascii)))
+        (nskk-test-with-romaji-buffer ""
+          (should (eq (nskk-current-kakutei-state) 'direct-idle)))))))
 
 ;;;
 ;;; C-n and C-p Handler Tests (using nskk-deftest-nav-handler macro)
@@ -761,7 +782,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (next-candidate-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -772,7 +793,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-it "calls next-line when not converting (normal state)"
     (let ((nav-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil))
+                        (nskk-has-preedit (lambda () nil))
                         (next-line (lambda (&rest _) (interactive) (setq nav-called t))))
         (let ((nskk-current-state (nskk-state-create)))
           (call-interactively 'nskk-handle-ctrl-n)))
@@ -781,7 +802,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-it "calls next-line when nskk-current-state is nil"
     (let ((nav-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil))
+                        (nskk-has-preedit (lambda () nil))
                         (next-line (lambda (&rest _) (interactive) (setq nav-called t))))
         (let ((nskk-current-state nil))
           (call-interactively 'nskk-handle-ctrl-n)))
@@ -792,8 +813,8 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (kakutei-called nil)
           (nav-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1))
                         (nskk-commit-current (lambda () (setq commit-called t)))
                         (nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
                         (next-line (lambda (&rest _) (interactive) (setq nav-called t))))
@@ -821,7 +842,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (prev-candidate-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -832,7 +853,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-it "calls previous-line when not converting (normal state)"
     (let ((nav-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil))
+                        (nskk-has-preedit (lambda () nil))
                         (previous-line (lambda (&rest _) (interactive) (setq nav-called t))))
         (let ((nskk-current-state (nskk-state-create)))
           (call-interactively 'nskk-handle-ctrl-p)))
@@ -841,7 +862,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
   (nskk-it "calls previous-line when nskk-current-state is nil"
     (let ((nav-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil))
+                        (nskk-has-preedit (lambda () nil))
                         (previous-line (lambda (&rest _) (interactive) (setq nav-called t))))
         (let ((nskk-current-state nil))
           (call-interactively 'nskk-handle-ctrl-p)))
@@ -852,8 +873,8 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (kakutei-called nil)
           (nav-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1))
                         (nskk-commit-current (lambda () (setq commit-called t)))
                         (nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
                         (previous-line (lambda (&rest _) (interactive) (setq nav-called t))))
@@ -874,7 +895,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 PREEDIT should already be in buffer starting at point.
 Sets conversion-start-marker at point, advances past PREEDIT,
 and configures state."
-  (nskk--set-conversion-start-marker (point))
+  (nskk-set-conversion-start-marker (point))
   (forward-char (length preedit))
   (nskk-state-set-candidates nskk-current-state (list candidate))
   (nskk-state-force-henkan-phase nskk-current-state 'active))
@@ -887,8 +908,8 @@ and configures state."
   (nskk-it "C-n calls nskk-next-candidate in converting mode (does not commit)"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "")
             (next-called nil))
+        (nskk-state-set-romaji-buffer "")
         (insert "あいうえお\nかきくけこ")
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
@@ -904,8 +925,8 @@ and configures state."
     ;; C-p calls nskk-previous-candidate instead of committing.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "")
             (prev-called nil))
+        (nskk-state-set-romaji-buffer "")
         (insert "あいうえお\nかきくけこ")
         (goto-char (point-min))
         (forward-line 1)
@@ -923,8 +944,8 @@ and configures state."
     ;; and therefore no end-of-buffer error regardless of cursor position.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "")
             (next-called nil))
+        (nskk-state-set-romaji-buffer "")
         (insert "あい")
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
@@ -939,8 +960,8 @@ and configures state."
     ;; and therefore no beginning-of-buffer error regardless of cursor position.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "")
             (prev-called nil))
+        (nskk-state-set-romaji-buffer "")
         (insert "あい")
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
@@ -971,21 +992,21 @@ and configures state."
 (nskk-describe "nskk--current-key-state behavior"
   (nskk-it "returns 'converting when nskk-converting-p is true"
     (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                      (nskk--has-preedit (lambda () nil))
-                      (nskk--get-conversion-start (lambda () nil)))
+                      (nskk-has-preedit (lambda () nil))
+                      (nskk-get-conversion-start (lambda () nil)))
       (should (eq (nskk--current-key-state) 'converting))))
 
-  (nskk-it "returns 'preedit when nskk--has-preedit is true in Japanese mode"
+  (nskk-it "returns 'preedit when nskk-has-preedit is true in Japanese mode"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1)))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1)))
         (should (eq (nskk--current-key-state) 'preedit)))))
 
   (nskk-it "returns 'normal in hiragana mode with no preedit"
     (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk--has-preedit (lambda () nil))
-                      (nskk--get-conversion-start (lambda () nil)))
+                      (nskk-has-preedit (lambda () nil))
+                      (nskk-get-conversion-start (lambda () nil)))
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (should (eq (nskk--current-key-state) 'normal)))))
 
@@ -993,32 +1014,32 @@ and configures state."
     (nskk-it "returns 'preedit in abbrev mode when conversion marker is set"
       (with-temp-buffer
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk--has-preedit (lambda () nil)))
+                          (nskk-has-preedit (lambda () nil)))
           (let ((nskk-current-state (nskk-state-create 'abbrev)))
-            (nskk--set-conversion-start-marker (point-min))
+            (nskk-set-conversion-start-marker (point-min))
             (should (eq (nskk--current-key-state) 'preedit))))))
 
     (nskk-it "returns 'normal in abbrev mode when no marker is set"
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil))
-                        (nskk--get-conversion-start (lambda () nil)))
+                        (nskk-has-preedit (lambda () nil))
+                        (nskk-get-conversion-start (lambda () nil)))
         (let ((nskk-current-state (nskk-state-create 'abbrev)))
           (should (eq (nskk--current-key-state) 'normal)))))
 
     (nskk-it "returns 'normal for latin mode even with a marker (abbrev-only branch)"
       (with-temp-buffer
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk--has-preedit (lambda () nil)))
+                          (nskk-has-preedit (lambda () nil)))
           (let ((nskk-current-state (nskk-state-create 'latin)))
-            (nskk--set-conversion-start-marker (point-min))
+            (nskk-set-conversion-start-marker (point-min))
             (should (eq (nskk--current-key-state) 'normal))))))
 
     (nskk-it "abbrev-with-marker branch fires before 'normal fallthrough (regression)"
       (with-temp-buffer
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk--has-preedit (lambda () nil)))
+                          (nskk-has-preedit (lambda () nil)))
           (let ((nskk-current-state (nskk-state-create 'abbrev)))
-            (nskk--set-conversion-start-marker (point-min))
+            (nskk-set-conversion-start-marker (point-min))
             (should-not (eq (nskk--current-key-state) 'normal))
             (should (eq (nskk--current-key-state) 'preedit))))))))
 
@@ -1080,7 +1101,7 @@ and configures state."
   (nskk-it "deletes last character when preedit has content"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "▽ka")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-when (nskk-handle-backspace))
@@ -1090,7 +1111,7 @@ and configures state."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (cancel-preedit-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "▽")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-cancel-preedit (lambda () (setq cancel-preedit-called t))))
@@ -1101,7 +1122,7 @@ and configures state."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (rollback-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -1120,7 +1141,7 @@ and configures state."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (insert "A▽ka")
-        (nskk--set-conversion-start-marker 2)
+        (nskk-set-conversion-start-marker 2)
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (goto-char 1)
         (nskk-when (nskk-handle-backspace))
@@ -1138,50 +1159,50 @@ and configures state."
 
   (nskk-it "returns non-nil and clears single-char romaji buffer"
     (let ((clear-called nil))
-      (nskk-with-mocks ((nskk--clear-pending-romaji (lambda () (setq clear-called t))))
+      (nskk-with-mocks ((nskk-clear-pending-romaji (lambda () (setq clear-called t))))
         (with-temp-buffer
-          (let ((nskk--romaji-buffer "k"))
-            (should (nskk--backspace-retract-pending))
-            (should (equal nskk--romaji-buffer ""))
-            (should clear-called))))))
+          (nskk-state-set-romaji-buffer "k")
+          (should (nskk--backspace-retract-pending))
+          (should (equal (nskk-state-romaji-buffer) ""))
+          (should clear-called)))))
 
   (nskk-it "returns non-nil and truncates multi-char romaji buffer"
     (let ((show-arg nil))
-      (nskk-with-mocks ((nskk--show-pending-romaji (lambda (s) (setq show-arg s))))
+      (nskk-with-mocks ((nskk-show-pending-romaji (lambda (s) (setq show-arg s))))
         (with-temp-buffer
-          (let ((nskk--romaji-buffer "sh"))
-            (should (nskk--backspace-retract-pending))
-            (should (equal nskk--romaji-buffer "s"))
-            (should (equal show-arg "s")))))))
+          (nskk-state-set-romaji-buffer "sh")
+          (should (nskk--backspace-retract-pending))
+          (should (equal (nskk-state-romaji-buffer) "s"))
+          (should (equal show-arg "s"))))))
 
   (nskk-it "returns nil when all pending state is empty"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "")
-            (nskk--deferred-azik-state nil)
+      (let ((nskk--deferred-azik-state nil)
             (nskk--deferred-vowel-shadow-state nil)
             (nskk--azik-colon-okuri-pending nil)
             (nskk--azik-colon-okuri-deferred nil))
+        (nskk-state-set-romaji-buffer "")
         (should-not (nskk--backspace-retract-pending)))))
 
   (nskk-it "returns non-nil and clears DA (deferred-azik-state)"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "")
-            (nskk--deferred-azik-state (cons ?k "きん")))
+      (let ((nskk--deferred-azik-state (cons ?k "きん")))
+        (nskk-state-set-romaji-buffer "")
         (insert "きん")
         (goto-char (point-max))
         (should (nskk--backspace-retract-pending))
-        (should-not nskk--deferred-azik-state)
+        (should-not (nskk-deferred-azik-state))
         (should (equal (buffer-string) "")))))
 
   (nskk-it "returns non-nil and clears DV (deferred-vowel-shadow-state)"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "")
-            (nskk--deferred-vowel-shadow-state
+      (let ((nskk--deferred-vowel-shadow-state
              (nskk--make-deferred-vowel-shadow "sh" "すう")))
+        (nskk-state-set-romaji-buffer "")
         (insert "すう")
         (goto-char (point-max))
         (should (nskk--backspace-retract-pending))
-        (should-not nskk--deferred-vowel-shadow-state)
+        (should-not (nskk-deferred-vowel-shadow-state))
         (should (equal (buffer-string) "")))))
 
   (nskk-it "restores DA and overlay when a before-change hook errors"
@@ -1194,9 +1215,9 @@ and configures state."
              (nskk--deferred-vowel-shadow-state nil)
              (nskk--azik-colon-okuri-pending nil)
              (nskk--azik-colon-okuri-deferred nil)
-             (nskk--romaji-buffer romaji)
-             (nskk--pending-romaji-overlay overlay)
              (calls 0))
+        (nskk-state-set-romaji-buffer romaji)
+        (nskk-state-set-pending-romaji-overlay overlay)
         (insert "AきんZ")
         (goto-char 4)
         (move-overlay overlay 2 3)
@@ -1207,15 +1228,15 @@ and configures state."
          (lambda (&rest _)
            (setq calls (1+ calls))
            (when (= calls 1)
-             (nskk--clear-pending-romaji)
+             (nskk-clear-pending-romaji)
              (error "injected before-change failure")))
          nil t)
         (should-error (nskk--backspace-retract-pending))
         (should (equal (buffer-string) "AきんZ"))
         (should (= (point) 4))
-        (should (eq nskk--deferred-azik-state payload))
-        (should (eq nskk--romaji-buffer romaji))
-        (should (eq nskk--pending-romaji-overlay overlay))
+        (should (eq (nskk-deferred-azik-state) payload))
+        (should (eq (nskk-state-romaji-buffer) romaji))
+        (should (eq (nskk-state-pending-romaji-overlay) overlay))
         (should (eq (overlay-buffer overlay) (current-buffer)))
         (should (= (overlay-start overlay) 2))
         (should (= (overlay-end overlay) 3))
@@ -1232,10 +1253,10 @@ and configures state."
              (nskk--deferred-vowel-shadow-state payload)
              (nskk--azik-colon-okuri-pending nil)
              (nskk--azik-colon-okuri-deferred nil)
-             (nskk--romaji-buffer romaji)
-             (nskk--pending-romaji-overlay overlay)
              (calls 0)
              (caught nil))
+        (nskk-state-set-romaji-buffer romaji)
+        (nskk-state-set-pending-romaji-overlay overlay)
         (insert "AすうZ")
         (goto-char 4)
         (move-overlay overlay 2 3)
@@ -1246,8 +1267,8 @@ and configures state."
          (lambda (&rest _)
            (setq calls (1+ calls))
            (when (= calls 1)
-             (nskk--show-pending-romaji "changed")
-             (setq nskk--azik-colon-okuri-pending 'corrupted)
+             (nskk-show-pending-romaji "changed")
+             (nskk-set-azik-colon-okuri-pending 'corrupted)
              (signal 'quit '(injected after-change quit))))
          nil t)
         (condition-case _
@@ -1256,10 +1277,10 @@ and configures state."
         (should caught)
         (should (equal (buffer-string) "AすうZ"))
         (should (= (point) 4))
-        (should (eq nskk--deferred-vowel-shadow-state payload))
-        (should-not nskk--azik-colon-okuri-pending)
-        (should (eq nskk--romaji-buffer romaji))
-        (should (eq nskk--pending-romaji-overlay overlay))
+        (should (eq (nskk-deferred-vowel-shadow-state) payload))
+        (should-not (nskk-azik-colon-okuri-pending))
+        (should (eq (nskk-state-romaji-buffer) romaji))
+        (should (eq (nskk-state-pending-romaji-overlay) overlay))
         (should (eq (overlay-buffer overlay) (current-buffer)))
         (should (= (overlay-start overlay) 2))
         (should (= (overlay-end overlay) 3))
@@ -1275,9 +1296,9 @@ and configures state."
              (nskk--deferred-azik-state nil)
              (nskk--deferred-vowel-shadow-state nil)
              (nskk--azik-colon-okuri-pending payload)
-             (nskk--azik-colon-okuri-deferred nil)
-             (nskk--romaji-buffer romaji)
-             (nskk--pending-romaji-overlay overlay))
+             (nskk--azik-colon-okuri-deferred nil))
+        (nskk-state-set-romaji-buffer romaji)
+        (nskk-state-set-pending-romaji-overlay overlay)
         (insert "AかZ")
         (goto-char 3)
         (move-overlay overlay 1 2)
@@ -1286,9 +1307,9 @@ and configures state."
           (should-error (nskk--backspace-retract-pending)))
         (should (equal (buffer-string) "AかZ"))
         (should (= (point) 3))
-        (should (eq nskk--azik-colon-okuri-pending payload))
-        (should (eq nskk--romaji-buffer romaji))
-        (should (eq nskk--pending-romaji-overlay overlay))
+        (should (eq (nskk-azik-colon-okuri-pending) payload))
+        (should (eq (nskk-state-romaji-buffer) romaji))
+        (should (eq (nskk-state-pending-romaji-overlay) overlay))
         (should (= (overlay-start overlay) 1))
         (should (= (overlay-end overlay) 2))
         (should (eq (overlay-get overlay 'after-string) display)))))
@@ -1299,34 +1320,34 @@ and configures state."
              (romaji (copy-sequence "entry"))
              (display (copy-sequence "entry-display"))
              (overlay (make-overlay 1 2))
-             (original-reset (symbol-function 'nskk--reset-romaji-buffer))
+             (original-reset (symbol-function 'nskk-reset-romaji-buffer))
              (nskk--deferred-azik-state nil)
              (nskk--deferred-vowel-shadow-state nil)
              (nskk--azik-colon-okuri-pending nil)
-             (nskk--azik-colon-okuri-deferred payload)
-             (nskk--romaji-buffer romaji)
-             (nskk--pending-romaji-overlay overlay))
+             (nskk--azik-colon-okuri-deferred payload))
+        (nskk-state-set-romaji-buffer romaji)
+        (nskk-state-set-pending-romaji-overlay overlay)
         (insert "AtZ")
         (goto-char 3)
         (move-overlay overlay 1 2)
         (overlay-put overlay 'after-string display)
         (overlay-put overlay 'face 'bold)
-        (cl-letf (((symbol-function 'nskk--reset-romaji-buffer)
+        (cl-letf (((symbol-function 'nskk-reset-romaji-buffer)
                    (lambda ()
                      (funcall original-reset)
-                     (setq nskk--deferred-azik-state 'corrupted
-                           nskk--deferred-vowel-shadow-state 'corrupted
-                           nskk--azik-colon-okuri-pending 'corrupted)
+                     (nskk-set-deferred-azik-state 'corrupted
+                           (nskk-deferred-vowel-shadow-state) 'corrupted
+                           (nskk-azik-colon-okuri-pending) 'corrupted)
                      (error "injected reset failure"))))
           (should-error (nskk--backspace-retract-pending)))
         (should (equal (buffer-string) "AtZ"))
         (should (= (point) 3))
-        (should-not nskk--deferred-azik-state)
-        (should-not nskk--deferred-vowel-shadow-state)
-        (should-not nskk--azik-colon-okuri-pending)
-        (should (eq nskk--azik-colon-okuri-deferred payload))
-        (should (eq nskk--romaji-buffer romaji))
-        (should (eq nskk--pending-romaji-overlay overlay))
+        (should-not (nskk-deferred-azik-state))
+        (should-not (nskk-deferred-vowel-shadow-state))
+        (should-not (nskk-azik-colon-okuri-pending))
+        (should (eq (nskk-azik-colon-okuri-deferred) payload))
+        (should (eq (nskk-state-romaji-buffer) romaji))
+        (should (eq (nskk-state-pending-romaji-overlay) overlay))
         (should (eq (overlay-buffer overlay) (current-buffer)))
         (should (= (overlay-start overlay) 1))
         (should (= (overlay-end overlay) 2))
@@ -1338,23 +1359,23 @@ and configures state."
       (let* ((romaji (copy-sequence "k"))
              (display (copy-sequence "entry-display"))
              (overlay (make-overlay 1 2))
-             (original-clear (symbol-function 'nskk--clear-pending-romaji))
+             (original-clear (symbol-function 'nskk-clear-pending-romaji))
              (nskk--deferred-azik-state nil)
              (nskk--deferred-vowel-shadow-state nil)
              (nskk--azik-colon-okuri-pending nil)
              (nskk--azik-colon-okuri-deferred nil)
-             (nskk--romaji-buffer romaji)
-             (nskk--pending-romaji-overlay overlay)
              (caught nil))
+        (nskk-state-set-romaji-buffer romaji)
+        (nskk-state-set-pending-romaji-overlay overlay)
         (insert "AZ")
         (goto-char 2)
         (move-overlay overlay 1 2)
         (overlay-put overlay 'after-string display)
         (overlay-put overlay 'face 'bold)
-        (cl-letf (((symbol-function 'nskk--clear-pending-romaji)
+        (cl-letf (((symbol-function 'nskk-clear-pending-romaji)
                    (lambda ()
                      (funcall original-clear)
-                     (setq nskk--deferred-vowel-shadow-state 'corrupted)
+                     (nskk-set-deferred-vowel-shadow-state 'corrupted)
                      (signal 'quit '(injected clear quit)))))
           (condition-case _
               (nskk--backspace-retract-pending)
@@ -1362,9 +1383,9 @@ and configures state."
         (should caught)
         (should (equal (buffer-string) "AZ"))
         (should (= (point) 2))
-        (should-not nskk--deferred-vowel-shadow-state)
-        (should (eq nskk--romaji-buffer romaji))
-        (should (eq nskk--pending-romaji-overlay overlay))
+        (should-not (nskk-deferred-vowel-shadow-state))
+        (should (eq (nskk-state-romaji-buffer) romaji))
+        (should (eq (nskk-state-pending-romaji-overlay) overlay))
         (should (eq (overlay-buffer overlay) (current-buffer)))
         (should (= (overlay-start overlay) 1))
         (should (= (overlay-end overlay) 2))
@@ -1376,29 +1397,29 @@ and configures state."
       (let* ((romaji (copy-sequence "sh"))
              (display (copy-sequence "entry-display"))
              (overlay (make-overlay 1 2))
-             (original-show (symbol-function 'nskk--show-pending-romaji))
+             (original-show (symbol-function 'nskk-show-pending-romaji))
              (nskk--deferred-azik-state nil)
              (nskk--deferred-vowel-shadow-state nil)
              (nskk--azik-colon-okuri-pending nil)
-             (nskk--azik-colon-okuri-deferred nil)
-             (nskk--romaji-buffer romaji)
-             (nskk--pending-romaji-overlay overlay))
+             (nskk--azik-colon-okuri-deferred nil))
+        (nskk-state-set-romaji-buffer romaji)
+        (nskk-state-set-pending-romaji-overlay overlay)
         (insert "AZ")
         (goto-char 2)
         (move-overlay overlay 1 2)
         (overlay-put overlay 'after-string display)
         (overlay-put overlay 'face 'bold)
-        (cl-letf (((symbol-function 'nskk--show-pending-romaji)
+        (cl-letf (((symbol-function 'nskk-show-pending-romaji)
                    (lambda (value)
                      (funcall original-show value)
-                     (setq nskk--azik-colon-okuri-deferred 'corrupted)
+                     (nskk-set-azik-colon-okuri-deferred 'corrupted)
                      (error "injected show failure"))))
           (should-error (nskk--backspace-retract-pending)))
         (should (equal (buffer-string) "AZ"))
         (should (= (point) 2))
-        (should-not nskk--azik-colon-okuri-deferred)
-        (should (eq nskk--romaji-buffer romaji))
-        (should (eq nskk--pending-romaji-overlay overlay))
+        (should-not (nskk-azik-colon-okuri-deferred))
+        (should (eq (nskk-state-romaji-buffer) romaji))
+        (should (eq (nskk-state-pending-romaji-overlay) overlay))
         (should (eq (overlay-buffer overlay) (current-buffer)))
         (should (= (overlay-start overlay) 1))
         (should (= (overlay-end overlay) 2))
@@ -1411,9 +1432,9 @@ and configures state."
              (nskk--deferred-azik-state nil)
              (nskk--deferred-vowel-shadow-state nil)
              (nskk--azik-colon-okuri-pending nil)
-             (nskk--azik-colon-okuri-deferred nil)
-             (nskk--romaji-buffer "sh")
-             (nskk--pending-romaji-overlay overlay))
+             (nskk--azik-colon-okuri-deferred nil))
+        (nskk-state-set-romaji-buffer "sh")
+        (nskk-state-set-pending-romaji-overlay overlay)
         (insert "AZ")
         (goto-char 2)
         (move-overlay overlay 1 2)
@@ -1421,8 +1442,8 @@ and configures state."
         (should (nskk--backspace-retract-pending))
         (should (equal (buffer-string) "AZ"))
         (should (= (point) 2))
-        (should (equal nskk--romaji-buffer "s"))
-        (should (eq nskk--pending-romaji-overlay overlay))
+        (should (equal (nskk-state-romaji-buffer) "s"))
+        (should (eq (nskk-state-pending-romaji-overlay) overlay))
         (should (eq (overlay-buffer overlay) (current-buffer)))
         (should (= (overlay-start overlay) 2))
         (should (= (overlay-end overlay) 2))
@@ -1439,7 +1460,7 @@ and configures state."
   (nskk-it "deletes last character when preedit has content"
     ;; Preedit has content: point is beyond start + marker length → delete-char -1 fires.
     (let ((deleted nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () (point-min)))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () (point-min)))
                         (delete-char (lambda (n) (setq deleted n))))
         (with-temp-buffer
           (insert "▽ab")
@@ -1450,7 +1471,7 @@ and configures state."
 
   (nskk-it "calls nskk-cancel-preedit when preedit is empty (point at marker boundary)"
     (let ((cancel-called nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                         (nskk-cancel-preedit (lambda () (setq cancel-called t))))
         ;; point == start + length("▽") means no content chars → cancel
         (with-temp-buffer
@@ -1469,7 +1490,7 @@ and configures state."
           (let ((nskk-henkan-on-marker "▽"))
             (insert "A▽ka")
             (goto-char 1)
-            (nskk--set-conversion-start-marker 2)
+            (nskk-set-conversion-start-marker 2)
             (nskk--backspace-in-preedit)
             (should (= (point) 3))
             (should (equal (buffer-string) "A▽ka"))
@@ -1478,110 +1499,110 @@ and configures state."
 
   (nskk-it "BS clears single-char romaji buffer"
     (let ((clear-called nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () (point-min)))
-                        (nskk--clear-pending-romaji (lambda () (setq clear-called t))))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () (point-min)))
+                        (nskk-clear-pending-romaji (lambda () (setq clear-called t))))
         (with-temp-buffer
-          (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "g"))
+          (let ((nskk-henkan-on-marker "▽"))
+            (nskk-state-set-romaji-buffer "g")
             (insert "▽ほ")
             (goto-char (point-max))
             (nskk--backspace-in-preedit)
-            (should (equal nskk--romaji-buffer ""))
+            (should (equal (nskk-state-romaji-buffer) ""))
             (should clear-called)
             (should (equal (buffer-string) "▽ほ")))))))
 
   (nskk-it "BS truncates multi-char romaji buffer"
     (let ((show-arg nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () (point-min)))
-                        (nskk--show-pending-romaji (lambda (s) (setq show-arg s))))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () (point-min)))
+                        (nskk-show-pending-romaji (lambda (s) (setq show-arg s))))
         (with-temp-buffer
-          (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "ky"))
+          (let ((nskk-henkan-on-marker "▽"))
+            (nskk-state-set-romaji-buffer "ky")
             (insert "▽ほ")
             (goto-char (point-max))
             (nskk--backspace-in-preedit)
-            (should (equal nskk--romaji-buffer "k"))
+            (should (equal (nskk-state-romaji-buffer) "k"))
             (should (equal show-arg "k"))
             (should (equal (buffer-string) "▽ほ")))))))
 
   (nskk-it "BS truncates romaji \"k\" to empty and clears pending"
     (let ((clear-called nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () (point-min)))
-                        (nskk--clear-pending-romaji (lambda () (setq clear-called t))))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () (point-min)))
+                        (nskk-clear-pending-romaji (lambda () (setq clear-called t))))
         (with-temp-buffer
-          (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "k"))
+          (let ((nskk-henkan-on-marker "▽"))
+            (nskk-state-set-romaji-buffer "k")
             (insert "▽ほ")
             (goto-char (point-max))
             (nskk--backspace-in-preedit)
-            (should (equal nskk--romaji-buffer ""))
+            (should (equal (nskk-state-romaji-buffer) ""))
             (should clear-called)
             (should (equal (buffer-string) "▽ほ")))))))
 
   (nskk-it "BS rolls back DA (deferred-azik-state)"
-    (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+    (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                       (nskk-cancel-preedit (lambda () nil)))
       (with-temp-buffer
         (let ((nskk-henkan-on-marker "▽")
-              (nskk--romaji-buffer "")
               (nskk--deferred-azik-state (cons ?k "きん")))
+          (nskk-state-set-romaji-buffer "")
           (insert "▽きん")
           (goto-char (point-max))
           (nskk--backspace-in-preedit)
-          (should-not nskk--deferred-azik-state)
+          (should-not (nskk-deferred-azik-state))
           (should (equal (buffer-string) "▽"))))))
 
   (nskk-it "BS rolls back DV payload with continuation policy"
-    (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+    (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                       (nskk-cancel-preedit (lambda () nil)))
       (with-temp-buffer
         (let ((nskk-henkan-on-marker "▽")
-              (nskk--romaji-buffer "")
               (nskk--deferred-vowel-shadow-state
                (nskk--make-deferred-vowel-shadow
                 "ch" "ちゅう"
                 nskk--deferred-vowel-shadow-uppercase-vowel-continue-policy)))
+          (nskk-state-set-romaji-buffer "")
           (insert "▽ちゅう")
           (goto-char (point-max))
           (nskk--backspace-in-preedit)
-          (should-not nskk--deferred-vowel-shadow-state)
+          (should-not (nskk-deferred-vowel-shadow-state))
           (should (equal (buffer-string) "▽"))))))
 
   (nskk-it "BS rolls back CP (colon-okuri-pending) deletes * marker"
-    (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1)))
+    (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1)))
       (with-temp-buffer
         (let ((nskk-henkan-on-marker "▽")
-              (nskk--romaji-buffer "")
               (nskk--azik-colon-okuri-pending t))
+          (nskk-state-set-romaji-buffer "")
           (insert "▽ほ*")
           (goto-char (point-max))
           (nskk--backspace-in-preedit)
-          (should-not nskk--azik-colon-okuri-pending)
+          (should-not (nskk-azik-colon-okuri-pending))
           (should (equal (buffer-string) "▽ほ"))))))
 
   (nskk-it "BS rolls back CD (colon-okuri-deferred) deletes placeholder and resets romaji"
     (let ((reset-called nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
-                        (nskk--reset-romaji-buffer (lambda () (setq reset-called t))))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
+                        (nskk-reset-romaji-buffer (lambda () (setq reset-called t))))
         (with-temp-buffer
           (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "t")
                 (nskk--azik-colon-okuri-deferred (cons ?t "t")))
+            (nskk-state-set-romaji-buffer "t")
             (insert "▽ほ*t")
             (goto-char (point-max))
             (nskk--backspace-in-preedit)
-            (should-not nskk--azik-colon-okuri-deferred)
+            (should-not (nskk-azik-colon-okuri-deferred))
             (should reset-called)
             (should (equal (buffer-string) "▽ほ*")))))))
 
   (nskk-it "DA rollback causes empty preedit triggers cancel-preedit"
     (let ((cancel-called nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                         (nskk-cancel-preedit (lambda () (setq cancel-called t))))
         (with-temp-buffer
           (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "")
                 (nskk--deferred-azik-state (cons ?k "きん")))
+            (nskk-state-set-romaji-buffer "")
             (insert "▽きん")
             (goto-char (point-max))
             (nskk--backspace-in-preedit)
@@ -1589,15 +1610,15 @@ and configures state."
 
   (nskk-it "romaji empty and committed kana calls delete-char"
     (let ((deleted nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                         (delete-char (lambda (n) (setq deleted n))))
         (with-temp-buffer
           (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "")
                 (nskk--deferred-azik-state nil)
                 (nskk--deferred-vowel-shadow-state nil)
                 (nskk--azik-colon-okuri-pending nil)
                 (nskk--azik-colon-okuri-deferred nil))
+            (nskk-state-set-romaji-buffer "")
             (insert "▽か")
             (goto-char (point-max))
             (nskk--backspace-in-preedit)
@@ -1605,15 +1626,15 @@ and configures state."
 
   (nskk-it "romaji empty and preedit empty calls cancel-preedit"
     (let ((cancel-called nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                         (nskk-cancel-preedit (lambda () (setq cancel-called t))))
         (with-temp-buffer
           (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "")
                 (nskk--deferred-azik-state nil)
                 (nskk--deferred-vowel-shadow-state nil)
                 (nskk--azik-colon-okuri-pending nil)
                 (nskk--azik-colon-okuri-deferred nil))
+            (nskk-state-set-romaji-buffer "")
             (insert "▽")
             (goto-char (point-max))
             (nskk--backspace-in-preedit)
@@ -1623,26 +1644,26 @@ and configures state."
     (let ((show-called nil)
           (clear-called nil)
           (deleted nil))
-      (nskk-with-mocks ((nskk--get-conversion-start (lambda () 1))
-                        (nskk--show-pending-romaji (lambda (_s) (setq show-called t)))
-                        (nskk--clear-pending-romaji (lambda () (setq clear-called t)))
+      (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
+                        (nskk-show-pending-romaji (lambda (_s) (setq show-called t)))
+                        (nskk-clear-pending-romaji (lambda () (setq clear-called t)))
                         (delete-char (lambda (n) (setq deleted n))))
         (with-temp-buffer
           (let ((nskk-henkan-on-marker "▽")
-                (nskk--romaji-buffer "ky")
                 (nskk--deferred-azik-state nil)
                 (nskk--deferred-vowel-shadow-state nil)
                 (nskk--azik-colon-okuri-pending nil)
                 (nskk--azik-colon-okuri-deferred nil))
+            (nskk-state-set-romaji-buffer "ky")
             (insert "▽ほ")
             (goto-char (point-max))
             ;; First BS: "ky" -> "k", show-pending called
             (nskk--backspace-in-preedit)
-            (should (equal nskk--romaji-buffer "k"))
+            (should (equal (nskk-state-romaji-buffer) "k"))
             (should show-called)
             ;; Second BS: "k" -> "", clear-pending called
             (nskk--backspace-in-preedit)
-            (should (equal nskk--romaji-buffer ""))
+            (should (equal (nskk-state-romaji-buffer) ""))
             (should clear-called)
             ;; Third BS: romaji empty, committed kana -> delete-char
             (nskk--backspace-in-preedit)
@@ -1666,7 +1687,7 @@ and configures state."
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk-dcomp-style 'cycle)
             (complete-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "▽ka")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-dynamic-complete (lambda () (setq complete-called t))))
@@ -1697,7 +1718,7 @@ and configures state."
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (major-mode-called nil))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (insert "preedit")
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
@@ -1742,7 +1763,7 @@ and configures state."
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (numeric-called nil))
         (nskk-given (progn
-                      (nskk--set-conversion-start-marker (point-min))
+                      (nskk-set-conversion-start-marker (point-min))
                       (insert "preedit")
                       (nskk-state-set-candidates nskk-current-state '("result"))
                       (nskk-state-force-henkan-phase nskk-current-state 'active)))
@@ -1952,39 +1973,39 @@ and configures state."
 (nskk-describe "nskk--japanese-mode-class"
   (nskk-it "returns 'converting when in henkan-active state"
     (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                      (nskk--has-preedit (lambda () nil)))
+                      (nskk-has-preedit (lambda () nil)))
       (should (eq (nskk--japanese-mode-class) 'converting))))
 
   (nskk-it "returns 'preedit-japanese when preedit is active in hiragana mode"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1)))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1)))
         (should (eq (nskk--japanese-mode-class) 'preedit-japanese)))))
 
   (nskk-it "returns 'other when preedit is active in abbrev mode (not Japanese)"
     (let ((nskk-current-state (nskk-state-create 'abbrev)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1)))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1)))
         (should (eq (nskk--japanese-mode-class) 'other)))))
 
   (nskk-it "returns 'idle-japanese when in hiragana mode with no preedit"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil)))
+                        (nskk-has-preedit (lambda () nil)))
         (should (eq (nskk--japanese-mode-class) 'idle-japanese)))))
 
   (nskk-it "returns 'other when in ascii mode"
     (let ((nskk-current-state (nskk-state-create 'ascii)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil)))
+                        (nskk-has-preedit (lambda () nil)))
         (should (eq (nskk--japanese-mode-class) 'other)))))
 
   (nskk-it "returns 'other when nskk-current-state is nil"
     (let ((nskk-current-state nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil)))
+                        (nskk-has-preedit (lambda () nil)))
         (should (eq (nskk--japanese-mode-class) 'other))))))
 
 ;;;
@@ -2022,7 +2043,7 @@ and configures state."
     (let ((found-called nil)
           (nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil)))
+                        (nskk-has-preedit (lambda () nil)))
         (nskk--with-japanese-mode/k
          (lambda (_) (setq found-called t))
          (lambda () nil)))
@@ -2032,7 +2053,7 @@ and configures state."
     (let ((not-found-called nil)
           (nskk-current-state (nskk-state-create 'ascii)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil)))
+                        (nskk-has-preedit (lambda () nil)))
         (nskk--with-japanese-mode/k
          (lambda (_) nil)
          (lambda () (setq not-found-called t))))
@@ -2042,7 +2063,7 @@ and configures state."
     (let ((commit-called nil)
           (found-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                        (nskk--has-preedit (lambda () nil))
+                        (nskk-has-preedit (lambda () nil))
                         (nskk-commit-current (lambda () (setq commit-called t))))
         (nskk--with-japanese-mode/k
          (lambda (_) (setq found-called t))
@@ -2070,64 +2091,64 @@ and configures state."
       (should (fboundp handler)))))
 
 ;;;
-;;; nskk--classify-state Tests
+;;; nskk-classify-state Tests
 ;;;
 
-(nskk-describe "nskk--classify-state"
+(nskk-describe "nskk-classify-state"
   (nskk-it "returns 'converting when nskk-converting-p is true"
     (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                      (nskk--has-preedit (lambda () nil)))
-      (should (eq (nskk--classify-state) 'converting))))
+                      (nskk-has-preedit (lambda () nil)))
+      (should (eq (nskk-classify-state) 'converting))))
 
   (nskk-it "returns 'preedit-japanese when preedit in hiragana mode"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1)))
-        (should (eq (nskk--classify-state) 'preedit-japanese)))))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1)))
+        (should (eq (nskk-classify-state) 'preedit-japanese)))))
 
   (nskk-it "returns 'preedit-marker when abbrev with marker set"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'abbrev)))
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk--has-preedit (lambda () nil)))
-          (nskk--set-conversion-start-marker (point-min))
-          (should (eq (nskk--classify-state) 'preedit-marker))))))
+                          (nskk-has-preedit (lambda () nil)))
+          (nskk-set-conversion-start-marker (point-min))
+          (should (eq (nskk-classify-state) 'preedit-marker))))))
 
   (nskk-it "returns 'preedit-pending when hiragana with marker set but no preedit text"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk--has-preedit (lambda () nil)))
-          (nskk--set-conversion-start-marker (point-min))
-          (should (eq (nskk--classify-state) 'preedit-pending))))))
+                          (nskk-has-preedit (lambda () nil)))
+          (nskk-set-conversion-start-marker (point-min))
+          (should (eq (nskk-classify-state) 'preedit-pending))))))
 
   (nskk-it "returns 'idle-japanese when hiragana idle"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil))
-                        (nskk--get-conversion-start (lambda () nil)))
-        (should (eq (nskk--classify-state) 'idle-japanese)))))
+                        (nskk-has-preedit (lambda () nil))
+                        (nskk-get-conversion-start (lambda () nil)))
+        (should (eq (nskk-classify-state) 'idle-japanese)))))
 
   (nskk-it "returns 'idle-direct when ascii mode"
     (let ((nskk-current-state (nskk-state-create 'ascii)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil))
-                        (nskk--get-conversion-start (lambda () nil)))
-        (should (eq (nskk--classify-state) 'idle-direct)))))
+                        (nskk-has-preedit (lambda () nil))
+                        (nskk-get-conversion-start (lambda () nil)))
+        (should (eq (nskk-classify-state) 'idle-direct)))))
 
   (nskk-it "returns 'idle-direct when nskk-current-state is nil"
     (let ((nskk-current-state nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit (lambda () nil)))
-        (should (eq (nskk--classify-state) 'idle-direct)))))
+                        (nskk-has-preedit (lambda () nil)))
+        (should (eq (nskk-classify-state) 'idle-direct)))))
 
   (nskk-it "converting takes priority over preedit"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                        (nskk--has-preedit (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1)))
-        (should (eq (nskk--classify-state) 'converting))))))
+                        (nskk-has-preedit (lambda () t))
+                        (nskk-get-conversion-start (lambda () 1)))
+        (should (eq (nskk-classify-state) 'converting))))))
 
 ;;;
 ;;; nskk--japanese-mode-active-p Tests
@@ -2297,99 +2318,99 @@ and configures state."
       (should (commandp handler)))))
 
 ;;;
-;;; nskk--classify-state additional invariant tests
+;;; nskk-classify-state additional invariant tests
 ;;;
 
-(nskk-describe "nskk--classify-state return type invariants"
+(nskk-describe "nskk-classify-state return type invariants"
   (nskk-it "return value is always one of the 6 known symbols"
     (let ((valid-states '(converting preedit-japanese preedit-pending preedit-marker idle-japanese idle-direct)))
       ;; converting
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                        (nskk--has-preedit  (lambda () nil)))
-        (should (memq (nskk--classify-state) valid-states)))
+                        (nskk-has-preedit  (lambda () nil)))
+        (should (memq (nskk-classify-state) valid-states)))
       ;; preedit-japanese
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk--has-preedit  (lambda () t))
-                          (nskk--get-conversion-start (lambda () 1)))
-          (should (memq (nskk--classify-state) valid-states))))
+                          (nskk-has-preedit  (lambda () t))
+                          (nskk-get-conversion-start (lambda () 1)))
+          (should (memq (nskk-classify-state) valid-states))))
       ;; idle
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--has-preedit  (lambda () nil)))
+                        (nskk-has-preedit  (lambda () nil)))
         (let ((nskk-current-state nil))
-          (should (memq (nskk--classify-state) valid-states))))))
+          (should (memq (nskk-classify-state) valid-states))))))
 
   (nskk-it "does not signal an error for any combination of inputs"
     (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk--has-preedit  (lambda () nil)))
+                      (nskk-has-preedit  (lambda () nil)))
       (let ((nskk-current-state nil))
         (condition-case err
-            (nskk--classify-state)
+            (nskk-classify-state)
           (error (ert-fail (format "Unexpected error: %s" err))))))
     (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                      (nskk--has-preedit  (lambda () nil)))
+                      (nskk-has-preedit  (lambda () nil)))
       (condition-case err
-          (nskk--classify-state)
+          (nskk-classify-state)
         (error (ert-fail (format "Unexpected error: %s" err)))))))
 
 ;;;
-;;; nskk--compute-phase Tests
+;;; nskk-compute-phase Tests
 ;;;
 
-(nskk-describe "nskk--compute-phase"
+(nskk-describe "nskk-compute-phase"
   (nskk-it "returns 'converting when nskk-converting-p is true"
     (nskk-with-mocks ((nskk-converting-p (lambda () t)))
-      (should (eq (nskk--compute-phase) 'converting))))
+      (should (eq (nskk-compute-phase) 'converting))))
 
   (nskk-it "returns 'henkan-on when state exists and conversion-start is set"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--get-conversion-start (lambda () 1)))
-        (should (eq (nskk--compute-phase) 'henkan-on)))))
+                        (nskk-get-conversion-start (lambda () 1)))
+        (should (eq (nskk-compute-phase) 'henkan-on)))))
 
   (nskk-it "returns 'idle when no state"
     (let ((nskk-current-state nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil)))
-        (should (eq (nskk--compute-phase) 'idle)))))
+        (should (eq (nskk-compute-phase) 'idle)))))
 
   (nskk-it "returns 'idle when state exists but no conversion-start"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk--get-conversion-start (lambda () nil)))
-        (should (eq (nskk--compute-phase) 'idle)))))
+                        (nskk-get-conversion-start (lambda () nil)))
+        (should (eq (nskk-compute-phase) 'idle)))))
 
   (nskk-it "converting takes priority over henkan-on"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                        (nskk--get-conversion-start (lambda () 1)))
-        (should (eq (nskk--compute-phase) 'converting)))))
+                        (nskk-get-conversion-start (lambda () 1)))
+        (should (eq (nskk-compute-phase) 'converting)))))
 
   (nskk-it "return value is always one of the 3 known phase symbols"
     (let ((valid '(converting henkan-on idle)))
       (nskk-with-mocks ((nskk-converting-p (lambda () t)))
-        (should (memq (nskk--compute-phase) valid)))
+        (should (memq (nskk-compute-phase) valid)))
       (let ((nskk-current-state nil))
         (nskk-with-mocks ((nskk-converting-p (lambda () nil)))
-          (should (memq (nskk--compute-phase) valid)))))))
+          (should (memq (nskk-compute-phase) valid)))))))
 
 ;;;
 ;;; nskk--compute-text-presence Tests
 ;;;
 
 (nskk-describe "nskk--compute-text-presence"
-  (nskk-it "returns 'has-text when nskk--has-preedit is true"
-    (nskk-with-mocks ((nskk--has-preedit (lambda () t)))
+  (nskk-it "returns 'has-text when nskk-has-preedit is true"
+    (nskk-with-mocks ((nskk-has-preedit (lambda () t)))
       (should (eq (nskk--compute-text-presence) 'has-text))))
 
-  (nskk-it "returns 'no-text when nskk--has-preedit is false"
-    (nskk-with-mocks ((nskk--has-preedit (lambda () nil)))
+  (nskk-it "returns 'no-text when nskk-has-preedit is false"
+    (nskk-with-mocks ((nskk-has-preedit (lambda () nil)))
       (should (eq (nskk--compute-text-presence) 'no-text))))
 
   (nskk-it "return value is always one of the 2 known symbols"
     (let ((valid '(has-text no-text)))
-      (nskk-with-mocks ((nskk--has-preedit (lambda () t)))
+      (nskk-with-mocks ((nskk-has-preedit (lambda () t)))
         (should (memq (nskk--compute-text-presence) valid)))
-      (nskk-with-mocks ((nskk--has-preedit (lambda () nil)))
+      (nskk-with-mocks ((nskk-has-preedit (lambda () nil)))
         (should (memq (nskk--compute-text-presence) valid))))))
 
 ;;;

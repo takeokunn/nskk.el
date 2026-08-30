@@ -106,9 +106,9 @@
 
 (declare-function nskk-set-mode-hiragana "nskk-input")
 (declare-function nskk-henkan-kakutei "nskk-henkan")
-(declare-function nskk--clear-pending-romaji "nskk-henkan" ())
-(declare-function nskk--current-kakutei-state "nskk-keymap")
-(declare-function nskk--maybe-load-azik-style "nskk-input")
+(declare-function nskk-clear-pending-romaji "nskk-henkan" ())
+(declare-function nskk-current-kakutei-state "nskk-keymap")
+(declare-function nskk-maybe-load-azik-style "nskk-input")
 (declare-function nskk--dict-maybe-save "nskk-dictionary")
 (declare-function nskk-search-load-learning-data "nskk-search")
 (declare-function nskk-search-save-learning-data "nskk-search")
@@ -120,16 +120,16 @@
 (declare-function nskk-handle-hash "nskk-keymap")
 (declare-function nskk-handle-semicolon-key "nskk-input")
 (declare-function nskk-converting-p "nskk-henkan")
-(declare-function nskk--get-conversion-start "nskk-henkan")
+(declare-function nskk-get-conversion-start "nskk-henkan")
 (declare-function nskk-commit-current "nskk-henkan")
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
-(declare-function nskk--clear-conversion-context "nskk-henkan")
-(declare-function nskk--invalidate-undo-kakutei "nskk-henkan")
+(declare-function nskk-clear-conversion-context "nskk-henkan")
+(declare-function nskk-invalidate-undo-kakutei "nskk-henkan")
 (declare-function nskk-undo-kakutei "nskk-henkan")
 (declare-function nskk-purge-from-jisyo "nskk-henkan")
 (declare-function nskk-completion-at-point "nskk-henkan")
-(declare-function nskk--commit-by-phase "nskk-keymap")
+(declare-function nskk-commit-by-phase "nskk-keymap")
 
 (progn
   (defvar nskk-mode-off-hook nil
@@ -247,19 +247,35 @@ This provides global bindings that work even when nskk-mode is not yet active."
 Guards `nskk--enable' so that learning data is loaded only once, not on
 every buffer activation.")
 
+  (defun nskk-learning-loaded ()
+    "Return non-nil if learning data has been loaded this session."
+    nskk--learning-loaded)
+
+  (defun nskk-set-learning-loaded (value)
+    "Set the learning-data-loaded flag to VALUE and return VALUE."
+    (setq nskk--learning-loaded value))
+
   (defvar nskk--active-buffers nil
     "Live buffers that currently own an NSKK activation.")
 
-  (defvar nskk--activation-lock-owner nil
+  (defun nskk-active-buffers ()
+    "Return the list of live buffers that currently own an NSKK activation."
+    nskk--active-buffers)
+
+  (defun nskk-set-active-buffers (value)
+    "Set the list of live NSKK-activation-owning buffers to VALUE."
+    (setq nskk--active-buffers value))
+
+  (defvar nskk-activation-lock-owner nil
     "Live buffer that exclusively owns process-global NSKK state.")
 
   (defun nskk--activation-allowed-p ()
     "Return non-nil when current buffer may activate NSKK."
-    (when (and nskk--activation-lock-owner
-               (not (buffer-live-p nskk--activation-lock-owner)))
-      (setq nskk--activation-lock-owner nil))
-    (or (null nskk--activation-lock-owner)
-        (eq nskk--activation-lock-owner (current-buffer))))
+    (when (and nskk-activation-lock-owner
+               (not (buffer-live-p nskk-activation-lock-owner)))
+      (setq nskk-activation-lock-owner nil))
+    (or (null nskk-activation-lock-owner)
+        (eq nskk-activation-lock-owner (current-buffer))))
 
   (defvar nskk--candidate-show-hook-owned nil
     "Non-nil when NSKK installed its global candidate show hook.")
@@ -370,8 +386,8 @@ signals; the first signal is rethrown only after mandatory cleanup finishes."
                (pcase action
                  ('cancel-conversion (nskk-cancel-conversion-to-reading))
                  ('cancel-preedit (nskk-cancel-preedit)))))))
-        (attempt #'nskk--clear-conversion-context)
-        (attempt (lambda () (nskk--cursor-color-restore nil t)))
+        (attempt #'nskk-clear-conversion-context)
+        (attempt (lambda () (nskk-cursor-color-restore nil t)))
         (when run-off-hook
           (run-hook-wrapped
            'nskk-mode-off-hook
@@ -379,8 +395,8 @@ signals; the first signal is rethrown only after mandatory cleanup finishes."
              (attempt function)
              nil)))
         (attempt #'nskk--cleanup-buffer)
-        (when (fboundp 'nskk--show-mode-hide)
-          (attempt #'nskk--show-mode-hide))
+        (when (fboundp 'nskk-show-mode-hide)
+          (attempt #'nskk-show-mode-hide))
         (attempt (lambda ()
                    (remove-hook 'completion-at-point-functions
                                 #'nskk-completion-at-point t)))
@@ -423,7 +439,6 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
     (user-error "Cannot enable NSKK while teardown is in progress")))
   (let* ((snapshot-symbols
           '(nskk-current-state nskk--bound-commands
-            nskk--show-mode-overlay nskk--show-mode-timer
             pre-command-hook post-command-hook
             completion-at-point-functions kill-buffer-hook
             change-major-mode-hook))
@@ -433,6 +448,10 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
                           (symbol-value symbol)))
                   snapshot-symbols))
          (active-buffers-before (copy-sequence nskk--active-buffers))
+         (show-mode-overlay-before
+          (when (fboundp 'nskk-show-mode-overlay) (nskk-show-mode-overlay)))
+         (show-mode-timer-before
+          (when (fboundp 'nskk-show-mode-timer) (nskk-show-mode-timer)))
          (show-functions-before
           (copy-sequence nskk-henkan-show-candidates-functions))
          (hide-functions-before
@@ -446,7 +465,7 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
          (kill-emacs-hook-before (copy-sequence kill-emacs-hook))
          (learning-loaded-before nskk--learning-loaded)
          (isearch-transaction-before
-          (when (and (fboundp 'nskk--isearch-resource-state)
+          (when (and (fboundp 'nskk-isearch-resource-state)
                      (boundp 'nskk-isearch-enable)
                      nskk-isearch-enable)
             (nskk--isearch-transaction-state)))
@@ -479,7 +498,7 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
                      (boundp 'nskk-isearch-enable)
                      nskk-isearch-enable)
             (nskk-isearch-setup))
-          (nskk--maybe-load-azik-style)
+          (nskk-maybe-load-azik-style)
           (add-hook 'kill-emacs-hook #'nskk--dict-maybe-save)
           (when nskk-search-auto-save-learning
             (unless nskk--learning-loaded
@@ -490,17 +509,23 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
             (add-hook 'kill-emacs-hook #'nskk--save-learning-data))
           (nskk--setup-buffer)
           (setq cursor-save-started t)
-          (nskk--cursor-color-save)
+          (nskk-cursor-color-save)
           (nskk-modeline-update))
       ((error quit)
        (let ((original-condition condition-data))
          (cl-labels ((attempt (function)
                        (setq condition-data
                              (nskk--teardown-step function condition-data))))
-           (when (fboundp 'nskk--show-mode-hide)
-             (attempt #'nskk--show-mode-hide))
+           (when (fboundp 'nskk-show-mode-hide)
+             (attempt #'nskk-show-mode-hide))
+           (when (fboundp 'nskk-show-mode-set-overlay)
+             (attempt
+              (lambda () (nskk-show-mode-set-overlay show-mode-overlay-before))))
+           (when (fboundp 'nskk-show-mode-set-timer)
+             (attempt
+              (lambda () (nskk-show-mode-set-timer show-mode-timer-before))))
            (when cursor-save-started
-             (attempt #'nskk--cursor-color-restore))
+             (attempt #'nskk-cursor-color-restore))
            (attempt
             (lambda ()
               (setq kill-emacs-hook kill-emacs-hook-before
@@ -588,7 +613,7 @@ deviation triggers implicit kakutei (確定).
 Preedit (▽) guard: if point moved and `this-command' is not an
 NSKK-bound command, commits the reading as-is via `nskk-henkan-kakutei'.
 
-Handlers bound in `nskk-mode-map' call `nskk--commit-by-phase'
+Handlers bound in `nskk-mode-map' call `nskk-commit-by-phase'
 explicitly before moving, so by the time this hook fires for them the
 relevant phase is already nil and both guards are no-ops."
   (when (and nskk-mode nskk-current-state)
@@ -602,26 +627,24 @@ relevant phase is already nil and both guards are no-ops."
               (or (not (nskk-state-get-metadata nskk-current-state
                                                 'okurigana-in-progress))
                   (not (memq this-command nskk--bound-commands))))
-      (let* ((conv-start (nskk--get-conversion-start))
-             (overlay-end (when (and (boundp 'nskk--conversion-overlay)
-                                     (overlayp nskk--conversion-overlay))
-                            (overlay-end nskk--conversion-overlay))))
+      (let* ((conv-start (nskk-get-conversion-start))
+             (overlay-end (when (overlayp (nskk-state-conversion-overlay))
+                            (overlay-end (nskk-state-conversion-overlay)))))
         (when (and conv-start overlay-end
                    (/= (point) overlay-end))
           (nskk-commit-current))))
     ;; Preedit (▽) point-escape guard: commit reading when an unbound command moved point.
     (when (and (nskk-prolog-holds-p
                 `(preedit-phase ,(nskk-state-henkan-phase nskk-current-state)))
-               (nskk--get-conversion-start)
+               (nskk-get-conversion-start)
                nskk--point-before-command
                (/= (point) nskk--point-before-command)
                (not (memq this-command nskk--bound-commands)))
       (nskk-henkan-kakutei))
     ;; Invalidate undo-kakutei record when any non-undo command runs.
     (when (and (not (eq this-command 'nskk-undo-kakutei))
-               (boundp 'nskk--last-kakutei-record)
-               nskk--last-kakutei-record)
-      (nskk--invalidate-undo-kakutei))
+               (nskk-last-kakutei-record))
+      (nskk-invalidate-undo-kakutei))
     (nskk-modeline-update)))
 
 ;; User commands
@@ -646,13 +669,13 @@ Dispatches via the `kakutei-action/2' Prolog predicate based on state:
 - katakana-idle (katakana/katakana-半角): switch to hiragana
 - direct-idle (ascii/latin/jisx0208-latin/abbrev): switch to hiragana"
   (interactive)
-  (let* ((state (nskk--current-kakutei-state))
+  (let* ((state (nskk-current-kakutei-state))
          (action (nskk-prolog-query-value
                   `(kakutei-action ,state ,'\?a) '\?a)))
     (pcase action
       ('commit-candidate (nskk-commit-current))
       ('commit-preedit   (nskk-henkan-kakutei))
-      ('clear-romaji     (nskk--clear-pending-romaji) (setq nskk--romaji-buffer ""))
+      ('clear-romaji     (nskk-clear-pending-romaji) (nskk-state-set-romaji-buffer ""))
       ('enter-hiragana   (nskk-set-mode-hiragana))
       ('insert-newline   (newline))
       (_                 nil))))

@@ -86,6 +86,31 @@
 ;; - `nskk-prolog-substitute'       -- apply substitution to any term
 ;; - `nskk-prolog-unify'            -- unify two terms under a substitution
 ;;
+;; State:
+;; - `nskk-prolog-state-snapshot'   -- capture the complete database state
+;; - `nskk-prolog-state-restore'    -- restore a captured state
+;; - `nskk-prolog-with-state'       -- temporarily replace the complete state
+;; - `nskk-prolog-with-database-fields' -- temporarily replace selected fields
+;; - `nskk-prolog-state-variables'  -- symbol list of all state vars, for
+;;                                     symbol-level use (e.g. variable watchers)
+;; - `nskk-prolog-database'         -- access the current clause database
+;; - `nskk-prolog-database-tails'   -- access the current clause-list tail table
+;; - `nskk-prolog-index-config'     -- access the current index configuration
+;; - `nskk-prolog-hash-indices'     -- access the current hash-index table
+;; - `nskk-prolog-trie-indices'     -- access the current trie-index table
+;; - `nskk-prolog-index-bucket-tail-cache' -- access the index bucket-tail cache
+;; - `nskk-prolog-clause-key'       -- construct a predicate database key
+;; - `nskk-prolog-index-add'        -- add a clause to its configured index
+;; - `nskk-prolog-replace-clause-transaction' -- replace/delete one clause atomically
+;; - `nskk-prolog-transaction-index' -- look up a key's configured index object
+;; - `nskk-prolog-transaction-index-bucket' -- look up one index bucket
+;; - `nskk-prolog-index-bucket-tail' -- find or compute a bucket's O(1) tail cell
+;; - `nskk-prolog-transaction-set-index-bucket' -- replace one index bucket
+;; - `nskk-prolog-index-cache-set-bucket' -- update the bucket-tail cache entry
+;; - `nskk-prolog-capture-key-state' -- snapshot one predicate key's storage
+;; - `nskk-prolog-prepare-key-state-index-tail' -- prepare a key's index tail for insert
+;; - `nskk-prolog-restore-key-state' -- restore one predicate key's storage
+;;
 ;; Usage:
 ;;
 ;;   (nskk-prolog-clear-database)
@@ -240,6 +265,106 @@ Each BUCKETS-TABLE value is a fresh [BUCKET-HEAD BUCKET-TAIL] vector.")
 (defvar nskk--prolog-index-config)
 (defvar nskk--prolog-hash-indices)
 (defvar nskk--prolog-trie-indices)
+(defvar nskk--prolog-var-counter)
+
+(defconst nskk-prolog-state-variables
+  '(nskk--prolog-database
+    nskk--prolog-database-tails
+    nskk--prolog-index-config
+    nskk--prolog-hash-indices
+    nskk--prolog-trie-indices
+    nskk--prolog-index-bucket-tail-cache
+    nskk--prolog-var-counter
+    nskk--prolog-active-mutation-keys)
+  "Symbols of all mutable Prolog database state.
+Ordered as in `nskk-prolog-state-snapshot'.  For code that needs
+symbol-level access to this state --- e.g. `add-variable-watcher', or
+generic save/restore machinery that operates on a list of symbols ---
+rather than the opaque snapshot object.  Most callers should prefer
+`nskk-prolog-state-snapshot' and `nskk-prolog-state-restore' instead.")
+
+(defun nskk-prolog-state-snapshot ()
+  "Return an opaque snapshot of all mutable Prolog database state."
+  (vector nskk--prolog-database
+          nskk--prolog-database-tails
+          nskk--prolog-index-config
+          nskk--prolog-hash-indices
+          nskk--prolog-trie-indices
+          nskk--prolog-index-bucket-tail-cache
+          nskk--prolog-var-counter
+          nskk--prolog-active-mutation-keys))
+
+(defun nskk-prolog-state-restore (snapshot)
+  "Restore the complete mutable Prolog state from SNAPSHOT."
+  (unless (and (vectorp snapshot) (= (length snapshot) 8))
+    (signal 'wrong-type-argument (list 'nskk-prolog-state-p snapshot)))
+  (setq nskk--prolog-database (aref snapshot 0)
+        nskk--prolog-database-tails (aref snapshot 1)
+        nskk--prolog-index-config (aref snapshot 2)
+        nskk--prolog-hash-indices (aref snapshot 3)
+        nskk--prolog-trie-indices (aref snapshot 4)
+        nskk--prolog-index-bucket-tail-cache (aref snapshot 5)
+        nskk--prolog-var-counter (aref snapshot 6)
+        nskk--prolog-active-mutation-keys (aref snapshot 7))
+  nil)
+
+(defmacro nskk-prolog-with-state (snapshot &rest body)
+  "Evaluate BODY with Prolog state temporarily replaced by SNAPSHOT.
+The original state is restored even when BODY signals an error."
+  (declare (indent 1) (debug (form body)))
+  `(let ((nskk-prolog--saved-state (nskk-prolog-state-snapshot)))
+     (unwind-protect
+         (progn
+           (nskk-prolog-state-restore ,snapshot)
+           ,@body)
+       (nskk-prolog-state-restore nskk-prolog--saved-state))))
+
+(defun nskk-prolog-database ()
+  "Return the current Prolog clause database hash table."
+  nskk--prolog-database)
+
+(defun nskk-prolog-database-tails ()
+  "Return the current Prolog clause-list tail table."
+  nskk--prolog-database-tails)
+
+(defun nskk-prolog-index-config ()
+  "Return the current Prolog index configuration table."
+  nskk--prolog-index-config)
+
+(defun nskk-prolog-hash-indices ()
+  "Return the current Prolog hash-index table."
+  nskk--prolog-hash-indices)
+
+(defun nskk-prolog-trie-indices ()
+  "Return the current Prolog trie-index table."
+  nskk--prolog-trie-indices)
+
+(defun nskk-prolog-index-bucket-tail-cache ()
+  "Return the current Prolog index bucket-tail cache."
+  nskk--prolog-index-bucket-tail-cache)
+
+(defmacro nskk-prolog-with-database-fields (bindings &rest body)
+  "Evaluate BODY with selected mutable Prolog database fields replaced.
+BINDINGS is a list of (FIELD VALUE-FORM) pairs; FIELD is one of
+`database', `database-tails', `index-config', `hash-indices',
+`trie-indices', `index-bucket-tail-cache'.  Fields omitted from BINDINGS
+keep their current value for the dynamic extent of BODY, and all
+replaced fields are restored afterward, including on a non-local exit."
+  (declare (indent 1) (debug (sexp body)))
+  (let ((let-bindings
+         (mapcar
+          (lambda (binding)
+            (pcase (car binding)
+              ('database `(nskk--prolog-database ,(cadr binding)))
+              ('database-tails `(nskk--prolog-database-tails ,(cadr binding)))
+              ('index-config `(nskk--prolog-index-config ,(cadr binding)))
+              ('hash-indices `(nskk--prolog-hash-indices ,(cadr binding)))
+              ('trie-indices `(nskk--prolog-trie-indices ,(cadr binding)))
+              ('index-bucket-tail-cache
+               `(nskk--prolog-index-bucket-tail-cache ,(cadr binding)))
+              (other (error "Unknown Prolog database field: %S" other))))
+          bindings)))
+    `(let ,let-bindings ,@body)))
 
 (cl-defstruct (nskk--prolog-key-state
                (:constructor nskk--prolog-make-key-state))
@@ -267,7 +392,7 @@ Each BUCKETS-TABLE value is a fresh [BUCKET-HEAD BUCKET-TAIL] vector.")
   (when nskk--prolog-active-mutation-keys
     (error "Prolog transaction callback cannot clear the database")))
 
-(defun nskk--prolog-capture-key-state (key &optional first-arg capture-index-p)
+(defun nskk-prolog-capture-key-state (key &optional first-arg capture-index-p)
   "Capture exact rollback state for KEY.
 FIRST-ARG identifies the indexed bucket when CAPTURE-INDEX-P is non-nil."
   (let* ((missing nskk--prolog-cache-missing)
@@ -293,7 +418,7 @@ FIRST-ARG identifies the indexed bucket when CAPTURE-INDEX-P is non-nil."
                    (and (eq type :trie) (stringp first-arg)))))
          (index-bucket
           (and indexed-p
-               (nskk--prolog-transaction-index-bucket
+               (nskk-prolog-transaction-index-bucket
                 type index first-arg)))
          (cache-entry
           (gethash key nskk--prolog-index-bucket-tail-cache missing))
@@ -320,14 +445,14 @@ FIRST-ARG identifies the indexed bucket when CAPTURE-INDEX-P is non-nil."
      :cache-bucket-present-p (not (eq cache-bucket missing))
      :cache-bucket cache-bucket)))
 
-(defun nskk--prolog-prepare-key-state-index-tail (state)
+(defun nskk-prolog-prepare-key-state-index-tail (state)
   "Record STATE's current index tail without walking a valid hot cache."
   (let ((type (nskk--prolog-key-state-index-type state))
         (index (nskk--prolog-key-state-index state))
         (bucket (nskk--prolog-key-state-index-bucket state)))
     (when type
       (let ((tail
-             (nskk--prolog-index-bucket-tail
+             (nskk-prolog-index-bucket-tail
               (nskk--prolog-key-state-key state)
               type index
               (nskk--prolog-key-state-first-arg state)
@@ -337,7 +462,7 @@ FIRST-ARG identifies the indexed bucket when CAPTURE-INDEX-P is non-nil."
               (and tail (cdr tail))))))
   state)
 
-(defun nskk--prolog-restore-key-state (state)
+(defun nskk-prolog-restore-key-state (state)
   "Restore exact mapping and mutable cons identity captured in STATE."
   (let ((inhibit-quit t)
         (database-tail (nskk--prolog-key-state-database-tail state))
@@ -353,7 +478,7 @@ FIRST-ARG identifies the indexed bucket when CAPTURE-INDEX-P is non-nil."
       (setcdr index-tail
               (nskk--prolog-key-state-index-bucket-tail-cdr state)))
     (when type
-      (nskk--prolog-transaction-set-index-bucket
+      (nskk-prolog-transaction-set-index-bucket
        type index first-arg
        (nskk--prolog-key-state-index-bucket state)))
     (when cache-buckets
@@ -410,7 +535,7 @@ TYPE and INDEX must still be the current predicate configuration and object."
         (puthash key entry nskk--prolog-index-bucket-tail-cache))
       entry)))
 
-(defun nskk--prolog-index-bucket-tail (key type index first-arg bucket)
+(defun nskk-prolog-index-bucket-tail (key type index first-arg bucket)
   "Return BUCKET's tail after validating KEY, TYPE, INDEX, and FIRST-ARG.
 A cold or stale bucket performs exactly one `last'; a valid hit performs none.
 This O(1) contract requires bucket mutation through the Prolog mutation APIs,
@@ -433,20 +558,20 @@ is unsupported and is not detected by the hot-path cache validation."
         (puthash first-arg (vector bucket tail) buckets)
         tail))))
 
-(defun nskk--prolog-index-cache-set-bucket
+(defun nskk-prolog-index-cache-set-bucket
     (key type index first-arg bucket tail)
   "Store metadata for KEY, TYPE, INDEX, FIRST-ARG, BUCKET, and TAIL."
   (let* ((entry (nskk--prolog-index-cache-entry key type index))
          (buckets (aref entry 2)))
     (puthash first-arg (vector bucket tail) buckets)))
 
-(defsubst nskk--prolog-clause-key (predicate arity)
+(defsubst nskk-prolog-clause-key (predicate arity)
   "Return the database key string for PREDICATE with ARITY."
   (format "%s/%d" predicate arity))
 
 (defsubst nskk--prolog-head-key (head)
   "Return the database key string for clause HEAD."
-  (nskk--prolog-clause-key (car head) (1- (length head))))
+  (nskk-prolog-clause-key (car head) (1- (length head))))
 
 (defun nskk-prolog-set-index (predicate arity type)
   "Configure index strategy for PREDICATE with ARITY.
@@ -455,7 +580,7 @@ TYPE must be one of :hash, :trie, or :list.
 Switching strategy rebuilds the index from existing clauses in insertion order."
   (unless (memq type '(:hash :trie :list))
     (error "Unsupported Prolog index type: %S" type))
-  (let* ((key (nskk--prolog-clause-key predicate arity))
+  (let* ((key (nskk-prolog-clause-key predicate arity))
          (current-type (progn
   (nskk--prolog-ensure-mutation-allowed key)
   (gethash key nskk--prolog-index-config)))
@@ -487,7 +612,7 @@ Switching strategy rebuilds the index from existing clauses in insertion order."
               (nskk--prolog-trie-indices staged-trie-indices)
               (nskk--prolog-index-bucket-tail-cache staged-cache))
           (dolist (clause clauses)
-            (nskk--prolog-index-add key clause))
+            (nskk-prolog-index-add key clause))
           (setq staged-cache-entry
                 (gethash key staged-cache missing)))
         (let ((old-config
@@ -533,7 +658,7 @@ Switching strategy rebuilds the index from existing clauses in insertion order."
                    (puthash key (cdr entry) (car entry)))))
              (signal (car condition) (cdr condition)))))))))
 
-(defun nskk--prolog-index-add (key clause)
+(defun nskk-prolog-index-add (key clause)
   "Add CLAUSE to the configured index for KEY in O(1) on a cache hit."
   (let ((type (gethash key nskk--prolog-index-config))
         (first-arg (cadr (car clause))))
@@ -541,27 +666,27 @@ Switching strategy rebuilds the index from existing clauses in insertion order."
       (:hash
        (let* ((index (gethash key nskk--prolog-hash-indices))
               (bucket (gethash first-arg index))
-              (tail (nskk--prolog-index-bucket-tail
+              (tail (nskk-prolog-index-bucket-tail
                      key type index first-arg bucket))
               (new-cell (list clause))
               (head (or bucket new-cell)))
          (if tail
              (setcdr tail new-cell)
            (puthash first-arg head index))
-         (nskk--prolog-index-cache-set-bucket
+         (nskk-prolog-index-cache-set-bucket
           key type index first-arg head new-cell)))
       (:trie
        (when (stringp first-arg)
          (let* ((index (gethash key nskk--prolog-trie-indices))
                 (bucket (nskk-trie-lookup index first-arg))
-                (tail (nskk--prolog-index-bucket-tail
+                (tail (nskk-prolog-index-bucket-tail
                        key type index first-arg bucket))
                 (new-cell (list clause))
                 (head (or bucket new-cell)))
            (if tail
                (setcdr tail new-cell)
              (nskk-trie-insert index first-arg head))
-           (nskk--prolog-index-cache-set-bucket
+           (nskk-prolog-index-cache-set-bucket
             key type index first-arg head new-cell)))))))
 
 (defun nskk--prolog-index-remove (key clause)
@@ -578,7 +703,7 @@ Switching strategy rebuilds the index from existing clauses in insertion order."
          (if filtered
              (puthash first-arg filtered index)
            (remhash first-arg index))
-         (nskk--prolog-index-cache-set-bucket
+         (nskk-prolog-index-cache-set-bucket
           key type index first-arg filtered tail)))
       (:trie
        (when (stringp first-arg)
@@ -590,17 +715,17 @@ Switching strategy rebuilds the index from existing clauses in insertion order."
            (if filtered
                (nskk-trie-insert index first-arg filtered)
              (nskk-trie-delete index first-arg))
-           (nskk--prolog-index-cache-set-bucket
+           (nskk-prolog-index-cache-set-bucket
             key type index first-arg filtered tail)))))))
 
-(defun nskk--prolog-get-clauses (predicate args subst)
+(defun nskk-prolog-get-clauses (predicate args subst)
   "Retrieve candidate clauses for PREDICATE given ARGS and SUBST.
 Uses the configured index strategy for dispatch:
 - :hash with a ground first arg -> hash lookup
 - :trie with a ground string first arg -> trie lookup
 - Otherwise -> full clause list scan"
   (let* ((arity (length args))
-         (key (nskk--prolog-clause-key predicate arity))
+         (key (nskk-prolog-clause-key predicate arity))
          (type (gethash key nskk--prolog-index-config))
          (first-arg (and args (nskk-prolog-walk (car args) subst))))
     (pcase type
@@ -798,7 +923,7 @@ SUBST is the incoming substitution for clause resolution.
 K is called for each successful result."
   (let* ((predicate (car goal))
          (args (cdr goal))
-         (clauses (nskk--prolog-get-clauses predicate args subst)))
+         (clauses (nskk-prolog-get-clauses predicate args subst)))
     (dolist (clause clauses)
       (nskk--prolog-try-clause clause goal rest subst k))))
 
@@ -1064,21 +1189,21 @@ Errors and quits before or during publication leave the prior state intact."
          (key (nskk--prolog-head-key head))
          (first-arg (cadr head)))
     (nskk--prolog-ensure-mutation-allowed key)
-    (let* ((state (nskk--prolog-capture-key-state key first-arg t))
+    (let* ((state (nskk-prolog-capture-key-state key first-arg t))
            (new-cell (list canonical-clause))
            (tail (nskk--prolog-key-state-database-tail state)))
       (condition-case condition
           (progn
-            (nskk--prolog-prepare-key-state-index-tail state)
+            (nskk-prolog-prepare-key-state-index-tail state)
             (if tail
                 (progn
                   (setcdr tail new-cell)
                   (puthash key new-cell nskk--prolog-database-tails))
               (puthash key new-cell nskk--prolog-database)
               (puthash key new-cell nskk--prolog-database-tails))
-            (nskk--prolog-index-add key canonical-clause))
+            (nskk-prolog-index-add key canonical-clause))
         ((error quit)
-         (nskk--prolog-restore-key-state state)
+         (nskk-prolog-restore-key-state state)
          (signal (car condition) (cdr condition)))))))
 
 (defun nskk-prolog-retract (head-pattern)
@@ -1101,7 +1226,7 @@ per-key database, index, and cache mappings."
              clauses)))
       (when found
         (let* ((first-arg (cadr (car found)))
-               (state (nskk--prolog-capture-key-state key first-arg t))
+               (state (nskk-prolog-capture-key-state key first-arg t))
                (new-list
                 (cl-remove found clauses :test #'equal :count 1))
                (new-tail (and new-list (last new-list))))
@@ -1116,7 +1241,7 @@ per-key database, index, and cache mappings."
                 (nskk--prolog-index-remove key found)
                 t)
             ((error quit)
-             (nskk--prolog-restore-key-state state)
+             (nskk-prolog-restore-key-state state)
              (signal (car condition) (cdr condition)))))))))
 
 (with-no-warnings
@@ -1168,13 +1293,13 @@ per-key database, index, and cache mappings."
               clauses (cdr clauses)))
       nil)))
 
-(defun nskk--prolog-transaction-index (key type)
+(defun nskk-prolog-transaction-index (key type)
   "Return the index object for KEY and TYPE."
   (pcase type
     (:hash (gethash key nskk--prolog-hash-indices))
     (:trie (gethash key nskk--prolog-trie-indices))))
 
-(defun nskk--prolog-transaction-index-bucket
+(defun nskk-prolog-transaction-index-bucket
     (type index first-arg)
   "Return the FIRST-ARG bucket for TYPE and INDEX."
   (pcase type
@@ -1182,7 +1307,7 @@ per-key database, index, and cache mappings."
     (:trie (and (stringp first-arg)
                 (nskk-trie-lookup index first-arg)))))
 
-(defun nskk--prolog-transaction-set-index-bucket
+(defun nskk-prolog-transaction-set-index-bucket
     (type index first-arg bucket)
   "Set the FIRST-ARG BUCKET for TYPE and INDEX."
   (pcase type
@@ -1242,7 +1367,7 @@ per-key database, index, and cache mappings."
            (nskk--prolog-transaction-journal-index-predecessor-cdr
             journal)))
         (when type
-          (nskk--prolog-transaction-set-index-bucket
+          (nskk-prolog-transaction-set-index-bucket
            type index first-arg index-bucket))
         (when cache-buckets
           (if (nskk--prolog-transaction-journal-cache-bucket-present-p
@@ -1267,7 +1392,7 @@ per-key database, index, and cache mappings."
   (setf (nskk--prolog-transaction-journal-active journal) nil)
   nil)
 
-(defun nskk--prolog-replace-clause-transaction
+(defun nskk-prolog-replace-clause-transaction
     (old-head-pattern new-clause &optional callback)
   "Replace or delete one matching clause and commit atomically.
 When OLD-HEAD-PATTERN has no match, append NEW-CLAUSE when non-nil.
@@ -1298,10 +1423,10 @@ publication or CALLBACK restores the original object graph."
                         (and (eq type :trie) (stringp first-arg))))
          (mutation-p (or database-cell new-clause))
          (index (and indexed-p
-                     (nskk--prolog-transaction-index key type)))
+                     (nskk-prolog-transaction-index key type)))
          (index-bucket
           (and indexed-p index
-               (nskk--prolog-transaction-index-bucket
+               (nskk-prolog-transaction-index-bucket
                 type index first-arg)))
          (index-match
           (and old-clause indexed-p
@@ -1376,7 +1501,7 @@ publication or CALLBACK restores the original object graph."
       (condition-case condition
           (let* ((index-tail
                   (and mutation-p indexed-p
-                       (nskk--prolog-index-bucket-tail
+                       (nskk-prolog-index-bucket-tail
                         key type index first-arg index-bucket)))
                  (index-remaining-tail
                   (if (and index-cell (eq index-cell index-tail))
@@ -1412,9 +1537,9 @@ publication or CALLBACK restores the original object graph."
                 (if index-remaining-tail
                     (setcdr index-remaining-tail new-index-cell)
                   (setq index-remaining-head new-index-cell)))
-              (nskk--prolog-transaction-set-index-bucket
+              (nskk-prolog-transaction-set-index-bucket
                type index first-arg index-remaining-head)
-              (nskk--prolog-index-cache-set-bucket
+              (nskk-prolog-index-cache-set-bucket
                key type index first-arg index-remaining-head
                (or new-index-cell index-remaining-tail)))
             (prog1
@@ -1431,14 +1556,14 @@ publication or CALLBACK restores the original object graph."
   "Remove every PREDICATE/ARITY clause as one publication transaction.
 The configured index strategy is preserved.  On error or quit, exact per-key
 mappings are restored; the replacement index is staged before publication."
-  (let ((key (nskk--prolog-clause-key predicate arity)))
+  (let ((key (nskk-prolog-clause-key predicate arity)))
     (nskk--prolog-ensure-mutation-allowed key)
     (let* ((type (gethash key nskk--prolog-index-config))
            (staged-index
             (pcase type
               (:hash (make-hash-table :test 'equal))
               (:trie (nskk-trie-create))))
-           (state (nskk--prolog-capture-key-state key)))
+           (state (nskk-prolog-capture-key-state key)))
       (condition-case condition
           (progn
             (remhash key nskk--prolog-database)
@@ -1449,7 +1574,7 @@ mappings are restored; the replacement index is staged before publication."
               (:trie (puthash key staged-index nskk--prolog-trie-indices)))
             nil)
         ((error quit)
-         (nskk--prolog-restore-key-state state)
+         (nskk-prolog-restore-key-state state)
          (signal (car condition) (cdr condition)))))))
 
 (defun nskk-prolog-clear-database ()
@@ -1545,7 +1670,7 @@ PREDICATE is a symbol, ARITY is integer, PREFIX is a string.
 For arity-2 predicates, value is the second argument of each fact.
 Uses the trie index for O(k+n) performance instead of O(N).
 Returns nil if no trie index exists or PREFIX matches nothing."
-  (let* ((key (nskk--prolog-clause-key predicate arity))
+  (let* ((key (nskk-prolog-clause-key predicate arity))
          (trie (gethash key nskk--prolog-trie-indices)))
     (nskk-prolog-copy-term
      (when trie
@@ -1557,7 +1682,7 @@ Returns nil if no trie index exists or PREFIX matches nothing."
 (defun nskk-prolog-trie-has-prefix-p (predicate arity prefix)
   "Return non-nil if PREFIX leads to a node in PREDICATE/ARITY trie.
 This means PREFIX is either a complete key or a proper prefix of some key."
-  (let* ((key (nskk--prolog-clause-key predicate arity))
+  (let* ((key (nskk-prolog-clause-key predicate arity))
          (trie (gethash key nskk--prolog-trie-indices)))
     (when trie
       (nskk-trie-has-prefix-p trie prefix))))
@@ -1579,7 +1704,7 @@ database (so that variable-first-arg queries fall back correctly).  Use
 Requires the predicate to have a :trie index configured via
 `nskk-prolog-set-index' before calling this function."
 
-  (let* ((dbkey (nskk--prolog-clause-key predicate arity))
+  (let* ((dbkey (nskk-prolog-clause-key predicate arity))
          (trie
           (progn
             (nskk--prolog-ensure-mutation-allowed dbkey)
@@ -1594,7 +1719,7 @@ Requires the predicate to have a :trie index configured via
         (when (stringp kana)
           ;; nskk-prolog-assert writes to both the flat clause database (for
           ;; variable-first-arg fallback) and the trie index (via
-          ;; nskk--prolog-index-add), so no separate trie-insert is needed.
+          ;; nskk-prolog-index-add), so no separate trie-insert is needed.
           (nskk-prolog-assert clause))))))
 
 (defun nskk-prolog-holds-p (goal)
@@ -1727,6 +1852,7 @@ ambiguity: ground queries return (nil) on success vs nil on failure."
      ,@body))
 
 (defun nskk--prolog-ensure-presentation-actions ()
+  "Populate the presentation-action clause database on first use."
   (unless nskk--presentation-action-table-initialized
     (nskk-prolog-set-index 'presentation-action 2 :list)
     (dolist (registration nskk--presentation-actions)

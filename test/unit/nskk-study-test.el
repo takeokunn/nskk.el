@@ -529,26 +529,26 @@
     "Publication errors restore the exact previous predicate storage."
     (let ((file (make-temp-file "nskk-study-publication-error-"))
           (real-apply
-           (symbol-function 'nskk--dict-apply-predicate-snapshot)))
+           (symbol-function 'nskk-dict-transaction-apply-predicate-snapshot)))
       (unwind-protect
           (progn
             (with-temp-file file
               (prin1 '(("new" "reading" "candidate")) (current-buffer)))
             (let ((nskk-study-file file))
               (nskk-prolog-test-with-isolated-db
-               (let ((key (nskk--prolog-clause-key 'study-association 3))
+               (let ((key (nskk-prolog-clause-key 'study-association 3))
                      (rollback-called 0)
                      rollback-inhibited)
                  (nskk-prolog-retract-all 'study-association 3)
                  (nskk-prolog-assert
                   '((study-association "old" "reading" "candidate")))
-                 (let ((before (nskk--dict-predicate-snapshot key)))
+                 (let ((before (nskk-dict-transaction-predicate-snapshot key)))
                    (cl-letf
                        (((symbol-function 'nskk-prolog-assert)
                          (lambda (&rest _arguments)
                            (error "original publication error")))
                         ((symbol-function
-                          'nskk--dict-apply-predicate-snapshot)
+                          'nskk-dict-transaction-apply-predicate-snapshot)
                          (lambda (snapshot)
                            (cl-incf rollback-called)
                            (setq rollback-inhibited inhibit-quit)
@@ -557,7 +557,7 @@
                    (should (= rollback-called 1))
                    (should rollback-inhibited)
                    (should
-                    (equal before (nskk--dict-predicate-snapshot key)))
+                    (equal before (nskk-dict-transaction-predicate-snapshot key)))
                    (should
                     (nskk-prolog-holds-p
                      '(study-association "old" "reading" "candidate")))
@@ -570,20 +570,20 @@
     "Rollback completes under inhibited quit before the original quit is signaled."
     (let ((file (make-temp-file "nskk-study-publication-quit-"))
           (real-apply
-           (symbol-function 'nskk--dict-apply-predicate-snapshot)))
+           (symbol-function 'nskk-dict-transaction-apply-predicate-snapshot)))
       (unwind-protect
           (progn
             (with-temp-file file
               (prin1 '(("new" "reading" "candidate")) (current-buffer)))
             (let ((nskk-study-file file))
               (nskk-prolog-test-with-isolated-db
-               (let ((key (nskk--prolog-clause-key 'study-association 3))
+               (let ((key (nskk-prolog-clause-key 'study-association 3))
                      (rollback-called 0)
                      rollback-inhibited)
                  (nskk-prolog-retract-all 'study-association 3)
                  (nskk-prolog-assert
                   '((study-association "old" "reading" "candidate")))
-                 (let ((before (nskk--dict-predicate-snapshot key)))
+                 (let ((before (nskk-dict-transaction-predicate-snapshot key)))
                    (cl-letf
                        (((symbol-function 'nskk-prolog-assert)
                          (lambda (&rest _arguments)
@@ -591,7 +591,7 @@
                             'quit
                             '("original publication quit" payload))))
                         ((symbol-function
-                          'nskk--dict-apply-predicate-snapshot)
+                          'nskk-dict-transaction-apply-predicate-snapshot)
                          (lambda (snapshot)
                            (cl-incf rollback-called)
                            (setq rollback-inhibited inhibit-quit)
@@ -608,7 +608,7 @@
                    (should (= rollback-called 1))
                    (should rollback-inhibited)
                    (should
-                    (equal before (nskk--dict-predicate-snapshot key)))
+                    (equal before (nskk-dict-transaction-predicate-snapshot key)))
                    (should
                     (nskk-prolog-holds-p
                      '(study-association "old" "reading" "candidate")))
@@ -633,12 +633,12 @@
  (real-retract (symbol-function 'nskk-prolog-retract-all)))
             (let ((nskk-study-file file))
               (nskk-prolog-test-with-isolated-db
-                (let ((key (nskk--prolog-clause-key
+                (let ((key (nskk-prolog-clause-key
                             'study-association 3)))
                   (nskk-prolog-retract-all 'study-association 3)
                   (nskk-prolog-assert
                    '((study-association "old" "reading" "candidate")))
-                  (let ((before (nskk--dict-predicate-snapshot key)))
+                  (let ((before (nskk-dict-transaction-predicate-snapshot key)))
                     (cl-letf
                         (((symbol-function 'file-attributes)
                           (lambda (filename &optional id-format)
@@ -675,7 +675,7 @@
                     (should-not publish-called)
                     (should
                      (equal before
-                            (nskk--dict-predicate-snapshot key)))
+                            (nskk-dict-transaction-predicate-snapshot key)))
                     (should
                      (nskk-prolog-holds-p
                       '(study-association

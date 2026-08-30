@@ -244,7 +244,7 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ChO")
       (nskk-e2e-assert-buffer "▽ちゅうお")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ChOu produces ちゅうおう in AZIK hiragana mode"
     ;; The same `ch' continuation policy must preserve the trailing `u'
@@ -252,7 +252,7 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ChOu")
       (nskk-e2e-assert-buffer "▽ちゅうおう")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ShO preserves deferred すう and appends お in AZIK hiragana mode"
     ;; `sh' is also policy-enabled, so uppercase-vowel continuation must keep
@@ -260,51 +260,51 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ShO")
       (nskk-e2e-assert-buffer "▽すうお")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ShOu produces すうおう in AZIK hiragana mode"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ShOu")
       (nskk-e2e-assert-buffer "▽すうおう")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ThO preserves deferred つう and appends お in AZIK hiragana mode"
     ;; `th' uses the same policy-driven continuation and should yield つうお.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ThO")
       (nskk-e2e-assert-buffer "▽つうお")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ThOu produces つうおう in AZIK hiragana mode"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ThOu")
       (nskk-e2e-assert-buffer "▽つうおう")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   ;; Remaining uppercase vowels: verify A/I/U/E also continue the deferred reading.
   (nskk-it "ChA continues deferred ちゅう and appends あ"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ChA")
       (nskk-e2e-assert-buffer "▽ちゅうあ")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ShI continues deferred すう and appends い"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ShI")
       (nskk-e2e-assert-buffer "▽すうい")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ThU continues deferred つう and appends う"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ThU")
       (nskk-e2e-assert-buffer "▽つうう")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "ChE continues deferred ちゅう and appends え"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ChE")
       (nskk-e2e-assert-buffer "▽ちゅうえ")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   ;; In conversion mode (▽ active), lowercase vowels also continue the deferred
   ;; reading instead of triggering DV correction.  The user sees ちゅう after
@@ -313,13 +313,13 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Cho")
       (nskk-e2e-assert-buffer "▽ちゅうお")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   (nskk-it "Sha with lowercase a continues deferred すう in conversion mode"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Sha")
       (nskk-e2e-assert-buffer "▽すうあ")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))))
 
   ;; Guard: in plain hiragana (no ▽), DV correction still fires for lowercase.
   (nskk-it "cho all-lowercase in hiragana mode still gives ちょ via DV correction"
@@ -426,7 +426,7 @@
     ;; simulate a pending "l" without triggering the mode-switch side-effect.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       ;; Directly put "l" in the romaji buffer (no lq AZIK rule exists).
-      (setq nskk--romaji-buffer "l")
+      (nskk-state-set-romaji-buffer "l")
       (nskk-handle-q-key)
       ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
@@ -1385,7 +1385,7 @@
           (nskk-e2e-type "Nao")
           (nskk-e2e--dispatch-event ?+)
           ;; + should NOT arm colon-okurigana on US101
-          (should-not nskk--azik-colon-okuri-pending))))))
+          (should-not (nskk-azik-colon-okuri-pending)))))))
 
 (nskk-describe "AZIK semicolon respects sticky shift"
   (nskk-it "sticky-shift state survives AZIK style on semicolon"
@@ -1474,7 +1474,7 @@
         (nskk-e2e-type "Ka")
         (nskk-e2e--dispatch-event ?:)
         (should (string-match-p "ー" (buffer-string)))
-        (should-not nskk--azik-colon-okuri-pending))))
+        (should-not (nskk-azik-colon-okuri-pending)))))
 
   (nskk-it "Ka:soru converts to カーソル on JP106 keyboard"
     ;; Regression test: Ka:soru on JP106 must produce reading かーそる,
@@ -1537,7 +1537,7 @@
           ;; but implicit kakutei is now permitted on the next consonant.
           (should (not (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress)))
           ;; sentinel flag must be cleared after kana emission
-          (should (not (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending)))))))
+          (should (not (and (fboundp 'nskk-azik-sokuon-okuri-kana-pending) (nskk-azik-sokuon-okuri-kana-pending))))))))
 
   (nskk-it "C-g after Okona+ clears nskk--azik-sokuon-okuri-kana-pending"
     ;; Regression for the C-g/cancel path: after + fires sokuon okurigana,
@@ -1551,7 +1551,7 @@
           ;; Cancel the conversion.
           (nskk-e2e-type "C-g")
           ;; Sentinel must be cleared after cancellation.
-          (should (not (bound-and-true-p nskk--azik-sokuon-okuri-kana-pending)))))))
+          (should (not (and (fboundp 'nskk-azik-sokuon-okuri-kana-pending) (nskk-azik-sokuon-okuri-kana-pending))))))))
 
   (nskk-it "Okona+temoraitq produces 行ってもらいたい (full implicit-kakutei flow)"
     ;; Full regression test for the original bug report.
@@ -1581,13 +1581,13 @@
     ;; "きん" tentatively to the preedit reading.
     ;; C-g cancels preedit (standard SKK: discards preedit entirely, buffer="").
     ;; Bug (pre-fix): DA=(k."きん") survives cancel-preedit because
-    ;; nskk--clear-azik-pending-state only cleared CP/CD/SP, not DA.
+    ;; nskk-clear-azik-pending-state only cleared CP/CD/SP, not DA.
     ;; Next kana "a" would retroactively delete "きん" and produce "っか"
     ;; instead of "あ".  With the fix, DA is nil after C-g and "a" → "あ".
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Kakk")
       (nskk-e2e-type "C-g")
-      (should (not (bound-and-true-p nskk--deferred-azik-state)))
+      (should (not (and (fboundp 'nskk-deferred-azik-state) (nskk-deferred-azik-state))))
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")))
 
@@ -1602,26 +1602,26 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Kash")
       (nskk-e2e-type "C-g")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")))
 
   (nskk-it "T-03: nskk--deferred-azik-state is nil after rollback-conversion"
     ;; Regression for FR-001.
     ;; "Kakk" sets DA in preedit; SPC triggers conversion; C-g rolls back.
-    ;; nskk-rollback-conversion calls nskk--clear-azik-pending-state, which
+    ;; nskk-rollback-conversion calls nskk-clear-azik-pending-state, which
     ;; now also clears DA.
     (let ((dict '(("かきん" . ("過去問")))))
       (nskk-e2e-with-azik-buffer 'hiragana dict
         (nskk-e2e-type "Kakk")
         (nskk-e2e-type "SPC")
         (nskk-e2e-type "C-g")
-        (should (not (bound-and-true-p nskk--deferred-azik-state))))))
+        (should (not (and (fboundp 'nskk-deferred-azik-state) (nskk-deferred-azik-state)))))))
 
   (nskk-it "T-04: nskk--deferred-vowel-shadow-state is nil after rollback-conversion"
     ;; Regression for FR-001.
     ;; "Kash" sets DV in preedit; SPC triggers conversion; C-g rolls back.
-    ;; nskk-rollback-conversion calls nskk--clear-azik-pending-state, which
+    ;; nskk-rollback-conversion calls nskk-clear-azik-pending-state, which
     ;; must also clear DV so the next vowel does not retroactively rewrite the
     ;; rolled-back reading.
     (let ((dict '(("かすう" . ("加数")))))
@@ -1629,7 +1629,7 @@
         (nskk-e2e-type "Kash")
         (nskk-e2e-type "SPC")
         (nskk-e2e-type "C-g")
-        (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+        (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))
         (nskk-e2e-type "a")
         (nskk-e2e-assert-buffer "▽かすうあ")))))
 
@@ -1675,10 +1675,10 @@
       (nskk-e2e-type "K")
       (nskk-e2e-type "k")
       (nskk-e2e-assert-henkan-phase 'on "After 'Kk': should be in ▽ preedit")
-      (should (bound-and-true-p nskk--deferred-azik-state))
+      (should (and (fboundp 'nskk-deferred-azik-state) (nskk-deferred-azik-state)))
       ;; Press DEL: should clear DA, delete tentative kana, cancel preedit.
       (nskk-e2e-type "DEL")
-      (should (not (bound-and-true-p nskk--deferred-azik-state)))
+      (should (not (and (fboundp 'nskk-deferred-azik-state) (nskk-deferred-azik-state))))
       (nskk-e2e-assert-henkan-phase nil "After DEL of DA: preedit cancelled (no content left)")
       (nskk-e2e-assert-buffer "" "After DEL of DA: buffer empty")))
 
@@ -1691,10 +1691,10 @@
       (nskk-e2e-type "S")
       (nskk-e2e-type "h")
       (nskk-e2e-assert-henkan-phase 'on "After 'Sh': should be in ▽ preedit")
-      (should (bound-and-true-p nskk--deferred-vowel-shadow-state))
+      (should (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state)))
       ;; Press DEL: should clear DV, delete tentative kana, cancel preedit.
       (nskk-e2e-type "DEL")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))
       (nskk-e2e-assert-henkan-phase nil "After DEL of DV: preedit cancelled (no content left)")
       (nskk-e2e-assert-buffer "" "After DEL of DV: buffer empty")))
 
@@ -1708,9 +1708,9 @@
       (nskk-e2e-type "k")
       (nskk-e2e-type "k")
       (nskk-e2e-assert-henkan-phase 'on "After 'Kakk': should be in ▽ preedit")
-      (should (bound-and-true-p nskk--deferred-azik-state))
+      (should (and (fboundp 'nskk-deferred-azik-state) (nskk-deferred-azik-state)))
       (nskk-e2e-type "DEL")
-      (should (not (bound-and-true-p nskk--deferred-azik-state)))
+      (should (not (and (fboundp 'nskk-deferred-azik-state) (nskk-deferred-azik-state))))
       (nskk-e2e-assert-henkan-phase 'on "After DEL of DA: preedit survives with prior kana")
       (nskk-e2e-assert-buffer "▽か" "After DEL of DA: tentative きん removed, か remains")))
 
@@ -1724,9 +1724,9 @@
       (nskk-e2e-type "s")
       (nskk-e2e-type "h")
       (nskk-e2e-assert-henkan-phase 'on "After 'Kash': should be in ▽ preedit")
-      (should (bound-and-true-p nskk--deferred-vowel-shadow-state))
+      (should (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state)))
       (nskk-e2e-type "DEL")
-      (should (not (bound-and-true-p nskk--deferred-vowel-shadow-state)))
+      (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))
       (nskk-e2e-assert-henkan-phase 'on "After DEL of DV: preedit survives with prior kana")
       (nskk-e2e-assert-buffer "▽か" "After DEL of DV: tentative すう removed, か remains"))))
 

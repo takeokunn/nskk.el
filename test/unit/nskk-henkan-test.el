@@ -219,35 +219,53 @@
 (nskk-describe "nskk-henkan-with-preedit"
   (nskk-it "does nothing when no marker is set"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker nil)
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             (executed nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
         (nskk-henkan-with-preedit _start
           (setq executed t))
-        (should-not executed))))
+        (should-not executed))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "executes body when point is at the marker (empty preedit text)"
     ;; FR-005: >= guard allows conversion with empty preedit (e.g. SPC immediately
     ;; after uppercase letter before any kana is typed).  Previously > silently
     ;; skipped the body; now it executes, opening registration as expected.
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker)))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         ;; Insert only the marker, point is AT the end of marker (no text after)
         (insert nskk-henkan-on-marker)
         (let ((executed nil))
           (nskk-henkan-with-preedit _start
             (setq executed t))
-          (should executed)))))
+          (should executed)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "executes body and binds start when preedit text exists"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             (captured-start nil))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "かな")
         (nskk-henkan-with-preedit start
           (setq captured-start start))
-        (should (equal captured-start (point-min)))))))
+        (should (equal captured-start (point-min))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
 ;;;
 ;;; nskk-with-conversion-context Macro Tests
@@ -264,10 +282,14 @@
   (nskk-it "binds candidates and index when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             captured-candidates
             captured-index)
-        (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert "test")
         (nskk-state-set-candidates nskk-current-state '("候補1" "候補2"))
         (setf (nskk-state-current-index nskk-current-state) 1)
@@ -276,7 +298,9 @@
           (setq captured-candidates candidates)
           (setq captured-index index))
         (should (equal captured-candidates '("候補1" "候補2")))
-        (should (equal captured-index 1))))))
+        (should (equal captured-index 1)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
 ;;;
 ;;; Prolog Predicate Tests: converting-phase/1 and okurigana-char/2
@@ -410,8 +434,12 @@
            (3 nil))
     :body
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth depth)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           prompt-shown)
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth depth)
+            
       (if should-proceed
           (progn
             (nskk-state-force-henkan-phase nskk-current-state 'on)
@@ -420,20 +448,34 @@
                               (nskk-dict-register-word #'ignore))
               (nskk-start-registration "てすと")
               (should prompt-shown)))
-        (should-not (nskk-start-registration "てすと")))))
+        (should-not (nskk-start-registration "てすと"))))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "respects non-default max-registration-depth"
     (let ((nskk-max-registration-depth 2)
           (nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 1)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           prompt-shown)
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 1)
+            
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (p) (setq prompt-shown p) ""))
                         (nskk-dict-register-word #'ignore))
         (nskk-start-registration "てすと")
         (should prompt-shown))
-      (let ((nskk--registration-depth 2))
-        (should-not (nskk-start-registration "てすと"))))))
+      (let ((nskk-test-saved-registration-depth (nskk-state-registration-depth)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 2)
+            
+        (should-not (nskk-start-registration "てすと")))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      )))
 
 (nskk-describe "should-update-overlay Prolog predicate"
   (nskk-it "succeeds for active phase"
@@ -524,93 +566,145 @@
   (nskk-context "nskk-next-candidate"
     (nskk-it "does nothing when not converting"
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--henkan-count 0))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 0)
+            
         (nskk-next-candidate)
-        (should (equal nskk--henkan-count 0))))
+        (should (equal (nskk-state-henkan-count) 0)))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))
 
     (nskk-it "calls nskk--select-candidate when count is below threshold"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 0)
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
               (nskk-henkan-show-candidates-nth 5)
-              (nskk--conversion-start-marker (make-marker))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               select-called)
-          (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert "test")
           (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-with-mocks ((nskk--select-candidate (lambda (dir) (setq select-called dir))))
             (nskk-next-candidate)
             (should (eq select-called 'next))
-            (should (equal nskk--henkan-count 1))))))
+            (should (equal (nskk-state-henkan-count) 1))))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
     (nskk-it "switches to list display at the threshold"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 4)  ;; one below threshold of 5
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))  ;; one below threshold of 5
               (nskk-henkan-show-candidates-nth 5)
-              (nskk--conversion-start-marker (make-marker))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               list-next-called)
-          (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 4)
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert "test")
           (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-with-mocks ((nskk--show-candidate-list-next (lambda () (setq list-next-called t))))
             (nskk-next-candidate)
             (should list-next-called)
-            (should (equal nskk--henkan-count 5)))))))
+            (should (equal (nskk-state-henkan-count) 5))))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
   (nskk-context "nskk-previous-candidate"
     (nskk-it "does nothing when not converting"
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--henkan-count 3))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 3)
+            
         (nskk-previous-candidate)
-        (should (equal nskk--henkan-count 3))))
+        (should (equal (nskk-state-henkan-count) 3)))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))
 
     (nskk-it "calls nskk--select-candidate when list is inactive"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 3)
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
               (nskk--henkan-candidate-list-active nil)
-              (nskk--conversion-start-marker (make-marker))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               select-called)
-          (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 3)
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert "test")
           (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-with-mocks ((nskk--select-candidate (lambda (dir) (setq select-called dir))))
             (nskk-previous-candidate)
             (should (eq select-called 'previous))
-            (should (equal nskk--henkan-count 2))))))
+            (should (equal (nskk-state-henkan-count) 2))))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
     (nskk-it "calls show-list-prev when list is active"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 5)
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
               (nskk--henkan-candidate-list-active t)
-              (nskk--conversion-start-marker (make-marker))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               list-prev-called)
-          (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 5)
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert "test")
           (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-with-mocks ((nskk--show-candidate-list-prev (lambda () (setq list-prev-called t))))
             (nskk-previous-candidate)
-            (should list-prev-called)))))
+            (should list-prev-called)))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
     (nskk-it "does not decrement count below 0"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 0)
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
               (nskk--henkan-candidate-list-active nil)
-              (nskk--conversion-start-marker (make-marker)))
-          (set-marker nskk--conversion-start-marker (point-min))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert "test")
           (nskk-state-set-candidates nskk-current-state '("a"))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-with-mocks ((nskk--select-candidate #'ignore))
             (nskk-previous-candidate)
-            (should (equal nskk--henkan-count 0))))))))
+            (should (equal (nskk-state-henkan-count) 0))))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))))
 
 ;;;
 ;;; nskk-commit-current Tests
@@ -641,13 +735,13 @@
       (nskk-with-henkan-state 'active '("変換" "変換2")
         (setf (nskk-state-current-index nskk-current-state) 0)
         (nskk-commit-current)
-        (should (equal nskk--romaji-buffer ""))))
+        (should (equal (nskk-state-romaji-buffer) ""))))
 
     (nskk-it "resets henkan-count to 0 after commit"
       (nskk-with-henkan-state 'active '("変換" "変換2")
         (setf (nskk-state-current-index nskk-current-state) 0)
         (nskk-commit-current)
-        (should (equal nskk--henkan-count 0)))))
+        (should (equal (nskk-state-henkan-count) 0)))))
 
   (nskk-it "inserts the candidate at current-index 2"
     (nskk-with-henkan-state 'active '("first" "second" "third")
@@ -664,22 +758,34 @@
     (nskk-it "does nothing when no preedit exists"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker nil)
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               start-conversion-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
           (nskk-with-mocks ((nskk-start-conversion (lambda () (setq start-conversion-called t))))
             (nskk-convert)
-            (should-not start-conversion-called)))))
+            (should-not start-conversion-called)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
     (nskk-it "calls nskk-start-conversion when preedit text exists"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               start-conversion-called)
-          (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker "かな")
           (nskk-with-mocks ((nskk-start-conversion (lambda () (setq start-conversion-called t))))
             (nskk-convert)
-            (should start-conversion-called))))))
+            (should start-conversion-called)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
   (nskk-context "nskk-convert-or-commit"
     (nskk-it "commits when in conversion state"
@@ -692,24 +798,37 @@
     (nskk-it "starts conversion when preedit exists but not converting"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               start-conversion-called)
-          (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker "かな")
           (nskk-with-mocks ((nskk-start-conversion (lambda () (setq start-conversion-called t))))
             (nskk-convert-or-commit)
-            (should start-conversion-called))))))
+            (should start-conversion-called)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
   (nskk-context "nskk-start-conversion direct behavior"
     (nskk-it "sets candidates and active phase when search returns results"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "")
-              (nskk--henkan-count 0)
-              (nskk--conversion-overlay nil))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+              (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-overlay nil)
+            
           (insert "▽かんじ")
-          (set-marker nskk--conversion-start-marker (point-min))
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (goto-char (point-max))
           (nskk-state-force-henkan-phase nskk-current-state 'on)
           (nskk-with-mocks ((nskk-core-search/k
@@ -719,19 +838,32 @@
                             (nskk--replace-marker-at #'ignore))
             (nskk-start-conversion)
             (should (equal (nskk-state-candidates nskk-current-state) '("漢字" "感じ")))
-            (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
+            (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay))
+      )))
 
     (nskk-it "calls nskk-start-registration when no candidates found"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "")
-              (nskk--henkan-count 0)
-              (nskk--conversion-overlay nil)
-              (nskk--registration-depth 0)
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+              (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+              (nskk-test-saved-registration-depth (nskk-state-registration-depth))
               registration-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-registration-depth 0)
+            
           (insert "▽てすと")
-          (set-marker nskk--conversion-start-marker (point-min))
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (goto-char (point-max))
           (nskk-state-force-henkan-phase nskk-current-state 'on)
           ;; nskk-start-conversion now delegates to CPS variants; mock those.
@@ -743,7 +875,13 @@
                                (setq registration-called reading)
                                (funcall on-done nil))))
             (nskk-start-conversion)
-            (should registration-called)))))))
+            (should registration-called)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      )))))
 
 ;;;
 ;;; henkan cancel
@@ -762,77 +900,133 @@
     (nskk-it "calls nskk-rollback-conversion when converting"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
               rollback-called)
-          (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert "test")
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-with-mocks ((nskk-rollback-conversion (lambda () (setq rollback-called t))))
             (nskk-cancel-conversion)
-            (should rollback-called))))))
+            (should rollback-called)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
   (nskk-context "nskk-cancel-preedit"
     (nskk-it "clears preedit text from buffer"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "ka")
-              (nskk--henkan-count 3))
-          (set-marker nskk--conversion-start-marker (point-min))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "ka")
+            (nskk-state-set-henkan-count 3)
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker "か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-cancel-preedit)
-          (should (equal (buffer-string) "")))))
+          (should (equal (buffer-string) "")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
     (nskk-it "clears romaji buffer"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "ka")
-              (nskk--henkan-count 3))
-          (set-marker nskk--conversion-start-marker (point-min))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "ka")
+            (nskk-state-set-henkan-count 3)
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker "か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-cancel-preedit)
-          (should (equal nskk--romaji-buffer "")))))
+          (should (equal (nskk-state-romaji-buffer) "")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
     (nskk-it "resets henkan-count to 0"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "ka")
-              (nskk--henkan-count 3))
-          (set-marker nskk--conversion-start-marker (point-min))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "ka")
+            (nskk-state-set-henkan-count 3)
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker "か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-cancel-preedit)
-          (should (equal nskk--henkan-count 0)))))
+          (should (equal (nskk-state-henkan-count) 0)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
     (nskk-it "resets henkan-phase to nil"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "ka")
-              (nskk--henkan-count 3))
-          (set-marker nskk--conversion-start-marker (point-min))
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "ka")
+            (nskk-state-set-henkan-count 3)
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker "か")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           (nskk-cancel-preedit)
-          (should-not (nskk-state-henkan-phase nskk-current-state)))))
+          (should-not (nskk-state-henkan-phase nskk-current-state)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
     (nskk-it "clears okurigana state from state struct on cancel"
       (nskk-prolog-test-with-isolated-db
         (with-temp-buffer
           (nskk-mode 1)
-          (let ((nskk--conversion-start-marker (make-marker))
-                (nskk--romaji-buffer "k")
-                (nskk--henkan-count 0))
-            (set-marker nskk--conversion-start-marker (point-min))
+          (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+                (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+                (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "k")
+            (nskk-state-set-henkan-count 0)
+            
+            (set-marker (nskk-state-conversion-start-marker) (point-min))
             (insert nskk-henkan-on-marker "か")
             (nskk-state-set-henkan-phase nskk-current-state 'on)
             (nskk-state-set-okurigana nskk-current-state "k")
             (nskk-cancel-preedit)
-            (should-not (nskk-state-get-okurigana nskk-current-state))))))
+            (should-not (nskk-state-get-okurigana nskk-current-state)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
     (nskk-it "clears all AZIK okurigana pending state vars on cancel"
       ;; All three sentinel vars must be nil after cancel-preedit to prevent
@@ -844,55 +1038,89 @@
         (nskk-prolog-test-with-isolated-db
           (with-temp-buffer
             (nskk-mode 1)
-            (let ((nskk--conversion-start-marker (make-marker))
-                  (nskk--romaji-buffer "")
-                  (nskk--henkan-count 0))
-              (set-marker nskk--conversion-start-marker (point-min))
+            (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+                  (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+                  (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            
+              (set-marker (nskk-state-conversion-start-marker) (point-min))
               (insert nskk-henkan-on-marker "か")
               (nskk-state-set-henkan-phase nskk-current-state 'on)
               (set (car spec) (cdr spec))
               (nskk-cancel-preedit)
-              (should-not (symbol-value (car spec)))))))))
+              (should-not (symbol-value (car spec))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))))
 
   (nskk-context "nskk-rollback-conversion"
     (nskk-it "resets count and restores preedit phase"
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "")
-              (nskk--henkan-count 3)
-              (nskk--conversion-overlay nil)
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+              (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
               (nskk--henkan-candidate-list-active nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 3)
+            (nskk-state-set-conversion-overlay nil)
+            
           (insert "▼漢字")
-          (set-marker nskk--conversion-start-marker (point-min))
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (goto-char (point-max))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-state-set-candidates nskk-current-state '("漢字" "感じ"))
           (nskk-with-mocks ((nskk--delete-marker-at #'ignore)
                             (run-hook-with-args #'ignore))
             (nskk-rollback-conversion)
-            (should (= nskk--henkan-count 0))))))
+            (should (= (nskk-state-henkan-count) 0))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay))
+      )))
 
     (nskk-it "clears nskk--azik-sokuon-okuri-kana-pending on rollback"
       ;; After JP106 + fires sokuon okurigana, C-g (rollback) must clear the
       ;; sentinel so the next preedit does not start with a stale flag.
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer "")
-              (nskk--henkan-count 0)
-              (nskk--conversion-overlay nil)
+              (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+              (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
               (nskk--henkan-candidate-list-active nil)
               (nskk--azik-sokuon-okuri-kana-pending t))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-overlay nil)
+            
           (insert "▼漢字")
-          (set-marker nskk--conversion-start-marker (point-min))
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (goto-char (point-max))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (nskk-state-set-candidates nskk-current-state '("漢字"))
           (nskk-with-mocks ((nskk--delete-marker-at #'ignore)
                             (run-hook-with-args #'ignore))
             (nskk-rollback-conversion)
-            (should-not nskk--azik-sokuon-okuri-kana-pending)))))))
+            (should-not (nskk-azik-sokuon-okuri-kana-pending))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay))
+      )))))
 
 ;;;
 ;;; nskk-start-registration Depth Guard Tests
@@ -901,20 +1129,32 @@
 (nskk-describe "henkan registration depth guard"
   (nskk-it "returns nil when depth is at maximum (3)"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 3))
-      (should-not (nskk-start-registration "test"))))
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 3)
+            
+      (should-not (nskk-start-registration "test")))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "proceeds and shows prompt when depth is below maximum"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 0)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           prompt-shown)
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       ;; Set phase to `on' (preedit) so the nil->registration transition is valid
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (p) (setq prompt-shown p) ""))
                         (nskk-dict-register-word #'ignore))
         (nskk-start-registration "てすと")
         (should prompt-shown)
-        (should (string-match-p "辞書登録" prompt-shown))))))
+        (should (string-match-p "辞書登録" prompt-shown))))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      )))
 
 ;;;
 ;;; Seeded Property-Based Tests
@@ -1283,23 +1523,23 @@
 ;;; Low-level buffer-manipulation helpers
 ;;;
 
-(nskk-describe "nskk--insert-marker"
+(nskk-describe "nskk-insert-marker"
   (nskk-it "inserts the string without buffering modification hooks"
     (with-temp-buffer
-      (nskk--insert-marker "▽")
+      (nskk-insert-marker "▽")
       (should (equal (buffer-string) "▽"))))
 
   (nskk-it "does not record undo when inhibit-undo wrapper is active"
     (with-temp-buffer
       (let (captured-undo)
         (nskk-without-modification
-          (nskk--insert-marker "▽")
+          (nskk-insert-marker "▽")
           (setq captured-undo buffer-undo-list))
         (should (eq captured-undo t)))))
 
   (nskk-it "can insert the active marker ▼ as well"
     (with-temp-buffer
-      (nskk--insert-marker "▼")
+      (nskk-insert-marker "▼")
       (should (equal (buffer-string) "▼")))))
 
 (nskk-describe "nskk--delete-marker-at"
@@ -1384,7 +1624,7 @@
         (nskk-without-modification
           (insert nskk-henkan-on-marker)
           (insert "かんじ"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (should (equal (nskk-preedit-string) "かんじ")))))
 
   (nskk-it "returns nil when point is at or before the marker"
@@ -1392,7 +1632,7 @@
       (with-temp-buffer
         (nskk-mode 1)
         (nskk-without-modification (insert nskk-henkan-on-marker))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (should (null (nskk-preedit-string))))))
 
   ;; CPS variant: on-found(string) when preedit text exists, on-not-found() otherwise.
@@ -1403,7 +1643,7 @@
         (nskk-without-modification
           (insert nskk-henkan-on-marker)
           (insert "か"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (let (got-text got-not-found)
           (nskk-preedit-string/k
            (lambda (s) (setq got-text s))
@@ -1463,7 +1703,7 @@
         (nskk-without-modification
           (insert nskk-henkan-on-marker)
           (insert "かん"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (nskk--dcomp-replace-preedit "かんじ")
         (let* ((start (point-min))
                (text-start (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp)))
@@ -1486,7 +1726,7 @@
         (nskk-without-modification
           (insert nskk-henkan-on-marker)
           (insert "かん"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (setq nskk--dcomp-prefix "かん"
               nskk--dcomp-candidates '("かんじ" "かんせい" "かんたん")
               nskk--dcomp-index 0)
@@ -1502,7 +1742,7 @@
         (nskk-without-modification
           (insert nskk-henkan-on-marker)
           (insert "かんたん"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (setq nskk--dcomp-prefix "かん"
               nskk--dcomp-candidates '("かんじ" "かんたん")
               nskk--dcomp-index 1)
@@ -1514,7 +1754,7 @@
       (with-temp-buffer
         (nskk-mode 1)
         (nskk-without-modification (insert nskk-henkan-on-marker))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (setq nskk--dcomp-candidates nil
               nskk--dcomp-index 0)
         (nskk-dynamic-complete)
@@ -1584,26 +1824,26 @@
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (setq nskk--romaji-buffer "sh")
+        (nskk-state-set-romaji-buffer "sh")
         (nskk-henkan-do-reset)
-        (should (string-empty-p nskk--romaji-buffer)))))
+        (should (string-empty-p (nskk-state-romaji-buffer))))))
 
   (nskk-it "resets henkan-count to 0"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (setq nskk--henkan-count 5)
+        (nskk-state-set-henkan-count 5)
         (nskk-henkan-do-reset)
-        (should (= nskk--henkan-count 0)))))
+        (should (= (nskk-state-henkan-count) 0)))))
 
   (nskk-it "clears conversion-start-marker"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
         (insert "test")
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (nskk-henkan-do-reset)
-        (should (null (nskk--get-conversion-start))))))
+        (should (null (nskk-get-conversion-start))))))
 
   (nskk-it "returns nil"
     (nskk-prolog-test-with-isolated-db
@@ -1630,7 +1870,7 @@
         (nskk-mode 1)
         (nskk-without-modification
           (insert nskk-henkan-on-marker "かんじ"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (nskk-henkan-kakutei)
         ;; The ▽ marker should be removed; text remains
         (should (not (string-search nskk-henkan-on-marker (buffer-string)))))))
@@ -1640,17 +1880,17 @@
       (with-temp-buffer
         (nskk-mode 1)
         (nskk-without-modification (insert nskk-henkan-on-marker))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (nskk-henkan-kakutei)
-        (should (null (nskk--get-conversion-start))))))
+        (should (null (nskk-get-conversion-start))))))
 
   (nskk-it "clears the romaji buffer"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (setq nskk--romaji-buffer "sh")
+        (nskk-state-set-romaji-buffer "sh")
         (nskk-henkan-kakutei)
-        (should (string-empty-p nskk--romaji-buffer)))))
+        (should (string-empty-p (nskk-state-romaji-buffer))))))
 
   (nskk-it "resets henkan-phase to nil in current state"
     (nskk-prolog-test-with-isolated-db
@@ -1721,34 +1961,62 @@
   (nskk-it "inserts registered word at start and resets state"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 3)
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk--henkan-candidate-list-active nil)
             (nskk-henkan-hide-candidates-functions nil)
             (called nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-conversion-start-marker nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 3)
+            
         (insert "▼かんじ")
         (goto-char (point-max))
         (nskk--insert-registered-and-reset "漢字" 1 (lambda () (setq called t)))
         (should (string= (buffer-string) "漢字"))
-        (should called))))
+        (should called))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "tolerates nil on-done callback"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 1)
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk--henkan-candidate-list-active nil)
             (nskk-henkan-hide-candidates-functions nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-conversion-start-marker nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 1)
+            
         (insert "▼test")
         (goto-char (point-max))
         ;; Should not error when on-done is nil
-        (should (progn (nskk--insert-registered-and-reset "result" 1 nil) t))))))
+        (should (progn (nskk--insert-registered-and-reset "result" 1 nil) t)))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
 ;;; nskk--replace-preedit-with-converted
@@ -1790,12 +2058,18 @@
         (nskk-reset-henkan-state))
       (should (null (nskk-state-get-okurigana nskk-current-state)))))
 
-  (nskk-it "does not touch nskk--romaji-buffer (macro scope only)"
+  (nskk-it "does not touch nskk-state-romaji-buffer (macro scope only)"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--romaji-buffer "sh"))
+          (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "sh")
+            
       (nskk-with-current-state
         (nskk-reset-henkan-state))
-      (should (equal nskk--romaji-buffer "sh")))))
+      (should (equal (nskk-state-romaji-buffer) "sh")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
 ;;;
 ;;; nskk-when-bound / nskk-when-bound-and Macro Tests
@@ -1823,15 +2097,17 @@
     (should (nskk-when-bound nskk-henkan-show-candidates-functions
               t))))
 
+(defvar nskk--test-sentinel-string-wba)
+
 (nskk-describe "nskk-when-bound-and"
   (nskk-it "executes body when variable is bound and satisfies predicate"
     ;; nskk--dcomp-prefix is a defvar-local initialised to nil; stringp fails.
-    ;; Use nskk--romaji-buffer which is a defvar-local string (bound + stringp).
-    ;; We set it to a known string so stringp passes.
+    ;; Use a dedicated dynamic sentinel variable that is bound and a string
+    ;; (stringp passes) to exercise the macro's own dispatch logic.  `boundp'
+    ;; only sees dynamic bindings, so the sentinel must be `defvar'd above.
     (let (executed)
-      (with-temp-buffer
-        (set (make-local-variable 'nskk--romaji-buffer) "")
-        (nskk-when-bound-and nskk--romaji-buffer stringp
+      (let ((nskk--test-sentinel-string-wba ""))
+        (nskk-when-bound-and nskk--test-sentinel-string-wba stringp
           (setq executed t)))
       (should executed)))
 
@@ -1853,87 +2129,165 @@
 ;;; Conversion Start Marker Helper Tests
 ;;;
 
-(nskk-describe "nskk--set-conversion-start-marker"
+(nskk-describe "nskk-set-conversion-start-marker"
   (nskk-it "creates a marker at the given position"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker nil))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
         (insert "abcd")
         (goto-char (point-min))
-        (nskk--set-conversion-start-marker (point-min))
-        (should (markerp nskk--conversion-start-marker))
-        (should (= (marker-position nskk--conversion-start-marker) (point-min))))))
+        (nskk-set-conversion-start-marker (point-min))
+        (should (markerp (nskk-state-conversion-start-marker)))
+        (should (= (marker-position (nskk-state-conversion-start-marker)) (point-min))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "sets the marker to a mid-buffer position"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker nil))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
         (insert "▽かな")
         (goto-char 2)
-        (nskk--set-conversion-start-marker 2)
-        (should (= (marker-position nskk--conversion-start-marker) 2))))))
+        (nskk-set-conversion-start-marker 2)
+        (should (= (marker-position (nskk-state-conversion-start-marker)) 2)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
 (nskk-describe "nskk--clear-conversion-start-marker"
   (nskk-it "clears the marker position to nil"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker)))
-        (set-marker nskk--conversion-start-marker (point-min))
-        (should (marker-position nskk--conversion-start-marker))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
+        (should (marker-position (nskk-state-conversion-start-marker)))
         (nskk--clear-conversion-start-marker)
-        (should-not (marker-position nskk--conversion-start-marker)))))
+        (should-not (marker-position (nskk-state-conversion-start-marker))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "is safe to call when marker is already nil"
-    (let ((nskk--conversion-start-marker nil))
+    (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
       (nskk--clear-conversion-start-marker)
-      (should-not nskk--conversion-start-marker))))
+      (should-not (nskk-state-conversion-start-marker)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
-(nskk-describe "nskk--conversion-start-active-p"
+(nskk-describe "nskk-conversion-start-active-p"
   (nskk-it "returns non-nil when marker has a position"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker)))
-        (set-marker nskk--conversion-start-marker (point-min))
-        (should (nskk--conversion-start-active-p)))))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
+        (should (nskk-conversion-start-active-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "returns nil when marker is nil"
-    (let ((nskk--conversion-start-marker nil))
-      (should-not (nskk--conversion-start-active-p))))
+    (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
+      (should-not (nskk-conversion-start-active-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))
 
   (nskk-it "returns nil when marker has no position"
-    (let ((nskk--conversion-start-marker (make-marker)))
-      (should-not (nskk--conversion-start-active-p)))))
+    (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+      (should-not (nskk-conversion-start-active-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
-(nskk-describe "nskk--get-conversion-start"
+(nskk-describe "nskk-get-conversion-start"
   (nskk-it "returns the marker position as an integer"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker)))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
         (insert "  ▽かな")
-        (set-marker nskk--conversion-start-marker 3)
-        (should (= (nskk--get-conversion-start) 3)))))
+        (set-marker (nskk-state-conversion-start-marker) 3)
+        (should (= (nskk-get-conversion-start) 3)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "returns nil when no marker is set"
-    (let ((nskk--conversion-start-marker nil))
-      (should-not (nskk--get-conversion-start))))
+    (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
+      (should-not (nskk-get-conversion-start)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))
 
   (nskk-it "returns nil when marker has no position"
-    (let ((nskk--conversion-start-marker (make-marker)))
-      (should-not (nskk--get-conversion-start)))))
+    (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+      (should-not (nskk-get-conversion-start)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
-(nskk-describe "nskk--has-preedit"
+(nskk-describe "nskk-has-preedit"
   (nskk-it "returns non-nil when preedit text exists after the marker"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker)))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "かな")
-        (should (nskk--has-preedit)))))
+        (should (nskk-has-preedit)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "returns nil when point is right after the marker (no text)"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker)))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker)
-        (should-not (nskk--has-preedit)))))
+        (should-not (nskk-has-preedit)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "returns nil when no conversion start marker is set"
-    (let ((nskk--conversion-start-marker nil))
-      (should-not (nskk--has-preedit)))))
+    (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
+      (should-not (nskk-has-preedit)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
 ;;;
 ;;; nskk--extract-okuri-query Tests
@@ -2004,68 +2358,140 @@
 (nskk-describe "nskk-convert-input-to-kana-final"
   (nskk-it "returns empty string when romaji buffer is empty"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil))
-        (should (equal (nskk-convert-input-to-kana-final) "")))))
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (should (equal (nskk-convert-input-to-kana-final) "")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "converts standalone n to ん (hatsuon at word boundary)"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "n")
-            (nskk--pending-romaji-overlay nil))
-        (should (equal (nskk-convert-input-to-kana-final) "ん")))))
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "n")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (should (equal (nskk-convert-input-to-kana-final) "ん")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "converts romaji like ka to か"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "ka")
-            (nskk--pending-romaji-overlay nil))
-        (should (equal (nskk-convert-input-to-kana-final) "か")))))
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "ka")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (should (equal (nskk-convert-input-to-kana-final) "か")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "clears the romaji buffer after conversion"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "shi")
-            (nskk--pending-romaji-overlay nil))
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "shi")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (nskk-convert-input-to-kana-final)
-        (should (equal nskk--romaji-buffer ""))))))
+        (should (equal (nskk-state-romaji-buffer) "")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))))
 
 (nskk-describe "nskk-convert-input-to-kana-final/k"
   (nskk-it "calls on-done with empty string when buffer is empty"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil)
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
             result)
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (nskk-convert-input-to-kana-final/k (lambda (s) (setq result s)) #'ignore)
-        (should (equal result "")))))
+        (should (equal result "")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "calls on-done with ん for standalone n"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "n")
-            (nskk--pending-romaji-overlay nil)
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
             result)
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "n")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (nskk-convert-input-to-kana-final/k (lambda (s) (setq result s)) #'ignore)
-        (should (equal result "ん")))))
+        (should (equal result "ん")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "calls on-done with converted kana for complete romaji"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "tsu")
-            (nskk--pending-romaji-overlay nil)
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
             result)
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "tsu")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (nskk-convert-input-to-kana-final/k (lambda (s) (setq result s)) #'ignore)
-        (should (equal result "つ")))))
+        (should (equal result "つ")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "is consistent with the sync variant across common romaji"
     (nskk-deftest-table kana-final-cps-sync-consistency
       :columns (romaji)
       :rows (("") ("n") ("ka") ("shi") ("tsu"))
       :body (with-temp-buffer
-              (let ((nskk--romaji-buffer romaji)
-                    (nskk--pending-romaji-overlay nil)
+              (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+                    (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
                     cps-result)
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer romaji)
+            (nskk-state-set-pending-romaji-overlay nil)
+            
                 (nskk-convert-input-to-kana-final/k
                   (lambda (s) (setq cps-result s)) #'ignore)
-                (let ((nskk--romaji-buffer romaji)
-                      (nskk--pending-romaji-overlay nil))
+                (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+                      (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer romaji)
+            (nskk-state-set-pending-romaji-overlay nil)
+            
                   (should (equal cps-result
-                                 (nskk-convert-input-to-kana-final)))))))))
+                                 (nskk-convert-input-to-kana-final))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))))
 
 
 ;;;
@@ -2175,48 +2601,72 @@
       (should (= (nskk-state-current-index nskk-current-state) 0)))))
 
 ;;;
-;;; nskk--clear-conversion-context Tests
+;;; nskk-clear-conversion-context Tests
 ;;;
 
-(nskk-describe "nskk--clear-conversion-context"
+(nskk-describe "nskk-clear-conversion-context"
   (nskk-it "resets dcomp state variables to nil/0"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--dcomp-candidates '("かんじ" "かんとく"))
             (nskk--dcomp-prefix "かん")
             (nskk--dcomp-index 1)
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker nil)
-            (nskk--romaji-buffer ""))
-        (nskk--clear-conversion-context)
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-conversion-start-marker nil)
+            (nskk-state-set-romaji-buffer "")
+            
+        (nskk-clear-conversion-context)
         (should (null nskk--dcomp-candidates))
         (should (null nskk--dcomp-prefix))
-        (should (= nskk--dcomp-index 0)))))
+        (should (= nskk--dcomp-index 0)))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "clears conversion candidate state from nskk-current-state"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker nil)
-            (nskk--romaji-buffer "")
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
             (nskk--dcomp-candidates nil)
             (nskk--dcomp-prefix nil)
             (nskk--dcomp-index 0))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-conversion-start-marker nil)
+            (nskk-state-set-romaji-buffer "")
+            
         (nskk-state-set-candidates nskk-current-state '("A" "B"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
-        (nskk--clear-conversion-context)
+        (nskk-clear-conversion-context)
         (should (null (nskk-state-candidates nskk-current-state)))
-        (should (null (nskk-state-henkan-phase nskk-current-state))))))
+        (should (null (nskk-state-henkan-phase nskk-current-state))))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "clears input state variables via Prolog clearable-input-var/1 table"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker nil)
-            (nskk--romaji-buffer "")
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
             (nskk--dcomp-candidates nil)
             (nskk--dcomp-prefix nil)
             (nskk--dcomp-index 0)
@@ -2226,31 +2676,43 @@
             (nskk--deferred-vowel-shadow-state t)
             (nskk--azik-colon-okuri-pending t)
             (nskk--azik-colon-okuri-deferred t))
-        (nskk--clear-conversion-context)
-        (should-not nskk--numeric-mode)
-        (should-not nskk--sticky-shift-pending)
-        (should-not nskk--deferred-azik-state)
-        (should-not nskk--deferred-vowel-shadow-state)
-        (should-not nskk--azik-colon-okuri-pending)
-        (should-not nskk--azik-colon-okuri-deferred))))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-conversion-start-marker nil)
+            (nskk-state-set-romaji-buffer "")
+            
+        (nskk-clear-conversion-context)
+        (should-not (nskk-numeric-mode))
+        (should-not (nskk-sticky-shift-pending))
+        (should-not (nskk-deferred-azik-state))
+        (should-not (nskk-deferred-vowel-shadow-state))
+        (should-not (nskk-azik-colon-okuri-pending))
+        (should-not (nskk-azik-colon-okuri-deferred)))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
-  (nskk-it "nskk--clear-azik-pending-state clears sticky-shift-pending"
+  (nskk-it "nskk-clear-azik-pending-state clears sticky-shift-pending"
     ;; Regression: sticky-shift-pending was missing from the dolist in
-    ;; nskk--clear-azik-pending-state, causing stale sticky state after
+    ;; nskk-clear-azik-pending-state, causing stale sticky state after
     ;; kakutei/cancel/rollback.
     (with-temp-buffer
       (let ((nskk--sticky-shift-pending 'immediate))
-        (nskk--clear-azik-pending-state)
-        (should-not nskk--sticky-shift-pending))))
+        (nskk-clear-azik-pending-state)
+        (should-not (nskk-sticky-shift-pending)))))
 
-  (nskk-it "nskk--clear-azik-pending-state clears sticky-shift-pending in okurigana state"
+  (nskk-it "nskk-clear-azik-pending-state clears sticky-shift-pending in okurigana state"
     (with-temp-buffer
       (let ((nskk--sticky-shift-pending 'okurigana))
-        (nskk--clear-azik-pending-state)
-        (should-not nskk--sticky-shift-pending))))
+        (nskk-clear-azik-pending-state)
+        (should-not (nskk-sticky-shift-pending)))))
 
   (nskk-it "resets nskk--henkan-candidate-list-active to nil on mode switch"
-    ;; Regression test: nskk--clear-conversion-context must call
+    ;; Regression test: nskk-clear-conversion-context must call
     ;; nskk--dismiss-candidate-list (not bare run-hook-with-args) so that
     ;; nskk--henkan-candidate-list-active is reset atomically with the
     ;; hide-candidates hook.  Without this fix, mode switches left the flag
@@ -2259,15 +2721,27 @@
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--henkan-candidate-list-active t)
             (nskk-henkan-hide-candidates-functions nil)
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--conversion-start-marker nil)
-            (nskk--romaji-buffer "")
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
             (nskk--dcomp-candidates nil)
             (nskk--dcomp-prefix nil)
             (nskk--dcomp-index 0))
-        (nskk--clear-conversion-context)
-        (should-not nskk--henkan-candidate-list-active))))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-conversion-start-marker nil)
+            (nskk-state-set-romaji-buffer "")
+            
+        (nskk-clear-conversion-context)
+        (should-not nskk--henkan-candidate-list-active))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "runs every cleanup after hide/inline faults and preserves the first condition"
     (dolist (invocation '(direct mode-switch))
@@ -2287,12 +2761,12 @@
                      (inline-overlay
                       (make-overlay (point-min) (point-max)))
                      (marker (copy-marker (point-min)))
-                     (nskk--conversion-overlay conversion-overlay)
-                     (nskk--pending-romaji-overlay pending-overlay)
-                     (nskk--dcomp-multiple-overlay dcomp-overlay)
+                     (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+                     (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+                     (nskk-test-saved-dcomp-multiple-overlay (nskk-state-dcomp-multiple-overlay))
                      (nskk--inline-overlay inline-overlay)
-                     (nskk--conversion-start-marker marker)
-                     (nskk--romaji-buffer "dirty")
+                     (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+                     (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
                      (nskk--dcomp-candidates '("dirty"))
                      (nskk--dcomp-prefix "dirty")
                      (nskk--dcomp-index 1)
@@ -2318,6 +2792,14 @@
                      cleanup-order
                      cleanup-inhibit-quit
                      caught)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay conversion-overlay)
+            (nskk-state-set-pending-romaji-overlay pending-overlay)
+            (nskk-state-set-dcomp-multiple-overlay dcomp-overlay)
+            (nskk-state-set-conversion-start-marker marker)
+            (nskk-state-set-romaji-buffer "dirty")
+            
                 (setf (nskk-state-candidates nskk-current-state) '("A" "B")
                       (nskk-state-current-index nskk-current-state) 1
                       (nskk-state-metadata nskk-current-state)
@@ -2331,7 +2813,7 @@
                        (let ((overlay
                               (make-overlay (point-min) (point-max))))
                          (push overlay callback-overlays)
-                         (setq nskk--conversion-overlay overlay))))
+                         (nskk-state-set-conversion-overlay overlay))))
                   (let ((nskk-henkan-hide-candidates-functions
                          (list
                           (lambda ()
@@ -2356,9 +2838,9 @@
                       (condition-case condition
                           (pcase invocation
                             ('direct
-                             (nskk--clear-conversion-context))
+                             (nskk-clear-conversion-context))
                             ('mode-switch
-                             (nskk--set-mode 'katakana)))
+                             (nskk-set-mode 'katakana)))
                         ((error quit)
                          (setq caught condition))))))
                 (should caught)
@@ -2369,29 +2851,29 @@
                                '(hide-first hide-second inline)))
                 (should (= (length cleanup-inhibit-quit) 3))
                 (should-not (memq nil cleanup-inhibit-quit))
-                (should-not nskk--conversion-overlay)
+                (should-not (nskk-state-conversion-overlay))
                 (should-not (overlay-buffer conversion-overlay))
                 (dolist (overlay callback-overlays)
                   (should-not (overlay-buffer overlay)))
-                (should-not nskk--pending-romaji-overlay)
+                (should-not (nskk-state-pending-romaji-overlay))
                 (should-not (overlay-buffer pending-overlay))
-                (should-not nskk--dcomp-multiple-overlay)
+                (should-not (nskk-state-dcomp-multiple-overlay))
                 (should-not (overlay-buffer dcomp-overlay))
                 (should-not nskk--inline-overlay)
                 (should-not (overlay-buffer inline-overlay))
                 (should-not (marker-position marker))
-                (should (equal nskk--romaji-buffer ""))
+                (should (equal (nskk-state-romaji-buffer) ""))
                 (should-not nskk--dcomp-candidates)
                 (should-not nskk--dcomp-prefix)
                 (should (= nskk--dcomp-index 0))
                 (should-not nskk--henkan-candidate-list-active)
-                (should-not nskk--numeric-mode)
-                (should-not nskk--sticky-shift-pending)
-                (should-not nskk--deferred-azik-state)
-                (should-not nskk--deferred-vowel-shadow-state)
-                (should-not nskk--azik-colon-okuri-pending)
-                (should-not nskk--azik-colon-okuri-deferred)
-                (should-not nskk--azik-sokuon-okuri-kana-pending)
+                (should-not (nskk-numeric-mode))
+                (should-not (nskk-sticky-shift-pending))
+                (should-not (nskk-deferred-azik-state))
+                (should-not (nskk-deferred-vowel-shadow-state))
+                (should-not (nskk-azik-colon-okuri-pending))
+                (should-not (nskk-azik-colon-okuri-deferred))
+                (should-not (nskk-azik-sokuon-okuri-kana-pending))
                 (should-not
                  (nskk-state-candidates nskk-current-state))
                 (should (= (nskk-state-current-index nskk-current-state) 0))
@@ -2404,7 +2886,13 @@
                  (plist-get (nskk-state-metadata nskk-current-state)
                             'okurigana-in-progress))
                 (should (eq (nskk-state-mode nskk-current-state)
-                            expected-mode))))))))))
+                            expected-mode)))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-dcomp-multiple-overlay nskk-test-saved-dcomp-multiple-overlay)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      ))))))))
 
 ;;;
 ;;; nskk--wrap-to-first-candidate Tests
@@ -2416,12 +2904,16 @@
                         (quit next-show-quit payload)))
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 17)
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
               (nskk-henkan-number-to-display-candidates 2)
               (nskk-henkan-show-candidates-keys '(?a ?s))
               (nskk--henkan-candidate-list-active t)
               cleanup-order
               observed)
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 17)
+            
           (nskk-state-set-candidates
            nskk-current-state '("A" "B" "C" "D" "E"))
           (nskk-state-force-henkan-phase nskk-current-state 'list)
@@ -2432,12 +2924,12 @@
                          (list index
                                (nskk-state-current-index nskk-current-state)
                                (nskk-state-henkan-phase nskk-current-state)
-                               nskk--henkan-count
+                               (nskk-state-henkan-count)
                                nskk--henkan-candidate-list-active))
                    (setf (nskk-state-current-index nskk-current-state) 4
                          (nskk-state-henkan-phase nskk-current-state)
                          'registration)
-                   (setq nskk--henkan-count -1)
+                   (nskk-state-set-henkan-count -1)
                    (signal (car injected) (cdr injected))))
                 (nskk-henkan-hide-candidates-functions
                  (list
@@ -2446,8 +2938,7 @@
                     (setf (nskk-state-current-index nskk-current-state) 4
                           (nskk-state-henkan-phase nskk-current-state)
                           'registration)
-                    (setq nskk--henkan-count -2
-                          nskk--henkan-candidate-list-active t)
+                    (progn (nskk-state-set-henkan-count -2) (setq nskk--henkan-candidate-list-active t))
                     (signal 'error '(cleanup-error payload)))
                   (lambda ()
                     (push 'second cleanup-order)
@@ -2463,8 +2954,10 @@
           (should (equal cleanup-order '(second first)))
           (should (= (nskk-state-current-index nskk-current-state) 1))
           (should (eq (nskk-state-henkan-phase nskk-current-state) 'list))
-          (should (= nskk--henkan-count 17))
-          (should-not nskk--henkan-candidate-list-active))))))
+          (should (= (nskk-state-henkan-count) 17))
+          (should-not nskk--henkan-candidate-list-active))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))))
 
 (nskk-describe "nskk--show-candidate-list-prev"
   (nskk-it "rolls back state and cleans up after show hook errors and quits"
@@ -2472,12 +2965,16 @@
                         (quit prev-show-quit payload)))
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 19)
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
               (nskk-henkan-number-to-display-candidates 2)
               (nskk-henkan-show-candidates-keys '(?a ?s))
               (nskk--henkan-candidate-list-active t)
               cleanup-order
               observed)
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 19)
+            
           (nskk-state-set-candidates
            nskk-current-state '("A" "B" "C" "D" "E"))
           (nskk-state-force-henkan-phase nskk-current-state 'list)
@@ -2488,12 +2985,12 @@
                          (list index
                                (nskk-state-current-index nskk-current-state)
                                (nskk-state-henkan-phase nskk-current-state)
-                               nskk--henkan-count
+                               (nskk-state-henkan-count)
                                nskk--henkan-candidate-list-active))
                    (setf (nskk-state-current-index nskk-current-state) 4
                          (nskk-state-henkan-phase nskk-current-state)
                          'registration)
-                   (setq nskk--henkan-count -1)
+                   (nskk-state-set-henkan-count -1)
                    (signal (car injected) (cdr injected))))
                 (nskk-henkan-hide-candidates-functions
                  (list
@@ -2502,8 +2999,7 @@
                     (setf (nskk-state-current-index nskk-current-state) 4
                           (nskk-state-henkan-phase nskk-current-state)
                           'registration)
-                    (setq nskk--henkan-count -2
-                          nskk--henkan-candidate-list-active t)
+                    (progn (nskk-state-set-henkan-count -2) (setq nskk--henkan-candidate-list-active t))
                     (signal 'error '(cleanup-error payload)))
                   (lambda ()
                     (push 'second cleanup-order)
@@ -2519,8 +3015,10 @@
           (should (equal cleanup-order '(second first)))
           (should (= (nskk-state-current-index nskk-current-state) 3))
           (should (eq (nskk-state-henkan-phase nskk-current-state) 'list))
-          (should (= nskk--henkan-count 19))
-          (should-not nskk--henkan-candidate-list-active))))))
+          (should (= (nskk-state-henkan-count) 19))
+          (should-not nskk--henkan-candidate-list-active))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))))
 
 (nskk-describe "nskk--wrap-to-first-candidate"
   ;; nskk--wrap-to-first-candidate calls nskk-state-set-henkan-phase with 'list.
@@ -2528,37 +3026,53 @@
   (nskk-it "resets index to 0 and updates henkan-count to threshold"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--henkan-count 7)
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk-henkan-show-candidates-nth 5)
             (nskk--henkan-candidate-list-active nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 7)
+            
         (nskk-state-set-candidates nskk-current-state '("A" "B" "C"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (setf (nskk-state-current-index nskk-current-state) 2)
         (nskk-with-mocks ((run-hook-with-args #'ignore))
 	  (nskk--wrap-to-first-candidate))
         (should (= (nskk-state-current-index nskk-current-state) 0))
-        (should (= nskk--henkan-count nskk-henkan-show-candidates-nth)))))
+        (should (= (nskk-state-henkan-count) nskk-henkan-show-candidates-nth)))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "sets henkan-phase to list and activates candidate-list"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--henkan-count 0)
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk-henkan-show-candidates-nth 3)
             (nskk--henkan-candidate-list-active nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 0)
+            
         (nskk-state-set-candidates nskk-current-state '("A"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((run-hook-with-args #'ignore))
 	  (nskk--wrap-to-first-candidate))
         (should (eq (nskk-state-henkan-phase nskk-current-state) 'list))
-        (should nskk--henkan-candidate-list-active))))
+        (should nskk--henkan-candidate-list-active))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "fires nskk-henkan-show-candidates-functions hook with candidates and index 0"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--henkan-count 0)
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk-henkan-show-candidates-nth 3)
             (nskk--henkan-candidate-list-active nil)
             captured-args)
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 0)
+            
         (nskk-state-set-candidates nskk-current-state '("X" "Y"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((run-hook-with-args
@@ -2566,18 +3080,24 @@
                              (setq captured-args args))))
 	  (nskk--wrap-to-first-candidate))
         (should (equal (car captured-args) '("X" "Y")))
-        (should (= (cadr captured-args) 0)))))
+        (should (= (cadr captured-args) 0)))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "rolls back state and cleans up after show hook errors and quits"
     (dolist (injected '((error wrap-show-error payload)
                         (quit wrap-show-quit payload)))
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
-              (nskk--henkan-count 7)
+              (nskk-test-saved-henkan-count (nskk-state-henkan-count))
               (nskk-henkan-show-candidates-nth 3)
               (nskk--henkan-candidate-list-active t)
               cleanup-order
               observed)
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 7)
+            
           (nskk-state-set-candidates nskk-current-state '("A" "B" "C"))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
           (setf (nskk-state-current-index nskk-current-state) 2)
@@ -2587,12 +3107,12 @@
                          (list index
                                (nskk-state-current-index nskk-current-state)
                                (nskk-state-henkan-phase nskk-current-state)
-                               nskk--henkan-count
+                               (nskk-state-henkan-count)
                                nskk--henkan-candidate-list-active))
                    (setf (nskk-state-current-index nskk-current-state) 1
                          (nskk-state-henkan-phase nskk-current-state)
                          'registration)
-                   (setq nskk--henkan-count -1)
+                   (nskk-state-set-henkan-count -1)
                    (signal (car injected) (cdr injected))))
                 (nskk-henkan-hide-candidates-functions
                  (list
@@ -2601,8 +3121,7 @@
                     (setf (nskk-state-current-index nskk-current-state) 1
                           (nskk-state-henkan-phase nskk-current-state)
                           'registration)
-                    (setq nskk--henkan-count -2
-                          nskk--henkan-candidate-list-active t)
+                    (progn (nskk-state-set-henkan-count -2) (setq nskk--henkan-candidate-list-active t))
                     (signal 'error '(cleanup-error payload)))
                   (lambda ()
                     (push 'second cleanup-order)
@@ -2618,8 +3137,10 @@
           (should (equal cleanup-order '(second first)))
           (should (= (nskk-state-current-index nskk-current-state) 2))
           (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))
-          (should (= nskk--henkan-count 7))
-          (should-not nskk--henkan-candidate-list-active))))))
+          (should (= (nskk-state-henkan-count) 7))
+          (should-not nskk--henkan-candidate-list-active))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))))
 
 ;;;
 ;;; nskk-cancel-conversion-to-reading Tests
@@ -2630,84 +3151,148 @@
     (with-temp-buffer
       (insert "unchanged")
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker)))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
         (nskk-cancel-conversion-to-reading)
-        (should (equal (buffer-string) "unchanged")))))
+        (should (equal (buffer-string) "unchanged")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "removes the ▼ marker from buffer when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 2)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk--henkan-candidate-list-active t))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 2)
+            
         (insert nskk-henkan-active-marker "かんじ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("漢字"))
         (nskk-cancel-conversion-to-reading)
         ;; ▼ marker removed; kana reading remains
         (should (string-match-p "かんじ" (buffer-string)))
-        (should-not (string-match-p (regexp-quote nskk-henkan-active-marker) (buffer-string))))))
+        (should-not (string-match-p (regexp-quote nskk-henkan-active-marker) (buffer-string))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "clears henkan-count and candidate-list-active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 4)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk--henkan-candidate-list-active t))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 4)
+            
         (insert nskk-henkan-active-marker "ほげ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("保毛"))
         (nskk-cancel-conversion-to-reading)
-        (should (= nskk--henkan-count 0))
-        (should-not nskk--henkan-candidate-list-active)))))
+        (should (= (nskk-state-henkan-count) 0))
+        (should-not nskk--henkan-candidate-list-active))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
-;;; nskk--show-pending-romaji / nskk--clear-pending-romaji Tests
+;;; nskk-show-pending-romaji / nskk-clear-pending-romaji Tests
 ;;;
 
-(nskk-describe "nskk--show-pending-romaji"
+(nskk-describe "nskk-show-pending-romaji"
   (nskk-it "creates an overlay with the given text as after-string"
     (with-temp-buffer
-      (let ((nskk--pending-romaji-overlay nil))
-        (nskk--show-pending-romaji "ka")
-        (should nskk--pending-romaji-overlay)
-        (should (overlayp nskk--pending-romaji-overlay))
-        (should (equal (overlay-get nskk--pending-romaji-overlay 'after-string) "ka")))))
+      (let ((nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-show-pending-romaji "ka")
+        (should (nskk-state-pending-romaji-overlay))
+        (should (overlayp (nskk-state-pending-romaji-overlay)))
+        (should (equal (overlay-get (nskk-state-pending-romaji-overlay) 'after-string) "ka")))
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "does nothing for an empty string"
     (with-temp-buffer
-      (let ((nskk--pending-romaji-overlay nil))
-        (nskk--show-pending-romaji "")
-        (should-not nskk--pending-romaji-overlay))))
+      (let ((nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-show-pending-romaji "")
+        (should-not (nskk-state-pending-romaji-overlay)))
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "does nothing for a non-string argument"
     (with-temp-buffer
-      (let ((nskk--pending-romaji-overlay nil))
-        (nskk--show-pending-romaji nil)
-        (should-not nskk--pending-romaji-overlay)))))
+      (let ((nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-show-pending-romaji nil)
+        (should-not (nskk-state-pending-romaji-overlay)))
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))))
 
-(nskk-describe "nskk--clear-pending-romaji"
+(nskk-describe "nskk-clear-pending-romaji"
   (nskk-it "deletes the pending romaji overlay when present"
     (with-temp-buffer
-      (let ((nskk--pending-romaji-overlay nil))
-        (nskk--show-pending-romaji "ka")
-        (should nskk--pending-romaji-overlay)
-        (nskk--clear-pending-romaji)
-        (should-not (and nskk--pending-romaji-overlay
-                         (overlay-buffer nskk--pending-romaji-overlay))))))
+      (let ((nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-show-pending-romaji "ka")
+        (should (nskk-state-pending-romaji-overlay))
+        (nskk-clear-pending-romaji)
+        (should-not (and (nskk-state-pending-romaji-overlay)
+                         (overlay-buffer (nskk-state-pending-romaji-overlay)))))
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "is safe to call when no overlay exists (idempotent)"
     (with-temp-buffer
-      (let ((nskk--pending-romaji-overlay nil))
-        (should-not (nskk--clear-pending-romaji))))))
+      (let ((nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (should-not (nskk-clear-pending-romaji)))
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))))
 
 ;;;
 ;;; nskk-convert-or-commit/k Tests
@@ -2725,15 +3310,21 @@
   (nskk-it "calls on-done after starting conversion when not in active phase"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             start-conversion-called on-done-called)
-        (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "かな")
         (nskk-state-force-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-start-conversion (lambda () (setq start-conversion-called t))))
           (nskk-convert-or-commit/k (lambda () (setq on-done-called t))))
         (should start-conversion-called)
-        (should on-done-called)))))
+        (should on-done-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
 ;;;
 ;;; nskk-commit-current/k Tests
@@ -2768,25 +3359,39 @@
 (nskk-describe "nskk-next-candidate/k"
   (nskk-it "calls on-exhausted when not converting"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--henkan-count 0)
+          (nskk-test-saved-henkan-count (nskk-state-henkan-count))
           exhausted-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 0)
+            
       (nskk-next-candidate/k #'ignore (lambda () (setq exhausted-called t)))
-      (should exhausted-called)))
+      (should exhausted-called))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))
 
   (nskk-it "calls on-candidate with current candidate when selecting inline"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--henkan-count 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk-henkan-show-candidates-nth 5)
             received-candidate)
-        (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-henkan-count 0)
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert "test")
         (nskk-state-set-candidates nskk-current-state '("漢字" "感じ"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk--select-candidate #'ignore))
           (nskk-next-candidate/k (lambda (c) (setq received-candidate c)) #'ignore))
-        (should (equal received-candidate "漢字"))))))
+        (should (equal received-candidate "漢字")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
 ;;; nskk-previous-candidate/k Tests
@@ -2795,30 +3400,44 @@
 (nskk-describe "nskk-previous-candidate/k"
   (nskk-it "calls on-not-found when not converting"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--henkan-count 0)
+          (nskk-test-saved-henkan-count (nskk-state-henkan-count))
           not-found-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-henkan-count 0)
+            
       ;; When not converting, on-not-found is called (standard defun/k pattern)
       (nskk-previous-candidate/k #'ignore (lambda () (setq not-found-called t)))
-      (should not-found-called)))
+      (should not-found-called))
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))
 
   (nskk-it "calls on-found with the selected candidate after selecting prev candidate inline"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--henkan-count 2)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk--henkan-candidate-list-active nil)
             received-candidate)
-        (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-henkan-count 2)
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert "test")
         (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
         (nskk-state-set-current-index nskk-current-state 1)
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk--select-candidate #'ignore))
           ;; on-found is called with the candidate at current-index after decrement.
-          ;; nskk--henkan-count decrements 2→1; nskk--select-candidate is mocked
+          ;; nskk-state-henkan-count decrements 2→1; nskk--select-candidate is mocked
           ;; (no real index change), so current-index stays at 1 → candidate "b".
           (nskk-previous-candidate/k (lambda (c) (setq received-candidate c)) #'ignore))
-        (should (equal received-candidate "b"))))))
+        (should (equal received-candidate "b")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
 ;;; nskk-start-conversion/k Tests
@@ -2828,13 +3447,20 @@
   (nskk-it "calls on-found with candidates when search returns results"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0)
-            (nskk--conversion-overlay nil)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
             found-candidates)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-overlay nil)
+            
         (insert nskk-henkan-on-marker "かんじ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-state-force-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-convert-input-to-kana-final/k
@@ -2849,19 +3475,32 @@
            #'ignore
            #'ignore))
         (should (equal found-candidates '("漢字" "感じ")))
-        (should (equal (nskk-state-candidates nskk-current-state) '("漢字" "感じ"))))))
+        (should (equal (nskk-state-candidates nskk-current-state) '("漢字" "感じ"))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay))
+      )))
 
   (nskk-it "calls on-not-found when search returns nothing and registration is cancelled"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0)
-            (nskk--conversion-overlay nil)
-            (nskk--registration-depth 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-registration-depth (nskk-state-registration-depth))
             not-found-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-registration-depth 0)
+            
         (insert nskk-henkan-on-marker "てすと")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-state-force-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-convert-input-to-kana-final/k
@@ -2875,7 +3514,13 @@
            #'ignore
            (lambda () (setq not-found-called t))
            #'ignore))
-        (should not-found-called)))))
+        (should not-found-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))))
 
 ;;;
 ;;; nskk--exhaust-candidates/k Tests
@@ -2885,9 +3530,13 @@
   (nskk-it "wraps to first candidate and calls on-done when no preedit text"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker nil)   ; no marker = no text
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))   ; no marker = no text
             (nskk--henkan-candidate-list-active t)
             wrap-called on-done-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker nil)
+            
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("A"))
         (nskk-with-mocks ((nskk--wrap-to-first-candidate (lambda () (setq wrap-called t)))
@@ -2896,17 +3545,24 @@
         (should wrap-called)
         (should on-done-called)
         ;; candidate-list-active should be reset
-        (should-not nskk--henkan-candidate-list-active))))
+        (should-not nskk--henkan-candidate-list-active))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "calls nskk-start-registration/k with preedit text when candidates exhausted"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
             (nskk--henkan-candidate-list-active t)
             registration-text on-done-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            
         (insert nskk-henkan-active-marker "かんじ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("漢字"))
@@ -2918,20 +3574,28 @@
                           (run-hook-with-args #'ignore))
           (nskk--exhaust-candidates/k (lambda () (setq on-done-called t))))
         (should (equal registration-text "かんじ"))
-        (should on-done-called))))
+        (should on-done-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay))
+      )))
 
   (nskk-it "registers under the okurigana dict key, showing stem*kana in the prompt"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
             (nskk--henkan-candidate-list-active t)
             registration-text display-reading)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            
         (insert nskk-henkan-active-marker "ほけ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         ;; Overlay covers the stem "ほ"; the okuri kana "け" follows it.
-        (setq nskk--conversion-overlay (make-overlay 2 3))
+        (nskk-state-set-conversion-overlay (make-overlay 2 3))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("褒"))
         (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
@@ -2947,7 +3611,10 @@
         ;; Dictionary key, not the display form, must be registered:
         ;; lookup appends okuri consonants to the stem ("ほ" + "k").
         (should (equal registration-text "ほk"))
-        (should (equal display-reading "ほ*け"))))))
+        (should (equal display-reading "ほ*け")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay))
+      ))))
 
 ;;;
 ;;; nskk-cancel-conversion/k Tests
@@ -2963,15 +3630,21 @@
   (nskk-it "calls nskk-rollback-conversion when converting then calls on-done"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             rollback-called on-done-called)
-        (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert "test")
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-rollback-conversion (lambda () (setq rollback-called t))))
           (nskk-cancel-conversion/k (lambda () (setq on-done-called t))))
         (should rollback-called)
-        (should on-done-called)))))
+        (should on-done-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      ))))
 
 ;;;
 ;;; nskk-rollback-conversion/k Tests
@@ -2988,15 +3661,23 @@
   (nskk-it "restores preedit phase and calls on-done when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 3)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             (nskk--henkan-candidate-list-active nil)
             on-done-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 3)
+            
         (insert nskk-henkan-active-marker "かんじ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("漢字" "感じ"))
@@ -3004,7 +3685,13 @@
                           (run-hook-with-args #'ignore))
           (nskk-rollback-conversion/k (lambda () (setq on-done-called t))))
         (should on-done-called)
-        (should (= nskk--henkan-count 0))))))
+        (should (= (nskk-state-henkan-count) 0)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
 ;;; nskk-cancel-preedit/k
@@ -3014,50 +3701,98 @@
   (nskk-it "calls on-done even when no conversion start is set"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             on-done-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            
         (nskk-cancel-preedit/k (lambda () (setq on-done-called t)))
-        (should on-done-called))))
+        (should on-done-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "deletes preedit text and calls on-done when conversion start is active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             on-done-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            
         (insert nskk-henkan-on-marker "かんじ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-cancel-preedit/k (lambda () (setq on-done-called t)))
         (should on-done-called)
-        (should (string-empty-p (buffer-string))))))
+        (should (string-empty-p (buffer-string))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "restores previous mode when cancelling from abbrev preedit"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'abbrev))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            
         (setf (nskk-state-previous-mode nskk-current-state) 'hiragana)
         (nskk-cancel-preedit/k #'ignore)
         ;; Mode restored to hiragana (the mode before abbrev was activated)
-        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "resets henkan-count to 0 after cancel"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 5))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 5)
+            
         (nskk-cancel-preedit/k #'ignore)
-        (should (= nskk--henkan-count 0))))))
+        (should (= (nskk-state-henkan-count) 0)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
 ;;; nskk--restore-abbrev-mode
@@ -3090,14 +3825,14 @@
             (nskk--numeric-mode t))
         (setf (nskk-state-previous-mode nskk-current-state) 'hiragana)
         (nskk--restore-abbrev-mode t)
-        (should-not nskk--numeric-mode))))
+        (should-not (nskk-numeric-mode)))))
 
   (nskk-it "does not clear nskk--numeric-mode when was-abbrev is nil"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk--numeric-mode t))
         (nskk--restore-abbrev-mode nil)
-        (should nskk--numeric-mode))))
+        (should (nskk-numeric-mode)))))
 
   (nskk-it "no-op when previous-mode is nil"
     (with-temp-buffer
@@ -3114,81 +3849,145 @@
   (nskk-it "restores previous mode after preedit commit from abbrev"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'abbrev))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            
         (setf (nskk-state-previous-mode nskk-current-state) 'hiragana)
         (insert nskk-henkan-on-marker "test")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-henkan-kakutei)
-        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "does not change mode after preedit commit from hiragana"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--pending-romaji-overlay nil)
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            
         (insert nskk-henkan-on-marker "かんじ")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-henkan-kakutei)
-        (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
+        (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
-;;; nskk--flush-romaji-before-okuri
+;;; nskk-flush-romaji-before-okuri
 ;;;
 
-(nskk-describe "nskk--flush-romaji-before-okuri"
+(nskk-describe "nskk-flush-romaji-before-okuri"
   (nskk-it "does nothing when romaji buffer is empty but still clears pending romaji"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil))
-        (nskk--flush-romaji-before-okuri)
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-flush-romaji-before-okuri)
         (should (string-empty-p (buffer-string)))
-        (should (string-empty-p nskk--romaji-buffer)))))
+        (should (string-empty-p (nskk-state-romaji-buffer))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "inserts ん when romaji buffer is standalone n at word boundary"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "n")
-            (nskk--pending-romaji-overlay nil))
-        (nskk--flush-romaji-before-okuri)
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "n")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-flush-romaji-before-okuri)
         (should (equal (buffer-string) "ん"))
-        (should (string-empty-p nskk--romaji-buffer)))))
+        (should (string-empty-p (nskk-state-romaji-buffer))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "converts complete romaji to kana and clears buffer"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "ka")
-            (nskk--pending-romaji-overlay nil))
-        (nskk--flush-romaji-before-okuri)
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "ka")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-flush-romaji-before-okuri)
         (should (equal (buffer-string) "か"))
-        (should (string-empty-p nskk--romaji-buffer)))))
+        (should (string-empty-p (nskk-state-romaji-buffer))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "silently drops incomplete romaji sequences without inserting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "k")
-            (nskk--pending-romaji-overlay nil))
-        (nskk--flush-romaji-before-okuri)
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "k")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-flush-romaji-before-okuri)
         (should (string-empty-p (buffer-string)))
-        (should (string-empty-p nskk--romaji-buffer)))))
+        (should (string-empty-p (nskk-state-romaji-buffer))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "converts to katakana when state mode is katakana"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'katakana))
-            (nskk--romaji-buffer "n")
-            (nskk--pending-romaji-overlay nil))
-        (nskk--flush-romaji-before-okuri)
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "n")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-flush-romaji-before-okuri)
         (should (equal (buffer-string) "ン"))
-        (should (string-empty-p nskk--romaji-buffer))))))
+        (should (string-empty-p (nskk-state-romaji-buffer))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))))
 
 ;;;
 ;;; nskk--handle-consonant-okuri
@@ -3196,27 +3995,51 @@
 
 (nskk-describe "nskk--handle-consonant-okuri"
   (nskk-it "puts the consonant into the romaji buffer"
-    (let ((nskk--romaji-buffer "")
-          (nskk--pending-romaji-overlay nil))
-      (nskk-with-mocks ((nskk--show-pending-romaji #'ignore))
+    (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+          (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+      (nskk-with-mocks ((nskk-show-pending-romaji #'ignore))
         (nskk--handle-consonant-okuri ?k (lambda () nil)))
-      (should (equal nskk--romaji-buffer "k"))))
+      (should (equal (nskk-state-romaji-buffer) "k")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))
 
   (nskk-it "shows the consonant as a pending romaji overlay"
-    (let ((nskk--romaji-buffer "")
-          (nskk--pending-romaji-overlay nil)
+    (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+          (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
           shown-text)
-      (nskk-with-mocks ((nskk--show-pending-romaji (lambda (text) (setq shown-text text))))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+      (nskk-with-mocks ((nskk-show-pending-romaji (lambda (text) (setq shown-text text))))
         (nskk--handle-consonant-okuri ?s (lambda () nil)))
-      (should (equal shown-text "s"))))
+      (should (equal shown-text "s")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))
 
   (nskk-it "calls on-consumed with no arguments"
-    (let ((nskk--romaji-buffer "")
-          (nskk--pending-romaji-overlay nil)
+    (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+          (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
           on-consumed-called)
-      (nskk-with-mocks ((nskk--show-pending-romaji #'ignore))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+      (nskk-with-mocks ((nskk-show-pending-romaji #'ignore))
         (nskk--handle-consonant-okuri ?m (lambda () (setq on-consumed-called t))))
-      (should on-consumed-called))))
+      (should on-consumed-called))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
 ;;;
 ;;; nskk-process-okurigana-input/k
@@ -3226,64 +4049,96 @@
   (nskk-it "calls on-not-found when char is not an okurigana marker"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             not-found-called)
-        (set-marker nskk--conversion-start-marker (point-min))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) nil)))
           ;; on-not-found is called with no args (char must come from caller's closure)
           (nskk-process-okurigana-input/k ?a
             #'ignore
             (lambda () (setq not-found-called t))))
-        (should not-found-called))))
+        (should not-found-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "calls on-not-found when conversion start marker is not active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             not-found-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
         ;; Marker with no position → not active
         (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) ?k)))
           (nskk-process-okurigana-input/k ?K
             #'ignore
             (lambda () (setq not-found-called t))))
-        (should not-found-called))))
+        (should not-found-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "calls on-found with t for consonant okurigana when conversion start is active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
             on-found-value)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (insert nskk-henkan-on-marker "かく")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) ?k))
                           (nskk-prolog-query (lambda (_q) nil))
-                          (nskk--insert-marker #'ignore)
-                          (nskk--show-pending-romaji #'ignore))
+                          (nskk-insert-marker #'ignore)
+                          (nskk-show-pending-romaji #'ignore))
           (nskk-process-okurigana-input/k ?K
             (lambda (v) (setq on-found-value v))
             #'ignore))
         (should (eq on-found-value t))
-        (should (equal nskk--romaji-buffer "k")))))
+        (should (equal (nskk-state-romaji-buffer) "k")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "calls on-not-found when okurigana is already pending (YoNN guard)"
     ;; Regression: second uppercase N in YoNN must NOT re-enter okurigana.
     ;; When okurigana is already set in state, the guard rejects the char.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "n")
-            (nskk--pending-romaji-overlay nil)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
             not-found-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "n")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (insert nskk-henkan-on-marker "よ*")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (nskk-state-set-okurigana nskk-current-state ?n)
         (nskk-with-mocks ((nskk-detect-okurigana-char (lambda (_c) ?n)))
           (nskk-process-okurigana-input/k ?N
             (lambda (_v) (error "on-found should not be called"))
             (lambda () (setq not-found-called t))))
-        (should not-found-called)))))
+        (should not-found-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))))
 
 ;;;
 ;;; nskk--apply-okuri-candidates
@@ -3293,13 +4148,19 @@
   (nskk-it "updates overlay, sets active candidates, and sets henkan-count to 1"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            (nskk--henkan-count 0))
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-henkan-count 0)
+            
         (insert nskk-henkan-on-marker "か*")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (nskk-state-force-henkan-phase nskk-current-state 'on)
-        (let* ((start (marker-position nskk--conversion-start-marker))
+        (let* ((start (marker-position (nskk-state-conversion-start-marker)))
                (text-start (+ start (length nskk-henkan-on-marker)))
                (preedit-end (point-max)))
           (nskk-with-mocks ((nskk--remove-okuri-marker #'ignore)
@@ -3308,9 +4169,13 @@
             (nskk--apply-okuri-candidates start text-start preedit-end
                                           '("書" "欠") "かk"))
           (should (equal (nskk-state-candidates nskk-current-state) '("書" "欠")))
-          (should (= nskk--henkan-count 1))
+          (should (= (nskk-state-henkan-count) 1))
           (should (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress))
-          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))))))
+          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      ))))
 
 ;;;
 ;;; nskk--build-okuri-registration-reading
@@ -3339,30 +4204,42 @@
                        "かk"))))))
 
 ;;;
-;;; nskk--trigger-okuri-conversion/k
+;;; nskk-trigger-okuri-conversion/k
 ;;;
 
-(nskk-describe "nskk--trigger-okuri-conversion/k"
+(nskk-describe "nskk-trigger-okuri-conversion/k"
   (nskk-it "calls on-not-found immediately when no preedit query can be built"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
             on-not-found-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            
         ;; Marker with no position → extract-okuri-query returns nil → on-not-found
-        (nskk--trigger-okuri-conversion/k ?k (point)
+        (nskk-trigger-okuri-conversion/k ?k (point)
                                           #'ignore
                                           (lambda () (setq on-not-found-called t))
                                           #'ignore)
-        (should on-not-found-called))))
+        (should on-not-found-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
+      )))
 
   (nskk-it "calls on-found with candidates when search finds results"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            (nskk--henkan-count 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
             on-found-candidates)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-henkan-count 0)
+            
         (insert nskk-henkan-on-marker "かく")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (let ((preedit-end (point-max)))
           (nskk-state-force-henkan-phase nskk-current-state 'on)
           (nskk-with-mocks ((nskk-core-search/k
@@ -3371,23 +4248,34 @@
                             (nskk--replace-marker-at #'ignore)
                             (nskk--remove-okuri-marker #'ignore)
                             (nskk--update-overlay #'ignore))
-            (nskk--trigger-okuri-conversion/k ?k preedit-end
+            (nskk-trigger-okuri-conversion/k ?k preedit-end
                                               (lambda (candidates)
                                                 (setq on-found-candidates candidates))
                                               #'ignore
                                               #'ignore)))
-        (should (equal on-found-candidates '("書く"))))))
+        (should (equal on-found-candidates '("書く"))))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (nskk-it "calls on-not-found when registration is cancelled"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            (nskk--henkan-count 0)
-            (nskk--registration-depth 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+            (nskk-test-saved-registration-depth (nskk-state-registration-depth))
             on-not-found-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-registration-depth 0)
+            
         (insert nskk-henkan-on-marker "ほ*")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (let ((preedit-end (- (point-max) 1)))
           (nskk-state-force-henkan-phase nskk-current-state 'on)
           (nskk-with-mocks ((nskk-core-search/k
@@ -3397,22 +4285,34 @@
                              (lambda (_reading on-done _on-fail)
                                (funcall on-done nil)))  ; nil = cancelled
                             (nskk--remove-okuri-marker #'ignore))
-            (nskk--trigger-okuri-conversion/k ?k preedit-end
+            (nskk-trigger-okuri-conversion/k ?k preedit-end
                                               #'ignore
                                               (lambda () (setq on-not-found-called t))
                                               #'ignore)))
-        (should on-not-found-called))))
+        (should on-not-found-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      )))
 
   (nskk-it "calls on-register after successful registration"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--conversion-overlay nil)
-            (nskk--henkan-count 0)
-            (nskk--registration-depth 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+            (nskk-test-saved-registration-depth (nskk-state-registration-depth))
             on-register-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-registration-depth 0)
+            
         (insert nskk-henkan-on-marker "ほ*")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (let ((preedit-end (- (point-max) 1)))
           (nskk-state-force-henkan-phase nskk-current-state 'on)
           (nskk-with-mocks ((nskk-core-search/k
@@ -3423,11 +4323,16 @@
                                (funcall on-done "炎")))  ; "炎" = registered word
                             (nskk--remove-okuri-marker #'ignore)
                             (nskk-henkan-do-reset #'ignore))
-            (nskk--trigger-okuri-conversion/k ?k preedit-end
+            (nskk-trigger-okuri-conversion/k ?k preedit-end
                                               #'ignore
                                               #'ignore
                                               (lambda () (setq on-register-called t)))))
-        (should on-register-called)))))
+        (should on-register-called))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))))
 
 ;;;
 ;;; nskk--handle-vowel-okuri/k
@@ -3437,45 +4342,69 @@
   (nskk-it "calls on-consumed after converting the vowel kana"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil)
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
             on-consumed-called)
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (nskk-with-mocks
             ((nskk-convert-input-to-kana-final/k
               (lambda (cont _ignored) (funcall cont "あ")))
-             (nskk--trigger-okuri-conversion #'ignore)
+             (nskk-trigger-okuri-conversion #'ignore)
              (nskk--update-overlay #'ignore))
           (nskk--handle-vowel-okuri/k ?a
             (lambda () (setq on-consumed-called t))))
-        (should on-consumed-called))))
+        (should on-consumed-called))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "inserts the kana string into the current buffer"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (nskk-with-mocks
             ((nskk-convert-input-to-kana-final/k
               (lambda (cont _ignored) (funcall cont "い")))
-             (nskk--trigger-okuri-conversion #'ignore)
+             (nskk-trigger-okuri-conversion #'ignore)
              (nskk--update-overlay #'ignore))
           (nskk--handle-vowel-okuri/k ?i #'ignore))
-        (should (string-match-p "い" (buffer-string))))))
+        (should (string-match-p "い" (buffer-string))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
   (nskk-it "converts to katakana when state mode is katakana"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'katakana))
-            (nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil)
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
             _inserted-text)
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
         (nskk-with-mocks
             ((nskk-convert-input-to-kana-final/k
               (lambda (cont _ignored) (funcall cont "う")))
-             (nskk--trigger-okuri-conversion #'ignore)
+             (nskk-trigger-okuri-conversion #'ignore)
              (nskk--update-overlay #'ignore))
           (nskk--handle-vowel-okuri/k ?u #'ignore))
         ;; In katakana mode, hiragana う is converted to katakana ウ before insert
-        (should (string-match-p "ウ" (buffer-string)))))))
+        (should (string-match-p "ウ" (buffer-string))))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))))
 
 ;;;
 ;;; Integration: CPS pipeline chain — next-candidate → commit
@@ -3542,14 +4471,22 @@
     ;; called with the preedit reading.  We mock both to capture the reading.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
-            (nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "")
-            (nskk--henkan-count 0)
-            (nskk--conversion-overlay nil)
-            (nskk--registration-depth 0)
+            (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+            (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+            (nskk-test-saved-registration-depth (nskk-state-registration-depth))
             registration-reading)
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-henkan-count 0)
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-registration-depth 0)
+            
         (insert nskk-henkan-on-marker "みとうろく")
-        (set-marker nskk--conversion-start-marker (point-min))
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (goto-char (point-max))
         (nskk-state-force-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-convert-input-to-kana-final/k
@@ -3562,7 +4499,13 @@
                              (setq registration-reading reading)
                              (funcall on-done nil))))  ; user cancelled
           (nskk-start-conversion/k #'ignore #'ignore #'ignore))
-        (should (equal registration-reading "みとうろく")))))
+        (should (equal registration-reading "みとうろく")))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      )))
 
   (nskk-it "3b: dict-register-word then core-search/k returns registered word"
     ;; This test uses a real isolated Prolog DB to verify the full dict round-
@@ -3872,7 +4815,7 @@
 ;;;
 ;;
 ;; Bug (fixed in nskk-henkan.el): when a pending incomplete romaji consonant
-;; (e.g. "k", "sh") was in nskk--romaji-buffer when an okurigana trigger
+;; (e.g. "k", "sh") was in nskk-state-romaji-buffer when an okurigana trigger
 ;; (uppercase letter) arrived, the raw consonant was inserted into the buffer
 ;; before the * okurigana marker, producing e.g. "▽かk*" instead of "▽か*".
 ;;
@@ -3889,11 +4832,11 @@
           ;; Insert preedit reading so far: ▽か
           (insert "\u25BD\u304B")
           ;; Set conversion-start marker at buffer start (as henkan-on does)
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           ;; Put the state into henkan-on phase (reading in progress)
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           ;; Simulate a pending incomplete romaji consonant "k"
-          (setq nskk--romaji-buffer "k")
+          (nskk-state-set-romaji-buffer "k")
           ;; Fire okurigana trigger (uppercase K)
           (nskk-process-okurigana-input ?K)
           ;; The buffer should NOT contain "k" adjacent to the "*" marker.
@@ -3909,10 +4852,10 @@
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana)))
           (insert "\u25BD\u304B")
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           ;; "sh" is an incomplete romaji prefix (needs vowel to complete shi/sha/shu etc.)
-          (setq nskk--romaji-buffer "sh")
+          (nskk-state-set-romaji-buffer "sh")
           (nskk-process-okurigana-input ?K)
           (let ((content (buffer-string)))
             (should-not (string-match-p "sh" content))
@@ -3923,10 +4866,10 @@
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana)))
           (insert "\u25BD\u304B")
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           ;; "n" alone is the ん exception: it should flush as ん before the marker
-          (setq nskk--romaji-buffer "n")
+          (nskk-state-set-romaji-buffer "n")
           (nskk-process-okurigana-input ?K)
           (let ((content (buffer-string)))
             ;; ん must appear in the buffer before the * marker
@@ -3940,10 +4883,10 @@
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana)))
           (insert "\u25BD\u304B")
-          (nskk--set-conversion-start-marker (point-min))
+          (nskk-set-conversion-start-marker (point-min))
           (nskk-state-set-henkan-phase nskk-current-state 'on)
           ;; No pending romaji
-          (setq nskk--romaji-buffer "")
+          (nskk-state-set-romaji-buffer "")
           (nskk-process-okurigana-input ?K)
           (let ((content (buffer-string)))
             ;; * marker must be present
@@ -3952,31 +4895,53 @@
             (should-not (string-match-p "[a-z]\\*\\|\\*[a-z]" content))))))))
 
 ;;;
-;;; nskk--reset-romaji-buffer Tests
+;;; nskk-reset-romaji-buffer Tests
 ;;;
 
-(nskk-describe "nskk--reset-romaji-buffer"
-  (nskk-it "sets nskk--romaji-buffer to empty string"
+(nskk-describe "nskk-reset-romaji-buffer"
+  (nskk-it "sets nskk-state-romaji-buffer to empty string"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "ka")
-            (nskk--pending-romaji-overlay nil))
-        (nskk--reset-romaji-buffer)
-        (should (equal nskk--romaji-buffer "")))))
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "ka")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-reset-romaji-buffer)
+        (should (equal (nskk-state-romaji-buffer) "")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      )))
 
-  (nskk-it "calls nskk--clear-pending-romaji"
+  (nskk-it "calls nskk-clear-pending-romaji"
     (let ((cleared nil)
-          (nskk--romaji-buffer ""))
-      (nskk-with-mocks ((nskk--clear-pending-romaji (lambda () (setq cleared t))))
-        (nskk--reset-romaji-buffer))
-      (should cleared)))
+          (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            
+      (nskk-with-mocks ((nskk-clear-pending-romaji (lambda () (setq cleared t))))
+        (nskk-reset-romaji-buffer))
+      (should cleared))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      ))
 
   (nskk-it "is idempotent when buffer is already empty"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer "")
-            (nskk--pending-romaji-overlay nil))
-        (nskk--reset-romaji-buffer)
-        (nskk--reset-romaji-buffer)
-        (should (equal nskk--romaji-buffer ""))))))
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+            (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            (nskk-state-set-pending-romaji-overlay nil)
+            
+        (nskk-reset-romaji-buffer)
+        (nskk-reset-romaji-buffer)
+        (should (equal (nskk-state-romaji-buffer) "")))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay))
+      ))))
 
 ;;;
 ;;; nskk--registration-prompt Tests
@@ -4002,55 +4967,83 @@
 (nskk-describe "nskk--run-registration-session/k"
   (nskk-it "calls on-found with nil when depth is at maximum"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth nskk-max-registration-depth)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           (result 'unset))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth nskk-max-registration-depth)
+            
       (nskk--run-registration-session/k "てすと"
         (lambda (r) (setq result r))
         #'ignore)
-      (should-not result)))
+      (should-not result))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "calls on-found with nil when user enters empty string"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 0)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           (result 'unset))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) ""))
                         (nskk-dict-register-word #'ignore))
         (nskk--run-registration-session/k "てすと"
           (lambda (r) (setq result r))
           (lambda () (error "on-not-found must not be called"))))
-      (should-not result)))
+      (should-not result))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "calls on-found with the entered word when user provides input"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 0)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           (result nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "漢字"))
                         (nskk-dict-register-word #'ignore))
         (nskk--run-registration-session/k "かんじ"
           (lambda (r) (setq result r))
           (lambda () (error "on-not-found must not be called"))))
-      (should (equal result "漢字"))))
+      (should (equal result "漢字")))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "increments and decrements depth atomically"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 0)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           depth-during)
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer
-                         (lambda (_p) (setq depth-during nskk--registration-depth) ""))
+                         (lambda (_p) (setq depth-during (nskk-state-registration-depth)) ""))
                         (nskk-dict-register-word #'ignore))
         (nskk--run-registration-session/k "てすと"
           (lambda (_r) nil)
           (lambda () (error "on-not-found must not be called"))))
       (should (= depth-during 1))
-      (should (= nskk--registration-depth 0))))
+      (should (= (nskk-state-registration-depth) 0)))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "calls on-found with nil and restores depth on C-g (quit signal)"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
-          (nskk--registration-depth 0)
+          (nskk-test-saved-registration-depth (nskk-state-registration-depth))
           (result 'unset))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) (signal 'quit nil)))
                         (nskk-dict-register-word #'ignore))
@@ -4058,7 +5051,9 @@
           (lambda (r) (setq result r))
           (lambda () (error "on-not-found must not be called"))))
       (should (null result))
-      (should (= nskk--registration-depth 0))))
+      (should (= (nskk-state-registration-depth) 0)))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "preserves the primary condition and all surrounding state across cleanup faults"
     (dolist (primary-type '(error quit))
@@ -4066,7 +5061,7 @@
         (dolist (timing '(before after))
           (with-temp-buffer
             (let* ((nskk-current-state (nskk-state-create 'abbrev))
-                   (nskk--registration-depth 0)
+                   (nskk-test-saved-registration-depth (nskk-state-registration-depth))
                    (marker (copy-marker (point-min)))
                    (marker-position (marker-position marker))
                    (conversion-overlay (make-overlay (point-min) (point-min)))
@@ -4076,13 +5071,13 @@
                    (azik-deferred (list 'azik-deferred))
                    (deferred-azik-state (list 'deferred-azik-state))
                    (deferred-vowel-state (list 'deferred-vowel-state))
-                   (nskk--conversion-start-marker marker)
-                   (nskk--conversion-overlay conversion-overlay)
-                   (nskk--pending-romaji-overlay pending-overlay)
+                   (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+                   (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+                   (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
                    (nskk--inline-overlay inline-overlay)
                    (nskk--henkan-candidate-list-active t)
-                   (nskk--henkan-count 4)
-                   (nskk--romaji-buffer "k")
+                   (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+                   (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
                    (nskk--azik-colon-okuri-pending t)
                    (nskk--azik-colon-okuri-deferred azik-deferred)
                    (nskk--azik-sokuon-okuri-kana-pending t)
@@ -4101,6 +5096,15 @@
                    (restore-calls 0)
                    callback-called
                    caught)
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            (nskk-state-set-conversion-start-marker marker)
+            (nskk-state-set-conversion-overlay conversion-overlay)
+            (nskk-state-set-pending-romaji-overlay pending-overlay)
+            (nskk-state-set-henkan-count 4)
+            (nskk-state-set-romaji-buffer "k")
+            
               (setf (nskk-state-candidates nskk-current-state) candidates
                     (nskk-state-current-index nskk-current-state) 1
                     (nskk-state-previous-mode nskk-current-state) 'katakana)
@@ -4143,40 +5147,47 @@
               (should (= restore-calls 1))
               (should-not (memq nil cleanup-inhibit-quit))
               (should-not callback-called)
-              (should (= nskk--registration-depth 0))
+              (should (= (nskk-state-registration-depth) 0))
               (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
               (should-not nskk--inline-overlay)
               (should-not (overlay-buffer inline-overlay))
-              (should (eq nskk--conversion-start-marker marker))
+              (should (eq (nskk-state-conversion-start-marker) marker))
               (should (= (marker-position marker) marker-position))
-              (should (eq nskk--conversion-overlay conversion-overlay))
+              (should (eq (nskk-state-conversion-overlay) conversion-overlay))
               (should (eq (overlay-buffer conversion-overlay) (current-buffer)))
-              (should (eq nskk--pending-romaji-overlay pending-overlay))
+              (should (eq (nskk-state-pending-romaji-overlay) pending-overlay))
               (should (eq (overlay-buffer pending-overlay) (current-buffer)))
               (should nskk--henkan-candidate-list-active)
               (should (eq (nskk-state-candidates nskk-current-state)
                           candidates))
               (should (= (nskk-state-current-index nskk-current-state) 1))
-              (should (= nskk--henkan-count 4))
-              (should (equal nskk--romaji-buffer "k"))
-              (should nskk--azik-colon-okuri-pending)
-              (should (eq nskk--azik-colon-okuri-deferred azik-deferred))
-              (should nskk--azik-sokuon-okuri-kana-pending)
-              (should (eq nskk--deferred-azik-state deferred-azik-state))
-              (should (eq nskk--deferred-vowel-shadow-state
+              (should (= (nskk-state-henkan-count) 4))
+              (should (equal (nskk-state-romaji-buffer) "k"))
+              (should (nskk-azik-colon-okuri-pending))
+              (should (eq (nskk-azik-colon-okuri-deferred) azik-deferred))
+              (should (nskk-azik-sokuon-okuri-kana-pending))
+              (should (eq (nskk-deferred-azik-state) deferred-azik-state))
+              (should (eq (nskk-deferred-vowel-shadow-state)
                           deferred-vowel-state))
-              (should nskk--sticky-shift-pending)
-              (should nskk--numeric-mode)
+              (should (nskk-sticky-shift-pending))
+              (should (nskk-numeric-mode))
               (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
               (should
-               (eq (nskk-state-previous-mode nskk-current-state) 'katakana))))))))
+               (eq (nskk-state-previous-mode nskk-current-state) 'katakana)))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth)
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      ))))))
 
   (nskk-it "re-signals the first cleanup condition after a successful body"
     (dolist (cleanup-type '(error quit))
       (dolist (timing '(before after))
         (with-temp-buffer
           (let* ((nskk-current-state (nskk-state-create 'hiragana))
-                 (nskk--registration-depth 0)
+                 (nskk-test-saved-registration-depth (nskk-state-registration-depth))
                  (inline-overlay (make-overlay (point-min) (point-min)))
                  (nskk--inline-overlay inline-overlay)
                  (first-payload (list 'first-cleanup-payload))
@@ -4188,6 +5199,10 @@
                  (commit-calls 0)
                  callback-called
                  caught)
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
             (nskk-state-force-henkan-phase nskk-current-state 'on)
             (cl-letf (((symbol-function 'nskk-inline-show-registration-badge)
                        #'ignore)
@@ -4225,15 +5240,17 @@
             (should (eq (cdr caught) first-data))
             (should (eq (caddr caught) first-payload))
             (should-not (memq nil cleanup-inhibit-quit))
-            (should (= nskk--registration-depth 0))
+            (should (= (nskk-state-registration-depth) 0))
             (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
             (should-not nskk--inline-overlay)
-            (should-not (overlay-buffer inline-overlay)))))))
+            (should-not (overlay-buffer inline-overlay)))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      )))))
 
   (nskk-it "allows a clean retry after a failed session"
     (with-temp-buffer
       (let* ((nskk-current-state (nskk-state-create 'hiragana))
-             (nskk--registration-depth 0)
+             (nskk-test-saved-registration-depth (nskk-state-registration-depth))
              (inline-overlay (make-overlay (point-min) (point-min)))
              (nskk--inline-overlay inline-overlay)
              (primary-payload (list 'retry-primary-payload))
@@ -4243,6 +5260,10 @@
              (hide-calls 0)
              (results nil)
              caught)
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
         (nskk-state-force-henkan-phase nskk-current-state 'on)
         (cl-letf (((symbol-function 'nskk-inline-show-registration-badge)
                    #'ignore)
@@ -4271,7 +5292,7 @@
           (should (eq (car caught) 'error))
           (should (eq (cdr caught) primary-data))
           (should (eq (caddr caught) primary-payload))
-          (should (= nskk--registration-depth 0))
+          (should (= (nskk-state-registration-depth) 0))
           (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
           (should-not nskk--inline-overlay)
           (should-not (overlay-buffer inline-overlay))
@@ -4281,8 +5302,10 @@
         (should (= attempts 2))
         (should (= hide-calls 2))
         (should (equal results '("word")))
-        (should (= nskk--registration-depth 0))
-        (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))))))
+        (should (= (nskk-state-registration-depth) 0))
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'on)))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))))
 
 ;;;
 ;;; nskk--read-registration-entry Tests
@@ -4290,19 +5313,37 @@
 
 (nskk-describe "nskk--read-registration-entry"
   (nskk-it "returns nil on C-g (quit signal)"
-    (let ((nskk--registration-depth 0))
+    (let ((nskk-test-saved-registration-depth (nskk-state-registration-depth)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) (signal 'quit nil))))
-        (should-not (nskk--read-registration-entry "てすと")))))
+        (should-not (nskk--read-registration-entry "てすと"))))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "returns nil on empty string"
-    (let ((nskk--registration-depth 0))
+    (let ((nskk-test-saved-registration-depth (nskk-state-registration-depth)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "")))
-        (should-not (nskk--read-registration-entry "てすと")))))
+        (should-not (nskk--read-registration-entry "てすと"))))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      ))
 
   (nskk-it "returns entry string when user provides input"
-    (let ((nskk--registration-depth 0))
+    (let ((nskk-test-saved-registration-depth (nskk-state-registration-depth)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-registration-depth 0)
+            
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "漢字")))
-        (should (equal (nskk--read-registration-entry "かんじ") "漢字"))))))
+        (should (equal (nskk--read-registration-entry "かんじ") "漢字"))))
+        (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
+      )))
 
 ;;;
 ;;; registration minibuffer keymap Tests
@@ -4370,10 +5411,10 @@
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (nskk--set-mode 'hiragana)
+        (nskk-set-mode 'hiragana)
         (nskk-without-modification
           (insert nskk-henkan-on-marker "かんじ"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-henkan-kakutei-convert-script)
         (should (null (nskk-state-henkan-phase nskk-current-state)))
@@ -4384,10 +5425,10 @@
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
-        (nskk--set-mode 'katakana)
+        (nskk-set-mode 'katakana)
         (nskk-without-modification
           (insert nskk-henkan-on-marker "カンジ"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-henkan-kakutei-convert-script)
         (should (null (nskk-state-henkan-phase nskk-current-state)))
@@ -4559,69 +5600,131 @@
         (nskk-henkan-unknown-search-type
          (should (memq :bogus (cdr err))))))))
 
-(nskk-describe "nskk--preedit-ends-with-plain-vowel-p"
+(nskk-describe "nskk-preedit-ends-with-plain-vowel-p"
   (nskk-it "returns nil when no preedit marker is set"
     (with-temp-buffer
-      (let ((nskk--romaji-buffer ""))
-        (should-not (nskk--preedit-ends-with-plain-vowel-p)))))
+      (let ((nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-romaji-buffer "")
+            
+        (should-not (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "returns nil when romaji buffer is non-empty"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer "k"))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "k")
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "か")
-        (should-not (nskk--preedit-ends-with-plain-vowel-p)))))
+        (should-not (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "returns nil when preedit ends with non-vowel kana (か)"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer ""))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "か")
-        (should-not (nskk--preedit-ends-with-plain-vowel-p)))))
+        (should-not (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "returns non-nil for reading ending with あ (empty romaji)"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer ""))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "あ")
-        (should (nskk--preedit-ends-with-plain-vowel-p)))))
+        (should (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "returns non-nil for compound reading ending with い (かい)"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer ""))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "かい")
-        (should (nskk--preedit-ends-with-plain-vowel-p)))))
+        (should (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "returns non-nil for reading ending with ー (prolonged vowel)"
     (with-temp-buffer
-      (let ((nskk--conversion-start-marker (make-marker))
-            (nskk--romaji-buffer ""))
-        (set-marker nskk--conversion-start-marker (point-min))
+      (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+            (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert nskk-henkan-on-marker "あー")
-        (should (nskk--preedit-ends-with-plain-vowel-p)))))
+        (should (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))
 
   (nskk-it "returns non-nil for all hiragana plain vowels"
     (dolist (ch '(?あ ?い ?う ?え ?お))
       (with-temp-buffer
-        (let ((nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer ""))
-          (set-marker nskk--conversion-start-marker (point-min))
+        (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker (char-to-string ch))
-          (should (nskk--preedit-ends-with-plain-vowel-p))))))
+          (should (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      ))))
 
   (nskk-it "returns non-nil for all katakana plain vowels"
     (dolist (ch '(?ア ?イ ?ウ ?エ ?オ))
       (with-temp-buffer
-        (let ((nskk--conversion-start-marker (make-marker))
-              (nskk--romaji-buffer ""))
-          (set-marker nskk--conversion-start-marker (point-min))
+        (let ((nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+              (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer)))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-romaji-buffer "")
+            
+          (set-marker (nskk-state-conversion-start-marker) (point-min))
           (insert nskk-henkan-on-marker (char-to-string ch))
-          (should (nskk--preedit-ends-with-plain-vowel-p)))))))
+          (should (nskk-preedit-ends-with-plain-vowel-p)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer))
+      )))))
 
 ;;;
 ;;; SKK Numeric Conversion (数値変換)
@@ -4798,17 +5901,17 @@
                      (plist-get nskk--last-kakutei-record
                                 :candidates))))))
 
-(nskk-describe "nskk--invalidate-undo-kakutei"
+(nskk-describe "nskk-invalidate-undo-kakutei"
   (nskk-it "clears a non-nil record"
     (with-temp-buffer
       (setq nskk--last-kakutei-record '(:reading "x"))
-      (nskk--invalidate-undo-kakutei)
+      (nskk-invalidate-undo-kakutei)
       (should (null nskk--last-kakutei-record))))
 
   (nskk-it "is a no-op when record is already nil"
     (with-temp-buffer
       (setq nskk--last-kakutei-record nil)
-      (nskk--invalidate-undo-kakutei)
+      (nskk-invalidate-undo-kakutei)
       (should (null nskk--last-kakutei-record)))))
 
 (nskk-describe "nskk-undo-kakutei"
@@ -4872,8 +5975,8 @@
                      (buffer-substring-no-properties
                       (point-min) (point-max))))
       ;; Overlay covers only the candidate, not the okuri kana.
-      (should (overlayp nskk--conversion-overlay))
-      (should (= (overlay-end nskk--conversion-overlay) 3))
+      (should (overlayp (nskk-state-conversion-overlay)))
+      (should (= (overlay-end (nskk-state-conversion-overlay)) 3))
       ;; Okurigana metadata restored for consistent follow-up commits.
       (should (nskk-state-get-metadata nskk-current-state
                                        'okurigana-in-progress))
@@ -4979,10 +6082,14 @@
                           (nskk--update-overlay
                            (lambda (_start _end _text)
                              (setq overlay-updated t)))
-                          (nskk--get-conversion-start (lambda () 1))
+                          (nskk-get-conversion-start (lambda () 1))
                           (overlay-end (lambda (_ov) 10)))
-          (let ((nskk--conversion-overlay (make-overlay 1 1))
+          (let ((nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
                 (nskk-henkan-active-marker "▼"))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-overlay (make-overlay 1 1))
+            
             (nskk-purge-from-jisyo)
             ;; Should have called unregister with correct args
             (should (equal unregistered-reading "よみ"))
@@ -4993,7 +6100,9 @@
             ;; Index should be adjusted
             (should (= (nskk-state-current-index nskk-current-state) 0))
             ;; Overlay should be updated
-            (should overlay-updated))))))
+            (should overlay-updated))
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay))
+      )))))
 
   (nskk-it "cancels conversion when purging the last candidate"
     (with-temp-buffer
@@ -5024,7 +6133,7 @@
     (with-temp-buffer
       (nskk-mode 1)
       (nskk-without-modification (insert nskk-henkan-on-marker))
-      (nskk--set-conversion-start-marker (point-min))
+      (nskk-set-conversion-start-marker (point-min))
       (should (null (nskk-completion-at-point)))))
 
   (nskk-it "returns a completion spec when preedit has text"
@@ -5032,7 +6141,7 @@
       (with-temp-buffer
         (nskk-mode 1)
         (nskk-without-modification (insert nskk-henkan-on-marker "かん"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (let ((spec (nskk-completion-at-point)))
           ;; spec is (start end table . plist)
           (should spec)
@@ -5052,7 +6161,7 @@
         (nskk-prolog-assert '((user-dict-entry "かんが" ("感が"))))
         (nskk-prolog-assert '((user-dict-entry "きょう" ("今日"))))
         (nskk-without-modification (insert nskk-henkan-on-marker "かん"))
-        (nskk--set-conversion-start-marker (point-min))
+        (nskk-set-conversion-start-marker (point-min))
         (let* ((spec (nskk-completion-at-point))
                (table (nth 2 spec))
                (completions (all-completions "かん" table)))
@@ -5111,11 +6220,7 @@
                 (setq-local nskk-current-state state)
                 (insert "テスト")
                 (goto-char 2)
-                (setq marker (copy-marker 2 t)
-                      nskk--conversion-start-marker marker
-                      overlay (make-overlay 2 3 nil nil t)
-                      nskk--conversion-overlay overlay
-                      nskk--last-kakutei-record record)
+                (progn (setq marker (copy-marker 2 t)) (nskk-state-set-conversion-start-marker marker) (setq overlay (make-overlay 2 3 nil nil t)) (nskk-state-set-conversion-overlay overlay) (setq nskk--last-kakutei-record record))
                 (let ((overlay-value (list 'owned-overlay-property)))
                   (overlay-put overlay 'face 'bold)
                   (overlay-put overlay 'nskk-test-object overlay-value)
@@ -5202,14 +6307,14 @@
                                   nskk-current-state)
                                  'owned-object)))
                     (should (eq marker
-                                nskk--conversion-start-marker))
+                                (nskk-state-conversion-start-marker)))
                     (should (eq saved-marker-buffer
                                 (marker-buffer marker)))
                     (should (= saved-marker-position
                                (marker-position marker)))
                     (should (eq saved-marker-insertion-type
                                 (marker-insertion-type marker)))
-                    (should (eq overlay nskk--conversion-overlay))
+                    (should (eq overlay (nskk-state-conversion-overlay)))
                     (should (eq saved-overlay-buffer
                                 (overlay-buffer overlay)))
                     (should (= saved-overlay-start
@@ -5346,11 +6451,11 @@
       (let* ((state (nskk-state-create mode))
              (candidates (list candidate "次"))
              (nskk-current-state state)
-             (nskk--conversion-start-marker (make-marker))
-             (nskk--conversion-overlay nil)
-             (nskk--pending-romaji-overlay nil)
-             (nskk--romaji-buffer "dirty")
-             (nskk--henkan-count 4)
+             (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
+             (nskk-test-saved-conversion-overlay (nskk-state-conversion-overlay))
+             (nskk-test-saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay))
+             (nskk-test-saved-romaji-buffer (nskk-state-romaji-buffer))
+             (nskk-test-saved-henkan-count (nskk-state-henkan-count))
              (nskk--henkan-candidate-list-active list-active)
              (nskk--azik-colon-okuri-pending t)
              (nskk--azik-colon-okuri-deferred t)
@@ -5361,16 +6466,21 @@
              (nskk--numeric-mode (eq mode 'abbrev))
              (nskk--last-kakutei-record nil)
              (nskk-henkan-hide-candidates-functions nil))
+      (unwind-protect
+          (progn
+            (nskk-state-set-conversion-start-marker (make-marker))
+            (nskk-state-set-conversion-overlay nil)
+            (nskk-state-set-pending-romaji-overlay nil)
+            (nskk-state-set-romaji-buffer "dirty")
+            (nskk-state-set-henkan-count 4)
+            
         (setf (nskk-state-previous-mode state) 'hiragana)
         (insert nskk-henkan-active-marker
                 (substring-no-properties candidate))
-        (set-marker nskk--conversion-start-marker (point-min))
-        (setq nskk--conversion-overlay
-              (make-overlay
+        (set-marker (nskk-state-conversion-start-marker) (point-min))
+        (progn (nskk-state-set-conversion-overlay (make-overlay
                (+ (point-min) (length nskk-henkan-active-marker))
-               (point-max))
-              nskk--pending-romaji-overlay
-              (make-overlay (point-max) (point-max)))
+               (point-max))) (nskk-state-set-pending-romaji-overlay (make-overlay (point-max) (point-max))))
         (nskk-state-set-candidates state candidates)
         (setf (nskk-state-current-index state) 0)
         (nskk-state-force-henkan-phase state 'active)
@@ -5378,21 +6488,23 @@
         (goto-char (point-max))
         (funcall callback
                  candidate mode reading state candidates
-                 nskk--conversion-overlay nskk--pending-romaji-overlay))))
+                 (nskk-state-conversion-overlay) (nskk-state-pending-romaji-overlay)))
+        (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
+        (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
+        (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
+        (nskk-state-set-romaji-buffer nskk-test-saved-romaji-buffer)
+        (nskk-state-set-henkan-count nskk-test-saved-henkan-count))
+      )))
 
   (defun nskk-test--redirty-commit-cleanup-state ()
-    (if (overlayp nskk--conversion-overlay)
-        (move-overlay nskk--conversion-overlay (point-min) (point-max))
-      (setq nskk--conversion-overlay
-            (make-overlay (point-min) (point-max))))
-    (if (overlayp nskk--pending-romaji-overlay)
-        (move-overlay nskk--pending-romaji-overlay (point-max) (point-max))
-      (setq nskk--pending-romaji-overlay
-            (make-overlay (point-max) (point-max))))
-    (nskk--set-conversion-start-marker (point-min))
-    (setq nskk--romaji-buffer "redirtied"
-          nskk--henkan-count 9
-          nskk--henkan-candidate-list-active t)
+    (if (overlayp (nskk-state-conversion-overlay))
+        (move-overlay (nskk-state-conversion-overlay) (point-min) (point-max))
+      (nskk-state-set-conversion-overlay (make-overlay (point-min) (point-max))))
+    (if (overlayp (nskk-state-pending-romaji-overlay))
+        (move-overlay (nskk-state-pending-romaji-overlay) (point-max) (point-max))
+      (nskk-state-set-pending-romaji-overlay (make-overlay (point-max) (point-max))))
+    (nskk-set-conversion-start-marker (point-min))
+    (progn (nskk-state-set-romaji-buffer "redirtied") (nskk-state-set-henkan-count 9) (setq nskk--henkan-candidate-list-active t))
     (dolist (symbol nskk-test--commit-cleanup-flags)
       (set symbol t))
     (nskk-state-set-candidates nskk-current-state '("汚染" "状態"))
@@ -5411,12 +6523,12 @@
     (should (eq nskk-current-state original-state))
     (should-not (overlay-buffer original-overlay))
     (should-not (overlay-buffer original-pending-overlay))
-    (should-not nskk--conversion-overlay)
-    (should-not nskk--pending-romaji-overlay)
-    (should (markerp nskk--conversion-start-marker))
-    (should-not (marker-position nskk--conversion-start-marker))
-    (should (equal nskk--romaji-buffer ""))
-    (should (= nskk--henkan-count 0))
+    (should-not (nskk-state-conversion-overlay))
+    (should-not (nskk-state-pending-romaji-overlay))
+    (should (markerp (nskk-state-conversion-start-marker)))
+    (should-not (marker-position (nskk-state-conversion-start-marker)))
+    (should (equal (nskk-state-romaji-buffer) ""))
+    (should (= (nskk-state-henkan-count) 0))
     (should-not nskk--henkan-candidate-list-active)
     (dolist (symbol nskk-test--commit-cleanup-flags)
       (should-not (symbol-value symbol)))
@@ -5429,7 +6541,7 @@
      (nskk-state-get-metadata
       nskk-current-state 'okurigana-in-progress))
     (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-    (should-not nskk--numeric-mode)
+    (should-not (nskk-numeric-mode))
     (let ((record nskk--last-kakutei-record))
       (should record)
       (should (eq (plist-get record :candidates) original-candidates))
@@ -5454,8 +6566,8 @@
               nskk-current-state 'henkan-reading)
              reading))
     (should (eq (nskk-state-mode nskk-current-state) original-mode))
-    (should (marker-position nskk--conversion-start-marker))
-    (should (overlay-buffer nskk--conversion-overlay)))
+    (should (marker-position (nskk-state-conversion-start-marker)))
+    (should (overlay-buffer (nskk-state-conversion-overlay))))
 
   (progn
   (ert-deftest nskk-test-commit-learning-fault-matrix ()
@@ -5543,10 +6655,10 @@
                           (symbol-function
                            'nskk--clear-conversion-start-marker))
                          (real-reset-romaji
-                          (symbol-function 'nskk--reset-romaji-buffer))
+                          (symbol-function 'nskk-reset-romaji-buffer))
                          (real-clear-azik
                           (symbol-function
-                           'nskk--clear-azik-pending-state))
+                           'nskk-clear-azik-pending-state))
                          (real-set-candidates
                           (symbol-function 'nskk-state-set-candidates))
                          (real-restore-abbrev
@@ -5582,7 +6694,7 @@
                                  (signal
                                   failure-type
                                   '(nskk-test-cleanup-fault payload))))))
-                          ((symbol-function 'nskk--reset-romaji-buffer)
+                          ((symbol-function 'nskk-reset-romaji-buffer)
                            (lambda ()
                              (prog1 (funcall real-reset-romaji)
                                (when (and (eq stage 'romaji) (not faulted))
@@ -5591,7 +6703,7 @@
                                  (signal
                                   failure-type
                                   '(nskk-test-cleanup-fault payload))))))
-                          ((symbol-function 'nskk--clear-azik-pending-state)
+                          ((symbol-function 'nskk-clear-azik-pending-state)
                            (lambda ()
                              (prog1 (funcall real-clear-azik)
                                (when (and (eq stage 'azik) (not faulted))
@@ -5659,7 +6771,7 @@
                 fixture-state fixture-candidates fixture-overlay
                 fixture-pending-overlay)
          (let ((real-reset-romaji
-                (symbol-function 'nskk--reset-romaji-buffer)))
+                (symbol-function 'nskk-reset-romaji-buffer)))
            (setq nskk-henkan-hide-candidates-functions
                  (list
                   (lambda ()
@@ -5669,7 +6781,7 @@
                             '(nskk-test-first-cleanup-fault payload)))
                   (lambda () (cl-incf second-hide-calls))))
            (cl-letf
-               (((symbol-function 'nskk--reset-romaji-buffer)
+               (((symbol-function 'nskk-reset-romaji-buffer)
                  (lambda ()
                    (prog1 (funcall real-reset-romaji)
                      (unless romaji-faulted

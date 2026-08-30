@@ -211,7 +211,7 @@ arise from AZIK colon-okurigana, vowel-shadow, or hatsuon edge cases."
 
 Runs 100 scenarios.  Each scenario types 0-3 regular kana inputs (no
 uppercase, to stay in idle mode), then types one AZIK special key
-(; or :).  After the special key, `nskk--romaji-buffer' must be empty
+(; or :).  After the special key, `nskk-state-romaji-buffer' must be empty
 because ; and : are single-char complete patterns in AZIK — they should
 never leave a partial romaji prefix waiting for more input.
 
@@ -246,13 +246,12 @@ output."
               (nskk--azik-chaos--dispatch-keys special-key)
             (error nil) (quit nil))
           ;; Invariant: romaji buffer must be empty after a resolved special key
-          (when (and (boundp 'nskk--romaji-buffer)
-                     (not (string-empty-p nskk--romaji-buffer)))
+          (when (not (string-empty-p (nskk-state-romaji-buffer)))
             (push (list :run run
                         :seed seed
                         :pre-seq pre-seq
                         :special-key special-key
-                        :romaji-buffer-residue nskk--romaji-buffer)
+                        :romaji-buffer-residue (nskk-state-romaji-buffer))
                   failures))
           ;; Reset
           (nskk--azik-chaos--reset-to-idle))))
@@ -299,23 +298,23 @@ across buffer resets, corrupting the next independent input sequence."
           (nskk--azik-chaos--reset-to-idle)
           ;; Check that no deferred state remains.
           (let ((stuck nil))
-            (when (and (boundp 'nskk--deferred-azik-state)
-                       nskk--deferred-azik-state)
-              (push (cons 'deferred-azik-state nskk--deferred-azik-state) stuck))
-            (when (and (boundp 'nskk--deferred-vowel-shadow-state)
-                       nskk--deferred-vowel-shadow-state)
+            (when (and (fboundp 'nskk-deferred-azik-state)
+                       (nskk-deferred-azik-state))
+              (push (cons 'deferred-azik-state (nskk-deferred-azik-state)) stuck))
+            (when (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                       (nskk-deferred-vowel-shadow-state))
               (push (cons 'deferred-vowel-shadow-state
-                          nskk--deferred-vowel-shadow-state)
+                          (nskk-deferred-vowel-shadow-state))
                     stuck))
-            (when (and (boundp 'nskk--azik-colon-okuri-pending)
-                       nskk--azik-colon-okuri-pending)
+            (when (and (fboundp 'nskk-azik-colon-okuri-pending)
+                       (nskk-azik-colon-okuri-pending))
               (push (cons 'azik-colon-okuri-pending
-                          nskk--azik-colon-okuri-pending)
+                          (nskk-azik-colon-okuri-pending))
                     stuck))
-            (when (and (boundp 'nskk--azik-colon-okuri-deferred)
-                       nskk--azik-colon-okuri-deferred)
+            (when (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                       (nskk-azik-colon-okuri-deferred))
               (push (cons 'azik-colon-okuri-deferred
-                          nskk--azik-colon-okuri-deferred)
+                          (nskk-azik-colon-okuri-deferred))
                     stuck))
             (when stuck
               (push (list :run run
@@ -340,7 +339,7 @@ across buffer resets, corrupting the next independent input sequence."
   "Chaos test: romaji buffer length never exceeds 4 during any event sequence.
 
 Runs 100 random scenarios.  After EACH individual event (not just after
-the full sequence), checks that (length nskk--romaji-buffer) <= 4.
+the full sequence), checks that (length (nskk-state-romaji-buffer)) <= 4.
 Collects all violations along with the triggering event.
 
 A romaji buffer longer than 4 would indicate that the converter is
@@ -361,13 +360,12 @@ or wrong kana output once resolution finally occurs."
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil))
             ;; Check after each individual event.
-            (when (and (boundp 'nskk--romaji-buffer)
-                       (> (length nskk--romaji-buffer) 4))
+            (when (> (length (nskk-state-romaji-buffer)) 4)
               (push (list :run run
                           :seed seed
                           :event event
-                          :romaji-buffer nskk--romaji-buffer
-                          :length (length nskk--romaji-buffer))
+                          :romaji-buffer (nskk-state-romaji-buffer)
+                          :length (length (nskk-state-romaji-buffer)))
                     failures)))
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
@@ -476,25 +474,25 @@ that deferred AZIK corrections are not left pending after a cancel."
                               (nskk-state-henkan-phase nskk-current-state))))
               (when (memq phase '(active list registration))
                 (push (list 'henkan-phase-not-cleared phase) violations)))
-            ;; DA/DV are cleared by C-g via `nskk--clear-azik-pending-state'
+            ;; DA/DV are cleared by C-g via `nskk-clear-azik-pending-state'
             ;; (FR-001 fix) when an active preedit is cancelled.  This explicit
             ;; setq is a belt-and-suspenders guard for the subset of C-g events
             ;; that fire outside an active preedit (no cancel-preedit call),
             ;; where DA/DV could still be set from a partial romaji sequence.
-            (when (boundp 'nskk--deferred-azik-state)
-              (setq nskk--deferred-azik-state nil))
-            (when (boundp 'nskk--deferred-vowel-shadow-state)
-              (setq nskk--deferred-vowel-shadow-state nil))
+            (when (fboundp 'nskk-deferred-azik-state)
+              (nskk-set-deferred-azik-state nil))
+            (when (fboundp 'nskk-deferred-vowel-shadow-state)
+              (nskk-set-deferred-vowel-shadow-state nil))
             ;; Colon-okurigana states ARE cleared by cancel-preedit.
-            (when (and (boundp 'nskk--azik-colon-okuri-pending)
-                       nskk--azik-colon-okuri-pending)
+            (when (and (fboundp 'nskk-azik-colon-okuri-pending)
+                       (nskk-azik-colon-okuri-pending))
               (push (list 'azik-colon-okuri-pending
-                          nskk--azik-colon-okuri-pending)
+                          (nskk-azik-colon-okuri-pending))
                     violations))
-            (when (and (boundp 'nskk--azik-colon-okuri-deferred)
-                       nskk--azik-colon-okuri-deferred)
+            (when (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                       (nskk-azik-colon-okuri-deferred))
               (push (list 'azik-colon-okuri-deferred
-                          nskk--azik-colon-okuri-deferred)
+                          (nskk-azik-colon-okuri-deferred))
                     violations))
             (when violations
               (push (list :run run
@@ -576,7 +574,7 @@ runs (seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
 
 Runs 100 random scenarios.  Each scenario types 2-10 random events, then
 sends RET.  After RET, checks:
-  1. nskk--romaji-buffer is empty
+  1. nskk-state-romaji-buffer is empty
   2. Colon-okurigana flags (CP, CD) are nil — asserted directly
      DA/DV are cleared via belt-and-suspenders setq (see inline comment)
   3. Buffer does not contain ▽ or ▼ markers
@@ -610,28 +608,27 @@ provided, producing garbage output."
           ;; Collect violations.
           (let ((violations nil))
             ;; 1. Romaji buffer must be empty.
-            (when (and (boundp 'nskk--romaji-buffer)
-                       (not (string-empty-p nskk--romaji-buffer)))
-              (push (list 'romaji-buffer-nonempty nskk--romaji-buffer)
+            (when (not (string-empty-p (nskk-state-romaji-buffer)))
+              (push (list 'romaji-buffer-nonempty (nskk-state-romaji-buffer))
                     violations))
             ;; 2. DA/DV are consumed within a single `nskk-convert-input-to-kana/k'
             ;; call and should already be nil by the time RET's handler returns.
             ;; This explicit setq is a belt-and-suspenders guard for any edge
             ;; path where the pipeline exits before clearing them.
-            (when (boundp 'nskk--deferred-azik-state)
-              (setq nskk--deferred-azik-state nil))
-            (when (boundp 'nskk--deferred-vowel-shadow-state)
-              (setq nskk--deferred-vowel-shadow-state nil))
+            (when (fboundp 'nskk-deferred-azik-state)
+              (nskk-set-deferred-azik-state nil))
+            (when (fboundp 'nskk-deferred-vowel-shadow-state)
+              (nskk-set-deferred-vowel-shadow-state nil))
             ;; Colon-okurigana states should be cleared by commit.
-            (when (and (boundp 'nskk--azik-colon-okuri-pending)
-                       nskk--azik-colon-okuri-pending)
+            (when (and (fboundp 'nskk-azik-colon-okuri-pending)
+                       (nskk-azik-colon-okuri-pending))
               (push (list 'azik-colon-okuri-pending
-                          nskk--azik-colon-okuri-pending)
+                          (nskk-azik-colon-okuri-pending))
                     violations))
-            (when (and (boundp 'nskk--azik-colon-okuri-deferred)
-                       nskk--azik-colon-okuri-deferred)
+            (when (and (fboundp 'nskk-azik-colon-okuri-deferred)
+                       (nskk-azik-colon-okuri-deferred))
               (push (list 'azik-colon-okuri-deferred
-                          nskk--azik-colon-okuri-deferred)
+                          (nskk-azik-colon-okuri-deferred))
                     violations))
             ;; 3. No ▽ or ▼ in buffer text; also no lone っ at end of buffer
             ;; (orphaned AZIK sokuon from a half-committed doubled-consonant
@@ -729,7 +726,7 @@ shadow-demoted key patterns), then sends C-g.  After C-g, both
 `nskk--deferred-azik-state' and `nskk--deferred-vowel-shadow-state'
 must be nil.
 
-This directly exercises the FR-001 fix: `nskk--clear-azik-pending-state'
+This directly exercises the FR-001 fix: `nskk-clear-azik-pending-state'
 now includes these two variables in its dolist, so the cancel-preedit
 and rollback-conversion paths clear them just like the three pre-existing
 colon-okurigana and sokuon-okurigana flags."
@@ -746,20 +743,20 @@ colon-okurigana and sokuon-okurigana flags."
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys ev)
               (error nil) (quit nil)))
-          ;; Send C-g — should clear DA and DV via nskk--clear-azik-pending-state.
+          ;; Send C-g — should clear DA and DV via nskk-clear-azik-pending-state.
           (condition-case nil
               (nskk-e2e--dispatch-event 7)
             (error nil) (quit nil))
           ;; Collect violations.
           (let ((violations nil))
-            (when (and (boundp 'nskk--deferred-azik-state)
-                       nskk--deferred-azik-state)
-              (push (list 'deferred-azik-state nskk--deferred-azik-state)
+            (when (and (fboundp 'nskk-deferred-azik-state)
+                       (nskk-deferred-azik-state))
+              (push (list 'deferred-azik-state (nskk-deferred-azik-state))
                     violations))
-            (when (and (boundp 'nskk--deferred-vowel-shadow-state)
-                       nskk--deferred-vowel-shadow-state)
+            (when (and (fboundp 'nskk-deferred-vowel-shadow-state)
+                       (nskk-deferred-vowel-shadow-state))
               (push (list 'deferred-vowel-shadow-state
-                          nskk--deferred-vowel-shadow-state)
+                          (nskk-deferred-vowel-shadow-state))
                     violations))
             (when violations
               (push (list :run      run
