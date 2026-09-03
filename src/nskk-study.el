@@ -1,29 +1,21 @@
 ;;; nskk-study.el --- Contextual word association learning for NSKK -*- lexical-binding: t; -*-
-
 ;; Copyright (C) 2026 NSKK Contributors
-
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Maintainer: takeokunn <bararararatty@gmail.com>
 ;; URL: https://github.com/takeokunn/nskk.el
 ;; Keywords: i18n convenience
-
 ;; This file is NOT part of GNU Emacs.
-
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 ;;; Commentary:
-
 ;; Contextual word association learning for NSKK (Layer 2: Domain).
 ;;
 ;; Layer position: L2 (Domain) -- depends on nskk-prolog, nskk-dictionary,
@@ -48,21 +40,25 @@
 ;; - `nskk-study-save'          -- persist study data to file
 ;; - `nskk-study-load'          -- load study data from file
 ;; - `nskk-study-after-kakutei' -- entry point called from henkan commit path
-
 ;;; Code:
-
 (require 'subr-x)
+
 (require 'seq)
+
 (require 'nskk-prolog)
+
 (require 'nskk-dictionary)
+
 (require 'nskk-dict-transaction)
 
 ;;;; Customization
-
-(defgroup nskk-study nil
+(defgroup nskk-study
+  nil
   "Contextual word association learning for NSKK."
-  :prefix "nskk-study-"
-  :group 'nskk)
+  :prefix
+  "nskk-study-"
+  :group
+  'nskk)
 
 (defcustom nskk-study-file
   (expand-file-name "nskk/study.dat" user-emacs-directory)
@@ -71,7 +67,8 @@
   :package-version '(nskk . "0.1.0")
   :group 'nskk-study)
 
-(defcustom nskk-study-search-times 5
+(defcustom nskk-study-search-times
+  5
   "Number of previous confirmations to search for associations.
 When reordering candidates, this many recent kakutei entries are
 checked for matching associations."
@@ -80,17 +77,20 @@ checked for matching associations."
   :package-version '(nskk . "0.1.0")
   :group 'nskk-study)
 
-(defcustom nskk-study-max-distance 30
+(defcustom nskk-study-max-distance
+  30
   "Maximum buffer distance for recording study associations.
 When the current conversion point exceeds this distance (in characters)
 from the previous kakutei position, no association is recorded.
 Set to nil to disable the distance check."
   :type '(choice natnum (const :tag "No limit" nil))
-  :safe (lambda (v) (or (null v) (natnump v)))
+  :safe (lambda (v)
+          (or (null v) (natnump v)))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-study)
 
-(defcustom nskk-study-first-candidate t
+(defcustom nskk-study-first-candidate
+  t
   "Whether to record study associations when the first candidate is selected.
 When nil, associations are only recorded when the user cycles past
 the first candidate before confirming."
@@ -100,17 +100,17 @@ the first candidate before confirming."
   :group 'nskk-study)
 
 ;;;; Prolog Infrastructure
-
 ;; Study association facts: (study-association previous-word reading candidate)
 ;; Hash-indexed on first arg (previous-word) for O(1) lookup
 (nskk-prolog-set-index 'study-association 3 :hash)
 
 ;;;; Kakutei History Ring (global)
-
-(defconst nskk--study-max-file-size (* 10 1024 1024)
+(defconst nskk--study-max-file-size
+  (* 10 1024 1024)
   "Maximum number of bytes accepted from the study data file.")
 
-(defvar nskk--study-kakutei-ring nil
+(defvar nskk--study-kakutei-ring
+  nil
   "Ring of recent kakutei entries for study context.
 Each entry is a plist (:word WORD :point POINT :buffer BUFFER).
 Most recent entry is at the head.  Length is capped at
@@ -120,16 +120,17 @@ Most recent entry is at the head.  Length is capped at
   "Push a kakutei entry onto the history ring.
 WORD is the confirmed text, POINT is the buffer position,
 BUFFER is the buffer where confirmation occurred."
-  (push (list :word word :point point :buffer buffer)
-        nskk--study-kakutei-ring)
+  (push (list :word word :point point :buffer buffer) nskk--study-kakutei-ring)
   (when (> (length nskk--study-kakutei-ring) nskk-study-search-times)
-    (setq nskk--study-kakutei-ring
-          (seq-take nskk--study-kakutei-ring nskk-study-search-times))))
+    (setq nskk--study-kakutei-ring (seq-take nskk--study-kakutei-ring
+                                             nskk-study-search-times))))
 
 (defun nskk--study-recent-words ()
   "Return a list of recent kakutei words from the history ring."
-  (mapcar (lambda (entry) (plist-get entry :word))
-          nskk--study-kakutei-ring))
+  (mapcar
+   (lambda (entry)
+     (plist-get entry :word))
+   nskk--study-kakutei-ring))
 
 (defun nskk--study-distance-ok-p (current-point current-buffer)
   "Check if CURRENT-POINT in CURRENT-BUFFER is within max-distance of last kakutei."
@@ -141,7 +142,6 @@ BUFFER is the buffer where confirmation occurred."
                  nskk-study-max-distance)))))
 
 ;;;; Core API
-
 ;;;###autoload
 (defun nskk-study-record (reading candidate &optional index)
   "Record study associations for READING and CANDIDATE.
@@ -150,14 +150,21 @@ INDEX is the candidate index (0-based); when `nskk-study-first-candidate'
 is nil and INDEX is 0, no association is recorded.
 
 Candidates with the `nskk-no-learn' text property are silently skipped."
-  (when-let* ((word (if (stringp candidate) candidate (car candidate))))
-    (when (and (not (get-text-property 0 'nskk-no-learn word))
-               (or nskk-study-first-candidate (and index (> index 0)))
-               (nskk--study-distance-ok-p (point) (current-buffer))
-               nskk--study-kakutei-ring)
+  (when-let*
+      ((word
+        (if (stringp candidate) candidate
+          (car candidate))))
+    (when
+        (and (not (get-text-property 0 'nskk-no-learn word))
+             (or nskk-study-first-candidate (and index (> index 0)))
+             (nskk--study-distance-ok-p (point) (current-buffer))
+             nskk--study-kakutei-ring)
       (when-let* ((prev-word (plist-get (car nskk--study-kakutei-ring) :word)))
-        (when-let* ((old (nskk-prolog-query-value
-                          `(study-association ,prev-word ,reading \?c) '\?c)))
+        (when-let*
+            ((old
+              (nskk-prolog-query-value
+               `(study-association ,prev-word ,reading \?c)
+               '\?c)))
           (nskk-prolog-retract `(study-association ,prev-word ,reading ,old)))
         (nskk-prolog-assert
          (list `(study-association ,prev-word ,reading ,word)))))))
@@ -171,7 +178,10 @@ READING is the dictionary lookup key.
 CANDIDATE is the confirmed word string.
 INDEX is the candidate index (0-based, optional)."
   (nskk-study-record reading candidate index)
-  (when-let* ((word (if (stringp candidate) candidate (car candidate))))
+  (when-let*
+      ((word
+        (if (stringp candidate) candidate
+          (car candidate))))
     (nskk--study-push-kakutei word (point) (current-buffer))))
 
 ;;;###autoload
@@ -180,29 +190,64 @@ INDEX is the candidate index (0-based, optional)."
 Searches the kakutei history ring for associations matching READING.
 If a match is found, the associated candidate is promoted to the front
 of the list.  Returns the (possibly reordered) candidate list."
-  (if (or (null nskk--study-kakutei-ring) (null candidates))
-      candidates
-    (let* ((match (seq-find
-                   (lambda (entry)
-                     (let* ((prev-word (plist-get entry :word))
-                            (assoc-candidate
-                             (and prev-word
-                                  (nskk-prolog-query-value
-                                   `(study-association ,prev-word ,reading \?c)
-                                   '\?c))))
-                       (and assoc-candidate (member assoc-candidate candidates))))
-                   nskk--study-kakutei-ring))
-           (promoted (and match
-                          (let ((prev-word (plist-get match :word)))
+  (if (or (null nskk--study-kakutei-ring) (null candidates)) candidates
+    (let* ((match
+            (seq-find
+             (lambda (entry)
+               (let* ((prev-word (plist-get entry :word))
+                      (assoc-candidate
+                       (and prev-word
                             (nskk-prolog-query-value
                              `(study-association ,prev-word ,reading \?c)
-                             '\?c)))))
-      (if promoted
-          (cons promoted (remove promoted candidates))
+                             '\?c))))
+                 (and assoc-candidate (member assoc-candidate candidates))))
+             nskk--study-kakutei-ring))
+           (promoted
+            (and match
+                 (let ((prev-word (plist-get match :word)))
+                   (nskk-prolog-query-value
+                    `(study-association ,prev-word ,reading \?c)
+                    '\?c)))))
+      (if promoted (cons promoted (remove promoted candidates))
         candidates))))
 
-;;;; Persistence
+(defun nskk--study-entry-to-fact (entry)
+  "Convert a validated study ENTRY to a Prolog fact."
+  (pcase entry
+    (`(,(and (pred stringp) prev) ,(and (pred stringp) reading)
+       ,(and (pred stringp) candidate))
+     `(study-association ,prev ,reading ,candidate))
+    (_ (error "Invalid study entry: %S" entry))))
 
+(defun nskk--study-read-facts (attributes)
+  "Read study facts after ATTRIBUTES have been validated."
+  (nskk-dict-transaction-read-entries nskk-study-file
+                                      (file-truename nskk-study-file)
+                                      attributes
+                                      nskk--study-max-file-size
+                                      #'nskk--study-entry-to-fact))
+
+(defun nskk--study-publish-facts (owner facts)
+  "Replace stored study facts for OWNER with FACTS atomically."
+  (let* ((key (nskk-prolog-clause-key 'study-association 3))
+         (previous (nskk-dict-transaction-predicate-snapshot key)))
+    (condition-case condition
+        (prog1
+            (progn
+              (nskk-prolog-retract-all 'study-association 3)
+              (dolist (fact facts)
+                (nskk-prolog-assert (list fact))))
+          (nskk-dict-transaction-clear-pending-rollback owner))
+      ((error quit)
+       (nskk-dict-transaction-rollback-and-resignal owner
+                                                    condition
+                                                    (list
+                                                     (cons 'predicate
+                                                           (lambda ()
+                                                             (nskk-dict-transaction-apply-predicate-snapshot
+                                                              previous)))))))))
+
+;;;; Persistence
 ;;;###autoload
 (defun nskk-study-save ()
   "Save study association data to `nskk-study-file'."
@@ -254,39 +299,14 @@ of the list.  Returns the (possibly reordered) candidate list."
               (unless (file-regular-p nskk-study-file)
                 (error "Study file changed to a non-regular file before read"))
               (if (and size (> size nskk--study-max-file-size))
-                  (message "NSKK: Study file too large (%d bytes), skipping load" size)
-                (let* ((facts
-                        (nskk-dict-transaction-read-entries
-                         nskk-study-file (file-truename nskk-study-file)
-                         attributes nskk--study-max-file-size
-                         (lambda (entry)
-                           (pcase entry
-                             (`(,(and (pred stringp) prev)
-                                ,(and (pred stringp) reading)
-                                ,(and (pred stringp) cand))
-                              `(study-association ,prev ,reading ,cand))
-                             (_ (error "Invalid study entry: %S" entry)))))))
-                  (let* ((key (nskk-prolog-clause-key 'study-association 3))
-                         (previous (nskk-dict-transaction-predicate-snapshot key)))
-                    (condition-case condition
-                        (prog1
-                            (progn
-                              (nskk-prolog-retract-all 'study-association 3)
-                              (dolist (fact facts)
-                                (nskk-prolog-assert (list fact))))
-                          (nskk-dict-transaction-clear-pending-rollback owner))
-                      ((error quit)
-                       (nskk-dict-transaction-rollback-and-resignal
-                        owner
-                        condition
-                        (list
-                         (cons
-                          'predicate
-                          (lambda ()
-                            (nskk-dict-transaction-apply-predicate-snapshot
-                             previous)))))))))))))) (error
-	  (message "NSKK: Failed to load study data: %s"
-                   (error-message-string err))))))
+                  (message
+                   "NSKK: Study file too large (%d bytes), skipping load"
+                   size)
+                (nskk--study-publish-facts owner
+                                           (nskk--study-read-facts attributes)))))))
+      (error
+       (message "NSKK: Failed to load study data: %s"
+                (error-message-string err))))))
 
 (provide 'nskk-study)
 
