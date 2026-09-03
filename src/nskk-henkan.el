@@ -804,6 +804,75 @@ leaking into the next preedit context."
     (when (fboundp setter)
       (funcall setter nil))))
 
+(defun nskk--clear-state-overlay (getter setter)
+  "Clear the overlay slot accessed by GETTER and SETTER, then delete its overlay."
+  (let ((old (funcall getter)))
+    (funcall setter nil)
+    (when (overlayp old)
+      (delete-overlay old))))
+
+(defun nskk--invalidate-conversion-start-marker ()
+  "Detach the current conversion start marker from its buffer."
+  (let ((marker (nskk-state-conversion-start-marker)))
+    (when (markerp marker)
+      (set-marker marker nil))))
+
+(defun nskk--reset-dcomp-context (&optional dismiss-candidate-list)
+  "Reset dynamic completion state.
+When DISMISS-CANDIDATE-LIST is non-nil, also clear its active flag."
+  (setq nskk--dcomp-candidates nil
+        nskk--dcomp-prefix nil
+        nskk--dcomp-index 0)
+  (when dismiss-candidate-list
+    (setq nskk--henkan-candidate-list-active nil)))
+
+(defun nskk--run-presentation-actions (phase run-cleanup)
+  "Run presentation actions for PHASE through RUN-CLEANUP."
+  (dolist (callback (nskk-prolog-presentation-actions phase))
+    (funcall run-cleanup
+             (lambda ()
+               (when (fboundp callback)
+                 (funcall callback))))))
+
+(defun nskk--clear-input-state-vars (symbols run-cleanup)
+  "Clear input state SYMBOLS through their setters and RUN-CLEANUP."
+  (dolist (symbol symbols)
+    (funcall run-cleanup
+             (lambda ()
+               (let ((setter
+                      (intern
+                       (concat "nskk-set-"
+                               (string-remove-prefix
+                                "nskk--" (symbol-name symbol))))))
+                 (when (fboundp setter)
+                   (funcall setter nil)))))))
+
+(defun nskk--reassert-conversion-terminal-state (clearable-input-vars run-cleanup)
+  "Restore conversion invariants after callbacks may have changed them."
+  (dolist (accessors
+           '((nskk-state-conversion-overlay nskk-state-set-conversion-overlay)
+             (nskk-state-pending-romaji-overlay nskk-state-set-pending-romaji-overlay)
+             (nskk-state-dcomp-multiple-overlay nskk-state-set-dcomp-multiple-overlay)))
+    (funcall run-cleanup
+             (lambda ()
+               (nskk--clear-state-overlay (car accessors) (cadr accessors)))))
+  (funcall run-cleanup #'nskk--invalidate-conversion-start-marker)
+  (funcall run-cleanup (lambda () (nskk-state-set-romaji-buffer "")))
+  (funcall run-cleanup (lambda () (nskk--reset-dcomp-context t)))
+  (nskk--clear-input-state-vars clearable-input-vars run-cleanup)
+  (funcall
+   run-cleanup
+   (lambda ()
+     (when (and (boundp 'nskk-current-state)
+                (nskk-state-p nskk-current-state))
+       (setf (nskk-state-candidates nskk-current-state) nil
+             (nskk-state-current-index nskk-current-state) 0
+             (nskk-state-henkan-phase nskk-current-state) nil
+             (nskk-state-metadata nskk-current-state)
+             (let ((metadata (nskk-state-metadata nskk-current-state)))
+               (setq metadata (plist-put metadata 'okurigana nil))
+               (plist-put metadata 'okurigana-in-progress nil)))))))
+
 (defun nskk-clear-conversion-context ()
   "Clear all conversion and input context for mode switching or mode disable.
 Called by `nskk--disable' (mode teardown) and mode-switch commands.
@@ -826,43 +895,26 @@ unchanged.  Does not reset the input mode."
                    ((error quit)
                     (unless first-condition
                       (setq first-condition condition))))))
-      (run-cleanup (lambda ()
-                     (let ((old (nskk-state-conversion-overlay)))
-                       (nskk-state-set-conversion-overlay nil)
-                       (when (overlayp old) (delete-overlay old)))))
+      (run-cleanup
+       (lambda ()
+         (nskk--clear-state-overlay #'nskk-state-conversion-overlay
+                                    #'nskk-state-set-conversion-overlay)))
       (run-cleanup #'nskk--dismiss-candidate-list)
-      (dolist (callback (nskk-prolog-presentation-actions 'cleanup))
-        (run-cleanup (lambda () (when (fboundp callback) (funcall callback)))))
+      (nskk--run-presentation-actions 'cleanup #'run-cleanup)
+      (run-cleanup #'nskk--invalidate-conversion-start-marker)
+      (run-cleanup #'nskk-reset-romaji-buffer)
+      (run-cleanup #'nskk--reset-dcomp-context)
       (run-cleanup
        (lambda ()
-         (let ((mk (nskk-state-conversion-start-marker)))
-           (when (markerp mk)
-             (set-marker mk nil)))))
-      (run-cleanup
-       (lambda ()
-         (nskk-reset-romaji-buffer)))
-      (run-cleanup
-       (lambda ()
-         (setq nskk--dcomp-candidates nil
-               nskk--dcomp-prefix nil
-               nskk--dcomp-index 0)))
-      (run-cleanup (lambda ()
-                     (let ((old (nskk-state-dcomp-multiple-overlay)))
-                       (nskk-state-set-dcomp-multiple-overlay nil)
-                       (when (overlayp old) (delete-overlay old)))))
-      (dolist (callback (nskk-prolog-presentation-actions 'finalize))
-        (run-cleanup (lambda () (when (fboundp callback) (funcall callback)))))
+         (nskk--clear-state-overlay #'nskk-state-dcomp-multiple-overlay
+                                    #'nskk-state-set-dcomp-multiple-overlay)))
+      (nskk--run-presentation-actions 'finalize #'run-cleanup)
       (run-cleanup
        (lambda ()
          (setq clearable-input-vars
                (nskk-prolog-query-all-values
                 '(clearable-input-var \?v) '\?v))))
-      (dolist (symbol clearable-input-vars)
-        (run-cleanup
-         (lambda ()
-           (let ((setter (intern (concat "nskk-set-" (string-remove-prefix "nskk--" (symbol-name symbol))))))
-             (when (fboundp setter)
-               (funcall setter nil))))))
+      (nskk--clear-input-state-vars clearable-input-vars #'run-cleanup)
       (run-cleanup
        (lambda ()
          (nskk-with-current-state
@@ -870,49 +922,8 @@ unchanged.  Does not reset the input mode."
 
       ;; Cleanup callbacks can mutate conversion state before signaling.
       ;; Re-assert terminal invariants without invoking callbacks again.
-      (run-cleanup (lambda ()
-                     (let ((old (nskk-state-conversion-overlay)))
-                       (nskk-state-set-conversion-overlay nil)
-                       (when (overlayp old) (delete-overlay old)))))
-      (run-cleanup (lambda ()
-                     (let ((old (nskk-state-pending-romaji-overlay)))
-                       (nskk-state-set-pending-romaji-overlay nil)
-                       (when (overlayp old) (delete-overlay old)))))
-      (run-cleanup (lambda ()
-                     (let ((old (nskk-state-dcomp-multiple-overlay)))
-                       (nskk-state-set-dcomp-multiple-overlay nil)
-                       (when (overlayp old) (delete-overlay old)))))
-      (run-cleanup
-       (lambda ()
-         (let ((mk (nskk-state-conversion-start-marker)))
-           (when (markerp mk)
-             (set-marker mk nil)))))
-      (run-cleanup
-       (lambda ()
-         (nskk-state-set-romaji-buffer "")))
-      (run-cleanup
-       (lambda ()
-         (setq nskk--dcomp-candidates nil
-               nskk--dcomp-prefix nil
-               nskk--dcomp-index 0
-               nskk--henkan-candidate-list-active nil)))
-      (dolist (symbol clearable-input-vars)
-        (run-cleanup
-         (lambda ()
-           (let ((setter (intern (concat "nskk-set-" (string-remove-prefix "nskk--" (symbol-name symbol))))))
-             (when (fboundp setter)
-               (funcall setter nil))))))
-      (run-cleanup
-       (lambda ()
-         (when (and (boundp 'nskk-current-state)
-                    (nskk-state-p nskk-current-state))
-           (setf (nskk-state-candidates nskk-current-state) nil
-                 (nskk-state-current-index nskk-current-state) 0
-                 (nskk-state-henkan-phase nskk-current-state) nil
-                 (nskk-state-metadata nskk-current-state)
-                 (let ((metadata (nskk-state-metadata nskk-current-state)))
-                   (setq metadata (plist-put metadata 'okurigana nil))
-                   (plist-put metadata 'okurigana-in-progress nil))))))
+      (nskk--reassert-conversion-terminal-state clearable-input-vars
+                                                #'run-cleanup)
       (when first-condition
         (signal (car first-condition) (cdr first-condition))))))
 
