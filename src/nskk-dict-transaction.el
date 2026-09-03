@@ -294,6 +294,117 @@ PARSER is called for each entry in the single serialized data form."
           (append (nskk-dict-transaction--parent-directories file)
                   (nskk-dict-transaction--parent-directories resolved-file))))))
 
+(defun nskk-dict-transaction--validate-pinned-snapshot
+    (snapshot-file file resolved-file expected-pin-identity allow-symlink)
+  "Validate SNAPSHOT-FILE before reading and return its full identity."
+  (when (file-symlink-p snapshot-file)
+    (error "NSKK: Pinned snapshot is a symbolic link"))
+  (let* ((snapshot-attributes (file-attributes snapshot-file 'integer))
+         (source-attributes (file-attributes resolved-file 'integer))
+         (pinned-identity
+          (nskk-dict-transaction--full-identity snapshot-attributes)))
+    (unless
+        (and snapshot-attributes
+             source-attributes
+             (file-regular-p snapshot-file)
+             (file-regular-p resolved-file)
+             (not (file-symlink-p snapshot-file))
+             (or allow-symlink (not (file-symlink-p file)))
+             (equal resolved-file
+                    (nskk-dict-transaction--resolved-file file))
+             (equal expected-pin-identity
+                    (nskk-dict-transaction--pin-identity
+                     snapshot-attributes))
+             (equal pinned-identity
+                    (nskk-dict-transaction--full-identity source-attributes)))
+      (error "NSKK: File changed before pinned read"))
+    pinned-identity))
+
+(defun nskk-dict-transaction--pinned-snapshot-unchanged-p
+    (snapshot-file file resolved-file pinned-identity allow-symlink)
+  "Return non-nil when the pinned snapshot and its source are unchanged."
+  (let ((snapshot-attributes (file-attributes snapshot-file 'integer))
+        (source-attributes (file-attributes resolved-file 'integer)))
+    (and snapshot-attributes
+         source-attributes
+         (file-regular-p snapshot-file)
+         (file-regular-p resolved-file)
+         (not (file-symlink-p snapshot-file))
+         (or allow-symlink (not (file-symlink-p file)))
+         (equal resolved-file
+                (nskk-dict-transaction--resolved-file file))
+         (equal pinned-identity
+                (nskk-dict-transaction--full-identity snapshot-attributes))
+         (equal pinned-identity
+                (nskk-dict-transaction--full-identity source-attributes)))))
+
+(defun nskk-dict-transaction--read-pinned-snapshot
+    (snapshot-file file resolved-file expected-pin-identity max-bytes
+                   allow-symlink)
+  "Read and validate SNAPSHOT-FILE, returning unibyte contents."
+  (let ((pinned-identity
+         (nskk-dict-transaction--validate-pinned-snapshot
+          snapshot-file file resolved-file expected-pin-identity
+          allow-symlink)))
+    (with-temp-buffer
+     (set-buffer-multibyte nil)
+     (let ((coding-system-for-read 'no-conversion))
+       (insert-file-contents snapshot-file nil 0 (1+ max-bytes)))
+     (when (> (buffer-size) max-bytes)
+       (error "NSKK: File exceeds %d-byte limit" max-bytes))
+     (unless (nskk-dict-transaction--pinned-snapshot-unchanged-p
+              snapshot-file file resolved-file pinned-identity allow-symlink)
+       (error "NSKK: File changed during pinned read"))
+     (buffer-string))))
+
+(defun nskk-dict-transaction--try-pinned-snapshot
+    (snapshot-base file resolved-file expected-pin-identity max-bytes
+                   allow-symlink)
+  "Return (t . CONTENTS) after reading through SNAPSHOT-BASE, or nil."
+  (let (snapshot-directory snapshot-file linked)
+    (unwind-protect
+        (progn
+          (condition-case nil
+              (progn
+                (setq snapshot-directory
+                      (make-temp-file
+                       (expand-file-name "nskk-pinned-read-" snapshot-base)
+                       t))
+                (set-file-modes snapshot-directory #o700)
+                (unless
+                    (nskk-dict-transaction--private-snapshot-directory-p
+                     snapshot-directory)
+                  (error "NSKK: Snapshot directory is not private"))
+                (setq snapshot-file
+                      (expand-file-name "contents" snapshot-directory))
+                (add-name-to-file resolved-file snapshot-file)
+                (setq linked t))
+            (error nil))
+          (when linked
+            (cons t
+                  (nskk-dict-transaction--read-pinned-snapshot
+                   snapshot-file file resolved-file expected-pin-identity
+                   max-bytes allow-symlink))))
+      (when snapshot-directory
+        (ignore-errors (delete-directory snapshot-directory t))))))
+
+(defun nskk-dict-transaction--read-stable-direct-source
+    (file resolved-file expected-identity max-bytes allow-symlink)
+  "Read an immutable source directly, returning unibyte contents."
+  (unless (nskk-dict-transaction--stable-direct-source-p
+           file resolved-file expected-identity max-bytes allow-symlink)
+    (error "NSKK: Cannot safely read unpinned file"))
+  (with-temp-buffer
+   (set-buffer-multibyte nil)
+   (let ((coding-system-for-read 'no-conversion))
+     (insert-file-contents resolved-file nil 0 (1+ max-bytes)))
+   (when (> (buffer-size) max-bytes)
+     (error "NSKK: File exceeds %d-byte limit" max-bytes))
+   (unless (nskk-dict-transaction--stable-direct-source-p
+            file resolved-file expected-identity max-bytes allow-symlink)
+     (error "NSKK: File changed during unpinned read"))
+   (buffer-string)))
+
 (defun nskk-dict-transaction--insert-file-contents-pinned
     (file resolved-file attributes max-bytes &optional allow-symlink)
   "Insert a validated regular FILE through a pinned hard-link snapshot.
@@ -338,136 +449,22 @@ when both the lexical and canonical local paths are immutable."
       (error "NSKK: File is not a stable local regular file"))
     (when (> size max-bytes)
       (error "NSKK: File exceeds %d-byte limit" max-bytes))
-    (unless
-        (catch 'read-through-snapshot
-          (dolist (snapshot-base snapshot-bases)
-            (let (snapshot-directory snapshot-file linked)
-              (unwind-protect
-                  (progn
-                    (condition-case nil
-                        (progn
-                          (setq snapshot-directory
-                                (make-temp-file
-                                 (expand-file-name
-                                  "nskk-pinned-read-"
-                                  snapshot-base)
-                                 t))
-                          (set-file-modes snapshot-directory #o700)
-                          (unless
-                              (nskk-dict-transaction--private-snapshot-directory-p
-                               snapshot-directory)
-                            (error
-                             "NSKK: Snapshot directory is not private"))
-                          (setq snapshot-file
-                                (expand-file-name
-                                 "contents"
-                                 snapshot-directory))
-                          (add-name-to-file resolved-file snapshot-file)
-                          (setq linked t))
-                      (error nil))
-                    (when linked
-                      (when (file-symlink-p snapshot-file)
-                        (error
-                         "NSKK: Pinned snapshot is a symbolic link"))
-                      (let* ((snapshot-before
-                              (file-attributes snapshot-file 'integer))
-                             (source-before
-                              (file-attributes resolved-file 'integer))
-                             (pinned-identity
-                              (nskk-dict-transaction--full-identity
-                               snapshot-before)))
-                        (unless
-                            (and snapshot-before
-                                 source-before
-                                 (file-regular-p snapshot-file)
-                                 (file-regular-p resolved-file)
-                                 (not (file-symlink-p snapshot-file))
-                                 (or allow-symlink
-                                     (not (file-symlink-p file)))
-                                 (equal resolved-file
-                                        (nskk-dict-transaction--resolved-file
-                                         file))
-                                 (equal expected-pin-identity
-                                        (nskk-dict-transaction--pin-identity
-                                         snapshot-before))
-                                 (equal pinned-identity
-                                        (nskk-dict-transaction--full-identity
-                                         source-before)))
-                          (error "NSKK: File changed before pinned read"))
-                        (let ((contents
-                               (with-temp-buffer
-                                (set-buffer-multibyte nil)
-                                (let ((coding-system-for-read
-                                       'no-conversion))
-                                  (insert-file-contents
-                                   snapshot-file
-                                   nil
-                                   0
-                                   (1+ max-bytes)))
-                                (when (> (buffer-size) max-bytes)
-                                  (error
-                                   "NSKK: File exceeds %d-byte limit"
-                                   max-bytes))
-                                (let ((snapshot-after
-                                       (file-attributes
-                                        snapshot-file 'integer))
-                                      (source-after
-                                       (file-attributes
-                                        resolved-file 'integer)))
-                                  (unless
-                                      (and
-                                       snapshot-after
-                                       source-after
-                                       (file-regular-p snapshot-file)
-                                       (file-regular-p resolved-file)
-                                       (not
-                                        (file-symlink-p snapshot-file))
-                                       (or
-                                        allow-symlink
-                                        (not (file-symlink-p file)))
-                                       (equal
-                                        resolved-file
-                                        (nskk-dict-transaction--resolved-file
-                                         file))
-                                       (equal
-                                        pinned-identity
-                                        (nskk-dict-transaction--full-identity
-                                         snapshot-after))
-                                       (equal
-                                        pinned-identity
-                                        (nskk-dict-transaction--full-identity
-                                         source-after)))
-                                    (error
-                                     "NSKK: File changed during pinned read")))
-                                (buffer-string))))
-                          (set-buffer-multibyte nil)
-                          (insert contents)
-                          (throw 'read-through-snapshot t)))))
-                (when snapshot-directory
-                  (ignore-errors
-                   (delete-directory snapshot-directory t)))))))
-      (unless (nskk-dict-transaction--stable-direct-source-p
-               file resolved-file expected-full-identity max-bytes allow-symlink)
-        (error "NSKK: Cannot safely read unpinned file"))
-      (let ((contents
-             (with-temp-buffer
-              (set-buffer-multibyte nil)
-              (let ((coding-system-for-read 'no-conversion))
-                (insert-file-contents
-                 resolved-file nil 0 (1+ max-bytes)))
-              (when (> (buffer-size) max-bytes)
-                (error
-                 "NSKK: File exceeds %d-byte limit"
-                 max-bytes))
-              (unless (nskk-dict-transaction--stable-direct-source-p
-                       file resolved-file expected-full-identity max-bytes
-                       allow-symlink)
-                (error "NSKK: File changed during unpinned read"))
-              (buffer-string))))
-        (set-buffer-multibyte nil)
-        (insert contents)))))
+    (let ((contents
+           (catch 'read-through-snapshot
+             (dolist (snapshot-base snapshot-bases)
+               (let ((result
+                      (nskk-dict-transaction--try-pinned-snapshot
+                       snapshot-base file resolved-file expected-pin-identity
+                       max-bytes allow-symlink)))
+                 (when result
+                   (throw 'read-through-snapshot (cdr result)))))
+             (nskk-dict-transaction--read-stable-direct-source
+              file resolved-file expected-full-identity max-bytes
+              allow-symlink))))
+      (set-buffer-multibyte nil)
+      (insert contents))))
 
-  
+
 (defalias 'nskk-dict-transaction-predicate-snapshot 'nskk-dict-transaction--predicate-snapshot)
 (defalias 'nskk-dict-transaction-apply-predicate-snapshot 'nskk-dict-transaction--apply-predicate-snapshot)
 (defalias 'nskk-dict-transaction-ensure-rollback-complete 'nskk-dict-transaction--ensure-rollback-complete)
