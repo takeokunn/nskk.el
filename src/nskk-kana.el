@@ -380,9 +380,6 @@ Idempotent: subsequent calls are no-ops."
       (katakana      normalize   nskk-kana-string-katakana-to-hiragana)
       (katakana-半角  normalize   nskk--hankaku-to-hiragana))
 
-    ;; Registration protocol: declare this module's initialized-flag symbol
-    ;; so generic test/reset infrastructure can enumerate it via a fact
-    ;; query instead of a hardcoded symbol list.
     (nskk-prolog-<- (module-initialized-flag nskk--kana-initialized))
 
     (setq nskk--kana-initialized t)))

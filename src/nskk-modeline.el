@@ -144,7 +144,6 @@ when `nskk-show-mode-show' is non-nil (via `nskk-show-mode-display')."
   (nskk--modeline-clear-cache)
   (nskk-cursor-update)
   (force-mode-line-update)
-  ;; Show inline mode indicator if configured (optional feature)
   (when (and (boundp 'nskk-show-mode-show) nskk-show-mode-show
              (fboundp 'nskk-show-mode-display))
     (nskk-show-mode-display)))

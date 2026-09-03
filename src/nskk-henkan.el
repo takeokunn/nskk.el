@@ -862,7 +862,6 @@ via `nskk--restore-abbrev-mode'."
       (nskk--delete-marker-at start nskk-henkan-on-marker-regexp))
     (nskk--clear-conversion-start-marker)
     (nskk-reset-romaji-buffer)
-    ;; Clear AZIK okurigana pending state that may have been armed in preedit.
     (nskk-clear-azik-pending-state)
     (nskk-with-current-state
       (nskk-state-set-henkan-phase nskk-current-state nil))

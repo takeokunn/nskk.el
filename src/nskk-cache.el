@@ -280,7 +280,6 @@ Slots:
     (user-error "Cache capacity must be a positive integer: %S" capacity))
   (let ((head (nskk-cache-lru-node--create))
         (tail (nskk-cache-lru-node--create)))
-    ;; Link dummy head and tail sentinels
     (setf (nskk-cache-lru-node-next head) tail)
     (setf (nskk-cache-lru-node-prev tail) head)
     (nskk-cache-lru--create
@@ -452,7 +451,6 @@ Returns t if KEY was found and removed, nil otherwise."
   "Remove all entries from LRU CACHE and reset statistics."
   (clrhash (nskk-cache-lru-hash cache))
   (setf (nskk-cache-lru-size cache) 0)
-  ;; Reconnect dummy head and tail sentinels
   (let ((head (nskk-cache-lru-head cache))
         (tail (nskk-cache-lru-tail cache)))
     (setf (nskk-cache-lru-node-next head) tail)

@@ -113,24 +113,20 @@ Displays `nskk-context-mode-off-message' in the echo area."
   "Post-command hook for context-aware NSKK mode switching.
 Checks if point is outside a string/comment context in a programming mode,
 and switches to ASCII mode automatically if so."
-  ;; Throttle based on check interval
   (when (>= (cl-incf nskk--context-command-count) nskk-context-check-interval)
     (setq nskk--context-command-count 0)
-      (when (and (boundp 'nskk-mode) nskk-mode
-                 (boundp 'nskk-current-state) nskk-current-state
-                 (nskk--context-programming-mode-p))
+    (when (and (boundp 'nskk-mode) nskk-mode
+               (boundp 'nskk-current-state) nskk-current-state
+               (nskk--context-programming-mode-p))
       (let ((current-mode (nskk--context-get-current-mode)))
         (cond
-         ;; In Japanese mode, not in a Japanese context: switch to ASCII
          ((and current-mode
                (not (memq current-mode '(ascii latin)))
                (not (nskk--context-in-japanese-context-p)))
           (nskk--context-switch-to-ascii))
-         ;; In ASCII mode (set by context), re-entered Japanese context:
-         ;; do nothing — user must manually switch back to Japanese
          ((and nskk--context-was-ascii
                (nskk--context-in-japanese-context-p))
-          ;; Could optionally restore Japanese mode here, but ddskk does not
+          ;; ddskk requires the user to switch back to Japanese explicitly.
           (setq nskk--context-was-ascii nil)))))))
 
 ;;;; Minor Mode

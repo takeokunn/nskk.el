@@ -84,49 +84,38 @@
 ;; Key dispatch rules: (key-action KEY STATE ACTION)
 ;; Order matters within each key: first match wins.
 (nskk-prolog-define-fact-table key-action (:arity 3 :index :hash)
-  ;; Space
   (space converting next-candidate)
   (space preedit   start-conversion)
   (space normal    self-insert)
   (return converting       commit-candidate)
   (return preedit          kakutei-and-newline)
   (return normal           newline)
-  ;; Cancel
   (cancel converting rollback-to-reading)
   (cancel preedit   cancel-preedit)
   (cancel normal    keyboard-quit)
-  ;; X
   (x converting previous-candidate)
   (x normal    self-insert)
-  ;; C-n
   (ctrl-n converting next-candidate)
   (ctrl-n preedit    kakutei-then-next-line)
   (ctrl-n normal     next-line)
-  ;; C-p: previous candidate in conversion, commit+nav in preedit
   (ctrl-p converting previous-candidate)
   (ctrl-p preedit    kakutei-then-previous-line)
   (ctrl-p normal     previous-line)
-  ;; C-f / right-arrow
   (ctrl-f converting kakutei-then-forward)
   (ctrl-f preedit    kakutei-then-forward)
   (ctrl-f normal     forward-char)
-  ;; C-b / left-arrow
   (ctrl-b converting kakutei-then-backward)
   (ctrl-b preedit    kakutei-then-backward)
   (ctrl-b normal     backward-char)
-  ;; C-a / home-key
   (ctrl-a converting kakutei-then-bol)
   (ctrl-a preedit    kakutei-then-bol)
   (ctrl-a normal     beginning-of-line)
-  ;; C-e / end-key
   (ctrl-e converting kakutei-then-eol)
   (ctrl-e preedit    kakutei-then-eol)
   (ctrl-e normal     end-of-line)
-  ;; Backspace
   (backspace preedit    delete-preedit-char)
   (backspace converting rollback-to-reading)
   (backspace normal     backward-delete)
-  ;; Tab (dynamic completion)
   (tab preedit    dynamic-complete)
   (tab converting pass-through)
   (tab normal     pass-through))
@@ -799,7 +788,6 @@ If point drifted left of preedit boundary, clamp it instead."
       (cond
        ((nskk--backspace-retract-pending)
         (when (<= (point) preedit-min) (nskk-cancel-preedit)))
-       ;; Existing logic -- delete committed kana or cancel
        ((> (point) preedit-min)
         (delete-char -1))
        ((= (point) preedit-min)

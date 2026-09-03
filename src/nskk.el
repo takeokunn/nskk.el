@@ -592,7 +592,6 @@ Handlers bound in `nskk-mode-map' call `nskk-commit-by-phase'
 explicitly before moving, so by the time this hook fires for them the
 relevant phase is already nil and both guards are no-ops."
   (when (and nskk-mode nskk-current-state)
-    ;; Converting (▼) point-escape guard.
     ;; Skip when okurigana is in progress AND this-command is an
     ;; NSKK-bound command: point is legitimately past overlay-end
     ;; because the okurigana kana sits after the overlay.
@@ -608,7 +607,6 @@ relevant phase is already nil and both guards are no-ops."
         (when (and conv-start overlay-end
                    (/= (point) overlay-end))
           (nskk-commit-current))))
-    ;; Preedit (▽) point-escape guard: commit reading when an unbound command moved point.
     (when (and (nskk-prolog-holds-p
                 `(preedit-phase ,(nskk-state-henkan-phase nskk-current-state)))
                (nskk-get-conversion-start)
@@ -616,7 +614,6 @@ relevant phase is already nil and both guards are no-ops."
                (/= (point) nskk--point-before-command)
                (not (memq this-command nskk--bound-commands)))
       (nskk-henkan-kakutei))
-    ;; Invalidate undo-kakutei record when any non-undo command runs.
     (when (and (not (eq this-command 'nskk-undo-kakutei))
                (nskk-last-kakutei-record))
       (nskk-invalidate-undo-kakutei))

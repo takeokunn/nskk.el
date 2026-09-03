@@ -155,7 +155,6 @@ because Emacs Lisp `&optional' applies to all parameters after the first."
   (unless (and (stringp query) (not (string-empty-p query)))
     (signal 'nskk-dict-search-invalid-query (list query)))
 
-  ;; Default search type
   (setq search-type (or search-type 'exact))
   (nskk-debug-log "[SEARCH] search: query=%s type=%s" query search-type)
 
@@ -192,7 +191,6 @@ classifier only distinguishes empty/nil (okuri-nasi) from non-empty
     (and (>= len 2)
          (let ((last (aref key (1- len)))
                (prev (aref key (- len 2))))
-           ;; Final char ASCII lower-case AND preceding char non-ASCII kana.
            (and (<= ?a last ?z)
                 (>= prev 128)
                 (substring key (1- len)))))))

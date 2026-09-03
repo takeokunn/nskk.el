@@ -348,7 +348,6 @@ No-op when `nskk-show-mode-show' is nil or state is unset."
              nskk-current-state)
     (let* ((mode (nskk-state-mode nskk-current-state))
            (indicator (nskk--show-mode-indicator-string mode)))
-      ;; Only display when mode changed and indicator string is available
       (when (and indicator
                  (not (eq mode nskk--show-mode-last-mode)))
         (pcase nskk-show-mode-style
