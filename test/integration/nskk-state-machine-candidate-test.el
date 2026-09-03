@@ -208,7 +208,6 @@ COUNT defaults to 0-10 if not specified."
                (candidates '("a" "b" "c" "d"))
                (len (length candidates)))
           (nskk-state-set-candidates state candidates)
-          ;; Start at index 0
           (should (= (nskk-state-current-index state) 0))
           ;; Navigate to the end
           (dotimes (_ (1- len))
@@ -232,7 +231,6 @@ COUNT defaults to 0-10 if not specified."
                (candidates '("a" "b" "c" "d"))
                (len (length candidates)))
           (nskk-state-set-candidates state candidates)
-          ;; Start at index 0
           (should (= (nskk-state-current-index state) 0))
           ;; Previous should wrap to last
           (nskk-state-previous-candidate state)
@@ -299,13 +297,11 @@ COUNT defaults to 0-10 if not specified."
         (let* ((state (nskk-state-create 'hiragana))
                (initial-candidates '("a" "b" "c"))
                (new-candidates '("x" "y" "z" "w")))
-          ;; Set initial candidates
           (nskk-state-set-candidates state initial-candidates)
           ;; Navigate to a non-zero index
           (nskk-state-next-candidate state)
           (nskk-state-next-candidate state)
           (should (= (nskk-state-current-index state) 2))
-          ;; Set new candidates
           (nskk-state-set-candidates state new-candidates)
           ;; Index should be reset to 0
           (unless (= (nskk-state-current-index state) 0)
@@ -397,10 +393,8 @@ COUNT defaults to 0-10 if not specified."
   (nskk-it "setting invalid index should not crash state"
     (let ((state (nskk-state-create 'hiragana)))
       (nskk-state-set-candidates state '("a" "b" "c"))
-      ;; Set a valid index
       (nskk-state-set state 'current-index 2)
       (should (= (nskk-state-current-index state) 2))
-      ;; Try to set an out-of-bounds index
       ;; (The state doesn't prevent this, but operations should still work)
       (nskk-state-set state 'current-index 100)
       ;; Current candidate may be nil, but state should be valid

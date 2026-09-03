@@ -305,7 +305,6 @@
     (let* ((cache (nskk-cache-lru-create 10))
            (head  (nskk-cache-lru-head cache))
            (tail  (nskk-cache-lru-tail cache)))
-      ;; Add entries then clear
       (nskk-cache-lru-put cache "k1" "v1")
       (nskk-cache-lru-put cache "k2" "v2")
       (nskk-cache-lru-clear cache)
@@ -698,11 +697,9 @@
           (should (member "dict:ka" deleted))
           (should (member "dict:ki" deleted))
           (should-not (member "other:foo" deleted))
-          ;; Actual entries removed
           (should (null (nskk-cache-lru-get cache "dict:ka")))
           (should (null (nskk-cache-lru-get cache "dict:ki")))
           (should (string= (nskk-cache-lru-get cache "other:foo") "bar"))
-          ;; Size updated
           (should (= (nskk-cache-lru-size cache) 1)))))))
 
   (nskk-it "removes all keys matching a pattern from LFU cache"
@@ -1314,7 +1311,6 @@
       (nskk-then
        (should (string= (nskk-cache-lru-get cache "かんじ")   "漢字"))
        (should (string= (nskk-cache-lru-get cache "にほんご") "日本語")))
-      ;; Add more entries, trigger eviction
       (nskk-when
        (nskk-cache-lru-put cache "ねこ"   "猫")
        (nskk-cache-lru-put cache "とり"   "鳥")
@@ -1329,7 +1325,6 @@
        (nskk-cache-lfu-put cache "common1" "value1")
        (nskk-cache-lfu-put cache "common2" "value2")
        (nskk-cache-lfu-put cache "rare1"   "value3")
-       ;; Raise frequency of common entries
        (dotimes (_ 10) (nskk-cache-lfu-get cache "common1"))
        (dotimes (_ 5)  (nskk-cache-lfu-get cache "common2")))
       (nskk-when
@@ -1460,7 +1455,6 @@
       ;; Add node1 then node2; node2 is at MRU, node1 is second
       (nskk-cache-lru--add-to-head cache node1)
       (nskk-cache-lru--add-to-head cache node2)
-      ;; Move node1 to MRU position
       (nskk-cache-lru--move-to-head cache node1)
       (let ((head (nskk-cache-lru-head cache)))
         (should (eq (nskk-cache-lru-node-next head) node1))))))
@@ -1484,7 +1478,6 @@
   (nskk-it "promotes an entry from one frequency bucket to the next"
     (let ((cache (nskk-cache-lfu-create 10)))
       (nskk-cache-lfu-put cache "key" "value")
-      ;; Entry starts at frequency 1
       (let* ((entry (gethash "key" (nskk-cache-lfu-hash cache)))
              (old-freq (nskk-cache-lfu-entry-frequency entry)))
         (cl-incf (nskk-cache-lfu-entry-frequency entry))

@@ -395,7 +395,6 @@ that the second element is a symbol with the given name."
         (should (eq (car body) 'nskk--cps-test-helper/k))
         ;; arg should appear in the call
         (should (member 'arg (cdr body)))
-        ;; The continuation lambda should follow
         (should (cl-some (lambda (f) (and (consp f) (eq (car f) 'lambda)))
                          (cdr body)))))
 
@@ -442,7 +441,6 @@ that the second element is a symbol with the given name."
         ;; The symbol is gensym'd, so check by name, not identity.
         (should (symbolp last-arg))
         (should (equal (symbol-name last-arg) "on-not-found"))
-        ;; Confirm it is uninterned.
         (should-not (eq last-arg 'on-not-found)))))
 
   (nskk-context "hygienic lambda parameter"
@@ -693,7 +691,6 @@ that the second element is a symbol with the given name."
              (progn-form (car (nthcdr 4 k-def))))
         (should (eq (car progn-form) 'progn))
         (should (equal (nth 1 progn-form) '(setq x 1)))
-        ;; Last form is transformed
         (let ((last-form (nth 2 progn-form)))
           (should (nskk-cps-test--funcall-sym-named-p last-form "on-found"))
           (should (equal (nth 2 last-form) 'x))))))
@@ -707,9 +704,7 @@ that the second element is a symbol with the given name."
              (k-def   (nth 1 expansion))
              (let-form (car (nthcdr 4 k-def))))
         (should (eq (car let-form) 'let))
-        ;; Bindings unchanged
         (should (equal (cadr let-form) '((v 1))))
-        ;; Body transformed
         (let ((body-form (caddr let-form)))
           (should (nskk-cps-test--funcall-sym-named-p body-form "on-found"))
           (should (equal (nth 2 body-form) 'v)))))
@@ -769,9 +764,7 @@ that the second element is a symbol with the given name."
              (k-def   (nth 1 expansion))
              (and-form (car (nthcdr 4 k-def))))
         (should (eq (car and-form) 'and))
-        ;; Guard passes through
         (should (equal (nth 1 and-form) 'x))
-        ;; Last form transformed
         (let ((last-form (nth 2 and-form)))
           (should (nskk-cps-test--funcall-sym-named-p last-form "on-found"))
           (should (equal (nth 2 last-form) 'x)))))
@@ -784,9 +777,7 @@ that the second element is a symbol with the given name."
              (k-def  (nth 1 expansion))
              (or-form (car (nthcdr 4 k-def))))
         (should (eq (car or-form) 'or))
-        ;; Fallback passes through
         (should (equal (nth 1 or-form) 'fallback))
-        ;; Last form transformed
         (let ((last-form (nth 2 or-form)))
           (should (nskk-cps-test--funcall-sym-named-p last-form "on-found"))
           (should (equal (nth 2 last-form) 'x)))))
@@ -821,7 +812,6 @@ that the second element is a symbol with the given name."
              (body  (nthcdr 4 k-def)))
         (should (equal (nth 0 body) '(setq side 1)))
         (should (equal (nth 1 body) '(setq side 2)))
-        ;; Last form is transformed
         (let ((last-form (nth 2 body)))
           (should (nskk-cps-test--funcall-sym-named-p last-form "on-found"))
           (should (equal (nth 2 last-form) 'side))))))
@@ -1031,7 +1021,6 @@ that the second element is a symbol with the given name."
              (put-form (nth 2 expansion)))
         (should (eq (car k-def) 'defun))
         (should (equal (symbol-name (cadr k-def)) "nskk--cps-3k-test-k-only/k"))
-        ;; Second form is the put annotation
         (should (eq (car put-form) 'put))))
 
     (nskk-it "appends the three named continuation symbols to the arglist"
@@ -1415,7 +1404,6 @@ that the second element is a symbol with the given name."
           (call/cc (lambda (k)
                      (setq saved-k k)
                      (succeed (* x 2)))))
-        ;; Call the function normally
         (should (equal (nskk-cps-test--callcc-store 3) 6))
         ;; saved-k is on-found from the last call; call it again with new value
         (should (equal (funcall saved-k 99) 99))))
@@ -1599,7 +1587,6 @@ that the second element is a symbol with the given name."
                          (use result)))))
       ;; Head: the /k function name
       (should (eq (car expansion) 'my-func/k))
-      ;; Args from fn-call
       (should (equal (nth 1 expansion) 'key))
       ;; on-found lambda
       (let ((on-found (nth 2 expansion)))

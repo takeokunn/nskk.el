@@ -1779,7 +1779,6 @@ and configures state."
            (space converting next-candidate)
            (space preedit   start-conversion)
            (space normal    self-insert)
-           ;; Return
            (return converting commit-candidate)
            (return preedit  kakutei-and-newline)
            (return normal   newline)

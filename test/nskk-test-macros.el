@@ -99,7 +99,6 @@ RUNS: Number of test runs (default: nskk-test-property-runs)"
 Returns the first shrinking candidate that reduces size.
 Note: this is a local helper; use `nskk-pbt-shrink.el' for full shrinking."
   (when list
-    ;; Try removing first element
     (if (> (length list) 1)
         (cdr list)
       nil)))
@@ -180,7 +179,6 @@ SEED: Random seed for reproducibility (default: random)"
                    (message "Found failure case, attempting to shrink..."))
                (error
                 (setq failure-case (list :error ,@(mapcar #'car generators) err))))))
-         ;; Move to next random state if no failure yet
          (unless failure-case
            (random)))
        ;; If we found a failure, try to shrink it
@@ -190,7 +188,6 @@ SEED: Random seed for reproducibility (default: random)"
                           for gen in ',generators
                           collect (nskk--shrink-value val (cadr gen))))
                 (shrunk-case shrunk-values))
-           ;; Try the shrunk case
            (condition-case _err
                (let ,(cl-loop for gen in generators
                               for i from 0
@@ -198,7 +195,6 @@ SEED: Random seed for reproducibility (default: random)"
                  (unless ,property
                    (setq minimal-case shrunk-case)))
              (error nil)))
-         ;; Report results
          (if minimal-case
              (ert-fail (format "Property failed (seed: %d)\nOriginal case: %S\nMinimal case: %S"
                                test-seed failure-case minimal-case))
@@ -253,7 +249,6 @@ the PROPERTY invariant holds after each transition."
                (push (list :step step-count :trigger trigger) steps-taken)
                (setq state (funcall target-state-fn state trigger))
                (cl-incf step-count)
-               ;; Check invariant after each transition
                (condition-case err
                    (unless (funcall ,property state)
                      (push (list :seed test-seed
@@ -267,7 +262,6 @@ the PROPERTY invariant holds after each transition."
                               :error err
                               :steps (nreverse steps-taken))
                         failures)))))
-           ;; Also check final state
            (condition-case err
                (unless (funcall ,property state)
                  (push (list :seed test-seed
@@ -311,13 +305,11 @@ that the PROPERTY invariant holds."
        (random test-seed)
        (message "Sequence test '%s' seed: %d" ',name test-seed)
        (dotimes (run runs)
-         ;; Generate key sequence
          (let* ((key-sequence (nskk-generate ',key-sequence-generator))
                 (execution-context (progn ,setup)))
            (condition-case err
                (progn
                  (dolist (key key-sequence)
-                   ;; Simulate key press in context
                    (setq execution-context
                          (nskk--simulate-key execution-context key)))
                  (unless (funcall ,property execution-context)
@@ -342,13 +334,10 @@ that the PROPERTY invariant holds."
 Returns updated context after processing the key.
 Handles nskk-state objects, plists, and other context types."
   (cond
-   ;; Handle nskk-state objects
    ((and (fboundp 'nskk-state-p) (nskk-state-p context))
     (nskk--simulate-key-for-state context key))
-   ;; Handle plist contexts
    ((listp context)
     (plist-put context :last-key key))
-   ;; Fallback for unknown context types
    (t
     (list :last-key key :input (if (stringp key) key "")))))
 
@@ -357,7 +346,6 @@ Handles nskk-state objects, plists, and other context types."
 Returns updated state."
   (when (nskk-state-p state)
     (cond
-     ;; Mode switch keys
      ((string= key "C-j")
       (nskk-state-set state 'mode 'hiragana)
       state)
@@ -381,7 +369,6 @@ Returns updated state."
       (let ((current-buffer (nskk-state-input-buffer state)))
         (nskk-state-set state 'input-buffer (concat current-buffer key))
         state))
-     ;; Unknown key - pass through unchanged
      (t state))))
 
 

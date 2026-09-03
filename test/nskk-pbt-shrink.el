@@ -70,14 +70,12 @@ Returns minimal sequence that still fails PROPERTY-FN."
       (setq improved nil)
       (cl-incf iterations)
 
-      ;; Try to shrink using binary approach
       (let ((shrunk (nskk--shrink-sequence-step current property-fn)))
         (when (and shrunk
                    (< (length shrunk) (length current)))
           (setq current shrunk
                 improved t))
 
-        ;; Report progress if verbose
         (when nskk-pbt-shrink-verbose
           (nskk-shrink-report iterations current sequence))))
 
@@ -129,7 +127,6 @@ Returns smaller sequence that still fails PROPERTY-FN, or nil."
                      (funcall property-fn without-i))
             (cl-return-from nskk--shrink-sequence-step without-i)))))
 
-    ;; No further shrinking possible
     nil))
 
 
@@ -251,7 +248,6 @@ Returns simplified state that still fails PROPERTY-FN, or nil."
   (unless (nskk-state-p state)
     (cl-return-from nskk--shrink-state-step nil))
 
-  ;; Create a copy of the state for modification
   (let ((shrunk-state (nskk--copy-state state)))
 
     ;; Strategy 1: Simplify mode
@@ -260,7 +256,6 @@ Returns simplified state that still fails PROPERTY-FN, or nil."
         (setf (nskk-state-mode shrunk-state) simpler-mode)
         (when (funcall property-fn shrunk-state)
           (cl-return-from nskk--shrink-state-step shrunk-state))
-        ;; Revert if not failing
         (setq shrunk-state (nskk--copy-state state))))
 
     ;; Strategy 2: Clear input buffer
@@ -280,7 +275,6 @@ Returns simplified state that still fails PROPERTY-FN, or nil."
     ;; Strategy 4: Reduce candidate list
     (when (> (length (nskk-state-candidates shrunk-state)) 1)
       (let ((candidates (nskk-state-candidates shrunk-state)))
-        ;; Try keeping only first candidate
         (setf (nskk-state-candidates shrunk-state) (list (car candidates)))
         (when (funcall property-fn shrunk-state)
           (cl-return-from nskk--shrink-state-step shrunk-state))
@@ -362,21 +356,18 @@ Tries values closer to 0."
       (setq improved nil)
       (cl-incf iterations)
 
-      ;; Try halving the value
       (let ((half (/ current 2)))
         (unless (zerop half)
           (when (funcall property-fn half)
             (setq current half
                   improved t))))
 
-      ;; Try decrementing
       (unless improved
         (when (and (> current 1)
                    (funcall property-fn (1- current)))
           (setq current (1- current)
                 improved t)))
 
-      ;; Try incrementing (for negative values)
       (unless improved
         (when (and (< current -1)
                    (funcall property-fn (1+ current)))
@@ -400,7 +391,6 @@ Tries values closer to 0.0."
       (setq improved nil)
       (cl-incf iterations)
 
-      ;; Try halving the value
       (let ((half (/ current 2.0)))
         (when (> (abs half) 0.0001)
           (when (funcall property-fn half)
@@ -452,7 +442,6 @@ Returns minimal failing case."
               (message "[NSKK Shrink] Iteration %d: size %d -> %d"
                        iterations before-size after-size)))))
 
-      ;; Final report
       (when nskk-pbt-shrink-verbose
         (message "[NSKK Shrink] Completed: %d iterations, %d shrinks"
                  iterations shrinks)

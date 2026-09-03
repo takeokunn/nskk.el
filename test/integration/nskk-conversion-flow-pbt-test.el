@@ -108,7 +108,6 @@
   ((candidates candidate-list))
   (let* ((state (nskk--pbt-make-conversion-state))
          (_input-before (nskk-state-input-buffer state)))
-    ;; Start conversion with candidates
     (nskk--pbt-start-conversion state candidates)
     ;; Commit conversion
     (nskk--pbt-commit-conversion state)
@@ -127,7 +126,6 @@
   ((candidates candidate-list))
   (let* ((state (nskk--pbt-make-conversion-state))
          (original-input (nskk-state-input-buffer state)))
-    ;; Start conversion
     (nskk--pbt-start-conversion state candidates)
     ;; Cancel with original input
     (nskk--pbt-cancel-conversion state original-input)
@@ -148,9 +146,7 @@
   ((candidates candidate-list))
   (let* ((state (nskk--pbt-make-conversion-state))
          (num-candidates (length candidates)))
-    ;; Start conversion
     (nskk--pbt-start-conversion state candidates)
-    ;; Set candidates on state
     (nskk-state-set-candidates state candidates)
     ;; Cycle through all candidates with next
     (let ((visited nil)
@@ -175,7 +171,6 @@
 (nskk-property-test nskk-state-machine-conversion-idempotent-commit
   ((candidates candidate-list))
   (let* ((state (nskk--pbt-make-conversion-state)))
-    ;; Start and commit once
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-commit-conversion state)
     ;; Capture state after first commit
@@ -186,7 +181,6 @@
           (idx-1 (nskk-state-current-index state)))
       ;; Commit again (should be no-op since no active conversion)
       (nskk--pbt-commit-conversion state)
-      ;; State should be identical
       (let ((converted-2 (nskk-state-converted-buffer state))
             (input-2 (nskk-state-input-buffer state))
             (henkan-2 (nskk-state-henkan-position state))
@@ -257,7 +251,6 @@
          (hiragana-input (nskk--pbt-random-hiragana-input)))
     ;; Put a non-empty input in the buffer
     (nskk-state-set state 'input-buffer hiragana-input)
-    ;; Start and commit conversion
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-commit-conversion state)
     ;; After commit, converted-buffer must be a non-empty string
@@ -276,7 +269,6 @@
          (candidates (nskk--pbt-random-candidates))
          (hiragana-input (nskk--pbt-random-hiragana-input)))
     (nskk-state-set state 'input-buffer hiragana-input)
-    ;; Start then cancel conversion
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-cancel-conversion state hiragana-input)
     ;; Post-cancel invariants: input restored, henkan-position cleared

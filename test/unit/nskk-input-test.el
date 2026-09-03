@@ -1323,7 +1323,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         ;; Simulate that "きん" was tentatively emitted for "kk" (AZIK deferred)
         (insert "きん")
         (setq nskk--deferred-azik-state (cons ?k "きん"))
-        ;; Now feed a vowel — should trigger retroactive sokuon correction
         (nskk-convert-input-to-kana ?a)
         ;; The tentative "きん" is deleted and っ is inserted (then "ka" is processed)
         (should (string-match-p "っ" (buffer-string))))))
@@ -1513,7 +1512,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (insert "t")
         (setq nskk--azik-colon-okuri-deferred (cons ?t "t"))
         (nskk--apply-colon-okuri-correction ?s)
-        ;; State cleared
         (should (null nskk--azik-colon-okuri-deferred))
         ;; No っ inserted, placeholder still present
         (should-not (string-match-p "っ" (buffer-string))))))
@@ -1529,7 +1527,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (setq nskk--azik-colon-okuri-deferred nil)
         (nskk-state-set-romaji-buffer "k")
         (nskk--apply-colon-okuri-correction ?e)
-        ;; Buffer unchanged
         (should (string= (buffer-string) "か"))
         ;; Romaji buffer unchanged
         (should (equal (nskk-state-romaji-buffer) "k")))))
@@ -2105,9 +2102,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       ;; The romaji buffer is owned by nskk-state.el; bind it via cl-letf for isolation.
       (cl-letf (((nskk-state-romaji-buffer) "n"))
         (let ((result (nskk--emit-hatsuon-prefix "n")))
-          ;; Buffer must be updated to the new value "n".
           (nskk-should-equal "n" (nskk-state-romaji-buffer))
-          ;; Result must end with ん.
           (should (string-suffix-p "\u3093" result)))))
 
     (nskk-it "n+n case: return value is ん (prefix-kana is empty)"
@@ -2142,9 +2137,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       ;; signal and still emits ん.
       (cl-letf (((nskk-state-romaji-buffer) "sn"))
         (let ((result (nskk--emit-hatsuon-prefix "n")))
-          ;; Result must still contain ん.
           (should (string-suffix-p "\u3093" result))
-          ;; Buffer is updated to the new-buffer-value.
           (nskk-should-equal "n" (nskk-state-romaji-buffer)))))
 
     (nskk-it "when buffer ends with n and prefix-without-n is empty result is just ん"

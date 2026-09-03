@@ -57,7 +57,6 @@
         (let* ((valid-mode (nskk--pbt-generate-valid-mode))
                (state (nskk-state-create valid-mode))
                (invalid-mode (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
-          ;; Set some state before attempting invalid operation
           (nskk-state-set state 'input-buffer "test-input")
           ;; Attempt to set invalid mode (should error)
           (condition-case _err
@@ -129,7 +128,6 @@
         (let* ((state (nskk-state-create (nskk--pbt-generate-valid-mode)))
                (num-switches (nskk--pbt-random-int 10 100))
                (valid-modes '(ascii hiragana katakana latin abbrev)))
-          ;; Set some initial state
           (nskk-state-set state 'input-buffer "initial")
           (nskk-state-set state 'candidates '("a" "b"))
           ;; Perform rapid mode switches
@@ -167,7 +165,6 @@
           (failures nil))
       (dotimes (_ runs)
         (let* ((state (nskk-state-create 'hiragana)))
-          ;; Set up complex state
           (nskk-state-set state 'input-buffer "complex-input")
           (nskk-state-set state 'converted-buffer "some-conversion")
           (nskk-state-set state 'candidates '("a" "b" "c"))
@@ -177,7 +174,6 @@
           (condition-case _err
               (nskk-state-set state 'mode 'invalid-mode-xyz)
             (error nil))
-          ;; Reset the state
           (nskk-state-reset state)
           (unless (and (nskk-state-p state)
                        (string= (nskk-state-input-buffer state) "")

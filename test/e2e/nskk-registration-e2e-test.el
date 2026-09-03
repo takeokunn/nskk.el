@@ -113,7 +113,6 @@
   (nskk-it "nskk--enable adds nskk--dict-maybe-save to kill-emacs-hook"
     ;; Verifies the persistence hook is wired up when nskk-mode activates.
     (nskk-prolog-test-with-isolated-db
-      ;; Ensure dict-initialized so nskk-dict-initialize is skipped
       (nskk-prolog-assert '((dict-initialized)))
       (with-temp-buffer
         (unwind-protect
@@ -281,7 +280,6 @@
   (nskk-it "registration from abbrev mode uses abbrev text as key"
     ;; / → abbrev mode → "test" preedit → SPC → no dict entry (empty dict) →
     ;; registration prompt → mock returns "テスト" → "テスト" committed to buffer.
-    ;; Assert the registered word ends up in the buffer and is stored in the dict.
     (nskk-e2e-with-buffer 'hiragana '()
       ;; Empty dict guaranteed by '() arg, so "test" has no candidates.
       (cl-letf (((symbol-function 'read-from-minibuffer)
@@ -293,7 +291,6 @@
         ;; SPC: no candidates for "test" in empty dict → registration → "テスト"
         (nskk-e2e-type "SPC")
         (nskk-e2e-assert-buffer "テスト" "Registered word should be inserted after abbrev registration")
-        ;; Mode should be restored to hiragana after abbrev registration.
         (nskk-e2e-assert-mode 'hiragana)
         (should (nskk-prolog-query-one '(user-dict-entry "test" \?_))))))
 

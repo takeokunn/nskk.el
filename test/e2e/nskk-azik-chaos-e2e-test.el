@@ -51,10 +51,8 @@ message."
    ;; nskk-mode must still be active
    ((not (bound-and-true-p nskk-mode))
     "nskk-mode was deactivated unexpectedly")
-   ;; State struct must exist
    ((not (bound-and-true-p nskk-current-state))
     "nskk-current-state is nil or unbound")
-   ;; Mode must be one of the six valid NSKK modes
    ((not (memq (nskk-current-mode)
                '(ascii hiragana katakana katakana-半角 abbrev latin)))
     (format "invalid mode: %S" (nskk-current-mode)))
@@ -102,7 +100,6 @@ invariant, so any failure is fully reproducible."
                           :sequence seq
                           :violation violation)
                     failures)))
-          ;; Reset to idle before next scenario.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
@@ -167,7 +164,6 @@ arise from AZIK colon-okurigana, vowel-shadow, or hatsuon edge cases."
                           :tried-convert try-convert
                           :phase-after-cancel phase)
                     failures)))
-          ;; Reset
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
@@ -227,7 +223,6 @@ output."
                         :special-key special-key
                         :romaji-buffer-residue (nskk-state-romaji-buffer))
                   failures))
-          ;; Reset
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
@@ -388,7 +383,6 @@ input until the user manually corrects the mode."
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
-          ;; Mode must still be hiragana.
           (let ((mode (and (bound-and-true-p nskk-current-state)
                            (nskk-current-mode))))
             (unless (eq mode 'hiragana)
@@ -472,7 +466,6 @@ that deferred AZIK corrections are not left pending after a cancel."
                           :pre-seq pre-seq
                           :violations violations)
                     failures)))
-          ;; Reset before next run.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
@@ -512,7 +505,6 @@ considers the buffer idle."
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
-          ;; Reset to idle.
           (nskk--azik-chaos--reset-to-idle)
           ;; If henkan-phase is nil, no display overlay should be present.
           (let ((phase (and (bound-and-true-p nskk-current-state)
@@ -624,7 +616,6 @@ provided, producing garbage output."
                           :sequence seq
                           :violations violations)
                     failures)))
-          ;; Reset before next run.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
@@ -735,7 +726,6 @@ colon-okurigana and sokuon-okurigana flags."
                           :pre-seq  pre-seq
                           :stuck    violations)
                     failures)))
-          ;; Reset before next run.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail

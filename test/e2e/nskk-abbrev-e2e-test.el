@@ -222,7 +222,6 @@
 (nskk-describe "abbrev mode conversion via RET"
   ;; / + "test" + SPC triggers dictionary conversion.
   ;; RET (commit-candidate) commits the first candidate without a newline.
-  ;; Mode should return to hiragana after commit.
   (nskk-it "commits first candidate with RET after SPC conversion"
     (let ((dict '(("test" . ("テスト" "Test")))))
       (nskk-e2e-with-buffer 'hiragana dict

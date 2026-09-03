@@ -1071,16 +1071,12 @@
   (nskk-it "is equivalent to calling nskk-converter-add-rule for each pair"
     (nskk-prolog-test-with-isolated-db
       (nskk-converter-initialize)
-      ;; Using the macro
       (nskk-converter-define-rules ("xp" "ぱてすと"))
-      ;; Using the function directly
       (nskk-converter-add-rule "xq" "くてすと")
-      ;; Both rules should be retrievable the same way
       (should (equal (nskk-converter-get-rule "xp") "ぱてすと"))
       (should (equal (nskk-converter-get-rule "xq") "くてすと"))))
 
   (nskk-it "with zero pairs expands to a no-op progn"
-    ;; Calling with no pairs should not error
     (nskk-prolog-test-with-isolated-db
       (nskk-converter-initialize)
       (should (progn (nskk-converter-define-rules) t)))))
@@ -1152,7 +1148,6 @@
         (nskk-converter-initialize/k
           (lambda () (setq done-called t)))
         (should done-called)
-        ;; Table should be populated after initialization
         (should (equal (nskk-converter-get-rule "ka") "か"))))))
 
 ;;;

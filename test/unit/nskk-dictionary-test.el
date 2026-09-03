@@ -139,7 +139,6 @@
   (nskk-it "distinguishes query errors from index errors"
     (let ((query-caught nil)
           (index-caught nil))
-      ;; Test query error
       (condition-case _err
           (signal 'nskk-dict-search-invalid-query '("test"))
         (nskk-dict-search-invalid-query (setq query-caught t))
@@ -147,7 +146,6 @@
       (should query-caught)
       (should (not index-caught))
 
-      ;; Test index error
       (setq query-caught nil)
       (setq index-caught nil)
       (condition-case _err
@@ -656,7 +654,6 @@
     (nskk-prolog-test-with-isolated-db
       (let ((nskk--user-dict-index 'user))
         (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-        ;; Register a single-character reading
         (nskk-prolog-assert '((user-dict-entry "あ" ("亜" "阿"))))
         ;; Single-char key should still find the direct match
         (let ((result (nskk-dict-lookup "あ")))
@@ -1589,7 +1586,6 @@
                              :source-files '("/some/old/path")
                              :entries '(("あ" . ("亜"))))
                        (current-buffer)))
-              ;; But current config has a different path
               (let ((nskk-dict-system-dictionary-files '("/different/path")))
                 (nskk-with-mocks ((nskk--dict-cache-file-path
                                    (lambda () temp-file)))
@@ -1755,7 +1751,6 @@
              (nskk-dict-user-dictionary-file tmpfile))
         (unwind-protect
             (progn
-              ;; Register a word so the user dict is populated
               (nskk-dict-register-word "てすと" "テスト")
               (setq nskk-dict-modified t)
               (nskk-dict-save-user-dictionary)
@@ -1765,7 +1760,6 @@
                 (should (string-match-p "てすと" saved))
                 ;; File should contain the candidate in SKK format (word/...)
                 (should (string-match-p "テスト" saved))
-                ;; Modified flag should be cleared after save
                 (should-not nskk-dict-modified)))
           (when (file-exists-p tmpfile)
             (delete-file tmpfile))))))
@@ -1775,7 +1769,6 @@
       (let ((nskk-dict-user-dictionary-file nil)
             (nskk-dict-modified t))
         (nskk-dict-save-user-dictionary)
-        ;; Modified flag should remain unchanged
         (should nskk-dict-modified)))))
 
 (nskk-describe "nskk--dict-maybe-save unit"
@@ -1799,7 +1792,6 @@
     (nskk-with-mocks ((nskk-dict-save-user-dictionary
                        (lambda () (error "Simulated save failure"))))
       (let ((nskk-dict-modified t))
-        ;; Should not signal an error
         (nskk--dict-maybe-save)))))
 
 ;;;
@@ -2008,10 +2000,8 @@
           (let ((nskk--user-dict-index 'user)
                 (nskk-dict-modified nil))
             (nskk-prolog-set-index 'user-dict-entry 2 :trie)
-            ;; Register the word twice
             (nskk-dict-register-word input expected)
             (nskk-dict-register-word input expected)
-            ;; Should appear exactly once in candidates
             (let* ((candidates (nskk-prolog-query-value
                                 `(user-dict-entry ,input \?c) '\?c))
                    (occurrences (cl-count expected candidates :test #'equal)))
@@ -2027,7 +2017,6 @@
                 (nskk-dict-modified nil))
             (nskk-prolog-set-index 'user-dict-entry 2 :trie)
             (nskk-prolog-retract-all 'user-dict-entry 2)
-            ;; Register first candidate, then add a new one
             (nskk-dict-register-word input "既存")
             (nskk-dict-register-word input expected)
             ;; New registration should appear first (prepended)
@@ -2086,10 +2075,8 @@
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
       (let ((nskk--user-dict-index nil)
             (nskk-dict-modified nil))
-        ;; Register a real non-empty word first so lookup succeeds
         (nskk-dict-register-word/k reading "テスト"
           (lambda (_) t) #'ignore)
-        ;; Now verify that on-found is called (not on-not-found)
         (nskk-dict-lookup/k reading
           (lambda (candidates)
             (setq found-called t)

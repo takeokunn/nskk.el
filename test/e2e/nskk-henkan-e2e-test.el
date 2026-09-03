@@ -704,7 +704,6 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-e2e--dispatch-event item)
       ;; After a valid selection key, conversion must have ended
       (and (not (nskk-converting-p))
-           ;; Buffer must contain a non-empty string (the committed candidate)
            (not (string-empty-p (buffer-string))))))
 
   (nskk-property-test-exhaustive candidate-list-out-of-range-keys-keep-converting
@@ -1252,7 +1251,6 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
 (nskk-describe "DEL cancel and resume behavior"
   (nskk-it "cancels conversion and allows re-entry after DEL"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Enter converting state
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)

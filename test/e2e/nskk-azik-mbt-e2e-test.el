@@ -317,7 +317,6 @@ failing scenario can be reproduced with (random SEED)."
                         failures)
                   ;; Attempt recovery so subsequent steps are not poisoned.
                   (nskk--azik-chaos--reset-to-idle)))))
-          ;; Reset between scenarios.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
@@ -384,7 +383,6 @@ regardless of the AZIK deferred state overlays."
                           :phase      phase
                           :abs-state  abs-state)
                     failures)))
-          ;; Reset for next scenario.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
@@ -416,7 +414,6 @@ internal state — the operation is idempotent on the state machine."
     (random seed)
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
-        ;; Ensure we start from idle.
         (nskk--azik-chaos--reset-to-idle)
         (let* ((abs-before (nskk--mbt-observe-state))
                (phase-before (and (bound-and-true-p nskk-current-state)
@@ -459,7 +456,6 @@ internal state — the operation is idempotent on the state machine."
                             :abs-after    abs-after
                             :phase-after  phase-after)
                       failures)))))
-        ;; Reset between scenarios.
         (nskk--azik-chaos--reset-to-idle)))
     (when failures
       (ert-fail
@@ -542,7 +538,6 @@ state-arms might fire in the same handler call."
                                 :i6-dv    dv)
                           failures)
                     (nskk--azik-chaos--reset-to-idle))))))
-          ;; Reset between scenarios.
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail

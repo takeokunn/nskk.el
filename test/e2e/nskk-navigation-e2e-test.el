@@ -122,13 +122,11 @@
       (nskk-e2e-type "a")
       (nskk-e2e-type "i")
       (nskk-e2e-assert-buffer "あい")
-      ;; Move to beginning
       (goto-char (point-min))
       (should (= (point) 1))
       ;; C-f should move forward one character
       (nskk-e2e-type "C-f")
       (should (= (point) 2))
-      ;; Buffer is unchanged
       (nskk-e2e-assert-buffer "あい")))
 
   (nskk-it "is plain forward-char in ascii mode"
@@ -162,7 +160,6 @@
       ;; C-b should move backward one character
       (nskk-e2e-type "C-b")
       (should (= (point) 2))
-      ;; Buffer is unchanged
       (nskk-e2e-assert-buffer "あい")))
 
   (nskk-it "does not signal error at beginning of buffer"
@@ -171,7 +168,6 @@
       (should (= (point) 1))
       ;; C-b at beginning: condition-case swallows the error
       (nskk-e2e-type "C-b")
-      ;; Buffer still empty, point still at 1
       (nskk-e2e-assert-buffer "")
       (should (= (point) 1)))))
 
@@ -182,7 +178,6 @@
 (nskk-describe "C-f and C-b sequences"
   (nskk-it "commit by C-f then C-b in normal state moves point backward"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Enter ▼ converting
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
@@ -191,7 +186,6 @@
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "漢字")
       (nskk-e2e-type "C-b")
-      ;; Buffer unchanged
       (nskk-e2e-assert-buffer "漢字"))))
 
 ;;;;
@@ -299,12 +293,10 @@
       (nskk-e2e-type "i")
       (nskk-e2e-type "u")
       (nskk-e2e-assert-buffer "あいう")
-      ;; Move to beginning
       (goto-char (point-min))
       ;; C-e should move point to end of line
       (nskk-e2e-type "C-e")
       (should (= (point) (point-max)))
-      ;; Buffer is unchanged
       (nskk-e2e-assert-buffer "あいう")
       ;; Not converting
       (nskk-e2e-assert-not-converting)))
@@ -313,17 +305,14 @@
     (nskk-e2e-with-buffer nil nil
       (nskk-e2e-type "abc")
       (nskk-e2e-assert-buffer "abc")
-      ;; Move to beginning
       (goto-char (point-min))
       ;; C-e should move point to end of line
       (nskk-e2e-type "C-e")
       (should (= (point) (point-max)))
-      ;; Buffer is unchanged
       (nskk-e2e-assert-buffer "abc")))
 
   (nskk-it "is a no-op at end of line in normal state"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Insert あ; point is already at end
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")
       ;; Point is already at end-of-line; C-e should keep it there

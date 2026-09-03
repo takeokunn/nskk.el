@@ -270,7 +270,6 @@
 (nskk-describe "buffer delete behavior"
   (nskk-it "deleting from buffer decreases length or leaves empty buffer unchanged"
     (let ((state (nskk-state-create 'hiragana)))
-      ;; Start with known content
       (nskk-state-append-input state ?a)
       (nskk-state-append-input state ?b)
       (nskk-state-append-input state ?c)
@@ -297,10 +296,8 @@
   (nskk-it "clear buffer results in empty string (property-based)"
     (dotimes (_ 50)
       (let ((state (nskk-state-create 'hiragana)))
-        ;; Add random content
         (dotimes (_ (nskk--pbt-random-int 1 10))
           (nskk-state-append-input state (nskk--sm-random-char)))
-        ;; Clear the buffer
         (nskk-state-clear-input state)
         (should (stringp (nskk-state-input-buffer state)))
         (should (string= (nskk-state-input-buffer state) "")))))
@@ -361,12 +358,10 @@
   (nskk-it "reset should empty all buffers (property-based)"
     (dotimes (_ 50)
       (let ((state (nskk-state-create 'hiragana)))
-        ;; Add random content to both buffers
         (dotimes (_ (nskk--pbt-random-int 1 10))
           (nskk-state-append-input state (nskk--sm-random-char)))
         (nskk-state-set state 'converted-buffer
                         (nskk--pbt-generate-input-buffer 10))
-        ;; Reset the state
         (nskk-state-reset state)
         (should (string= (nskk-state-input-buffer state) ""))
         (should (string= (nskk-state-converted-buffer state) "")))))
@@ -407,7 +402,6 @@
           (nskk-state-append-input state ?a)))
       (nskk-then
         (should (= (length (nskk-state-input-buffer state)) 1000))
-        ;; Buffer should still be valid
         (should (stringp (nskk-state-input-buffer state))))))
 
   (nskk-it "appending Unicode characters should work correctly"

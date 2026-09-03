@@ -341,7 +341,6 @@
       (nskk-e2e-assert-mode 'hiragana)
       ;; q-key: "kq" is in hash → azik-complete buf-state → fire-romaji.
       (nskk-handle-q-key)
-      ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
       ;; "kq" fired as AZIK double-vowel rule → "かい" in buffer.
       (nskk-e2e-assert-buffer "かい")))
@@ -354,7 +353,6 @@
       (nskk-e2e-type "n")
       ;; "nq" is an AZIK rule → buf-state=azik-complete → fire-romaji.
       (nskk-handle-q-key)
-      ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
       (nskk-e2e-assert-buffer "ない")))
 
@@ -363,7 +361,6 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "f")
       (nskk-handle-q-key)
-      ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
       (nskk-e2e-assert-buffer "ふぁい")))
 
@@ -372,7 +369,6 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "j")
       (nskk-handle-q-key)
-      ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
       (nskk-e2e-assert-buffer "じゃい")))
 
@@ -381,7 +377,6 @@
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "v")
       (nskk-handle-q-key)
-      ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
       (nskk-e2e-assert-buffer "ゔぁい")))
 
@@ -395,7 +390,6 @@
       ;; Directly put "l" in the romaji buffer (no lq AZIK rule exists).
       (nskk-state-set-romaji-buffer "l")
       (nskk-handle-q-key)
-      ;; Mode should NOT have changed.
       (nskk-e2e-assert-mode 'hiragana)
       ;; "l" is discarded, q produces ん.
       (nskk-e2e-assert-buffer "ん"))))

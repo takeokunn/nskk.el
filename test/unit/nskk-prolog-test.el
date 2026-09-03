@@ -1001,7 +1001,6 @@
               (ba (nskk-prolog-unify b a nil)))
           ;; Both succeed or both fail — symmetry invariant
           (should (eq (nskk--prolog-fail-p ab) (nskk--prolog-fail-p ba))))))
-    ;; Test with integers
     (dolist (pair '((42 42) (42 99)))
       (let ((a (car pair))
             (b (cadr pair)))
@@ -1018,12 +1017,9 @@ the database in the same state as before the assertion."
     ;; Capture initial state (no facts)
     (let ((before-result (nskk-prolog-query '(roundtrip-fact test-value))))
       (should (null before-result))
-      ;; Assert a fact
       (nskk-prolog-assert '((roundtrip-fact test-value)))
       (should (nskk-prolog-query '(roundtrip-fact test-value)))
-      ;; Retract the fact
       (nskk-prolog-retract '(roundtrip-fact test-value))
-      ;; Should be back to nil
       (let ((after-result (nskk-prolog-query '(roundtrip-fact test-value))))
         (should (null after-result))))))
 
@@ -1882,11 +1878,8 @@ the database in the same state as before the assertion."
              (calls (cdr expansion)))
         (should (eq (car expansion) 'progn))
         (should (= (length calls) 3))
-        ;; First call
         (should (equal (cadr (nth 0 calls)) '(key-act space converting next-candidate)))
-        ;; Second call
         (should (equal (cadr (nth 1 calls)) '(key-act space preedit   start-conversion)))
-        ;; Third call
         (should (equal (cadr (nth 2 calls)) '(key-act space normal    self-insert))))))
 
   (nskk-context "runtime behavior"

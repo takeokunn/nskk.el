@@ -101,15 +101,12 @@
 
   (nskk-it "can switch between standard and AZIK styles"
     (nskk-prolog-test-with-isolated-db
-      ;; Load standard
       (nskk-converter-load-style 'standard)
       (should (equal (nskk-convert-romaji "ka") "か"))
       ;; In standard, "kz" should not convert to "かん"
       (should-not (equal (nskk-convert-romaji "kz") "かん"))
-      ;; Switch to AZIK
       (nskk-converter-load-style 'azik)
       (should (equal (nskk-convert-romaji "kz") "かん"))
-      ;; Switch back to standard
       (nskk-converter-load-style 'standard)
       (should (equal (nskk-convert-romaji "ka") "か"))))
 
@@ -834,7 +831,6 @@
   (nskk-context "t-row shortcuts"
     (nskk-it "tb tm tr convert to たび ため たら and lookup table is complete"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "tt") "たち"))
         (should (equal (nskk-converter-lookup "tb") "たび"))
         (should (equal (nskk-converter-lookup "tm") "ため"))
@@ -854,7 +850,6 @@
   (nskk-context "n-row shortcuts"
     (nskk-it "nr nt nb rules exist in the lookup table"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "nr") "なる"))
         (should (equal (nskk-converter-lookup "nt") "にち"))
         (should (equal (nskk-converter-lookup "nb") "ねば")))))
@@ -884,7 +879,6 @@
   (nskk-context "r-row shortcuts"
     (nskk-it "rr rule exists in the lookup table"
       (nskk-with-azik-style
-        ;; Verify rule exists in the table
         (should (equal (nskk-converter-lookup "rr") "られ")))))
 
   (nskk-context "w-row shortcuts"
@@ -1249,7 +1243,6 @@
                       '(nskk-azik-hatsuon "k" "か" "き" "く" "け" "こ"))))
       (should (eq (car expansion) 'progn))
       (should (= (length (cdr expansion)) 5))
-      ;; First assertion: kz → かん
       (should (equal (cadr (cadr (nth 0 (cdr expansion)))) "kz"))
       (should (equal (caddr (cadr (nth 0 (cdr expansion)))) "かん"))))
 

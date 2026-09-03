@@ -178,7 +178,6 @@
         ;; Second call with same mode returns cached result
         (let ((second-result (nskk-modeline-indicator)))
           (should (equal first-result second-result)))
-        ;; Switch mode → cache should be invalidated
         (nskk-e2e-type "q")  ;; → katakana
         (let ((after-switch (nskk-modeline-indicator)))
           ;; New result should be for katakana
@@ -186,7 +185,6 @@
 
   (nskk-it "returns same text for the same mode symbol on repeated calls"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Call indicator multiple times for the same mode
       (let ((results (cl-loop repeat 5 collect (nskk-modeline-indicator))))
         ;; All should contain "かな"
         (dolist (r results)
@@ -343,7 +341,6 @@
   (nskk-it "point is at point-max after C-j commit with pre-existing buffer text"
     (nskk-e2e-with-buffer 'hiragana nil
       ;; Insert "あ" first, then convert "Kanji" → 漢字 via SPC + C-j.
-      ;; Buffer = "あ漢字"; point should be at point-max (after 漢字).
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")
       (nskk-e2e-type "Kanji")
@@ -371,12 +368,10 @@
   (nskk-it "point is at point-max after C-j kakutei on preedit (no conversion)"
     (nskk-e2e-with-buffer 'hiragana nil
       ;; Type "Kanji" to enter ▽ preedit, then C-j to commit the kana as-is.
-      ;; Buffer = "かんじ"; point should be at point-max.
       (nskk-e2e-type "Kanji")
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-henkan-phase nil)
-      ;; Buffer contains the committed kana; point is at end.
       (should (= (point) (point-max))))))
 
 ;;;;
@@ -402,7 +397,6 @@
   (nskk-it "point is at point-min after C-g from preedit state (empty buffer)"
     (nskk-e2e-with-buffer 'hiragana nil
       ;; C-g from ▽ preedit state: cancels the preedit and removes all preedit text.
-      ;; Buffer becomes empty; point should be at point-min.
       (nskk-e2e-type "Kanji")
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "C-g")
@@ -421,7 +415,6 @@
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-henkan-phase 'on)
-      ;; Buffer contains ▽ + kana reading; point is at the end of the reading.
       (nskk-e2e-assert-buffer "▽かんじ")
       (should (= (point) (point-max)))))
 
@@ -449,7 +442,6 @@
 (nskk-describe "buffer does not contain conversion overlay text"
   (nskk-it "buffer-string during ▼ state contains the ▼ marker"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Enter converting state.
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)

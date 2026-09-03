@@ -898,7 +898,6 @@
   (nskk-it "commits KaEru and allows continued input after"
     ;; After E triggers conversion (▼変え), "r" triggers immediate implicit
     ;; kakutei (DDSKK-compatible), then "ru"→"る" as new input.
-    ;; Verify that continued typing works correctly after implicit kakutei.
     (let ((dict '(("かe" . ("変")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "Ka")
@@ -1405,11 +1404,9 @@
     (let ((dict '(("かk" . ("書" "掛"))))
           (on-found-called nil))
       (nskk-e2e-with-buffer 'hiragana dict
-        ;; Set up the ▽か*k state by typing K a K.
         (nskk-e2e-type "K")
         (nskk-e2e-type "a")
         (nskk-e2e-type "K")
-        ;; Now call nskk-start-conversion/k directly with tracking lambdas.
         ;; The okuri branch should fire because okurigana is pending.
         (nskk-start-conversion/k
          (lambda (&rest _args)

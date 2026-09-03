@@ -358,10 +358,8 @@
             (nskk--show-mode-last-mode nil)
             (nskk-show-mode-duration 60))
         (nskk--show-mode-display-inline "[か]")
-        ;; Timer was created
         (should (timerp nskk--show-mode-timer))
         (nskk-show-mode-hide)
-        ;; Timer was cancelled and cleared
         (should (null nskk--show-mode-timer)))))
 
   (nskk-it "removes the overlay when one exists"

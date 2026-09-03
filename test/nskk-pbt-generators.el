@@ -48,7 +48,6 @@ When nil, uses system random.")
 SEED should be an integer. Use nil to reset to system random."
   (setq nskk--pbt-current-seed seed)
   (when seed
-    ;; Initialize linear congruential generator state
     (setq nskk--pbt-seed-state (mod seed (expt 2 31)))))
 
 (defun nskk-pbt-get-seed ()
@@ -67,7 +66,6 @@ Uses seeded generation if seed is set, otherwise uses system random."
         (if limit
             (mod new-state limit)
           new-state))
-    ;; Use system random
     (if limit
         (random limit)
       (random))))
@@ -128,7 +126,6 @@ When INCLUDE-UPPERCASE is non-nil, may generate uppercase letters."
     (if (and include-special (nskk--pbt-random-bool))
         ;; Generate special key (represented as string)
         (nskk--pbt-random-choice (mapcar #'car nskk--pbt-mode-switch-keys))
-      ;; Generate regular character
       (string (nskk--pbt-random-choice choices)))))
 
 (defun nskk--pbt-generate-key-sequence (&optional length)
@@ -179,7 +176,6 @@ Default length is 1-20 characters if not specified."
            (okurigana-pos (nskk--pbt-random-int 1 (1- len))))
       (dotimes (i len)
         (if (= i okurigana-pos)
-            ;; Insert uppercase consonant for okurigana
             (push (string (nskk--pbt-random-choice nskk--pbt-uppercase-letters)) result)
           (push (string (nskk--pbt-random-choice nskk--pbt-lowercase-letters)) result)))
       (nreverse result))))
@@ -232,19 +228,16 @@ COUNT defaults to 0-10 if not specified."
              collect (let ((candidate-type (nskk--pbt-random 3)))
                        (cond
                         ((= candidate-type 0)
-                         ;; Hiragana candidate
                          (string-join
                                    (cl-loop repeat (nskk--pbt-random-int 1 5)
                                             collect (nskk--pbt-random-choice hiragana-chars))
                                    ""))
                         ((= candidate-type 1)
-                         ;; Kanji candidate
                          (string-join
                                    (cl-loop repeat (nskk--pbt-random-int 1 3)
                                             collect (nskk--pbt-random-choice kanji-chars))
                                    ""))
                         (t
-                         ;; Mixed candidate
                          (concat (nskk--pbt-random-choice hiragana-chars)
                                 (nskk--pbt-random-choice kanji-chars))))))))
 
@@ -263,7 +256,6 @@ SIZE controls the complexity of generated state."
                                    (nskk--pbt-random-bool))
                               (nskk--pbt-random-int 0 (length input-buffer))
                             nil)))
-    ;; Return a plist representing the state
     ;; (Cannot create actual nskk-state struct without loading nskk-state)
     (list :mode mode
           :input-buffer input-buffer
@@ -354,7 +346,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
                           (nskk--pbt-random-choice '(basic extended mixed incomplete)))))
     (cl-case pattern-type
       (basic
-       ;; Basic patterns only
        (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice
@@ -362,7 +353,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
                                             nskk--pbt-consonant-vowel-basic)))
                   ""))
       (extended
-       ;; Extended patterns including special
        (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice
@@ -371,7 +361,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
                                             nskk--pbt-special-patterns)))
                   ""))
       (incomplete
-       ;; Incomplete pattern
        (if (nskk--pbt-random-bool)
            (nskk--pbt-random-choice nskk--pbt-incomplete-patterns)
          ;; Mixed: complete syllables + incomplete ending
@@ -500,12 +489,10 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
 If CATEGORY is specified, sample from that category only.
 Uses stratified sampling for efficiency when CATEGORY is nil."
   (if category
-      ;; Sample from specific category
       (let ((cat-patterns (cdr (assoc category nskk--pbt-azik-categories))))
         (if cat-patterns
             (nskk--pbt-random-choice cat-patterns)
           (error "Unknown AZIK category: %s" category)))
-    ;; Stratified sampling across all categories
     (let* ((selected-category (nskk--pbt-random-choice nskk--pbt-azik-categories))
            (patterns (cdr selected-category)))
       (nskk--pbt-random-choice patterns))))

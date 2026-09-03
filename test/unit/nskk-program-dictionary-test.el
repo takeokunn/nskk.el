@@ -1693,9 +1693,7 @@
                   nskk-program-dict-dispatch-table)))
       (nskk--pd-builtin-test-with-env t
         (let ((result (nskk-program-dict-builtin-lookup "today")))
-          ;; Custom handler is called
           (should custom-called)
-          ;; Custom result is present among candidates
           (should (member "custom-today" (mapcar #'substring-no-properties result)))))))
 
   (nskk-it "custom entry with unique prefix works independently"

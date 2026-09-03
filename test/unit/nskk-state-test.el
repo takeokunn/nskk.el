@@ -335,19 +335,16 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
   (nskk-it "tracks previous-mode through multiple transitions"
     (let ((state (nskk-state-create 'ascii)))
-      ;; Initial state
             (should (eq (nskk-state-previous-mode state) 'ascii))
 
       (nskk-state-set state 'mode 'hiragana)
       (should (eq (nskk-state-mode state) 'hiragana))
       (should (eq (nskk-state-previous-mode state) 'ascii))
 
-      ;; Second transition
       (nskk-state-set state 'mode 'katakana)
       (should (eq (nskk-state-mode state) 'katakana))
       (should (eq (nskk-state-previous-mode state) 'hiragana))
 
-      ;; Third transition
       (nskk-state-set state 'mode 'latin)
       (should (eq (nskk-state-mode state) 'latin))
       (should (eq (nskk-state-previous-mode state) 'katakana))))
@@ -525,11 +522,9 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
   (nskk-it "validates that from-mode must match current mode"
     (let ((state (nskk-state-create 'ascii)))
-      ;; Correct from-mode should succeed
       (should (nskk-state-transition state 'ascii 'hiragana))
       (should (eq (nskk-state-mode state) 'hiragana))
 
-      ;; Wrong from-mode should fail
       (should (not (nskk-state-transition state 'ascii 'katakana)))
       (should (eq (nskk-state-mode state) 'hiragana))))
 
@@ -547,7 +542,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (should (nskk-state-transition state 'latin 'abbrev))
       (should (nskk-state-transition state 'abbrev 'ascii))
 
-      ;; Final state should be ascii
       (should (eq (nskk-state-mode state) 'ascii)))))
 
 ;;;
@@ -741,17 +735,14 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (nskk-state-previous-candidate state)
       (should (string= (nskk-state-current-candidate state) "one"))
 
-      ;; Navigate to end
       (nskk-state-next-candidate state)
       (nskk-state-next-candidate state)
       (nskk-state-next-candidate state)
       (should (string= (nskk-state-current-candidate state) "four"))
 
-      ;; Next should wrap to beginning
       (nskk-state-next-candidate state)
       (should (string= (nskk-state-current-candidate state) "one"))
 
-      ;; Previous should wrap to end
       (nskk-state-previous-candidate state)
       (should (string= (nskk-state-current-candidate state) "four")))))
 
@@ -828,7 +819,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     (let ((state (nskk-state-create 'hiragana)))
       (nskk-state-set-okurigana state "k")
       (should (equal (nskk-state-get-okurigana state) "k"))
-      ;; Overwrite
       (nskk-state-set-okurigana state "t")
       (should (equal (nskk-state-get-okurigana state) "t"))))
 
@@ -1220,12 +1210,9 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
                     nskk-state-pbt--valid-modes))
          (state (nskk-state-create mode)))
-    ;; Set some state
     (nskk-state-set state 'input-buffer input)
     (nskk-state-set state 'converted-buffer input)
-    ;; Reset
     (nskk-state-reset state)
-    ;; Mode preserved, buffers cleared
     (and (eq (nskk-state-mode state) mode)
          (string= (nskk-state-input-buffer state) "")
          (string= (nskk-state-converted-buffer state) "")))
@@ -1324,18 +1311,15 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 (nskk-describe "nskk-state full lifecycle scenarios"
   (nskk-it "inputs characters then converts and navigates candidates then resets"
     (let ((state (nskk-state-create 'hiragana)))
-      ;; Input phase
       (nskk-state-append-input state ?k)
       (nskk-state-append-input state ?a)
       (nskk-state-append-input state ?n)
       (nskk-state-append-input state ?j)
       (should (string= (nskk-state-input-buffer state) "kanj"))
 
-      ;; Conversion phase - set henkan-phase to on
       (nskk-state-set-henkan-phase state 'on)
       (should (nskk-state-in-henkan-mode-p state))
 
-      ;; Candidates phase - transition to active
       (nskk-state-set-henkan-phase state 'active)
       (nskk-state-set-candidates state '("\u6f22\u5b57" "\u611f\u3058" "\u5e7e\u6642"))
       (should (string= (nskk-state-current-candidate state) "\u6f22\u5b57"))
@@ -1346,7 +1330,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (nskk-state-next-candidate state)
       (should (string= (nskk-state-current-candidate state) "\u5e7e\u6642"))
 
-      ;; Reset for next input
       (nskk-state-reset state)
       (should (string= (nskk-state-input-buffer state) ""))
       (should (null (nskk-state-candidates state)))
@@ -1355,30 +1338,24 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (nskk-it "switches modes and tracks previous-mode through ascii hiragana katakana"
     (let ((state (nskk-state-create 'ascii)))
       
-      ;; Switch to hiragana
       (nskk-state-transition state 'ascii 'hiragana)
       (should (eq (nskk-state-previous-mode state) 'ascii))
 
-      ;; Input in hiragana
       (nskk-state-append-input state ?\u3042)
       (should (string= (nskk-state-input-buffer state) "\u3042"))
 
-      ;; Switch to katakana
       (nskk-state-transition state 'hiragana 'katakana)
       (should (eq (nskk-state-previous-mode state) 'hiragana))
 
-      ;; Input in katakana
       (nskk-state-clear-input state)
       (nskk-state-append-input state ?\u30a2)
       (should (string= (nskk-state-input-buffer state) "\u30a2"))
 
-      ;; Switch back to ascii
       (nskk-state-transition state 'katakana 'ascii)
       (should (eq (nskk-state-previous-mode state) 'katakana))))
 
   (nskk-it "corrects a typo with delete then re-input then navigates candidates"
     (let ((state (nskk-state-create 'hiragana)))
-      ;; Start typing
       (nskk-state-append-input state ?t)
       (nskk-state-append-input state ?o)
       (nskk-state-append-input state ?u)
@@ -1390,16 +1367,13 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (nskk-state-delete-last-char state)
       (should (string= (nskk-state-input-buffer state) "touk"))
 
-      ;; Add correct character
       (nskk-state-append-input state ?o)
       (should (string= (nskk-state-input-buffer state) "touko"))
 
-      ;; Set conversion phase and get candidates
       (nskk-state-force-henkan-phase state 'active)
       (nskk-state-set-candidates state '("\u6771\u4eac" "\u767b\u6821" "\u6e21\u822a"))
       (should (string= (nskk-state-current-candidate state) "\u6771\u4eac"))
 
-      ;; Navigate through candidates
       (nskk-state-next-candidate state)
       (should (string= (nskk-state-current-candidate state) "\u767b\u6821"))
 
@@ -1610,10 +1584,8 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                   (setf (nskk-state-mode initial-state) 'hiragana)
                   (setf (nskk-state-input-buffer initial-state) "")
                   initial-state))
-               ;; Record original state
                (original-mode (nskk-state-mode state-with-history))
                (original-buffer (nskk-state-input-buffer state-with-history))
-               ;; Apply undo then redo
                (after-undo (nskk-state-test--simulate-undo
                             (copy-sequence state-with-history)))
                (after-redo (nskk-state-test--simulate-redo after-undo)))
@@ -1648,7 +1620,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                                      collect (char-to-string char)))
                    (final-state (nskk-state-test--simulate-japanese-input
                                  state key-seq)))
-              ;; Just verify we got a valid state back
               (unless (nskk-state-p final-state)
                 (push (list :seed test-seed :run run :error "Invalid final state")
                       errors)))
@@ -1725,7 +1696,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                (state2 (nskk-state-create initial-mode))
                (result1 (nskk-state-test--process-key state1 switch-key))
                (result2 (nskk-state-test--process-key state2 switch-key)))
-          ;; Both should produce the same mode
           (unless (eq (nskk-state-mode result1) (nskk-state-mode result2))
             (push (list :seed test-seed
                         :run run
@@ -1880,7 +1850,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                (undo-size (length (nskk-state-undo-stack final-state)))
                (redo-size (length (nskk-state-redo-stack final-state)))
                (total-size (+ undo-size redo-size)))
-          ;; Total stack size should be bounded
           (when (> total-size max-stack-size)
             (push (list :seed test-seed
                         :run run

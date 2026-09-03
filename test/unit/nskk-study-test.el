@@ -245,7 +245,6 @@
         (should (equal (nskk-prolog-query-value
                         '(study-association "雨" "ふる" \?c) '\?c)
                        "降る"))
-        ;; Ring updated
         (should (equal (plist-get (car nskk--study-kakutei-ring) :word) "降る")))))
 
   (nskk-it "pushes to ring even without prior context"
@@ -270,7 +269,6 @@
         (unwind-protect
             (progn
               (nskk-study-save)
-              ;; Clear and reload
               (nskk-prolog-retract-all 'study-association 3)
               (should-not (nskk-prolog-query '(study-association \?p \?r \?c)))
               (nskk-study-load)
