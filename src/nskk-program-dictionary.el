@@ -131,11 +131,11 @@ per-line output.  stderr is discarded separately and never parsed.  A command
 that times out, exceeds the output limit, or exits nonzero is treated as a miss.
 All entries are tried in order and their results are deduplicated."
   :type
-  (quote (repeat (choice function string)))
+  '(repeat (choice function string))
   :risky
   t
   :group
-  (quote nskk-program-dict))
+  'nskk-program-dict)
 
 (defcustom
   nskk-program-dict-timeout
@@ -144,11 +144,11 @@ All entries are tried in order and their results are deduplicated."
 Owned stdout and stderr polls consume this budget in slices of at most 0.1
 seconds.  Non-positive, non-numeric, and non-finite values disable polling."
   :type
-  (quote number)
+  'number
   :safe
-  (function numberp)
+  #'numberp
   :group
-  (quote nskk-program-dict))
+  'nskk-program-dict)
 
 ;;; Section 2: Prolog infrastructure
 ;; Entry type dispatch table.
@@ -157,7 +157,7 @@ seconds.  Non-positive, non-numeric, and non-finite values disable polling."
 (nskk-prolog-define-fact-table
   program-dict-entry-type
   (:arity 2 :index :hash)
-  (function call-function)
+  #'call-function
   (command call-command))
 
 ;; Output format detection table.
@@ -313,9 +313,9 @@ back to deleting only the direct process."
     (let* ((pid (process-id process))
            (attributes
           (and (integerp pid) (> pid 0) (ignore-errors (process-attributes pid))))
-           (process-group (alist-get (quote pgrp) attributes)))
+           (process-group (alist-get 'pgrp attributes)))
       (when (and (integerp process-group) (= process-group pid))
-        (ignore-errors (signal-process (- process-group) (quote SIGKILL))))
+        (ignore-errors (signal-process (- process-group) 'SIGKILL)))
       (when (process-live-p process)
         (ignore-errors (delete-process process))))))
 
@@ -498,17 +498,17 @@ OUTPUT is nil, empty, or yields no valid candidates."
            (delimiter
           (nskk-prolog-query-value
             `(program-dict-output-prefix ,first-char \?_ \?d)
-            (quote \?d)))
+            '\?d))
            (body
           (if delimiter (substring trimmed 1)
             trimmed))
            (candidates
           (thread-last
             (split-string body (or delimiter "\n") t)
-            (mapcar (function string-trim))
-            (cl-remove-if-not (function nskk--program-dict-valid-function-candidate-p))
-            (mapcar (function nskk--program-dict-strip-annotation))
-            (cl-remove-if-not (function nskk--program-dict-valid-function-candidate-p)))))
+            (mapcar #'string-trim)
+            (cl-remove-if-not #'nskk--program-dict-valid-function-candidate-p)
+            (mapcar #'nskk--program-dict-strip-annotation)
+            (cl-remove-if-not #'nskk--program-dict-valid-function-candidate-p))))
       (if (and (consp candidates) (proper-list-p candidates)) (succeed candidates)
         (fail)))))
 
@@ -544,7 +544,7 @@ Calls on-found with a validated candidate list; otherwise calls on-not-found."
     (if (and
         (consp result)
         (proper-list-p result)
-        (cl-every (function nskk--program-dict-valid-function-candidate-p) result)) (succeed result)
+        (cl-every #'nskk--program-dict-valid-function-candidate-p result)) (succeed result)
       (fail))))
 
 ;;; Section 9: Shell command entry
@@ -632,7 +632,7 @@ Conses, vectors, hash-table keys and values, strings, and string text-property
 values are copied recursively.  Cycles and shared subgraphs are preserved.
 Functions and other atoms are retained as leaves."
     (let ((missing (make-symbol "nskk-program-dict-copy-missing"))
-          (memo (make-hash-table :test (function eq)))
+          (memo (make-hash-table :test #'eq))
           (pending (list object))
           non-hash
           hashes)
@@ -722,7 +722,7 @@ Functions and other atoms are retained as leaves."
 Conses, vectors, hash-table keys and values, and string text-property values
 are traversed without looping on cyclic or shared graphs.  Existing text
 properties are retained and `nskk-no-learn' is overwritten with exactly t."
-    (let ((seen (make-hash-table :test (function eq)))
+    (let ((seen (make-hash-table :test #'eq))
           (pending (list candidates)))
       (while
         pending
@@ -816,7 +816,7 @@ restore the exact pre-observation cache state."
           (nskk-cache-get-prepared/k
             cache
             key
-            (function nskk--program-dict-copy-graph)
+            #'nskk--program-dict-copy-graph
             (lambda (public)
               (funcall on-found public))
             (lambda ()
@@ -848,10 +848,10 @@ restore the exact pre-observation cache state."
         (funcall on-not-found)))
     (defun nskk-program-dict-lookup (key)
       "Synchronously look up KEY across configured program dictionaries."
-      (nskk-program-dict-lookup/k key (function identity) (function ignore)))
+      (nskk-program-dict-lookup/k key #'identity #'ignore))
     (put
-      (quote nskk-program-dict-lookup/k)
-      (quote nskk--cps-continuation-pattern)
+      'nskk-program-dict-lookup/k
+      'nskk--cps-continuation-pattern
       :found-not-found)))
 
 ;;; Section 13: Built-in dispatch table
