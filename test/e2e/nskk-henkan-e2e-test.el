@@ -1098,7 +1098,6 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
-      ;; Verify we are in converting state before DEL
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "DEL")
       ;; After rollback: no longer converting (▽ preedit is not converting)
@@ -1146,7 +1145,6 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Kanji")
       (nskk-e2e-assert-henkan-phase 'on "After 'Kanji': should be in ▽ preedit")
-      ;; First DEL: removes じ
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "▽かん" "After 1st DEL: buffer should show ▽かん")
       (nskk-e2e-assert-henkan-phase 'on "After 1st DEL: should still be in ▽ preedit")
@@ -1160,7 +1158,6 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       ;; Type 'Ka' to enter ▽か preedit
       (nskk-e2e-type "Ka")
       (nskk-e2e-assert-henkan-phase 'on "After 'Ka': should be in ▽ preedit")
-      ;; First DEL: point is past ▽ → delete-preedit-char → removes か
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "▽" "After 1st DEL: buffer should show empty ▽")
       (nskk-e2e-assert-henkan-phase 'on "After 1st DEL: still in ▽ preedit (not yet cancelled)")
@@ -1208,7 +1205,6 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
       (nskk-e2e-type "Ka")
       (nskk-e2e-assert-henkan-phase 'on "After 'Ka': should be in ▽ preedit")
       (should (equal (nskk-state-romaji-buffer) ""))
-      ;; First DEL: no pending romaji, so delete committed kana か.
       (nskk-e2e-type "DEL")
       (nskk-e2e-assert-buffer "▽" "1st DEL with no pending romaji: delete committed kana")
       (nskk-e2e-assert-henkan-phase 'on "After 1st DEL: still in ▽ preedit")

@@ -40,9 +40,6 @@
     (should (get 'nskk-dictionary 'group-documentation)))
 
   (nskk-it "nskk-dict-user-dictionary-file defaults to ~/.nskk/jisyo"
-    ;; Check the declared defcustom standard value, not the current value:
-    ;; the test framework redirects the live variable to a temp path so
-    ;; batch runs never touch the real personal dictionary.
     (should (equal (eval (car (get 'nskk-dict-user-dictionary-file
                                    'standard-value)))
                    (expand-file-name "~/.nskk/jisyo")))))
@@ -277,7 +274,6 @@
                                (workflow-dict "にほんご" ("日本語")))
       (let ((index (make-nskk-dict-index :predicate 'workflow-dict)))
         (should (nskk-dict-index-p index))
-        ;; Verify prefix search
         (let ((prefix-results (nskk-prolog-trie-prefix-search 'workflow-dict 2 "にほん")))
           (should (= (length prefix-results) 2))))))
 
@@ -347,13 +343,11 @@
                                (workflow-io-dict "あいうえお" ("アイウエオ"))
                                (workflow-io-dict "かきく" ("カキク")))
       (let ((_index (make-nskk-dict-index :predicate 'workflow-io-dict)))
-        ;; Verify prefix search works
         (let ((results (nskk-prolog-trie-prefix-search 'workflow-io-dict 2 "あいう")))
           (should (= (length results) 3))
           (should (assoc "あいう" results))
           (should (assoc "あいうえ" results))
           (should (assoc "あいうえお" results)))
-        ;; Verify exact lookup
         (let ((result (nskk-prolog-query-value
                        '(workflow-io-dict "かきく" \?c) '\?c)))
           (nskk-should-equal '("カキク") result))))))

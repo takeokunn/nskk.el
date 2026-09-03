@@ -49,7 +49,6 @@
     (nskk-prolog-test-with-isolated-db
       (nskk-given
        (nskk-prolog-assert '((cycle-pred foo bar))))
-      ;; Verify it exists first
       (should (nskk-prolog-holds-p '(cycle-pred foo bar)))
       (nskk-when
        (nskk-prolog-retract-all 'cycle-pred 2))
@@ -280,11 +279,6 @@
 
 ;;;; Group 5: deftest-cases — predicate arity mapping
 
-;; Verify that key predicates asserted by NSKK modules exist and respond
-;; correctly to holds-p queries with the expected argument count.
-;; Each case is (predicate-name . arity) and the test confirms that querying
-;; the predicate with that many variables returns a non-error result
-;; (either solutions or empty -- both are valid; the test only checks no crash).
 
 (nskk-deftest-table nskk-prolog-predicate-arity-mapping
   :description "Known predicates can be queried without error at the expected arity"

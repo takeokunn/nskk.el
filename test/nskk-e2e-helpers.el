@@ -121,8 +121,6 @@ Initialization order:
   7. Teardown: disable nskk-mode, reset global state"
   (declare (indent 2) (debug t))
   `(nskk-prolog-test-with-isolated-db
-     ;; Assert (dict-initialized) BEFORE enabling nskk-mode.
-     ;; This prevents nskk-dict-initialize from running and wiping our mock.
      (nskk-prolog-assert '((dict-initialized)))
      ;; Must use user-dict-entry (NOT mock-dict-entry) so dict-entry/2 bridge works.
      (nskk-prolog-retract-all 'user-dict-entry 2)

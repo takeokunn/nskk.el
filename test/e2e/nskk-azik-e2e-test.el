@@ -119,7 +119,6 @@
       (nskk-e2e-assert-buffer "ー")))
 
   (nskk-it "ko followed by colon produces こー"
-    ;; Verify "ko:" = こー (a common AZIK pattern for elongated vowels).
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "ko:")
       (nskk-e2e-assert-buffer "こー")))
@@ -444,8 +443,6 @@
         (nskk-e2e-assert-mode 'hiragana))))
 
   (nskk-it "@ toggle on jp106 clears pending romaji and toggles mode"
-    ;; When there is pending romaji, @ toggle key should still toggle mode
-    ;; and clear the pending romaji buffer.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "k")  ; pending romaji
       (nskk-e2e-assert-mode 'hiragana)
@@ -455,9 +452,6 @@
       (nskk-e2e-assert-buffer "")))
 
   (nskk-it "bracket toggle on us101 clears pending romaji and toggles mode"
-    ;; When there is pending romaji, [ toggle key should still toggle mode
-    ;; and clear the pending romaji buffer.
-    ;; NOTE: Must set nskk-azik-keyboard-type to 'us101 and rebind toggle key.
     (let ((nskk-azik-keyboard-type 'us101))
       (nskk--setup-azik-toggle-key)
       (nskk-e2e-with-azik-buffer 'hiragana nil
@@ -534,8 +528,6 @@
         (nskk-e2e-assert-buffer "["))))
 
   (nskk-it "@ key during preedit-pending clears marker and toggles mode"
-    ;; When uppercase trigger fired (▽ marker set) but no kana emitted yet,
-    ;; @ should clear the preedit marker and toggle to katakana.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "K")               ; uppercase K starts henkan (▽)
       (nskk-e2e-assert-henkan-phase 'on) ; marker set, no kana yet

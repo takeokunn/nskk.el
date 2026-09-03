@@ -206,9 +206,6 @@
 ;;;; 6. C-j from abbrev idle (no preedit) returns to hiragana
 
 (nskk-describe "abbrev mode C-j from idle"
-  ;; When abbrev mode is entered directly (no preedit marker set),
-  ;; the kakutei state is direct-idle.  kakutei-action maps direct-idle →
-  ;; enter-hiragana, so C-j switches to hiragana and leaves an empty buffer.
   (nskk-it "C-j from abbrev idle returns to hiragana"
     (nskk-e2e-with-buffer 'abbrev nil
       (nskk-e2e-assert-mode 'abbrev)

@@ -95,7 +95,6 @@ invariant, so any failure is fully reproducible."
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
-          ;; Check invariants after the full sequence.
           (let ((violation (nskk--azik-chaos--check-invariants)))
             (when violation
               (push (list :run run
@@ -155,7 +154,6 @@ arise from AZIK colon-okurigana, vowel-shadow, or hatsuon edge cases."
             (condition-case nil
                 (nskk-e2e--dispatch-event 32) ; SPC
               (error nil) (quit nil)))
-          ;; Now press C-g — absorb both error and quit (keyboard-quit)
           (condition-case nil
               (nskk-e2e--dispatch-event 7) ; C-g
             (error nil) (quit nil))
@@ -272,7 +270,6 @@ across buffer resets, corrupting the next independent input sequence."
               (error nil) (quit nil)))
           ;; Reset to idle — this should clear all pending state.
           (nskk--azik-chaos--reset-to-idle)
-          ;; Check that no deferred state remains.
           (let ((stuck nil))
             (when (and (fboundp 'nskk-deferred-azik-state)
                        (nskk-deferred-azik-state))
@@ -335,7 +332,6 @@ or wrong kana output once resolution finally occurs."
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil))
-            ;; Check after each individual event.
             (when (> (length (nskk-state-romaji-buffer)) 4)
               (push (list :run run
                           :seed seed
@@ -667,7 +663,6 @@ crashes the candidate-cycling logic or silently picks a nil candidate."
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
-          ;; Check candidate consistency.
           (when (bound-and-true-p nskk-current-state)
             (let ((phase (nskk-state-henkan-phase nskk-current-state)))
               (when (eq phase 'active)

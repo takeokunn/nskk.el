@@ -632,7 +632,6 @@ initialized."
   `(nskk-prolog-test-with-isolated-db
      (cl-letf (((nskk-dict-system-index) (nskk-test-create-mock-dict ,entries))
                ((nskk-dict-user-index) nil))
-       ;; Assert dict-initialized so Prolog-based init guards pass
        (nskk-prolog-assert '((dict-initialized)))
        ,@body)))
 

@@ -151,7 +151,6 @@
       (with-temp-buffer
         (setq nskk-current-state (nskk-state-create 'hiragana))
         (let ((nskk-show-mode-show nil))
-          ;; Should not error
           (should-not (condition-case err
                           (progn (nskk-show-mode-display) nil)
                         (error err)))))))
@@ -172,7 +171,6 @@
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil)
             (nskk--show-mode-last-mode nil))
-        ;; Should not signal an error
         (should-not (condition-case err
                         (progn (nskk-show-mode-hide) nil)
                       (error err))))))

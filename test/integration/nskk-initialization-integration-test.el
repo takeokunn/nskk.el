@@ -177,15 +177,12 @@
           (nskk-henkan-initialize)
           (nskk-input-initialize)
           (nskk-converter-initialize))
-        ;; Verify predicates from nskk-state-initialize-prolog
         (and
          (nskk-prolog-holds-p '(valid-mode hiragana))
          (nskk-prolog-holds-p '(valid-mode katakana))
          (nskk-prolog-holds-p '(valid-mode ascii))
-         ;; Verify predicate from nskk-kana-initialize
          (nskk-prolog-holds-p `(kana-hiragana ,?あ))
          (nskk-prolog-holds-p `(kana-katakana ,?ア))
-         ;; Verify predicates from nskk-henkan-initialize
          (nskk-prolog-holds-p '(converting-phase active))
          (nskk-prolog-holds-p '(converting-phase list))
          (nskk-prolog-holds-p '(converting-phase registration))

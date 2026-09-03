@@ -122,9 +122,7 @@
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
             (nskk-henkan-number-to-display-candidates 7))
         (let ((result (nskk-candidate-show-list '("漢字" "感じ" "幹事") 0)))
-          ;; Should return the page candidates
           (should (equal result '("漢字" "感じ" "幹事")))
-          ;; Should mark as active
           (should nskk--candidate-list-active)))))
 
   (nskk-it "respects per-page limit for pagination"
@@ -133,7 +131,6 @@
             (nskk-henkan-number-to-display-candidates 3)
             (candidates '("一" "二" "三" "四" "五")))
         (let ((result (nskk-candidate-show-list candidates 0)))
-          ;; Should only return first 3
           (should (= (length result) 3))
           (should (equal result '("一" "二" "三")))))))
 
@@ -143,7 +140,6 @@
             (nskk-henkan-number-to-display-candidates 3)
             (candidates '("一" "二" "三" "四" "五")))
         (let ((result (nskk-candidate-show-list candidates 3)))
-          ;; Should return candidates 4 and 5
           (should (= (length result) 2))
           (should (equal result '("四" "五")))))))
 
@@ -173,7 +169,6 @@
 
   (nskk-it "is safe to call when not active"
     (with-temp-buffer
-      ;; Should not error
       (nskk-candidate-hide-list)
       (should-not nskk--candidate-list-active))))
 
@@ -209,7 +204,6 @@
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
             (nskk-henkan-number-to-display-candidates 3)
             (candidates '("一" "二" "三" "四" "五")))
-        ;; First call creates overlay
         (nskk-candidate-show-list candidates 0)
         (let ((first-overlay (nskk-state-candidate-overlay)))
           (should (overlayp first-overlay))
@@ -286,7 +280,6 @@
               ;; Ensure no conversion overlay is set
               (nskk-state-set-conversion-overlay nil)
               (nskk-candidate-show-list '("候補") 0)
-              ;; Should succeed and create an overlay (at point fallback)
               (should (overlayp (nskk-state-candidate-overlay))))
           (nskk-state-set-conversion-overlay saved-conversion-overlay)))))
 
@@ -559,11 +552,9 @@
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
             (nskk-henkan-number-to-display-candidates 3)
             (received :unset))
-        ;; When active
         (nskk-candidate-show-list '("test") 0)
         (nskk-candidate-list-active-p/k (lambda (v) (setq received v)) #'ignore)
         (should received)
-        ;; When not active
         (nskk-candidate-hide-list)
         (nskk-candidate-list-active-p/k (lambda (v) (setq received v)) #'ignore)
         (should-not received))))

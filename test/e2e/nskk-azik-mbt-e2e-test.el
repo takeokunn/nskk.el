@@ -305,7 +305,6 @@ failing scenario can be reproduced with (random SEED)."
               (condition-case nil
                   (nskk--azik-chaos--dispatch-keys event)
                 (error nil) (quit nil))
-              ;; Check invariants after every step (pass event for I6/I7).
               (let ((viols (nskk--mbt-check-invariants event)))
                 (when viols
                   (push (list :run       run
@@ -375,7 +374,6 @@ regardless of the AZIK deferred state overlays."
             (nskk-set-deferred-azik-state nil))
           (when (fboundp 'nskk-deferred-vowel-shadow-state)
             (nskk-set-deferred-vowel-shadow-state nil))
-          ;; Assert idle: phase nil, no colon-okurigana flags.
           (let* ((phase (and (bound-and-true-p nskk-current-state)
                              (nskk-state-henkan-phase nskk-current-state)))
                  (abs-state (nskk--mbt-observe-state)))
@@ -505,7 +503,6 @@ state-arms might fire in the same handler call."
               (condition-case nil
                   (nskk--azik-chaos--dispatch-keys event)
                 (error nil) (quit nil))
-              ;; Check I2: deferred exclusivity.
               (let* ((azik-def   (and (fboundp 'nskk-deferred-azik-state)
                                       (nskk-deferred-azik-state)))
                      (vs-def     (and (fboundp 'nskk-deferred-vowel-shadow-state)
@@ -529,7 +526,6 @@ state-arms might fire in the same handler call."
                         failures)
                   ;; Recover so the walk can continue.
                   (nskk--azik-chaos--reset-to-idle)))
-              ;; Check I6: after C-g, DA and DV must be nil.
               (when (equal event "C-g")
                 (let ((da (and (fboundp 'nskk-deferred-azik-state)
                                (nskk-deferred-azik-state)))

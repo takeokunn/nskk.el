@@ -179,7 +179,6 @@
             (error nil))
           ;; Reset the state
           (nskk-state-reset state)
-          ;; Verify clean state
           (unless (and (nskk-state-p state)
                        (string= (nskk-state-input-buffer state) "")
                        (string= (nskk-state-converted-buffer state) "")
@@ -315,9 +314,7 @@
   (let* ((state (nskk-state-create 'hiragana)))
     ;; Force state into a converting phase bypassing transition validation
     (nskk-state-force-henkan-phase state phase)
-    ;; Now reset the phase to nil via the validated setter
     (nskk-state-set-henkan-phase state nil)
-    ;; Assert: phase is nil and state is still structurally valid
     (and (null (nskk-state-henkan-phase state))
          (nskk-state-p state)))
   50)
@@ -335,9 +332,7 @@
     ;; Set up non-empty candidates and a valid index
     (nskk-state-set-candidates state candidates)
     (nskk-state-set state 'current-index index)
-    ;; Now reset candidates to nil
     (nskk-state-set state 'candidates nil)
-    ;; Assert: candidates are nil and state is still valid
     (and (null (nskk-state-candidates state))
          (nskk-state-p state)))
   30)

@@ -618,7 +618,6 @@
     (nskk-prolog-test-with-isolated-db
       (nskk-converter-initialize)
       (should (eq (nskk-converter-load-style 'standard) 'standard))
-      ;; Verify basic rules still work
       (should (equal (nskk-converter-get-rule "ka") "か"))))
 
   (nskk-it "calls on-not-found for unknown style"

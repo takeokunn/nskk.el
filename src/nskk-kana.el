@@ -112,10 +112,6 @@ Generates:
             (<= char ,end)))))
 
 ;;;; Character Classification Predicates
-;;
-;; All predicates and their backing Prolog rules are installed at load time.
-;; Single-range predicates use `nskk--kana-define-range-predicate'.
-;; Multi-range predicates (han, japanese) use direct rule assertions.
 
 (nskk--kana-define-range-predicate
  nskk-kana-hiragana-p kana-hiragana
@@ -133,7 +129,6 @@ Generates:
  "Return non-nil if CHAR is a half-width katakana character (U+FF65-U+FF9F).
 Half-width katakana are part of the Half-width and Full-width Forms block.")
 
-;; Han (kanji) spans two disjoint Unicode ranges; two Prolog clauses cover both.
 (nskk-prolog-<- (kana-han \?c)
   (>= \?c nskk--kana-han-start)
   (<= \?c nskk--kana-han-end))
@@ -150,7 +145,6 @@ CJK Unified Ideographs Extension A (U+3400-U+4DBF)."
       (succeed t)
     (fail)))
 
-;; Japanese composite: Prolog disjunction over all four character ranges.
 (nskk-prolog-<- (kana-japanese \?c) (kana-hiragana \?c))
 (nskk-prolog-<- (kana-japanese \?c) (kana-katakana \?c))
 (nskk-prolog-<- (kana-japanese \?c) (kana-han \?c))
@@ -170,18 +164,6 @@ Recognizes the following Unicode ranges:
     (fail)))
 
 ;;;; Zenkaku/Hankaku Conversion Tables
-;;
-;; Dual-source architecture:
-;; - Authoritative source: Prolog facts (`zenkaku-to-hankaku/2',
-;;   `hankaku-to-zenkaku/2') asserted by `nskk-kana-initialize'.
-;;   These remain queryable by all modules.
-;; - Fast-path caches (read-only): `nskk--kana-zenkaku-to-hankaku-table' and
-;;   `nskk--kana-hankaku-to-zenkaku-table' are `defconst' hash tables defined
-;;   at load time.  Conversion functions use direct `gethash' instead of Prolog
-;;   queries for O(1) per-character performance (~0.0002ms vs ~0.007ms).
-;;   `nskk-kana-initialize' still asserts Prolog facts from the same data so
-;;   cross-module queries work correctly.  The raw hash tables remain available
-;;   for external callers.
 
 (defconst nskk--kana-zenkaku-to-hankaku-table
   (let ((table (make-hash-table :test 'equal :size 200)))
@@ -390,9 +372,6 @@ Idempotent: subsequent calls are no-ops."
     (maphash (lambda (k v)
                (nskk-prolog-assert (list (list 'hankaku-to-zenkaku k v))))
              nskk--kana-hankaku-to-zenkaku-table)
-    ;; Unified kana conversion table: (MODE DIRECTION CONVERTER-FN)
-    ;; DIRECTION is `insert' (hiragana → mode script) or `normalize' (mode script → hiragana).
-    ;; 3x2 orthogonal table: MODE × DIRECTION → CONVERTER-FN.
     (nskk-prolog-define-fact-table kana-conversion (:arity 3 :index :hash)
       (hiragana      insert      identity)
       (katakana      insert      nskk-kana-string-hiragana-to-katakana)

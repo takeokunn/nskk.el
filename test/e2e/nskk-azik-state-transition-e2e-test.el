@@ -326,7 +326,6 @@
       (nskk-e2e-type "Ka")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; First C-g: converting → preedit-on
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-henkan-phase 'on)
       ;; Second C-g: preedit-on → idle
@@ -347,7 +346,6 @@
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; First C-g: converting → preedit-on
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-henkan-phase 'on)
       ;; Second C-g: preedit-on → idle (keyboard-quit absorbed)
@@ -466,7 +464,6 @@
         (nskk-e2e-type "be")
         (nskk-e2e-type "R")
         (nskk-e2e-type "u")
-        ;; Now in ▼ converting state for 食る (okurigana-in-progress=t).
         (nskk-e2e-assert-converting)
         ;; Type N: should accumulate "n" in romaji-buffer without kakutei.
         (nskk-e2e-type "N")
@@ -600,7 +597,6 @@
       (should (string-search "かなん" (buffer-string)))))
 
   (nskk-it "KAnnki produces ▽かんき (nn path still works for plain ん)"
-    ;; Verify nn→ん still functions; users type KAnn to get かん before き.
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "Ka")
       (nskk-e2e--dispatch-event ?n)

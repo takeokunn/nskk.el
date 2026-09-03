@@ -75,7 +75,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
-        ;; First Tab → first completion (e.g., かんじ).
         (nskk-e2e-type "TAB")
         (let ((first-completion (nskk-preedit-string)))
           ;; Second Tab → next completion (e.g., かんが).
@@ -197,7 +196,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (should (not (string-empty-p (nskk-preedit-string))))
         ;; SPC should trigger henkan conversion.
         (nskk-e2e-type "SPC")
-        ;; Now we should be in active conversion phase (▼).
         (nskk-e2e-assert-henkan-phase 'active))))
 
   (nskk-it "C-j after Tab commits the completed reading as kana"

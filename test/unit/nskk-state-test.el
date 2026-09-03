@@ -338,7 +338,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       ;; Initial state
             (should (eq (nskk-state-previous-mode state) 'ascii))
 
-      ;; First transition
       (nskk-state-set state 'mode 'hiragana)
       (should (eq (nskk-state-mode state) 'hiragana))
       (should (eq (nskk-state-previous-mode state) 'ascii))
@@ -462,7 +461,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (should-error (nskk-state-set-henkan-phase state 'list))
       ;; nil -> registration is not valid
       (should-error (nskk-state-set-henkan-phase state 'registration))
-      ;; Verify valid transitions still work
       (nskk-state-set-henkan-phase state 'on)
       (should (eq (nskk-state-henkan-phase state) 'on))
       (nskk-state-set-henkan-phase state 'active)
@@ -703,7 +701,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (should (string= (nskk-state-next-candidate state) "c"))
       (should (= (nskk-state-current-index state) 2))
 
-      ;; Should wrap around
       (should (string= (nskk-state-next-candidate state) "a"))
       (should (= (nskk-state-current-index state) 0))))
 
@@ -725,7 +722,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (should (string= (nskk-state-previous-candidate state) "a"))
       (should (= (nskk-state-current-index state) 0))
 
-      ;; Should wrap around
       (should (string= (nskk-state-previous-candidate state) "c"))
       (should (= (nskk-state-current-index state) 2))))
 
@@ -1607,7 +1603,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (message "Sequence test 'undo-redo-invariant' seed: %d" test-seed)
       (dotimes (run runs)
         (let* ((initial-state (nskk-state-create 'hiragana))
-               ;; Setup: add something to undo stack
                (state-with-history
                 (progn
                   (setf (nskk-state-undo-stack initial-state)
@@ -1622,7 +1617,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                (after-undo (nskk-state-test--simulate-undo
                             (copy-sequence state-with-history)))
                (after-redo (nskk-state-test--simulate-redo after-undo)))
-          ;; Check if we returned to original state
           (when (and after-undo after-redo)
             (unless (and (eq (nskk-state-mode after-redo) original-mode)
                          (string= (nskk-state-input-buffer after-redo) original-buffer))
@@ -1679,7 +1673,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                    ;; Generate potentially invalid sequences
                    (key-seq (nskk-generate 'key-sequence))
                    (final-state (nskk-state-test--execute-keys state key-seq)))
-              ;; Verify state is still valid
               (unless (nskk-state-test--valid-state-p final-state)
                 (push (list :seed test-seed :run run :error "State corrupted")
                       errors)))
@@ -1777,11 +1770,9 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                    (long-seq (nskk-generate 'key-sequence-of-length
                                             (nskk--pbt-random-int 50 100)))
                    (final-state (nskk-state-test--execute-keys state long-seq)))
-              ;; Verify state is still valid
               (unless (nskk-state-test--valid-state-p final-state)
                 (push (list :seed test-seed :run run :error "Invalid state")
                       errors))
-              ;; Verify buffer bounds
               (unless (nskk-state-test--buffer-bounds-p final-state)
                 (push (list :seed test-seed :run run :error "Buffer overflow")
                       errors)))
@@ -1936,7 +1927,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (with-temp-buffer
         (insert "hello world")
         (let ((ov (make-overlay 1 5)))
-          ;; Now ensure the overlay covers the full buffer
           (nskk-ensure-overlay ov (point-min) (point-max))
           (should (= (overlay-start ov) (point-min)))
           (should (= (overlay-end ov) (point-max))))))

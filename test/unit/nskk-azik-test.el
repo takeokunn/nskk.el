@@ -94,7 +94,6 @@
     ;; Use nskk-with-azik-style to save/restore nskk--romaji-table in addition
     ;; to the Prolog DB, preventing AZIK hash table entries from persisting.
     (nskk-with-azik-style
-      ;; Verify the return value by reloading AZIK (idempotent — clears and reloads)
       (should (eq (nskk-converter-load-style 'azik) 'azik))
       ;; AZIK style should have extended rules
       (should (equal (nskk-convert-romaji "kz") "かん"))
@@ -252,7 +251,6 @@
   (nskk-context "k-row hatsuon"
     (nskk-it "kz kk kj kd kl convert to かん きん くん けん こん"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "kz") "かん"))
         (should (equal (nskk-converter-lookup "kk") "きん"))
         (should (equal (nskk-converter-lookup "kj") "くん"))
@@ -286,7 +284,6 @@
   (nskk-context "n-row hatsuon"
     (nskk-it "nz nk nj nd nl rules exist in the lookup table"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "nz") "なん"))
         (should (equal (nskk-converter-lookup "nk") "にん"))
         (should (equal (nskk-converter-lookup "nj") "ぬん"))
@@ -350,7 +347,6 @@
   (nskk-context "z-row hatsuon"
     (nskk-it "zk zj zd zl convert to じん ずん ぜん ぞん and lookup table is complete"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "zz") "ざん"))
         (should (equal (nskk-converter-lookup "zk") "じん"))
         (should (equal (nskk-converter-lookup "zj") "ずん"))
@@ -365,7 +361,6 @@
   (nskk-context "d-row hatsuon"
     (nskk-it "dz dk dj dl convert to だん ぢん づん どん and lookup table is complete"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "dz") "だん"))
         (should (equal (nskk-converter-lookup "dk") "ぢん"))
         (should (equal (nskk-converter-lookup "dj") "づん"))
@@ -418,7 +413,6 @@
   (nskk-context "c-row hatsuon extensions"
     (nskk-it "cz ck cj cd cl convert to ちゃん ちん ちゅん ちぇん ちょん"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "cz") "ちゃん"))
         (should (equal (nskk-converter-lookup "ck") "ちん"))
         (should (equal (nskk-converter-lookup "cj") "ちゅん"))
@@ -500,7 +494,6 @@
   (nskk-context "n-row diphthong"
     (nskk-it "nq nh nw np rules exist in the lookup table"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table (they are correctly defined)
         (should (equal (nskk-converter-lookup "nq") "ない"))
         (should (equal (nskk-converter-lookup "nh") "ぬう"))
         (should (equal (nskk-converter-lookup "nw") "ねい"))
@@ -509,7 +502,6 @@
   (nskk-context "h-row diphthong"
     (nskk-it "hq hw hp convert to はい へい ほう and lookup table is complete"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "hq") "はい"))
         (should (equal (nskk-converter-lookup "hh") "ふう"))
         (should (equal (nskk-converter-lookup "hw") "へい"))
@@ -546,7 +538,6 @@
   (nskk-context "w-row diphthong"
     (nskk-it "wq wh wp convert to わい うう うぉー"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "wq") "わい"))
         ;; "wh" is vowel-only-shadowed: kept complete for Wh→うう
         (should (equal (nskk-converter-lookup "wh") "うう"))
@@ -594,7 +585,6 @@
   (nskk-context "p-row diphthong"
     (nskk-it "pq ph pw convert to ぱい ぷう ぺい and lookup table is complete"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "pq") "ぱい"))
         (should (equal (nskk-converter-lookup "ph") "ぷう"))
         (should (equal (nskk-converter-lookup "pw") "ぺい"))
@@ -725,7 +715,6 @@
   (nskk-context "gg-row youon"
     (nskk-it "gga ggu gge ggo rules exist in the lookup table"
       (nskk-with-azik-style
-        ;; Verify rules exist in the table
         (should (equal (nskk-converter-lookup "gga") "ぎゃ"))
         (should (equal (nskk-converter-lookup "ggu") "ぎゅ"))
         (should (equal (nskk-converter-lookup "gge") "ぎぇ"))
@@ -786,7 +775,6 @@
 
   (nskk-it "nf rule exists in the lookup table"
     (nskk-with-azik-style
-      ;; Verify rule exists in the table
       (should (equal (nskk-converter-lookup "nf") "ぬ"))))
 
   (nskk-it "mf converts to む"

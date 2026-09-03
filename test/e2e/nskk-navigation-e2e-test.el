@@ -71,7 +71,6 @@
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC")
-      ;; Now on second candidate
       (nskk-e2e-assert-converting)
       ;; C-f commits whichever candidate is current
       (nskk-e2e-type "C-f")
@@ -88,7 +87,6 @@
       ;; Insert あ first so there is a character before the conversion
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")
-      ;; Now enter conversion: かんじ → ▼ converting
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
@@ -192,7 +190,6 @@
       (nskk-e2e-type "C-f")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "漢字")
-      ;; Now in normal state: C-b is plain backward-char
       (nskk-e2e-type "C-b")
       ;; Buffer unchanged
       (nskk-e2e-assert-buffer "漢字"))))

@@ -224,7 +224,6 @@
       (nskk-integration-with-session 'hiragana
         (nskk-given (nskk--integration-type-char ?K)
                     (nskk--integration-type-char ?a))
-        ;; First Tab: establishes prefix search and shows first match
         (nskk-when (nskk-dynamic-complete))
         (let ((first-preedit (nskk-preedit-string)))
           ;; Second Tab: cycles to next match

@@ -1508,8 +1508,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (should (null nskk--azik-colon-okuri-deferred)))))
 
   (nskk-it "non-vowel clears deferred state without buffer modification"
-    ;; When the next char is not a vowel, the deferred state is cleared
-    ;; but no っ is inserted and the buffer is left unchanged.
     (nskk-input-test-with-romaji
       (with-temp-buffer
         (insert "t")
@@ -1537,7 +1535,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (should (equal (nskk-state-romaji-buffer) "k")))))
 
   (nskk-it "is a no-op when both pending and deferred are nil"
-    ;; When neither flag is set the function must be a true no-op.
     (nskk-input-test-with-romaji
       (with-temp-buffer
         (insert "あ")
@@ -1719,8 +1716,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
           (should-not nskk--azik-sokuon-okuri-kana-pending)))))
 
   (nskk-it "resets okurigana-in-progress metadata when sentinel was set"
-    ;; When the sentinel is set, clearing it must also reset the
-    ;; okurigana-in-progress metadata flag so implicit kakutei fires.
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
@@ -1882,8 +1877,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 (nskk-describe "nskk-process-japanese-input sticky-shift"
   (nskk-it "sticky-shift okurigana converts lowercase to uppercase (triggers henkan start)"
-    ;; When nskk--sticky-shift-pending is 'okurigana, the next lowercase letter
-    ;; is treated as uppercase, which triggers henkan start when auto-start is on.
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
@@ -1904,7 +1897,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
           (should (null nskk--sticky-shift-pending))))))
 
   (nskk-it "sticky-shift immediate does not upcase letters"
-    ;; When pending is 'immediate, lowercase letters are NOT upcased.
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
@@ -2082,9 +2074,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                       expected-class)))
 
   (nskk-it "n-consonant class is returned when doubled=n-consonant and result-type=incomplete"
-    ;; When the doubled-eligible context is n-consonant and the converter
-    ;; returns :incomplete (no complete kana yet), the n-consonant row fires.
-    ;; The match row requires result-type=match, so it does not interfere here.
     (should (eq (nskk-prolog-query-value
                  `(romaji-classify ,'\?class n-consonant incomplete)
                  '\?class)
@@ -2124,8 +2113,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (nskk-it "n+n case: return value is ん (prefix-kana is empty)"
       (cl-letf (((nskk-state-romaji-buffer) "n"))
         (let ((result (nskk--emit-hatsuon-prefix "n")))
-          ;; When buffer was just "n", prefix-without-n is "", so prefix-kana
-          ;; is "" and the full result is just ん.
           (nskk-should-equal "\u3093" result)))))
 
   (nskk-context "n+consonant case"
@@ -2323,7 +2310,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 
 (nskk-describe "nskk--update-modeline"
   (nskk-it "is a no-op when nskk-modeline-update is not fboundp"
-    ;; Should not signal any error when the function is absent.
     (nskk-with-mocks ((nskk-modeline-update nil))
       ;; Temporarily fmakunbound if it happens to be bound in this test run.
       (let ((was-bound (fboundp 'nskk-modeline-update)))

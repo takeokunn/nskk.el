@@ -472,16 +472,6 @@ tried first and the local dictionary is consulted only on a server miss."
                :found (succeed local)
                :fail  (fail)))))
 
-;; Search strategy: exact match → prefix fallback → partial match → skkserv (remote).
-;; Each stage calls on-not-found to fall through to the next.
-;; The type argument selects which stage is executed for a given call:
-;;   :exact   → dict-lookup (local dict first, then skkserv if enabled)
-;;   :prefix  → prefix-search (trie prefix scan on system-dict-index)
-;;   :partial → partial-search (substring scan on system-dict-index)
-;; Callers that want to try multiple strategies must chain them manually via
-;; the on-not-found continuation, calling nskk-core-search/k again with a
-;; different type.
-;;
 (defun/k nskk-core-search (key &optional type limit)
   "Search the dictionary for KEY and return a list of candidates.
 TYPE is the search type: :exact (default), :prefix, or :partial.
@@ -502,18 +492,6 @@ always pass both continuation arguments explicitly."
         (nskk-debug-log "[HENKAN] search: key=%s type=%s" key (or type 'exact))
         (pcase action
           ('dict-lookup
-           ;; Fallback chain:
-           ;;   kakutei-dict (confirmed, optional) → dict-and-server
-           ;;   → builtin-handlers → program-dict.
-           ;; Kakutei dictionary is checked first: if it returns a single
-           ;; confirmed candidate, it is committed immediately without
-           ;; showing the candidate selection menu.
-           ;; `nskk--core-dict-and-server' combines the local dictionary and
-           ;; skkserv.  By default the server takes priority (historical
-           ;; behavior); when `nskk-search-merge-user-dict-with-server' is
-           ;; non-nil it merges the user dictionary ahead of the server.
-           ;; Enable-flag guards live inside each backend's own /k function.
-           ;; fboundp guards in the optional-* wrappers handle unloaded modules.
            (<-or result nskk--optional-kakutei-lookup key
              :found (succeed result)
              :fail  (<-or ds nskk--core-dict-and-server key
@@ -1114,7 +1092,6 @@ back to ▽ (preedit) mode."
         (let ((remaining (cl-remove candidate candidates
                                     :test #'equal :count 1)))
           (if remaining
-              ;; Show next candidate from remaining list.
               (let ((new-idx (min index
                                   (1- (length remaining)))))
                 (nskk-state-set-candidates
@@ -1127,7 +1104,6 @@ back to ▽ (preedit) mode."
                       (length nskk-henkan-active-marker))
                    (overlay-end (nskk-state-conversion-overlay))
                    new-cand)))
-            ;; No candidates left: rollback to preedit.
             (nskk-cancel-conversion-to-reading)))))))
 
 ;;;; Conversion Control
@@ -1225,7 +1201,6 @@ Japanese input mode via `nskk--restore-abbrev-mode'."
          (was-abbrev (nskk-with-current-state
                        (eq (nskk-state-mode nskk-current-state) 'abbrev)))
          (saved-point (point)))
-    ;; Remove preedit text including the ▽ marker.
     (when start
       (condition-case err
           (atomic-change-group
@@ -1234,7 +1209,6 @@ Japanese input mode via `nskk--restore-abbrev-mode'."
         ((error quit)
          (goto-char saved-point)
          (signal (car err) (cdr err)))))
-    ;; Reset all preedit state.
     (nskk--clear-conversion-start-marker)
     (nskk-reset-romaji-buffer)
     (nskk-state-set-henkan-count 0)
@@ -1247,7 +1221,6 @@ Japanese input mode via `nskk--restore-abbrev-mode'."
     ;; Clear AZIK okurigana pending state.  cancel-preedit does not go through
     ;; nskk-clear-conversion-context, so clear directly here.
     (nskk-clear-azik-pending-state)
-    ;; Restore abbrev mode if applicable.
     (nskk--restore-abbrev-mode was-abbrev)))
 
 (defun/done nskk-rollback-conversion ()
@@ -1335,7 +1308,6 @@ Uses Prolog `candidate-nav-next-action/3' to dispatch the navigation mode."
             ('show-list-next
              (nskk--show-candidate-list-next)
              (fail)))))
-    ;; Not converting: signal nothing happened
     (fail)))
 
 (defun/k nskk-previous-candidate ()
@@ -1367,7 +1339,6 @@ Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
                   (index (nskk-state-current-index nskk-current-state))
                   (candidate (nth index candidates)))
              (succeed candidate)))))
-    ;; Not converting: signal nothing happened
     (fail)))
 
 (defun/k nskk-commit-current ()
@@ -1562,9 +1533,7 @@ where `nskk-current-state' is guaranteed valid."
                          (+ current per-page)
                        current)))
     (if (>= next-start (length candidates))
-        ;; All candidates exhausted: trigger dictionary registration
         (nskk--exhaust-candidates)
-      ;; Show next page
       (setf (nskk-state-current-index nskk-current-state) next-start)
       (nskk-state-set-henkan-phase nskk-current-state 'list)
       (nskk--run-candidate-show-transaction
@@ -1609,8 +1578,6 @@ Must be called inside `nskk-with-current-state'."
                   ;; Standalone n at word boundary → ん.
                   ;; Checked first so "nK" emits ん rather than being discarded.
                   ((nskk--standalone-n-p buf) "ん")
-                  ;; Complete romaji: converter returns (kana . rest).
-                  ;; :incomplete and nil results are silently dropped.
                   (t (let ((result (nskk-converter-convert buf)))
                        (when (and result (stringp (car result)))
                          (car result)))))))
@@ -1673,7 +1640,6 @@ the caller downcases and routes through kana conversion instead."
              ;; the kana sequence, not insert another * marker.
              (not (nskk-with-current-state
                     (nskk-state-get-okurigana nskk-current-state))))
-        ;; call/cc captures on-found as K so inner lambdas can call it.
         (call/cc (lambda (K)
           (nskk-with-current-state
             (nskk--setup-okurigana-context okuri-char)
@@ -1697,8 +1663,6 @@ standalone n, or with the converted kana (falling back to raw buffer)."
    ((nskk--standalone-n-p (nskk-state-romaji-buffer))
     (nskk-reset-romaji-buffer)
     (succeed "\u3093"))
-   ;; General: use CPS converter; fall back to raw buffer string on failure.
-   ;; call/cc captures on-found as K so inner lambdas can call it.
    (t
     (call/cc (lambda (K)
       (let ((buf (nskk-state-romaji-buffer)))
@@ -1869,7 +1833,6 @@ via `nskk--restore-abbrev-mode'."
       (delete-region start (point))
       (goto-char start)
       (insert registered))
-    ;; Store undo record for registration undo.
     (when reading
       (let ((mode (nskk-with-current-state (nskk-state-mode nskk-current-state))))
         (setq nskk--last-kakutei-record
@@ -2139,10 +2102,8 @@ If the user cancels, wrap around to the first candidate in list display."
                       (nskk-state-set-conversion-overlay nil)
                       (when (overlayp old) (delete-overlay old)))
                     (nskk--insert-registered-and-reset registered start #'ignore reading))
-                ;; Registration cancelled: wrap back to first candidate page.
                 (nskk--wrap-to-first-candidate)))
             #'ignore))
-      ;; No preedit text: wrap back to first candidate page.
       (nskk--wrap-to-first-candidate))))
 
 ;;;; Dynamic Completion (動的補完)
@@ -2252,7 +2213,6 @@ matching candidates below the preedit text."
   (let ((preedit (nskk-preedit-string)))
     (when (and preedit (not (string-empty-p preedit)))
       (cond
-       ;; Cycling: current preedit is the original prefix or a completion
        ((and nskk--dcomp-candidates
              (or (equal preedit nskk--dcomp-prefix)
                  (member preedit nskk--dcomp-candidates)))
@@ -2261,13 +2221,10 @@ matching candidates below the preedit text."
                    (length nskk--dcomp-candidates)))
         (nskk--dcomp-replace-preedit
          (nth nskk--dcomp-index nskk--dcomp-candidates))
-        ;; Discard pending romaji — the completed reading supersedes it.
         (nskk-reset-romaji-buffer)
-        ;; Update multiple display if enabled
         (nskk--dcomp-multiple-show nskk--dcomp-candidates
                                    nskk--dcomp-index
                                    nskk--dcomp-prefix))
-       ;; Fresh search
        (t
         (let ((matches (nskk--dcomp-search-prefix preedit)))
           (when matches
@@ -2275,9 +2232,7 @@ matching candidates below the preedit text."
                   nskk--dcomp-candidates matches
                   nskk--dcomp-index 0)
             (nskk--dcomp-replace-preedit (car matches))
-            ;; Discard pending romaji — the completed reading supersedes it.
             (nskk-reset-romaji-buffer)
-            ;; Show multiple candidates if enabled
             (nskk--dcomp-multiple-show matches 0 preedit))))))))
 
 (defun nskk-completion-at-point ()
@@ -2411,7 +2366,6 @@ Reads the mode from `nskk-current-state' and delegates to
   "Initialize henkan pipeline Prolog predicates.
 Idempotent: subsequent calls are no-ops."
   (unless nskk--henkan-initialized
-    ;; Core search type mapping
     (nskk-prolog-define-fact-table core-search-type (:arity 2 :index :hash)
       (:exact   dict-lookup)
       (:prefix  prefix-search)
@@ -2439,7 +2393,6 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-define-fact-table vowel-okurigana-char (:arity 1 :index :hash)
       (?a) (?i) (?u) (?e) (?o))
 
-    ;; Candidate navigation action rules
     (nskk-prolog-set-index 'candidate-nav-next-action 3 :list)
     (nskk-prolog-<- (candidate-nav-next-action \?count \?threshold select-next)
       (< \?count \?threshold))
@@ -2450,12 +2403,10 @@ Idempotent: subsequent calls are no-ops."
       (list-active show-list-prev)
       (not-active  select-prev))
 
-    ;; Search result action dispatch
     (nskk-prolog-define-fact-table search-result-action (:arity 2 :index :hash)
       (has-candidates show-overlay)
       (no-candidates  start-registration))
 
-    ;; Convert-or-commit action dispatch
     (nskk-prolog-define-fact-table convert-or-commit-action (:arity 2 :index :hash)
       (converting     commit-current)
       (not-converting start-conversion))
@@ -2478,7 +2429,6 @@ Idempotent: subsequent calls are no-ops."
       (katakana nskk-kana-string-hiragana-to-katakana/k)
       (hiragana nskk-kana-string-katakana-to-hiragana/k))
 
-    ;; Overlay update phase guard
     (nskk-prolog-define-fact-table should-update-overlay (:arity 1 :index :hash)
       (active)
       (list))

@@ -169,7 +169,6 @@ SEED: Random seed for reproducibility (default: random)"
            (minimal-case nil))
        (random test-seed)
        (message "Property test (with shrinking) '%s' seed: %d" ',name test-seed)
-       ;; First pass: find a failure
        (dotimes (_ runs)
          (unless failure-case
            (let ,(mapcar (lambda (gen)
@@ -245,7 +244,6 @@ the PROPERTY invariant holds after each transition."
                (steps-taken nil)
                (max-steps 20)
                (step-count 0))
-           ;; Execute random sequence of transitions
            (while (and (< step-count max-steps)
                        (< (random 10) 8))  ; 80% chance to continue
              (let* ((transition-idx (random (length ',transitions)))
@@ -317,13 +315,11 @@ that the PROPERTY invariant holds."
          (let* ((key-sequence (nskk-generate ',key-sequence-generator))
                 (execution-context (progn ,setup)))
            (condition-case err
-               ;; Execute the sequence (implementation depends on context)
                (progn
                  (dolist (key key-sequence)
                    ;; Simulate key press in context
                    (setq execution-context
                          (nskk--simulate-key execution-context key)))
-                 ;; Check property after sequence execution
                  (unless (funcall ,property execution-context)
                    (push (list :seed test-seed
                                :run run

@@ -302,7 +302,6 @@
           (nskk-state-append-input state (nskk--sm-random-char)))
         ;; Clear the buffer
         (nskk-state-clear-input state)
-        ;; Verify buffer is empty
         (should (stringp (nskk-state-input-buffer state)))
         (should (string= (nskk-state-input-buffer state) "")))))
 
@@ -369,7 +368,6 @@
                         (nskk--pbt-generate-input-buffer 10))
         ;; Reset the state
         (nskk-state-reset state)
-        ;; Verify buffers are empty
         (should (string= (nskk-state-input-buffer state) ""))
         (should (string= (nskk-state-converted-buffer state) "")))))
 

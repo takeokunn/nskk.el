@@ -71,7 +71,6 @@
                   (nskk-state-set nskk-current-state 'input-buffer "hello")
                   (nskk-state-set nskk-current-state 'candidates '("a" "b" "c"))
                   (nskk-state-set nskk-current-state 'henkan-position 5))
-                ;; Verify buffer 2 is unaffected
                 (with-current-buffer buf2
                   (let ((input2 (nskk-state-input-buffer nskk-current-state))
                         (cands2 (nskk-state-candidates nskk-current-state))
@@ -111,7 +110,6 @@
                   (dotimes (_ (nskk--pbt-random-int 2 5))
                     (let ((new-mode (nskk--pbt-generate-valid-mode)))
                       (nskk-state-set nskk-current-state 'mode new-mode))))
-                ;; Verify buffer 2 still has the original mode
                 (with-current-buffer buf2
                   (let ((mode2 (nskk-state-mode nskk-current-state)))
                     (unless (eq mode2 initial-mode)
@@ -145,7 +143,6 @@
                 ;; Set input-buffer (simulating romaji accumulation) in buffer 1
                 (with-current-buffer buf1
                   (nskk-state-set nskk-current-state 'input-buffer romaji-input))
-                ;; Verify buffer 2 input-buffer is still empty
                 (with-current-buffer buf2
                   (let ((input2 (nskk-state-input-buffer nskk-current-state)))
                     (unless (string= input2 "")
@@ -187,7 +184,6 @@
                          do (with-current-buffer buf
                               (nskk-state-set nskk-current-state 'input-buffer
                                               (format "buf-%d" i))))
-                ;; Verify each buffer has its own input
                 (cl-loop for buf in buffers
                          for i from 0
                          for expected-mode in modes
@@ -220,12 +216,10 @@
   (let* ((states (mapcar (lambda (entry)
                            (nskk-state-create (plist-get entry :mode)))
                          scenario))
-         ;; Verify initial mode matches the scenario entry
          (modes-correct
           (cl-every (lambda (state entry)
                       (eq (nskk-state-mode state) (plist-get entry :mode)))
                     states scenario)))
-    ;; Now mutate the first state's mode and verify others are unaffected
     (when (and modes-correct (>= (length states) 2))
       (let* ((state1 (car states))
              (rest-states (cdr states))

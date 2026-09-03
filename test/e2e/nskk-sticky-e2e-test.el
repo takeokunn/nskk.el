@@ -77,10 +77,7 @@
     ;; Okurigana lookup needs a matching dict entry (key = "かa").
     (let ((dict '(("かa" . ("蚊")))))
       (nskk-e2e-with-buffer 'hiragana dict
-        ;; First start preedit normally: "K" → ▽ preedit begins.
         (nskk-e2e-type "Ka")   ; → ▽ か
-        ;; Then ";a" == "A": uppercase vowel inside preedit should act as the
-        ;; okurigana marker, triggering conversion with the vowel as okurigana.
         (nskk-e2e-type ";")
         (nskk-e2e-type "a")
         ;; Conversion (▼) phase must be active.
@@ -269,9 +266,6 @@
 
   (nskk-it "semicolon in preedit-pending cancels preedit and inserts ;"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; First ; enters ▽ (preedit-pending, no kana yet).
-      ;; The pending flag is 'immediate, so a second ; fires arm 1
-      ;; which cancels preedit + inserts literal ";".
       (nskk-e2e-type ";")
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase nil)

@@ -242,7 +242,6 @@ PRED-NAME is the Prolog predicate symbol (defaults to
                       '(("abc" . ("1")) ("abx" . ("2")) ("axx" . ("3")) ("xxx" . ("4"))))))
           (let ((results (nskk-search index "abc" 'fuzzy)))
             (when (> (length results) 1)
-              ;; Verify distances are non-decreasing
               (let ((prev-dist -1))
                 (dolist (r results)
                   (let ((dist (cddr r)))
@@ -471,7 +470,6 @@ PRED-NAME is the Prolog predicate symbol (defaults to
       (let ((results '(("a" . 1) ("b" . 2) ("a" . 3) ("c" . 4) ("b" . 5))))
         (let ((unique (nskk--search-dedup results)))
           (should (= (length unique) 3))
-          ;; First occurrence should be kept (no merge-fn → first-wins)
           (should (equal (cdr (assoc "a" unique)) 1))
           (should (equal (cdr (assoc "b" unique)) 2)))))
 

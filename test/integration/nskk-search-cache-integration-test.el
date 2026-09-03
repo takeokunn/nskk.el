@@ -61,7 +61,6 @@
         (nskk-should-equal '("a" "b") (nskk-cache-get cache "test"))
         ;; Miss: absent key
         (should (null (nskk-cache-get cache "nonexistent")))
-        ;; Verify stats after 1 hit and 1 miss
         (let ((stats (nskk-cache-stats cache)))
           (should (= (plist-get stats :hits) 1))
           (should (= (plist-get stats :misses) 1))))))
@@ -446,7 +445,6 @@
       ;; Access C three times (two extra reads).
       (nskk-cache-get cache k-c)
       (nskk-cache-get cache k-c)
-      ;; Now insert D — must evict A (lowest frequency).
       (nskk-cache-put cache k-d "val-d")
       ;; A should be gone; B, C, D should still be present.
       (and (null  (nskk-cache-get cache k-a))

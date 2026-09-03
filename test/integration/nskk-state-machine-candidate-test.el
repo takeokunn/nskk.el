@@ -213,7 +213,6 @@ COUNT defaults to 0-10 if not specified."
           ;; Navigate to the end
           (dotimes (_ (1- len))
             (nskk-state-next-candidate state))
-          ;; Should be at last index
           (should (= (nskk-state-current-index state) (1- len)))
           ;; Next should wrap to 0
           (nskk-state-next-candidate state)
@@ -256,7 +255,6 @@ COUNT defaults to 0-10 if not specified."
           ;; Navigate through all candidates (full cycle)
           (dotimes (_ len)
             (nskk-state-next-candidate state))
-          ;; Should be back at index 0
           (unless (= (nskk-state-current-index state) 0)
             (push (list :expected 0
                         :actual (nskk-state-current-index state)
@@ -265,7 +263,6 @@ COUNT defaults to 0-10 if not specified."
           ;; Navigate backward through all candidates (full cycle)
           (dotimes (_ len)
             (nskk-state-previous-candidate state))
-          ;; Should still be at index 0
           (unless (= (nskk-state-current-index state) 0)
             (push (list :expected 0
                         :actual (nskk-state-current-index state)
@@ -537,7 +534,6 @@ COUNT defaults to 0-10 if not specified."
         (dotimes (_ (length candidates))
           (nskk-state-next-candidate state)))
       (nskk-then
-        ;; Should have wrapped to index 0
         (should (= 0 (nskk-state-current-index state))))))
 
   (nskk-it "for-all: index is always in bounds after any navigation sequence"

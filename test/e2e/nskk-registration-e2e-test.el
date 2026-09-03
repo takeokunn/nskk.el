@@ -55,7 +55,6 @@
         (nskk-e2e-type "SPC")
         (nskk-e2e-assert-buffer "新機" "Word should be inserted after registration")
         (nskk-e2e-assert-henkan-phase nil "Phase should be nil after successful registration")
-        ;; Verify the word was actually stored in the Prolog user-dict-entry
         (should (nskk-prolog-query-one '(user-dict-entry "しんき" \?_))))))
 
   (nskk-it "cancels registration on empty RET and preserves preedit"
@@ -82,7 +81,6 @@
     (nskk-e2e-with-buffer 'hiragana nil
       ;; Register directly (simulates the effect of a successful registration UI)
       (nskk-dict-register-word "しんき" "新機")
-      ;; Now type the same reading and convert
       (nskk-e2e-type "Shinki")
       ;; SPC should now find 新機 as a candidate (not trigger registration)
       (nskk-e2e-type "SPC")
@@ -245,8 +243,6 @@
     ;; reading again.  The second SPC must find "新機" in the user dict and
     ;; display it as a candidate rather than reopening the registration prompt.
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; First round: no dict entry, so SPC triggers registration.
-      ;; Stateful mock: call 0 → "新機", call 1 → "" (not reached in this test).
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (let ((call-count 0)
                        (responses '("新機" "")))
@@ -257,7 +253,6 @@
         ;; SPC: no candidates → registration prompt → mock returns "新機" → committed
         (nskk-e2e-type "SPC")
         (nskk-e2e-assert-buffer "新機" "Registered word should be inserted on first conversion")
-        ;; Verify the Prolog user-dict has the new entry before the second round.
         (should (nskk-prolog-query-one '(user-dict-entry "しんき" \?_)))
         ;; Second round: type the same reading again in a fresh preedit.
         ;; The user-dict now has "しんき" → "新機", so SPC should show overlay,
@@ -300,7 +295,6 @@
         (nskk-e2e-assert-buffer "テスト" "Registered word should be inserted after abbrev registration")
         ;; Mode should be restored to hiragana after abbrev registration.
         (nskk-e2e-assert-mode 'hiragana)
-        ;; Verify the word is now stored in the user dict under the abbrev key.
         (should (nskk-prolog-query-one '(user-dict-entry "test" \?_))))))
 
   (nskk-it "cancel in registration from abbrev preserves abbrev preedit"

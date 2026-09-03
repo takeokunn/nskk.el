@@ -265,7 +265,6 @@
     (nskk-integration-with-session 'hiragana
       (nskk--integration-type-char ?A)
       (nskk-then  (nskk-should-equal "▽あ" (buffer-string)))
-      ;; First DEL: deletes "あ", leaving empty preedit
       (nskk-when  (nskk-handle-backspace))
       (nskk-then  (nskk-should-equal "▽" (buffer-string)))
       ;; Second DEL: empty preedit → cancel preedit

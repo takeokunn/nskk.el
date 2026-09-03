@@ -119,7 +119,6 @@
                      (_ (nskk-prolog-retract-all reload-pred 2))
                      (loaded (nskk-dict-load-file temp-file nil reload-pred)))
                 (should (symbolp loaded))
-                ;; Check that all candidates survive the roundtrip
                 (let ((reloaded-candidates
                        (nskk-prolog-query-value
                         `(,reload-pred ,key \?c) '\?c)))

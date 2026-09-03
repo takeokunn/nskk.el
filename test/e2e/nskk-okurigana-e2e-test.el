@@ -434,7 +434,6 @@
         ;; should have no "k" ASCII character adjacent to *.
         (let ((content (buffer-string)))
           (should-not (string-match-p "k\\*" content)))
-        ;; Now type u to complete the okurigana ku → く and trigger conversion.
         (nskk-e2e-type "u")
         ;; We should now be in converting (▼) state — conversion was triggered.
         (nskk-e2e-assert-converting)
@@ -1403,11 +1402,6 @@
             (should-not (string-match-p "書" reading-part)))))))
 
   (nskk-it "OKU-4: SPC okurigana path calls on-found continuation"
-    ;; When nskk-start-conversion/k is called and the SPC okurigana path fires
-    ;; (pending okurigana detected), the on-found continuation must be called
-    ;; so the caller knows conversion succeeded.  Currently the okuri branch
-    ;; in nskk-start-conversion/k calls nskk-trigger-okuri-conversion as a
-    ;; side effect but never invokes on-found.
     (let ((dict '(("かk" . ("書" "掛"))))
           (on-found-called nil))
       (nskk-e2e-with-buffer 'hiragana dict

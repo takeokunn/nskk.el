@@ -249,7 +249,6 @@
   (nskk-it "nskk-cursor-update is a no-op when nskk-use-color-cursor is nil"
     (nskk-with-state 'hiragana
       (let ((nskk-use-color-cursor nil))
-        ;; Should not signal, should not call set-cursor-color
         (should-not (condition-case nil
                         (progn (nskk-cursor-update) nil)
                       (error t))))))
@@ -426,7 +425,6 @@
     (let ((nskk-debug-enabled t))
       (nskk-debug-clear)
       (nskk-debug-message "first entry"))
-    ;; Now disabled — new message should not appear
     (let ((nskk-debug-enabled nil))
       (let ((size-before (and (get-buffer "*NSKK Debug*")
                               (with-current-buffer "*NSKK Debug*"

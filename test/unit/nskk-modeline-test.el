@@ -268,7 +268,6 @@
   (let* ((nskk-modeline-format "[%m]")
          (nskk-current-state (nskk-state-create item))
          (indicator (nskk-modeline-indicator)))
-    ;; When format is "[%m]", indicator must start with "[" and end with "]"
     (and (stringp indicator)
          (string-prefix-p "[" indicator)
          (string-suffix-p "]" indicator))))

@@ -622,9 +622,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 
   (nskk-context "fall-through in normal state"
     (nskk-it "delegates to local RET binding when nskk-mode is active (corfu-style passthrough)"
-      ;; When nskk-mode is active, `nskk-handle-return' in normal state should
-      ;; look up RET with nskk-mode nil — skipping nskk-mode-map — and call the
-      ;; next available binding (e.g. a completion UI's confirm action).
       (with-temp-buffer
         (nskk-mode 1)
         (unwind-protect
@@ -1652,7 +1649,6 @@ and configures state."
             (nskk-state-set-romaji-buffer "ky")
             (insert "▽ほ")
             (goto-char (point-max))
-            ;; First BS: "ky" -> "k", show-pending called
             (nskk--backspace-in-preedit)
             (should (equal (nskk-state-romaji-buffer) "k"))
             (should show-called)

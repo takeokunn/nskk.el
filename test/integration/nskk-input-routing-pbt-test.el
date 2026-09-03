@@ -70,7 +70,6 @@
       (with-temp-buffer
         (setq last-command-event char-val)
         (nskk-self-insert 1)
-        ;; Should insert the character directly, not convert to kana
         (should (string= (buffer-string) char)))))
   50)
 
@@ -82,7 +81,6 @@
       (with-temp-buffer
         (setq last-command-event char-val)
         (nskk-self-insert 1)
-        ;; Should insert the character directly, not convert to kana
         (should (string= (buffer-string) char)))))
   50)
 
@@ -157,7 +155,6 @@
             (with-temp-buffer
               (setq last-command-event ch)
               (nskk-self-insert 1)
-              ;; Should complete without error
               t))
         (error
          (ert-fail (format "Mode routing error for mode=%s char=%c: %S"
@@ -170,7 +167,6 @@
 
 (nskk-describe "input routing regression: ASCII mode bug"
   (nskk-it "should insert 'a' directly in ASCII mode without Japanese conversion"
-    ;; Test that typing 'a' in ASCII mode produces 'a', not 'あ'
     (nskk-input-routing-test-with-state 'ascii
       (with-temp-buffer
         (setq last-command-event ?a)

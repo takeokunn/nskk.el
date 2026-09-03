@@ -6075,7 +6075,6 @@
             (nskk-state-set-conversion-overlay (make-overlay 1 1))
             
             (nskk-purge-from-jisyo)
-            ;; Should have called unregister with correct args
             (should (equal unregistered-reading "よみ"))
             (should (equal unregistered-candidate "候補A"))
             ;; Candidates should be updated (候補A removed)

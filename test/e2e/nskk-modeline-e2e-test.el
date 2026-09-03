@@ -173,7 +173,6 @@
 (nskk-describe "modeline cache behavior"
   (nskk-it "invalidates cache when mode changes"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; First call populates cache for hiragana
       (let ((first-result (nskk-modeline-indicator)))
         (should (string-match-p "かな" first-result))
         ;; Second call with same mode returns cached result
@@ -314,7 +313,6 @@
 
   (nskk-it "point is at point-max when preedit follows pre-existing kana"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; First insert some normal kana, then enter preedit.
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")
       (let ((point-after-a (point)))

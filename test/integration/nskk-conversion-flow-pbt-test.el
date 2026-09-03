@@ -112,7 +112,6 @@
     (nskk--pbt-start-conversion state candidates)
     ;; Commit conversion
     (nskk--pbt-commit-conversion state)
-    ;; Verify: converted-buffer should contain the first candidate
     (let ((converted (nskk-state-converted-buffer state)))
       (and (stringp converted)
            (not (string-empty-p converted))
@@ -132,7 +131,6 @@
     (nskk--pbt-start-conversion state candidates)
     ;; Cancel with original input
     (nskk--pbt-cancel-conversion state original-input)
-    ;; Verify: state should be restored
     (let ((input-after (nskk-state-input-buffer state))
           (henkan-pos (nskk-state-henkan-position state))
           (cands-after (nskk-state-candidates state)))
@@ -157,14 +155,12 @@
     ;; Cycle through all candidates with next
     (let ((visited nil)
           (ok t))
-      ;; First candidate
       (let ((first (nskk-state-current-candidate state)))
         (when first (push first visited)))
       ;; Navigate through rest
       (dotimes (_ (1- num-candidates))
         (let ((next (nskk-state-next-candidate state)))
           (when next (push next visited))))
-      ;; Verify all candidates were visited
       (dolist (c candidates)
         (unless (member c visited)
           (setq ok nil)))
@@ -224,7 +220,6 @@
            (nskk--pbt-cancel-conversion state original-input))
           (2 ;; Commit conversion
            (nskk--pbt-commit-conversion state)))))
-    ;; Verify state consistency invariants
     (let ((henkan-pos (nskk-state-henkan-position state))
           (cands (nskk-state-candidates state))
           (idx (nskk-state-current-index state))

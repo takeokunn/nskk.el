@@ -306,7 +306,6 @@ TRIGGER is ignored; a random valid mode is chosen."
     (dotimes (_ transitions)
       (let ((next-mode (nskk--pbt-generate-valid-mode)))
         (nskk-state-set state 'mode next-mode)))
-    ;; Finally apply the scenario's explicit target transition
     (nskk-state-set state 'mode target-mode)
     ;; Invariant: mode must remain within the recognised valid-modes set
     (and (nskk-state-p state)
