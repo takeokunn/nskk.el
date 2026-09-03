@@ -492,7 +492,6 @@ Example:
          (on-found-sym     (make-symbol "on-found"))
          (on-not-found-sym (make-symbol "on-not-found"))
          (cps-docstring    (concat docstring "\n[CPS]"))
-         ;; Optional :interactive keyword (sync wrapper only; /k is never interactive).
          (interactive-parsed (nskk--cps-parse-interactive body))
          (interactive-form   (car interactive-parsed))
          (real-body          (cdr interactive-parsed))
@@ -571,7 +570,6 @@ Example:
          (interactive-parsed (nskk--cps-parse-interactive body))
          (interactive-form   (car interactive-parsed))
          (real-body          (cdr interactive-parsed))
-         ;; Build the sync call form, handling &rest via apply.
          (sync-call    (if rest-sym
                            `(apply #',name/k ,@plain-args #'ignore ,rest-sym)
                          `(,name/k ,@plain-args #'ignore))))

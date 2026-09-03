@@ -700,7 +700,6 @@ Returns `system' when entries were loaded successfully, or nil otherwise."
 Returns (key . candidates-list) or nil for comments/invalid lines.
 When `nskk-show-annotation' is non-nil and nskk-annotation is loaded,
 also registers any candidate annotations found in the line."
-  ;; Skip comment lines and empty lines
   (when (and (stringp line)
              (not (string-empty-p line))
              (not (string-prefix-p ";;" line)))
@@ -711,7 +710,6 @@ also registers any candidate annotations found in the line."
       (let* ((key            (substring line 0 space-pos))
              (candidates-str (substring line (1+ space-pos)))
              (candidates     (nskk--dict-parse-candidates candidates-str)))
-        ;; Register annotations when annotation support is enabled
         (when (and candidates
                    (boundp 'nskk-show-annotation)
                    nskk-show-annotation
@@ -726,7 +724,6 @@ also registers any candidate annotations found in the line."
   "Parse candidates from STR like \"/candidate1/candidate2/...\"."
   (when (and (stringp str) (> (length str) 1) (= (aref str 0) ?/))
     (let ((parts (split-string (substring str 1) "/" t)))
-      ;; Strip annotations (e.g., "漢字;annotation" -> "漢字")
       (mapcar (lambda (c)
                 (let ((semi (string-search ";" c)))
                   (if semi (substring c 0 semi) c)))
@@ -1086,19 +1083,16 @@ See `nskk-dict-use-ja-dic' for the auto-detect vs ja-dic priority.
 Calling this function interactively allows manual retry: it retracts
 the \\='(dict-initialized) Prolog fact first, then reinitializes."
   (interactive)
-  ;; Allow manual retry: retract previous initialization marker
   (nskk-prolog-retract-all 'dict-initialized 0)
   ;; Define okuri-consonant/1 fact table (inside guard so it survives
   ;; nskk-prolog-clear-database and is re-asserted on re-initialization)
   (nskk-prolog-define-fact-table okuri-consonant (:arity 1 :index :hash)
     (?k) (?s) (?t) (?n) (?h) (?m) (?y) (?r) (?w)
     (?g) (?z) (?d) (?b) (?p))
-  ;; Populate the module-level cache used by nskk--dict-lookup-okuri-ari
   (setq nskk--dict-okuri-consonants
         (nskk-prolog-query-all-values '(okuri-consonant \?c) '\?c))
   (setq nskk--system-dict-index (nskk--dict-initialize-system-dictionary))
   (setq nskk--user-dict-index (nskk-dict-load-user-dictionary))
-  ;; Load confirmed dictionary if configured
   (nskk-dict-load-kakutei-dictionary)
   ;; Mark initialization complete (whether or not system dict was found).
   ;; This prevents repeated re-initialization across buffer enables.
@@ -1413,9 +1407,7 @@ candidate selection to proceed)."
         (if (and result
                  (listp result)
                  (= (length result) 1))
-            ;; Single candidate: confirm immediately
             (succeed (car result))
-          ;; Multiple candidates or no entry: fall through
           (fail)))
     (fail)))
 

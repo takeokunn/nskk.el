@@ -121,20 +121,15 @@
           (setq local-minor-modes
                 (delq 'nskk-mode local-minor-modes)))))))
 
-;; Define the minor mode
 (defvar-keymap nskk-mode-map
   :doc "Keymap for NSKK minor mode."
-  ;; Remap self-insert for romaji->kana conversion
   "<remap> <self-insert-command>" #'nskk-self-insert
-  ;; Mode switching
   "C-x C-j" #'nskk-toggle-mode
   "C-j"     #'nskk-kakutei
-  ;; State-aware special key dispatch (see nskk-keymap.el)
   "q"       #'nskk-handle-q
   "l"       #'nskk-handle-l
   "SPC"     #'nskk-handle-space
   "RET"     #'nskk-handle-return
-  ;; Additional special-key bindings
   "L"       #'nskk-handle-upper-l
   "/"       #'nskk-handle-slash
   "x"       #'nskk-handle-x
@@ -152,13 +147,10 @@
   "<end>"   #'nskk-handle-ctrl-e
   "C-g"     #'nskk-handle-cancel
   "DEL"     #'nskk-handle-backspace
-  ;; Sticky shift, dynamic completion, numeric input
   ";"       #'nskk-handle-semicolon-key
   "TAB"     #'nskk-handle-tab
   "#"       #'nskk-handle-hash
-  ;; Undo-kakutei
   "C-/"     #'nskk-undo-kakutei
-  ;; Purge candidate from dictionary (DDSKK skk-purge-from-jisyo)
   "X"       #'nskk-handle-upper-x)
 
 ;;;###autoload

@@ -1162,24 +1162,20 @@ Returns t if nskk-mode is active and the current mode is hiragana."
           nskk-tutorial--result-markers nil
           nskk-tutorial--exercise-states
           (make-vector (length exercises) nil))
-    ;; Title
     (let ((start (point)))
       (insert (format "\n━━━ レッスン %d: %s ━━━\n\n"
                       (1+ nskk-tutorial--current-lesson) title))
       (add-text-properties start (point)
                            `(face nskk-tutorial-header-face read-only t)))
-    ;; Explanation
     (let ((start (point)))
       (insert explanation "\n\n")
       (add-text-properties start (point) '(read-only t)))
-    ;; Exercises
     (let ((start (point)))
       (insert "━━━ 練習 ━━━\n\n")
       (add-text-properties start (point)
                            `(face nskk-tutorial-header-face read-only t)))
     (dotimes (i (length exercises))
       (let ((ex (nth i exercises)))
-        ;; Instruction
         (let ((start (point)))
           (insert (format "  練習%d: " (1+ i)))
           (let ((instr-start (point)))
@@ -1192,7 +1188,6 @@ Returns t if nskk-mode is active and the current mode is hiragana."
               (add-text-properties hint-start (point)
                                    '(face nskk-tutorial-hint-face))))
           (add-text-properties start (point) '(read-only t)))
-        ;; Input area
         (let ((start (point)))
           (insert "  入力欄: ")
           (add-text-properties start (point) '(read-only t)))
@@ -1207,7 +1202,6 @@ Returns t if nskk-mode is active and the current mode is hiragana."
         (let ((start (point)))
           (insert "\n")
           (add-text-properties start (point) '(read-only t)))
-        ;; Result area
         (let ((start (point)))
           (insert "  結果:   ")
           (add-text-properties start (point) '(read-only t)))
@@ -1219,16 +1213,13 @@ Returns t if nskk-mode is active and the current mode is hiragana."
         (let ((start (point)))
           (insert "\n\n")
           (add-text-properties start (point) '(read-only t)))))
-    ;; Reverse marker lists so index 0 = first exercise
     (setq nskk-tutorial--exercise-markers (nreverse nskk-tutorial--exercise-markers))
     (setq nskk-tutorial--result-markers (nreverse nskk-tutorial--result-markers))
-    ;; Footer
     (let ((start (point)))
       (insert "──────────────────────────────────────\n"
               "  [M-p] 前のレッスン  [M-n] 次のレッスン  "
               "[r] リセット  [q] 終了\n")
       (add-text-properties start (point) '(read-only t)))
-    ;; Position cursor at first input area
     (when nskk-tutorial--exercise-markers
       (goto-char (marker-position (caar nskk-tutorial--exercise-markers))))))
 

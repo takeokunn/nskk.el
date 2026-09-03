@@ -159,7 +159,6 @@ because Emacs Lisp `&optional' applies to all parameters after the first."
   (setq search-type (or search-type 'exact))
   (nskk-debug-log "[SEARCH] search: query=%s type=%s" query search-type)
 
-  ;; Validate against the Prolog search-strategy/1 fact table
   (unless (nskk-prolog-holds-p `(search-strategy ,search-type))
     (signal 'nskk-dict-search-invalid-query
             (list (format "Unknown search type: %s" search-type))))
@@ -259,7 +258,6 @@ or nil when no results remain after filtering.
 The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
   (let* ((pred (nskk-dict-index-predicate index))
          (raw-results (when pred (nskk-prolog-trie-prefix-search pred 2 query)))
-         ;; Convert raw (key . candidates) pairs to (key . nskk-dict-entry) pairs
          (results (mapcar (lambda (pair)
                             (cons (car pair)
                                   (make-nskk-dict-entry

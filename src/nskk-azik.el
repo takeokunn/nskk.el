@@ -518,7 +518,6 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
 
   (nskk-initialize-romaji-table)
 
-  ;; Set up azik-rule/2 predicate (index before assert).
   (nskk-prolog-retract-all 'azik-rule 2)
   (nskk-prolog-set-index 'azik-rule 2 :hash)
 
@@ -535,7 +534,6 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
 
   (nskk--azik-sync-to-romaji-hash)
 
-  ;; Build Prolog classification predicates from the current hash.
   ;;   azik-vowel-char/1   — character codes for a/i/u/e/o (integer facts).
   ;;   azik-key-extends/2  — (PREFIX CH) for every proper prefix in the hash.
   ;;   azik-nonvowel-ext/1 — succeeds when KEY has a non-vowel extension.
@@ -552,8 +550,6 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
     (azik-key-extends \?k \?_ext)
     (not (azik-nonvowel-ext \?k)))
 
-  ;; Register :incomplete prefixes + restore standard-romaji semantics.
-  ;; Uses azik-key-extends/2 and azik-vowel-shadow/1 queries via Prolog.
   (nskk--azik-finalize-hash-table)
 
   ;; Inserting after finalize ensures 2-char prefixes like "ka" remain

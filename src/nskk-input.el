@@ -1460,9 +1460,7 @@ Integer 95 is the Prolog anonymous-variable sentinel (?_), so any fact or
 query involving integer 95 as an argument is unreliable.  Underscore is
 handled directly in `nskk-insert-fullwidth-char' instead."
   (nskk-prolog-set-index 'fullwidth-char 2 :list)
-  ;; Space (U+0020) → ideographic space (U+3000)
   (nskk-prolog-assert '((fullwidth-char 32 12288)))
-  ;; Printable ASCII U+0021-U+007E via arithmetic +65248
   ;; Char 95 (underscore) is handled outside Prolog; see nskk-insert-fullwidth-char.
   (nskk-prolog-<- (fullwidth-char \?c \?fw)
     (>= \?c 33) (<= \?c 126) (not (= \?c 95))

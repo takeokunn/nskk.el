@@ -66,12 +66,9 @@ On failure, restore point, mark, and mark activation exactly."
 Only converts printable ASCII (0x20-0x7E).
 Returns a string of the converted character."
   (cond
-   ;; Space (0x20) -> Ideographic space (U+3000)
    ((= char #x20) "\u3000")
-   ;; Printable ASCII (0x21-0x7E) -> Full-width (0xFF01-0xFF5E)
    ((and (>= char #x21) (<= char #x7E))
     (char-to-string (+ char #xFEE0)))
-   ;; Other chars pass through
    (t (char-to-string char))))
 
 (defun nskk--string-ascii-to-zenkaku (str)
@@ -84,12 +81,9 @@ Converts Ideographic space (U+3000) to ASCII space, and full-width
 ASCII variants (0xFF01-0xFF5E) to basic ASCII (0x21-0x7E).
 Returns a string of the converted character."
   (cond
-   ;; Ideographic space (U+3000) -> ASCII space
    ((= char #x3000) " ")
-   ;; Full-width ASCII variants (0xFF01-0xFF5E) -> basic ASCII
    ((and (>= char #xFF01) (<= char #xFF5E))
     (char-to-string (- char #xFEE0)))
-   ;; Other chars pass through
    (t (char-to-string char))))
 
 (defun nskk--string-zenkaku-to-ascii (str)
