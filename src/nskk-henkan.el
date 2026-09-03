@@ -1939,19 +1939,18 @@ preedit-clear handler in `nskk-mode-map'."
                        ((eq phase 'converting) (nskk-commit-current))
                        ((eq phase 'henkan-on) (nskk-henkan-kakutei))
                        (t (exit-minibuffer))))))
-         (reg-map (let ((map (make-sparse-keymap)))
-                    (set-keymap-parent map nskk-mode-map)
-                    (define-key map (kbd "C-j") exit-fn)
-                    (define-key map (kbd "RET") exit-fn)
-                    (define-key map (kbd "C-g") #'abort-recursive-edit)
-                    map)))
+         (reg-map (define-keymap
+                   :parent nskk-mode-map
+                   "C-j" exit-fn
+                   "RET" exit-fn
+                   "C-g" #'abort-recursive-edit)))
     (minibuffer-with-setup-hook
-        (lambda ()
-          (nskk-mode 1)
-          (nskk-set-mode 'hiragana)
-          (setq-local minor-mode-overriding-map-alist
-                      (list (cons 'nskk-mode reg-map))))
-      (read-from-minibuffer prompt))))
+     (lambda ()
+       (nskk-mode 1)
+       (nskk-set-mode 'hiragana)
+       (setq-local minor-mode-overriding-map-alist
+                   (list (cons 'nskk-mode reg-map))))
+     (read-from-minibuffer prompt))))
 
 (defun nskk--read-registration-entry (reading)
   "Read a registration entry for READING from the minibuffer.
