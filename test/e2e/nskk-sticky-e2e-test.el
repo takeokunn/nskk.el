@@ -166,7 +166,6 @@
       (nskk-e2e-assert-henkan-phase 'active)))
 
   (nskk-it "sticky shift ;k completes preedit typing after"
-    ;; After ;k starts preedit, regular input continues normally.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type ";")
       (nskk-e2e-type "k")    ; → ▽ preedit started with k
@@ -185,7 +184,6 @@
       (nskk-e2e-type "k")      ; preedit started
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "DEL")    ; cancel preedit
-      ;; After DEL, mode must remain hiragana regardless of preedit state.
       (nskk-e2e-assert-mode 'hiragana)))
 
   (nskk-it "C-g after ;k cancels preedit completely"
@@ -201,7 +199,6 @@
 ;;;; Property-Based Tests
 ;;;;
 
-;; PBT 1: any consonant after ; starts preedit.
 ;; okurigana-consonant generates uppercase strings like "K", "S", etc.;
 ;; lowercase them to form the sticky key pair (;k, ;s, …).
 (nskk-property-test-seeded sticky-consonant-preedit-property
@@ -210,12 +207,10 @@
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type ";")
       (nskk-e2e-type lower)
-      ;; After ;+consonant we expect preedit (▽) to be active.
       (or (eq (nskk-state-henkan-phase nskk-current-state) 'on)
           (nskk-state-valid-mode-p (nskk-current-mode)))))
   20)
 
-;; PBT 2: ;; in any mode never crashes.
 (nskk-property-test sticky-double-semicolon-no-crash-any-mode
   ((mode valid-mode))
   (condition-case nil
@@ -229,7 +224,6 @@
     (error t))
   30)
 
-;; PBT 3: sticky-shift never leaves an invalid mode.
 (nskk-property-test-seeded sticky-mode-always-valid
   ((mode valid-mode))
   (nskk-e2e-with-buffer mode nil
@@ -361,7 +355,6 @@
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "DEL")
-      ;; After DEL from preedit-pending, the preedit is cancelled.
       ;; The next ";" must start a new ▽.
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase 'on)))

@@ -176,7 +176,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-type input)
       (let ((_before (nskk-preedit-string)))
         (nskk-e2e-type "TAB")
-        ;; After Tab with a known prefix, preedit must be a valid string.
         (should (stringp (nskk-preedit-string)))
         (should expected)))))
 
@@ -191,10 +190,8 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
         (nskk-e2e-type "TAB")
-        ;; Confirm we are still in preedit phase with an extended reading.
         (nskk-e2e-assert-henkan-phase 'on)
         (should (not (string-empty-p (nskk-preedit-string))))
-        ;; SPC should trigger henkan conversion.
         (nskk-e2e-type "SPC")
         (nskk-e2e-assert-henkan-phase 'active))))
 
@@ -205,11 +202,8 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-type "Kan")
         (nskk-e2e-type "TAB")
         (nskk-e2e-assert-henkan-phase 'on)
-        ;; C-j commits the current preedit as kana without henkan.
         (nskk-e2e-type "C-j")
-        ;; After commit, henkan phase returns to nil.
         (nskk-e2e-assert-henkan-phase nil)
-        ;; Buffer should contain the committed kana (non-empty).
         (should (not (string-empty-p (buffer-string))))))))
 
 ;;;;
@@ -223,14 +217,10 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
         (nskk-e2e-type "TAB")
-        ;; Preedit is extended at this point.
         (nskk-e2e-assert-henkan-phase 'on)
         (should (not (string-empty-p (nskk-preedit-string))))
-        ;; C-g cancels preedit.
         (nskk-e2e-type "C-g")
-        ;; After cancellation, henkan phase is nil.
         (nskk-e2e-assert-henkan-phase nil)
-        ;; Buffer should be empty (nothing was committed).
         (nskk-e2e-assert-buffer ""))))
 
   (nskk-it "C-g without Tab also cancels partial preedit"
@@ -249,7 +239,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 
 (nskk-describe "dcomp state invariants"
   (nskk-it "Tab in preedit never switches away from hiragana mode"
-    ;; After typing a prefix and pressing Tab, the mode must remain hiragana.
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
@@ -289,7 +278,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 ;;;; Property-Based Tests
 ;;;;
 
-;; PBT 1: Any romaji prefix followed by TAB must not crash.
 ;; This is the crash-freedom property: the dcomp code path must be robust
 ;; against arbitrary (but syntactically valid) romaji input.
 (nskk-property-test-seeded dcomp-any-prefix-tab-no-crash
@@ -306,7 +294,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
                            romaji (error-message-string err)))))))
   30)
 
-;; PBT 2: After preedit is started and any romaji is typed + TAB,
 ;; nskk-preedit-string returns a string (never nil).
 ;; "Ka" is prepended to activate preedit (uppercase K) and commit at least
 ;; one kana (か) so preedit text is non-empty before TAB fires.
@@ -320,7 +307,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (stringp (nskk-preedit-string))))
   30)
 
-;; PBT 3: Mode is always hiragana after any romaji input + TAB.
 ;; TAB must never trigger a mode switch as a side effect.
 (nskk-property-test-seeded dcomp-mode-preserved-after-tab
   ((romaji romaji-basic))

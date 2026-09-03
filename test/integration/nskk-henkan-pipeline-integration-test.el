@@ -145,9 +145,6 @@
           (should (= (nskk-state-current-index nskk-current-state) 0))
           (nskk-should-equal "" (nskk-state-romaji-buffer)))))))
 
-;;;
-;;;
-
 (require 'nskk-pbt-generators)
 
 (nskk-deftest-table henkan-pipeline-preedit-sequences
@@ -160,7 +157,6 @@
     (nskk-integration-with-session 'hiragana
       (dolist (ch (string-to-list input))
         (nskk--integration-type-char ch))
-      ;; After typing, buffer-string should be non-empty (▽ + kana)
       (should (not (string-empty-p (buffer-string)))))))
 
 (nskk-property-test henkan-pipeline-preedit-does-not-crash

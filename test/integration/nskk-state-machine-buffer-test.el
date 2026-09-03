@@ -425,7 +425,6 @@
   (nskk-it "stress test with many buffer operations maintains string invariant"
     (let ((state (nskk-state-create 'hiragana))
           (operations 0))
-      ;; Perform 1000 random operations
       (dotimes (_ 1000)
         (cl-incf operations)
         (let ((op (nskk--pbt-random-int 0 3)))
@@ -435,7 +434,6 @@
             (2 (nskk-state-clear-input state))
             (3 (nskk-state-set state 'input-buffer
                                (nskk--pbt-generate-input-buffer 20)))))
-        ;; Verify invariant after each operation
         (should (stringp (nskk-state-input-buffer state)))
         (should (>= (length (nskk-state-input-buffer state)) 0)))
       (message "Completed %d buffer operations" operations))))

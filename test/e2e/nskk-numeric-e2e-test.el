@@ -153,7 +153,6 @@ Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
 ;;;; Property-Based Tests
 ;;;;
 
-;; PBT 1: typing "#1ko" + SPC in hiragana mode never crashes.
 ;; (The generator draws any valid mode; we only run the body in hiragana so
 ;; the property is always checked with a consistent mode.)
 (nskk-property-test-seeded numeric-hiragana-no-crash
@@ -167,7 +166,6 @@ Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
     (error t))
   20)
 
-;; PBT 2: "#1" in any valid mode never raises an unhandled error.
 ;; Crash-freedom across all modes (not just hiragana).
 (nskk-property-test-seeded numeric-any-mode-no-crash
   ((mode valid-mode))

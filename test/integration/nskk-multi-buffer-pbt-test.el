@@ -171,14 +171,12 @@
                (modes nil))
           (unwind-protect
               (progn
-                ;; Create buffers with random modes
                 (dotimes (_ num-buffers)
                   (let ((mode (nskk--pbt-generate-valid-mode)))
                     (push (nskk--pbt-create-buffer-with-state mode) buffers)
                     (push mode modes)))
                 (setq buffers (nreverse buffers))
                 (setq modes (nreverse modes))
-                ;; Modify each buffer independently
                 (cl-loop for buf in buffers
                          for i from 0
                          do (with-current-buffer buf
@@ -198,7 +196,6 @@
                                               :expected-mode expected-mode
                                               :actual-mode mode)
                                         failures))))))
-            ;; Cleanup all buffers
             (dolist (buf buffers)
               (nskk--pbt-cleanup-test-buffer buf)))))
       (when failures
@@ -226,7 +223,6 @@
              (rest-modes-before (mapcar #'nskk-state-mode rest-states))
              (new-mode (if (eq (nskk-state-mode state1) 'hiragana) 'ascii 'hiragana)))
         (nskk-state-set state1 'mode new-mode)
-        ;; After mutating state1, remaining states should be unchanged
         (cl-every (lambda (state mode-before)
                     (eq (nskk-state-mode state) mode-before))
                   rest-states rest-modes-before))))

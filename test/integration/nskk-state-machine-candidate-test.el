@@ -421,14 +421,12 @@ COUNT defaults to 0-10 if not specified."
     (let ((state (nskk-state-create 'hiragana))
           (operations 0))
       (nskk-state-set-candidates state '("a" "b" "c" "d" "e" "f" "g" "h" "i" "j"))
-      ;; Perform 1000 random navigation operations
       (dotimes (_ 1000)
         (cl-incf operations)
         (let ((op (nskk--pbt-random-int 0 1)))
           (pcase op
             (0 (nskk-state-next-candidate state))
             (1 (nskk-state-previous-candidate state))))
-        ;; Verify invariant after each operation
         (let ((index (nskk-state-current-index state)))
           (should (>= index 0))
           (should (< index 10))))
