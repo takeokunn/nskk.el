@@ -839,15 +839,6 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
   (nskk-prolog-with-state
       (vector (aref state 0) (aref state 1) (aref state 2) (aref state 3)
               (aref state 4) (aref state 5) (aref state 6) (aref state 7))
-    ;; The swapped-in state above is a hand-built, minimal fixture database
-    ;; (see `nskk-tutorial-test--make-dict-state') that carries none of the
-    ;; real `module-initialized-flag' facts asserted by each owning module
-    ;; at load time.  `nskk-tutorial--save-dict-state' queries that
-    ;; predicate (FR-010) and correctly finds none here, so its captured
-    ;; `init-flags' is nil in this isolated context -- this is expected,
-    ;; not a bug: the 7 flag *variables* below are still protected by this
-    ;; `cl-progv' form's own dynamic-scope restoration regardless of what
-    ;; `nskk-tutorial--save-dict-state' internally records.
     (cl-progv
         '(nskk--user-dict-index
           nskk--system-dict-index
@@ -1175,17 +1166,6 @@ Prolog-only `nskk-prolog-with-database-fields' macro cannot."
               (equal condition-data (list condition 'restore-payload)))
              (should nskk-tutorial--dict-state-saved-p)
              (nskk-tutorial-test--should-saved-state-eq state)
-             ;; `nskk-tutorial--save-dict-state' now sources its flag list
-             ;; from the `module-initialized-flag' Prolog fact table
-             ;; (FR-010) rather than a hardcoded symbol list; this test's
-             ;; isolated fixture database (see
-             ;; `nskk-tutorial-test--make-dict-state') never registers
-             ;; those facts, so the query correctly finds none and
-             ;; `nskk-tutorial--saved-init-flags' is nil here -- retention
-             ;; of a nil value across the failed restore is still a
-             ;; meaningful check (it must stay nil, not silently become
-             ;; something else); the other retained fields below cover the
-             ;; non-trivial-value case.
              (should-not nskk-tutorial--saved-init-flags)
              (should
               (eq nskk-tutorial--saved-dict-save-inhibited

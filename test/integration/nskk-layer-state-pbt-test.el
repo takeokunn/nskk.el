@@ -36,12 +36,7 @@
 ;;; Register Additional Generators for State Tests
 ;;;
 
-;; These generators use Emacs' built-in (random) which is seeded by the
-;; nskk-property-test-seeded macro. We use (abs (random)) to ensure
-;; positive values where needed.
 
-;; Initialize random state with a positive seed to ensure (random)
-;; returns positive numbers when called without a limit.
 (random (abs (random)))
 
 (nskk-register-generator 'pbt-integer

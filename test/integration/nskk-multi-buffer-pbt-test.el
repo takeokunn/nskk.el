@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Multi-buffer PBT tests.
 
 ;;; Code:
 
@@ -66,7 +65,6 @@
                (buf2 (nskk--pbt-create-buffer-with-state mode2)))
           (unwind-protect
               (progn
-                ;; Modify state in buffer 1
                 (with-current-buffer buf1
                   (nskk-state-set nskk-current-state 'input-buffer "hello")
                   (nskk-state-set nskk-current-state 'candidates '("a" "b" "c"))
@@ -105,7 +103,6 @@
                (buf2 (nskk--pbt-create-buffer-with-state initial-mode)))
           (unwind-protect
               (progn
-                ;; Change mode in buffer 1 multiple times
                 (with-current-buffer buf1
                   (dotimes (_ (nskk--pbt-random-int 2 5))
                     (let ((new-mode (nskk--pbt-generate-valid-mode)))
@@ -140,7 +137,6 @@
                (romaji-input (nskk--pbt-generate-input-buffer 10)))
           (unwind-protect
               (progn
-                ;; Set input-buffer (simulating romaji accumulation) in buffer 1
                 (with-current-buffer buf1
                   (nskk-state-set nskk-current-state 'input-buffer romaji-input))
                 (with-current-buffer buf2

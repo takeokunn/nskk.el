@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; Chaos/monkey tests for AZIK E2E.
 
 ;;; Code:
 
@@ -48,7 +47,6 @@ Returns nil when all invariants hold.  Returns a descriptive string
 when an invariant is violated, suitable for inclusion in an ert-fail
 message."
   (cond
-   ;; nskk-mode must still be active
    ((not (bound-and-true-p nskk-mode))
     "nskk-mode was deactivated unexpectedly")
    ((not (bound-and-true-p nskk-current-state))
@@ -56,7 +54,6 @@ message."
    ((not (memq (nskk-current-mode)
                '(ascii hiragana katakana katakana-半角 abbrev latin)))
     (format "invalid mode: %S" (nskk-current-mode)))
-   ;; Henkan phase must be one of the five valid phases
    ((not (memq (nskk-state-henkan-phase nskk-current-state)
                '(nil on active list registration)))
     (format "invalid henkan-phase: %S"
@@ -88,7 +85,6 @@ invariant, so any failure is fully reproducible."
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
                     (+ min-len (random (- max-len min-len -1))))))
-          ;; Type each event, absorbing per-key errors.
           (dolist (event seq)
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
@@ -128,7 +124,6 @@ arise from AZIK colon-okurigana, vowel-shadow, or hatsuon edge cases."
   (let* ((runs 100)
          (failures nil)
          (seed (abs (random)))
-         ;; Events that only go into preedit, not control/commit
          (kana-pool (cl-remove-if
                      (lambda (ev) (member ev '("SPC" "C-g" "RET" "DEL" "C-j")))
                      nskk--azik-chaos--event-pool)))
@@ -139,14 +134,11 @@ arise from AZIK colon-okurigana, vowel-shadow, or hatsuon edge cases."
                (pre-seq (cl-loop repeat pre-len
                                  collect (nth (random (length kana-pool))
                                               kana-pool)))
-               ;; 40% chance to press SPC to enter conversion phase
                (try-convert (zerop (random 3))))
-          ;; Type the preamble sequence
           (dolist (ev pre-seq)
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys ev)
               (error nil) (quit nil)))
-          ;; Optionally trigger conversion
           (when try-convert
             (condition-case nil
                 (nskk-e2e--dispatch-event 32) ; SPC
@@ -154,7 +146,6 @@ arise from AZIK colon-okurigana, vowel-shadow, or hatsuon edge cases."
           (condition-case nil
               (nskk-e2e--dispatch-event 7) ; C-g
             (error nil) (quit nil))
-          ;; Invariant: henkan-phase must not be active or list
           (let ((phase (and (bound-and-true-p nskk-current-state)
                             (nskk-state-henkan-phase nskk-current-state))))
             (when (memq phase '(active list))
@@ -192,7 +183,6 @@ output."
   (let* ((runs 100)
          (failures nil)
          (seed (abs (random)))
-         ;; Only simple single-kana inputs; no uppercase (avoids preedit)
          (simple-kana '("ka" "ki" "ku" "ke" "ko"
                         "sa" "su" "se" "so"
                         "ta" "te" "to"
@@ -206,16 +196,13 @@ output."
                                   collect (nth (random (length simple-kana))
                                                simple-kana)))
                (special-key (if (zerop (random 2)) ";" ":")))
-          ;; Type the preamble
           (dolist (ev pre-seq)
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys ev)
               (error nil) (quit nil)))
-          ;; Type the AZIK special key
           (condition-case nil
               (nskk--azik-chaos--dispatch-keys special-key)
             (error nil) (quit nil))
-          ;; Invariant: romaji buffer must be empty after a resolved special key
           (when (not (string-empty-p (nskk-state-romaji-buffer)))
             (push (list :run run
                         :seed seed
@@ -258,12 +245,10 @@ across buffer resets, corrupting the next independent input sequence."
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
                     (+ min-len (random (- max-len min-len -1))))))
-          ;; Type each event, absorbing per-key errors.
           (dolist (event seq)
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
-          ;; Reset to idle — this should clear all pending state.
           (nskk--azik-chaos--reset-to-idle)
           (let ((stuck nil))
             (when (and (fboundp 'nskk-deferred-azik-state)
@@ -363,11 +348,6 @@ input until the user manually corrects the mode."
          (max-len 20)
          (failures nil)
          (seed (abs (random)))
-         ;; Pool restricted to kana/AZIK inputs — no mode-switch keys.
-         ;; Exclude: C-j (hiragana switch), q (katakana toggle in preedit
-         ;; does not switch mode when idle, but exclude for clarity),
-         ;; C-g (cancel — not a mode switch but changes phase, keep out
-         ;; to keep the mode-only invariant clean), RET, DEL, SPC.
          (kana-only-pool
           (cl-remove-if
            (lambda (ev)
@@ -425,31 +405,22 @@ that deferred AZIK corrections are not left pending after a cancel."
       (dotimes (run runs)
         (let* ((pre-len (+ 1 (random 8)))
                (pre-seq (nskk--azik-chaos--generate-sequence pre-len)))
-          ;; Type the preamble sequence.
           (dolist (ev pre-seq)
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys ev)
               (error nil) (quit nil)))
-          ;; Send C-g.
           (condition-case nil
               (nskk-e2e--dispatch-event 7)
             (error nil) (quit nil))
-          ;; Collect violations.
           (let ((violations nil))
             (let ((phase (and (bound-and-true-p nskk-current-state)
                               (nskk-state-henkan-phase nskk-current-state))))
               (when (memq phase '(active list registration))
                 (push (list 'henkan-phase-not-cleared phase) violations)))
-            ;; DA/DV are cleared by C-g via `nskk-clear-azik-pending-state'
-            ;; (FR-001 fix) when an active preedit is cancelled.  This explicit
-            ;; setq is a belt-and-suspenders guard for the subset of C-g events
-            ;; that fire outside an active preedit (no cancel-preedit call),
-            ;; where DA/DV could still be set from a partial romaji sequence.
             (when (fboundp 'nskk-deferred-azik-state)
               (nskk-set-deferred-azik-state nil))
             (when (fboundp 'nskk-deferred-vowel-shadow-state)
               (nskk-set-deferred-vowel-shadow-state nil))
-            ;; Colon-okurigana states ARE cleared by cancel-preedit.
             (when (and (fboundp 'nskk-azik-colon-okuri-pending)
                        (nskk-azik-colon-okuri-pending))
               (push (list 'azik-colon-okuri-pending
@@ -506,7 +477,6 @@ considers the buffer idle."
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
           (nskk--azik-chaos--reset-to-idle)
-          ;; If henkan-phase is nil, no display overlay should be present.
           (let ((phase (and (bound-and-true-p nskk-current-state)
                             (nskk-state-henkan-phase nskk-current-state))))
             (when (null phase)
@@ -560,30 +530,21 @@ provided, producing garbage output."
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
                     (+ min-len (random (- max-len min-len -1))))))
-          ;; Type the preamble.
           (dolist (event seq)
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
-          ;; Commit with RET.
           (condition-case nil
               (nskk--azik-chaos--dispatch-keys "RET")
             (error nil) (quit nil))
-          ;; Collect violations.
           (let ((violations nil))
-            ;; 1. Romaji buffer must be empty.
             (when (not (string-empty-p (nskk-state-romaji-buffer)))
               (push (list 'romaji-buffer-nonempty (nskk-state-romaji-buffer))
                     violations))
-            ;; 2. DA/DV are consumed within a single `nskk-convert-input-to-kana/k'
-            ;; call and should already be nil by the time RET's handler returns.
-            ;; This explicit setq is a belt-and-suspenders guard for any edge
-            ;; path where the pipeline exits before clearing them.
             (when (fboundp 'nskk-deferred-azik-state)
               (nskk-set-deferred-azik-state nil))
             (when (fboundp 'nskk-deferred-vowel-shadow-state)
               (nskk-set-deferred-vowel-shadow-state nil))
-            ;; Colon-okurigana states should be cleared by commit.
             (when (and (fboundp 'nskk-azik-colon-okuri-pending)
                        (nskk-azik-colon-okuri-pending))
               (push (list 'azik-colon-okuri-pending
@@ -594,14 +555,6 @@ provided, producing garbage output."
               (push (list 'azik-colon-okuri-deferred
                           (nskk-azik-colon-okuri-deferred))
                     violations))
-            ;; 3. No ▽ or ▼ in buffer text; also no lone っ at end of buffer
-            ;; (orphaned AZIK sokuon from a half-committed doubled-consonant
-            ;; sequence like "kk" where the completing kana never arrived).
-            ;; The っ check is skipped when ";" appears in SEQ because ";"
-            ;; is the legitimate っ-emitter and a trailing っ from it is
-            ;; valid committed output, not an orphan.
-            ;; Similarly, "+" (JP106 sokuon-okurigana) legitimately inserts っ
-            ;; as part of an okurigana conversion; trailing っ from it is valid.
             (let ((buf-text (buffer-string)))
               (when (or (string-match-p "▽" buf-text)
                         (string-match-p "▼" buf-text))
@@ -700,16 +653,13 @@ colon-okurigana and sokuon-okurigana flags."
       (dotimes (run runs)
         (let* ((pre-len (+ 1 (random 8)))
                (pre-seq (nskk--azik-chaos--generate-sequence pre-len)))
-          ;; Type the preamble (may set DA or DV via kk, ssh, etc.)
           (dolist (ev pre-seq)
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys ev)
               (error nil) (quit nil)))
-          ;; Send C-g — should clear DA and DV via nskk-clear-azik-pending-state.
           (condition-case nil
               (nskk-e2e--dispatch-event 7)
             (error nil) (quit nil))
-          ;; Collect violations.
           (let ((violations nil))
             (when (and (fboundp 'nskk-deferred-azik-state)
                        (nskk-deferred-azik-state))

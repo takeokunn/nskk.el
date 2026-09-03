@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; Property-Based Testing generators for NSKK.
 
 ;;; Code:
 
@@ -59,7 +58,6 @@ Returns nil if using system random."
   "Generate a random number with optional LIMIT.
 Uses seeded generation if seed is set, otherwise uses system random."
   (if nskk--pbt-current-seed
-      ;; Linear congruential generator (same algorithm as many languages)
       (let ((new-state (mod (+ (* 1103515245 nskk--pbt-seed-state) 12345)
                             (expt 2 31))))
         (setq nskk--pbt-seed-state new-state)
@@ -124,7 +122,6 @@ When INCLUDE-UPPERCASE is non-nil, may generate uppercase letters."
   (let ((choices (append nskk--pbt-lowercase-letters
                         (when include-uppercase nskk--pbt-uppercase-letters))))
     (if (and include-special (nskk--pbt-random-bool))
-        ;; Generate special key (represented as string)
         (nskk--pbt-random-choice (mapcar #'car nskk--pbt-mode-switch-keys))
       (string (nskk--pbt-random-choice choices)))))
 
@@ -144,19 +141,16 @@ Default length is 1-20 characters if not specified."
   (lambda (&rest args)
     (apply #'nskk--pbt-generate-key-sequence args)))
 
-;; Composable key sequence with length parameter
 (nskk-register-generator 'key-sequence-of-length
   (lambda (length)
     (nskk--pbt-generate-key-sequence length)))
 
-;; Key sequence with only lowercase letters
 (nskk-register-generator 'lowercase-key-sequence
   (lambda (&optional length)
     (let* ((len (or length (nskk--pbt-random-int 1 20))))
       (cl-loop repeat len
                collect (string (nskk--pbt-random-choice nskk--pbt-lowercase-letters))))))
 
-;; Key sequence with only lowercase letters (excluding mode-switch keys: q, l, ;)
 (defconst nskk--pbt-typing-letters
   (cl-remove-if (lambda (c) (memq c '(?q ?l ?\;)))
                 (string-to-list "abcdefghijklmnopqrstuvwxyz"))
@@ -168,7 +162,6 @@ Default length is 1-20 characters if not specified."
       (cl-loop repeat len
                collect (string (nskk--pbt-random-choice nskk--pbt-typing-letters))))))
 
-;; Key sequence for okurigana input (with uppercase consonant)
 (nskk-register-generator 'okurigana-key-sequence
   (lambda (&optional length)
     (let* ((len (or length (nskk--pbt-random-int 2 10)))
@@ -196,7 +189,6 @@ Default length is 1-20 characters if not specified."
   (lambda (&rest _args)
     (nskk--pbt-generate-valid-mode)))
 
-;; Mode with transition context
 (nskk-register-generator 'mode-transition
   (lambda (&rest _args)
     (let ((from-mode (nskk--pbt-generate-valid-mode))
@@ -256,7 +248,6 @@ SIZE controls the complexity of generated state."
                                    (nskk--pbt-random-bool))
                               (nskk--pbt-random-int 0 (length input-buffer))
                             nil)))
-    ;; (Cannot create actual nskk-state struct without loading nskk-state)
     (list :mode mode
           :input-buffer input-buffer
           :converted-buffer ""
@@ -273,13 +264,11 @@ SIZE controls the complexity of generated state."
   (lambda (&rest args)
     (apply #'nskk--pbt-generate-state-object args)))
 
-;; State with specific mode
 (nskk-register-generator 'state-in-mode
   (lambda (mode &optional size)
     (let ((state (nskk--pbt-generate-state-object size)))
       (plist-put state :mode mode))))
 
-;; State in henkan mode (with candidates)
 (nskk-register-generator 'henkan-state
   (lambda (&optional size)
     (let* ((sz (nskk--pbt-resolve-size size 5))
@@ -363,7 +352,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
       (incomplete
        (if (nskk--pbt-random-bool)
            (nskk--pbt-random-choice nskk--pbt-incomplete-patterns)
-         ;; Mixed: complete syllables + incomplete ending
          (concat (string-join
                            (cl-loop repeat (max 0 (1- sz))
                                     collect (nskk--pbt-random-choice
@@ -372,7 +360,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
                            "")
                  (nskk--pbt-random-choice nskk--pbt-incomplete-patterns))))
       (t
-       ;; Mixed: all types
        (string-join
                   (cl-loop repeat sz
                            collect (nskk--pbt-random-choice
@@ -386,7 +373,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
   (lambda (&rest args)
     (apply #'nskk--pbt-generate-romaji-pattern args)))
 
-;; Specific romaji pattern types
 (nskk-register-generator 'romaji-basic
   (lambda (&optional size)
     (nskk--pbt-generate-romaji-pattern size 'basic)))
@@ -403,7 +389,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
 ;;;; Generator 5: AZIK Rule Generator
 ;;;;
 
-;; AZIK rule categories for stratified sampling
 (defconst nskk--pbt-azik-categories
   '((basic-vowels . ("a" "i" "u" "e" "o"))
     (special-keys . (";" ":"))
@@ -424,9 +409,6 @@ TYPE can be `basic', `extended', `incomplete', or nil for random."
     (hatsuon-b . ("bz" "bk" "bj" "bd" "bl"))
     (hatsuon-p . ("pz" "pk" "pj" "pd" "pl"))
     (diphthong-k . ("kq" "kh" "kw" "kp"))
-    ;; "sh", "th", "dh", "wh" are demoted to :incomplete by
-    ;; nskk-azik-demote-shadow-keys (they shadow standard romaji prefixes).
-    ;; They are excluded here to keep only patterns that produce real output.
     (diphthong-s . ("sq" "sw" "sp"))
     (diphthong-t . ("tq" "tw" "tp"))
     (diphthong-n . ("nq" "nh" "nw" "np"))
@@ -501,19 +483,15 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
   (lambda (&rest args)
     (apply #'nskk--pbt-generate-azik-rule args)))
 
-;; AZIK rule with expected output
 (nskk-register-generator 'azik-rule-with-expected
   (lambda (&optional category)
     (let ((rule (nskk--pbt-generate-azik-rule category)))
-      ;; Return cons cell (rule . category-name) for lookup
       (cons rule category))))
 
-;; All AZIK patterns for exhaustive testing
 (nskk-register-generator 'azik-all-patterns
   (lambda (&rest _args)
     (nskk--pbt-get-all-azik-patterns)))
 
-;; AZIK category list
 (nskk-register-generator 'azik-categories
   (lambda (&rest _args)
     (mapcar #'car nskk--pbt-azik-categories)))
@@ -551,7 +529,6 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
   (lambda (&rest _args)
     (nskk--pbt-generate-okurigana-consonant)))
 
-;; Okurigana pattern with romaji prefix
 (nskk-register-generator 'okurigana-pattern
   (lambda (&optional prefix-length)
     (let* ((prefix-len (or prefix-length (nskk--pbt-random-int 1 5)))
@@ -564,7 +541,6 @@ Uses stratified sampling for efficiency when CATEGORY is nil."
            (consonant (nskk--pbt-generate-okurigana-consonant)))
       (concat prefix consonant))))
 
-;; Okurigana pattern with expected output
 (nskk-register-generator 'okurigana-with-expected
   (lambda (&optional prefix-length)
     (let* ((prefix-len (or prefix-length (nskk--pbt-random-int 1 5)))
@@ -644,7 +620,6 @@ SIZE controls the length of the query."
   (lambda (&rest args)
     (apply #'nskk--pbt-generate-search-query args)))
 
-;; Search query with type
 (nskk-register-generator 'search-query-with-type
   (lambda (&optional size)
     (let ((query (nskk--pbt-generate-search-query size))
@@ -654,7 +629,6 @@ SIZE controls the length of the query."
             :search-type search-type
             :okuri-type okuri-type))))
 
-;; Search parameters (query, type, limit)
 (nskk-register-generator 'search-params
   (lambda (&optional size)
     (let ((sz (nskk--pbt-resolve-size size 3)))
@@ -667,7 +641,6 @@ SIZE controls the length of the query."
 ;;;; Composite Generators
 ;;;;
 
-;; Generate a complete input scenario
 (nskk-register-generator 'input-scenario
   (lambda (&optional size)
     (let* ((sz (nskk--pbt-resolve-size size 5))
@@ -677,7 +650,6 @@ SIZE controls the length of the query."
             :key-sequence key-sequence
             :expected-length (length key-sequence)))))
 
-;; Generate conversion scenario (input to conversion)
 (nskk-register-generator 'conversion-scenario
   (lambda (&optional size)
     (let* ((sz (nskk--pbt-resolve-size size 3))
@@ -687,7 +659,6 @@ SIZE controls the length of the query."
             :mode mode
             :has-okurigana (nskk--pbt-random-bool)))))
 
-;; Generate mode switch scenario
 (nskk-register-generator 'mode-switch-scenario
   (lambda (&rest _args)
     (let* ((initial-mode (nskk--pbt-generate-valid-mode))
@@ -701,12 +672,10 @@ SIZE controls the length of the query."
 ;;;; Henkan Phase Generator
 ;;;;
 
-;; Generate any valid (or nil) henkan phase
 (nskk-register-generator 'henkan-phase
   (lambda (&rest _)
     (nskk--pbt-random-choice '(nil on active list registration))))
 
-;; Generate a converting phase only (excludes nil and on)
 (nskk-register-generator 'converting-phase
   (lambda (&rest _)
     (nskk--pbt-random-choice '(active list registration))))
@@ -716,7 +685,6 @@ SIZE controls the length of the query."
 ;;;; Okurigana Full-Pattern Generator
 ;;;;
 
-;; Generate a romaji prefix + uppercase consonant marker (full okurigana input)
 (nskk-register-generator 'okurigana-full-pattern
   (lambda (&optional size)
     (let* ((sz (nskk--pbt-resolve-size size 3))
@@ -727,7 +695,6 @@ SIZE controls the length of the query."
             :consonant consonant
             :full (concat prefix (string consonant))))))
 
-;; Generate only the uppercase consonant character
 (nskk-register-generator 'okurigana-consonant-char
   (lambda (&rest _)
     (nskk--pbt-random-choice '(?K ?S ?T ?N ?H ?M ?Y ?R ?W ?G ?Z ?D ?B ?P))))
@@ -737,13 +704,11 @@ SIZE controls the length of the query."
 ;;;; Candidate Index Generator
 ;;;;
 
-;; Generate a valid zero-based index into a candidate list of given size
 (nskk-register-generator 'candidate-index
   (lambda (&optional size)
     (let ((n (max 1 (or size (1+ (nskk--pbt-random-int 0 9))))))
       (nskk--pbt-random-int 0 (1- n)))))
 
-;; Generate (candidates . index) pair where index is valid for candidates
 (nskk-register-generator 'candidates-with-valid-index
   (lambda (&optional size)
     (let* ((pool '("漢字" "感じ" "幹事" "日本" "二本" "変換" "桜" "山" "川"))
@@ -758,7 +723,6 @@ SIZE controls the length of the query."
 ;;;; Multi-Buffer Scenario Generator
 ;;;;
 
-;; Generate independent state descriptors for multiple buffers
 (nskk-register-generator 'multi-buffer-scenario
   (lambda (&optional size)
     (let ((n (max 2 (nskk--pbt-resolve-size size 3))))
@@ -785,7 +749,6 @@ TYPE specifies the expected type for proper shrinking."
     ('integer
      (floor (/ value 2)))
     (_
-     ;; Generic shrinking: try to make value smaller
      (pcase value
        ((pred stringp)
         (when (> (length value) 0)
@@ -861,38 +824,32 @@ TYPE specifies the classification type."
 
 (nskk-register-generator 'uppercase-char
   (lambda ()
-    ;; A random uppercase ASCII letter A-Z.
     (let ((letters (string-to-list "ABCDEFGHIJKLMNOPQRSTUVWXYZ")))
       (string (nth (random (length letters)) letters)))))
 
 (nskk-register-generator 'lowercase-char
   (lambda ()
-    ;; A random lowercase ASCII letter a-z.
     (let ((letters (string-to-list "abcdefghijklmnopqrstuvwxyz")))
       (string (nth (random (length letters)) letters)))))
 
 (nskk-register-generator 'non-alpha-char
   (lambda ()
-    ;; A random non-alphabetic printable ASCII character.
     (let ((chars (string-to-list "0123456789!@#$%^&*()-_=+[]{}|;':\",./<>?")))
       (string (nth (random (length chars)) chars)))))
 
 (nskk-register-generator 'any-char
   (lambda ()
-    ;; A random printable ASCII character (upper, lower, or non-alpha).
     (let* ((all (string-to-list "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+[]{}|;':\",./<>?"))
            (idx (random (length all))))
       (string (nth idx all)))))
 
 (nskk-register-generator 'ascii-lowercase-char
   (lambda ()
-    ;; A random lowercase ASCII letter (alias for lowercase-char).
     (let ((letters (string-to-list "abcdefghijklmnopqrstuvwxyz")))
       (string (nth (random (length letters)) letters)))))
 
 (nskk-register-generator 'hiragana-char
   (lambda ()
-    ;; A random hiragana character string.
     (nth (random (length nskk--pbt-hiragana-chars)) nskk--pbt-hiragana-chars)))
 
 
@@ -902,7 +859,6 @@ TYPE specifies the classification type."
 
 (nskk-register-generator 'vowel-char-pair
   (lambda ()
-    ;; A cons of (vowel-char . expected-hiragana-string) for simple vowel → kana mapping.
     (let ((pairs '((?a . "あ") (?i . "い") (?u . "う") (?e . "え") (?o . "お"))))
       (nth (random (length pairs)) pairs))))
 
@@ -913,20 +869,17 @@ TYPE specifies the classification type."
 
 (nskk-register-generator 'known-dict-key
   (lambda ()
-    ;; A random key that is known to exist in the mock dictionary.
     (let ((keys '("かんじ" "さくら" "うみ" "そら" "やま" "かわ")))
       (nth (random (length keys)) keys))))
 
 (nskk-register-generator 'unknown-dict-key
   (lambda ()
-    ;; A random string that is not a valid dictionary key.
     (let ((prefix "zzz-unknown-")
           (suffix (number-to-string (random 10000))))
       (concat prefix suffix))))
 
 (nskk-register-generator 'candidate-list
   (lambda ()
-    ;; A random non-empty list of kanji candidate strings.
     (let* ((pool '("漢字" "感じ" "桜" "海" "空" "山" "川" "花" "星" "月"))
            (n (1+ (random (min 5 (length pool))))))
       (seq-take pool n))))
@@ -938,7 +891,6 @@ TYPE specifies the classification type."
 
 (nskk-register-generator 'valid-skk-line
   (lambda ()
-    ;; A syntactically valid SKK dictionary entry line.
     (let* ((keys   '("かんじ" "さくら" "うみ" "そら"))
            (cands  '("漢字/感じ" "桜" "海" "空"))
            (idx    (random (length keys))))
@@ -946,7 +898,6 @@ TYPE specifies the classification type."
 
 (nskk-register-generator 'invalid-skk-line
   (lambda ()
-    ;; A comment or malformed SKK dictionary line.
     (let ((bad '(";; comment line" "" "not-a-valid-line" "かんじ" "/no-reading/")))
       (nth (random (length bad)) bad))))
 

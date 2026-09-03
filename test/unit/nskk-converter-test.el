@@ -23,18 +23,6 @@
 ;; - Integration: full kana row conversion
 ;; - CPS variants: nskk-converter-convert/k, nskk-convert-romaji/k,
 ;;     nskk--convert-step-n/k, nskk-convert-romaji--internal/k,
-;;     nskk-converter-load-style/k (on-found/on-not-found),
-;;     defun/done /k forms (remove-rule/k, register-style/k, initialize/k)
-;; - Internal functions: nskk-convert-romaji--internal, nskk--convert-step-n,
-;;     nskk--converter-populate-incomplete-markers
-;; - Rule management: add, remove, override, get (with Prolog DB isolation)
-;; - Style system: register, load, define-style macro (with registry isolation)
-;; - Data validation: nskk--standard-romaji-rules content and structure
-;; - Macro validation: nskk-converter-define-rules, nskk-converter-define-style
-;; - Property-based tests: determinism, string output, compression ratio, CPS/sync consistency
-;; - Seeded PBTs: convert/k, romaji/k, get-rule/k, completions/k, step-n invariant
-;; - Regression tests: double consonant, n-conversion, palatal, long strings, fallback path
-;; - Performance tests: basic, complex, batch, long-input
 ;;; Code:
 (require 'ert)
 
@@ -194,11 +182,8 @@
     (should (equal (nskk-convert-romaji "Ka") "か")))
 
   (nskk-it "handles boundary cases correctly"
-    ;; Consonant followed by 'n' at end
     (should (equal (nskk-convert-romaji "kan") "かん"))
-    ;; Double consonant at end (sokuon + remaining consonant)
     (should (equal (nskk-convert-romaji "kk") "っk"))
-    ;; Palatal at end
     (should (equal (nskk-convert-romaji "kya") "きゃ"))))
 
 (nskk-describe "romaji-to-kana integration"
@@ -207,11 +192,9 @@
     (should (equal (nskk-convert-romaji "kakikukeko") "かきくけこ"))
     (should (equal (nskk-convert-romaji "sashisuseso") "さしすせそ"))))
 
-;; TR-004: nskk-converter-initialize idempotency
 (nskk-describe "converter-initialize"
   (nskk-it "is idempotent: subsequent calls are no-ops"
     (nskk-prolog-test-with-isolated-db
-      ;; Table should still work after multiple initialize calls
       (nskk-converter-initialize)
       (nskk-converter-initialize)
       (should (equal (nskk-converter-get-rule "ka") "か"))
@@ -222,25 +205,16 @@
 ;;;;
 (nskk-property-test conversion-output-never-expands
   ((input romaji-string))
-  ;; Romaji-to-kana conversion never produces more characters than the input.
-  ;; Kana is more compact than romaji; incomplete sequences pass through unchanged.
   (<= (length (nskk-convert-romaji input)) (length input))
   100)
 
-;; Minimum compression: kana output is at least 1/4 of romaji input length.
-;; The upper bound is already proved by conversion-output-never-expands.
-;; Rationale: the longest romaji sequence (e.g. "xtsu" -> "っ") is 4:1,
-;; so floor(len/4) is a tight lower bound.
 (nskk-property-test conversion-min-compression-ratio
   ((input romaji-string))
   (>= (length (nskk-convert-romaji input)) (/ (length input) 4))
   100)
 
-;; TR-002: Fixed PBT — empty input is valid and returns "" by contract.
 (nskk-property-test conversion-non-empty-output
   ((input romaji-string))
-  ;; Non-empty romaji input always produces non-empty output.
-  ;; Empty input is handled separately (returns "" by contract).
   (or (string-empty-p input)
       (not (string-empty-p (nskk-convert-romaji input))))
   100)
@@ -307,8 +281,6 @@
     :body (should (equal expected (nskk-convert-romaji input))))
 
   (nskk-it "katakana-passthrough: symbols produced by punctuation rules are not altered by hiragana-to-katakana conversion"
-    ;; nskk-kana-string-hiragana-to-katakana leaves non-hiragana characters unchanged.
-    ;; This confirms punctuation rules behave identically in hiragana and katakana modes.
     (dolist (pair '(("。" . "。") ("、" . "、") ("「" . "「") ("」" . "」")
                     ("〜" . "〜") ("…" . "…") ("‥" . "‥") ("『" . "『") ("』" . "』")
                     ("・" . "・") ("←" . "←") ("↓" . "↓") ("↑" . "↑") ("→" . "→")
@@ -337,22 +309,16 @@
 
 (nskk-describe "regression: long string handling"
   (nskk-it "handles long inputs without truncation (internal-long-string-001)"
-    ;; 25 syllables — well above previous 100-iteration limit but tests
-    ;; that each romaji token advances exactly one step.
     (let ((long-romaji "aiueoaiueoaiueoaiueoaiueo")
           (expected    "あいうえおあいうえおあいうえおあいうえおあいうえお"))
       (should (equal (nskk-convert-romaji long-romaji) expected)))
-    ;; 30+ conversion steps via consonant+vowel pairs
     (should (equal (nskk-convert-romaji "kakikukekokakikukekokakikukeko")
                    "かきくけこかきくけこかきくけこ"))))
 
 (nskk-describe "regression: fallback path"
   (nskk-it "appends unconvertible tail verbatim (internal-fallback-001)"
-    ;; Pure unknown sequence: returned unchanged
     (should (equal (nskk-convert-romaji "xyz") "xyz"))
-    ;; Mixed: known prefix converted, unknown tail appended
     (should (equal (nskk-convert-romaji "kaxyz") "かxyz"))
-    ;; Trailing isolated consonant: appended as-is
     (should (equal (nskk-convert-romaji "kak") "かk"))))
 
 ;;;;
@@ -402,7 +368,6 @@
       (should (equal (car result) "か"))
       (should (equal (cdr result) "k")))))
 
-;; TR-007: Direct nskk-converter-lookup tests
 (nskk-describe "nskk-converter-lookup"
   (nskk-deftest-table lookup-complete-match
     :description "Returns kana string for complete romaji matches"
@@ -432,7 +397,6 @@
     (should-not (nskk-converter-lookup 42))
     (should-not (nskk-converter-lookup 'symbol))))
 
-;; TR-001: CPS variant tests
 (nskk-describe "nskk-converter-convert/k CPS variant"
   (nskk-it "calls on-match with kana and remaining on complete match"
     (let (got-kana got-remaining)
@@ -469,7 +433,6 @@
 
   (nskk-it "calls on-fail for unknown romaji"
     (let (fail-called)
-      ;; "2" has no registered rules or prefixes in the standard table
       (nskk-converter-convert/k "2"
         (lambda (_k _r) (should nil))
         (lambda (_r) (should nil))
@@ -645,10 +608,8 @@
             (nskk-converter-add-rule "x" "エックス")))
         (nskk-converter-load-style 'minimal-test)
         (should (equal (nskk-converter-get-rule "x") "エックス"))
-        ;; Standard rules should be gone
         (should-not (equal (nskk-converter-get-rule "ka") "か"))))))
 
-;; TR-005: nskk-converter-define-style macro tests
 (nskk-describe "nskk-converter-define-style macro"
   (nskk-it "generates an init function and registers the style"
     (nskk-prolog-test-with-isolated-db
@@ -658,9 +619,7 @@
           "Temporary style for macro validation test."
           ("zz" "zzテスト"))
         (nskk-converter-load-style 'test-define-macro-style)
-        ;; The macro-generated init function should have asserted this rule
         (should (equal (nskk-converter-get-rule "zz") "zzテスト"))
-        ;; Standard rules should not be present
         (should-not (equal (nskk-converter-get-rule "ka") "か")))))
 
   (nskk-it "loads and unloads cleanly"
@@ -688,7 +647,6 @@
     (let ((result (nskk-convert-romaji--internal "kka")))
       (should (equal result "っか")))))
 
-;; TR-006: Direct nskk--convert-step-n tests
 (nskk-describe "nskk--convert-step-n sync wrapper"
   (nskk-it "produces ん for standalone n"
     (let (got-kana got-rest)
@@ -796,7 +754,6 @@
 
 ;;;
 ;;;
-;; Conversion determinism: same input always produces same output.
 (nskk-property-test conversion-pbt-determinism
   ((input romaji-string))
   (let ((result1 (nskk-convert-romaji input))
@@ -804,15 +761,12 @@
     (equal result1 result2))
   100)
 
-;; Output is always a string: nskk-convert-romaji always returns a string.
 (nskk-property-test conversion-pbt-returns-string
   ((input romaji-string))
   (let ((result (nskk-convert-romaji input)))
     (stringp result))
   100)
 
-;; Crash safety: nskk-convert-romaji never signals for any random romaji input.
-;; The generator drives varied inputs; this property verifies no-exception contract.
 (nskk-property-test conversion-pbt-no-crash-on-arbitrary-input
   ((input romaji-string))
   (condition-case nil
@@ -820,7 +774,6 @@
     (error nil))
   50)
 
-;; Table-driven cases: known romaji->kana mappings
 (nskk-deftest-table conversion-pbt-known-romaji-kana
   :description "Known romaji→kana mapping"
   :columns (input expected)
@@ -836,7 +789,6 @@
 ;;;
 ;;; Seeded Property-Based Tests (new)
 ;;;
-;; Property: nskk-converter-convert returns nil or a cons where car is a string.
 (nskk-property-test-seeded converter-pbt-convert-returns-string-or-nil
   ((input romaji-basic))
   (let ((result (nskk-converter-convert input)))
@@ -846,7 +798,6 @@
                  (eq (car result) :incomplete)))))
   100 1001)
 
-;; Property: nskk-converter-get-possible-completions returns nil or a list of cons pairs.
 (nskk-property-test-seeded converter-pbt-completions-returns-list-or-nil
   ((input romaji-basic))
   (let ((completions (nskk-converter-get-possible-completions input)))
@@ -855,7 +806,6 @@
              (cl-every #'consp completions))))
   50 1002)
 
-;; Property: convert-is-deterministic — same input always gives same result (seeded).
 (nskk-property-test-seeded converter-pbt-convert-is-deterministic
   ((input romaji-basic))
   (let ((result1 (nskk-converter-convert input))
@@ -863,9 +813,6 @@
     (equal result1 result2))
   50 1003)
 
-;; TR-008: Seeded consistency PBTs for CPS vs sync variants.
-;; Property: nskk-converter-convert/k is consistent with its sync wrapper.
-;; The callbacks mirror what the sync wrapper uses internally.
 (nskk-property-test-seeded converter-pbt-convert/k-consistent-with-sync
   ((input romaji-basic))
   (equal (nskk-converter-convert input)
@@ -875,29 +822,24 @@
            (lambda () nil)))                  ; on-fail: nil
   50 2001)
 
-;; Property: nskk-convert-romaji/k is consistent with its sync wrapper.
 (nskk-property-test-seeded romaji/k-pbt-consistent-with-sync
   ((input romaji-string))
   (equal (nskk-convert-romaji input)
          (nskk-convert-romaji/k input #'identity (lambda () nil)))
   50 2002)
 
-;; Property: nskk-converter-get-rule/k is consistent with its sync wrapper.
 (nskk-property-test-seeded get-rule/k-pbt-consistent-with-sync
   ((input romaji-basic))
   (equal (nskk-converter-get-rule input)
          (nskk-converter-get-rule/k input #'identity (lambda () nil)))
   50 3001)
 
-;; Property: nskk-converter-get-possible-completions/k is consistent with its sync wrapper.
 (nskk-property-test-seeded get-possible-completions/k-pbt-consistent-with-sync
   ((input romaji-basic))
   (equal (nskk-converter-get-possible-completions input)
          (nskk-converter-get-possible-completions/k input #'identity (lambda () nil)))
   50 3002)
 
-;; Property: for any string starting with ?n, nskk--convert-step-n/k calls
-;; exactly one continuation with appropriate argument types.
 (nskk-property-test-seeded step-n-pbt-calls-one-continuation
   ((input romaji-basic))
   (let ((s (concat "n" input))
@@ -915,7 +857,6 @@
 ;;;
 ;;; Table-driven tests using nskk-should-convert-to
 ;;;
-;; Ten known conversions not already covered by existing tests above.
 (nskk-deftest-table converter-should-convert-to-known-cases
   :columns (romaji expected)
   :rows (("ge"  "げ")
@@ -1034,9 +975,6 @@
       (should (equal (cadr entry) expected-kana))))
 
   (nskk-it "has no duplicate romaji keys"
-    ;; Each romaji string should appear at most once as the first element.
-    ;; Note: some intentional aliases exist (e.g. "shi"/"si" → "し"),
-    ;; so we only verify that the total rule count equals the unique key count.
     (let ((keys (mapcar #'car nskk--standard-romaji-rules)))
       (should (= (length keys) (length (cl-remove-duplicates keys :test #'equal))))))
 
@@ -1153,13 +1091,11 @@
 ;;;
 (nskk-describe "nskk--converter-populate-incomplete-markers"
   (nskk-it "marks romaji prefixes as :incomplete in the conversion table"
-    ;; These are auto-derived from complete entries like \"ka\" -> \"か\".
     (should (eq (nskk-converter-lookup "k") :incomplete))
     (should (eq (nskk-converter-lookup "sh") :incomplete))
     (should (eq (nskk-converter-lookup "ts") :incomplete)))
 
   (nskk-it "does not overwrite complete entries with :incomplete"
-    ;; Complete entries like \"ka\" -> \"か\" must keep their kana value.
     (should (equal (nskk-converter-lookup "ka") "か"))
     (should (equal (nskk-converter-lookup "shi") "し")))
 
@@ -1204,14 +1140,12 @@
     (should-not (nskk--sokuon-p ?o "oo")))
 
   (nskk-it "returns nil for non-ASCII character — ASCII guard"
-    ;; ?あ = #x3042, well above 128; ASCII guard must exclude it
     (should-not (nskk--sokuon-p ?あ "ああ"))))
 
 ;;;
 ;;; nskk--convert-step/k unit tests
 ;;;
 (nskk-describe "nskk--convert-step/k"
-  ;; on-kana: sokuon branch
   (nskk-it "calls on-kana with (っ ka) for doubled k (kka)"
     (let (got-kana got-rest)
       (nskk--convert-step/k "kka"
@@ -1230,7 +1164,6 @@
       (should (equal got-kana "っ"))
       (should (equal got-rest "ta"))))
 
-  ;; on-kana: n-prefix → ん before consonant
   (nskk-it "calls on-kana with (ん b) for nb"
     (let (got-kana got-rest)
       (nskk--convert-step/k "nb"
@@ -1249,7 +1182,6 @@
       (should (equal got-kana "ん"))
       (should (equal got-rest "k"))))
 
-  ;; on-kana: n-prefix falls through to table (na, ni, etc.)
   (nskk-it "calls on-kana with (な empty) for na"
     (let (got-kana got-rest)
       (nskk--convert-step/k "na"
@@ -1268,7 +1200,6 @@
       (should (equal got-kana "に"))
       (should (equal got-rest ""))))
 
-  ;; on-kana: normal table match
   (nskk-it "calls on-kana with (か empty) for ka"
     (let (got-kana got-rest)
       (nskk--convert-step/k "ka"
@@ -1287,7 +1218,6 @@
       (should (equal got-kana "しゃ"))
       (should (equal got-rest ""))))
 
-  ;; on-partial: incomplete prefix
   (nskk-it "calls on-partial with k for incomplete prefix k"
     (let (got-partial)
       (nskk--convert-step/k "k"
@@ -1304,7 +1234,6 @@
         (lambda () (should nil)))
       (should (equal got-partial "sh"))))
 
-  ;; on-fail: no match
   (nskk-it "calls on-fail for digit input with no romaji entry (2)"
     (let (fail-called)
       (nskk--convert-step/k "2"
@@ -1369,7 +1298,6 @@
 ;;;
 ;;; Seeded PBTs for nskk--convert-step/k
 ;;;
-;; Property: nskk--convert-step/k always calls exactly one continuation.
 (nskk-property-test-seeded convert-step/k-pbt-calls-exactly-one-continuation
   ((input romaji-basic))
   (when (and (stringp input) (not (string-empty-p input)))
@@ -1381,7 +1309,6 @@
       (= call-count 1)))
   50 4001)
 
-;; Property: nskk--convert-step/k on-kana always receives a non-empty kana string.
 (nskk-property-test-seeded convert-step/k-pbt-on-kana-receives-string
   ((input romaji-basic))
   (when (and (stringp input) (not (string-empty-p input)))
@@ -1393,9 +1320,6 @@
       result))
   50 4002)
 
-;; Property: nskk--convert-step/k is deterministic — calling it twice on the
-;; same input yields the same continuation dispatch.  (defun/3k has no sync
-;; wrapper, so the old sync-vs-CPS consistency check does not apply.)
 (nskk-property-test-seeded convert-step/k-pbt-consistent-with-sync
   ((input romaji-basic))
   (when (and (stringp input) (not (string-empty-p input)))

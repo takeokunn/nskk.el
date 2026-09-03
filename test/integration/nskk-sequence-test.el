@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; Sequence-based property tests for NSKK.
 
 ;;; Code:
 
@@ -47,7 +46,6 @@
 KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
   (when (nskk-state-p state)
     (cond
-     ;; Mode switch keys
      ((string= key "C-j")
       (nskk-state-set state 'mode 'hiragana)
       state)
@@ -66,32 +64,23 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
      ((string= key ";")
       (nskk-state-set state 'mode 'abbrev)
       state)
-     ;; Regular character input
      ((and (stringp key) (= (length key) 1))
       (let* ((_char (aref key 0))
              (current-buffer (nskk-state-input-buffer state)))
-        ;; Append to input buffer
         (nskk-state-set state 'input-buffer (concat current-buffer key))
         state))
-     ;; Unknown key - pass through
      (t state))))
 
 (defun nskk-sequence-test--valid-state-p (state)
   "Check if STATE has valid structure and values."
   (and (nskk-state-p state)
-       ;; Mode is valid
        (nskk-state-valid-mode-p (nskk-state-mode state))
-       ;; Buffers are strings
        (stringp (nskk-state-input-buffer state))
        (stringp (nskk-state-converted-buffer state))
-       ;; Candidates is a list
        (listp (nskk-state-candidates state))
-       ;; Index is non-negative integer
        (integerp (nskk-state-current-index state))
        (>= (nskk-state-current-index state) 0)
-       ;; Previous mode is valid
        (nskk-state-valid-mode-p (nskk-state-previous-mode state))
-       ;; Stacks are lists
        (listp (nskk-state-undo-stack state))
        (listp (nskk-state-redo-stack state))))
 

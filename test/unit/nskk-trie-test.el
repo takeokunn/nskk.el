@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-trie .
 
 ;;; Code:
 
@@ -522,8 +521,6 @@
       (let ((trie (nskk-trie-create)))
         (should-error (nskk-trie-insert trie nil "val")))))
 
-  ;; Table-driven: each trie query operation signals an error for non-string input.
-  ;; All five operations share the same contract: key/prefix/input must be a string.
   (nskk-deftest-table trie-non-string-input-signals-error
     :description "Each trie operation signals an error when given a non-string argument"
     :columns (operation)

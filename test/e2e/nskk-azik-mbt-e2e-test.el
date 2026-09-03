@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; Model-based state machine testing for AZIK.
 
 ;;; Code:
 
@@ -67,12 +66,10 @@ inputs is very different from the base phase they are overlaid upon."
          (has-colon-def  (and (fboundp 'nskk-azik-colon-okuri-deferred)
                               (nskk-azik-colon-okuri-deferred))))
     (cond
-     ;; Deferred overlay states take priority over the base phase.
      (has-azik-def   'azik-deferred)
      (has-vs-def     'vowel-shadow-deferred)
      (has-colon-pend 'colon-pending)
      (has-colon-def  'colon-deferred)
-     ;; Base phase states.
      ((eq phase 'list)   'list-converting)
      ((eq phase 'active) 'converting)
      ((eq phase 'on)     'preedit-on)
@@ -84,78 +81,44 @@ inputs is very different from the base phase they are overlaid upon."
 
 (defconst nskk--mbt-events-by-state
   '((idle
-     ;; Normal kana input stays in idle.
      "ka" "ki" "ku" "a" "i" "u"
-     ;; AZIK special keys: っ and ー.
      ";" ":"
-     ;; AZIK hatsuon (consonant + n-trigger) and diphthong shortcuts.
      "kz" "kq" "sh"
-     ;; Uppercase consonant + vowel: enters preedit-on.
      "Ka" "Sa" "Ta" "Na" "Ha"
-     ;; Mode control.
      "q" "C-g")
     (preedit-on
-     ;; Extend the preedit reading.
      "ka" "ki" "ku" "a" "i" "u"
-     ;; AZIK extensions inside preedit.
      "kz" "kq" "sh"
-     ;; AZIK special keys extend preedit reading.
      ";" ":"
-     ;; JP106 sokuon-okurigana trigger (fires dict lookup immediately).
      "+"
-     ;; Preedit marker (direct insert; exercises the * path).
      "*"
-     ;; Okurigana arm: uppercase consonant while in preedit.
      "Ka" "Sa"
-     ;; Trigger conversion.
      "SPC"
-     ;; Cancel or commit preedit.
      "C-g" "RET" "DEL")
     (converting
-     ;; Cycle through candidates.
      "SPC"
-     ;; Cancel back to preedit-on.
      "C-g"
-     ;; Commit current candidate.
      "RET" "C-j"
-     ;; Okurigana commit via uppercase (type-through pattern).
      "Ka" "Sa")
     (list-converting
-     ;; Cycle to next in list.
      "SPC"
-     ;; Cancel conversion.
      "C-g"
-     ;; Commit current selection.
      "RET" "C-j")
     (azik-deferred
-     ;; Resolve deferred two-char sequence with a vowel.
      "a" "i" "u" "e" "o"
-     ;; Resolve with another consonant (starts a new deferred or emits prefix).
      "k" "s" "t"
-     ;; AZIK special keys: っ (;) and ー (:) are complete rules that flush
-     ;; the deferred state and emit their kana.
      ";" ":"
-     ;; Cancel.
      "C-g")
     (vowel-shadow-deferred
-     ;; Emit the shadowed kana by providing a vowel.
      "a" "i" "u" "e" "o"
-     ;; Next consonant: resolves the deferred state and starts accumulation.
      "k" "s"
-     ;; AZIK special key: っ (;) is a complete rule that resolves the deferred
-     ;; state without a vowel, emitting the shadow kana as-is then っ.
      ";"
-     ;; Cancel.
      "C-g")
     (colon-pending
-     ;; Provide the okurigana consonant to complete colon-okurigana.
      "k" "s" "t" "n" "h"
-     ;; Cancel.
      "C-g")
     (colon-deferred
-     ;; Provide the okurigana vowel to finalise the okurigana mora.
      "a" "i" "u" "e" "o"
-     ;; Cancel.
      "C-g"))
   "Available events per abstract AZIK state.
 Used by `nskk--mbt-pick-event' to restrict random walks to inputs that
@@ -195,17 +158,14 @@ Invariants always checked:
         (phase (and (bound-and-true-p nskk-current-state)
                     (nskk-state-henkan-phase nskk-current-state))))
 
-    ;; I5: nskk-mode must still be active.
     (unless (bound-and-true-p nskk-mode)
       (push "I5: nskk-mode was deactivated unexpectedly" violations))
 
-    ;; I3: nskk-current-state must exist and henkan-phase must be valid.
     (if (not (bound-and-true-p nskk-current-state))
         (push "I3: nskk-current-state is nil or unbound" violations)
       (unless (memq phase '(nil on active list registration))
         (push (format "I3: invalid henkan-phase: %S" phase) violations)))
 
-    ;; I1: mode must be one of the six valid NSKK modes.
     (condition-case err
         (let ((mode (nskk-current-mode)))
           (unless (memq mode '(ascii hiragana katakana katakana-半角 abbrev latin))
@@ -213,7 +173,6 @@ Invariants always checked:
       (error
        (push (format "I1: error reading mode: %S" err) violations)))
 
-    ;; I2: at most one deferred state variable may be non-nil at once.
     (let ((deferred-count
            (+ (if (and (fboundp 'nskk-deferred-azik-state)
                        (nskk-deferred-azik-state)) 1 0)
@@ -233,7 +192,6 @@ Invariants always checked:
                            (nskk-azik-colon-okuri-deferred)))
               violations)))
 
-    ;; I4: when phase is nil (idle), buffer must not contain ▽ or ▼.
     (when (and (null phase)
                (or (string-match-p "▽" (buffer-string))
                    (string-match-p "▼" (buffer-string))))
@@ -241,9 +199,6 @@ Invariants always checked:
                     (buffer-string))
             violations))
 
-    ;; I6: after C-g, DA and DV deferred state must be nil.
-    ;; nskk-cancel-preedit and nskk-rollback-conversion both call
-    ;; nskk-clear-azik-pending-state, which clears these variables.
     (when (equal last-event "C-g")
       (let ((da (and (fboundp 'nskk-deferred-azik-state)
                      (nskk-deferred-azik-state)))
@@ -256,8 +211,6 @@ Invariants always checked:
           (push (format "I6: nskk--deferred-vowel-shadow-state non-nil after C-g: %S" dv)
                 violations))))
 
-    ;; I7: after ";" or ":", romaji buffer must be empty.
-    ;; Both are single-char complete AZIK rules that consume the entire buffer.
     (when (and (member last-event '(";" ":"))
                (not (string-empty-p (nskk-state-romaji-buffer))))
       (push (format "I7: non-empty romaji buffer after %S: %S"
@@ -301,7 +254,6 @@ failing scenario can be reproduced with (random SEED)."
             (let* ((abs-state (nskk--mbt-observe-state))
                    (event     (nskk--mbt-pick-event abs-state)))
               (push (list abs-state event) state-trace)
-              ;; Dispatch: absorb per-event errors and quit signals.
               (condition-case nil
                   (nskk--azik-chaos--dispatch-keys event)
                 (error nil) (quit nil))
@@ -315,7 +267,6 @@ failing scenario can be reproduced with (random SEED)."
                               :trace     (reverse state-trace)
                               :violations viols)
                         failures)
-                  ;; Attempt recovery so subsequent steps are not poisoned.
                   (nskk--azik-chaos--reset-to-idle)))))
           (nskk--azik-chaos--reset-to-idle))))
     (when failures
@@ -352,23 +303,18 @@ regardless of the AZIK deferred state overlays."
       (dotimes (run runs)
         (let* ((nsteps (+ min-len (random (- max-len min-len -1))))
                (seq    nil))
-          ;; Type random events from the global chaos pool.
           (dotimes (_ nsteps)
             (let ((ev (nskk--azik-chaos--pick-event)))
               (push ev seq)
               (condition-case nil
                   (nskk--azik-chaos--dispatch-keys ev)
                 (error nil) (quit nil))))
-          ;; Send C-g twice to escape any active state.
           (condition-case nil
               (nskk-e2e--dispatch-event 7)  ; first C-g
             (error nil) (quit nil))
           (condition-case nil
               (nskk-e2e--dispatch-event 7)  ; second C-g
             (error nil) (quit nil))
-          ;; DA/DV are cleared by C-g via `nskk-clear-azik-pending-state'
-          ;; (FR-001 fix) when preedit is active.  This setq guards the
-          ;; idle-C-g case where no cancel-preedit fires.
           (when (fboundp 'nskk-deferred-azik-state)
             (nskk-set-deferred-azik-state nil))
           (when (fboundp 'nskk-deferred-vowel-shadow-state)
@@ -426,9 +372,7 @@ internal state — the operation is idempotent on the state machine."
                                        (nskk-azik-colon-okuri-pending)))
                (colon-def-before  (and (fboundp 'nskk-azik-colon-okuri-deferred)
                                        (nskk-azik-colon-okuri-deferred))))
-          ;; Only check if we actually started in idle.
           (when (eq abs-before 'idle)
-            ;; Dispatch C-g: expected to signal keyboard-quit; absorb.
             (condition-case nil
                 (nskk-e2e--dispatch-event 7)
               (error nil) (quit nil))
@@ -495,7 +439,6 @@ state-arms might fire in the same handler call."
             (let* ((abs-state (nskk--mbt-observe-state))
                    (event     (nskk--mbt-pick-event abs-state)))
               (push (list abs-state event) state-trace)
-              ;; Dispatch: absorb per-event errors and quit signals.
               (condition-case nil
                   (nskk--azik-chaos--dispatch-keys event)
                 (error nil) (quit nil))
@@ -520,7 +463,6 @@ state-arms might fire in the same handler call."
                               :colon-def  colon-def
                               :count      cnt)
                         failures)
-                  ;; Recover so the walk can continue.
                   (nskk--azik-chaos--reset-to-idle)))
               (when (equal event "C-g")
                 (let ((da (and (fboundp 'nskk-deferred-azik-state)

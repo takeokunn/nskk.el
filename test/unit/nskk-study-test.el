@@ -42,7 +42,6 @@
       (nskk--study-push-kakutei "C" 3 (current-buffer))
       (nskk--study-push-kakutei "D" 4 (current-buffer))
       (should (= (length nskk--study-kakutei-ring) 3))
-      ;; Most recent at head
       (should (equal (plist-get (car nskk--study-kakutei-ring) :word) "D"))))
 
   (nskk-it "stores point and buffer in entry"
@@ -128,7 +127,6 @@
         (should (equal (nskk-prolog-query-value
                         '(study-association "雨" "ふる" \?c) '\?c)
                        "降る"))
-        ;; Only one association should exist
         (should (= (length (nskk-prolog-query '(study-association "雨" "ふる" \?c))) 1)))))
 
   (nskk-it "skips recording when ring is empty"
@@ -182,7 +180,6 @@
               (nskk-study-first-candidate t)
               (nskk--study-kakutei-ring
                (list (list :word "雨" :point 5 :buffer (current-buffer)))))
-          ;; Point at 101 is far from 5
           (nskk-study-record "ふる" "降る")
           (should-not (nskk-prolog-query '(study-association \?p \?r \?c))))))))
 
@@ -220,7 +217,6 @@
   (nskk-it "searches multiple ring entries for associations"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'study-association 3)
-      ;; Association from second ring entry
       (nskk-prolog-assert '((study-association "天気" "ふる" "降る")))
       (let ((nskk--study-kakutei-ring
              (list (list :word "雨" :point 10 :buffer (current-buffer))
@@ -241,7 +237,6 @@
             (nskk--study-kakutei-ring
              (list (list :word "雨" :point 10 :buffer (current-buffer)))))
         (nskk-study-after-kakutei "ふる" "降る")
-        ;; Association recorded
         (should (equal (nskk-prolog-query-value
                         '(study-association "雨" "ふる" \?c) '\?c)
                        "降る"))

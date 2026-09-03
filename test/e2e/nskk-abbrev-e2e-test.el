@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; E2E abbrev mode tests for NSKK.
 
 ;;; Code:
 
@@ -35,9 +34,6 @@
 (eval-when-compile (require 'cl-lib))
 
 ;;;; Abbrev Mode Tests
-;;
-;; Current implementation inserts ASCII directly in abbrev mode
-;; (full dictionary-assisted lookup is a future feature).
 
 (nskk-describe "abbrev mode basic behavior"
   (nskk-it "inserts ASCII letters directly in abbrev mode"
@@ -65,25 +61,6 @@
 ;;;;
 ;;;; Abbrev Mode — Input and Conversion Scenarios
 ;;;;
-;;
-;; These tests cover the two functions modified in the abbrev mode bug fix:
-;;
-;;   1. `nskk-self-insert' (nskk-input.el):
-;;      In abbrev mode, all printable ASCII chars bypass the Prolog routing
-;;      path and go directly to `nskk-process-abbrev-input'.  The existing
-;;      `abbrev-typing-inserts-ascii' test above covers basic insertion, but
-;;      does not verify that the Prolog input-route is truly bypassed for
-;;      chars that would otherwise match a Japanese-mode rule (e.g. uppercase
-;;      letters that normally start okurigana, or "n" which accumulates in
-;;      the romaji buffer).
-;;
-;;   2. `nskk--current-key-state' (nskk-keymap.el):
-;;      In abbrev mode with a conversion-start marker set, this now returns
-;;      `preedit' even when `nskk-has-preedit' is false (i.e. the marker
-;;      was set but point hasn't moved past the ▽ yet).  This makes SPC
-;;      trigger `nskk-start-conversion' rather than self-insert.  The
-;;      complementary guard inside `nskk-start-conversion' itself makes
-;;      SPC immediately after "/" (empty abbrev preedit) a no-op.
 
 ;;;; 1. ASCII chars in abbrev mode bypass Prolog routing
 
@@ -182,11 +159,6 @@
 ;;;; 5. q and L in abbrev preedit self-insert
 
 (nskk-describe "abbrev mode self-insert for mode-switch keys"
-  ;; q, l, L, and / are bound to nskk-handle-q / nskk-handle-l / nskk-handle-upper-l /
-  ;; nskk-handle-slash in the mode map.  Each uses nskk-with-japanese-mode which
-  ;; checks japanese-mode/1; abbrev is NOT a Japanese mode, so the macro falls
-  ;; through to (self-insert-command 1).  The character therefore lands in the
-  ;; buffer verbatim via Emacs's built-in self-insert, bypassing nskk-self-insert.
   (nskk-it "q in abbrev preedit self-inserts q into preedit text"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "/")
@@ -220,8 +192,6 @@
 ;;;; 7. Abbrev mode conversion via RET and SPC cycling
 
 (nskk-describe "abbrev mode conversion via RET"
-  ;; / + "test" + SPC triggers dictionary conversion.
-  ;; RET (commit-candidate) commits the first candidate without a newline.
   (nskk-it "commits first candidate with RET after SPC conversion"
     (let ((dict '(("test" . ("テスト" "Test")))))
       (nskk-e2e-with-buffer 'hiragana dict
@@ -251,8 +221,6 @@
 ;;;; 8. C-g during abbrev conversion cancels back to preedit
 
 (nskk-describe "abbrev mode C-g during conversion"
-  ;; After / + "test" + SPC enters conversion (▼), C-g should cancel conversion
-  ;; and restore the preedit reading text to the buffer.
   (nskk-it "cancels conversion and restores reading text"
     (let ((dict '(("test" . ("テスト")))))
       (nskk-e2e-with-buffer 'hiragana dict

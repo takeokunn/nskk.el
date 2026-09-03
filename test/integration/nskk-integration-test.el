@@ -140,14 +140,11 @@
 
   (nskk-it "full mode roundtrip produces あアa"
     (nskk-integration-with-session 'hiragana
-      ;; Type in hiragana
       (nskk--integration-type-char ?a)
       (nskk-should-equal "あ" (buffer-string))
-      ;; Toggle to katakana
       (nskk-handle-q)
       (nskk--integration-type-char ?a)
       (nskk-should-equal "あア" (buffer-string))
-      ;; Enter latin mode
       (nskk-handle-l)
       (nskk--integration-type-char ?a)
       (nskk-should-equal "あアa" (buffer-string)))))
@@ -267,7 +264,6 @@
       (nskk-then  (nskk-should-equal "▽あ" (buffer-string)))
       (nskk-when  (nskk-handle-backspace))
       (nskk-then  (nskk-should-equal "▽" (buffer-string)))
-      ;; Second DEL: empty preedit → cancel preedit
       (nskk-when  (nskk-handle-backspace))
       (nskk-then  (should-not (nskk-conversion-start-active-p))
                   (nskk-should-equal "" (buffer-string)))))

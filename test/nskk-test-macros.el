@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; NSKK test helper macros.
 
 ;;; Code:
 
@@ -31,7 +30,6 @@
 (require 'nskk-test-framework)
 (eval-when-compile (require 'cl-lib))
 
-;; Optional require for PBT generators (may not exist in all environments)
 (when (locate-library "nskk-pbt-generators")
   (require 'nskk-pbt-generators))
 
@@ -181,7 +179,6 @@ SEED: Random seed for reproducibility (default: random)"
                 (setq failure-case (list :error ,@(mapcar #'car generators) err))))))
          (unless failure-case
            (random)))
-       ;; If we found a failure, try to shrink it
        (when failure-case
          (let* ((shrunk-values
                  (cl-loop for val in failure-case
@@ -364,7 +361,6 @@ Returns updated state."
      ((string= key ";")
       (nskk-state-set state 'mode 'abbrev)
       state)
-     ;; Regular character input (single character strings)
      ((and (stringp key) (= (length key) 1))
       (let ((current-buffer (nskk-state-input-buffer state)))
         (nskk-state-set state 'input-buffer (concat current-buffer key))
@@ -532,13 +528,10 @@ Example:
        ,@(mapcar
           (lambda (form)
             (cond
-             ;; nskk-it → expand to named ert-deftest
              ((and (listp form) (eq (car form) 'nskk-it))
               (nskk--expand-it-form prefix form))
-             ;; nskk-it-k → expand CPS /k test to named ert-deftest
              ((and (listp form) (eq (car form) 'nskk-it-k))
               (nskk--expand-it-k-form prefix form))
-             ;; nskk-context → nested group with sub-prefix
              ((and (listp form) (eq (car form) 'nskk-context))
               (let* ((ctx-desc (cadr form))
                      (ctx-body (cddr form))
@@ -555,7 +548,6 @@ Example:
                           (nskk--expand-it-k-form ctx-prefix inner))
                          (t inner)))
                       ctx-body))))
-             ;; Other forms pass through (shared variables, constants, etc.)
              (t form)))
           body))))
 
@@ -598,7 +590,6 @@ Returns a plist with keys:
   :found-body      — list of forms
   :not-found-body  — list of forms (default: single ert-fail form)"
   (let (found-binding found-body not-found-body)
-    ;; :found clause — required
     (unless (eq (car rest) :found)
       (error "nskk-it-k: expected :found keyword, got %S" (car rest)))
     (setq rest (cdr rest))
@@ -607,12 +598,10 @@ Returns a plist with keys:
         (error "nskk-it-k: :found binding must be a list, got %S" binding-list))
       (setq found-binding (if (null binding-list) '_ (car binding-list)))
       (setq rest (cdr rest)))
-    ;; collect found-body forms until :not-found or end
     (while (and rest (not (eq (car rest) :not-found)))
       (push (car rest) found-body)
       (setq rest (cdr rest)))
     (setq found-body (nreverse found-body))
-    ;; :not-found clause — optional
     (if (eq (car rest) :not-found)
         (progn
           (setq rest (cdr rest))

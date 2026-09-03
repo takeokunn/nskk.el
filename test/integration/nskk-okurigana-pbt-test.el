@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Okurigana PBT tests.
 
 ;;; Code:
 
@@ -106,10 +105,8 @@
 (nskk-property-test nskk-state-machine-okurigana-nil-state-safe
   ((ch lowercase-char))
   (let ((okuri-char (string-to-char ch)))
-    ;; These should return nil without crash
     (nskk-state-set-okurigana nil okuri-char)
     (nskk-state-get-okurigana nil)
-    ;; Also test detect on nil
     (nskk-detect-okurigana-char nil)
     t)
   50)

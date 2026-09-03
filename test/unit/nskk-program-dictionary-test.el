@@ -150,7 +150,6 @@
 
     (nskk-it "replaces only the exact %s token, not substrings"
       (let ((result (nskk--program-dict-build-call "cmd %s-flag" "key")))
-        ;; "%s-flag" is not the exact token "%s", so stdin mode is used
         (should (eq (cadr result) t))))
 
     (nskk-it "key with special characters is passed as-is without shell escaping"
@@ -996,7 +995,6 @@
           (list (lambda (k) (cdr (assoc k store))))
         (should (equal (nskk-program-dict-lookup "かんじ") '("漢字")))
         (should (equal (nskk-program-dict-lookup "てすと") '("手隅")))
-        ;; Second calls come from cache
         (should (equal (nskk-program-dict-lookup "かんじ") '("漢字")))
         (should (equal (nskk-program-dict-lookup "てすと") '("手隅"))))))
 
@@ -1223,7 +1221,6 @@
 
 (nskk-property-test program-dict-parse-skkserv-prefix-matches-skk
   ((word kanji-string))
-  ;; SKK format (/word/) and skkserv format (1/word/) must yield the same candidates
   (let ((skk-result     (nskk--program-dict-parse-output (concat "/" word "/")))
         (skkserv-result (nskk--program-dict-parse-output (concat "1/" word "/"))))
     (equal skk-result skkserv-result))
@@ -1231,13 +1228,11 @@
 
 (nskk-property-test program-dict-build-call-program-is-string
   ((cmd romaji-string))
-  ;; build-call must always return a string as the program name
   (stringp (car (nskk--program-dict-build-call (concat cmd " %s") "key")))
   30)
 
 (nskk-property-test program-dict-strip-annotation-idempotent
   ((word kanji-string))
-  ;; strip-annotation applied twice must equal strip-annotation applied once
   (equal (nskk--program-dict-strip-annotation
           (nskk--program-dict-strip-annotation word))
          (nskk--program-dict-strip-annotation word))
@@ -1246,7 +1241,6 @@
 (nskk-property-test program-dict-strip-annotation-no-semicolon-in-result
   ((word kanji-string)
    (note romaji-string))
-  ;; Result of stripping must never contain a semicolon
   (not (string-search ";"
                       (nskk--program-dict-strip-annotation
                        (concat word ";" note))))
@@ -1297,7 +1291,6 @@
         (should (cl-every #'stringp result))))
 
     (nskk-it "ignores the key argument (today prefix triggers it)"
-      ;; Even with an extended key, it still returns 2 candidates
       (let ((result (nskk--program-dict-today "today-extra")))
         (should (= (length result) 2)))))
 
@@ -1407,8 +1400,6 @@
                     (error t))))
 
     (nskk-it "returns error message for empty expression (= with no operand)"
-      ;; calc-eval \"\" returns (0 . \"Expected a number\") (cons, not string/signal);
-      ;; the (consp result) branch extracts (cdr result) as the error message.
       (let ((result (nskk--program-dict-calculate "=")))
         (should (listp result))
         (should (= (length result) 1))
@@ -1416,7 +1407,6 @@
 
   (nskk-context "key parsing"
     (nskk-it "strips the leading = from key before evaluating"
-      ;; "=5+5" -> evaluates "5+5" -> "10"
       (let ((result (nskk--program-dict-calculate "=5+5")))
         (should (equal (car result) "10"))))))
 
@@ -1500,7 +1490,6 @@
           (should (eq (get-text-property 0 'nskk-no-learn cand) t))))))
 
   (nskk-it "no-learn property is set to t (not just truthy) for 'now' candidates"
-    ;; Normalize: use (eq ... t) like the today test for consistency.
     (nskk--pd-builtin-test-with-env t
       (let ((result (nskk-program-dict-builtin-lookup "now")))
         (should result)
@@ -1668,7 +1657,6 @@
            (cand1  (car result))
            (cand2  (cadr result))
            (sec1   (string-to-number (substring cand1 6 8))))
-      ;; HH:MM:SS and HH時MM分SS秒 share the same second
       (should (string-match-p (format "%02d秒" sec1) cand2)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
@@ -1708,7 +1696,6 @@
 
 (nskk-property-test pd-builtin-no-learn-invariant-today
   ((word romaji-string))
-  ;; Any key with "today" prefix must yield only nskk-no-learn-t candidates
   (let ((nskk-program-dict-enable t)
         (key (concat "today" word)))
     (let ((result (nskk-program-dict-builtin-lookup key)))
@@ -1719,7 +1706,6 @@
 
 (nskk-property-test pd-builtin-no-learn-invariant-now
   ((word romaji-string))
-  ;; Any key with "now" prefix must yield only nskk-no-learn-t candidates
   (let ((nskk-program-dict-enable t)
         (key (concat "now" word)))
     (let ((result (nskk-program-dict-builtin-lookup key)))

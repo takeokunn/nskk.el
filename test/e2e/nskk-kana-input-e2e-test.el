@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; E2E kana input tests for NSKK.
 
 ;;; Code:
 
@@ -82,37 +81,23 @@
   :columns (romaji expected)
   :rows (;; A-row
          ("a" "あ") ("i" "い") ("u" "う") ("e" "え") ("o" "お")
-         ;; K-row
          ("ka" "か") ("ki" "き") ("ku" "く") ("ke" "け") ("ko" "こ")
-         ;; S-row (standard and alternate spellings)
          ("sa" "さ") ("si" "し") ("su" "す") ("se" "せ") ("so" "そ")
          ("shi" "し")
-         ;; T-row
          ("ta" "た") ("ti" "ち") ("tu" "つ") ("te" "て") ("to" "と")
          ("chi" "ち") ("tsu" "つ")
-         ;; N-row
          ("na" "な") ("ni" "に") ("nu" "ぬ") ("ne" "ね") ("no" "の")
-         ;; H-row
          ("ha" "は") ("hi" "ひ") ("hu" "ふ") ("he" "へ") ("ho" "ほ")
          ("fu" "ふ")
-         ;; M-row
          ("ma" "ま") ("mi" "み") ("mu" "む") ("me" "め") ("mo" "も")
-         ;; Y-row
          ("ya" "や") ("yu" "ゆ") ("yo" "よ")
-         ;; R-row
          ("ra" "ら") ("ri" "り") ("ru" "る") ("re" "れ") ("ro" "ろ")
-         ;; W-row
          ("wa" "わ") ("wi" "ゐ") ("we" "ゑ") ("wo" "を")
-         ;; G-row (voiced)
          ("ga" "が") ("gi" "ぎ") ("gu" "ぐ") ("ge" "げ") ("go" "ご")
-         ;; Z-row (voiced)
          ("za" "ざ") ("zi" "じ") ("zu" "ず") ("ze" "ぜ") ("zo" "ぞ")
          ("ji" "じ")
-         ;; D-row (voiced)
          ("da" "だ") ("di" "ぢ") ("du" "づ") ("de" "で") ("do" "ど")
-         ;; B-row (voiced)
          ("ba" "ば") ("bi" "び") ("bu" "ぶ") ("be" "べ") ("bo" "ぼ")
-         ;; P-row (semi-voiced)
          ("pa" "ぱ") ("pi" "ぴ") ("pu" "ぷ") ("pe" "ぺ") ("po" "ぽ"))
   :body (nskk-e2e-with-buffer 'hiragana nil
           (nskk-e2e-type romaji)
@@ -127,25 +112,15 @@
   :columns (romaji expected)
   :rows (;; KY-row
          ("kya" "きゃ") ("kyu" "きゅ") ("kyo" "きょ")
-         ;; SH-row
          ("sha" "しゃ") ("shu" "しゅ") ("sho" "しょ")
-         ;; CH-row
          ("cha" "ちゃ") ("chu" "ちゅ") ("cho" "ちょ")
-         ;; NY-row
          ("nya" "にゃ") ("nyu" "にゅ") ("nyo" "にょ")
-         ;; HY-row
          ("hya" "ひゃ") ("hyu" "ひゅ") ("hyo" "ひょ")
-         ;; MY-row
          ("mya" "みゃ") ("myu" "みゅ") ("myo" "みょ")
-         ;; RY-row
          ("rya" "りゃ") ("ryu" "りゅ") ("ryo" "りょ")
-         ;; GY-row
          ("gya" "ぎゃ") ("gyu" "ぎゅ") ("gyo" "ぎょ")
-         ;; JY/J-row
          ("ja" "じゃ") ("ju" "じゅ") ("jo" "じょ")
-         ;; BY-row
          ("bya" "びゃ") ("byu" "びゅ") ("byo" "びょ")
-         ;; PY-row
          ("pya" "ぴゃ") ("pyu" "ぴゅ") ("pyo" "ぴょ"))
   :body (nskk-e2e-with-buffer 'hiragana nil
           (nskk-e2e-type romaji)
@@ -284,23 +259,14 @@
   :columns (romaji expected)
   :rows (;; Vowel row
          ("a" "ｱ") ("i" "ｲ") ("u" "ｳ") ("e" "ｴ") ("o" "ｵ")
-         ;; Ka-row
          ("ka" "ｶ") ("ki" "ｷ") ("ku" "ｸ") ("ke" "ｹ") ("ko" "ｺ")
-         ;; Sa-row
          ("sa" "ｻ") ("shi" "ｼ") ("su" "ｽ") ("se" "ｾ") ("so" "ｿ")
-         ;; Ta-row
          ("ta" "ﾀ") ("chi" "ﾁ") ("tsu" "ﾂ") ("te" "ﾃ") ("to" "ﾄ")
-         ;; Na-row
          ("na" "ﾅ") ("ni" "ﾆ") ("nu" "ﾇ") ("ne" "ﾈ") ("no" "ﾉ")
-         ;; Ha-row
          ("ha" "ﾊ") ("hi" "ﾋ") ("fu" "ﾌ") ("he" "ﾍ") ("ho" "ﾎ")
-         ;; Ma-row
          ("ma" "ﾏ") ("mi" "ﾐ") ("mu" "ﾑ") ("me" "ﾒ") ("mo" "ﾓ")
-         ;; Ya-row
          ("ya" "ﾔ") ("yu" "ﾕ") ("yo" "ﾖ")
-         ;; Ra-row
          ("ra" "ﾗ") ("ri" "ﾘ") ("ru" "ﾙ") ("re" "ﾚ") ("ro" "ﾛ")
-         ;; Wa-row + n
          ("wa" "ﾜ") ("nn" "ﾝ"))
   :body
   (nskk-e2e-with-buffer 'katakana-半角 nil
@@ -338,8 +304,6 @@
     (eq (nskk-current-mode) 'katakana))
   30)
 
-;; buffer-always-string: buffer-string is always a string after romaji input.
-;; (Redundant with romaji-no-crash; kept as a distinct named invariant at 30 runs.)
 (nskk-property-test-seeded buffer-always-string
   ((romaji romaji-basic))
   (nskk-e2e-with-buffer 'hiragana nil
@@ -347,8 +311,6 @@
     (stringp (buffer-string)))
   30)
 
-;; mode-preservation: typing lowercase romaji in any mode must not switch mode.
-;; Uses nskk-property-test-seeded instead of dotimes+nskk-for-all.
 (nskk-property-test-seeded romaji-mode-preserved
   ((mode valid-mode))
   (let ((romaji (nskk-e2e--random-romaji-basic)))
@@ -364,8 +326,6 @@
 (nskk-describe "small kana romaji rows"
   (nskk-deftest-table kana-e2e-romaji-small-kana-xa-row
     :columns (romaji kana)
-    ;; la/li/lu/le/lo omitted: 'l' is bound to nskk-handle-l (Latin-mode switch)
-    ;; and cannot be used as a romaji prefix in E2E key-event tests.
     :rows (("xa" "ぁ") ("xi" "ぃ") ("xu" "ぅ") ("xe" "ぇ") ("xo" "ぉ"))
     :body (nskk-e2e-with-buffer 'hiragana nil
             (nskk-e2e-type romaji)
@@ -374,7 +334,6 @@
 
   (nskk-deftest-table kana-e2e-romaji-small-kana-xtsu
     :columns (romaji kana)
-    ;; ltsu/ltu omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
     :rows (("xtsu" "っ") ("xtu" "っ"))
     :body (nskk-e2e-with-buffer 'hiragana nil
             (nskk-e2e-type romaji)
@@ -383,7 +342,6 @@
 
   (nskk-deftest-table kana-e2e-romaji-small-kana-xya-row
     :columns (romaji kana)
-    ;; lya/lyu/lyo omitted: 'l' is a mode-switch key, cannot be used as romaji prefix.
     :rows (("xya" "ゃ") ("xyu" "ゅ") ("xyo" "ょ"))
     :body (nskk-e2e-with-buffer 'hiragana nil
             (nskk-e2e-type romaji)
@@ -457,17 +415,12 @@
 
 (nskk-describe "n apostrophe romaji"
   (nskk-it "n' produces hatsuon kana"
-    ;; n' is a direct rule in the converter table AND handled by
-    ;; nskk-convert-n--internal which checks (aref remaining 1) == 39 (ASCII ').
-    ;; The apostrophe is consumed and does not appear in the output.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "n'")
       (nskk-e2e-assert-buffer "ん"
                               "romaji \"n'\" → \"ん\" failed")))
 
   (nskk-it "n' followed by vowel separates hatsuon from the vowel"
-    ;; n' followed by a vowel: apostrophe explicitly separates ん from the vowel.
-    ;; Without apostrophe, "na" → "な"; with apostrophe, "n'" → "ん" then "a" → "あ".
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "n'a")
       (nskk-e2e-assert-buffer "んあ"
@@ -479,10 +432,6 @@
 
 (nskk-describe "long vowel in katakana"
   (nskk-it "hyphen produces long vowel mark in katakana mode"
-    ;; The - rule is defined in nskk-converter.el as:
-    ;;   (nskk-converter-add-rule "-" "ー")
-    ;; It applies in both hiragana and katakana mode (the converter does not
-    ;; distinguish modes; katakana conversion uppercases the result).
     (nskk-e2e-with-buffer 'katakana nil
       (nskk-e2e-type "-")
       (nskk-e2e-assert-buffer "ー"
@@ -494,8 +443,6 @@
 
 (nskk-describe "BS clears pending romaji in normal hiragana mode"
   (nskk-it "clears single pending romaji consonant"
-    ;; Type "k" → romaji buffer has "k", overlay shows "k", no buffer text.
-    ;; BS should clear "k" from romaji buffer and overlay, not delete buffer text.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "k")
       (should (equal (nskk-state-romaji-buffer) "k"))
@@ -504,8 +451,6 @@
       (nskk-e2e-assert-buffer "" "DEL with pending romaji: must clear romaji, not delete text")))
 
   (nskk-it "clears pending romaji without deleting committed kana"
-    ;; Type "ka" (→ か), then "g" (pending romaji).
-    ;; BS should clear "g", leaving か intact.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "ka")
       (nskk-e2e-assert-buffer "か")
@@ -516,8 +461,6 @@
       (nskk-e2e-assert-buffer "か" "DEL must clear pending 'g', not delete committed か")))
 
   (nskk-it "truncates multi-char romaji then clears on second BS"
-    ;; Type "ka" (→ か), then "sh" (two-char pending romaji).
-    ;; First BS: "sh" → "s".  Second BS: "s" → "" (cleared).
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "ka")
       (nskk-e2e-type "s")
@@ -532,7 +475,6 @@
       (nskk-e2e-assert-buffer "か" "2nd DEL: clear 's', か still remains")))
 
   (nskk-it "falls through to delete committed text when no pending state"
-    ;; Type "ka" (→ か), no pending romaji.  BS deletes か.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "ka")
       (should (equal (nskk-state-romaji-buffer) ""))
@@ -540,7 +482,6 @@
       (nskk-e2e-assert-buffer "" "DEL with no pending state: delete committed か")))
 
   (nskk-it "clears pending romaji then next BS deletes committed text"
-    ;; Type "ka" (→ か), "k" (pending). First BS clears "k", second BS deletes か.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "ka")
       (nskk-e2e-type "k")

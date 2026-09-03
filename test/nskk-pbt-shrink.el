@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Shrinking strategies for NSKK PBT.
 
 ;;; Code:
 
@@ -91,34 +90,28 @@ Returns smaller sequence that still fails PROPERTY-FN, or nil."
   (let* ((len (length sequence))
          (mid (/ len 2)))
 
-    ;; Strategy 1: Remove middle portion (binary search style)
     (let ((without-middle (append (cl-subseq sequence 0 (max 0 (1- mid)))
                                   (cl-subseq sequence (min len (1+ mid))))))
       (when (and (> (length without-middle) 0)
                  (funcall property-fn without-middle))
         (cl-return-from nskk--shrink-sequence-step without-middle)))
 
-    ;; Strategy 2: Remove from left half
     (let ((without-left (cl-subseq sequence mid)))
       (when (funcall property-fn without-left)
         (cl-return-from nskk--shrink-sequence-step without-left)))
 
-    ;; Strategy 3: Remove from right half
     (let ((without-right (cl-subseq sequence 0 mid)))
       (when (funcall property-fn without-right)
         (cl-return-from nskk--shrink-sequence-step without-right)))
 
-    ;; Strategy 4: Remove first element
     (let ((without-first (cl-subseq sequence 1)))
       (when (funcall property-fn without-first)
         (cl-return-from nskk--shrink-sequence-step without-first)))
 
-    ;; Strategy 5: Remove last element
     (let ((without-last (cl-subseq sequence 0 (1- len))))
       (when (funcall property-fn without-last)
         (cl-return-from nskk--shrink-sequence-step without-last)))
 
-    ;; Strategy 6: Try removing individual elements
     (cl-block element-removal
       (dotimes (i len)
         (let ((without-i (append (cl-subseq sequence 0 i)
@@ -164,7 +157,6 @@ Returns smaller string that still fails PROPERTY-FN, or nil."
   (when (< (length string) 1)
     (cl-return-from nskk--shrink-string-step nil))
 
-  ;; Handle UTF-8: work with characters, not bytes
   (let* ((chars (string-to-list string))
          (len (length chars)))
 
@@ -173,7 +165,6 @@ Returns smaller string that still fails PROPERTY-FN, or nil."
 
     (let ((mid (/ len 2)))
 
-      ;; Strategy 1: Remove from middle
       (let ((without-middle
              (concat (cl-subseq string 0 (max 0 (1- mid)))
                      (cl-subseq string (min len (1+ mid))))))
@@ -181,27 +172,22 @@ Returns smaller string that still fails PROPERTY-FN, or nil."
                    (funcall property-fn without-middle))
           (cl-return-from nskk--shrink-string-step without-middle)))
 
-      ;; Strategy 2: Remove left half
       (let ((without-left (cl-subseq string mid)))
         (when (funcall property-fn without-left)
           (cl-return-from nskk--shrink-string-step without-left)))
 
-      ;; Strategy 3: Remove right half
       (let ((without-right (cl-subseq string 0 mid)))
         (when (funcall property-fn without-right)
           (cl-return-from nskk--shrink-string-step without-right)))
 
-      ;; Strategy 4: Remove first character
       (let ((without-first (cl-subseq string 1)))
         (when (funcall property-fn without-first)
           (cl-return-from nskk--shrink-string-step without-first)))
 
-      ;; Strategy 5: Remove last character
       (let ((without-last (cl-subseq string 0 (1- len))))
         (when (funcall property-fn without-last)
           (cl-return-from nskk--shrink-string-step without-last)))
 
-      ;; Strategy 6: Try removing individual characters
       (cl-block char-removal
         (dotimes (i len)
           (let ((without-i (concat (cl-subseq string 0 i)
@@ -250,7 +236,6 @@ Returns simplified state that still fails PROPERTY-FN, or nil."
 
   (let ((shrunk-state (nskk--copy-state state)))
 
-    ;; Strategy 1: Simplify mode
     (let ((simpler-mode (nskk--get-simpler-mode (nskk-state-mode shrunk-state))))
       (when simpler-mode
         (setf (nskk-state-mode shrunk-state) simpler-mode)
@@ -258,21 +243,18 @@ Returns simplified state that still fails PROPERTY-FN, or nil."
           (cl-return-from nskk--shrink-state-step shrunk-state))
         (setq shrunk-state (nskk--copy-state state))))
 
-    ;; Strategy 2: Clear input buffer
     (when (> (length (nskk-state-input-buffer shrunk-state)) 0)
       (setf (nskk-state-input-buffer shrunk-state) "")
       (when (funcall property-fn shrunk-state)
         (cl-return-from nskk--shrink-state-step shrunk-state))
       (setq shrunk-state (nskk--copy-state state)))
 
-    ;; Strategy 3: Clear converted buffer
     (when (> (length (nskk-state-converted-buffer shrunk-state)) 0)
       (setf (nskk-state-converted-buffer shrunk-state) "")
       (when (funcall property-fn shrunk-state)
         (cl-return-from nskk--shrink-state-step shrunk-state))
       (setq shrunk-state (nskk--copy-state state)))
 
-    ;; Strategy 4: Reduce candidate list
     (when (> (length (nskk-state-candidates shrunk-state)) 1)
       (let ((candidates (nskk-state-candidates shrunk-state)))
         (setf (nskk-state-candidates shrunk-state) (list (car candidates)))
@@ -280,7 +262,6 @@ Returns simplified state that still fails PROPERTY-FN, or nil."
           (cl-return-from nskk--shrink-state-step shrunk-state))
         (setq shrunk-state (nskk--copy-state state))))
 
-    ;; Strategy 5: Clear undo/redo stacks
     (when (nskk-state-undo-stack shrunk-state)
       (setf (nskk-state-undo-stack shrunk-state) nil)
       (when (funcall property-fn shrunk-state)
@@ -293,7 +274,6 @@ Returns simplified state that still fails PROPERTY-FN, or nil."
         (cl-return-from nskk--shrink-state-step shrunk-state))
       (setq shrunk-state (nskk--copy-state state)))
 
-    ;; Strategy 6: Clear metadata
     (when (nskk-state-metadata shrunk-state)
       (setf (nskk-state-metadata shrunk-state) nil)
       (when (funcall property-fn shrunk-state)
@@ -416,7 +396,6 @@ Returns minimal failing case."
         (shrinks 0)
         (improved t))
 
-    ;; Select appropriate shrinker based on type hint or auto-detection
     (let ((shrinker (pcase type-hint
                       ('sequence #'nskk-shrink-sequence)
                       ('string #'nskk-shrink-string)

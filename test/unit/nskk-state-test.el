@@ -137,7 +137,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (let ((nskk-current-state (nskk-state-create mode)))
     (nskk-state-get-mode/k on-found on-not-found)))
 
-;; Test Constants
 
 (defconst nskk-state-test-valid-modes
   '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
@@ -199,7 +198,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 ;;; nskk-state-create/k CPS Tests
 ;;;
 
-;; Table-driven: all valid modes → on-found called with a valid state.
 (nskk-describe "nskk-state-create/k"
   (nskk-deftest-table state-create/k-valid-modes
     :description "Calls on-found with a valid nskk-state for every valid mode"
@@ -213,9 +211,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
             (should (eq (nskk-state-mode got-state) mode))
             (should-not got-not-found)))
 
-  ;; NOTE: nskk-state-create/k has an &optional initial-mode parameter.
-  ;; The /k variant signature is (initial-mode on-found on-not-found), so
-  ;; nil must be passed explicitly as initial-mode to get the default (ascii).
   (nskk-it "calls on-found with default (ascii) state when nil mode given"
     (let (got-state)
       (nskk-state-create/k nil
@@ -261,11 +256,9 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (nskk-it "returns non-nil for slots with defaults and nil for optional slots"
     (let ((state (nskk-state-create)))
       (nskk-then
-        ;; These slots have non-nil default values
         (dolist (slot '(mode input-buffer converted-buffer
                             current-index previous-mode))
           (should (nskk-state-get state slot)))
-        ;; These slots default to nil - verify they are accessible without error
         (dolist (slot '(candidates henkan-position marker-position
                                   undo-stack redo-stack henkan-phase metadata))
           (should-not (nskk-state-get state slot)))))))
@@ -356,7 +349,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
           (should (eq result mode))
           (should (eq (nskk-state-mode state) mode))))
 
-      ;; Invalid modes should raise error and not change state
       (nskk-state-set state 'mode 'hiragana)
       (should-error (nskk-state-set state 'mode 'not-a-mode))
       (should (eq (nskk-state-mode state) 'hiragana)))))
@@ -452,11 +444,8 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
   (nskk-it "signals error for invalid transitions (skip nil -> active)"
     (let ((state (nskk-state-create 'hiragana)))
-      ;; nil -> active is not a valid transition (must go nil -> on -> active)
       (should-error (nskk-state-set-henkan-phase state 'active))
-      ;; nil -> list is not valid
       (should-error (nskk-state-set-henkan-phase state 'list))
-      ;; nil -> registration is not valid
       (should-error (nskk-state-set-henkan-phase state 'registration))
       (nskk-state-set-henkan-phase state 'on)
       (should (eq (nskk-state-henkan-phase state) 'on))
@@ -465,23 +454,18 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
   (nskk-it "force-henkan-phase bypasses transition validation"
     (let ((state (nskk-state-create 'hiragana)))
-      ;; nil -> active would fail with set-henkan-phase but works with force
       (nskk-state-force-henkan-phase state 'active)
       (should (eq (nskk-state-henkan-phase state) 'active))
-      ;; active -> list -> nil via force
       (nskk-state-force-henkan-phase state 'list)
       (should (eq (nskk-state-henkan-phase state) 'list))
       (nskk-state-force-henkan-phase state nil)
       (should (null (nskk-state-henkan-phase state)))
-      ;; Still validates the phase itself
       (should-error (nskk-state-force-henkan-phase state 'invalid-phase))))
 
   (nskk-it "same-phase transitions are allowed (no-op)"
     (let ((state (nskk-state-create 'hiragana)))
-      ;; nil -> nil should succeed
       (nskk-state-set-henkan-phase state nil)
       (should (null (nskk-state-henkan-phase state)))
-      ;; on -> on should succeed
       (nskk-state-set-henkan-phase state 'on)
       (nskk-state-set-henkan-phase state 'on)
       (should (eq (nskk-state-henkan-phase state) 'on)))))
@@ -1163,15 +1147,12 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 ;;;
 ;;;
 
-;; Inline valid modes list (no external dep needed)
 (defconst nskk-state-pbt--valid-modes
   '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
   "Valid modes for state property-based tests.")
 
 (nskk-property-test state-pbt-mode-set-invariant
   ((input romaji-string))
-  ;; For any valid mode, nskk-state-set-mode sets that mode.
-  ;; Generate a random valid mode from the inline list.
   (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
                     nskk-state-pbt--valid-modes))
          (state (nskk-state-create)))
@@ -1181,8 +1162,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
 (nskk-property-test state-pbt-buffer-append-grows
   ((input romaji-string))
-  ;; Appending a character to input-buffer always grows it or keeps it the same length.
-  ;; The romaji-string generator always produces non-empty strings.
   (let ((state (nskk-state-create)))
     (let ((before-len (length (nskk-state-input-buffer state))))
       (if (not (string-empty-p input))
@@ -1270,7 +1249,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
 (nskk-property-test state-pbt-append-cps-consistent-with-sync
   ((input romaji-string))
-  ;; append-input/k must produce the same result as the sync variant.
   (when (not (string-empty-p input))
     (let* ((char (aref input 0))
            (state1 (nskk-state-create))
@@ -1285,7 +1263,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
 (nskk-property-test state-pbt-transition-cps-consistent-with-sync
   ((input romaji-string))
-  ;; transition/k must set mode iff the sync variant returns t.
   (let* ((modes '(ascii hiragana katakana abbrev latin jisx0208-latin))
          (from (nth (random (length modes)) modes))
          (to   (nth (random (length modes)) modes))
@@ -1358,7 +1335,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (nskk-state-append-input state ?y)
       (should (string= (nskk-state-input-buffer state) "touky"))
 
-      ;; Oops, made a mistake - delete last character
       (nskk-state-delete-last-char state)
       (should (string= (nskk-state-input-buffer state) "touk"))
 
@@ -1489,7 +1465,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (nskk-it "does not execute body when candidates is nil"
     (let ((state (nskk-state-create 'hiragana))
           executed)
-      ;; No candidates set -> nskk-state-candidates returns nil
       (nskk-with-candidates state
         (ignore candidates index)
         (setq executed t))
@@ -1610,7 +1585,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
         (condition-case err
             (let* ((state (nskk-state-create 'hiragana))
                    (romaji-seq (nskk-generate 'romaji-basic))
-                   ;; Convert romaji string to key sequence
                    (key-seq (cl-loop for char across romaji-seq
                                      collect (char-to-string char)))
                    (final-state (nskk-state-test--simulate-japanese-input
@@ -1636,7 +1610,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (dotimes (run runs)
         (condition-case err
             (let* ((state (nskk-state-create 'hiragana))
-                   ;; Generate potentially invalid sequences
                    (key-seq (nskk-generate 'key-sequence))
                    (final-state (nskk-state-test--execute-keys state key-seq)))
               (unless (nskk-state-test--valid-state-p final-state)
@@ -1728,7 +1701,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (dotimes (run runs)
         (condition-case err
             (let* ((state (nskk-state-create 'hiragana))
-                   ;; Generate a long sequence (50-100 keys)
                    (long-seq (nskk-generate 'key-sequence-of-length
                                             (nskk--pbt-random-int 50 100)))
                    (final-state (nskk-state-test--execute-keys state long-seq)))
@@ -1757,7 +1729,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
         (let* ((state (nskk-state-create 'hiragana))
                (key-seq (nskk-generate 'key-sequence))
                (final-state (nskk-state-test--execute-keys state key-seq)))
-          ;; State should always be valid regardless of sequence
           (unless (and (nskk-state-test--valid-state-p final-state)
                        (nskk-state-test--buffer-bounds-p final-state)
                        (nskk-state-test--mode-valid-p final-state))
@@ -1786,7 +1757,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                (final-state (nskk-state-test--execute-keys state key-seq))
                (buffer (nskk-state-input-buffer final-state))
                (expected-length (length key-seq)))
-          ;; Buffer should contain all typed characters
           (unless (= (length buffer) expected-length)
             (push (list :seed test-seed
                         :run run
@@ -1809,12 +1779,10 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (dotimes (run runs)
         (let* ((state (nskk-state-create 'hiragana))
                (mode-keys '("C-j" "q" "l" ";"))
-               ;; Generate sequence of only mode switches
                (key-seq (cl-loop repeat (nskk--pbt-random-int 1 20)
                                  collect (nskk--pbt-random-choice mode-keys)))
                (final-state (nskk-state-test--execute-keys state key-seq))
                (buffer (nskk-state-input-buffer final-state)))
-          ;; Buffer should be empty (no character input)
           (unless (string-empty-p buffer)
             (push (list :seed test-seed
                         :run run

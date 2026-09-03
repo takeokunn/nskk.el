@@ -71,17 +71,14 @@
       (should (= 2 (nskk-candidate-list-select-by-key ?d candidates 0)))))
 
   (nskk-it "select-by-key returns nil when position exceeds candidate count"
-    ;; Only 1 candidate; ?s would map to absolute index 1 — out of range.
     (let ((candidates '("漢字")))
       (should (null (nskk-candidate-list-select-by-key ?s candidates 0)))))
 
   (nskk-it "select-by-key with page offset returns correct absolute index"
-    ;; Page 2 starts at index 7; ?a → position 0 → absolute 7.
     (let ((candidates (make-list 14 "候補")))
       (should (= 7 (nskk-candidate-list-select-by-key ?a candidates 7)))))
 
   (nskk-it "select-by-key with ?s on page 2 offset returns absolute index 8"
-    ;; Page 2, second key ?s → position 1 → absolute 7+1=8.
     (let ((candidates (make-list 14 "候補")))
       (should (= 8 (nskk-candidate-list-select-by-key ?s candidates 7))))))
 

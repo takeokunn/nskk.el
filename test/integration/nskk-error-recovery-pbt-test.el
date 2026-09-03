@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Error recovery PBT tests.
 
 ;;; Code:
 
@@ -58,17 +57,14 @@
                (state (nskk-state-create valid-mode))
                (invalid-mode (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
           (nskk-state-set state 'input-buffer "test-input")
-          ;; Attempt to set invalid mode (should error)
           (condition-case _err
               (progn
                 (nskk-state-set state 'mode invalid-mode)
-                ;; If we get here, the invalid mode was accepted (failure)
                 (push (list :invalid-mode invalid-mode
                             :error "no error raised"
                             :actual-mode (nskk-state-mode state))
                       failures))
             (error
-             ;; Error expected - verify state consistency
              (unless (and (nskk-state-p state)
                           (eq (nskk-state-mode state) valid-mode)
                           (string= (nskk-state-input-buffer state) "test-input")
@@ -178,7 +174,6 @@
                        (null (nskk-state-candidates state))
                        (= (nskk-state-current-index state) 0)
                        (null (nskk-state-henkan-position state))
-                       ;; Mode should be preserved through reset
                        (nskk-state-valid-mode-p (nskk-state-mode state)))
             (push (list :input (nskk-state-input-buffer state)
                         :converted (nskk-state-converted-buffer state)
@@ -255,15 +250,12 @@
           (nskk-state-set state 'mode invalid-mode)
         (error
          (setq error-raised t)))
-      ;; Either an error was raised and state is consistent, or no error but
-      ;; state remains a valid nskk-state struct.
       (and (nskk-state-p state)
            (nskk-state-valid-mode-p (nskk-state-mode state))
            (stringp (nskk-state-input-buffer state))
            (stringp (nskk-state-converted-buffer state))
            (listp (nskk-state-candidates state))
            (integerp (nskk-state-current-index state))
-           ;; If no error was raised, mode must still be valid (accepted silently)
            (or error-raised
                (nskk-state-valid-mode-p (nskk-state-mode state))))))
   50)

@@ -23,7 +23,6 @@
 ;; Features:
 ;; - ERT-based test framework
 ;; - Test environment setup/teardown
-;; - Property-based testing support
 ;;; Code:
 (progn
   (defvar nskk-test--persistence-directory
@@ -55,9 +54,6 @@
 (eval-when-compile
   (require 'cl-lib))
 
-;; Load all NSKK modules and initialize their Prolog predicates once for the
-;; test session.  This mirrors what `nskk--enable' does at mode activation
-;; time, but without dictionary loading or buffer-local setup.
 (require 'nskk-state)
 
 (require 'nskk-kana)
@@ -72,24 +68,12 @@
 
 (require 'nskk-annotation)
 
-;; Disable loading of large system dictionaries (like ja-dic) by default in
-;; tests. Most unit and integration tests only need small mock dictionaries.
 (setq nskk-dict-use-ja-dic nil)
 
-;; Keep every writable dictionary, learning, and study path under the test
-;; process root.  The derived dictionary cache follows `user-emacs-directory'.
-;; Saving from `kill-emacs-hook' therefore cannot overwrite personal data.
 (setq nskk-dict-user-dictionary-file (expand-file-name "nskk/jisyo" nskk-test--persistence-directory)
       nskk-search-learning-file (expand-file-name "nskk/learning.dat" nskk-test--persistence-directory)
       nskk-study-file (expand-file-name "nskk/study.dat" nskk-test--persistence-directory))
 
-;; NOTE: The initialization calls below are guarded by idempotency flags
-;; (e.g., `nskk--state-prolog-initialized').  If you `eval-buffer' this
-;; file after editing, those flags will prevent re-initialization unless
-;; you first reset them manually.  Each owning module registers its flag
-;; symbol as a `module-initialized-flag/1' Prolog fact at load time; query
-;; `(nskk-prolog-query-all-values (quote (module-initialized-flag ?f)) (quote ?f))'
-;; for the complete, current list rather than trusting this comment.
 (nskk-state-initialize-prolog)
 
 (nskk-kana-initialize)
@@ -246,7 +230,6 @@
     (when generator
       (apply generator args))))
 
-;; Predefined generators
 (nskk-register-generator
   'romaji-string
   (lambda (&optional length)
@@ -737,12 +720,8 @@ search function such as `nskk-search'."
 ;;;;
 ;;;; Mock skkserv Helper
 ;;;;
-;; `nskk-keymap' is needed for `nskk-self-insert', used by the
-;; integration session helpers below.
 (require 'nskk-keymap)
 
-;; `nskk-server-coding-system' is defined in nskk-server.el.
-;; Load it here so the mock helper below can reference that variable.
 (require 'nskk-server)
 
 (defun nskk--server-mock-child-form (responses ready-file)

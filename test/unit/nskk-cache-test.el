@@ -203,12 +203,10 @@
   (nskk-it "evicts the least recently used entry when full"
     (let ((cache (nskk-cache-lru-create 3)))
       (nskk-given
-       ;; Insert three entries; access order: key1, key2, key3
        (nskk-cache-lru-put cache "key1" "value1")
        (nskk-cache-lru-put cache "key2" "value2")
        (nskk-cache-lru-put cache "key3" "value3"))
       (nskk-when
-       ;; key4 causes eviction of key1 (LRU)
        (nskk-cache-lru-put cache "key4" "value4"))
       (nskk-then
        (should (null  (nskk-cache-lru-get cache "key1")))
@@ -222,7 +220,6 @@
        (nskk-cache-lru-put cache "key1" "value1")
        (nskk-cache-lru-put cache "key2" "value2")
        (nskk-cache-lru-put cache "key3" "value3")
-       ;; Promote key1 to MRU; key2 is now LRU
        (nskk-cache-lru-get cache "key1"))
       (nskk-when
        (nskk-cache-lru-put cache "key4" "value4"))
@@ -240,8 +237,6 @@
        (nskk-cache-lru-put cache "key3" "value3")
        (nskk-cache-lru-put cache "key4" "value4")
        (nskk-cache-lru-put cache "key5" "value5")
-       ;; Access order: key3, key1, key4 -> key2 and key5 become candidates
-       ;; Most-recently-used: key4 > key1 > key3 > key5 > key2 (LRU)
        (nskk-cache-lru-get cache "key3")
        (nskk-cache-lru-get cache "key1")
        (nskk-cache-lru-get cache "key4"))
@@ -308,7 +303,6 @@
       (nskk-cache-lru-put cache "k1" "v1")
       (nskk-cache-lru-put cache "k2" "v2")
       (nskk-cache-lru-clear cache)
-      ;; Sentinel nodes must be directly linked again
       (should (eq (nskk-cache-lru-node-next head) tail))
       (should (eq (nskk-cache-lru-node-prev tail) head)))))
 
@@ -483,12 +477,10 @@
        (nskk-cache-lfu-put cache "key1" "value1")
        (nskk-cache-lfu-put cache "key2" "value2")
        (nskk-cache-lfu-put cache "key3" "value3")
-       ;; Raise frequency of key2 (→3) and key3 (→2); key1 stays at 1
        (nskk-cache-lfu-get cache "key2")
        (nskk-cache-lfu-get cache "key3")
        (nskk-cache-lfu-get cache "key2"))
       (nskk-when
-       ;; key4 causes eviction of key1 (lowest frequency = 1)
        (nskk-cache-lfu-put cache "key4" "value4"))
       (nskk-then
        (should (null  (nskk-cache-lfu-get cache "key1")))
@@ -506,9 +498,6 @@
        (should (string= (nskk-cache-lfu-get cache "key2") "value2")))))
 
   (nskk-it "min-freq advances when all entries at min-freq are promoted by get"
-    ;; Two entries at freq 1.  After getting both, the freq-1 bucket empties.
-    ;; min-freq must advance to 2; a new entry inserted afterward correctly
-    ;; sets min-freq back to 1 and the promoted entries survive eviction.
     (let ((cache (nskk-cache-lfu-create 2)))
       (nskk-given
        (nskk-cache-lfu-put cache "key1" "value1")   ; freq 1
@@ -518,8 +507,6 @@
       (nskk-then
        (should (= (nskk-cache-lfu-min-freq cache) 2)))
       (nskk-when
-       ;; Inserting key3 triggers eviction at min-freq=2 (key1 or key2),
-       ;; then resets min-freq to 1.
        (nskk-cache-lfu-put cache "key3" "value3"))
       (nskk-then
        (should (= (nskk-cache-lfu-size cache) 2))
@@ -527,8 +514,6 @@
        (should (string= (nskk-cache-lfu-get cache "key3") "value3")))))
 
   (nskk-it "get-promoted entries survive when a lower-frequency entry is evicted"
-    ;; key1 stays at freq 1; key2 gets promoted to freq 2.
-    ;; Inserting key3 must evict key1, not key2.
     (let ((cache (nskk-cache-lfu-create 2)))
       (nskk-given
        (nskk-cache-lfu-put cache "key1" "value1")   ; freq 1
@@ -542,19 +527,14 @@
        (should (string= (nskk-cache-lfu-get cache "key3") "value3")))))
 
   (nskk-it "evicts any entry at the minimum frequency when frequencies are equal"
-    ;; Frequency buckets are now hash-tables (O(1) add/remove), so eviction order
-    ;; within equal-frequency entries is arbitrary (not FIFO).  The contract is:
-    ;; exactly one of the min-freq entries is evicted; the new entry is present.
     (let ((cache (nskk-cache-lfu-create 3)))
       (nskk-given
-       ;; All entries have frequency 1
        (nskk-cache-lfu-put cache "key1" "value1")
        (nskk-cache-lfu-put cache "key2" "value2")
        (nskk-cache-lfu-put cache "key3" "value3"))
       (nskk-when
        (nskk-cache-lfu-put cache "key4" "value4"))
       (nskk-then
-       ;; key4 is always present; exactly 2 of {key1,key2,key3} survive
        (should (= (nskk-cache-lfu-size cache) 3))
        (should (string= (nskk-cache-lfu-get cache "key4") "value4"))
        (let ((surviving (cl-count-if #'identity
@@ -674,7 +654,6 @@
       (nskk-then
        (should (string= (nskk-cache-lru-get cache1 "key") "value1"))
        (should (string= (nskk-cache-lfu-get cache2 "key") "value2")))
-      ;; Eviction in cache1 must not affect cache2
       (nskk-when
        (nskk-cache-lru-put cache1 "key2" "v1-2")
        (nskk-cache-lru-put cache1 "key3" "v1-3"))
@@ -691,7 +670,6 @@
       (nskk-when
        (let ((deleted (nskk-cache-invalidate-pattern cache "^dict:")))
          (nskk-then
-          ;; All dict: keys returned
           (should (member "dict:ka" deleted))
           (should (member "dict:ki" deleted))
           (should-not (member "other:foo" deleted))
@@ -930,8 +908,6 @@
       (should not-found-called)))
 
   (nskk-it "sync nskk-cache-get returns nil for both stored nil and miss (documented limitation)"
-    ;; This documents the known limitation: sync get cannot distinguish
-    ;; a stored nil from a miss.  Use nskk-cache-get/k to distinguish them.
     (let ((cache (nskk-cache-lru-create 10)))
       (nskk-cache-lru-put cache "nil-key" nil)
       (should (null (nskk-cache-get cache "nil-key")))   ; stored nil → nil
@@ -1426,7 +1402,6 @@
            (node2 (nskk-cache-lru-node--create :key "k2" :value "v2")))
       (nskk-cache-lru--add-to-head cache node1)
       (nskk-cache-lru--add-to-head cache node2)
-      ;; node2 should be at head, node1 second
       (let ((head (nskk-cache-lru-head cache)))
         (should (eq (nskk-cache-lru-node-next head) node2))
         (should (eq (nskk-cache-lru-node-next node2) node1))))))
@@ -1437,7 +1412,6 @@
            (node (nskk-cache-lru-node--create :key "k" :value "v")))
       (nskk-cache-lru--add-to-head cache node)
       (nskk-cache-lru--remove-node node)
-      ;; After removal, head and tail should point directly to each other
       (let ((head (nskk-cache-lru-head cache))
             (tail (nskk-cache-lru-tail cache)))
         (should (eq (nskk-cache-lru-node-next head) tail))
@@ -1448,7 +1422,6 @@
     (let* ((cache (nskk-cache-lru-create 10))
            (node1 (nskk-cache-lru-node--create :key "k1" :value "v1"))
            (node2 (nskk-cache-lru-node--create :key "k2" :value "v2")))
-      ;; Add node1 then node2; node2 is at MRU, node1 is second
       (nskk-cache-lru--add-to-head cache node1)
       (nskk-cache-lru--add-to-head cache node2)
       (nskk-cache-lru--move-to-head cache node1)
@@ -1460,7 +1433,6 @@
     (let* ((cache (nskk-cache-lru-create 10))
            (node1 (nskk-cache-lru-node--create :key "k1" :value "v1"))
            (node2 (nskk-cache-lru-node--create :key "k2" :value "v2")))
-      ;; node1 added first → becomes LRU; node2 added second → MRU
       (nskk-cache-lru--add-to-head cache node1)
       (nskk-cache-lru--add-to-head cache node2)
       (let ((removed (nskk-cache-lru--remove-tail cache)))
@@ -1478,7 +1450,6 @@
              (old-freq (nskk-cache-lfu-entry-frequency entry)))
         (cl-incf (nskk-cache-lfu-entry-frequency entry))
         (nskk-cache-lfu--update-freq cache entry old-freq)
-        ;; Entry should now be in frequency bucket 2 (bucket is now a hash-table)
         (let ((freq-2-bucket (gethash 2 (nskk-cache-lfu-freq cache))))
           (should (hash-table-p freq-2-bucket))
           (should (gethash "key" freq-2-bucket))))))
@@ -1486,26 +1457,20 @@
   (nskk-it "handles nil old-freq (new-entry path — no bucket removal)"
     (let* ((cache (nskk-cache-lfu-create 10))
            (entry (nskk-cache-lfu-entry--create :key "k" :value "v" :frequency 1)))
-      ;; old-freq nil means first insertion — should not error
       (nskk-cache-lfu--update-freq cache entry nil)
-      ;; entry should be in bucket 1
       (let* ((bucket (gethash 1 (nskk-cache-lfu-freq cache))))
         (should bucket)
         (should (gethash "k" bucket)))))
 
   (nskk-it "advances min-freq when emptied bucket was the minimum"
     (let* ((cache (nskk-cache-lfu-create 10))
-           ;; manually set up: one entry at freq 1
            (entry (nskk-cache-lfu-entry--create :key "k" :value "v" :frequency 2)))
       (puthash "k" entry (nskk-cache-lfu-hash cache))
-      ;; create bucket at freq 1 with just this key, set min-freq=1
       (let ((b1 (make-hash-table :test 'equal :size 4)))
         (puthash "k" t b1)
         (puthash 1 b1 (nskk-cache-lfu-freq cache)))
       (setf (nskk-cache-lfu-min-freq cache) 1)
-      ;; update-freq: remove from freq 1, add to freq 2
       (nskk-cache-lfu--update-freq cache entry 1)
-      ;; freq 1 bucket should be gone, min-freq should advance to 2
       (should-not (gethash 1 (nskk-cache-lfu-freq cache)))
       (should (= 2 (nskk-cache-lfu-min-freq cache)))))
 
@@ -1513,15 +1478,12 @@
     (let* ((cache (nskk-cache-lfu-create 10))
            (e1 (nskk-cache-lfu-entry--create :key "k1" :value 1 :frequency 2))
            (_e2 (nskk-cache-lfu-entry--create :key "k2" :value 2 :frequency 2)))
-      ;; set up freq 1 bucket with both k1 and k2
       (let ((b1 (make-hash-table :test 'equal :size 4)))
         (puthash "k1" t b1)
         (puthash "k2" t b1)
         (puthash 1 b1 (nskk-cache-lfu-freq cache)))
       (setf (nskk-cache-lfu-min-freq cache) 1)
-      ;; promote k1: remove from freq 1, add to freq 2
       (nskk-cache-lfu--update-freq cache e1 1)
-      ;; freq 1 bucket should still exist (k2 is still there)
       (let ((b1-after (gethash 1 (nskk-cache-lfu-freq cache))))
         (should b1-after)
         (should (gethash "k2" b1-after))

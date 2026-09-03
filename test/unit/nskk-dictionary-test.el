@@ -320,7 +320,6 @@
             (let ((restored (with-temp-buffer
                               (insert-file-contents temp-file)
                               (read (current-buffer)))))
-              ;; cl-defstruct records produce readable output; verify structural equality.
               (should (nskk-dict-entry-p restored))
               (should (equal (nskk-dict-entry-key restored) (nskk-dict-entry-key entry)))
               (should (equal (nskk-dict-entry-candidates restored)
@@ -379,9 +378,6 @@
         (should (cl-some (lambda (p) (string-match-p "profiles/default" p)) result))))))
 
 (nskk-describe "ja-dic conversion"
-  ;; Mock tree nodes store candidates in the order produced by
-  ;; `skkdic-extract-conversion-data' (cons-reversal of ja-dic.el text order).
-  ;; nskk passes them through as-is, matching DDSKK's candidate presentation order.
   (nskk-it "decodes and flattens okuri-nasi entries"
     (let* ((o (- (logand (encode-char ?お 'japanese-jisx0208) #xFF) 32))
            (sample `(skdic-okuri-nasi
@@ -396,10 +392,8 @@
                      (,wa t
                           (,ru t
                                (-105 ("惡" "悪")))))))
-      ;; Without reverse-candidates flag, stored order is preserved
       (should (equal (nskk--dict-ja-dic-flatten-tree sample)
                      '(("わるi" . ("惡" "悪")))))
-      ;; With reverse-candidates flag (for okuri-ari), order is reversed
       (should (equal (nskk--dict-ja-dic-flatten-tree sample t)
                      '(("わるi" . ("悪" "惡")))))))
 
@@ -416,10 +410,8 @@
                                            (-105 ("惡" "悪")))))))
         (nskk-with-mocks ((load-library (lambda (_feature) t)))
           (should (eq 'system (nskk-dict-load-ja-dic)))
-          ;; okuri-nasi: order preserved as-is
           (should (equal '("緒" "小")
                          (nskk-prolog-query-value '(system-dict-entry "お" \?c) '\?c)))
-          ;; okuri-ari: reversed to match SKK-JISYO.L / skkserv order
           (should (equal '("悪" "惡")
                          (nskk-prolog-query-value '(system-dict-entry "わるi" \?c) '\?c))))))))
 
@@ -528,7 +520,6 @@
 ;;;
 ;;;
 
-;; Table-driven dict entry creation
 (nskk-deftest-table dict-pbt-entry-creation
   :description "Dict entry creation with known keys and candidates"
   :columns (input expected)
@@ -642,7 +633,6 @@
       (let ((nskk--user-dict-index 'user))
         (nskk-prolog-set-index 'user-dict-entry 2 :trie)
         (nskk-prolog-assert '((user-dict-entry "あ" ("亜" "阿"))))
-        ;; Single-char key should still find the direct match
         (let ((result (nskk-dict-lookup "あ")))
           (should (listp result))
           (should (member "亜" result)))))))
@@ -836,8 +826,6 @@
                    (nskk-jisyo-update-hook
                     (list
                      (lambda ()
-                       ;; External effects are intentionally not claimed to be
-                       ;; reversible; only NSKK's internal state is restored.
                        (push 'external-effect events)
                        (nskk-cache-clear cache))
                      (lambda ()
@@ -1255,10 +1243,8 @@
             (progn
               (nskk-prolog-assert '((user-dict-entry "みに" ("ミニ"))))
               (nskk-dict-save-user-dictionary)
-              ;; Nothing written, modified flag untouched.
               (should (= 0 (file-attribute-size (file-attributes tmp))))
               (should nskk-dict-modified)
-              ;; Lifting the inhibit writes normally.
               (setq nskk--dict-save-inhibited nil)
               (nskk-dict-save-user-dictionary)
               (should (> (file-attribute-size (file-attributes tmp)) 0))
@@ -1270,9 +1256,6 @@
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
       (let ((nskk--user-dict-index nil)
             (nskk-dict-modified nil))
-        ;; Okurigana registration stores the dictionary key ("はしr"),
-        ;; which the okuri-ari lookup finds by appending consonants.
-        ;; (Single-char stems skip okuri-ari search by design.)
         (nskk-dict-register-word "はしr" "走")
         (let ((result (nskk-dict-lookup "はし")))
           (should (member "走" result)))))))
@@ -1382,7 +1365,6 @@
           (source-mtime '(0 100 0 0)))
       (nskk-with-mocks ((file-attributes
                          (lambda (f)
-                           ;; file-attribute-modification-time reads index 5 (mtime slot).
                            (if (string-suffix-p "dict-cache.eld" f)
                                (list nil nil nil nil nil cache-mtime nil nil nil nil nil)
                              (list nil nil nil nil nil source-mtime nil nil nil nil nil))))
@@ -1446,7 +1428,6 @@
   (nskk-it "returns non-nil when file is older than cache-mtime"
     (let* ((tmpfile (make-temp-file "nskk-test-"))
            (file-mtime (file-attribute-modification-time (file-attributes tmpfile)))
-           ;; A future time is "newer" than the file, so file is "older"
            (future-time (time-add file-mtime 100)))
       (unwind-protect
           (should (nskk--dict-file-older-than tmpfile future-time))
@@ -1455,7 +1436,6 @@
   (nskk-it "returns nil when file is newer than cache-mtime"
     (let* ((tmpfile (make-temp-file "nskk-test-"))
            (file-mtime (file-attribute-modification-time (file-attributes tmpfile)))
-           ;; A past time is "older" than the file, so file is "newer"
            (past-time (time-subtract file-mtime 100)))
       (unwind-protect
           (should-not (nskk--dict-file-older-than tmpfile past-time))
@@ -1521,8 +1501,6 @@
           (nskk-with-mocks ((nskk--dict-cache-file-path (lambda () tmpfile)))
             (nskk--dict-save-system-dict-cache entries dict-files)
             (nskk-prolog-test-with-isolated-db
-              ;; Source file validation uses nskk--dict-cache-source-valid-p (Elisp function).
-              ;; With identical sorted lists the function returns t automatically.
               (let ((loaded (nskk--dict-load-system-dict-from-cache)))
                 (should (listp loaded))
                 (should (= (length loaded) 2))
@@ -1559,7 +1537,6 @@
       (let ((temp-file (make-temp-file "nskk-test-cache-" nil ".eld")))
         (unwind-protect
             (progn
-              ;; Save a cache that records "/some/old/path" as its source files
               (with-temp-file temp-file
                 (prin1 (list :version 1
                              :source-files '("/some/old/path")
@@ -1715,7 +1692,6 @@
   (nskk-it "deduplicates candidates that appear under multiple okuri keys"
     (nskk-with-mock-dict '(("かんk" . ("漢字")) ("かんg" . ("漢字")))
       (let ((result (nskk--dict-lookup-okuri-ari "かん")))
-        ;; cl-union removes duplicates
         (should (= (length (cl-remove-duplicates result :test #'equal))
                    (length result)))))))
 
@@ -1737,7 +1713,6 @@
                              (insert-file-contents tmpfile)
                              (buffer-string))))
                 (should (string-match-p "てすと" saved))
-                ;; File should contain the candidate in SKK format (word/...)
                 (should (string-match-p "テスト" saved))
                 (should-not nskk-dict-modified)))
           (when (file-exists-p tmpfile)
@@ -1830,7 +1805,6 @@
                 (insert ";; another comment\n")
                 (insert "\n"))
               (nskk-dict-load-file tmpfile)
-              ;; Only the real entry should be loaded
               (let ((solutions (nskk-prolog-query '(system-dict-entry \?k \?c))))
                 (should (= (length solutions) 1))
                 (should (equal (nskk-prolog-walk '\?k (car solutions)) "てすと"))))
@@ -1838,9 +1812,6 @@
             (delete-file tmpfile))))))
 
   (nskk-it "returns nil for a comment-only file with no valid entries"
-    ;; A file that parses to zero valid entries signals that no dictionary
-    ;; was loaded: callers like nskk-dict-load-user-dictionary treat the
-    ;; return value as a loaded/not-loaded indicator.
     (nskk-prolog-test-with-isolated-db
       (let ((tmpfile (make-temp-file "nskk-load-file-" nil ".skk")))
         (unwind-protect
@@ -2005,9 +1976,6 @@
     (and result (member word result)))
   50 42)
 
-;; PBT 2 (FR-012): not-found stability
-;; Looking up a non-existent key always calls on-not-found without signaling
-;; an error, regardless of what string is used as a key.
 (nskk-property-test-seeded dictionary-pbt-not-found-calls-on-not-found
   ((reading romaji-string))
   (nskk-prolog-test-with-isolated-db
@@ -2020,11 +1988,6 @@
       (and not-found-called (not error-occurred))))
   50 42)
 
-;; PBT 3 (FR-019): nil-conflation safety
-;; When nskk--dict-do-lookup/k calls on-found, it is because real candidates
-;; were found — not because a falsy value was conflated with not-found.
-;; Stub the underlying Prolog query to return a list containing a falsy-looking
-;; candidate (empty string) and verify on-found fires, not on-not-found.
 (nskk-property-test-seeded dictionary-pbt-nil-conflation-safety
   ((reading hiragana-string))
   (let ((found-called nil) (not-found-called nil))
@@ -2042,9 +2005,6 @@
     (and found-called (not not-found-called)))
   50 42)
 
-;; PBT 4 (FR-012): register idempotency
-;; Registering the same (reading, word) pair twice must not produce duplicate
-;; entries in the candidates list.
 (nskk-property-test-seeded dictionary-pbt-register-idempotent
   ((reading hiragana-string)
    (word kanji-string))
@@ -2058,7 +2018,6 @@
       (nskk-dict-lookup/k reading
         (lambda (candidates) (setq result candidates))
         #'ignore)
-      ;; No duplicate entries for the registered word
       (= (cl-count word result :test #'equal) 1)))
   30 42)
 

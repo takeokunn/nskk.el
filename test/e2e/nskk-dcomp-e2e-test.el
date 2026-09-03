@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; E2E dynamic completion tests for NSKK.
 
 ;;; Code:
 
@@ -61,14 +60,9 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
   (nskk-it "Tab in preedit completes reading from dictionary prefix"
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
-        ;; "Kan" → ▽かん (partial reading, prefix of かんじ / かんが / かんしゃ).
         (nskk-e2e-type "Kan")
-        ;; Tab should complete to the first dict key matching prefix "かん".
         (nskk-e2e-type "TAB")
-        ;; Still in preedit (▽) phase — completion extends the reading, not converts.
         (nskk-e2e-assert-henkan-phase 'on)
-        ;; Reading has been extended; e.g., preedit now shows ▽かんじ.
-        ;; (Exact first completion order is implementation-defined.)
         (should (> (length (nskk-preedit-string)) (length "かん"))))))
 
   (nskk-it "repeated Tab cycles through all completions"
@@ -77,39 +71,28 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-type "Kan")
         (nskk-e2e-type "TAB")
         (let ((first-completion (nskk-preedit-string)))
-          ;; Second Tab → next completion (e.g., かんが).
           (nskk-e2e-type "TAB")
           (let ((second-completion (nskk-preedit-string)))
-            ;; Completions must be distinct.
             (should-not (equal first-completion second-completion)))))))
 
   (nskk-it "Tab with no matching prefix does not change preedit"
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
-        ;; "Xyz" → ▽ (no such prefix in dict).
         (nskk-e2e-type "Xyz")
         (let ((reading-before (nskk-preedit-string)))
-          ;; Tab should be a no-op (or ring the bell) when no completions exist.
           (nskk-e2e-type "TAB")
-          ;; Preedit must be unchanged.
           (should (equal reading-before (nskk-preedit-string)))
-          ;; Still in preedit phase.
           (nskk-e2e-assert-henkan-phase 'on))))))
 
 ;;;;
 ;;;; Table-Driven Tests: prefix → minimum extended reading length
 ;;;;
 
-;; Tables split by dict to avoid passing a symbol reference as a column value
-;; (nskk-deftest-table quotes all row values via ',val, so an alist constant
-;; cannot be a column — the body would receive the quoted symbol, not the list).
 
-;; かん-cluster dict: "Ka" → min 3 chars; "Kan" → min 3 chars (TAB flushes 'n' → ん first).
 (nskk-deftest-table dcomp-prefix-extends-reading-kan
   :columns (romaji-prefix min-expected-length)
   :rows (;; "Ka" → ▽か → Tab → extended to 3+ chars (e.g., かんじ).
          ("Ka"  3)
-         ;; "Kan" → Tab flushes 'n' → ▽かん → extended to 3+ chars (e.g., かんが).
          ("Kan" 3))
   :body
   (let ((nskk-dcomp-style 'cycle))
@@ -119,12 +102,10 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-assert-henkan-phase 'on)
       (should (>= (length (nskk-preedit-string)) min-expected-length)))))
 
-;; Extended dict: さくら ("Sa" → 3 chars) and にほん ("Ni" → 3 chars).
 (nskk-deftest-table dcomp-prefix-extends-reading-extended
   :columns (romaji-prefix min-expected-length)
   :rows (;; "Sa" → ▽さ → Tab → さくら (3 chars).
          ("Sa"  3)
-         ;; "Ni" → ▽に → Tab → にほん (3 chars).
          ("Ni"  3))
   :body
   (let ((nskk-dcomp-style 'cycle))
@@ -138,16 +119,11 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 ;;;; Table-Driven Tests: non-matching prefixes remain unchanged
 ;;;;
 
-;; For each romaji prefix that has no dict match, the preedit reading after TAB
-;; must equal the preedit reading before TAB.  Dict is nskk-e2e--dcomp-dict
-;; (かん-cluster only); "Mu", "To", "Xyz" have no matching prefix.
 (nskk-deftest-table dcomp-no-match-prefix-unchanged
   :columns (romaji-prefix)
   :rows (;; "Xyz" → ▽xz? → no kana prefix → preedit unchanged.
          ("Xyz")
-         ;; "Mu"  → "む" not in dict → preedit unchanged.
          ("Mu")
-         ;; "To"  → "と" not in dict → preedit unchanged.
          ("To"))
   :body
   (let ((nskk-dcomp-style 'cycle))
@@ -162,9 +138,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 ;;;; nskk-deftest-table: known prefix → completion is a string
 ;;;;
 
-;; For each known romaji prefix, Tab must produce a preedit that is a string.
-;; The exact completed value is not asserted here — only that completion ran
-;; without error and produced a string result.
 (nskk-deftest-table dcomp-known-prefix-cases
   :columns (input expected)
   :rows (("Ka" t)   ; "Ka" → かん prefix → at least one completion in dict
@@ -185,7 +158,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 
 (nskk-describe "dcomp SPC conversion after Tab completion"
   (nskk-it "SPC triggers conversion after Tab extends reading"
-    ;; "Ka" → Tab → reading extended (e.g., ▽かんじ) → SPC → ▼ (active).
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
@@ -196,7 +168,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-assert-henkan-phase 'active))))
 
   (nskk-it "C-j after Tab commits the completed reading as kana"
-    ;; "Ka" → Tab → reading extended → C-j → committed to buffer as kana.
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
@@ -212,7 +183,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 
 (nskk-describe "dcomp C-g after Tab cancels preedit"
   (nskk-it "C-g cancels the entire preedit after Tab completion"
-    ;; "Ka" → Tab → reading extended → C-g → preedit cancelled, buffer empty.
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
@@ -224,7 +194,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-assert-buffer ""))))
 
   (nskk-it "C-g without Tab also cancels partial preedit"
-    ;; "Ka" → C-g → preedit cancelled without ever pressing Tab.
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
@@ -246,7 +215,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-assert-mode 'hiragana))))
 
   (nskk-it "multiple Tabs in preedit do not switch mode"
-    ;; Three Tab presses cycling through completions must not alter mode.
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Kan")
@@ -256,7 +224,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-assert-mode 'hiragana))))
 
   (nskk-it "Tab on no-match prefix does not switch mode"
-    ;; Tab with no completions must leave the mode unchanged.
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
         (nskk-e2e-type "Xyz")
@@ -264,8 +231,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-assert-mode 'hiragana))))
 
   (nskk-it "preedit string is always a string after Tab"
-    ;; The return value of nskk-preedit-string must always be a string,
-    ;; never nil, after any combination of romaji input + Tab.
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict-extended
         (nskk-e2e-type "Kan")
@@ -278,8 +243,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
 ;;;; Property-Based Tests
 ;;;;
 
-;; This is the crash-freedom property: the dcomp code path must be robust
-;; against arbitrary (but syntactically valid) romaji input.
 (nskk-property-test-seeded dcomp-any-prefix-tab-no-crash
   ((romaji romaji-basic))
   (let ((nskk-dcomp-style 'cycle))
@@ -294,9 +257,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
                            romaji (error-message-string err)))))))
   30)
 
-;; nskk-preedit-string returns a string (never nil).
-;; "Ka" is prepended to activate preedit (uppercase K) and commit at least
-;; one kana (か) so preedit text is non-empty before TAB fires.
 (nskk-property-test-seeded dcomp-preedit-always-string
   ((romaji romaji-basic))
   (let ((nskk-dcomp-style 'cycle))
@@ -307,7 +267,6 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (stringp (nskk-preedit-string))))
   30)
 
-;; TAB must never trigger a mode switch as a side effect.
 (nskk-property-test-seeded dcomp-mode-preserved-after-tab
   ((romaji romaji-basic))
   (let ((nskk-dcomp-style 'cycle))

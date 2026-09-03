@@ -76,7 +76,6 @@
       (nskk-then  (should (eq nskk-debug-enabled nil)))))
 
   (nskk-it "emits \"NSKK debug mode enabled\" when toggling on"
-    ;; `current-message' is nil in batch mode; mock `message' to capture output.
     (with-debug-disabled
       (let ((captured nil))
         (nskk-with-mocks ((message (lambda (fmt &rest args)
@@ -162,9 +161,6 @@
                                (nskk-debug-test--buffer-contents))))))
 
   (nskk-it "always evaluates arguments even when debug is disabled"
-    ;; nskk-debug-log is now a defun/k, not a macro.  Arguments are always
-    ;; evaluated regardless of nskk-debug-enabled.  Guard expensive
-    ;; expressions with (when nskk-debug-enabled ...) at the call site.
     (with-debug-disabled
       (let ((eval-count 0))
         (nskk-given (should (= eval-count 0)))
@@ -282,8 +278,6 @@
                                (nskk-debug-test--buffer-contents))))))
 
   (nskk-it "recovers from format errors without signaling"
-    ;; Passing too few args to %s/%d would signal in `format'; the
-    ;; condition-case in nskk-debug-message must absorb that.
     (with-debug-enabled
       (nskk-then
        (should-not (condition-case _
@@ -307,12 +301,9 @@
 
 (nskk-describe "nskk-debug-clear when buffer absent"
   (nskk-it "does not error when the debug buffer does not exist"
-    ;; Kill the buffer so get-buffer returns nil — when-let must short-circuit cleanly.
     (when-let* ((buf (get-buffer nskk--debug-buffer-name)))
       (kill-buffer buf))
     (nskk-when  (nskk-debug-clear))
-    ;; Calling nskk-debug-clear on a non-existent buffer should still emit its
-    ;; confirmation message and leave us with an empty (newly created) buffer.
     (nskk-then  (should (equal (nskk-debug-test--buffer-contents) "")))))
 
 ;;; nskk--debug-trim
@@ -347,7 +338,6 @@
         (should (string-match-p "Entry 2" contents)))))
 
   (nskk-it "preserves all entries when buffer holds exactly max-entries lines"
-    ;; This is the boundary: forward-line lands on point-min so nothing is deleted.
     (with-max-entries 3
       (nskk-debug-test--insert-lines
        "[00:00:00.000] Entry 1"
@@ -445,7 +435,6 @@
   '(1 2 3 5 10)
   (with-max-entries item
     (nskk-debug-test--insert-lines
-     ;; Insert item+3 lines (always more than max).
      (string-join
       (cl-loop for i from 0 below (+ item 3)
                collect (format "[00:00:%02d.000] Entry %d" i i))
@@ -485,16 +474,12 @@
       (let ((contents (nskk-debug-test--buffer-contents)))
         (should (string-match-p "first" contents))
         (should (string-match-p "second" contents))
-        ;; "first" appears before "second"
         (should (< (string-match "first" contents)
                    (string-match "second" contents)))))))
 
 ;;;
 ;;;
 
-;; PBT-004 — Append format invariant (seeded)
-;; For any ASCII message string, when debug is enabled every call to
-;; nskk-debug-log appends exactly one line with a [HH:MM:SS.mmm] timestamp.
 (nskk-property-test-seeded debug-pbt-append-produces-timestamp-line
   ((msg romaji-string))
   (let ((nskk-debug-enabled t))
@@ -506,15 +491,11 @@
            (string-match-p (regexp-quote msg) contents))))
   50 42)
 
-;; PBT-005 — Max-entries bound invariant (seeded)
-;; After any number of log calls that exceeds nskk-debug-max-entries,
-;; the buffer line count never exceeds the configured limit.
 (nskk-property-test-seeded debug-pbt-max-entries-respected
   ((n romaji-string))
   (let ((nskk-debug-enabled t)
         (nskk-debug-max-entries 10))
     (nskk-debug-clear)
-    ;; Log 15 messages — always more than the limit of 10.
     (dotimes (i 15)
       (nskk-debug-log "entry %d" i))
     (let* ((raw (nskk-debug-test--buffer-contents))

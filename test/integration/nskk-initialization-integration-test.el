@@ -80,15 +80,12 @@
 (nskk-describe "kana-initialize predicates"
 
   (nskk-it "kana-hiragana/1 Prolog rule holds for hiragana codepoint"
-    ;; あ = U+3042, within hiragana block U+3040–U+309F
     (should (nskk-prolog-holds-p `(kana-hiragana ,?あ))))
 
   (nskk-it "kana-hiragana/1 does not hold for katakana codepoint"
-    ;; ア = U+30A2, in katakana block — should not match hiragana rule
     (should-not (nskk-prolog-holds-p `(kana-hiragana ,?ア))))
 
   (nskk-it "kana-katakana/1 Prolog rule holds for katakana codepoint"
-    ;; ア = U+30A2, within katakana block U+30A0–U+30FF
     (should (nskk-prolog-holds-p `(kana-katakana ,?ア)))))
 
 ;;;; Idempotency of init functions
@@ -125,9 +122,6 @@
 (nskk-describe "cross-module init chain integration"
 
   (nskk-it "initialized system processes hiragana input via converter and state"
-    ;; Exercises: nskk-converter-initialize (romaji table) +
-    ;;            nskk-state-initialize-prolog (mode-properties) +
-    ;;            nskk-input-initialize (routing rules)
     (nskk-integration-with-session 'hiragana
       (nskk--integration-type-char ?a)
       (should (string= "あ" (buffer-string)))))
@@ -138,8 +132,6 @@
       (should (string= "ア" (buffer-string)))))
 
   (nskk-it "state-init and henkan-init Prolog predicates coexist"
-    ;; valid-mode (state-init) and converting-phase (henkan-init) both
-    ;; live in the same Prolog database and must not conflict.
     (should (nskk-prolog-holds-p '(valid-mode hiragana)))
     (should (nskk-prolog-holds-p '(converting-phase active))))
 
@@ -151,26 +143,10 @@
 
 (nskk-describe "initialization idempotency (PBT)"
 
-  ;; Property: calling all 5 init functions N times (N between 2 and 5) leaves
-  ;; the Prolog DB in the same queryable state as calling them once.
-  ;;
-  ;; After N calls we verify that a representative set of predicates — one from
-  ;; each init function — still resolves to the expected values.  All Prolog
-  ;; state is isolated so the repeated calls run against a fresh DB on each run.
-  ;;
-  ;; Predicates verified:
-  ;;   valid-mode/1          (nskk-state-initialize-prolog)
-  ;;   kana-hiragana/1       (nskk-kana-initialize)
-  ;;   converting-phase/1    (nskk-henkan-initialize)
-  ;;   core-search-type/2    (nskk-henkan-initialize)
   (nskk-property-test-seeded n-times-init-leaves-db-consistent
     ()
     (let ((n (+ 2 (random 4))))     ; N in [2, 5]
       (nskk-prolog-test-with-isolated-db
-        ;; Call all 5 init functions N times; idempotency guards (the
-        ;; *-initialized flags) are reset by nskk-prolog-test-with-isolated-db
-        ;; at the start of each iteration, so the first call in the loop
-        ;; actually populates the fresh DB and subsequent calls are no-ops.
         (dotimes (_ n)
           (nskk-state-initialize-prolog)
           (nskk-kana-initialize)

@@ -23,8 +23,6 @@
 
 ;;;; Helper: dict that does not contain the test key "てすと"
 
-;; The mock dict contains only "zzz" so that nskk-dict-lookup "てすと" → nil,
-;; forcing the server fallthrough path in nskk-core-search.
 (defconst nskk-server-henkan--dict-without-test-key
   '(("zzz" . ("zzz")))
   "A one-entry mock dictionary guaranteed not to contain \"てすと\".")
@@ -74,7 +72,6 @@
             (progn
               (should (nskk-server-open))
               (let ((result (nskk-core-search "てすと")))
-                ;; Dict missed → server provided candidates
                 (should result)
                 (should (listp result))
                 (should (member "テスト" result))))
@@ -95,15 +92,11 @@
         (unwind-protect
             (progn
               (should (nskk-server-open))
-              ;; Neither dict nor mock server know this key
               (should (null (nskk-core-search "zzzzzzzz"))))
           (nskk-server-close)
           (delete-process server-proc)))))
 
   (nskk-it "server hit takes priority: dict candidates are not used"
-    ;; Mock dict contains "てすと" → dict-lookup returns ("辞書の結果")
-    ;; Mock server also has "てすと" with a different answer
-    ;; Since skkserv is consulted before local dict, server result wins.
     (nskk-with-mock-dict '(("てすと" . ("辞書の結果")))
       (let* ((mock (nskk--server-start-mock-server
                     '(("てすと" . "1/サーバの結果/\n"))))
@@ -118,7 +111,6 @@
             (progn
               (should (nskk-server-open))
               (let ((result (nskk-core-search "てすと")))
-                ;; Server hit → server result must be returned
                 (should result)
                 (should (member "サーバの結果" result))
                 (should-not (member "辞書の結果" result))))
@@ -131,9 +123,6 @@
 (nskk-describe "user dictionary merged with server"
 
   (nskk-it "merges user dict candidates ahead of server when enabled"
-    ;; Local dict has the registered word "優響"; the mock server returns
-    ;; other readings of "ゆき".  With merging enabled the user dict candidate
-    ;; comes first, followed by the server's.
     (nskk-with-mock-dict '(("ゆき" . ("優響")))
       (let* ((mock (nskk--server-start-mock-server
                     '(("ゆき" . "1/雪/行き/\n"))))
@@ -154,7 +143,6 @@
           (delete-process server-proc)))))
 
   (nskk-it "deduplicates candidates shared by user dict and server"
-    ;; "雪" is present in both; it is kept once, with the user dict ordering.
     (nskk-with-mock-dict '(("ゆき" . ("優響" "雪")))
       (let* ((mock (nskk--server-start-mock-server
                     '(("ゆき" . "1/雪/行き/\n"))))

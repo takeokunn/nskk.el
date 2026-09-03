@@ -26,7 +26,6 @@
 ;;; so the byte-compiler requires forward declarations for their call sites.
 ;;; -------------------------------------------------------------------
 
-;; defun/k helpers defined inside nskk-it bodies (generate base + /k)
 (declare-function nskk-cps-test--prop-runtime nil)
 (declare-function nskk-cps-test--prop-runtime/k nil)
 (declare-function nskk-cps-test--pcase-let*-fn nil)
@@ -53,12 +52,10 @@
 (declare-function nskk-cps-test--seq-fail-caller/k nil)
 (declare-function nskk-cps-test--seq-side-effect-caller nil)
 (declare-function nskk-cps-test--seq-side-effect-caller/k nil)
-;; defun/done helpers defined inside nskk-it bodies (generate base + /k)
 (declare-function nskk--cps-test-done-fn-guard nil)
 (declare-function nskk--cps-test-done-fn-guard/k nil)
 (declare-function nskk-cps-test--prop-done-runtime nil)
 (declare-function nskk-cps-test--prop-done-runtime/k nil)
-;; defun/3k helpers defined inside nskk-it bodies (generate /k only)
 (declare-function nskk--cps-3k-put-prop-test/k nil)
 (declare-function nskk--cps-3k-runtime-test/k nil)
 
@@ -98,7 +95,6 @@ that the second element is a symbol with the given name."
                            (if x (succeed x) (fail))))))
         (should (consp expansion))
         (should (eq (car expansion) 'progn))
-        ;; (progn /k-defun sync-defun put-annotation)
         (should (= (length expansion) 4))))
 
     (nskk-it "generates a NAME/k function with on-found and on-not-found args"
@@ -109,8 +105,6 @@ that the second element is a symbol with the given name."
              (k-def (nth 1 expansion)))
         (should (eq (car k-def) 'defun))
         (should (eq (cadr k-def) 'nskk--cps-test-expand-k/k))
-        ;; Args must include x plus symbols named on-found and on-not-found.
-        ;; The continuation symbols are gensym'd (uninterned), so check by name.
         (let ((args (nth 2 k-def)))
           (should (memq 'x args))
           (should (nskk-cps-test--args-contain-sym-named-p args "on-found"))
@@ -124,7 +118,6 @@ that the second element is a symbol with the given name."
              (sync-def (nth 2 expansion)))
         (should (eq (car sync-def) 'defun))
         (should (eq (cadr sync-def) 'nskk--cps-test-expand-sync))
-        ;; Sync function body is at index 4 (after defun, name, args, docstring)
         (let ((body (nth 4 sync-def)))
           (should (consp body))
           (should (eq (car body) 'nskk--cps-test-expand-sync/k))
@@ -210,7 +203,6 @@ that the second element is a symbol with the given name."
                             "Doc."
                             (succeed a))))
              (sync-def  (nth 2 expansion))
-             ;; Sync body is at index 4 (defun name args docstring BODY)
              (sync-body (nth 4 sync-def)))
         (should (eq (car sync-body) 'apply))))
 
@@ -221,7 +213,6 @@ that the second element is a symbol with the given name."
                             (if a (succeed a) (succeed b)))))
              (sync-def  (nth 2 expansion))
              (sync-body (nth 4 sync-def)))
-        ;; The call form must NOT contain the &optional keyword
         (should-not (memq '&optional sync-body)))))
 
   (nskk-context "symbol property annotation"
@@ -230,12 +221,9 @@ that the second element is a symbol with the given name."
                          '(defun/k nskk--cps-test-prop-k (x)
                             "Doc."
                             (succeed x))))
-             ;; The progn has: (progn /k-defun sync-defun put-form)
              (put-form (nth 3 expansion)))
         (should (consp put-form))
         (should (eq (car put-form) 'put))
-        ;; (nth 2 put-form) is the quoted form (quote nskk--cps-continuation-pattern);
-        ;; use cadr to extract the symbol and compare with eq.
         (should (eq (cadr (nth 2 put-form)) 'nskk--cps-continuation-pattern))
         (should (eq (nth 3 put-form) ':found-not-found))))
 
@@ -263,10 +251,8 @@ that the second element is a symbol with the given name."
              (k-def  (nth 1 expansion))
              (k-body (nthcdr 4 k-def))
              (form   (car k-body)))
-        ;; The symbol in funcall is gensym'd, so check by name, not identity.
         (should (nskk-cps-test--funcall-sym-named-p form "on-found"))
         (should (equal (nth 2 form) 42))
-        ;; Confirm the symbol is uninterned (gensym'd).
         (should-not (eq (cadr form) 'on-found))))
 
     (nskk-it "transforms (succeed v) in the then-branch of an if"
@@ -337,7 +323,6 @@ that the second element is a symbol with the given name."
              (k-def  (nth 1 expansion))
              (k-body (nthcdr 4 k-def))
              (form   (car k-body)))
-        ;; The symbol is gensym'd, so check by name.
         (should (nskk-cps-test--funcall-sym-named-p form "on-not-found"))
         (should (= (length form) 2))          ; (funcall SYM) -- no args
         (should-not (eq (cadr form) 'on-not-found))))
@@ -350,7 +335,6 @@ that the second element is a symbol with the given name."
              (k-def   (nth 1 expansion))
              (if-form (car (nthcdr 4 k-def))))
         (should (eq (car if-form) 'if))
-        ;; else branch: (funcall <on-not-found-sym>)
         (let ((else (nth 3 if-form)))
           (should (nskk-cps-test--funcall-sym-named-p else "on-not-found"))
           (should (= (length else) 2)))))
@@ -391,9 +375,7 @@ that the second element is a symbol with the given name."
                             (succeed result))))
              (k-def  (nth 1 expansion))
              (body   (car (nthcdr 4 k-def))))
-        ;; The outer call should be nskk--cps-test-helper/k
         (should (eq (car body) 'nskk--cps-test-helper/k))
-        ;; arg should appear in the call
         (should (member 'arg (cdr body)))
         (should (cl-some (lambda (f) (and (consp f) (eq (car f) 'lambda)))
                          (cdr body)))))
@@ -409,23 +391,17 @@ that the second element is a symbol with the given name."
         (should (eq (car body) 'my-lookup-fn/k))))
 
     (nskk-it "continuation body calls on-found with var when no following forms exist"
-      ;; C3 fix: (<- var fn) with no rest forms generates (funcall on-found var),
-      ;; NOT (funcall on-not-found).
       (let* ((expansion (macroexpand-1
                          '(defun/k nskk--cps-test-<--no-rest ()
                             "Doc."
                             (<- r nskk--cps-test-helper))))
              (k-def (nth 1 expansion))
              (call  (car (nthcdr 4 k-def)))
-             ;; Find the found-lambda (first lambda in call)
              (found-lambda (cl-find-if (lambda (f) (and (consp f) (eq (car f) 'lambda)))
                                        (cdr call)))
-             ;; The lambda body: (let ((r --r--)) CONT-BODY)
              (let-form (caddr found-lambda))
              (cont-body (caddr let-form)))
-        ;; Continuation body must call on-found (not on-not-found)
         (should (nskk-cps-test--funcall-sym-named-p cont-body "on-found"))
-        ;; The argument to on-found must be the bound variable r
         (should (equal (nth 2 cont-body) 'r))))
 
     (nskk-it "passes the outer on-not-found symbol as the not-found continuation"
@@ -436,9 +412,7 @@ that the second element is a symbol with the given name."
                             (succeed result))))
              (k-def (nth 1 expansion))
              (call  (car (nthcdr 4 k-def)))
-             ;; The last argument to fn/k must be the on-not-found gensym.
              (last-arg (car (last call))))
-        ;; The symbol is gensym'd, so check by name, not identity.
         (should (symbolp last-arg))
         (should (equal (symbol-name last-arg) "on-not-found"))
         (should-not (eq last-arg 'on-not-found)))))
@@ -452,19 +426,14 @@ that the second element is a symbol with the given name."
                             (succeed myvar))))
              (k-def  (nth 1 expansion))
              (call   (car (nthcdr 4 k-def)))
-             ;; Find the found-lambda (first lambda in call)
              (found-lambda (cl-find-if (lambda (f) (and (consp f) (eq (car f) 'lambda)))
                                        (cdr call)))
              (lambda-param (caadr found-lambda)))
-        ;; The lambda parameter must not be the interned symbol 'myvar
         (should-not (eq lambda-param 'myvar))
-        ;; It should be an uninterned symbol (gensym): interning its name gives a different object
         (should-not (eq (intern (symbol-name lambda-param)) lambda-param)))))
 
   (nskk-context "continuation chaining"
     (nskk-it "two sequential <- forms produce correctly nested CPS continuations"
-      ;; (<- a fn1 x) (<- b fn2 a) (succeed (+ a b)) should expand to
-      ;; nested calls: fn1/k calls fn2/k in its continuation body.
       (let* ((expansion (macroexpand-1
                          '(defun/k nskk--cps-test-<--chain (x)
                             "Doc."
@@ -473,12 +442,9 @@ that the second element is a symbol with the given name."
                             (succeed (+ a b)))))
              (k-def (nth 1 expansion))
              (outer-call (car (nthcdr 4 k-def))))
-        ;; Outer call is fn1/k (nskk--cps-test-helper/k)
         (should (eq (car outer-call) 'nskk--cps-test-helper/k))
-        ;; The found-lambda body should itself contain another fn/k call
         (let* ((found-lambda (cl-find-if (lambda (f) (and (consp f) (eq (car f) 'lambda)))
                                          (cdr outer-call)))
-               ;; Lambda: (lambda (--a--) (let ((a --a--)) INNER-CALL))
                (let-form     (caddr found-lambda))
                (inner-call   (caddr let-form)))
           (should (eq (car inner-call) 'nskk--cps-test-helper/k))))))
@@ -520,9 +486,7 @@ that the second element is a symbol with the given name."
                                   :fail  (fail)))))
              (k-def (nth 1 expansion))
              (call  (car (nthcdr 4 k-def))))
-        ;; Head is fn/k
         (should (eq (car call) 'nskk--cps-test-helper/k))
-        ;; There must be exactly two lambdas in the call
         (let ((lambdas (cl-remove-if-not (lambda (f) (and (consp f) (eq (car f) 'lambda)))
                                          (cdr call))))
           (should (= (length lambdas) 2)))))
@@ -540,7 +504,6 @@ that the second element is a symbol with the given name."
                                         (cdr call)))
              (found-lambda (car lambdas))
              (found-body   (caddr found-lambda)))
-        ;; found-body should be (let ((r --r--)) (funcall <on-found-sym> r))
         (should (eq (car found-body) 'let))
         (let ((inner (caddr found-body)))
           (should (nskk-cps-test--funcall-sym-named-p inner "on-found"))
@@ -557,7 +520,6 @@ that the second element is a symbol with the given name."
              (call   (car (nthcdr 4 k-def)))
              (lambdas (cl-remove-if-not (lambda (f) (and (consp f) (eq (car f) 'lambda)))
                                         (cdr call)))
-             ;; Second lambda is the fail-lambda (takes no args)
              (fail-lambda (cadr lambdas))
              (fail-body   (caddr fail-lambda)))
         (should (nskk-cps-test--funcall-sym-named-p fail-body "on-not-found"))
@@ -572,9 +534,7 @@ that the second element is a symbol with the given name."
                                   :fail  (fail)))))
              (k-def (nth 1 expansion))
              (call  (car (nthcdr 4 k-def))))
-        ;; Head is fn/k
         (should (eq (car call) 'nskk--cps-test-helper/k))
-        ;; x and y must appear in the call before the lambdas
         (should (memq 'x (cdr call)))
         (should (memq 'y (cdr call))))))
 
@@ -634,7 +594,6 @@ that the second element is a symbol with the given name."
         (let ((then (nth 2 if-form)))
           (should (nskk-cps-test--funcall-sym-named-p then "on-found"))
           (should (equal (nth 2 then) 'x)))
-        ;; No else clause: only 3 elements in the if form
         (should (null (nth 3 if-form))))))
 
   (nskk-context "cond form"
@@ -818,19 +777,15 @@ that the second element is a symbol with the given name."
 
   (nskk-context "cond test-only clause edge cases"
     (nskk-it "a cond clause with no body passes the test expression through unchanged"
-      ;; With the C4 fix, (cond (some-expr)) -- test-only -- does NOT transform
-      ;; the test expression via the CPS walker.  It passes through as-is.
       (let* ((expansion (macroexpand-1
                          '(defun/k nskk--cps-test-cond-test-only ()
                             "Doc."
                             (cond (some-expr)))))
              (k-def     (nth 1 expansion))
              (cond-form (car (nthcdr 4 k-def))))
-        ;; The whole cond form should be (cond (some-expr)) -- test NOT transformed.
         (should (equal cond-form '(cond (some-expr))))))
 
     (nskk-it "a test-only cond clause does not wrap the test in a funcall form"
-      ;; Additional check: the test atom is not wrapped in funcall.
       (let* ((expansion (macroexpand-1
                          '(defun/k nskk--cps-test-cond-to-no-funcall ()
                             "Doc."
@@ -839,7 +794,6 @@ that the second element is a symbol with the given name."
              (cond-form   (car (nthcdr 4 k-def)))
              (clause      (cadr cond-form))
              (clause-test (car clause)))
-        ;; Test must be the bare symbol, not (funcall ...)
         (should (eq clause-test 'my-flag))
         (should-not (and (consp clause-test) (eq (car clause-test) 'funcall)))))))
 
@@ -858,7 +812,6 @@ that the second element is a symbol with the given name."
                            (setq nskk--cps-done-result x)))))
         (should (consp expansion))
         (should (eq (car expansion) 'progn))
-        ;; (progn /k-defun sync-defun put-annotation)
         (should (= (length expansion) 4))))
 
     (nskk-it "generates NAME/k with an on-done arg and appends (funcall on-done) at the end"
@@ -871,9 +824,7 @@ that the second element is a symbol with the given name."
              (k-body (nthcdr 4 k-def)))
         (should (eq (car k-def) 'defun))
         (should (eq (cadr k-def) 'nskk--cps-test-done-k/k))
-        ;; on-done may be gensym'd -- check by name.
         (should (nskk-cps-test--args-contain-sym-named-p k-args "on-done"))
-        ;; Last form in body must be (funcall <on-done-sym>)
         (let ((last-form (car (last k-body))))
           (should (nskk-cps-test--funcall-sym-named-p last-form "on-done"))
           (should (= (length last-form) 2)))))
@@ -884,8 +835,6 @@ that the second element is a symbol with the given name."
                             "Doc."
                             (setq nskk--cps-done-result x))))
              (sync-def  (nth 2 expansion))
-             ;; Sync def layout: (defun NAME ARGS DOCSTRING BODY...)
-             ;; body call is at index 4
              (sync-body (nth 4 sync-def)))
         (should (eq (car sync-def) 'defun))
         (should (eq (cadr sync-def) 'nskk--cps-test-done-sync))
@@ -931,7 +880,6 @@ that the second element is a symbol with the given name."
                             (message "hello"))))
              (sync-def (nth 2 expansion)))
         (should (eq (car sync-def) 'defun))
-        ;; The body of the sync function must include (interactive)
         (let ((sync-body (nthcdr 3 sync-def)))
           (should (member '(interactive) sync-body)))))
 
@@ -953,10 +901,8 @@ that the second element is a symbol with the given name."
                             (message "hello"))))
              (k-def  (nth 1 expansion))
              (k-body (nthcdr 4 k-def)))
-        ;; Body should contain (message "hello") and (funcall <on-done-sym>), not :interactive
         (should-not (member :interactive k-body))
         (should (member '(message "hello") k-body))
-        ;; The last form must be (funcall <on-done-sym>)
         (let ((last-form (car (last k-body))))
           (should (nskk-cps-test--funcall-sym-named-p last-form "on-done"))
           (should (= (length last-form) 2)))))
@@ -979,8 +925,6 @@ that the second element is a symbol with the given name."
              (put-form (nth 3 expansion)))
         (should (consp put-form))
         (should (eq (car put-form) 'put))
-        ;; (nth 2 put-form) is the quoted form (quote nskk--cps-continuation-pattern);
-        ;; use cadr to extract the symbol and compare with eq.
         (should (eq (cadr (nth 2 put-form)) 'nskk--cps-continuation-pattern))
         (should (eq (nth 3 put-form) ':done))))
 
@@ -1008,7 +952,6 @@ that the second element is a symbol with the given name."
                            (funcall on-a 1)))))
         (should (consp expansion))
         (should (eq (car expansion) 'progn))
-        ;; (progn /k-defun put-annotation) -- no sync wrapper
         (should (= (length expansion) 3))))
 
     (nskk-it "generates NAME/k only without generating a sync NAME function"
@@ -1031,7 +974,6 @@ that the second element is a symbol with the given name."
                              (funcall on-match x))))
              (k-def  (nth 1 expansion))
              (arglist (caddr k-def)))
-        ;; Plain args + 3 continuations
         (should (equal arglist '(x y on-match on-partial on-fail))))))
 
   (nskk-context "docstring handling"
@@ -1057,7 +999,6 @@ that the second element is a symbol with the given name."
                              (funcall on-c))))
              (k-def (nth 1 expansion))
              (body  (nthcdr 4 k-def)))
-        ;; Body is verbatim -- not rewritten via succeed/fail
         (should (equal (nth 0 body) '(funcall on-a x)))
         (should (equal (nth 1 body) '(funcall on-b)))
         (should (equal (nth 2 body) '(funcall on-c))))))
@@ -1070,7 +1011,6 @@ that the second element is a symbol with the given name."
                              "Test doc."
                              (funcall on-a nil))))
              (put-form (nth 2 expansion)))
-        ;; (put 'NAME/k 'nskk--cps-continuation-pattern :3k)
         (should (eq (car put-form) 'put))
         (should (equal (cadr put-form) ''nskk--cps-3k-test-put/k))
         (should (equal (cadddr put-form) :3k))))
@@ -1109,19 +1049,16 @@ that the second element is a symbol with the given name."
         (cond ((> x 0) (funcall on-positive x))
               ((= x 0) (funcall on-zero))
               (t       (funcall on-negative (- x)))))
-      ;; on-positive path
       (should (equal (nskk--cps-3k-runtime-test/k 5
                                                    (lambda (v) (list 'pos v))
                                                    (lambda ()  'zero)
                                                    (lambda (v) (list 'neg v)))
                      '(pos 5)))
-      ;; on-zero path
       (should (equal (nskk--cps-3k-runtime-test/k 0
                                                    (lambda (v) (list 'pos v))
                                                    (lambda ()  'zero)
                                                    (lambda (v) (list 'neg v)))
                      'zero))
-      ;; on-negative path
       (should (equal (nskk--cps-3k-runtime-test/k -3
                                                    (lambda (v) (list 'pos v))
                                                    (lambda ()  'zero)
@@ -1156,7 +1093,6 @@ that the second element is a symbol with the given name."
 ;;; Functional behavior tests
 ;;;
 
-;; Define test functions at top level so they are available in all tests.
 
 (defun/k nskk--cps-test-lookup (key)
   "Look up KEY in a small fixed alist. [test-only]"
@@ -1251,16 +1187,11 @@ that the second element is a symbol with the given name."
         (should done-called)))
 
     (nskk-it "/k function calls on-done strictly after the body executes"
-      ;; Strategy: record whether body has already run when on-done fires.
-      ;; nskk--cps-test-action sets nskk--cps-test-action-result, so if on-done
-      ;; fires after the body, nskk--cps-test-action-result will already be :sentinel.
       (let ((nskk--cps-test-action-result nil)
             (result-at-on-done-time nil))
         (nskk--cps-test-action/k :sentinel
                                   (lambda ()
-                                    ;; Capture the result value at the moment on-done fires
                                     (setq result-at-on-done-time nskk--cps-test-action-result)))
-        ;; Body ran first (set result to :sentinel), then on-done captured it
         (should (eq result-at-on-done-time :sentinel))))))
 
 
@@ -1330,7 +1261,6 @@ that the second element is a symbol with the given name."
              (k-def    (nth 1 expansion))
              (let-form (car (nthcdr 4 k-def)))
              (bindings (cadr let-form)))
-        ;; Bindings themselves must not be transformed
         (should (equal (nth 0 bindings) '(x (regular-call 1))))
         (should (equal (nth 1 bindings) '(y (another-call 2))))))
 
@@ -1343,7 +1273,6 @@ that the second element is a symbol with the given name."
              (k-def     (nth 1 expansion))
              (cond-form (car (nthcdr 4 k-def)))
              (clause1   (nth 1 cond-form)))
-        ;; The cond test (> x 0) must be unchanged
         (should (equal (car clause1) '(> x 0)))))))
 
 
@@ -1405,7 +1334,6 @@ that the second element is a symbol with the given name."
                      (setq saved-k k)
                      (succeed (* x 2)))))
         (should (equal (nskk-cps-test--callcc-store 3) 6))
-        ;; saved-k is on-found from the last call; call it again with new value
         (should (equal (funcall saved-k 99) 99))))
 
     (nskk-it "succeed inside call/cc body still calls on-found via the CPS transform"
@@ -1423,7 +1351,6 @@ that the second element is a symbol with the given name."
                                           (call/cc (lambda (k) (funcall k x))))))
              (/k-def (cadr expansion))
              (body   (cddr (cddr /k-def))))  ; skip name, args, docstring
-        ;; The body should contain a let binding k to on-found
         (should (consp body))
         (let ((let-form (car body)))
           (should (eq (car let-form) 'let))
@@ -1503,8 +1430,6 @@ that the second element is a symbol with the given name."
 
   (nskk-context "sync and CPS consistency"
     (nskk-it "sync wrapper and /k version produce identical results for all inputs"
-      ;; Uses the nskk--cps-test-lookup fixture defined above.
-      ;; For any input key, the sync result must equal the CPS result.
       (dolist (input '("a" "b" "c" "z" "" "missing"))
         (let ((sync-result (nskk--cps-test-lookup input))
               (cps-result  (nskk--cps-test-lookup/k input #'identity (lambda () nil))))
@@ -1512,8 +1437,6 @@ that the second element is a symbol with the given name."
 
   (nskk-context "non-tail passthrough"
     (nskk-it "any form in non-tail position is never CPS-transformed regardless of its shape"
-      ;; Property: regardless of what the non-tail form is, it passes through
-      ;; unchanged in the /k expansion.
       (dolist (side-effect-form '((setq x 1)
                                    (message "test")
                                    (push 1 lst)))
@@ -1556,16 +1479,12 @@ that the second element is a symbol with the given name."
     (let ((expansion (macroexpand-1
                       '(nskk-<- (result) (my-func/k key)
                          (use result)))))
-      ;; Head: the /k function name extracted from fn-call
       (should (eq (car expansion) 'my-func/k))
-      ;; Args from fn-call (without continuations)
       (should (equal (nth 1 expansion) 'key))
-      ;; on-found is a (lambda (result) (use result))
       (let ((on-found (nth 2 expansion)))
         (should (eq (car on-found) 'lambda))
         (should (equal (cadr on-found) '(result)))
         (should (equal (caddr on-found) '(use result))))
-      ;; on-not-found is #'ignore
       (should (equal (nth 3 expansion) '#'ignore))))
 
   (nskk-it "works with multiple body forms"
@@ -1585,22 +1504,18 @@ that the second element is a symbol with the given name."
                       '(nskk-<-or (result) (my-func/k key)
                                   (handle-miss)
                          (use result)))))
-      ;; Head: the /k function name
       (should (eq (car expansion) 'my-func/k))
       (should (equal (nth 1 expansion) 'key))
-      ;; on-found lambda
       (let ((on-found (nth 2 expansion)))
         (should (eq (car on-found) 'lambda))
         (should (equal (cadr on-found) '(result)))
         (should (equal (caddr on-found) '(use result))))
-      ;; on-not-found is a zero-arg lambda wrapping else-form
       (let ((on-miss (nth 3 expansion)))
         (should (eq (car on-miss) 'lambda))
         (should (equal (cadr on-miss) '()))
         (should (equal (caddr on-miss) '(handle-miss))))))
 
   (nskk-it "wraps else-form in a zero-arg lambda not evaluated at expansion time"
-    ;; The else-form should NOT be evaluated — it's wrapped in (lambda () ...)
     (let* ((expansion (macroexpand-1
                        '(nskk-<-or (v) (fn/k arg)
                                    (error "not-found!")
@@ -1617,8 +1532,6 @@ that the second element is a symbol with the given name."
 
 (nskk-describe "defun/k <-seq special form"
   (nskk-it "propagates success: binds result and evaluates body"
-    ;; <-seq [result (helper arg)] body  is equivalent to
-    ;; (<- result helper arg) body
     (defun/k nskk-cps-test--always-found (x)
       "Always succeed with X doubled."
       (succeed (* x 2)))
@@ -1637,7 +1550,6 @@ that the second element is a symbol with the given name."
       "Use <-seq; inner failure should propagate."
       (<-seq [_result (nskk-cps-test--always-failed n)]
         (succeed "should-not-reach")))
-    ;; sync wrapper returns nil on failure
     (should (null (nskk-cps-test--seq-fail-caller 99))))
 
   (nskk-it "body is not reached when CPS call fails"
@@ -1654,22 +1566,16 @@ that the second element is a symbol with the given name."
       (should (null body-reached))))
 
   (nskk-it "macroexpand produces fn/k call with two lambdas"
-    ;; The expansion of (<-seq [v (my-fn arg)] body) inside a defun/k should
-    ;; produce (my-fn/k arg (lambda (--v--) (let ((v --v--)) body)) on-not-found)
     (let* ((form '(defun/k nskk-cps-test--seq-expand (x)
                     "Expansion test."
                     (<-seq [result (my-fn x)]
                       (succeed result))))
            (expanded (macroexpand-1 form))
-           ;; expanded = (progn (defun nskk-cps-test--seq-expand/k ...) (defun ...) (put ...))
            (k-defun  (nth 1 expanded))
            (k-body   (nth 4 k-defun))  ; (<-seq ...) transformed body
            )
-      ;; The /k body should be a call to my-fn/k
       (should (eq (car k-body) 'my-fn/k))
-      ;; Second arg is a lambda (on-found)
       (should (eq (car (nth 2 k-body)) 'lambda))
-      ;; Third arg is the outer on-not-found symbol (a lambda or symbol)
       (should (nth 3 k-body)))))
 
 ;;; -------------------------------------------------------------------

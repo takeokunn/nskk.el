@@ -176,7 +176,6 @@
     (with-temp-buffer
       (insert "アイウ")
       (nskk-hankaku-katakana-region (point-min) (point-max))
-      ;; ア→ｱ(U+FF71), イ→ｲ(U+FF72), ウ→ｳ(U+FF73)
       (should (equal (buffer-string) "\uff71\uff72\uff73"))))
   (nskk-it "converts a full row of zenkaku katakana to hankaku"
     (with-temp-buffer
@@ -192,7 +191,6 @@
 (nskk-describe "nskk-zenkaku-katakana-region"
   (nskk-it "converts hankaku katakana to zenkaku"
     (with-temp-buffer
-      ;; Half-width katakana: ｱｲｳ
       (insert "\uff71\uff72\uff73")
       (nskk-zenkaku-katakana-region (point-min) (point-max))
       (should (equal (buffer-string) "アイウ"))))

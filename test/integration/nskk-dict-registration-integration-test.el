@@ -416,7 +416,6 @@
 (nskk-property-test dict-lookup-unknown-reading-returns-nil
   ((q search-query))
   (nskk-prolog-test-with-isolated-db
-    ;; Fresh empty DB; any random query should return nil (not in dict)
     (should (null (nskk-dict-lookup q))))
   30)
 

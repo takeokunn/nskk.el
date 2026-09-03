@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-prolog .
 
 ;;; Code:
 
@@ -61,9 +60,6 @@
 
   (nskk-context "anonymous predicate"
     (nskk-it "recognizes the char-literal ?_ (integer 95) as anonymous, not the symbol \\?_"
-      ;; The implementation uses `(eq x ?_)' where ?_ is the character literal
-      ;; for underscore (integer 95).  Symbol '\?_ (the Prolog-variable form)
-      ;; does NOT match because it is a symbol, not an integer.
       (should (nskk--prolog-anonymous-p ?_))
       (should-not (nskk--prolog-anonymous-p '\?x))
       (should-not (nskk--prolog-anonymous-p 'hello)))))
@@ -157,17 +153,12 @@
 
   (nskk-context "anonymous variable"
     (nskk-it "symbol \\?_ unifies with anything (treated as regular variable)"
-      ;; Because `nskk--prolog-anonymous-p' checks the char-literal ?_ (integer 95)
-      ;; while the symbol '\?_ is a regular Prolog variable, direct unification
-      ;; binds \?_ like any other variable.  We verify unification succeeds.
       (let ((result (nskk-prolog-unify '\?_ 'anything nil)))
         (should-not (nskk--prolog-fail-p result)))
       (let ((result (nskk-prolog-unify 'anything '\?_ nil)))
         (should-not (nskk--prolog-fail-p result))))
 
     (nskk-it "symbol \\?_ inside a list unifies successfully"
-      ;; The symbol '\?_ is treated as a regular variable (see above),
-      ;; so unification succeeds and produces a binding for \?_.
       (let ((result (nskk-prolog-unify '(a \?_ c) '(a b c) nil)))
         (should-not (nskk--prolog-fail-p result)))))
 
@@ -209,7 +200,6 @@
         (should (equal (nskk-prolog-walk '\?x found) 42))))
 
     (nskk-it "calls on-found for anonymous character (skips binding)"
-      ;; The integer ?_ (char 95) is treated as anonymous by nskk--prolog-anonymous-p
       (let ((found nil))
         (nskk-prolog-unify/k ?_ 'something nil
                              (lambda (s) (setq found s))
@@ -430,11 +420,6 @@
 (nskk-describe "Prolog cut"
   (nskk-context "clause-local scope"
     (nskk-it "cut has clause-local scope so alternative clauses are still explored"
-      ;; Cut in this engine has clause-local scope: the cut throw is caught at
-      ;; the clause boundary, so alternative clauses are still explored.  This is
-      ;; non-standard (ISO Prolog cut prunes all remaining alternatives); the
-      ;; implementation documents this as a known limitation.  Verify that all
-      ;; three clauses produce results and that the first result is `first'.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-assert '((choice first) !))
@@ -445,9 +430,6 @@
           (should (equal (nskk-prolog-walk '\?x (car results)) 'first)))))
 
     (nskk-it "cut in a rule body still explores all alternatives for data facts"
-      ;; Cut in a rule body: the current engine catches the cut throw per-clause,
-      ;; so all alternatives for `data' are explored.  Verify that all three
-      ;; data facts produce results and that the first is `a'.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-assert '((data a)))
@@ -460,21 +442,13 @@
 
   (nskk-context "cut does not affect caller alternatives"
     (nskk-it "cut in a called predicate does not prune the caller's alternatives"
-      ;; Under NSKK's clause-local cut semantics, cut throw is caught at the
-      ;; clause boundary.  So if (find-first ?x) has a cut, and (wrapper ?x)
-      ;; calls (find-first ?x), the wrapper should still see all solutions
-      ;; from backtracking through its own alternatives.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
-        ;; find-first: has a cut in first clause (clause-local effect only)
         (nskk-prolog-assert '((find-first a) !))
         (nskk-prolog-assert '((find-first b)))
         (nskk-prolog-assert '((find-first c)))
-        ;; wrapper: calls find-first
         (nskk-prolog-assert '((wrapper \?x) (find-first \?x)))
         (let ((results (nskk-prolog-query '(wrapper \?x))))
-          ;; Under clause-local cut semantics, all 3 find-first clauses fire
-          ;; because cut only prevents goals AFTER cut in the same clause body.
           (should (= (length results) 3))
           (let ((vals (mapcar (lambda (s) (nskk-prolog-walk '\?x s)) results)))
             (should (member 'a vals))
@@ -720,8 +694,6 @@
 
   (nskk-context "nskk-prolog-?- query"
     (nskk-it "queries successfully for an asserted fact"
-      ;; For a ground query, `query-one' returns t (ground success), not nil.
-      ;; Use `nskk-prolog-query' if you need the actual substitution alist.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-<- (dsl-hello world))
@@ -853,15 +825,10 @@
           (should (= (cadr result) 42)))))
 
     (nskk-it "returns nil for a fully ground query even when it succeeds"
-      ;; query-values calls query-one, which returns t (not a list) for ground
-      ;; success.  Since (listp t) is nil, query-values returns nil.
-      ;; This is documented behavior: use query-one for ground existence checks.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-assert '((ground-query-vals-test)))
-        ;; query-one returns t for the ground fact — query-values sees (listp t) = nil
         (should-not (nskk-prolog-query-values '(ground-query-vals-test) '()))
-        ;; But query-one correctly returns t
         (should (eq t (nskk-prolog-query-one '(ground-query-vals-test)))))))
 
   (nskk-context "query-bindings"
@@ -915,10 +882,6 @@
           (should (equal (nskk-prolog-walk '\?n result) 1)))))
 
     (nskk-it "ground query: query-one returns t for success and nil for no-solution"
-      ;; `nskk-prolog-query-one' upgrades a nil (empty) substitution to t so
-      ;; callers can distinguish ground success from no-solution.  `nskk-prolog-query'
-      ;; returns (nil) for success vs nil for failure, offering the same
-      ;; distinction via list membership.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-assert '((ground-fact)))
@@ -976,7 +939,6 @@
               (should (not (nskk--prolog-fail-p result)))
             (should (nskk--prolog-fail-p result)))))
 
-;; Unification symmetry: if (unify A B) succeeds, (unify B A) also succeeds
 (nskk-deftest-unit prolog-pbt-unify-symmetry-atoms
   "Unification symmetry: if (nskk-prolog-unify A B) succeeds,
 (nskk-prolog-unify B A) also succeeds, and vice versa."
@@ -996,13 +958,11 @@
               (ba (nskk-prolog-unify b a nil)))
           (should (eq (nskk--prolog-fail-p ab) (nskk--prolog-fail-p ba))))))))
 
-;; Assert/retract roundtrip: DB returns to same state
 (nskk-deftest-unit prolog-pbt-assert-retract-roundtrip
   "Assert/retract roundtrip: asserting a fact then retracting it leaves
 the database in the same state as before the assertion."
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    ;; Capture initial state (no facts)
     (let ((before-result (nskk-prolog-query '(roundtrip-fact test-value))))
       (should (null before-result))
       (nskk-prolog-assert '((roundtrip-fact test-value)))
@@ -1015,7 +975,6 @@ the database in the same state as before the assertion."
 ;;;; Arithmetic Built-in Tests
 ;;;;
 
-;; Table-driven comparison operator tests: (op a b) should succeed or fail.
 (nskk-deftest-table prolog-arith-compare
   :columns (op a b should-succeed)
   :rows    ((>= 10 5 t)
@@ -1038,7 +997,6 @@ the database in the same state as before the assertion."
               (should result)
             (should-not result))))
 
-;; Table-driven is/2 tests: variable is bound to evaluated arithmetic result.
 (nskk-deftest-table prolog-arith-is
   :columns (expr expected)
   :rows    (((+ 3 5)   8)
@@ -1079,7 +1037,6 @@ the database in the same state as before the assertion."
 
   (nskk-context "bound Prolog variable"
     (nskk-it "evaluates correctly when a Prolog variable is bound to a number"
-      ;; Bind ?x = 5 via unification, then use in arithmetic
       (nskk-prolog-test-with-isolated-db
         (let* ((subst (nskk-prolog-unify '\?x 5 nil))
                (result (nskk--prolog-eval-arith '\?x subst)))
@@ -1095,7 +1052,6 @@ the database in the same state as before the assertion."
 ;;;; Property-Based Tests: Walk invariants
 ;;;;
 
-;; Walk of a non-variable term always returns the term unchanged.
 (nskk-deftest-table prolog-pbt-walk-identity
   :columns (term)
   :rows    ((hello)
@@ -1106,7 +1062,6 @@ the database in the same state as before the assertion."
   :description "Walk identity: non-variable terms return themselves under any substitution"
   :body (should (equal (nskk-prolog-walk term nil) term)))
 
-;; Walk with an empty substitution returns the same result as walk with no binding.
 (nskk-deftest-unit prolog-pbt-walk-empty-subst
   "Walk with no binding and with empty substitution both return the variable itself."
   (let ((var '\?x))
@@ -1306,11 +1261,8 @@ the database in the same state as before the assertion."
                                       '(("かな" . ("仮名"))
                                         ("かき" . ("柿" "書記"))
                                         ("さ" . ("差"))))
-        ;; "か" is a prefix of both "かな" and "かき"
         (should (nskk-prolog-trie-has-prefix-p 'has-pfx-kana 2 "か"))
-        ;; "さ" is an exact match (also a valid prefix node)
         (should (nskk-prolog-trie-has-prefix-p 'has-pfx-kana 2 "さ"))
-        ;; "き" matches nothing
         (should-not (nskk-prolog-trie-has-prefix-p 'has-pfx-kana 2 "き"))))
 
     (nskk-it "empty prefix returns non-nil when trie has entries (root always exists)"
@@ -1319,7 +1271,6 @@ the database in the same state as before the assertion."
         (nskk-prolog-set-index 'has-pfx-root 2 :trie)
         (nskk-prolog-trie-bulk-assert 'has-pfx-root 2
                                       '(("x" . "val")))
-        ;; Empty string is a prefix of everything; root node always present
         (should (nskk-prolog-trie-has-prefix-p 'has-pfx-root 2 ""))))))
 
 ;;;;
@@ -1354,22 +1305,6 @@ the database in the same state as before the assertion."
 ;;;; Property-Based Test: Trie/Hash Index Equivalence
 ;;;;
 
-;; PBT — nskk-unit-prolog-trie-hash-index-equivalence-pbt
-;;
-;; Invariant: for any set of facts asserted under a predicate, querying via
-;; a :hash index and querying via a :trie index return the same set of
-;; results (as sorted lists, since order may differ between index types).
-;;
-;; Method:
-;;   1. Load three facts under a unique predicate with :hash index, query,
-;;      collect result set.
-;;   2. Retract all, switch to :trie index, re-assert the same facts, query,
-;;      collect result set.
-;;   3. Compare both sets (sorted) for equality.
-;;
-;; The :hash index is used for O(1) ground first-argument lookup; the :trie
-;; index is used for prefix search.  Both must return the same entries when
-;; the first argument is a variable (full scan fallback).
 (nskk-deftest-unit prolog-trie-hash-index-equivalence-pbt
   "Trie and hash indices return equivalent result sets for the same asserted facts."
   (nskk-property-test-seeded prolog-trie-hash-index-equivalence
@@ -1382,7 +1317,6 @@ the database in the same state as before the assertion."
                           (list k2 "v2")
                           (list k3 "v3"))))
 
-        ;; --- Hash index pass ---
         (nskk-prolog-retract-all pred 2)
         (nskk-prolog-set-index pred 2 :hash)
         (dolist (f facts)
@@ -1395,7 +1329,6 @@ the database in the same state as before the assertion."
                                   hash-solutions)
                           (lambda (a b) (string< (car a) (car b))))))
 
-          ;; --- Trie index pass ---
           (nskk-prolog-retract-all pred 2)
           (nskk-prolog-set-index pred 2 :trie)
           (dolist (f facts)
@@ -1408,7 +1341,6 @@ the database in the same state as before the assertion."
                                     trie-solutions)
                             (lambda (a b) (string< (car a) (car b))))))
 
-            ;; Both index types must produce the same (key . value) pairs.
             (equal hash-set trie-set)))))
     30
     41))
@@ -1451,8 +1383,6 @@ the database in the same state as before the assertion."
           (should (= 5 (length (nskk-prolog-query '(bulk-test-count \?x))))))))
 
     (nskk-it "evaluates RULES at runtime from a let-bound variable"
-      ;; Unlike nskk-prolog-deffacts which expands at compile time,
-      ;; bulk-facts evaluates RULES at runtime — enabling defconst data sources.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-retract-all 'bulk-test-runtime 1)
         (nskk-prolog-set-index 'bulk-test-runtime 1 :list)
@@ -1478,8 +1408,6 @@ the database in the same state as before the assertion."
 
   (nskk-context "equivalence with nskk-prolog-deffacts"
     (nskk-it "produces the same queryable facts as nskk-prolog-deffacts for identical data"
-      ;; deffacts expands at compile time; bulk-facts evaluates RULES at
-      ;; runtime.  Both must produce the same queryable fact set.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-retract-all 'bulk-cmp-a 2)
         (nskk-prolog-retract-all 'bulk-cmp-b 2)
@@ -1537,7 +1465,6 @@ the database in the same state as before the assertion."
     (nskk-prolog-test-with-isolated-db
       (let* ((clause '((test-noindex-pred "a" "b")))
              (key (nskk--prolog-head-key (car clause))))
-        ;; Calling directly with a key that has no index config is a no-op
         (should (null (nskk-prolog-index-add key clause))))))
 
   (nskk-it "is called implicitly during assert and enables query to succeed"
@@ -1555,7 +1482,6 @@ the database in the same state as before the assertion."
   (nskk-it "is called implicitly during retract and removes the fact"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-assert '((test-remove-fact "x" "y")))
-      ;; retract takes a head-pattern, not a clause
       (nskk-prolog-retract '(test-remove-fact "x" "y"))
       (should-not (nskk-prolog-query '(test-remove-fact "x" "y"))))))
 
@@ -1669,8 +1595,6 @@ the database in the same state as before the assertion."
     (should-error (nskk--prolog-eval-arith "not-a-number" nil)))
 
   (nskk-it "evaluates a bound Emacs Lisp symbol (defconst/defvar) as its value"
-    ;; most-positive-fixnum is a globally-bound Emacs built-in constant;
-    ;; it satisfies (symbolp), (not (nskk-prolog-variable-p)), and (boundp).
     (should (= most-positive-fixnum
                (nskk--prolog-eval-arith 'most-positive-fixnum nil))))
 
@@ -1692,7 +1616,6 @@ the database in the same state as before the assertion."
         (nskk-prolog-clear-database)
         (nskk-prolog-set-index 'idem-pred 1 :hash)
         (nskk-prolog-assert '((idem-pred alpha)))
-        ;; Second set-index call must not clear the existing index data
         (nskk-prolog-set-index 'idem-pred 1 :hash)
         (let ((result (nskk-prolog-query '(idem-pred alpha))))
           (should result)
@@ -1703,7 +1626,6 @@ the database in the same state as before the assertion."
         (nskk-prolog-clear-database)
         (nskk-prolog-set-index 'idem-trie-pred 2 :trie)
         (nskk-prolog-assert '((idem-trie-pred "key" "val")))
-        ;; Second set-index call must not reset the trie
         (nskk-prolog-set-index 'idem-trie-pred 2 :trie)
         (let ((result (nskk-prolog-query-value
                        '(idem-trie-pred "key" \?v) '\?v)))
@@ -1726,7 +1648,6 @@ the database in the same state as before the assertion."
         (nskk-prolog-assert '((reassert-pred first)))
         (nskk-prolog-retract-all 'reassert-pred 1)
         (should-not (nskk-prolog-query '(reassert-pred first)))
-        ;; Re-assert after retract-all
         (nskk-prolog-assert '((reassert-pred second)))
         (let ((result (nskk-prolog-query '(reassert-pred second))))
           (should result)
@@ -1782,7 +1703,6 @@ the database in the same state as before the assertion."
 ;;;; 19. Property-Based Tests: substitute, ground-p, rename-variables
 ;;;;
 
-;; Table-driven substitute completeness tests.
 (nskk-deftest-table prolog-pbt-substitute
   :columns (term subst expected-ground-p)
   :rows    ((hello nil t)
@@ -1796,7 +1716,6 @@ the database in the same state as before the assertion."
               (should (nskk-prolog-ground-p result))
             (should-not (nskk-prolog-ground-p result)))))
 
-;; Table-driven ground-p invariant tests.
 (nskk-deftest-table prolog-pbt-ground-p
   :columns (term expected)
   :rows    ((hello t)
@@ -1813,7 +1732,6 @@ the database in the same state as before the assertion."
             (should (nskk-prolog-ground-p term))
           (should-not (nskk-prolog-ground-p term))))
 
-;; Rename freshness: renamed variables never collide with originals.
 (nskk-deftest-unit prolog-pbt-rename-freshness
   "Rename freshness invariant: renamed variable symbols are disjoint from the original variable set."
   (cl-labels
@@ -1830,7 +1748,6 @@ the database in the same state as before the assertion."
       (let* ((original-vars (collect-vars clause))
              (renamed (nskk--prolog-rename-variables clause 9999))
              (renamed-vars (collect-vars renamed)))
-        ;; No renamed variable should appear in the original variable set
         (dolist (v renamed-vars)
           (should-not (member v original-vars)))))))
 
@@ -1841,8 +1758,6 @@ the database in the same state as before the assertion."
 (nskk-describe "nskk-prolog-deffacts macro"
   (nskk-context "macro expansion"
     (nskk-it "empty fact list expands to a single (progn) with no assertions"
-      ;; macroexpand operates on the form without evaluating: verify no
-      ;; nskk-prolog-<- calls appear in the expansion for zero rows.
       (let ((expansion (macroexpand '(nskk-prolog-deffacts test-pred))))
         (should (eq (car expansion) 'progn))
         (should (null (cdr expansion)))))
@@ -1853,7 +1768,6 @@ the database in the same state as before the assertion."
              (calls (cdr expansion)))
         (should (eq (car expansion) 'progn))
         (should (= (length calls) 1))
-        ;; The call should be (nskk-prolog-<- (my-pred a b c))
         (let ((call (car calls)))
           (should (eq (car call) 'nskk-prolog-<-))
           (should (equal (cadr call) '(my-pred a b c))))))
@@ -1879,19 +1793,16 @@ the database in the same state as before the assertion."
           (key first)
           (key second)
           (key third))
-        ;; The first matching result for (test-order-pred key ?v) must be `first'.
         (let ((val (nskk-prolog-query-value '(test-order-pred key \?v) '\?v)))
           (should (eq val 'first)))))
 
     (nskk-it "all rows in nskk-prolog-deffacts are asserted to the Prolog database"
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
-        ;; Use list index so all facts are retrievable.
         (nskk-prolog-deffacts test-allrows-pred
           (row1 val-a)
           (row2 val-b)
           (row3 val-c))
-        ;; All three rows must resolve.
         (should (nskk-prolog-query-value '(test-allrows-pred row1 \?v) '\?v))
         (should (nskk-prolog-query-value '(test-allrows-pred row2 \?v) '\?v))
         (should (nskk-prolog-query-value '(test-allrows-pred row3 \?v) '\?v))))
@@ -1903,10 +1814,8 @@ the database in the same state as before the assertion."
           (k1 v1))
         (nskk-prolog-deffacts pred-beta
           (k2 v2))
-        ;; pred-alpha should not return facts for pred-beta's key and vice versa.
         (should (null (nskk-prolog-query-value '(pred-alpha k2 \?v) '\?v)))
         (should (null (nskk-prolog-query-value '(pred-beta  k1 \?v) '\?v)))
-        ;; But each predicate should resolve its own fact.
         (should (eq (nskk-prolog-query-value '(pred-alpha k1 \?v) '\?v) 'v1))
         (should (eq (nskk-prolog-query-value '(pred-beta  k2 \?v) '\?v) 'v2))))
 
@@ -1917,8 +1826,6 @@ the database in the same state as before the assertion."
         (should (null (nskk-prolog-query-value '(empty-noop-pred \?a \?b) '\?a)))))
 
     (nskk-it "nskk-prolog-deffacts correctly handles 1-arity facts"
-      ;; Verify macro expansion: a unary row (my-flag active) should expand to
-      ;; (nskk-prolog-<- (my-flag active)).
       (let* ((expansion (macroexpand '(nskk-prolog-deffacts my-flag (active))))
              (calls (cdr expansion)))
         (should (eq (car expansion) 'progn))
@@ -1947,10 +1854,7 @@ the database in the same state as before the assertion."
 
     (nskk-it "macro expansion uses nskk-prolog-query (not nskk-prolog-query-one) as the guard"
       (let* ((expansion (macroexpand '(nskk-when-prolog-holds (foo x) (bar))))
-             ;; expansion: (when (nskk-prolog-query (foo x)) (bar))
-             ;; (when TEST BODY): TEST is cadr, so guard is (cadr expansion)
              (guard (cadr expansion)))
-        ;; The guard must be a nskk-prolog-query call
         (should (consp guard))
         (should (eq (car guard) 'nskk-prolog-query)))))
 
@@ -1974,17 +1878,13 @@ the database in the same state as before the assertion."
 
     (nskk-it "resolves nil-ambiguity of nskk-prolog-query-one for ground queries"
       (nskk-prolog-test-with-isolated-db
-        ;; (converting-phase active) is asserted by nskk-henkan-initialize but
-        ;; after nskk-prolog-clear-database it will be absent, so query-one => nil.
         (nskk-prolog-clear-database)
         (should (null (nskk-prolog-query-one '(converting-phase active))))
         (nskk-prolog-<- (converting-phase active))
         (should (eq t (nskk-prolog-query-one '(converting-phase active))))
-        ;; ground query, resolving the ambiguity that affects nskk-prolog-query-one.
         (let ((result (nskk-prolog-query '(converting-phase active))))
           (should result)
           (should (listp result)))
-        ;; And nskk-when-prolog-holds correctly executes its body.
         (let ((ran nil))
           (nskk-when-prolog-holds '(converting-phase active)
             (setq ran t))
@@ -2024,16 +1924,6 @@ the database in the same state as before the assertion."
 ;;;; Property-Based Tests: Assert/Query/Retract Invariants
 ;;;;
 
-;; PBT 1: Assert→Query roundtrip invariant.
-;;
-;; Invariant: for any two distinct string atoms `key' and `val', after
-;; asserting (nskk--prolog-pbt-test-pred-rtrip key val) into an isolated
-;; database, querying for that fact returns a substitution where ?val is
-;; bound to `val'.
-;;
-;; Uses `search-query' for keys (hiragana strings) and `romaji-pattern'
-;; for values (romaji strings) — both are plain strings, which the Prolog
-;; engine stores and unifies as atoms.
 (nskk-property-test-seeded prolog-pbt-assert-query-roundtrip
   ((key   search-query)
    (val   romaji-pattern))
@@ -2047,45 +1937,27 @@ the database in the same state as before the assertion."
   30
   42)
 
-;; PBT 2: Retract idempotency.
-;;
-;; Invariant: after asserting then retracting (nskk--prolog-pbt-test-pred-idm key),
-;; querying returns no results.  A second retract call must not signal an error
-;; (retractall/retract-already-gone is a no-op).
 (nskk-property-test-seeded prolog-pbt-retract-idempotency
   ((key search-query))
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    ;; Assert the fact, then retract it once.
     (nskk-prolog-assert (list (list 'nskk--prolog-pbt-test-pred-idm key)))
     (nskk-prolog-retract-all 'nskk--prolog-pbt-test-pred-idm 1)
     (let ((after-first (nskk-prolog-query
                         (list 'nskk--prolog-pbt-test-pred-idm key))))
-      ;; Second retract-all must not error.
       (condition-case _err
           (nskk-prolog-retract-all 'nskk--prolog-pbt-test-pred-idm 1)
         (error nil))
-      ;; The query result after first retract must be nil.
       (null after-first)))
   30
   42)
 
-;; PBT 3: Assert count monotonicity.
-;;
-;; Invariant: after asserting N distinct facts
-;; (nskk--prolog-pbt-test-pred-cnt k1), (nskk--prolog-pbt-test-pred-cnt k2), …,
-;; querying with a variable returns exactly N solutions.
-;;
-;; We generate N=3 distinct keys by combining the three generated strings.
-;; In the rare case of collisions the keys are deduplicated before counting,
-;; and the expected count is adjusted accordingly so the property stays tight.
 (nskk-property-test-seeded prolog-pbt-assert-count-monotonicity
   ((k1 search-query)
    (k2 search-query)
    (k3 search-query))
   (nskk-prolog-test-with-isolated-db
     (nskk-prolog-clear-database)
-    ;; Build a deduplicated list of keys so the expected count is exact.
     (let* ((keys (cl-remove-duplicates (list k1 k2 k3) :test #'equal))
            (n    (length keys)))
       (dolist (k keys)
@@ -2103,50 +1975,34 @@ the database in the same state as before the assertion."
 (nskk-describe "new helper functions - edge cases"
   (nskk-context "rename-variables: same variable in head and body"
     (nskk-it "same ?x in head and body renames to the same fresh symbol (G4)"
-      ;; When the same variable ?x appears in both the head and a body goal of
-      ;; a clause, nskk--prolog-rename-variables must map it to the SAME fresh
-      ;; symbol throughout — consistent renaming via the shared mapping hash.
       (let* ((clause (list '(foo \?x) '(bar \?x)))
              (renamed (nskk--prolog-rename-variables clause 99))
-             ;; head is (car renamed) = (foo ?x_99); body goal is (cadr renamed) = (bar ?x_99).
-             ;; Each is a list whose second element (cadr) is the variable position.
              (var-in-head (cadr (car renamed)))
              (var-in-body (cadr (cadr renamed))))
-        ;; Both positions must carry the identical (eq) fresh symbol.
         (should (symbolp var-in-head))
         (should (symbolp var-in-body))
         (should (eq var-in-head var-in-body)))))
 
   (nskk-context "rename-variables: two anonymous ?_ get distinct fresh symbols"
     (nskk-it "two ?_ occurrences in the same clause get distinct ?_anon_N symbols (G5)"
-      ;; Each anonymous-variable occurrence must be replaced by a UNIQUE fresh
-      ;; symbol so that they can unify independently.  The integer ?_ (95) is
-      ;; the anonymous wildcard recognised by nskk--prolog-anonymous-p.
       (let* (;; clause: ((anon-test ?_ ?_)) — two anonymous positions
              (clause (list (list 'anon-test ?_ ?_)))
              (renamed (nskk--prolog-rename-variables clause 1))
-             ;; The single head term is (car renamed); its args are cadr and caddr.
              (head         (car renamed))
              (first-anon   (cadr head))
              (second-anon  (caddr head)))
-        ;; Both renamed positions must be symbols starting with "?_anon_".
         (should (symbolp first-anon))
         (should (symbolp second-anon))
         (should (string-prefix-p "?_anon_" (symbol-name first-anon)))
         (should (string-prefix-p "?_anon_" (symbol-name second-anon)))
-        ;; The two renamed anonymous variables must be DISTINCT symbols.
         (should-not (eq first-anon second-anon)))))
 
   (nskk-context "try-clause: failed unification never invokes on-solution"
     (nskk-it "try-clause does not call on-solution when goal cannot unify with clause head (G9)"
-      ;; nskk--prolog-try-clause should silently skip a clause whose head fails
-      ;; to unify with the given goal.  The on-solution callback must never fire.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-assert '((demo-pred "a")))
         (let* ((solution-called nil)
-               ;; The only clause for demo-pred/1 has head (demo-pred "a").
-               ;; Querying with "b" will fail to unify.
                (clause (car (gethash "demo-pred/1" nskk--prolog-database)))
                (goal   '(demo-pred "b")))
           (nskk--prolog-try-clause clause goal '() nil
@@ -2155,25 +2011,14 @@ the database in the same state as before the assertion."
 
   (nskk-context "try-clause: cut does not propagate outward"
     (nskk-it "nskk-prolog-cut thrown inside try-clause is caught within it and does not escape (G8)"
-      ;; nskk--prolog-try-clause wraps its body proof in (catch 'nskk-prolog-cut …).
-      ;; A cut thrown inside must not escape to the surrounding dynamic context.
-      ;; We verify by asserting a rule containing cut, calling try-clause directly
-      ;; inside an outer catch, and confirming the outer catch is never triggered.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
-        ;; Assert the fact so we can look up its clause.
         (nskk-prolog-assert '((cut-test-head "x")))
         (let* ((cut-escaped nil)
-               ;; Build a clause manually: head + body containing cut.
-               ;; Format: (head . body-goals) — same structure nskk-prolog-assert stores.
                (clause (list (list 'cut-test-head "x") '!))
                (goal   '(cut-test-head "x")))
-          ;; Wrap in an outer catch to detect any escaping cut throw.
           (catch 'nskk-prolog-cut
             (nskk--prolog-try-clause clause goal '() nil #'ignore)
-            ;; Reaching here means cut did not escape past try-clause — correct.
-            ;; If cut had escaped, the throw would unwind past this point and
-            ;; the outer catch would have been the handler instead.
             )
           (should-not cut-escaped))))))
 
@@ -2184,17 +2029,10 @@ the database in the same state as before the assertion."
 (nskk-describe "nskk--prolog-try-clause internal contract"
   (nskk-context "per-clause cut isolation"
     (nskk-it "per-clause cut does not escape to parent goal (G10)"
-      ;; nskk--prolog-try-clause wraps each clause body in (catch 'nskk-prolog-cut).
-      ;; A cut thrown inside one clause must not prevent backtracking over OTHER
-      ;; top-level clauses (the outer goal loop must continue).
-      ;; We verify this by asserting two independent facts and confirming that
-      ;; nskk-prolog-query collects both solutions regardless of cut semantics.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-assert '((outer a)))
         (nskk-prolog-assert '((outer b)))
-        ;; Both facts must be reachable — cut inside one clause must not block
-        ;; the engine from considering the second clause.
         (let ((solutions (nskk-prolog-query '(outer \?x))))
           (should (= (length solutions) 2))
           (let ((vals (mapcar (lambda (s) (nskk-prolog-walk '\?x s)) solutions)))
@@ -2203,21 +2041,15 @@ the database in the same state as before the assertion."
 
   (nskk-context "variable renaming per call"
     (nskk-it "variable renaming gives fresh vars per call so two queries do not share bindings (G11)"
-      ;; Each call to the Prolog engine renames clause variables to fresh gensyms.
-      ;; Two separate nskk-prolog-query-one calls therefore return independent
-      ;; substitution environments; walking ?x in one must not yield the binding
-      ;; from the other's environment.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-assert '((shared-var foo)))
         (let ((s1 (nskk-prolog-query-one '(shared-var \?x)))
               (s2 (nskk-prolog-query-one '(shared-var \?x))))
-          ;; Both queries must succeed and return the same value "foo".
           (should s1)
           (should s2)
           (should (equal (nskk-prolog-walk '\?x s1) 'foo))
           (should (equal (nskk-prolog-walk '\?x s2) 'foo))
-          ;; The two substitution alists must be independent objects — not eq.
           (should-not (eq s1 s2)))))))
 
 (defun nskk-test--prolog-key-state (key tables)
@@ -3275,13 +3107,6 @@ the database in the same state as before the assertion."
   (ert-deftest nskk-prolog-isolation-watcher-cleanup-continues-and-resignals ()
     (nskk-prolog-test-with-isolated-db
       (let* ((database-before nskk--prolog-database)
-             ;; Must be a real number, not an arbitrary sentinel object like
-             ;; the other -before values below: the isolation macro's own
-             ;; `saved-flags' setup now runs a `module-initialized-flag'
-             ;; Prolog query (FR-010), and proving touches
-             ;; `nskk--prolog-var-counter' for variable renaming, so it must
-             ;; stay numerically valid even while this test is deliberately
-             ;; corrupting it to verify identity-preserving restore.
              (counter-before -972837465)
              (system-index-before (list 'system-index-before))
              (annotation-before (list 'annotation-before))

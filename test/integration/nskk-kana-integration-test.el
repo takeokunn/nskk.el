@@ -40,7 +40,6 @@
       #'ignore))
 
   (nskk-it "passes through non-hiragana characters unchanged"
-    ;; ASCII characters are not in the hiragana range; they pass through.
     (nskk-kana-string-hiragana-to-katakana/k "abc"
       (lambda (result) (should (string= result "abc")))
       (lambda () (ert-fail "conversion failed unexpectedly"))))
@@ -104,7 +103,6 @@
   (nskk-it "passes through unrecognized characters unchanged"
     (nskk-prolog-test-with-isolated-db
       (nskk-kana-initialize)
-      ;; ASCII letters are not in the zenkaku katakana table; pass through.
       (nskk-kana-zenkaku-to-hankaku/k "abc"
         (lambda (result) (should (string= result "abc")))
         (lambda () (ert-fail "conversion failed unexpectedly")))))
@@ -237,7 +235,6 @@
   (let ((length-ok nil))
     (nskk-kana-string-hiragana-to-katakana/k h
       (lambda (kata)
-        ;; Each hiragana char maps 1:1 to a katakana char (same codepoint count).
         (should (= (length kata) (length h)))
         (setq length-ok t))
       (lambda () (ert-fail "should always succeed for string input")))

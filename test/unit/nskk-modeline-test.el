@@ -66,9 +66,6 @@
 
 (nskk-describe "Prolog mode-properties/5 special cases"
   (nskk-it "direct is an alias of ascii with no separate mode-properties fact"
-    ;; `direct' is defined in nskk-define-mode-entry for face lookup only; it is
-    ;; not a standalone mode in nskk-state-modes nor in mode-properties/5.
-    ;; nskk--cursor-with-color therefore returns nil for direct, which is expected.
     (let ((result (nskk-prolog-query-one '(mode-properties direct \?s \?f \?h \?c))))
       (should-not result))))
 
@@ -92,8 +89,6 @@
 
 (nskk-describe "nskk--cursor-with-color special cases"
   (nskk-it "returns nil for direct (no standalone mode-properties fact)"
-    ;; `direct' is a face alias in nskk-modeline.el but not in mode-properties/5.
-    ;; ascii/latin cover this display case; direct returns nil for cursor color.
     (let ((color (nskk--cursor-with-color 'direct)))
       (should-not color))))
 
@@ -211,10 +206,8 @@
 (nskk-describe "nskk-modeline-indicator unknown mode fallback"
   (nskk-it "query returns nil for a non-registered mode"
     (nskk-with-state 'hiragana
-      ;; Temporarily set state to a non-registered mode struct by mutating mode slot
       (let ((result (nskk-prolog-query-value
                      `(mode-properties nonexistent-mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
-        ;; mode-properties/5 has no fact for nonexistent-mode — query returns nil
         (should (null result)))))
 
   (nskk-it "nskk--cursor-with-color returns nil for an unregistered mode"
@@ -223,7 +216,6 @@
 
 (nskk-describe "nskk-modeline-indicator fallback values"
   (nskk-it "returns string containing NSKK when Prolog returns no data"
-    ;; Mock nskk-prolog-query-values to return nil, simulating a mode with no fact
     (nskk--modeline-clear-cache)
     (nskk-with-mocks ((nskk-prolog-query-values (lambda (&rest _) nil)))
       (let* ((nskk-current-state (nskk-state-create 'hiragana))
@@ -349,7 +341,6 @@
                            (list "かな" 'nskk-modeline-hiragana-face "Hiragana input mode"))))
         (nskk--modeline-with-data/k 'hiragana #'ignore #'ignore)
         (nskk--modeline-with-data/k 'hiragana #'ignore #'ignore)
-        ;; Prolog should only be queried once; second call hits the cache
         (should (= query-count 1))
         (should (eq (car nskk--modeline-indicator-cache) 'hiragana)))))
 

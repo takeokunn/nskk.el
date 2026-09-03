@@ -108,10 +108,6 @@
 
 (nskk-describe "nskk-debug-message input variations"
 
-  ;; Cases A: various input strings — verify each appears in the debug buffer.
-  ;; `input' is the format string passed directly; `expected' is the substring
-  ;; that must appear in the buffer after the call.  We use a dedicated marker
-  ;; suffix per case to avoid cross-contamination between cases.
 
   (nskk-deftest-table debug-message-inputs
     :description "nskk-debug-message handles various input string forms"
@@ -130,7 +126,6 @@
 
 (nskk-describe "nskk-debug-toggle state transitions"
 
-  ;; Cases B: (INITIAL-VALUE . EXPECTED-AFTER-TOGGLE)
 
   (nskk-deftest-table debug-toggle-transitions
     :description "nskk-debug-toggle transitions between enabled states"

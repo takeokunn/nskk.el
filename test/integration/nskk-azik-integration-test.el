@@ -157,11 +157,6 @@
 
 (nskk-describe "AZIK rules (PBT)"
 
-  ;; Property A: Every registered AZIK pattern produces non-empty output.
-  ;; Opens ONE AZIK session and iterates all ~391 patterns inside it, resetting
-  ;; buffer state between each pattern.  This avoids 391 Prolog table swaps
-  ;; (nskk-converter-load-style 'azik / 'standard pairs), which previously took
-  ;; 100-400 seconds.
   (nskk-it "every registered AZIK pattern produces non-empty output (all patterns)"
     (nskk-given "an AZIK input session")
     (nskk-when "typing each of the registered AZIK patterns in sequence")
@@ -170,11 +165,9 @@
             (all-patterns (nskk--pbt-get-all-azik-patterns)))
         (nskk-azik-with-session 'hiragana
           (dolist (pattern all-patterns)
-            ;; Reset all input state before each pattern.
             (erase-buffer)
             (nskk-state-set-romaji-buffer "")
             (nskk-state-clear-input nskk-current-state)
-            ;; Type each character of the pattern.
             (condition-case err
                 (progn
                   (cl-loop for ch across pattern
@@ -189,13 +182,8 @@
                             (length all-patterns)
                             (seq-take failures 10)))))))
 
-  ;; Property B: Randomly sampled AZIK rules produce non-empty string output.
-  ;; `azik-rule-with-expected' yields (cons input-string category-or-nil).
-  ;; We verify the buffer is non-empty after typing each character of the
-  ;; input; detailed kana-class validation is covered by the table tests above.
   (nskk-property-test azik-rule-produces-string-output
     ((rule azik-rule-with-expected))
-    ;; `rule' is (INPUT-STRING . CATEGORY-OR-NIL)
     (let ((input-str (car rule)))
       (nskk-azik-with-session 'hiragana
         (cl-loop for ch across input-str

@@ -108,8 +108,6 @@
 
 (nskk-describe "nskk--turn-on-mode"
   (nskk-it "skips minibuffers (function is callable)"
-    ;; nskk--turn-on-mode should skip minibuffers
-    ;; We just verify the function exists and is callable
     (should (fboundp 'nskk--turn-on-mode))))
 
 (nskk-deftest-table main-kakutei-to-hiragana-transitions
@@ -139,7 +137,6 @@
 
   (nskk-it "switches half-width katakana to hiragana with no preedit"
     (nskk-with-test-buffer nil
-      ;; No nskk-set-mode-katakana-半角 exists; use nskk-state-transition directly.
       (nskk-state-transition nskk-current-state (nskk-state-mode nskk-current-state) 'katakana-半角)
       (nskk-given (nskk-should-mode 'katakana-半角))
       (nskk-when  (nskk-kakutei))
@@ -155,8 +152,6 @@
        (nskk-should-mode 'hiragana))))
 
   (nskk-it "clears pending romaji buffer in katakana and stays in katakana"
-    ;; romaji-pending has higher priority than katakana-idle in the state classifier,
-    ;; so C-j with pending romaji does NOT switch mode to hiragana.
     (nskk-with-test-buffer 'katakana
       (nskk-given (nskk-state-set-romaji-buffer "k"))
       (nskk-when  (nskk-kakutei))

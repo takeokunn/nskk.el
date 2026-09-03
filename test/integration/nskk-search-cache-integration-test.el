@@ -57,9 +57,7 @@
     (let ((cache (nskk-cache-create :type 'lru :capacity 10)))
       (nskk-given (nskk-cache-put cache "test" '("a" "b")))
       (nskk-then
-        ;; Hit: existing key
         (nskk-should-equal '("a" "b") (nskk-cache-get cache "test"))
-        ;; Miss: absent key
         (should (null (nskk-cache-get cache "nonexistent")))
         (let ((stats (nskk-cache-stats cache)))
           (should (= (plist-get stats :hits) 1))
@@ -85,7 +83,6 @@
         (nskk-cache-put cache "key1" "val1")
         (nskk-cache-put cache "key2" "val2"))
       (nskk-when
-        ;; Adding key3 should evict key1 (the LRU entry)
         (nskk-cache-put cache "key3" "val3"))
       (nskk-then
         (should (null (nskk-cache-get cache "key1")))
@@ -287,10 +284,8 @@
         (nskk-cache-put cache "rare" "r")
         (nskk-cache-put cache "freq" "f"))
       (nskk-when
-        ;; Access "freq" multiple times to raise its frequency
         (nskk-cache-get cache "freq")
         (nskk-cache-get cache "freq")
-        ;; Adding a third entry should evict "rare" (frequency 1)
         (nskk-cache-put cache "new" "n"))
       (nskk-then
         (should (null (nskk-cache-get cache "rare")))
@@ -372,26 +367,18 @@
 
 (nskk-describe "cache invariants (PBT)"
 
-  ;; Property A: Hit-rate is monotonically non-decreasing as hits accumulate.
-  ;;
-  ;; Setup: create an LRU cache; perform N random put operations; then perform
-  ;; M get operations on keys that are guaranteed to be present (hits); after
-  ;; each hit, verify that the hit-rate is >= the previous hit-rate.
   (nskk-property-test cache-hit-rate-monotonically-non-decreasing
     ((key   search-query)
      (value candidate-list))
     (let* ((cache    (nskk-cache-create :type 'lru :capacity 50))
            (num-puts (+ 3 (random 8)))   ; 3..10 random puts
            (num-hits (+ 2 (random 8)))   ; 2..9 guaranteed hits
-           ;; Collect a pool of keys actually inserted so we can hit them.
            (put-keys nil))
-      ;; Put phase: insert num-puts entries; accumulate the keys used.
       (dotimes (i num-puts)
         (let ((k (format "%s-%d" key i))
               (v (nskk-generate 'candidate-list)))
           (push k put-keys)
           (nskk-cache-put cache k v)))
-      ;; Hit phase: read from put-keys; after each read verify monotonicity.
       (let ((prev-rate 0.0)
             (ok t))
         (dotimes (j num-hits)
@@ -404,11 +391,6 @@
         ok))
     20)
 
-  ;; Property B: LRU cache capacity is never exceeded.
-  ;;
-  ;; Setup: create an LRU cache with a small fixed capacity K=3; perform N>K
-  ;; puts (using distinct keys so every put is a genuine new entry); after each
-  ;; put verify that nskk-cache-size never exceeds K.
   (nskk-property-test cache-lru-capacity-never-exceeded
     ((key search-query))
     (let* ((capacity 3)
@@ -423,11 +405,6 @@
       ok)
     20)
 
-  ;; Property C: LFU eviction removes the least-frequently-used entry.
-  ;;
-  ;; Setup: create an LFU cache with capacity 3; insert three entries A, B, C;
-  ;; access A once (freq=1), B twice (freq=2), C three times (freq=3); then
-  ;; insert a fourth entry D which must trigger eviction of A (lowest freq).
   (nskk-property-test cache-lfu-evicts-least-frequently-used
     ((key search-query))
     (let* ((cache (nskk-cache-create :type 'lfu :capacity 3))
@@ -435,18 +412,13 @@
            (k-b   (format "%s-b" key))
            (k-c   (format "%s-c" key))
            (k-d   (format "%s-d" key)))
-      ;; Insert all three entries.
       (nskk-cache-put cache k-a "val-a")
       (nskk-cache-put cache k-b "val-b")
       (nskk-cache-put cache k-c "val-c")
-      ;; Access A once (inserted with freq 1, no extra reads).
-      ;; Access B twice (one extra read on top of insertion read-count).
       (nskk-cache-get cache k-b)
-      ;; Access C three times (two extra reads).
       (nskk-cache-get cache k-c)
       (nskk-cache-get cache k-c)
       (nskk-cache-put cache k-d "val-d")
-      ;; A should be gone; B, C, D should still be present.
       (and (null  (nskk-cache-get cache k-a))
            (equal "val-b" (nskk-cache-get cache k-b))
            (equal "val-c" (nskk-cache-get cache k-c))

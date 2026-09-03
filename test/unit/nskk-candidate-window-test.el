@@ -65,7 +65,6 @@
 (nskk-describe "build-string text properties"
   (nskk-it "key portion carries nskk-candidate-key-face"
     (let* ((result (nskk--candidate-build-string '("漢字") '(?a) 0))
-           ;; Strip the leading newline, then find the key char at position 0
            (body (substring result 1))
            (face (get-text-property 0 'face body)))
       (should (eq face 'nskk-candidate-key-face))))
@@ -73,7 +72,6 @@
   (nskk-it "candidate portion carries nskk-candidate-face"
     (let* ((result (nskk--candidate-build-string '("漢字") '(?a) 0))
            (body (substring result 1))
-           ;; "a:" is 2 chars; candidate starts at position 2
            (face (get-text-property 2 'face body)))
       (should (eq face 'nskk-candidate-face)))))
 
@@ -83,7 +81,6 @@
 
 (nskk-property-test-exhaustive candidate-build-string-starts-with-newline
   '(0 1 2 5 10 100)
-  ;; item = remaining count
   (let ((result (nskk--candidate-build-string '("候補") '(?a) item)))
     (should (string-prefix-p "\n" result))))
 
@@ -93,9 +90,6 @@
 
 (nskk-property-test-exhaustive candidate-build-string-remaining-iff-positive
   '(0 1 2 5 10 100)
-  ;; Use (should (not ...)) rather than (should-not ...) so the property
-  ;; returns t on success — required by nskk-property-test-exhaustive's
-  ;; (unless ,property ...) check (should-not returns nil on success).
   (let ((result (nskk--candidate-build-string '("候補") '(?a) item)))
     (if (> item 0)
         (should (string-match-p "残り" result))
@@ -205,7 +199,6 @@
         (nskk-candidate-show-list candidates 0)
         (let ((first-overlay (nskk-state-candidate-overlay)))
           (should (overlayp first-overlay))
-          ;; Second call (page 2) must reuse — not create a new overlay
           (nskk-candidate-show-list candidates 3)
           (should (eq (nskk-state-candidate-overlay) first-overlay))))))
 
@@ -243,7 +236,6 @@
             (candidates '("一" "二" "三" "四" "五")))
         (nskk-candidate-show-list candidates 0)
         (let ((after-str (overlay-get (nskk-state-candidate-overlay) 'after-string)))
-          ;; 5 candidates, page size 3, so 2 remain
           (should (string-match-p "残り" after-str))
           (should (string-match-p "2" after-str))))))
 
@@ -252,7 +244,6 @@
       (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
             (nskk-henkan-number-to-display-candidates 7)
             (candidates '("一" "二" "三")))
-        ;; 3 candidates, page size 7 -- all fit, remaining = 0
         (nskk-candidate-show-list candidates 0)
         (let ((after-str (overlay-get (nskk-state-candidate-overlay) 'after-string)))
           (should (stringp after-str))
@@ -265,7 +256,6 @@
         (nskk-candidate-show-list '("test") 0)
         (should (overlayp (nskk-state-candidate-overlay)))
         (nskk-candidate-hide-list)
-        ;; Overlay variable must be nil after hide
         (should (null (nskk-state-candidate-overlay))))))
 
   (nskk-it "falls back to point when conversion overlay is absent"
@@ -275,7 +265,6 @@
             (saved-conversion-overlay (nskk-state-conversion-overlay)))
         (unwind-protect
             (progn
-              ;; Ensure no conversion overlay is set
               (nskk-state-set-conversion-overlay nil)
               (nskk-candidate-show-list '("候補") 0)
               (should (overlayp (nskk-state-candidate-overlay))))
@@ -291,27 +280,18 @@
             (saved-pending-romaji-overlay (nskk-state-pending-romaji-overlay)))
         (unwind-protect
             (progn
-              ;; Provide the minimal state variables nskk-clear-conversion-context
-              ;; accesses so it does not error in a plain temp buffer.
               (nskk-state-set-conversion-overlay nil)
               (nskk-state-set-conversion-start-marker (make-marker))
               (nskk-state-set-romaji-buffer "")
               (nskk-state-set-pending-romaji-overlay nil)
-              ;; Show the candidate list so the overlay exists and active flag is set.
               (nskk-candidate-show-list '("漢字" "感じ" "幹事") 0)
               (should nskk--candidate-list-active)
               (should (overlayp (nskk-state-candidate-overlay)))
-              ;; Wire hide function into the hook, mirroring what nskk--enable does.
               (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
               (unwind-protect
                   (nskk-with-current-state
-                    ;; nskk-clear-conversion-context calls run-hook-with-args on
-                    ;; nskk-henkan-hide-candidates-functions, which invokes
-                    ;; nskk-candidate-hide-list and should clear the overlay state.
                     (nskk-clear-conversion-context)
-                    ;; Candidate list active flag must be cleared.
                     (should-not nskk--candidate-list-active)
-                    ;; Candidate overlay must be deleted and set to nil.
                     (should (null (nskk-state-candidate-overlay))))
                 (remove-hook 'nskk-henkan-hide-candidates-functions
                              #'nskk-candidate-hide-list)))
@@ -334,22 +314,16 @@
   (nskk-it "non-selection keys have no Prolog fact"
     (should (null (nskk-prolog-query-one `(candidate-selection-key ,?z ,'\?pos))))))
 
-;; Happy-path key→index tests for non-zero page offsets and boundary
-;; at the last valid element.  The zero-offset key→position mapping is
-;; covered exhaustively by PBT-003 (candidate-key-position-monotonic).
 (nskk-describe "candidate selection by key"
   (nskk-it "selects candidate with page offset"
-    ;; key ?a is position 0; current-index 7 → absolute 7
     (should (= (nskk-candidate-list-select-by-key
                 ?a '("一" "二" "三" "四" "五" "六" "七" "八") 7)
                7)))
 
   (nskk-it "returns valid index when absolute-index is the last element"
-    ;; key ?a → pos 0; current-index 3; (< 3 4) → 3
     (should (= (nskk-candidate-list-select-by-key ?a '("a" "b" "c" "d") 3)
                3))))
 
-;; Nil-case table: invalid key, key position beyond list, exact-length boundary.
 (nskk-deftest-table candidate-selection-nil-cases
   :columns (key candidates current-index)
   :rows ((?z ("漢字" "感じ") 0)       ; no Prolog fact for ?z
@@ -364,7 +338,6 @@
 
 (nskk-property-test-exhaustive candidate-pagination-invariant
   '((3 . 1) (3 . 3) (3 . 7) (4 . 1) (4 . 4) (5 . 5) (5 . 10) (7 . 7) (7 . 20))
-  ;; item = (pg-size . n-candidates)
   (let* ((pg-size (car item))
          (n-candidates (cdr item))
          (all-candidates (cl-loop repeat n-candidates
@@ -387,9 +360,6 @@
   (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
         (candidates '("a" "b" "c" "d" "e" "f" "g")))
     (let ((result (nskk-candidate-list-select-by-key item candidates 0)))
-      ;; NOTE: nskk-property-test-exhaustive uses the body form as a predicate —
-      ;; the return value signals pass (truthy) or fail (nil).  No `should' needed.
-      ;; Each key must return a number in [0, 6]
       (and (numberp result)
            (>= result 0)
            (<= result 6)))))
@@ -418,9 +388,6 @@
 
 (nskk-describe "nskk--candidate-init-key-facts"
   (nskk-it "is idempotent: calling twice does not duplicate Prolog facts"
-    ;; The function guards with nskk--candidate-key-facts-initialized.
-    ;; Since it's already been called at module load time, a second call
-    ;; should be a no-op and not error.
     (should (progn (nskk--candidate-init-key-facts) t)))
 
   (nskk-it "results in candidate-selection-key/2 facts queryable by position"
@@ -441,7 +408,6 @@
       (let ((nskk-henkan-show-candidates-keys '(?q ?w ?e))
             (nskk--candidate-key-facts-initialized nil))
         (nskk--candidate-init-key-facts)
-        ;; Custom keys should be queryable at expected positions
         (should (= (nskk-prolog-query-value
                     `(candidate-selection-key ,?q \?pos) '\?pos)
                    0))
@@ -451,7 +417,6 @@
         (should (= (nskk-prolog-query-value
                     `(candidate-selection-key ,?e \?pos) '\?pos)
                    2))
-        ;; Default key ?a should NOT be present in this isolated DB
         (should (null (nskk-prolog-query-one
                        `(candidate-selection-key ,?a \?pos))))))))
 
@@ -493,7 +458,6 @@
             (progn
               (nskk-state-set-conversion-overlay ov)
               (delete-overlay ov)
-              ;; After deletion, overlay is no longer live so falls back to point
               (should (= (nskk--candidate-anchor-position) 4)))
           (nskk-state-set-conversion-overlay saved-conversion-overlay))))))
 
@@ -565,7 +529,6 @@
       (should (= result 0))))
 
   (nskk-it "nskk-candidate-list-select-by-key/k passes absolute index including offset"
-    ;; key ?a is position 0; current-index 7 → absolute 7
     (let ((result :unset))
       (nskk-candidate-list-select-by-key/k
        ?a '("一" "二" "三" "四" "五" "六" "七" "八") 7

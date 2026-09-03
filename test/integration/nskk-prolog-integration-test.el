@@ -60,9 +60,7 @@
       (nskk-given
        (nskk-prolog-assert '((pair-pred alpha beta))))
       (nskk-then
-       ;; Exact match on arity-2 succeeds
        (should (nskk-prolog-holds-p '(pair-pred alpha beta)))
-       ;; Arity-1 query for the same predicate name finds no clauses
        (should-not (nskk-prolog-holds-p '(pair-pred alpha))))))
 
   (nskk-it "query returns nil for predicate with no asserted facts"
@@ -143,13 +141,10 @@
       (nskk-given
        (nskk-prolog-assert '((shared-name one)))
        (nskk-prolog-assert '((shared-name one two))))
-      ;; Retract arity-1 only
       (nskk-when
        (nskk-prolog-retract-all 'shared-name 1))
       (nskk-then
-       ;; Arity-1 is gone
        (should-not (nskk-prolog-holds-p '(shared-name one)))
-       ;; Arity-2 still present
        (should (nskk-prolog-holds-p '(shared-name one two))))))
 
   (nskk-it "retract-all on trie-indexed predicate preserves the index strategy"
@@ -159,7 +154,6 @@
        (nskk-prolog-assert '((trie-retract-test "key" ("val")))))
       (nskk-when
        (nskk-prolog-retract-all 'trie-retract-test 2))
-      ;; Can assert again after retract-all without re-calling set-index
       (nskk-prolog-assert '((trie-retract-test "key2" ("val2"))))
       (nskk-then
        (let ((hits (nskk-prolog-trie-prefix-search 'trie-retract-test 2 "key")))
@@ -179,7 +173,6 @@
        (nskk-prolog-assert '((trie-dict "うみ" ("海")))))
       (let ((results (nskk-prolog-trie-prefix-search 'trie-dict 2 "さ")))
         (nskk-then
-         ;; "さくら" and "さかな" both start with "さ"; "うみ" does not
          (should (= 2 (length results)))
          (should (assoc "さくら" results))
          (should (assoc "さかな" results))
@@ -202,7 +195,6 @@
        (nskk-prolog-assert '((trie-exact "やまと" ("大和")))))
       (let ((results (nskk-prolog-trie-prefix-search 'trie-exact 2 "やま")))
         (nskk-then
-         ;; "やま" is a prefix of both "やま" and "やまと"
          (should (= 2 (length results)))
          (should (assoc "やま" results))
          (should (assoc "やまと" results))))))
@@ -236,41 +228,30 @@
          (should (= 3 (length results)))))))
 
   (nskk-it "trie prefix search returns nil for an unindexed predicate"
-    ;; Confirm that without set-index the trie is not consulted —
-    ;; nskk-prolog-trie-prefix-search returns nil for an unindexed predicate.
     (nskk-prolog-test-with-isolated-db
       (nskk-given
-       ;; No set-index call here — predicate uses default :list strategy
        (nskk-prolog-assert '((unindexed-pred "prefix-key" ("val")))))
       (nskk-then
        (should (null (nskk-prolog-trie-prefix-search 'unindexed-pred 2 "prefix")))))))
 
 ;;;; Group 4: PBT — trie prefix subset invariant
 
-;; Property: for any prefix P and any set of keys inserted into a trie,
-;; every result returned by prefix_search(P) also appears in the full scan
-;; (all asserted facts queried via nskk-prolog-query).
 
 (nskk-property-test trie-prefix-results-subset-of-all
   ((prefix search-query))
   (let ((holds t))
     (nskk-prolog-test-with-isolated-db
-      ;; Build a small trie with a handful of search-query keys.
       (nskk-prolog-set-index 'pbt-trie-test 2 :trie)
-      ;; Generate 5 additional random keys to populate the trie alongside prefix.
       (let* ((extra-keys (cl-loop repeat 5
                                   collect (nskk-generate 'search-query)))
              (all-keys (cons prefix extra-keys)))
         (dolist (k all-keys)
           (when (and (stringp k) (not (string-empty-p k)))
             (nskk-prolog-assert `((pbt-trie-test ,k ("dummy"))))))
-        ;; Collect prefix-search results
         (let* ((prefix-results (when (and (stringp prefix) (not (string-empty-p prefix)))
                                  (nskk-prolog-trie-prefix-search 'pbt-trie-test 2 prefix)))
-               ;; Collect all keys via full Prolog query
                (all-result-keys (nskk-prolog-query-all-values
                                  '(pbt-trie-test \?k \?_v) '\?k)))
-          ;; Every key from the prefix search must also be in the full results.
           (setq holds (cl-every (lambda (pair)
                                   (member (car pair) all-result-keys))
                                 prefix-results)))))
@@ -290,8 +271,6 @@
          ("semicolon-key-action" 2)
          ("henkan-phase" 1))
   :body
-  ;; Build a variable list of length `expected' then attempt a query.
-  ;; The query may return nil (no solutions) but must not signal an error.
   (let* ((arity expected)
          (vars  (cl-loop for i from 1 to arity
                          collect (intern (format "?v%d" i))))

@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Conversion flow PBT tests.
 
 ;;; Code:
 
@@ -72,10 +71,6 @@
     (nskk-state-set state 'input-buffer (nskk--pbt-random-hiragana-input))
     state))
 
-;; These helpers replicate the deleted parallel API:
-;; nskk--pbt-start-conversion, nskk--pbt-commit-conversion,
-;; nskk--pbt-cancel-conversion.
-;; They operate purely on the state struct for integration-level testing.
 
 (defun nskk--pbt-start-conversion (state candidates)
   "Set STATE into active conversion with CANDIDATES (test helper)."
@@ -109,7 +104,6 @@
   (let* ((state (nskk--pbt-make-conversion-state))
          (_input-before (nskk-state-input-buffer state)))
     (nskk--pbt-start-conversion state candidates)
-    ;; Commit conversion
     (nskk--pbt-commit-conversion state)
     (let ((converted (nskk-state-converted-buffer state)))
       (and (stringp converted)
@@ -127,7 +121,6 @@
   (let* ((state (nskk--pbt-make-conversion-state))
          (original-input (nskk-state-input-buffer state)))
     (nskk--pbt-start-conversion state candidates)
-    ;; Cancel with original input
     (nskk--pbt-cancel-conversion state original-input)
     (let ((input-after (nskk-state-input-buffer state))
           (henkan-pos (nskk-state-henkan-position state))
@@ -148,12 +141,10 @@
          (num-candidates (length candidates)))
     (nskk--pbt-start-conversion state candidates)
     (nskk-state-set-candidates state candidates)
-    ;; Cycle through all candidates with next
     (let ((visited nil)
           (ok t))
       (let ((first (nskk-state-current-candidate state)))
         (when first (push first visited)))
-      ;; Navigate through rest
       (dotimes (_ (1- num-candidates))
         (let ((next (nskk-state-next-candidate state)))
           (when next (push next visited))))
@@ -173,13 +164,11 @@
   (let* ((state (nskk--pbt-make-conversion-state)))
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-commit-conversion state)
-    ;; Capture state after first commit
     (let ((converted-1 (nskk-state-converted-buffer state))
           (input-1 (nskk-state-input-buffer state))
           (henkan-1 (nskk-state-henkan-position state))
           (cands-1 (nskk-state-candidates state))
           (idx-1 (nskk-state-current-index state)))
-      ;; Commit again (should be no-op since no active conversion)
       (nskk--pbt-commit-conversion state)
       (let ((converted-2 (nskk-state-converted-buffer state))
             (input-2 (nskk-state-input-buffer state))
@@ -219,17 +208,12 @@
           (input (nskk-state-input-buffer state))
           (converted (nskk-state-converted-buffer state)))
       (ignore henkan-pos)
-      ;; Invariant 1: If no henkan-position, candidates should be nil or empty
-      ;; (no dangling henkan-position with empty candidates)
       (let ((consistent t))
-        ;; Invariant 2: current-index should be valid for candidates list
         (when cands
           (unless (and (integerp idx) (>= idx 0) (< idx (length cands)))
             (setq consistent nil)))
-        ;; Invariant 3: buffers should always be strings
         (unless (and (stringp input) (stringp converted))
           (setq consistent nil))
-        ;; Invariant 4: state should still be a valid struct
         (unless (nskk-state-p state)
           (setq consistent nil))
         consistent)))
@@ -248,7 +232,6 @@
   (let* ((state (nskk-state-create (plist-get scenario :mode)))
          (candidates (nskk--pbt-random-candidates))
          (hiragana-input (nskk--pbt-random-hiragana-input)))
-    ;; Put a non-empty input in the buffer
     (nskk-state-set state 'input-buffer hiragana-input)
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-commit-conversion state)
@@ -269,7 +252,6 @@
     (nskk-state-set state 'input-buffer hiragana-input)
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-cancel-conversion state hiragana-input)
-    ;; Post-cancel invariants: input restored, henkan-position cleared
     (and (string= (nskk-state-input-buffer state) hiragana-input)
          (null (nskk-state-henkan-position state))
          (null (nskk-state-candidates state))
@@ -397,7 +379,6 @@
        key
        (lambda (_entry) (setq found-called t))
        (lambda () (setq not-found-called t)))
-      ;; Exactly one of on-found or on-not-found must be called, never both, never neither
       (and (or found-called not-found-called)
            (not (and found-called not-found-called)))))
   50)

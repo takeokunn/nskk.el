@@ -79,10 +79,8 @@
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         (nskk-given (nskk-henkan-pipeline--setup-kanji-preedit))
-        ;; Start conversion -> index 0 "漢字"
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
-        ;; Advance to next candidate
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
         (nskk-then
@@ -92,22 +90,16 @@
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         (nskk-given (nskk-henkan-pipeline--setup-kanji-preedit))
-        ;; Start conversion -> index 0 "漢字"
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
-        ;; Advance to index 1 "感じ"
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
         (nskk-then  (nskk-should-equal "感じ" (nskk-state-current-candidate nskk-current-state)))
-        ;; Press x to go back to index 0 "漢字"
         (nskk-when  (let ((last-command-event ?x))
                       (nskk-handle-x)))
         (nskk-then  (nskk-should-equal "漢字" (nskk-state-current-candidate nskk-current-state))))))
 
   (nskk-it "C-g during conversion rolls back to preedit (▽) state (DDSKK-compatible)"
-    ;; DDSKK behavior: C-g from ▼ returns to ▽ preedit — does NOT fully cancel.
-    ;; nskk-rollback-conversion keeps the conversion start marker active and
-    ;; restores the ▽ marker with the kana reading.
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         (nskk-given (nskk-henkan-pipeline--setup-kanji-preedit))
@@ -175,7 +167,6 @@
   (nskk-with-mock-dict nil
     (nskk-integration-with-session 'hiragana
       (let ((candidates (nskk-dict-lookup q)))
-        ;; dict-lookup returns either nil or a proper list — never something else
         (should (listp candidates)))))
   20)
 
@@ -187,7 +178,6 @@
           (nskk-integration-with-session 'hiragana
             (let* ((candidates (plist-get cv :candidates))
                    (idx (plist-get cv :index))
-                   ;; Simulate having candidates loaded in state
                    (_ (setf (nskk-state-candidates nskk-current-state) candidates))
                    (_ (setf (nskk-state-current-index nskk-current-state) idx)))
               (should (< idx (length candidates))))))))))
@@ -202,13 +192,10 @@
   (nskk-it "Tab in preedit ▽ phase replaces preedit with first prefix match"
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
-        ;; Type "Ka" → preedit ▽か
         (nskk-given (nskk--integration-type-char ?K)
                     (nskk--integration-type-char ?a))
         (nskk-then  (should (nskk-conversion-start-active-p)))
-        ;; Tab triggers dynamic completion from preedit "か"
         (nskk-when  (nskk-dynamic-complete))
-        ;; The preedit should now contain a completion (longer than "か" or same)
         (nskk-then
           (let ((preedit (nskk-preedit-string)))
             (should (stringp preedit))
@@ -221,23 +208,19 @@
                     (nskk--integration-type-char ?a))
         (nskk-when (nskk-dynamic-complete))
         (let ((first-preedit (nskk-preedit-string)))
-          ;; Second Tab: cycles to next match
           (nskk-when (nskk-dynamic-complete))
           (let ((second-preedit (nskk-preedit-string)))
             (nskk-then
-              ;; Both predit strings are valid; cycling may wrap, but both non-empty
               (should (stringp first-preedit))
               (should (stringp second-preedit))))))))
 
   (nskk-it "dynamic-complete does nothing when preedit is empty"
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
-        ;; Type only "K" → marker set but no kana yet
         (nskk-given (nskk--integration-type-char ?K))
         (let ((before (buffer-string)))
           (nskk-when (nskk-dynamic-complete))
           (nskk-then
-            ;; Buffer unchanged: no preedit text to search or replace
             (should (equal (buffer-string) before))))))))
 
 (provide 'nskk-henkan-pipeline-integration-test)

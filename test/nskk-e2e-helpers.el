@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; E2E test helpers for NSKK.
 
 ;;; Code:
 
@@ -77,11 +76,6 @@
     ("ぬ"      . ("ぬ"))
     ("ね"      . ("根" "値" "寝"))
     ("の"      . ("野" "乃" "農"))
-    ;; Okurigana (okuri-ari) entries: key = hiragana-stem + lowercase-consonant.
-    ;; Candidates contain only the kanji stem; the okurigana kana is appended by
-    ;; the input pipeline from the okurigana buffer.
-    ;; Multi-candidate entries (2-3 candidates) enable SPC-cycling regression
-    ;; tests in Section 14 of nskk-azik-e2e-test.el and nskk-e2e-okurigana.el.
     ("できr"  . ("出来"))
     ("みr"    . ("見" "診"))
     ("かk"    . ("書" "掛" "欠"))
@@ -122,7 +116,6 @@ Initialization order:
   (declare (indent 2) (debug t))
   `(nskk-prolog-test-with-isolated-db
      (nskk-prolog-assert '((dict-initialized)))
-     ;; Must use user-dict-entry (NOT mock-dict-entry) so dict-entry/2 bridge works.
      (nskk-prolog-retract-all 'user-dict-entry 2)
      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
      (let ((nskk-e2e--entries (or ,dict-entries nskk-e2e--default-dict)))
@@ -130,14 +123,8 @@ Initialization order:
          (nskk-prolog-assert
           `((user-dict-entry ,(car entry) ,(cdr entry))))))
      (with-temp-buffer
-       ;; Clear any pending keyboard events from previous execute-kbd-macro calls.
-       ;; In Emacs batch mode, unread-command-events can persist between calls
-       ;; and contaminate subsequent tests with leftover input.
        (setq unread-command-events nil)
-       ;; Prevent electric-indent from inserting unexpected newlines.
        (electric-indent-local-mode -1)
-       ;; Mock read-from-minibuffer to prevent blocking in batch mode.
-       ;; This is needed for dictionary registration (nskk-start-registration).
        (cl-letf (((symbol-function 'read-from-minibuffer)
                   (lambda (&rest _) ""))
                  ((symbol-function 'nskk-candidate-show-list)
@@ -145,17 +132,13 @@ Initialization order:
                  ((symbol-function 'nskk-candidate-hide-list)
                   #'ignore))
          (nskk-mode 1)
-         ;; Set initial mode after nskk-mode activation.
          (when ,initial-mode
            (nskk-set-mode ,initial-mode))
-         ;; Clear any residual romaji buffer.
          (nskk-state-set-romaji-buffer "")
          (unwind-protect
              (progn ,@body)
            (ignore-errors (nskk-mode -1))
-           ;; Clear any events we produced, so the next test starts clean.
            (setq unread-command-events nil)
-           ;; Reset non-buffer-local globals that leak between tests.
            (nskk-set-henkan-candidate-list-active nil)
            (remove-hook 'nskk-henkan-show-candidates-functions
                         #'nskk-candidate-show-list)
@@ -273,11 +256,6 @@ batch mode leaves residual events in the event queue that persist
 across `with-temp-buffer' boundaries and corrupt subsequent tests."
   (let* ((cmd (key-binding (vector event)))
          (last-command-event event))
-    ;; Use setq (not let) for this-command to match the real Emacs
-    ;; command loop, where this-command persists after the command
-    ;; finishes.  Tests that call nskk--post-command-handler after
-    ;; nskk-e2e-type rely on this-command reflecting the last
-    ;; dispatched NSKK command.
     (setq this-command cmd)
     (when cmd
       (call-interactively cmd))))
@@ -298,8 +276,6 @@ dispatching raw character codes directly from the string."
      (if (and (stringp keys-val)
               (not (string-empty-p keys-val))
               (zerop (length key-vec)))
-         ;; Fallback: kbd parsed the string as empty (e.g., ";;" is a comment).
-         ;; Dispatch each character code directly.
          (cl-loop for ch across keys-val
                   do (nskk-e2e--dispatch-event ch))
        (cl-loop for i from 0 below (length key-vec)

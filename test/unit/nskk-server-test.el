@@ -152,13 +152,11 @@ Restores server-state to closed in an unwind-protect."
 
   (nskk-context "empty candidates body"
     (nskk-it "returns nil or empty list for a response with no candidates"
-      ;; "1/\n" splits on "/" with omit-nulls=t giving no parts
       (let ((result (nskk--server-parse-response "1/\n")))
         (should (or (null result) (equal result '()))))))
 
   (nskk-context "boundary: leading character"
     (nskk-it "returns nil for any response not starting with the found byte"
-      ;; Characters other than '1' should always yield nil
       (dolist (ch '(?0 ?2 ?3 ?4 ?5 ?9 ?a ?A))
         (let ((resp (concat (list ch) "/漢字/\n")))
           (should (null (nskk--server-parse-response resp))))))))
@@ -185,7 +183,6 @@ Restores server-state to closed in an unwind-protect."
 
 (nskk-property-test server-non-found-byte-returns-nil
   ((word kanji-string))
-  ;; Prepend '4' (not-found byte) — must always return nil
   (null (nskk--server-parse-response (concat "4" word " \n")))
   30)
 
@@ -304,7 +301,6 @@ Restores server-state to closed in an unwind-protect."
 
   (nskk-it "returns nil when process is open but server-state is closed"
     (let ((nskk--server-process 'mock-proc))
-      ;; server-state defaults to closed — no setup needed
       (nskk-with-mocks ((process-status (lambda (_) 'open)))
         (should (null (nskk-server-live-p))))))
 
@@ -950,7 +946,6 @@ Restores server-state to closed in an unwind-protect."
 
 (nskk-describe "nskk-server-ensure-open"
   (nskk-it "returns nil without calling open when server is disabled"
-    ;; ensure-open/k calls (fail) immediately on disabled -- open/k is never reached.
     (let ((nskk-server-enable nil)
           (nskk--server-process nil)
           (open-called nil))
@@ -963,7 +958,6 @@ Restores server-state to closed in an unwind-protect."
                        (should (null open-called))))))))
 
   (nskk-it "returns t without reconnecting when already live"
-    ;; ensure-open/k takes the (succeed t) short-circuit -- open/k is never reached.
     (let* ((nskk-server-enable t)
            (proc (make-pipe-process
                   :name "nskk-server-ensure-open-live"
@@ -985,7 +979,6 @@ Restores server-state to closed in an unwind-protect."
           (delete-process proc)))))
 
   (nskk-it "calls nskk-server-open/k when connection is not live"
-    ;; Mock the /k variant since <- chains call nskk-server-open/k directly.
     (let ((nskk-server-enable t)
           (nskk--server-process nil)
           (open-called nil))
@@ -1561,10 +1554,6 @@ Restores server-state to closed in an unwind-protect."
           (should-not (nskk--server-await-response proc buf wait-budget))
           (should close-called)))))
 
-  ;; Regression: a server that streams data without ever sending a newline
-  ;; must not accumulate unbounded memory.  Once the buffer exceeds the cap,
-  ;; await-response fails and resets the connection rather than looping until
-  ;; the wait budget expires.
   (nskk-it "rejects and resets an over-cap response even when it contains a newline"
     (with-temp-buffer
       (let* ((buf (current-buffer))
@@ -1646,8 +1635,6 @@ Restores server-state to closed in an unwind-protect."
            (accept-process-output (lambda (&rest _) nil)))
         (should (eq (nskk--server-make-connection) 'mock-proc)))))
 
-  ;; A blackholed host leaves the process stuck in \\='connect;
-  ;; make-connection must exhaust its wait budget and delete the process.
   (nskk-context
   "bounded connection initialization"
   (nskk-it

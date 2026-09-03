@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; E2E numeric conversion tests for NSKK.
 
 ;;; Code:
 
@@ -33,15 +32,6 @@
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
 
-;; DDSKK numeric type codes:
-;;   #0 = 無変換 (literal, no change)          e.g., 1 → "1"
-;;   #1 = 全角数字 (full-width Arabic digits)  e.g., 1 → "１"
-;;   #2 = 漢数字 digit-by-digit               e.g., 1024 → "一〇二四"
-;;   #3 = 漢数字 with place values             e.g., 1024 → "千二十四"
-;;   #8 = comma-grouped decimal                e.g., 1024 → "1,024"
-;;
-;; During input, "#" followed by digits enters a numeric reading; pressing SPC
-;; invokes nskk-numeric-convert to produce the appropriate candidate.
 
 (defconst nskk-e2e--numeric-dict
   '(("#ji" . ("第#3時" "#1時"))
@@ -53,40 +43,31 @@
 (nskk-describe "SKK numeric conversion"
   (nskk-it "converts reading with #0 suffix to literal (no change)"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
-      ;; Type the reading "#1ko": "#" marks numeric reading, "1" is the input digit.
-      ;; The dict entry "#ko" maps to "#0個" → literal + 個.
       (nskk-e2e-type "#1ko")
       (nskk-e2e-type "SPC")
-      ;; With #0 conversion: "1" stays as "1" (literal), so candidate should be "1個".
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-buffer "1個")))
 
   (nskk-it "converts reading with #2 suffix to kanji digit-by-digit"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
-      ;; The dict entry "#ko" has second candidate "#2個" → kanji digit-by-digit + 個.
       (nskk-e2e-type "#1ko")
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC") ; cycle to second candidate (#2個)
-      ;; With #2 conversion: "1" → "一" (digit-by-digit), so candidate should be "一個".
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-buffer "一個")))
 
   (nskk-it "converts reading with #3 suffix to kanji with place values"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
-      ;; The dict entry "#ji" maps to "第#3時" → 第 + kanji with place values + 時.
       (nskk-e2e-type "#1ji")
       (nskk-e2e-type "SPC")
-      ;; With #3 conversion: "1" → "一" (with place values), candidate = "第一時".
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-buffer "第一時")))
 
   (nskk-it "converts reading with #1 suffix to full-width Arabic numerals"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--numeric-dict
-      ;; The dict entry "#ji" has second candidate "#1時" → full-width digit + 時.
       (nskk-e2e-type "#1ji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC") ; cycle to second candidate (#1時)
-      ;; With #1 conversion: "1" → "１" (full-width), so candidate should be "１時".
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-buffer "１時"))))
 
@@ -94,16 +75,6 @@
 ;;;; Table-Driven Conversion Tests
 ;;;;
 
-;; Each row selects a candidate by pressing SPC spc-count times, then commits
-;; with C-j, and asserts the resulting buffer content equals expected-result.
-;;
-;; Dict: "#ko" → ("#0個" "#2個")
-;;   1 SPC → first candidate "#0個" → literal "1" → "1個"
-;;   2 SPC → second candidate "#2個" → kanji digit-by-digit "1" → "一個"
-;;
-;; Dict: "#ji" → ("第#3時" "#1時")
-;;   1 SPC → first candidate "第#3時" → place-value "1" → "第一時"
-;;   2 SPC → second candidate "#1時" → full-width "1" → "１時"
 
 (nskk-deftest-table numeric-type-codes
   :columns (input-reading spc-count expected-result)
@@ -130,11 +101,6 @@
   "Numeric dict for multi-digit conversion tests.
 Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
 
-;; For input "#10ko":
-;;   The numeric reading is "10", matched against "#ko" in the dict.
-;;   1 SPC → "#0個" → literal "10" → "10個"
-;;   2 SPC → "#2個" → kanji digit-by-digit "10" → "一〇個"
-;;   3 SPC → "#3個" → kanji place values "10" → "十個"
 
 (nskk-deftest-table numeric-multi-digit
   :columns (input-reading spc-count expected-result description)
@@ -153,8 +119,6 @@ Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
 ;;;; Property-Based Tests
 ;;;;
 
-;; (The generator draws any valid mode; we only run the body in hiragana so
-;; the property is always checked with a consistent mode.)
 (nskk-property-test-seeded numeric-hiragana-no-crash
   ((unused valid-mode))
   (condition-case _err
@@ -166,7 +130,6 @@ Three candidates: #0 = literal, #2 = kanji digit-by-digit, #3 = place values.")
     (error t))
   20)
 
-;; Crash-freedom across all modes (not just hiragana).
 (nskk-property-test-seeded numeric-any-mode-no-crash
   ((mode valid-mode))
   (condition-case err

@@ -150,10 +150,8 @@ with the mock-dict fixture.  `nskk-with-prolog-entries' calls
         (let ((exact-entry   (nskk-search idx "かんじ" 'exact))
               (prefix-results (nskk-search idx "かんじ" 'prefix)))
           (let ((prefix-pair (assoc "かんじ" prefix-results)))
-            ;; Both strategies must find the key
             (should (nskk-dict-entry-p exact-entry))
             (should prefix-pair)
-            ;; Candidates must be identical
             (should (equal (nskk-dict-entry-candidates exact-entry)
                            (nskk-dict-entry-candidates (cdr prefix-pair)))))))))
 

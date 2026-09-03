@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; E2E navigation key tests for NSKK.
 
 ;;; Code:
 
@@ -41,17 +40,13 @@
 (nskk-describe "C-f in converting state"
   (nskk-it "commits candidate and moves point forward"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type "Kanji" → enter ▽ preedit (かんじ), then SPC → enter ▼ converting
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; C-f: kakutei-then-forward -- commit 漢字, then forward-char
       (nskk-e2e-type "C-f")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-henkan-phase nil)
       (nskk-e2e-assert-buffer "漢字")
-      ;; nskk-commit-current replaces ▼かんじ (pos 1-5) with 漢字 (pos 1-3).
-      ;; forward-char at end-of-buffer is silently swallowed; point stays at end.
       (should (= (point) (point-max)))))
 
   (nskk-it "leaves point at end of buffer after commit"
@@ -61,18 +56,14 @@
       (nskk-e2e-type "C-f")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "漢字")
-      ;; After committing "漢字" (2 chars) and calling forward-char at end-of-buffer,
-      ;; point should be at point-max (end-of-buffer is silently swallowed)
       (should (= (point) (point-max)))))
 
   (nskk-it "commits the second candidate when on 2nd candidate"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; SPC → first candidate (漢字), SPC again → second candidate (感じ)
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; C-f commits whichever candidate is current
       (nskk-e2e-type "C-f")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "感じ"))))
@@ -84,31 +75,25 @@
 (nskk-describe "C-b in converting state"
   (nskk-it "commits candidate and moves point backward"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Insert あ first so there is a character before the conversion
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
       (let ((point-before (point)))
-        ;; C-b: kakutei-then-backward -- commit 漢字, then backward-char
         (nskk-e2e-type "C-b")
         (nskk-e2e-assert-not-converting)
         (nskk-e2e-assert-henkan-phase nil)
         (nskk-e2e-assert-buffer "あ漢字")
-        ;; Point must have moved backward after commit
         (should (< (point) point-before)))))
 
   (nskk-it "moves point one char back from end after commit"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Commit "漢字" via C-b; buffer will be "漢字", point moves back one char
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-type "C-b")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "漢字")
-      ;; "漢字" is 2 chars; point-max = 3.  backward-char from 3 → point = 2.
-      ;; So point should be strictly less than point-max (moved back from end).
       (should (< (point) (point-max))))))
 
 ;;;;
@@ -118,13 +103,11 @@
 (nskk-describe "C-f in preedit and normal state"
   (nskk-it "is plain forward-char in normal hiragana state"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type two kana characters: あい
       (nskk-e2e-type "a")
       (nskk-e2e-type "i")
       (nskk-e2e-assert-buffer "あい")
       (goto-char (point-min))
       (should (= (point) 1))
-      ;; C-f should move forward one character
       (nskk-e2e-type "C-f")
       (should (= (point) 2))
       (nskk-e2e-assert-buffer "あい")))
@@ -139,11 +122,8 @@
   (nskk-it "does not signal error at end of buffer"
     (nskk-e2e-with-buffer nil nil
       (nskk-e2e-type "a")
-      ;; Point is now at end (position 2)
       (should (= (point) 2))
-      ;; C-f at end-of-buffer: condition-case swallows the error
       (nskk-e2e-type "C-f")
-      ;; Point must not have moved beyond end
       (should (= (point) 2)))))
 
 ;;;;
@@ -153,20 +133,16 @@
 (nskk-describe "C-b in preedit and normal state"
   (nskk-it "moves point backward one character in normal hiragana state"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Insert あい; point is at end (position 3)
       (nskk-e2e-type "a")
       (nskk-e2e-type "i")
       (nskk-e2e-assert-buffer "あい")
-      ;; C-b should move backward one character
       (nskk-e2e-type "C-b")
       (should (= (point) 2))
       (nskk-e2e-assert-buffer "あい")))
 
   (nskk-it "does not signal error at beginning of buffer"
     (nskk-e2e-with-buffer nil nil
-      ;; Empty buffer; point is at position 1 (beginning)
       (should (= (point) 1))
-      ;; C-b at beginning: condition-case swallows the error
       (nskk-e2e-type "C-b")
       (nskk-e2e-assert-buffer "")
       (should (= (point) 1)))))
@@ -181,7 +157,6 @@
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; C-f: commits 漢字, moves point forward (stays at end-of-buffer)
       (nskk-e2e-type "C-f")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "漢字")
@@ -195,37 +170,26 @@
 (nskk-describe "C-a (beginning-of-line) in converting state"
   (nskk-it "commits candidate and moves to beginning of line"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type "Kanji" → enter ▽ preedit (かんじ), then SPC → enter ▼ converting
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; C-a: kakutei-then-bol -- commit 漢字, then beginning-of-line
       (nskk-e2e-type "C-a")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "漢字")
-      ;; After commit, beginning-of-line moves point to start of line
       (should (= (point) (line-beginning-position)))))
 
   (nskk-it "commits preedit and moves to beginning of line"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type "Kanji" → enter ▽ preedit (かんじ), do NOT press SPC
       (nskk-e2e-type "Kanji")
-      ;; Still in preedit, not converting
       (nskk-e2e-assert-henkan-phase 'on)
-      ;; C-a in preedit state: kakutei-then-bol -- commit かんじ, then BOL
       (nskk-e2e-type "C-a")
-      ;; preedit must have been committed -- henkan-phase is now nil
       (nskk-e2e-assert-henkan-phase nil)
-      ;; reading is now in buffer as committed kana
       (nskk-e2e-assert-buffer "かんじ")
-      ;; point is at beginning of line after commit
       (should (= (point) (line-beginning-position)))))
 
   (nskk-it "is plain beginning-of-line in normal hiragana state"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; No preedit; just press C-a -- should not crash
       (nskk-e2e-type "C-a")
-      ;; Point must be at beginning of line
       (should (= (point) (line-beginning-position))))))
 
 ;;;;
@@ -235,15 +199,12 @@
 (nskk-describe "C-e (end-of-line) in converting state"
   (nskk-it "commits candidate and moves to end of line"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type "Kanji" → enter ▽ preedit (かんじ), then SPC → enter ▼ converting
       (nskk-e2e-type "Kanji")
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
-      ;; C-e: kakutei-then-eol -- commit 漢字, then end-of-line
       (nskk-e2e-type "C-e")
       (nskk-e2e-assert-not-converting)
       (nskk-e2e-assert-buffer "漢字")
-      ;; After commit, end-of-line moves point to end of line
       (should (= (point) (line-end-position))))))
 
 ;;;;
@@ -253,32 +214,21 @@
 (nskk-describe "C-e in preedit state"
   (nskk-it "commits preedit and moves to end of line"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type "Kanji" → enter ▽ preedit (かんじ), do NOT press SPC
       (nskk-e2e-type "Kanji")
-      ;; Still in preedit, not converting
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-assert-not-converting)
-      ;; C-e in preedit state: kakutei-then-eol -- commit かんじ, then EOL
       (nskk-e2e-type "C-e")
-      ;; preedit must have been committed -- henkan-phase is now nil
       (nskk-e2e-assert-henkan-phase nil)
-      ;; reading is now in buffer as committed kana
       (nskk-e2e-assert-buffer "かんじ")
-      ;; point is at end of line after commit
       (should (= (point) (point-max)))))
 
   (nskk-it "commits preedit and leaves point at end of line"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Type "Ka" to start ▽ preedit (か)
       (nskk-e2e-type "Ka")
       (nskk-e2e-assert-henkan-phase 'on)
-      ;; C-e: kakutei-then-eol -- commit か, then EOL
       (nskk-e2e-type "C-e")
-      ;; preedit committed -- henkan-phase is now nil
       (nskk-e2e-assert-henkan-phase nil)
-      ;; committed kana is in buffer
       (nskk-e2e-assert-buffer "か")
-      ;; point is at end of line
       (should (= (point) (point-max))))))
 
 ;;;;
@@ -288,17 +238,14 @@
 (nskk-describe "C-e in normal state"
   (nskk-it "moves point to end of line in normal hiragana state"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Insert あいう; point is at end
       (nskk-e2e-type "a")
       (nskk-e2e-type "i")
       (nskk-e2e-type "u")
       (nskk-e2e-assert-buffer "あいう")
       (goto-char (point-min))
-      ;; C-e should move point to end of line
       (nskk-e2e-type "C-e")
       (should (= (point) (point-max)))
       (nskk-e2e-assert-buffer "あいう")
-      ;; Not converting
       (nskk-e2e-assert-not-converting)))
 
   (nskk-it "moves point to end of line in ascii mode"
@@ -306,7 +253,6 @@
       (nskk-e2e-type "abc")
       (nskk-e2e-assert-buffer "abc")
       (goto-char (point-min))
-      ;; C-e should move point to end of line
       (nskk-e2e-type "C-e")
       (should (= (point) (point-max)))
       (nskk-e2e-assert-buffer "abc")))
@@ -315,7 +261,6 @@
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "a")
       (nskk-e2e-assert-buffer "あ")
-      ;; Point is already at end-of-line; C-e should keep it there
       (should (= (point) (point-max)))
       (nskk-e2e-type "C-e")
       (should (= (point) (point-max)))
@@ -369,11 +314,6 @@
 ;;;;
 ;;;; Section 10: Unbound key implicit kakutei via post-command-handler
 ;;;;
-;; These tests exercise the `nskk--post-command-handler` safety net path,
-;; which commits conversion when an unbound command moves point away from
-;; the overlay boundary.  Unlike sections 1–9 (which test bound keys that
-;; call `nskk-commit-by-phase` explicitly), these simulate the interactive
-;; command loop: pre-command-hook → command → post-command-hook.
 
 (defmacro nskk-e2e--simulate-unbound-command (command)
   "Simulate running COMMAND as if from the interactive command loop.
@@ -432,10 +372,6 @@ Saves point in `nskk--point-before-command', runs COMMAND via
         (nskk-e2e-type "K")
         (nskk-e2e-type "i")
         (nskk-e2e-assert-converting)
-        ;; Point is past overlay-end (okurigana "き" sits after overlay).
-        ;; M-b moves point backward — but since point was PAST overlay-end
-        ;; before the command, the normal commit path (Branch B) fires via
-        ;; the post-command-handler.
         (nskk-e2e--simulate-unbound-command #'backward-word)
         (nskk-e2e-assert-not-converting)
         (nskk-e2e-assert-henkan-phase nil)
@@ -454,41 +390,23 @@ Saves point in `nskk--point-before-command', runs COMMAND via
 ;;;;
 ;;;; Section 11: C-f/C-b in preedit-pending state (uppercase trigger, no kana yet)
 ;;;;
-;; These tests verify the fix for Bug: preedit-pending → noop.
-;; Before the fix, pressing C-f after typing only the uppercase trigger letter
-;; (before completing the kana syllable) would leave the ▽ marker and
-;; conversion-start marker alive while the cursor moved away.  Any subsequent
-;; keypress would insert kana at the wrong position.
-;;
-;; After the fix (preedit-pending → henkan-kakutei), C-f cleans up correctly.
 
 (nskk-describe "C-f in preedit-pending state"
   (nskk-it "cleans up henkan phase and marker when no kana emitted yet"
-    ;; Type uppercase K but NOT the completing vowel → preedit-pending.
-    ;; C-f must commit (remove ▽) and leave state idle.
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; Dispatch K directly (uppercase triggers henkan-start).
       (nskk-e2e--dispatch-event ?K)
-      ;; In preedit-pending: phase=on, conversion-start set, buf="k", no kana yet.
       (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
-      ;; C-f (bound command) — triggers nskk-handle-ctrl-f.
       (nskk-e2e-type "C-f")
-      ;; After fix: henkan-kakutei ran, state is clean.
       (nskk-e2e-assert-henkan-phase nil)
       (should (null (nskk-get-conversion-start)))
-      ;; ▽ marker must be gone from the buffer.
       (should (not (string-search nskk-henkan-on-marker (buffer-string))))))
 
   (nskk-it "allows fresh preedit after cursor movement from preedit-pending"
-    ;; After C-f cleans up preedit-pending, the next uppercase letter must start
-    ;; a fresh preedit — not get normalize-vowel or broken stale state.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e--dispatch-event ?K)  ; preedit-pending
       (nskk-e2e-type "C-f")          ; clean up via fix
-      ;; Type a fresh preedit sequence: Ka → ▽か
       (nskk-e2e--dispatch-event ?K)
       (nskk-e2e--dispatch-event ?a)
-      ;; Fresh preedit should be active with か in the buffer.
       (nskk-e2e-assert-henkan-phase 'on)
       (should (string-search "か" (buffer-string))))))
 

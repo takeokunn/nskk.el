@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; PBT for input routing by mode.
 
 ;;; Code:
 
@@ -64,7 +63,6 @@
 
 (nskk-property-test nskk-pbt-ascii-mode-direct-insert
   ((char lowercase-char))
-  ;; Property: In ASCII mode, characters are inserted directly without conversion.
   (let ((char-val (string-to-char char)))
     (nskk-input-routing-test-with-state 'ascii
       (with-temp-buffer
@@ -75,7 +73,6 @@
 
 (nskk-property-test nskk-pbt-latin-mode-direct-insert
   ((char lowercase-char))
-  ;; Property: In Latin mode, characters are inserted directly without conversion.
   (let ((char-val (string-to-char char)))
     (nskk-input-routing-test-with-state 'latin
       (with-temp-buffer
@@ -90,7 +87,6 @@
 
 (nskk-property-test nskk-pbt-ascii-latin-equivalent
   ((char lowercase-char))
-  ;; Property: ASCII and Latin modes produce identical output for the same input.
   (let ((char-val (string-to-char char))
         ascii-result latin-result)
     (nskk-input-routing-test-with-state 'ascii
@@ -103,7 +99,6 @@
         (setq last-command-event char-val)
         (nskk-self-insert 1)
         (setq latin-result (buffer-string))))
-    ;; Results should be identical
     (should (string= ascii-result latin-result)))
   50)
 
@@ -113,7 +108,6 @@
 
 (nskk-property-test nskk-pbt-hiragana-mode-converts
   ((dummy lowercase-char))
-  ;; Property: In Hiragana mode, vowels are converted to hiragana.
   (let* ((vowel-map '((?a . "あ") (?i . "い") (?u . "う") (?e . "え") (?o . "お")))
          (pair (nskk--pbt-random-choice vowel-map))
          (char (car pair))
@@ -127,7 +121,6 @@
 
 (nskk-property-test nskk-pbt-katakana-mode-converts
   ((dummy lowercase-char))
-  ;; Property: In Katakana mode, vowels are converted to katakana.
   (let* ((vowel-map '((?a . "ア") (?i . "イ") (?u . "ウ") (?e . "エ") (?o . "オ")))
          (pair (nskk--pbt-random-choice vowel-map))
          (char (car pair))
@@ -145,7 +138,6 @@
 
 (nskk-property-test nskk-pbt-mode-routing-invariant
   ((char any-char))
-  ;; Property: All valid modes route input correctly without error.
   (let ((modes '(ascii latin hiragana katakana abbrev))
         (test-chars '(?a ?k ?s ?t ?n)))
     (let ((mode (nskk--pbt-random-choice modes))
@@ -186,19 +178,15 @@
 
 (nskk-property-test-with-shrinking input-routing-deterministic
   ((scenario input-scenario))
-  ;; scenario plist: {:mode :key-sequence :expected-length}
   (let* ((mode (plist-get scenario :mode))
-         ;; Pick a single character from the key sequence for determinism check
          (key-seq (plist-get scenario :key-sequence))
          (char-str (if key-seq (car key-seq) "a"))
-         ;; char-str may be a special key string like "C-j"; only test single chars
          (single-char-p (and (stringp char-str)
                              (= (length char-str) 1)))
          (char-val (when single-char-p
                      (string-to-char char-str))))
     (if (not single-char-p)
         t  ; Skip non-single-char keys — not testable as direct insert
-      ;; Run the same insert twice from identical initial states and compare
       (let (result-1 result-2)
         (nskk-input-routing-test-with-state mode
           (with-temp-buffer
@@ -210,7 +198,6 @@
             (setq last-command-event char-val)
             (nskk-self-insert 1)
             (setq result-2 (buffer-string))))
-        ;; Property: both runs must produce identical output
         (string= result-1 result-2))))
   60)
 

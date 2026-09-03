@@ -24,7 +24,6 @@
 
 ;;; Commentary:
 
-;; E2E tests for sticky shift (DDSKK skk-sticky).
 
 ;;; Code:
 
@@ -34,15 +33,6 @@
 (require 'nskk-pbt-generators)
 (eval-when-compile (require 'cl-lib))
 
-;; Sticky-shift mode: pressing ";" immediately inserts the ▽ marker
-;; (entering preedit mode), matching ddskk's `skk-sticky-set-henkan-point'.
-;;
-;; Key rules:
-;;   ";"  in idle Japanese mode           → immediately insert ▽ (preedit-pending)
-;;   ";"  in ▽ mode with kana             → arm okurigana (next char as boundary)
-;;   ";"  in ▽ mode without kana          → cancel preedit, insert literal ";"
-;;   ";;" (double semicolon)              → cancel sticky shift, self-insert ";"
-;;   ";"  in converting (▼) mode          → fall through to self-insert
 
 ;;;;
 ;;;; Basic Sticky Shift Tests
@@ -51,44 +41,34 @@
 (nskk-describe "sticky shift mode (スティッキーシフト)"
   (nskk-it "semicolon immediately starts preedit (▽)"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; ";" immediately inserts ▽ marker.
       (nskk-e2e-type ";")
-      ;; Preedit (▽) phase must be active after ";" alone.
       (nskk-e2e-assert-henkan-phase 'on)))
 
   (nskk-it "semicolon followed by consonant continues preedit input"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; ";" inserts ▽ immediately; "k" is processed as normal preedit input.
       (nskk-e2e-type ";")
       (nskk-e2e-type "k")
-      ;; Preedit (▽) phase must remain active.
       (nskk-e2e-assert-henkan-phase 'on)))
 
   (nskk-it "double semicolon self-inserts a literal semicolon"
     (nskk-e2e-with-buffer 'hiragana nil
-      ;; ";;" cancels the sticky-shift state and inserts ";" literally.
       (nskk-e2e-type ";")
       (nskk-e2e-type ";")
-      ;; No preedit; buffer should contain only the semicolon character.
       (nskk-e2e-assert-henkan-phase nil)
       (nskk-e2e-assert-buffer ";")))
 
   (nskk-it "semicolon followed by uppercase vowel triggers okurigana marker"
-    ;; Okurigana lookup needs a matching dict entry (key = "かa").
     (let ((dict '(("かa" . ("蚊")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "Ka")   ; → ▽ か
         (nskk-e2e-type ";")
         (nskk-e2e-type "a")
-        ;; Conversion (▼) phase must be active.
         (nskk-e2e-assert-henkan-phase 'active)))))
 
 ;;;;
 ;;;; Table: Consonant Sticky-Shift Rows
 ;;;;
 
-;; Each consonant prefixed with ";" should be treated as the uppercase
-;; consonant, which starts ▽ preedit in hiragana mode.
 (nskk-deftest-table sticky-consonant-starts-preedit
   :columns (sticky-char expected-mode)
   :rows (("k" hiragana)
@@ -111,8 +91,6 @@
 ;;;; Cases: Double-Semicolon Input
 ;;;;
 
-;; The original single case is preserved.  It verifies that the canonical
-;; ";;" sequence self-inserts a literal semicolon character.
 (nskk-deftest-table sticky-double-semicolon-cases
   :columns (input expected)
   :rows (( ";;" ";"))
@@ -158,7 +136,6 @@
 
 (nskk-describe "sticky shift okurigana markers"
   (nskk-it "semicolon-a after consonant preedit triggers okurigana conversion"
-    ;; Dict: "かa" → ("蚊") — vowel okurigana entry
     (nskk-e2e-with-buffer 'hiragana '(("かa" . ("蚊")))
       (nskk-e2e-type "Ka")    ; starts preedit: ▽か
       (nskk-e2e-type ";")     ; sticky shift
@@ -199,8 +176,6 @@
 ;;;; Property-Based Tests
 ;;;;
 
-;; okurigana-consonant generates uppercase strings like "K", "S", etc.;
-;; lowercase them to form the sticky key pair (;k, ;s, …).
 (nskk-property-test-seeded sticky-consonant-preedit-property
   ((consonant okurigana-consonant))
   (let ((lower (downcase consonant)))
@@ -219,8 +194,6 @@
           (nskk-e2e-type ";")
           (nskk-e2e-type ";")
           t))
-    ;; All errors are caught; crash-freedom is preserved as long as
-    ;; no unhandled signal propagates out of the body.
     (error t))
   30)
 
@@ -284,8 +257,6 @@
 
 (nskk-describe "sticky key in preedit-pending (uppercase K then ;)"
   (nskk-it "semicolon in preedit-pending (from uppercase) cancels preedit and inserts ;"
-    ;; Enter ▽ via uppercase K, then press ";" before typing any kana.
-    ;; Arm 4 fires: cancel-preedit + insert ";".
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "K")           ; → ▽ (preedit-pending via uppercase)
       (nskk-e2e-assert-henkan-phase 'on)
@@ -303,7 +274,6 @@
       (nskk-e2e-type "Ka")          ; → ▽か (preedit-japanese)
       (nskk-e2e-type ";")           ; arm 3: set 'okurigana
       (nskk-e2e-type ";")           ; arm 1: cancel okurigana + insert ";"
-      ;; Preedit should still be active (was-immediate is nil → no cancel-preedit)
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-assert-buffer-matches "か;"))))
 
@@ -311,9 +281,6 @@
 ;;;; Sticky Shift in Direct Input Mode
 ;;;;
 
-;; Bug fix: semicolon in direct input (ascii) mode was consumed by the
-;; sticky-shift handler without inserting a literal character.
-;; The (fail) CPS path invoked #'ignore, silently eating the keypress.
 
 (nskk-describe "sticky shift in direct input mode"
   (nskk-it "semicolon in ascii mode inserts literal semicolon"
@@ -325,7 +292,6 @@
     (nskk-e2e-with-buffer nil nil
       (nskk-e2e-type ";")
       (nskk-e2e-type "k")
-      ;; Both characters should be inserted literally, no preedit.
       (nskk-e2e-assert-henkan-phase nil)
       (nskk-e2e-assert-buffer ";k"))))
 
@@ -333,10 +299,6 @@
 ;;;; Sticky State Cleared on Cancel / Kakutei (Regression)
 ;;;;
 
-;; Regression: nskk--sticky-shift-pending was not cleared by
-;; nskk-clear-azik-pending-state, causing a stale 'immediate state
-;; after cancel or kakutei.  The next ";" would fire Arm 1
-;; (double-semicolon cancel) instead of Arm 5 (new ▽).
 
 (nskk-describe "sticky state cleared on cancel and kakutei"
   (nskk-it "; then C-g then ; starts new preedit (not literal ;)"
@@ -345,8 +307,6 @@
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "C-g")
       (nskk-e2e-assert-henkan-phase nil)
-      ;; Sticky state must have been cleared by cancel-preedit.
-      ;; The next ";" must start a new ▽, not insert literal ";".
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase 'on)))
 
@@ -355,7 +315,6 @@
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type "DEL")
-      ;; The next ";" must start a new ▽.
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase 'on)))
 
@@ -368,7 +327,6 @@
         (nskk-e2e-assert-henkan-phase 'active)
         (nskk-e2e-type "C-j")     ; kakutei → 蚊
         (nskk-e2e-assert-henkan-phase nil)
-        ;; Sticky state must be cleared after kakutei.
         (nskk-e2e-type ";")
         (nskk-e2e-assert-henkan-phase 'on))))
 
@@ -379,36 +337,27 @@
         (nskk-e2e-type "ka")      ; → ▽か
         (nskk-e2e-type " ")       ; → ▼蚊
         (nskk-e2e-assert-henkan-phase 'active)
-        ;; DEL from ▼ rolls back to ▽ (preedit), not to idle.
         (nskk-e2e-type "DEL")
         (nskk-e2e-assert-henkan-phase 'on)
-        ;; Sticky state must be cleared after rollback.
-        ;; ";" in ▽-with-kana arms okurigana (arm 3), not double-semicolon.
         (nskk-e2e-type ";")
-        ;; Okurigana armed — sticky consumed, still in preedit.
         (nskk-e2e-assert-henkan-phase 'on))))
 
   (nskk-it ";ka then ; (arm okurigana) then C-g then ; starts new preedit"
-    ;; Regression: okurigana-armed sticky state ('okurigana) must be
-    ;; cleared by cancel-preedit, not just 'immediate.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type ";")       ; → ▽
       (nskk-e2e-type "ka")      ; → ▽か
       (nskk-e2e-type ";")       ; arm okurigana (sticky = 'okurigana)
       (nskk-e2e-type "C-g")     ; cancel preedit
       (nskk-e2e-assert-henkan-phase nil)
-      ;; Sticky must be cleared; next ";" starts new ▽.
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase 'on)))
 
   (nskk-it ";ka then q (script toggle) then ; starts new preedit"
-    ;; Regression: nskk-henkan-kakutei-convert-script must clear sticky.
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type ";")       ; → ▽
       (nskk-e2e-type "ka")      ; → ▽か
       (nskk-e2e-type "q")       ; script toggle → カ committed
       (nskk-e2e-assert-henkan-phase nil)
-      ;; Sticky must be cleared; next ";" starts new ▽.
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase 'on))))
 

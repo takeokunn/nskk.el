@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Dictionary integration PBT tests.
 
 ;;; Code:
 
@@ -43,13 +42,11 @@
   (let ((base (or (and load-file-name
                        (file-name-directory load-file-name))
                   default-directory)))
-    ;; If loaded from test/integration/, go up to project root
     (when (string-match-p "test/integration/?$" base)
       (setq base (file-name-directory
                   (directory-file-name
                    (file-name-directory
                     (directory-file-name base))))))
-    ;; If loaded from test/, go up one level
     (when (string-match-p "test/?$" base)
       (setq base (file-name-directory (directory-file-name base))))
     (expand-file-name "test/fixtures/test-dict.skk" base)))
@@ -75,13 +72,10 @@
       (nskk-prolog-clear-database)
       (let* ((dict-path (nskk--pbt-fixture-dict-path))
              (pred (nskk-dict-load-file dict-path nil nskk--pbt-test-pred)))
-        ;; nskk-dict-load-file returns the predicate symbol on success
         (should (symbolp pred))
         (should (eq pred nskk--pbt-test-pred))
-        ;; Create an index struct from the predicate
         (let ((index (make-nskk-dict-index :predicate pred)))
           (should (nskk-dict-index-p index)))
-        ;; All known keys should be present via Prolog query
         (let ((failures nil))
           (dolist (key nskk--pbt-known-dict-keys)
             (let ((result (nskk-prolog-query-value
@@ -104,17 +98,12 @@
     (let ((temp-file (make-temp-file "nskk-test-dict-" nil ".skk")))
       (unwind-protect
           (progn
-            ;; Set up user dict entries via Prolog
-            ;; Use targeted retract-all instead of clear-database to preserve
-            ;; module-level facts (valid-henkan-transition, cache-type, etc.)
             (nskk-prolog-retract-all 'user-dict-entry 2)
             (nskk-prolog-set-index 'user-dict-entry 2 :trie)
             (nskk-prolog-assert (list (list 'user-dict-entry key candidates)))
-            ;; Save user dictionary to temp file
             (let ((nskk--user-dict-index 'user)
                   (nskk-dict-user-dictionary-file temp-file))
               (nskk-dict-save-user-dictionary)
-              ;; Reload the saved file under a separate predicate
               (let* ((reload-pred 'nskk-pbt-reload-dict)
                      (_ (nskk-prolog-retract-all reload-pred 2))
                      (loaded (nskk-dict-load-file temp-file nil reload-pred)))
@@ -168,7 +157,6 @@
 
 (nskk-property-test dict-lookup-known-key-returns-non-nil
   ((q search-query))
-  ;; Register the reading first, then look it up — always returns the registered word
   (nskk-prolog-test-with-isolated-db
     (let ((nskk--user-dict-index 'user)
           (nskk-dict-modified nil))

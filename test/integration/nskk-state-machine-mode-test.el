@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Mode transition state machine tests.
 
 ;;; Code:
 
@@ -61,7 +60,6 @@ TRIGGER is ignored; a random valid mode is chosen."
   "Transition STATE and return it. Previous mode should be tracked."
   (let ((old-mode (nskk-state-mode state))
         (new-mode (nskk--pbt-generate-valid-mode)))
-    ;; Keep trying until we get a different mode
     (while (eq new-mode old-mode)
       (setq new-mode (nskk--pbt-generate-valid-mode)))
     (nskk-state-set state 'mode new-mode)
@@ -182,18 +180,15 @@ TRIGGER is ignored; a random valid mode is chosen."
       (dotimes (_ runs)
         (let ((state (nskk-state-create 'hiragana))
               (invalid-mode (nskk--pbt-random-choice invalid-modes)))
-          ;; Try to set an invalid mode - should raise error
           (condition-case err
               (nskk-state-set state 'mode invalid-mode)
             (error
-             ;; Error expected - check that mode remained unchanged
              (unless (eq (nskk-state-mode state) 'hiragana)
                (push (list :invalid-mode invalid-mode
                            :error err
                            :actual-mode (nskk-state-mode state))
                      failures)))
             (:no-error
-             ;; No error raised - this is a failure
              (push (list :invalid-mode invalid-mode
                          :error "No error raised"
                          :actual-mode (nskk-state-mode state))
@@ -233,7 +228,6 @@ TRIGGER is ignored; a random valid mode is chosen."
    (t5 nskk--sm-random-transition))
   (lambda (state)
     (and (nskk-state-p state)
-         ;; All slots should be accessible
          (nskk-state-mode state)
          (stringp (nskk-state-input-buffer state))
          (stringp (nskk-state-converted-buffer state))
@@ -266,20 +260,17 @@ TRIGGER is ignored; a random valid mode is chosen."
     (let ((state (nskk-state-create 'hiragana)))
       (nskk-then
         (should-not (nskk-state-transition state 'katakana 'latin))
-        ;; Mode should remain unchanged
         (should (eq (nskk-state-mode state) 'hiragana)))))
 
   (nskk-it "rapid mode changes should not cause state corruption"
     (let ((state (nskk-state-create 'ascii))
           (modes '(hiragana katakana latin abbrev ascii)))
       (nskk-when
-        ;; Rapidly switch modes
         (dotimes (_ 100)
           (dolist (mode modes)
             (nskk-state-set state 'mode mode)
             (should (nskk-state-valid-mode-p (nskk-state-mode state))))))
       (nskk-then
-        ;; Final state should still be valid
         (should (nskk-state-p state))
         (should (nskk-state-valid-mode-p (nskk-state-mode state)))))))
 
@@ -297,17 +288,14 @@ TRIGGER is ignored; a random valid mode is chosen."
 
 (nskk-property-test-with-shrinking mode-transition-invariant-shrinking
   ((scenario mode-switch-scenario))
-  ;; scenario is a plist {:initial-mode :target-mode :trigger-key}
   (let* ((initial-mode (plist-get scenario :initial-mode))
          (target-mode  (plist-get scenario :target-mode))
          (state        (nskk-state-create initial-mode))
          (transitions  (nskk--pbt-random-int 3 15)))
-    ;; Drive a random sequence of valid mode transitions
     (dotimes (_ transitions)
       (let ((next-mode (nskk--pbt-generate-valid-mode)))
         (nskk-state-set state 'mode next-mode)))
     (nskk-state-set state 'mode target-mode)
-    ;; Invariant: mode must remain within the recognised valid-modes set
     (and (nskk-state-p state)
          (nskk-state-valid-mode-p (nskk-state-mode state))
          (nskk-state-valid-mode-p (nskk-state-mode state))))

@@ -358,11 +358,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 
   (nskk-context "AZIK table priority"
     (nskk-it "fires romaji via azik-complete-match-p even when romaji buffer is empty"
-      ;; nskk--romaji-has-match-p has an empty-buffer guard that always returns nil
-      ;; when (nskk-state-romaji-buffer) is "".  A standalone AZIK rule for 'l' (e.g. a
-      ;; custom "l" -> "ん" mapping) would therefore silently fall through to
-      ;; latin-mode.  Fix: nskk-handle-l now checks nskk--azik-complete-match-p
-      ;; first; that function has no empty-buffer guard and covers this case.
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (process-called nil))
         (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) t))
@@ -373,8 +368,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
            (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
 
     (nskk-it "still fires romaji for zl -> -> in standard mode (nskk--romaji-has-match-p path)"
-      ;; nskk--azik-complete-match-p returns nil in standard mode.
-      ;; nskk--romaji-has-match-p handles the z-prefix case when buffer = "z".
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (process-called nil))
         (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) nil))
@@ -598,8 +591,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
          (should (equal (buffer-string) "result"))))))
 
   (nskk-it "key-action/3 has explicit preedit row for return (kakutei-and-newline)"
-    ;; (return preedit kakutei-and-newline) is now registered in the Prolog table,
-    ;; matching DDSKK behavior: RET in ▽ commits the raw kana then inserts newline.
     (should (eq (nskk-prolog-query-value
                  `(key-action return preedit ,'\?action) '\?action)
                 'kakutei-and-newline)))
@@ -634,8 +625,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (nskk-mode -1))))
 
     (nskk-it "falls back to newline when key-binding returns nil in normal state"
-      ;; If no other RET binding exists (key-binding returns nil), the handler
-      ;; falls back to `newline' rather than silently doing nothing.
       (with-temp-buffer
         (let ((newline-called nil))
           (nskk-with-mocks ((key-binding (lambda (_key) nil))
@@ -645,10 +634,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (should newline-called))))
 
     (nskk-it "does not raise wrong-type-argument for keyboard-macro RET bindings"
-      ;; `commandp' returns t for strings/vectors (keyboard macros), but in
-      ;; some Emacs versions `call-interactively' raises wrong-type-argument
-      ;; for them.  The handler must dispatch string/vector cmd through
-      ;; `execute-kbd-macro', not `call-interactively'.
       (with-temp-buffer
         (let ((error-raised nil))
           (condition-case _err
@@ -759,8 +744,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 ;;;
 
 (nskk-describe "nskk-handle-ctrl-n behavior"
-  ;; ctrl-n in converting mode shows next candidate (same as space key),
-  ;; so we cannot use nskk-deftest-nav-handler which tests commit+nav behavior.
   (nskk-it "nskk-handle-ctrl-n is defined and interactive"
     (should (commandp 'nskk-handle-ctrl-n)))
 
@@ -819,8 +802,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (should nav-called))))
 
 (nskk-describe "nskk-handle-ctrl-p behavior"
-  ;; ctrl-p in converting mode shows previous candidate (same as x key),
-  ;; so we cannot use nskk-deftest-nav-handler which tests commit+nav behavior.
   (nskk-it "nskk-handle-ctrl-p is defined and interactive"
     (should (commandp 'nskk-handle-ctrl-p)))
 
@@ -907,14 +888,11 @@ and configures state."
         (nskk-test-setup-converting "あい" "愛")
         (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-called t))))
           (nskk-when (nskk-handle-ctrl-n)))
-        ;; C-n called next-candidate, not commit+navigate
         (nskk-then
          (should next-called)
-         ;; Still in converting mode (not committed)
          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
   (nskk-it "C-p shows previous candidate in converting mode (does not commit)"
-    ;; C-p calls nskk-previous-candidate instead of committing.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (prev-called nil))
@@ -925,15 +903,11 @@ and configures state."
         (nskk-test-setup-converting "か" "書")
         (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-called t))))
           (nskk-when (nskk-handle-ctrl-p)))
-        ;; C-p called previous-candidate, not commit+navigate
         (nskk-then
          (should prev-called)
-         ;; Still in converting mode (not committed)
          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
   (nskk-it "C-n in converting mode calls next-candidate (no end-of-buffer error)"
-    ;; Since C-n now calls nskk-next-candidate, there is no navigation
-    ;; and therefore no end-of-buffer error regardless of cursor position.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (next-called nil))
@@ -948,8 +922,6 @@ and configures state."
          (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
   (nskk-it "C-p in converting mode calls previous-candidate (no beginning-of-buffer error)"
-    ;; Since C-p now calls nskk-previous-candidate, there is no navigation
-    ;; and therefore no beginning-of-buffer error regardless of cursor position.
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (prev-called nil))
@@ -976,10 +948,6 @@ and configures state."
 ;;;
 ;;; nskk--current-key-state Tests
 ;;;
-;; These tests cover the abbrev-mode branch added to nskk--current-key-state:
-;; when mode is 'abbrev AND the conversion-start marker is set, the function
-;; must return 'preedit (so SPC dispatches 'start-conversion) rather than
-;; falling through to 'normal (which would self-insert a space).
 
 (nskk-describe "nskk--current-key-state behavior"
   (nskk-it "returns 'converting when nskk-converting-p is true"
@@ -1038,9 +1006,6 @@ and configures state."
 ;;;
 ;;; nskk-self-insert abbrev-mode routing Tests
 ;;;
-;; These unit tests verify that nskk-self-insert routes ALL chars to
-;; nskk-process-abbrev-input in abbrev mode via the Prolog input-route
-;; table.
 
 (nskk-describe "nskk-self-insert abbrev-mode routing"
   (nskk-it "routes uppercase letters in abbrev mode via input-route Prolog table"
@@ -1450,7 +1415,6 @@ and configures state."
     (should (fboundp 'nskk--backspace-in-preedit)))
 
   (nskk-it "deletes last character when preedit has content"
-    ;; Preedit has content: point is beyond start + marker length → delete-char -1 fires.
     (let ((deleted nil))
       (nskk-with-mocks ((nskk-get-conversion-start (lambda () (point-min)))
                         (delete-char (lambda (n) (setq deleted n))))
@@ -1465,7 +1429,6 @@ and configures state."
     (let ((cancel-called nil))
       (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                         (nskk-cancel-preedit (lambda () (setq cancel-called t))))
-        ;; point == start + length("▽") means no content chars → cancel
         (with-temp-buffer
           (insert "▽")
           (goto-char (point-max))
@@ -1652,11 +1615,9 @@ and configures state."
             (nskk--backspace-in-preedit)
             (should (equal (nskk-state-romaji-buffer) "k"))
             (should show-called)
-            ;; Second BS: "k" -> "", clear-pending called
             (nskk--backspace-in-preedit)
             (should (equal (nskk-state-romaji-buffer) ""))
             (should clear-called)
-            ;; Third BS: romaji empty, committed kana -> delete-char
             (nskk--backspace-in-preedit)
             (should (equal deleted -1))))))))
 
@@ -1734,8 +1695,6 @@ and configures state."
       (should (eq binding 'nskk-handle-hash))))
 
   (nskk-it "calls nskk-set-mode-numeric when in hiragana"
-    ;; nskk-set-mode-numeric reuses abbrev mode internally (sets mode='abbrev
-    ;; and nskk--numeric-mode flag).  We verify the right function is called.
     (let ((nskk-current-state (nskk-state-create 'hiragana))
           (numeric-called nil))
       (nskk-with-mocks ((nskk-set-mode-numeric (lambda () (setq numeric-called t))))
@@ -1767,9 +1726,6 @@ and configures state."
 ;;;
 ;;; key-action/3 Prolog Dispatch Table Integrity Tests
 ;;;
-;; Exhaustively verify every (key state) pair in the fact table maps to the
-;; expected action symbol.  This is a white-box integrity check ensuring
-;; the data layer is self-consistent and complete.
 
 (nskk-describe "key-action/3 Prolog dispatch table integrity"
   (nskk-deftest-table keymap-prolog-key-action-table
@@ -1782,42 +1738,32 @@ and configures state."
            (return converting commit-candidate)
            (return preedit  kakutei-and-newline)
            (return normal   newline)
-           ;; Cancel
            (cancel converting rollback-to-reading)
            (cancel preedit   cancel-preedit)
            (cancel normal    keyboard-quit)
-           ;; X
            (x converting previous-candidate)
            (x normal    self-insert)
-           ;; C-n
            (ctrl-n converting next-candidate)
            (ctrl-n preedit    kakutei-then-next-line)
            (ctrl-n normal     next-line)
-            ;; C-p
             (ctrl-p converting previous-candidate)
             (ctrl-p preedit    kakutei-then-previous-line)
             (ctrl-p normal     previous-line)
-           ;; C-f
            (ctrl-f converting kakutei-then-forward)
            (ctrl-f preedit    kakutei-then-forward)
            (ctrl-f normal     forward-char)
-           ;; C-b
            (ctrl-b converting kakutei-then-backward)
            (ctrl-b preedit    kakutei-then-backward)
            (ctrl-b normal     backward-char)
-           ;; C-a
            (ctrl-a converting kakutei-then-bol)
            (ctrl-a preedit    kakutei-then-bol)
            (ctrl-a normal     beginning-of-line)
-           ;; C-e
            (ctrl-e converting kakutei-then-eol)
            (ctrl-e preedit    kakutei-then-eol)
            (ctrl-e normal     end-of-line)
-           ;; Backspace
            (backspace preedit    delete-preedit-char)
            (backspace converting rollback-to-reading)
            (backspace normal     backward-delete)
-           ;; Tab
            (tab preedit    dynamic-complete)
            (tab converting pass-through)
            (tab normal     pass-through))
@@ -1846,8 +1792,6 @@ and configures state."
                 'latin-mode)))
 
   (nskk-it "standard style maps to fire-romaji for azik-complete state (supports zl)"
-    ;; Standard style uses azik-complete state when nskk--romaji-has-match-p is true
-    ;; (e.g. "zl" -> "->").
     (should (eq (nskk-prolog-query-value
                  `(l-key-action standard azik-complete ,'\?action) '\?action)
                 'fire-romaji))))
@@ -1926,9 +1870,6 @@ and configures state."
 
 (nskk-describe "mode-switch-preaction/2 preedit-pending row"
   (nskk-it "preedit-pending maps to henkan-kakutei (not noop)"
-    ;; preedit-pending = uppercase trigger fired, ▽ in buffer, but no kana yet.
-    ;; Navigation or mode-switch must clean up (remove ▽, clear state) so the
-    ;; cursor can move freely — noop would leave stale conversion-start state.
     (should (eq (nskk-prolog-query-value
                  '(mode-switch-preaction preedit-pending \?a) '\?a)
                 'henkan-kakutei))))
@@ -1942,7 +1883,6 @@ and configures state."
     (should (macrop 'nskk-define-key-handler)))
 
   (nskk-it "generates interactive commands for key handlers"
-    ;; All handlers created by nskk-define-key-handler should be interactive
     (should (commandp 'nskk-handle-space))
     (should (commandp 'nskk-handle-return))
     (should (commandp 'nskk-handle-x))
@@ -2193,11 +2133,8 @@ and configures state."
     (should (fboundp 'nskk--setup-azik-toggle-key)))
 
   (nskk-it "does nothing when nskk-azik-keyboard-type is not bound"
-    ;; Without nskk-azik loaded, the variable is unbound — the function is a no-op
     (if (boundp 'nskk-azik-keyboard-type)
-        ;; AZIK is loaded: function will run and bind keys; just verify no error
         (progn (nskk--setup-azik-toggle-key) t)
-      ;; AZIK not loaded: function should be a silent no-op returning nil
       (should (null (nskk--setup-azik-toggle-key)))))
 
   (nskk-it "binds @ key when keyboard type is jp106"
@@ -2209,7 +2146,6 @@ and configures state."
               (nskk--setup-azik-toggle-key)
               (should (eq (keymap-lookup nskk-mode-map "@")
                           #'nskk-toggle-japanese-mode)))
-          ;; Restore original binding
           (when saved-binding
             (keymap-set nskk-mode-map "@" saved-binding))))))
 
@@ -2314,17 +2250,14 @@ and configures state."
 (nskk-describe "nskk-classify-state return type invariants"
   (nskk-it "return value is always one of the 6 known symbols"
     (let ((valid-states '(converting preedit-japanese preedit-pending preedit-marker idle-japanese idle-direct)))
-      ;; converting
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
                         (nskk-has-preedit  (lambda () nil)))
         (should (memq (nskk-classify-state) valid-states)))
-      ;; preedit-japanese
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                           (nskk-has-preedit  (lambda () t))
                           (nskk-get-conversion-start (lambda () 1)))
           (should (memq (nskk-classify-state) valid-states))))
-      ;; idle
       (nskk-with-mocks ((nskk-converting-p (lambda () nil))
                         (nskk-has-preedit  (lambda () nil)))
         (let ((nskk-current-state nil))
@@ -2470,8 +2403,6 @@ and configures state."
         (map-keymap (lambda (_k _v) (cl-incf count)) nskk-mode-map)
         (should (> count 0))))))
 
-;; Exhaustive test: for every critical key, the binding in nskk-mode-map
-;; is a symbol that satisfies fboundp after nskk-mode is enabled.
 (nskk-property-test-exhaustive keymap-critical-keys-survive-mode-enable
   '("C-j" "L" "C-g")
   (with-temp-buffer

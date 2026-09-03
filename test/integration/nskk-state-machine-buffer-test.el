@@ -23,7 +23,6 @@
 
 ;;; Commentary:
 
-;; Buffer state machine tests.
 
 ;;; Code:
 
@@ -397,7 +396,6 @@
   (nskk-it "appending many characters should not cause overflow"
     (let ((state (nskk-state-create 'hiragana)))
       (nskk-when
-        ;; Append 1000 characters
         (dotimes (_ 1000)
           (nskk-state-append-input state ?a)))
       (nskk-then
@@ -407,7 +405,6 @@
   (nskk-it "appending Unicode characters should work correctly"
     (let ((state (nskk-state-create 'hiragana)))
       (nskk-when
-        ;; Append various Unicode characters
         (nskk-state-append-input state ?あ)
         (nskk-state-append-input state ?ア)
         (nskk-state-append-input state ?漢)
@@ -469,7 +466,6 @@
         (nskk-for-all ((mode valid-mode))
           (let* ((state (nskk-state-create mode))
                  (init-len (length (nskk-state-input-buffer state))))
-            ;; Append N chars then delete N chars
             (let ((n (nskk--pbt-random-int 1 10)))
               (dotimes (_ n)
                 (nskk-state-append-input state (nskk--sm-random-char)))

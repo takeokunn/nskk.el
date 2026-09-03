@@ -51,7 +51,6 @@
         (should (eq (nskk-state-mode state) 'ascii)))))
 
   (nskk-it "invalid nskk-state-default-mode falls back to ascii"
-    ;; An unrecognised symbol is not a valid-mode; nskk-state-create falls back.
     (let ((nskk-state-default-mode 'nonexistent-mode))
       (let ((state (nskk-state-create)))
         (should (eq (nskk-state-mode state) 'ascii))))))
@@ -140,7 +139,6 @@
             (idx (nskk-dict-system-index)))
         (let ((entry (nskk-search-exact idx "あい" nil)))
           (when (nskk-dict-entry-p entry)
-            ;; With sort none, candidates should be in dict order
             (should (listp (nskk-dict-entry-candidates entry))))))))
 
   (nskk-it "with sort-method kana, nskk--search-sort-results returns a list"
@@ -148,7 +146,6 @@
       (let ((nskk-search-sort-method 'kana)
             (idx (nskk-dict-system-index)))
         (let ((results (nskk-search-prefix idx "あ" nil nil)))
-          ;; prefix on "あ" returns at least the "あ" entry
           (should (or (null results) (listp results)))))))
 
   (nskk-it "with sort-method frequency, nskk--search-sort-results returns a list"
@@ -172,7 +169,6 @@
     (nskk-with-mock-dict '(("かんじ" . ("漢字")))
       (let ((nskk-search-fuzzy-threshold 0)
             (idx (nskk-dict-system-index)))
-        ;; "かん" is distance 1 from "かんじ"; threshold 0 means no fuzzy hits
         (let ((results (nskk-search-fuzzy idx "かん" nil)))
           (should (null results))))))
 
@@ -180,7 +176,6 @@
     (nskk-with-mock-dict '(("かんじ" . ("漢字")))
       (let ((nskk-search-fuzzy-threshold 1)
             (idx (nskk-dict-system-index)))
-        ;; "かんじ" has distance 0 from itself, so it must appear
         (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
           (should results)))))
 
@@ -188,7 +183,6 @@
     (nskk-with-mock-dict '(("かんじ" . ("漢字")) ("かんき" . ("感激")))
       (let ((nskk-search-fuzzy-threshold 2)
             (idx (nskk-dict-system-index)))
-        ;; "かんじ" and "かんき" are distance 1 apart; both within threshold 2
         (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
           (should results)
           (should (listp results))))))
@@ -405,7 +399,6 @@
         (let ((buf-after (and (get-buffer "*NSKK Debug*")
                               (with-current-buffer "*NSKK Debug*"
                                 (buffer-size)))))
-          ;; Size must not have grown
           (should (equal buf-before buf-after))))))
 
   (nskk-it "nskk-debug-message writes to buffer when t"
@@ -463,7 +456,6 @@
       (let ((buf (get-buffer "*NSKK Debug*")))
         (should buf)
         (with-current-buffer buf
-          ;; count-lines returns 0 or 1 for a trimmed single-entry buffer
           (should (<= (count-lines (point-min) (point-max)) 2))))))
 
   (nskk-it "with max-entries 0, buffer is cleared on every append"
@@ -474,7 +466,6 @@
       (let ((buf (get-buffer "*NSKK Debug*")))
         (when buf
           (with-current-buffer buf
-            ;; With max 0, trim deletes everything before the last 0 lines
             (should (<= (buffer-size) 200)))))))
 
   (nskk-it "value is always a natural number"

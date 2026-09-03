@@ -221,13 +221,8 @@
 ;;;
 ;;;
 
-;; PBT-001 — Integer custom vars accept positive integers (seeded)
-;; All natnum-typed defcustom variables must satisfy natnump for any
-;; non-negative integer value — the type predicate used as their :safe guard.
 (nskk-property-test-seeded custom-pbt-integer-vars-accept-positive
   ((n romaji-string))
-  ;; Use a literal list of representative values rather than a generator,
-  ;; since no small-positive-integer generator exists in the project.
   (cl-every (lambda (v)
               (and (natnump v)
                    (funcall (get 'nskk-debug-max-entries 'safe-local-variable) v)
@@ -238,18 +233,12 @@
             '(0 1 5 10 50 100 500 1000))
   20 42)
 
-;; PBT-002 — String custom vars accept strings (seeded)
-;; String-typed defcustom variables must accept any string value through
-;; their :safe predicate.
 (nskk-property-test-seeded custom-pbt-string-vars-accept-strings
   ((s romaji-string))
   (and (stringp s)
        (funcall (get 'nskk-modeline-format 'safe-local-variable) s))
   30 42)
 
-;; PBT-003 — Boolean custom vars accept only t or nil (exhaustive via seeded)
-;; Boolean-typed defcustom variables must accept t and nil and reject
-;; any non-boolean value.
 (nskk-property-test-seeded custom-pbt-boolean-vars-reject-non-booleans
   ((n romaji-string))
   (let ((bool-vars '(nskk-converter-auto-start-henkan
@@ -265,14 +254,10 @@
               bool-vars))
   20 42)
 
-;; PBT-004 — List custom vars accept lists of the right element type (seeded)
-;; List-typed defcustom variables must accept nil and valid-typed lists,
-;; and reject non-list values.
 (nskk-property-test-seeded custom-pbt-list-vars-accept-valid-lists
   ((n romaji-string))
   (let ((keys-pred  (get 'nskk-henkan-show-candidates-keys 'safe-local-variable)))
     (and
-     ;; nskk-henkan-show-candidates-keys: nil and character lists
      (funcall keys-pred nil)
      (funcall keys-pred '(?a ?s ?d))
      (funcall keys-pred '(?a ?s ?d ?f ?j ?k ?l))
