@@ -1161,7 +1161,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     :body (should-not (nskk-prolog-query `(japanese-mode ,mode)))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; Inline valid modes list (no external dep needed)
@@ -1196,8 +1195,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
 (nskk-property-test state-pbt-created-state-is-valid
   ((input romaji-string))
-  ;; State is always valid after creation: nskk-state-p returns t for any created state.
-  ;; input is used only to drive the PBT loop; we test creation of states with each mode.
   (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
                     nskk-state-pbt--valid-modes))
          (state (nskk-state-create mode)))
@@ -1206,7 +1203,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
 (nskk-property-test state-pbt-reset-clears-buffers
   ((input romaji-string))
-  ;; After nskk-state-reset, mode stays but buffers are cleared.
   (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
                     nskk-state-pbt--valid-modes))
          (state (nskk-state-create mode)))
@@ -1270,7 +1266,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     (should-not (nskk-prolog-query-one '(state-slot-default nonexistent \?v)))))
 
 ;;;
-;;; Property-Based Tests for CPS Variants
 ;;;
 
 (nskk-property-test state-pbt-append-cps-consistent-with-sync
@@ -1663,13 +1658,10 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (random test-seed)
       (message "Sequence test 'mode-switch-idempotent-toggle' seed: %d" test-seed)
       (dotimes (run runs)
-        ;; Test hiragana <-> katakana toggle with 'q' key
         (let* ((initial-mode (nskk--pbt-random-choice '(hiragana katakana)))
                (state (nskk-state-create initial-mode))
-               ;; Press 'q' twice
                (after-first (nskk-state-test--process-key state "q"))
                (after-second (nskk-state-test--process-key after-first "q")))
-          ;; After two 'q' presses, mode should return to initial
           (unless (eq (nskk-state-mode after-second) initial-mode)
             (push (list :seed test-seed
                         :run run

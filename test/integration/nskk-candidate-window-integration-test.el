@@ -134,7 +134,6 @@
                               ?a candidates 0)))))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 (require 'nskk-pbt-generators)

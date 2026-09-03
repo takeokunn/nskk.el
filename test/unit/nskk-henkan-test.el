@@ -4742,7 +4742,6 @@
                        expected-lowercase)))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; PBT: uppercase okurigana consonant chars always return their lowercase via detect

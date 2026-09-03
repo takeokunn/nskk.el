@@ -24,8 +24,6 @@
 
 ;;; Commentary:
 
-;; Property-Based Tests for State Management Layer.
-
 ;;; Code:
 
 (require 'ert)

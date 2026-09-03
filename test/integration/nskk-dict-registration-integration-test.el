@@ -385,7 +385,6 @@
 
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 (require 'nskk-pbt-generators)

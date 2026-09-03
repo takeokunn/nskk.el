@@ -146,7 +146,6 @@
           (nskk-should-equal "" (nskk-state-romaji-buffer)))))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 (require 'nskk-pbt-generators)

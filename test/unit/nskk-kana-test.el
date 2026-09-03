@@ -787,7 +787,6 @@ Note: Prolog-backed classification costs ~200-300us per character."
        (cdr case)))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; Type invariant: string conversion always returns a string for string input.

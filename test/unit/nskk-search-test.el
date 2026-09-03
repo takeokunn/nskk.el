@@ -1437,7 +1437,6 @@ PRED-NAME is the Prolog predicate symbol (defaults to
 )
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; PBT-001 — Levenshtein symmetry (seeded PBT, 50 runs)

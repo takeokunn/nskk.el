@@ -526,7 +526,6 @@
         (should-not ja-dic-called)))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; Table-driven dict entry creation

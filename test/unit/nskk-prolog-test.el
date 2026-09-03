@@ -639,8 +639,6 @@
           (should-not result))))
 
     (nskk-it "variable-first-arg query returns all bulk-asserted entries"
-      ;; After dual-write fix: bulk-asserted facts are in both trie AND flat DB.
-      ;; A query with ?k as variable falls back to the flat DB and finds all entries.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-set-index 'bulk-var-query 2 :trie)
@@ -648,7 +646,6 @@
                                       '(("か" . ("花" "家"))
                                         ("き" . ("木" "気"))
                                         ("く" . ("口" "来"))))
-        ;; Variable first arg: must fall back to flat DB
         (let ((results (nskk-prolog-query '(bulk-var-query \?k \?c))))
           (should (= (length results) 3))
           (let ((keys (mapcar (lambda (s) (nskk-prolog-walk '\?k s)) results)))
@@ -663,10 +660,8 @@
         (nskk-prolog-trie-bulk-assert 'bulk-retract-test 2
                                       '(("a" . ("A"))
                                         ("b" . ("B"))))
-        ;; Before retract-all: both ground and variable queries work
         (should (nskk-prolog-query '(bulk-retract-test "a" \?c)))
         (should (= 2 (length (nskk-prolog-query '(bulk-retract-test \?k \?c)))))
-        ;; After retract-all: both queries return nil
         (nskk-prolog-retract-all 'bulk-retract-test 2)
         (should-not (nskk-prolog-query '(bulk-retract-test "a" \?c)))
         (should-not (nskk-prolog-query '(bulk-retract-test \?k \?c)))))
@@ -956,15 +951,11 @@
 
     (nskk-it "renames anonymous ?_ variables to fresh ?_anon_N symbols"
       (nskk-prolog-test-with-isolated-db
-        ;; A clause containing the character literal ?_ (anonymous wildcard).
-        ;; After renaming, no bare ?_ character should remain — each becomes ?_anon_N.
         (let* ((clause (list (list 'anon-test ?_ ?_)))
                (renamed (nskk--prolog-rename-variables clause 1)))
-          ;; The renamed clause should contain no bare ?_ integers
           (should-not (member ?_ (flatten-tree renamed))))))
 
     (nskk-it "returns a structurally identical clause when it contains no variables"
-      ;; A clause with only atoms should be unchanged structurally.
       (let* ((clause '((ground-fact apple banana)))
              (renamed (nskk--prolog-rename-variables clause 42)))
         (should (equal clause renamed))))))
@@ -973,7 +964,6 @@
 ;;;; Property-Based Tests
 ;;;;
 
-;; Table-driven atom unification cases using multi-column nskk-deftest-table.
 (nskk-deftest-table prolog-pbt-atom-unification
   :columns (a b should-succeed)
   :rows    ((foo foo t)
@@ -991,7 +981,6 @@
   "Unification symmetry: if (nskk-prolog-unify A B) succeeds,
 (nskk-prolog-unify B A) also succeeds, and vice versa."
   (nskk-prolog-test-with-isolated-db
-    ;; Test symmetric atom pairs: both (A,B) and (B,A) should succeed or fail together.
     (dolist (pair '((foo foo)
                     (bar bar)
                     (foo bar)))
@@ -999,7 +988,6 @@
             (b (cadr pair)))
         (let ((ab (nskk-prolog-unify a b nil))
               (ba (nskk-prolog-unify b a nil)))
-          ;; Both succeed or both fail — symmetry invariant
           (should (eq (nskk--prolog-fail-p ab) (nskk--prolog-fail-p ba))))))
     (dolist (pair '((42 42) (42 99)))
       (let ((a (car pair))
@@ -1925,9 +1913,7 @@ the database in the same state as before the assertion."
     (nskk-it "nskk-prolog-deffacts with zero rows asserts nothing and does not signal"
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
-        ;; Evaluate empty deffacts (no rows) — must not signal an error.
         (eval '(nskk-prolog-deffacts empty-noop-pred))
-        ;; No fact should be present.
         (should (null (nskk-prolog-query-value '(empty-noop-pred \?a \?b) '\?a)))))
 
     (nskk-it "nskk-prolog-deffacts correctly handles 1-arity facts"
@@ -1940,7 +1926,6 @@ the database in the same state as before the assertion."
         (let ((call (car calls)))
           (should (eq (car call) 'nskk-prolog-<-))
           (should (equal (cadr call) '(my-flag active)))))
-      ;; Verify runtime behaviour: both unary facts are queryable after assertion.
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
         (nskk-prolog-set-index 'my-unary-pred 1 :hash)
@@ -1989,15 +1974,12 @@ the database in the same state as before the assertion."
 
     (nskk-it "resolves nil-ambiguity of nskk-prolog-query-one for ground queries"
       (nskk-prolog-test-with-isolated-db
-        ;; Verify the nil-ambiguity of nskk-prolog-query-one for ground queries.
         ;; (converting-phase active) is asserted by nskk-henkan-initialize but
         ;; after nskk-prolog-clear-database it will be absent, so query-one => nil.
         (nskk-prolog-clear-database)
         (should (null (nskk-prolog-query-one '(converting-phase active))))
-        ;; Now add the fact and verify query-one returns t (not a subst, not nil).
         (nskk-prolog-<- (converting-phase active))
         (should (eq t (nskk-prolog-query-one '(converting-phase active))))
-        ;; Crucially: nskk-prolog-query returns a NON-NIL list for a successful
         ;; ground query, resolving the ambiguity that affects nskk-prolog-query-one.
         (let ((result (nskk-prolog-query '(converting-phase active))))
           (should result)

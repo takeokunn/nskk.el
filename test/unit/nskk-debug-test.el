@@ -490,7 +490,6 @@
                    (string-match "second" contents)))))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; PBT-004 — Append format invariant (seeded)

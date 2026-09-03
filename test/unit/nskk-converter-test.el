@@ -796,7 +796,6 @@
       (should (equal got-kana "にゅ")))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 ;; Conversion determinism: same input always produces same output.
 (nskk-property-test conversion-pbt-determinism

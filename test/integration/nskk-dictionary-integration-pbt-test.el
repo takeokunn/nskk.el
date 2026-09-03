@@ -157,7 +157,6 @@
 
 
 ;;;
-;;; Property-Based Tests (nskk-property-test / nskk-deftest-table)
 ;;;
 
 (nskk-property-test dict-lookup-returns-list-or-nil

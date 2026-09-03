@@ -219,7 +219,6 @@
   :body (should-not (funcall (get var 'safe-local-variable) invalid-value)))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; PBT-001 — Integer custom vars accept positive integers (seeded)

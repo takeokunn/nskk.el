@@ -1003,7 +1003,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (nskk-then  (should (string-match-p nskk-henkan-on-marker (buffer-string))))))))
 
 ;;;
-;;; Property-Based Tests
 ;;;
 
 ;; Input never crashes: processing any romaji character in hiragana mode
@@ -1335,13 +1334,10 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (insert "きん")
         (setq nskk--deferred-azik-state (cons ?k "きん"))
         (nskk-convert-input-to-kana ?s)
-        ;; Deferred state must be cleared
         (should (null nskk--deferred-azik-state))
-        ;; Buffer content was not retroactively changed (no っ inserted)
         (should-not (string-match-p "っ" (buffer-string))))))
 
   (nskk-it "state is cleared after vowel correction"
-    ;; After the retroactive correction fires, nskk--deferred-azik-state must be nil.
     (nskk-input-test-with-romaji
       (with-temp-buffer
         (insert "きん")
@@ -1481,9 +1477,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         ;; Simulate that "t" was emitted as a placeholder for ?t
         (insert "t")
         (setq nskk--azik-colon-okuri-deferred (cons ?t "t"))
-        ;; Feed a vowel — should trigger retroactive っ insertion
         (nskk--apply-colon-okuri-correction ?e)
-        ;; The placeholder "t" is deleted and っ is inserted
         (should (string= (buffer-string) "っ")))))
 
   (nskk-it "vowel correction resets romaji buffer to the deferred consonant"
@@ -1562,7 +1556,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   ;; Every printable ASCII char (0x21–0x7E) must produce the +#xFEE0 mapping.
   ;; Char 95 (underscore) is bypassed in Prolog due to the anonymous-var sentinel
   ;; collision (integer 95 == ?_); it is handled directly in Elisp.
-  ;; Test it via nskk-insert-fullwidth-char which covers the Elisp bypass.
   (if (= item 95)
       (with-temp-buffer
         (nskk-insert-fullwidth-char item 1)
@@ -1979,8 +1972,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   (nskk-it "calls nskk-converter-load-style when azik feature is loaded and style is azik"
     (unless (featurep 'nskk-azik)
       (ert-skip "nskk-azik feature not available"))
-    ;; nskk-maybe-load-azik-style is defun/done — it returns nil.
-    ;; Verify the side effect: nskk-converter-load-style is called with 'azik.
     (let* ((called-with nil)
            (nskk-converter-romaji-style 'azik))
       (nskk-with-mocks ((nskk-converter-load-style (lambda (style) (setq called-with style))))
@@ -2014,8 +2005,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (should (fboundp 'nskk--init-input-routing-rules)))
 
   (nskk-it "asserts input-route/2 facts for hiragana mode"
-    ;; After calling nskk-input-initialize (which calls this), the rules are set
-    ;; We can query them since nskk-input is required at the top of the test file
     (should (nskk-prolog-query '(input-route hiragana \?action)))))
 
 (nskk-describe "nskk--init-toggle-rules"
@@ -2366,8 +2355,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
   ;; via the match path (romaji-classify: match > n-consonant priority).
 
   (nskk-it "nj in preedit (▽): AZIK hatsuon match fires (emits ぬん)"
-    ;; Set up: romaji buffer has \"n\", henkan-phase = 'on, AZIK loaded.
-    ;; Typing 'j' fires AZIK rule nj→ぬん via the match path.
     (nskk-prolog-test-with-isolated-db
       (nskk-converter-initialize)
       (nskk-input-initialize)
@@ -2375,7 +2362,6 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (nskk-converter-load-style 'azik)
         (unwind-protect
             (nskk-input-test-with-state 'hiragana
-              ;; Simulate preedit-on by setting henkan-phase to 'on.
               (nskk-state-set-henkan-phase nskk-current-state 'on)
               ;; Prime the romaji buffer with \"n\".
               (cl-letf (((nskk-state-romaji-buffer) "n"))
