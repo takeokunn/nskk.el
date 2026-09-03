@@ -1157,7 +1157,6 @@ Returns t if nskk-mode is active and the current mode is hiragana."
          (explanation (plist-get lesson :explanation))
          (exercises (plist-get lesson :exercises))
          (inhibit-read-only t))
-    ;; Clear buffer
     (erase-buffer)
     (setq nskk-tutorial--exercise-markers nil
           nskk-tutorial--result-markers nil

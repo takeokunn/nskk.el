@@ -115,13 +115,9 @@ buffer.  This allows multiple chaos scenarios to run inside one
   ;; Cancel active conversion and preedit (two C-g to handle double nesting)
   (condition-case nil (nskk-e2e--dispatch-event 7) (error nil) (quit nil)) ; C-g
   (condition-case nil (nskk-e2e--dispatch-event 7) (error nil) (quit nil)) ; C-g again
-  ;; Switch to hiragana mode
   (condition-case nil (nskk-e2e--dispatch-event ?\C-j) (error nil) (quit nil))
-  ;; Wipe buffer content
   (erase-buffer)
-  ;; Clear any partial romaji
   (nskk-state-set-romaji-buffer "")
-  ;; Clear all AZIK deferred states
   (when (fboundp 'nskk-deferred-azik-state)
     (nskk-set-deferred-azik-state nil))
   (when (fboundp 'nskk-deferred-vowel-shadow-state)
