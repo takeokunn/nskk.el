@@ -388,12 +388,10 @@
     (let ((cache (nskk-cache-lfu-create nskk--test-default-cache-capacity)))
       (nskk-given
        (nskk-cache-lfu-put cache "key1" "value1")
-       ;; Put same key again → frequency should be 2 before any get
        (nskk-cache-lfu-put cache "key1" "value2"))
       (nskk-then
        (let* ((entry (gethash "key1" (nskk-cache-lfu-hash cache)))
               (freq  (nskk-cache-lfu-entry-frequency entry)))
-         ;; After initial put (freq=1) + update put (freq=2)
          (should (= freq 2)))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
@@ -920,8 +918,6 @@
        (lambda (v) (setq found-val v))
        (lambda () (setq found-val :miss)))
       (should (null found-val))
-      ;; Verify the found-val was set by on-found, not left as sentinel
-      ;; by checking on-not-found was never called via side effect
       (should (not (eq found-val :sentinel)))))
 
   (nskk-it "calls on-not-found for a genuine cache miss"

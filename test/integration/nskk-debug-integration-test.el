@@ -131,7 +131,6 @@
 (nskk-describe "nskk-debug-toggle state transitions"
 
   ;; Cases B: (INITIAL-VALUE . EXPECTED-AFTER-TOGGLE)
-  ;; After one `nskk-debug-toggle' call the flag must equal `expected'.
 
   (nskk-deftest-table debug-toggle-transitions
     :description "nskk-debug-toggle transitions between enabled states"

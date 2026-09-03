@@ -483,7 +483,6 @@
     ;;   (nskk-converter-add-rule "-" "ー")
     ;; It applies in both hiragana and katakana mode (the converter does not
     ;; distinguish modes; katakana conversion uppercases the result).
-    ;; We test in katakana mode as that is the primary use case.
     (nskk-e2e-with-buffer 'katakana nil
       (nskk-e2e-type "-")
       (nskk-e2e-assert-buffer "ー"

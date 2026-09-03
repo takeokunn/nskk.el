@@ -130,11 +130,9 @@
                (valid-modes '(ascii hiragana katakana latin abbrev)))
           (nskk-state-set state 'input-buffer "initial")
           (nskk-state-set state 'candidates '("a" "b"))
-          ;; Perform rapid mode switches
           (dotimes (_ num-switches)
             (let ((new-mode (nskk--pbt-random-choice valid-modes)))
               (nskk-state-set state 'mode new-mode)))
-          ;; After all switches, verify state consistency
           (let ((final-mode (nskk-state-mode state))
                 (prev-mode (nskk-state-previous-mode state))
                 (input (nskk-state-input-buffer state))
@@ -170,7 +168,6 @@
           (nskk-state-set state 'candidates '("a" "b" "c"))
           (nskk-state-set state 'current-index 1)
           (nskk-state-set state 'henkan-position 3)
-          ;; Attempt invalid operation (should error)
           (condition-case _err
               (nskk-state-set state 'mode 'invalid-mode-xyz)
             (error nil))
@@ -205,7 +202,6 @@
       (dotimes (_ runs)
         (let* ((state (nskk-state-create 'hiragana))
                (ops (nskk--pbt-random-int 5 15)))
-          ;; Mix of valid and invalid operations
           (dotimes (_ ops)
             (let ((op (nskk--pbt-random-int 0 5)))
               (condition-case _err
@@ -226,7 +222,6 @@
                     (5 ;; Valid reset
                      (nskk-state-reset state)))
                 (error nil))))
-          ;; After all operations, state should still be valid
           (unless (and (nskk-state-p state)
                        (nskk-state-valid-mode-p (nskk-state-mode state))
                        (stringp (nskk-state-input-buffer state))
@@ -255,7 +250,6 @@
   (let* ((state (nskk-state-create mode))
          (invalid-mode (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
     (nskk-state-set state 'input-buffer "test-input")
-    ;; Attempt invalid mode assignment; expect an error that leaves state intact
     (let ((error-raised nil))
       (condition-case _err
           (nskk-state-set state 'mode invalid-mode)
@@ -283,11 +277,9 @@
   (let* ((state (nskk-state-create 'hiragana))
          (valid-modes '(ascii hiragana katakana latin abbrev))
          (failures nil))
-    ;; Perform 200 rapid mode switches
     (dotimes (_ 200)
       (let ((new-mode (nskk--pbt-random-choice valid-modes)))
         (nskk-state-set state 'mode new-mode)))
-    ;; Verify every structural invariant
     (unless (and (nskk-state-p state)
                  (nskk-state-valid-mode-p (nskk-state-mode state))
                  (nskk-state-valid-mode-p (nskk-state-previous-mode state))
@@ -308,7 +300,6 @@
 (nskk-property-test-seeded state-recovery-after-phase-reset
   ((phase converting-phase))
   (let* ((state (nskk-state-create 'hiragana)))
-    ;; Force state into a converting phase bypassing transition validation
     (nskk-state-force-henkan-phase state phase)
     (nskk-state-set-henkan-phase state nil)
     (and (null (nskk-state-henkan-phase state))
@@ -325,7 +316,6 @@
   (let* ((candidates (plist-get pair :candidates))
          (index (plist-get pair :index))
          (state (nskk-state-create 'hiragana)))
-    ;; Set up non-empty candidates and a valid index
     (nskk-state-set-candidates state candidates)
     (nskk-state-set state 'current-index index)
     (nskk-state-set state 'candidates nil)

@@ -1989,7 +1989,6 @@
               (puthash "ka"  "か"   (nskk-romaji-table))
               (puthash "kab" "かあ" (nskk-romaji-table))
               (nskk--azik-init-key-extend-facts)
-              ;; Must yield exactly 1 solution for ("k", ?a), not 2.
               (should (= 1 (length (nskk-prolog-query
                                     `(azik-key-extends "k" ,?a))))))
           (clrhash (nskk-romaji-table))

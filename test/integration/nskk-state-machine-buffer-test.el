@@ -446,7 +446,6 @@
 (nskk-property-test-with-shrinking buffer-string-never-nil
   ((mode valid-mode))
   (let ((state (nskk-state-create mode)))
-    ;; Perform random ops
     (dotimes (_ 10)
       (let ((op (nskk--pbt-random-int 0 3)))
         (pcase op

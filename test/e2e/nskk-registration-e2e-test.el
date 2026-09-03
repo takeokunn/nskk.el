@@ -223,7 +223,6 @@
   (nskk-it "increments depth during registration and decrements on exit"
     ;; nskk-start-registration increments the registration depth after entering
     ;; the guard, then decrements it in unwind-protect.
-    ;; We verify the net effect: depth returns to its value before the call.
     (nskk-e2e-with-buffer 'hiragana nil
       (cl-letf (((symbol-function 'read-from-minibuffer)
                  (lambda (&rest _) "テスト")))

@@ -274,7 +274,6 @@
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-converting)
       (nskk-e2e-type "C-g")
-      ;; Must revert to preedit-on, not skip straight to idle
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-assert-not-converting)))
 
@@ -488,7 +487,6 @@
       (nskk-e2e-assert-converting)
       ;; q with empty romaji-buffer: commits 蚊 and fires nskk-handle-q-key.
       (nskk-e2e-type "q")
-      ;; Must no longer be converting after commit.
       (nskk-e2e-assert-not-converting))))
 
 ;;;

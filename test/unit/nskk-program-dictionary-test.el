@@ -1396,15 +1396,12 @@
 
   (nskk-context "error handling"
     (nskk-it "returns a non-nil list for expressions calc-eval can represent symbolically"
-      ;; calc-eval returns a string (symbolic expression) for some non-numeric inputs
       (let ((result (nskk--program-dict-calculate "=not-a-number")))
-        ;; Should return a list with a string, not signal an error
         (when result
           (should (listp result))
           (should (stringp (car result))))))
 
     (nskk-it "does not signal an error for any expression"
-      ;; Must not propagate errors to callers regardless of input
       (should-not (condition-case _
                       (progn (nskk--program-dict-calculate "=???") nil)
                     (error t))))

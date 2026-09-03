@@ -203,7 +203,6 @@
   (let* ((state (nskk--pbt-make-conversion-state))
          (original-input (nskk-state-input-buffer state))
          (ops (nskk--pbt-random-int 3 8)))
-    ;; Perform random sequence of conversion operations
     (dotimes (_ ops)
       (let ((op (nskk--pbt-random-int 0 2)))
         (pcase op
@@ -253,7 +252,6 @@
     (nskk-state-set state 'input-buffer hiragana-input)
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-commit-conversion state)
-    ;; After commit, converted-buffer must be a non-empty string
     (let ((converted (nskk-state-converted-buffer state)))
       (and (stringp converted)
            (not (string-empty-p converted)))))

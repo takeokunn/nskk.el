@@ -673,7 +673,6 @@
         (nskk-converter-load-style 'test-define-clean-style)
         (should (nskk-converter-get-rule "qq"))
         (nskk-converter-load-style 'standard)
-        ;; After loading standard, "qq" should be gone
         (should-not (nskk-converter-get-rule "qq"))))))
 
 (nskk-describe "internal conversion"
@@ -1154,7 +1153,6 @@
 ;;;
 (nskk-describe "nskk--converter-populate-incomplete-markers"
   (nskk-it "marks romaji prefixes as :incomplete in the conversion table"
-    ;; After initialization, prefixes like \"k\", \"sh\", \"ts\" must be :incomplete.
     ;; These are auto-derived from complete entries like \"ka\" -> \"か\".
     (should (eq (nskk-converter-lookup "k") :incomplete))
     (should (eq (nskk-converter-lookup "sh") :incomplete))

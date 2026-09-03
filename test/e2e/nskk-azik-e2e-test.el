@@ -1197,7 +1197,6 @@
 
   (nskk-it "OkuR + SPC triggers okurigana conversion showing 送"
     ;; SPC pressed with pending consonant R (no vowel typed yet).
-    ;; Must trigger okurigana conversion using pending "r" as okuri-char.
     (let ((dict '(("おくr" . ("送" "贈")))))
       (nskk-e2e-with-azik-buffer 'hiragana dict
         (nskk-e2e-type "Oku")

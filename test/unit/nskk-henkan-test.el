@@ -1993,7 +1993,6 @@
             
         (insert "▼test")
         (goto-char (point-max))
-        ;; Should not error when on-done is nil
         (should (progn (nskk--insert-registered-and-reset "result" 1 nil) t)))
         (nskk-state-set-conversion-overlay nskk-test-saved-conversion-overlay)
         (nskk-state-set-pending-romaji-overlay nskk-test-saved-pending-romaji-overlay)
@@ -2515,7 +2514,6 @@
 
   (nskk-it "returns user-dict entries before system-dict entries"
     (nskk-prolog-test-with-isolated-db
-      ;; Set up trie indexes for both dictionaries
       (nskk-prolog-set-index 'user-dict-entry 2 :trie)
       (nskk-prolog-set-index 'system-dict-entry 2 :trie)
       ;; Assert system-dict entries
@@ -4492,9 +4490,6 @@
       )))
 
   (nskk-it "3b: dict-register-word then core-search/k returns registered word"
-    ;; This test uses a real isolated Prolog DB to verify the full dict round-
-    ;; trip: register a word, then query it back via nskk-core-search/k.
-    ;; It relies on nskk-prolog-test-with-isolated-db to scope DB changes.
     (nskk-prolog-test-with-isolated-db
       ;; Reset all initialized flags so nskk-mode reinitialises cleanly.
       (let ((nskk--input-initialized nil)
@@ -4525,9 +4520,6 @@
   ;;   nskk-property-test-exhaustive okurigana-all-uppercase-map-to-downcase
   ;;   nskk-property-test-exhaustive detect-okurigana-char-lowercase-pbt
   ;;   nskk-deftest-table okurigana-consonant-mapping
-  ;; Digit coverage is provided by the "returns nil for digits" test in
-  ;; the nskk-detect-okurigana-char nskk-describe block above.
-  ;; This section covers boundary/non-character edge cases only.
   (nskk-context "uppercase boundary detection"
     (nskk-it "maps uppercase A to lowercase a"
       (should (equal (nskk-detect-okurigana-char ?A) ?a)))

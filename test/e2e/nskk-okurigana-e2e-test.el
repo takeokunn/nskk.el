@@ -488,7 +488,6 @@
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "X")
         (nskk-e2e-type "H")
-        ;; Must NOT contain ▽ immediately followed by * (empty reading okurigana)
         (should-not (string-match-p (regexp-quote (concat nskk-henkan-on-marker nskk-okurigana-marker))
                                     (buffer-string))))))
 
@@ -499,7 +498,6 @@
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "X")
         (nskk-e2e-type "a")
-        ;; Must NOT contain okurigana marker at all
         (should-not (string-match-p (regexp-quote nskk-okurigana-marker)
                                     (buffer-string))))))
 
@@ -940,9 +938,6 @@
 ;;   Hiragana: "Ka"+"K"+"u" → dict key "かk" → 書く  (hiragana okurigana)
 ;;   Katakana: "Ka"+"K"+"u" → dict key "カk" → 書ク  (katakana okurigana)
 ;;
-;; This section verifies that okurigana conversion functions correctly in
-;; katakana mode and that both the reading lookup key and the appended kana
-;; suffix use katakana.
 ;;
 
 (nskk-describe "katakana mode okurigana (extended)"
@@ -997,8 +992,6 @@
   (nskk-it "katakana mode okurigana result differs from hiragana mode"
     ;; The same key sequence KaKu produces 書ク (katakana) in katakana mode
     ;; versus 書く (hiragana) in hiragana mode.
-    ;; This test asserts the katakana-mode result directly and verifies that
-    ;; the output is NOT the hiragana-mode output.
     (let ((dict '(("カk" . ("書")))))
       (nskk-e2e-with-buffer 'katakana dict
         (nskk-e2e-type "Ka")
@@ -1213,7 +1206,6 @@
   ;; In a test buffer with nskk-mode, okurigana pattern input should not crash
   (condition-case nil
       (nskk-with-test-buffer 'hiragana
-        ;; Just verify the buffer environment is set up
         (should (nskk-state-p nskk-current-state))
         t)
     (error nil))
@@ -1441,7 +1433,6 @@
         (nskk-e2e-assert-overlay-shows "推")
         ;; Simulate post-command-hook firing (real command loop does this)
         (nskk--post-command-handler)
-        ;; Must still be in converting state — NOT auto-committed
         (nskk-e2e-assert-converting)
         (nskk-e2e-assert-overlay-shows "推"))))
 
@@ -1476,7 +1467,6 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-assert-overlay-shows "書")
         (nskk--post-command-handler)
-        ;; Must still be converting — NOT auto-committed
         (nskk-e2e-assert-converting)
         (nskk-e2e-assert-overlay-shows "書"))))
 

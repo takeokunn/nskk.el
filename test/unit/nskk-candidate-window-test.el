@@ -106,8 +106,6 @@
 ;;;
 
 (nskk-describe "custom group"
-  ;; The nskk-candidate-window group is defined in nskk-custom.el.
-  ;; This test verifies the dependency chain is correctly established.
   (nskk-it "nskk-candidate-window custom group exists"
     (should (get 'nskk-candidate-window 'custom-group))))
 
@@ -426,7 +424,6 @@
     (should (progn (nskk--candidate-init-key-facts) t)))
 
   (nskk-it "results in candidate-selection-key/2 facts queryable by position"
-    ;; After initialization, we can query the position of key 'a' (first key).
     (let ((pos (nskk-prolog-query-value
                 `(candidate-selection-key
                   ,(car nskk-henkan-show-candidates-keys)

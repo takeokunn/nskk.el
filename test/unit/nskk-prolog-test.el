@@ -2059,7 +2059,6 @@ the database in the same state as before the assertion."
     ;; Assert the fact, then retract it once.
     (nskk-prolog-assert (list (list 'nskk--prolog-pbt-test-pred-idm key)))
     (nskk-prolog-retract-all 'nskk--prolog-pbt-test-pred-idm 1)
-    ;; After retract, query must return nothing.
     (let ((after-first (nskk-prolog-query
                         (list 'nskk--prolog-pbt-test-pred-idm key))))
       ;; Second retract-all must not error.

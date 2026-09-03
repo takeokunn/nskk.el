@@ -212,7 +212,6 @@
   (nskk-it "query returns nil for a non-registered mode"
     (nskk-with-state 'hiragana
       ;; Temporarily set state to a non-registered mode struct by mutating mode slot
-      ;; We test the fallback via nskk-prolog-query-value returning nil for an unknown mode.
       (let ((result (nskk-prolog-query-value
                      `(mode-properties nonexistent-mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?s)))
         ;; mode-properties/5 has no fact for nonexistent-mode — query returns nil
