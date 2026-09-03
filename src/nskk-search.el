@@ -131,11 +131,11 @@ observers.  A `quit' condition is deliberately allowed to escape unchanged."
                    label (error-message-string err))))
        nil)))
 
-  (defun nskk--search-run-post-hook ()
-    "Fire `nskk-search-jisyo-hook' after a successful search.
+(defun nskk--search-run-post-hook ()
+  "Fire `nskk-search-jisyo-hook' after a successful search.
 Ordinary hook errors are reported per function; `quit' propagates unchanged."
-    (nskk--search-run-notification-hook
-     'nskk-search-jisyo-hook "search-jisyo-hook"))
+  (nskk--search-run-notification-hook
+   'nskk-search-jisyo-hook "search-jisyo-hook"))
 
 (defun/k nskk-search (index query &optional search-type okuri-type limit)
   "Search dictionary INDEX for QUERY.
@@ -390,7 +390,7 @@ Use two banded rows and reject impossible length differences before allocation."
                     current swap)))
           (min sentinel (aref previous len-b)))))))
 
-  (defun nskk--search-levenshtein-distance (s1 s2)
+(defun nskk--search-levenshtein-distance (s1 s2)
   "Compute the exact Levenshtein distance between S1 and S2 with two rows."
   (let* ((a
           (if (< (length s1) (length s2)) s2
@@ -430,7 +430,7 @@ Use two banded rows and reject impossible length differences before allocation."
         nskk-search-sort-method
       'none))
 
-  (defun nskk--search-top-results (results limit)
+(defun nskk--search-top-results (results limit)
   "Return the best LIMIT RESULTS in stable full-sort order."
   (let ((method (nskk--search-effective-sort-method)))
     (if (eq method 'none)
@@ -438,84 +438,84 @@ Use two banded rows and reject impossible length differences before allocation."
       (let ((heap (make-vector limit nil))
             (size 0))
         (cl-labels
-            ((candidate-better-p
-              (key index ranked)
-              (let ((right-key (aref ranked 0))
-                    (right-index (aref ranked 1)))
-                (pcase method
-                  ('frequency
-                   (or (> key right-key)
-                       (and (= key right-key)
-                            (< index right-index))))
-                  ('kana
-                   (or (string< key right-key)
-                       (and (string= key right-key)
-                            (< index right-index)))))))
-             (better-p
-              (left right)
-              (candidate-better-p (aref left 0) (aref left 1) right))
-             (worse-p (left right) (better-p right left))
-             (swap (left right)
-               (let ((value (aref heap left)))
-                 (aset heap left (aref heap right))
-                 (aset heap right value)))
-             (sift-up
-              (position)
-              (while (> position 0)
-                (let ((parent (/ (1- position) 2)))
-                  (if (worse-p (aref heap position) (aref heap parent))
-                      (progn
-                        (swap position parent)
-                        (setq position parent))
-                    (setq position 0)))))
-             (sift-down
-              (position)
-              (let ((continue t))
-                (while continue
-                  (let ((left (1+ (* 2 position))))
-                    (if (>= left size)
-                        (setq continue nil)
-                      (let* ((right (1+ left))
-                             (worst
-                              (if (and (< right size)
-                                       (worse-p (aref heap right)
-                                                (aref heap left)))
-                                  right
-                                left)))
-                        (if (worse-p (aref heap worst)
-                                     (aref heap position))
-                            (progn
-                              (swap position worst)
-                              (setq position worst))
-                          (setq continue nil)))))))))
-          ;; Keep the worst retained result at the root for O(log LIMIT) replacement.
-          (cl-loop
-           for result in results
-           for index from 0
-           for key = (if (eq method 'frequency)
-                         (nskk--search-reading-score (car result) (cdr result))
-                       (car result))
-           do
-           (if (< size limit)
-               (progn
-                 (aset heap size (vector key index result))
-                 (sift-up size)
-                 (cl-incf size))
-             (when (candidate-better-p key index (aref heap 0))
-               (aset heap 0 (vector key index result))
-               (sift-down 0))))
-          (let (selected)
-            (dotimes (index size)
-              (push (aref heap index) selected))
-            (mapcar (lambda (ranked) (aref ranked 2))
-                    (sort selected #'better-p))))))))
+         ((candidate-better-p
+           (key index ranked)
+           (let ((right-key (aref ranked 0))
+                 (right-index (aref ranked 1)))
+             (pcase method
+                    ('frequency
+                     (or (> key right-key)
+                         (and (= key right-key)
+                              (< index right-index))))
+                    ('kana
+                     (or (string< key right-key)
+                         (and (string= key right-key)
+                              (< index right-index)))))))
+          (better-p
+           (left right)
+           (candidate-better-p (aref left 0) (aref left 1) right))
+          (worse-p (left right) (better-p right left))
+          (swap (left right)
+                (let ((value (aref heap left)))
+                  (aset heap left (aref heap right))
+                  (aset heap right value)))
+          (sift-up
+           (position)
+           (while (> position 0)
+             (let ((parent (/ (1- position) 2)))
+               (if (worse-p (aref heap position) (aref heap parent))
+                   (progn
+                     (swap position parent)
+                     (setq position parent))
+                 (setq position 0)))))
+          (sift-down
+           (position)
+           (let ((continue t))
+             (while continue
+               (let ((left (1+ (* 2 position))))
+                 (if (>= left size)
+                     (setq continue nil)
+                   (let* ((right (1+ left))
+                          (worst
+                           (if (and (< right size)
+                                    (worse-p (aref heap right)
+                                             (aref heap left)))
+                               right
+                             left)))
+                     (if (worse-p (aref heap worst)
+                                  (aref heap position))
+                         (progn
+                           (swap position worst)
+                           (setq position worst))
+                       (setq continue nil)))))))))
+         ;; Keep the worst retained result at the root for O(log LIMIT) replacement.
+         (cl-loop
+          for result in results
+          for index from 0
+          for key = (if (eq method 'frequency)
+                        (nskk--search-reading-score (car result) (cdr result))
+                      (car result))
+          do
+          (if (< size limit)
+              (progn
+                (aset heap size (vector key index result))
+                (sift-up size)
+                (cl-incf size))
+            (when (candidate-better-p key index (aref heap 0))
+              (aset heap 0 (vector key index result))
+              (sift-down 0))))
+         (let (selected)
+           (dotimes (index size)
+             (push (aref heap index) selected))
+           (mapcar (lambda (ranked) (aref ranked 2))
+                   (sort selected #'better-p))))))))
 
-  (defun/k nskk--search-sort-results (results)
-    "Sort search RESULTS according to the configured method."
-    (pcase (nskk--search-effective-sort-method)
-      ('frequency (succeed (nskk--search-sort-prefix-results results)))
-      ('kana      (succeed (nskk-search-sort-by-kana-order results)))
-      (_          (succeed results))))
+(defun/k nskk--search-sort-results (results)
+         "Sort search RESULTS according to the configured method."
+         (pcase (nskk--search-effective-sort-method)
+                ('frequency (succeed (nskk--search-sort-prefix-results results)))
+                ('kana      (succeed (nskk-search-sort-by-kana-order results)))
+                (_          (succeed results))))
 
 (defun nskk-search-sort-by-kana-order (results)
   "Sort RESULTS in Japanese kana order."
@@ -591,90 +591,90 @@ cost of a stale hit."
 (add-hook 'nskk-jisyo-update-hook #'nskk--search-flush-caches)
   (add-hook 'nskk-dict-initialize-hook #'nskk--search-flush-caches)
 
-  (defun nskk--search-hash-table-snapshot (table)
-    "Return TABLE and its exact key/value entries for rollback."
-    (let (entries)
-      (maphash (lambda (key value)
-                 (push (cons key value) entries))
-               table)
-      (cons table entries)))
+(defun nskk--search-hash-table-snapshot (table)
+  "Return TABLE and its exact key/value entries for rollback."
+  (let (entries)
+    (maphash (lambda (key value)
+               (push (cons key value) entries))
+             table)
+    (cons table entries)))
 
-  (defun nskk--search-restore-hash-table-snapshot (snapshot)
-    "Restore the hash table recorded in SNAPSHOT in place."
-    (let ((table (car snapshot)))
-      (clrhash table)
-      (dolist (entry (cdr snapshot))
-        (puthash (car entry) (cdr entry) table))))
+(defun nskk--search-restore-hash-table-snapshot (snapshot)
+  "Restore the hash table recorded in SNAPSHOT in place."
+  (let ((table (car snapshot)))
+    (clrhash table)
+    (dolist (entry (cdr snapshot))
+      (puthash (car entry) (cdr entry) table))))
 
-  (defun nskk--search-cache-snapshot (cache)
-    "Return an exact rollback snapshot for CACHE."
-    (cond
-     ((nskk-cache-lru-p cache)
-      (let ((head (nskk-cache-lru-head cache))
-            (tail (nskk-cache-lru-tail cache)))
-        (vector 'lru
-                cache
-                (nskk-cache-lru-capacity cache)
-                (nskk-cache-lru-size cache)
-                (nskk--search-hash-table-snapshot
-                 (nskk-cache-lru-hash cache))
-                head
-                tail
-                (nskk-cache-lru-node-next head)
-                (nskk-cache-lru-node-prev tail)
-                (nskk-cache-lru-hits cache)
-                (nskk-cache-lru-misses cache))))
-     ((nskk-cache-lfu-p cache)
-      (vector 'lfu
+(defun nskk--search-cache-snapshot (cache)
+  "Return an exact rollback snapshot for CACHE."
+  (cond
+   ((nskk-cache-lru-p cache)
+    (let ((head (nskk-cache-lru-head cache))
+          (tail (nskk-cache-lru-tail cache)))
+      (vector 'lru
               cache
-              (nskk-cache-lfu-capacity cache)
-              (nskk-cache-lfu-size cache)
+              (nskk-cache-lru-capacity cache)
+              (nskk-cache-lru-size cache)
               (nskk--search-hash-table-snapshot
-               (nskk-cache-lfu-hash cache))
-              (nskk--search-hash-table-snapshot
-               (nskk-cache-lfu-freq cache))
-              (nskk-cache-lfu-min-freq cache)
-              (nskk-cache-lfu-hits cache)
-              (nskk-cache-lfu-misses cache)))))
+               (nskk-cache-lru-hash cache))
+              head
+              tail
+              (nskk-cache-lru-node-next head)
+              (nskk-cache-lru-node-prev tail)
+              (nskk-cache-lru-hits cache)
+              (nskk-cache-lru-misses cache))))
+   ((nskk-cache-lfu-p cache)
+    (vector 'lfu
+            cache
+            (nskk-cache-lfu-capacity cache)
+            (nskk-cache-lfu-size cache)
+            (nskk--search-hash-table-snapshot
+             (nskk-cache-lfu-hash cache))
+            (nskk--search-hash-table-snapshot
+             (nskk-cache-lfu-freq cache))
+            (nskk-cache-lfu-min-freq cache)
+            (nskk-cache-lfu-hits cache)
+            (nskk-cache-lfu-misses cache)))))
 
-  (defun nskk-search-restore-cache-snapshot (snapshot)
-    "Restore CACHE state recorded in SNAPSHOT in place."
-    (pcase (aref snapshot 0)
-      ('lru
-       (let ((cache (aref snapshot 1))
-             (head (aref snapshot 5))
-             (tail (aref snapshot 6)))
-         (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
-         (setf (nskk-cache-lru-capacity cache) (aref snapshot 2)
-               (nskk-cache-lru-size cache) (aref snapshot 3)
-               (nskk-cache-lru-hash cache) (car (aref snapshot 4))
-               (nskk-cache-lru-head cache) head
-               (nskk-cache-lru-tail cache) tail
-               (nskk-cache-lru-node-next head) (aref snapshot 7)
-               (nskk-cache-lru-node-prev tail) (aref snapshot 8)
-               (nskk-cache-lru-hits cache) (aref snapshot 9)
-               (nskk-cache-lru-misses cache) (aref snapshot 10))))
-      ('lfu
-       (let ((cache (aref snapshot 1)))
-         (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
-         (nskk--search-restore-hash-table-snapshot (aref snapshot 5))
-         (setf (nskk-cache-lfu-capacity cache) (aref snapshot 2)
-               (nskk-cache-lfu-size cache) (aref snapshot 3)
-               (nskk-cache-lfu-hash cache) (car (aref snapshot 4))
-               (nskk-cache-lfu-freq cache) (car (aref snapshot 5))
-               (nskk-cache-lfu-min-freq cache) (aref snapshot 6)
-               (nskk-cache-lfu-hits cache) (aref snapshot 7)
-               (nskk-cache-lfu-misses cache) (aref snapshot 8))))))
+(defun nskk-search-restore-cache-snapshot (snapshot)
+  "Restore CACHE state recorded in SNAPSHOT in place."
+  (pcase (aref snapshot 0)
+         ('lru
+          (let ((cache (aref snapshot 1))
+                (head (aref snapshot 5))
+                (tail (aref snapshot 6)))
+            (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
+            (setf (nskk-cache-lru-capacity cache) (aref snapshot 2)
+                  (nskk-cache-lru-size cache) (aref snapshot 3)
+                  (nskk-cache-lru-hash cache) (car (aref snapshot 4))
+                  (nskk-cache-lru-head cache) head
+                  (nskk-cache-lru-tail cache) tail
+                  (nskk-cache-lru-node-next head) (aref snapshot 7)
+                  (nskk-cache-lru-node-prev tail) (aref snapshot 8)
+                  (nskk-cache-lru-hits cache) (aref snapshot 9)
+                  (nskk-cache-lru-misses cache) (aref snapshot 10))))
+         ('lfu
+          (let ((cache (aref snapshot 1)))
+            (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
+            (nskk--search-restore-hash-table-snapshot (aref snapshot 5))
+            (setf (nskk-cache-lfu-capacity cache) (aref snapshot 2)
+                  (nskk-cache-lfu-size cache) (aref snapshot 3)
+                  (nskk-cache-lfu-hash cache) (car (aref snapshot 4))
+                  (nskk-cache-lfu-freq cache) (car (aref snapshot 5))
+                  (nskk-cache-lfu-min-freq cache) (aref snapshot 6)
+                  (nskk-cache-lfu-hits cache) (aref snapshot 7)
+                  (nskk-cache-lfu-misses cache) (aref snapshot 8))))))
 
-  (defun nskk-search-cache-snapshots ()
-    "Snapshot every registered search cache for transactional rollback."
-    (let (snapshots)
-      (maphash (lambda (cache _)
-                 (when-let* ((snapshot
-                              (nskk--search-cache-snapshot cache)))
-                   (push snapshot snapshots)))
-               nskk--search-registered-caches)
-      snapshots))
+(defun nskk-search-cache-snapshots ()
+  "Snapshot every registered search cache for transactional rollback."
+  (let (snapshots)
+    (maphash (lambda (cache _)
+               (when-let* ((snapshot
+                            (nskk--search-cache-snapshot cache)))
+                          (push snapshot snapshots)))
+             nskk--search-registered-caches)
+    snapshots))
 
 ;;; Learning data management
 
@@ -892,27 +892,27 @@ is cycle-safe and includes string text-property values."
                   (setq index (1+ index)))))))))
       (nskk-prolog-copy-term value)))
 
-  (defun/k nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
-    "Search INDEX for QUERY using CACHE for result caching.
+(defun/k nskk-search-with-cache (cache index query &optional search-type okuri-type limit)
+         "Search INDEX for QUERY using CACHE for result caching.
 Returns the cached or fresh result via ON-FOUND when candidates exist,
 or calls ON-NOT-FOUND when no candidates are found.
 SEARCH-TYPE, OKURI-TYPE, and LIMIT are passed to the underlying search on
 cache miss.  The sync wrapper returns the same value shape.
 
 The jisyo hook fires on cache misses, but does not fire on cache hits."
-    (unless (nskk-cache-p cache)
-      (signal (quote wrong-type-argument) (list (quote nskk-cache-p) cache)))
-    (nskk--search-register-cache cache)
-    (let ((cache-key (nskk--search-cache-key index query search-type okuri-type limit)))
-      (<-or cached nskk-cache-get-prepared cache cache-key
-            (function nskk--search-copy-cache-value)
-        :found (progn
-                 (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
-                 (succeed cached))
-        :fail (progn
-                (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
-                (<-seq [result (nskk-search index query search-type okuri-type limit)]
-                  (let* ((canonical-result (nskk--search-copy-cache-value result)) (public-result (nskk--search-copy-cache-value canonical-result))) (nskk-cache-put cache cache-key canonical-result) (succeed public-result)))))))
+         (unless (nskk-cache-p cache)
+           (signal (quote wrong-type-argument) (list (quote nskk-cache-p) cache)))
+         (nskk--search-register-cache cache)
+         (let ((cache-key (nskk--search-cache-key index query search-type okuri-type limit)))
+           (<-or cached nskk-cache-get-prepared cache cache-key
+                 (function nskk--search-copy-cache-value)
+                 :found (progn
+                          (nskk-debug-log "[SEARCH] cache-hit: key=%s" cache-key)
+                          (succeed cached))
+                 :fail (progn
+                         (nskk-debug-log "[SEARCH] cache-miss: key=%s" cache-key)
+                         (<-seq [result (nskk-search index query search-type okuri-type limit)]
+                                (let* ((canonical-result (nskk--search-copy-cache-value result)) (public-result (nskk--search-copy-cache-value canonical-result))) (nskk-cache-put cache cache-key canonical-result) (succeed public-result)))))))
 
 (provide 'nskk-search)
 
