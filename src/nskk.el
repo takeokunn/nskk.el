@@ -107,13 +107,13 @@
                 nskk-mode
                 (and (boundp 'local-minor-modes)
                      (memq 'nskk-mode local-minor-modes))))
-    (set (make-local-variable 'nskk-mode) value))
+    (setq-local nskk-mode value))
 
   (defun nskk--restore-mode-set-snapshot ()
     "Restore the state captured by `nskk--set-mode-state'."
     (let ((snapshot nskk--mode-set-snapshot))
       (if (nth 0 snapshot)
-          (set (make-local-variable 'nskk-mode) (nth 1 snapshot))
+          (setq-local nskk-mode (nth 1 snapshot))
         (kill-local-variable 'nskk-mode))
       (when (boundp 'local-minor-modes)
         (if (nth 2 snapshot)
