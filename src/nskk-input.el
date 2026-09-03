@@ -1036,6 +1036,33 @@ emitting ん and leaving the consonant pending.  Also clears
     ;; no-match: fallback
     (no-match       \?doubled      no-result)))
 
+(defun nskk--romaji-classify-cached-query (key query variable fallback)
+  "Return the cached Prolog QUERY result for KEY, or FALLBACK."
+  (or (gethash key nskk--romaji-classify-cache)
+      (let ((value (or (nskk-prolog-query-value query variable) fallback)))
+        (puthash key value nskk--romaji-classify-cache)
+        value)))
+(defun nskk--romaji-doubled-context (char last-buf-char result-type)
+  "Return the doubled-input context for CHAR and LAST-BUF-CHAR."
+  (let* ((last-is-n (eql last-buf-char ?n))
+         (char-is-n (eql char ?n))
+         (same-ok (and (eql last-buf-char char)
+                       (not (nskk-prolog-holds-p `(sokuon-blocker ,char)))
+                       (not (eq (nskk-converter-lookup
+                                 (string last-buf-char char))
+                                :incomplete))))
+         (n-ok (and last-is-n
+                    (not (nskk-prolog-holds-p `(hatsuon-blocker ,char)))
+                    (not (eq (nskk-converter-lookup (string ?n char))
+                             :incomplete))))
+         (values (mapcar #'nskk--bool-sym
+                         (list last-is-n char-is-n same-ok n-ok)))
+         (key (cons 'doubled-context (append values (list result-type)))))
+    (nskk--romaji-classify-cached-query
+     key
+     `(doubled-context ,'\?de ,@values ,result-type)
+     '\?de
+     'not-eligible)))
 (defun nskk--classify-romaji-input (char last-buf-char result)
   "Classify romaji input into a dispatch state symbol.
 CHAR is the new input character (integer).
@@ -1052,48 +1079,14 @@ Two-stage Prolog dispatch:
 Both finite dispatches are memoized in `nskk--romaji-classify-cache'.
 The cache is cleared whenever the classification rules are reasserted."
   (let* ((result-type (nskk--romaji-result-type result))
-         (last-is-n (eql last-buf-char ?n))
-         (char-is-n (eql char ?n))
-         (same-ok (and (eql last-buf-char char)
-                       (not (nskk-prolog-holds-p `(sokuon-blocker ,char)))
-                       (not (eq (nskk-converter-lookup
-                                 (string last-buf-char char))
-                                :incomplete))))
-         (n-ok (and last-is-n
-                    (not (nskk-prolog-holds-p `(hatsuon-blocker ,char)))
-                    (not (eq (nskk-converter-lookup (string ?n char))
-                             :incomplete))))
-         (last-is-n-sym (nskk--bool-sym last-is-n))
-         (char-is-n-sym (nskk--bool-sym char-is-n))
-         (same-ok-sym (nskk--bool-sym same-ok))
-         (n-ok-sym (nskk--bool-sym n-ok))
-         (context-key (list 'doubled-context
-                            last-is-n-sym char-is-n-sym
-                            same-ok-sym n-ok-sym result-type))
          (doubled-eligible
-          (or (gethash context-key nskk--romaji-classify-cache)
-              (let ((value
-                     (or (nskk-prolog-query-value
-                          `(doubled-context ,'\?de
-                                            ,last-is-n-sym
-                                            ,char-is-n-sym
-                                            ,same-ok-sym
-                                            ,n-ok-sym
-                                            ,result-type)
-                          '\?de)
-                         'not-eligible)))
-                (puthash context-key value nskk--romaji-classify-cache)
-                value)))
-         (class-key (list 'romaji-classify doubled-eligible result-type)))
-    (or (gethash class-key nskk--romaji-classify-cache)
-        (let ((class (or (nskk-prolog-query-value
-                          `(romaji-classify ,'\?class
-                                            ,doubled-eligible
-                                            ,result-type)
-                          '\?class)
-                         'no-match)))
-          (puthash class-key class nskk--romaji-classify-cache)
-          class))))
+          (nskk--romaji-doubled-context char last-buf-char result-type))
+         (key (list 'romaji-classify doubled-eligible result-type)))
+    (nskk--romaji-classify-cached-query
+     key
+     `(romaji-classify ,'\?class ,doubled-eligible ,result-type)
+     '\?class
+     'no-match)))
 
 ;; Classification taxonomy for `nskk-convert-input-to-kana/k':
 ;;

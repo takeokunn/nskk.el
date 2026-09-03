@@ -96,6 +96,21 @@
           ,rollback)
         (signal (car condition) (cdr condition))))))
 
+(defun nskk--cache-key-parts (left right)
+  "Return paired children for structurally comparable LEFT and RIGHT.
+Return :different when their shapes or atomic values differ."
+  (cond
+   ((and (consp left) (consp right))
+    (list (cons (car left) (car right))
+          (cons (cdr left) (cdr right))))
+   ((or (consp left) (consp right)) :different)
+   ((and (vectorp left) (vectorp right)
+         (= (length left) (length right)))
+    (cl-loop for index below (length left)
+             collect (cons (aref left index) (aref right index))))
+   ((or (vectorp left) (vectorp right)) :different)
+   ((equal left right) nil)
+   (t :different)))
 (defun nskk--cache-key-equal-p (left right)
   "Return non-nil when cache keys LEFT and RIGHT are structurally equal.
 Unlike `equal', this comparison terminates for circular conses and vectors."
@@ -110,22 +125,10 @@ Unlike `equal', this comparison terminates for circular conses and vectors."
           (unless (or (eq left-part right-part)
                       (memq right-part seen-rights))
             (puthash left-part (cons right-part seen-rights) seen)
-            (cond
-             ((and (consp left-part) (consp right-part))
-              (push (cons (car left-part) (car right-part)) pending)
-              (push (cons (cdr left-part) (cdr right-part)) pending))
-             ((or (consp left-part) (consp right-part))
-              (throw 'different nil))
-             ((and (vectorp left-part) (vectorp right-part)
-                   (= (length left-part) (length right-part)))
-              (dotimes (index (length left-part))
-                (push (cons (aref left-part index)
-                            (aref right-part index))
-                      pending)))
-             ((or (vectorp left-part) (vectorp right-part))
-              (throw 'different nil))
-             ((not (equal left-part right-part))
-              (throw 'different nil))))))
+            (let ((parts (nskk--cache-key-parts left-part right-part)))
+              (if (eq parts :different)
+                  (throw 'different nil)
+                (setq pending (nconc parts pending)))))))
       t)))
 
 (define-hash-table-test 'nskk-cache-key-equal
