@@ -680,6 +680,98 @@ Otherwise clears any residual AZIK deferred state and calls
   ('cancel-preedit (nskk-cancel-preedit))
   (_ (nskk-clear-azik-pending-state) (keyboard-quit)))
 
+(defconst nskk--backspace-state-accessors
+  '((nskk-deferred-azik-state . nskk-set-deferred-azik-state)
+    (nskk-deferred-vowel-shadow-state . nskk-set-deferred-vowel-shadow-state)
+    (nskk-azik-colon-okuri-pending . nskk-set-azik-colon-okuri-pending)
+    (nskk-azik-colon-okuri-deferred . nskk-set-azik-colon-okuri-deferred)))
+
+(defun nskk--backspace-snapshot ()
+  "Capture pending input and its visible buffer state."
+  (let* ((overlay (nskk-state-pending-romaji-overlay))
+         (overlay-buffer (and (overlayp overlay) (overlay-buffer overlay))))
+    (list :buffer (current-buffer)
+          :point (point)
+          :states
+          (mapcar (lambda (pair)
+                    (let ((getter (car pair)))
+                      (list getter (fboundp getter)
+                            (and (fboundp getter) (funcall getter)))))
+                  nskk--backspace-state-accessors)
+          :romaji (nskk-state-romaji-buffer)
+          :overlay overlay
+          :overlay-buffer overlay-buffer
+          :overlay-start (and overlay-buffer (overlay-start overlay))
+          :overlay-end (and overlay-buffer (overlay-end overlay))
+          :overlay-properties (and (overlayp overlay)
+                                   (overlay-properties overlay)))))
+
+(defun nskk--backspace-retract-active-state ()
+  "Retract the highest-priority pending input state."
+  (cond
+   ((and (fboundp 'nskk-deferred-azik-state)
+         (nskk-deferred-azik-state))
+    (delete-char (- (length (cdr (nskk-deferred-azik-state)))))
+    (nskk-set-deferred-azik-state nil)
+    t)
+   ((and (fboundp 'nskk-deferred-vowel-shadow-state)
+         (nskk-deferred-vowel-shadow-state))
+    (delete-char (- (length (nskk-deferred-state-kana
+                             (nskk-deferred-vowel-shadow-state)))))
+    (nskk-set-deferred-vowel-shadow-state nil)
+    t)
+   ((and (fboundp 'nskk-azik-colon-okuri-pending)
+         (nskk-azik-colon-okuri-pending))
+    (delete-char -1)
+    (nskk-set-azik-colon-okuri-pending nil)
+    t)
+   ((and (fboundp 'nskk-azik-colon-okuri-deferred)
+         (nskk-azik-colon-okuri-deferred))
+    (delete-char (- (length (cdr (nskk-azik-colon-okuri-deferred)))))
+    (nskk-set-azik-colon-okuri-deferred nil)
+    (nskk-reset-romaji-buffer)
+    t)
+   ((not (string-empty-p (nskk-state-romaji-buffer)))
+    (nskk-state-set-romaji-buffer
+     (substring (nskk-state-romaji-buffer) 0 -1))
+    (if (string-empty-p (nskk-state-romaji-buffer))
+        (nskk-clear-pending-romaji)
+      (nskk-show-pending-romaji (nskk-state-romaji-buffer)))
+    t)))
+
+(defun nskk--backspace-restore-snapshot (snapshot)
+  "Restore pending input and buffer state from SNAPSHOT."
+  (let ((inhibit-quit t)
+        (inhibit-modification-hooks t))
+    (with-current-buffer (plist-get snapshot :buffer)
+      (dolist (entry (plist-get snapshot :states))
+        (let ((setter (cdr (assq (car entry)
+                                 nskk--backspace-state-accessors))))
+          (when (or (nth 1 entry) (fboundp (car entry)))
+            (funcall setter (nth 2 entry)))))
+      (nskk-state-set-romaji-buffer (plist-get snapshot :romaji))
+      (let ((current-overlay (nskk-state-pending-romaji-overlay))
+            (overlay (plist-get snapshot :overlay)))
+        (when (and (overlayp current-overlay)
+                   (not (eq current-overlay overlay)))
+          (delete-overlay current-overlay))
+        (nskk-state-set-pending-romaji-overlay overlay)
+        (when (overlayp overlay)
+          (let ((properties (overlay-properties overlay)))
+            (while properties
+              (overlay-put overlay (pop properties) nil)
+              (pop properties)))
+          (let ((properties (plist-get snapshot :overlay-properties)))
+            (while properties
+              (overlay-put overlay (pop properties) (pop properties))))
+          (if-let* ((buffer (plist-get snapshot :overlay-buffer)))
+              (move-overlay overlay
+                            (plist-get snapshot :overlay-start)
+                            (plist-get snapshot :overlay-end)
+                            buffer)
+            (delete-overlay overlay))))
+      (goto-char (plist-get snapshot :point)))))
+
 (defun nskk--backspace-retract-pending ()
   "Retract one pending input state if any is active.
 Checks AZIK deferred state and romaji buffer in priority order:
@@ -689,94 +781,12 @@ Returns non-nil if backspace was consumed (caller must not delete further).
 Caller is responsible for preedit boundary checks after retraction.
 On error or quit, restores the buffer, point, pending states, romaji buffer,
 and pending-romaji overlay to their entry values."
-  (let* ((entry-buffer (current-buffer))
-         (entry-point (point))
-         (state-accessors '((nskk-deferred-azik-state . nskk-set-deferred-azik-state)
-                            (nskk-deferred-vowel-shadow-state . nskk-set-deferred-vowel-shadow-state)
-                            (nskk-azik-colon-okuri-pending . nskk-set-azik-colon-okuri-pending)
-                            (nskk-azik-colon-okuri-deferred . nskk-set-azik-colon-okuri-deferred)))
-         (state-snapshot
-          (mapcar
-           (lambda (pair)
-             (let ((getter (car pair)))
-               (list getter (fboundp getter)
-                     (and (fboundp getter) (funcall getter)))))
-           state-accessors))
-         (entry-romaji (nskk-state-romaji-buffer))
-         (entry-overlay (nskk-state-pending-romaji-overlay))
-         (entry-overlay-buffer
-          (and (overlayp entry-overlay) (overlay-buffer entry-overlay)))
-         (entry-overlay-start
-          (and entry-overlay-buffer (overlay-start entry-overlay)))
-         (entry-overlay-end
-          (and entry-overlay-buffer (overlay-end entry-overlay)))
-         (entry-overlay-properties
-          (and (overlayp entry-overlay)
-               (overlay-properties entry-overlay))))
+  (let ((snapshot (nskk--backspace-snapshot)))
     (condition-case err
         (atomic-change-group
-          (cond
-           ((and (fboundp 'nskk-deferred-azik-state)
-                 (nskk-deferred-azik-state))
-            (delete-char (- (length (cdr (nskk-deferred-azik-state)))))
-            (nskk-set-deferred-azik-state nil)
-            t)
-           ((and (fboundp 'nskk-deferred-vowel-shadow-state)
-                 (nskk-deferred-vowel-shadow-state))
-            (delete-char (- (length (nskk-deferred-state-kana
-                                     (nskk-deferred-vowel-shadow-state)))))
-            (nskk-set-deferred-vowel-shadow-state nil)
-            t)
-           ((and (fboundp 'nskk-azik-colon-okuri-pending)
-                 (nskk-azik-colon-okuri-pending))
-            (delete-char -1)
-            (nskk-set-azik-colon-okuri-pending nil)
-            t)
-           ((and (fboundp 'nskk-azik-colon-okuri-deferred)
-                 (nskk-azik-colon-okuri-deferred))
-            (delete-char
-             (- (length (cdr (nskk-azik-colon-okuri-deferred)))))
-            (nskk-set-azik-colon-okuri-deferred nil)
-            (nskk-reset-romaji-buffer)
-            t)
-           ((not (string-empty-p (nskk-state-romaji-buffer)))
-            (nskk-state-set-romaji-buffer
-             (substring (nskk-state-romaji-buffer) 0 -1))
-            (if (string-empty-p (nskk-state-romaji-buffer))
-                (nskk-clear-pending-romaji)
-              (nskk-show-pending-romaji (nskk-state-romaji-buffer)))
-            t)))
+         (nskk--backspace-retract-active-state))
       ((error quit)
-       (let ((inhibit-quit t)
-             (inhibit-modification-hooks t))
-         (with-current-buffer entry-buffer
-           (dolist (entry state-snapshot)
-             (let ((setter (cdr (assq (car entry) state-accessors))))
-               (when (or (nth 1 entry) (fboundp (car entry)))
-                 (funcall setter (nth 2 entry)))))
-           (nskk-state-set-romaji-buffer entry-romaji)
-           (let ((current-overlay (nskk-state-pending-romaji-overlay)))
-             (when (and (overlayp current-overlay)
-                        (not (eq current-overlay entry-overlay)))
-               (delete-overlay current-overlay)))
-           (nskk-state-set-pending-romaji-overlay entry-overlay)
-           (when (overlayp entry-overlay)
-             (let ((properties (overlay-properties entry-overlay)))
-               (while properties
-                 (overlay-put entry-overlay (pop properties) nil)
-                 (pop properties)))
-             (let ((properties entry-overlay-properties))
-               (while properties
-                 (overlay-put entry-overlay
-                              (pop properties)
-                              (pop properties))))
-             (if entry-overlay-buffer
-                 (move-overlay entry-overlay
-                               entry-overlay-start
-                               entry-overlay-end
-                               entry-overlay-buffer)
-               (delete-overlay entry-overlay)))
-           (goto-char entry-point)))
+       (nskk--backspace-restore-snapshot snapshot)
        (signal (car err) (cdr err))))))
 
 (defun nskk--backspace-in-preedit ()
