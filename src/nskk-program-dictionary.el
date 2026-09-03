@@ -87,7 +87,6 @@
 
 (declare-function nskk-debug-message "nskk-debug" (fmt &rest args))
 
-;;; Section 1: Customization
 (defgroup
   nskk-program-dict
   nil
@@ -150,29 +149,18 @@ seconds.  Non-positive, non-numeric, and non-finite values disable polling."
   :group
   'nskk-program-dict)
 
-;;; Section 2: Prolog infrastructure
-;; Entry type dispatch table.
-;; Maps the kind of a program dictionary entry (function or command) to the
-;; handler atom used in `nskk--program-dict-invoke-entry/k'.
 (nskk-prolog-define-fact-table
   program-dict-entry-type
   (:arity 2 :index :hash)
   #'call-function
   (command call-command))
 
-;; Output format detection table.
-;; Maps the first character of external command stdout to a format symbol
-;; and the delimiter used to split the candidate body.
-;;   "/"  -> skk:     /候補1/候補2/...   delimiter "/"
-;;   "1"  -> skkserv: 1/候補1/候補2/...  delimiter "/"
-;; When the first character is not in this table the fallback is "\n".
 (nskk-prolog-define-fact-table
   program-dict-output-prefix
   (:arity 3 :index :hash)
   ("/" skk "/")
   ("1" skkserv "/"))
 
-;;; Section 3: Internal state
 (defvar nskk--program-dict-cache nil
   "Session-scoped LRU cache for program dictionary results.
 Initialized lazily on first call to `nskk-program-dict-lookup'.
@@ -268,7 +256,6 @@ state is modified, so copy errors and quits preserve the old state."
     (setq nskk--program-dict-cache (nskk-cache-create :type 'lru :capacity nskk--program-dict-cache-capacity)))
   nskk--program-dict-cache)
 
-;;; Section 4: Command string parsing
 (defun nskk--program-dict-build-call (cmd key)
   "Derive (PROGRAM STDIN-P . ARGS) from command template CMD and KEY.
 
@@ -293,7 +280,6 @@ Returns (PROGRAM STDIN-P . ARGS) where:
         (cons (car subst) (cons nil (cdr subst))))
       (cons (car tokens) (cons t (cdr tokens))))))
 
-;;; Section 5: Annotation stripping
 (defun nskk--program-dict-strip-annotation (candidate)
   "Strip the annotation from CANDIDATE, returning the bare word.
 Annotations have the form \"word;note\"; this function returns \"word\".
@@ -302,7 +288,6 @@ When no semicolon is present CANDIDATE is returned unchanged."
     (if semi (substring candidate 0 semi)
       candidate)))
 
-;;; Section 6: External command execution
 (defun nskk--program-dict-stop-process-group (process)
   "Stop PROCESS and, when safely identifiable, its descendant process group.
 Local pipe subprocesses normally lead a process group whose ID equals their
@@ -471,7 +456,6 @@ calls on-not-found."
     (if output (succeed output)
       (fail))))
 
-;;; Section 7: Output parsing
 (defun/k
   nskk--program-dict-parse-output
   (output)
@@ -512,7 +496,6 @@ OUTPUT is nil, empty, or yields no valid candidates."
       (if (and (consp candidates) (proper-list-p candidates)) (succeed candidates)
         (fail)))))
 
-;;; Section 8: Elisp function entry
 (defun nskk--program-dict-valid-function-candidate-p (candidate)
   "Return non-nil when CANDIDATE is safe program dictionary output."
   (and
@@ -547,7 +530,6 @@ Calls on-found with a validated candidate list; otherwise calls on-not-found."
         (cl-every #'nskk--program-dict-valid-function-candidate-p result)) (succeed result)
       (fail))))
 
-;;; Section 9: Shell command entry
 (defun/k
   nskk--program-dict-call-command
   (cmd key)
@@ -571,7 +553,6 @@ the command produces no parseable candidates."
     (<- cands nskk--program-dict-parse-output output)
     (succeed cands)))
 
-;;; Section 10: Entry dispatch (Prolog-driven)
 (defun/k
   nskk--program-dict-invoke-entry
   (entry key)
@@ -593,7 +574,6 @@ unrecognized or the handler returns no results."
     ('call-command (<- cands nskk--program-dict-call-command entry key))
     (_ (fail))))
 
-;;; Section 11: Multi-entry collector
 (defun nskk--program-dict-merge-candidate-lists (candidate-lists)
   "Merge CANDIDATE-LISTS, preserving first-seen order and uniqueness.
 Candidates are compared with `equal' in expected linear time.  The returned
@@ -624,7 +604,6 @@ entries return no candidates."
     (if candidate-lists (succeed (nskk--program-dict-merge-candidate-lists (nreverse candidate-lists)))
       (fail))))
 
-;;; Section 12: Public API
 (progn
   (defun nskk--program-dict-copy-graph (object)
     "Return a detached copy of OBJECT suitable for program dictionary caches.
@@ -854,7 +833,6 @@ restore the exact pre-observation cache state."
       'nskk--cps-continuation-pattern
       :found-not-found)))
 
-;;; Section 13: Built-in dispatch table
 (defcustom
   nskk-program-dict-dispatch-table
   (list
@@ -882,7 +860,6 @@ text property so they are never persisted to the personal dictionary."
   :group
   'nskk-program-dict)
 
-;;; Section 14: Built-in handlers
 (defun nskk--program-dict-today (_key)
   "Return current date as a candidate list.
 Equivalent to the AquaSKK \\='today\\=' handler.
@@ -1105,7 +1082,6 @@ Return nil when the isolated calculation process fails."
         (when (stringp result)
           (list result))))))
 
-;;; Section 15: Built-in lookup public API
 (defun/k
   nskk-program-dict-builtin-lookup
   (key)

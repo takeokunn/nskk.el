@@ -165,7 +165,6 @@ original condition.  Best-effort update paths may instead report ordinary
 errors per observer.  Hook functions must manage their own external effects;
 NSKK can roll back only its internal dictionary and search-cache state.")
 
-;;; Section 1: Error types
 ;;; Atomic file writing
 
 (defun nskk--dict-file-identifier (path)
@@ -261,7 +260,6 @@ a symbolic link or an existing non-regular file."
     (lambda ()
       ,@body)))
 
-;;; Section 2: Prolog infrastructure
 ;; Dictionary source facts: (dict-source source-symbol predicate-name)
 ;; These map source symbols to their Prolog predicate names
 (nskk-prolog-define-fact-table
@@ -326,7 +324,6 @@ a symbolic link or an existing non-regular file."
   (remove-element \?x (\?y . \?tail) (\?y . \?result))
   (remove-element \?x \?tail \?result))
 
-;;; Section 3: Data structures
 (cl-defstruct
   nskk-dict-entry
   "Dictionary entry structure."
@@ -342,7 +339,6 @@ PREDICATE is a symbol naming the Prolog predicate (e.g., \\='system-dict-entry)
 with arity 2: (predicate key candidates-list)."
   (predicate nil))
 
-;;; Section 4: Elisp helpers (replacing removed Prolog predicates)
 (defun nskk--dict-merge-candidate-lists (candidate-lists)
   "Merge CANDIDATE-LISTS in order, removing `equal' duplicates.
 The first equal candidate object is retained and input lists are not modified."
@@ -693,7 +689,6 @@ Returns `system' when entries were loaded successfully, or nil otherwise."
       (message "NSKK: Could not load ja-dic (%s)" (error-message-string err))
       nil)))
 
-;;; Section 5: I/O and lifecycle
 ;;; Dictionary Parsing
 (defun nskk-dict-parse-line (line)
   "Parse a single SKK dictionary LINE.
@@ -1058,18 +1053,15 @@ Priority (first match wins):
   2. `nskk-dict-use-ja-dic' is t -- force ja-dic unconditionally.
   3. Auto-detect SKK-JISYO files from system paths.
   4. ja-dic as last resort (unless `nskk-dict-use-ja-dic' is nil)."
-  (or ;; 1. Explicit dictionary files configured by user.
+  (or
       (when nskk-dict-system-dictionary-files
         (nskk-dict-load-system-dictionaries))
-      ;; 2. Force ja-dic when explicitly requested.
       (when (eq nskk-dict-use-ja-dic t)
         (nskk-dict-load-ja-dic))
-      ;; 3. Auto-detect SKK-JISYO files from system paths.
       (let ((dict-files (nskk--dict-detect-system-dictionaries)))
         (when dict-files
           (let ((nskk-dict-system-dictionary-files dict-files))
             (nskk-dict-load-system-dictionaries))))
-      ;; 4. ja-dic as last resort (skipped when nskk-dict-use-ja-dic is nil).
       (when nskk-dict-use-ja-dic
         (nskk-dict-load-ja-dic))))
 

@@ -25,8 +25,6 @@
 (defvar skkdic-okuri-ari nil)
 (defvar skkdic-okuri-nasi nil)
 
-;;; Section 1: Error type tests
-
 (nskk-describe "module loading"
   (nskk-it "provides nskk-dictionary feature"
     (should (featurep 'nskk-dictionary)))
@@ -155,8 +153,6 @@
       (should (not query-caught))
       (should index-caught))))
 
-;;; Section 2: Data structure tests
-
 (nskk-describe "dict-entry creation"
   (nskk-it "creates entry with default values"
     (let ((entry (make-nskk-dict-entry)))
@@ -284,8 +280,6 @@
       (should (equal (nskk-dict-entry-key entry) "うごk"))
       (should (equal (nskk-dict-entry-okuri entry) "k"))
       (should (= (length (nskk-dict-entry-candidates entry)) 2)))))
-
-;;; Section 3: I/O tests
 
 (nskk-describe "Prolog dictionary I/O"
   (nskk-it "asserts dict entries and looks them up via Prolog"
@@ -564,8 +558,6 @@
                        '(user-dict-entry "ぜったいにそんざいしないきー" \?c) '\?c)))
           (should (null result)))))))
 
-;;; Section 4: nskk-dict-parse-line tests
-
 (nskk-describe "nskk-dict-parse-line"
   (nskk-it "parses basic SKK dictionary lines"
     (nskk-deftest-table parse-line-basic
@@ -606,8 +598,6 @@
   (nskk-it "returns nil for empty string input"
     (should (null (nskk-dict-parse-line "")))))
 
-;;; Section 5: nskk--dict-parse-candidates tests
-
 (nskk-describe "nskk--dict-parse-candidates"
   (nskk-it "parses candidate strings correctly"
     (nskk-deftest-table parse-candidates-valid
@@ -624,8 +614,6 @@
       :rows    ((nil) ("") ("no-slash") ("漢字"))
       :body
       (should (null (nskk--dict-parse-candidates input))))))
-
-;;; Section 6: nskk-dict-lookup tests
 
 (nskk-describe "nskk-dict-lookup"
   (nskk-it "returns candidates for a known reading"
@@ -659,8 +647,6 @@
         (let ((result (nskk-dict-lookup "あ")))
           (should (listp result))
           (should (member "亜" result)))))))
-
-;;; Section 7: nskk-dict-register-word tests
 
 (nskk-describe "nskk-dict-register-word"
   (nskk-it "registers a new word and makes it retrievable"
@@ -1292,8 +1278,6 @@
         (let ((result (nskk-dict-lookup "はし")))
           (should (member "走" result)))))))
 
-;;; Section 8: CPS /k variant tests
-
 (nskk-describe "nskk-dict-lookup/k"
   (nskk-it "calls on-found with candidates when reading exists"
     (nskk-with-mock-dict '(("かんじ" . ("漢字" "感じ")))
@@ -1386,8 +1370,6 @@
      (nskk-dict-register-word/k "かんじ" "漢字" "not-a-function" #'ignore)
      :type 'invalid-function)))
 
-;;; Section 9: cache function tests
-
 (nskk-describe "nskk--dict-cache-valid-p"
   (nskk-it "returns nil when dict-files is nil"
     (should (null (nskk--dict-cache-valid-p nil))))
@@ -1416,8 +1398,6 @@
   (nskk-it "returns nil when cache data is not a list (type guard)"
     (nskk-with-mocks ((insert-file-contents (lambda (_f) (insert "42"))))
       (should (null (nskk--dict-load-system-dict-from-cache))))))
-
-;;; Section 10: register-lookup invariants (table-driven PBT)
 
 (nskk-deftest-table dict-register-lookup-invariant
   :description "register-then-lookup invariant: registered word is always retrievable"
@@ -1820,7 +1800,6 @@
                 (insert "かんじ /漢字/感じ/\n"))
               (let ((result (nskk-dict-load-file tmpfile)))
                 (should (symbolp result))
-                ;; After loading, the entries should be queryable
                 (should (nskk-prolog-holds-p '(system-dict-entry "てすと" \?c)))
                 (should (nskk-prolog-holds-p '(system-dict-entry "かんじ" \?c)))))
           (when (file-exists-p tmpfile)
@@ -1835,7 +1814,6 @@
                 (insert ";; okuri-nasi entries.\n")
                 (insert "てすと /テスト/\n"))
               (nskk-dict-load-file tmpfile nil 'custom-test-pred)
-              ;; Should be under the custom predicate, not system-dict-entry
               (should (nskk-prolog-holds-p '(custom-test-pred "てすと" \?c)))
               (should-not (nskk-prolog-holds-p '(system-dict-entry "てすと" \?c))))
           (when (file-exists-p tmpfile)
@@ -1902,8 +1880,6 @@
 
 
 
-;;; Section 11: Additional nskk-dict-parse-line tests
-
 (nskk-describe "nskk-dict-parse-line additional"
   (nskk-it "parses a valid line with single candidate"
     (let ((result (nskk-dict-parse-line "さくら /桜/")))
@@ -1919,8 +1895,6 @@
 
   (nskk-it "returns nil for line without slash"
     (should (null (nskk-dict-parse-line "invalid line without slash")))))
-
-;;; Section 12: Additional nskk--dict-parse-candidates tests
 
 (nskk-describe "nskk--dict-parse-candidates additional"
   (nskk-it "parses single candidate"
@@ -1938,8 +1912,6 @@
     (should (equal (nskk--dict-parse-candidates "/漢字/感じ;note/幹事/")
                    '("漢字" "感じ" "幹事")))))
 
-;;; Section 13: Table-driven parse-line tests
-
 (nskk-deftest-table dict-parse-line-table
   :description "dict-parse-line-table: key extraction from SKK dictionary lines"
   :columns (input expected)
@@ -1952,8 +1924,6 @@
           (if expected
               (should (equal (car result) expected))
             (should (null result)))))
-
-;;; Section 14: nskk--dict-cache-source-valid-p tests
 
 (nskk-describe "nskk--dict-cache-source-valid-p"
   (nskk-it "returns t when stored files equal current files"
@@ -1973,8 +1943,6 @@
       (should (nskk--dict-cache-source-valid-p nil)))))
 
 
-;;; Section 15: Property-based tests for parse-line invariants
-
 (nskk-property-test dict-parse-line-comment-always-nil
   ((s search-query))
   (let ((line (concat ";; " s)))
@@ -1987,8 +1955,6 @@
   (let ((result (nskk-dict-parse-line s)))
     (or (null result) (consp result)))
   30)
-
-;;; Section 16: register-word dedup and priority tests
 
 (nskk-deftest-table dict-register-word-dedup
   :description "register-word dedup: registering the same word twice produces exactly one occurrence"
@@ -2019,18 +1985,11 @@
             (nskk-prolog-retract-all 'user-dict-entry 2)
             (nskk-dict-register-word input "既存")
             (nskk-dict-register-word input expected)
-            ;; New registration should appear first (prepended)
             (let ((candidates (nskk-prolog-query-value
                                `(user-dict-entry ,input \?c) '\?c)))
               (should (member expected candidates))
               (should (equal (car candidates) expected))))))
 
-;;; Property-Based Tests
-;;;
-
-;; PBT 1 (FR-012): get-after-put invariant
-;; After registering a word, looking it up via the CPS interface returns
-;; a candidates list that includes that word.
 (nskk-property-test-seeded dictionary-pbt-get-after-put
   ((reading hiragana-string)
    (word kanji-string))
@@ -2041,7 +2000,6 @@
             (nskk-dict-modified nil))
         (nskk-dict-register-word/k reading word
           (lambda (_) t) #'ignore)
-        ;; The registered word must be findable via the CPS lookup
         (nskk-dict-lookup/k reading
           (lambda (candidates) (setq result candidates))
           #'ignore)))
