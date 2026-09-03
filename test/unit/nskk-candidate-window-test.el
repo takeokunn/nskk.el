@@ -9,16 +9,7 @@
 
 ;;; Commentary:
 
-;; Unit tests for nskk-candidate-window.el covering:
-;; - `nskk--candidate-build-string' pure function (direct unit tests)
-;; - Overlay-based candidate list display (after-string mechanism)
-;; - Overlay lifecycle (create, reuse, delete, anchor)
-;; - Candidate selection by key (Prolog-based)
-;; - Prolog candidate-selection-key/2 fact initialization
-;; - Custom variable defaults and custom group
-;; - Face definitions
-;; - Page-slice pure function
-;; - CPS /k variants
+;; Candidate window tests.
 
 ;;; Code:
 

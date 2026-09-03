@@ -9,9 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for the AZIK extended romaji input system.
-;; Tests verify that AZIK rules are correctly applied when the
-;; azik converter style is active.
+;; AZIK integration tests.
 
 ;;; Code:
 

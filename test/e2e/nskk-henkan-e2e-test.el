@@ -24,10 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E tests for conversion/henkan (DDSKK §4.3 Conversion modes).
-;; Covers: SPC conversion, candidate cycling (C-n/C-p/x), C-j/RET commit,
-;; C-g cancel, backspace during conversion, sentence-level integration,
-;; SPC/X key dispatch, edge cases.
+;; E2E conversion tests for NSKK.
 
 ;;; Code:
 

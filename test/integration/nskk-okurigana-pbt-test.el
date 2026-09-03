@@ -23,19 +23,7 @@
 
 ;;; Commentary:
 
-;; Property-based tests for okurigana detection and state management.
-;;
-;; This file tests invariants of the okurigana subsystem:
-;; - Uppercase letters A-Z are detected as okurigana markers
-;; - Lowercase letters are not detected as okurigana markers
-;; - Non-alpha characters are not detected as okurigana markers
-;; - Setting and getting okurigana in state is consistent
-;;
-;; Properties tested:
-;; - okurigana-uppercase-detected: All A-Z are detected as okurigana markers
-;; - okurigana-lowercase-not-detected: Lowercase a-z return nil
-;; - okurigana-non-alpha-not-detected: Numbers, symbols return nil
-;; - okurigana-state-set-get-roundtrip: Set/get okurigana in state is consistent
+;; Okurigana PBT tests.
 
 ;;; Code:
 

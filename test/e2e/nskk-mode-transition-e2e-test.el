@@ -25,29 +25,6 @@
 ;;; Commentary:
 
 ;; E2E mode transition tests for NSKK.
-;;
-;; Tests all mode transitions via actual key events (execute-kbd-macro).
-;; This ensures the full keymap dispatch path works correctly, not just
-;; direct function calls.
-;;
-;; Modes tested:
-;;   ascii, hiragana, katakana, katakana-半角, abbrev, latin, jisx0208-latin
-;;
-;; Key transitions tested:
-;;   C-j   -- ascii→hiragana, hiragana-idle→newline, converting→commit
-;;   q     -- hiragana→katakana, katakana→hiragana, katakana-半角→hiragana
-;;   l     -- hiragana→latin, latin→self-insert
-;;   L     -- hiragana→jisx0208-latin
-;;   /     -- hiragana→abbrev
-;;
-;; Bug fixes verified:
-;;   katakana-半角 q → hiragana  (was missing toggle-mode rule)
-;;   katakana-半角 typing        (was missing input-route rule)
-;;
-;; PBT properties:
-;;   Mode after any transition key is always a valid mode
-;;   Double-toggle returns to original mode (hiragana↔katakana)
-;;   Mode from any mode via C-j+l is always latin (when idle)
 
 ;;; Code:
 

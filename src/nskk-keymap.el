@@ -24,74 +24,7 @@
 
 ;;; Commentary:
 
-;; State-aware key dispatch for NSKK (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-state and nskk-prolog.
-;; State mutations are delegated to the Application layer (nskk-input,
-;; nskk-henkan); this module only reads state to determine dispatch.
-;;
-;; Provides interactive handlers for the special keys in nskk-mode-map:
-;; q, l, L, /, x, SPC, RET, C-g, C-n, C-p, DEL, TAB, #.  Each handler checks the current
-;; NSKK conversion state before acting, falling through to `self-insert-command'
-;; or `keyboard-quit' when NSKK is in ASCII mode or state is inactive.
-;;
-;; Prolog predicates maintained by this module:
-;; - `key-action/3'            -- (key state action) dispatch rules
-;; - `key-state-map/2'         -- (rich-state simple-state) classification mapping
-;; - `mode-class-map/2'        -- (rich-state mode-class) classification mapping
-;; - `q-key-dispatch/3'        -- (class style action) q-key dispatch
-;; - `mode-switch-preaction/2' -- (class pre-action) implicit kakutei before mode-switch
-;; - `state-classify/4'        -- (phase text-presence mode-category classification)
-;; - `kakutei-active-state/3'  -- (classification text-presence kakutei-state)
-;; - `l-key-action/3'          -- AZIK-aware dispatch for the l key
-;; - `kakutei-idle-state/2'    -- mode -> kakutei idle-state classification
-;;
-;; Key architecture:
-;; - `nskk-define-key-handler'       -- macro that generates Prolog-dispatched
-;;     interactive commands.  Queries `key-action/3' to decide the action
-;;     based on the current dispatch state (converting, preedit, normal).
-;; - `nskk-define-mode-switch-handler' -- macro for q/L// handlers.  Calls
-;;     `nskk--with-japanese-mode/k' which performs implicit kakutei (kakutei)
-;;     first via `mode-switch-preaction/2', then executes the mode action.
-;;     Falls through to `self-insert-command' when not in a Japanese mode.
-;; - `nskk-classify-state'      -- returns a rich 6-value classification via
-;;     `state-classify/4' Prolog table lookup on three orthogonal features
-;;     (`converting', `preedit-japanese', `preedit-pending',
-;;     `preedit-marker', `idle-japanese', `idle-direct') as the single
-;;     source of truth for all state queries.
-;; - `nskk--current-key-state'   -- returns `converting', `preedit', or
-;;     `normal' via `key-state-map/2' Prolog lookup.
-;; - `nskk--japanese-mode-class' -- returns `converting', `preedit-japanese',
-;;     `idle-japanese', or `other' via `mode-class-map/2' Prolog lookup.
-;; - `nskk-define-nav-handler'   -- macro that generates commit-then-navigate
-;;     handlers, reducing 6 repetitive `nskk-define-key-handler' expansions.
-;;
-;; Key public API (all interactive):
-;;
-;; Mode-switch handlers (via `nskk-define-mode-switch-handler' or manual defun/done):
-;; - `nskk-handle-q'       -- convert preedit to opposite script, or toggle hiragana/katakana
-;; - `nskk-handle-upper-l' -- switch to full-width latin mode
-;; - `nskk-handle-slash'   -- enter abbrev mode
-;; - `nskk-handle-hash'    -- enter numeric input mode
-;;
-;; Manually defined handler (AZIK-aware Prolog dispatch):
-;; - `nskk-handle-l'       -- candidate selection, romaji rule, or ASCII mode switch
-;;                            (via nskk--handle-l-action / l-key-action/3 dispatch)
-;; - `nskk-handle-upper-x' -- purge candidate from dictionary (X key)
-;;
-;; Prolog-dispatched handlers (via `nskk-define-key-handler'):
-;; - `nskk-handle-x'       -- previous candidate
-;; - `nskk-handle-space'   -- start conversion / next candidate
-;; - `nskk-handle-return'  -- commit candidate (no newline) / insert newline
-;; - `nskk-handle-ctrl-n'  -- next candidate (in conversion) / commit then next-line / next-line fallthrough
-;; - `nskk-handle-ctrl-p'  -- previous candidate (in conversion) / commit then prev-line / previous-line fallthrough
-;; - `nskk-handle-ctrl-f'  -- commit then forward-char / forward-char fallthrough
-;; - `nskk-handle-ctrl-b'  -- commit then backward-char / backward-char fallthrough
-;; - `nskk-handle-ctrl-a'  -- commit then beginning-of-line / beginning-of-line fallthrough
-;; - `nskk-handle-ctrl-e'  -- commit then end-of-line / end-of-line fallthrough
-;; - `nskk-handle-cancel'  -- cancel conversion / preedit / keyboard-quit
-;; - `nskk-handle-backspace' -- delete preedit char / rollback conversion / backward-delete
-;; - `nskk-handle-tab'     -- dynamic completion in preedit / pass-through
+;; Keymap definitions for NSKK.
 
 ;;; Code:
 

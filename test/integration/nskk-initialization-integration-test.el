@@ -9,24 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests verifying the module initialization chain.
-;;
-;; The initialization sequence in nskk--enable is:
-;;   nskk-state-initialize-prolog   → mode-properties/5, valid-mode/1, …
-;;   nskk-kana-initialize           → kana-hiragana/1, kana-katakana/1, …
-;;   nskk-henkan-initialize         → core-search-type/2, converting-phase/1, …
-;;   nskk-input-initialize          → input routing rules
-;;   nskk-converter-initialize      → romaji-to-kana table
-;;
-;; Each init function registers Prolog predicates consumed by other modules.
-;; Tests verify:
-;; 1. Post-initialization Prolog predicates are accessible cross-module.
-;; 2. Each init function is idempotent (safe to call multiple times).
-;; 3. After all inits, the integrated system processes input correctly.
-;;
-;; Note: nskk-test-framework.el already calls all five init functions at
-;; load time.  These tests verify the post-init database state and
-;; cross-module interactions rather than bootstrapping from scratch.
+;; Module initialization chain integration tests.
 
 ;;; Code:
 

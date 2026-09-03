@@ -9,23 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-henkan.el covering:
-;; - Feature loading and API availability
-;; - New macros: nskk-henkan-dispatch, nskk-henkan-with-preedit,
-;;   nskk-with-conversion-context
-;; - New Prolog predicates: candidate-nav-next-action/3,
-;;   candidate-nav-prev-action/2, search-result-action/2,
-;;   convert-or-commit-action/2,
-;;   should-update-overlay/1
-;; - Existing Prolog predicates: converting-phase/1, okurigana-char/2
-;; - nskk-converting-p across all henkan phases
-;; - nskk-detect-okurigana-char character classification
-;; - nskk-next-candidate / nskk-previous-candidate dispatch
-;; - nskk-commit-current candidate insertion
-;; - nskk-convert / nskk-convert-or-commit control flow
-;; - nskk-cancel-conversion / nskk-cancel-preedit state cleanup
-;; - nskk-start-registration depth guard
-;; - nskk-without-modification macro behavior
+;; Henkan pipeline tests.
 
 ;;; Code:
 

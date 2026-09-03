@@ -24,8 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E tests for SKK numeric conversion (DDSKK §5.5).
-;; Uses DDSKK-standard numeric type codes.
+;; E2E numeric conversion tests for NSKK.
 
 ;;; Code:
 

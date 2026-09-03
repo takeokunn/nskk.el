@@ -9,15 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for nskk-server.el (skkserv TCP client).
-;;
-;; Most tests in this file require no live server and use mocks.
-;; Network tests are guarded by the NSKK_TEST_SKKSERV environment
-;; variable: set it to \"localhost:1178\" (or \"host:port\") to run
-;; live skkserv tests against a running server instance.
-;;
-;; Run with live server:
-;;   NSKK_TEST_SKKSERV=localhost:1178 make test
+;; skkserv integration tests.
 
 ;;; Code:
 

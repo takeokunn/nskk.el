@@ -22,28 +22,7 @@
 
 ;;; Commentary:
 
-;; Unit tests for nskk-program-dictionary.el covering:
-;;
-;; - Prolog fact tables:
-;;     program-dict-entry-type/2 (function/command dispatch)
-;;     program-dict-output-prefix/3 (format detection + delimiter)
-;; - nskk--program-dict-strip-annotation: annotation removal
-;; - nskk--program-dict-build-call: command tokenization and %s replacement
-;; - nskk--program-dict-parse-output: SKK/skkserv/line output parsing (CPS)
-;; - nskk--program-dict-exec-command: unified process execution (CPS)
-;; - nskk--program-dict-call-function: Elisp function entry (CPS)
-;; - nskk--program-dict-call-command: shell command entry (CPS)
-;; - nskk--program-dict-invoke-entry: Prolog-driven dispatch (CPS)
-;; - nskk--program-dict-collect-all: multi-entry aggregation (CPS)
-;; - nskk-program-dict-lookup: public API with enable guard and cache (CPS)
-;; - PBT: output parsing invariants, build-call invariants
-;;
-;; Built-in handler tests (Sections 13-15):
-;; - nskk-program-dict-dispatch-table: default entries, prefix matching
-;; - nskk--program-dict-today: date format validation
-;; - nskk--program-dict-now: time format validation
-;; - nskk--program-dict-calculate: arithmetic via calc-eval
-;; - nskk-program-dict-builtin-lookup: enable guard, prefix dispatch, no-learn property
+;; Tests for nskk-program-dictionary.el.
 
 ;;; Code:
 

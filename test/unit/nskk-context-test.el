@@ -9,14 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-context.el covering:
-;; - Function existence (fboundp)
-;; - Customization variables
-;; - nskk--context-programming-mode-p in prog-mode vs text-mode
-;; - nskk--context-in-japanese-context-p (string/comment syntax)
-;; - nskk--context-get-current-mode returns nil / mode symbol
-;; - Minor mode hook registration and teardown
-;; - nskk--context-maybe-enable only activates in prog-mode
+;; Tests for nskk-context.el.
 
 ;;; Code:
 

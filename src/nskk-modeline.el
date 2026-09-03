@@ -24,37 +24,7 @@
 
 ;;; Commentary:
 
-;; Mode line indicator showing current input mode (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-prolog,
-;;   nskk-custom, and nskk-cps-macros.
-;;
-;; Architecture:
-;; - All mode display data (strings, faces, help text, cursor colors) is stored
-;;   as unified `mode-properties/5' Prolog facts in nskk-state.el:
-;;     (mode-properties MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-FACE)
-;; - This module queries `mode-properties/5' at display time; it does not
-;;   maintain its own separate Prolog predicates for mode data.
-;; - The `nskk-define-mode-entry' macro defines only the face for each mode;
-;;   the corresponding `mode-properties/5' fact is declared in nskk-state.el.
-;; - The mode-line lighter uses `(:eval (nskk-modeline-indicator))' in
-;;   `define-minor-mode', so Emacs calls this function directly on each
-;;   mode-line redisplay without manual `minor-mode-alist' mutation.
-;;
-;; Displays mode indicator in modeline:
-;; - かな (hiragana)
-;; - カナ (katakana)
-;; - aA  (abbrev)
-;; - SKK (ascii / latin / direct)
-;; - 全英 (jisx0208-latin / full-width latin)
-;;
-;; Conversion markers (▽/▼) are displayed inline in the buffer,
-;; not in the modeline.
-;;
-;; Customization:
-;; - `nskk-modeline-format': Control the format string (%m = mode name).
-;; - `nskk-use-color-cursor': Enable/disable cursor color changes.
-;; - `nskk-cursor-*' faces: Cursor color per mode (defined in nskk-custom.el).
+;; Mode line indicator for NSKK.
 
 ;;; Code:
 

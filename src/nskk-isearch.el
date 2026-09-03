@@ -24,32 +24,7 @@
 
 ;;; Commentary:
 
-;; Isearch (incremental search) integration for NSKK (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-custom,
-;;   nskk-modeline, and nskk-cps-macros.
-;;
-;; Provides Japanese incremental search using Emacs' built-in `isearch-mode'.
-;; When enabled, C-s/C-r activates isearch with NSKK input support, allowing
-;; the user to type Japanese text in the isearch prompt.
-;;
-;; The isearch prompt shows the current NSKK input mode:
-;;   I-search: [か]    -- hiragana mode
-;;   I-search: [ア]    -- katakana mode
-;;   I-search: [英]    -- full-width latin mode
-;;   I-search: [aa]    -- ASCII mode
-;;   I-search: [aあ]   -- abbrev mode
-;;
-;; This is the nskk.el equivalent of ddskk's `skk-isearch.el'.
-;;
-;; Usage:
-;;   (require 'nskk-isearch)
-;;   (nskk-isearch-setup)   ; or set nskk-isearch-enable to t
-;;
-;; Or in nskk-mode startup, use:
-;;   (setq nskk-isearch-enable t)
-;;
-;; Prolog predicates maintained by this module: none.
+;; Isearch integration for NSKK.
 
 ;;; Code:
 

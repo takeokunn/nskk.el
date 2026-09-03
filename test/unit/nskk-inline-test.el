@@ -9,16 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-inline.el covering:
-;; - Function existence (fboundp)
-;; - Customization variables (nskk-show-inline)
-;; - Face definitions
-;; - nskk--inline-build-horizontal: propertized string, nskk-inline-face
-;; - nskk--inline-build-vertical: starts with newline, nskk-inline-face
-;; - nskk-inline-show-candidate: no-op when nskk-show-inline is nil
-;; - nskk-inline-show-candidate: no-op for empty/nil candidate
-;; - nskk-inline-hide: safe when overlay is nil
-;; - nskk-inline-show-registration-badge: no-op when nskk-show-inline is nil
+;; Tests for nskk-inline.el.
 
 ;;; Code:
 

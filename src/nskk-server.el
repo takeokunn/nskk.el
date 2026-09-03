@@ -24,61 +24,7 @@
 
 ;;; Commentary:
 
-;; SKK server (skkserv) TCP client for NSKK (Layer 2: Domain).
-;;
-;; Layer position: L2 (Domain) -- depends only on nskk-custom and nskk-prolog.
-;;
-;; Implements the SKK server protocol (skkserv) for remote dictionary
-;; lookup.  This module connects to a running skkserv instance over TCP
-;; and queries it for kanji readings using command 1 of the protocol.
-;;
-;; The SKK server protocol (RFC-style):
-;;   Client sends: "1" + reading + " "   (no newline needed)
-;;   Server found: "1/cand1/cand2/.../\n"
-;;   Server miss:  "4" + reading + " \n"
-;;   Disconnect:   "0"
-;;
-;; This module is opt-in: set `nskk-server-enable' to non-nil to activate.
-;; When `nskk-server-enable' is nil (default), this module has zero
-;; effect on the search pipeline.
-;;
-;; The connection is persistent (kept alive across multiple lookups).
-;; `nskk-server-ensure-open' reconnects automatically if the connection drops.
-;;
-;; CPS pipeline:
-;;
-;;   nskk-server-lookup/k
-;;     <- nskk--server-lookup-guards-p/k  (guard: enable flag + key validity)
-;;         <- nskk-server-live-p/k        (guard: Prolog state + process status)
-;;     <- nskk--server-with-response/k    (I/O: send + await response)
-;;         <- nskk--server-await-response/k  (polling: wait for newline)
-;;     <- nskk--server-parse-response/k   (parse: Prolog response-type dispatch)
-;;         -> nskk--server-strip-annotation/k (pure string helper)
-;;
-;; Prolog predicates maintained by this module:
-;;
-;;   server-response-type/2
-;;     Maps the first byte of a skkserv response to a type atom.
-;;     Indexed by :hash on arg-1 (the prefix string).
-;;     Facts: ("1" found), ("4" miss)
-;;
-;;   server-state/1
-;;     Tracks connection state as a dynamic fact.
-;;     Indexed by :hash on arg-1.
-;;     Values: (open) when connected, (closed) when disconnected.
-;;     Updated atomically by nskk-server-open and nskk-server-close.
-;;
-;; Key public API:
-;; - `nskk-server-open'         -- establish connection to skkserv
-;; - `nskk-server-close'        -- send disconnect command and clean up
-;; - `nskk-server-live-p'       -- check if connection is active
-;; - `nskk-server-ensure-open'  -- ensure connection, reconnect if needed
-;; - `nskk-server-lookup'       -- look up a reading key via command 1
-;;
-;; Usage:
-;;   (setq nskk-server-enable t)
-;;   (setq nskk-server-host "localhost")  ; default
-;;   (setq nskk-server-portnum 1178)       ; default
+;; SKK server (skkserv) client for NSKK.
 
 ;;; Code:
 

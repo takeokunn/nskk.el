@@ -9,14 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-annotation.el covering:
-;; - Function existence (fboundp)
-;; - Prolog initialization (nskk-annotation-initialize)
-;; - Annotation registration and lookup
-;; - Annotation format helper
-;; - Display toggle (nskk--annotation-visible state)
-;; - nskk-annotation-clear
-;; - nskk-annotation-show-for-candidate guard conditions
+;; Tests for nskk-annotation.el.
 
 ;;; Code:
 

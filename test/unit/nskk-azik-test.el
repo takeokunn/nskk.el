@@ -22,24 +22,7 @@
 
 ;;; Commentary:
 
-;; This file provides comprehensive tests for the AZIK extended romaji input
-;; support in NSKK. AZIK is an efficient Japanese input method that extends
-;; standard romaji with special key combinations.
-;;
-;; Test categories:
-;; - Style switching tests
-;; - Special keys tests
-;; - 撥音拡張 (mora nasal extension) tests
-;; - 二重母音拡張 (diphthong extension) tests
-;; - 拗音互換キー (yō-on compatibility key) tests
-;; - 同指打鍵互換キー (same-finger compatibility key) tests
-;; - 特殊拡張 (special extension) tests
-;; - Q-key behavior tests
-;; - Compatibility tests
-;; - Prolog predicate tests (azik-vowel-char/1, azik-key-extends/2,
-;;   azik-nonvowel-ext/1, azik-vowel-shadow/1, azik-rule/2, bridge rule,
-;;   azik-colon-trigger-char/1)
-;; - CPS function tests (nskk--azik-classify-key/k, nskk--azik-finalize-hash-table)
+;; Tests for AZIK extended romaji input.
 
 ;;; Code:
 

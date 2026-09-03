@@ -24,32 +24,7 @@
 
 ;;; Commentary:
 
-;; Context-aware automatic input mode switching for NSKK (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-custom,
-;;   and nskk-cps-macros.
-;;
-;; When `nskk-context-mode' is enabled, NSKK automatically switches to
-;; ASCII mode when editing outside of string literals and comments in
-;; programming language modes.  This prevents accidental Japanese input
-;; when coding, and avoids the need to manually switch modes when moving
-;; between code and comments.
-;;
-;; This is the nskk.el equivalent of ddskk's `context-skk.el'.
-;;
-;; The mode works by hooking into `post-command-hook' and using
-;; `syntax-ppss' to determine the current syntactic context:
-;; - Inside a string: Japanese input may be appropriate
-;; - Inside a comment: Japanese input may be appropriate
-;; - Outside both: automatically switch to ASCII mode
-;;
-;; Configuration:
-;;   (add-hook 'prog-mode-hook #'nskk-context-mode)
-;;
-;; Or globally:
-;;   (nskk-context-global-mode 1)
-;;
-;; Prolog predicates maintained by this module: none.
+;; Context-aware auto mode switching for NSKK.
 
 ;;; Code:
 

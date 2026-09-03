@@ -23,17 +23,7 @@
 
 ;;; Commentary:
 
-;; Property-based tests for the kanji conversion pipeline.
-;;
-;; This file tests invariants of the conversion lifecycle:
-;; start conversion -> candidate selection -> commit/cancel.
-;;
-;; Properties tested:
-;; - conversion-roundtrip: Start -> commit produces candidate in converted-buffer
-;; - conversion-cancel-restores: Start -> cancel restores pre-conversion state
-;; - conversion-candidates-navigable: Cycling through candidates works correctly
-;; - conversion-idempotent-commit: Committing twice does not change state
-;; - conversion-state-consistency: State is internally consistent after any operation sequence
+;; Conversion flow PBT tests.
 
 ;;; Code:
 

@@ -26,48 +26,7 @@
 
 ;;; Commentary:
 
-;; NSKK is a next-generation SKK (Simple Kana to Kanji) Japanese input
-;; method for Emacs.  SKK converts romaji keystrokes to kana/kanji using
-;; a dictionary, with the user explicitly marking word boundaries.
-;;
-;; Features:
-;; - Zero external dependencies (Emacs 29.1+ only)
-;; - < 1ms key response, < 10ms dictionary search
-;; - Modular architecture with clean layer separation
-;; - AZIK extended romaji support (optional, via nskk-azik.el)
-;;
-;; Quick start:
-;;   (require 'nskk)
-;;   (nskk-global-mode 1)
-;;
-;; Key bindings (in nskk-mode):
-;;   C-x C-j  Toggle NSKK on/off in current buffer
-;;   C-j      Kakutei (commit) / enter hiragana from ASCII / newline in Japanese mode
-;;   SPC      Start conversion (▽→▼) / cycle next candidate
-;;   x        Previous candidate
-;;   RET      Commit candidate and insert newline
-;;   q        Toggle hiragana ↔ katakana
-;;   l        Switch to ASCII (latin) mode
-;;   L        Switch to full-width latin (JIS X 0208) mode
-;;   /        Enter abbrev mode (▽word SPC → dictionary lookup)
-;;   DEL      Delete last preedit char / cancel empty abbrev preedit
-;;   C-g      Cancel conversion or preedit (abbrev: restores previous mode)
-;;   C-n      Commit active conversion, then next-line
-;;   C-p      Commit active conversion, then previous-line
-;;   C-f      Forward-char (commits active conversion/preedit first)
-;;   C-b      Backward-char (commits active conversion/preedit first)
-;;   C-a      Beginning-of-line (commits active conversion/preedit first)
-;;   C-e      End-of-line (commits active conversion/preedit first)
-;;   TAB      Dynamic completion in preedit / pass-through
-;;   #        Enter numeric input mode
-;;   ;        Sticky shift (next char uppercase) / AZIK small-tsu (っ)
-;;
-;; Input modes: ascii (default), hiragana, katakana, latin,
-;;   abbrev, jisx0208-latin.
-;;
-;; SKK server (skkserv) configuration (optional):
-;;   (setq nskk-server-enable t)
-;;   (setq nskk-server-host "localhost")
+;; NSKK main entry point.
 
 ;;; Code:
 

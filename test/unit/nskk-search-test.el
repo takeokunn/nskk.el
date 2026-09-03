@@ -9,15 +9,7 @@
 
 ;;; Commentary:
 
-;; Comprehensive tests for nskk-search.el covering:
-;; - Exact search
-;; - Prefix search
-;; - Partial search
-;; - Fuzzy search (Levenshtein distance)
-;; - Result sorting
-;; - Duplicate removal
-;; - Cache integration
-;; - Error handling (invalid query, invalid index)
+;; Tests for nskk-search.el.
 
 ;;; Code:
 

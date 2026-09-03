@@ -24,52 +24,7 @@
 
 ;;; Commentary:
 
-;; Debug logging for NSKK (Layer 0: Foundation).
-;;
-;; Layer position: L0 (Foundation) -- depends on nskk-custom, nskk-prolog,
-;;   and nskk-cps-macros (all L0).
-;;
-;; Provides centralized debug logging to the *NSKK Debug* buffer using
-;; CPS-based dispatch.  `nskk-debug-log' formats and appends a message when
-;; debug is enabled; unlike the former macro variant, arguments are always
-;; evaluated.  Use `(when nskk-debug-enabled (nskk-debug-log ...))' to guard
-;; expensive argument expressions on hot paths.
-;; `nskk-debug-message' provides a safe runtime variant with format-error
-;; recovery via the CPS helper `nskk--debug-format/k'.
-;;
-;; Prolog predicates maintained by this module:
-;; - `debug-buffer-name/1'   -- name of the *NSKK Debug* buffer
-;; - `debug-timestamp-fmt/1' -- timestamp format string (%H:%M:%S.%3N)
-;; - `debug-message-fmt/1'   -- entry format: "[timestamp] message\n"
-;; - `debug-category/2'      -- (debug-category SYMBOL PREFIX-STRING)
-;;                              maps category symbols to bracket prefixes
-;;
-;; Key public API:
-;; - `nskk-debug-log'     -- function: log formatted message when debug enabled
-;; - `nskk-debug-log/k'   -- CPS: succeed with message, fail when disabled
-;; - `nskk-debug-message' -- function: log with format-error recovery
-;; - `nskk-debug-toggle'  -- interactive: toggle debug mode on/off
-;; - `nskk-debug-show'    -- interactive: display the *NSKK Debug* buffer
-;; - `nskk-debug-clear'   -- interactive: clear all entries from the buffer
-;;
-;; Usage:
-;;
-;;   M-x nskk-debug-toggle        ;; Enable debug mode
-;;
-;;   (setq nskk-debug-enabled t)  ;; Or programmatically
-;;
-;;   (nskk-debug-log "Processing key: %s" key)
-;;   (nskk-debug-log "State changed from %s to %s" old-state new-state)
-;;
-;;   M-x nskk-debug-show          ;; View the debug buffer
-;;   M-x nskk-debug-clear         ;; Clear the debug buffer
-;;
-;; Log messages from other modules use a bracketed category prefix.
-;; Query a prefix at runtime with:
-;;   (nskk-prolog-query-value `(debug-category ,cat ?Prefix) '?Prefix)
-;;   [INPUT]  -- nskk-input.el  (mode switching, romaji routing, kana conversion)
-;;   [HENKAN] -- nskk-henkan.el (candidate search, commit, registration)
-;;   [SEARCH] -- nskk-search.el (dictionary lookup, cache, learning)
+;; NSKK unified debug mode.
 
 ;;; Code:
 

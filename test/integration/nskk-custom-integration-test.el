@@ -9,39 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for customization variables defined in nskk-custom.el.
-;;
-;; These tests verify that each defcustom variable actually affects runtime
-;; behavior when let-bound.  They are distinct from test/unit/nskk-custom-test.el
-;; which only checks static metadata (registration, defaults, :safe predicates,
-;; groups, faces).
-;;
-;; Coverage by functional area:
-;;
-;;   nskk-state-*
-;;     nskk-state-default-mode    -- nskk-state-create uses it when no mode given
-;;
-;;   nskk-converter-*
-;;     nskk-converter-auto-start-henkan -- declared guard; read at call time
-;;     nskk-converter-romaji-style      -- load-style selects the registered init-fn
-;;
-;;   nskk-search-*
-;;     nskk-search-sort-method    -- nskk--search-sort-results reads it at call time
-;;     nskk-search-fuzzy-threshold -- nskk-search-fuzzy applies the distance cutoff
-;;
-;;   nskk-modeline / nskk-use-color-cursor
-;;     nskk-modeline-format       -- nskk-modeline-indicator applies format-spec
-;;     nskk-use-color-cursor      -- nskk-cursor-update guards on it
-;;
-;;   nskk-henkan-*
-;;     nskk-henkan-show-candidates-nth         -- Prolog query uses the value
-;;     nskk-henkan-number-to-display-candidates -- used by candidate window
-;;     nskk-henkan-show-candidates-keys        -- candidate selection key list
-;;     nskk-max-registration-depth             -- registration guard
-;;
-;;   nskk-debug-*
-;;     nskk-debug-enabled   -- gates nskk-debug-message / nskk-debug-log
-;;     nskk-debug-max-entries -- nskk--debug-trim prunes at this count
+;; Integration tests for nskk-custom.
 
 ;;; Code:
 

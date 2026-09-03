@@ -24,30 +24,7 @@
 
 ;;; Commentary:
 
-;; Inline candidate display for NSKK (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-custom,
-;;   nskk-prolog, and nskk-cps-macros.
-;;
-;; When `nskk-show-inline' is non-nil, displays conversion candidates
-;; inline in the buffer rather than in the echo area.  This is the nskk.el
-;; equivalent of ddskk's `skk-inline.el' and `skk-show-inline' variable.
-;;
-;; Display modes:
-;; - nil            : Use echo area (default, no inline display)
-;; - t or 'horizontal : Show candidate to the right of the conversion point
-;; - 'vertical      : Show candidate below the conversion point
-;;
-;; The inline display uses Emacs overlays with `after-string' property,
-;; anchored at the end of the conversion overlay.
-;;
-;; Dictionary registration mode badge:
-;; When entering dictionary registration mode, an inline badge
-;; \"↓辞書登録中↓\" is displayed at the conversion point.  This is
-;; controlled by `nskk-show-inline' being non-nil.
-;;
-;; Prolog predicates maintained by this module: none.
-;; State is tracked via the shared `nskk-state-conversion-overlay' in nskk-state.el.
+;; Inline candidate display for NSKK.
 
 ;;; Code:
 

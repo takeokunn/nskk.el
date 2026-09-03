@@ -9,12 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-isearch.el covering:
-;; - Function existence (fboundp)
-;; - nskk-isearch-mode-string-alist customization
-;; - nskk--isearch-mode-string for each NSKK mode
-;; - nskk-isearch-setup/teardown hook registration
-;; - Internal state management
+;; Tests for nskk-isearch.el.
 
 ;;; Code:
 

@@ -14,17 +14,7 @@
 
 ;;; Commentary:
 
-;; Comprehensive tests for nskk-input.el and nskk-henkan.el covering:
-;; - Character insertion in latin mode
-;; - Input conversion to kana
-;; - Full-width character mapping (fullwidth-char/2 Prolog rule)
-;; - Toggle-mode Prolog rules
-;; - Input-route Prolog rules
-;; - Mode-aware command dispatch
-;; - Conversion state helpers
-;; - Overlay management
-;; - Candidate state management
-;; - Abbrev mode input
+;; Input and henkan tests.
 
 ;;; Code:
 

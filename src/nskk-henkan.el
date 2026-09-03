@@ -24,66 +24,7 @@
 
 ;;; Commentary:
 
-;; Conversion (henkan) pipeline for NSKK (Layer 3: Application).
-;;
-;; Layer position: L3 (Application) -- depends on nskk-kana, nskk-state,
-;;   nskk-search, nskk-dictionary, nskk-prolog, nskk-converter, nskk-custom.
-;;
-;; This module orchestrates the full Japanese input conversion (henkan) flow:
-;; preedit management, dictionary search dispatch, candidate navigation,
-;; okurigana processing, dictionary registration, and conversion state cleanup.
-;;
-;; Architecture:
-;;   Buffer operations (insert, delete, overlays, markers) are handled by
-;;   imperative Emacs Lisp functions.  Decision logic (what action to take
-;;   given current state) is encoded as Prolog facts and rules, queried at
-;;   runtime via `nskk-henkan-dispatch'.
-;;
-;; Prolog predicates defined in this module:
-;;   core-search-type/2          -- maps search type keyword to search function
-;;   converting-phase/1          -- enumerates valid converting phases
-;;   okurigana-char/2            -- maps uppercase ASCII to its lowercase
-;;   candidate-nav-next-action/3 -- (count threshold action) next-key dispatch
-;;   candidate-nav-prev-action/2 -- (list-state action) prev-key dispatch
-;;   search-result-action/2      -- (has/no candidates) post-search dispatch
-;;   convert-or-commit-action/2  -- (converting state) SPC-without-preedit dispatch
-;;   should-update-overlay/1     -- phases that require overlay display
-;;   script-toggle/2             -- (mode target) opposite-script for q-key/toggle-key in ▽ preedit
-;;   search-backend/2            -- maps integer search backend index to search function
-;;   vowel-okurigana-char/1      -- set of lowercase vowels that are immediate okurigana
-;;   preedit-phase/1             -- phases where preedit display is active
-;;   script-converter/2          -- (target-script converter-fn) for script conversion dispatch
-;;   disable-cleanup/2           -- (action handler) cleanup actions on nskk-mode disable
-;;
-;; External Prolog tables queried by this module:
-;;   clearable-input-var/1       -- defined in nskk-input.el; input state vars cleared on reset
-;;   presentation-action/2       -- callbacks registered by presentation modules
-;;
-;; Key macros:
-;;   `nskk-without-modification'      -- inhibit undo/modification hooks in body
-;;   `nskk-henkan-dispatch'           -- dispatch on Prolog query result
-;;   `nskk-henkan-with-preedit'       -- execute body when preedit text exists
-;;   `nskk-with-conversion-context'   -- bind candidates and index for conversion
-;;   `nskk-when-bound'                -- execute body when variable is bound
-;;   `nskk-when-bound-and'            -- execute body when variable is bound and satisfies pred
-;;
-;; Key public functions:
-;;   `nskk-henkan-kakutei-convert-script' -- commit preedit converted to opposite kana script
-;;   `nskk-convert'              -- start conversion when preedit exists
-;;   `nskk-convert-or-commit'    -- start conversion or commit active candidate
-;;   `nskk-next-candidate'       -- advance candidate selection
-;;   `nskk-previous-candidate'   -- reverse candidate selection
-;;   `nskk-commit-current'       -- insert selected candidate and clear state
-;;   `nskk-cancel-conversion'    -- rollback active conversion
-;;   `nskk-cancel-preedit'       -- cancel preedit input
-;;   `nskk-core-search'          -- dictionary search with type dispatch
-;;   `nskk-detect-okurigana-char' -- uppercase consonant detection
-;;   `nskk-process-okurigana-input' -- okurigana boundary handling
-;;
-;; Hook points:
-;;   `nskk-henkan-show-candidates-functions' -- called to display candidate list
-;;   `nskk-henkan-hide-candidates-functions' -- called to hide candidate list
-;;   `nskk-henkan-select-candidate-by-key-function' -- maps key to candidate index
+;; Conversion pipeline for NSKK.
 
 ;;; Code:
 

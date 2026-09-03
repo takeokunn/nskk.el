@@ -9,20 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for the cross-module call chain between
-;; nskk-modeline.el (Layer 5: Presentation) and nskk-state.el (Layer 2: Domain).
-;;
-;; Tests verify that:
-;; - `nskk-modeline-indicator' correctly queries mode-properties/5 via Prolog,
-;;   crossing the module boundary from Presentation to Domain.
-;; - The per-mode memoization cache in `nskk--modeline-indicator-cache' is
-;;   keyed on the mode symbol stored in the state struct.
-;; - Cache invalidation via `nskk--modeline-clear-cache' propagates the state
-;;   change across the modeline↔state boundary.
-;; - `nskk-modeline-update' triggers cache clearing (cross-module call chain).
-;;
-;; Note: Tests bind `nskk-use-color-cursor' to nil to prevent
-;; `set-cursor-color' calls that are inappropriate in batch mode.
+;; Modeline↔State integration tests.
 
 ;;; Code:
 

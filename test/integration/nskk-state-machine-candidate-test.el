@@ -23,19 +23,7 @@
 
 ;;; Commentary:
 
-;; State machine property-based tests for NSKK candidate navigation.
-;;
-;; This file tests invariants of candidate navigation using property-based
-;; testing techniques. Each test verifies that a specific property
-;; holds across many random candidate navigation sequences.
-;;
-;; Properties tested:
-;; - candidate-index-bounds: current-index is always < length(candidates)
-;; - candidate-next-wraps: Next candidate wraps around to 0 after last
-;; - candidate-previous-wraps: Previous candidate wraps to last from 0
-;; - candidate-current-valid: Current candidate is always in the list
-;; - candidate-set-resets-index: Setting candidates resets index to 0
-;; - candidate-empty-list-safe: Empty candidate list doesn't crash
+;; Candidate navigation state machine tests.
 
 ;;; Code:
 

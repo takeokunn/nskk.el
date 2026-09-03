@@ -23,19 +23,7 @@
 
 ;;; Commentary:
 
-;; Unit tests for nskk-trie.el trie data structure.
-;;
-;; Test categories:
-;; - create: fresh trie invariants
-;; - insert/lookup: round-trip for ASCII and Japanese keys, overwrite, absent key
-;; - delete: present/absent key, size decrement, shared-prefix safety, leaf cleanup
-;; - prefix-search: exact match, partial prefix, empty prefix, no-match, limit
-;; - size tracking: insert, overwrite, delete lifecycle
-;; - error cases: non-string key, empty key
-;; - longest-match: single/multi char, no match, non-terminal prefix, exact key
-;; - has-prefix-p: exact key, proper prefix, non-existent, empty
-;; - lookup/k: CPS on-found/on-not-found, falsy nil value
-;; - longest-match/k: CPS on-found/on-not-found
+;; Tests for nskk-trie .
 
 ;;; Code:
 

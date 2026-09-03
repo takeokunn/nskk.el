@@ -9,28 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests verifying cross-strategy consistency in nskk-search.el.
-;;
-;; These tests exercise exact, prefix, and partial search strategies on a
-;; shared dictionary index to verify:
-;; - Each strategy returns results consistent with its contract.
-;; - Prefix search finds all entries that share a common prefix.
-;; - Partial search finds all entries whose key contains a given substring.
-;; - Cross-strategy consistency: the candidates returned for a given key are
-;;   the same regardless of which strategy locates that key.
-;; - The :limit parameter caps the number of results for prefix/partial.
-;;
-;; The shared fixture has a common "かん" prefix across four entries, plus
-;; one unrelated entry ("かわ") to verify exclusion logic.
-;;
-;; Implementation note on fixture choice:
-;; nskk-with-prolog-entries is used (not nskk-with-mock-dict) because
-;; nskk-search-prefix calls (nskk-prolog-trie-prefix-search pred 2 query),
-;; which looks for the trie at DB key "user-dict-entry/2".
-;; nskk-with-mock-dict internally calls (nskk-prolog-set-index pred 1 :trie),
-;; creating the trie at "user-dict-entry/1" — the wrong key.
-;; nskk-with-prolog-entries calls (nskk-prolog-set-index pred 2 :trie),
-;; placing the trie at the correct "user-dict-entry/2" key.
+;; Search strategy integration tests.
 
 ;;; Code:
 

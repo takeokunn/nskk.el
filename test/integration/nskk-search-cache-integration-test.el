@@ -22,9 +22,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for nskk-search.el and nskk-cache.el.
-;; Tests the full search+cache pipeline: cache creation, hit/miss,
-;; eviction policies, pattern invalidation, and search-with-cache.
+;; Search+cache integration tests.
 
 ;;; Code:
 

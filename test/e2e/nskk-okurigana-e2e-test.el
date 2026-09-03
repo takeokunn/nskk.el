@@ -24,9 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E tests for okurigana handling (DDSKK §5.8).
-;; Covers: consonant okurigana, vowel okurigana, katakana okurigana,
-;; sokuon in okurigana, pending romaji discard regression.
+;; E2E okurigana tests for NSKK.
 
 ;;; Code:
 

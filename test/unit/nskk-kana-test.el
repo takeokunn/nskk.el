@@ -9,18 +9,7 @@
 
 ;;; Commentary:
 
-;; Comprehensive tests for nskk-kana.el covering:
-;;
-;; - Character classification (hiragana, katakana, hankaku-katakana, han, japanese)
-;; - Boundary and rejection tests for all five predicates
-;; - Hiragana <-> katakana single-character conversion
-;; - String conversion: hiragana->katakana, katakana->hiragana
-;; - CPS (/k) variant success and failure paths
-;; - Zenkaku <-> hankaku conversion (basic, dakuten, small forms, punctuation)
-;; - Roundtrip properties (hiragana<->katakana, zenkaku<->hankaku)
-;; - Property-based tests (PBT): string type, length preservation, roundtrip
-;; - Prolog database integration (rule assertions, fact tables)
-;; - Performance benchmarks
+;; Core conversion tests.
 
 ;;; Code:
 

@@ -24,39 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E tests for AZIK extended romaji input style.
-;; Tests q-key behavior (context-aware only),
-;; toggle key behavior (@ for jp106, [ for us101),
-;; semicolon as っ, colon as ー, and other AZIK-specific rules.
-;;
-;; AZIK must be activated per test via nskk-e2e-with-azik-buffer macro.
-;;
-;; Architecture notes for test authors:
-;;
-;; 1. Semicolon and colon: In AZIK mode, ";" and ":" are mapped in the
-;;    romaji hash table (nskk--romaji-table) via nskk-converter-load-style.
-;;    They reach the hash via the standard nskk-self-insert path:
-;;      nskk-self-insert -> nskk-process-japanese-input
-;;        -> nskk-convert-input-to-kana -> nskk-converter-convert
-;;        -> nskk-converter-lookup (reads hash).
-;;    So nskk-e2e-type ";" and nskk-e2e-type ":" work correctly in
-;;    AZIK mode via normal key dispatch.
-;;
-;; 2. Q-key AZIK behavior: The nskk-mode-map binds "q" to nskk-handle-q.
-;;    In AZIK mode, nskk-handle-q delegates to nskk-handle-q-key (which
-;;    queries q-key-action/3) both in idle Japanese mode and in ▽ preedit
-;;    mode.  In standard mode it calls nskk-henkan-kakutei-convert-script
-;;    (script toggle) in ▽ preedit, or nskk-toggle-japanese-mode in idle.
-;;    Section 5 tests call nskk-handle-q-key directly (idle mode) for
-;;    focused AZIK dispatch testing; Section 12 tests use nskk-e2e-type "q"
-;;    to cover the full nskk-handle-q dispatch path in ▽ preedit.
-;;
-;; 3. AZIK romaji rules (hatsuon, double vowel, youon): These reach the
-;;    buffer via normal nskk-e2e-type key dispatch because nskk-self-insert
-;;    handles all printable ASCII, and the AZIK-loaded hash table resolves
-;;    multi-char romaji sequences (e.g., "kz" -> "かん").
-;;
-;; Test name format: nskk-e2e-azik-*
+;; E2E tests for AZIK extended romaji input.
 
 ;;; Code:
 

@@ -24,20 +24,7 @@
 
 ;;; Commentary:
 
-;; Sequence-based property tests for the NSKK input method.
-;;
-;; This file tests properties over random key press sequences to verify
-;; system invariants hold regardless of input order.
-;;
-;; Properties tested:
-;; - State integrity after any sequence of key presses
-;; - Buffer bounds and consistency
-;; - Mode validity preservation
-;; - Romaji buffer consistency
-;; - Deterministic replay behavior
-;; - Undo/redo invariants
-;; - Japanese typing correctness
-;; - Mode switch idempotency
+;; Sequence-based property tests for NSKK.
 
 ;;; Code:
 

@@ -24,44 +24,7 @@
 
 ;;; Commentary:
 
-;; Centralized customization variables for NSKK (Layer 0: Foundation).
-;;
-;; Layer position: L0 (Foundation) -- no dependencies on other NSKK modules.
-;;
-;; Core `defgroup' and `defcustom' forms are defined here so that:
-;; - The customization group hierarchy is established in a single place.
-;; - Individual modules `(require \'nskk-custom)' to access their variables
-;;   without needing to declare groups themselves.
-;; Optional-module customizations (nskk-server.el, nskk-azik.el,
-;; nskk-cache.el, nskk-kana.el, nskk-dictionary.el) define their own
-;; `defcustom' and `defgroup' forms near their implementation for
-;; self-containment; those groups are listed in the hierarchy below.
-;;
-;; No Prolog predicates are maintained by this module.
-;;
-;; Group hierarchy:
-;;   nskk
-;;   ├── nskk-state      (default mode)
-;;   ├── nskk-converter  (auto-start henkan, romaji style)
-;;   ├── nskk-search     (sort method, fuzzy threshold, learning file)
-;;   ├── nskk-server     (host, port, coding-system, timeout) [defined in nskk-server.el]
-;;   ├── nskk-cache      (strategy, capacity)  [defined in nskk-cache.el]
-;;   ├── nskk-kana       (kana classification settings) [defined in nskk-kana.el]
-;;   ├── nskk-dictionary (dict files, cache enable) [defined in nskk-dictionary.el]
-;;   ├── nskk-azik       (q behavior, keyboard type) [defined in nskk-azik.el]
-;;   └── nskk-ui
-;;       ├── nskk-modeline       (format string)
-;;       ├── nskk-henkan         (show-nth, page size, selection keys)
-;;       ├── nskk-candidate-window
-;;       └── nskk-debug          (enabled, max-entries)
-;;
-;; Cursor color faces (defined in this module):
-;; - `nskk-use-color-cursor'
-;; - `nskk-cursor-hiragana'
-;; - `nskk-cursor-katakana'
-;; - `nskk-cursor-latin'
-;; - `nskk-cursor-jisx0208-latin'
-;; - `nskk-cursor-abbrev'
+;; Customization groups and variables for NSKK.
 
 ;;; Code:
 

@@ -24,8 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E tests for modeline indicator and display state (DDSKK §5.12).
-;; Covers: mode indicators, cursor position invariants, jisx0208-latin.
+;; E2E modeline and display tests for NSKK.
 
 ;;; Code:
 

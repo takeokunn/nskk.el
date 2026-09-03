@@ -24,60 +24,7 @@
 
 ;;; Commentary:
 
-;; Caching layer for the NSKK dictionary search engine (Layer 1: Core Engine).
-;;
-;; Layer position: L1 (Core Engine) -- depends on nskk-prolog and nskk-cps-macros.
-;;
-;; Provides LRU and LFU cache implementations with O(1) get/put operations,
-;; automatic eviction, and hit-rate statistics.  Cache type validation and
-;; operation dispatch are driven by Prolog facts, keeping the dispatch table
-;; declarative and consistent with the rest of the NSKK architecture.
-;;
-;; Supported algorithms (selectable at creation time):
-;; - LRU (Least Recently Used): doubly-linked list + hash table
-;; - LFU (Least Frequently Used): frequency buckets + hash table
-;;
-;; Both algorithms provide amortized O(1) get and put.  The LFU frequency
-;; bucket uses a list per frequency level; promotion is O(k) where k is the
-;; bucket occupancy, which is O(1) in the common case of spread frequencies.
-;; Capacity is managed by entry count with automatic eviction.  Hit-rate
-;; statistics are collected and accessible via `nskk-cache-stats'.
-;;
-;; Prolog predicates maintained by this module:
-;; - `cache-type/1'            -- valid cache type membership (lru, lfu)
-;; - `cache-eviction-policy/2' -- type -> policy name documentation
-;; - `cache-dispatch-fn/3'     -- (type op fn) operation dispatch table
-;; - `cache-field-fn/3'        -- (type field accessor-fn) field accessor table
-;; - `cache-constructor/2'     -- (type constructor-fn) creation dispatch table
-;;
-;; Key public API:
-;; - `nskk-cache-create'             -- create LRU or LFU cache
-;; - `nskk-cache-get'                -- retrieve a value by key
-;; - `nskk-cache-put'                -- store a key/value pair
-;; - `nskk-cache-invalidate'         -- remove a specific key
-;; - `nskk-cache-invalidate-pattern' -- remove keys matching a regexp
-;; - `nskk-cache-clear'              -- clear all entries
-;; - `nskk-cache-stats'              -- return statistics plist
-;; - `nskk-cache-hit-rate'           -- return hit rate as float
-;; - `nskk-cache-size'               -- return current entry count
-;; - `nskk-cache-p'                  -- test for valid cache object
-;;
-;; Performance targets:
-;; - get: O(1), < 0.1ms (Prolog dispatch via hash index is ~20us)
-;; - put: O(1), < 0.1ms
-;; - cache-hit search: < 10ms
-;;
-;; Usage:
-;;
-;;   (setq cache (nskk-cache-create :type 'lru :capacity 1000))
-;;   (nskk-cache-put cache "key" "value")
-;;   (nskk-cache-get cache "key")  ; => "value"
-;;   (nskk-cache-stats cache)      ; => (:hits N :misses N :hit-rate R ...)
-;;
-;;   ;; Query dispatch table via Prolog:
-;;   (nskk-prolog-query-value '(cache-type \?t) '\?t)  ; => lru or lfu
-;;   (nskk-prolog-query-value
-;;     '(cache-eviction-policy lru \?p) '\?p)           ; => least-recently-used
+;; Cache mechanism for NSKK.
 
 ;;; Code:
 

@@ -9,18 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-modeline.el covering:
-;; - Function existence (fboundp / macrop)
-;; - Indicator return value when state is nil
-;; - Indicator suffix text per mode (hiragana, katakana, abbrev, ascii, latin, jisx0208-latin)
-;; - Face text-property per mode
-;; - Prolog mode-properties/5 facts for all 6 modes (direct is not a valid mode)
-;; - nskk--cursor-with-color returns non-nil string for each mode
-;; - Cursor color faces (nskk-cursor-*) are defined and return valid colors
-;; - nskk-modeline-format customization
-;; - nskk-modeline-update callable without error
-;; - Face definitions (facep)
-;; - nskk-define-mode-entry macro existence
+;; Tests for nskk-modeline.el.
 
 ;;; Code:
 

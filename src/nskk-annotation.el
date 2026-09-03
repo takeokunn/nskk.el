@@ -24,31 +24,7 @@
 
 ;;; Commentary:
 
-;; Annotation (注釈) display for NSKK (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-custom,
-;;   nskk-prolog, and nskk-cps-macros.
-;;
-;; When `nskk-show-annotation' is non-nil, displays annotation text
-;; from dictionary entries alongside the conversion candidate.
-;;
-;; SKK dictionary entries can contain annotations in the format:
-;;   読み /候補1;注釈1/候補2;注釈2/
-;;
-;; Annotations are stored in a separate Prolog predicate `dict-annotation/3'
-;; keyed by (reading, candidate) pairs.  This is populated at dict load time
-;; when `nskk-show-annotation' is non-nil.
-;;
-;; When enabled, annotation text is shown in the echo area when a candidate
-;; with an annotation is displayed during conversion.  The annotation is
-;; hidden once the candidate is committed.
-;;
-;; This is the nskk.el equivalent of ddskk's `skk-annotation.el'.
-;;
-;; Prolog predicates maintained by this module:
-;; - `dict-annotation/3' -- (reading candidate annotation-text)
-;;   Stores annotation strings for candidates that have ';annotation' in
-;;   the dictionary entry.  Hash-indexed for O(1) lookup.
+;; Annotation display for NSKK.
 
 ;;; Code:
 

@@ -9,8 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for dictionary registration, user dictionary management,
-;; and multi-buffer state isolation.
+;; Dictionary registration integration tests.
 
 ;;; Code:
 

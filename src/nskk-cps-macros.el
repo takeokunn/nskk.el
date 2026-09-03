@@ -24,63 +24,7 @@
 
 ;;; Commentary:
 
-;; CPS macro definitions for NSKK (Layer 0: Foundation).
-;;
-;; Layer position: L0 (Foundation) -- no nskk-* runtime dependencies.
-;; Compile-time only: macros expand away before runtime.
-;;
-;; This module provides compile-time CPS (Continuation-Passing Style) transformation
-;; macros for nskk.el.  It implements:
-;;
-;;   `defun/k'    — Pattern B (2-continuation: on-found / on-not-found)
-;;   `defun/done' — Pattern A (1-continuation: on-done, no return value)
-;;   `defun/3k'   — Pattern D (3-continuation: user-named, no CPS transform)
-;;   `nskk-<-'    — Standalone pipeline-bind (on-found only; for defun/3k contexts)
-;;   `nskk-<-or'  — Standalone pipeline-bind (both continuations; for defun/3k contexts)
-;;
-;; The macros allow writing functions once in a natural direct style using the
-;; special forms `succeed', `fail', and `<-' (CPS bind), which are then
-;; mechanically transformed into proper continuation-passing form at
-;; macro-expansion time.
-;;
-;; Special forms recognized inside `defun/k' bodies:
-;;
-;;   (succeed VALUE)
-;;     Calls the on-found continuation with VALUE.
-;;
-;;   (fail)
-;;     Calls the on-not-found continuation with no arguments.
-;;
-;;   (<- VAR FN-NAME ARG...)
-;;     Binds the CPS result of FN-NAME/k to VAR and continues.
-;;     FN-NAME must NOT end in /k — the macro appends /k automatically.
-;;     The rest of the enclosing body forms become the continuation body.
-;;
-;;   (<-or VAR FN-NAME ARG... :found FOUND-FORM :fail FAIL-FORM)
-;;     Two-arm CPS bind.  VAR is bound in FOUND-FORM; FAIL-FORM runs when
-;;     FN-NAME/k calls its on-not-found continuation.
-;;
-;;   (<-seq [VAR (FN-NAME ARG...)] BODY...)
-;;     Sequential bind.  VAR is bound to the CPS result of FN-NAME/k and
-;;     BODY forms become the continuation.  Failure auto-propagates to
-;;     on-not-found without an explicit :fail arm.  Equivalent to `<-'
-;;     followed immediately by BODY, but groups the binding and its entire
-;;     continuation in one syntactic unit.
-;;
-;;   (call/cc (lambda (K) BODY...))
-;;     Binds K to the current on-found continuation (first-class, multi-shot).
-;;     Calling (funcall K v) is equivalent to (succeed v) but K can be stored
-;;     or called multiple times.
-;;
-;;   (escape K BODY...)
-;;     Binds K to a single-shot escape continuation.  Calling (funcall K v)
-;;     aborts BODY and calls on-found with v.  BODY continues normally if K
-;;     is never called.
-;;
-;;   :interactive t | "SPEC"
-;;     (Place before any body forms.) Adds `(interactive)' or
-;;     `(interactive SPEC)' to the sync wrapper only; the /k function
-;;     is never interactive.  Supported by both `defun/k' and `defun/done'.
+;; CPS transformation macros for nskk.el.
 
 ;;; Code:
 

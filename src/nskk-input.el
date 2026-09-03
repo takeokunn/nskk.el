@@ -24,59 +24,7 @@
 
 ;;; Commentary:
 
-;; Input processing and mode switching for NSKK (Layer 4: Input Processing).
-;;
-;; Layer position: L4 (Input Processing) -- depends on nskk-henkan, nskk-kana,
-;;   nskk-state, nskk-converter, nskk-prolog; optionally loads nskk-azik.
-;;
-;; Handles character routing, romaji-to-kana accumulation, mode switching,
-;; and AZIK-aware key handlers.  Bridges keymap events and the henkan
-;; conversion pipeline (L3).
-;;
-;; Prolog predicates registered by this module:
-;;   input-route/2          -- maps input mode to routing action (katakana-半角 → process-japanese)
-;;   toggle-mode/2          -- hiragana<->katakana toggle table (katakana-半角 → hiragana)
-;;   q-key-action/3         -- q key dispatch (style, buf-state, action)
-;;   semicolon-key-action/2 -- semicolon key dispatch (style, action)
-;;   kakutei-action/2       -- C-j dispatch (state, action)
-;;   romaji-classify/3      -- romaji input classification (class, doubled-eligible, result-type)
-;;   japanese-input-class/3 -- (char mode class) classifies keypresses in Japanese mode
-;;   doubled-context/6      -- context table for doubled-consonant (sokuon) handling
-;;   effective-char-class/5 -- (romaji mode okuri-pending azik-colon result) full classification
-;;   fullwidth-char/2        -- (ascii-char zenkaku-char) full-width character mapping
-;;
-;; Key public API:
-;;   `nskk-self-insert'              -- main entry point for character input
-;;   `nskk-set-mode-hiragana'        -- switch to hiragana mode
-;;   `nskk-set-mode-katakana'        -- switch to katakana mode
-;;   `nskk-set-mode-latin'           -- switch to ASCII/latin mode
-;;   `nskk-set-mode-abbrev'          -- switch to abbrev mode
-;;   `nskk-set-mode-jisx0208-latin'  -- switch to full-width latin mode
-;;   `nskk-toggle-japanese-mode'     -- convert preedit script or toggle hiragana<->katakana
-;;   `nskk-current-mode'             -- return current mode symbol
-;;   `nskk-handle-q-key'             -- q key with AZIK dispatch
-;;   `nskk-handle-semicolon-key'     -- semicolon key with AZIK dispatch
-;;   `nskk-convert-input-to-kana'    -- accumulate romaji, emit kana
-;;   `nskk-maybe-load-azik-style'   -- load AZIK if configured
-;;
-;; AZIK colon-okurigana:
-;;   In AZIK mode, `:' (Shift+; on US101) or `+' (Shift+; on JP106) typed
-;;   during a ▽-preedit sequence acts as a combined okurigana + sokuon
-;;   trigger.  For example, typing `Tuka:te' produces `使って'.  The
-;;   mechanism is two-phase: `:' arms the trigger (inserting `*' and setting
-;;   the pending flag), then the next consonant fires the okurigana lookup
-;;   and records a deferred entry for retroactive っ insertion once the
-;;   following vowel arrives.
-;;
-;; Module-level state:
-;;   `nskk--azik-colon-okuri-pending'  -- non-nil when `:' trigger has been
-;;                                        armed; next consonant will become
-;;                                        the okurigana consonant
-;;   `nskk--azik-colon-okuri-deferred' -- non-nil after the okurigana
-;;                                        consonant fires; holds
-;;                                        (CONSONANT-CHAR . PLACEHOLDER)
-;;                                        for retroactive っ insertion on
-;;                                        the following vowel
+;; Input processing for NSKK.
 
 ;;; Code:
 

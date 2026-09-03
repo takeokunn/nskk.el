@@ -24,31 +24,7 @@
 
 ;;; Commentary:
 
-;; Chaos/monkey tests for AZIK E2E.  Generates random sequences of key
-;; events (kana input, AZIK special keys, mode-control keys) and verifies
-;; that the NSKK state machine never enters an invalid state.
-;;
-;; Design:
-;;
-;; 1. All chaos scenarios run inside a single `nskk-e2e-with-azik-buffer'
-;;    session to avoid N Prolog DB snapshot round-trips.  Between scenarios
-;;    an explicit reset (C-g × 2 + C-j + erase-buffer + clear romaji) brings
-;;    the system back to a known-clean hiragana-idle state.
-;;
-;; 2. The event pool is weighted: kana/AZIK inputs appear more frequently
-;;    than control keys, modeling realistic typing patterns.
-;;
-;; 3. Invariants checked after every scenario:
-;;    - (nskk-current-mode) is a valid NSKK mode
-;;    - (nskk-state-henkan-phase nskk-current-state) is nil/on/active/list/registration
-;;    - nskk-mode is still active (not inadvertently disabled)
-;;
-;; 4. Failure reports include: run index, seed, and the exact event sequence
-;;    so the failing case can be reproduced deterministically.
-;;
-;; 5. A focused cancel-recovery test checks the specific property that C-g
-;;    always exits any active/list henkan phase.  This is especially useful
-;;    for catching "stuck preedit" bugs introduced by AZIK edge cases.
+;; Chaos/monkey tests for AZIK E2E.
 
 ;;; Code:
 

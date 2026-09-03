@@ -9,18 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for nskk-prolog.el (Layer 0: Foundation).
-;;
-;; Tests verify the public API of the embedded Prolog engine:
-;;   - Fact assertion and query (nskk-prolog-assert, nskk-prolog-query*)
-;;   - Fact retraction (nskk-prolog-retract-all)
-;;   - Trie prefix search (nskk-prolog-set-index :trie, nskk-prolog-trie-prefix-search)
-;;   - PBT: trie prefix-result is a subset of all results
-;;   - Deftest-cases: known predicate arities
-;;
-;; Every test uses nskk-prolog-test-with-isolated-db to prevent cross-test
-;; Prolog database pollution.  Trie-indexed predicates always call
-;; nskk-prolog-set-index BEFORE any nskk-prolog-assert calls.
+;; Integration tests for nskk-prolog.
 
 ;;; Code:
 

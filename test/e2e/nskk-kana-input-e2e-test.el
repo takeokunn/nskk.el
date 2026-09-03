@@ -24,15 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E tests for basic kana input (DDSKK §4.2 Input modes).
-;; Covers: ASCII passthrough, hiragana romaji, katakana, compound kana,
-;; sokuon, hatsuon, half-width katakana, word sequences.
-;;
-;; Also includes romaji edge rows (small kana, v-row, foreign extensions,
-;; n-apostrophe, long vowel, mode switch clearing pending romaji).
-;;
-;; Property-based tests (PBT) verify crash-freedom and mode preservation
-;; under random romaji input.
+;; E2E kana input tests for NSKK.
 
 ;;; Code:
 

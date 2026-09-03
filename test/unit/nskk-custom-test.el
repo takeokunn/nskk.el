@@ -9,13 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-custom.el covering:
-;; - defcustom custom-variable-p registration
-;; - defcustom default values (symbol, integer, boolean, nil, string, list)
-;; - defcustom :safe predicate acceptance (valid typed values)
-;; - defcustom :safe predicate rejection (wrong-typed values)
-;; - defgroup custom-group registration
-;; - defface existence and :background attribute presence
+;; Tests for nskk-custom.el.
 
 ;;; Code:
 

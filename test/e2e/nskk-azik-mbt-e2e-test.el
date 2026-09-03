@@ -24,38 +24,7 @@
 
 ;;; Commentary:
 
-;; Model-based testing: random walks through the AZIK state machine
-;; verifying invariants at each step.
-;;
-;; Design:
-;;
-;; 1. The abstract state model observes the concrete NSKK state and maps it
-;;    to one of eight abstract state symbols:
-;;    idle, preedit-on, converting, list-converting,
-;;    azik-deferred, vowel-shadow-deferred, colon-pending, colon-deferred.
-;;    The deferred overlay states take priority over the base phase states
-;;    because they represent the most-constraining condition on what inputs
-;;    are meaningful at that moment.
-;;
-;; 2. Per-state event tables restrict random walks to inputs that are
-;;    meaningful in each abstract state, modeling realistic user behaviour
-;;    while still reaching all reachable corners of the state space.
-;;
-;; 3. Five invariants are checked at every step of every walk:
-;;    I1 – mode validity: (nskk-current-mode) is a known NSKK mode
-;;    I2 – deferred exclusivity: at most one deferred flag is non-nil
-;;    I3 – phase validity: henkan-phase is one of nil/on/active/list/registration
-;;    I4 – buffer integrity: ▽ and ▼ markers absent when phase is nil (idle)
-;;    I5 – nskk-mode still active
-;;
-;; 4. All four tests run inside one `nskk-e2e-with-azik-buffer' session
-;;    (avoiding N Prolog DB snapshot round-trips) and call
-;;    `nskk--azik-chaos--reset-to-idle' between scenarios.
-;;
-;; 5. Failure reports include the seed, run index, step index, abstract
-;;    state at the failing step, and the event that was dispatched, so any
-;;    failure can be reproduced deterministically with (random SEED) before
-;;    re-running.
+;; Model-based state machine testing for AZIK.
 
 ;;; Code:
 

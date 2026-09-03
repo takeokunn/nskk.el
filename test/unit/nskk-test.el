@@ -9,13 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk.el (main entry point) covering:
-;; - Minor mode definition and behavior
-;; - Global mode definition
-;; - Mode switching commands
-;; - Keymap definition
-;; - Buffer-local state management
-;; - Internal helper functions
+;; Tests for nskk.el (main entry point).
 
 ;;; Code:
 

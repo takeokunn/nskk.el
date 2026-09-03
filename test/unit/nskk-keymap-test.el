@@ -9,12 +9,7 @@
 
 ;;; Commentary:
 
-;; Comprehensive tests for nskk-keymap.el covering:
-;; - Feature loading
-;; - Module provides the expected feature
-;; - Keymap module loads without error
-;; - nskk-mode-map structure and key bindings
-;; - Input commands API availability via keymap dependency
+;; Keymap tests.
 
 ;;; Code:
 

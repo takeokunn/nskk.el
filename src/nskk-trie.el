@@ -24,14 +24,7 @@
 
 ;;; Commentary:
 
-;; Trie (prefix tree) data structure for NSKK (Layer 0: Foundation).
-;;
-;; Layer position: L0 (Foundation) -- compile-time dependency on
-;; nskk-cps-macros (also L0); no runtime nskk-* dependencies.
-;;
-;; Provides an efficient character-keyed trie for string prefix lookup,
-;; insertion, deletion, and prefix search operations used by the dictionary
-;; and Prolog index layers.
+;; Trie data structure for NSKK.
 
 ;;; Code:
 

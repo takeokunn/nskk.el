@@ -25,35 +25,6 @@
 ;;; Commentary:
 
 ;; Property-Based Testing generators for NSKK.
-;;
-;; This file provides test data generators for property-based testing
-;; (PBT) of the NSKK input method. Generators produce random but valid
-;; test data that can be used to verify system properties.
-;;
-;; Features:
-;; - Seed-based deterministic random generation
-;; - Size parameter for controlling generator complexity
-;; - Composable generators for building complex test data
-;; - Specialized generators for Japanese input patterns
-;;
-;; Usage:
-;;
-;;   ;; Set seed for reproducible tests
-;;   (nskk-pbt-set-seed 12345)
-;;
-;;   ;; Generate test data
-;;   (nskk-generate 'key-sequence 10)     ; 10 key sequence
-;;   (nskk-generate 'valid-mode)          ; Random NSKK mode
-;;   (nskk-generate 'romaji-pattern 3)    ; Romaji pattern with size 3
-;;
-;; Generator Types:
-;; - key-sequence: Random key press sequences
-;; - valid-mode: Valid NSKK modes (ascii, hiragana, katakana, etc.)
-;; - state-object: Random but valid nskk-state objects
-;; - romaji-pattern: Extended romaji input patterns
-;; - azik-rule: AZIK rule test cases
-;; - okurigana-pattern: Valid consonant markers for okurigana
-;; - search-query: Dictionary query patterns
 
 ;;; Code:
 

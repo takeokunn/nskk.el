@@ -23,15 +23,7 @@
 
 ;;; Commentary:
 
-;; Property-based tests for error recovery from invalid state transitions.
-;;
-;; This file tests that the system handles errors gracefully and
-;; maintains state consistency even when invalid operations are attempted.
-;;
-;; Properties tested:
-;; - error-recovery-invalid-mode: Invalid mode errors but state stays consistent
-;; - error-recovery-nil-state-operations: Operations on nil state return nil
-;; - error-recovery-concurrent-mode-switch: Rapid mode switches don't corrupt state
+;; Error recovery PBT tests.
 
 ;;; Code:
 

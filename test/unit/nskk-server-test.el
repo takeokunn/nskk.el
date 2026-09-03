@@ -22,22 +22,7 @@
 
 ;;; Commentary:
 
-;; Unit tests for nskk-server.el covering:
-;; - nskk--server-strip-annotation: annotation removal from candidates
-;; - nskk--server-parse-response: protocol response parsing (Prolog dispatch)
-;; - nskk--server-lookup-guards-p: composite guard predicate (CPS)
-;; - nskk-server-live-p: process status + Prolog state check (CPS)
-;; - nskk-server-open: connection setup (mocked)
-;; - nskk-server-close: disconnect and cleanup (mocked)
-;; - nskk-server-ensure-open: reconnect logic (mocked)
-;; - nskk-server-lookup: guard conditions (no network)
-;; - PBT: parse invariants (all-strings, no-annotation, non-1-returns-nil)
-;;
-;; Prolog state setup note:
-;; `nskk-server-live-p' checks server-state/1 in addition to process-status.
-;; Tests that need live-p to return t must set server-state to open and
-;; restore it to closed in an unwind-protect.  The helper macro
-;; `nskk--server-test-with-open-state' encapsulates this pattern.
+;; Tests for nskk-server.el.
 
 ;;; Code:
 

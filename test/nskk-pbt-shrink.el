@@ -23,16 +23,7 @@
 
 ;;; Commentary:
 
-;; This file provides shrinking strategies for Property-Based Testing (PBT)
-;; in NSKK. Shrinking is the process of reducing a failing test case to its
-;; minimal form while preserving the failure.
-;;
-;; Features:
-;; - Sequence shrinking (binary search approach)
-;; - String shrinking (UTF-8 safe)
-;; - State shrinking (mode simplification)
-;; - Generic shrinking dispatcher
-;; - Iterative shrinking loop with progress reporting
+;; Shrinking strategies for NSKK PBT.
 
 ;;; Code:
 

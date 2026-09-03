@@ -9,29 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for nskk-kana.el (Layer 1: Core Engine).
-;;
-;; Tests verify the cross-module call chain between nskk-kana.el and
-;; nskk-prolog.el -- specifically that kana conversion facts are correctly
-;; initialized and queried.
-;;
-;; Hiragana <-> katakana conversion uses pure code-point arithmetic and does
-;; not depend on Prolog facts; zenkaku <-> hankaku conversion does require
-;; Prolog fact initialization via `nskk-kana-initialize'.
-;;
-;; Zenkaku <-> hankaku tests and the idempotency tests use
-;; `nskk-prolog-test-with-isolated-db' to prevent cross-test Prolog DB
-;; pollution and to ensure idempotency flags are reset so that
-;; `nskk-kana-initialize' repopulates the fresh isolated DB on each test.
-;; Hiragana <-> katakana tests do NOT use isolation: they are pure arithmetic
-;; and touch no Prolog facts.
-;;
-;; String-level hiragana <-> katakana tests use
-;; `nskk-kana-string-hiragana-to-katakana/k' and
-;; `nskk-kana-string-katakana-to-hiragana/k' (the public string-level CPS
-;; API).  The lower-level `nskk-kana-hiragana-to-katakana/k' and
-;; `nskk-kana-katakana-to-hiragana/k' operate on single character integers
-;; and are not tested here.
+;; Kana conversion integration tests.
 
 ;;; Code:
 

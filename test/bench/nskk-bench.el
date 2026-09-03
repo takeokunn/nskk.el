@@ -14,33 +14,7 @@
 
 ;;; Commentary:
 
-;; Comprehensive performance benchmarks covering all hot paths in the NSKK
-;; input method, organized by architecture layer:
-;;
-;;   L0 : Prolog engine            (nskk-prolog.el)       [L0 Foundation]
-;;   L1 : Romaji converter         (nskk-converter.el)   [L2 Domain]
-;;   L2a: State management         (nskk-state.el)       [L2 Domain]
-;;   L2b: Kana utilities           (nskk-kana.el)        [L1 Core Engine]
-;;   L2c: Cache layer              (nskk-cache.el)       [L1 Core Engine]
-;;   L3 : Dictionary search        (nskk-search.el)      [L2 Domain]
-;;   L4a: Input processing         (nskk-input.el)       [L5 Presentation]
-;;   L4b: Henkan pipeline          (nskk-henkan.el)      [L3 Application]
-;;   E2E: Keystroke simulation     (full stack)
-;;
-;; Note: L0-L4 labels above are bench group names (for report column width).
-;; Architecture layers: L0 Foundation, L1 Core Engine, L2 Domain,
-;;   L3 Application, L5 Presentation (L4 is intentionally unoccupied).
-;;
-;; Usage:
-;;   make bench
-;;
-;; Each scenario gets a capped 1% warm-up, followed by three independently
-;; GC-reset samples.  The table reports the median and range; set the positive
-;; integer environment variable NSKK_BENCH_SAMPLES to override the sample count.
-;;
-;; Output format (per benchmark):
-;;   LAYER  SCENARIO                  N    S    median       min..max ms/op  GC
-;;   L0     prolog-holds-p hash-hit   10000  3    0.0010ms    0.0009..0.0011    0
+;; NSKK comprehensive performance benchmarks.
 
 ;;; Code:
 

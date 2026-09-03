@@ -23,22 +23,7 @@
 
 ;;; Commentary:
 
-;; Property-based tests for dictionary loading, parsing, and lookup.
-;;
-;; This file tests invariants of the dictionary subsystem:
-;; - Loading from fixture files
-;; - Lookup returns correct candidates for known keys
-;; - Unknown keys return nil
-;; - Save and reload roundtrip preserves entries
-;; - Line parsing handles valid and invalid formats
-;;
-;; Properties tested:
-;; - dict-load-fixture: Loading test dictionary yields accessible entries
-;; - dict-lookup-returns-candidates: Known keys always return non-nil
-;; - dict-lookup-unknown-returns-nil: Unknown keys return nil
-;; - dict-save-load-roundtrip: Save then reload preserves entries
-;; - dict-parse-line-valid: Valid SKK format lines parse correctly
-;; - dict-parse-line-invalid: Comments and invalid lines return nil
+;; Dictionary integration PBT tests.
 
 ;;; Code:
 

@@ -23,19 +23,7 @@
 
 ;;; Commentary:
 
-;; State machine property-based tests for NSKK mode transitions.
-;;
-;; This file tests invariants of mode transitions using property-based
-;; testing techniques. Each test verifies that a specific property
-;; holds across many random mode transition sequences.
-;;
-;; Properties tested:
-;; - mode-transition-valid: Any mode transition results in a valid mode
-;; - mode-transition-previous-mode: After transition, previous-mode is the old mode
-;; - mode-transition-clears-context: Mode switch clears conversion context
-;; - mode-roundtrip-hiragana-katakana: hiragana -> katakana -> hiragana returns to original
-;; - mode-roundtrip-hiragana-latin: hiragana -> latin -> hiragana returns to original
-;; - invalid-mode-rejected: Invalid mode symbols are rejected
+;; Mode transition state machine tests.
 
 ;;; Code:
 

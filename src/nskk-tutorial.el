@@ -24,38 +24,7 @@
 
 ;;; Commentary:
 
-;; Interactive SKK tutorial for NSKK (Standalone, above Main).
-;;
-;; Layer position: Standalone (above Main) -- depends on nskk.el.
-;;
-;; Provides `M-x nskk-tutorial', a hybrid tutorial combining read-only
-;; lesson explanations with interactive exercise sections that validate
-;; user input.  A bundled mini dictionary ensures predictable conversion
-;; results without requiring prior dictionary configuration.
-;;
-;; The Prolog database is saved on tutorial entry and restored on exit
-;; (buffer kill), so the user's personal dictionary is never affected.
-;;
-;; Lesson plan (15 lessons):
-;;
-;;   基本編:
-;;   1. はじめに -- NSKK起動とモード確認
-;;   2. ひらがな入力 -- ローマ字からひらがなへ
-;;   3. カタカナ入力 -- qキーでカタカナ切替
-;;   4. 漢字変換（基本） -- 大文字で▽開始、SPCで変換
-;;   5. 候補選択 -- SPC連打とxで候補ナビゲーション
-;;   6. 送りあり変換 -- 大文字で送り仮名位置を指定
-;;   7. 辞書登録 -- 未知語の登録フロー
-;;   8. モード切替とまとめ -- 全モード復習
-;;
-;;   応用編:
-;;   9. Abbrevモード -- 英字略語変換
-;;  10. 動的補完 -- TABキーによるdcomp
-;;  11. 候補リスト表示 -- A/S/D/F/J/K/L選択
-;;  12. Stickyシフト -- ;キーによる疑似Shift
-;;  13. 数値変換 -- #型コードによる数値変換
-;;  14. AZIK拡張ローマ字 -- 効率的な入力方式
-;;  15. 総合練習とヒント -- 応用テクニックまとめ
+;; Interactive tutorial for NSKK.
 
 ;;; Code:
 

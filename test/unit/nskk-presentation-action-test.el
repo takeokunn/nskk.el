@@ -9,18 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for the `presentation-action/2' registration protocol introduced in
-;; FR-001 (henkan -> inline dependency inversion).
-;;
-;; nskk-henkan no longer references nskk-inline directly.  Inline registers
-;; its cleanup (`nskk-inline-hide') and terminal-finalize
-;; (`nskk--inline-finalize') callbacks via the `presentation-action/2' fact
-;; table, and `nskk-clear-conversion-context' enumerates and runs them.
-;;
-;; This file verifies the terminal-cleanup invariant: when a registered
-;; cleanup callback signals, the finalize stage still removes the inline
-;; overlay (and henkan re-asserts its own overlays) before re-signaling the
-;; original condition.
+;; Tests for the presentation-action cleanup protocol.
 
 ;;; Code:
 

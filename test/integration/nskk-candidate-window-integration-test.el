@@ -9,25 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for the hook wiring between nskk-candidate-window.el
-;; (Layer 5: Presentation) and the henkan pipeline.
-;;
-;; In nskk.el, nskk--enable wires the candidate window into the pipeline:
-;;   (add-hook 'nskk-henkan-show-candidates-functions #'nskk-candidate-show-list)
-;;   (add-hook 'nskk-henkan-hide-candidates-functions #'nskk-candidate-hide-list)
-;;   (setq nskk-henkan-select-candidate-by-key-function
-;;         #'nskk-candidate-list-select-by-key)
-;;
-;; These tests replicate that wiring manually and verify:
-;; - Overlay lifecycle: show → active, hide → inactive.
-;; - show/hide/show cycle restores the active state correctly.
-;; - nskk-candidate-list-select-by-key returns the correct absolute index
-;;   for home-row selection keys, including across page offsets.
-;; - run-hook-with-args on the show hook triggers overlay display.
-;; - run-hooks on the hide hook clears overlay display.
-;;
-;; Overlays are fully batch-safe in Emacs; make-overlay works in
-;; noninteractive mode, so no display guard is needed here.
+;; Candidate window integration tests.
 
 ;;; Code:
 

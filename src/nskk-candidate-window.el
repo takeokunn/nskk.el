@@ -24,56 +24,7 @@
 
 ;;; Commentary:
 
-;; Candidate display UI for NSKK (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-prolog, nskk-custom,
-;;   and nskk-cps-macros (for defun/done).
-;;   Wired into the henkan pipeline via hooks in nskk.el.
-;;
-;; Candidate display:
-;; - First N-1 candidates shown inline one-by-one with a ▼ marker
-;; - After the Nth SPC press, switches to overlay list display below
-;;   the conversion region with home-row selection keys (a s d f j k l)
-;; - Shows [残り N] count for remaining candidates
-;; - Supports page navigation (SPC = next page, x = prev page)
-;; - Direct selection by pressing the corresponding key
-;;
-;; Display mechanism:
-;; - Uses an overlay `after-string' on a zero-length overlay anchored at the
-;;   end of the overlay returned by `nskk-state-conversion-overlay'.  The
-;;   after-string begins with \n so the candidate list appears on the line
-;;   below the preedit text.
-;; - Works on both terminal (TUI) and graphical (GUI) displays.
-;; - Zero external dependencies; uses Emacs built-in overlay API.
-;; - The overlay is owned by nskk-state.el and accessed here via
-;;   `nskk-state-candidate-overlay' / `nskk-state-set-candidate-overlay'
-;;   (project convention: all overlay vars live there).
-;;
-;; Prolog predicates maintained by this module:
-;; - `candidate-selection-key'/2: (candidate-selection-key KEY POSITION)
-;;   Maps each home-row selection key character to its 0-based page
-;;   position.  Initialized at load time from
-;;   `nskk-henkan-show-candidates-keys'.  Uses hash indexing for O(1)
-;;   key dispatch during candidate selection.
-;;
-;; Key public API (direct-style sync variants):
-;; - `nskk-candidate-show-list'            Display a page of candidates via overlay
-;; - `nskk-candidate-hide-list'            Delete the candidate overlay
-;; - `nskk-candidate-list-active-p'        Non-nil when candidate overlay is visible
-;; - `nskk-candidate-list-select-by-key'   Return absolute index for a key press
-;;
-;; CPS variants (for use in continuation-passing chains):
-;; - `nskk-candidate-show-list/k'          CPS wrapper; calls on-done with page candidates
-;; - `nskk-candidate-hide-list/k'          CPS wrapper; calls on-done after hiding
-;; - `nskk-candidate-list-active-p/k'      CPS wrapper; calls on-done with active state
-;; - `nskk-candidate-list-select-by-key/k' CPS wrapper; on-found/on-not-found dispatch
-;;
-;; Hook integration:
-;; - `nskk-henkan-show-candidates-functions': called to display page
-;; - `nskk-henkan-hide-candidates-functions': called to clear display
-;; - `nskk-henkan-select-candidate-by-key-function': key->index lookup
-;;
-;; These hooks are wired in `nskk.el' during `nskk--enable'.
+;; Candidate display UI for NSKK.
 
 ;;; Code:
 

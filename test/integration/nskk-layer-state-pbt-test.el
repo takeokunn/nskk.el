@@ -24,17 +24,7 @@
 
 ;;; Commentary:
 
-;; Property-Based Tests for the State Management layer (nskk-state.el).
-;;
-;; This file tests state structure properties, state transitions,
-;; undo/redo operations, and candidate management using property-based
-;; testing techniques to ensure correctness across a wide range of inputs.
-;;
-;; Test Categories:
-;; - State Structure Properties: Validity of created states and slot types
-;; - State Transition Properties: Mode transitions and their properties
-;; - Undo/Redo Properties: Stack management and involution
-;; - Candidate Management Properties: Index bounds and navigation
+;; Property-Based Tests for State Management Layer.
 
 ;;; Code:
 

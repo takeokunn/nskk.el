@@ -24,61 +24,7 @@
 
 ;;; Commentary:
 
-;; Dictionary search algorithms for NSKK (Layer 2: Domain).
-;;
-;; Layer position: L2 (Domain) -- depends on nskk-dictionary, nskk-cache,
-;;   nskk-prolog, and nskk-custom.
-;;
-;; Provides an integrated search engine over the Prolog-backed dictionary
-;; with four search modes, learning-based candidate ranking, and optional
-;; result caching.
-;;
-;; Supported search types:
-;; - Exact match (exact):   O(1) average via Prolog hash index
-;; - Prefix match (prefix): O(k + n) via Prolog trie index
-;; - Partial match (partial): O(n) substring scan
-;; - Fuzzy match (fuzzy):   O(n * m) Levenshtein distance
-;;
-;; Performance targets:
-;; - Exact match: < 0.1ms
-;; - Prefix match (100 results): < 1ms
-;; - Partial match (1000 entries): < 50ms
-;; - Fuzzy match (1000 entries): < 100ms
-;;
-;; The search engine supports okurigana type filtering and customizable
-;; sort order for candidate ranking.  Learning data is persisted via
-;; Prolog `learning-score/3' facts and serialized to
-;; `nskk-search-learning-file'.
-;;
-;; Prolog predicates maintained by this module:
-;; - `search-strategy/1'              -- valid search type membership
-;; - `search-sort-method/1'           -- valid sort method membership (frequency kana none)
-;; - `learning-score/3'               -- (reading candidate score) usage frequency
-;; - `okuri-type-matches/2'           -- (filter-type entry-type) okurigana match rules
-;; - `entry-matches-okuri-filter/2'   -- derived rule; (filter okuri-sym) wraps
-;;                                       okuri-type-matches/2 for filter dispatch
-;;
-;; Key public API:
-;; - `nskk-search'              -- unified search dispatcher
-;; - `nskk-search-exact'        -- exact match search
-;; - `nskk-search-prefix'       -- prefix match search
-;; - `nskk-search-partial'      -- partial (substring) match search
-;; - `nskk-search-fuzzy'        -- fuzzy (Levenshtein) match search
-;; - `nskk-search-with-cache'   -- cache-backed search
-;; - `nskk-search-learn'        -- record candidate selection for learning
-;; - `nskk-search-save-learning-data' -- persist learning data to file
-;; - `nskk-search-jisyo-hook'         -- hook run after each successful search
-;; - `nskk-save-history-hook'         -- hook run after each successful save
-;;
-;; Usage examples:
-;;   (nskk-search index "かんじ" 'exact)
-;;   ;; => nskk-dict-entry
-;;
-;;   (nskk-search index "かん" 'prefix nil 10)
-;;   ;; => (("かん" . entry1) ("かんじ" . entry2) ...)
-;;
-;;   (nskk-search index "かんじ" 'fuzzy nil 5)
-;;   ;; => (("かんじ" entry1 . 0) ("かんき" entry2 . 1) ...)
+;; Dictionary search algorithms for NSKK.
 
 ;;; Code:
 

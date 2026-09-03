@@ -23,19 +23,7 @@
 
 ;;; Commentary:
 
-;; State machine property-based tests for NSKK buffer state transitions.
-;;
-;; This file tests invariants of buffer operations using property-based
-;; testing techniques. Each test verifies that a specific property
-;; holds across many random buffer operation sequences.
-;;
-;; Properties tested:
-;; - input-buffer-append-increases-length: Appending increases or maintains length
-;; - input-buffer-delete-decreases-length: Deleting decreases length
-;; - input-buffer-clear-empties: Clear buffer results in empty string
-;; - input-buffer-never-nil: Buffer is never nil after any operation
-;; - input-buffer-string-type: Buffer is always a string
-;; - converted-buffer-consistency: Converted buffer is always valid
+;; Buffer state machine tests.
 
 ;;; Code:
 

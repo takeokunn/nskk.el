@@ -9,13 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for the real henkan (conversion) pipeline.
-;;
-;; These tests exercise nskk-start-conversion, nskk-next-candidate,
-;; nskk-previous-candidate, and nskk-commit-current WITHOUT mocking
-;; nskk-core-search.  A mock dictionary (nskk-with-mock-dict) provides
-;; real Prolog-backed candidates so that the full Layer-3 -> Layer-2 ->
-;; Layer-1 call chain is exercised.
+;; Henkan pipeline integration tests.
 
 ;;; Code:
 

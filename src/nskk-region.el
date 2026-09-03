@@ -24,25 +24,7 @@
 
 ;;; Commentary:
 
-;; Region-based text conversion commands for NSKK (Layer 5: Presentation).
-;;
-;; Layer position: L5 (Presentation) -- depends on nskk-kana and nskk-cps-macros.
-;;
-;; Provides M-x commands to convert text in the active region between
-;; different Japanese character scripts.  These are the nskk.el equivalents
-;; of ddskk's region conversion commands (skk-hiragana-region, etc.).
-;;
-;; Commands:
-;; - `nskk-hiragana-region'        -- Convert katakana in region to hiragana
-;; - `nskk-katakana-region'        -- Convert hiragana in region to katakana
-;; - `nskk-hankaku-katakana-region' -- Convert zenkaku katakana to hankaku
-;; - `nskk-zenkaku-katakana-region' -- Convert hankaku katakana to zenkaku
-;; - `nskk-jisx0208-latin-region'  -- Convert ASCII in region to full-width latin
-;; - `nskk-latin-region'           -- Convert full-width latin in region to ASCII
-;;
-;; All commands operate on the current region (mark..point) and replace it
-;; with the converted text.  If the region is not active, the commands do
-;; not modify the buffer and signal a `user-error'.
+;; Region operation commands for NSKK.
 
 ;;; Code:
 

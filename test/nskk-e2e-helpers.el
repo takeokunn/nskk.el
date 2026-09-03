@@ -24,32 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E test infrastructure for NSKK.  These tests exercise nskk-mode
-;; end-to-end by enabling the full minor mode in a temp buffer and
-;; dispatching real key events via `execute-kbd-macro'.  This exercises
-;; the complete Emacs keymap dispatch path, unlike integration tests
-;; that call functions directly.
-;;
-;; Architecture:
-;;   nskk-e2e-with-buffer     -- macro that sets up the isolated environment
-;;   nskk-e2e-type            -- type a key sequence via execute-kbd-macro
-;;   nskk-deftest-e2e         -- define an ert-deftest with e2e- prefix
-;;   nskk-e2e-assert-*        -- assertion helpers
-;;
-;; Initialization order (critical for mock dict to work):
-;;   1. nskk-prolog-test-with-isolated-db  (copy DB, restore after)
-;;   2. (dict-initialized) asserted FIRST  (prevents real dict loading)
-;;   3. user-dict-entry facts asserted     (visible via dict-entry/2 bridge)
-;;   4. (nskk-mode 1) in with-temp-buffer  (enables mode, skips dict-init)
-;;   5. BODY executes
-;;   6. Teardown: nskk-mode -1, reset non-buffer-local globals
-;;
-;; Key design decisions:
-;; - Must use user-dict-entry (NOT mock-dict-entry) for SPC conversion to work
-;;   because dict-entry/2 bridge only queries user-dict-entry and system-dict-entry
-;; - read-from-minibuffer must be mocked to prevent batch-mode blocking
-;; - nskk--henkan-candidate-list-active is NOT buffer-local; always reset in teardown
-;; - overlay-get for 'display during ▼ phase (buffer-string won't show overlay content)
+;; E2E test helpers for NSKK.
 
 ;;; Code:
 

@@ -23,19 +23,7 @@
 
 ;;; Commentary:
 
-;; This file provides test helper macros for NSKK, including property-based
-;; testing (PBT) macros, performance testing macros, and other test utilities.
-;;
-;; Features:
-;; - Property-based testing macros
-;; - Performance benchmarking macros
-;; - Environment setup macros
-;; - Assertion helper macros
-;; - Mock and fixture macros
-;; - Behavior DSL (nskk-describe/nskk-it/nskk-context/nskk-given/nskk-when/nskk-then)
-;; - Table-driven data providers (nskk-deftest-table)
-;; - Composable fixture system (nskk-deffixture/nskk-with-fixtures)
-;; - Contract-based PBT (nskk-property-from-contract)
+;; NSKK test helper macros.
 
 ;;; Code:
 

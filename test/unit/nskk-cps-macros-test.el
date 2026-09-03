@@ -10,23 +10,7 @@
 
 ;;; Commentary:
 
-;; Unit tests for the `defun/k' and `defun/done' CPS transformation macros
-;; defined in nskk-cps-macros.el.
-;;
-;; Test categories:
-;; 1. defun/k macro expansion (macroexpand-1)
-;; 2. (succeed VALUE) AST transformation
-;; 3. (fail) AST transformation
-;; 4. (<- VAR FN ARGS...) CPS bind transformation
-;; 5. (<-or VAR FN ARGS... :found F :fail G) transformation
-;; 6. AST walker coverage (all special forms)
-;; 7. defun/done macro expansion
-;; 8. defun/done with :interactive keyword
-;; 9. Functional behavior tests (actually call the generated functions)
-;; 10. Pass-through tests (non-CPS forms are not modified)
-;; 11. Module loading tests
-;; 12. Arity error tests (fail/succeed arity checks)
-;; 13. Walker edge case tests
+;; Tests for nskk-cps-macros .
 
 ;;; Code:
 

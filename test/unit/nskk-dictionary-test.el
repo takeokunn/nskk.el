@@ -9,13 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-dictionary.el covering:
-;; - Error type hierarchy (nskk-dict-error root in nskk-dictionary.el;
-;;   search sub-errors in nskk-search.el)
-;; - nskk-dict-entry struct: creation, accessors, predicates
-;; - nskk-dict-index struct: creation, accessors, predicates
-;; - Module loading and feature provision
-;; - Prolog dictionary facts and I/O.
+;; Tests for nskk-dictionary.el.
 
 ;;; Code:
 

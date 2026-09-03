@@ -9,15 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-region.el covering:
-;; - Function existence (fboundp)
-;; - ASCII to full-width conversion (nskk--ascii-char-to-zenkaku)
-;; - Full-width to ASCII conversion (nskk--zenkaku-char-to-ascii)
-;; - String-level bidirectional conversion
-;; - Region commands: hiragana-region, katakana-region
-;; - Region commands: hankaku/zenkaku-katakana-region
-;; - Region commands: jisx0208-latin-region, latin-region
-;; - Edge cases: empty string, mixed content, non-convertible chars
+;; Tests for nskk-region.el.
 
 ;;; Code:
 

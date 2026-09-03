@@ -23,21 +23,7 @@
 
 ;;; Commentary:
 
-;; Comprehensive unit tests for the embedded Prolog engine (nskk-prolog).
-;;
-;; Test categories:
-;; - Variable representation
-;; - Walk / substitution
-;; - Unification
-;; - Clause database & assert/retract
-;; - Prove engine (backtracking)
-;; - Cut
-;; - Negation-as-failure
-;; - Bidirectional queries
-;; - Indexing (hash, trie)
-;; - DSL macros
-;; - Utility functions
-;; - Query API
+;; Tests for nskk-prolog .
 
 ;;; Code:
 

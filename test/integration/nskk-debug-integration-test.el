@@ -9,14 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for nskk-debug.el (Layer 0: Foundation).
-;;
-;; Tests verify that:
-;; - `nskk-debug-message' appends text to the debug buffer.
-;; - `nskk-debug-toggle' toggles the `nskk-debug-enabled' flag.
-;; - `nskk-debug-clear' empties the debug buffer contents.
-;; - `nskk-debug-show' makes the debug buffer visible.
-;; - `nskk-debug-log' macro emits output when debug is active.
+;; Debug module integration tests.
 
 ;;; Code:
 

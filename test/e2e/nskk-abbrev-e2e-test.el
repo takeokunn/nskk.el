@@ -24,9 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E tests for abbrev mode (DDSKK §5.6 Abbreviation).
-;; Covers: ASCII bypass, SPC conversion, backspace, C-g cancel,
-;; self-insert for mode-switch keys, C-j from idle, RET conversion.
+;; E2E abbrev mode tests for NSKK.
 
 ;;; Code:
 

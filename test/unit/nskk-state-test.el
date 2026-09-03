@@ -9,14 +9,7 @@
 
 ;;; Commentary:
 
-;; Comprehensive tests for nskk-state.el covering:
-;; - State creation and initialization
-;; - Getters and setters
-;; - Mode transitions and validation
-;; - Buffer management
-;; - Candidate navigation
-;; - Metadata operations
-;; - Undo/redo stack management
+;; State management tests.
 
 ;;; Code:
 

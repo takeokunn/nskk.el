@@ -24,52 +24,7 @@
 
 ;;; Commentary:
 
-;; Systematic state transition coverage for AZIK E2E.
-;;
-;; Each test covers exactly one edge in the SKK state machine, exercising
-;; a specific (starting-state, input-class) → (ending-state) transition.
-;;
-;; State machine edges covered:
-;;
-;;   idle ──kana──────────────→ idle          kana appears committed in buffer
-;;   idle ──;(っ)─────────────→ idle          AZIK: っ committed immediately
-;;   idle ──:(ー)─────────────→ idle          AZIK: ー committed immediately
-;;   idle ──AZIK-hatsuon──────→ idle          two-char AZIK shortcut resolves
-;;   idle ──AZIK-diphthong────→ idle          two-char vowel shortcut resolves
-;;   idle ──C-g───────────────→ idle          no-op when nothing pending
-;;   idle ──uppercase-vowel───→ preedit-on    ▽ starts with one mora
-;;
-;;   preedit-on ──kana────────→ preedit-on    reading grows in ▽
-;;   preedit-on ──;(っ)───────→ preedit-on    っ appended to preedit reading
-;;   preedit-on ──:(ー)───────→ preedit-on    ー appended to preedit reading
-;;   preedit-on ──SPC─────────→ converting    ▼ starts (dict match found)
-;;   preedit-on ──C-g─────────→ idle          preedit cancelled, kana inserted
-;;   preedit-on ──RET─────────→ idle          preedit committed as kana + newline
-;;
-;;   converting ──SPC─────────→ converting    cycles to next candidate
-;;   converting ──C-g─────────→ preedit-on    reverts to ▽ with original reading
-;;   converting ──RET─────────→ idle          commits current candidate
-;;
-;;   converting → preedit-on → idle          double-cancel (C-g C-g)
-;;
-;;   converting ──uppercase───→ idle          commits + starts new preedit
-;;     (this is the "type-through" pattern common in fast Japanese typing)
-;;
-;; Input-class taxonomy for AZIK mode:
-;;   kana        – standard romaji producing hiragana (e.g., "ka" → か)
-;;   azik-tsutsu – semicolon (;) → っ
-;;   azik-dash   – colon (:) → ー
-;;   azik-hatsuon– consonant + n-trigger (e.g., "kz" → かん)
-;;   azik-diph   – consonant + vowel-shortcut (e.g., "kq" → かい)
-;;   uppercase   – uppercase consonant + vowel starts preedit (e.g., "Ka")
-;;   spc         – space: triggers conversion in preedit, no-op in idle
-;;   cancel      – C-g: cancels preedit or conversion
-;;   commit      – RET: commits current state as-is
-;;
-;; All tests use the standard mock dictionary from `nskk-e2e--default-dict'.
-;; Entries relied upon:
-;;   ("か" . ("蚊" "課" "下"))          – used for Ka + SPC conversion
-;;   ("かんじ" . ("漢字" "感じ" "幹事")) – used for Kanji + SPC conversion
+;; Systematic state transition coverage for AZIK.
 
 ;;; Code:
 

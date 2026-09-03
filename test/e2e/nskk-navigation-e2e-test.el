@@ -25,21 +25,6 @@
 ;;; Commentary:
 
 ;; E2E navigation key tests for NSKK.
-;;
-;; Tests C-f (nskk-handle-ctrl-f) and C-b (nskk-handle-ctrl-b) via
-;; actual key dispatch, covering all three dispatch states:
-;;   converting (▼) -- kakutei-then-forward / kakutei-then-backward
-;;   preedit (▽)    -- plain forward-char / backward-char
-;;   normal          -- plain forward-char / backward-char
-;;
-;; Sections:
-;;   1. C-f in converting (▼) state -- kakutei-then-forward
-;;   2. C-b in converting (▼) state -- kakutei-then-backward
-;;   3. C-f in preedit and normal states -- plain forward-char
-;;   4. C-b in preedit and normal states -- plain backward-char
-;;   5. C-f / C-b sequence tests
-;;   6. C-a (beginning-of-line) -- kakutei-then-bol in converting, plain in others
-;;   7. C-e (end-of-line) -- kakutei-then-eol in converting
 
 ;;; Code:
 

@@ -24,77 +24,7 @@
 
 ;;; Commentary:
 
-;; AZIK extended romaji input for NSKK (Layer 3: Application).
-;;
-;; Layer position: L3 (Application) -- depends on nskk-converter,
-;;   nskk-prolog, nskk-cps-macros.  Loaded optionally by nskk-input.el
-;;   when `nskk-converter-romaji-style' is set to \\='azik.
-;;
-;; Implements the AZIK specification for efficient Japanese input.  AZIK
-;; reduces keystrokes compared to standard romaji by using consonant suffix
-;; keys for hatsuon (ん extension) and double vowel sequences.
-;;
-;; Architecture:
-;; - Rule data for hatsuon/youon rows is stored in `defconst' tables for
-;;   compile-time expansion.  See `nskk--azik-extension-rows', etc.
-;; - `nskk-azik-conversion-table' lets users extend the AZIK table with
-;;   additional `(ROMAJI KANA)' pairs.  User entries are applied after the
-;;   built-in rules, so they override conflicting defaults.
-;; - All other AZIK rules are declared directly as Prolog facts inside
-;;   `nskk--init-azik-rules', making Prolog the single source of truth.
-;; - Core macros (`nskk-azik-hatsuon', `nskk-azik-double-vowel', etc.)
-;;   generate azik-rule/2 Prolog facts from literal arguments.
-;; - Meta-macros (`nskk--azik-init-extension-rows',
-;;   `nskk--azik-init-youon-rows') expand entire rule tables at compile
-;;   time by iterating the defconst data, eliminating runtime iteration
-;;   and the need for separate runtime-equivalent functions.
-;; - A bridge rule (romaji-to-kana ?r ?k) :- (azik-rule ?r ?k) connects
-;;   azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
-;;   Note: the bridge rule is NOT indexed by the trie (variable first arg).
-;; - On JP106 keyboards, the `+' key (Shift+;) is additionally mapped to っ
-;;   (sokuon) and doubles as an okurigana trigger, mirroring the `;' role on
-;;   US101.  This rule is asserted in Step 3b of `nskk--init-azik-rules' and
-;;   is conditioned on `nskk-azik-keyboard-type' being \\='jp106.
-;; - The hash table is populated from azik-rule/2 for hot-path lookups.
-;;   `nskk-converter-lookup' (inline) reads only from the hash, never Prolog.
-;;
-;; Partial match markers and standard-prefix restoration are handled by
-;; `nskk--azik-finalize-hash-table' using Prolog classification predicates:
-;; - `azik-vowel-char/1'      -- succeeds for vowel character codes (a/i/u/e/o).
-;; - `azik-key-extends/2'     -- (prefix char) for every proper prefix in hash.
-;; - `azik-nonvowel-ext/1'    -- derived rule; succeeds when key has non-vowel ext.
-;; - `azik-vowel-shadow/1'    -- derived rule; succeeds when all extensions are vowels.
-;; - `nskk--azik-classify-key/k' -- CPS classifier using azik-vowel-shadow/1.
-;;
-;; Prolog predicates maintained by this module:
-;; - `azik-rule/2'         -- (romaji kana) AZIK-specific conversion rules,
-;;     hash-indexed on first arg for O(1) lookup.
-;; - `azik-vowel-char/1'   -- integer character code facts for a/i/u/e/o.
-;; - `azik-key-extends/2'  -- (prefix char) prefix→next-char extension map.
-;; - `azik-nonvowel-ext/1' -- rule: KEY has at least one non-vowel extension.
-;; - `azik-vowel-shadow/1' -- rule: KEY is AZIK-complete with vowel-only exts.
-;; - `azik-toggle-key/2'   -- (keyboard-type key-string) AZIK toggle key.
-;; - `azik-colon-trigger-char/1' -- (char-code) characters that trigger colon-okurigana.
-;;
-;; AZIK rule categories (in `azik-rule/2'):
-;; 1. Special keys (; -> っ, : -> ー)
-;; 2. Consonant compatibility (x=しゃ行, c=ちゃ行)
-;; 3. Hatsuon extensions (z/k/j/d/l -> +ん)
-;; 4. Double vowel extensions (q/h/w/p -> +vowel pair)
-;; 5. Youon compatibility (g-substitution AZIK-specific + y-prefix youon)
-;; 6. Same-finger alternatives (hf=ふ, kf=き, nf=ぬ, mf=む, gf=ぐ, pf=ぷ, rf=る, yf=ゆ)
-;; 7. Word shortcuts
-;; 8. Foreign word extensions
-;; 9. n-suffix hatsuon (z-equivalent via n key: kn→かん etc.)
-;; 10. v-suffix same-finger alternatives (kv→きん, jv→じゅう etc.)
-;; 11. x-suffix diphthong alternatives (bx→べい etc.)
-;; 12. xx-prefix small kana (xxa→ぁ) and arrows (xxh→←)
-;; 13. Literal escape (x;→;), small katakana (kA→ヵ), y-arrows (y<→←)
-;;
-;; X/C Prefix Extensions:
-;; The x and c prefixes provide compatibility rows for sha/shu/sho and
-;; cha/chu/cho, and support all AZIK extension keys enabling compound
-;; input like xhka → しゅうか (shuuka).
+;; AZIK extended romaji input support.
 
 ;;; Code:
 

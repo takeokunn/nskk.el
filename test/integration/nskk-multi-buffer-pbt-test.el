@@ -23,15 +23,7 @@
 
 ;;; Commentary:
 
-;; Property-based tests for buffer-local state isolation.
-;;
-;; This file tests that NSKK state is properly buffer-local and
-;; that changes in one buffer do not leak into another.
-;;
-;; Properties tested:
-;; - buffer-local-state-isolation: State changes in one buffer don't affect another
-;; - buffer-local-mode-isolation: Mode changes in one buffer don't affect another
-;; - buffer-local-romaji-isolation: Romaji buffer in one doesn't leak to another
+;; Multi-buffer PBT tests.
 
 ;;; Code:
 

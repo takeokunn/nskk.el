@@ -24,22 +24,7 @@
 
 ;;; Commentary:
 
-;; E2E and unit tests for the dictionary registration (辞書登録) feature.
-;;
-;; Tests follow DDSKK behavior as the reference implementation:
-;;   - No candidates on first SPC -> registration prompt [辞書登録] reading:
-;;   - RET with word -> saves to user dict, inserts into buffer
-;;   - Empty RET -> cancel, preedit preserved
-;;   - Registered words are immediately available for subsequent conversions
-;;
-;; Test naming:
-;;   nskk-e2e-registration-*  -- full mode activation tests
-;;   nskk-registration-*      -- unit tests for persistence functions
-;;
-;; Key E2E infrastructure note:
-;;   The default nskk-e2e-with-buffer mock returns "" for read-from-minibuffer.
-;;   To test the confirm path, nest a cl-letf inside the test body to shadow it
-;;   with a function returning the desired word string.
+;; E2E tests for dictionary registration.
 
 ;;; Code:
 

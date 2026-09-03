@@ -9,16 +9,7 @@
 
 ;;; Commentary:
 
-;; Unit tests for nskk-debug.el covering:
-;; - Debug toggle functionality (flag, message side-effect)
-;; - Debug buffer management (create, clear, clear-message, idempotency, clear-when-absent, trim)
-;; - nskk-debug-log macro (enabled / disabled / timestamp / arg non-evaluation)
-;; - nskk-debug-message function (enabled / disabled / timestamp / error recovery)
-;; - nskk-debug-show interactive command
-;; - Custom variable defaults (nskk-debug-enabled, nskk-debug-max-entries default values)
-;; - PBT: timestamp format invariant for log and message (table-driven)
-;; - PBT: clear idempotency (table-driven)
-;; - PBT: max-entries enforcement including boundary (exhaustive)
+;; Unit tests for nskk-debug.el.
 
 ;;; Code:
 

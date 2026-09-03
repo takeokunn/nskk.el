@@ -9,15 +9,7 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-cache.el covering:
-;; - Prolog fact registration (cache-type/1, cache-dispatch-fn/3, cache-field-fn/3)
-;; - nskk--cache-type-of and nskk-cache-p helpers
-;; - LRU cache operations and eviction
-;; - LFU cache operations and eviction
-;; - Statistics collection and hit-rate
-;; - Unified interface (create, get, put, clear, invalidate, invalidate-pattern)
-;; - Cache management (clear, invalidate, invalidate-pattern)
-;; - Property-based invariants (size bounds, hit-rate range, get-after-put)
+;; Cache implementation tests.
 
 ;;; Code:
 

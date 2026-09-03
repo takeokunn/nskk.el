@@ -9,11 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests verifying end-to-end behavior across modules:
-;; - Input lifecycle (romaji → kana → conversion → commit)
-;; - Mode transition flows
-;; - Keymap handler dispatch
-;; - Conversion pipeline
+;; Integration tests.
 
 ;;; Code:
 

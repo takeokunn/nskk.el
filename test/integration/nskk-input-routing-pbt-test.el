@@ -24,16 +24,7 @@
 
 ;;; Commentary:
 
-;; Property-Based Tests for input routing based on mode.
-;;
-;; This file tests that input is correctly routed based on the current mode:
-;; - ASCII and Latin modes: direct character insertion
-;; - Hiragana/Katakana modes: romaji to kana conversion
-;; - Abbrev mode: abbreviation processing
-;;
-;; These tests are designed to detect regressions in mode handling,
-;; particularly the bug where ASCII mode was incorrectly routed through
-;; Japanese conversion instead of direct insertion.
+;; PBT for input routing by mode.
 
 ;;; Code:
 
