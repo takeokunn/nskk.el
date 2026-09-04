@@ -27,6 +27,19 @@
   (nskk-it "nskk-show-inline defaults to nil"
     (should (null nskk-show-inline))))
 
+;;;; Faces
+
+;; The rendering tests compare the `face' property against these symbols, which
+;; passes whether or not the symbol names a real face -- measured: deleting
+;; either `defface' leaves all of them green.  These two assertions are the only
+;; thing tying the symbols to actual face definitions.
+
+(nskk-describe "nskk-inline faces"
+  (nskk-it "nskk-inline-face is a defined face"
+    (should (facep 'nskk-inline-face)))
+  (nskk-it "nskk-jisyo-registration-badge-face is a defined face"
+    (should (facep 'nskk-jisyo-registration-badge-face))))
+
 ;;;; Rendered After-String Content
 
 (nskk-deftest-table

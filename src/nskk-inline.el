@@ -46,6 +46,7 @@
 
 (require 'subr-x)
 (require 'nskk-state)
+(require 'nskk-custom)
 (require 'nskk-cps-macros)
 (require 'nskk-prolog)
 
