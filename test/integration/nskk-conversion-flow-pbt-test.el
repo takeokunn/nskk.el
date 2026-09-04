@@ -235,9 +235,10 @@
     (nskk-state-set state 'input-buffer hiragana-input)
     (nskk--pbt-start-conversion state candidates)
     (nskk--pbt-commit-conversion state)
-    (let ((converted (nskk-state-converted-buffer state)))
-      (and (stringp converted)
-           (not (string-empty-p converted)))))
+    (and (equal (nskk-state-converted-buffer state) (car candidates))
+         (null (nskk-state-candidates state))
+         (null (nskk-state-henkan-position state))
+         (null (nskk-state-henkan-phase state))))
   50)
 
 ;;;
@@ -340,31 +341,40 @@
 ;;;; CPS Tests: nskk-convert-romaji/k result type
 ;;;;
 
-(nskk-property-test-with-shrinking nskk-property-cps-convert-romaji-result-is-string
+(nskk-property-test-with-shrinking nskk-property-cps-convert-romaji-matches-sync
   ((pattern romaji-basic))
-  (let ((result-type nil))
+  (let ((cps-result nil)
+        (branch nil))
     (nskk-convert-romaji/k
      pattern
-     (lambda (r) (setq result-type (type-of r)))
-     #'ignore)
-    (eq result-type 'string))
+     (lambda (result) (setq cps-result result branch 'found))
+     (lambda () (setq branch 'not-found)))
+    (and (eq branch 'found)
+         (equal cps-result (nskk-convert-romaji pattern))))
   50)
 
-(nskk-describe "CPS: nskk-convert-romaji/k result type"
+(nskk-describe "CPS: nskk-convert-romaji/k result contract"
 
-  (nskk-it "on-result receives a string for any romaji input"
-    (let ((failures nil))
-      (dolist (romaji '("ka" "ki" "a" "i" "u" "sha" "chi" "tsu"))
-        (let ((result-type nil))
-          (nskk-convert-romaji/k
-           romaji
-           (lambda (r) (setq result-type (type-of r)))
-           #'ignore)
-          (unless (eq result-type 'string)
-            (push (list :input romaji :type result-type) failures))))
-      (when failures
-        (ert-fail (format "nskk-convert-romaji/k on-result type wrong for %d cases:\n%S"
-                          (length failures) failures))))))
+  (nskk-it "sync and CPS paths return the documented kana"
+    (dolist (case '(("ka" . "か")
+                    ("ki" . "き")
+                    ("a" . "あ")
+                    ("i" . "い")
+                    ("u" . "う")
+                    ("sha" . "しゃ")
+                    ("chi" . "ち")
+                    ("tsu" . "つ")))
+      (let ((romaji (car case))
+            (expected (cdr case))
+            (cps-result nil)
+            (branch nil))
+        (should (equal (nskk-convert-romaji romaji) expected))
+        (nskk-convert-romaji/k
+         romaji
+         (lambda (result) (setq cps-result result branch 'found))
+         (lambda () (setq branch 'not-found)))
+        (should (eq branch 'found))
+        (should (equal cps-result expected))))))
 
 ;;;;
 ;;;; CPS Tests: nskk-dict-lookup/k mutual exclusion

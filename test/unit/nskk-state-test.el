@@ -247,7 +247,9 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (nskk-it "returns nil for invalid slot"
     (let ((state (nskk-state-create)))
       (nskk-then
-        (should (null (nskk-state-get state 'invalid-slot))))))
+        (should (null (nskk-state-get state 'invalid-slot)))
+        (should (null (nskk-state-get state 'p)))
+        (should (null (nskk-state-get state "p"))))))
 
   (nskk-it "returns nil for nil state"
     (nskk-then
@@ -290,9 +292,11 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (nskk-it "sets candidates"
     (let ((state (nskk-state-create))
           (candidates '("candidate1" "candidate2" "candidate3")))
+      (nskk-state-set state 'current-index 2)
       (nskk-then
         (should (eq (nskk-state-set state 'candidates candidates) candidates))
-        (should (equal (nskk-state-candidates state) candidates)))))
+        (should (eq (nskk-state-candidates state) candidates))
+        (should (= (nskk-state-current-index state) 0)))))
 
   (nskk-it "sets current-index"
     (let ((state (nskk-state-create)))
@@ -308,9 +312,13 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
   (nskk-it "raises error for invalid mode and leaves state unchanged"
     (let ((state (nskk-state-create 'ascii)))
-      (nskk-then
-        (should-error (nskk-state-set state 'mode 'invalid-mode))
-        (should (eq (nskk-state-mode state) 'ascii)))))
+      (nskk-state-set state 'input-buffer "unchanged")
+      (nskk-state-set state 'candidates '("a" "b"))
+      (nskk-state-set state 'current-index 1)
+      (let ((before (copy-nskk-state state)))
+        (nskk-then
+          (should-error (nskk-state-set state 'mode 'invalid-mode))
+          (should (equal state before))))))
 
   (nskk-it "returns nil for nil state"
     (nskk-then
@@ -669,66 +677,33 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (nskk-state-set state 'current-index 2)
       (should (string= (nskk-state-current-candidate state) "third"))))
 
-  (nskk-it "next-candidate advances index and wraps around"
-    (let ((state (nskk-state-create)))
-      (nskk-state-set-candidates state '("a" "b" "c"))
-
-      (should (string= (nskk-state-next-candidate state) "b"))
-      (should (= (nskk-state-current-index state) 1))
-
-      (should (string= (nskk-state-next-candidate state) "c"))
-      (should (= (nskk-state-current-index state) 2))
-
-      (should (string= (nskk-state-next-candidate state) "a"))
-      (should (= (nskk-state-current-index state) 0))))
-
-  (nskk-it "next-candidate stays at index 0 for a single candidate"
-    (let ((state (nskk-state-create)))
-      (nskk-state-set-candidates state '("only"))
-      (should (string= (nskk-state-next-candidate state) "only"))
-      (should (= (nskk-state-current-index state) 0))))
+  (nskk-it "navigation uses modulo indexing and round-trips"
+    (dolist (candidates '(("only") ("a" "b" "c")
+                          ("zero" "one" "two" "three")))
+      (let ((state (nskk-state-create))
+            (length (length candidates)))
+        (dotimes (start length)
+          (dolist (operation '((nskk-state-next-candidate 1
+                                nskk-state-previous-candidate)
+                               (nskk-state-previous-candidate -1
+                                nskk-state-next-candidate)))
+            (nskk-state-set-candidates state candidates)
+            (nskk-state-set state 'current-index start)
+            (let ((expected-index (mod (+ start (nth 1 operation)) length)))
+              (should (equal (funcall (nth 0 operation) state)
+                             (nth expected-index candidates)))
+              (should (= (nskk-state-current-index state) expected-index)))
+            (should (equal (funcall (nth 2 operation) state)
+                           (nth start candidates)))
+            (should (= (nskk-state-current-index state) start)))))))
 
   (nskk-it "next-candidate returns nil when no candidates"
     (let ((state (nskk-state-create)))
       (should (null (nskk-state-next-candidate state)))))
 
-  (nskk-it "previous-candidate decrements index and wraps around"
-    (let ((state (nskk-state-create)))
-      (nskk-state-set-candidates state '("a" "b" "c"))
-      (nskk-state-set state 'current-index 1)
-
-      (should (string= (nskk-state-previous-candidate state) "a"))
-      (should (= (nskk-state-current-index state) 0))
-
-      (should (string= (nskk-state-previous-candidate state) "c"))
-      (should (= (nskk-state-current-index state) 2))))
-
   (nskk-it "previous-candidate returns nil when no candidates"
     (let ((state (nskk-state-create)))
-      (should (null (nskk-state-previous-candidate state)))))
-
-  (nskk-it "supports a full navigation cycle"
-    (let ((state (nskk-state-create)))
-      (nskk-state-set-candidates state '("one" "two" "three" "four"))
-
-      (should (string= (nskk-state-current-candidate state) "one"))
-
-      (nskk-state-next-candidate state)
-      (should (string= (nskk-state-current-candidate state) "two"))
-
-      (nskk-state-previous-candidate state)
-      (should (string= (nskk-state-current-candidate state) "one"))
-
-      (nskk-state-next-candidate state)
-      (nskk-state-next-candidate state)
-      (nskk-state-next-candidate state)
-      (should (string= (nskk-state-current-candidate state) "four"))
-
-      (nskk-state-next-candidate state)
-      (should (string= (nskk-state-current-candidate state) "one"))
-
-      (nskk-state-previous-candidate state)
-      (should (string= (nskk-state-current-candidate state) "four")))))
+      (should (null (nskk-state-previous-candidate state))))))
 
 ;;;
 ;;; Metadata Tests
@@ -961,34 +936,41 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 
   (nskk-it "nskk-state-set/k calls only not-found for an unknown key"
     (let ((state (nskk-state-create))
+          (unknown-key "nskk-state-test-unknown-key-8675309")
           (found-calls 0)
           (not-found-calls 0))
+      (should-not (intern-soft unknown-key))
       (nskk-state-set state 'metadata '(:kept t))
       (nskk-state-set/k
-       state 'definitely-unknown :ignored
+       state unknown-key :ignored
        (lambda (_value)
          (setq found-calls (1+ found-calls)))
        (lambda ()
          (setq not-found-calls (1+ not-found-calls))))
       (should (= found-calls 0))
       (should (= not-found-calls 1))
+      (should-not (intern-soft unknown-key))
       (should (equal (nskk-state-metadata state) '(:kept t)))))
 
   (nskk-it "nskk-state-set/k propagates validation errors without continuations"
     (let ((state (nskk-state-create 'ascii))
           (found-calls 0)
           (not-found-calls 0))
-      (should-error
-       (nskk-state-set/k
-        state 'mode 'invalid-mode
-        (lambda (_value)
-          (setq found-calls (1+ found-calls)))
-        (lambda ()
-          (setq not-found-calls (1+ not-found-calls))))
-       :type 'error)
-      (should (= found-calls 0))
-      (should (= not-found-calls 0))
-      (should (eq (nskk-state-mode state) 'ascii))))
+      (nskk-state-set state 'input-buffer "unchanged")
+      (nskk-state-set state 'candidates '("a" "b"))
+      (nskk-state-set state 'current-index 1)
+      (let ((before (copy-nskk-state state)))
+        (should-error
+         (nskk-state-set/k
+          state 'mode 'invalid-mode
+          (lambda (_value)
+            (setq found-calls (1+ found-calls)))
+          (lambda ()
+            (setq not-found-calls (1+ not-found-calls))))
+         :type 'error)
+        (should (= found-calls 0))
+        (should (= not-found-calls 0))
+        (should (equal state before)))))
 
   (nskk-it "nskk-state-set/k propagates error and quit from the selected continuation"
     (dolist (condition '(error quit))

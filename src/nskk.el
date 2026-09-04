@@ -90,36 +90,35 @@
 (declare-function nskk-completion-at-point "nskk-henkan")
 (declare-function nskk-commit-by-phase "nskk-keymap")
 
-(progn
-  (defvar nskk-mode-off-hook nil
-    "Hook run when NSKK mode is disabled.")
+(defvar nskk-mode-off-hook nil
+  "Hook run when NSKK mode is disabled.")
 
-  (defvar-local nskk-mode nil
-    "Non-nil when NSKK mode is enabled in the current buffer.")
+(defvar-local nskk-mode nil
+  "Non-nil when NSKK mode is enabled in the current buffer.")
 
-  (defvar-local nskk--mode-set-snapshot nil
-    "State captured immediately before the minor-mode setter runs.")
+(defvar-local nskk--mode-set-snapshot nil
+  "State captured immediately before the minor-mode setter runs.")
 
-  (defun nskk--set-mode-state (value)
-    "Set `nskk-mode' to VALUE after capturing its exact prior state."
-    (setq nskk--mode-set-snapshot
-          (list (local-variable-p 'nskk-mode)
-                nskk-mode
-                (and (boundp 'local-minor-modes)
-                     (memq 'nskk-mode local-minor-modes))))
-    (setq-local nskk-mode value))
+(defun nskk--set-mode-state (value)
+  "Set `nskk-mode' to VALUE after capturing its exact prior state."
+  (setq nskk--mode-set-snapshot
+        (list (local-variable-p 'nskk-mode)
+              nskk-mode
+              (and (boundp 'local-minor-modes)
+                   (memq 'nskk-mode local-minor-modes))))
+  (setq-local nskk-mode value))
 
-  (defun nskk--restore-mode-set-snapshot ()
-    "Restore the state captured by `nskk--set-mode-state'."
-    (let ((snapshot nskk--mode-set-snapshot))
-      (if (nth 0 snapshot)
-          (setq-local nskk-mode (nth 1 snapshot))
-        (kill-local-variable 'nskk-mode))
-      (when (boundp 'local-minor-modes)
-        (if (nth 2 snapshot)
-            (add-to-list 'local-minor-modes 'nskk-mode)
-          (setq local-minor-modes
-                (delq 'nskk-mode local-minor-modes)))))))
+(defun nskk--restore-mode-set-snapshot ()
+  "Restore the state captured by `nskk--set-mode-state'."
+  (let ((snapshot nskk--mode-set-snapshot))
+    (if (nth 0 snapshot)
+        (setq-local nskk-mode (nth 1 snapshot))
+      (kill-local-variable 'nskk-mode))
+    (when (boundp 'local-minor-modes)
+      (if (nth 2 snapshot)
+          (add-to-list 'local-minor-modes 'nskk-mode)
+        (setq local-minor-modes
+              (delq 'nskk-mode local-minor-modes))))))
 
 (defvar-keymap nskk-mode-map
   :doc "Keymap for NSKK minor mode."

@@ -16,13 +16,6 @@
 ;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
 ;;; Commentary:
 ;; This file provides unit tests for the NSKK converter component.
-;;
-;; Test categories:
-;; - Basic conversion: vowels, consonant rows, palatal, special sequences
-;; - Edge cases: nil/empty input, case insensitivity, boundary conditions
-;; - Integration: full kana row conversion
-;; - CPS variants: nskk-converter-convert/k, nskk-convert-romaji/k,
-;;     nskk--convert-step-n/k, nskk-convert-romaji--internal/k,
 ;;; Code:
 (require 'ert)
 

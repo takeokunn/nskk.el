@@ -162,8 +162,6 @@ because Emacs Lisp `&optional' applies to all parameters after the first."
     (signal 'nskk-dict-search-invalid-query
             (list (format "Unknown search type: %s" search-type))))
 
-  ;; Dispatch via sync wrappers (bindings are not CPS-transformed, so succeed/fail
-  ;; appears exactly once below, eliminating the 4-branch duplication).
   (let ((result (pcase search-type
                   ('exact   (nskk-search-exact   index query okuri-type))
                   ('prefix  (nskk-search-prefix  index query okuri-type limit))

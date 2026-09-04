@@ -918,6 +918,19 @@
                (renamed (nskk--prolog-rename-variables clause 1)))
           (should-not (member ?_ (flatten-tree renamed))))))
 
+    (nskk-it "preserves fresh variable names without interning them"
+      (let* ((nskk--prolog-var-counter 8675308)
+             (clause (list (list 'fresh-test
+                                 (make-symbol "?external-contract") ?_)))
+             (renamed (nskk--prolog-rename-variables clause 424242))
+             (head (car renamed))
+             (named (cadr head))
+             (anonymous (caddr head)))
+        (should (equal (symbol-name named) "?external-contract_424242"))
+        (should (equal (symbol-name anonymous) "?_anon_8675309"))
+        (should-not (intern-soft (symbol-name named)))
+        (should-not (intern-soft (symbol-name anonymous)))))
+
     (nskk-it "returns a structurally identical clause when it contains no variables"
       (let* ((clause '((ground-fact apple banana)))
              (renamed (nskk--prolog-rename-variables clause 42)))

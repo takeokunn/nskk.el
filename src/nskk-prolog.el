@@ -645,10 +645,10 @@ unchanged.
 Returns the renamed term."
   (pcase term
     ((pred nskk--prolog-anonymous-p)
-     (intern (format "?_anon_%d" (cl-incf nskk--prolog-var-counter))))
+     (make-symbol (format "?_anon_%d" (cl-incf nskk--prolog-var-counter))))
     ((pred nskk-prolog-variable-p)
      (or (gethash term mapping)
-         (let ((fresh (intern (format "%s_%d" (symbol-name term) counter))))
+         (let ((fresh (make-symbol (format "%s_%d" (symbol-name term) counter))))
            (puthash term fresh mapping)
            fresh)))
     (`(,h . ,tl)
@@ -1125,29 +1125,28 @@ per-key database, index, and cache mappings."
              (nskk-prolog-restore-key-state state)
              (signal (car condition) (cdr condition)))))))))
 
-(with-no-warnings
-  (cl-defstruct (nskk--prolog-transaction-journal
-		 (:constructor nskk--prolog-make-transaction-journal))
-    "Journal used to roll back a Prolog database transaction."
-    key
-    database-head
-    database-tail
-    database-predecessor
-    database-predecessor-cdr
-    database-append-tail
-    index-type
-    index
-    first-arg
-    index-bucket
-    index-predecessor
-    index-predecessor-cdr
-    index-append-tail
-    cache-entry-present-p
-    cache-entry
-    cache-buckets
-    cache-bucket-present-p
-    cache-bucket
-    active))
+(cl-defstruct (nskk--prolog-transaction-journal
+               (:constructor nskk--prolog-make-transaction-journal))
+              "Journal used to roll back a Prolog database transaction."
+              key
+              database-head
+              database-tail
+              database-predecessor
+              database-predecessor-cdr
+              database-append-tail
+              index-type
+              index
+              first-arg
+              index-bucket
+              index-predecessor
+              index-predecessor-cdr
+              index-append-tail
+              cache-entry-present-p
+              cache-entry
+              cache-buckets
+              cache-bucket-present-p
+              cache-bucket
+              active)
 
 (defun nskk--prolog-find-matching-cell (head-pattern clauses)
   "Return (PREDECESSOR CELL) in CLAUSES that matches HEAD-PATTERN."

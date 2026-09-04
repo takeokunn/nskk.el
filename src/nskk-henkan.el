@@ -163,6 +163,18 @@ or `nskk-with-conversion-context')."
      (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil)
      (nskk-state-set-henkan-phase nskk-current-state nil)))
 
+(defun nskk--reset-current-conversion-state ()
+  "Reset conversion fields when `nskk-current-state' is valid."
+  (when (and (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (setf (nskk-state-candidates nskk-current-state) nil
+          (nskk-state-current-index nskk-current-state) 0
+          (nskk-state-henkan-phase nskk-current-state) nil
+          (nskk-state-metadata nskk-current-state)
+          (let ((metadata (nskk-state-metadata nskk-current-state)))
+            (setq metadata (plist-put metadata 'okurigana nil))
+            (plist-put metadata 'okurigana-in-progress nil)))))
+
 ;; Forward declarations for variables defined in the "Candidate Display Hooks"
 ;; section below.  Required so nskk--dismiss-candidate-list (defined here, near
 ;; its primary caller nskk-henkan-do-reset) can reference them without triggering
@@ -270,29 +282,11 @@ has been restored."
            (set-marker (nskk-state-conversion-start-marker) nil))))
       (run-cleanup
        (lambda ()
-         (progn
-           (nskk-state-set-romaji-buffer "")
-           (nskk-state-set-henkan-count 0)
-           (setq nskk--henkan-candidate-list-active nil)
-           (dolist (setter '(nskk-set-azik-colon-okuri-pending
-                             nskk-set-azik-colon-okuri-deferred
-                             nskk-set-azik-sokuon-okuri-kana-pending
-                             nskk-set-deferred-azik-state
-                             nskk-set-deferred-vowel-shadow-state
-                             nskk-set-sticky-shift-pending))
-             (when (fboundp setter)
-               (funcall setter nil))))))
-      (run-cleanup
-       (lambda ()
-         (when (and (boundp 'nskk-current-state)
-                    (nskk-state-p nskk-current-state))
-           (setf (nskk-state-candidates nskk-current-state) nil
-                 (nskk-state-current-index nskk-current-state) 0
-                 (nskk-state-henkan-phase nskk-current-state) nil
-                 (nskk-state-metadata nskk-current-state)
-                 (let ((metadata (nskk-state-metadata nskk-current-state)))
-                   (setq metadata (plist-put metadata 'okurigana nil))
-                   (plist-put metadata 'okurigana-in-progress nil))))))
+         (nskk-state-set-romaji-buffer "")
+         (nskk-state-set-henkan-count 0)
+         (setq nskk--henkan-candidate-list-active nil)
+         (nskk-clear-azik-pending-state)))
+      (run-cleanup #'nskk--reset-current-conversion-state)
       (when first-condition
         (signal (car first-condition) (cdr first-condition))))))
 
@@ -703,17 +697,8 @@ Creates a new marker if one does not already exist."
      ,@body))
 
 (defun/done nskk-clear-azik-pending-state ()
-  "Clear AZIK and sticky-shift pending state variables if bound.
-Resets `nskk--azik-colon-okuri-pending', `nskk--azik-colon-okuri-deferred',
-`nskk--azik-sokuon-okuri-kana-pending', `nskk--deferred-azik-state',
-`nskk--deferred-vowel-shadow-state', and `nskk--sticky-shift-pending' to
-nil via their `nskk-input' accessor setters.  Guards each with `fboundp'
-so that the function is safe to call when AZIK or sticky-shift is not
-loaded.
-Called from `nskk-henkan-kakutei', `nskk-cancel-preedit',
-`nskk-rollback-conversion', `nskk-henkan-do-reset', and
-`nskk-cancel-conversion-to-reading' to prevent stale pending state from
-leaking into the next preedit context."
+  "Clear available AZIK and sticky-shift pending state.
+This prevents pending input from leaking into the next preedit context."
   (dolist (setter '(nskk-set-azik-colon-okuri-pending
                     nskk-set-azik-colon-okuri-deferred
                     nskk-set-azik-sokuon-okuri-kana-pending
@@ -781,16 +766,7 @@ When DISMISS-CANDIDATE-LIST is non-nil, also clear its active flag."
   (nskk--clear-input-state-vars clearable-input-vars run-cleanup)
   (funcall
    run-cleanup
-   (lambda ()
-     (when (and (boundp 'nskk-current-state)
-                (nskk-state-p nskk-current-state))
-       (setf (nskk-state-candidates nskk-current-state) nil
-             (nskk-state-current-index nskk-current-state) 0
-             (nskk-state-henkan-phase nskk-current-state) nil
-             (nskk-state-metadata nskk-current-state)
-             (let ((metadata (nskk-state-metadata nskk-current-state)))
-               (setq metadata (plist-put metadata 'okurigana nil))
-               (plist-put metadata 'okurigana-in-progress nil)))))))
+   #'nskk--reset-current-conversion-state))
 
 (defun nskk-clear-conversion-context ()
   "Clear all conversion and input context for mode switching or mode disable.
@@ -1138,7 +1114,6 @@ Used by the DEL key handler."
   (when (nskk-converting-p)
     (let ((start (nskk-get-conversion-start))
           (saved-point (point)))
-      ;; Remove only the ▼ marker character(s) at start, keeping kana reading.
       (when start
         (condition-case err
             (atomic-change-group
@@ -1448,28 +1423,11 @@ in place and will immediately follow the inserted candidate."
                  (nskk-state-set-pending-romaji-overlay nil)))
              (when (markerp (nskk-state-conversion-start-marker))
                (set-marker (nskk-state-conversion-start-marker) nil))
-             (progn
-               (nskk-state-set-romaji-buffer "")
-               (nskk-state-set-henkan-count 0)
-               (setq nskk--henkan-candidate-list-active nil)
-               (dolist (setter '(nskk-set-azik-colon-okuri-pending
-                                 nskk-set-azik-colon-okuri-deferred
-                                 nskk-set-azik-sokuon-okuri-kana-pending
-                                 nskk-set-deferred-azik-state
-                                 nskk-set-deferred-vowel-shadow-state
-                                 nskk-set-sticky-shift-pending))
-                 (when (fboundp setter)
-                   (funcall setter nil))))
-             (when (and (boundp 'nskk-current-state)
-                        (nskk-state-p nskk-current-state))
-               (setf (nskk-state-candidates nskk-current-state) nil
-                     (nskk-state-current-index nskk-current-state) 0
-                     (nskk-state-henkan-phase nskk-current-state) nil
-                     (nskk-state-metadata nskk-current-state)
-                     (let ((metadata
-                            (nskk-state-metadata nskk-current-state)))
-                       (setq metadata (plist-put metadata 'okurigana nil))
-                       (plist-put metadata 'okurigana-in-progress nil))))
+             (nskk-state-set-romaji-buffer "")
+             (nskk-state-set-henkan-count 0)
+             (setq nskk--henkan-candidate-list-active nil)
+             (nskk-clear-azik-pending-state)
+             (nskk--reset-current-conversion-state)
              (when was-abbrev
                (when (fboundp 'nskk-set-numeric-mode)
                  (nskk-set-numeric-mode nil))
@@ -2353,11 +2311,6 @@ Reads the mode from `nskk-current-state' and delegates to
 (defvar nskk--henkan-initialized nil
   "Non-nil when henkan Prolog predicates have been initialized.")
 
-;; Registration protocol: declare this module's initialized-flag symbol,
-;; unconditionally at load time, so generic test/reset infrastructure can
-;; enumerate it via a fact query instead of a hardcoded symbol list,
-;; regardless of whether this module's own lazy Prolog initializer has
-;; run yet.
 (nskk-prolog-<- (module-initialized-flag nskk--henkan-initialized))
 
 (defun/done nskk-henkan-initialize ()
@@ -2369,14 +2322,11 @@ Idempotent: subsequent calls are no-ops."
       (:prefix  prefix-search)
       (:partial partial-search))
 
-    ;; dict-lookup backend order (declarative; actual dispatch uses nskk--optional-*-lookup/k)
     (nskk-prolog-define-fact-table search-backend (:arity 2 :index :hash)
       (1 dict-lookup)
       (2 skkserv-lookup)
       (3 program-dict-lookup))
 
-    ;; Converting phase facts — authoritative list of phases where a candidate
-    ;; conversion is in progress (▼ or list display).
     (nskk-prolog-define-fact-table converting-phase (:arity 1 :index :hash)
       (active) (list) (registration))
 
@@ -2409,20 +2359,13 @@ Idempotent: subsequent calls are no-ops."
       (converting     commit-current)
       (not-converting start-conversion))
 
-    ;; Preedit phase facts — the only preedit phase is `on'.
-    ;; Used by nskk.el and nskk-input.el to guard preedit-state queries.
     (nskk-prolog-define-fact-table preedit-phase (:arity 1 :index :hash)
       (on))
 
-    ;; Script-toggle direction for q-key/AZIK-toggle-key in ▽ preedit mode.
-    ;; Maps the current input mode to the target script for kakutei-convert-script.
-    ;; Queried by `nskk-henkan-kakutei-convert-script' at commit time.
     (nskk-prolog-define-fact-table script-toggle (:arity 2 :index :hash)
       (hiragana katakana)
       (katakana hiragana))
 
-    ;; Script-to-CPS-converter mapping for dynamic script conversion dispatch.
-    ;; Maps target script name to the CPS /k converter function symbol.
     (nskk-prolog-define-fact-table script-converter (:arity 2 :index :hash)
       (katakana nskk-kana-string-hiragana-to-katakana/k)
       (hiragana nskk-kana-string-katakana-to-hiragana/k))
@@ -2435,9 +2378,6 @@ Idempotent: subsequent calls are no-ops."
     ;; because the listed symbols are all nskk-input internal variables.
     ;; Queried by `nskk-clear-conversion-context' below.
 
-    ;; Disable/cleanup action dispatch: maps henkan phase to the cleanup
-    ;; action to perform when nskk-mode is disabled or context is reset.
-    ;; Queried by the nskk-mode disable hook in nskk.el.
     (nskk-prolog-define-fact-table disable-cleanup (:arity 2 :index :hash)
       (active       cancel-conversion)
       (list         cancel-conversion)

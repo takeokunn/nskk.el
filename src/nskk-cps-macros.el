@@ -47,19 +47,15 @@ as its continuation body and transforms the whole remainder."
     (let ((head (car forms))
           (tail (cdr forms)))
       (pcase head
-       ;; (<- var fn args...) — CPS bind: captures tail as continuation
        (`(<- . ,_)
         (list (nskk--cps-transform-<- head tail on-found-sym on-not-found-sym)))
 
-       ;; (<-or var fn args... :found f :fail g) — two-arm CPS bind
        (`(<-or . ,_)
         (list (nskk--cps-transform-<-or head on-found-sym on-not-found-sym)))
 
        (_
         (if tail
-            ;; More forms follow: head is NOT in tail position, recurse on tail
             (cons head (nskk--cps-transform-body-list tail on-found-sym on-not-found-sym))
-          ;; head IS the last form (tail position): transform it
           (list (nskk--cps-transform-form head on-found-sym on-not-found-sym))))))))
 
 ;;; Internal form dispatch table
@@ -236,16 +232,13 @@ Framework pipeline operators (`fail', `succeed', `<-', `<-or', `<-seq')
 are handled inline: they are CPS-specific constructs that have no meaning
 outside `defun/k' bodies."
   (pcase form
-   ;; Atom — pass through unchanged (no CPS transformation possible)
    ((pred (not consp)) form)
 
-   ;; (fail) — zero-arity not-found continuation
    (`(fail)
     `(funcall ,on-not-found-sym))
    (`(fail . ,_)
     (error "NSKK-CPS: (fail) takes no arguments, got: %S" form))
 
-   ;; (succeed VALUE) — one-arity found continuation
    (`(succeed)
     (error "NSKK-CPS: (succeed) requires exactly one argument"))
    (`(succeed ,val)
@@ -253,19 +246,15 @@ outside `defun/k' bodies."
    (`(succeed . ,_)
     (error "NSKK-CPS: (succeed) takes exactly one argument, got: %S" form))
 
-   ;; (<- var fn args...) — CPS bind in tail position with no following forms
    (`(<- . ,_)
     (nskk--cps-transform-<- form nil on-found-sym on-not-found-sym))
 
-   ;; (<-or ...) — two-arm CPS bind
    (`(<-or . ,_)
     (nskk--cps-transform-<-or form on-found-sym on-not-found-sym))
 
-   ;; (<-seq [VAR (FN ARGS...)] BODY...) — sequential CPS bind
    (`(<-seq . ,_)
     (nskk--cps-transform-<-seq form on-found-sym on-not-found-sym))
 
-   ;; Dispatch via table, or pass through if the form head is not registered
    (`(,head . ,_)
     (let ((handler (assq head nskk--cps-form-dispatch)))
       (if handler
@@ -284,7 +273,6 @@ Signals an error at macro-expansion time if FN-NAME ends in /k."
          (fn-name (nth 2 form))
          (args    (nthcdr 3 form))
          (fn-k    (intern (concat (symbol-name fn-name) "/k"))))
-    ;; Compile-time guard
     (when (string-suffix-p "/k" (symbol-name fn-name))
       (error "NSKK-CPS: `<-' fn-name must be a non-/k name, got: %s \
 \(would generate %s/k — double /k suffix)" fn-name fn-name))
@@ -298,11 +286,9 @@ two (on-found, on-not-found).  Call %s directly or use its sync wrapper"
              fn-k fn-k))
     ;; Generate a gensym param to prevent variable capture in the lambda
     (let ((param (make-symbol (concat "--" (symbol-name var) "--"))))
-      ;; The continuation body is REST-FORMS (recursively transformed)
       (let ((cont-body (if rest-forms
                            (nskk--cps-transform-body-list
                             rest-forms on-found-sym on-not-found-sym)
-                         ;; No rest forms: forward found value to on-found
                          `((funcall ,on-found-sym ,var)))))
         `(,fn-k ,@args
                 (lambda (,param)
@@ -408,14 +394,15 @@ Only valid inside `defun/k' bodies."
   "Parse lambda ARGS into (PLAIN-ARGS . REST-SYM-OR-NIL).
 PLAIN-ARGS is a list of all arg names with lambda-list keywords stripped.
 `&optional' and `&rest' are handled correctly.  `&key' and
-`&allow-other-keys' are stripped but their parameters are treated as
-positional in the generated sync-call, which is INCORRECT for proper keyword
-dispatch.  Do not use `&key' in `defun/k' or `defun/done' argument lists.
+`&allow-other-keys' signal an error because the generated synchronous wrapper
+cannot preserve their keyword dispatch semantics.
 REST-SYM-OR-NIL is the symbol following &rest, or nil if none.
 
 This is used by `defun/k' and `defun/done' to build correct call forms
 inside sync wrappers: lambda keywords are declaration syntax, not values,
 so they cannot appear in a function call position."
+  (when (or (memq '&key args) (memq '&allow-other-keys args))
+    (error "NSKK-CPS: &key and &allow-other-keys are not supported: %S" args))
   (let* ((rest-pos (cl-position '&rest args))
          (pre-rest (if rest-pos (cl-subseq args 0 rest-pos) args))
          (plain    (cl-remove-if (lambda (a)
@@ -440,6 +427,24 @@ and its argument removed."
         (cons form (cddr body)))
     (cons nil body)))
 
+(defun nskk--cps-parse-sync-fallback (body)
+  "Extract optional :sync-fallback value from the start of BODY.
+Returns (PRESENT VALUE . REAL-BODY).  PRESENT distinguishes an explicit nil
+fallback from an absent option."
+  (if (and (consp body) (eq (car body) :sync-fallback))
+      (progn
+        (unless (cdr body)
+          (error "NSKK-CPS: :sync-fallback requires a value"))
+        (cons t (cons (cadr body) (cddr body))))
+      (cons nil (cons nil body))))
+
+(defun nskk--cps-reject-misplaced-options (body options)
+  "Reject OPTIONS that remain among top-level BODY forms."
+  (dolist (form body)
+    (when (memq form options)
+      (error "NSKK-CPS: option %S must precede all body forms and follow the documented order"
+             form))))
+
 ;;;###autoload
 (defmacro defun/k (name args docstring &rest body)
   "Define a CPS function pair from a single body written with CPS special forms.
@@ -453,8 +458,8 @@ Generates two definitions:
 
   NAME (ARG...)
     Synchronous convenience wrapper.  Calls NAME/k with `#\\='identity' as
-    ON-FOUND and `#\\='ignore' as ON-NOT-FOUND.  Returns the found value
-    or nil.
+    ON-FOUND.  ON-NOT-FOUND defaults to `#\\='ignore', so failure returns nil;
+    `:sync-fallback VALUE' makes failure return VALUE instead.
 
 ARGS is the plain argument list (without continuation parameters).
 DOCSTRING is required.
@@ -476,7 +481,8 @@ CPS special forms recognized in BODY:
                           (funcall K v) aborts BODY and calls on-found
   :interactive t          — sync wrapper includes (interactive); /k does not.
   :interactive \"SPEC\"     — sync wrapper includes (interactive SPEC).
-  (Place :interactive before any body forms.)
+  :sync-fallback VALUE    — sync wrapper returns VALUE on `fail'.
+  (Place options in this order before any body forms.)
 
 Example:
 
@@ -494,28 +500,36 @@ Example:
          (cps-docstring    (concat docstring "\n[CPS]"))
          (interactive-parsed (nskk--cps-parse-interactive body))
          (interactive-form   (car interactive-parsed))
-         (real-body          (cdr interactive-parsed))
+         (sync-fallback-parsed
+          (nskk--cps-parse-sync-fallback (cdr interactive-parsed)))
+         (sync-fallback-p    (car sync-fallback-parsed))
+         (sync-fallback      (cadr sync-fallback-parsed))
+         (real-body          (cddr sync-fallback-parsed))
+         (on-not-found       (if sync-fallback-p
+                                 `(lambda () ,sync-fallback)
+                               '(function ignore)))
          (transformed      (nskk--cps-transform-body-list
                             real-body on-found-sym on-not-found-sym))
          (sync-call        (if rest-sym
-                               `(apply #',name/k ,@plain-args #'identity #'ignore ,rest-sym)
-                             `(,name/k ,@plain-args #'identity #'ignore))))
+                               `(apply #',name/k ,@plain-args #'identity
+                                       ,on-not-found ,rest-sym)
+                               `(,name/k ,@plain-args #'identity ,on-not-found))))
+    (nskk--cps-reject-misplaced-options
+     real-body '(:interactive :sync-fallback))
     `(progn
        ;; For &rest args, continuations must precede &rest in the /k signature.
        ;; (Emacs silently ignores named params after &rest, binding them nil.)
        ,(if rest-sym
             `(defun ,name/k (,@plain-args ,on-found-sym ,on-not-found-sym
-                             &rest ,rest-sym)
+                                          &rest ,rest-sym)
                ,cps-docstring
                ,@transformed)
-          `(defun ,name/k (,@args ,on-found-sym ,on-not-found-sym)
-             ,cps-docstring
-             ,@transformed))
+            `(defun ,name/k (,@args ,on-found-sym ,on-not-found-sym)
+               ,cps-docstring
+               ,@transformed))
        (defun ,name (,@args)
          ,docstring
-         ;; :interactive applies to the sync wrapper only.
          ,@(when interactive-form (list interactive-form))
-         ;; plain-args strips &optional/&rest keywords for a valid call form.
          ,sync-call)
        (put ',name/k 'nskk--cps-continuation-pattern :found-not-found))))
 
@@ -566,13 +580,13 @@ Example:
          (name/k       (intern (concat (symbol-name name) "/k")))
          (on-done-sym  (make-symbol "on-done"))
          (cps-docstring (concat docstring "\n[CPS]"))
-         ;; Optional :interactive keyword (sync wrapper only; /k is never interactive).
          (interactive-parsed (nskk--cps-parse-interactive body))
          (interactive-form   (car interactive-parsed))
          (real-body          (cdr interactive-parsed))
          (sync-call    (if rest-sym
                            `(apply #',name/k ,@plain-args #'ignore ,rest-sym)
                          `(,name/k ,@plain-args #'ignore))))
+    (nskk--cps-reject-misplaced-options real-body '(:interactive))
     `(progn
        ,(if rest-sym
             `(defun ,name/k (,@plain-args ,on-done-sym &rest ,rest-sym)

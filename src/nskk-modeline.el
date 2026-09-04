@@ -83,8 +83,6 @@ FACE-OR-SPEC is either:
   "Face for direct (ASCII/latin) mode indicator."
   :group 'nskk-modeline)
 
-;; ascii, latin, and direct modes share `nskk-modeline-direct-face', defined above.
-
 ;;;; Modeline Indicator
 
 (defvar-local nskk--modeline-indicator-cache nil

@@ -4,12 +4,7 @@
 ;; Keywords: japanese, input, test
 ;; This file is part of NSKK.
 ;;; Commentary:
-;; Tests for nskk-show-mode.el covering:
-;; - Function existence (fboundp)
-;; - Customization variables
-;; - nskk--show-mode-indicator-string for each mode
-;; - nskk-show-mode-hide cleanup behavior
-;; - nskk-show-mode-display guard conditions
+;; Tests for nskk-show-mode.el.
 ;;; Code:
 (require 'ert)
 

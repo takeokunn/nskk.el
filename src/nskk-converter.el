@@ -233,16 +233,13 @@ ON-PARTIAL and ON-FAIL are forwarded to `nskk-converter-convert/k' when
 the n-prefix falls through to the trie (e.g. na, ni, nya)."
   (let ((len (length remaining)))
     (cond
-     ;; Standalone n at end
      ((= len 1)
       (funcall on-kana "ん" nil))
      ;; nn -> ん (keep second n for potential next match)
      ((= (aref remaining 1) ?n)
       (funcall on-kana "ん" (if (> len 2) (substring remaining 1) nil)))
-     ;; n' -> ん
      ((= (aref remaining 1) ?')
       (funcall on-kana "ん" (if (> len 2) (substring remaining 2) nil)))
-     ;; n + non-blocker consonant -> ん + rest
      ((not (nskk-prolog-holds-p `(hatsuon-blocker ,(aref remaining 1))))
       (funcall on-kana "ん" (substring remaining 1)))
      ;; n + vowel/y: fall through to trie lookup (na->な, etc.)
@@ -260,13 +257,10 @@ Handles sokuon, hatsuon (via `nskk--convert-step-n/k'), and normal trie lookup
 in a flat cond."
   (let ((c0 (aref remaining 0)))
     (cond
-     ;; Sokuon: doubled consonant
      ((nskk--sokuon-p c0 remaining)
       (funcall on-kana "っ" (substring remaining 1)))
-     ;; n-handling: delegated to nskk--convert-step-n/k
      ((= c0 ?n)
       (nskk--convert-step-n/k remaining on-kana on-partial on-fail))
-     ;; Normal: trie longest-match
      (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
 
 (defun nskk--convert-loop/k (remaining parts on-found on-not-found)
@@ -836,11 +830,6 @@ Example:
 (defvar nskk--converter-initialized nil
   "Non-nil when the romaji-to-kana conversion table has been initialized.")
 
-;; Registration protocol: declare this module's initialized-flag symbol,
-;; unconditionally at load time, so generic test/reset infrastructure can
-;; enumerate it via a fact query instead of a hardcoded symbol list,
-;; regardless of whether this module's own lazy Prolog initializer has
-;; run yet.
 (nskk-prolog-<- (module-initialized-flag nskk--converter-initialized))
 
 (defun/done nskk-converter-initialize ()

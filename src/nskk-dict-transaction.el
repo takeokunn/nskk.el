@@ -14,9 +14,7 @@
 (defun nskk-dict-transaction-read-entries (file truename attributes max-size parser)
   "Read FILE transactionally and transform each entry with PARSER.
 PARSER is called for each entry in the single serialized data form."
-  (let ((read-eval nil)
-        (read-circle nil))
-    (ignore read-eval read-circle)
+  (let ((read-circle nil))
     (with-temp-buffer
       (nskk-dict-transaction-insert-file-contents-pinned
        file truename attributes max-size)

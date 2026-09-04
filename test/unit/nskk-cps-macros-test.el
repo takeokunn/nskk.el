@@ -196,6 +196,55 @@ that the second element is a symbol with the given name."
              (sync-body (nthcdr 3 sync-def)))
         (should-not (member '(interactive) sync-body)))))
 
+  (nskk-context ":sync-fallback keyword support"
+    (nskk-it "uses the fallback continuation only in the sync wrapper"
+      (let* ((expansion (macroexpand-1
+                         '(defun/k nskk--cps-test-k-fallback ()
+                            "Doc."
+                            :sync-fallback "pending"
+                            (fail))))
+             (k-def (nth 1 expansion))
+             (sync-def (nth 2 expansion)))
+        (should-not (member :sync-fallback (nthcdr 4 k-def)))
+        (should (equal (nth 4 sync-def)
+                       '(nskk--cps-test-k-fallback/k
+                         #'identity (lambda () "pending"))))))
+
+    (nskk-it "rejects :sync-fallback without a value"
+      (should-error
+       (macroexpand-1 '(defun/k nskk--cps-test-k-fallback-missing ()
+                          "Doc."
+                          :sync-fallback))
+       :type 'error)))
+
+  (nskk-context "macro option validation"
+    (nskk-it "rejects sync fallback before interactive"
+      (should-error
+       (macroexpand-1 '(defun/k nskk--cps-test-option-order ()
+                          "Doc."
+                          :sync-fallback :failed
+                          :interactive t
+                          (fail)))
+       :type 'error))
+
+    (nskk-it "rejects options after a body form"
+      (should-error
+       (macroexpand-1 '(defun/k nskk--cps-test-option-after-body ()
+                          "Doc."
+                          (succeed :ok)
+                          :sync-fallback :failed))
+       :type 'error))
+
+    (nskk-it "rejects unsupported keyword lambda lists"
+      (dolist (macro '(defun/k defun/done))
+        (dolist (args '((value &key fallback)
+                        (value &allow-other-keys)))
+          (should-error
+           (macroexpand-1 `(,macro nskk--cps-test-keyword-args ,args
+                              "Doc."
+                              (succeed value)))
+           :type 'error)))))
+
   (nskk-context "&rest and &optional argument handling"
     (nskk-it "sync wrapper calls NAME/k via apply when the arglist contains &rest"
       (let* ((expansion (macroexpand-1
@@ -234,6 +283,71 @@ that the second element is a symbol with the given name."
       (should (eq (get 'nskk-cps-test--prop-runtime/k
                        'nskk--cps-continuation-pattern)
                   :found-not-found)))))
+(nskk-describe "sync fallback audit gaps"
+  (nskk-it "preserves an explicit nil fallback in macro expansion"
+    (let* ((expansion (macroexpand-1
+                       (quote (defun/k nskk--cps-test-k-nil-fallback ()
+                                "Doc."
+                                :sync-fallback nil
+                                (fail)))))
+           (sync-def (nth 2 expansion)))
+      (should (equal (nth 4 sync-def)
+                     (quote (nskk--cps-test-k-nil-fallback/k
+                             (function identity) (lambda () nil)))))))
+
+  (nskk-it "runs the fallback side effect only after failure"
+    (defun/k nskk-cps-test--fallback-side-effect (succeed-p)
+      "Return success or increment the test fallback counter."
+      :sync-fallback
+      (put (quote nskk-cps-test--fallback-side-effect)
+           (quote fallback-count)
+           (1+ (or (get (quote nskk-cps-test--fallback-side-effect)
+                        (quote fallback-count))
+                   0)))
+      (if succeed-p (succeed :ok) (fail)))
+    (unwind-protect
+        (progn
+          (put (quote nskk-cps-test--fallback-side-effect)
+               (quote fallback-count) 0)
+          (should (eq (funcall (intern "nskk-cps-test--fallback-side-effect") t)
+                      :ok))
+          (should (= (get (quote nskk-cps-test--fallback-side-effect)
+                          (quote fallback-count))
+                     0))
+          (should (= (funcall (intern "nskk-cps-test--fallback-side-effect") nil)
+                     1))
+          (should (= (get (quote nskk-cps-test--fallback-side-effect)
+                          (quote fallback-count))
+                     1)))
+      (cl-remprop (quote nskk-cps-test--fallback-side-effect)
+               (quote fallback-count))))
+
+  (nskk-it "accepts sync fallback immediately after interactive"
+    (let* ((expansion (macroexpand-1
+                       (quote (defun/k nskk--cps-test-k-interactive-fallback ()
+                                "Doc."
+                                :interactive t
+                                :sync-fallback :failed
+                                (fail)))))
+           (k-def (nth 1 expansion))
+           (sync-def (nth 2 expansion)))
+      (should-not (member :interactive (nthcdr 4 k-def)))
+      (should-not (member :sync-fallback (nthcdr 4 k-def)))
+      (should (equal (nth 4 sync-def) (quote (interactive))))
+      (should (equal (nth 5 sync-def)
+                     (quote (nskk--cps-test-k-interactive-fallback/k
+                             (function identity)
+                             (lambda () :failed)))))))
+
+  (nskk-it "uses the fallback after an empty rest argument list"
+    (defun/k nskk-cps-test--rest-fallback (&rest values)
+      "Return VALUES, or the fallback when VALUES is empty."
+      :sync-fallback :failed
+      (if values (succeed values) (fail)))
+    (should (equal (funcall (intern "nskk-cps-test--rest-fallback") 1 2)
+                   (quote (1 2))))
+    (should (eq (funcall (intern "nskk-cps-test--rest-fallback"))
+                :failed))))
 
 
 ;;;
@@ -1107,6 +1221,11 @@ that the second element is a symbol with the given name."
   "Always fails. [test-only]"
   (fail))
 
+(defun/k nskk--cps-test-fallback ()
+  "Fail with a non-nil synchronous fallback. [test-only]"
+  :sync-fallback :pending
+  (fail))
+
 (defun/k nskk--cps-test-chained (key)
   "Chain two CPS lookups using <-. [test-only]"
   (<- value nskk--cps-test-lookup key)
@@ -1155,7 +1274,16 @@ that the second element is a symbol with the given name."
       (should (equal (nskk--cps-test-always-succeed) 42)))
 
     (nskk-it "always-fail sync wrapper returns nil"
-      (should (null (nskk--cps-test-always-fail)))))
+      (should (null (nskk--cps-test-always-fail))))
+
+    (nskk-it "returns the declared sync fallback on failure"
+      (should (eq (nskk--cps-test-fallback) :pending)))
+
+    (nskk-it "keeps explicit CPS failure continuations unchanged"
+      (should (eq (nskk--cps-test-fallback/k
+                   (lambda (_value) :unexpected)
+                   (lambda () :explicit-failure))
+                  :explicit-failure))))
 
   (nskk-context "CPS and sync consistency"
     (nskk-it "the /k version and sync wrapper produce equivalent results for all inputs"

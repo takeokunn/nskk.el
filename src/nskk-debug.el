@@ -177,7 +177,6 @@ Note: arguments are always evaluated even when debug is disabled."
 
 ;;;; Provide
 
-;; Log a startup message when debug was pre-enabled before this module loaded.
 (nskk-debug-log "NSKK debug module loaded (debug was pre-enabled)")
 
 (provide 'nskk-debug)

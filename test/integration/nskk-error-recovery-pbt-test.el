@@ -1,320 +1,378 @@
 ;;; nskk-error-recovery-pbt-test.el --- Error recovery PBT tests -*- lexical-binding: t; -*-
-
 ;; Copyright (C) 2026 NSKK Authors
-
 ;; Author: takeokunn <bararararatty@gmail.com>
 ;; Keywords: japanese, input, test, property-based
 ;; Homepage: https://github.com/takeokunn/nskk.el
-
 ;; This file is part of NSKK.
-
 ;; NSKK is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-
 ;; NSKK is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
 ;; You should have received a copy of the GNU General Public License
 ;; along with NSKK.  If not, see <https://www.gnu.org/licenses/>.
-
 ;;; Commentary:
-
-
 ;;; Code:
-
 (require 'ert)
-(require 'nskk-test-framework)
-(require 'nskk-test-macros)
-(require 'nskk-pbt-generators)
-(require 'nskk-state)
 
+(require 'nskk-test-framework)
+
+(require 'nskk-test-macros)
+
+(require 'nskk-pbt-generators)
+
+(require 'nskk-state)
 
 ;;;;
 ;;;; Helper Data
 ;;;;
-
 (defconst nskk--pbt-invalid-modes
-  '(invalid-mode nil 123 "hiragana" :keyword
-    random-symbol another-invalid wrong-mode
-    HIRAGANA KATAKANA ASCII)
+  '(invalid-mode nil
+                 123
+                 "hiragana"
+                 :keyword
+                 random-symbol
+                 another-invalid
+                 wrong-mode
+                 HIRAGANA
+                 KATAKANA
+                 ASCII)
   "List of invalid mode values for testing.")
-
 
 ;;;;
 ;;;; Property 1: Error Recovery Invalid Mode
 ;;;;
-
 (nskk-describe "error recovery: invalid mode"
-  (nskk-it "should leave state consistent when setting an invalid mode"
-    (let ((runs 50)
-          (failures nil))
-      (dotimes (_ runs)
-        (let* ((valid-mode (nskk--pbt-generate-valid-mode))
-               (state (nskk-state-create valid-mode))
-               (invalid-mode (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
-          (nskk-state-set state 'input-buffer "test-input")
-          (condition-case _err
-              (progn
-                (nskk-state-set state 'mode invalid-mode)
-                (push (list :invalid-mode invalid-mode
-                            :error "no error raised"
-                            :actual-mode (nskk-state-mode state))
-                      failures))
-            (error
-             (unless (and (nskk-state-p state)
-                          (eq (nskk-state-mode state) valid-mode)
-                          (string= (nskk-state-input-buffer state) "test-input")
-                          (stringp (nskk-state-converted-buffer state))
-                          (listp (nskk-state-candidates state))
-                          (integerp (nskk-state-current-index state)))
-               (push (list :invalid-mode invalid-mode
-                            :error "state corrupted after error"
-                            :actual-mode (nskk-state-mode state)
-                            :input (nskk-state-input-buffer state))
-                      failures))))))
-      (when failures
-        (ert-fail (format "Invalid mode error recovery failed for %d cases:\n%S"
-                          (length failures)
-                          (take 5 failures)))))))
-
+               (nskk-it
+                "should leave state consistent when setting an invalid mode"
+                (let ((runs 50)
+                      (failures nil))
+                  (dotimes (_ runs)
+                    (let* ((valid-mode (nskk--pbt-generate-valid-mode))
+                           (state (nskk-state-create valid-mode))
+                           (invalid-mode
+                            (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
+                      (nskk-state-set state 'input-buffer "test-input")
+                      (condition-case _err
+                          (progn
+                            (nskk-state-set state 'mode invalid-mode)
+                            (push
+                             (list :invalid-mode
+                                   invalid-mode
+                                   :error
+                                   "no error raised"
+                                   :actual-mode
+                                   (nskk-state-mode state))
+                             failures))
+                        (error
+                         (unless
+                             (and (nskk-state-p state)
+                                  (eq (nskk-state-mode state) valid-mode)
+                                  (string= (nskk-state-input-buffer state)
+                                           "test-input")
+                                  (stringp (nskk-state-converted-buffer state))
+                                  (listp (nskk-state-candidates state))
+                                  (integerp (nskk-state-current-index state)))
+                           (push
+                            (list :invalid-mode
+                                  invalid-mode
+                                  :error
+                                  "state corrupted after error"
+                                  :actual-mode
+                                  (nskk-state-mode state)
+                                  :input
+                                  (nskk-state-input-buffer state))
+                            failures))))))
+                  (when failures
+                    (ert-fail
+                     (format
+                      "Invalid mode error recovery failed for %d cases:\n%S"
+                      (length failures)
+                      (take 5 failures)))))))
 
 ;;;;
 ;;;; Property 2: Nil State Operations
 ;;;;
-
 (nskk-describe "error recovery: nil state operations"
-  (nskk-it "should return nil without crash for any operation on nil state"
-    (let ((runs 50)
-          (failures nil))
-      (dotimes (_ runs)
-        (let ((op (nskk--pbt-random-int 0 9)))
-          (condition-case err
-              (pcase op
-                (0 (should-not (nskk-state-get nil 'mode)))
-                (1 (should-not (nskk-state-set nil 'mode 'hiragana)))
-                (2 (should-not (nskk-state-reset nil)))
-                (3 (should-not (nskk-state-append-input nil ?a)))
-                (4 (should-not (nskk-state-delete-last-char nil)))
-                (5 (should-not (nskk-state-clear-input nil)))
-                (6 (should-not (nskk-state-next-candidate nil)))
-                (7 (should-not (nskk-state-previous-candidate nil)))
-                (8 (should-not (nskk-state-current-candidate nil)))
-                (9 (should-not (nskk-state-transition nil 'ascii 'hiragana))))
-            (error
-             (push (list :op op :error err) failures)))))
-      (when failures
-        (ert-fail (format "Nil state operations crashed for %d cases:\n%S"
-                          (length failures)
-                          (take 5 failures)))))))
-
+               (nskk-it
+                "should return nil without crash for any operation on nil state"
+                (let ((runs 50)
+                      (failures nil))
+                  (dotimes (_ runs)
+                    (let ((op (nskk--pbt-random-int 0 9)))
+                      (condition-case err
+                          (pcase op
+                            (0 (should-not (nskk-state-get nil 'mode)))
+                            (1
+                             (should-not (nskk-state-set nil 'mode 'hiragana)))
+                            (2 (should-not (nskk-state-reset nil)))
+                            (3 (should-not (nskk-state-append-input nil ?a)))
+                            (4 (should-not (nskk-state-delete-last-char nil)))
+                            (5 (should-not (nskk-state-clear-input nil)))
+                            (6 (should-not (nskk-state-next-candidate nil)))
+                            (7 (should-not (nskk-state-previous-candidate nil)))
+                            (8 (should-not (nskk-state-current-candidate nil)))
+                            (9
+                             (should-not
+                              (nskk-state-transition nil 'ascii 'hiragana))))
+                        (error (push (list :op op :error err) failures)))))
+                  (when failures
+                    (ert-fail
+                     (format "Nil state operations crashed for %d cases:\n%S"
+                             (length failures)
+                             (take 5 failures)))))))
 
 ;;;;
 ;;;; Property 3: Concurrent Mode Switch
 ;;;;
-
 (nskk-describe "error recovery: concurrent mode switch"
-  (nskk-it "should not corrupt state after rapid mode switches"
-    (let ((runs 50)
-          (failures nil))
-      (dotimes (_ runs)
-        (let* ((state (nskk-state-create (nskk--pbt-generate-valid-mode)))
-               (num-switches (nskk--pbt-random-int 10 100))
-               (valid-modes '(ascii hiragana katakana latin abbrev)))
-          (nskk-state-set state 'input-buffer "initial")
-          (nskk-state-set state 'candidates '("a" "b"))
-          (dotimes (_ num-switches)
-            (let ((new-mode (nskk--pbt-random-choice valid-modes)))
-              (nskk-state-set state 'mode new-mode)))
-          (let ((final-mode (nskk-state-mode state))
-                (prev-mode (nskk-state-previous-mode state))
-                (input (nskk-state-input-buffer state))
-                (converted (nskk-state-converted-buffer state)))
-            (unless (and (nskk-state-p state)
-                         (nskk-state-valid-mode-p final-mode)
-                         (nskk-state-valid-mode-p prev-mode)
-                         (stringp input)
-                         (stringp converted))
-              (push (list :num-switches num-switches
-                          :final-mode final-mode
-                          :prev-mode prev-mode
-                          :valid-state (nskk-state-p state))
-                    failures)))))
-      (when failures
-        (ert-fail (format "Rapid mode switch failed for %d cases:\n%S"
-                          (length failures)
-                          (take 5 failures)))))))
-
+               (nskk-it "should not corrupt state after rapid mode switches"
+                        (let ((runs 50)
+                              (failures nil))
+                          (dotimes (_ runs)
+                            (let* ((state
+                                    (nskk-state-create
+                                     (nskk--pbt-generate-valid-mode)))
+                                   (num-switches (nskk--pbt-random-int 10 100))
+                                   (valid-modes
+                                    '(ascii hiragana katakana latin abbrev)))
+                              (nskk-state-set state 'input-buffer "initial")
+                              (nskk-state-set state 'candidates '("a" "b"))
+                              (dotimes (_ num-switches)
+                                (let ((new-mode
+                                       (nskk--pbt-random-choice valid-modes)))
+                                  (nskk-state-set state 'mode new-mode)))
+                              (let ((final-mode (nskk-state-mode state))
+                                    (prev-mode (nskk-state-previous-mode state))
+                                    (input (nskk-state-input-buffer state))
+                                    (converted
+                                     (nskk-state-converted-buffer state)))
+                                (unless
+                                    (and (nskk-state-p state)
+                                         (nskk-state-valid-mode-p final-mode)
+                                         (nskk-state-valid-mode-p prev-mode)
+                                         (stringp input)
+                                         (stringp converted))
+                                  (push
+                                   (list :num-switches
+                                         num-switches
+                                         :final-mode
+                                         final-mode
+                                         :prev-mode
+                                         prev-mode
+                                         :valid-state
+                                         (nskk-state-p state))
+                                   failures)))))
+                          (when failures
+                            (ert-fail
+                             (format
+                              "Rapid mode switch failed for %d cases:\n%S"
+                              (length failures)
+                              (take 5 failures)))))))
 
 ;;;;
 ;;;; Additional Property: Error Recovery After Reset
 ;;;;
-
 (nskk-describe "error recovery: reset after error"
-  (nskk-it "should produce a clean state after resetting following an error"
-    (let ((runs 50)
-          (failures nil))
-      (dotimes (_ runs)
-        (let* ((state (nskk-state-create 'hiragana)))
-          (nskk-state-set state 'input-buffer "complex-input")
-          (nskk-state-set state 'converted-buffer "some-conversion")
-          (nskk-state-set state 'candidates '("a" "b" "c"))
-          (nskk-state-set state 'current-index 1)
-          (nskk-state-set state 'henkan-position 3)
-          (condition-case _err
-              (nskk-state-set state 'mode 'invalid-mode-xyz)
-            (error nil))
-          (nskk-state-reset state)
-          (unless (and (nskk-state-p state)
-                       (string= (nskk-state-input-buffer state) "")
-                       (string= (nskk-state-converted-buffer state) "")
-                       (null (nskk-state-candidates state))
-                       (= (nskk-state-current-index state) 0)
-                       (null (nskk-state-henkan-position state))
-                       (nskk-state-valid-mode-p (nskk-state-mode state)))
-            (push (list :input (nskk-state-input-buffer state)
-                        :converted (nskk-state-converted-buffer state)
-                        :candidates (nskk-state-candidates state)
-                        :mode (nskk-state-mode state))
-                  failures))))
-      (when failures
-        (ert-fail (format "Reset after error failed for %d cases:\n%S"
-                          (length failures)
-                          (take 5 failures)))))))
-
+               (nskk-it
+                "should produce a clean state after resetting following an error"
+                (let ((runs 50)
+                      (failures nil))
+                  (dotimes (_ runs)
+                    (let* ((state (nskk-state-create 'hiragana)))
+                      (nskk-state-set state 'input-buffer "complex-input")
+                      (nskk-state-set state 'converted-buffer "some-conversion")
+                      (nskk-state-set state 'candidates '("a" "b" "c"))
+                      (nskk-state-set state 'current-index 1)
+                      (nskk-state-set state 'henkan-position 3)
+                      (condition-case _err
+                          (nskk-state-set state 'mode 'invalid-mode-xyz)
+                        (error nil))
+                      (nskk-state-reset state)
+                      (unless
+                          (and (nskk-state-p state)
+                               (string= (nskk-state-input-buffer state) "")
+                               (string= (nskk-state-converted-buffer state) "")
+                               (null (nskk-state-candidates state))
+                               (= (nskk-state-current-index state) 0)
+                               (null (nskk-state-henkan-position state))
+                               (nskk-state-valid-mode-p (nskk-state-mode state)))
+                        (push
+                         (list :input
+                               (nskk-state-input-buffer state)
+                               :converted
+                               (nskk-state-converted-buffer state)
+                               :candidates
+                               (nskk-state-candidates state)
+                               :mode
+                               (nskk-state-mode state))
+                         failures))))
+                  (when failures
+                    (ert-fail
+                     (format "Reset after error failed for %d cases:\n%S"
+                             (length failures)
+                             (take 5 failures)))))))
 
 ;;;;
 ;;;; Additional Property: Mixed Valid/Invalid Operations
 ;;;;
-
 (nskk-describe "error recovery: mixed valid/invalid operations"
-  (nskk-it "should leave state consistent after mixed valid and invalid operations"
-    (let ((runs 50)
-          (failures nil))
-      (dotimes (_ runs)
-        (let* ((state (nskk-state-create 'hiragana))
-               (ops (nskk--pbt-random-int 5 15)))
-          (dotimes (_ ops)
-            (let ((op (nskk--pbt-random-int 0 5)))
-              (condition-case _err
-                  (pcase op
-                    (0 ;; Valid mode change
-                     (nskk-state-set state 'mode (nskk--pbt-generate-valid-mode)))
-                    (1 ;; Invalid mode change (may error)
-                     (nskk-state-set state 'mode
-                                     (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
-                    (2 ;; Valid input append
-                     (nskk-state-append-input state
-                                              (nskk--pbt-random-choice
-                                               (string-to-list "abcde"))))
-                    (3 ;; Valid delete
-                     (nskk-state-delete-last-char state))
-                    (4 ;; Valid clear
-                     (nskk-state-clear-input state))
-                    (5 ;; Valid reset
-                     (nskk-state-reset state)))
-                (error nil))))
-          (unless (and (nskk-state-p state)
-                       (nskk-state-valid-mode-p (nskk-state-mode state))
-                       (stringp (nskk-state-input-buffer state))
-                       (stringp (nskk-state-converted-buffer state))
-                       (listp (nskk-state-candidates state))
-                       (integerp (nskk-state-current-index state)))
-            (push (list :mode (nskk-state-mode state)
-                        :input (nskk-state-input-buffer state)
-                        :valid (nskk-state-p state))
-                  failures))))
-      (when failures
-        (ert-fail (format "Mixed operations consistency failed for %d cases:\n%S"
-                          (length failures)
-                          (take 5 failures)))))))
-
+               (nskk-it
+                "should leave state consistent after mixed valid and invalid operations"
+                (let ((runs 50))
+                  (dotimes (_ runs)
+                    (let* ((state (nskk-state-create 'hiragana))
+                           (expected-mode 'hiragana)
+                           (expected-previous-mode 'hiragana)
+                           (expected-input "")
+                           (ops (nskk--pbt-random-int 5 15)))
+                      (dotimes (_ ops)
+                        (let ((op (nskk--pbt-random-int 0 5)))
+                          (pcase op
+                            (0
+                             (let ((new-mode (nskk--pbt-generate-valid-mode)))
+                               (nskk-state-set state 'mode new-mode)
+                               (setq expected-previous-mode expected-mode
+                                     expected-mode new-mode)))
+                            (1
+                             (let ((before (copy-nskk-state state)))
+                               (should-error
+                                (nskk-state-set state
+                                                'mode
+                                                (nskk--pbt-random-choice
+                                                 nskk--pbt-invalid-modes)))
+                               (should (equal state before))))
+                            (2
+                             (let ((char
+                                    (nskk--pbt-random-choice
+                                     (string-to-list "abcdeあ"))))
+                               (nskk-state-append-input state char)
+                               (setq expected-input (concat expected-input
+                                                            (list char)))))
+                            (3
+                              (nskk-state-delete-last-char state)
+                              (unless (string-empty-p expected-input)
+                                (setq expected-input (substring expected-input
+                                                                0
+                                                                -1))))
+                            (4
+                              (nskk-state-clear-input state)
+                              (setq expected-input ""))
+                            (5
+                              (nskk-state-reset state)
+                              (setq expected-input "")))
+                          (should (eq (nskk-state-mode state) expected-mode))
+                          (should
+                           (eq (nskk-state-previous-mode state)
+                               expected-previous-mode))
+                          (should
+                           (equal (nskk-state-input-buffer state)
+                                  expected-input))
+                          (when (= op 5)
+                            (should
+                             (equal (nskk-state-converted-buffer state) ""))
+                            (should-not (nskk-state-candidates state))
+                            (should (= (nskk-state-current-index state) 0))
+                            (should-not (nskk-state-henkan-position state))
+                            (should-not (nskk-state-marker-position state))
+                            (should-not (nskk-state-undo-stack state))
+                            (should-not (nskk-state-redo-stack state))
+                            (should-not (nskk-state-metadata state))
+                            (should-not (nskk-state-henkan-phase state))))))))))
 
 ;;;; Enhanced PBT Coverage
 ;;;;
-
 ;;;
 ;;; Shrinking Property: Error recovery after invalid mode
 ;;;
-
 (nskk-property-test-with-shrinking error-recovery-invalid-mode-shrinking
-  ((mode valid-mode))
-  (let* ((state (nskk-state-create mode))
-         (invalid-mode (nskk--pbt-random-choice nskk--pbt-invalid-modes)))
-    (nskk-state-set state 'input-buffer "test-input")
-    (let ((error-raised nil))
-      (condition-case _err
-          (nskk-state-set state 'mode invalid-mode)
-        (error
-         (setq error-raised t)))
-      (and (nskk-state-p state)
-           (nskk-state-valid-mode-p (nskk-state-mode state))
-           (stringp (nskk-state-input-buffer state))
-           (stringp (nskk-state-converted-buffer state))
-           (listp (nskk-state-candidates state))
-           (integerp (nskk-state-current-index state))
-           (or error-raised
-               (nskk-state-valid-mode-p (nskk-state-mode state))))))
-  50)
+                                   ((mode valid-mode))
+                                   (let* ((state (nskk-state-create mode))
+                                          (invalid-mode
+                                           (nskk--pbt-random-choice
+                                            nskk--pbt-invalid-modes)))
+                                     (nskk-state-set state
+                                                     'input-buffer
+                                                     "test-input")
+                                     (let ((error-raised nil))
+                                       (condition-case _err
+                                           (nskk-state-set state
+                                                           'mode
+                                                           invalid-mode)
+                                         (error
+                                          (setq error-raised t)))
+                                       (and (nskk-state-p state)
+                                            (nskk-state-valid-mode-p
+                                             (nskk-state-mode state))
+                                            (stringp
+                                             (nskk-state-input-buffer state))
+                                            (stringp
+                                             (nskk-state-converted-buffer state))
+                                            (listp
+                                             (nskk-state-candidates state))
+                                            (integerp
+                                             (nskk-state-current-index state))
+                                            (or error-raised
+                                                (nskk-state-valid-mode-p
+                                                 (nskk-state-mode state))))))
+                                   50)
 
 ;;;
 ;;; Scenario: System recovers from rapid mode switches without state corruption
 ;;;
-
 (nskk-scenario-test rapid-mode-switch-no-corruption
-  "Scenario: rapid mode switches never corrupt state structural invariants."
-  (let* ((state (nskk-state-create 'hiragana))
-         (valid-modes '(ascii hiragana katakana latin abbrev))
-         (failures nil))
-    (dotimes (_ 200)
-      (let ((new-mode (nskk--pbt-random-choice valid-modes)))
-        (nskk-state-set state 'mode new-mode)))
-    (unless (and (nskk-state-p state)
-                 (nskk-state-valid-mode-p (nskk-state-mode state))
-                 (nskk-state-valid-mode-p (nskk-state-previous-mode state))
-                 (stringp (nskk-state-input-buffer state))
-                 (stringp (nskk-state-converted-buffer state))
-                 (listp (nskk-state-candidates state))
-                 (integerp (nskk-state-current-index state))
-                 (>= (nskk-state-current-index state) 0))
-      (push :state-corrupted failures))
-    (when failures
-      (ert-fail (format "State corrupted after rapid mode switches: %S" failures)))))
-
+                    "Scenario: rapid mode switches never corrupt state structural invariants."
+                    (let* ((state (nskk-state-create 'hiragana))
+                           (valid-modes '(ascii hiragana katakana latin abbrev))
+                           (failures nil))
+                      (dotimes (_ 200)
+                        (let ((new-mode (nskk--pbt-random-choice valid-modes)))
+                          (nskk-state-set state 'mode new-mode)))
+                      (unless
+                          (and (nskk-state-p state)
+                               (nskk-state-valid-mode-p (nskk-state-mode state))
+                               (nskk-state-valid-mode-p
+                                (nskk-state-previous-mode state))
+                               (stringp (nskk-state-input-buffer state))
+                               (stringp (nskk-state-converted-buffer state))
+                               (listp (nskk-state-candidates state))
+                               (integerp (nskk-state-current-index state))
+                               (>= (nskk-state-current-index state) 0))
+                        (push :state-corrupted failures))
+                      (when failures
+                        (ert-fail
+                         (format "State corrupted after rapid mode switches: %S"
+                                 failures)))))
 
 ;;;;
 ;;;; Seeded PBT: State recovery invariant — resetting henkan-phase to nil
 ;;;;
-
 (nskk-property-test-seeded state-recovery-after-phase-reset
-  ((phase converting-phase))
-  (let* ((state (nskk-state-create 'hiragana)))
-    (nskk-state-force-henkan-phase state phase)
-    (nskk-state-set-henkan-phase state nil)
-    (and (null (nskk-state-henkan-phase state))
-         (nskk-state-p state)))
-  50)
-
+                           ((phase converting-phase))
+                           (let* ((state (nskk-state-create 'hiragana)))
+                             (nskk-state-force-henkan-phase state phase)
+                             (nskk-state-set-henkan-phase state nil)
+                             (and (null (nskk-state-henkan-phase state))
+                                  (nskk-state-p state)))
+                           50)
 
 ;;;;
 ;;;; Seeded PBT: Candidate reset invariant — nil candidates leave state valid
 ;;;;
-
 (nskk-property-test-seeded candidate-reset-invariant
-  ((pair candidates-with-valid-index))
-  (let* ((candidates (plist-get pair :candidates))
-         (index (plist-get pair :index))
-         (state (nskk-state-create 'hiragana)))
-    (nskk-state-set-candidates state candidates)
-    (nskk-state-set state 'current-index index)
-    (nskk-state-set state 'candidates nil)
-    (and (null (nskk-state-candidates state))
-         (nskk-state-p state)))
-  30)
-
+                           ((pair candidates-with-valid-index))
+                           (let* ((candidates (plist-get pair :candidates))
+                                  (index (plist-get pair :index))
+                                  (state (nskk-state-create 'hiragana)))
+                             (nskk-state-set-candidates state candidates)
+                             (nskk-state-set state 'current-index index)
+                             (nskk-state-set state 'candidates nil)
+                             (and (null (nskk-state-candidates state))
+                                  (nskk-state-p state)))
+                           30)
 
 (provide 'nskk-error-recovery-pbt-test)
 

@@ -1283,6 +1283,17 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                                       (lambda (kana) (setq result kana))
                                       #'ignore)
         (should (equal result "っ"))))))
+(nskk-describe "nskk-convert-input-to-kana documentation"
+  (nskk-it "documents both synchronous and CPS contracts"
+    (let ((sync-doc (documentation (quote nskk-convert-input-to-kana)))
+          (cps-doc (documentation (quote nskk-convert-input-to-kana/k))))
+      (should (string-match-p
+               "synchronous function returns a kana string"
+               sync-doc))
+      (should (string-match-p
+               "CPS variant.*ON-FOUND.*ON-NOT-FOUND"
+               (replace-regexp-in-string "\n" " " cps-doc)))
+      (should (string-match-p (regexp-quote "\n[CPS]\n") cps-doc)))))
 
 (nskk-describe "nskk--deferred-azik-state retroactive correction"
   (nskk-it "vowel triggers retroactive っ insertion"

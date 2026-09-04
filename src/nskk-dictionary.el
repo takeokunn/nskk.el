@@ -904,9 +904,6 @@ DICT-FILES is the list of source files used to build the cache."
         (current-buffer)))
     (message "NSKK: Cached %d entries to %s" (length entries) cache-path)))
 
-(defvar read-eval nil
-  "Control read-time evaluation while reading Lisp data.")
-
 (defun nskk--dict-cache-entry-p (entry)
   "Return non-nil when ENTRY has the serialized cache entry schema."
   (and
@@ -955,8 +952,7 @@ source configuration failure."
         (when (and size (<= size nskk--dict-cache-max-bytes))
           (with-temp-buffer
             (nskk--dict-insert-file-contents-bounded cache-path nil)
-            (let ((read-eval nil)
-                  (read-circle nil))
+            (let ((read-circle nil))
               (goto-char (point-min))
               (let ((data (read (current-buffer))))
                 (skip-chars-forward " \\t\\r\\n")

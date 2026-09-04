@@ -42,11 +42,6 @@
 
 Guards against duplicate assertions on file reload (e.g. `eval-buffer').")
 
-;; Registration protocol: declare this module's initialized-flag symbol,
-;; unconditionally at load time, so generic test/reset infrastructure can
-;; enumerate it via a fact query instead of a hardcoded symbol list,
-;; regardless of whether this module's own lazy Prolog initializer has
-;; run yet.
 (nskk-prolog-<- (module-initialized-flag nskk--candidate-key-facts-initialized))
 
 (defun nskk--candidate-init-key-facts ()

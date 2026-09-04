@@ -4,14 +4,7 @@
 ;; Keywords: japanese, input, test
 ;; This file is part of NSKK.
 ;;; Commentary:
-;; Unit tests for nskk-study.el covering:
-;; - Study association recording
-;; - Candidate reordering based on associations
-;; - Kakutei history ring management
-;; - Max-distance filtering
-;; - First-candidate skip behavior
-;; - nskk-no-learn text property respect
-;; - Save/load round-trip persistence
+;; Unit tests for nskk-study.el.
 ;;; Code:
 (require 'ert)
 
