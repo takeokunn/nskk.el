@@ -32,6 +32,7 @@
 (require 'nskk-prolog)
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
+(require 'nskk-state)
 
 ;;;; Customization
 
@@ -113,9 +114,7 @@ as returned by `nskk--dict-parse-candidates-with-annotations'."
   "Return formatted annotation string for display in echo area.
 Wraps ANNOTATION text in brackets with `nskk-annotation-face' applied."
   (when (and annotation (not (string-empty-p annotation)))
-    (propertize
-     (concat " [" (substring-no-properties annotation) "]")
-     'face 'nskk-annotation-face)))
+    (nskk-display-sanitize annotation 'nskk-annotation-face " [" "]")))
 
 ;;;; Public API
 
