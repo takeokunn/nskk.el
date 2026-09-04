@@ -157,6 +157,18 @@
             (nskk--setup-azik-toggle-key))
           (should (eq (lookup-key nskk-mode-map "@") #'forward-char))
           (should (eq (lookup-key nskk-mode-map "[")
+                      #'nskk-toggle-japanese-mode))))))
+
+  (nskk-it "falls back to @ for a keyboard type with no azik-toggle-key fact"
+    (let ((nskk-mode-map (make-sparse-keymap))
+          (nskk--azik-toggle-key-state nil))
+      (cl-progv '(nskk-mode-map) (list nskk-mode-map)
+        (nskk-prolog-test-with-isolated-db
+          (nskk-prolog-assert '((azik-toggle-key jp106 "@")))
+          (nskk-prolog-assert '((azik-toggle-key us101 "[")))
+          (let ((nskk-azik-keyboard-type 'unregistered-keyboard))
+            (nskk--setup-azik-toggle-key))
+          (should (eq (lookup-key nskk-mode-map "@")
                       #'nskk-toggle-japanese-mode)))))))
 
 (nskk-describe "AZIK custom conversion table"
