@@ -146,6 +146,29 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-then  (should (string= (buffer-string) "test"))))))
 
 ;;;
+;;; nskk-self-insert abbrev-mode routing Tests
+;;;
+
+(nskk-describe "nskk-self-insert abbrev-mode routing"
+  (nskk-it "routes uppercase letters in abbrev mode via input-route Prolog table"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'abbrev))
+            (last-command-event ?T)
+            (abbrev-called nil))
+        (nskk-with-mocks ((nskk-process-abbrev-input (lambda (_char) (setq abbrev-called t))))
+          (nskk-self-insert 1)
+          (should abbrev-called)))))
+
+  (nskk-it "routes 'n' in abbrev mode via input-route Prolog table"
+    (with-temp-buffer
+      (let ((nskk-current-state (nskk-state-create 'abbrev))
+            (last-command-event ?n)
+            (abbrev-called nil))
+        (nskk-with-mocks ((nskk-process-abbrev-input (lambda (_char) (setq abbrev-called t))))
+          (nskk-self-insert 1)
+          (should abbrev-called))))))
+
+;;;
 ;;; Mode Query Tests
 ;;;
 
@@ -228,7 +251,10 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
            (nskk-rollback-conversion)
            (nskk-next-candidate)
            (nskk-previous-candidate)
-           (nskk-commit-current))
+           (nskk-commit-current)
+           (nskk-toggle-japanese-mode)
+           (nskk-set-mode-abbrev)
+           (nskk-set-mode-jisx0208-latin))
     :body (should (commandp cmd))))
 
 ;;;
