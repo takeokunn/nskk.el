@@ -631,14 +631,15 @@ default (ascii) mode that `nskk-mode' starts in.
 `nskk-mode' is always disabled in an `unwind-protect' clause so that
 test failures do not leave the buffer in a broken state."
   (declare (indent 1))
-  `(with-temp-buffer
+  `(let ((mode-value ,mode))
+     (with-temp-buffer
     (nskk-mode 1)
-    (when ,mode
-      (let ((setter (intern (format "nskk-set-mode-%s" (symbol-name ,mode)))))
+    (when mode-value
+      (let ((setter (intern (format "nskk-set-mode-%s" (symbol-name mode-value)))))
         (funcall setter)))
     (unwind-protect (progn
         ,@body)
-      (nskk-mode -1))))
+      (nskk-mode -1)))))
 
 (defmacro nskk-with-state (mode &rest body)
   "Execute BODY with `nskk-current-state' bound to a fresh state for MODE.
@@ -647,9 +648,10 @@ Unlike `nskk-with-test-buffer', this does not open a buffer or enable
 state struct (e.g., modeline, cursor colour).  When MODE is nil,
 `nskk-current-state' is bound to nil."
   (declare (indent 1))
-  `(let ((nskk-current-state
-        (when ,mode
-          (nskk-state-create ,mode))))
+  `(let* ((mode-value ,mode)
+         (nskk-current-state
+          (when mode-value
+            (nskk-state-create mode-value))))
     ,@body))
 
 (defmacro nskk-with-mocks (bindings &rest body)
@@ -697,25 +699,30 @@ Example:
 ;;;; Domain-Specific Assertions
 ;;;;
 (defmacro nskk-should-mode (expected-mode)
+  (declare (indent 1))
   "Assert that the current nskk mode equals EXPECTED-MODE.
 Reads `nskk-current-state' and compares with `nskk-state-mode'."
   `(should (eq (nskk-state-mode nskk-current-state) ,expected-mode)))
 
 (defmacro nskk-should-buffer (expected)
+  (declare (indent 1))
   "Assert that the current buffer's entire content equals the EXPECTED string."
   `(should (string= (buffer-string) ,expected)))
 
 (defmacro nskk-should-equal (expected actual)
+  (declare (indent 2))
   "Assert that EXPECTED and ACTUAL are `equal'."
   `(should (equal ,expected ,actual)))
 
 (defmacro nskk-should-candidates (expected result)
+  (declare (indent 2))
   "Assert that RESULT is a `nskk-dict-entry' whose candidates list equals EXPECTED.
 EXPECTED is a list of candidate strings; RESULT is the value returned by a
 search function such as `nskk-search'."
-  `(progn
-    (should (nskk-dict-entry-p ,result))
-    (should (equal (nskk-dict-entry-candidates ,result) ,expected))))
+  (let ((result-value (make-symbol "result-value")))
+    `(let ((,result-value ,result))
+       (should (nskk-dict-entry-p ,result-value))
+       (should (equal (nskk-dict-entry-candidates ,result-value) ,expected)))))
 
 ;;;;
 ;;;; Mock skkserv Helper
@@ -794,12 +801,14 @@ READY-FILE receives the strict startup line after the listener is ready."
 The finite positive wait is capped at MAX-SLICE-MS and deducted before
 calling `accept-process-output'."
     (declare (debug t))
-    (let ((slice-ms (make-symbol "slice-ms")))
-      `(let ((,slice-ms
-              (min ,remaining-budget-ms ,max-slice-ms)))
+    (let ((slice-ms (make-symbol "slice-ms"))
+          (remaining-budget-value (make-symbol "remaining-budget")))
+      `(let* ((,remaining-budget-value ,remaining-budget-ms)
+              (,slice-ms
+               (min ,remaining-budget-value ,max-slice-ms)))
          (when (> ,slice-ms 0)
            (setq ,remaining-budget-ms
-                 (- ,remaining-budget-ms ,slice-ms))
+                 (- ,remaining-budget-value ,slice-ms))
            (accept-process-output
             ,process
             (/ (float ,slice-ms) 1000.0)

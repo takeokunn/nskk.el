@@ -316,6 +316,7 @@
 ;;;;
 
 (defmacro nskk-e2e--simulate-unbound-command (command)
+  (declare (indent 1))
   "Simulate running COMMAND as if from the interactive command loop.
 Saves point in `nskk--point-before-command', runs COMMAND via
 `call-interactively', then fires `nskk--post-command-handler'."

@@ -24,6 +24,7 @@
   (require 'cl-lib)
 
   (defmacro nskk--server-with-disabled (&rest body)
+    (declare (indent 0))
     "Execute BODY with nskk-server-enable forced to nil."
     `(let ((nskk-server-enable nil)
            (nskk--server-process nil))

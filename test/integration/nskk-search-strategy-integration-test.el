@@ -23,6 +23,7 @@
 ;;;; Shared test fixture
 
 (defmacro nskk-search-strategy--with-fixture (&rest body)
+  (declare (indent 0))
   "Run BODY with the shared search strategy test fixture.
 Provides five Prolog `user-dict-entry' facts: four entries share the
 prefix \"かん\" and one \"かわ\" entry does not.  The trie is indexed at

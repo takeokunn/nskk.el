@@ -122,7 +122,8 @@ Initialization order:
        (dolist (entry nskk-e2e--entries)
          (nskk-prolog-assert
           `((user-dict-entry ,(car entry) ,(cdr entry))))))
-     (with-temp-buffer
+     (let ((initial-mode-value ,initial-mode))
+       (with-temp-buffer
        (setq unread-command-events nil)
        (electric-indent-local-mode -1)
        (cl-letf (((symbol-function 'read-from-minibuffer)
@@ -132,8 +133,8 @@ Initialization order:
                  ((symbol-function 'nskk-candidate-hide-list)
                   #'ignore))
          (nskk-mode 1)
-         (when ,initial-mode
-           (nskk-set-mode ,initial-mode))
+         (when initial-mode-value
+           (nskk-set-mode initial-mode-value))
          (nskk-state-set-romaji-buffer "")
          (unwind-protect
              (progn ,@body)
@@ -143,7 +144,7 @@ Initialization order:
            (remove-hook 'nskk-henkan-show-candidates-functions
                         #'nskk-candidate-show-list)
            (remove-hook 'nskk-henkan-hide-candidates-functions
-                        #'nskk-candidate-hide-list))))))
+                        #'nskk-candidate-hide-list)))))))
 
 (progn
   (defun nskk-e2e--snapshot-hash-table-variable (symbol)
@@ -261,6 +262,7 @@ across `with-temp-buffer' boundaries and corrupt subsequent tests."
       (call-interactively cmd))))
 
 (defmacro nskk-e2e-type (keys)
+  (declare (indent 1))
   "Type KEYS by dispatching each key via `call-interactively'.
 KEYS is a key sequence string understood by `kbd', e.g. \"ka\", \"C-j\", \"SPC\".
 

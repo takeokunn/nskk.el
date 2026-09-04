@@ -43,6 +43,7 @@ buffer is accessor-only buffer-local state owned by `nskk-state.el'."
 ;;;
 
 (defmacro nskk-deftest-nav-handler (_key handler kbd-key arrow-key nav-fn)
+  (declare (indent 5))
   "Generate standard tests for a commit-then-navigate key handler.
 KEY is a symbol like `ctrl-f'.  HANDLER is the command symbol.
 KBD-KEY is the kbd string (e.g. \"C-f\").  ARROW-KEY is the arrow kbd string.

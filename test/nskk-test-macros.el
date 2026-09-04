@@ -61,23 +61,25 @@ GENERATORS: ((var generator-name)...) pairs
 PROPERTY: Property expression to test
 RUNS: Number of test runs (default: nskk-test-property-runs)"
   (declare (indent 3))
-  `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
-     (let ((runs (or ,runs nskk-test-property-runs))
-           (failures nil))
-       (dotimes (_ runs)
-         (let ,(mapcar (lambda (gen)
-                         `(,(car gen) (nskk-generate ',(cadr gen))))
-                       generators)
-           (condition-case err
-               (unless ,property
-                 (push (list ,@(mapcar #'car generators)) failures))
-             (error
-              (push (list 'error ,@(mapcar #'car generators) err)
-                    failures)))))
-       (when failures
-         (ert-fail (format "Property failed for %d cases:\n%S"
-                           (length failures)
-                           (take 5 failures)))))))
+  (let ((runs-value (make-symbol "runs"))
+        (failures (make-symbol "failures")))
+    `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
+       (let ((,runs-value (or ,runs nskk-test-property-runs))
+             (,failures nil))
+         (dotimes (_ ,runs-value)
+           (let ,(mapcar (lambda (gen)
+                           `(,(car gen) (nskk-generate ',(cadr gen))))
+                         generators)
+             (condition-case err
+                 (unless ,property
+                   (push (list ,@(mapcar #'car generators)) ,failures))
+               (error
+                (push (list 'error ,@(mapcar #'car generators) err)
+                      ,failures)))))
+         (when ,failures
+           (ert-fail (format "Property failed for %d cases:\n%S"
+                             (length ,failures)
+                             (take 5 ,failures))))))))
 
 (defmacro nskk-for-all (generators &rest body)
   "Test BODY for all values from GENERATORS."
@@ -128,26 +130,29 @@ PROPERTY: Property expression to test
 RUNS: Number of test runs (default: nskk-test-property-runs)
 SEED: Random seed for reproducibility (default: random)"
   (declare (indent 3))
-  `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
-     (let ((test-seed (or ,seed (abs (random))))
-           (runs (or ,runs nskk-test-property-runs))
-           (failures nil))
-       (random test-seed)
-       (message "Property test '%s' seed: %d" ',name test-seed)
-       (dotimes (_ runs)
+  (let ((test-seed (make-symbol "test-seed"))
+        (runs-value (make-symbol "runs"))
+        (failures (make-symbol "failures")))
+    `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
+       (let ((,test-seed (or ,seed (abs (random))))
+             (,runs-value (or ,runs nskk-test-property-runs))
+             (,failures nil))
+       (random ,test-seed)
+       (message "Property test '%s' seed: %d" ',name ,test-seed)
+       (dotimes (_ ,runs-value)
          (let ,(mapcar (lambda (gen)
                          `(,(car gen) (nskk-generate ',(cadr gen))))
                        generators)
            (condition-case err
                (unless ,property
-                 (push (list :seed test-seed ,@(mapcar #'car generators)) failures))
+                 (push (list :seed ,test-seed ,@(mapcar #'car generators)) ,failures))
              (error
-              (push (list :seed test-seed :error ,@(mapcar #'car generators) err)
-                    failures)))))
-       (when failures
+              (push (list :seed ,test-seed :error ,@(mapcar #'car generators) err)
+                    ,failures)))))
+       (when ,failures
          (ert-fail (format "Property failed for %d cases (seed: %d):\n%S"
-                           (length failures) test-seed
-                           (take 5 failures)))))))
+                           (length ,failures) ,test-seed
+                           (take 5 ,failures))))))))
 
 (defmacro nskk-property-test-with-shrinking (name generators property &optional runs seed)
   "Define a property-based test with automatic shrinking on failure.
@@ -159,29 +164,33 @@ PROPERTY: Property expression to test
 RUNS: Number of test runs (default: nskk-test-property-runs)
 SEED: Random seed for reproducibility (default: random)"
   (declare (indent 3))
-  `(ert-deftest ,(intern (format "nskk-property-shrinking-%s" name)) ()
-     (let ((test-seed (or ,seed (abs (random))))
-           (runs (or ,runs nskk-test-property-runs))
-           (failure-case nil)
-           (minimal-case nil))
-       (random test-seed)
-       (message "Property test (with shrinking) '%s' seed: %d" ',name test-seed)
-       (dotimes (_ runs)
-         (unless failure-case
+  (let ((test-seed (make-symbol "test-seed"))
+        (runs-value (make-symbol "runs"))
+        (failure-case (make-symbol "failure-case"))
+        (minimal-case (make-symbol "minimal-case")))
+    `(ert-deftest ,(intern (format "nskk-property-shrinking-%s" name)) ()
+       (let ((,test-seed (or ,seed (abs (random))))
+             (,runs-value (or ,runs nskk-test-property-runs))
+             (,failure-case nil)
+             (,minimal-case nil))
+       (random ,test-seed)
+       (message "Property test (with shrinking) '%s' seed: %d" ',name ,test-seed)
+       (dotimes (_ ,runs-value)
+         (unless ,failure-case
            (let ,(mapcar (lambda (gen)
                            `(,(car gen) (nskk-generate ',(cadr gen))))
                          generators)
              (condition-case err
                  (unless ,property
-                   (setq failure-case (list ,@(mapcar #'car generators)))
+                   (setq ,failure-case (list ,@(mapcar #'car generators)))
                    (message "Found failure case, attempting to shrink..."))
                (error
-                (setq failure-case (list :error ,@(mapcar #'car generators) err))))))
-         (unless failure-case
+                (setq ,failure-case (list :error ,@(mapcar #'car generators) err))))))
+         (unless ,failure-case
            (random)))
-       (when failure-case
+       (when ,failure-case
          (let* ((shrunk-values
-                 (cl-loop for val in failure-case
+                 (cl-loop for val in ,failure-case
                           for gen in ',generators
                           collect (nskk--shrink-value val (cadr gen))))
                 (shrunk-case shrunk-values))
@@ -190,13 +199,13 @@ SEED: Random seed for reproducibility (default: random)"
                               for i from 0
                               collect `(,(car gen) (nth ,i shrunk-case)))
                  (unless ,property
-                   (setq minimal-case shrunk-case)))
+                   (setq ,minimal-case shrunk-case)))
              (error nil)))
-         (if minimal-case
+         (if ,minimal-case
              (ert-fail (format "Property failed (seed: %d)\nOriginal case: %S\nMinimal case: %S"
-                               test-seed failure-case minimal-case))
+                               ,test-seed ,failure-case ,minimal-case))
            (ert-fail (format "Property failed (seed: %d)\nFailing case: %S"
-                             test-seed failure-case)))))))
+                             ,test-seed ,failure-case))))))))
 
 (defun nskk--shrink-value (value generator-type)
   "Attempt to shrink VALUE based on GENERATOR-TYPE.
@@ -226,8 +235,10 @@ RUNS: Number of transition sequences to test
 The test generates random sequences of transitions and verifies that
 the PROPERTY invariant holds after each transition."
   (declare (indent 3))
-  `(ert-deftest ,(intern (format "nskk-state-machine-%s" name)) ()
-     (let ((runs (or ,runs nskk-test-state-machine-runs))
+  (let ((property-fn (make-symbol "property-fn")))
+    `(ert-deftest ,(intern (format "nskk-state-machine-%s" name)) ()
+     (let ((,property-fn ,property)
+           (runs (or ,runs nskk-test-state-machine-runs))
            (failures nil)
            (test-seed (abs (random))))
        (random test-seed)
@@ -247,7 +258,7 @@ the PROPERTY invariant holds after each transition."
                (setq state (funcall target-state-fn state trigger))
                (cl-incf step-count)
                (condition-case err
-                   (unless (funcall ,property state)
+                   (unless (funcall ,property-fn state)
                      (push (list :seed test-seed
                                  :run run
                                  :steps (nreverse steps-taken)
@@ -260,7 +271,7 @@ the PROPERTY invariant holds after each transition."
                               :steps (nreverse steps-taken))
                         failures)))))
            (condition-case err
-               (unless (funcall ,property state)
+               (unless (funcall ,property-fn state)
                  (push (list :seed test-seed
                              :run run
                              :final-check t
@@ -277,7 +288,7 @@ the PROPERTY invariant holds after each transition."
        (when failures
          (ert-fail (format "State machine invariant failed for %d cases (seed: %d):\n%S"
                            (length failures) test-seed
-                           (take 3 failures)))))))
+                           (take 3 failures))))))))
 
 
 ;;;;
@@ -375,13 +386,14 @@ Returns updated state."
 (defmacro nskk-should-be-fast (name threshold-ms &rest body)
   "Assert that BODY completes within THRESHOLD-MS milliseconds."
   (declare (indent 2))
-  `(let ((start-time (current-time)))
+  `(let ((threshold-value ,threshold-ms)
+         (start-time (current-time)))
      ,@body
      (let* ((elapsed (float-time (time-subtract (current-time) start-time)))
             (elapsed-ms (* 1000 elapsed)))
-       (when (> elapsed-ms ,threshold-ms)
+       (when (> elapsed-ms threshold-value)
          (ert-fail (format "Too slow: %s took %.2fms (threshold: %dms)"
-                           ',name elapsed-ms ,threshold-ms))))))
+                           ',name elapsed-ms threshold-value))))))
 
 
 ;;;;
@@ -853,6 +865,7 @@ Example:
 ;;;;
 
 (defmacro nskk-should-convert-to (romaji expected)
+  (declare (indent 2))
   "Assert that ROMAJI converts to EXPECTED kana via `nskk-convert-romaji'."
   `(should (equal (nskk-convert-romaji ,romaji) ,expected)))
 
@@ -886,10 +899,12 @@ NAME: test name (produces nskk-exhaustive-NAME)
 DOMAIN: expression that evaluates to a list of all values to test
 PROPERTY: form evaluated with `item' bound to each domain element"
   (declare (indent 2))
-  `(ert-deftest ,(intern (format "nskk-exhaustive-%s" name)) ()
+  (let ((domain-value (make-symbol "domain")))
+    `(ert-deftest ,(intern (format "nskk-exhaustive-%s" name)) ()
      ,(format "Exhaustive property test: %s" name)
-     (let ((failures nil))
-       (dolist (item ,domain)
+     (let ((failures nil)
+           (,domain-value ,domain))
+       (dolist (item ,domain-value)
          (condition-case err
              (unless ,property
                (push item failures))
@@ -897,8 +912,8 @@ PROPERTY: form evaluated with `item' bound to each domain element"
        (when failures
          (ert-fail (format "Exhaustive property failed for %d/%d items:\n%S"
                            (length failures)
-                           (length ,domain)
-                           (seq-take failures 10)))))))
+                           (length ,domain-value)
+                           (seq-take failures 10))))))))
 
 (defmacro nskk-assert-state-invariant (state-form &rest invariants)
   "Assert that STATE-FORM satisfies all INVARIANTS.

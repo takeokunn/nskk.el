@@ -35,6 +35,7 @@
 ;;;; Test helper: temporarily set server-state to open
 
 (defmacro nskk--server-test-with-open-state (&rest body)
+  (declare (indent 0))
   "Execute BODY with server-state Prolog fact set to open.
 Restores server-state to closed in an unwind-protect."
   `(progn
