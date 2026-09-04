@@ -139,6 +139,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation are Elisp-side and unchanged in behaviour.
   `mode-properties/5`, `mode-category/2` and `japanese-mode/1` remain, as
   other modules query them.
+- Made the debug module's hand-written CPS continuation-pattern declaration
+  visible during byte compilation, so the CPS bind forms' guard against
+  binding a `defun/done` function is no longer inert while the file compiles.
 
 ### Fixed
 
@@ -205,6 +208,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `nskk--server-prolog-state-snapshot` and
   `nskk--server-restore-prolog-state` from the skkserv client in favour of the
   Prolog engine's own per-key snapshot API.
+- Removed a dead, zero-caller private helper (`nskk--debug-format`) and the
+  unused `debug-category` Prolog facts and their hash index from the debug
+  module.
 
 ## [0.3.0] - 2026-07-26
 
