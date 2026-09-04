@@ -49,6 +49,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- Decomposed the henkan pipeline's large cleanup and commit functions into
+  named helpers, and replaced the four hand-rolled `cl-labels` cleanup
+  ladders with a shared `nskk--with-cleanup-runner` macro. Each call site
+  keeps its own `inhibit-quit` behaviour: commit and reset stay
+  interruptible, context-clear and registration stay uninterruptible.
+- Changed `nskk-reset-henkan-state` and `nskk-set-active-candidates` from
+  macros to functions. Both only ever received already-evaluated arguments,
+  so no call site changed.
+- Changed `nskk-convert-input-to-kana-final` from a CPS function to an
+  ordinary function returning the converted kana. It never signalled
+  absence, so its not-found continuation was unreachable; the generated
+  `nskk-convert-input-to-kana-final/k` is gone.
 
 ### Fixed
 
@@ -56,6 +68,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
   supposed to precede.
+- Fixed `nskk-commit-current` calling neither of its continuations when
+  invoked outside an active conversion, which broke the
+  exactly-one-continuation contract every other CPS function in the module
+  honours. It now signals absence. Callers using the synchronous wrapper
+  are unaffected, since both the old and new paths yield nil.
+- Fixed a henkan unit test that registered no assertions: a table-driven
+  test was nested inside another test's body, so its five rows were
+  registered as a side effect after ERT had already fixed its selection
+  list and never ran. Also moved `provide` and four fault-injection test
+  matrices out of a `progn` they had been nested inside.
 
 ### Removed
 
@@ -64,6 +86,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the private per-style inline display builders
   `nskk--inline-build-horizontal` and `nskk--inline-build-vertical`,
   superseded by a single style-taking function.
+- Removed four zero-caller symbols from the henkan module: the macros
+  `nskk-with-conversion-context`, `nskk-when-bound` and
+  `nskk-when-bound-and`, and the function `nskk-set-last-kakutei-record`.
+  These carry no `nskk--` prefix but had no caller in or outside the
+  module; the getter `nskk-last-kakutei-record` is unaffected.
+- Removed three Prolog fact tables from `nskk-henkan-initialize` that no
+  production code queried: `search-backend`, `search-result-action` and
+  `should-update-overlay`. The cross-module tables `converting-phase`,
+  `preedit-phase` and `disable-cleanup` are unchanged.
+- Removed the `nskk-cache-field` macro, its backing `cache-field-fn/3`
+  Prolog fact table, and the CPS-style `nskk-cache-p/k` predicate from
+  `nskk-cache.el`. None had callers outside `nskk-cache.el` and its test
+  file.
 
 ## [0.3.0] - 2026-07-26
 
