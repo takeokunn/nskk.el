@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- The tutorial's quit key moved from `q` to `C-c C-q`, and `g` and `r`
+  now insert when point is in an exercise input area and navigate only
+  from the lesson text. `q` and `Q` are left to NSKK, which needs them
+  for the katakana toggle and the numeric conversion the lessons teach.
+- Folded the tutorial's private deep-copy routine into
+  `nskk-prolog-copy-term`, which gained an optional caller-supplied memo
+  table, removing a second implementation of the same graph copy.
 
 ### Fixed
 
@@ -42,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
   supposed to precede.
+- Fixed the interactive tutorial, which could not be completed. Every
+  exercise's input and result region shared one end marker position, so
+  answers were never graded as correct and marking one exercise correct
+  erased the rest of the lesson; the cursor was placed where typing
+  raised `text-read-only`; the mode inherited `special-mode-map`, whose
+  bindings for `h`, `?`, `<`, `>`, `-` and the digits shadowed keys the
+  lessons require as input; `g` and `r` could not be typed at all; and
+  `nskk-tutorial--reset-mode` called a function removed in an earlier
+  release.
 
 ### Removed
 

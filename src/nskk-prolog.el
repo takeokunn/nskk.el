@@ -829,7 +829,7 @@ ON-SOLUTION is passed to the selected handler as the success callback."
 
 ;;;; Prove Engine
 
-(defun nskk-prolog-copy-term (object)
+(defun nskk-prolog-copy-term (object &optional memo)
   "Return a detached copy of OBJECT while preserving graph topology.
 Conses, vectors, records, strings, char tables,
 and hash tables are copied with an
@@ -841,8 +841,14 @@ are populated only after copied keys have reached their final non-hash shape.
 Char tables retain their subtype, default, parent, extra slots, and raw ranges.
 Functions, including closures and byte-code objects, are treated as atoms
 before cons/vector dispatch and retain identity.  Symbols, numbers, and
-unsupported object types likewise retain identity."
-  (let ((copies (make-hash-table :test #'eq))
+unsupported object types likewise retain identity.
+
+When MEMO is non-nil it is used as the eq memo table instead of a fresh
+one.  Sharing one table across several calls keeps an object that was
+shared between the inputs shared between the outputs; callers that need
+an independently owned copy must pass nil, which every caller but
+`nskk-tutorial--copy-object-graph' does."
+  (let ((copies (or memo (make-hash-table :test #'eq)))
         (missing (make-symbol "nskk-prolog-copy-missing"))
         (pending (list object))
         composites
@@ -874,10 +880,13 @@ unsupported object types likewise retain identity."
                           limit)))))
            ((hash-table-p current)
             (let (entries)
-              (maphash
-               (lambda (key value)
-                 (push (cons key value) entries))
-               current)
+              ;; An automatic GC during this maphash can reclaim entries of a
+              ;; weak table while it is being iterated.
+              (let ((gc-cons-threshold most-positive-fixnum))
+                (maphash
+                 (lambda (key value)
+                   (push (cons key value) entries))
+                 current))
               (puthash
                current
                (make-hash-table
