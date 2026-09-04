@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed a dead, zero-caller private helper
   (`nskk--converter-copy-prolog-state`) from the converter module.
+- Removed the `nskk-cache-field` macro, its backing `cache-field-fn/3`
+  Prolog fact table, and the CPS-style `nskk-cache-p/k` predicate from
+  `nskk-cache.el`. None had callers outside `nskk-cache.el` and its test
+  file.
 
 ## [0.3.0] - 2026-07-26
 

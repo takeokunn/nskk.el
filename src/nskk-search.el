@@ -587,87 +587,16 @@ cost of a stale hit."
 (add-hook 'nskk-jisyo-update-hook #'nskk--search-flush-caches)
   (add-hook 'nskk-dict-initialize-hook #'nskk--search-flush-caches)
 
-(defun nskk--search-hash-table-snapshot (table)
-  "Return TABLE and its exact key/value entries for rollback."
-  (let (entries)
-    (maphash (lambda (key value)
-               (push (cons key value) entries))
-             table)
-    (cons table entries)))
-
-(defun nskk--search-restore-hash-table-snapshot (snapshot)
-  "Restore the hash table recorded in SNAPSHOT in place."
-  (let ((table (car snapshot)))
-    (clrhash table)
-    (dolist (entry (cdr snapshot))
-      (puthash (car entry) (cdr entry) table))))
-
-(defun nskk--search-cache-snapshot (cache)
-  "Return an exact rollback snapshot for CACHE."
-  (cond
-   ((nskk-cache-lru-p cache)
-    (let ((head (nskk-cache-lru-head cache))
-          (tail (nskk-cache-lru-tail cache)))
-      (vector 'lru
-              cache
-              (nskk-cache-lru-capacity cache)
-              (nskk-cache-lru-size cache)
-              (nskk--search-hash-table-snapshot
-               (nskk-cache-lru-hash cache))
-              head
-              tail
-              (nskk-cache-lru-node-next head)
-              (nskk-cache-lru-node-prev tail)
-              (nskk-cache-lru-hits cache)
-              (nskk-cache-lru-misses cache))))
-   ((nskk-cache-lfu-p cache)
-    (vector 'lfu
-            cache
-            (nskk-cache-lfu-capacity cache)
-            (nskk-cache-lfu-size cache)
-            (nskk--search-hash-table-snapshot
-             (nskk-cache-lfu-hash cache))
-            (nskk--search-hash-table-snapshot
-             (nskk-cache-lfu-freq cache))
-            (nskk-cache-lfu-min-freq cache)
-            (nskk-cache-lfu-hits cache)
-            (nskk-cache-lfu-misses cache)))))
-
 (defun nskk-search-restore-cache-snapshot (snapshot)
   "Restore CACHE state recorded in SNAPSHOT in place."
-  (pcase (aref snapshot 0)
-         ('lru
-          (let ((cache (aref snapshot 1))
-                (head (aref snapshot 5))
-                (tail (aref snapshot 6)))
-            (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
-            (setf (nskk-cache-lru-capacity cache) (aref snapshot 2)
-                  (nskk-cache-lru-size cache) (aref snapshot 3)
-                  (nskk-cache-lru-hash cache) (car (aref snapshot 4))
-                  (nskk-cache-lru-head cache) head
-                  (nskk-cache-lru-tail cache) tail
-                  (nskk-cache-lru-node-next head) (aref snapshot 7)
-                  (nskk-cache-lru-node-prev tail) (aref snapshot 8)
-                  (nskk-cache-lru-hits cache) (aref snapshot 9)
-                  (nskk-cache-lru-misses cache) (aref snapshot 10))))
-         ('lfu
-          (let ((cache (aref snapshot 1)))
-            (nskk--search-restore-hash-table-snapshot (aref snapshot 4))
-            (nskk--search-restore-hash-table-snapshot (aref snapshot 5))
-            (setf (nskk-cache-lfu-capacity cache) (aref snapshot 2)
-                  (nskk-cache-lfu-size cache) (aref snapshot 3)
-                  (nskk-cache-lfu-hash cache) (car (aref snapshot 4))
-                  (nskk-cache-lfu-freq cache) (car (aref snapshot 5))
-                  (nskk-cache-lfu-min-freq cache) (aref snapshot 6)
-                  (nskk-cache-lfu-hits cache) (aref snapshot 7)
-                  (nskk-cache-lfu-misses cache) (aref snapshot 8))))))
+  (nskk-cache-restore-snapshot snapshot))
 
 (defun nskk-search-cache-snapshots ()
   "Snapshot every registered search cache for transactional rollback."
   (let (snapshots)
     (maphash (lambda (cache _)
                (when-let* ((snapshot
-                            (nskk--search-cache-snapshot cache)))
+                            (nskk-cache-capture-snapshot cache)))
                           (push snapshot snapshots)))
              nskk--search-registered-caches)
     snapshots))
