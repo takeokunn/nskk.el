@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- Decomposed the two `nskk-show-mode` display functions by separating each
+  one's install sequence from its fail-closed handler, and factored the
+  repeated error-and-quit-swallowing cleanup into a single helper. The
+  module keeps `defun/done` for its one public entry point and plain
+  `defun` elsewhere: the CPS transformer does not rewrite `condition-case`
+  bodies, so `succeed`/`fail` placed inside one is caught by that same
+  handler and yields a wrong value instead of an error.
 
 ### Fixed
 
@@ -42,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
   supposed to precede.
+- Fixed `nskk-show-mode` recording a mode as displayed when nothing was
+  drawn. With `nskk-show-mode-style` set to `tooltip` on a frame without
+  tooltip support, the display attempt returned without drawing yet still
+  updated the last-shown mode, so the deduplication guard suppressed every
+  later attempt. The last-shown mode is now updated only after a style
+  reports that it displayed something.
 
 ### Removed
 
