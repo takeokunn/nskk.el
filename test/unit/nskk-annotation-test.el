@@ -83,7 +83,56 @@
         (nskk-annotation-register "かんじ" "漢字" "Chinese character")
         (nskk-annotation-register "かんじ" "感じ" "feeling")
         (should (equal (nskk-annotation-lookup "かんじ" "漢字") "Chinese character"))
-        (should (equal (nskk-annotation-lookup "かんじ" "感じ") "feeling"))))))
+        (should (equal (nskk-annotation-lookup "かんじ" "感じ") "feeling")))))
+
+  (nskk-it "keeps the first annotation when the same pair is registered twice"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil))
+        (nskk-annotation-initialize)
+        (nskk-annotation-register "かんじ" "漢字" "first")
+        (nskk-annotation-register "かんじ" "漢字" "second")
+        (should (equal (nskk-annotation-lookup "かんじ" "漢字") "first")))))
+
+  (nskk-it "returns an empty annotation registered directly"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil))
+        (nskk-annotation-initialize)
+        (nskk-annotation-register "よみ" "候補" "")
+        (should (equal (nskk-annotation-lookup "よみ" "候補") ""))))))
+
+;;;; CPS Variant
+
+(nskk-describe "nskk-annotation-lookup/k"
+  (nskk-it "invokes on-found with the registered annotation"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil)
+            found called)
+        (nskk-annotation-initialize)
+        (nskk-annotation-register "よみ" "候補" "note text")
+        (nskk-annotation-lookup/k "よみ" "候補"
+                                  (lambda (value) (setq called t found value))
+                                  (lambda () (ert-fail "expected on-found")))
+        (should called)
+        (should (equal found "note text")))))
+
+  (nskk-it "invokes on-not-found when nothing is registered"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil)
+            missed)
+        (nskk-annotation-initialize)
+        (nskk-annotation-lookup/k "よみ" "未登録"
+                                  (lambda (_value) (ert-fail "expected on-not-found"))
+                                  (lambda () (setq missed t)))
+        (should missed))))
+
+  (nskk-it "invokes on-not-found before initialization"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil)
+            missed)
+        (nskk-annotation-lookup/k "よみ" "候補"
+                                  (lambda (_value) (ert-fail "expected on-not-found"))
+                                  (lambda () (setq missed t)))
+        (should missed)))))
 
 ;;;; Format Helper
 
@@ -171,7 +220,31 @@
           (let ((nskk-show-annotation t)
                 (message-log-max nil))
             (nskk-annotation-show-for-candidate "よみ" "無注釈")
-            (should (null nskk--annotation-current))))))))
+            (should (null nskk--annotation-current)))))))
+
+  (nskk-it "records the annotation without echoing it when display is toggled off"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil))
+        (nskk-annotation-initialize)
+        (nskk-annotation-register "よみ" "候補" "note text")
+        (with-temp-buffer
+          (let ((nskk-show-annotation t)
+                (nskk--annotation-visible nil)
+                (message-calls 0))
+            (cl-letf (((symbol-function 'message)
+                       (lambda (&rest _args) (cl-incf message-calls))))
+              (nskk-annotation-show-for-candidate "よみ" "候補"))
+            (should (equal nskk--annotation-current "note text"))
+            (should (= message-calls 0)))))))
+
+  (nskk-it "clears the stale annotation even when lookup signals"
+    (with-temp-buffer
+      (let ((nskk-show-annotation t)
+            (nskk--annotation-current "stale"))
+        (cl-letf (((symbol-function 'nskk-annotation-lookup)
+                   (lambda (&rest _args) (error "lookup failed"))))
+          (should-error (nskk-annotation-show-for-candidate "よみ" "候補")))
+        (should (null nskk--annotation-current))))))
 
 ;;;; Toggle Display
 
@@ -184,23 +257,62 @@
         (nskk-annotation-toggle-display)
         (should nskk--annotation-visible))))
 
-  (nskk-it "does not error when toggling off with no current annotation"
-    (with-temp-buffer
-      (let ((nskk--annotation-visible t)
-            (nskk--annotation-current nil)
-            (message-log-max nil))
-        (should-not (condition-case err
-                        (progn (nskk-annotation-toggle-display) nil)
-                      (error err))))))
-
-  (nskk-it "does not error when toggling on with a current annotation"
+  (nskk-it "echoes the formatted annotation when toggled on"
     (with-temp-buffer
       (let ((nskk--annotation-visible nil)
             (nskk--annotation-current "test note")
-            (message-log-max nil))
-        (should-not (condition-case err
-                        (progn (nskk-annotation-toggle-display) nil)
-                      (error err)))))))
+            displayed)
+        (cl-letf (((symbol-function 'message)
+                   (lambda (format-string &rest args)
+                     (setq displayed
+                           (and format-string
+                                (apply #'format format-string args))))))
+          (nskk-annotation-toggle-display))
+        (should nskk--annotation-visible)
+        (should (equal (substring-no-properties displayed) " [test note]")))))
+
+  (nskk-it "clears the echo area when toggled off"
+    (with-temp-buffer
+      (let ((nskk--annotation-visible t)
+            (nskk--annotation-current "test note")
+            (message-calls 0)
+            displayed)
+        (cl-letf (((symbol-function 'message)
+                   (lambda (format-string &rest args)
+                     (cl-incf message-calls)
+                     (setq displayed
+                           (and format-string
+                                (apply #'format format-string args))))))
+          (nskk-annotation-toggle-display))
+        (should (null nskk--annotation-visible))
+        (should (= message-calls 1))
+        (should-not displayed))))
+
+  (nskk-it "keeps the echoed annotation out of the message log"
+    (with-temp-buffer
+      (let ((nskk--annotation-visible nil)
+            (nskk--annotation-current "test note")
+            (message-log-max 100)
+            called
+            log-max-during)
+        (cl-letf (((symbol-function 'message)
+                   (lambda (&rest _args)
+                     (setq called t
+                           log-max-during message-log-max))))
+          (nskk-annotation-toggle-display))
+        (should called)
+        (should (null log-max-during)))))
+
+  (nskk-it "echoes nothing when the current annotation is empty"
+    (with-temp-buffer
+      (let ((nskk--annotation-visible nil)
+            (nskk--annotation-current "")
+            (message-calls 0))
+        (cl-letf (((symbol-function 'message)
+                   (lambda (&rest _args) (cl-incf message-calls))))
+          (nskk-annotation-toggle-display))
+        (should nskk--annotation-visible)
+        (should (= message-calls 0))))))
 
 ;;;; Load from Candidates Helper
 
@@ -223,21 +335,16 @@
         (nskk-annotation-load-from-candidates
          "よみ"
          '(("候補" . "")))
+        (should (null (nskk-annotation-lookup "よみ" "候補"))))))
+
+  (nskk-it "registers nothing for an empty candidate list"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil))
+        (nskk-annotation-initialize)
+        (nskk-annotation-load-from-candidates "よみ" nil)
         (should (null (nskk-annotation-lookup "よみ" "候補")))))))
 
 (nskk-describe "untrusted annotation display properties"
-    (nskk-it "documents that format percent-s preserves text properties"
-      (let* ((source (propertize "unsafe"
-                                'display "spoofed"
-                                'keymap (make-sparse-keymap)
-                                'local-map (make-sparse-keymap)
-                                'mouse-face 'highlight
-                                'help-echo "untrusted"
-                                'face 'error))
-             (rendered (format "%s" source)))
-        (dolist (property '(display keymap local-map mouse-face help-echo face))
-          (should (equal (get-text-property 0 property rendered)
-                         (get-text-property 0 property source))))))
     (nskk-it "strips attack properties before applying the annotation face"
       (let* ((source (propertize "unsafe"
                                 'display "spoofed"
@@ -256,7 +363,7 @@
         (dotimes (index (length rendered))
           (should (eq (get-text-property index 'face rendered)
                       'nskk-annotation-face)))
-        (should (equal source source-copy))
+        (should (equal-including-properties source source-copy))
         (should (eq (get-text-property 0 'face source) 'error))
         (should (eq (get-text-property 0 'nskk-no-learn source) t))))
     (nskk-it "sanitizes candidate and annotation copies in echo-area output"
@@ -304,10 +411,10 @@
             (should (eq (get-text-property index 'face rendered)
                         'nskk-annotation-face))
             (setq index (1+ index))))
-        (should (equal candidate candidate-copy))
-        (should (equal annotation annotation-copy))
+        (should (equal-including-properties candidate candidate-copy))
+        (should (equal-including-properties annotation annotation-copy))
         (should (eq (get-text-property 0 'nskk-no-learn candidate) t))
         (should (eq (get-text-property 0 'nskk-no-learn annotation) t)))))
-  (provide 'nskk-annotation-test)
+(provide 'nskk-annotation-test)
 
 ;;; nskk-annotation-test.el ends here
