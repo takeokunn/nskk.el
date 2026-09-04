@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Prolog engine's first-solution query API (`nskk-prolog-prove-one`,
+  `nskk-prolog-query-one`, `nskk-prolog-query-value`, `nskk-prolog-query-values`)
+  is now defined with the project's CPS macros, so a caller using the `/k`
+  form can tell "no solution" apart from a solution that binds nothing.
+  The synchronous wrappers keep their names, arguments, and return values.
+- Removed the `presentation-action/2` Prolog fact table. Registrations were
+  written to it and nothing ever queried it; presentation-action lookup now
+  reads only the alist that already served every caller.
+- Split `nskk-prolog-copy-term`, `nskk-prolog-set-index`, `nskk-prolog-assert`,
+  `nskk-prolog-retract` and `nskk-prolog-retract-all` into named helpers, and
+  dropped the `progn` wrappers the surrounding syntax did not require.
+
 ## [0.4.0] - Unreleased
 
 ### Added
@@ -42,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Eliminated cross-module references to private (`nskk--*`) symbols across
   the source tree, unifying state ownership behind the new accessor API
   and a Prolog-fact registration protocol (module-initialized flags,
-  clearable-input variables, presentation actions) in place of hardcoded
-  cross-module knowledge. Internal architecture only; no existing public
-  API was renamed or removed.
+  clearable-input variables) plus a presentation-action registry, in place
+  of hardcoded cross-module knowledge. Internal architecture only; no
+  existing public API was renamed or removed.
 - Decomposed `nskk--init-azik-rules` by extracting its flat AZIK rule-data
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
