@@ -32,7 +32,11 @@
 (require 'nskk-test-macros)
 (require 'nskk-prolog)
 (require 'nskk-pbt-generators)
-(progn (eval-when-compile (require (quote cl-lib))) (defvar nskk--annotation-initialized))
+(eval-when-compile (require 'cl-lib))
+
+;; Declared, not required: the isolation tests below makunbound this symbol to
+;; prove `nskk-prolog-test-with-isolated-db' restores an unbound variable.
+(defvar nskk--annotation-initialized)
 
 ;;;;
 ;;;; 1. Variable Representation
@@ -1415,9 +1419,10 @@ the database in the same state as before the assertion."
     (nskk-it "does not signal an error on an empty rules list"
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-retract-all 'bulk-test-no-error 1)
-        (should-not (condition-case nil
-                        (progn (nskk-prolog-bulk-facts bulk-test-no-error '()) nil)
-                      (error t))))))
+        ;; ERT fails the test on an unhandled signal, so calling it is the
+        ;; assertion; asserting the predicate itself asserts nothing.
+        (nskk-prolog-bulk-facts bulk-test-no-error '())
+        (should (null (nskk-prolog-query '(bulk-test-no-error \?x)))))))
 
   (nskk-context "equivalence with nskk-prolog-deffacts"
     (nskk-it "produces the same queryable facts as nskk-prolog-deffacts for identical data"
@@ -1648,10 +1653,10 @@ the database in the same state as before the assertion."
   (nskk-context "retract-all on a predicate that was never asserted"
     (nskk-it "completes without signaling an error"
       (nskk-prolog-test-with-isolated-db
-        (should-not (condition-case nil
-                        (progn (nskk-prolog-retract-all 'never-asserted-xyz 1)
-                               nil)
-                      (error t))))))
+        ;; ERT fails the test on an unhandled signal, so the bare call is the
+        ;; assertion; the return value carries nothing worth asserting.
+        (nskk-prolog-retract-all 'never-asserted-xyz 1)
+        (should (null (nskk-prolog-query '(never-asserted-xyz \?x)))))))
 
   (nskk-context "retract-all then re-assert"
     (nskk-it "re-asserted facts are queryable after retract-all"
@@ -1768,30 +1773,35 @@ the database in the same state as before the assertion."
 ;;; nskk-prolog-deffacts Tests
 ;;;
 
+(defun nskk-test--deffacts-calls (form)
+  "Return the `nskk-prolog-<-' calls FORM expands to, ignoring any wrapper.
+Asserting against this rather than against the expansion's head keeps these
+tests about what gets asserted, not about which form the macro wraps it in."
+  (let ((expansion (macroexpand form)))
+    (seq-filter (lambda (subform)
+                  (eq (car-safe subform) 'nskk-prolog-<-))
+                (if (eq (car-safe expansion) 'progn)
+                    (cdr expansion)
+                  (list expansion)))))
+
 (nskk-describe "nskk-prolog-deffacts macro"
   (nskk-context "macro expansion"
-    (nskk-it "empty fact list expands to a single (progn) with no assertions"
-      (let ((expansion (macroexpand '(nskk-prolog-deffacts test-pred))))
-        (should (eq (car expansion) 'progn))
-        (should (null (cdr expansion)))))
+    (nskk-it "empty fact list generates no assertions"
+      (should (null (nskk-test--deffacts-calls
+                     '(nskk-prolog-deffacts test-pred)))))
 
     (nskk-it "single row expands to exactly one nskk-prolog-<- call"
-      (let* ((expansion (macroexpand '(nskk-prolog-deffacts my-pred
-                                        (a b c))))
-             (calls (cdr expansion)))
-        (should (eq (car expansion) 'progn))
+      (let ((calls (nskk-test--deffacts-calls
+                    '(nskk-prolog-deffacts my-pred (a b c)))))
         (should (= (length calls) 1))
-        (let ((call (car calls)))
-          (should (eq (car call) 'nskk-prolog-<-))
-          (should (equal (cadr call) '(my-pred a b c))))))
+        (should (equal (cadr (car calls)) '(my-pred a b c)))))
 
     (nskk-it "multiple rows expand to one nskk-prolog-<- call per row in order"
-      (let* ((expansion (macroexpand '(nskk-prolog-deffacts key-act
-                                        (space converting next-candidate)
-                                        (space preedit   start-conversion)
-                                        (space normal    self-insert))))
-             (calls (cdr expansion)))
-        (should (eq (car expansion) 'progn))
+      (let ((calls (nskk-test--deffacts-calls
+                    '(nskk-prolog-deffacts key-act
+                       (space converting next-candidate)
+                       (space preedit   start-conversion)
+                       (space normal    self-insert)))))
         (should (= (length calls) 3))
         (should (equal (cadr (nth 0 calls)) '(key-act space converting next-candidate)))
         (should (equal (cadr (nth 1 calls)) '(key-act space preedit   start-conversion)))
@@ -1923,14 +1933,13 @@ the database in the same state as before the assertion."
 ;;;; Property: nskk-prolog-deffacts always produces valid progn form
 ;;;;
 
-(nskk-describe "nskk-prolog-deffacts always-progn contract"
-  (nskk-it "should always expand to a progn form regardless of row count"
-    (dolist (n '(0 1 2 5 10))
+(nskk-describe "nskk-prolog-deffacts row-count contract"
+  (nskk-it "generates exactly one assertion per row at every row count"
+    (dolist (n '(0 1 2 3 5 10))
       (let* ((rows (cl-loop repeat n collect '(key value)))
-             (form `(nskk-prolog-deffacts test-pred ,@rows))
-             (expansion (macroexpand form)))
-        (should (eq (car expansion) 'progn))
-        (should (= n (length (cdr expansion))))))))
+             (calls (nskk-test--deffacts-calls
+                     `(nskk-prolog-deffacts test-pred ,@rows))))
+        (should (= n (length calls)))))))
 
 
 ;;;;
@@ -2137,372 +2146,369 @@ the database in the same state as before the assertion."
          (nskk-test--prolog-should-match-key-state key tables expected))))))
 
 (ert-deftest nskk-prolog-replace-no-match-appends-with-canonical-tails ()
-  (progn
-    (dolist (index-type (quote (:list :hash)))
-      (nskk-prolog-test-with-isolated-db
-        (let ((nskk--prolog-index-bucket-tail-cache
-               (make-hash-table :test (quote equal))))
-          (nskk-prolog-clear-database)
-          (let* ((predicate (if (eq index-type :hash)
-                                (quote replace-no-match-hash)
-                              (quote replace-no-match-list)))
-                 (key (format "%s/2" predicate))
-                 (old-head (list predicate "old" 7))
-                 (old-clause (list old-head))
-                 (missing-head (list predicate "new" 0))
-                 (new-head (list predicate "new" 1))
-                 (new-clause (list new-head))
-                 (updated-head (list predicate "new" 2))
-                 (updated-clause (list updated-head)))
-            (nskk-prolog-set-index predicate 2 index-type)
-            (nskk-prolog-assert old-clause)
-            (nskk-prolog-replace-clause-transaction missing-head new-clause)
-            (should (equal (nskk-prolog-query-value
-                            (list predicate "old" (quote \?value))
-                            (quote \?value))
-                           7))
-            (should (equal (nskk-prolog-query-value
-                            (list predicate "new" (quote \?value))
-                            (quote \?value))
-                           1))
-            (let ((database (gethash key nskk--prolog-database)))
-              (should (equal database (list old-clause new-clause)))
-              (should (eq (gethash key nskk--prolog-database-tails)
-                          (last database))))
-            (when (eq index-type :hash)
-              (let* ((index (gethash key nskk--prolog-hash-indices))
-                     (bucket (gethash "new" index))
-                     (entry (gethash key nskk--prolog-index-bucket-tail-cache))
-                     (cache-info (gethash "new" (aref entry 2))))
-                (should (equal bucket (list new-clause)))
-                (should (eq (aref cache-info 0) bucket))
-                (should (eq (aref cache-info 1) (last bucket)))))
-            (nskk-prolog-replace-clause-transaction new-head updated-clause)
-            (should-not (nskk-prolog-query new-head))
-            (should (equal (nskk-prolog-query-value
-                            (list predicate "old" (quote \?value))
-                            (quote \?value))
-                           7))
-            (should (equal (nskk-prolog-query-value
-                            (list predicate "new" (quote \?value))
-                            (quote \?value))
-                           2))
-            (let ((database (gethash key nskk--prolog-database)))
-              (should (equal database (list old-clause updated-clause)))
-              (should (eq (gethash key nskk--prolog-database-tails)
-                          (last database))))
-            (when (eq index-type :hash)
-              (let* ((index (gethash key nskk--prolog-hash-indices))
-                     (bucket (gethash "new" index))
-                     (entry (gethash key nskk--prolog-index-bucket-tail-cache))
-                     (cache-info (gethash "new" (aref entry 2))))
-                (should (equal bucket (list updated-clause)))
-                (should (eq (aref cache-info 0) bucket))
-                (should (eq (aref cache-info 1) (last bucket)))))))))
-    (dolist (index-type (quote (:list :hash :trie)))
-      (nskk-prolog-test-with-isolated-db
-        (let ((nskk--prolog-index-bucket-tail-cache
-               (make-hash-table :test (quote equal))))
-          (nskk-prolog-clear-database)
-          (let* ((predicate
-                  (pcase index-type
-                    (:list (quote replace-delete-list))
-                    (:hash (quote replace-delete-hash))
-                    (:trie (quote replace-delete-trie))))
-                 (key (format "%s/2" predicate))
-                 (duplicate-head (list predicate "a" (quote duplicate)))
-                 (duplicate-clause (list duplicate-head))
-                 (survivor-head (list predicate "a" (quote survivor)))
-                 (survivor-clause (list survivor-head))
-                 (solo-head (list predicate "solo" (quote final)))
-                 (solo-clause (list solo-head))
-                 (variable-pattern
-                  (list predicate (quote \?first) (quote duplicate))))
-            (nskk-prolog-set-index predicate 2 index-type)
-            (nskk-prolog-assert duplicate-clause)
-            (nskk-prolog-assert duplicate-clause)
-            (nskk-prolog-assert survivor-clause)
-            (nskk-prolog-assert solo-clause)
-            (let* ((database-before (gethash key nskk--prolog-database))
-                   (database-tail-before
-                    (gethash key nskk--prolog-database-tails))
-                   (index
+  (dolist (index-type (quote (:list :hash)))
+    (nskk-prolog-test-with-isolated-db
+     (let ((nskk--prolog-index-bucket-tail-cache
+            (make-hash-table :test (quote equal))))
+       (nskk-prolog-clear-database)
+       (let* ((predicate (if (eq index-type :hash)
+                             (quote replace-no-match-hash)
+                           (quote replace-no-match-list)))
+              (key (format "%s/2" predicate))
+              (old-head (list predicate "old" 7))
+              (old-clause (list old-head))
+              (missing-head (list predicate "new" 0))
+              (new-head (list predicate "new" 1))
+              (new-clause (list new-head))
+              (updated-head (list predicate "new" 2))
+              (updated-clause (list updated-head)))
+         (nskk-prolog-set-index predicate 2 index-type)
+         (nskk-prolog-assert old-clause)
+         (nskk-prolog-replace-clause-transaction missing-head new-clause)
+         (should (equal (nskk-prolog-query-value
+                         (list predicate "old" (quote \?value))
+                         (quote \?value))
+                        7))
+         (should (equal (nskk-prolog-query-value
+                         (list predicate "new" (quote \?value))
+                         (quote \?value))
+                        1))
+         (let ((database (gethash key nskk--prolog-database)))
+           (should (equal database (list old-clause new-clause)))
+           (should (eq (gethash key nskk--prolog-database-tails)
+                       (last database))))
+         (when (eq index-type :hash)
+           (let* ((index (gethash key nskk--prolog-hash-indices))
+                  (bucket (gethash "new" index))
+                  (entry (gethash key nskk--prolog-index-bucket-tail-cache))
+                  (cache-info (gethash "new" (aref entry 2))))
+             (should (equal bucket (list new-clause)))
+             (should (eq (aref cache-info 0) bucket))
+             (should (eq (aref cache-info 1) (last bucket)))))
+         (nskk-prolog-replace-clause-transaction new-head updated-clause)
+         (should-not (nskk-prolog-query new-head))
+         (should (equal (nskk-prolog-query-value
+                         (list predicate "old" (quote \?value))
+                         (quote \?value))
+                        7))
+         (should (equal (nskk-prolog-query-value
+                         (list predicate "new" (quote \?value))
+                         (quote \?value))
+                        2))
+         (let ((database (gethash key nskk--prolog-database)))
+           (should (equal database (list old-clause updated-clause)))
+           (should (eq (gethash key nskk--prolog-database-tails)
+                       (last database))))
+         (when (eq index-type :hash)
+           (let* ((index (gethash key nskk--prolog-hash-indices))
+                  (bucket (gethash "new" index))
+                  (entry (gethash key nskk--prolog-index-bucket-tail-cache))
+                  (cache-info (gethash "new" (aref entry 2))))
+             (should (equal bucket (list updated-clause)))
+             (should (eq (aref cache-info 0) bucket))
+             (should (eq (aref cache-info 1) (last bucket)))))))))
+  (dolist (index-type (quote (:list :hash :trie)))
+    (nskk-prolog-test-with-isolated-db
+     (let ((nskk--prolog-index-bucket-tail-cache
+            (make-hash-table :test (quote equal))))
+       (nskk-prolog-clear-database)
+       (let* ((predicate
+               (pcase index-type
+                 (:list (quote replace-delete-list))
+                 (:hash (quote replace-delete-hash))
+                 (:trie (quote replace-delete-trie))))
+              (key (format "%s/2" predicate))
+              (duplicate-head (list predicate "a" (quote duplicate)))
+              (duplicate-clause (list duplicate-head))
+              (survivor-head (list predicate "a" (quote survivor)))
+              (survivor-clause (list survivor-head))
+              (solo-head (list predicate "solo" (quote final)))
+              (solo-clause (list solo-head))
+              (variable-pattern
+               (list predicate (quote \?first) (quote duplicate))))
+         (nskk-prolog-set-index predicate 2 index-type)
+         (nskk-prolog-assert duplicate-clause)
+         (nskk-prolog-assert duplicate-clause)
+         (nskk-prolog-assert survivor-clause)
+         (nskk-prolog-assert solo-clause)
+         (let* ((database-before (gethash key nskk--prolog-database))
+                (database-tail-before
+                 (gethash key nskk--prolog-database-tails))
+                (index
+                 (pcase index-type
+                   (:list nil)
+                   (:hash (gethash key nskk--prolog-hash-indices))
+                   (:trie (gethash key nskk--prolog-trie-indices))))
+                (bucket-before
+                 (pcase index-type
+                   (:list nil)
+                   (:hash (gethash "a" index))
+                   (:trie (nskk-trie-lookup index "a"))))
+                (callback-count 0))
+           (should
+            (eq :deleted
+                (nskk-prolog-replace-clause-transaction
+                 variable-pattern nil
+                 (lambda ()
+                   (setq callback-count (1+ callback-count))
+                   (should (nskk-prolog-query duplicate-head))
+                   :deleted))))
+           (should (= callback-count 1))
+           (let ((database-after (gethash key nskk--prolog-database)))
+             (should (eq database-after (cdr database-before)))
+             (should
+              (equal database-after
+                     (list duplicate-clause survivor-clause solo-clause)))
+             (should (eq (gethash key nskk--prolog-database-tails)
+                         database-tail-before)))
+           (should (nskk-prolog-query duplicate-head))
+           (should (nskk-prolog-query survivor-head))
+           (should (nskk-prolog-query solo-head))
+           (unless (eq index-type :list)
+             (let* ((bucket-after
+                     (pcase index-type
+                       (:hash (gethash "a" index))
+                       (:trie (nskk-trie-lookup index "a"))))
+                    (entry
+                     (gethash key nskk--prolog-index-bucket-tail-cache))
+                    (cache-info (gethash "a" (aref entry 2))))
+               (should (eq bucket-after (cdr bucket-before)))
+               (should
+                (equal bucket-after
+                       (list duplicate-clause survivor-clause)))
+               (should (eq (aref cache-info 0) bucket-after))
+               (should (eq (aref cache-info 1) (last bucket-after)))))
+           (nskk-prolog-replace-clause-transaction solo-head nil)
+           (let ((database-after (gethash key nskk--prolog-database)))
+             (should
+              (equal database-after
+                     (list duplicate-clause survivor-clause)))
+             (should (eq (gethash key nskk--prolog-database-tails)
+                         (last database-after))))
+           (should-not (nskk-prolog-query solo-head))
+           (unless (eq index-type :list)
+             (let* ((solo-bucket
+                     (pcase index-type
+                       (:hash (gethash "solo" index))
+                       (:trie (nskk-trie-lookup index "solo"))))
+                    (entry
+                     (gethash key nskk--prolog-index-bucket-tail-cache))
+                    (cache-info (gethash "solo" (aref entry 2))))
+               (should-not solo-bucket)
+               (should cache-info)
+               (should-not (aref cache-info 0))
+               (should-not (aref cache-info 1))))
+           (let* ((tables
+                   (list nskk--prolog-database
+                         nskk--prolog-database-tails
+                         nskk--prolog-hash-indices
+                         nskk--prolog-trie-indices
+                         nskk--prolog-index-bucket-tail-cache))
+                  (expected (nskk-test--prolog-key-state key tables))
+                  (database (gethash key nskk--prolog-database))
+                  (database-tail
+                   (gethash key nskk--prolog-database-tails))
+                  (entry
+                   (gethash key nskk--prolog-index-bucket-tail-cache))
+                  (bucket
+                   (pcase index-type
+                     (:list nil)
+                     (:hash (gethash "a" index))
+                     (:trie (nskk-trie-lookup index "a"))))
+                  (cache-info
+                   (and entry (gethash "a" (aref entry 2))))
+                  (callback-count 0))
+             (should
+              (eq :no-match
+                  (nskk-prolog-replace-clause-transaction
+                   (list predicate "missing" (quote absent)) nil
+                   (lambda ()
+                     (setq callback-count (1+ callback-count))
+                     :no-match))))
+             (should (= callback-count 1))
+             (nskk-test--prolog-should-match-key-state
+              key tables expected)
+             (should (eq database (gethash key nskk--prolog-database)))
+             (should (eq database-tail
+                         (gethash key nskk--prolog-database-tails)))
+             (unless (eq index-type :list)
+               (should
+                (eq index
                     (pcase index-type
-                      (:list nil)
                       (:hash (gethash key nskk--prolog-hash-indices))
-                      (:trie (gethash key nskk--prolog-trie-indices))))
-                   (bucket-before
+                      (:trie (gethash key nskk--prolog-trie-indices)))))
+               (should
+                (eq bucket
                     (pcase index-type
-                      (:list nil)
                       (:hash (gethash "a" index))
-                      (:trie (nskk-trie-lookup index "a"))))
-                   (callback-count 0))
-              (should
-               (eq :deleted
+                      (:trie (nskk-trie-lookup index "a")))))
+               (should
+                (eq entry
+                    (gethash key nskk--prolog-index-bucket-tail-cache)))
+               (should (eq cache-info (gethash "a" (aref entry 2))))))))))))
+(ert-deftest nskk-prolog-replace-helper-fault-restores-exact-object-graph ()
+  (dolist (fault-type '(error quit))
+    (nskk-prolog-test-with-isolated-db
+     (let ((nskk--prolog-index-bucket-tail-cache
+            (make-hash-table :test 'equal)))
+       (nskk-prolog-clear-database)
+       (nskk-prolog-set-index 'replace-fault 2 :hash)
+       (nskk-prolog-assert '((replace-fault "a" old)))
+       (nskk-prolog-assert '((replace-fault "a" other)))
+       (let* ((key "replace-fault/2")
+              (database-head (gethash key nskk--prolog-database))
+              (database-tail (gethash key nskk--prolog-database-tails))
+              (index (gethash key nskk--prolog-hash-indices))
+              (bucket (gethash "a" index))
+              (entry
+               (gethash key nskk--prolog-index-bucket-tail-cache))
+              (buckets (aref entry 2))
+              (stale-info (vector bucket nil))
+              (original-puthash (symbol-function 'puthash))
+              (faulted nil)
+              caught)
+         (puthash "a" stale-info buckets)
+         (cl-letf
+             (((symbol-function 'puthash)
+               (lambda (map-key value table)
+                 (let ((result (funcall original-puthash map-key value table)))
+                   (when (and (not faulted)
+                              (eq table buckets)
+                              (equal map-key "a"))
+                     (setq faulted t)
+                     (signal fault-type nil))
+                   result))))
+           (condition-case condition
+               (nskk-prolog-replace-clause-transaction
+                '(replace-fault "a" old)
+                '((replace-fault "a" new)))
+             ((error quit)
+              (setq caught (car condition)))))
+         (should faulted)
+         (should (eq caught fault-type))
+         (should (eq database-head
+                     (gethash key nskk--prolog-database)))
+         (should (eq database-tail
+                     (gethash key nskk--prolog-database-tails)))
+         (should (eq index
+                     (gethash key nskk--prolog-hash-indices)))
+         (should (eq bucket (gethash "a" index)))
+         (should (eq entry
+                     (gethash key nskk--prolog-index-bucket-tail-cache)))
+         (should (eq stale-info (gethash "a" buckets)))
+         (should
+          (equal database-head
+                 '(((replace-fault "a" old))
+                   ((replace-fault "a" other)))))))))
+  (dolist (fault-type (quote (error quit)))
+    (dolist (callback-phase (quote (before after)))
+      (dotimes (_iteration 3)
+        (nskk-prolog-test-with-isolated-db
+         (let ((nskk--prolog-index-bucket-tail-cache
+                (make-hash-table :test (quote equal))))
+           (nskk-prolog-clear-database)
+           (let* ((predicate (quote replace-delete-callback-fault))
+                  (key "replace-delete-callback-fault/2")
+                  (keep-head (list predicate "a" (quote keep)))
+                  (keep-clause (list keep-head))
+                  (target-head (list predicate "a" (quote target)))
+                  (target-clause (list target-head))
+                  (other-head (list predicate "a" (quote other)))
+                  (other-clause (list other-head))
+                  (variable-pattern
+                   (list predicate (quote \?first) (quote target))))
+             (nskk-prolog-set-index predicate 2 :hash)
+             (nskk-prolog-assert keep-clause)
+             (nskk-prolog-assert target-clause)
+             (nskk-prolog-assert other-clause)
+             (let* ((tables
+                     (list nskk--prolog-database
+                           nskk--prolog-database-tails
+                           nskk--prolog-hash-indices
+                           nskk--prolog-trie-indices
+                           nskk--prolog-index-bucket-tail-cache))
+                    (expected (nskk-test--prolog-key-state key tables))
+                    (database-head (gethash key nskk--prolog-database))
+                    (database-target-cell (cdr database-head))
+                    (database-after-target (cdr database-target-cell))
+                    (database-tail
+                     (gethash key nskk--prolog-database-tails))
+                    (index (gethash key nskk--prolog-hash-indices))
+                    (bucket (gethash "a" index))
+                    (bucket-target-cell (cdr bucket))
+                    (bucket-after-target (cdr bucket-target-cell))
+                    (entry
+                     (gethash key nskk--prolog-index-bucket-tail-cache))
+                    (buckets (aref entry 2))
+                    (cache-info (gethash "a" buckets))
+                    (callback-count 0)
+                    callback-observed
+                    caught)
+               (condition-case condition
                    (nskk-prolog-replace-clause-transaction
                     variable-pattern nil
                     (lambda ()
                       (setq callback-count (1+ callback-count))
-                      (should (nskk-prolog-query duplicate-head))
-                      :deleted))))
-              (should (= callback-count 1))
-              (let ((database-after (gethash key nskk--prolog-database)))
-                (should (eq database-after (cdr database-before)))
-                (should
-                 (equal database-after
-                        (list duplicate-clause survivor-clause solo-clause)))
-                (should (eq (gethash key nskk--prolog-database-tails)
-                            database-tail-before)))
-              (should (nskk-prolog-query duplicate-head))
-              (should (nskk-prolog-query survivor-head))
-              (should (nskk-prolog-query solo-head))
-              (unless (eq index-type :list)
-                (let* ((bucket-after
-                        (pcase index-type
-                          (:hash (gethash "a" index))
-                          (:trie (nskk-trie-lookup index "a"))))
-                       (entry
-                        (gethash key nskk--prolog-index-bucket-tail-cache))
-                       (cache-info (gethash "a" (aref entry 2))))
-                  (should (eq bucket-after (cdr bucket-before)))
-                  (should
-                   (equal bucket-after
-                          (list duplicate-clause survivor-clause)))
-                  (should (eq (aref cache-info 0) bucket-after))
-                  (should (eq (aref cache-info 1) (last bucket-after)))))
-              (nskk-prolog-replace-clause-transaction solo-head nil)
-              (let ((database-after (gethash key nskk--prolog-database)))
-                (should
-                 (equal database-after
-                        (list duplicate-clause survivor-clause)))
-                (should (eq (gethash key nskk--prolog-database-tails)
-                            (last database-after))))
-              (should-not (nskk-prolog-query solo-head))
-              (unless (eq index-type :list)
-                (let* ((solo-bucket
-                        (pcase index-type
-                          (:hash (gethash "solo" index))
-                          (:trie (nskk-trie-lookup index "solo"))))
-                       (entry
-                        (gethash key nskk--prolog-index-bucket-tail-cache))
-                       (cache-info (gethash "solo" (aref entry 2))))
-                  (should-not solo-bucket)
-                  (should cache-info)
-                  (should-not (aref cache-info 0))
-                  (should-not (aref cache-info 1))))
-              (let* ((tables
-                      (list nskk--prolog-database
-                            nskk--prolog-database-tails
-                            nskk--prolog-hash-indices
-                            nskk--prolog-trie-indices
-                            nskk--prolog-index-bucket-tail-cache))
-                     (expected (nskk-test--prolog-key-state key tables))
-                     (database (gethash key nskk--prolog-database))
-                     (database-tail
-                      (gethash key nskk--prolog-database-tails))
-                     (entry
-                      (gethash key nskk--prolog-index-bucket-tail-cache))
-                     (bucket
-                      (pcase index-type
-                        (:list nil)
-                        (:hash (gethash "a" index))
-                        (:trie (nskk-trie-lookup index "a"))))
-                     (cache-info
-                      (and entry (gethash "a" (aref entry 2))))
-                     (callback-count 0))
-                (should
-                 (eq :no-match
-                     (nskk-prolog-replace-clause-transaction
-                      (list predicate "missing" (quote absent)) nil
-                      (lambda ()
-                        (setq callback-count (1+ callback-count))
-                        :no-match))))
-                (should (= callback-count 1))
-                (nskk-test--prolog-should-match-key-state
-                 key tables expected)
-                (should (eq database (gethash key nskk--prolog-database)))
-                (should (eq database-tail
-                            (gethash key nskk--prolog-database-tails)))
-                (unless (eq index-type :list)
-                  (should
-                   (eq index
-                       (pcase index-type
-                         (:hash (gethash key nskk--prolog-hash-indices))
-                         (:trie (gethash key nskk--prolog-trie-indices)))))
-                  (should
-                   (eq bucket
-                       (pcase index-type
-                         (:hash (gethash "a" index))
-                         (:trie (nskk-trie-lookup index "a")))))
-                  (should
-                   (eq entry
-                       (gethash key nskk--prolog-index-bucket-tail-cache)))
-                  (should (eq cache-info (gethash "a" (aref entry 2)))))))))))))
-(ert-deftest nskk-prolog-replace-helper-fault-restores-exact-object-graph ()
-  (progn
-    (dolist (fault-type '(error quit))
-      (nskk-prolog-test-with-isolated-db
-       (let ((nskk--prolog-index-bucket-tail-cache
-              (make-hash-table :test 'equal)))
-         (nskk-prolog-clear-database)
-         (nskk-prolog-set-index 'replace-fault 2 :hash)
-         (nskk-prolog-assert '((replace-fault "a" old)))
-         (nskk-prolog-assert '((replace-fault "a" other)))
-         (let* ((key "replace-fault/2")
-                (database-head (gethash key nskk--prolog-database))
-                (database-tail (gethash key nskk--prolog-database-tails))
-                (index (gethash key nskk--prolog-hash-indices))
-                (bucket (gethash "a" index))
-                (entry
-                 (gethash key nskk--prolog-index-bucket-tail-cache))
-                (buckets (aref entry 2))
-                (stale-info (vector bucket nil))
-                (original-puthash (symbol-function 'puthash))
-                (faulted nil)
-                caught)
-           (puthash "a" stale-info buckets)
-           (cl-letf
-               (((symbol-function 'puthash)
-                 (lambda (map-key value table)
-                   (let ((result (funcall original-puthash map-key value table)))
-                     (when (and (not faulted)
-                                (eq table buckets)
-                                (equal map-key "a"))
-                       (setq faulted t)
-                       (signal fault-type nil))
-                     result))))
-             (condition-case condition
-                 (nskk-prolog-replace-clause-transaction
-                  '(replace-fault "a" old)
-                  '((replace-fault "a" new)))
-               ((error quit)
-                (setq caught (car condition)))))
-           (should faulted)
-           (should (eq caught fault-type))
-           (should (eq database-head
-                       (gethash key nskk--prolog-database)))
-           (should (eq database-tail
-                       (gethash key nskk--prolog-database-tails)))
-           (should (eq index
-                       (gethash key nskk--prolog-hash-indices)))
-           (should (eq bucket (gethash "a" index)))
-           (should (eq entry
-                       (gethash key nskk--prolog-index-bucket-tail-cache)))
-           (should (eq stale-info (gethash "a" buckets)))
-           (should
-            (equal database-head
-                   '(((replace-fault "a" old))
-                     ((replace-fault "a" other)))))))))
-    (dolist (fault-type (quote (error quit)))
-      (dolist (callback-phase (quote (before after)))
-        (dotimes (_iteration 3)
-          (nskk-prolog-test-with-isolated-db
-            (let ((nskk--prolog-index-bucket-tail-cache
-                   (make-hash-table :test (quote equal))))
-              (nskk-prolog-clear-database)
-              (let* ((predicate (quote replace-delete-callback-fault))
-                     (key "replace-delete-callback-fault/2")
-                     (keep-head (list predicate "a" (quote keep)))
-                     (keep-clause (list keep-head))
-                     (target-head (list predicate "a" (quote target)))
-                     (target-clause (list target-head))
-                     (other-head (list predicate "a" (quote other)))
-                     (other-clause (list other-head))
-                     (variable-pattern
-                      (list predicate (quote \?first) (quote target))))
-                (nskk-prolog-set-index predicate 2 :hash)
-                (nskk-prolog-assert keep-clause)
-                (nskk-prolog-assert target-clause)
-                (nskk-prolog-assert other-clause)
-                (let* ((tables
-                        (list nskk--prolog-database
-                              nskk--prolog-database-tails
-                              nskk--prolog-hash-indices
-                              nskk--prolog-trie-indices
-                              nskk--prolog-index-bucket-tail-cache))
-                       (expected (nskk-test--prolog-key-state key tables))
-                       (database-head (gethash key nskk--prolog-database))
-                       (database-target-cell (cdr database-head))
-                       (database-after-target (cdr database-target-cell))
-                       (database-tail
-                        (gethash key nskk--prolog-database-tails))
-                       (index (gethash key nskk--prolog-hash-indices))
-                       (bucket (gethash "a" index))
-                       (bucket-target-cell (cdr bucket))
-                       (bucket-after-target (cdr bucket-target-cell))
-                       (entry
-                        (gethash key nskk--prolog-index-bucket-tail-cache))
-                       (buckets (aref entry 2))
-                       (cache-info (gethash "a" buckets))
-                       (callback-count 0)
-                       callback-observed
-                       caught)
-                  (condition-case condition
+                      (when (eq callback-phase (quote after))
+                        (should-not (nskk-prolog-query target-head))
+                        (should (nskk-prolog-query keep-head))
+                        (should (nskk-prolog-query other-head))
+                        (setq callback-observed t))
+                      (signal fault-type nil)))
+                 ((error quit)
+                  (setq caught (car condition))))
+               (should (= callback-count 1))
+               (should (eq caught fault-type))
+               (if (eq callback-phase (quote after))
+                   (should callback-observed)
+                 (should-not callback-observed))
+               (nskk-test--prolog-should-match-key-state
+                key tables expected)
+               (should (eq database-head
+                           (gethash key nskk--prolog-database)))
+               (should (eq database-target-cell (cdr database-head)))
+               (should (eq database-after-target
+                           (cdr database-target-cell)))
+               (should (eq database-tail
+                           (gethash key nskk--prolog-database-tails)))
+               (should (eq index
+                           (gethash key nskk--prolog-hash-indices)))
+               (should (eq bucket (gethash "a" index)))
+               (should (eq bucket-target-cell (cdr bucket)))
+               (should (eq bucket-after-target
+                           (cdr bucket-target-cell)))
+               (should (eq entry
+                           (gethash key
+                                    nskk--prolog-index-bucket-tail-cache)))
+               (should (eq cache-info (gethash "a" buckets)))
+               (should (nskk-prolog-query target-head))
+               (let ((recovery-callback-count 0))
+                 (should
+                  (eq :recovered
                       (nskk-prolog-replace-clause-transaction
                        variable-pattern nil
                        (lambda ()
-                         (setq callback-count (1+ callback-count))
-                         (when (eq callback-phase (quote after))
-                           (progn
-                             (should-not (nskk-prolog-query target-head))
-                             (should (nskk-prolog-query keep-head))
-                             (should (nskk-prolog-query other-head))
-                             (setq callback-observed t)))
-                         (signal fault-type nil)))
-                    ((error quit)
-                     (setq caught (car condition))))
-                  (should (= callback-count 1))
-                  (should (eq caught fault-type))
-                  (if (eq callback-phase (quote after))
-                      (should callback-observed)
-                    (should-not callback-observed))
-                  (nskk-test--prolog-should-match-key-state
-                   key tables expected)
-                  (should (eq database-head
-                              (gethash key nskk--prolog-database)))
-                  (should (eq database-target-cell (cdr database-head)))
-                  (should (eq database-after-target
-                              (cdr database-target-cell)))
-                  (should (eq database-tail
-                              (gethash key nskk--prolog-database-tails)))
-                  (should (eq index
-                              (gethash key nskk--prolog-hash-indices)))
-                  (should (eq bucket (gethash "a" index)))
-                  (should (eq bucket-target-cell (cdr bucket)))
-                  (should (eq bucket-after-target
-                              (cdr bucket-target-cell)))
-                  (should (eq entry
-                              (gethash key
-                                       nskk--prolog-index-bucket-tail-cache)))
-                  (should (eq cache-info (gethash "a" buckets)))
-                  (should (nskk-prolog-query target-head))
-                  (let ((recovery-callback-count 0))
-                    (should
-                     (eq :recovered
-                         (nskk-prolog-replace-clause-transaction
-                          variable-pattern nil
-                          (lambda ()
-                            (setq recovery-callback-count
-                                  (1+ recovery-callback-count))
-                            :recovered))))
-                    (should (= recovery-callback-count 1)))
-                  (should-not (nskk-prolog-query target-head))
-                  (should (nskk-prolog-query keep-head))
-                  (should (nskk-prolog-query other-head))
-                  (should (eq database-head
-                              (gethash key nskk--prolog-database)))
-                  (should (eq database-after-target (cdr database-head)))
-                  (should (eq database-tail
-                              (gethash key nskk--prolog-database-tails)))
-                  (should (eq index
-                              (gethash key nskk--prolog-hash-indices)))
-                  (should (eq bucket (gethash "a" index)))
-                  (should (eq bucket-after-target (cdr bucket)))
-                  (let ((recovery-cache-info (gethash "a" buckets)))
-                    (should (eq (aref recovery-cache-info 0) bucket))
-                    (should
-                     (eq (aref recovery-cache-info 1)
-                         bucket-after-target))))))))))))
+                         (setq recovery-callback-count
+                               (1+ recovery-callback-count))
+                         :recovered))))
+                 (should (= recovery-callback-count 1)))
+               (should-not (nskk-prolog-query target-head))
+               (should (nskk-prolog-query keep-head))
+               (should (nskk-prolog-query other-head))
+               (should (eq database-head
+                           (gethash key nskk--prolog-database)))
+               (should (eq database-after-target (cdr database-head)))
+               (should (eq database-tail
+                           (gethash key nskk--prolog-database-tails)))
+               (should (eq index
+                           (gethash key nskk--prolog-hash-indices)))
+               (should (eq bucket (gethash "a" index)))
+               (should (eq bucket-after-target (cdr bucket)))
+               (let ((recovery-cache-info (gethash "a" buckets)))
+                 (should (eq (aref recovery-cache-info 0) bucket))
+                 (should
+                  (eq (aref recovery-cache-info 1)
+                      bucket-after-target)))))))))))
 
 (defvar nskk-test--prolog-nonnumeric-global nil
   "Non-numeric global used to audit arithmetic query isolation.")
@@ -3363,339 +3369,448 @@ the database in the same state as before the assertion."
         (should-not (gethash "key" index))
         (should-not nskk--prolog-active-mutation-keys)))))
 
-(progn
-  (ert-deftest nskk-prolog-copy-term-preserves-hash-graph-and-metadata ()
-    (let* ((shared (list 'shared))
-           (equal-left (list 'same))
-           (equal-right (list 'same))
-           (text (copy-sequence "x"))
-           (outer
-            (make-hash-table
-             :test 'eq
-             :size 23
-             :rehash-size 2.0
-             :rehash-threshold 0.7
-             :weakness 'key-and-value))
-           (inner (make-hash-table :test 'equal :size 17))
-           (root
-            (vector outer inner shared equal-left equal-right text)))
-      (add-text-properties 0 1 (list 'nskk-test-hash inner) text)
-      (puthash equal-left shared outer)
-      (puthash equal-right shared outer)
-      (puthash 'self outer outer)
-      (puthash 'inner inner outer)
-      (puthash shared outer inner)
-      (puthash 'text text inner)
-      (puthash 'outer outer inner)
+(ert-deftest nskk-prolog-copy-term-preserves-hash-graph-and-metadata ()
+  (let* ((shared (list 'shared))
+         (equal-left (list 'same))
+         (equal-right (list 'same))
+         (text (copy-sequence "x"))
+         (outer
+          (make-hash-table
+           :test 'eq
+           :size 23
+           :rehash-size 2.0
+           :rehash-threshold 0.7
+           :weakness 'key-and-value))
+         (inner (make-hash-table :test 'equal :size 17))
+         (root
+          (vector outer inner shared equal-left equal-right text)))
+    (add-text-properties 0 1 (list 'nskk-test-hash inner) text)
+    (puthash equal-left shared outer)
+    (puthash equal-right shared outer)
+    (puthash 'self outer outer)
+    (puthash 'inner inner outer)
+    (puthash shared outer inner)
+    (puthash 'text text inner)
+    (puthash 'outer outer inner)
+    (let* ((copy (nskk-prolog-copy-term root))
+           (copied-outer (aref copy 0))
+           (copied-inner (aref copy 1))
+           (copied-shared (aref copy 2))
+           (copied-left (aref copy 3))
+           (copied-right (aref copy 4))
+           (copied-text (aref copy 5)))
+      (dolist (pair
+               (list (cons outer copied-outer)
+                     (cons inner copied-inner)))
+        (let ((source (car pair))
+              (copied (cdr pair)))
+          (should-not (eq source copied))
+          (should (eq (hash-table-test source)
+                      (hash-table-test copied)))
+          (should (= (hash-table-size source)
+                     (hash-table-size copied)))
+          (should (equal (hash-table-rehash-size source)
+                         (hash-table-rehash-size copied)))
+          (should (equal (hash-table-rehash-threshold source)
+                         (hash-table-rehash-threshold copied)))
+          (should (eq (hash-table-weakness source)
+                      (hash-table-weakness copied)))))
+      (should-not (eq copied-shared shared))
+      (should (equal copied-left copied-right))
+      (should-not (eq copied-left copied-right))
+      (should-not (eq copied-left equal-left))
+      (should-not (eq copied-right equal-right))
+      (should (eq (gethash copied-left copied-outer) copied-shared))
+      (should (eq (gethash copied-right copied-outer) copied-shared))
+      (should (eq (gethash 'self copied-outer) copied-outer))
+      (should (eq (gethash 'inner copied-outer) copied-inner))
+      (should (eq (gethash copied-shared copied-inner) copied-outer))
+      (should (eq (gethash 'text copied-inner) copied-text))
+      (should (eq (gethash 'outer copied-inner) copied-outer))
+      (should (eq (get-text-property
+                   0 'nskk-test-hash copied-text)
+                  copied-inner))
+      (setcar shared 'source-mutated)
+      (puthash 'source-only t outer)
+      (should (eq (car copied-shared) 'shared))
+      (should-not (gethash 'source-only copied-outer))
+      (setcar copied-shared 'copy-mutated)
+      (puthash 'copy-only t copied-inner)
+      (should (eq (car shared) 'source-mutated))
+      (should-not (gethash 'copy-only inner)))))
+
+(ert-deftest nskk-prolog-copy-term-handles-deep-mixed-hash-graph-iteratively ()
+  (let (deep)
+    (dotimes (_ 210001)
+      (push nil deep))
+    (let* ((table (make-hash-table :test 'eq))
+           (text (copy-sequence "d"))
+           (root (vector deep table text)))
+      (add-text-properties 0 1 (list 'nskk-test-hash table) text)
+      (puthash 'self table table)
+      (puthash 'root root table)
+      (puthash 'deep deep table)
       (let* ((copy (nskk-prolog-copy-term root))
-             (copied-outer (aref copy 0))
-             (copied-inner (aref copy 1))
-             (copied-shared (aref copy 2))
-             (copied-left (aref copy 3))
-             (copied-right (aref copy 4))
-             (copied-text (aref copy 5)))
-        (dolist (pair
-                 (list (cons outer copied-outer)
-                       (cons inner copied-inner)))
-          (let ((source (car pair))
-                (copied (cdr pair)))
-            (should-not (eq source copied))
-            (should (eq (hash-table-test source)
-                        (hash-table-test copied)))
-            (should (= (hash-table-size source)
-                       (hash-table-size copied)))
-            (should (equal (hash-table-rehash-size source)
-                           (hash-table-rehash-size copied)))
-            (should (equal (hash-table-rehash-threshold source)
-                           (hash-table-rehash-threshold copied)))
-            (should (eq (hash-table-weakness source)
-                        (hash-table-weakness copied)))))
-        (should-not (eq copied-shared shared))
-        (should (equal copied-left copied-right))
-        (should-not (eq copied-left copied-right))
-        (should-not (eq copied-left equal-left))
-        (should-not (eq copied-right equal-right))
-        (should (eq (gethash copied-left copied-outer) copied-shared))
-        (should (eq (gethash copied-right copied-outer) copied-shared))
-        (should (eq (gethash 'self copied-outer) copied-outer))
-        (should (eq (gethash 'inner copied-outer) copied-inner))
-        (should (eq (gethash copied-shared copied-inner) copied-outer))
-        (should (eq (gethash 'text copied-inner) copied-text))
-        (should (eq (gethash 'outer copied-inner) copied-outer))
+             (copied-deep (aref copy 0))
+             (copied-table (aref copy 1))
+             (copied-text (aref copy 2))
+             (cursor copied-deep)
+             (count 0))
+        (should-not (eq copy root))
+        (should-not (eq copied-deep deep))
+        (should-not (eq copied-table table))
+        (should-not (eq copied-text text))
+        (should (eq (gethash 'self copied-table) copied-table))
+        (should (eq (gethash 'root copied-table) copy))
+        (should (eq (gethash 'deep copied-table) copied-deep))
         (should (eq (get-text-property
                      0 'nskk-test-hash copied-text)
-                    copied-inner))
-        (setcar shared 'source-mutated)
-        (puthash 'source-only t outer)
-        (should (eq (car copied-shared) 'shared))
-        (should-not (gethash 'source-only copied-outer))
-        (setcar copied-shared 'copy-mutated)
-        (puthash 'copy-only t copied-inner)
-        (should (eq (car shared) 'source-mutated))
-        (should-not (gethash 'copy-only inner)))))
+                    copied-table))
+        (while (consp cursor)
+          (setq count (1+ count)
+                cursor (cdr cursor)))
+        (should (= count 210001))
+        (should-not cursor)))))
 
-  (ert-deftest nskk-prolog-copy-term-handles-deep-mixed-hash-graph-iteratively ()
-    (let (deep)
-      (dotimes (_ 210001)
-        (push nil deep))
-      (let* ((table (make-hash-table :test 'eq))
-             (text (copy-sequence "d"))
-             (root (vector deep table text)))
-        (add-text-properties 0 1 (list 'nskk-test-hash table) text)
-        (puthash 'self table table)
-        (puthash 'root root table)
-        (puthash 'deep deep table)
-        (let* ((copy (nskk-prolog-copy-term root))
-               (copied-deep (aref copy 0))
-               (copied-table (aref copy 1))
-               (copied-text (aref copy 2))
-               (cursor copied-deep)
-               (count 0))
-          (should-not (eq copy root))
-          (should-not (eq copied-deep deep))
-          (should-not (eq copied-table table))
-          (should-not (eq copied-text text))
-          (should (eq (gethash 'self copied-table) copied-table))
-          (should (eq (gethash 'root copied-table) copy))
-          (should (eq (gethash 'deep copied-table) copied-deep))
-          (should (eq (get-text-property
-                       0 'nskk-test-hash copied-text)
-                      copied-table))
-          (while (consp cursor)
-            (setq count (1+ count)
-                  cursor (cdr cursor)))
-          (should (= count 210001))
-          (should-not cursor)))))
+(ert-deftest nskk-prolog-assert-hash-payload-is-canonical-and-query-is-detached ()
+  (dolist (spec '((copy-hash :hash "hash-key")
+                  (copy-trie :trie "trie-key")))
+    (nskk-prolog-test-with-isolated-db
+     (nskk-prolog-clear-database)
+     (let* ((predicate (nth 0 spec))
+            (index-type (nth 1 spec))
+            (first-arg (nth 2 spec))
+            (source-shared (list 'original))
+            (source-table (make-hash-table :test 'eq :size 19))
+            (clause (list (list predicate first-arg source-table))))
+       (puthash 'shared source-shared source-table)
+       (puthash 'self source-table source-table)
+       (nskk-prolog-set-index predicate 2 index-type)
+       (nskk-prolog-assert clause)
+       (let* ((key (nskk-prolog-clause-key predicate 2))
+              (database-clause
+               (car (gethash key nskk--prolog-database)))
+              (index
+               (pcase index-type
+                 (:hash (gethash key nskk--prolog-hash-indices))
+                 (:trie (gethash key nskk--prolog-trie-indices))))
+              (bucket
+               (pcase index-type
+                 (:hash (gethash first-arg index))
+                 (:trie (nskk-trie-lookup index first-arg))))
+              (indexed-clause (car bucket))
+              (canonical-table (nth 2 (car database-clause)))
+              (canonical-shared (gethash 'shared canonical-table)))
+         (should (eq database-clause indexed-clause))
+         (should-not (eq database-clause clause))
+         (should-not (eq canonical-table source-table))
+         (should-not (eq canonical-shared source-shared))
+         (should (equal canonical-shared '(original)))
+         (should (eq (gethash 'self canonical-table)
+                     canonical-table))
+         (setcar source-shared 'caller-mutated)
+         (puthash 'caller-only t source-table)
+         (should (equal (gethash 'shared canonical-table)
+                        '(original)))
+         (should-not (gethash 'caller-only canonical-table))
+         (let ((query-table
+                (nskk-prolog-query-value
+                 (list predicate first-arg '\?payload)
+                 '\?payload)))
+           (should (hash-table-p query-table))
+           (should-not (eq query-table canonical-table))
+           (should-not (eq (gethash 'shared query-table)
+                           canonical-shared))
+           (should (equal (gethash 'shared query-table)
+                          '(original)))
+           (should (eq (gethash 'self query-table) query-table))
+           (setcar (gethash 'shared query-table) 'query-mutated)
+           (puthash 'query-only t query-table)
+           (should (equal (gethash 'shared canonical-table)
+                          '(original)))
+           (should-not (gethash 'query-only canonical-table))))))))
 
-  (ert-deftest nskk-prolog-assert-hash-payload-is-canonical-and-query-is-detached ()
-    (dolist (spec '((copy-hash :hash "hash-key")
-                    (copy-trie :trie "trie-key")))
+(ert-deftest nskk-prolog-assert-copy-puthash-fault-is-exact-and-retryable ()
+  (dolist (fault-type '(error quit))
+    (dolist (timing '(before after))
+      (nskk-prolog-test-with-isolated-db
+       (nskk-prolog-clear-database)
+       (nskk-prolog-set-index 'copy-puthash 2 :hash)
+       (nskk-prolog-assert '((copy-puthash "old" old)))
+       (let* ((key (nskk-prolog-clause-key 'copy-puthash 2))
+              (index (gethash key nskk--prolog-hash-indices))
+              (old-index-bucket (gethash "old" index))
+              (index-count (hash-table-count index))
+              (source-shared (list 'caller-owned))
+              (source-table
+               (make-hash-table
+                :test 'eq
+                :size 29
+                :rehash-size 2.0
+                :rehash-threshold 0.7
+                :weakness 'key))
+              (clause
+               (list (list 'copy-puthash "new" source-table)))
+              (tables
+               (list nskk--prolog-database
+                     nskk--prolog-database-tails
+                     nskk--prolog-index-config
+                     nskk--prolog-hash-indices
+                     nskk--prolog-trie-indices
+                     nskk--prolog-index-bucket-tail-cache))
+              (expected-state
+               (nskk-test--prolog-key-state key tables))
+              (condition-payload
+               (list 'copy-puthash-payload timing fault-type))
+              (condition-data
+               (list "copy puthash fault" condition-payload))
+              (original-copy
+               (symbol-function 'nskk-prolog-copy-term))
+              (original-puthash (symbol-function 'puthash))
+              (copy-active nil)
+              (faulted nil)
+              (calls 0)
+              received)
+         (puthash 'shared source-shared source-table)
+         (puthash 'self source-table source-table)
+         (setq received
+               (condition-case condition
+                   (cl-letf
+                       (((symbol-function 'nskk-prolog-copy-term)
+                         (lambda (object)
+                           (setq copy-active t)
+                           (unwind-protect
+                               (funcall original-copy object)
+                             (setq copy-active nil))))
+                        ((symbol-function 'puthash)
+                         (lambda (map-key value table)
+                           (if (and copy-active (not faulted))
+                               (progn
+                                 (setq calls (1+ calls))
+                                 (if (eq timing 'before)
+                                     (progn
+                                       (setq faulted t)
+                                       (signal fault-type
+                                               condition-data))
+                                   (let ((result
+                                          (funcall
+                                           original-puthash
+                                           map-key value table)))
+                                     (setq faulted t)
+                                     (signal fault-type
+                                             condition-data)
+                                     result)))
+                             (funcall original-puthash
+                                      map-key value table)))))
+                     (nskk-prolog-assert clause)
+                     nil)
+                 ((error quit) condition)))
+         (should faulted)
+         (should (= calls 1))
+         (should (eq (car received) fault-type))
+         (should (eq (cdr received) condition-data))
+         (should (eq (caddr received) condition-payload))
+         (should-not copy-active)
+         (nskk-test--prolog-should-match-key-state
+          key tables expected-state)
+         (should (eq old-index-bucket (gethash "old" index)))
+         (should (= index-count (hash-table-count index)))
+         (should-not (gethash "new" index))
+         (should-not nskk--prolog-active-mutation-keys)
+         (should (= (hash-table-count source-table) 2))
+         (should (eq (gethash 'shared source-table)
+                     source-shared))
+         (should (eq (gethash 'self source-table) source-table))
+         (nskk-prolog-assert clause)
+         (let* ((database-clauses
+                 (gethash key nskk--prolog-database))
+                (canonical-clause (cadr database-clauses))
+                (canonical-table
+                 (nth 2 (car canonical-clause))))
+           (should (= (length database-clauses) 2))
+           (should (eq canonical-clause
+                       (car (gethash "new" index))))
+           (should-not (eq canonical-table source-table))
+           (should (eq (hash-table-test canonical-table)
+                       (hash-table-test source-table)))
+           (should (= (hash-table-size canonical-table)
+                      (hash-table-size source-table)))
+           (should (equal
+                    (hash-table-rehash-size canonical-table)
+                    (hash-table-rehash-size source-table)))
+           (should (equal
+                    (hash-table-rehash-threshold canonical-table)
+                    (hash-table-rehash-threshold source-table)))
+           (should (eq (hash-table-weakness canonical-table)
+                       (hash-table-weakness source-table)))
+           (should (equal (gethash 'shared canonical-table)
+                          '(caller-owned)))
+           (should (eq (gethash 'self canonical-table)
+                       canonical-table))
+           (should (= (hash-table-count source-table) 2))))))))
+
+;;;;
+;;;; CPS query API: the not-found continuation
+;;;;
+;;;; The synchronous wrappers collapse "no solution" and "ground solution"
+;;;; onto nil, so exercising them cannot show that the /k functions reach
+;;;; on-not-found at all.  These call the /k functions directly.
+
+(nskk-describe "CPS query API continuations"
+  (nskk-context "nskk-prolog-query-value/k"
+    (nskk-it "calls on-found with the binding when the goal has a solution"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-assert '((cps-color apple red)))
+        (should (equal (nskk-prolog-query-value/k
+                        '(cps-color apple \?c) '\?c
+                        (lambda (value) (list :found value))
+                        (lambda () :not-found))
+                       '(:found red)))))
+
+    (nskk-it "calls on-not-found when the goal has no solution"
+      (nskk-prolog-test-with-isolated-db
+        (should (eq (nskk-prolog-query-value/k
+                     '(cps-absent \?c) '\?c
+                     (lambda (value) (list :found value))
+                     (lambda () :not-found))
+                    :not-found))))
+
+    (nskk-it "calls on-not-found for a ground solution that binds nothing"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-assert '((cps-ground)))
+        (should (eq (nskk-prolog-query-value/k
+                     '(cps-ground) '\?c
+                     (lambda (value) (list :found value))
+                     (lambda () :not-found))
+                    :not-found)))))
+
+  (nskk-context "nskk-prolog-query-one/k"
+    (nskk-it "distinguishes ground success from absence"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-assert '((cps-ground)))
+        (should (equal (nskk-prolog-query-one/k
+                        '(cps-ground)
+                        (lambda (value) (list :found value))
+                        (lambda () :not-found))
+                       '(:found t)))
+        (should (eq (nskk-prolog-query-one/k
+                     '(cps-absent)
+                     (lambda (value) (list :found value))
+                     (lambda () :not-found))
+                    :not-found)))))
+
+  (nskk-context "nskk-prolog-query-values/k"
+    (nskk-it "calls on-not-found for a ground solution that binds nothing"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-assert '((cps-ground)))
+        (should (eq (nskk-prolog-query-values/k
+                     '(cps-ground) '(\?a)
+                     (lambda (value) (list :found value))
+                     (lambda () :not-found))
+                    :not-found)))))
+
+  (nskk-context "synchronous wrappers"
+    (nskk-it "keep returning nil for every failing case"
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-assert '((cps-ground)))
+        (should (null (nskk-prolog-query-value '(cps-absent \?c) '\?c)))
+        (should (null (nskk-prolog-query-value '(cps-ground) '\?c)))
+        (should (null (nskk-prolog-query-one '(cps-absent))))
+        (should (null (nskk-prolog-query-values '(cps-absent \?a) '(\?a))))
+        (should (null (nskk-prolog-prove-one '((cps-absent)) nil)))
+        (should (eq (nskk-prolog-query-one '(cps-ground)) t))))))
+
+;;;;
+;;;; Presentation action registry
+;;;;
+
+(nskk-describe "presentation action registry"
+  (nskk-it "returns callbacks in registration order"
+    (let ((nskk--presentation-action-cache nil))
+      (nskk-prolog-register-presentation-action 'cleanup 'first-cb)
+      (nskk-prolog-register-presentation-action 'cleanup 'second-cb)
+      (nskk-prolog-register-presentation-action 'finalize 'other-cb)
+      (should (equal (nskk-prolog-presentation-actions 'cleanup)
+                     '(first-cb second-cb)))
+      (should (equal (nskk-prolog-presentation-actions 'finalize)
+                     '(other-cb)))))
+
+  (nskk-it "collapses a repeated action and callback pair"
+    (let ((nskk--presentation-action-cache nil))
+      (nskk-prolog-register-presentation-action 'cleanup 'only-cb)
+      (nskk-prolog-register-presentation-action 'cleanup 'only-cb)
+      (should (equal (nskk-prolog-presentation-actions 'cleanup) '(only-cb)))))
+
+  (nskk-it "returns a fresh list the caller may mutate"
+    (let ((nskk--presentation-action-cache nil))
+      (nskk-prolog-register-presentation-action 'cleanup 'only-cb)
+      (setcar (nskk-prolog-presentation-actions 'cleanup) 'clobbered)
+      (should (equal (nskk-prolog-presentation-actions 'cleanup) '(only-cb)))))
+
+  (nskk-it "returns nil for an action nothing registered"
+    (let ((nskk--presentation-action-cache nil))
+      (should (null (nskk-prolog-presentation-actions 'never-registered)))))
+
+  (nskk-it "survives a database reset, which does not clear registrations"
+    (let ((nskk--presentation-action-cache nil))
+      (nskk-prolog-register-presentation-action 'cleanup 'survivor-cb)
       (nskk-prolog-test-with-isolated-db
         (nskk-prolog-clear-database)
-        (let* ((predicate (nth 0 spec))
-               (index-type (nth 1 spec))
-               (first-arg (nth 2 spec))
-               (source-shared (list 'original))
-               (source-table (make-hash-table :test 'eq :size 19))
-               (clause (list (list predicate first-arg source-table))))
-          (puthash 'shared source-shared source-table)
-          (puthash 'self source-table source-table)
-          (nskk-prolog-set-index predicate 2 index-type)
-          (nskk-prolog-assert clause)
-          (let* ((key (nskk-prolog-clause-key predicate 2))
-                 (database-clause
-                  (car (gethash key nskk--prolog-database)))
-                 (index
-                  (pcase index-type
-                    (:hash (gethash key nskk--prolog-hash-indices))
-                    (:trie (gethash key nskk--prolog-trie-indices))))
-                 (bucket
-                  (pcase index-type
-                    (:hash (gethash first-arg index))
-                    (:trie (nskk-trie-lookup index first-arg))))
-                 (indexed-clause (car bucket))
-                 (canonical-table (nth 2 (car database-clause)))
-                 (canonical-shared (gethash 'shared canonical-table)))
-            (should (eq database-clause indexed-clause))
-            (should-not (eq database-clause clause))
-            (should-not (eq canonical-table source-table))
-            (should-not (eq canonical-shared source-shared))
-            (should (equal canonical-shared '(original)))
-            (should (eq (gethash 'self canonical-table)
-                        canonical-table))
-            (setcar source-shared 'caller-mutated)
-            (puthash 'caller-only t source-table)
-            (should (equal (gethash 'shared canonical-table)
-                           '(original)))
-            (should-not (gethash 'caller-only canonical-table))
-            (let ((query-table
-                   (nskk-prolog-query-value
-                    (list predicate first-arg '\?payload)
-                    '\?payload)))
-              (should (hash-table-p query-table))
-              (should-not (eq query-table canonical-table))
-              (should-not (eq (gethash 'shared query-table)
-                              canonical-shared))
-              (should (equal (gethash 'shared query-table)
-                             '(original)))
-              (should (eq (gethash 'self query-table) query-table))
-              (setcar (gethash 'shared query-table) 'query-mutated)
-              (puthash 'query-only t query-table)
-              (should (equal (gethash 'shared canonical-table)
-                             '(original)))
-              (should-not (gethash 'query-only canonical-table))))))))
+        (should (equal (nskk-prolog-presentation-actions 'cleanup)
+                       '(survivor-cb)))))))
 
-  (ert-deftest nskk-prolog-assert-copy-puthash-fault-is-exact-and-retryable ()
-    (dolist (fault-type '(error quit))
-      (dolist (timing '(before after))
-        (nskk-prolog-test-with-isolated-db
-          (nskk-prolog-clear-database)
-          (nskk-prolog-set-index 'copy-puthash 2 :hash)
-          (nskk-prolog-assert '((copy-puthash "old" old)))
-          (let* ((key (nskk-prolog-clause-key 'copy-puthash 2))
-                 (index (gethash key nskk--prolog-hash-indices))
-                 (old-index-bucket (gethash "old" index))
-                 (index-count (hash-table-count index))
-                 (source-shared (list 'caller-owned))
-                 (source-table
-                  (make-hash-table
-                   :test 'eq
-                   :size 29
-                   :rehash-size 2.0
-                   :rehash-threshold 0.7
-                   :weakness 'key))
-                 (clause
-                  (list (list 'copy-puthash "new" source-table)))
-                 (tables
-                  (list nskk--prolog-database
-                        nskk--prolog-database-tails
-                        nskk--prolog-index-config
-                        nskk--prolog-hash-indices
-                        nskk--prolog-trie-indices
-                        nskk--prolog-index-bucket-tail-cache))
-                 (expected-state
-                  (nskk-test--prolog-key-state key tables))
-                 (condition-payload
-                  (list 'copy-puthash-payload timing fault-type))
-                 (condition-data
-                  (list "copy puthash fault" condition-payload))
-                 (original-copy
-                  (symbol-function 'nskk-prolog-copy-term))
-                 (original-puthash (symbol-function 'puthash))
-                 (copy-active nil)
-                 (faulted nil)
-                 (calls 0)
-                 received)
-            (puthash 'shared source-shared source-table)
-            (puthash 'self source-table source-table)
-            (setq received
-                  (condition-case condition
-                      (cl-letf
-                          (((symbol-function 'nskk-prolog-copy-term)
-                            (lambda (object)
-                              (setq copy-active t)
-                              (unwind-protect
-                                  (funcall original-copy object)
-                                (setq copy-active nil))))
-                           ((symbol-function 'puthash)
-                            (lambda (map-key value table)
-                              (if (and copy-active (not faulted))
-                                  (progn
-                                    (setq calls (1+ calls))
-                                    (if (eq timing 'before)
-                                        (progn
-                                          (setq faulted t)
-                                          (signal fault-type
-                                                  condition-data))
-                                      (let ((result
-                                             (funcall
-                                              original-puthash
-                                              map-key value table)))
-                                        (setq faulted t)
-                                        (signal fault-type
-                                                condition-data)
-                                        result)))
-                                (funcall original-puthash
-                                         map-key value table)))))
-                        (nskk-prolog-assert clause)
-                        nil)
-                    ((error quit) condition)))
-            (should faulted)
-            (should (= calls 1))
-            (should (eq (car received) fault-type))
-            (should (eq (cdr received) condition-data))
-            (should (eq (caddr received) condition-payload))
-            (should-not copy-active)
-            (nskk-test--prolog-should-match-key-state
-             key tables expected-state)
-            (should (eq old-index-bucket (gethash "old" index)))
-            (should (= index-count (hash-table-count index)))
-            (should-not (gethash "new" index))
-            (should-not nskk--prolog-active-mutation-keys)
-            (should (= (hash-table-count source-table) 2))
-            (should (eq (gethash 'shared source-table)
-                        source-shared))
-            (should (eq (gethash 'self source-table) source-table))
-            (nskk-prolog-assert clause)
-            (let* ((database-clauses
-                    (gethash key nskk--prolog-database))
-                   (canonical-clause (cadr database-clauses))
-                   (canonical-table
-                    (nth 2 (car canonical-clause))))
-              (should (= (length database-clauses) 2))
-              (should (eq canonical-clause
-                          (car (gethash "new" index))))
-              (should-not (eq canonical-table source-table))
-              (should (eq (hash-table-test canonical-table)
-                          (hash-table-test source-table)))
-              (should (= (hash-table-size canonical-table)
-                         (hash-table-size source-table)))
-              (should (equal
-                       (hash-table-rehash-size canonical-table)
-                       (hash-table-rehash-size source-table)))
-              (should (equal
-                       (hash-table-rehash-threshold canonical-table)
-                       (hash-table-rehash-threshold source-table)))
-              (should (eq (hash-table-weakness canonical-table)
-                          (hash-table-weakness source-table)))
-              (should (equal (gethash 'shared canonical-table)
-                             '(caller-owned)))
-              (should (eq (gethash 'self canonical-table)
-                          canonical-table))
-              (should (= (hash-table-count source-table) 2))))))))
-
-  (ert-deftest nskk-prolog-copy-term-preserves-self-referential-vector ()
-    "A vector whose own slot aliases itself keeps that self-reference.
+(ert-deftest nskk-prolog-copy-term-preserves-self-referential-vector ()
+  "A vector whose own slot aliases itself keeps that self-reference.
 Complements `nskk-prolog-copy-term-preserves-supported-graph-topology',
 which exercises a self-referential cons but not a self-referential vector."
-    (let* ((shared (list 'shared))
-           (backlink (copy-sequence "payload"))
-           (payload (vector shared shared backlink nil)))
-      (aset payload 3 payload)
-      (add-text-properties 0 (length backlink) (list 'backlink payload) backlink)
-      (let* ((copy (nskk-prolog-copy-term payload))
-             (copied-shared (aref copy 0))
-             (copied-backlink (aref copy 2)))
-        (should-not (eq copy payload))
-        (should-not (eq copied-shared shared))
-        (should-not (eq copied-backlink backlink))
-        (should (eq (aref copy 0) (aref copy 1)))
-        (should (eq (aref copy 3) copy))
-        (should (eq (get-text-property 0 'backlink copied-backlink) copy)))))
+  (let* ((shared (list 'shared))
+         (backlink (copy-sequence "payload"))
+         (payload (vector shared shared backlink nil)))
+    (aset payload 3 payload)
+    (add-text-properties 0 (length backlink) (list 'backlink payload) backlink)
+    (let* ((copy (nskk-prolog-copy-term payload))
+           (copied-shared (aref copy 0))
+           (copied-backlink (aref copy 2)))
+      (should-not (eq copy payload))
+      (should-not (eq copied-shared shared))
+      (should-not (eq copied-backlink backlink))
+      (should (eq (aref copy 0) (aref copy 1)))
+      (should (eq (aref copy 3) copy))
+      (should (eq (get-text-property 0 'backlink copied-backlink) copy)))))
 
-  (ert-deftest nskk-prolog-copy-term-produces-mutually-independent-copies-across-calls ()
-    "Two separate calls copying the same source never share structure with
+(ert-deftest nskk-prolog-copy-term-produces-mutually-independent-copies-across-calls ()
+  "Two separate calls copying the same source never share structure with
 each other, only with the source they were each copied from."
-    (let* ((key (list 'key))
-           (shared (list 'shared))
-           (nested (make-hash-table :test 'eq))
-           (source
-            (make-hash-table
-             :test 'equal :size 31 :rehash-size 1.7 :rehash-threshold 0.75)))
-      (puthash shared key nested)
-      (puthash key (vector shared nested) source)
-      (cl-flet ((find-copied-key (table)
-                  (let (found)
-                    (maphash
-                     (lambda (candidate _value)
-                       (when (equal candidate key) (setq found candidate)))
-                     table)
-                    found)))
-        (let* ((first (nskk-prolog-copy-term source))
-               (second (nskk-prolog-copy-term source))
-               (first-key (find-copied-key first))
-               (second-key (find-copied-key second)))
-          (should-not (eq first second))
-          (should-not (eq first-key second-key))
-          (should-not (eq (gethash first-key first) (gethash second-key second)))
-          (setcar first-key 'mutated)
-          (puthash 'marker t first)
-          (should (equal key '(key)))
-          (should-not (gethash 'marker source))
-          (should-not (gethash 'marker second))
-          (should (equal second-key '(key)))))))
+  (let* ((key (list 'key))
+         (shared (list 'shared))
+         (nested (make-hash-table :test 'eq))
+         (source
+          (make-hash-table
+           :test 'equal :size 31 :rehash-size 1.7 :rehash-threshold 0.75)))
+    (puthash shared key nested)
+    (puthash key (vector shared nested) source)
+    (cl-flet ((find-copied-key (table)
+                (let (found)
+                  (maphash
+                   (lambda (candidate _value)
+                     (when (equal candidate key) (setq found candidate)))
+                   table)
+                  found)))
+      (let* ((first (nskk-prolog-copy-term source))
+             (second (nskk-prolog-copy-term source))
+             (first-key (find-copied-key first))
+             (second-key (find-copied-key second)))
+        (should-not (eq first second))
+        (should-not (eq first-key second-key))
+        (should-not (eq (gethash first-key first) (gethash second-key second)))
+        (setcar first-key 'mutated)
+        (puthash 'marker t first)
+        (should (equal key '(key)))
+        (should-not (gethash 'marker source))
+        (should-not (gethash 'marker second))
+        (should (equal second-key '(key)))))))
 
-  (provide 'nskk-prolog-test))
+(provide 'nskk-prolog-test)
 
 
 
