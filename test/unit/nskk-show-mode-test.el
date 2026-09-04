@@ -265,13 +265,14 @@
           (when (timerp nskk--show-mode-timer)
             (cancel-timer nskk--show-mode-timer))))))
   (nskk-it
-    "overlay priority is 100"
+    "overlay priority is the mode-indicator priority"
     (with-temp-buffer
       (let ((nskk--show-mode-overlay nil)
             (nskk--show-mode-timer nil)
             (nskk-show-mode-duration 60))
         (nskk--show-mode-display-inline "[かな]")
-        (unwind-protect (should (= (overlay-get nskk--show-mode-overlay 'priority) 100))
+        (unwind-protect (should (eq (overlay-get nskk--show-mode-overlay 'priority)
+                             nskk-overlay-priority-mode-indicator))
           (when (timerp nskk--show-mode-timer)
             (cancel-timer nskk--show-mode-timer))))))
   (nskk-it

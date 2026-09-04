@@ -1125,8 +1125,8 @@ per-key database, index, and cache mappings."
              (nskk-prolog-restore-key-state state)
              (signal (car condition) (cdr condition)))))))))
 
-(cl-defstruct (nskk--prolog-transaction-journal
-               (:constructor nskk--prolog-make-transaction-journal))
+(cl-defstruct (nskk--prolog-journal
+               (:constructor nskk--prolog-make-journal))
               "Journal used to roll back a Prolog database transaction."
               key
               database-head
@@ -1203,35 +1203,35 @@ per-key database, index, and cache mappings."
 
 (defun nskk--prolog-rollback-clause-transaction (journal)
   "Rollback JOURNAL and restore the original cons-cell and cache graph."
-  (when (nskk--prolog-transaction-journal-active journal)
+  (when (nskk--prolog-journal-active journal)
     (let ((inhibit-quit t))
       (let ((database-append-tail
-             (nskk--prolog-transaction-journal-database-append-tail journal))
+             (nskk--prolog-journal-database-append-tail journal))
             (database-predecessor
-             (nskk--prolog-transaction-journal-database-predecessor journal))
+             (nskk--prolog-journal-database-predecessor journal))
             (index-append-tail
-             (nskk--prolog-transaction-journal-index-append-tail journal))
+             (nskk--prolog-journal-index-append-tail journal))
             (index-predecessor
-             (nskk--prolog-transaction-journal-index-predecessor journal))
-            (key (nskk--prolog-transaction-journal-key journal))
+             (nskk--prolog-journal-index-predecessor journal))
+            (key (nskk--prolog-journal-key journal))
             (database-head
-             (nskk--prolog-transaction-journal-database-head journal))
+             (nskk--prolog-journal-database-head journal))
             (database-tail
-             (nskk--prolog-transaction-journal-database-tail journal))
-            (type (nskk--prolog-transaction-journal-index-type journal))
-            (index (nskk--prolog-transaction-journal-index journal))
+             (nskk--prolog-journal-database-tail journal))
+            (type (nskk--prolog-journal-index-type journal))
+            (index (nskk--prolog-journal-index journal))
             (first-arg
-             (nskk--prolog-transaction-journal-first-arg journal))
+             (nskk--prolog-journal-first-arg journal))
             (index-bucket
-             (nskk--prolog-transaction-journal-index-bucket journal))
+             (nskk--prolog-journal-index-bucket journal))
             (cache-buckets
-             (nskk--prolog-transaction-journal-cache-buckets journal)))
+             (nskk--prolog-journal-cache-buckets journal)))
         (when database-append-tail
           (setcdr database-append-tail nil))
         (when database-predecessor
           (setcdr
            database-predecessor
-           (nskk--prolog-transaction-journal-database-predecessor-cdr
+           (nskk--prolog-journal-database-predecessor-cdr
             journal)))
         (if database-head
             (puthash key database-head nskk--prolog-database)
@@ -1244,32 +1244,32 @@ per-key database, index, and cache mappings."
         (when index-predecessor
           (setcdr
            index-predecessor
-           (nskk--prolog-transaction-journal-index-predecessor-cdr
+           (nskk--prolog-journal-index-predecessor-cdr
             journal)))
         (when type
           (nskk-prolog-transaction-set-index-bucket
            type index first-arg index-bucket))
         (when cache-buckets
-          (if (nskk--prolog-transaction-journal-cache-bucket-present-p
+          (if (nskk--prolog-journal-cache-bucket-present-p
                journal)
               (puthash
                first-arg
-               (nskk--prolog-transaction-journal-cache-bucket journal)
+               (nskk--prolog-journal-cache-bucket journal)
                cache-buckets)
             (remhash first-arg cache-buckets)))
-        (if (nskk--prolog-transaction-journal-cache-entry-present-p
+        (if (nskk--prolog-journal-cache-entry-present-p
              journal)
             (puthash
              key
-             (nskk--prolog-transaction-journal-cache-entry journal)
+             (nskk--prolog-journal-cache-entry journal)
              nskk--prolog-index-bucket-tail-cache)
           (remhash key nskk--prolog-index-bucket-tail-cache)))
-      (setf (nskk--prolog-transaction-journal-active journal) nil)))
+      (setf (nskk--prolog-journal-active journal) nil)))
   nil)
 
 (defun nskk--prolog-commit-clause-transaction (journal)
   "Commit JOURNAL so it can no longer be rolled back."
-  (setf (nskk--prolog-transaction-journal-active journal) nil)
+  (setf (nskk--prolog-journal-active journal) nil)
   nil)
 
 (defun nskk-prolog-replace-clause-transaction
@@ -1356,7 +1356,7 @@ publication or CALLBACK restores the original object graph."
                 index-successor
               index-bucket))
            (journal
-            (nskk--prolog-make-transaction-journal
+            (nskk--prolog-make-journal
              :key key
              :database-head database-head
              :database-tail database-tail
@@ -1390,7 +1390,7 @@ publication or CALLBACK restores the original object graph."
                  (new-database-cell (and new-clause (list new-clause)))
                  (new-index-cell
                   (and new-clause indexed-p (list new-clause))))
-            (setf (nskk--prolog-transaction-journal-index-append-tail journal)
+            (setf (nskk--prolog-journal-index-append-tail journal)
                   (and new-clause index-remaining-tail))
             (when database-cell
               (if database-predecessor

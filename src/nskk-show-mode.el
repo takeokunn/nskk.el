@@ -266,7 +266,7 @@ Returns non-nil.  Signals if any step fails."
   (let ((pos (point)))
     (nskk-ensure-overlay nskk--show-mode-overlay pos pos
       'after-string indicator-str
-      'priority 100))
+      'priority nskk-overlay-priority-mode-indicator))
   (setq nskk--show-mode-timer
         (run-with-timer nskk-show-mode-duration nil
                         #'nskk--show-mode-inline-timeout

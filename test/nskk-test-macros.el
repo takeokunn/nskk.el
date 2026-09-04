@@ -815,7 +815,7 @@ KEYS: keyword arguments:
 The generated test name is: nskk-contract-FN
 
 Example:
-  (nskk-property-from-contract nskk-convert-romaji
+  (nskk-property-from-contract nskk-test-convert-romaji
     :precondition  (nskk-generate \\='romaji-pattern)
     :postcondition (stringp result)
     :invariant     (>= (length result) 0)
@@ -861,13 +861,46 @@ Example:
 
 
 ;;;;
-;;;; Henkan State Assertion Macros
+;;;; Romaji Conversion Assertion Helpers
 ;;;;
 
+(defun nskk-test-convert-romaji (romaji)
+  "Convert ROMAJI to kana by repeated longest-match conversion.
+Return nil for non-string input and \"\" for the empty string.  Input that
+matches no rule, or that stops on an incomplete prefix, is appended verbatim.
+
+Test-only driver.  Production input handling lives in `nskk-input.el', which
+applies its own sokuon and hatsuon rules; this walks the rule tables only, so
+it reports exactly what the tables say and nothing more."
+  (cond
+   ((not (stringp romaji)) nil)
+   ((string-empty-p romaji) "")
+   (t
+    (let ((rest (downcase romaji))
+          (parts nil))
+      (catch 'done
+        (while t
+          (when (string-empty-p rest)
+            (throw 'done (apply #'concat (nreverse parts))))
+          (let ((step (nskk-converter-convert rest)))
+            (cond
+             ((null step)
+              (throw 'done (apply #'concat (nreverse (cons rest parts)))))
+             ((eq (car step) :incomplete)
+              (throw 'done
+                     (apply #'concat (nreverse (cons (cdr step) parts)))))
+             (t
+              (push (car step) parts)
+              (setq rest (cdr step)))))))))))
+
 (defmacro nskk-should-convert-to (romaji expected)
+  "Assert that ROMAJI converts to EXPECTED kana."
   (declare (indent 2))
-  "Assert that ROMAJI converts to EXPECTED kana via `nskk-convert-romaji'."
-  `(should (equal (nskk-convert-romaji ,romaji) ,expected)))
+  `(should (equal (nskk-test-convert-romaji ,romaji) ,expected)))
+
+;;;;
+;;;; Henkan State Assertion Macros
+;;;;
 
 (defmacro nskk-with-henkan-state (phase candidates &rest body)
   "Execute BODY with henkan state set to PHASE with CANDIDATES.
