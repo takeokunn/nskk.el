@@ -1360,7 +1360,6 @@
     (let ((nskk-azik-conversion-table '(("qz" "くす"))))
       (nskk-e2e-with-azik-buffer 'hiragana nil
         (should (equal (nskk-converter-lookup "qz") "くす"))
-        (should (equal (nskk-converter-get-rule "qz") "くす"))
         (should (equal (nskk-prolog-query-value
                         '(azik-rule "qz" \?kana) '\?kana)
                        "くす"))))))

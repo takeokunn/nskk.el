@@ -38,7 +38,7 @@
 ;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)
 (defvar nskk-mode-map)
 (defvar nskk--romaji-table
-  (make-hash-table :test (quote equal) :size 200)
+  (make-hash-table :test 'equal :size 200)
   "Romaji to kana conversion table.
 Used as a cache by AZIK and for hash-based lookups.  The Prolog trie
 is the primary source of truth for nskk-converter-lookup.")
@@ -133,23 +133,6 @@ Each entry is (ROMAJI KANA) where both are strings.
 This data constant is used by `nskk-initialize-romaji-table' to populate
 the conversion table, separating rule data from initialization logic.")
 
-(defmacro nskk-converter-define-rules (&rest rule-pairs)
-  "Define multiple romaji-to-kana rules at once.
-Each element of RULE-PAIRS must be a list (ROMAJI KANA) where ROMAJI and
-KANA are string literals.  Expands to a `progn' with one
-`nskk-converter-add-rule' call per pair.
-
-Example:
-  (nskk-converter-define-rules
-    (\"a\" \"あ\")
-    (\"i\" \"い\")
-    (\"u\" \"う\"))"
-  (declare (indent 0) (debug t))
-  `(progn
-     ,@(mapcar (lambda (pair)
-                 `(nskk-converter-add-rule ,(car pair) ,(cadr pair)))
-               rule-pairs)))
-
 (defun nskk-initialize-romaji-table ()
   "Populate romaji-to-kana Prolog facts from `nskk--standard-romaji-rules'.
 Also populates `nskk--romaji-table' hash table for AZIK and input lookups."
@@ -182,7 +165,7 @@ Callers must treat returned strings as read-only."
                            nskk--converter-missing)))
       (if (eq result nskk--converter-missing)
           (when (nskk-prolog-trie-has-prefix-p
-                 (quote romaji-to-kana) 2 romaji)
+                 'romaji-to-kana 2 romaji)
             :incomplete)
         result))))
 
@@ -195,105 +178,6 @@ lookups, with the Prolog trie used for prefix detection."
     (if (stringp result)
         (nskk-prolog-copy-term result)
       result)))
-
-(defconst nskk--romaji-char-max 127
-  "Maximum ASCII character code accepted as romaji input.
-Characters above this value (non-ASCII) are never valid romaji and bypass
-the sokuon/hatsuon detection logic in `nskk--sokuon-p'.")
-
-(defun/k nskk-convert-romaji (romaji)
-  "Convert ROMAJI string to kana by repeatedly applying longest-match conversion.
-Returns converted kana string for string input, nil for nil input."
-  (succeed (cond
-             ((not (stringp romaji)) nil)
-             ((string-empty-p romaji) "")
-             (t (nskk-convert-romaji--internal (downcase romaji))))))
-
-(defun nskk--sokuon-p (c0 remaining)
-  "Return non-nil if C0 and REMAINING qualify as a sokuon (っ) trigger.
-C0 is a character integer, typically (aref remaining 0) from the caller.
-REMAINING is the unconsumed romaji string; must have length >= 2 for the
-doubling check to succeed (length < 2 always returns nil).
-Sokuon occurs when C0 is an ASCII consonant not in the `sokuon-blocker' table,
-C0 equals the second character of REMAINING, and the two-character pair is
-neither a complete romaji rule nor a prefix of a longer rule (allowing
-AZIK entries like \"kk\" -> \"きん\" and prefixes like \"xx\" -> :incomplete
-to override sokuon via `nskk-converter-lookup')."
-  (and (> (length remaining) 1)
-       (<= c0 nskk--romaji-char-max)
-       (= c0 (aref remaining 1))
-       (not (nskk-prolog-holds-p `(sokuon-blocker ,c0)))
-       (not (nskk--converter-lookup-raw (substring remaining 0 2)))))
-
-(defun/3k nskk--convert-step-n (remaining)
-    (on-kana on-partial on-fail)
-  "Handle n-prefix conversion for REMAINING (which starts with ?n).
-ON-KANA is called as (funcall ON-KANA kana rest) when hatsuon produces ん.
-ON-PARTIAL and ON-FAIL are forwarded to `nskk-converter-convert/k' when
-the n-prefix falls through to the trie (e.g. na, ni, nya)."
-  (let ((len (length remaining)))
-    (cond
-     ((= len 1)
-      (funcall on-kana "ん" nil))
-     ;; nn -> ん (keep second n for potential next match)
-     ((= (aref remaining 1) ?n)
-      (funcall on-kana "ん" (if (> len 2) (substring remaining 1) nil)))
-     ((= (aref remaining 1) ?')
-      (funcall on-kana "ん" (if (> len 2) (substring remaining 2) nil)))
-     ((not (nskk-prolog-holds-p `(hatsuon-blocker ,(aref remaining 1))))
-      (funcall on-kana "ん" (substring remaining 1)))
-     ;; n + vowel/y: fall through to trie lookup (na->な, etc.)
-     (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
-
-(defun/3k nskk--convert-step (remaining)
-    (on-kana on-partial on-fail)
-  "Dispatch one conversion step for REMAINING (must be a non-empty string).
-ON-KANA is called as (funcall ON-KANA kana rest) on a successful conversion.
-ON-PARTIAL is called as (funcall ON-PARTIAL remaining) when REMAINING is a
-known incomplete prefix with no full match yet.
-ON-FAIL is called as (funcall ON-FAIL) when REMAINING has no match and is not
-a known prefix.
-Handles sokuon, hatsuon (via `nskk--convert-step-n/k'), and normal trie lookup
-in a flat cond."
-  (let ((c0 (aref remaining 0)))
-    (cond
-     ((nskk--sokuon-p c0 remaining)
-      (funcall on-kana "っ" (substring remaining 1)))
-     ((= c0 ?n)
-      (nskk--convert-step-n/k remaining on-kana on-partial on-fail))
-     (t (nskk-converter-convert/k remaining on-kana on-partial on-fail)))))
-
-(defun nskk--convert-loop/k (remaining parts on-found on-not-found)
-  "Run the tail-recursive conversion loop in CPS style.
-REMAINING is the unconsumed input, PARTS is accumulated kana (reversed).
-Always calls ON-FOUND with the assembled kana string.
-Hand-written explicit pair because ON-FOUND must be passed as a value
-to the recursive call (defun/k only rewrites succeed/fail call forms).
-ON-NOT-FOUND is forwarded unchanged through recursion."
-  (if (or (null remaining) (string-empty-p remaining))
-      (funcall on-found (apply #'concat (nreverse parts)))
-    (nskk--convert-step/k remaining
-      (lambda (kana rest)
-        (nskk--convert-loop/k
-         (and (stringp rest) (not (string-empty-p rest)) rest)
-         (cons kana parts)
-         on-found on-not-found))
-      (lambda (partial)
-        (funcall on-found
-                 (apply #'concat (nreverse (cons partial parts)))))
-      (lambda ()
-        (funcall on-found
-                 (apply #'concat (nreverse (cons remaining parts))))))))
-
-(defun nskk--convert-loop (remaining parts)
-  "Tail-recursive conversion loop for REMAINING and PARTS (sync wrapper)."
-  (nskk--convert-loop/k remaining parts #'identity #'ignore))
-(put 'nskk--convert-loop/k 'nskk--cps-continuation-pattern :found-not-found)
-
-(defun/k nskk-convert-romaji--internal (input)
-  "Internal romaji conversion via tail-recursive CPS loop.
-INPUT must be a non-empty, already-downcased string."
-  (succeed (nskk--convert-loop input nil)))
 
 (defun/3k nskk-converter-convert (romaji)
     (on-match on-incomplete on-fail)
@@ -405,28 +289,19 @@ and affect only the hash table."
         (lambda ()
           (nskk--converter-delete-hash-entry owned-romaji)))))))
 
-(defun/k nskk-converter-get-rule (romaji)
-  "Return the value mapped to ROMAJI in the conversion table.
-On success, calls on-found with the kana string or `:incomplete'.
-On failure (key absent), calls on-not-found.
-The sync wrapper returns the kana string, `:incomplete', or nil.
-Delegates to `nskk-converter-lookup' for unified hash+trie lookup."
-  (let ((result (nskk-converter-lookup romaji)))
-    (if result (succeed result) (fail))))
-
 (defun/done nskk-converter-register-style (style init-fn)
   "Register INIT-FN as the initialization function for STYLE.
 INIT-FN is called with no arguments and should populate the romaji table
 via `nskk-converter-add-rule'.  Called for side effects."
   (setf (alist-get style nskk--style-registry) init-fn))
 
-(progn
-  (defvar nskk--converter-style-transaction-hash-tables nil
-    "Additional hash-table variables included in style transactions.")
-  (defvar nskk--converter-style-transaction-variables nil
-    "Additional replacement-only variables included in style transactions.
+(defvar nskk--converter-style-transaction-hash-tables nil
+  "Additional hash-table variables included in style transactions.")
+
+(defvar nskk--converter-style-transaction-variables nil
+  "Additional replacement-only variables included in style transactions.
 Registered initializers must replace these values rather than mutate the
-objects reachable from their pre-transaction values."))
+objects reachable from their pre-transaction values.")
 
 (defun nskk-converter-register-style-transaction-hash-table (symbol)
   "Register SYMBOL as an additional hash-table variable for style transactions.
@@ -447,21 +322,9 @@ pre-transaction value."
   "Return the full list of registered style-transaction hash-table variables."
   nskk--converter-style-transaction-hash-tables)
 
-(defun nskk-converter-set-style-transaction-hash-tables (value)
-  "Replace the full list of registered style-transaction hash-table variables.
-VALUE replaces the list outright; use
-`nskk-converter-register-style-transaction-hash-table' to append instead."
-  (setq nskk--converter-style-transaction-hash-tables value))
-
 (defun nskk-converter-style-transaction-variables ()
-  "Return the full list of registered replacement-only style-transaction variables."
+  "Return all registered replacement-only style-transaction variables."
   nskk--converter-style-transaction-variables)
-
-(defun nskk-converter-set-style-transaction-variables (value)
-  "Replace the registered replacement-only style-transaction list with VALUE.
-Replaces the list outright; use
-`nskk-converter-register-style-transaction-variable' to append instead."
-  (setq nskk--converter-style-transaction-variables value))
 
 (defun nskk-romaji-table ()
   "Return the current romaji-to-kana hot-path cache hash table."
@@ -470,97 +333,116 @@ Replaces the list outright; use
 (defun nskk-set-romaji-table (value)
   "Set the romaji-to-kana hot-path cache hash table to VALUE."
   (setq nskk--romaji-table value))
+
 (defun nskk--converter-empty-hash-table-copy (table)
   "Return an empty hash table with the same parameters as TABLE."
   (let ((copy (copy-hash-table table)))
     (clrhash copy)
     copy))
+
+(defun nskk--converter-build-style-transaction-plan ()
+  "Build the isolated dynamic-binding plan for staging style transaction state.
+Reads the live romaji table, Prolog store, and registered extension and
+transaction variables, validates them, and detaches a copy of everything
+that will be dynamically rebound.  Returns a plist with
+:copied-prolog-store-values, :extension-symbols, :transaction-symbols,
+:transaction-boundness, :mode-map-bound-p, :symbols, and :values, consumed by
+`nskk--converter-stage-style-state' to enter the detached `cl-progv' scope."
+  (let* ((store-values
+          (list (nskk--converter-empty-hash-table-copy nskk--romaji-table)))
+         (root-symbols '(nskk--romaji-table))
+         (prolog-store-values
+          (list (nskk-prolog-database)
+                (nskk-prolog-database-tails)
+                (nskk-prolog-index-config)
+                (nskk-prolog-hash-indices)
+                (nskk-prolog-trie-indices)
+                (nskk-prolog-index-bucket-tail-cache)))
+         (extension-registry
+          (delete-dups
+           (copy-sequence nskk--converter-style-transaction-hash-tables))))
+    (dolist (symbol extension-registry)
+      (unless (symbolp symbol)
+        (error "Invalid style transaction hash-table variable: %S" symbol)))
+    (let* ((extension-symbols
+            (cl-remove-if-not #'boundp extension-registry))
+           (extension-values
+            (mapcar
+             (lambda (symbol)
+               (let ((value (symbol-value symbol)))
+                 (unless (hash-table-p value)
+                   (error "Style transaction variable is not a hash table: %S"
+                          symbol))
+                 value))
+             extension-symbols))
+           (transaction-symbols
+            (delete-dups
+             (copy-sequence nskk--converter-style-transaction-variables))))
+      (dolist (symbol transaction-symbols)
+        (unless (and (symbolp symbol)
+                     (not (memq symbol root-symbols))
+                     (not (memq symbol extension-registry))
+                     (not (eq symbol 'nskk-mode-map)))
+          (error "Invalid replacement-only style transaction variable: %S"
+                 symbol)))
+      (let* ((transaction-boundness (mapcar #'boundp transaction-symbols))
+             (unbound-variable-sentinel
+              (make-symbol "style-transaction-variable-unbound"))
+             (transaction-values
+              (cl-mapcar
+               (lambda (symbol bound-p)
+                 (if bound-p
+                     (symbol-value symbol)
+                   unbound-variable-sentinel))
+               transaction-symbols
+               transaction-boundness))
+             (mode-map-bound-p (boundp 'nskk-mode-map))
+             (mode-map-value
+              (when mode-map-bound-p
+                (let ((value (symbol-value 'nskk-mode-map)))
+                  (unless (or (null value) (keymapp value))
+                    (error "Nskk-mode-map is not a keymap: %S" value))
+                  value)))
+             (copied-state
+              (nskk-prolog-copy-term
+               (list store-values prolog-store-values extension-values
+                     (when mode-map-bound-p mode-map-value))))
+             (copied-store-values (nth 0 copied-state))
+             (copied-prolog-store-values (nth 1 copied-state))
+             (copied-extension-values (nth 2 copied-state))
+             (copied-mode-map
+              (when mode-map-bound-p
+                (nth 3 copied-state)))
+             (unbound-mode-map-sentinel (make-symbol "nskk-mode-map-unbound")))
+        (list
+         :copied-prolog-store-values copied-prolog-store-values
+         :extension-symbols extension-symbols
+         :transaction-symbols transaction-symbols
+         :transaction-boundness transaction-boundness
+         :mode-map-bound-p mode-map-bound-p
+         :symbols (append root-symbols
+                           extension-symbols
+                           transaction-symbols
+                           (list 'nskk-mode-map))
+         :values (append copied-store-values
+                          copied-extension-values
+                          transaction-values
+                          (list
+                           (if mode-map-bound-p
+                               copied-mode-map
+                             unbound-mode-map-sentinel))))))))
+
 (defun nskk--converter-stage-style-state (init-fn)
   "Run INIT-FN against isolated converter state and return that state."
-  (let*
-      ((store-values
-        (list
-         (nskk--converter-empty-hash-table-copy nskk--romaji-table)))
-       (root-symbols
-        '(nskk--romaji-table))
-       (prolog-store-values
-        (list (nskk-prolog-database)
-              (nskk-prolog-database-tails)
-              (nskk-prolog-index-config)
-              (nskk-prolog-hash-indices)
-              (nskk-prolog-trie-indices)
-              (nskk-prolog-index-bucket-tail-cache)))
-       (extension-registry
-        (delete-dups
-         (copy-sequence nskk--converter-style-transaction-hash-tables)))
-       (_validated-extensions
-        (dolist (symbol extension-registry)
-          (unless (symbolp symbol)
-            (error "Invalid style transaction hash-table variable: %S" symbol))))
-       (extension-symbols
-        (cl-remove-if-not #'boundp extension-registry))
-       (extension-values
-        (mapcar
-         (lambda (symbol)
-           (let ((value (symbol-value symbol)))
-             (unless (hash-table-p value)
-               (error "Style transaction variable is not a hash table: %S"
-                      symbol))
-             value))
-         extension-symbols))
-       (transaction-symbols
-        (delete-dups
-         (copy-sequence nskk--converter-style-transaction-variables)))
-       (_validated-transaction-symbols
-        (dolist (symbol transaction-symbols)
-          (unless (and (symbolp symbol)
-                       (not (memq symbol root-symbols))
-                       (not (memq symbol extension-registry))
-                       (not (eq symbol 'nskk-mode-map)))
-            (error "Invalid replacement-only style transaction variable: %S"
-                   symbol))))
-       (transaction-boundness (mapcar #'boundp transaction-symbols))
-       (unbound-variable-sentinel
-        (make-symbol "style-transaction-variable-unbound"))
-       (transaction-values
-        (cl-mapcar
-         (lambda (symbol bound-p)
-           (if bound-p
-               (symbol-value symbol)
-             unbound-variable-sentinel))
-         transaction-symbols
-         transaction-boundness))
-       (mode-map-bound-p (boundp 'nskk-mode-map))
-       (mode-map-value
-        (when mode-map-bound-p
-          (let ((value (symbol-value 'nskk-mode-map)))
-            (unless (or (null value) (keymapp value))
-              (error "Nskk-mode-map is not a keymap: %S" value))
-            value)))
-       (copied-state
-        (nskk-prolog-copy-term
-         (list store-values prolog-store-values extension-values
-               (when mode-map-bound-p mode-map-value))))
-       (copied-store-values (nth 0 copied-state))
-       (copied-prolog-store-values (nth 1 copied-state))
-       (copied-extension-values (nth 2 copied-state))
-       (copied-mode-map
-        (when mode-map-bound-p
-          (nth 3 copied-state)))
-       (unbound-mode-map-sentinel (make-symbol "nskk-mode-map-unbound"))
-       (symbols
-        (append root-symbols
-                extension-symbols
-                transaction-symbols
-                (list 'nskk-mode-map)))
-       (values
-        (append copied-store-values
-                copied-extension-values
-                transaction-values
-                (list
-                 (if mode-map-bound-p
-                     copied-mode-map
-                   unbound-mode-map-sentinel)))))
+  (let* ((plan (nskk--converter-build-style-transaction-plan))
+         (copied-prolog-store-values
+          (plist-get plan :copied-prolog-store-values))
+         (extension-symbols (plist-get plan :extension-symbols))
+         (transaction-symbols (plist-get plan :transaction-symbols))
+         (transaction-boundness (plist-get plan :transaction-boundness))
+         (mode-map-bound-p (plist-get plan :mode-map-bound-p))
+         (symbols (plist-get plan :symbols))
+         (values (plist-get plan :values)))
     (nskk-prolog-with-database-fields
         ((database (nth 0 copied-prolog-store-values))
          (database-tails (nth 1 copied-prolog-store-values))
@@ -613,26 +495,46 @@ Replaces the list outright; use
            :mode-map
            (when staged-mode-map-bound-p
              (symbol-value 'nskk-mode-map))))))))
+
 (defun nskk--converter-replace-keymap-contents (target source)
   "Replace TARGET contents with SOURCE while retaining TARGET identity."
   (unless (and (consp target) (keymapp target) (consp source) (keymapp source))
     (error "Cannot publish invalid keymap state"))
   (setcdr target (cdr source)))
-(defun nskk--converter-publish-style-state (state)
-  "Atomically publish a detached copy of staged converter STATE."
-  (let* ((root-symbols
-          (list
-           (quote nskk--romaji-table)))
-         (staged-tables
-          (list
-           (plist-get state :romaji-table)))
+
+(defun nskk--converter-restore-with-retry (operation)
+  "Call OPERATION up to twice, ignoring `error' or `quit', until it succeeds.
+Return non-nil once OPERATION completes without signaling."
+  (let ((attempt 0)
+        (restored-p nil))
+    (while (and (< attempt 2) (not restored-p))
+      (setq attempt (1+ attempt))
+      (condition-case nil
+          (progn
+            (funcall operation)
+            (setq restored-p t))
+        ((error quit) nil)))
+    restored-p))
+
+(defun nskk--converter-publish-variable (entry)
+  "Publish ENTRY, a (SYMBOL BOUND-P VALUE) list, to the live SYMBOL."
+  (if (nth 1 entry)
+      (set (car entry) (nth 2 entry))
+    (makunbound (car entry))))
+
+(defun nskk--converter-validate-and-prepare-publish-state (state)
+  "Validate STATE and return a detached, re-validated copy ready to publish.
+Returns a plist with :root-symbols, :mode-map-symbol, :mode-map-bound-p,
+:tables, :prolog-state, :extensions, :variables, and :new-mode-map."
+  (let* ((root-symbols (list 'nskk--romaji-table))
+         (staged-tables (list (plist-get state :romaji-table)))
          (staged-prolog-state (plist-get state :prolog-state))
          (staged-extensions (plist-get state :extension-hash-tables))
          (staged-variables (plist-get state :transaction-variables))
          (mode-map-bound-p (plist-get state :mode-map-bound-p))
          (staged-mode-map (plist-get state :mode-map))
-         (mode-map-symbol (quote nskk-mode-map)))
-    (unless (cl-every (function hash-table-p) staged-tables)
+         (mode-map-symbol 'nskk-mode-map))
+    (unless (cl-every #'hash-table-p staged-tables)
       (error "Cannot publish invalid converter table state"))
     (unless (and (vectorp staged-prolog-state)
                  (= (length staged-prolog-state) 8))
@@ -647,7 +549,7 @@ Replaces the list outright; use
         (unless (and (proper-list-p entry)
                      (= (length entry) 3)
                      (symbolp (car entry))
-                     (memq (nth 1 entry) (quote (nil t)))
+                     (memq (nth 1 entry) '(nil t))
                      (not (memq (car entry) seen-symbols))
                      (not (memq (car entry) root-symbols))
                      (not (assq (car entry) staged-extensions))
@@ -666,11 +568,11 @@ Replaces the list outright; use
            (tables (nth 0 prepared-state))
            (prolog-state (nth 1 prepared-state))
            (extensions (nth 2 prepared-state))
-           (variables (mapcar (function copy-sequence) staged-variables))
+           (variables (mapcar #'copy-sequence staged-variables))
            (new-mode-map
             (when mode-map-bound-p
               (nth 3 prepared-state))))
-      (unless (cl-every (function hash-table-p) tables)
+      (unless (cl-every #'hash-table-p tables)
         (error "Cannot publish invalid copied converter table state"))
       (unless (and (vectorp prolog-state) (= (length prolog-state) 8))
         (error "Cannot publish invalid copied Prolog state"))
@@ -683,114 +585,152 @@ Replaces the list outright; use
                  (not (or (null new-mode-map)
                           (keymapp new-mode-map))))
         (error "Cannot publish invalid copied mode map state"))
-      (let* ((old-tables (mapcar (function symbol-value) root-symbols))
-             (old-prolog-state (nskk-prolog-state-snapshot))
-             (old-extensions
-              (mapcar
-               (lambda (entry)
-                 (cons (car entry) (symbol-value (car entry))))
-               extensions))
-             (old-variables
-              (mapcar
-               (lambda (entry)
-                 (let ((symbol (car entry)))
-                   (list symbol
-                         (boundp symbol)
-                         (and (boundp symbol) (symbol-value symbol)))))
-               variables))
-             (old-mode-map-bound-p (boundp mode-map-symbol))
-             (old-mode-map
-              (when old-mode-map-bound-p
-                (symbol-value mode-map-symbol))))
-        (when (and old-mode-map-bound-p
-                   (not (or (null old-mode-map)
-                            (keymapp old-mode-map))))
-          (error "Cannot replace invalid public mode map state"))
-        (let ((old-mode-map-car
-               (when (consp old-mode-map)
-                 (car old-mode-map)))
-              (old-mode-map-cdr
-               (when (consp old-mode-map)
-                 (cdr old-mode-map)))
-              (mode-map-contents-replaced-p nil))
-          (cl-labels
-              ((restore-with-retry
-                (operation)
-                (let ((attempt 0)
-                      (restored-p nil))
-                  (while (and (< attempt 2) (not restored-p))
-                    (setq attempt (1+ attempt))
-                    (condition-case nil
-                        (progn
-                          (funcall operation)
-                          (setq restored-p t))
-                      ((error quit) nil)))
-                  restored-p))
-               (publish-variable
-                (entry)
-                (if (nth 1 entry)
-                    (set (car entry) (nth 2 entry))
-                  (makunbound (car entry)))))
-            (condition-case condition
-                (let ((inhibit-quit t))
-                  (cl-mapc
-                   (lambda (symbol value)
-                     (set symbol value))
-                   root-symbols
-                   tables)
-                  (nskk-prolog-state-restore prolog-state)
-                  (dolist (entry extensions)
-                    (set (car entry) (cdr entry)))
-                  (dolist (entry variables)
-                    (publish-variable entry))
-                  (cond
-                   ((not mode-map-bound-p)
-                    (makunbound mode-map-symbol))
-                   ((and (consp old-mode-map)
-                         (consp new-mode-map))
-                    (setq mode-map-contents-replaced-p t)
-                    (nskk--converter-replace-keymap-contents
-                     old-mode-map
-                     new-mode-map))
-                   (t
-                    (set mode-map-symbol new-mode-map))))
-              ((error quit)
-               (let ((inhibit-quit t))
-                 (cl-mapc
-                  (lambda (symbol value)
-                    (restore-with-retry
-                     (lambda ()
-                       (set symbol value))))
-                  root-symbols
-                  old-tables)
-                 (restore-with-retry
-                  (lambda ()
-                    (nskk-prolog-state-restore old-prolog-state)))
-                 (dolist (entry old-extensions)
-                   (restore-with-retry
-                    (lambda ()
-                      (set (car entry) (cdr entry)))))
-                 (dolist (entry old-variables)
-                   (restore-with-retry
-                    (lambda ()
-                      (publish-variable entry))))
-                 (when mode-map-contents-replaced-p
-                   (restore-with-retry
-                    (lambda ()
-                      (setcar old-mode-map old-mode-map-car)))
-                   (restore-with-retry
-                    (lambda ()
-                      (setcdr old-mode-map old-mode-map-cdr))))
-                 (restore-with-retry
-                  (if old-mode-map-bound-p
-                      (lambda ()
-                        (set mode-map-symbol old-mode-map))
-                    (lambda ()
-                      (makunbound mode-map-symbol)))))
-               (signal (car condition) (cdr condition))))))))))
-(defun/k
-  nskk-converter-load-style
-  (style)
+      (list :root-symbols root-symbols
+            :mode-map-symbol mode-map-symbol
+            :mode-map-bound-p mode-map-bound-p
+            :tables tables
+            :prolog-state prolog-state
+            :extensions extensions
+            :variables variables
+            :new-mode-map new-mode-map))))
+
+(defun nskk--converter-capture-publish-rollback-baseline
+    (root-symbols extensions variables mode-map-symbol)
+  "Capture the pre-publish baseline needed to roll back a failed publish.
+ROOT-SYMBOLS and EXTENSIONS name the live variables about to be overwritten;
+VARIABLES supplies the symbols whose current binding must be snapshotted;
+MODE-MAP-SYMBOL is the live keymap variable.  Captured eagerly, before any
+field's commit begins, so a fault partway through publication always has a
+complete baseline to restore.
+Returns a plist with :old-tables, :old-prolog-state, :old-extensions,
+:old-variables, :old-mode-map-bound-p, :old-mode-map, :old-mode-map-car, and
+:old-mode-map-cdr."
+  (let* ((old-tables (mapcar #'symbol-value root-symbols))
+         (old-prolog-state (nskk-prolog-state-snapshot))
+         (old-extensions
+          (mapcar
+           (lambda (entry)
+             (cons (car entry) (symbol-value (car entry))))
+           extensions))
+         (old-variables
+          (mapcar
+           (lambda (entry)
+             (let ((symbol (car entry)))
+               (list symbol
+                     (boundp symbol)
+                     (and (boundp symbol) (symbol-value symbol)))))
+           variables))
+         (old-mode-map-bound-p (boundp mode-map-symbol))
+         (old-mode-map
+          (when old-mode-map-bound-p
+            (symbol-value mode-map-symbol))))
+    (when (and old-mode-map-bound-p
+               (not (or (null old-mode-map)
+                        (keymapp old-mode-map))))
+      (error "Cannot replace invalid public mode map state"))
+    (list :old-tables old-tables
+          :old-prolog-state old-prolog-state
+          :old-extensions old-extensions
+          :old-variables old-variables
+          :old-mode-map-bound-p old-mode-map-bound-p
+          :old-mode-map old-mode-map
+          :old-mode-map-car (when (consp old-mode-map) (car old-mode-map))
+          :old-mode-map-cdr (when (consp old-mode-map) (cdr old-mode-map)))))
+
+(defun nskk--converter-publish-commit-state
+    (root-symbols tables prolog-state extensions variables)
+  "Publish TABLES, PROLOG-STATE, EXTENSIONS and VARIABLES into live state.
+ROOT-SYMBOLS names the live variables receiving TABLES.
+Caller must already hold `inhibit-quit'; this function neither binds nor
+clears it, so a signal here still reaches the caller's rollback handler.
+
+Publishing the keymap is deliberately not part of this function -- see
+`nskk--converter-publish-style-state'."
+  (cl-mapc (lambda (symbol value) (set symbol value)) root-symbols tables)
+  (nskk-prolog-state-restore prolog-state)
+  (dolist (entry extensions)
+    (set (car entry) (cdr entry)))
+  (dolist (entry variables)
+    (nskk--converter-publish-variable entry)))
+
+(defun nskk--converter-publish-rollback
+    (root-symbols old-tables old-prolog-state old-extensions old-variables
+     mode-map-contents-replaced-p old-mode-map old-mode-map-car
+     old-mode-map-cdr old-mode-map-bound-p mode-map-symbol)
+  "Restore live converter state to its pre-publish baseline after a failed
+commit.  Caller must already hold `inhibit-quit'; mirrors
+`nskk--converter-publish-commit-state' plus the caller's keymap step."
+  (cl-mapc
+   (lambda (symbol value)
+     (nskk--converter-restore-with-retry (lambda () (set symbol value))))
+   root-symbols
+   old-tables)
+  (nskk--converter-restore-with-retry
+   (lambda () (nskk-prolog-state-restore old-prolog-state)))
+  (dolist (entry old-extensions)
+    (nskk--converter-restore-with-retry
+     (lambda () (set (car entry) (cdr entry)))))
+  (dolist (entry old-variables)
+    (nskk--converter-restore-with-retry
+     (lambda () (nskk--converter-publish-variable entry))))
+  (when mode-map-contents-replaced-p
+    (nskk--converter-restore-with-retry
+     (lambda () (setcar old-mode-map old-mode-map-car)))
+    (nskk--converter-restore-with-retry
+     (lambda () (setcdr old-mode-map old-mode-map-cdr))))
+  (nskk--converter-restore-with-retry
+   (if old-mode-map-bound-p
+       (lambda () (set mode-map-symbol old-mode-map))
+     (lambda () (makunbound mode-map-symbol)))))
+
+(defun nskk--converter-publish-style-state (state)
+  "Atomically publish a detached copy of staged converter STATE."
+  (let* ((prepared (nskk--converter-validate-and-prepare-publish-state state))
+         (root-symbols (plist-get prepared :root-symbols))
+         (mode-map-symbol (plist-get prepared :mode-map-symbol))
+         (mode-map-bound-p (plist-get prepared :mode-map-bound-p))
+         (tables (plist-get prepared :tables))
+         (prolog-state (plist-get prepared :prolog-state))
+         (extensions (plist-get prepared :extensions))
+         (variables (plist-get prepared :variables))
+         (new-mode-map (plist-get prepared :new-mode-map))
+         (baseline (nskk--converter-capture-publish-rollback-baseline
+                    root-symbols extensions variables mode-map-symbol))
+         (old-tables (plist-get baseline :old-tables))
+         (old-prolog-state (plist-get baseline :old-prolog-state))
+         (old-extensions (plist-get baseline :old-extensions))
+         (old-variables (plist-get baseline :old-variables))
+         (old-mode-map-bound-p (plist-get baseline :old-mode-map-bound-p))
+         (old-mode-map (plist-get baseline :old-mode-map))
+         (old-mode-map-car (plist-get baseline :old-mode-map-car))
+         (old-mode-map-cdr (plist-get baseline :old-mode-map-cdr))
+         (mode-map-contents-replaced-p nil))
+    (condition-case condition
+        (let ((inhibit-quit t))
+          (nskk--converter-publish-commit-state
+           root-symbols tables prolog-state extensions variables)
+          (cond
+           ((not mode-map-bound-p)
+            (makunbound mode-map-symbol))
+           ((and (consp old-mode-map) (consp new-mode-map))
+            ;; Record the splice before performing it.  The splice mutates the
+            ;; live keymap in place, so if it signals partway the handler must
+            ;; still know to restore car/cdr -- a flag derived from this step's
+            ;; return value would be lost to the non-local exit.
+            (setq mode-map-contents-replaced-p t)
+            (nskk--converter-replace-keymap-contents old-mode-map new-mode-map))
+           (t
+            (set mode-map-symbol new-mode-map))))
+      ((error quit)
+       (let ((inhibit-quit t))
+         (nskk--converter-publish-rollback
+          root-symbols old-tables old-prolog-state old-extensions
+          old-variables mode-map-contents-replaced-p old-mode-map
+          old-mode-map-car old-mode-map-cdr old-mode-map-bound-p
+          mode-map-symbol))
+       (signal (car condition) (cdr condition))))))
+
+(defun/k nskk-converter-load-style (style)
   "Load romaji conversion STYLE into the converter atomically.
 
 STYLE is a symbol registered via `nskk-converter-register-style'.  The
@@ -805,27 +745,6 @@ Returns succeed(STYLE) on success, or fail() if STYLE is not registered."
         (nskk--converter-publish-style-state state)
         (succeed style))
       (fail))))
-
-(defmacro nskk-converter-define-style (name docstring &rest rules)
-  "Define a new input style NAME with RULES and register it.
-DOCSTRING describes the style.  RULES is a list of (ROMAJI KANA) pairs.
-Generates an init function `nskk--init-NAME-rules' and registers it under
-NAME via `nskk-converter-register-style'.
-
-Example:
-  (nskk-converter-define-style my-style
-    \"My custom romaji style.\"
-    (\"v\" \"ゔ\")
-    (\"va\" \"ゔぁ\"))"
-  (declare (doc-string 2) (indent 2) (debug (symbolp stringp body)))
-  `(progn
-     (defun ,(intern (format "nskk--init-%s-rules" name)) ()
-       ,docstring
-       ,@(mapcar (lambda (rule)
-                   `(nskk-converter-add-rule ,(car rule) ,(cadr rule)))
-                 rules))
-     (nskk-converter-register-style ',name
-       ',(intern (format "nskk--init-%s-rules" name)))))
 
 (defvar nskk--converter-initialized nil
   "Non-nil when the romaji-to-kana conversion table has been initialized.")
