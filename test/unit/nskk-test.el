@@ -137,7 +137,7 @@
 
   (nskk-it "switches half-width katakana to hiragana with no preedit"
     (nskk-with-test-buffer nil
-      (nskk-state-transition nskk-current-state (nskk-state-mode nskk-current-state) 'katakana-半角)
+      (nskk-state-set-mode nskk-current-state 'katakana-半角)
       (nskk-given (nskk-should-mode 'katakana-半角))
       (nskk-when  (nskk-kakutei))
       (nskk-then  (nskk-should-mode 'hiragana))

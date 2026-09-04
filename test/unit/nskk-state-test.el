@@ -27,115 +27,68 @@
 ;;;; (pure nskk-state operations; no nskk-input dependency)
 ;;;;
 
-(defun nskk-state-test--process-key (state key)
-  "Process a single KEY press on STATE, returning updated state.
-KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\").
-Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
-  (nskk--simulate-key-for-state state key))
-
-(defun nskk-state-test--execute-keys (state key-sequence)
-  "Execute KEY-SEQUENCE on STATE, returning updated state."
-  (let ((current-state state))
-    (dolist (key key-sequence current-state)
-      (setq current-state (nskk-state-test--process-key current-state key)))))
-
-(defun nskk-state-test--valid-state-p (state)
-  "Check if STATE has valid structure and values."
-  (and (nskk-state-p state)
-       (nskk-state-valid-mode-p (nskk-state-mode state))
-       (stringp (nskk-state-input-buffer state))
-       (stringp (nskk-state-converted-buffer state))
-       (listp (nskk-state-candidates state))
-       (integerp (nskk-state-current-index state))
-       (>= (nskk-state-current-index state) 0)
-       (nskk-state-valid-mode-p (nskk-state-previous-mode state))
-       (listp (nskk-state-undo-stack state))
-       (listp (nskk-state-redo-stack state))))
-
-(defun nskk-state-test--buffer-bounds-p (state)
-  "Check if STATE buffer lengths are within reasonable bounds."
-  (and (nskk-state-p state)
-       (let ((input-len (length (nskk-state-input-buffer state)))
-             (converted-len (length (nskk-state-converted-buffer state))))
-         (and (>= input-len 0)
-              (>= converted-len 0)
-              (<= input-len 1000)
-              (<= converted-len 1000)))))
-
-(defun nskk-state-test--romaji-buffer-consistent-p (state)
-  "Check if romaji buffer in STATE contains only valid characters."
-  (let ((romaji (nskk-state-input-buffer state)))
-    (and (stringp romaji)
-         (or (string-empty-p romaji)
-             (string-match-p "^[a-zA-Z]*$" romaji)))))
-
-(defun nskk-state-test--mode-valid-p (state)
-  "Check if mode in STATE is one of the valid NSKK modes."
-  (nskk-state-valid-mode-p (nskk-state-mode state)))
-
-(defun nskk-state-test--states-equal-p (state1 state2)
-  "Check if STATE1 and STATE2 have equivalent mode and buffer content."
-  (and (nskk-state-p state1)
-       (nskk-state-p state2)
-       (eq (nskk-state-mode state1) (nskk-state-mode state2))
-       (string= (nskk-state-input-buffer state1)
-                (nskk-state-input-buffer state2))
-       (string= (nskk-state-converted-buffer state1)
-                (nskk-state-converted-buffer state2))))
-
-(defun nskk-state-test--simulate-undo (state)
-  "Simulate undo operation on STATE, returning updated state."
-  (when (and (nskk-state-p state)
-             (nskk-state-undo-stack state))
-    (let* ((undo-item (car (nskk-state-undo-stack state)))
-           (remaining-stack (cdr (nskk-state-undo-stack state)))
-           (redo-stack (nskk-state-redo-stack state)))
-      (setf (nskk-state-redo-stack state)
-            (cons (list :mode (nskk-state-mode state)
-                        :input-buffer (nskk-state-input-buffer state))
-                  redo-stack))
-      (when (listp undo-item)
-        (when (plist-get undo-item :mode)
-          (setf (nskk-state-mode state) (plist-get undo-item :mode)))
-        (when (plist-get undo-item :input-buffer)
-          (setf (nskk-state-input-buffer state) (plist-get undo-item :input-buffer))))
-      (setf (nskk-state-undo-stack state) remaining-stack)))
-  state)
-
-(defun nskk-state-test--simulate-redo (state)
-  "Simulate redo operation on STATE, returning updated state."
-  (when (and (nskk-state-p state)
-             (nskk-state-redo-stack state))
-    (let* ((redo-item (car (nskk-state-redo-stack state)))
-           (remaining-stack (cdr (nskk-state-redo-stack state)))
-           (undo-stack (nskk-state-undo-stack state)))
-      (setf (nskk-state-undo-stack state)
-            (cons (list :mode (nskk-state-mode state)
-                        :input-buffer (nskk-state-input-buffer state))
-                  undo-stack))
-      (when (listp redo-item)
-        (when (plist-get redo-item :mode)
-          (setf (nskk-state-mode state) (plist-get redo-item :mode)))
-        (when (plist-get redo-item :input-buffer)
-          (setf (nskk-state-input-buffer state) (plist-get redo-item :input-buffer))))
-      (setf (nskk-state-redo-stack state) remaining-stack)))
-  state)
-
-(defun nskk-state-test--simulate-japanese-input (state key-sequence)
-  "Simulate Japanese input KEY-SEQUENCE on STATE, returning updated state."
-  (let ((current-state state))
-    (dolist (key key-sequence current-state)
-      (when (and (stringp key) (= (length key) 1))
-        (let ((char (aref key 0)))
-          (when (and (<= ?a char) (<= char ?z))
-            (let ((current-buffer (nskk-state-input-buffer current-state)))
-              (nskk-state-set current-state 'input-buffer
-                              (concat current-buffer key)))))))))
-
 (defun nskk-state-test--get-mode-with-state/k (mode on-found on-not-found)
   "Invoke `nskk-state-get-mode/k' with temporary MODE as current state."
   (let ((nskk-current-state (nskk-state-create mode)))
     (nskk-state-get-mode/k on-found on-not-found)))
+
+(defun nskk-state-test--toggle-kana-mode (state)
+  "Toggle STATE's mode between hiragana and katakana.
+Mirrors the legacy \\='q\\=' mode-switch key semantics; other modes are
+left unchanged."
+  (nskk-state-set-mode
+   state
+   (pcase (nskk-state-mode state)
+     ('hiragana 'katakana)
+     ('katakana 'hiragana)
+     (other other)))
+  state)
+
+(defun nskk-state-test--random-op ()
+  "Generate one random state-mutation op for sequence property tests.
+An op is a list whose head names the surviving `nskk-state' API it
+drives: `:mode' (via `nskk-state-set'), `:phase' (via
+`nskk-state-set-henkan-phase'), `:candidates' (via `nskk-state-set'),
+or `:metadata' (via `nskk-state-put-metadata')."
+  (pcase (nskk--pbt-random 4)
+    (0 (list :mode (nskk-generate 'valid-mode)))
+    (1 (list :phase (nskk--pbt-random-choice nskk--valid-henkan-phases)))
+    (2 (list :candidates (cl-loop repeat (nskk--pbt-random-int 0 3)
+                                  collect (nskk-generate 'hiragana-string))))
+    (_ (list :metadata (nskk--pbt-random-choice '(:a :b :c))
+             (nskk-generate 'romaji-string)))))
+
+(defun nskk-state-test--random-ops (n)
+  "Generate a list of N random ops via `nskk-state-test--random-op'."
+  (cl-loop repeat n collect (nskk-state-test--random-op)))
+
+(defun nskk-state-test--apply-op (state op)
+  "Apply OP to STATE and return STATE.
+An invalid henkan-phase transition is swallowed so that replaying the
+same OP list against two independently-created states stays
+deterministic regardless of which phase each op lands on."
+  (pcase op
+    (`(:mode ,mode) (nskk-state-set state 'mode mode))
+    (`(:phase ,phase) (ignore-errors (nskk-state-set-henkan-phase state phase)))
+    (`(:candidates ,candidates) (nskk-state-set state 'candidates candidates))
+    (`(:metadata ,key ,value) (nskk-state-put-metadata state key value)))
+  state)
+
+(defun nskk-state-test--apply-ops (state ops)
+  "Apply OPS in order to STATE and return STATE."
+  (dolist (op ops state)
+    (nskk-state-test--apply-op state op)))
+
+(defun nskk-state-test--states-equal-p (state1 state2)
+  "Return non-nil if STATE1 and STATE2 agree on mode, henkan-phase,
+candidates, current-index, and metadata."
+  (and (nskk-state-p state1)
+       (nskk-state-p state2)
+       (eq (nskk-state-mode state1) (nskk-state-mode state2))
+       (eq (nskk-state-henkan-phase state1) (nskk-state-henkan-phase state2))
+       (equal (nskk-state-candidates state1) (nskk-state-candidates state2))
+       (= (nskk-state-current-index state1) (nskk-state-current-index state2))
+       (equal (nskk-state-metadata state1) (nskk-state-metadata state2))))
 
 
 (defconst nskk-state-test-valid-modes
@@ -195,77 +148,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
         (should (eq (nskk-state-mode state) mode))))))
 
 ;;;
-;;; nskk-state-create/k CPS Tests
-;;;
-
-(nskk-describe "nskk-state-create/k"
-  (nskk-deftest-table state-create/k-valid-modes
-    :description "Calls on-found with a valid nskk-state for every valid mode"
-    :columns (mode)
-    :rows ((hiragana) (katakana) (katakana-半角) (abbrev) (ascii) (latin) (jisx0208-latin))
-    :body (let (got-state got-not-found)
-            (nskk-state-create/k mode
-              (lambda (s) (setq got-state s))
-              (lambda () (setq got-not-found t)))
-            (should (nskk-state-p got-state))
-            (should (eq (nskk-state-mode got-state) mode))
-            (should-not got-not-found)))
-
-  (nskk-it "calls on-found with default (ascii) state when nil mode given"
-    (let (got-state)
-      (nskk-state-create/k nil
-        (lambda (s) (setq got-state s))
-        (lambda () (ert-fail "Expected on-found for nskk-state-create/k")))
-      (should (nskk-state-p got-state))
-      (should (eq (nskk-state-mode got-state) 'ascii))))
-
-  (nskk-it "calls on-found with ascii fallback for invalid mode"
-    (let (got-state)
-      (nskk-state-create/k 'not-a-valid-mode
-        (lambda (s) (setq got-state s))
-        (lambda () (ert-fail "Expected on-found even for invalid mode (fallback to ascii)")))
-      (should (nskk-state-p got-state))
-      (should (eq (nskk-state-mode got-state) 'ascii)))))
-
-;;;
-;;; Getter Tests
-;;;
-
-(nskk-describe "nskk-state-get"
-  (nskk-it "returns correct value for valid symbol slots"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-then
-        (should (eq (nskk-state-get state 'mode) 'hiragana))
-        (should (string= (nskk-state-get state 'input-buffer) ""))
-        (should (= (nskk-state-get state 'current-index) 0)))))
-
-  (nskk-it "accepts string slot name"
-    (let ((state (nskk-state-create 'katakana)))
-      (nskk-then
-        (should (eq (nskk-state-get state "mode") 'katakana)))))
-
-  (nskk-it "returns nil for invalid slot"
-    (let ((state (nskk-state-create)))
-      (nskk-then
-        (should (null (nskk-state-get state 'invalid-slot)))
-        (should (null (nskk-state-get state 'p)))
-        (should (null (nskk-state-get state "p"))))))
-
-  (nskk-it "returns nil for nil state"
-    (nskk-then
-      (should (null (nskk-state-get nil 'mode)))))
-
-  (nskk-it "returns non-nil for slots with defaults and nil for optional slots"
-    (let ((state (nskk-state-create)))
-      (nskk-then
-        (dolist (slot '(mode input-buffer converted-buffer
-                            current-index previous-mode))
-          (should (nskk-state-get state slot)))
-        (dolist (slot '(candidates henkan-position marker-position
-                                  undo-stack redo-stack henkan-phase metadata))
-          (should-not (nskk-state-get state slot)))))))
-
-;;;
 ;;; Setter Tests
 ;;;
 
@@ -318,6 +200,16 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (let ((before (copy-nskk-state state)))
         (nskk-then
           (should-error (nskk-state-set state 'mode 'invalid-mode))
+          (should (equal state before))))))
+
+  (nskk-it "raises error for invalid henkan-phase and leaves state unchanged"
+    (let ((state (nskk-state-create 'ascii)))
+      (nskk-state-set state 'input-buffer "unchanged")
+      (nskk-state-set state 'candidates '("a" "b"))
+      (nskk-state-set state 'current-index 1)
+      (let ((before (copy-nskk-state state)))
+        (nskk-then
+          (should-error (nskk-state-set state 'henkan-phase 'not-a-real-phase))
           (should (equal state before))))))
 
   (nskk-it "returns nil for nil state"
@@ -379,60 +271,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     :body (should-not (nskk-state-valid-mode-p non-mode))))
 
 ;;;
-;;; Henkan Mode Predicate Tests
-;;;
-
-(nskk-describe "nskk-state henkan-phase predicates"
-  (nskk-context "nskk-state-in-henkan-mode-p"
-    (nskk-it "returns true when henkan-phase is on"
-      (let ((state (nskk-state-create 'hiragana)))
-        (nskk-state-set-henkan-phase state 'on)
-        (should (nskk-state-in-henkan-mode-p state))))
-
-    (nskk-it "returns true when henkan-phase is active"
-      (let ((state (nskk-state-create 'hiragana)))
-        (nskk-state-force-henkan-phase state 'active)
-        (should (nskk-state-in-henkan-mode-p state))))
-
-    (nskk-it "returns true when henkan-phase is list"
-      (let ((state (nskk-state-create 'hiragana)))
-        (nskk-state-force-henkan-phase state 'list)
-        (should (nskk-state-in-henkan-mode-p state))))
-
-    (nskk-it "returns true when henkan-phase is registration"
-      (let ((state (nskk-state-create 'hiragana)))
-        (nskk-state-force-henkan-phase state 'registration)
-        (should (nskk-state-in-henkan-mode-p state))))
-
-    (nskk-it "returns false when henkan-phase is nil"
-      (let ((state (nskk-state-create 'hiragana)))
-        (should (not (nskk-state-in-henkan-mode-p state))))))
-
-  (nskk-context "nskk-state-henkan-on-p"
-    (nskk-it "returns true when phase is on"
-      (let ((state (nskk-state-create 'hiragana)))
-        (nskk-state-set-henkan-phase state 'on)
-        (should (nskk-state-henkan-on-p state))))
-
-    (nskk-it "returns false when phase is nil or active"
-      (let ((state (nskk-state-create 'hiragana)))
-        (should (not (nskk-state-henkan-on-p state)))
-        (nskk-state-force-henkan-phase state 'active)
-        (should (not (nskk-state-henkan-on-p state))))))
-
-  (nskk-context "nskk-state-henkan-active-p"
-    (nskk-it "returns true when phase is active"
-      (let ((state (nskk-state-create 'hiragana)))
-        (nskk-state-force-henkan-phase state 'active)
-        (should (nskk-state-henkan-active-p state))))
-
-    (nskk-it "returns false when phase is nil or on"
-      (let ((state (nskk-state-create 'hiragana)))
-        (should (not (nskk-state-henkan-active-p state)))
-        (nskk-state-set-henkan-phase state 'on)
-        (should (not (nskk-state-henkan-active-p state)))))))
-
-;;;
 ;;; Henkan Phase Transition Tests
 ;;;
 
@@ -479,179 +317,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (should (eq (nskk-state-henkan-phase state) 'on)))))
 
 ;;;
-;;; Mode Transition Tests
-;;;
-
-(nskk-describe "nskk-state-transition"
-  (nskk-it "succeeds for correct from-mode"
-    (let ((state (nskk-state-create 'ascii)))
-      (nskk-then
-        (should (nskk-state-transition state 'ascii 'hiragana))
-        (should (eq (nskk-state-mode state) 'hiragana)))))
-
-  (nskk-it "succeeds for all valid mode combinations"
-    (dolist (from-mode nskk-state-test-valid-modes)
-      (dolist (to-mode nskk-state-test-valid-modes)
-        (let ((state (nskk-state-create from-mode)))
-          (should (nskk-state-transition state from-mode to-mode))
-          (should (eq (nskk-state-mode state) to-mode))))))
-
-  (nskk-it "returns nil for wrong from-mode and leaves state unchanged"
-    (let ((state (nskk-state-create 'ascii)))
-      (nskk-then
-        (should (not (nskk-state-transition state 'hiragana 'katakana)))
-        (should (eq (nskk-state-mode state) 'ascii)))))
-
-  (nskk-it "returns nil for invalid to-mode and leaves state unchanged"
-    (let ((state (nskk-state-create 'ascii)))
-      (nskk-then
-        (should (not (nskk-state-transition state 'ascii 'invalid-mode)))
-        (should (eq (nskk-state-mode state) 'ascii)))))
-
-  (nskk-it "returns nil for nil state"
-    (nskk-then
-      (should (not (nskk-state-transition nil 'ascii 'hiragana)))))
-
-  (nskk-it "validates that from-mode must match current mode"
-    (let ((state (nskk-state-create 'ascii)))
-      (should (nskk-state-transition state 'ascii 'hiragana))
-      (should (eq (nskk-state-mode state) 'hiragana))
-
-      (should (not (nskk-state-transition state 'ascii 'katakana)))
-      (should (eq (nskk-state-mode state) 'hiragana))))
-
-  (nskk-it "validates target mode is valid"
-    (let ((state (nskk-state-create 'ascii)))
-      (nskk-then
-        (should (not (nskk-state-transition state 'ascii 'not-a-mode)))
-        (should (eq (nskk-state-mode state) 'ascii)))))
-
-  (nskk-it "maintains validation through a sequence of transitions"
-    (let ((state (nskk-state-create 'ascii)))
-      (should (nskk-state-transition state 'ascii 'hiragana))
-      (should (nskk-state-transition state 'hiragana 'katakana))
-      (should (nskk-state-transition state 'katakana 'latin))
-      (should (nskk-state-transition state 'latin 'abbrev))
-      (should (nskk-state-transition state 'abbrev 'ascii))
-
-      (should (eq (nskk-state-mode state) 'ascii)))))
-
-;;;
-;;; State Reset Tests
-;;;
-
-(nskk-describe "nskk-state-reset"
-  (nskk-it "clears all mutable state while preserving mode"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-given
-        (nskk-state-set state 'input-buffer "test")
-        (nskk-state-set state 'converted-buffer "converted")
-        (nskk-state-set state 'candidates '("a" "b"))
-        (nskk-state-set state 'current-index 1)
-        (nskk-state-set state 'henkan-position 5)
-        (nskk-state-set state 'undo-stack '(("a" . "b")))
-        (nskk-state-set state 'redo-stack '(("c" . "d")))
-        (nskk-state-set state 'metadata '(:key "value")))
-      (nskk-when
-        (nskk-state-reset state))
-      (nskk-then
-        (should (eq (nskk-state-mode state) 'hiragana))
-        (should (string= (nskk-state-input-buffer state) ""))
-        (should (string= (nskk-state-converted-buffer state) ""))
-        (should (null (nskk-state-candidates state)))
-        (should (= (nskk-state-current-index state) 0))
-        (should (null (nskk-state-henkan-position state)))
-        (should (null (nskk-state-marker-position state)))
-        (should (null (nskk-state-undo-stack state)))
-        (should (null (nskk-state-redo-stack state)))
-        (should (null (nskk-state-henkan-phase state)))
-        (should (null (nskk-state-metadata state))))))
-
-  (nskk-it "returns nil for nil state"
-    (nskk-then
-      (should (not (nskk-state-reset nil)))))
-
-  (nskk-it "preserves mode when reset"
-    (let ((state (nskk-state-create 'katakana)))
-      (nskk-given
-        (nskk-state-set state 'input-buffer "test")
-        (nskk-state-set state 'henkan-position 5)
-        (nskk-state-set-candidates state '("a" "b" "c")))
-      (nskk-when
-        (nskk-state-reset state))
-      (nskk-then
-        (should (eq (nskk-state-mode state) 'katakana))
-        (should (string= (nskk-state-input-buffer state) ""))
-        (should (null (nskk-state-henkan-position state)))
-        (should (null (nskk-state-candidates state)))))))
-
-;;;
-;;; Buffer Management Tests
-;;;
-
-(nskk-describe "nskk-state buffer operations"
-  (nskk-context "nskk-state-append-input"
-    (nskk-it "appends single ASCII characters"
-      (let ((state (nskk-state-create)))
-        (nskk-state-append-input state ?a)
-        (should (string= (nskk-state-input-buffer state) "a"))
-        (nskk-state-append-input state ?b)
-        (should (string= (nskk-state-input-buffer state) "ab"))))
-
-    (nskk-it "appends Japanese characters"
-      (let ((state (nskk-state-create)))
-        (nskk-state-append-input state ?\u3042)
-        (should (string= (nskk-state-input-buffer state) "\u3042"))
-        (nskk-state-append-input state ?\u3044)
-        (should (string= (nskk-state-input-buffer state) "\u3042\u3044")))))
-
-  (nskk-context "nskk-state-delete-last-char"
-    (nskk-it "deletes last character and returns it"
-      (let ((state (nskk-state-create)))
-        (nskk-state-set state 'input-buffer "abc")
-        (should (eq (nskk-state-delete-last-char state) ?c))
-        (should (string= (nskk-state-input-buffer state) "ab"))
-        (should (eq (nskk-state-delete-last-char state) ?b))
-        (should (string= (nskk-state-input-buffer state) "a"))))
-
-    (nskk-it "returns nil for empty buffer"
-      (let ((state (nskk-state-create)))
-        (should (null (nskk-state-delete-last-char state)))
-        (should (string= (nskk-state-input-buffer state) "")))))
-
-  (nskk-context "nskk-state-clear-input"
-    (nskk-it "empties the input buffer"
-      (let ((state (nskk-state-create)))
-        (nskk-state-set state 'input-buffer "test input")
-        (nskk-state-clear-input state)
-        (should (string= (nskk-state-input-buffer state) "")))))
-
-  (nskk-it "handles a sequence of append, delete, and clear"
-    (let ((state (nskk-state-create)))
-      (nskk-state-append-input state ?t)
-      (nskk-state-append-input state ?e)
-      (nskk-state-append-input state ?s)
-      (should (string= (nskk-state-input-buffer state) "tes"))
-
-      (should (eq (nskk-state-delete-last-char state) ?s))
-      (should (string= (nskk-state-input-buffer state) "te"))
-
-      (nskk-state-clear-input state)
-      (should (string= (nskk-state-input-buffer state) ""))))
-
-  (nskk-it "mode change does not affect buffer operations"
-    (let ((state (nskk-state-create 'ascii)))
-      
-      (nskk-state-set state 'mode 'hiragana)
-      (should (eq (nskk-state-mode state) 'hiragana))
-
-      (nskk-state-append-input state ?a)
-      (should (string= (nskk-state-input-buffer state) "a"))
-
-      (let ((mode (nskk-state-mode state)))
-        (should (eq mode 'hiragana))))))
-
-;;;
 ;;; Candidate Management Tests
 ;;;
 
@@ -664,46 +329,7 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
         (nskk-state-set-candidates state '("a" "b" "c")))
       (nskk-then
         (should (= (nskk-state-current-index state) 0))
-        (should (equal (nskk-state-candidates state) '("a" "b" "c"))))))
-
-  (nskk-it "current-candidate returns the candidate at current-index"
-    (let ((state (nskk-state-create)))
-      (nskk-state-set-candidates state '("first" "second" "third"))
-      (should (string= (nskk-state-current-candidate state) "first"))
-
-      (nskk-state-set state 'current-index 1)
-      (should (string= (nskk-state-current-candidate state) "second"))
-
-      (nskk-state-set state 'current-index 2)
-      (should (string= (nskk-state-current-candidate state) "third"))))
-
-  (nskk-it "navigation uses modulo indexing and round-trips"
-    (dolist (candidates '(("only") ("a" "b" "c")
-                          ("zero" "one" "two" "three")))
-      (let ((state (nskk-state-create))
-            (length (length candidates)))
-        (dotimes (start length)
-          (dolist (operation '((nskk-state-next-candidate 1
-                                nskk-state-previous-candidate)
-                               (nskk-state-previous-candidate -1
-                                nskk-state-next-candidate)))
-            (nskk-state-set-candidates state candidates)
-            (nskk-state-set state 'current-index start)
-            (let ((expected-index (mod (+ start (nth 1 operation)) length)))
-              (should (equal (funcall (nth 0 operation) state)
-                             (nth expected-index candidates)))
-              (should (= (nskk-state-current-index state) expected-index)))
-            (should (equal (funcall (nth 2 operation) state)
-                           (nth start candidates)))
-            (should (= (nskk-state-current-index state) start)))))))
-
-  (nskk-it "next-candidate returns nil when no candidates"
-    (let ((state (nskk-state-create)))
-      (should (null (nskk-state-next-candidate state)))))
-
-  (nskk-it "previous-candidate returns nil when no candidates"
-    (let ((state (nskk-state-create)))
-      (should (null (nskk-state-previous-candidate state))))))
+        (should (equal (nskk-state-candidates state) '("a" "b" "c")))))))
 
 ;;;
 ;;; Metadata Tests
@@ -739,37 +365,13 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (should (string= (nskk-state-get-metadata state :key) "original"))
 
       (nskk-state-put-metadata state :key "updated")
-      (should (string= (nskk-state-get-metadata state :key) "updated"))))
-
-  (nskk-it "is cleared on reset"
-    (let ((state (nskk-state-create)))
-      (nskk-given
-        (nskk-state-put-metadata state :key1 "value1")
-        (nskk-state-put-metadata state :key2 "value2"))
-      (nskk-when
-        (nskk-state-reset state))
-      (nskk-then
-        (should (null (nskk-state-get-metadata state :key1)))
-        (should (null (nskk-state-get-metadata state :key2)))))))
+      (should (string= (nskk-state-get-metadata state :key) "updated")))))
 
 ;;;
-;;; Generated Metadata Setter Tests
+;;; nskk-state-set-okurigana / nskk-state-get-okurigana Tests
 ;;;
 
-(nskk-describe "nskk-define-metadata-setter generated functions"
-  (nskk-deftest-table state-metadata-setter-roundtrip
-    :description "Each generated setter stores and retrieves its value via metadata"
-    :columns (setter getter key value)
-    :rows ((nskk-state-set-okurigana    nskk-state-get-okurigana    okurigana        "k")
-           (nskk-state-set-remaining-romaji nskk-state-get-metadata remaining-romaji "ro")
-           (nskk-state-set-kana-type    nskk-state-get-metadata     kana-type        hiragana)
-           (nskk-state-set-width-type   nskk-state-get-metadata     width-type       full))
-    :body (let ((state (nskk-state-create)))
-            (funcall setter state value)
-            (if (eq setter 'nskk-state-set-okurigana)
-                (should (equal (funcall getter state) value))
-              (should (equal (funcall getter state key) value)))))
-
+(nskk-describe "nskk-state-set-okurigana and nskk-state-get-okurigana"
   (nskk-it "nskk-state-get-okurigana returns nil before any set"
     (let ((state (nskk-state-create)))
       (should (null (nskk-state-get-okurigana state)))))
@@ -781,135 +383,14 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (nskk-state-set-okurigana state "t")
       (should (equal (nskk-state-get-okurigana state) "t"))))
 
-  (nskk-it "metadata setters return nil for nil state"
-    (should (null (nskk-state-set-okurigana nil "k")))
-    (should (null (nskk-state-set-remaining-romaji nil "ro")))
-    (should (null (nskk-state-set-kana-type nil 'hiragana)))
-    (should (null (nskk-state-set-width-type nil 'full)))))
+  (nskk-it "nskk-state-set-okurigana returns nil for nil state"
+    (should (null (nskk-state-set-okurigana nil "k")))))
 
 ;;;
-;;; CPS Variant Tests
+;;; CPS /k variants with nskk-it-k
 ;;;
-
-(nskk-describe "nskk-state-append-input/k"
-  (nskk-it "calls on-done with new buffer on success"
-    (let ((state (nskk-state-create))
-          result)
-      (nskk-state-append-input/k state ?a
-                                 (lambda (buf) (setq result buf))
-                                 (lambda () (should nil)))
-      (should (string= result "a"))
-      (should (string= (nskk-state-input-buffer state) "a"))))
-
-  (nskk-it "calls on-fail for non-character input"
-    (let ((state (nskk-state-create))
-          failed)
-      (nskk-state-append-input/k state "not-a-char"
-                                 (lambda (_) (should nil))
-                                 (lambda () (setq failed t)))
-      (should failed)))
-
-  (nskk-it "calls on-fail for nil state"
-    (let (failed)
-      (nskk-state-append-input/k nil ?a
-                                 (lambda (_) (should nil))
-                                 (lambda () (setq failed t)))
-      (should failed))))
-
-(nskk-describe "nskk-state-delete-last-char/k"
-  (nskk-it "calls on-deleted with the removed character"
-    (let ((state (nskk-state-create))
-          deleted-char)
-      (nskk-state-set state 'input-buffer "ab")
-      (nskk-state-delete-last-char/k state
-                                     (lambda (ch) (setq deleted-char ch))
-                                     (lambda () (should nil)))
-      (should (eq deleted-char ?b))
-      (should (string= (nskk-state-input-buffer state) "a"))))
-
-  (nskk-it "calls on-empty when buffer is already empty"
-    (let ((state (nskk-state-create))
-          was-empty)
-      (nskk-state-delete-last-char/k state
-                                     (lambda (_) (should nil))
-                                     (lambda () (setq was-empty t)))
-      (should was-empty))))
-
-(nskk-describe "nskk-state-transition/k"
-  (nskk-it "calls on-found with t for a valid transition"
-    (let ((state (nskk-state-create 'ascii))
-          succeeded)
-      (nskk-state-transition/k state 'ascii 'hiragana
-                               (lambda (_) (setq succeeded t))
-                               (lambda () (should nil)))
-      (should succeeded)
-      (should (eq (nskk-state-mode state) 'hiragana))))
-
-  (nskk-it "calls on-not-found for wrong from-mode"
-    (let ((state (nskk-state-create 'ascii))
-          failed)
-      (nskk-state-transition/k state 'hiragana 'katakana
-                               (lambda (_) (should nil))
-                               (lambda () (setq failed t)))
-      (should failed)
-      (should (eq (nskk-state-mode state) 'ascii))))
-
-  (nskk-it "calls on-not-found for invalid to-mode"
-    (let ((state (nskk-state-create 'ascii))
-          failed)
-      (nskk-state-transition/k state 'ascii 'not-a-mode
-                               (lambda (_) (should nil))
-                               (lambda () (setq failed t)))
-      (should failed))))
-
-(nskk-describe "nskk-state-next-candidate/k and nskk-state-previous-candidate/k"
-  (nskk-it "next-candidate/k calls on-candidate with the next candidate"
-    (let ((state (nskk-state-create))
-          result)
-      (nskk-state-set-candidates state '("a" "b" "c"))
-      (nskk-state-next-candidate/k state
-                                   (lambda (cand) (setq result cand))
-                                   (lambda () (should nil)))
-      (should (string= result "b"))))
-
-  (nskk-it "next-candidate/k calls on-empty when no candidates"
-    (let ((state (nskk-state-create))
-          was-empty)
-      (nskk-state-next-candidate/k state
-                                   (lambda (_) (should nil))
-                                   (lambda () (setq was-empty t)))
-      (should was-empty)))
-
-  (nskk-it "previous-candidate/k calls on-candidate with the previous candidate"
-    (let ((state (nskk-state-create))
-          result)
-      (nskk-state-set-candidates state '("a" "b" "c"))
-      (nskk-state-set state 'current-index 2)
-      (nskk-state-previous-candidate/k state
-                                       (lambda (cand) (setq result cand))
-                                       (lambda () (should nil)))
-      (should (string= result "b"))))
-
-  (nskk-it "previous-candidate/k calls on-empty when no candidates"
-    (let ((state (nskk-state-create))
-          was-empty)
-      (nskk-state-previous-candidate/k state
-                                       (lambda (_) (should nil))
-                                       (lambda () (setq was-empty t)))
-      (should was-empty))))
 
 (nskk-describe "CPS /k variants with nskk-it-k"
-  (nskk-it-k "nskk-state-get/k returns the requested slot value"
-    (nskk-state-get/k
-     (let ((state (nskk-state-create 'hiragana)))
-       (nskk-state-set state 'input-buffer "ka")
-       state)
-     'input-buffer)
-    :found (result)
-      (should (equal result "ka"))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-get/k"))
-
   (nskk-it-k "nskk-state-set/k sets mode and returns the new mode"
     (nskk-state-set/k (nskk-state-create 'ascii) 'mode 'katakana)
     :found (result)
@@ -972,6 +453,26 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
         (should (= not-found-calls 0))
         (should (equal state before)))))
 
+  (nskk-it "nskk-state-set/k propagates henkan-phase validation errors without continuations"
+    (let ((state (nskk-state-create 'ascii))
+          (found-calls 0)
+          (not-found-calls 0))
+      (nskk-state-set state 'input-buffer "unchanged")
+      (nskk-state-set state 'candidates '("a" "b"))
+      (nskk-state-set state 'current-index 1)
+      (let ((before (copy-nskk-state state)))
+        (should-error
+         (nskk-state-set/k
+          state 'henkan-phase 'not-a-real-phase
+          (lambda (_value)
+            (setq found-calls (1+ found-calls)))
+          (lambda ()
+            (setq not-found-calls (1+ not-found-calls))))
+         :type 'error)
+        (should (= found-calls 0))
+        (should (= not-found-calls 0))
+        (should (equal state before)))))
+
   (nskk-it "nskk-state-set/k propagates error and quit from the selected continuation"
     (dolist (condition '(error quit))
       (dolist (row '((metadata nil found)
@@ -1005,62 +506,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
           (should (= not-found-calls
                      (if (eq selected 'not-found) 1 0)))))))
 
-  (nskk-it-k "nskk-state-append-input/k appends one character"
-    (nskk-state-append-input/k (nskk-state-create) ?a)
-    :found (result)
-      (should (equal result "a"))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-append-input/k"))
-
-  (nskk-it-k "nskk-state-delete-last-char/k returns the deleted character"
-    (nskk-state-delete-last-char/k
-     (let ((state (nskk-state-create)))
-       (nskk-state-set state 'input-buffer "ab")
-       state))
-    :found (result)
-      (should (eq result ?b))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-delete-last-char/k"))
-
-  (nskk-it-k "nskk-state-transition/k transitions to a valid target mode"
-    (nskk-state-transition/k (nskk-state-create 'ascii) 'ascii 'hiragana)
-    :found (result)
-      (should (eq result t))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-transition/k"))
-
-  (nskk-it-k "nskk-state-next-candidate/k returns the next candidate"
-    (nskk-state-next-candidate/k
-     (let ((state (nskk-state-create)))
-       (nskk-state-set-candidates state '("a" "b" "c"))
-       state))
-    :found (result)
-      (should (equal result "b"))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-next-candidate/k"))
-
-  (nskk-it-k "nskk-state-previous-candidate/k returns the previous candidate"
-    (nskk-state-previous-candidate/k
-     (let ((state (nskk-state-create)))
-       (nskk-state-set-candidates state '("a" "b" "c"))
-       (nskk-state-set state 'current-index 2)
-       state))
-    :found (result)
-      (should (equal result "b"))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-previous-candidate/k"))
-
-  (nskk-it-k "nskk-state-current-candidate/k returns current candidate"
-    (nskk-state-current-candidate/k
-     (let ((state (nskk-state-create)))
-       (nskk-state-set-candidates state '("a" "b" "c"))
-       (nskk-state-set state 'current-index 1)
-       state))
-    :found (result)
-      (should (equal result "b"))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-current-candidate/k"))
-
   (nskk-it-k "nskk-state-get-metadata/k returns stored metadata"
     (nskk-state-get-metadata/k
      (let ((state (nskk-state-create)))
@@ -1072,6 +517,16 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     :not-found ()
       (ert-fail "Expected on-found for nskk-state-get-metadata/k"))
 
+  (nskk-it "nskk-state-get-metadata/k calls on-not-found for an invalid state"
+    (let ((found-calls 0)
+          (not-found-calls 0))
+      (nskk-state-get-metadata/k
+       nil :foo
+       (lambda (_value) (setq found-calls (1+ found-calls)))
+       (lambda () (setq not-found-calls (1+ not-found-calls))))
+      (should (= found-calls 0))
+      (should (= not-found-calls 1))))
+
   (nskk-it-k "nskk-state-get-okurigana/k returns stored okurigana"
     (nskk-state-get-okurigana/k
      (let ((state (nskk-state-create)))
@@ -1082,6 +537,31 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     :not-found ()
       (ert-fail "Expected on-found for nskk-state-get-okurigana/k"))
 
+  (nskk-it "nskk-state-get-okurigana/k calls on-found with nil when okurigana is unset"
+    (let ((state (nskk-state-create))
+          (found-calls 0)
+          (not-found-calls 0)
+          (result :not-called))
+      (nskk-state-get-okurigana/k
+       state
+       (lambda (value)
+         (setq found-calls (1+ found-calls)
+               result value))
+       (lambda () (setq not-found-calls (1+ not-found-calls))))
+      (should (= found-calls 1))
+      (should (= not-found-calls 0))
+      (should-not result)))
+
+  (nskk-it "nskk-state-get-okurigana/k calls on-not-found for an invalid state"
+    (let ((found-calls 0)
+          (not-found-calls 0))
+      (nskk-state-get-okurigana/k
+       nil
+       (lambda (_value) (setq found-calls (1+ found-calls)))
+       (lambda () (setq not-found-calls (1+ not-found-calls))))
+      (should (= found-calls 0))
+      (should (= not-found-calls 1))))
+
   (nskk-it-k "nskk-state-get-mode/k returns current-state mode"
     (nskk-state-test--get-mode-with-state/k 'katakana)
     :found (result)
@@ -1089,25 +569,15 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     :not-found ()
       (ert-fail "Expected on-found for nskk-state-get-mode/k"))
 
-  (nskk-it-k "nskk-state-henkan-on-p/k returns t when phase is on"
-    (nskk-state-henkan-on-p/k
-     (let ((state (nskk-state-create 'hiragana)))
-       (nskk-state-set-henkan-phase state 'on)
-       state))
-    :found (result)
-      (should (eq result t))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-henkan-on-p/k"))
-
-  (nskk-it-k "nskk-state-henkan-active-p/k returns t when phase is active"
-    (nskk-state-henkan-active-p/k
-     (let ((state (nskk-state-create 'hiragana)))
-       (nskk-state-force-henkan-phase state 'active)
-       state))
-    :found (result)
-      (should (eq result t))
-    :not-found ()
-      (ert-fail "Expected on-found for nskk-state-henkan-active-p/k")))
+  (nskk-it "nskk-state-get-mode/k calls on-not-found when no current state is active"
+    (let ((nskk-current-state nil)
+          (found-calls 0)
+          (not-found-calls 0))
+      (nskk-state-get-mode/k
+       (lambda (_value) (setq found-calls (1+ found-calls)))
+       (lambda () (setq not-found-calls (1+ not-found-calls))))
+      (should (= found-calls 0))
+      (should (= not-found-calls 1)))))
 
 ;;;
 ;;; Japanese Mode Classification Tests
@@ -1142,37 +612,12 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
     (eq (nskk-state-mode state) mode))
   100)
 
-(nskk-property-test state-pbt-buffer-append-grows
-  ((input romaji-string))
-  (let ((state (nskk-state-create)))
-    (let ((before-len (length (nskk-state-input-buffer state))))
-      (if (not (string-empty-p input))
-          (progn
-            (nskk-state-append-input state (aref input 0))
-            (let ((after-len (length (nskk-state-input-buffer state))))
-              (>= after-len before-len)))
-        t)))  ; vacuously ok for empty strings
-  100)
-
 (nskk-property-test state-pbt-created-state-is-valid
   ((input romaji-string))
   (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
                     nskk-state-pbt--valid-modes))
          (state (nskk-state-create mode)))
     (nskk-state-p state))
-  100)
-
-(nskk-property-test state-pbt-reset-clears-buffers
-  ((input romaji-string))
-  (let* ((mode (nth (random (length nskk-state-pbt--valid-modes))
-                    nskk-state-pbt--valid-modes))
-         (state (nskk-state-create mode)))
-    (nskk-state-set state 'input-buffer input)
-    (nskk-state-set state 'converted-buffer input)
-    (nskk-state-reset state)
-    (and (eq (nskk-state-mode state) mode)
-         (string= (nskk-state-input-buffer state) "")
-         (string= (nskk-state-converted-buffer state) "")))
   100)
 
 ;;;
@@ -1200,138 +645,6 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (nskk-it "returns nil for unknown mode"
     (should-not (nskk-prolog-query-one
                  `(mode-properties nonexistent ,'\?s ,'\?f ,'\?h ,'\?c)))))
-
-;;;
-;;; Prolog Predicate Tests: state-slot-default/2
-;;;
-
-(nskk-describe "state-slot-default Prolog predicate"
-  (nskk-deftest-table state-prolog-slot-defaults
-    :description "state-slot-default/2 returns the correct initial value for each slot"
-    :columns (slot expected)
-    :rows ((input-buffer      "")
-           (converted-buffer  "")
-           (candidates        nil)
-           (current-index     0)
-           (henkan-position   nil)
-           (marker-position   nil)
-           (undo-stack        nil)
-           (redo-stack        nil)
-           (henkan-phase      nil)
-           (metadata          nil))
-    :body (let ((val (nskk-prolog-query-value
-                      `(state-slot-default ,slot ,'\?v) '\?v)))
-            (should (equal val expected))))
-
-  (nskk-it "returns nil for unknown slot"
-    (should-not (nskk-prolog-query-one '(state-slot-default nonexistent \?v)))))
-
-;;;
-;;;
-
-(nskk-property-test state-pbt-append-cps-consistent-with-sync
-  ((input romaji-string))
-  (when (not (string-empty-p input))
-    (let* ((char (aref input 0))
-           (state1 (nskk-state-create))
-           (state2 (nskk-state-create))
-           sync-result cps-result)
-      (setq sync-result (nskk-state-append-input state1 char))
-      (nskk-state-append-input/k state2 char
-                                 (lambda (buf) (setq cps-result buf))
-                                 (lambda () nil))
-      (equal sync-result cps-result)))
-  100)
-
-(nskk-property-test state-pbt-transition-cps-consistent-with-sync
-  ((input romaji-string))
-  (let* ((modes '(ascii hiragana katakana abbrev latin jisx0208-latin))
-         (from (nth (random (length modes)) modes))
-         (to   (nth (random (length modes)) modes))
-         (state1 (nskk-state-create from))
-         (state2 (nskk-state-create from))
-         sync-ok cps-ok)
-    (setq sync-ok (if (nskk-state-transition state1 from to) t nil))
-    (nskk-state-transition/k state2 from to
-                             (lambda (_) (setq cps-ok t))
-                             (lambda () (setq cps-ok nil)))
-    (eq sync-ok cps-ok))
-  100)
-
-;;;
-;;; Integration Tests
-;;;
-
-(nskk-describe "nskk-state full lifecycle scenarios"
-  (nskk-it "inputs characters then converts and navigates candidates then resets"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-state-append-input state ?k)
-      (nskk-state-append-input state ?a)
-      (nskk-state-append-input state ?n)
-      (nskk-state-append-input state ?j)
-      (should (string= (nskk-state-input-buffer state) "kanj"))
-
-      (nskk-state-set-henkan-phase state 'on)
-      (should (nskk-state-in-henkan-mode-p state))
-
-      (nskk-state-set-henkan-phase state 'active)
-      (nskk-state-set-candidates state '("\u6f22\u5b57" "\u611f\u3058" "\u5e7e\u6642"))
-      (should (string= (nskk-state-current-candidate state) "\u6f22\u5b57"))
-
-      (nskk-state-next-candidate state)
-      (should (string= (nskk-state-current-candidate state) "\u611f\u3058"))
-
-      (nskk-state-next-candidate state)
-      (should (string= (nskk-state-current-candidate state) "\u5e7e\u6642"))
-
-      (nskk-state-reset state)
-      (should (string= (nskk-state-input-buffer state) ""))
-      (should (null (nskk-state-candidates state)))
-      (should (not (nskk-state-in-henkan-mode-p state)))))
-
-  (nskk-it "switches modes and tracks previous-mode through ascii hiragana katakana"
-    (let ((state (nskk-state-create 'ascii)))
-      
-      (nskk-state-transition state 'ascii 'hiragana)
-      (should (eq (nskk-state-previous-mode state) 'ascii))
-
-      (nskk-state-append-input state ?\u3042)
-      (should (string= (nskk-state-input-buffer state) "\u3042"))
-
-      (nskk-state-transition state 'hiragana 'katakana)
-      (should (eq (nskk-state-previous-mode state) 'hiragana))
-
-      (nskk-state-clear-input state)
-      (nskk-state-append-input state ?\u30a2)
-      (should (string= (nskk-state-input-buffer state) "\u30a2"))
-
-      (nskk-state-transition state 'katakana 'ascii)
-      (should (eq (nskk-state-previous-mode state) 'katakana))))
-
-  (nskk-it "corrects a typo with delete then re-input then navigates candidates"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-state-append-input state ?t)
-      (nskk-state-append-input state ?o)
-      (nskk-state-append-input state ?u)
-      (nskk-state-append-input state ?k)
-      (nskk-state-append-input state ?y)
-      (should (string= (nskk-state-input-buffer state) "touky"))
-
-      (nskk-state-delete-last-char state)
-      (should (string= (nskk-state-input-buffer state) "touk"))
-
-      (nskk-state-append-input state ?o)
-      (should (string= (nskk-state-input-buffer state) "touko"))
-
-      (nskk-state-force-henkan-phase state 'active)
-      (nskk-state-set-candidates state '("\u6771\u4eac" "\u767b\u6821" "\u6e21\u822a"))
-      (should (string= (nskk-state-current-candidate state) "\u6771\u4eac"))
-
-      (nskk-state-next-candidate state)
-      (should (string= (nskk-state-current-candidate state) "\u767b\u6821"))
-
-      (nskk-state-previous-candidate state)
-      (should (string= (nskk-state-current-candidate state) "\u6771\u4eac")))))
 
 ;;;
 ;;; nskk-state-get-mode and nskk-with-current-state
@@ -1368,37 +681,8 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
   (nskk-it "body can modify current state slots"
     (nskk-with-state 'hiragana
       (nskk-with-current-state
-        (nskk-state-append-input nskk-current-state ?a))
+        (nskk-state-set nskk-current-state 'input-buffer "a"))
       (should (string= (nskk-state-input-buffer nskk-current-state) "a")))))
-
-;;;
-;;; nskk-ensure-marker macro
-;;;
-
-(nskk-describe "nskk-ensure-marker"
-  (nskk-it "creates a marker positioned at the given point"
-    (with-temp-buffer
-      (insert "hello world")
-      (let (my-marker)
-        (nskk-ensure-marker my-marker 5)
-        (should (markerp my-marker))
-        (should (= (marker-position my-marker) 5)))))
-
-  (nskk-it "moves an existing marker to a new position"
-    (with-temp-buffer
-      (insert "hello world")
-      (let ((my-marker (make-marker)))
-        (set-marker my-marker 3)
-        (nskk-ensure-marker my-marker 8)
-        (should (= (marker-position my-marker) 8)))))
-
-  (nskk-it "marker is in the current buffer"
-    (with-temp-buffer
-      (insert "test")
-      (let (my-marker)
-        (nskk-ensure-marker my-marker 2)
-        (should (markerp my-marker))
-        (should (eq (marker-buffer my-marker) (current-buffer)))))))
 
 ;;;
 ;;; nskk-state-initialize-prolog
@@ -1412,201 +696,45 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                      '(mode-properties hiragana \?s \?f \?h \?c))))
         (should result))))
 
-  (nskk-it "is idempotent: calling twice does not cause errors"
+  (nskk-it "is idempotent: a second call leaves initialization state intact"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
-      (should (progn (nskk-state-initialize-prolog) t)))))
-
-
-;;;
-;;; nskk-with-candidates Macro Tests
-;;;
-
-(nskk-describe "nskk-with-candidates"
-  (nskk-it "executes body when state has candidates"
-    (let ((state (nskk-state-create 'hiragana))
-          executed)
-      (nskk-state-set-candidates state '("漢字" "感じ"))
-      (nskk-with-candidates state
-        (ignore candidates index)
-        (setq executed t))
-      (should executed)))
-
-  (nskk-it "binds candidates and index in body"
-    (let ((state (nskk-state-create 'hiragana))
-          captured-candidates
-          captured-index)
-      (nskk-state-set-candidates state '("漢字" "感じ"))
-      (setf (nskk-state-current-index state) 1)
-      (nskk-with-candidates state
-        (setq captured-candidates candidates)
-        (setq captured-index index))
-      (should (equal captured-candidates '("漢字" "感じ")))
-      (should (= captured-index 1))))
-
-  (nskk-it "does not execute body when candidates is nil"
-    (let ((state (nskk-state-create 'hiragana))
-          executed)
-      (nskk-with-candidates state
-        (ignore candidates index)
-        (setq executed t))
-      (should-not executed)))
-
-  (nskk-it "does not execute body when state is not an nskk-state struct"
-    (let (executed)
-      (nskk-with-candidates nil
-        (ignore candidates index)
-        (setq executed t))
-      (should-not executed))))
-
-;;;
-;;; nskk-state-slot-dispatch Macro Tests
-;;;
-
-(nskk-describe "nskk-state-slot-dispatch"
-  (nskk-it "sets the mode slot when key matches 'mode"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-state-slot-dispatch state 'mode 'katakana mode candidates)
-      (should (eq (nskk-state-mode state) 'katakana))))
-
-  (nskk-it "sets the candidates slot when key matches 'candidates"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-state-slot-dispatch state 'candidates '("漢字") mode candidates)
-      (should (equal (nskk-state-candidates state) '("漢字")))))
-
-  (nskk-it "returns the new value when slot matches"
-    (let ((state (nskk-state-create 'hiragana)))
-      (let ((result (nskk-state-slot-dispatch state 'mode 'latin mode candidates)))
-        (should (eq result 'latin)))))
-
-  (nskk-it "returns nil when key does not match any slot"
-    (let ((state (nskk-state-create 'hiragana)))
-      (let ((result (nskk-state-slot-dispatch state 'nonexistent-slot 42 mode candidates)))
-        (should-not result))))
-
-  (nskk-it "does not mutate state when key does not match"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-state-slot-dispatch state 'nonexistent-slot 'katakana mode candidates)
-      (should (eq (nskk-state-mode state) 'hiragana)))))
+      (nskk-state-initialize-prolog)
+      (should nskk--state-prolog-initialized)
+      (should (nskk-prolog-query-one
+               '(mode-properties hiragana \?s \?f \?h \?c))))))
 
 ;;;;
 ;;;; Sequence-Based State-Struct Tests (moved from integration layer)
 ;;;;
 
 (nskk-describe "state sequence: deterministic replay"
-  (nskk-it "should produce the same result for the same key sequence"
+  (nskk-it "should produce the same result for the same operation sequence"
     (let ((runs 75)
           (failures nil)
           (test-seed (abs (random))))
       (random test-seed)
       (message "Sequence test 'deterministic-replay' seed: %d" test-seed)
       (dotimes (run runs)
-        (let* ((key-sequence (nskk-generate 'key-sequence))
-               (initial-state1 (nskk-state-create 'hiragana))
-               (initial-state2 (nskk-state-create 'hiragana))
-               (result1 (nskk-state-test--execute-keys initial-state1 key-sequence))
-               (result2 (nskk-state-test--execute-keys initial-state2 key-sequence)))
+        (let* ((ops (nskk-state-test--random-ops (nskk--pbt-random-int 5 30)))
+               (result1 (nskk-state-test--apply-ops (nskk-state-create 'hiragana) ops))
+               (result2 (nskk-state-test--apply-ops (nskk-state-create 'hiragana) ops)))
           (unless (nskk-state-test--states-equal-p result1 result2)
             (push (list :seed test-seed
                         :run run
-                        :key-sequence key-sequence
-                        :result1-mode (nskk-state-mode result1)
-                        :result2-mode (nskk-state-mode result2)
-                        :result1-buffer (nskk-state-input-buffer result1)
-                        :result2-buffer (nskk-state-input-buffer result2))
+                        :ops ops
+                        :mode1 (nskk-state-mode result1)
+                        :mode2 (nskk-state-mode result2)
+                        :phase1 (nskk-state-henkan-phase result1)
+                        :phase2 (nskk-state-henkan-phase result2))
                   failures))))
       (when failures
         (ert-fail (format "Determinism failed for %d cases (seed: %d):\n%S"
                           (length failures) test-seed
                           (take 3 failures)))))))
 
-(nskk-describe "state sequence: undo/redo invariant"
-  (nskk-it "should return to original state after undo then redo"
-    (let ((runs 75)
-          (failures nil)
-          (test-seed (abs (random))))
-      (random test-seed)
-      (message "Sequence test 'undo-redo-invariant' seed: %d" test-seed)
-      (dotimes (run runs)
-        (let* ((initial-state (nskk-state-create 'hiragana))
-               (state-with-history
-                (progn
-                  (setf (nskk-state-undo-stack initial-state)
-                        (list (list :mode 'ascii :input-buffer "test")))
-                  (setf (nskk-state-mode initial-state) 'hiragana)
-                  (setf (nskk-state-input-buffer initial-state) "")
-                  initial-state))
-               (original-mode (nskk-state-mode state-with-history))
-               (original-buffer (nskk-state-input-buffer state-with-history))
-               (after-undo (nskk-state-test--simulate-undo
-                            (copy-sequence state-with-history)))
-               (after-redo (nskk-state-test--simulate-redo after-undo)))
-          (when (and after-undo after-redo)
-            (unless (and (eq (nskk-state-mode after-redo) original-mode)
-                         (string= (nskk-state-input-buffer after-redo) original-buffer))
-              (push (list :seed test-seed
-                          :run run
-                          :original-mode original-mode
-                          :original-buffer original-buffer
-                          :final-mode (nskk-state-mode after-redo)
-                          :final-buffer (nskk-state-input-buffer after-redo))
-                    failures)))))
-      (when failures
-        (ert-fail (format "Undo/Redo invariant failed for %d cases (seed: %d):\n%S"
-                          (length failures) test-seed
-                          (take 3 failures)))))))
-
-(nskk-describe "state sequence: typing Japanese"
-  (nskk-it "should not crash when typing a valid romaji sequence"
-    (let ((runs 75)
-          (errors nil)
-          (test-seed (abs (random))))
-      (random test-seed)
-      (message "Sequence test 'typing-japanese-no-crash' seed: %d" test-seed)
-      (dotimes (run runs)
-        (condition-case err
-            (let* ((state (nskk-state-create 'hiragana))
-                   (romaji-seq (nskk-generate 'romaji-basic))
-                   (key-seq (cl-loop for char across romaji-seq
-                                     collect (char-to-string char)))
-                   (final-state (nskk-state-test--simulate-japanese-input
-                                 state key-seq)))
-              (unless (nskk-state-p final-state)
-                (push (list :seed test-seed :run run :error "Invalid final state")
-                      errors)))
-          (error
-           (push (list :seed test-seed :run run :error (error-message-string err))
-                 errors))))
-      (when errors
-        (ert-fail (format "Typing Japanese failed with %d errors (seed: %d):\n%S"
-                          (length errors) test-seed
-                          (take 3 errors)))))))
-
-(nskk-describe "state sequence: invalid romaji"
-  (nskk-it "should not crash when processing invalid romaji sequences"
-    (let ((runs 75)
-          (errors nil)
-          (test-seed (abs (random))))
-      (random test-seed)
-      (message "Sequence test 'invalid-romaji-no-crash' seed: %d" test-seed)
-      (dotimes (run runs)
-        (condition-case err
-            (let* ((state (nskk-state-create 'hiragana))
-                   (key-seq (nskk-generate 'key-sequence))
-                   (final-state (nskk-state-test--execute-keys state key-seq)))
-              (unless (nskk-state-test--valid-state-p final-state)
-                (push (list :seed test-seed :run run :error "State corrupted")
-                      errors)))
-          (error
-           (push (list :seed test-seed :run run :error (error-message-string err))
-                 errors))))
-      (when errors
-        (ert-fail (format "Invalid romaji handling failed with %d errors (seed: %d):\n%S"
-                          (length errors) test-seed
-                          (take 3 errors)))))))
-
 (nskk-describe "state sequence: mode switch idempotent toggle"
-  (nskk-it "should return to original mode after pressing toggle key twice"
+  (nskk-it "should return to original mode after toggling twice"
     (let ((runs 75)
           (failures nil)
           (test-seed (abs (random))))
@@ -1614,15 +742,14 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (message "Sequence test 'mode-switch-idempotent-toggle' seed: %d" test-seed)
       (dotimes (run runs)
         (let* ((initial-mode (nskk--pbt-random-choice '(hiragana katakana)))
-               (state (nskk-state-create initial-mode))
-               (after-first (nskk-state-test--process-key state "q"))
-               (after-second (nskk-state-test--process-key after-first "q")))
-          (unless (eq (nskk-state-mode after-second) initial-mode)
+               (state (nskk-state-create initial-mode)))
+          (nskk-state-test--toggle-kana-mode state)
+          (nskk-state-test--toggle-kana-mode state)
+          (unless (eq (nskk-state-mode state) initial-mode)
             (push (list :seed test-seed
                         :run run
                         :initial-mode initial-mode
-                        :after-first (nskk-state-mode after-first)
-                        :after-second (nskk-state-mode after-second))
+                        :final-mode (nskk-state-mode state))
                   failures))))
       (when failures
         (ert-fail (format "Mode switch idempotency failed for %d cases (seed: %d):\n%S"
@@ -1630,7 +757,7 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
                           (take 3 failures)))))))
 
 (nskk-describe "state sequence: mode switch consistency"
-  (nskk-it "should always produce the same mode from the same mode switch key"
+  (nskk-it "should always produce the same result for the same mode transition"
     (let ((runs 75)
           (failures nil)
           (test-seed (abs (random))))
@@ -1638,172 +765,82 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
       (message "Sequence test 'mode-switch-consistent' seed: %d" test-seed)
       (dotimes (run runs)
         (let* ((initial-mode (nskk-generate 'valid-mode))
-               (switch-key (nskk--pbt-random-choice '("C-j" "l" ";")))
+               (target-mode (nskk-generate 'valid-mode))
                (state1 (nskk-state-create initial-mode))
-               (state2 (nskk-state-create initial-mode))
-               (result1 (nskk-state-test--process-key state1 switch-key))
-               (result2 (nskk-state-test--process-key state2 switch-key)))
-          (unless (eq (nskk-state-mode result1) (nskk-state-mode result2))
+               (state2 (nskk-state-create initial-mode)))
+          (nskk-state-set-mode state1 target-mode)
+          (nskk-state-set-mode state2 target-mode)
+          (unless (and (eq (nskk-state-mode state1) (nskk-state-mode state2))
+                       (eq (nskk-state-previous-mode state1)
+                           (nskk-state-previous-mode state2)))
             (push (list :seed test-seed
                         :run run
                         :initial-mode initial-mode
-                        :switch-key switch-key
-                        :result1-mode (nskk-state-mode result1)
-                        :result2-mode (nskk-state-mode result2))
+                        :target-mode target-mode
+                        :mode1 (nskk-state-mode state1)
+                        :mode2 (nskk-state-mode state2))
                   failures))))
       (when failures
         (ert-fail (format "Mode switch consistency failed for %d cases (seed: %d):\n%S"
                           (length failures) test-seed
                           (take 3 failures)))))))
 
-(nskk-describe "state sequence: empty sequence"
-  (nskk-it "should leave state unchanged when processing an empty key sequence"
-    (let ((runs 75)
-          (failures nil))
-      (dotimes (run runs)
-        (let* ((initial-mode (nskk-generate 'valid-mode))
-               (state (nskk-state-create initial-mode))
-               (result (nskk-state-test--execute-keys state nil)))
-          (unless (nskk-state-test--states-equal-p state result)
-            (push (list :run run
-                        :initial-mode initial-mode
-                        :result-mode (nskk-state-mode result))
-                  failures))))
-      (when failures
-        (ert-fail (format "Empty sequence test failed for %d cases:\n%S"
-                          (length failures) (take 3 failures)))))))
+(defconst nskk-state-test--expected-transitions
+  '((nil . on)
+    (on . active) (on . registration) (on . nil)
+    (active . on) (active . nil) (active . list)
+    (list . on) (list . nil) (list . registration)
+    (registration . nil) (registration . list))
+  "Phase transitions the henkan state machine is specified to permit.
+Hand-authored from the phase-machine specification rather than read from
+`nskk--valid-henkan-transitions', so that this oracle does not run through
+the same table and predicate the implementation consults.  A divergence
+between this list and the source table is exactly what these tests exist
+to catch, so the duplication is deliberate.")
 
-(nskk-describe "state sequence: long sequence"
-  (nskk-it "should not overflow or crash on very long key sequences"
-    (let ((runs 75)
-          (errors nil)
-          (test-seed (abs (random))))
-      (random test-seed)
-      (message "Sequence test 'long-sequence-no-overflow' seed: %d" test-seed)
-      (dotimes (run runs)
-        (condition-case err
-            (let* ((state (nskk-state-create 'hiragana))
-                   (long-seq (nskk-generate 'key-sequence-of-length
-                                            (nskk--pbt-random-int 50 100)))
-                   (final-state (nskk-state-test--execute-keys state long-seq)))
-              (unless (nskk-state-test--valid-state-p final-state)
-                (push (list :seed test-seed :run run :error "Invalid state")
-                      errors))
-              (unless (nskk-state-test--buffer-bounds-p final-state)
-                (push (list :seed test-seed :run run :error "Buffer overflow")
-                      errors)))
-          (error
-           (push (list :seed test-seed :run run :error (error-message-string err))
-                 errors))))
-      (when errors
-        (ert-fail (format "Long sequence test failed with %d errors (seed: %d):\n%S"
-                          (length errors) test-seed
-                          (take 3 errors)))))))
-
-(nskk-describe "state sequence: mixed typing and mode switch"
-  (nskk-it "should maintain state integrity through mixed typing and mode switching"
+(nskk-describe "state sequence: phase-transition legality"
+  (nskk-it "should never accept a transition absent from the specified set"
     (let ((runs 75)
           (failures nil)
           (test-seed (abs (random))))
       (random test-seed)
-      (message "Sequence test 'mixed-typing-mode-switch' seed: %d" test-seed)
+      (message "Sequence test 'phase-transition-legality' seed: %d" test-seed)
       (dotimes (run runs)
         (let* ((state (nskk-state-create 'hiragana))
-               (key-seq (nskk-generate 'key-sequence))
-               (final-state (nskk-state-test--execute-keys state key-seq)))
-          (unless (and (nskk-state-test--valid-state-p final-state)
-                       (nskk-state-test--buffer-bounds-p final-state)
-                       (nskk-state-test--mode-valid-p final-state))
-            (push (list :seed test-seed
-                        :run run
-                        :key-sequence (take 10 key-seq)
-                        :valid-p (nskk-state-test--valid-state-p final-state)
-                        :bounds-p (nskk-state-test--buffer-bounds-p final-state)
-                        :mode-p (nskk-state-test--mode-valid-p final-state))
-                  failures))))
+               (steps (nskk--pbt-random-int 20 60)))
+          (dotimes (_ steps)
+            (let* ((before (nskk-state-henkan-phase state))
+                   (target (nskk--pbt-random-choice nskk--valid-henkan-phases))
+                   (legal (or (eq before target)
+                              (member (cons before target)
+                                      nskk-state-test--expected-transitions)))
+                   (errored nil))
+              (condition-case nil
+                  (nskk-state-set-henkan-phase state target)
+                (error (setq errored t)))
+              (cond
+               ((and legal errored)
+                (push (list :seed test-seed :run run :before before :target target
+                            :reason "legal transition was rejected")
+                      failures))
+               ((and (not legal) (not errored))
+                (push (list :seed test-seed :run run :before before :target target
+                            :reason "illegal transition was accepted")
+                      failures))
+               (legal
+                (unless (eq (nskk-state-henkan-phase state) target)
+                  (push (list :seed test-seed :run run :before before :target target
+                              :reason "phase not updated after legal transition")
+                        failures)))
+               (t
+                (unless (eq (nskk-state-henkan-phase state) before)
+                  (push (list :seed test-seed :run run :before before :target target
+                              :reason "phase mutated after rejected transition")
+                        failures))))))))
       (when failures
-        (ert-fail (format "Mixed sequence test failed for %d cases (seed: %d):\n%S"
+        (ert-fail (format "Phase-transition legality failed for %d cases (seed: %d):\n%S"
                           (length failures) test-seed
-                          (take 3 failures)))))))
-
-(nskk-describe "state sequence: pure typing"
-  (nskk-it "should accumulate all typed letters in the input buffer"
-    (let ((runs 75)
-          (failures nil)
-          (test-seed (abs (random))))
-      (random test-seed)
-      (message "Sequence test 'pure-typing' seed: %d" test-seed)
-      (dotimes (run runs)
-        (let* ((state (nskk-state-create 'hiragana))
-               (key-seq (nskk-generate 'typing-key-sequence))
-               (final-state (nskk-state-test--execute-keys state key-seq))
-               (buffer (nskk-state-input-buffer final-state))
-               (expected-length (length key-seq)))
-          (unless (= (length buffer) expected-length)
-            (push (list :seed test-seed
-                        :run run
-                        :key-count expected-length
-                        :buffer-length (length buffer)
-                        :buffer buffer)
-                  failures))))
-      (when failures
-        (ert-fail (format "Pure typing test failed for %d cases (seed: %d):\n%S"
-                          (length failures) test-seed
-                          (take 3 failures)))))))
-
-(nskk-describe "state sequence: mode switch only"
-  (nskk-it "should not affect the input buffer when only mode switches are pressed"
-    (let ((runs 75)
-          (failures nil)
-          (test-seed (abs (random))))
-      (random test-seed)
-      (message "Sequence test 'mode-switch-only' seed: %d" test-seed)
-      (dotimes (run runs)
-        (let* ((state (nskk-state-create 'hiragana))
-               (mode-keys '("C-j" "q" "l" ";"))
-               (key-seq (cl-loop repeat (nskk--pbt-random-int 1 20)
-                                 collect (nskk--pbt-random-choice mode-keys)))
-               (final-state (nskk-state-test--execute-keys state key-seq))
-               (buffer (nskk-state-input-buffer final-state)))
-          (unless (string-empty-p buffer)
-            (push (list :seed test-seed
-                        :run run
-                        :key-sequence key-seq
-                        :buffer buffer)
-                  failures))))
-      (when failures
-        (ert-fail (format "Mode switch only test failed for %d cases (seed: %d):\n%S"
-                          (length failures) test-seed
-                          (take 3 failures)))))))
-
-(nskk-describe "state sequence: stack size bounded"
-  (nskk-it "should keep undo/redo stack size bounded after long sequences"
-    (let ((runs 75)
-          (failures nil)
-          (max-stack-size 100)
-          (test-seed (abs (random))))
-      (random test-seed)
-      (message "Sequence test 'stack-size-bounded' seed: %d" test-seed)
-      (dotimes (run runs)
-        (let* ((state (nskk-state-create 'hiragana))
-               (key-seq (nskk-generate 'key-sequence-of-length
-                                       (nskk--pbt-random-int 10 50)))
-               (final-state (nskk-state-test--execute-keys state key-seq))
-               (undo-size (length (nskk-state-undo-stack final-state)))
-               (redo-size (length (nskk-state-redo-stack final-state)))
-               (total-size (+ undo-size redo-size)))
-          (when (> total-size max-stack-size)
-            (push (list :seed test-seed
-                        :run run
-                        :undo-size undo-size
-                        :redo-size redo-size
-                        :total-size total-size
-                        :max-allowed max-stack-size)
-                  failures))))
-      (when failures
-        (ert-fail (format "Stack size bounded test failed for %d cases (seed: %d):\n%S"
-                          (length failures) test-seed
-                          (take 3 failures)))))))
+                          (take 5 failures)))))))
 
 
 ;;;
@@ -1905,38 +942,30 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
             (funcall original-delete saved-overlay)))))))
 
 ;;;
-;;; nskk-ensure-marker Tests
+;;; Buffer-Local Getter/Setter Generator Macro Tests
 ;;;
 
-(nskk-describe "nskk-ensure-marker macro"
-  (nskk-it "creates a new marker when VAR is nil"
+(nskk-describe "nskk-define-buffer-local-getter and nskk-define-buffer-local-setter"
+  (nskk-it "round-trips a value through the generated accessor pair and returns it"
     (with-temp-buffer
-      (let ((m nil))
-        (nskk-ensure-marker m (point-min))
-        (should (markerp m)))))
+      (should (= (nskk-state-set-henkan-count 3) 3))
+      (should (= (nskk-state-henkan-count) 3))
+      (should (= (nskk-state-set-henkan-count 7) 7))
+      (should (= (nskk-state-henkan-count) 7))))
 
-  (nskk-it "reuses the same marker object (eq identity)"
-    (with-temp-buffer
-      (let ((m (make-marker)))
-        (set-marker m (point-min))
-        (let ((original m))
-          (nskk-ensure-marker m (point-max))
-          (should (eq m original))))))
-
-  (nskk-it "sets marker to the correct position"
-    (with-temp-buffer
-      (insert "hello")
-      (let ((m nil))
-        (nskk-ensure-marker m 3)
-        (should (= (marker-position m) 3)))))
-
-  (nskk-it "repositions an existing marker to the new position"
-    (with-temp-buffer
-      (insert "hello world")
-      (let ((m (make-marker)))
-        (set-marker m 1)
-        (nskk-ensure-marker m 6)
-        (should (= (marker-position m) 6))))))
+  (nskk-it "keeps the value buffer-local across two buffers"
+    (let ((buf1 (generate-new-buffer "nskk-state-test-buf1"))
+          (buf2 (generate-new-buffer "nskk-state-test-buf2")))
+      (unwind-protect
+          (progn
+            (with-current-buffer buf1
+              (nskk-state-set-henkan-count 5))
+            (with-current-buffer buf2
+              (nskk-state-set-henkan-count 9))
+            (should (= (with-current-buffer buf1 (nskk-state-henkan-count)) 5))
+            (should (= (with-current-buffer buf2 (nskk-state-henkan-count)) 9)))
+        (kill-buffer buf1)
+        (kill-buffer buf2)))))
 
 ;;;
 ;;; mode-category/2 Prolog Table Integrity Tests
@@ -1970,67 +999,35 @@ Delegates to `nskk--simulate-key-for-state' from nskk-test-macros."
 ;;;
 
 (nskk-describe "nskk--valid-modes cache invariant"
-  (nskk-it "every Prolog valid-mode fact is in the static set"
+  (nskk-it "every mode-properties/5 fact is in the static set"
     (let ((prolog-modes
-           (nskk-prolog-query-all-values '(valid-mode \?m) '\?m)))
+           (nskk-prolog-query-all-values '(mode-properties \?m \?d \?f \?h \?c) '\?m)))
+      (should prolog-modes)
       (dolist (m prolog-modes)
         (should (memq m nskk--valid-modes)))))
 
-  (nskk-it "every static-set mode is known to Prolog"
+  (nskk-it "every static-set mode has a mode-properties/5 fact"
     (dolist (m nskk--valid-modes)
-      (should (nskk-prolog-holds-p `(valid-mode ,m)))))
+      (should (nskk-prolog-query-one
+               `(mode-properties ,m ,'\?d ,'\?f ,'\?h ,'\?c)))))
 
-  (nskk-it "count matches between Prolog facts and static set"
+  (nskk-it "count matches between mode-properties/5 facts and static set"
     (let ((prolog-modes
-           (nskk-prolog-query-all-values '(valid-mode \?m) '\?m)))
+           (nskk-prolog-query-all-values '(mode-properties \?m \?d \?f \?h \?c) '\?m)))
       (should (= (length prolog-modes) (length nskk--valid-modes))))))
 
-(nskk-describe "nskk--valid-henkan-phases cache invariant"
-  (nskk-it "every Prolog valid-henkan-phase fact is in the static list"
-    (let ((prolog-phases
-           (nskk-prolog-query-all-values '(valid-henkan-phase \?p) '\?p)))
-      (dolist (p prolog-phases)
-        (should (memq p nskk--valid-henkan-phases)))))
-
-  (nskk-it "every static-list phase is known to Prolog"
-    (dolist (p nskk--valid-henkan-phases)
-      (should (nskk-prolog-holds-p `(valid-henkan-phase ,p)))))
-
-  (nskk-it "nil is a valid henkan phase in both"
-    (should (memq nil nskk--valid-henkan-phases))
-    (should (nskk-prolog-holds-p '(valid-henkan-phase nil)))))
-
 (nskk-describe "nskk--valid-henkan-transitions cache invariant"
-  (nskk-it "every static transition is known to Prolog"
+  (nskk-it "every table entry is accepted by nskk--henkan-transition-valid-p"
     (dolist (pair nskk--valid-henkan-transitions)
-      (let ((from (car pair))
-            (to   (cdr pair)))
-        (should (nskk-prolog-holds-p
-                 `(valid-henkan-transition ,from ,to))))))
+      (should (nskk--henkan-transition-valid-p (car pair) (cdr pair)))))
 
-  (nskk-it "nil→on is present in both"
-    (should (nskk--henkan-transition-valid-p nil 'on))
-    (should (nskk-prolog-holds-p '(valid-henkan-transition nil on))))
-
-  (nskk-it "on→active is present in both"
-    (should (nskk--henkan-transition-valid-p 'on 'active))
-    (should (nskk-prolog-holds-p '(valid-henkan-transition on active)))))
-
-(nskk-describe "nskk--state-slot-defaults cache invariant"
-  (nskk-it "input-buffer default matches Prolog"
-    (should (equal (plist-get nskk--state-slot-defaults :input-buffer)
-                   (nskk-prolog-query-value
-                    '(state-slot-default input-buffer \?v) '\?v))))
-
-  (nskk-it "henkan-phase default matches Prolog"
-    (should (equal (plist-get nskk--state-slot-defaults :henkan-phase)
-                   (nskk-prolog-query-value
-                    '(state-slot-default henkan-phase \?v) '\?v))))
-
-  (nskk-it "current-index default matches Prolog"
-    (should (equal (plist-get nskk--state-slot-defaults :current-index)
-                   (nskk-prolog-query-value
-                    '(state-slot-default current-index \?v) '\?v)))))
+  (nskk-deftest-table state-henkan-transition-rejects-absent-pairs
+    :description "Pairs absent from nskk--valid-henkan-transitions are rejected"
+    :columns (from to)
+    :rows ((nil active) (nil list) (nil registration)
+           (active registration) (list active)
+           (registration on) (registration active))
+    :body (should-not (nskk--henkan-transition-valid-p from to))))
 
 (provide 'nskk-state-test)
 

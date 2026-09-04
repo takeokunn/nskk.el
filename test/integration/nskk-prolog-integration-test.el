@@ -264,7 +264,7 @@
 (nskk-deftest-table nskk-prolog-predicate-arity-mapping
   :description "Known predicates can be queried without error at the expected arity"
   :columns (input expected)
-  :rows (("valid-mode" 1)
+  :rows (("mode-category" 2)
          ("japanese-mode" 1)
          ("romaji-to-kana" 2)
          ("dict-entry" 2)

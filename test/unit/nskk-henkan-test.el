@@ -3333,7 +3333,7 @@
         (set-marker (nskk-state-conversion-start-marker) (point-min))
         (insert "test")
         (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
-        (nskk-state-set-current-index nskk-current-state 1)
+        (setf (nskk-state-current-index nskk-current-state) 1)
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk--select-candidate #'ignore))
           (nskk-previous-candidate/k (lambda (c) (setq received-candidate c)) #'ignore))

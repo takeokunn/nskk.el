@@ -29,12 +29,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the source tree, unifying state ownership behind the new accessor API
   and a Prolog-fact registration protocol (module-initialized flags,
   clearable-input variables, presentation actions) in place of hardcoded
-  cross-module knowledge. Internal architecture only; no existing public
-  API was renamed or removed.
+  cross-module knowledge. That change renamed and removed nothing; for
+  removals see the Removed section below.
+- `nskk-state-create` is now a plain function. It previously used the CPS
+  definer, but its failure continuation was unreachable, so the generated
+  `nskk-state-create/k` has been removed along with it.
+- `nskk-state-set` documents that an invalid value for the `mode` or
+  `henkan-phase` key signals an error rather than invoking the not-found
+  continuation. The behaviour is unchanged; the docstring was wrong.
 - Decomposed `nskk--init-azik-rules` by extracting its flat AZIK rule-data
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+
+### Removed
+
+- Removed the unused public surface of `nskk-state.el`, none of which had
+  any caller in `src/`: `nskk-state-get`, `nskk-state-transition`,
+  `nskk-state-reset`, `nskk-state-append-input`,
+  `nskk-state-delete-last-char`, `nskk-state-clear-input`,
+  `nskk-state-in-henkan-mode-p`, `nskk-state-henkan-on-p`,
+  `nskk-state-henkan-active-p`, the candidate-navigation functions
+  `nskk-state-next-candidate`, `nskk-state-previous-candidate` and
+  `nskk-state-current-candidate`, the nine generated
+  `nskk-state-set-SLOT` pairs, and the metadata setters
+  `nskk-state-set-remaining-romaji`, `nskk-state-set-kana-type` and
+  `nskk-state-set-width-type`. Candidate navigation is implemented
+  directly in `nskk-henkan.el`; struct slots are set through
+  `nskk-state-set` or `setf` on the accessor.
+- Removed the macros `nskk-with-candidates`, `nskk-state-slot-dispatch`
+  and `nskk-ensure-marker`, which had no caller outside their own tests.
+  `nskk-define-buffer-local-accessor` is replaced by
+  `nskk-define-buffer-local-getter` and
+  `nskk-define-buffer-local-setter`; the accessor names it generates are
+  unchanged.
+- Removed the Prolog predicates `valid-mode/1`, `valid-henkan-phase/1`,
+  `valid-henkan-transition/2`, `henkan-mode-phase/1` and
+  `state-slot-default/2`, which nothing queried. Phase and mode
+  validation are Elisp-side and unchanged in behaviour.
+  `mode-properties/5`, `mode-category/2` and `japanese-mode/1` remain, as
+  other modules query them.
 
 ### Fixed
 
