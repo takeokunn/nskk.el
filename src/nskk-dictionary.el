@@ -65,8 +65,6 @@
 (require 'nskk-dict-transaction)
 
 (require 'nskk-cps-macros)
-(declare-function nskk-search-cache-snapshots "nskk-search")
-(declare-function nskk-search-restore-cache-snapshot "nskk-search" (snapshot))
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
 
@@ -1146,15 +1144,14 @@ consonants appended to KEY.  Results from both searches are combined."
 Returns t when Prolog dict-register/2, every update hook, and the success
 message complete.  Returns nil only when the valid Prolog query has no
 solution.  An `error' or `quit' from lazy loading, Prolog mutation, hooks, or
-the message boundary restores the exact internal predicate, index marker,
-dirty flag, and registered search caches before propagating the condition."
+the message boundary restores the exact internal predicate, index marker, and
+dirty flag before propagating the condition."
   (let* ((key (nskk-prolog-clause-key 'user-dict-entry 2))
          (owner (list 'nskk--dict-register-impl key)))
     (nskk-dict-transaction-ensure-rollback-complete owner)
     (let* ((previous-key-state (nskk-prolog-capture-key-state key reading t))
            (previous-user-index nskk--user-dict-index)
-           (previous-modified nskk-dict-modified)
-           (cache-snapshots (nskk-search-cache-snapshots)))
+           (previous-modified nskk-dict-modified))
       (condition-case condition
           (prog1
               (progn
@@ -1192,11 +1189,7 @@ dirty flag, and registered search caches before propagating the condition."
                    (setq nskk--user-dict-index previous-user-index)))
            (cons 'modified
                  (lambda ()
-                   (setq nskk-dict-modified previous-modified)))
-           (cons 'search-caches
-                 (lambda ()
-                   (dolist (snapshot cache-snapshots)
-                     (nskk-search-restore-cache-snapshot snapshot)))))))))))
+                   (setq nskk-dict-modified previous-modified))))))))))
 
 (progn
   (defconst nskk--dict-invalid-entry-message

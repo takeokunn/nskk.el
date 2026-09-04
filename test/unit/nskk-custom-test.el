@@ -39,7 +39,6 @@
          (nskk-converter-auto-start-henkan)
          (nskk-converter-romaji-style)
          (nskk-search-sort-method)
-         (nskk-search-fuzzy-threshold)
          (nskk-search-learning-file)
          (nskk-modeline-format)
          (nskk-use-color-cursor)
@@ -70,8 +69,7 @@
 
 (nskk-deftest-table custom-integer-defaults
   :columns (var expected)
-  :rows ((nskk-search-fuzzy-threshold          3)
-         (nskk-henkan-show-candidates-nth      5)
+  :rows ((nskk-henkan-show-candidates-nth      5)
          (nskk-henkan-number-to-display-candidates 7)
          (nskk-max-registration-depth          3)
          (nskk-debug-max-entries               1000))
@@ -179,8 +177,7 @@
 
 (nskk-deftest-table safe-predicate-accepts-valid-values
   :columns (var valid-value)
-  :rows ((nskk-search-fuzzy-threshold              0)
-         (nskk-henkan-show-candidates-nth          3)
+  :rows ((nskk-henkan-show-candidates-nth          3)
          (nskk-henkan-number-to-display-candidates 10)
          (nskk-max-registration-depth              1)
          (nskk-debug-max-entries                   500)
@@ -205,8 +202,7 @@
 
 (nskk-deftest-table safe-predicate-rejects-invalid-types
   :columns (var invalid-value)
-  :rows ((nskk-search-fuzzy-threshold         t)
-         (nskk-henkan-show-candidates-nth     3.14)
+  :rows ((nskk-henkan-show-candidates-nth     3.14)
          (nskk-dcomp-multiple-rows            "seven")
          (nskk-converter-auto-start-henkan    1)
          (nskk-show-tooltip                   1)
@@ -226,7 +222,6 @@
   (cl-every (lambda (v)
               (and (natnump v)
                    (funcall (get 'nskk-debug-max-entries 'safe-local-variable) v)
-                   (funcall (get 'nskk-search-fuzzy-threshold 'safe-local-variable) v)
                    (funcall (get 'nskk-henkan-show-candidates-nth 'safe-local-variable) v)
                    (funcall (get 'nskk-henkan-number-to-display-candidates 'safe-local-variable) v)
                    (funcall (get 'nskk-max-registration-depth 'safe-local-variable) v)))

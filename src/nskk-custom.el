@@ -104,14 +104,6 @@
   :package-version '(nskk . "0.1.0")
   :group 'nskk-search)
 
-(defcustom nskk-search-fuzzy-threshold 3
-  "Maximum Levenshtein distance threshold for fuzzy search.
-Zero disables fuzzy matching."
-  :type 'natnum
-  :safe #'natnump
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-search)
-
 (defcustom nskk-search-learning-file
   (expand-file-name "nskk/learning.dat" user-emacs-directory)
   "File path for persisting learning data."

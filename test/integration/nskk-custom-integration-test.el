@@ -133,13 +133,12 @@
       (should (eq nskk-search-sort-method 'none)))
     (should (eq nskk-search-sort-method 'frequency)))
 
-  (nskk-it "with sort-method none, result order equals insertion order"
+  (nskk-it "with sort-method none, nskk-search-prefix returns a list"
     (nskk-with-mock-dict '(("あい" . ("愛" "藍" "哀")))
       (let ((nskk-search-sort-method 'none)
             (idx (nskk-dict-system-index)))
-        (let ((entry (nskk-search-exact idx "あい" nil)))
-          (when (nskk-dict-entry-p entry)
-            (should (listp (nskk-dict-entry-candidates entry))))))))
+        (let ((results (nskk-search-prefix idx "あい" nil nil)))
+          (should (or (null results) (listp results)))))))
 
   (nskk-it "with sort-method kana, nskk--search-sort-results returns a list"
     (nskk-with-mock-dict '(("こ" . ("子")) ("あ" . ("亜")) ("か" . ("下")))
@@ -154,43 +153,6 @@
             (idx (nskk-dict-system-index)))
         (let ((results (nskk-search-prefix idx "あ" nil nil)))
           (should (or (null results) (listp results))))))))
-
-
-;;;;
-;;;; nskk-search-fuzzy-threshold
-;;;;
-
-(nskk-describe "nskk-search-fuzzy-threshold: Levenshtein distance cutoff"
-
-  (nskk-it "default value is 3"
-    (should (= (default-value 'nskk-search-fuzzy-threshold) 3)))
-
-  (nskk-it "let-binding to 0 disables fuzzy matching"
-    (nskk-with-mock-dict '(("かんじ" . ("漢字")))
-      (let ((nskk-search-fuzzy-threshold 0)
-            (idx (nskk-dict-system-index)))
-        (let ((results (nskk-search-fuzzy idx "かん" nil)))
-          (should (null results))))))
-
-  (nskk-it "let-binding to 1 allows distance-1 matches"
-    (nskk-with-mock-dict '(("かんじ" . ("漢字")))
-      (let ((nskk-search-fuzzy-threshold 1)
-            (idx (nskk-dict-system-index)))
-        (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
-          (should results)))))
-
-  (nskk-it "threshold 2 includes entries within distance 2"
-    (nskk-with-mock-dict '(("かんじ" . ("漢字")) ("かんき" . ("感激")))
-      (let ((nskk-search-fuzzy-threshold 2)
-            (idx (nskk-dict-system-index)))
-        (let ((results (nskk-search-fuzzy idx "かんじ" nil)))
-          (should results)
-          (should (listp results))))))
-
-  (nskk-it "variable is restored after let exits"
-    (let ((nskk-search-fuzzy-threshold 0))
-      (should (= nskk-search-fuzzy-threshold 0)))
-    (should (= nskk-search-fuzzy-threshold 3))))
 
 
 ;;;;
