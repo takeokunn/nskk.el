@@ -603,6 +603,16 @@ cost of a stale hit."
 
 ;;; Learning data management
 
+(defun nskk--search-write-learning-file ()
+  "Serialize every learning score to `nskk-search-learning-file'.
+Return non-nil once the atomic rename has published the new file, so the
+caller only announces a save that actually happened."
+  (nskk-dict-write-private-file
+   nskk-search-learning-file
+   (nskk-dict-serialize-solutions '(learning-score \?r \?c \?s)
+                                  '(\?r \?c \?s)))
+  t)
+
 ;;;###autoload
 (defun nskk-search-save-learning-data ()
   "Save learning data from Prolog facts to `nskk-search-learning-file'."
@@ -611,23 +621,7 @@ cost of a stale hit."
       (message "NSKK: Learning data save inhibited (tutorial active)")
     (when
         (condition-case err
-            (progn
-              (let ((dir (file-name-directory nskk-search-learning-file)))
-                (unless (file-directory-p dir)
-                  ;; Learning scores record the user's conversion history; keep
-                  ;; the directory private when this code has to create it.
-                  (with-file-modes #o700
-                    (make-directory dir t))))
-              (nskk-dict-with-atomic-file nskk-search-learning-file
-                (let ((solutions (nskk-prolog-query '(learning-score \?r \?c \?s))))
-                  (prin1
-                   (mapcar (lambda (sol)
-                             (list (nskk-prolog-walk '\?r sol)
-                                   (nskk-prolog-walk '\?c sol)
-                                   (nskk-prolog-walk '\?s sol)))
-                           solutions)
-                   (current-buffer))))
-              t)
+            (nskk--search-write-learning-file)
           (error
            (message "NSKK: Failed to save learning data: %s"
                     (error-message-string err))
@@ -645,13 +639,17 @@ stage and validate every record, then publish the result transactionally."
   (let ((file nskk-search-learning-file)
         (owner 'nskk-search-load-learning-data))
     (condition-case err
-        (progn
-          (nskk-dict-transaction-ensure-rollback-complete owner)
-          (when-let* ((result (nskk--search-read-learning-facts file)))
-            (nskk--search-publish-learning-facts owner (cdr result))))
+        (nskk--search-load-learning-file owner file)
       (error
        (message "NSKK: Failed to load learning data: %s"
                 (error-message-string err))))))
+
+(defun/done nskk--search-load-learning-file (owner file)
+  "Replace the stored learning scores with FILE's contents for OWNER.
+A file that is absent or unreadable leaves the existing scores in place."
+  (nskk-dict-transaction-ensure-rollback-complete owner)
+  (when-let* ((result (nskk--search-read-learning-facts file)))
+    (nskk--search-publish-learning-facts owner (cdr result))))
 
 (defun nskk--search-parse-learning-entry (entry)
   "Convert serialized learning ENTRY to a Prolog fact."
@@ -665,76 +663,39 @@ stage and validate every record, then publish the result transactionally."
 (defun nskk--search-read-learning-facts (file)
   "Validate FILE and return its learning facts wrapped in a cons.
 Return nil when FILE does not exist or is not readable.  Wrapping the
-facts distinguishes a valid empty file from a skipped file."
-  (cond
-   ((file-symlink-p file)
-    (error "Refusing symbolic-link learning file: %s" file))
-   ((not (file-exists-p file)) nil)
-   ((not (file-regular-p file))
-    (error "Learning data is not a regular file: %s" file))
-   ((not (file-readable-p file)) nil)
-   (t
-    (let* ((attributes (file-attributes file 'integer))
-           (size (and attributes (file-attribute-size attributes))))
-      (unless attributes
-        (error "Cannot inspect learning file: %s" file))
-      (unless (integerp size)
-        (error "Invalid learning file size: %S" size))
-      (when (> size nskk--search-learning-max-file-size)
-        (error "Learning file exceeds %d-byte limit"
-               nskk--search-learning-max-file-size))
-      (cons
-       t
-       (nskk-dict-transaction-read-entries
-        file (file-truename file) attributes
-        nskk--search-learning-max-file-size
-        #'nskk--search-parse-learning-entry))))))
+facts distinguishes a valid empty file from a skipped file.  An
+oversized file is signaled rather than skipped, because a truncated
+learning set would silently replace a complete one."
+  (nskk-dict-transaction-load-entries
+   file
+   nskk--search-learning-max-file-size
+   #'nskk--search-parse-learning-entry))
 
-(defun nskk--search-learning-rollback-actions
-    (previous cache-snapshots loaded-value)
-  "Build rollback actions for PREVIOUS, CACHE-SNAPSHOTS, and LOADED-VALUE."
-  (let ((index 0))
-    (append
-     (list
-      (cons
-       'predicate
-       (lambda ()
-         (nskk-dict-transaction-apply-predicate-snapshot previous))))
-     (mapcar
-      (lambda (snapshot)
-        (prog1
-            (cons
-             (list 'cache index)
-             (lambda ()
-               (nskk-search-restore-cache-snapshot snapshot)))
-          (setq index (1+ index))))
-      cache-snapshots)
-     (list
-      (cons
-       'loaded-binding
-       (lambda ()
-         (nskk-set-learning-loaded loaded-value)))))))
+(defun nskk--search-learning-rollback-actions (cache-snapshots loaded-value)
+  "Build rollback actions for CACHE-SNAPSHOTS and LOADED-VALUE.
+The clause-store restore is contributed by
+`nskk-dict-transaction-publish-facts'; these cover the search state that
+lives outside it."
+  (append
+   (seq-map-indexed
+    (lambda (snapshot index)
+      (cons (list 'cache index)
+            (lambda ()
+              (nskk-search-restore-cache-snapshot snapshot))))
+    cache-snapshots)
+   (list
+    (cons 'loaded-binding
+          (lambda ()
+            (nskk-set-learning-loaded loaded-value))))))
 
 (defun nskk--search-publish-learning-facts (owner facts)
   "Replace learning facts with FACTS transactionally for OWNER."
-  (let* ((key (nskk-prolog-clause-key 'learning-score 3))
-         (previous (nskk-dict-transaction-predicate-snapshot key))
-         (cache-snapshots (nskk-search-cache-snapshots))
-         (loaded-value (nskk-learning-loaded)))
-    (condition-case condition
-        (prog1
-            (progn
-              (nskk-prolog-retract-all 'learning-score 3)
-              (dolist (fact facts)
-                (nskk-prolog-assert (list fact)))
-              (nskk--search-flush-caches))
-          (nskk-dict-transaction-clear-pending-rollback owner))
-      ((error quit)
-       (nskk-dict-transaction-rollback-and-resignal
-        owner
-        condition
-        (nskk--search-learning-rollback-actions
-         previous cache-snapshots loaded-value))))))
+  (let ((cache-snapshots (nskk-search-cache-snapshots))
+        (loaded-value (nskk-learning-loaded)))
+    (nskk-dict-transaction-publish-facts
+     owner 'learning-score 3 facts
+     #'nskk--search-flush-caches
+     (nskk--search-learning-rollback-actions cache-snapshots loaded-value))))
 
 (defun/done nskk-search-learn (query candidate &optional context)
   "Record that CANDIDATE was selected for QUERY.

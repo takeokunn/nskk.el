@@ -2235,6 +2235,30 @@ of keys under `string<' regardless of the input order."
           (when (file-exists-p nskk-search-learning-file)
             (delete-file nskk-search-learning-file))))))
 
+  (nskk-it "rejects a file that becomes a symbolic link after the metadata read"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-search-learning-file
+             (make-temp-file "nskk-learning-race" nil ".dat"))
+            (symlink-checks 0))
+        (unwind-protect
+            (progn
+              (with-temp-file nskk-search-learning-file
+                (prin1 '(("new" "candidate" 3)) (current-buffer)))
+              (nskk-prolog-assert
+               '((learning-score "existing" "candidate" 7)))
+              (cl-letf (((symbol-function 'file-symlink-p)
+                         (lambda (_file)
+                           (setq symlink-checks (1+ symlink-checks))
+                           (= symlink-checks 2))))
+                (nskk-search-load-learning-data))
+              (should (= 7 (nskk-prolog-query-value
+                            '(learning-score "existing" "candidate" \?s)
+                            '\?s)))
+              (should-not (nskk-prolog-holds-p
+                           '(learning-score "new" "candidate" 3))))
+          (when (file-exists-p nskk-search-learning-file)
+            (delete-file nskk-search-learning-file))))))
+
   (nskk-it "rejects an oversized file before attempting to read it"
     (nskk-prolog-test-with-isolated-db
       (let ((nskk-search-learning-file
