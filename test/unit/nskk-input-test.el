@@ -1608,7 +1608,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (with-temp-buffer
         (nskk-mode 1)
         (nskk--setup-henkan-start-marker ?K)
-        (should (nskk-state-henkan-on-p nskk-current-state))))))
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))))))
 
 ;;;
 ;;; nskk--try-candidate-selection

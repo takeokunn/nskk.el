@@ -766,7 +766,7 @@ Example:
   (nskk-deffixture with-hiragana-state ()
     `(let ((state (nskk-state-create \\='hiragana)))
        (unwind-protect (progn ,@body)
-         (nskk-state-reset state))))
+         (setf (nskk-state-candidates state) nil))))
 
   (nskk-deffixture with-mock-dict (entries)
     `(nskk-with-mock-dict ,entries ,@body))"
