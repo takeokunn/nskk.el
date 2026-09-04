@@ -61,9 +61,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordinary function returning the converted kana. It never signalled
   absence, so its not-found continuation was unreachable; the generated
   `nskk-convert-input-to-kana-final/k` is gone.
+- Replaced six `fboundp` existence checks in the region command tests with
+  coverage for paths they left untested: conversion of a partial region
+  with surrounding text left intact, point placement after a successful
+  conversion, an interior region resolved through the interactive bounds
+  spec, rejection of a mark left active while `transient-mark-mode` is
+  off, mark reactivation when the failing body itself deactivated the
+  mark, a dakuten combination that shortens the converted span, and the
+  0x7E/U+FF5E boundary of the ASCII/full-width range.
 
 ### Fixed
 
+- Corrected the README's region-command pattern, which read
+  `M-x nskk-region-*` and matched none of the six commands; every one is
+  named `nskk-*-region`.
 - Fixed a state-snapshot ordering bug in the tutorial dictionary-state
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
@@ -95,6 +106,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   production code queried: `search-backend`, `search-result-action` and
   `should-update-overlay`. The cross-module tables `converting-phase`,
   `preedit-phase` and `disable-cleanup` are unchanged.
+- Removed an unreachable nil-result guard and an unused `nskk-cps-macros`
+  require from the region module. Every converter the region commands pass
+  to `nskk--region-convert` receives `buffer-substring-no-properties`
+  output, which is always a string, so the guard's nil branch could not be
+  entered; the module referenced no CPS macro.
 
 ## [0.3.0] - 2026-07-26
 

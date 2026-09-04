@@ -29,7 +29,6 @@
 ;;; Code:
 
 (require 'nskk-kana)
-(require 'nskk-cps-macros)
 
 ;;;; Internal Helpers
 
@@ -41,7 +40,7 @@
 
 (defun nskk--region-convert (beg end converter)
   "Convert text from BEG to END using CONVERTER function.
-CONVERTER takes a string and returns the converted string.
+CONVERTER takes a string and must return a string.
 Replaces the region text with the converted result.
 On failure, restore point, mark, and mark activation exactly."
   (let ((saved-point (point))
@@ -51,10 +50,9 @@ On failure, restore point, mark, and mark activation exactly."
         (atomic-change-group
           (let* ((text (buffer-substring-no-properties beg end))
                  (converted (funcall converter text)))
-            (when converted
-              (delete-region beg end)
-              (goto-char beg)
-              (insert converted))))
+            (delete-region beg end)
+            (goto-char beg)
+            (insert converted)))
       ((error quit)
        (goto-char saved-point)
        (set-marker (mark-marker) saved-mark)
