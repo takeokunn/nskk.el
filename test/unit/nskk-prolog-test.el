@@ -3644,6 +3644,57 @@ the database in the same state as before the assertion."
                           canonical-table))
               (should (= (hash-table-count source-table) 2))))))))
 
+  (ert-deftest nskk-prolog-copy-term-preserves-self-referential-vector ()
+    "A vector whose own slot aliases itself keeps that self-reference.
+Complements `nskk-prolog-copy-term-preserves-supported-graph-topology',
+which exercises a self-referential cons but not a self-referential vector."
+    (let* ((shared (list 'shared))
+           (backlink (copy-sequence "payload"))
+           (payload (vector shared shared backlink nil)))
+      (aset payload 3 payload)
+      (add-text-properties 0 (length backlink) (list 'backlink payload) backlink)
+      (let* ((copy (nskk-prolog-copy-term payload))
+             (copied-shared (aref copy 0))
+             (copied-backlink (aref copy 2)))
+        (should-not (eq copy payload))
+        (should-not (eq copied-shared shared))
+        (should-not (eq copied-backlink backlink))
+        (should (eq (aref copy 0) (aref copy 1)))
+        (should (eq (aref copy 3) copy))
+        (should (eq (get-text-property 0 'backlink copied-backlink) copy)))))
+
+  (ert-deftest nskk-prolog-copy-term-produces-mutually-independent-copies-across-calls ()
+    "Two separate calls copying the same source never share structure with
+each other, only with the source they were each copied from."
+    (let* ((key (list 'key))
+           (shared (list 'shared))
+           (nested (make-hash-table :test 'eq))
+           (source
+            (make-hash-table
+             :test 'equal :size 31 :rehash-size 1.7 :rehash-threshold 0.75)))
+      (puthash shared key nested)
+      (puthash key (vector shared nested) source)
+      (cl-flet ((find-copied-key (table)
+                  (let (found)
+                    (maphash
+                     (lambda (candidate _value)
+                       (when (equal candidate key) (setq found candidate)))
+                     table)
+                    found)))
+        (let* ((first (nskk-prolog-copy-term source))
+               (second (nskk-prolog-copy-term source))
+               (first-key (find-copied-key first))
+               (second-key (find-copied-key second)))
+          (should-not (eq first second))
+          (should-not (eq first-key second-key))
+          (should-not (eq (gethash first-key first) (gethash second-key second)))
+          (setcar first-key 'mutated)
+          (puthash 'marker t first)
+          (should (equal key '(key)))
+          (should-not (gethash 'marker source))
+          (should-not (gethash 'marker second))
+          (should (equal second-key '(key)))))))
+
   (provide 'nskk-prolog-test))
 
 

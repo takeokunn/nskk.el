@@ -23,8 +23,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
 
+- Added `nskk-display-sanitize`, which strips every text property from
+  untrusted dictionary text before applying a single display face, and
+  `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
+  and `nskk-overlay-priority-mode-indicator`, which name the overlay
+  priority values the display sites previously carried as bare integers.
+  The numeric values are unchanged.
+
 ### Changed
 
+- `nskk-show-inline` now offers `horizontal` in its customize `:type`. The
+  symbol was already documented in the option's docstring and accepted by
+  its `:safe` predicate, but could not be chosen through customize.
+- Merged the inline module's two per-style display builders into one
+  style-taking function and routed it, the candidate list and the
+  annotation display through `nskk-display-sanitize`. Output is identical
+  including text properties.
 - Eliminated cross-module references to private (`nskk--*`) symbols across
   the source tree, unifying state ownership behind the new accessor API
   and a Prolog-fact registration protocol (module-initialized flags,
@@ -53,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed a dead, zero-caller private helper
   (`nskk--converter-copy-prolog-state`) from the converter module.
+- Removed the private per-style inline display builders
+  `nskk--inline-build-horizontal` and `nskk--inline-build-vertical`,
+  superseded by a single style-taking function.
 - Removed the public macro `nskk-define-mode-entry`. It ignored two of its
   four arguments, and its documented branch for passing an existing face
   symbol had no call site. The four mode-line faces it generated are now
