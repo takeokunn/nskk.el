@@ -167,12 +167,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made the debug module's hand-written CPS continuation-pattern declaration
   visible during byte compilation, so the CPS bind forms' guard against
   binding a `defun/done` function is no longer inert while the file compiles.
+- Restructured the resource lifecycle in `nskk-isearch.el`: the two
+  near-identical reconciliation loops and the three copies of the
+  cleanup-collection helper are now shared condition-plumbing functions, and
+  the retry bound is derived from the number of resources being converged
+  instead of written as a literal. The mode-indicator lookup moved to the
+  project's CPS macros, so the prompt advice consumes it through explicit
+  success and failure continuations rather than a nil sentinel. The
+  `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
+  rollback is unchanged.
 
 ### Fixed
 
 - Corrected the README's region-command pattern, which read
   `M-x nskk-region-*` and matched none of the six commands; every one is
   named `nskk-*-region`.
+- Fixed the isearch prompt showing no input-mode indicator in half-width
+  katakana mode. `nskk-isearch-mode-string-alist` covered six of the seven
+  symbols in `nskk--valid-modes`, omitting `katakana-半角`.
 - Fixed a state-snapshot ordering bug in the tutorial dictionary-state
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
