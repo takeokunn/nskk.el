@@ -19,7 +19,7 @@
 ;; Contextual word association learning for NSKK (Layer 2: Domain).
 ;;
 ;; Layer position: L2 (Domain) -- depends on nskk-prolog, nskk-dictionary,
-;;   nskk-dict-transaction, and nskk-custom.
+;;   and nskk-dict-transaction.
 ;;
 ;; Implements skk-study-style contextual learning: when a user confirms a
 ;; candidate, the system records an association between the previously

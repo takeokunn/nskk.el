@@ -31,7 +31,6 @@
 (require 'cl-lib)
 (require 'isearch)
 (require 'nskk-state)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
 
 ;;;; Customization

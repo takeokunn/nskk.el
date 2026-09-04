@@ -37,8 +37,127 @@
 (require 'nskk-dictionary)
 (require 'nskk-prolog)
 (require 'nskk-converter)
-(require 'nskk-custom)
 (require 'nskk-debug nil t)
+
+;;;; Customization
+
+(defgroup nskk-henkan nil
+  "Conversion (henkan) pipeline settings."
+  :prefix "nskk-henkan-"
+  :group 'nskk-ui)
+
+(defcustom nskk-henkan-show-candidates-nth 5
+  "Number of SPC presses before showing candidate list.
+After this many candidates shown one-by-one, switch to overlay
+candidate list display below the conversion region.
+Zero means always show the list immediately."
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-henkan)
+
+(defcustom nskk-henkan-number-to-display-candidates 7
+  "Number of candidates to display per page in candidate list.
+Must be at least 1; should match the number of selection keys in
+`nskk-henkan-show-candidates-keys'."
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-henkan)
+
+(defcustom nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l)
+  "Selection keys for candidate list display.
+These keys allow direct candidate selection in the overlay candidate list."
+  :type '(repeat character)
+  :safe (lambda (v) (and (listp v) (cl-every #'characterp v)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-henkan)
+
+(defcustom nskk-max-registration-depth 3
+  "Maximum nesting depth for recursive word registration.
+When `nskk-state-registration-depth' reaches this value, further
+registration attempts are silently ignored."
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-henkan)
+
+(defcustom nskk-use-kana-in-registration nil
+  "Whether to enable NSKK kana input in the dictionary registration minibuffer.
+When non-nil, `nskk-mode' is automatically activated in hiragana mode
+in the registration minibuffer, allowing Japanese input with NSKK itself.
+When nil (default), the registration minibuffer uses plain text input,
+expecting the OS input method (e.g. macSKK) to provide Japanese input."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.2.0")
+  :group 'nskk-henkan)
+
+;;;; Dynamic Completion Multiple Display Settings
+
+(defgroup nskk-dcomp nil
+  "Dynamic completion (dcomp) settings for NSKK."
+  :prefix "nskk-dcomp-"
+  :group 'nskk-ui)
+
+(defcustom nskk-dcomp-style 'capf
+  "Dynamic completion style in preedit mode.
+Possible values:
+  \\='capf  -- Use `completion-at-point-functions' (default).
+             Works with corfu, company, vertico, or
+             Emacs built-in *Completions*.
+  \\='cycle -- Traditional TAB cycling (DDSKK-compatible).
+             Replaces preedit text directly and cycles
+             through matches."
+  :type '(choice (const :tag "CAPF (modern, works with corfu/company)" capf)
+                 (const :tag "Cycle (traditional DDSKK-style)" cycle))
+  :safe (lambda (v) (memq v '(capf cycle)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defcustom nskk-dcomp-multiple-activate nil
+  "When non-nil, display multiple dynamic completion candidates inline.
+When enabled, pressing TAB in preedit (▽) mode shows a list of matching
+completion candidates directly below the preedit text.  Use TAB or
+SHIFT+TAB to cycle through the candidates.
+When nil, only the current completion is shown (default behavior)."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defcustom nskk-dcomp-multiple-rows 7
+  "Maximum number of candidates to display in the dcomp multiple view.
+When `nskk-dcomp-multiple-activate' is non-nil, this controls how many
+completion candidates appear in the inline list below the preedit."
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-face
+  '((t (:foreground "DarkKhaki")))
+  "Face for the dynamically completed part of the reading (inline suffix)."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-multiple-face
+  '((t (:inherit default)))
+  "Face for candidate readings in the dcomp multiple display."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-multiple-trailing-face
+  '((t (:foreground "DarkKhaki")))
+  "Face for trailing part of candidate readings in dcomp multiple display."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
+
+(defface nskk-dcomp-multiple-selected-face
+  '((t (:inherit highlight :weight bold)))
+  "Face for the currently selected candidate in dcomp multiple display."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-dcomp)
 
 (declare-function nskk-state-p "nskk-state")
 (declare-function nskk-state-candidates "nskk-state")

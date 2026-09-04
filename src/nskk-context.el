@@ -30,7 +30,6 @@
 
 (require 'cl-lib)
 (require 'nskk-state)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
 
 ;;;; Customization

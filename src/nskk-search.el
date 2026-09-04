@@ -35,7 +35,6 @@
 (require 'nskk-dict-transaction)
 (require 'nskk-cache)
 (require 'nskk-prolog)
-(require 'nskk-custom)
 (require 'nskk-debug nil t)
 
 ;; nskk.el is the top-level orchestrator and requires this file (transitively
@@ -45,6 +44,69 @@
 ;; byte-compiler, it does not load anything.
 (declare-function nskk-learning-loaded "nskk" ())
 (declare-function nskk-set-learning-loaded "nskk" (value))
+
+;;;; Customization
+
+(defgroup nskk-search nil
+  "SKK dictionary search customization."
+  :group 'nskk
+  :prefix "nskk-search-")
+
+(defcustom nskk-search-sort-method 'frequency
+  "Sort method for search results."
+  :type '(choice (const :tag "Frequency order" frequency)
+                 (const :tag "Kana order" kana)
+                 (const :tag "No sorting" none))
+  :safe (lambda (v) (memq v '(frequency kana none)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
+
+(defcustom nskk-search-fuzzy-threshold 3
+  "Maximum Levenshtein distance threshold for fuzzy search.
+Zero disables fuzzy matching."
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
+
+(defcustom nskk-search-learning-file
+  (expand-file-name "nskk/learning.dat" user-emacs-directory)
+  "File path for persisting learning data."
+  :type 'file
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
+
+(defcustom nskk-search-merge-user-dict-with-server nil
+  "When non-nil, merge user dictionary candidates with skkserv results.
+
+By default (nil), skkserv takes priority: when a server lookup succeeds
+its candidates are used as-is and the local user dictionary is not
+consulted, matching the historical NSKK search behavior.
+
+When non-nil, the local dictionary (user-registered and learned words)
+is searched first and its candidates are merged ahead of the server's,
+with duplicates removed.  This is closer to ddskk, where the personal
+dictionary is merged before the system/server dictionaries so that
+registered and learned words always appear among the top candidates.
+
+Only affects exact dictionary lookup (`nskk-core-search')."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
+
+(defcustom nskk-search-auto-save-learning t
+  "When non-nil, persist learning data across Emacs sessions.
+When enabled, learning scores are loaded from `nskk-search-learning-file'
+the first time NSKK is enabled, and saved back on Emacs exit via
+`kill-emacs-hook'.  If the optional study feature (`nskk-study') is
+loaded, study association data is loaded and saved as well.
+
+When nil, learning is kept in memory only and lost when Emacs exits."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-search)
 
 (defconst nskk--search-learning-max-file-size (* 10 1024 1024)
   "Maximum number of bytes accepted from the learning data file.")

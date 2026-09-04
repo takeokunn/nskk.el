@@ -157,6 +157,30 @@ Possible values:
   :group
   'nskk-dictionary)
 
+(defgroup
+  nskk-kakutei-jisyo
+  nil
+  "Confirmed dictionary settings for NSKK."
+  :prefix
+  "nskk-kakutei-"
+  :group
+  'nskk)
+
+(defcustom
+  nskk-kakutei-jisyo
+  nil
+  "Path to the confirmed (kakutei) dictionary file, or nil to disable.
+The confirmed dictionary contains entries that are committed immediately
+without showing a candidate selection menu.  When a reading matches an
+entry in this dictionary, the single candidate is inserted directly.
+The file format is the same as the standard SKK dictionary format."
+  :type
+  '(choice file (const nil))
+  :package-version
+  '(nskk . "0.1.0")
+  :group
+  'nskk-kakutei-jisyo)
+
 (defvar nskk-jisyo-update-hook nil
   "Hook run while a dictionary update crosses its publication boundary.
 User registration is transactional: the first `error' or `quit' stops later

@@ -5,7 +5,7 @@ LOAD_PATH = -L src -L test -L test/integration -L test/unit -L test/e2e
 
 # All source files (core + optional extension modules)
 SRC = src/nskk-cps-macros.el src/nskk-prolog.el src/nskk-trie.el \
-       src/nskk-custom.el src/nskk-debug.el \
+       src/nskk-debug.el \
        src/nskk-kana.el src/nskk-converter.el src/nskk-cache.el src/nskk-dict-transaction.el src/nskk-dictionary.el src/nskk-search.el \
        src/nskk-state.el src/nskk-henkan.el src/nskk-input.el \
        src/nskk-keymap.el src/nskk-modeline.el src/nskk-candidate-window.el \
