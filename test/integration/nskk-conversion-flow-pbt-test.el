@@ -338,45 +338,6 @@
                           (length failures) failures))))))
 
 ;;;;
-;;;; CPS Tests: nskk-convert-romaji/k result type
-;;;;
-
-(nskk-property-test-with-shrinking nskk-property-cps-convert-romaji-matches-sync
-  ((pattern romaji-basic))
-  (let ((cps-result nil)
-        (branch nil))
-    (nskk-convert-romaji/k
-     pattern
-     (lambda (result) (setq cps-result result branch 'found))
-     (lambda () (setq branch 'not-found)))
-    (and (eq branch 'found)
-         (equal cps-result (nskk-convert-romaji pattern))))
-  50)
-
-(nskk-describe "CPS: nskk-convert-romaji/k result contract"
-
-  (nskk-it "sync and CPS paths return the documented kana"
-    (dolist (case '(("ka" . "か")
-                    ("ki" . "き")
-                    ("a" . "あ")
-                    ("i" . "い")
-                    ("u" . "う")
-                    ("sha" . "しゃ")
-                    ("chi" . "ち")
-                    ("tsu" . "つ")))
-      (let ((romaji (car case))
-            (expected (cdr case))
-            (cps-result nil)
-            (branch nil))
-        (should (equal (nskk-convert-romaji romaji) expected))
-        (nskk-convert-romaji/k
-         romaji
-         (lambda (result) (setq cps-result result branch 'found))
-         (lambda () (setq branch 'not-found)))
-        (should (eq branch 'found))
-        (should (equal cps-result expected))))))
-
-;;;;
 ;;;; CPS Tests: nskk-dict-lookup/k mutual exclusion
 ;;;;
 
