@@ -87,6 +87,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordinary function returning the converted kana. It never signalled
   absence, so its not-found continuation was unreachable; the generated
   `nskk-convert-input-to-kana-final/k` is gone.
+- Reworked the skkserv client. Connection setup, teardown and rollback are
+  split into named helpers; the duplicated poll-budget normalisation is now a
+  single function; and Prolog rollback uses the engine's own
+  `nskk-prolog-capture-key-state` / `nskk-prolog-restore-key-state` API rather
+  than a hand-rolled six-table snapshot, which also restores the cons identity
+  the hand-rolled version left untouched. `nskk-server-live-p` and the private
+  annotation stripper are plain functions instead of CPS definitions, so the
+  generated `nskk-server-live-p/k` wrapper no longer exists.
+- Changed skkserv resource cleanup to one attempt per call. A process or
+  buffer whose teardown faults stays registered and is reclaimed by the next
+  close or open, rather than being retried immediately within the same call.
+- Replaced the skkserv unit suite. Its six `nskk-deftest-table` blocks sat
+  inside `nskk-it` bodies, so their rows registered as zero runnable tests;
+  the rewritten suite registers 37 table rows and covers the poll budget,
+  response byte cap, fail-closed coding preflight, candidate sanitisation,
+  the exactly-one-continuation invariant, resource ownership, rollback and
+  post-send teardown.
 
 ### Removed
 
@@ -158,6 +175,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Prolog fact table, and the CPS-style `nskk-cache-p/k` predicate from
   `nskk-cache.el`. None had callers outside `nskk-cache.el` and its test
   file.
+- Removed `nskk--server-prolog-state-snapshot` and
+  `nskk--server-restore-prolog-state` from the skkserv client in favour of the
+  Prolog engine's own per-key snapshot API.
 
 ## [0.3.0] - 2026-07-26
 
