@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- Reshaped the mode-line module: cursor-color resolution now uses the
+  project's CPS found/not-found pair, the mode-line indicator consumes that
+  pair's continuations directly instead of a nil test, and the all-frames
+  cursor restore delegates to a per-frame helper rather than recursing
+  through its own public entry point. Behavior and public signatures are
+  unchanged.
 
 ### Fixed
 
@@ -47,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed a dead, zero-caller private helper
   (`nskk--converter-copy-prolog-state`) from the converter module.
+- Removed the public macro `nskk-define-mode-entry`. It ignored two of its
+  four arguments, and its documented branch for passing an existing face
+  symbol had no call site. The four mode-line faces it generated are now
+  plain `defface` forms under the same names
+  (`nskk-modeline-hiragana-face` and siblings).
 
 ## [0.3.0] - 2026-07-26
 

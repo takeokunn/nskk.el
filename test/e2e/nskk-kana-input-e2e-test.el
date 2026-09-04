@@ -286,6 +286,34 @@
       (nskk-e2e-assert-buffer "ｯｶ"))))
 
 ;;;;
+;;;; Full-width Latin Mode Tests
+;;;;
+
+(nskk-describe "jisx0208-latin mode"
+  (nskk-it "converts ASCII chars to full-width"
+    (nskk-e2e-with-buffer 'jisx0208-latin nil
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "ａ")))
+
+  (nskk-it "converts SPC to ideographic space"
+    (nskk-e2e-with-buffer 'jisx0208-latin nil
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-buffer "　"))))
+
+;;;;
+;;;; Full-width Latin Character Conversion Table
+;;;;
+
+(nskk-deftest-table jisx0208-latin-character-table
+  :columns (ascii-char fullwidth-char)
+  :rows (("a" "ａ") ("m" "ｍ") ("z" "ｚ"))
+  :body
+  (nskk-e2e-with-buffer 'jisx0208-latin nil
+    (nskk-e2e-type ascii-char)
+    (nskk-e2e-assert-buffer fullwidth-char
+                             (format "jisx0208-latin: %S → %S" ascii-char fullwidth-char))))
+
+;;;;
 ;;;; Property-Based Tests (PBT)
 ;;;;
 
