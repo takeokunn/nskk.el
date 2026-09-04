@@ -592,6 +592,60 @@ Managed by dcomp-multiple display logic in nskk-henkan.el; declared here
 following the project convention that all buffer-local overlay variables
 live in nskk-state.el.")
 
+;;;; Display String Construction
+
+(defun nskk-display-sanitize (text face &optional prefix suffix)
+  "Return TEXT stripped of every text property and propertized with FACE.
+PREFIX and SUFFIX are concatenated around the stripped TEXT before FACE is
+applied, so they carry FACE too.
+
+Dictionary candidates and annotations are untrusted input.  A `display',
+`keymap' or `local-map' property surviving into an overlay `after-string'
+lets a dictionary entry redraw the buffer or rebind keys, so stripping
+happens here rather than at each display site.
+
+Only TEXT is stripped.  PREFIX and SUFFIX must be trusted literals: `concat'
+carries each argument's own text properties into the result, and the
+`propertize' here only adds FACE, so a property on PREFIX or SUFFIX reaches
+the caller intact.  Measured -- passing a PREFIX carrying `display' leaves
+that `display' on the result."
+  (propertize (concat prefix (substring-no-properties text) suffix)
+              'face face))
+
+;;;; Overlay Display Priorities
+;;
+;; NSKK's candidate displays are zero-length overlays carrying an
+;; `after-string', several of which resolve to the same anchor -- the end of
+;; the conversion overlay.  These constants only give names to the integers
+;; those sites already used; the numbers are unchanged.
+;;
+;; What the numbers buy is narrower than it looks.  The Emacs Lisp manual
+;; ("Overlay Properties") defines `priority' for overlays that "cover the same
+;; character", and breaks ties by nesting -- "if neither is nested in the other
+;; then you should not make assumptions about which overlay will prevail".  A
+;; zero-length overlay covers no character and cannot nest inside another at
+;; the same position, so the manual does not describe the case NSKK has: the
+;; display order of several `after-string's at one position.  Treat the
+;; ordering below as an unverified hint rather than a guarantee.
+;;
+;; The same node warns that "any overlay with a positive priority value will
+;; override all the overlays without a priority", and that integer priorities
+;; should therefore be used with care.  `nskk-candidate-window.el' sets no
+;; priority and is deliberately left out of this ladder: giving it one would
+;; change how its overlay ranks against every unprioritized overlay in the
+;; buffer, NSKK's own and other packages'.
+
+(defconst nskk-overlay-priority-inline 98
+  "Overlay priority used by the inline candidate and registration badge.")
+
+(defconst nskk-overlay-priority-dcomp-multiple 99
+  "Overlay priority used by the multi-candidate dynamic completion panel.")
+
+(defconst nskk-overlay-priority-mode-indicator 100
+  "Overlay priority used by the `nskk-show-mode' input-mode indicator.
+Anchored at point rather than at the conversion overlay, so it collides
+with the others only when point happens to sit at that same position.")
+
 ;;;; Overlay and Marker Management Macros
 
 (defmacro nskk-ensure-overlay (var start end &rest props)
