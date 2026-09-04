@@ -260,6 +260,28 @@ a symbolic link or an existing non-regular file."
     (lambda ()
       ,@body)))
 
+(defun nskk-dict-serialize-solutions (goal variables)
+  "Query GOAL and return one list of VARIABLES' bindings per solution.
+The result is the serialized form shared by the persistence files: a
+proper list of proper lists, in solution order."
+  (mapcar (lambda (solution)
+            (mapcar (lambda (variable)
+                      (nskk-prolog-walk variable solution))
+                    variables))
+          (nskk-prolog-query goal)))
+
+(defun nskk-dict-write-private-file (file payload)
+  "Write PAYLOAD to FILE atomically, creating FILE's directory privately.
+The persistence files record the user's own conversion history, so a
+directory this code has to create is created unreadable by anyone else.
+An existing directory keeps whatever modes it already has."
+  (let ((directory (file-name-directory file)))
+    (unless (file-directory-p directory)
+      (with-file-modes #o700
+        (make-directory directory t))))
+  (nskk-dict-with-atomic-file file
+    (prin1 payload (current-buffer))))
+
 ;; Dictionary source facts: (dict-source source-symbol predicate-name)
 ;; These map source symbols to their Prolog predicate names
 (nskk-prolog-define-fact-table

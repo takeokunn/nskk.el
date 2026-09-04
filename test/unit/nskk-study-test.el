@@ -7,13 +7,9 @@
 ;; Unit tests for nskk-study.el.
 ;;; Code:
 (require 'ert)
-
 (require 'nskk-study)
-
 (require 'nskk-prolog)
-
 (require 'nskk-test-framework)
-
 (require 'nskk-test-macros)
 
 ;;;
@@ -43,53 +39,58 @@
       (with-temp-buffer
         (nskk--study-push-kakutei "雨" 42 (current-buffer))
         (should (= (plist-get (car nskk--study-kakutei-ring) :point) 42))
-        (should (eq (plist-get (car nskk--study-kakutei-ring) :buffer) (current-buffer)))))))
+        (should (eq (plist-get (car nskk--study-kakutei-ring) :buffer)
+                    (current-buffer)))))))
 
-(nskk-describe
-  "nskk--study-recent-words"
-  (nskk-it
-    "returns words in most-recent-first order"
-    (let ((nskk--study-kakutei-ring nil)
-          (nskk-study-search-times 5))
-      (nskk--study-push-kakutei "A" 1 (current-buffer))
-      (nskk--study-push-kakutei "B" 2 (current-buffer))
-      (should (equal (nskk--study-recent-words) '("B" "A"))))))
+;;;
+;;; Candidate Word Extraction
+;;;
+(nskk-describe "nskk--study-candidate-word"
+  (nskk-it "returns a string candidate unchanged"
+    (should (equal (nskk--study-candidate-word "降る") "降る")))
+
+  (nskk-it "returns the car of a cons candidate"
+    (should (equal (nskk--study-candidate-word '("降る" . "annotation")) "降る")))
+
+  (nskk-it "returns nil for a candidate that carries no word"
+    (should-not (nskk--study-candidate-word nil))
+    (should-not (nskk--study-candidate-word 42))
+    (should-not (nskk--study-candidate-word '(1 2)))))
 
 ;;;
 ;;; Distance Check
 ;;;
-(nskk-describe
-  "nskk--study-distance-ok-p"
-  (nskk-it
-    "returns t when no max-distance set"
+(nskk-describe "nskk--study-distance-ok-p"
+  (nskk-it "returns t when no max-distance set"
     (let ((nskk-study-max-distance nil)
           (nskk--study-kakutei-ring
-          (list (list :word "雨" :point 10 :buffer (current-buffer)))))
+           (list (list :word "雨" :point 10 :buffer (current-buffer)))))
       (should (nskk--study-distance-ok-p 100 (current-buffer)))))
-  (nskk-it
-    "returns t when ring is empty"
+
+  (nskk-it "returns t when ring is empty"
     (let ((nskk-study-max-distance 30)
           (nskk--study-kakutei-ring nil))
       (should (nskk--study-distance-ok-p 100 (current-buffer)))))
-  (nskk-it
-    "returns t when within max-distance in same buffer"
+
+  (nskk-it "returns t when within max-distance in same buffer"
     (let ((nskk-study-max-distance 30)
           (nskk--study-kakutei-ring
-          (list (list :word "雨" :point 10 :buffer (current-buffer)))))
+           (list (list :word "雨" :point 10 :buffer (current-buffer)))))
       (should (nskk--study-distance-ok-p 35 (current-buffer)))))
-  (nskk-it
-    "returns nil when beyond max-distance"
+
+  (nskk-it "returns nil when beyond max-distance"
     (let ((nskk-study-max-distance 30)
           (nskk--study-kakutei-ring
-          (list (list :word "雨" :point 10 :buffer (current-buffer)))))
+           (list (list :word "雨" :point 10 :buffer (current-buffer)))))
       (should-not (nskk--study-distance-ok-p 50 (current-buffer)))))
-  (nskk-it
-    "returns nil when in different buffer"
+
+  (nskk-it "returns nil when in different buffer"
     (let ((nskk-study-max-distance 30))
       (with-temp-buffer
         (let ((other-buf (current-buffer)))
           (with-temp-buffer
-            (let ((nskk--study-kakutei-ring (list (list :word "雨" :point 10 :buffer other-buf))))
+            (let ((nskk--study-kakutei-ring
+                   (list (list :word "雨" :point 10 :buffer other-buf))))
               (should-not (nskk--study-distance-ok-p 15 (current-buffer))))))))))
 
 ;;;
@@ -108,6 +109,18 @@
                         '(study-association "雨" "ふる" \?c) '\?c)
                        "降る")))))
 
+  (nskk-it "records the car of a cons candidate"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'study-association 3)
+      (let ((nskk-study-max-distance nil)
+            (nskk-study-first-candidate t)
+            (nskk--study-kakutei-ring
+             (list (list :word "雨" :point 10 :buffer (current-buffer)))))
+        (nskk-study-record "ふる" '("降る" . "to fall"))
+        (should (equal (nskk-prolog-query-value
+                        '(study-association "雨" "ふる" \?c) '\?c)
+                       "降る")))))
+
   (nskk-it "replaces existing association for same (prev, reading) pair"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'study-association 3)
@@ -120,7 +133,9 @@
         (should (equal (nskk-prolog-query-value
                         '(study-association "雨" "ふる" \?c) '\?c)
                        "降る"))
-        (should (= (length (nskk-prolog-query '(study-association "雨" "ふる" \?c))) 1)))))
+        (should (= (length (nskk-prolog-query
+                            '(study-association "雨" "ふる" \?c)))
+                   1)))))
 
   (nskk-it "skips recording when ring is empty"
     (nskk-prolog-test-with-isolated-db
@@ -186,16 +201,25 @@
       (nskk-prolog-assert '((study-association "雨" "ふる" "降る")))
       (let ((nskk--study-kakutei-ring
              (list (list :word "雨" :point 10 :buffer (current-buffer)))))
-        (let ((result (nskk-study-reorder "ふる" '("振る" "降る" "古る"))))
-          (should (equal (car result) "降る"))))))
+        (should (equal (nskk-study-reorder "ふる" '("振る" "降る" "古る"))
+                       '("降る" "振る" "古る"))))))
 
   (nskk-it "returns original order when no association matches"
     (nskk-prolog-test-with-isolated-db
       (nskk-prolog-retract-all 'study-association 3)
       (let ((nskk--study-kakutei-ring
              (list (list :word "雨" :point 10 :buffer (current-buffer)))))
-        (let ((result (nskk-study-reorder "ふる" '("振る" "降る"))))
-          (should (equal result '("振る" "降る")))))))
+        (should (equal (nskk-study-reorder "ふる" '("振る" "降る"))
+                       '("振る" "降る"))))))
+
+  (nskk-it "leaves the order alone when the association names an unoffered candidate"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'study-association 3)
+      (nskk-prolog-assert '((study-association "雨" "ふる" "降る")))
+      (let ((nskk--study-kakutei-ring
+             (list (list :word "雨" :point 10 :buffer (current-buffer)))))
+        (should (equal (nskk-study-reorder "ふる" '("振る" "古る"))
+                       '("振る" "古る"))))))
 
   (nskk-it "returns candidates unchanged when ring is empty"
     (let ((nskk--study-kakutei-ring nil))
@@ -214,8 +238,8 @@
       (let ((nskk--study-kakutei-ring
              (list (list :word "雨" :point 10 :buffer (current-buffer))
                    (list :word "天気" :point 5 :buffer (current-buffer)))))
-        (let ((result (nskk-study-reorder "ふる" '("振る" "降る" "古る"))))
-          (should (equal (car result) "降る")))))))
+        (should (equal (car (nskk-study-reorder "ふる" '("振る" "降る" "古る")))
+                       "降る"))))))
 
 ;;;
 ;;; After-Kakutei Entry Point
@@ -234,6 +258,14 @@
                         '(study-association "雨" "ふる" \?c) '\?c)
                        "降る"))
         (should (equal (plist-get (car nskk--study-kakutei-ring) :word) "降る")))))
+
+  (nskk-it "pushes the car of a cons candidate onto the ring"
+    (let ((nskk-study-max-distance nil)
+          (nskk-study-first-candidate t)
+          (nskk-study-search-times 5)
+          (nskk--study-kakutei-ring nil))
+      (nskk-study-after-kakutei "あめ" '("雨" . "rain"))
+      (should (equal (plist-get (car nskk--study-kakutei-ring) :word) "雨"))))
 
   (nskk-it "pushes to ring even without prior context"
     (let ((nskk-study-max-distance nil)
@@ -266,6 +298,30 @@
               (should (equal (nskk-prolog-query-value
                               '(study-association "天気" "よほう" \?c) '\?c)
                              "予報")))
+          (delete-file nskk-study-file)))))
+
+  (nskk-it "writes nothing while persistence is inhibited"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-retract-all 'study-association 3)
+      (nskk-prolog-assert '((study-association "雨" "ふる" "降る")))
+      (let ((nskk-study-file (make-temp-file "nskk-study-inhibited-"))
+            (messages nil))
+        (unwind-protect
+            (progn
+              (nskk-with-mocks
+                  ((message
+                    (lambda (fmt &rest args)
+                      (push (apply #'format fmt args) messages))))
+                (let ((nskk--persistence-inhibited t))
+                  (nskk-study-save)))
+              (should (cl-some (lambda (text)
+                                 (string-match-p "save inhibited" text))
+                               messages))
+              (should-not (cl-some (lambda (text)
+                                     (string-match-p "Study data saved" text))
+                                   messages))
+              (should (zerop (file-attribute-size
+                              (file-attributes nskk-study-file)))))
           (delete-file nskk-study-file)))))
 
   (nskk-it "does not announce success when atomic publication fails"
@@ -341,267 +397,303 @@
             (delete-file nskk-study-file)))))))
 
 ;;;
-;;; nskk-study-load validation tests
+;;; nskk-study-load validation
 ;;;
-(nskk-describe
-  "nskk-study-load validation"
-  (nskk-it
-    "preserves existing data when an entry is malformed"
+(nskk-describe "nskk-study-load validation"
+  (nskk-it "preserves existing data when an entry is malformed"
     (let ((tmpfile (make-temp-file "nskk-test-study")))
-      (unwind-protect (progn
-          (with-temp-file tmpfile (prin1 (quote (("new" "reading"))) (current-buffer)))
-          (let ((nskk-study-file tmpfile))
-            (nskk-prolog-test-with-isolated-db
-              (nskk-prolog-retract-all (quote study-association) 3)
-              (nskk-prolog-assert (quote ((study-association "old" "reading" "candidate"))))
-              (nskk-study-load)
-              (should
-                (nskk-prolog-holds-p (quote (study-association "old" "reading" "candidate"))))
-              (should
-                (= 1 (length (nskk-prolog-query (quote (study-association \?p \?r \?c)))))))))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (prin1 '(("new" "reading")) (current-buffer)))
+            (let ((nskk-study-file tmpfile))
+              (nskk-prolog-test-with-isolated-db
+                (nskk-prolog-retract-all 'study-association 3)
+                (nskk-prolog-assert
+                 '((study-association "old" "reading" "candidate")))
+                (nskk-study-load)
+                (should (nskk-prolog-holds-p
+                         '(study-association "old" "reading" "candidate")))
+                (should (= 1 (length (nskk-prolog-query
+                                      '(study-association \?p \?r \?c))))))))
         (delete-file tmpfile))))
-  (nskk-it
-    "replaces existing data without duplicates on repeated loads"
+
+  (nskk-it "replaces existing data without duplicates on repeated loads"
     (let ((tmpfile (make-temp-file "nskk-test-study")))
-      (unwind-protect (progn
-          (with-temp-file
-            tmpfile
-            (prin1 (quote (("prev" "reading" "cand"))) (current-buffer)))
-          (let ((nskk-study-file tmpfile))
-            (nskk-prolog-test-with-isolated-db
-              (nskk-prolog-retract-all (quote study-association) 3)
-              (nskk-prolog-assert (quote ((study-association "old" "reading" "candidate"))))
-              (nskk-study-load)
-              (nskk-study-load)
-              (should-not
-                (nskk-prolog-holds-p (quote (study-association "old" "reading" "candidate"))))
-              (should
-                (nskk-prolog-holds-p (quote (study-association "prev" "reading" "cand"))))
-              (should
-                (= 1 (length (nskk-prolog-query (quote (study-association \?p \?r \?c)))))))))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (prin1 '(("prev" "reading" "cand")) (current-buffer)))
+            (let ((nskk-study-file tmpfile))
+              (nskk-prolog-test-with-isolated-db
+                (nskk-prolog-retract-all 'study-association 3)
+                (nskk-prolog-assert
+                 '((study-association "old" "reading" "candidate")))
+                (nskk-study-load)
+                (nskk-study-load)
+                (should-not (nskk-prolog-holds-p
+                             '(study-association "old" "reading" "candidate")))
+                (should (nskk-prolog-holds-p
+                         '(study-association "prev" "reading" "cand")))
+                (should (= 1 (length (nskk-prolog-query
+                                      '(study-association \?p \?r \?c))))))))
         (delete-file tmpfile))))
-  (nskk-it
-    "preserves existing data when the file grows past the size limit"
+
+  (nskk-it "preserves existing data when the file grows past the size limit"
     (let ((tmpfile (make-temp-file "nskk-test-study-growing"))
           (nskk--study-max-file-size 8))
-      (unwind-protect (progn
-          (with-temp-file
-            tmpfile
-            (prin1 (quote (("new" "reading" "candidate"))) (current-buffer)))
-          (let ((nskk-study-file tmpfile))
-            (nskk-prolog-test-with-isolated-db
-              (nskk-prolog-retract-all (quote study-association) 3)
-              (nskk-prolog-assert (quote ((study-association "old" "reading" "candidate"))))
-              (cl-letf
-                (((symbol-function (quote file-attribute-size))
-                    (lambda (_attributes)
-                      1)))
-                (nskk-study-load))
-              (should
-                (nskk-prolog-holds-p (quote (study-association "old" "reading" "candidate"))))
-              (should
-                (= 1 (length (nskk-prolog-query (quote (study-association \?p \?r \?c)))))))))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (prin1 '(("new" "reading" "candidate")) (current-buffer)))
+            (let ((nskk-study-file tmpfile))
+              (nskk-prolog-test-with-isolated-db
+                (nskk-prolog-retract-all 'study-association 3)
+                (nskk-prolog-assert
+                 '((study-association "old" "reading" "candidate")))
+                (cl-letf (((symbol-function 'file-attribute-size)
+                           (lambda (_attributes) 1)))
+                  (nskk-study-load))
+                (should (nskk-prolog-holds-p
+                         '(study-association "old" "reading" "candidate")))
+                (should (= 1 (length (nskk-prolog-query
+                                      '(study-association \?p \?r \?c))))))))
+        (delete-file tmpfile))))
+
+  (nskk-it "reports an oversized file instead of loading it"
+    (let ((tmpfile (make-temp-file "nskk-test-study-oversize"))
+          (nskk--study-max-file-size 4)
+          (messages nil))
+      (unwind-protect
+          (progn
+            (with-temp-file tmpfile
+              (prin1 '(("new" "reading" "candidate")) (current-buffer)))
+            (let ((nskk-study-file tmpfile))
+              (nskk-prolog-test-with-isolated-db
+                (nskk-prolog-retract-all 'study-association 3)
+                (nskk-prolog-assert
+                 '((study-association "old" "reading" "candidate")))
+                (nskk-with-mocks
+                    ((message
+                      (lambda (fmt &rest args)
+                        (push (apply #'format fmt args) messages))))
+                  (nskk-study-load))
+                (should (cl-some (lambda (text)
+                                   (string-match-p "too large" text))
+                                 messages))
+                (should (nskk-prolog-holds-p
+                         '(study-association "old" "reading" "candidate"))))))
         (delete-file tmpfile)))))
 
-(ert-deftest
-  nskk-study-test/load-rejects-symbolic-link
-  ()
+(ert-deftest nskk-study-test/load-rejects-symbolic-link ()
   "A study file reached through a symbolic link must not be loaded."
   (let* ((directory (make-temp-file "nskk-study-link-" t))
          (target (expand-file-name "target.el" directory))
          (link (expand-file-name "study.el" directory)))
-    (unwind-protect (progn
-        (with-temp-file
-          target
-          (prin1 '(("new" "reading" "candidate")) (current-buffer)))
-        (make-symbolic-link target link)
-        (let ((nskk-study-file link))
-          (nskk-prolog-test-with-isolated-db
-            (nskk-prolog-retract-all 'study-association 3)
-            (nskk-prolog-assert '((study-association "old" "reading" "candidate")))
-            (nskk-study-load)
-            (should (nskk-prolog-holds-p '(study-association "old" "reading" "candidate")))
-            (should-not
-              (nskk-prolog-holds-p '(study-association "new" "reading" "candidate"))))))
+    (unwind-protect
+        (progn
+          (with-temp-file target
+            (prin1 '(("new" "reading" "candidate")) (current-buffer)))
+          (make-symbolic-link target link)
+          (let ((nskk-study-file link))
+            (nskk-prolog-test-with-isolated-db
+              (nskk-prolog-retract-all 'study-association 3)
+              (nskk-prolog-assert
+               '((study-association "old" "reading" "candidate")))
+              (nskk-study-load)
+              (should (nskk-prolog-holds-p
+                       '(study-association "old" "reading" "candidate")))
+              (should-not
+               (nskk-prolog-holds-p
+                '(study-association "new" "reading" "candidate"))))))
       (delete-directory directory t))))
 
-(ert-deftest
-  nskk-study-test/load-detects-post-stat-symlink-race
-  ()
+(ert-deftest nskk-study-test/load-detects-post-stat-symlink-race ()
   "A file becoming a symbolic link after stat must not be loaded."
   (let ((file (make-temp-file "nskk-study-race-"))
         (symlink-checks 0))
-    (unwind-protect (progn
-        (with-temp-file file (prin1 '(("new" "reading" "candidate")) (current-buffer)))
-        (let ((nskk-study-file file))
-          (nskk-prolog-test-with-isolated-db
-            (nskk-prolog-retract-all 'study-association 3)
-            (nskk-prolog-assert '((study-association "old" "reading" "candidate")))
-            (cl-letf
-              (((symbol-function 'file-symlink-p)
-                  (lambda (_file)
-                    (setq symlink-checks (1+ symlink-checks))
-                    (= symlink-checks 2))))
-              (nskk-study-load))
-            (should (nskk-prolog-holds-p '(study-association "old" "reading" "candidate")))
-            (should-not
-              (nskk-prolog-holds-p '(study-association "new" "reading" "candidate"))))))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (prin1 '(("new" "reading" "candidate")) (current-buffer)))
+          (let ((nskk-study-file file))
+            (nskk-prolog-test-with-isolated-db
+              (nskk-prolog-retract-all 'study-association 3)
+              (nskk-prolog-assert
+               '((study-association "old" "reading" "candidate")))
+              (cl-letf (((symbol-function 'file-symlink-p)
+                         (lambda (_file)
+                           (setq symlink-checks (1+ symlink-checks))
+                           (= symlink-checks 2))))
+                (nskk-study-load))
+              (should (nskk-prolog-holds-p
+                       '(study-association "old" "reading" "candidate")))
+              (should-not
+               (nskk-prolog-holds-p
+                '(study-association "new" "reading" "candidate"))))))
       (delete-file file))))
 
-(ert-deftest
-  nskk-study-test/load-rejects-file-replaced-during-read
-  ()
+(ert-deftest nskk-study-test/load-rejects-file-replaced-during-read ()
   "A file replaced during reading must not update existing facts."
   (let ((file (make-temp-file "nskk-study-replaced-"))
         (replacement (make-temp-file "nskk-study-replacement-"))
-        (real-insert (symbol-function (quote insert-file-contents))))
-    (unwind-protect (progn
-        (with-temp-file
-          file
-          (prin1 (quote (("new" "reading" "candidate"))) (current-buffer)))
-        (with-temp-file
-          replacement
-          (prin1 (quote (("attacker" "reading" "candidate"))) (current-buffer)))
-        (let ((nskk-study-file file))
-          (nskk-prolog-test-with-isolated-db
-            (nskk-prolog-retract-all (quote study-association) 3)
-            (nskk-prolog-assert (quote ((study-association "old" "reading" "candidate"))))
-            (cl-letf
-              (((symbol-function (quote insert-file-contents))
-                  (lambda (&rest arguments)
-                    (prog1
-                      (apply real-insert arguments)
-                      (rename-file replacement file t)))))
-              (nskk-study-load))
-            (should
-              (nskk-prolog-holds-p (quote (study-association "old" "reading" "candidate"))))
-            (should-not
-              (nskk-prolog-holds-p (quote (study-association "new" "reading" "candidate"))))
-            (should-not
-              (nskk-prolog-holds-p
-                (quote (study-association "attacker" "reading" "candidate")))))))
+        (real-insert (symbol-function 'insert-file-contents)))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (prin1 '(("new" "reading" "candidate")) (current-buffer)))
+          (with-temp-file replacement
+            (prin1 '(("attacker" "reading" "candidate")) (current-buffer)))
+          (let ((nskk-study-file file))
+            (nskk-prolog-test-with-isolated-db
+              (nskk-prolog-retract-all 'study-association 3)
+              (nskk-prolog-assert
+               '((study-association "old" "reading" "candidate")))
+              (cl-letf (((symbol-function 'insert-file-contents)
+                         (lambda (&rest arguments)
+                           (prog1
+                               (apply real-insert arguments)
+                             (rename-file replacement file t)))))
+                (nskk-study-load))
+              (should (nskk-prolog-holds-p
+                       '(study-association "old" "reading" "candidate")))
+              (should-not
+               (nskk-prolog-holds-p
+                '(study-association "new" "reading" "candidate")))
+              (should-not
+               (nskk-prolog-holds-p
+                '(study-association "attacker" "reading" "candidate"))))))
       (when (file-exists-p file)
         (delete-file file))
       (when (file-exists-p replacement)
         (delete-file replacement)))))
 
-(ert-deftest
-  nskk-study-test/load-rejects-non-regular-file
-  ()
-  "A non-regular study file must be rejected before any read."
+(ert-deftest nskk-study-test/load-rejects-non-regular-file ()
+  "A non-regular study file must be rejected before any read.
+The rejection is also reported.  Before the shared transaction contract
+this case fell through the validation `cond' with no clause and was
+skipped in silence, so the diagnostic is asserted to keep it from
+regressing back to a silent no-op."
   (unless (executable-find "mkfifo")
     (ert-skip "mkfifo is unavailable"))
-  (let ((fifo
-        (make-temp-name (expand-file-name "nskk-study-fifo-" temporary-file-directory)))
-        (read-called nil))
-    (unwind-protect (progn
-        (should (zerop (call-process "mkfifo" nil nil nil fifo)))
-        (let ((nskk-study-file fifo))
-          (nskk-prolog-test-with-isolated-db
-            (nskk-prolog-retract-all 'study-association 3)
-            (nskk-prolog-assert '((study-association "old" "reading" "candidate")))
-            (cl-letf
-              (((symbol-function 'insert-file-contents)
-                  (lambda (&rest _arguments)
-                    (setq read-called t)
-                    (error "FIFO read attempted"))))
-              (nskk-study-load))
-            (should-not read-called)
-            (should (nskk-prolog-holds-p '(study-association "old" "reading" "candidate"))))))
+  (let ((fifo (make-temp-name
+               (expand-file-name "nskk-study-fifo-" temporary-file-directory)))
+        (read-called nil)
+        (messages nil))
+    (unwind-protect
+        (progn
+          (should (zerop (call-process "mkfifo" nil nil nil fifo)))
+          (let ((nskk-study-file fifo))
+            (nskk-prolog-test-with-isolated-db
+              (nskk-prolog-retract-all 'study-association 3)
+              (nskk-prolog-assert
+               '((study-association "old" "reading" "candidate")))
+              (cl-letf (((symbol-function 'insert-file-contents)
+                         (lambda (&rest _arguments)
+                           (setq read-called t)
+                           (error "FIFO read attempted")))
+                        ((symbol-function 'message)
+                         (lambda (fmt &rest args)
+                           (push (apply #'format fmt args) messages))))
+                (nskk-study-load))
+              (should-not read-called)
+              (should (cl-some (lambda (text)
+                                 (string-match-p "non-regular file" text))
+                               messages))
+              (should (nskk-prolog-holds-p
+                       '(study-association "old" "reading" "candidate"))))))
       (when (file-exists-p fifo)
         (delete-file fifo)))))
 
 (ert-deftest nskk-study-test/load-rolls-back-publication-error ()
-    "Publication errors restore the exact previous predicate storage."
-    (let ((file (make-temp-file "nskk-study-publication-error-"))
-          (real-apply
-           (symbol-function 'nskk-dict-transaction-apply-predicate-snapshot)))
-      (unwind-protect
-          (progn
-            (with-temp-file file
-              (prin1 '(("new" "reading" "candidate")) (current-buffer)))
-            (let ((nskk-study-file file))
-              (nskk-prolog-test-with-isolated-db
-               (let ((key (nskk-prolog-clause-key 'study-association 3))
-                     (rollback-called 0)
-                     rollback-inhibited)
-                 (nskk-prolog-retract-all 'study-association 3)
-                 (nskk-prolog-assert
-                  '((study-association "old" "reading" "candidate")))
-                 (let ((before (nskk-dict-transaction-predicate-snapshot key)))
-                   (cl-letf
-                       (((symbol-function 'nskk-prolog-assert)
-                         (lambda (&rest _arguments)
-                           (error "original publication error")))
-                        ((symbol-function
-                          'nskk-dict-transaction-apply-predicate-snapshot)
-                         (lambda (snapshot)
-                           (cl-incf rollback-called)
-                           (setq rollback-inhibited inhibit-quit)
-                           (funcall real-apply snapshot))))
-                     (nskk-study-load))
-                   (should (= rollback-called 1))
-                   (should rollback-inhibited)
-                   (should
-                    (equal before (nskk-dict-transaction-predicate-snapshot key)))
-                   (should
-                    (nskk-prolog-holds-p
-                     '(study-association "old" "reading" "candidate")))
-                   (should-not
-                    (nskk-prolog-holds-p
-                     '(study-association "new" "reading" "candidate"))))))))
-        (ignore-errors (delete-file file)))))
+  "Publication errors restore the exact previous predicate storage."
+  (let ((file (make-temp-file "nskk-study-publication-error-"))
+        (real-apply
+         (symbol-function 'nskk-dict-transaction-apply-predicate-snapshot)))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (prin1 '(("new" "reading" "candidate")) (current-buffer)))
+          (let ((nskk-study-file file))
+            (nskk-prolog-test-with-isolated-db
+              (let ((key (nskk-prolog-clause-key 'study-association 3))
+                    (rollback-called 0)
+                    rollback-inhibited)
+                (nskk-prolog-retract-all 'study-association 3)
+                (nskk-prolog-assert
+                 '((study-association "old" "reading" "candidate")))
+                (let ((before (nskk-dict-transaction-predicate-snapshot key)))
+                  (cl-letf
+                      (((symbol-function 'nskk-prolog-assert)
+                        (lambda (&rest _arguments)
+                          (error "original publication error")))
+                       ((symbol-function
+                         'nskk-dict-transaction-apply-predicate-snapshot)
+                        (lambda (snapshot)
+                          (cl-incf rollback-called)
+                          (setq rollback-inhibited inhibit-quit)
+                          (funcall real-apply snapshot))))
+                    (nskk-study-load))
+                  (should (= rollback-called 1))
+                  (should rollback-inhibited)
+                  (should
+                   (equal before (nskk-dict-transaction-predicate-snapshot key)))
+                  (should
+                   (nskk-prolog-holds-p
+                    '(study-association "old" "reading" "candidate")))
+                  (should-not
+                   (nskk-prolog-holds-p
+                    '(study-association "new" "reading" "candidate"))))))))
+      (ignore-errors (delete-file file)))))
 
-  (ert-deftest nskk-study-test/load-rolls-back-before-resignaling-quit ()
-    "Rollback completes under inhibited quit before the original quit is signaled."
-    (let ((file (make-temp-file "nskk-study-publication-quit-"))
-          (real-apply
-           (symbol-function 'nskk-dict-transaction-apply-predicate-snapshot)))
-      (unwind-protect
-          (progn
-            (with-temp-file file
-              (prin1 '(("new" "reading" "candidate")) (current-buffer)))
-            (let ((nskk-study-file file))
-              (nskk-prolog-test-with-isolated-db
-               (let ((key (nskk-prolog-clause-key 'study-association 3))
-                     (rollback-called 0)
-                     rollback-inhibited)
-                 (nskk-prolog-retract-all 'study-association 3)
-                 (nskk-prolog-assert
-                  '((study-association "old" "reading" "candidate")))
-                 (let ((before (nskk-dict-transaction-predicate-snapshot key)))
-                   (cl-letf
-                       (((symbol-function 'nskk-prolog-assert)
-                         (lambda (&rest _arguments)
-                           (signal
-                            'quit
-                            '("original publication quit" payload))))
-                        ((symbol-function
-                          'nskk-dict-transaction-apply-predicate-snapshot)
-                         (lambda (snapshot)
-                           (cl-incf rollback-called)
-                           (setq rollback-inhibited inhibit-quit)
-                           (funcall real-apply snapshot))))
-                     (let ((condition
-                            (condition-case condition
-                                (progn
-                                  (nskk-study-load)
-                                  'returned)
-                              (quit condition))))
-                       (should
-                        (equal condition
-                               '(quit "original publication quit" payload)))))
-                   (should (= rollback-called 1))
-                   (should rollback-inhibited)
-                   (should
-                    (equal before (nskk-dict-transaction-predicate-snapshot key)))
-                   (should
-                    (nskk-prolog-holds-p
-                     '(study-association "old" "reading" "candidate")))
-                   (should-not
-                    (nskk-prolog-holds-p
-                     '(study-association "new" "reading" "candidate"))))))))
-        (ignore-errors (delete-file file)))))
+(ert-deftest nskk-study-test/load-rolls-back-before-resignaling-quit ()
+  "Rollback completes under inhibited quit before the original quit is signaled."
+  (let ((file (make-temp-file "nskk-study-publication-quit-"))
+        (real-apply
+         (symbol-function 'nskk-dict-transaction-apply-predicate-snapshot)))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (prin1 '(("new" "reading" "candidate")) (current-buffer)))
+          (let ((nskk-study-file file))
+            (nskk-prolog-test-with-isolated-db
+              (let ((key (nskk-prolog-clause-key 'study-association 3))
+                    (rollback-called 0)
+                    rollback-inhibited)
+                (nskk-prolog-retract-all 'study-association 3)
+                (nskk-prolog-assert
+                 '((study-association "old" "reading" "candidate")))
+                (let ((before (nskk-dict-transaction-predicate-snapshot key)))
+                  (cl-letf
+                      (((symbol-function 'nskk-prolog-assert)
+                        (lambda (&rest _arguments)
+                          (signal 'quit '("original publication quit" payload))))
+                       ((symbol-function
+                         'nskk-dict-transaction-apply-predicate-snapshot)
+                        (lambda (snapshot)
+                          (cl-incf rollback-called)
+                          (setq rollback-inhibited inhibit-quit)
+                          (funcall real-apply snapshot))))
+                    (let ((condition
+                           (condition-case condition
+                               (progn
+                                 (nskk-study-load)
+                                 'returned)
+                             (quit condition))))
+                      (should
+                       (equal condition
+                              '(quit "original publication quit" payload)))))
+                  (should (= rollback-called 1))
+                  (should rollback-inhibited)
+                  (should
+                   (equal before (nskk-dict-transaction-predicate-snapshot key)))
+                  (should
+                   (nskk-prolog-holds-p
+                    '(study-association "old" "reading" "candidate")))
+                  (should-not
+                   (nskk-prolog-holds-p
+                    '(study-association "new" "reading" "candidate"))))))))
+      (ignore-errors (delete-file file)))))
 
 (defun nskk-study-test--assert-load-rejects-time-race (time-index)
   "Assert that a TIME-INDEX metadata race aborts a study load."
@@ -611,16 +703,15 @@
           (with-temp-file file
             (prin1 '(("new" "reading" "candidate")) (current-buffer)))
           (let* ((attributes-before (file-attributes file 'integer))
- (resolved-file (file-truename file))
- (attribute-reads 0)
- (read-called nil)
- (publish-called nil)
- (real-attributes (symbol-function 'file-attributes))
- (real-retract (symbol-function 'nskk-prolog-retract-all)))
+                 (resolved-file (file-truename file))
+                 (attribute-reads 0)
+                 (read-called nil)
+                 (publish-called nil)
+                 (real-attributes (symbol-function 'file-attributes))
+                 (real-retract (symbol-function 'nskk-prolog-retract-all)))
             (let ((nskk-study-file file))
               (nskk-prolog-test-with-isolated-db
-                (let ((key (nskk-prolog-clause-key
-                            'study-association 3)))
+                (let ((key (nskk-prolog-clause-key 'study-association 3)))
                   (nskk-prolog-retract-all 'study-association 3)
                   (nskk-prolog-assert
                    '((study-association "old" "reading" "candidate")))
@@ -629,7 +720,8 @@
                         (((symbol-function 'file-attributes)
                           (lambda (filename &optional id-format)
                             (should (eq id-format 'integer))
-                            (if (or (equal filename file) (equal filename resolved-file))
+                            (if (or (equal filename file)
+                                    (equal filename resolved-file))
                                 (pcase (cl-incf attribute-reads)
                                   (1 attributes-before)
                                   (2 (funcall real-attributes
@@ -645,8 +737,7 @@
                                      changed))
                                   (_ (error
                                       "Unexpected source attribute read")))
-                              (funcall real-attributes
-                                       filename id-format))))
+                              (funcall real-attributes filename id-format))))
                          ((symbol-function 'read)
                           (lambda (&rest _arguments)
                             (setq read-called t)
@@ -664,26 +755,20 @@
                             (nskk-dict-transaction-predicate-snapshot key)))
                     (should
                      (nskk-prolog-holds-p
-                      '(study-association
-                        "old" "reading" "candidate")))
+                      '(study-association "old" "reading" "candidate")))
                     (should-not
                      (nskk-prolog-holds-p
-                      '(study-association
-                        "new" "reading" "candidate")))))))))
+                      '(study-association "new" "reading" "candidate")))))))))
       (delete-file file))))
 
-(ert-deftest
-  nskk-study-test/load-rejects-modification-time-change-during-read
-  ()
+(ert-deftest nskk-study-test/load-rejects-modification-time-change-during-read ()
   "An mtime-only race must not update existing facts."
   (nskk-study-test--assert-load-rejects-time-race 5))
 
-(ert-deftest
-  nskk-study-test/load-rejects-status-change-time-change-during-read
-  ()
+(ert-deftest nskk-study-test/load-rejects-status-change-time-change-during-read ()
   "A ctime-only race must not update existing facts."
   (nskk-study-test--assert-load-rejects-time-race 6))
 
-(provide (quote nskk-study-test))
+(provide 'nskk-study-test)
 
 ;;; nskk-study-test.el ends here
