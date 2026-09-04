@@ -68,14 +68,61 @@
   (nskk-it "has C-j binding"
     (should (lookup-key nskk-mode-map (kbd "C-j")))))
 
+(nskk-describe "nskk-mode-map structural invariants"
+  (nskk-context "all bindings are callable"
+    (nskk-it "every command bound in nskk-mode-map satisfies fboundp"
+      (map-keymap
+       (lambda (_key cmd)
+         (when (symbolp cmd)
+           (should (fboundp cmd))))
+       nskk-mode-map)))
+
+  (nskk-context "map is non-empty"
+    (nskk-it "nskk-mode-map is a non-empty keymap"
+      (should (keymapp nskk-mode-map))
+      (let ((count 0))
+        (map-keymap (lambda (_k _v) (cl-incf count)) nskk-mode-map)
+        (should (> count 0))))))
+
+(nskk-property-test-exhaustive main-keymap-critical-keys-survive-mode-enable
+  '("C-j" "L" "C-g")
+  (with-temp-buffer
+    (nskk-mode 1)
+    (let ((binding (lookup-key nskk-mode-map (kbd item))))
+      (nskk-mode -1)
+      (and binding (symbolp binding) (fboundp binding)))))
+
 (nskk-deftest-table main-keymap-bindings
   :columns (key expected-command)
-  :rows (("C-x C-j" nskk-toggle-mode)
+  :rows (("<remap> <self-insert-command>" nskk-self-insert)
+         ("C-x C-j" nskk-toggle-mode)
          ("C-j"     nskk-kakutei)
+         ("q"       nskk-handle-q)
+         ("l"       nskk-handle-l)
+         ("SPC"     nskk-handle-space)
+         ("RET"     nskk-handle-return)
          ("L"       nskk-handle-upper-l)
          ("/"       nskk-handle-slash)
          ("x"       nskk-handle-x)
-         ("C-g"     nskk-handle-cancel))
+         ("C-n"     nskk-handle-ctrl-n)
+         ("C-p"     nskk-handle-ctrl-p)
+         ("C-f"     nskk-handle-ctrl-f)
+         ("<right>" nskk-handle-ctrl-f)
+         ("C-b"     nskk-handle-ctrl-b)
+         ("<left>"  nskk-handle-ctrl-b)
+         ("<down>"  nskk-handle-ctrl-n)
+         ("<up>"    nskk-handle-ctrl-p)
+         ("C-a"     nskk-handle-ctrl-a)
+         ("<home>"  nskk-handle-ctrl-a)
+         ("C-e"     nskk-handle-ctrl-e)
+         ("<end>"   nskk-handle-ctrl-e)
+         ("C-g"     nskk-handle-cancel)
+         ("DEL"     nskk-handle-backspace)
+         (";"       nskk-handle-semicolon-key)
+         ("TAB"     nskk-handle-tab)
+         ("#"       nskk-handle-hash)
+         ("C-/"     nskk-undo-kakutei)
+         ("X"       nskk-handle-upper-x))
   :body (should (eq expected-command (lookup-key nskk-mode-map (kbd key)))))
 
 (nskk-deftest-table main-command-existence

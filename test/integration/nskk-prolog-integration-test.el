@@ -121,9 +121,9 @@
   (nskk-it "retract-all on a non-existent predicate does not error"
     (nskk-prolog-test-with-isolated-db
       (nskk-then
-       (should-not (condition-case nil
-                       (progn (nskk-prolog-retract-all 'does-not-exist 1) nil)
-                     (error t))))))
+       ;; ERT fails on an unhandled signal, so the call itself is the assertion.
+       (nskk-prolog-retract-all 'does-not-exist 1)
+       (should (null (nskk-prolog-query '(does-not-exist \?x)))))))
 
   (nskk-it "retract-all followed by assert makes predicate usable again"
     (nskk-prolog-test-with-isolated-db
@@ -275,10 +275,9 @@
          (vars  (cl-loop for i from 1 to arity
                          collect (intern (format "?v%d" i))))
          (goal  (cons (intern input) vars)))
-    (should-not
-     (condition-case err
-         (progn (nskk-prolog-query goal) nil)
-       (error err)))))
+    ;; ERT fails on an unhandled signal, so querying is the assertion; the
+    ;; extra check pins the shape of what an all-solutions query returns.
+    (should (listp (nskk-prolog-query goal)))))
 
 (provide 'nskk-prolog-integration-test)
 

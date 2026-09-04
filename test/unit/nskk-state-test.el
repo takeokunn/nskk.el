@@ -644,7 +644,11 @@ candidates, current-index, and metadata."
 
   (nskk-it "returns nil for unknown mode"
     (should-not (nskk-prolog-query-one
-                 `(mode-properties nonexistent ,'\?s ,'\?f ,'\?h ,'\?c)))))
+                 `(mode-properties nonexistent ,'\?s ,'\?f ,'\?h ,'\?c))))
+
+  (nskk-it "returns nil for direct, which is an alias rather than a fact"
+    (should-not (nskk-prolog-query-one
+                 `(mode-properties direct ,'\?s ,'\?f ,'\?h ,'\?c)))))
 
 ;;;
 ;;; nskk-state-get-mode and nskk-with-current-state

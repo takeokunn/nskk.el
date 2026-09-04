@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The Prolog engine's first-solution query API (`nskk-prolog-prove-one`,
+  `nskk-prolog-query-one`, `nskk-prolog-query-value`, `nskk-prolog-query-values`)
+  is now defined with the project's CPS macros, so a caller using the `/k`
+  form can tell "no solution" apart from a solution that binds nothing.
+  The synchronous wrappers keep their names, arguments, and return values.
+- Removed the `presentation-action/2` Prolog fact table. Registrations were
+  written to it and nothing ever queried it; presentation-action lookup now
+  reads only the alist that already served every caller.
+- Split `nskk-prolog-copy-term`, `nskk-prolog-set-index`, `nskk-prolog-assert`,
+  `nskk-prolog-retract` and `nskk-prolog-retract-all` into named helpers, and
+  dropped the `progn` wrappers the surrounding syntax did not require.
+
 ## [0.4.0] - Unreleased
 
 ### Added
@@ -23,14 +37,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
 
+- Added `nskk-display-sanitize`, which strips every text property from
+  untrusted dictionary text before applying a single display face, and
+  `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
+  and `nskk-overlay-priority-mode-indicator`, which name the overlay
+  priority values the display sites previously carried as bare integers.
+  The numeric values are unchanged.
+
 ### Changed
 
+- `nskk-show-inline` now offers `horizontal` in its customize `:type`. The
+  symbol was already documented in the option's docstring and accepted by
+  its `:safe` predicate, but could not be chosen through customize.
+- Merged the inline module's two per-style display builders into one
+  style-taking function and routed it, the candidate list and the
+  annotation display through `nskk-display-sanitize`. Output is identical
+  including text properties.
 - Eliminated cross-module references to private (`nskk--*`) symbols across
   the source tree, unifying state ownership behind the new accessor API
   and a Prolog-fact registration protocol (module-initialized flags,
-  clearable-input variables, presentation actions) in place of hardcoded
-  cross-module knowledge. That change renamed and removed nothing; for
-  removals see the Removed section below.
+  clearable-input variables) plus a presentation-action registry, in place
+  of hardcoded cross-module knowledge. That change renamed and removed
+  nothing; for removals see the Removed section below.
 - `nskk-state-create` is now a plain function. It previously used the CPS
   definer, but its failure continuation was unreachable, so the generated
   `nskk-state-create/k` has been removed along with it.
@@ -41,6 +69,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- Reshaped the mode-line module: cursor-color resolution now uses the
+  project's CPS found/not-found pair, the mode-line indicator consumes that
+  pair's continuations directly instead of a nil test, and the all-frames
+  cursor restore delegates to a per-frame helper rather than recursing
+  through its own public entry point. Behavior and public signatures are
+  unchanged.
+- Decomposed the henkan pipeline's large cleanup and commit functions into
+  named helpers, and replaced the four hand-rolled `cl-labels` cleanup
+  ladders with a shared `nskk--with-cleanup-runner` macro. Each call site
+  keeps its own `inhibit-quit` behaviour: commit and reset stay
+  interruptible, context-clear and registration stay uninterruptible.
+- Changed `nskk-reset-henkan-state` and `nskk-set-active-candidates` from
+  macros to functions. Both only ever received already-evaluated arguments,
+  so no call site changed.
+- Changed `nskk-convert-input-to-kana-final` from a CPS function to an
+  ordinary function returning the converted kana. It never signalled
+  absence, so its not-found continuation was unreachable; the generated
+  `nskk-convert-input-to-kana-final/k` is gone.
 
 ### Removed
 
@@ -76,11 +122,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
   supposed to precede.
+- Fixed `nskk-commit-current` calling neither of its continuations when
+  invoked outside an active conversion, which broke the
+  exactly-one-continuation contract every other CPS function in the module
+  honours. It now signals absence. Callers using the synchronous wrapper
+  are unaffected, since both the old and new paths yield nil.
+- Fixed a henkan unit test that registered no assertions: a table-driven
+  test was nested inside another test's body, so its five rows were
+  registered as a side effect after ERT had already fixed its selection
+  list and never ran. Also moved `provide` and four fault-injection test
+  matrices out of a `progn` they had been nested inside.
 
 ### Removed
 
 - Removed a dead, zero-caller private helper
   (`nskk--converter-copy-prolog-state`) from the converter module.
+- Removed the private per-style inline display builders
+  `nskk--inline-build-horizontal` and `nskk--inline-build-vertical`,
+  superseded by a single style-taking function.
+- Removed the public macro `nskk-define-mode-entry`. It ignored two of its
+  four arguments, and its documented branch for passing an existing face
+  symbol had no call site. The four mode-line faces it generated are now
+  plain `defface` forms under the same names
+  (`nskk-modeline-hiragana-face` and siblings).
+- Removed four zero-caller symbols from the henkan module: the macros
+  `nskk-with-conversion-context`, `nskk-when-bound` and
+  `nskk-when-bound-and`, and the function `nskk-set-last-kakutei-record`.
+  These carry no `nskk--` prefix but had no caller in or outside the
+  module; the getter `nskk-last-kakutei-record` is unaffected.
+- Removed three Prolog fact tables from `nskk-henkan-initialize` that no
+  production code queried: `search-backend`, `search-result-action` and
+  `should-update-overlay`. The cross-module tables `converting-phase`,
+  `preedit-phase` and `disable-cleanup` are unchanged.
+- Removed the `nskk-cache-field` macro, its backing `cache-field-fn/3`
+  Prolog fact table, and the CPS-style `nskk-cache-p/k` predicate from
+  `nskk-cache.el`. None had callers outside `nskk-cache.el` and its test
+  file.
 
 ## [0.3.0] - 2026-07-26
 
