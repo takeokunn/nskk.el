@@ -82,10 +82,11 @@ Invalidated when the current NSKK mode changes.")
 
 (defun/k nskk--modeline-with-data (mode)
   "Fetch display data for MODE from cache or Prolog.
-on-found is called with a list (DISPLAY-STRING FACE HELP-TEXT).
 The result is memoized in `nskk--modeline-indicator-cache' keyed by
 MODE so the Prolog engine is only queried when the mode changes.
-Calls on-not-found when MODE has no `mode-properties/5' fact."
+Sync wrapper returns a list (DISPLAY-STRING FACE HELP-TEXT), or nil when
+MODE has no `mode-properties/5' fact.
+The /k variant calls ON-FOUND with that list, ON-NOT-FOUND otherwise."
   (if (and nskk--modeline-indicator-cache
            (eq (car nskk--modeline-indicator-cache) mode))
       (succeed (cdr nskk--modeline-indicator-cache))
@@ -139,10 +140,11 @@ when `nskk-show-mode-show' is non-nil (via `nskk-show-mode-display')."
 ;;;; Cursor Color
 
 (defun/k nskk--cursor-with-color (mode)
-  "Return cursor color string for input MODE, or fail if none is registered.
+  "Return the cursor color string for input MODE.
 MODE is a mode symbol such as `hiragana' or `ascii'.
-Fails when MODE has no `mode-properties/5' fact, the cursor face is
-not defined, or its :background attribute is `unspecified'."
+Sync wrapper returns nil when MODE has no `mode-properties/5' fact, the
+cursor face is not defined, or its :background attribute is `unspecified'.
+The /k variant calls ON-FOUND with the color, ON-NOT-FOUND otherwise."
   (let* ((face (nskk-prolog-query-value
                 `(mode-properties ,mode ,'\?s ,'\?f ,'\?h ,'\?c) '\?c))
          (color (and face (facep face) (face-attribute face :background nil t))))
@@ -151,7 +153,7 @@ not defined, or its :background attribute is `unspecified'."
       (fail))))
 
 (defun nskk--cursor-apply-color (frame color)
-  "Set FRAME's cursor to COLOR unless FRAME already holds that color."
+  "Set FRAME's cursor to COLOR unless FRAME already holds that COLOR."
   (unless (equal color (frame-parameter frame nskk--last-cursor-color-parameter))
     (set-cursor-color color)
     (set-frame-parameter frame nskk--last-cursor-color-parameter color)))

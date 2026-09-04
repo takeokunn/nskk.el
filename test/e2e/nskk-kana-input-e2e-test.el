@@ -304,7 +304,7 @@
 ;;;; Full-width Latin Character Conversion Table
 ;;;;
 
-(nskk-deftest-table jisx0208-latin-character-table
+(nskk-deftest-table kana-e2e-jisx0208-latin-representative-chars
   :columns (ascii-char fullwidth-char)
   :rows (("a" "ａ") ("m" "ｍ") ("z" "ｚ"))
   :body
