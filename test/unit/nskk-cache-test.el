@@ -1339,7 +1339,21 @@
         (nskk-cache-put cache "c" 3)
         (should-not (nskk-cache-get cache "a"))
         (nskk-cache-restore-snapshot snapshot)
-        (should (equal (nskk-cache-get cache "a") 1))))))
+        (should (equal (nskk-cache-get cache "a") 1)))))
+
+  (nskk-it "does not roll back a key overwrite: put on an existing key mutates the captured entry in place"
+    (let* ((cache (nskk-cache-lru-create 10)))
+      (nskk-cache-put cache "a" 1)
+      (let ((snapshot (nskk-cache-capture-snapshot cache)))
+        (nskk-cache-put cache "a" 2)
+        (nskk-cache-restore-snapshot snapshot)
+        (should (equal (nskk-cache-get cache "a") 2))))
+    (let* ((cache (nskk-cache-lfu-create 10)))
+      (nskk-cache-put cache "a" 1)
+      (let ((snapshot (nskk-cache-capture-snapshot cache)))
+        (nskk-cache-put cache "a" 2)
+        (nskk-cache-restore-snapshot snapshot)
+        (should (equal (nskk-cache-get cache "a") 2))))))
 
 (nskk-describe "nskk-cache-capture-metadata-snapshot and nskk-cache-restore-metadata-snapshot"
   (nskk-it "restores LRU capacity, size, hits, misses, and hash/head/tail identities"
@@ -1628,6 +1642,28 @@
              ('put (nskk-cache-put cache "c" (list :new condition))))))
         (nskk-cache-test--assert-transaction-fixture
          'lfu fixture)))))
+
+(ert-deftest nskk-cache-adversarial-lru-put-existing-fault-rolls-back ()
+  (dolist (condition '(error quit))
+    (dotimes (_iteration 3)
+      (let* ((fixture (nskk-cache-test--make-transaction-fixture 'lru))
+             (cache (plist-get fixture :cache)))
+        (nskk-cache-test--fault-after-call
+         'nskk-cache-lru--move-to-head condition
+         (lambda ()
+           (nskk-cache-put cache "a" (list :new condition))))
+        (nskk-cache-test--assert-transaction-fixture 'lru fixture)))))
+
+(ert-deftest nskk-cache-adversarial-lfu-put-existing-fault-rolls-back ()
+  (dolist (condition '(error quit))
+    (dotimes (_iteration 3)
+      (let* ((fixture (nskk-cache-test--make-transaction-fixture 'lfu))
+             (cache (plist-get fixture :cache)))
+        (nskk-cache-test--fault-after-call
+         'nskk-cache-lfu--update-freq condition
+         (lambda ()
+           (nskk-cache-put cache "a" (list :new condition))))
+        (nskk-cache-test--assert-transaction-fixture 'lfu fixture)))))
 
 (ert-deftest nskk-cache-adversarial-prepared-get-contract ()
 (dolist (strategy (quote (lru lfu)))

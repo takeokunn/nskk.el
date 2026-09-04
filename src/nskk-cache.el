@@ -878,6 +878,11 @@ sentinel nodes and head's `next' / tail's `prev' links are captured;
 interior node `prev'/`next' links are never captured or repaired.  For an
 LFU cache, only the top level of the frequency table \(frequency -> bucket\)
 is captured, not each bucket's own contents.
+A third limitation: overwriting an existing key does not round-trip.
+hash-entries holds \(key . node\) / \(key . entry\) pairs by reference, and
+a put on an already-present key mutates that same struct's value slot in
+place, so restoring re-inserts an object that already carries the value
+from the later put.
 Slots:
   kind         - `lru' or `lfu'
   cache        - the cache object this snapshot was captured from
@@ -939,7 +944,10 @@ For an LRU CACHE, only the head/tail sentinel nodes and head's `next' /
 tail's `prev' links are captured; interior node `prev'/`next' links are NOT
 captured.  For an LFU CACHE, only the top level of the frequency table
 \(frequency -> bucket\) is captured; the buckets are hash tables whose
-contents are NOT captured."
+contents are NOT captured.  Overwriting an existing key with `put' after
+capture and then restoring does NOT recover the pre-put value: the entry
+struct behind that key is mutated in place, and the snapshot holds a
+reference to that same struct."
   (let ((hash-table (nskk-cache--base-hash cache))
         (capacity (nskk-cache--base-capacity cache))
         (size (nskk-cache--base-size cache))
@@ -973,7 +981,7 @@ contents are NOT captured."
 (defun nskk-cache-restore-snapshot (snapshot)
   "Restore the cache state recorded in SNAPSHOT in place.
 See `nskk-cache-capture-snapshot' for what is captured, including its LRU
-interior-link and LFU bucket-content limitations."
+interior-link, LFU bucket-content, and key-overwrite limitations."
   (let ((cache (nskk-cache--snapshot-cache snapshot)))
     (nskk-cache--snapshot-restore-hash-table
      (nskk-cache--snapshot-hash-table snapshot)
