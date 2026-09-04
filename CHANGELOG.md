@@ -191,6 +191,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
   rollback is unchanged.
 
+- Reduced the kana module to continuation-passing style only where a
+  conversion can actually fail, returning the character predicates and the
+  total zenkaku/hankaku converters to plain functions. Public function names
+  and their behavior are unchanged; only the generated `/k` variants of the
+  always-succeeding functions are gone.
+
 ### Fixed
 
 - Corrected the README's region-command pattern, which read
@@ -245,6 +251,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inhibited, matching the cache module's own rollback macro. A quit
   arriving between the rollback's field assignments could previously
   leave the cache in a partially restored state.
+- Fixed `nskk-kana` declaring its module-initialized flag twice, which made
+  `module-initialized-flag` report the kana flag as two separate solutions.
+- Fixed the kana zenkaku/hankaku round-trip property test drawing from a
+  generator that emits no dakuten, handakuten, ヴ, ん or を, so it could not
+  reach the two-character lookahead it appeared to cover. Replaced with a
+  generator over hankaku units and a composition property that fails when
+  that lookahead is disabled.
 
 ### Removed
 
@@ -309,6 +322,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   during module initialization. The rules they produced are unchanged and
   are now built from data. Code extending AZIK through these macros should
   add `(ROMAJI KANA)` pairs to `nskk-azik-conversion-table` instead.
+- Removed the `zenkaku-to-hankaku/2` and `hankaku-to-zenkaku/2` Prolog fact
+  tables from `nskk-kana-initialize`. Every conversion path used the hash
+  tables directly, so the roughly 200 facts asserted on each initialization
+  had no consumer.
+- Removed the empty `nskk-kana` customization group, which defined no
+  user options.
 
 ## [0.3.0] - 2026-07-26
 

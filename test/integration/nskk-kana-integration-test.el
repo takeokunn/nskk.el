@@ -9,7 +9,9 @@
 
 ;;; Commentary:
 
-;; Kana conversion integration tests.
+;; Cross-module tests for nskk-kana: its interaction with the Prolog
+;; database, and the conversion pipeline other modules reach it through.
+;; Single-function value assertions belong in test/unit/nskk-kana-test.el.
 
 ;;; Code:
 
@@ -20,184 +22,91 @@
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
 
-;;;; hiragana to katakana string conversion
+;;;; Prolog database integration
 
-(nskk-describe "hiragana to katakana string conversion"
+(nskk-describe "nskk-kana-initialize against the Prolog database"
 
-  (nskk-it "converts single hiragana あ to ア"
-    (nskk-kana-string-hiragana-to-katakana/k "あ"
-      (lambda (result) (should (string= result "ア")))
-      (lambda () (ert-fail "conversion failed unexpectedly"))))
+  (nskk-it "populates kana-conversion/3 in a freshly isolated database"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-kana-initialize)
+      (should (eq (nskk-prolog-query-value
+                   '(kana-conversion katakana insert \?fn) '\?fn)
+                  'nskk-kana-string-hiragana-to-katakana))
+      (should (eq (nskk-prolog-query-value
+                   '(kana-conversion katakana normalize \?fn) '\?fn)
+                  'nskk-kana-string-katakana-to-hiragana))))
 
-  (nskk-it "converts multi-character string ひらがな to ヒラガナ"
+  (nskk-it "resolves every declared mode in both directions"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-kana-initialize)
+      (dolist (mode '(hiragana katakana katakana-半角))
+        (dolist (direction '(insert normalize))
+          (should (nskk-prolog-query-value
+                   `(kana-conversion ,mode ,direction \?fn) '\?fn))))))
+
+  ;; `nskk-prolog-assert' does not deduplicate, so the guard in
+  ;; `nskk-kana-initialize' is the only thing preventing row growth.
+  ;; Measured as a delta: the isolated database inherits the rows asserted
+  ;; when nskk-kana was first loaded, so the absolute count is not 1.
+  (nskk-it "adds no further rows once initialized"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-kana-initialize)
+      (let ((after-first (length (nskk-prolog-query-all-values
+                                  '(kana-conversion katakana insert \?fn) '\?fn))))
+        (nskk-kana-initialize)
+        (nskk-kana-initialize)
+        (should (= after-first
+                   (length (nskk-prolog-query-all-values
+                            '(kana-conversion katakana insert \?fn) '\?fn))))))))
+
+;;;; Conversion pipeline reached through the mode table
+
+(nskk-describe "mode-driven conversion pipeline"
+
+  (nskk-it "converts hiragana for each insert mode via the Prolog table"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-kana-initialize)
+      (should (string= (nskk-kana-convert-for-mode "かんじ" 'hiragana) "かんじ"))
+      (should (string= (nskk-kana-convert-for-mode "かんじ" 'katakana) "カンジ"))
+      (should (string= (nskk-kana-convert-for-mode "かんじ" 'katakana-半角) "ｶﾝｼﾞ"))))
+
+  (nskk-it "normalizes each script back to hiragana for dictionary lookup"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-kana-initialize)
+      (should (string= (nskk-kana-normalize-for-lookup "かんじ" 'hiragana) "かんじ"))
+      (should (string= (nskk-kana-normalize-for-lookup "カンジ" 'katakana) "かんじ"))
+      (should (string= (nskk-kana-normalize-for-lookup "ｶﾝｼﾞ" 'katakana-半角) "かんじ"))))
+
+  ;; insert then normalize is the round trip a dictionary lookup performs
+  ;; after the user has typed in a non-hiragana mode.
+  (nskk-it "recovers the original reading through insert then normalize"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-kana-initialize)
+      (dolist (mode '(hiragana katakana katakana-半角))
+        (should (string= (nskk-kana-normalize-for-lookup
+                          (nskk-kana-convert-for-mode "かんじ" mode)
+                          mode)
+                         "かんじ"))))))
+
+;;;; CPS pipeline
+
+(nskk-describe "CPS conversion pipeline"
+
+  (nskk-it "chains hiragana->katakana->hiragana through continuations"
     (nskk-kana-string-hiragana-to-katakana/k "ひらがな"
-      (lambda (result) (should (string= result "ヒラガナ")))
-      (lambda () (ert-fail "conversion failed unexpectedly"))))
+      (lambda (kata)
+        (should (string= kata "ヒラガナ"))
+        (nskk-kana-string-katakana-to-hiragana/k kata
+          (lambda (back) (should (string= back "ひらがな")))
+          (lambda () (ert-fail "katakana-to-hiragana failed"))))
+      (lambda () (ert-fail "hiragana-to-katakana failed"))))
 
-  (nskk-it "converts empty string to empty string"
-    (nskk-kana-string-hiragana-to-katakana/k ""
-      (lambda (result) (should (string= result "")))
-      #'ignore))
-
-  (nskk-it "passes through non-hiragana characters unchanged"
-    (nskk-kana-string-hiragana-to-katakana/k "abc"
-      (lambda (result) (should (string= result "abc")))
-      (lambda () (ert-fail "conversion failed unexpectedly"))))
-
-  (nskk-it "calls on-not-found for non-string input"
+  (nskk-it "propagates failure to the not-found continuation for non-string input"
     (let ((failed nil))
       (nskk-kana-string-hiragana-to-katakana/k 42
-        (lambda (_result) (ert-fail "should not succeed for integer input"))
+        (lambda (_) (ert-fail "should not succeed for integer input"))
         (lambda () (setq failed t)))
       (should failed))))
-
-;;;; katakana to hiragana string conversion
-
-(nskk-describe "katakana to hiragana string conversion"
-
-  (nskk-it "converts single katakana ア to あ"
-    (nskk-kana-string-katakana-to-hiragana/k "ア"
-      (lambda (result) (should (string= result "あ")))
-      (lambda () (ert-fail "conversion failed unexpectedly"))))
-
-  (nskk-it "converts multi-character string カタカナ to かたかな"
-    (nskk-kana-string-katakana-to-hiragana/k "カタカナ"
-      (lambda (result) (should (string= result "かたかな")))
-      (lambda () (ert-fail "conversion failed unexpectedly"))))
-
-  (nskk-it "converts empty string to empty string"
-    (nskk-kana-string-katakana-to-hiragana/k ""
-      (lambda (result) (should (string= result "")))
-      #'ignore))
-
-  (nskk-it "passes through non-katakana characters unchanged"
-    (nskk-kana-string-katakana-to-hiragana/k "abc"
-      (lambda (result) (should (string= result "abc")))
-      (lambda () (ert-fail "conversion failed unexpectedly"))))
-
-  (nskk-it "calls on-not-found for non-string input"
-    (let ((failed nil))
-      (nskk-kana-string-katakana-to-hiragana/k nil
-        (lambda (_result) (ert-fail "should not succeed for nil input"))
-        (lambda () (setq failed t)))
-      (should failed))))
-
-;;;; zenkaku to hankaku conversion
-
-(nskk-describe "zenkaku to hankaku conversion"
-
-  (nskk-it "converts zenkaku katakana ア to hankaku ｱ"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-zenkaku-to-hankaku/k "ア"
-        (lambda (result) (should (string= result "ｱ")))
-        (lambda () (ert-fail "conversion failed unexpectedly")))))
-
-  (nskk-it "converts zenkaku string アイウ to hankaku ｱｲｳ"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-zenkaku-to-hankaku/k "アイウ"
-        (lambda (result) (should (string= result "ｱｲｳ")))
-        (lambda () (ert-fail "conversion failed unexpectedly")))))
-
-  (nskk-it "passes through unrecognized characters unchanged"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-zenkaku-to-hankaku/k "abc"
-        (lambda (result) (should (string= result "abc")))
-        (lambda () (ert-fail "conversion failed unexpectedly")))))
-
-  (nskk-it "always succeeds for empty string"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-zenkaku-to-hankaku/k ""
-        (lambda (result) (should (string= result "")))
-        (lambda () (ert-fail "should always succeed"))))))
-
-;;;; hankaku to zenkaku conversion
-
-(nskk-describe "hankaku to zenkaku conversion"
-
-  (nskk-it "converts hankaku ｱ to zenkaku ア"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-hankaku-to-zenkaku/k "ｱ"
-        (lambda (result) (should (string= result "ア")))
-        (lambda () (ert-fail "conversion failed unexpectedly")))))
-
-  (nskk-it "converts hankaku string ｱｲｳ to zenkaku アイウ"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-hankaku-to-zenkaku/k "ｱｲｳ"
-        (lambda (result) (should (string= result "アイウ")))
-        (lambda () (ert-fail "conversion failed unexpectedly")))))
-
-  (nskk-it "converts dakuten combination ｶﾞ to voiced ガ"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-hankaku-to-zenkaku/k "ｶﾞ"
-        (lambda (result) (should (string= result "ガ")))
-        (lambda () (ert-fail "conversion failed unexpectedly")))))
-
-  (nskk-it "always succeeds for empty string"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-hankaku-to-zenkaku/k ""
-        (lambda (result) (should (string= result "")))
-        (lambda () (ert-fail "should always succeed"))))))
-
-;;;; zenkaku-hankaku roundtrip
-
-(nskk-describe "zenkaku hankaku roundtrip"
-
-  (nskk-it "roundtrips single zenkaku katakana char"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-zenkaku-to-hankaku/k "ア"
-        (lambda (hankaku)
-          (nskk-kana-hankaku-to-zenkaku/k hankaku
-            (lambda (back) (should (string= back "ア")))
-            (lambda () (ert-fail "hankaku-to-zenkaku failed"))))
-        (lambda () (ert-fail "zenkaku-to-hankaku failed")))))
-
-  (nskk-it "roundtrips five-char zenkaku katakana string"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-zenkaku-to-hankaku/k "アイウエオ"
-        (lambda (hankaku)
-          (nskk-kana-hankaku-to-zenkaku/k hankaku
-            (lambda (back) (should (string= back "アイウエオ")))
-            (lambda () (ert-fail "hankaku-to-zenkaku failed"))))
-        (lambda () (ert-fail "zenkaku-to-hankaku failed")))))
-
-  (nskk-it "roundtrips single hankaku katakana char"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-hankaku-to-zenkaku/k "ｱ"
-        (lambda (zenkaku)
-          (nskk-kana-zenkaku-to-hankaku/k zenkaku
-            (lambda (back) (should (string= back "ｱ")))
-            (lambda () (ert-fail "zenkaku-to-hankaku failed"))))
-        (lambda () (ert-fail "hankaku-to-zenkaku failed"))))))
-
-;;;; kana-initialize idempotency
-
-(nskk-describe "kana-initialize idempotency"
-
-  (nskk-it "calling nskk-kana-initialize twice does not error"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (should-not (condition-case nil
-                      (progn (nskk-kana-initialize) nil)
-                    (error t)))))
-
-  (nskk-it "conversion works correctly after double initialization"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-kana-initialize)
-      (nskk-kana-initialize)
-      (nskk-kana-zenkaku-to-hankaku/k "ア"
-        (lambda (result) (should (string= result "ｱ")))
-        (lambda () (ert-fail "conversion failed after double initialize"))))))
 
 ;;;; PBT: hiragana-katakana string roundtrip
 
@@ -213,32 +122,6 @@
           (lambda () (ert-fail "katakana-to-hiragana failed"))))
       (lambda () (ert-fail "hiragana-to-katakana failed")))
     roundtrip-ok)
-  15)
-
-;;;; PBT: output is always a string
-
-(nskk-property-test kana-string-hiragana-to-katakana-always-string
-  ((h hiragana-string))
-  (let ((result-is-string nil))
-    (nskk-kana-string-hiragana-to-katakana/k h
-      (lambda (result)
-        (should (stringp result))
-        (setq result-is-string t))
-      (lambda () (ert-fail "should always succeed for string input")))
-    result-is-string)
-  15)
-
-;;;; PBT: katakana output length equals hiragana input length
-
-(nskk-property-test kana-string-hiragana-to-katakana-preserves-length
-  ((h hiragana-string))
-  (let ((length-ok nil))
-    (nskk-kana-string-hiragana-to-katakana/k h
-      (lambda (kata)
-        (should (= (length kata) (length h)))
-        (setq length-ok t))
-      (lambda () (ert-fail "should always succeed for string input")))
-    length-ok)
   15)
 
 (provide 'nskk-kana-integration-test)
