@@ -149,6 +149,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered as a side effect after ERT had already fixed its selection
   list and never ran. Also moved `provide` and four fault-injection test
   matrices out of a `progn` they had been nested inside.
+- Fixed the program dictionary command timeout, which charged a full poll
+  slice per `accept-process-output` call rather than measuring elapsed
+  time. Because that call returns as soon as any output arrives, a command
+  that emitted its output in several chunks exhausted the budget in far
+  less than `nskk-program-dict-timeout` seconds and was reported as a
+  miss. Both the command and calculation paths now share one wall-clock
+  deadline.
+- Fixed the program dictionary cache rollback so it runs with quit
+  inhibited, matching the cache module's own rollback macro. A quit
+  arriving between the rollback's field assignments could previously
+  leave the cache in a partially restored state.
 
 ### Removed
 
