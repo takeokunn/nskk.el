@@ -276,8 +276,27 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "L2c" "cache-lru-put (new key)" 20000
       (nskk-cache-lru-put (nskk-cache-lru-create 64) "test" '("テスト")))
 
+    (let* ((varying (nskk-cache-lru-create 1000))
+           (nkeys 500)
+           (keys (make-vector nkeys nil))
+           (cursor 0))
+      (dotimes (index nkeys)
+        (aset keys index (format "vkey%d" index))
+        (nskk-cache-lru-put varying (aref keys index) index))
+      (nskk-bench "L2c" "cache-lru-get (hit, 500 distinct keys, splices every call)" 50000
+        (setq cursor (mod (1+ cursor) nkeys))
+        (nskk-cache-lru-get varying (aref keys cursor))))
+
     (nskk-bench "L2c" "cache-lru-put (overwrite existing)" 20000
-      (nskk-cache-lru-put lru "かんじ" '("漢字" "感じ" "幹事"))))
+      (nskk-cache-lru-put lru "かんじ" '("漢字" "感じ" "幹事")))
+
+    (let ((full (nskk-cache-lru-create 64))
+          (counter 0))
+      (dotimes (index 64)
+        (nskk-cache-lru-put full (format "key%d" index) index))
+      (nskk-bench "L2c" "cache-lru-put (new key, evicts tail)" 20000
+        (setq counter (1+ counter))
+        (nskk-cache-lru-put full (format "evict-%d" counter) counter))))
 
   (let* ((lfu (nskk-cache-lfu-create 64)))
     (nskk-cache-lfu-put lfu "かんじ" '("漢字" "感じ"))
@@ -290,7 +309,18 @@ integer environment variable NSKK_BENCH_SAMPLES."
       (nskk-cache-lfu-get lfu "MISSING-KEY"))
 
     (nskk-bench "L2c" "cache-lfu-put (new key)" 20000
-      (nskk-cache-lfu-put (nskk-cache-lfu-create 64) "test" '("テスト"))))
+      (nskk-cache-lfu-put (nskk-cache-lfu-create 64) "test" '("テスト")))
+
+    (nskk-bench "L2c" "cache-lfu-put (overwrite existing)" 20000
+      (nskk-cache-lfu-put lfu "かんじ" '("漢字" "感じ" "幹事")))
+
+    (let ((full (nskk-cache-lfu-create 64))
+          (counter 0))
+      (dotimes (index 64)
+        (nskk-cache-lfu-put full (format "key%d" index) index))
+      (nskk-bench "L2c" "cache-lfu-put (new key, evicts min-freq)" 20000
+        (setq counter (1+ counter))
+        (nskk-cache-lfu-put full (format "evict-%d" counter) counter))))
 
   (let* ((cache (nskk-cache-create :type 'lru :capacity 64)))
     (nskk-cache-put cache "かんじ" '("漢字" "感じ"))
@@ -299,7 +329,10 @@ integer environment variable NSKK_BENCH_SAMPLES."
       (nskk-cache-get cache "かんじ"))
 
     (nskk-bench "L2c" "cache-get unified LRU (miss)" 20000
-      (nskk-cache-get cache "MISSING"))))
+      (nskk-cache-get cache "MISSING"))
+
+    (nskk-bench "L2c" "cache-put unified LRU (overwrite existing)" 20000
+      (nskk-cache-put cache "かんじ" '("漢字" "感じ" "幹事")))))
 
 ;;;; ── L3: Dictionary Search ────────────────────────────────────────────────────
 

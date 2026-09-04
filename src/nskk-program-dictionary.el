@@ -604,234 +604,192 @@ entries return no candidates."
     (if candidate-lists (succeed (nskk--program-dict-merge-candidate-lists (nreverse candidate-lists)))
       (fail))))
 
-(progn
-  (defun nskk--program-dict-copy-graph (object)
-    "Return a detached copy of OBJECT suitable for program dictionary caches.
+(defun nskk--program-dict-copy-graph (object)
+  "Return a detached copy of OBJECT suitable for program dictionary caches.
 Conses, vectors, hash-table keys and values, strings, and string text-property
 values are copied recursively.  Cycles and shared subgraphs are preserved.
 Functions and other atoms are retained as leaves."
-    (let ((missing (make-symbol "nskk-program-dict-copy-missing"))
-          (memo (make-hash-table :test #'eq))
-          (pending (list object))
-          non-hash
-          hashes)
-      (while
+  (let ((missing (make-symbol "nskk-program-dict-copy-missing"))
+        (memo (make-hash-table :test #'eq))
+        (pending (list object))
+        non-hash
+        hashes)
+    (while
         pending
-        (let ((current (pop pending)))
-          (when (eq (gethash current memo missing) missing)
-            (cond
-              ((functionp current))
-              ((consp current)
-                (puthash current (cons nil nil) memo)
-                (push current non-hash)
-                (push (car current) pending)
-                (push (cdr current) pending))
-              ((hash-table-p current)
-                (puthash
-                  current
-                  (make-hash-table
-                    :test
-                    (hash-table-test current)
-                    :size
-                    (max 1 (hash-table-size current))
-                    :rehash-size
-                    (hash-table-rehash-size current)
-                    :rehash-threshold
-                    (hash-table-rehash-threshold current)
-                    :weakness
-                    (hash-table-weakness current))
-                  memo)
-                (push current hashes)
-                (maphash
-                  (lambda (key value)
-                    (push key pending)
-                    (push value pending))
-                  current))
-              ((stringp current)
-                (puthash current (substring-no-properties current) memo)
-                (push current non-hash)
-                (let ((position 0)
-                      (limit (length current)))
-                  (while
-                    (< position limit)
-                    (let ((properties (text-properties-at position current)))
-                      (while properties (pop properties) (push (pop properties) pending)))
-                    (setq position (next-property-change position current limit)))))
-              ((vectorp current)
-                (puthash current (make-vector (length current) nil) memo)
-                (push current non-hash)
-                (dotimes (index (length current))
-                  (push (aref current index) pending)))))))
-      (let ((copy-of
-            (lambda (value)
-              (gethash value memo value))))
-        (dolist (current non-hash)
-          (let ((copy (gethash current memo)))
-            (cond
-              ((consp current)
-                (setcar copy (funcall copy-of (car current)))
-                (setcdr copy (funcall copy-of (cdr current))))
-              ((stringp current)
-                (let ((position 0)
-                      (limit (length current)))
-                  (while
-                    (< position limit)
-                    (let ((next (next-property-change position current limit))
-                          (properties (text-properties-at position current))
-                          copied-properties)
-                      (while
-                        properties
-                        (let ((property (pop properties))
-                              (value (pop properties)))
-                          (setq copied-properties (nconc copied-properties (list property (funcall copy-of value))))))
-                      (add-text-properties position next copied-properties copy)
-                      (setq position next)))))
-              ((vectorp current)
-                (dotimes (index (length current))
-                  (aset copy index (funcall copy-of (aref current index))))))))
-        (dolist (current hashes)
-          (let ((copy (gethash current memo)))
+      (let ((current (pop pending)))
+        (when (eq (gethash current memo missing) missing)
+          (cond
+           ((functionp current))
+           ((consp current)
+            (puthash current (cons nil nil) memo)
+            (push current non-hash)
+            (push (car current) pending)
+            (push (cdr current) pending))
+           ((hash-table-p current)
+            (puthash
+             current
+             (make-hash-table
+              :test
+              (hash-table-test current)
+              :size
+              (max 1 (hash-table-size current))
+              :rehash-size
+              (hash-table-rehash-size current)
+              :rehash-threshold
+              (hash-table-rehash-threshold current)
+              :weakness
+              (hash-table-weakness current))
+             memo)
+            (push current hashes)
             (maphash
-              (lambda (key value)
-                (puthash (funcall copy-of key) (funcall copy-of value) copy))
-              current)))
-        (funcall copy-of object))))
-  (defun nskk--program-dict-mark-no-learn (candidates)
-    "Mark all strings reachable from CANDIDATES as non-persistable.
+             (lambda (key value)
+               (push key pending)
+               (push value pending))
+             current))
+           ((stringp current)
+            (puthash current (substring-no-properties current) memo)
+            (push current non-hash)
+            (let ((position 0)
+                  (limit (length current)))
+              (while
+                  (< position limit)
+                (let ((properties (text-properties-at position current)))
+                  (while properties (pop properties) (push (pop properties) pending)))
+                (setq position (next-property-change position current limit)))))
+           ((vectorp current)
+            (puthash current (make-vector (length current) nil) memo)
+            (push current non-hash)
+            (dotimes (index (length current))
+              (push (aref current index) pending)))))))
+    (let ((copy-of
+           (lambda (value)
+             (gethash value memo value))))
+      (dolist (current non-hash)
+        (let ((copy (gethash current memo)))
+          (cond
+           ((consp current)
+            (setcar copy (funcall copy-of (car current)))
+            (setcdr copy (funcall copy-of (cdr current))))
+           ((stringp current)
+            (let ((position 0)
+                  (limit (length current)))
+              (while
+                  (< position limit)
+                (let ((next (next-property-change position current limit))
+                      (properties (text-properties-at position current))
+                      copied-properties)
+                  (while
+                      properties
+                    (let ((property (pop properties))
+                          (value (pop properties)))
+                      (setq copied-properties (nconc copied-properties (list property (funcall copy-of value))))))
+                  (add-text-properties position next copied-properties copy)
+                  (setq position next)))))
+           ((vectorp current)
+            (dotimes (index (length current))
+              (aset copy index (funcall copy-of (aref current index))))))))
+      (dolist (current hashes)
+        (let ((copy (gethash current memo)))
+          (maphash
+           (lambda (key value)
+             (puthash (funcall copy-of key) (funcall copy-of value) copy))
+           current)))
+      (funcall copy-of object))))
+
+(defun nskk--program-dict-mark-no-learn (candidates)
+  "Mark all strings reachable from CANDIDATES as non-persistable.
 Conses, vectors, hash-table keys and values, and string text-property values
 are traversed without looping on cyclic or shared graphs.  Existing text
 properties are retained and `nskk-no-learn' is overwritten with exactly t."
-    (let ((seen (make-hash-table :test #'eq))
-          (pending (list candidates)))
-      (while
+  (let ((seen (make-hash-table :test #'eq))
+        (pending (list candidates)))
+    (while
         pending
-        (let ((current (pop pending)))
-          (unless (or (functionp current) (gethash current seen))
-            (cond
-              ((stringp current)
-                (puthash current t seen)
-                (add-text-properties 0 (length current) (list 'nskk-no-learn t) current)
-                (let ((position 0)
-                      (limit (length current)))
-                  (while
-                    (< position limit)
-                    (let ((properties (text-properties-at position current)))
-                      (while properties (pop properties) (push (pop properties) pending)))
-                    (setq position (next-property-change position current limit)))))
-              ((consp current)
-                (puthash current t seen)
-                (push (car current) pending)
-                (push (cdr current) pending))
-              ((hash-table-p current)
-                (puthash current t seen)
-                (maphash
-                  (lambda (key value)
-                    (push key pending)
-                    (push value pending))
-                  current))
-              ((vectorp current)
-                (puthash current t seen)
-                (dotimes (index (length current))
-                  (push (aref current index) pending)))))))
-      candidates)))
+      (let ((current (pop pending)))
+        (unless (or (functionp current) (gethash current seen))
+          (cond
+           ((stringp current)
+            (puthash current t seen)
+            (add-text-properties 0 (length current) (list 'nskk-no-learn t) current)
+            (let ((position 0)
+                  (limit (length current)))
+              (while
+                  (< position limit)
+                (let ((properties (text-properties-at position current)))
+                  (while properties (pop properties) (push (pop properties) pending)))
+                (setq position (next-property-change position current limit)))))
+           ((consp current)
+            (puthash current t seen)
+            (push (car current) pending)
+            (push (cdr current) pending))
+           ((hash-table-p current)
+            (puthash current t seen)
+            (maphash
+             (lambda (key value)
+               (push key pending)
+               (push value pending))
+             current))
+           ((vectorp current)
+            (puthash current t seen)
+            (dotimes (index (length current))
+              (push (aref current index) pending)))))))
+    candidates))
 
-(progn
-  (defun nskk--program-dict-cache-observation-state (cache)
-    "Return CACHE metadata needed to undo a failed miss observation."
-    (cond
-      ((nskk-cache-lru-p cache)
-        (vector
-          'lru
-          (nskk-cache-lru-capacity cache)
-          (nskk-cache-lru-size cache)
-          (nskk-cache-lru-hash cache)
-          (nskk-cache-lru-head cache)
-          (nskk-cache-lru-tail cache)
-          (nskk-cache-lru-hits cache)
-          (nskk-cache-lru-misses cache)))
-      ((nskk-cache-lfu-p cache)
-        (vector
-          'lfu
-          (nskk-cache-lfu-capacity cache)
-          (nskk-cache-lfu-size cache)
-          (nskk-cache-lfu-hash cache)
-          (nskk-cache-lfu-freq cache)
-          (nskk-cache-lfu-min-freq cache)
-          (nskk-cache-lfu-hits cache)
-          (nskk-cache-lfu-misses cache)))))
-  (defun nskk--program-dict-restore-cache-observation-state (cache state)
-    "Restore CACHE metadata from observation STATE."
-    (pcase
-      (aref state 0)
-      ('lru
-        (setf (nskk-cache-lru-capacity cache) (aref state 1)
-              (nskk-cache-lru-size cache) (aref state 2)
-              (nskk-cache-lru-hash cache) (aref state 3)
-              (nskk-cache-lru-head cache) (aref state 4)
-              (nskk-cache-lru-tail cache) (aref state 5)
-              (nskk-cache-lru-hits cache) (aref state 6)
-              (nskk-cache-lru-misses cache) (aref state 7)))
-      ('lfu
-        (setf (nskk-cache-lfu-capacity cache) (aref state 1)
-              (nskk-cache-lfu-size cache) (aref state 2)
-              (nskk-cache-lfu-hash cache) (aref state 3)
-              (nskk-cache-lfu-freq cache) (aref state 4)
-              (nskk-cache-lfu-min-freq cache) (aref state 5)
-              (nskk-cache-lfu-hits cache) (aref state 6)
-              (nskk-cache-lfu-misses cache) (aref state 7)))))
-  (progn
-    (defun nskk-program-dict-lookup/k (key on-found on-not-found)
-      "Look up KEY across configured program dictionaries in CPS style.
+(defun nskk-program-dict-lookup/k (key on-found on-not-found)
+  "Look up KEY across configured program dictionaries in CPS style.
 Cache hits return detached public graphs.  Cache misses build a detached
 canonical graph, mark it, prepare detached public and key graphs, publish
 atomically, and only then invoke ON-FOUND.  Errors and quits before publication
 restore the exact pre-observation cache state."
-      (nskk--program-dict-sync-config)
-      (if (and
-          nskk-program-dict-enable
-          nskk-program-dicts
-          (nskk--program-dict-config-valid-p nskk-program-dicts)) (let* ((cache (nskk--program-dict-ensure-cache))
-               (observation-state (nskk--program-dict-cache-observation-state cache)))
-          (nskk-cache-get-prepared/k
-            cache
-            key
-            #'nskk--program-dict-copy-graph
-            (lambda (public)
-              (funcall on-found public))
-            (lambda ()
-              (let ((committed nil))
-                (condition-case
-                  condition
-                  (nskk--program-dict-collect-all/k
-                    nskk-program-dicts
-                    key
-                    (lambda (results)
-                      (condition-case
-                        condition
-                        (let* ((canonical
-                              (nskk--program-dict-mark-no-learn (nskk--program-dict-copy-graph results)))
-                               (public (nskk--program-dict-copy-graph canonical))
-                               (owned-key (nskk--program-dict-copy-graph key)))
-                          (nskk-cache-put cache owned-key canonical)
-                          (setq committed t)
-                          (funcall on-found public))
-                        ((error quit)
-                          (unless committed
-                            (nskk--program-dict-restore-cache-observation-state cache observation-state))
-                          (signal (car condition) (cdr condition)))))
-                    on-not-found)
-                  ((error quit)
-                    (unless committed
-                      (nskk--program-dict-restore-cache-observation-state cache observation-state))
-                    (signal (car condition) (cdr condition))))))))
-        (funcall on-not-found)))
-    (defun nskk-program-dict-lookup (key)
-      "Synchronously look up KEY across configured program dictionaries."
-      (nskk-program-dict-lookup/k key #'identity #'ignore))
-    (put
-      'nskk-program-dict-lookup/k
-      'nskk--cps-continuation-pattern
-      :found-not-found)))
+  (nskk--program-dict-sync-config)
+  (if (and
+       nskk-program-dict-enable
+       nskk-program-dicts
+       (nskk--program-dict-config-valid-p nskk-program-dicts)) (let* ((cache (nskk--program-dict-ensure-cache))
+                                                                      (observation-state (nskk-cache-capture-metadata-snapshot cache)))
+                                                                 (nskk-cache-get-prepared/k
+                                                                  cache
+                                                                  key
+                                                                  #'nskk--program-dict-copy-graph
+                                                                  (lambda (public)
+                                                                    (funcall on-found public))
+                                                                  (lambda ()
+                                                                    (let ((committed nil))
+                                                                      (condition-case
+                                                                          condition
+                                                                          (nskk--program-dict-collect-all/k
+                                                                           nskk-program-dicts
+                                                                           key
+                                                                           (lambda (results)
+                                                                             (condition-case
+                                                                                 condition
+                                                                                 (let* ((canonical
+                                                                                         (nskk--program-dict-mark-no-learn (nskk--program-dict-copy-graph results)))
+                                                                                        (public (nskk--program-dict-copy-graph canonical))
+                                                                                        (owned-key (nskk--program-dict-copy-graph key)))
+                                                                                   (nskk-cache-put cache owned-key canonical)
+                                                                                   (setq committed t)
+                                                                                   (funcall on-found public))
+                                                                               ((error quit)
+                                                                                (unless committed
+                                                                                  (nskk-cache-restore-metadata-snapshot observation-state))
+                                                                                (signal (car condition) (cdr condition)))))
+                                                                           on-not-found)
+                                                                        ((error quit)
+                                                                         (unless committed
+                                                                           (nskk-cache-restore-metadata-snapshot observation-state))
+                                                                         (signal (car condition) (cdr condition))))))))
+      (funcall on-not-found)))
+
+(defun nskk-program-dict-lookup (key)
+  "Synchronously look up KEY across configured program dictionaries."
+  (nskk-program-dict-lookup/k key #'identity #'ignore))
+
+(eval-and-compile
+  (put
+   'nskk-program-dict-lookup/k
+   'nskk--cps-continuation-pattern
+   :found-not-found))
 
 (defcustom
   nskk-program-dict-dispatch-table
