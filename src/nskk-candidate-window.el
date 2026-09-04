@@ -94,8 +94,7 @@ Returns a string starting with \\n to appear below the preedit line."
                            collect (concat
                                     (propertize (format "%c:" key)
                                                 'face 'nskk-candidate-key-face)
-                                    (propertize (substring-no-properties cand)
-                                                'face 'nskk-candidate-face))))
+                                    (nskk-display-sanitize cand 'nskk-candidate-face))))
          (body   (string-join entries " "))
          (suffix (when (> remaining 0) (format " [残り %d]" remaining))))
     (concat "\n" body suffix)))
