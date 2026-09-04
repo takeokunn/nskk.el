@@ -2198,7 +2198,7 @@ is the original preedit prefix for display styling."
           (setq ov (make-overlay anchor anchor))
           (nskk-state-set-dcomp-multiple-overlay ov))
         (cl-loop for (prop val) on (list 'after-string (concat "\n" after-str)
-                                          'priority 99)
+                                          'priority nskk-overlay-priority-dcomp-multiple)
                  by #'cddr
                  do (overlay-put ov prop val))))))
 
