@@ -32,7 +32,30 @@
 (require 'subr-x)
 (require 'nskk-cps-macros)
 (require 'nskk-prolog)
-(require 'nskk-custom)
+
+;;;; Customization
+
+(defgroup nskk-converter nil
+  "Romaji to Kana conversion settings."
+  :prefix "nskk-converter-"
+  :group 'nskk)
+
+(defcustom nskk-converter-auto-start-henkan t
+  "Whether to automatically start conversion on uppercase input."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-converter)
+
+(defcustom nskk-converter-romaji-style 'standard
+  "Romaji input style for Japanese conversion.
+\\='standard - Standard SKK romaji (default)
+\\='azik     - AZIK extended romaji with efficiency shortcuts"
+  :type '(choice (const :tag "Standard SKK" standard)
+                 (const :tag "AZIK" azik))
+  :safe (lambda (v) (memq v '(standard azik)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-converter)
 
 ;; Romaji conversion table
 ;; Maps romaji sequences to their kana equivalents (as strings for multi-byte)

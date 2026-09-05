@@ -67,10 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nskk-state-set` documents that an invalid value for the `mode` or
   `henkan-phase` key signals an error rather than invoking the not-found
   continuation. The behaviour is unchanged; the docstring was wrong.
-- Decomposed `nskk--init-azik-rules` by extracting its flat AZIK rule-data
-  tables into a dedicated function; other long functions were reviewed and
-  left intact where splitting would relocate, not reduce, shared
-  transactional or CPS-macro-sensitive state.
 - `nskk-trie-has-prefix-p` now returns `t` rather than the internal
   `nskk-trie-node` struct it previously leaked as its truthy value. Callers
   that only tested for non-nil are unaffected; callers that inspected the
@@ -93,6 +89,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folded the tutorial's private deep-copy routine into
   `nskk-prolog-copy-term`, which gained an optional caller-supplied memo
   table, removing a second implementation of the same graph copy.
+- Rebuilt the AZIK rule tables as data. The compile-time rule-generation
+  macros were replaced by pure functions that expand one consonant row into
+  `(ROMAJI KANA)` pairs, collected into `defconst` tables and asserted
+  through `nskk-prolog-bulk-facts`, which is the one fact-assertion form
+  that expands without a `progn`. `nskk--init-azik-rules` and
+  `nskk--azik-init-core-and-compat-rules` are decomposed into named phase
+  functions, and the core and compatibility rules become 13 per-category
+  constants, appended in the order they were previously asserted in. The
+  generated rule set is unchanged.
 - Reshaped the mode-line module: cursor-color resolution now uses the
   project's CPS found/not-found pair, the mode-line indicator consumes that
   pair's continuations directly instead of a nil test, and the all-frames
@@ -111,6 +116,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordinary function returning the converted kana. It never signalled
   absence, so its not-found continuation was unreachable; the generated
   `nskk-convert-input-to-kana-final/k` is gone.
+- Replaced six `fboundp` existence checks in the region command tests with
+  coverage for paths they left untested: conversion of a partial region
+  with surrounding text left intact, point placement after a successful
+  conversion, an interior region resolved through the interactive bounds
+  spec, rejection of a mark left active while `transient-mark-mode` is
+  off, mark reactivation when the failing body itself deactivated the
+  mark, a dakuten combination that shortens the converted span, and the
+  0x7E/U+FF5E boundary of the ASCII/full-width range.
 - Reworked the skkserv client. Connection setup, teardown and rollback are
   split into named helpers; the duplicated poll-budget normalisation is now a
   single function; and Prolog rollback uses the engine's own
@@ -128,6 +141,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   response byte cap, fail-closed coding preflight, candidate sanitisation,
   the exactly-one-continuation invariant, resource ownership, rollback and
   post-send teardown.
+- Restored skkserv test coverage that the suite replacement had dropped:
+  the async-connect path (timeout give-up, non-finite and non-numeric
+  connect budgets, per-poll budget accounting, wall-clock-jump immunity,
+  and resource release when initialisation signals or quits), fail-closed
+  behaviour and zero-mutation of public state when the coding preflight
+  quits at each of its four stages, configure-time rollback across five
+  fault stages crossed with error and quit, reuse of one process and one
+  owned buffer across repeated opens, and killing an owned buffer without
+  running `kill-buffer-hook` or the query functions.
 
 ### Removed
 
@@ -159,6 +181,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made the debug module's hand-written CPS continuation-pattern declaration
   visible during byte compilation, so the CPS bind forms' guard against
   binding a `defun/done` function is no longer inert while the file compiles.
+- Restructured the resource lifecycle in `nskk-isearch.el`: the two
+  near-identical reconciliation loops and the three copies of the
+  cleanup-collection helper are now shared condition-plumbing functions, and
+  the retry bound is derived from the number of resources being converged
+  instead of written as a literal. The mode-indicator lookup moved to the
+  project's CPS macros, so the prompt advice consumes it through explicit
+  success and failure continuations rather than a nil sentinel. The
+  `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
+  rollback is unchanged.
 - Removed the `nskk-show-tooltip` user option. Its only readers were the
   tooltip candidate-display functions deleted earlier in this cycle, so
   setting it had no effect; its documented precedence over `nskk-show-inline`
@@ -167,6 +198,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Corrected the README's region-command pattern, which read
+  `M-x nskk-region-*` and matched none of the six commands; every one is
+  named `nskk-*-region`.
+- Fixed the isearch prompt showing no input-mode indicator in half-width
+  katakana mode. `nskk-isearch-mode-string-alist` covered six of the seven
+  symbols in `nskk--valid-modes`, omitting `katakana-半角`.
 - Fixed a state-snapshot ordering bug in the tutorial dictionary-state
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
@@ -177,6 +214,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updated the last-shown mode, so the deduplication guard suppressed every
   later attempt. The last-shown mode is now updated only after a style
   reports that it displayed something.
+- Fixed the skkserv client dropping a working connection when preparing a
+  request failed before anything was sent. Erasing the I/O buffer and
+  resetting the response counters had been folded into the same helper as
+  the send, and the request was marked as started before that helper ran,
+  so a fault while erasing or resetting ran the post-send teardown. The
+  request is now marked as started only after preparation succeeds.
 - Fixed the interactive tutorial, which could not be completed. Every
   exercise's input and result region shared one end marker position, so
   answers were never graded as correct and marking one exercise correct
@@ -229,6 +272,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   production code queried: `search-backend`, `search-result-action` and
   `should-update-overlay`. The cross-module tables `converting-phase`,
   `preedit-phase` and `disable-cleanup` are unchanged.
+- Removed an unreachable nil-result guard and an unused `nskk-cps-macros`
+  require from the region module. Every converter the region commands pass
+  to `nskk--region-convert` receives `buffer-substring-no-properties`
+  output, which is always a string, so the guard's nil branch could not be
+  entered; the module referenced no CPS macro.
 - Removed the `nskk-cache-field` macro, its backing `cache-field-fn/3`
   Prolog fact table, and the CPS-style `nskk-cache-p/k` predicate from
   `nskk-cache.el`. None had callers outside `nskk-cache.el` and its test
@@ -239,6 +287,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed a dead, zero-caller private helper (`nskk--debug-format`) and the
   unused `debug-category` Prolog facts and their hash index from the debug
   module.
+- Removed the AZIK rule-generation macros `nskk-azik-hatsuon`,
+  `nskk-azik-double-vowel`, `nskk-azik-extensions`, and `nskk-azik-youon`.
+  They carried a public prefix but existed only to splice generated forms
+  during module initialization. The rules they produced are unchanged and
+  are now built from data. Code extending AZIK through these macros should
+  add `(ROMAJI KANA)` pairs to `nskk-azik-conversion-table` instead.
 
 ## [0.3.0] - 2026-07-26
 

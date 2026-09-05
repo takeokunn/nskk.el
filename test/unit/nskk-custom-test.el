@@ -1,4 +1,4 @@
-;;; nskk-custom-test.el --- Tests for nskk-custom.el -*- lexical-binding: t; -*-
+;;; nskk-custom-test.el --- Tests for NSKK customization options -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Authors
 
@@ -9,12 +9,13 @@
 
 ;;; Commentary:
 
-;; Tests for nskk-custom.el.
+;; Tests for the NSKK customization surface: every user option is a real
+;; defcustom with the documented type, default and :safe predicate.
 
 ;;; Code:
 
 (require 'ert)
-(require 'nskk-custom)
+(require 'nskk)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 
@@ -22,12 +23,15 @@
 ;;; Feature Loading Tests
 ;;;
 
-(nskk-describe "nskk-custom feature loading"
-  (nskk-it "provides the nskk-custom feature"
-    (should (featurep 'nskk-custom)))
+(nskk-describe "customization surface loading"
+  (nskk-it "reaches every option-defining module through nskk"
+    (dolist (feature '(nskk-state nskk-converter nskk-search nskk-modeline
+                       nskk-henkan nskk-candidate-window nskk-dictionary
+                       nskk-debug))
+      (should (featurep feature))))
 
-  (nskk-it "requiring nskk-custom again is safe (idempotent)"
-    (should (require 'nskk-custom))))
+  (nskk-it "no longer provides the retired nskk-custom feature"
+    (should-not (featurep 'nskk-custom))))
 
 ;;;
 ;;; defcustom Registration Tests
@@ -52,7 +56,7 @@
          (nskk-dcomp-multiple-activate)
          (nskk-dcomp-multiple-rows)
          (nskk-kakutei-jisyo))
-  :description "Every nskk-custom defcustom is registered as a custom variable"
+  :description "Every NSKK defcustom is registered as a custom variable"
   :body (should (custom-variable-p var)))
 
 ;;;
@@ -98,7 +102,7 @@
   :description "defcustom variables that default to nil (boolean or file-or-nil type)"
   :body (should (null (default-value var))))
 
-(nskk-describe "nskk-custom string defaults"
+(nskk-describe "NSKK string option defaults"
   (nskk-it "nskk-search-learning-file defaults to user-emacs-directory/nskk/learning.dat"
     (should (equal (default-value 'nskk-search-learning-file)
                    (expand-file-name "nskk/learning.dat" user-emacs-directory))))

@@ -31,9 +31,19 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'nskk-prolog)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
 (eval-and-compile (require 'nskk-state))
+;; `nskk--candidate-init-key-facts' is called at top level below and reads
+;; `nskk-henkan-show-candidates-keys' during load, so the defining module must
+;; be loaded here -- a forward `defvar' would leave the symbol void.
+(require 'nskk-henkan)
+
+;;;; Customization
+
+(defgroup nskk-candidate-window nil
+  "Candidate display UI for NSKK."
+  :prefix "nskk-candidate-"
+  :group 'nskk-ui)
 
 ;;;; Prolog Candidate Key Selection Facts
 

@@ -30,11 +30,37 @@
 
 (require 'nskk-state)
 (require 'nskk-prolog)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
 (require 'seq)
 
 (declare-function nskk-show-mode-display "nskk-show-mode")
+
+;;;; Customization
+
+(defgroup nskk-modeline nil
+  "Mode line indicator settings for NSKK."
+  :prefix "nskk-modeline-"
+  :group 'nskk-ui)
+
+(defcustom nskk-modeline-format " %m"
+  "NSKK lighter format string.
+\\=%m\\= is an NSKK-specific placeholder replaced with the current input-mode
+indicator string (e.g. \"あ\", \"ア\", \"_\").  This placeholder is expanded
+internally by NSKK and is distinct from the standard Emacs mode-line \\=%m\\=
+construct (which expands to the major-mode name).
+The leading space follows the Emacs minor-mode lighter convention,
+separating the indicator from adjacent mode indicators in the mode line."
+  :type 'string
+  :safe #'stringp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-modeline)
+
+(defcustom nskk-use-color-cursor t
+  "Whether to change cursor color based on input mode."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-ui)
 
 (defconst nskk--last-cursor-color-parameter 'nskk--last-cursor-color
   "Frame parameter holding the last cursor color NSKK applied.")

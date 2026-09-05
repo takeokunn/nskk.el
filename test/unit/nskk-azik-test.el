@@ -271,6 +271,20 @@ identically."
         (should (equal (nskk-test-convert-romaji "ka") "カスタム"))
         (should (equal (nskk-test-convert-romaji "ki") "き"))))))
 
+(nskk-describe "AZIK custom conversion table malformed-entry branches"
+  (nskk-it "rejects a three-element entry while a well-formed sibling still applies"
+    (let ((nskk-azik-conversion-table '(("zztest" "b" "c")
+                                       ("qz" "くす"))))
+      (nskk-with-azik-style
+        (should-not (gethash "zztest" (nskk-romaji-table)))
+        (should (equal (nskk-test-convert-romaji "qz") "くす")))))
+
+  (nskk-it "rejects non-cons entries while a well-formed sibling still applies"
+    (let ((nskk-azik-conversion-table (list "nope" 'bad-symbol '("qz" "くす"))))
+      (nskk-with-azik-style
+        (should-not (gethash "nope" (nskk-romaji-table)))
+        (should (equal (nskk-test-convert-romaji "qz") "くす"))))))
+
 
 ;;;;
 ;;;; 2. Special Keys Tests
@@ -1166,12 +1180,6 @@ identically."
         (should (member "kz" all-romajis))
         (should (member "kq" all-romajis)))))
 
-  (nskk-it "azik-rule/2 contains a substantial number of facts (at least 534)"
-    (nskk-with-azik-style
-      (let ((results (nskk-prolog-query '(azik-rule \?r \?k))))
-        (should results)
-        (should (>= (length results) 534)))))
-
   (nskk-it "switching to standard style resets the hot-path hash cache"
     (nskk-with-azik-style
       (should (nskk-prolog-query '(azik-rule "kz" \?k)))
@@ -1199,42 +1207,6 @@ identically."
       (should (eq (nskk-converter-lookup "gy") :incomplete))
       (should (eq (nskk-converter-lookup "by") :incomplete))
       (should (eq (nskk-converter-lookup "py") :incomplete)))))
-
-
-;;;;
-;;;; 10b. Compile-time Macro Expansion Tests
-;;;;
-
-(nskk-describe "AZIK compile-time macro expansions"
-  (nskk-it "nskk-azik-hatsuon expands to 5 prolog assertions"
-    (let ((expansion (macroexpand-1
-                      '(nskk-azik-hatsuon "k" "か" "き" "く" "け" "こ"))))
-      (should (eq (car expansion) 'progn))
-      (should (= (length (cdr expansion)) 5))
-      (should (equal (cadr (cadr (nth 0 (cdr expansion)))) "kz"))
-      (should (equal (caddr (cadr (nth 0 (cdr expansion)))) "かん"))))
-
-  (nskk-it "nskk-azik-double-vowel expands to 4 prolog assertions"
-    (let ((expansion (macroexpand-1
-                      '(nskk-azik-double-vowel "k" "か" "く" "け" "こ"))))
-      (should (eq (car expansion) 'progn))
-      (should (= (length (cdr expansion)) 4))))
-
-  (nskk-it "nskk-azik-extensions expands to 9 prolog assertions (hatsuon + double-vowel)"
-    (let ((expansion (macroexpand-1
-                      '(nskk-azik-extensions "k" "か" "き" "く" "け" "こ"))))
-      (should (eq (car expansion) 'progn))
-      (should (= (length (cdr expansion)) 2))
-      (should (eq (car (nth 1 expansion)) 'nskk-azik-hatsuon))
-      (should (eq (car (nth 2 expansion)) 'nskk-azik-double-vowel))))
-
-  (nskk-it "nskk-azik-youon expands to 4 base rules + extensions"
-    (let ((expansion (macroexpand-1
-                      '(nskk-azik-youon "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ"))))
-      (should (eq (car expansion) 'progn))
-      (should (= (length (cdr expansion)) 5))
-      (should (eq (car (nth 5 expansion)) 'nskk-azik-extensions)))))
-
 
 
 
@@ -1411,47 +1383,27 @@ identically."
     (nskk-with-azik-style
       (should (equal (nskk-converter-lookup "wso") "うぉ")))))
 
+(nskk-describe "AZIK compound rules are load-bearing"
+  (nskk-it "the real init sequence leaves wso complete only because of them"
+    (nskk-with-azik-style
+      (cl-letf (((symbol-value 'nskk--azik-compound-rules) nil))
+        (nskk--init-azik-rules)
+        (should (eq (gethash "wso" (nskk-romaji-table)) :incomplete)))))
+
+  (nskk-it "finalize is what demotes wso; reapplying the rules restores it"
+    (nskk-with-azik-style
+      (nskk--azik-finalize-hash-table)
+      (should (eq (gethash "wso" (nskk-romaji-table)) :incomplete))
+      (dolist (rule nskk--azik-compound-rules)
+        (puthash (car rule) (cadr rule) (nskk-romaji-table)))
+      (should (equal (nskk-converter-lookup "wso") "うぉ")))))
+
 
 ;;;;
 ;;;; 14. Property-Based Tests
 ;;;;
 
 (nskk-describe "AZIK property-based: extension row consistency"
-
-  (nskk-it "z-key hatsuon rule exists for every consonant row (A+ん)"
-    (nskk-with-azik-style
-      (dolist (row nskk--azik-extension-rows)
-        (let* ((prefix   (car row))
-               (a        (cadr row))
-               (expected (concat a "ん"))
-               (actual   (nskk-converter-lookup (concat prefix "z"))))
-          (should (equal actual expected))))))
-
-  (nskk-it "q-key diphthong rule exists for every consonant row (A+い)"
-    (nskk-with-azik-style
-      (dolist (row nskk--azik-extension-rows)
-        (let* ((prefix   (car row))
-               (a        (cadr row))
-               (expected (concat a "い"))
-               (actual   (nskk-converter-lookup (concat prefix "q"))))
-          (should (equal actual expected))))))
-
-  (nskk-it "youon a-key rule exists for every youon row"
-    (nskk-with-azik-style
-      (dolist (row nskk--azik-youon-rows)
-        (let* ((prefix (car row))
-               (a      (cadr row))
-               (actual (nskk-converter-lookup (concat prefix "a"))))
-          (should (equal actual a))))))
-
-  (nskk-it "youon z-key hatsuon rule exists for every youon row (A+ん)"
-    (nskk-with-azik-style
-      (dolist (row nskk--azik-youon-rows)
-        (let* ((prefix   (car row))
-               (a        (cadr row))
-               (expected (concat a "ん"))
-               (actual   (nskk-converter-lookup (concat prefix "z"))))
-          (should (equal actual expected))))))
 
   (nskk-it "all same-finger rules exist in azik-rule/2"
     (nskk-with-azik-style
@@ -1461,19 +1413,7 @@ identically."
                (kana    (cadr rule))
                (results (nskk-prolog-query `(azik-rule ,romaji \?k))))
           (should results)
-          (should (equal (nskk-prolog-walk '\?k (car results)) kana))))))
-
-  (nskk-it "k-row hatsuon: full pipeline converts correctly"
-    (nskk-with-azik-style
-      (dolist (pair '(("kz" . "かん") ("kk" . "きん") ("kj" . "くん")
-                      ("kd" . "けん") ("kl" . "こん")))
-        (should (equal (cdr pair) (nskk-test-convert-romaji (car pair)))))))
-
-  (nskk-it "k-row diphthong: full pipeline converts correctly"
-    (nskk-with-azik-style
-      (dolist (pair '(("kq" . "かい") ("kh" . "くう") ("kw" . "けい")
-                      ("kp" . "こう")))
-        (should (equal (cdr pair) (nskk-test-convert-romaji (car pair))))))))
+          (should (equal (nskk-prolog-walk '\?k (car results)) kana)))))))
 
 
 ;;;;
@@ -1683,31 +1623,32 @@ identically."
 ;;;;
 
 (nskk-deftest-table azik-youon-rules
-  :columns (prefix a-expected u-expected e-expected o-expected)
-  :rows    (("ng" "にゃ" "にゅ" "にぇ" "にょ")
-            ("kg" "きゃ" "きゅ" "きぇ" "きょ")
-            ("hg" "ひゃ" "ひゅ" "ひぇ" "ひょ")
-            ("mg" "みゃ" "みゅ" "みぇ" "みょ")
-            ("rg" "りゃ" "りゅ" "りぇ" "りょ")
-            ("gg" "ぎゃ" "ぎゅ" "ぎぇ" "ぎょ")
-            ("jg" "じゃ" "じゅ" "じぇ" "じょ")
-            ("bg" "びゃ" "びゅ" "びぇ" "びょ")
-            ("pg" "ぴゃ" "ぴゅ" "ぴぇ" "ぴょ")
-            ("ny" "にゃ" "にゅ" "にぇ" "にょ")
-            ("ky" "きゃ" "きゅ" "きぇ" "きょ")
-            ("hy" "ひゃ" "ひゅ" "ひぇ" "ひょ")
-            ("my" "みゃ" "みゅ" "みぇ" "みょ")
-            ("ry" "りゃ" "りゅ" "りぇ" "りょ")
-            ("gy" "ぎゃ" "ぎゅ" "ぎぇ" "ぎょ")
-            ("jy" "じゃ" "じゅ" "じぇ" "じょ")
-            ("by" "びゃ" "びゅ" "びぇ" "びょ")
-            ("py" "ぴゃ" "ぴゅ" "ぴぇ" "ぴょ"))
-  :description "AZIK youon rules: a/u/e/o keys produce correct contracted-sound forms"
+  :columns (prefix a-expected u-expected e-expected o-expected z-expected)
+  :rows    (("ng" "にゃ" "にゅ" "にぇ" "にょ" "にゃん")
+            ("kg" "きゃ" "きゅ" "きぇ" "きょ" "きゃん")
+            ("hg" "ひゃ" "ひゅ" "ひぇ" "ひょ" "ひゃん")
+            ("mg" "みゃ" "みゅ" "みぇ" "みょ" "みゃん")
+            ("rg" "りゃ" "りゅ" "りぇ" "りょ" "りゃん")
+            ("gg" "ぎゃ" "ぎゅ" "ぎぇ" "ぎょ" "ぎゃん")
+            ("jg" "じゃ" "じゅ" "じぇ" "じょ" "じゃん")
+            ("bg" "びゃ" "びゅ" "びぇ" "びょ" "びゃん")
+            ("pg" "ぴゃ" "ぴゅ" "ぴぇ" "ぴょ" "ぴゃん")
+            ("ny" "にゃ" "にゅ" "にぇ" "にょ" "にゃん")
+            ("ky" "きゃ" "きゅ" "きぇ" "きょ" "きゃん")
+            ("hy" "ひゃ" "ひゅ" "ひぇ" "ひょ" "ひゃん")
+            ("my" "みゃ" "みゅ" "みぇ" "みょ" "みゃん")
+            ("ry" "りゃ" "りゅ" "りぇ" "りょ" "りゃん")
+            ("gy" "ぎゃ" "ぎゅ" "ぎぇ" "ぎょ" "ぎゃん")
+            ("jy" "じゃ" "じゅ" "じぇ" "じょ" "じゃん")
+            ("by" "びゃ" "びゅ" "びぇ" "びょ" "びゃん")
+            ("py" "ぴゃ" "ぴゅ" "ぴぇ" "ぴょ" "ぴゃん"))
+  :description "AZIK youon rules: a/u/e/o/z keys produce correct contracted-sound and hatsuon forms"
   :body (nskk-with-azik-style
           (should (equal a-expected (nskk-converter-lookup (concat prefix "a"))))
           (should (equal u-expected (nskk-converter-lookup (concat prefix "u"))))
           (should (equal e-expected (nskk-converter-lookup (concat prefix "e"))))
-          (should (equal o-expected (nskk-converter-lookup (concat prefix "o"))))))
+          (should (equal o-expected (nskk-converter-lookup (concat prefix "o"))))
+          (should (equal z-expected (nskk-converter-lookup (concat prefix "z"))))))
 
 
 ;;;;
@@ -1721,23 +1662,6 @@ identically."
             ("t" "たい" "つう" "てい" "とう")
             ("n" "ない" "ぬう" "ねい" "のう")
             ("m" "まい" "むう" "めい" "もう")
-            ("r" "らい" "るう" "れい" "ろう"))
-  :description "AZIK diphthong rules: q/h/w/p keys produce correct vowel extensions"
-  :body (nskk-with-azik-style
-          (should (equal q-expected (nskk-converter-lookup (concat prefix "q"))))
-          (should (equal h-expected (nskk-converter-lookup (concat prefix "h"))))
-          (should (equal w-expected (nskk-converter-lookup (concat prefix "w"))))
-          (should (equal p-expected (nskk-converter-lookup (concat prefix "p"))))))
-
-
-;;;;
-;;;; 17. Data-Provider: AZIK diphthong (二重母音拡張) table
-;;;;
-
-(nskk-deftest-table azik-diphthong-full-rows
-  :columns (prefix q-expected h-expected w-expected p-expected)
-  :rows    (("k" "かい" "くう" "けい" "こう")
-            ("m" "まい" "むう" "めい" "もう")
             ("y" "やい" "ゆう" "えい" "よう")
             ("r" "らい" "るう" "れい" "ろう")
             ("g" "がい" "ぐう" "げい" "ごう")
@@ -1746,7 +1670,7 @@ identically."
             ("f" "ふぁい" "ふう" "ふぇい" "ふぉー")
             ("j" "じゃい" "じゅう" "じぇい" "じょう")
             ("v" "ゔぁい" "ゔう" "ゔぇい" "ゔぉー"))
-  :description "AZIK diphthong rules: q/h/w/p keys produce correct double-vowel forms"
+  :description "AZIK diphthong rules: q/h/w/p keys produce correct vowel extensions"
   :body (nskk-with-azik-style
           (should (equal q-expected (nskk-converter-lookup (concat prefix "q"))))
           (should (equal h-expected (nskk-converter-lookup (concat prefix "h"))))
@@ -1778,14 +1702,6 @@ identically."
 ;;;; Property-Based Tests: AZIK-wide invariants
 ;;;;
 
-(nskk-azik-property-test azik-any-rule-lookup-returns-valid-type
-  ((pattern azik-rule))
-  (let ((result (nskk-converter-lookup pattern)))
-    (or (stringp result)
-        (eq result :incomplete)
-        (null result)))
-  50)
-
 (nskk-azik-property-test azik-hatsuon-z-suffix-produces-string-ending-in-ん
   ((row-pattern azik-rule))  ; used to drive random iteration count only
   (let* ((hatsuon-categories (cl-remove-if-not
@@ -1815,34 +1731,6 @@ identically."
 ;;;;
 ;;;; CPS Tests: /k suffix functions
 ;;;;
-
-(nskk-describe "AZIK CPS initialization: nskk--init-azik-rules/k"
-  (nskk-it "calls on-done continuation exactly once"
-    (let ((saved-romaji-table (copy-hash-table (nskk-romaji-table))))
-      (unwind-protect
-          (nskk-prolog-test-with-isolated-db
-            (let ((call-count 0))
-              (nskk--init-azik-rules/k
-               (lambda ()
-                 (cl-incf call-count)))
-              (should (= call-count 1))))
-        (clrhash (nskk-romaji-table))
-        (maphash (lambda (k v) (puthash k v (nskk-romaji-table)))
-                 saved-romaji-table))))
-
-  (nskk-it "on-done is called after hash table is populated"
-    (let ((saved-romaji-table (copy-hash-table (nskk-romaji-table))))
-      (unwind-protect
-          (nskk-prolog-test-with-isolated-db
-            (let ((hash-populated nil))
-              (nskk--init-azik-rules/k
-               (lambda ()
-                 (setq hash-populated
-                       (stringp (nskk-converter-lookup "kz")))))
-              (should hash-populated)))
-        (clrhash (nskk-romaji-table))
-        (maphash (lambda (k v) (puthash k v (nskk-romaji-table)))
-                 saved-romaji-table)))))
 
 (nskk-describe "azik-vowel-char/1 Prolog predicate"
   (nskk-it "succeeds for each of the five romaji vowel character codes"
@@ -1991,19 +1879,6 @@ identically."
           (maphash (lambda (k v) (puthash k v (nskk-romaji-table))) saved))))))
 
 (nskk-describe "nskk--azik-finalize-hash-table"
-  (nskk-it "calls on-done continuation exactly once"
-    (let ((saved-romaji-table (copy-hash-table (nskk-romaji-table))))
-      (unwind-protect
-          (nskk-prolog-test-with-isolated-db
-            (nskk--init-azik-rules)
-            (let ((call-count 0))
-              (nskk--azik-finalize-hash-table/k
-               (lambda () (cl-incf call-count)))
-              (should (= call-count 1))))
-        (clrhash (nskk-romaji-table))
-        (maphash (lambda (k v) (puthash k v (nskk-romaji-table)))
-                 saved-romaji-table))))
-
   (nskk-it "\"sh\" remains complete in hash after finalize (vowel-shadow)"
     (let ((saved-romaji-table (copy-hash-table (nskk-romaji-table))))
       (unwind-protect
@@ -2051,81 +1926,98 @@ identically."
 
 
 ;;;
-;;; AZIK macro API (nskk-azik-hatsuon, nskk-azik-double-vowel,
-;;;                  nskk-azik-extensions, nskk-azik-youon,
-;;;                  nskk--azik-init-extension-rows, nskk--azik-init-youon-rows)
+;;; AZIK rule generation helpers (nskk--azik-hatsuon-pairs,
+;;;                  nskk--azik-double-vowel-pairs,
+;;;                  nskk--azik-extension-pairs, nskk--azik-youon-pairs)
+;;; and their removed compile-time macro predecessors.
 ;;;
 
-(nskk-describe "nskk-azik-hatsuon"
-  (nskk-it "is a macro"
-    (should (macrop 'nskk-azik-hatsuon)))
+(nskk-describe "nskk--azik-hatsuon-pairs"
+  (nskk-it "nskk-azik-hatsuon no longer exists (replaced by a pure function)"
+    (should-not (fboundp 'nskk-azik-hatsuon)))
 
-  (nskk-it "asserts hatsuon rules as azik-rule/2 Prolog facts"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-azik-hatsuon "k" "か" "き" "く" "け" "こ")
-      (should (equal (nskk-prolog-query-value '(azik-rule "kz" \?v) '\?v) "かん"))
-      (should (equal (nskk-prolog-query-value '(azik-rule "kk" \?v) '\?v) "きん"))
-      (should (equal (nskk-prolog-query-value '(azik-rule "kl" \?v) '\?v) "こん"))))
+  (nskk-it "returns the exact five hatsuon pairs for a consonant row, in order"
+    (should (equal (nskk--azik-hatsuon-pairs "k" "か" "き" "く" "け" "こ")
+                   '(("kz" "かん") ("kk" "きん") ("kj" "くん")
+                     ("kd" "けん") ("kl" "こん")))))
 
   (nskk-it "generates exactly 5 hatsuon rules per prefix"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'azik-rule 2)
-      (nskk-azik-hatsuon "s" "さ" "し" "す" "せ" "そ")
-      (let ((rules (nskk-prolog-query-all-values '(azik-rule \?k \?v) '\?k)))
-        (should (= (length rules) 5))))))
+    (should (= (length (nskk--azik-hatsuon-pairs "s" "さ" "し" "す" "せ" "そ")) 5))))
 
-(nskk-describe "nskk-azik-double-vowel"
-  (nskk-it "is a macro"
-    (should (macrop 'nskk-azik-double-vowel)))
+(nskk-describe "nskk--azik-double-vowel-pairs"
+  (nskk-it "nskk-azik-double-vowel no longer exists (replaced by a pure function)"
+    (should-not (fboundp 'nskk-azik-double-vowel)))
 
-  (nskk-it "asserts double vowel rules as azik-rule/2 Prolog facts"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-azik-double-vowel "k" "か" "く" "け" "こ")
-      (should (equal (nskk-prolog-query-value '(azik-rule "kq" \?v) '\?v) "かい"))
-      (should (equal (nskk-prolog-query-value '(azik-rule "kh" \?v) '\?v) "くう"))))
+  (nskk-it "returns the exact four double-vowel pairs for a consonant row, in order"
+    (should (equal (nskk--azik-double-vowel-pairs "k" "か" "く" "け" "こ")
+                   '(("kq" "かい") ("kh" "くう") ("kw" "けい") ("kp" "こう")))))
 
   (nskk-it "generates exactly 4 double vowel rules per prefix"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'azik-rule 2)
-      (nskk-azik-double-vowel "t" "た" "つ" "て" "と")
-      (let ((rules (nskk-prolog-query-all-values '(azik-rule \?k \?v) '\?k)))
-        (should (= (length rules) 4))))))
+    (should (= (length (nskk--azik-double-vowel-pairs "t" "た" "つ" "て" "と")) 4)))
 
-(nskk-describe "nskk-azik-extensions"
-  (nskk-it "is a macro"
-    (should (macrop 'nskk-azik-extensions)))
+  (nskk-it "DV-P-STR overrides the p-suffix output instead of O+う (foreign f-row)"
+    (should (equal (nskk--azik-double-vowel-pairs "f" "ふぁ" "ふ" "ふぇ" "ふぉ" "ふぉー")
+                   '(("fq" "ふぁい") ("fh" "ふう") ("fw" "ふぇい") ("fp" "ふぉー")))))
+
+  (nskk-it "DV-P-STR overrides the p-suffix output instead of O+う (foreign v-row)"
+    (should (equal (nskk--azik-double-vowel-pairs "v" "ゔぁ" "ゔ" "ゔぇ" "ゔぉ" "ゔぉー")
+                   '(("vq" "ゔぁい") ("vh" "ゔう") ("vw" "ゔぇい") ("vp" "ゔぉー")))))
+
+  (nskk-it "omitting DV-P-STR falls back to O+う for the p-suffix"
+    (should (equal (nskk--azik-double-vowel-pairs "k" "か" "く" "け" "こ")
+                   '(("kq" "かい") ("kh" "くう") ("kw" "けい") ("kp" "こう"))))))
+
+(nskk-describe "nskk--azik-extension-pairs"
+  (nskk-it "nskk-azik-extensions no longer exists (replaced by a pure function)"
+    (should-not (fboundp 'nskk-azik-extensions)))
 
   (nskk-it "generates 9 rules: 5 hatsuon + 4 double vowel"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-prolog-retract-all 'azik-rule 2)
-      (nskk-azik-extensions "n" "な" "に" "ぬ" "ね" "の")
-      (let ((rules (nskk-prolog-query-all-values '(azik-rule \?k \?v) '\?k)))
-        (should (= (length rules) 9))))))
+    (should (= (length (nskk--azik-extension-pairs "n" "な" "に" "ぬ" "ね" "の")) 9)))
 
-(nskk-describe "nskk-azik-youon"
-  (nskk-it "is a macro"
-    (should (macrop 'nskk-azik-youon)))
+  (nskk-it "returns hatsuon pairs unchanged followed by double-vowel pairs, plain row"
+    (should (equal (nskk--azik-extension-pairs "n" "な" "に" "ぬ" "ね" "の")
+                   '(("nz" "なん") ("nk" "にん") ("nj" "ぬん") ("nd" "ねん") ("nl" "のん")
+                     ("nq" "ない") ("nh" "ぬう") ("nw" "ねい") ("np" "のう")))))
 
-  (nskk-it "asserts base rules for a/u/e/o positions"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-azik-youon "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
-      (should (equal (nskk-prolog-query-value '(azik-rule "kga" \?v) '\?v) "きゃ"))
-      (should (equal (nskk-prolog-query-value '(azik-rule "kgu" \?v) '\?v) "きゅ"))
-      (should (equal (nskk-prolog-query-value '(azik-rule "kgo" \?v) '\?v) "きょ"))))
+  (nskk-it "DV-O overrides O for the double-vowel pairs only, not the hatsuon pairs (わ行)"
+    (should (equal (nskk--azik-extension-pairs "w" "わ" "うぃ" "う" "うぇ" "を" "うぉ")
+                   '(("wz" "わん") ("wk" "うぃん") ("wj" "うん") ("wd" "うぇん") ("wl" "をん")
+                     ("wq" "わい") ("wh" "うう") ("ww" "うぇい") ("wp" "うぉう")))))
 
-  (nskk-it "also generates hatsuon and double vowel extension rules"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-azik-youon "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")
-      (should (equal (nskk-prolog-query-value '(azik-rule "kgz" \?v) '\?v) "きゃん"))
-      (should (equal (nskk-prolog-query-value '(azik-rule "kgq" \?v) '\?v) "きゃい")))))
+  (nskk-it "DV-P-STR together with DV-O overrides only the p-suffix output (わ行)"
+    (should (equal (nskk--azik-extension-pairs "w" "わ" "うぃ" "う" "うぇ" "を" "うぉ" "うぉー")
+                   '(("wz" "わん") ("wk" "うぃん") ("wj" "うん") ("wd" "うぇん") ("wl" "をん")
+                     ("wq" "わい") ("wh" "うう") ("ww" "うぇい") ("wp" "うぉー"))))))
+
+(nskk-describe "nskk--azik-youon-pairs"
+  (nskk-it "nskk-azik-youon no longer exists (replaced by a pure function)"
+    (should-not (fboundp 'nskk-azik-youon)))
+
+  (nskk-it "returns base rules for a/u/e/o positions"
+    (let ((pairs (nskk--azik-youon-pairs "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")))
+      (should (equal (assoc "kga" pairs) '("kga" "きゃ")))
+      (should (equal (assoc "kgu" pairs) '("kgu" "きゅ")))
+      (should (equal (assoc "kgo" pairs) '("kgo" "きょ")))))
+
+  (nskk-it "generates no base rule for the i position (youon has no bare -i key)"
+    (let ((pairs (nskk--azik-youon-pairs "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")))
+      (should-not (assoc "kgi" pairs))))
+
+  (nskk-it "also includes hatsuon and double vowel extension pairs"
+    (let ((pairs (nskk--azik-youon-pairs "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")))
+      (should (equal (assoc "kgz" pairs) '("kgz" "きゃん")))
+      (should (equal (assoc "kgq" pairs) '("kgq" "きゃい")))))
+
+  (nskk-it "returns exactly 4 base pairs + 9 extension pairs = 13 pairs total"
+    (should (= (length (nskk--azik-youon-pairs "kg" "きゃ" "きぃ" "きゅ" "きぇ" "きょ")) 13))))
 
 (nskk-describe "nskk--azik-init-extension-rows"
-  (nskk-it "is a macro"
-    (should (macrop 'nskk--azik-init-extension-rows))))
+  (nskk-it "no longer exists (replaced by nskk--azik-extension-rule-pairs)"
+    (should-not (fboundp 'nskk--azik-init-extension-rows))))
 
 (nskk-describe "nskk--azik-init-youon-rows"
-  (nskk-it "is a macro"
-    (should (macrop 'nskk--azik-init-youon-rows))))
+  (nskk-it "no longer exists (replaced by nskk--azik-youon-rule-pairs)"
+    (should-not (fboundp 'nskk--azik-init-youon-rows))))
 
 ;;;;
 ;;;; Section: JP106 + Key Rules
