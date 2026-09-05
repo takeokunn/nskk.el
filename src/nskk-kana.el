@@ -72,6 +72,12 @@ Part of the Half-width and Full-width Forms Unicode block.")
   "Code point offset between hiragana and katakana.
 A katakana character equals the corresponding hiragana plus this offset.")
 
+(defconst nskk--kana-latin-width-offset #xFEE0
+  "Code point offset between ASCII and its JIS X 0208 full-width form.
+A full-width latin character equals the corresponding ASCII character
+plus this offset.  Space is excluded: it maps to the ideographic space
+\(U+3000), which does not follow the offset.")
+
 ;;;; Internal Macros
 
 (defmacro nskk--kana-fill-hash-table (table &rest entries)
@@ -313,6 +319,19 @@ For any other type, returns STRING-OR-CHAR unchanged."
      (let ((str (char-to-string string-or-char)))
        (or (gethash str nskk--kana-hankaku-to-zenkaku-table) str)))
     (_ string-or-char)))
+
+;;;; JIS X 0208 Latin Width
+
+(defun nskk-jisx0208-latin-char (char)
+  "Return the JIS X 0208 full-width code point for ASCII CHAR.
+Space maps to the ideographic space (U+3000); printable ASCII
+\(U+0021-U+007E) maps to U+FF01-U+FF5E.  CHAR is returned unchanged
+when it falls outside both ranges."
+  (cond
+   ((= char #x20) #x3000)
+   ((and (>= char #x21) (<= char #x7E))
+    (+ char nskk--kana-latin-width-offset))
+   (t char)))
 
 ;;;; Prolog Facts Initialization
 

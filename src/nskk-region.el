@@ -63,11 +63,7 @@ On failure, restore point, mark, and mark activation exactly."
   "Convert ASCII CHAR (integer) to full-width Unicode equivalent.
 Only converts printable ASCII (0x20-0x7E).
 Returns a string of the converted character."
-  (cond
-   ((= char #x20) "\u3000")
-   ((and (>= char #x21) (<= char #x7E))
-    (char-to-string (+ char #xFEE0)))
-   (t (char-to-string char))))
+  (char-to-string (nskk-jisx0208-latin-char char)))
 
 (defun nskk--string-ascii-to-zenkaku (str)
   "Convert all ASCII printable characters in STR to full-width equivalents."

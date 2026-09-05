@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Extracted the ASCII-to-full-width offset that the region, input and
+  henkan modules each wrote out into `nskk-jisx0208-latin-char`. All three
+  applied the same mapping behind different amounts of range guard, and
+  the henkan site had none at all, relying on its caller to pass digits.
+  The Prolog `fullwidth-char/2` rule keeps its own arithmetic: a rule body
+  cannot call into Elisp, and generating a fact per code point would
+  replace an affine range with a table.
+- Added region coverage for converting while the mark is set but inactive
+  and `mark-even-if-inactive` is nil, and kana coverage for the new
+  helper's space, range-boundary, underscore and passthrough cases.
 - The Prolog engine's first-solution query API (`nskk-prolog-prove-one`,
   `nskk-prolog-query-one`, `nskk-prolog-query-value`, `nskk-prolog-query-values`)
   is now defined with the project's CPS macros, so a caller using the `/k`
