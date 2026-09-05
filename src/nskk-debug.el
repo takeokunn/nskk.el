@@ -30,7 +30,32 @@
 
 (require 'nskk-cps-macros)
 (require 'nskk-prolog)
-(require 'nskk-custom)
+
+;;;; Customization
+
+(defgroup nskk-debug nil
+  "NSKK debugging configuration."
+  :prefix "nskk-debug-"
+  :group 'nskk)
+
+(defcustom nskk-debug-enabled nil
+  "Whether NSKK debug mode is enabled.
+When enabled, debug messages are logged to the *NSKK Debug* buffer.
+Note: enabling this records individual keystrokes and dictionary query
+terms in the debug buffer for diagnostic purposes."
+  :type 'boolean
+  :safe #'booleanp
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-debug)
+
+(defcustom nskk-debug-max-entries 1000
+  "Maximum number of log entries before trimming the debug buffer.
+A value of zero causes `nskk--debug-trim' to clear the buffer on
+every append (effectively disabling the buffer log)."
+  :type 'natnum
+  :safe #'natnump
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-debug)
 
 ;;;; Prolog Facts
 ;;

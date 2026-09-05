@@ -31,11 +31,11 @@
 ;;; Code:
 
 ;; L0: Foundation
-(require 'nskk-custom)
 (require 'nskk-prolog)
 
 ;; L2: Domain
 (require 'nskk-state)
+(require 'nskk-search)
 
 ;; L3: Application
 (require 'nskk-henkan)
@@ -89,6 +89,24 @@
 (declare-function nskk-purge-from-jisyo "nskk-henkan")
 (declare-function nskk-completion-at-point "nskk-henkan")
 (declare-function nskk-commit-by-phase "nskk-keymap")
+
+;;;; Customization Groups
+;;
+;; The submodules required above declare their options against these two roots.
+;; Emacs links a child to its parent group regardless of definition order, so
+;; the roots may live here at the top of the require graph rather than in a
+;; module every layer has to depend on.
+
+(defgroup nskk nil
+  "NSKK - Next-generation SKK with zero dependencies and extreme performance."
+  :prefix "nskk-"
+  :group 'i18n
+  :link '(url-link :tag "GitHub" "https://github.com/takeokunn/nskk.el"))
+
+(defgroup nskk-ui nil
+  "UI components settings."
+  :prefix "nskk-"
+  :group 'nskk)
 
 (defvar nskk-mode-off-hook nil
   "Hook run when NSKK mode is disabled.")

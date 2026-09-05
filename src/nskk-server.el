@@ -30,7 +30,6 @@
 
 (require 'cl-lib)
 (require 'subr-x)
-(require 'nskk-custom)
 (require 'nskk-prolog)
 (require 'nskk-cps-macros)
 (require 'nskk-debug nil t)
