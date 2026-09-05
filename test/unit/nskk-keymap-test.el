@@ -1941,6 +1941,11 @@ and configures state."
 ;;;
 
 (nskk-describe "q-key-dispatch/3 Prolog table integrity"
+  ;; `nskk-handle-q' delegates its `fire-romaji' arm to `nskk-handle-q-key'
+  ;; unconditionally, which is correct only while no standard row produces
+  ;; `fire-romaji'.  Changing a standard row's action below to `fire-romaji'
+  ;; would route standard style to `q-key-action/3''s `(standard ?buf
+  ;; toggle-mode)' catch-all instead of converting the script.
   (nskk-deftest-table keymap-prolog-q-key-dispatch-table
     :description "q-key-dispatch/3 maps (class style) to q-key action"
     :columns (cls style expected-action)
