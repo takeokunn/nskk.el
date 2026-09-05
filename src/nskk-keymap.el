@@ -443,15 +443,6 @@ Falls through to `self-insert-command' when not in a Japanese input mode."
   (preedit-marker   azik     self-insert)
   (preedit-marker   standard self-insert))
 
-(defun nskk--q-standard-convert-script-p (cls style)
-  "Return non-nil if q-key `fire-romaji' dispatch should convert-script.
-True when CLS is `preedit-japanese' with an empty romaji buffer and
-STYLE is not `azik': standard-style romaji with nothing pending, where
-converting the accumulated kana takes priority over AZIK's romaji rules."
-  (and (eq cls 'preedit-japanese)
-       (string-empty-p (nskk-state-romaji-buffer))
-       (not (eq style 'azik))))
-
 (defun/done nskk-handle-q ()
   "Handle q key: convert preedit kana to opposite script, or toggle mode.
 In ▽ preedit phase (hiragana/katakana Japanese mode):
@@ -474,9 +465,12 @@ Dispatched via `q-key-dispatch/3' Prolog table."
          (action (nskk-prolog-query-value
                   `(q-key-dispatch ,cls ,style \?a) '\?a)))
     (pcase action
-      ('fire-romaji     (if (nskk--q-standard-convert-script-p cls style)
-                            (nskk-henkan-kakutei-convert-script)
-                          (nskk-handle-q-key)))
+      ;; `fire-romaji' is reachable only from the two `azik' rows of
+      ;; `q-key-dispatch/3'; no standard-style row produces it.  So the
+      ;; romaji-buffer decision belongs one layer down: `nskk-handle-q-key'
+      ;; dispatches it through `q-key-action/3' in nskk-input.el, whose
+      ;; buf-state column carries exactly that distinction.
+      ('fire-romaji     (nskk-handle-q-key))
       ('convert-script  (nskk-henkan-kakutei-convert-script))
       ('mode-switch     (let ((saved-romaji (nskk-state-romaji-buffer)))
                           (nskk--with-japanese-mode/k
