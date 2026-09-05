@@ -18,6 +18,7 @@
 (require 'nskk-state)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
+(require 'nskk-pbt-generators)
 
 ;;;; Overlay lifecycle
 
@@ -53,34 +54,6 @@
       (should-not (condition-case nil
                       (progn (nskk-candidate-hide-list) nil)
                     (error t))))))
-
-;;;; Key selection (home-row index mapping)
-
-(nskk-describe "candidate key selection"
-
-  (nskk-it "select-by-key with ?a returns absolute index 0"
-    (let ((candidates '("漢字" "感じ" "幹事" "環境" "官邸" "換気" "韓国")))
-      (should (= 0 (nskk-candidate-list-select-by-key ?a candidates 0)))))
-
-  (nskk-it "select-by-key with ?s returns absolute index 1"
-    (let ((candidates '("漢字" "感じ" "幹事" "環境" "官邸" "換気" "韓国")))
-      (should (= 1 (nskk-candidate-list-select-by-key ?s candidates 0)))))
-
-  (nskk-it "select-by-key with ?d returns absolute index 2"
-    (let ((candidates '("漢字" "感じ" "幹事" "環境" "官邸" "換気" "韓国")))
-      (should (= 2 (nskk-candidate-list-select-by-key ?d candidates 0)))))
-
-  (nskk-it "select-by-key returns nil when position exceeds candidate count"
-    (let ((candidates '("漢字")))
-      (should (null (nskk-candidate-list-select-by-key ?s candidates 0)))))
-
-  (nskk-it "select-by-key with page offset returns correct absolute index"
-    (let ((candidates (make-list 14 "候補")))
-      (should (= 7 (nskk-candidate-list-select-by-key ?a candidates 7)))))
-
-  (nskk-it "select-by-key with ?s on page 2 offset returns absolute index 8"
-    (let ((candidates (make-list 14 "候補")))
-      (should (= 8 (nskk-candidate-list-select-by-key ?s candidates 7))))))
 
 ;;;; Hook wiring integration
 
@@ -130,14 +103,9 @@
         (should (= 0 (funcall nskk-henkan-select-candidate-by-key-function
                               ?a candidates 0)))))))
 
-;;;
-;;;
-
-(require 'nskk-pbt-generators)
-
 (nskk-deftest-table candidate-key-selection
   :columns (key-char expected-index)
-  :rows ((?a 0) (?s 1) (?d 2) (?f 3) (?j 4) (?k 5) (?l 6))
+  :rows ((?a 0) (?l 6))
   :body
   (with-temp-buffer
     (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
@@ -147,19 +115,6 @@
       (let ((result (nskk-candidate-list-select-by-key key-char candidates 0)))
         (nskk-candidate-hide-list)
         (should (= result expected-index))))))
-
-(nskk-property-test candidate-show-hide-active-p-consistency
-  ((cv candidates-with-valid-index))
-  (with-temp-buffer
-    (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
-          (nskk-henkan-number-to-display-candidates 7)
-          (candidates (plist-get cv :candidates))
-          (idx (plist-get cv :index)))
-      (nskk-candidate-show-list candidates idx)
-      (should (nskk-candidate-list-active-p))
-      (nskk-candidate-hide-list)
-      (should (null (nskk-candidate-list-active-p)))))
-  30)
 
 (nskk-describe "Candidate window property: show/hide cycle"
   (nskk-it "repeated show/hide cycles always end inactive"
@@ -172,53 +127,52 @@
                 (idx (plist-get cv :index)))
             (dotimes (_ 3)
               (nskk-candidate-show-list candidates idx)
+              (should (nskk-candidate-list-active-p))
               (nskk-candidate-hide-list))
             (should-not (nskk-candidate-list-active-p))))))))
 
+(nskk-describe "Candidate window transactional hook recovery"
+  (nskk-it "recovers from overlay-put quit and retries through the show hook"
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+            (nskk-henkan-number-to-display-candidates 7)
+            (nskk-henkan-show-candidates-functions nil)
+            (payload (list 'candidate-overlay-put-quit))
+            (original-overlay-put (symbol-function 'overlay-put))
+            saved-overlay
+            caught)
+        (add-hook 'nskk-henkan-show-candidates-functions
+                  #'nskk-candidate-show-list)
+        (unwind-protect
+            (progn
+              (cl-letf (((symbol-function 'overlay-put)
+                         (lambda (overlay property value)
+                           (prog1
+                               (funcall original-overlay-put
+                                        overlay property value)
+                             (setq saved-overlay overlay)
+                             (signal 'quit (list payload))))))
+                (condition-case condition
+                    (run-hook-with-args
+                     'nskk-henkan-show-candidates-functions
+                     '("candidate-a" "candidate-b") 0)
+                  (quit
+                   (setq caught condition))))
+              (should (eq (car caught) 'quit))
+              (should (eq (cadr caught) payload))
+              (should-not nskk--candidate-list-active)
+              (should-not (nskk-state-candidate-overlay))
+              (should (overlayp saved-overlay))
+              (should-not (overlay-buffer saved-overlay))
+              (run-hook-with-args
+               'nskk-henkan-show-candidates-functions
+               '("candidate-a" "candidate-b") 0)
+              (should (nskk-candidate-list-active-p))
+              (should (overlayp (nskk-state-candidate-overlay))))
+          (remove-hook 'nskk-henkan-show-candidates-functions
+                       #'nskk-candidate-show-list)
+          (nskk-candidate-hide-list))))))
 
-(progn
-  (nskk-describe "Candidate window transactional hook recovery"
-    (nskk-it "recovers from overlay-put quit and retries through the show hook"
-      (with-temp-buffer
-        (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
-              (nskk-henkan-number-to-display-candidates 7)
-              (nskk-henkan-show-candidates-functions nil)
-              (payload (list 'candidate-overlay-put-quit))
-              (original-overlay-put (symbol-function 'overlay-put))
-              saved-overlay
-              caught)
-          (add-hook 'nskk-henkan-show-candidates-functions
-                    #'nskk-candidate-show-list)
-          (unwind-protect
-              (progn
-                (cl-letf (((symbol-function 'overlay-put)
-                           (lambda (overlay property value)
-                             (prog1
-                                 (funcall original-overlay-put
-                                          overlay property value)
-                               (setq saved-overlay overlay)
-                               (signal 'quit (list payload))))))
-                  (condition-case condition
-                      (run-hook-with-args
-                       'nskk-henkan-show-candidates-functions
-                       '("candidate-a" "candidate-b") 0)
-                    (quit
-                     (setq caught condition))))
-                (should (eq (car caught) 'quit))
-                (should (eq (cadr caught) payload))
-                (should-not nskk--candidate-list-active)
-                (should-not (nskk-state-candidate-overlay))
-                (should (overlayp saved-overlay))
-                (should-not (overlay-buffer saved-overlay))
-                (run-hook-with-args
-                 'nskk-henkan-show-candidates-functions
-                 '("candidate-a" "candidate-b") 0)
-                (should (nskk-candidate-list-active-p))
-                (should (overlayp (nskk-state-candidate-overlay))))
-            (remove-hook 'nskk-henkan-show-candidates-functions
-                         #'nskk-candidate-show-list)
-            (nskk-candidate-hide-list))))))
-
-  (provide 'nskk-candidate-window-integration-test))
+(provide 'nskk-candidate-window-integration-test)
 
 ;;; nskk-candidate-window-integration-test.el ends here

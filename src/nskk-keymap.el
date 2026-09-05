@@ -252,14 +252,8 @@ Returns `other' when no state exists."
 
 (defun nskk-classify-state ()
   "Return a rich state classification symbol for the current NSKK state.
-Returns one of:
-  `converting'       -- henkan-active (▼ phase)
-  `preedit-japanese' -- preedit with kana text in a Japanese mode
-  `preedit-pending'  -- ▽ marker set in a Japanese mode, but no kana
-                        text emitted yet (first romaji still accumulating)
-  `preedit-marker'   -- marker set in a marker-mode (abbrev)
-  `idle-japanese'    -- Japanese mode, no active preedit
-  `idle-direct'      -- ASCII/latin/abbrev idle, or no state
+The full set of possible return values is documented by the
+`state-classify/4' fact table above.
 
 This is the single source of truth for state classification.  All other
 classifiers (`nskk--current-key-state', `nskk--japanese-mode-class',
@@ -299,31 +293,26 @@ Queries `key-state-map/2' to reduce the rich classification from
   (preedit-pending   no-text  preedit)
   (preedit-marker    has-text preedit))
 
-(defun/k nskk-current-kakutei-state ()
+(defun nskk-current-kakutei-state ()
   "Return kakutei dispatch state for `kakutei-action/2' Prolog query.
-States (in priority order):
-  `converting'     -- henkan-active (▼ phase)
-  `preedit'        -- henkan-on (▽ phase)
-  `romaji-pending' -- incomplete romaji in `nskk-state-romaji-buffer'
-  `hiragana-idle'  -- hiragana mode, no pending input
-  `katakana-idle'  -- katakana/katakana-han mode, no pending input
-  `direct-idle'    -- ascii/latin/jisx0208-latin/abbrev, no pending input
+Returns a value from the `kakutei-active-state/3' or `kakutei-idle-state/2'
+fact tables above, or `romaji-pending', which is not a row in either table
+because it is decided in code from `nskk-state-romaji-buffer'.
 
 Queries `kakutei-active-state/3' for converting/preedit states, then
-falls through to romaji-pending check, then to `kakutei-idle-state/2'."
+falls through to a romaji-pending check, then to `kakutei-idle-state/2'."
   (let* ((cls  (nskk-classify-state))
          (text (nskk--compute-text-presence))
          (active (nskk-prolog-query-value
                   `(kakutei-active-state ,cls ,text \?s) '\?s)))
-    (if active
-        (succeed active)
-      (if (not (string-empty-p (nskk-state-romaji-buffer)))
-          (succeed 'romaji-pending)
-        (succeed (or (and nskk-current-state
-                          (nskk-prolog-query-value
-                           `(kakutei-idle-state ,(nskk-state-mode nskk-current-state) \?s)
-                           '\?s))
-                     'direct-idle))))))
+    (or active
+        (if (not (string-empty-p (nskk-state-romaji-buffer)))
+            'romaji-pending
+          (or (and nskk-current-state
+                   (nskk-prolog-query-value
+                    `(kakutei-idle-state ,(nskk-state-mode nskk-current-state) \?s)
+                    '\?s))
+              'direct-idle)))))
 
 (defun nskk--japanese-mode-active-p ()
   "Return non-nil if the current NSKK mode is a Japanese input mode.
@@ -335,12 +324,8 @@ Queries the `japanese-mode/1' Prolog predicate for the mode stored in
 
 (defun nskk--japanese-mode-class ()
   "Return mode classification for mode-switch key dispatch.
-Returns one of:
-  `converting'       -- henkan-active (▼ phase)
-  `preedit-japanese' -- preedit with kana text in Japanese mode
-  `preedit-pending'  -- ▽ marker in Japanese mode, no kana text yet
-  `idle-japanese'    -- Japanese mode, no active preedit
-  `other'            -- ASCII/latin/abbrev mode, or no state
+The full set of possible return values is documented by the
+`mode-class-map/2' fact table above.
 
 Queries `mode-class-map/2' to map the rich classification from
 `nskk-classify-state' to the mode-switch class symbol."
@@ -360,7 +345,7 @@ No-op when classify-state maps to `noop' or `fallback'."
     (unless (eq preact 'fallback)
       (nskk--execute-preaction preact))))
 
-;;;; Internal Macros
+;;;; Mode-Switch Pre-Action Helpers
 
 (defun nskk--execute-preaction (preact)
   "Execute the implicit kakutei pre-action PREACT before a mode-switch.
@@ -382,6 +367,8 @@ Calls fail when not in a Japanese mode (`other' class maps to `fallback')."
     (pcase preact
       ('fallback (fail))
       (_ (nskk--execute-preaction preact) (succeed nil)))))
+
+;;;; Internal Macros
 
 (defmacro nskk--safe-nav-command (cmd error-type)
   "Call CMD interactively, silently ignoring ERROR-TYPE signals.
@@ -456,6 +443,15 @@ Falls through to `self-insert-command' when not in a Japanese input mode."
   (preedit-marker   azik     self-insert)
   (preedit-marker   standard self-insert))
 
+(defun nskk--q-standard-convert-script-p (cls style)
+  "Return non-nil if q-key `fire-romaji' dispatch should convert-script.
+True when CLS is `preedit-japanese' with an empty romaji buffer and
+STYLE is not `azik': standard-style romaji with nothing pending, where
+converting the accumulated kana takes priority over AZIK's romaji rules."
+  (and (eq cls 'preedit-japanese)
+       (string-empty-p (nskk-state-romaji-buffer))
+       (not (eq style 'azik))))
+
 (defun/done nskk-handle-q ()
   "Handle q key: convert preedit kana to opposite script, or toggle mode.
 In ▽ preedit phase (hiragana/katakana Japanese mode):
@@ -478,9 +474,7 @@ Dispatched via `q-key-dispatch/3' Prolog table."
          (action (nskk-prolog-query-value
                   `(q-key-dispatch ,cls ,style \?a) '\?a)))
     (pcase action
-      ('fire-romaji     (if (and (eq cls 'preedit-japanese)
-                                 (string-empty-p (nskk-state-romaji-buffer))
-                                 (not (eq style 'azik)))
+      ('fire-romaji     (if (nskk--q-standard-convert-script-p cls style)
                             (nskk-henkan-kakutei-convert-script)
                           (nskk-handle-q-key)))
       ('convert-script  (nskk-henkan-kakutei-convert-script))
@@ -545,6 +539,14 @@ In ASCII mode or when NSKK state is inactive, fall through to
      (lambda (_) (nskk-set-mode-abbrev))
      (lambda () (self-insert-command 1)))))
 
+;; X is not generated by `nskk-define-key-handler', so unlike x, SPC, RET and
+;; the nav keys it does not consult `key-action/3'.  Its `nskk-converting-p'
+;; guard is equivalent to `(eq (nskk-classify-state) 'converting)' rather than
+;; narrower: `nskk-compute-phase' tests `nskk-converting-p' first, and every
+;; `converting' row of `state-classify/4' maps to `converting'.  It stays
+;; direct because this key purges an entry from the user's dictionary, and one
+;; predicate is easier to audit than a table row plus a 3-dimensional
+;; classifier.  Do not fold it into `key-action/3'.
 (defun nskk-handle-upper-x ()
   "Handle X key: purge current candidate from user dictionary.
 In ▼ (conversion) mode, calls `nskk-purge-from-jisyo' to remove the
@@ -668,6 +670,8 @@ Otherwise clears any residual AZIK deferred state and calls
   ('cancel-preedit (nskk-cancel-preedit))
   (_ (nskk-clear-azik-pending-state) (keyboard-quit)))
 
+;;;; Backspace Retraction and Rollback
+
 (defconst nskk--backspace-state-accessors
   '((nskk-deferred-azik-state . nskk-set-deferred-azik-state)
     (nskk-deferred-vowel-shadow-state . nskk-set-deferred-vowel-shadow-state)
@@ -694,70 +698,107 @@ Otherwise clears any residual AZIK deferred state and calls
           :overlay-properties (and (overlayp overlay)
                                    (overlay-properties overlay)))))
 
-(defun nskk--backspace-retract-active-state ()
-  "Retract the highest-priority pending input state."
+(defun nskk--backspace-retract-deferred-azik-state ()
+  "Retract the pending AZIK deferred-azik-state (DA), deleting its text."
+  (delete-char (- (length (cdr (nskk-deferred-azik-state)))))
+  (nskk-set-deferred-azik-state nil))
+
+(defun nskk--backspace-retract-deferred-vowel-shadow-state ()
+  "Retract the pending AZIK deferred-vowel-shadow-state (DV), deleting its text."
+  (delete-char (- (length (nskk-deferred-state-kana
+                           (nskk-deferred-vowel-shadow-state)))))
+  (nskk-set-deferred-vowel-shadow-state nil))
+
+(defun nskk--backspace-retract-azik-colon-okuri-pending ()
+  "Retract the pending AZIK colon-okuri-pending (CP) marker."
+  (delete-char -1)
+  (nskk-set-azik-colon-okuri-pending nil))
+
+(defun nskk--backspace-retract-azik-colon-okuri-deferred ()
+  "Retract the pending AZIK colon-okuri-deferred (CD) state.
+Also resets the romaji buffer, since CD retraction discards the
+deferred okuri placeholder along with whatever romaji followed it."
+  (delete-char (- (length (cdr (nskk-azik-colon-okuri-deferred)))))
+  (nskk-set-azik-colon-okuri-deferred nil)
+  (nskk-reset-romaji-buffer))
+
+(defun nskk--backspace-retract-romaji-buffer ()
+  "Retract one character from the pending romaji buffer."
+  (nskk-state-set-romaji-buffer
+   (substring (nskk-state-romaji-buffer) 0 -1))
+  (if (string-empty-p (nskk-state-romaji-buffer))
+      (nskk-clear-pending-romaji)
+    (nskk-show-pending-romaji (nskk-state-romaji-buffer))))
+
+(defun/k nskk--backspace-retract-active-state ()
+  "Retract the highest-priority pending input state.
+Checks AZIK deferred state and the romaji buffer in priority order
+DA > DV > CP > CD > romaji-buffer, delegating to the matching
+`nskk--backspace-retract-*' helper.  Succeeds with t when a retraction
+happened; fails when nothing was pending."
   (cond
    ((and (fboundp 'nskk-deferred-azik-state)
          (nskk-deferred-azik-state))
-    (delete-char (- (length (cdr (nskk-deferred-azik-state)))))
-    (nskk-set-deferred-azik-state nil)
-    t)
+    (nskk--backspace-retract-deferred-azik-state)
+    (succeed t))
    ((and (fboundp 'nskk-deferred-vowel-shadow-state)
          (nskk-deferred-vowel-shadow-state))
-    (delete-char (- (length (nskk-deferred-state-kana
-                             (nskk-deferred-vowel-shadow-state)))))
-    (nskk-set-deferred-vowel-shadow-state nil)
-    t)
+    (nskk--backspace-retract-deferred-vowel-shadow-state)
+    (succeed t))
    ((and (fboundp 'nskk-azik-colon-okuri-pending)
          (nskk-azik-colon-okuri-pending))
-    (delete-char -1)
-    (nskk-set-azik-colon-okuri-pending nil)
-    t)
+    (nskk--backspace-retract-azik-colon-okuri-pending)
+    (succeed t))
    ((and (fboundp 'nskk-azik-colon-okuri-deferred)
          (nskk-azik-colon-okuri-deferred))
-    (delete-char (- (length (cdr (nskk-azik-colon-okuri-deferred)))))
-    (nskk-set-azik-colon-okuri-deferred nil)
-    (nskk-reset-romaji-buffer)
-    t)
+    (nskk--backspace-retract-azik-colon-okuri-deferred)
+    (succeed t))
    ((not (string-empty-p (nskk-state-romaji-buffer)))
-    (nskk-state-set-romaji-buffer
-     (substring (nskk-state-romaji-buffer) 0 -1))
-    (if (string-empty-p (nskk-state-romaji-buffer))
-        (nskk-clear-pending-romaji)
-      (nskk-show-pending-romaji (nskk-state-romaji-buffer)))
-    t)))
+    (nskk--backspace-retract-romaji-buffer)
+    (succeed t))
+   (t (fail))))
+
+(defun nskk--backspace-restore-pending-state (snapshot)
+  "Restore the pending AZIK state accessors and romaji buffer from SNAPSHOT.
+Must be called with SNAPSHOT's buffer already current."
+  (dolist (entry (plist-get snapshot :states))
+    (let ((setter (cdr (assq (car entry)
+                             nskk--backspace-state-accessors))))
+      (when (or (nth 1 entry) (fboundp (car entry)))
+        (funcall setter (nth 2 entry)))))
+  (nskk-state-set-romaji-buffer (plist-get snapshot :romaji)))
+
+(defun nskk--backspace-restore-pending-overlay (snapshot)
+  "Restore the pending-romaji overlay from SNAPSHOT.
+Must be called with SNAPSHOT's buffer already current."
+  (let ((current-overlay (nskk-state-pending-romaji-overlay))
+        (overlay (plist-get snapshot :overlay)))
+    (when (and (overlayp current-overlay)
+               (not (eq current-overlay overlay)))
+      (delete-overlay current-overlay))
+    (nskk-state-set-pending-romaji-overlay overlay)
+    (when (overlayp overlay)
+      (let ((properties (overlay-properties overlay)))
+        (while properties
+          (overlay-put overlay (pop properties) nil)
+          (pop properties)))
+      (let ((properties (plist-get snapshot :overlay-properties)))
+        (while properties
+          (overlay-put overlay (pop properties) (pop properties))))
+      (if-let* ((buffer (plist-get snapshot :overlay-buffer)))
+          (move-overlay overlay
+                        (plist-get snapshot :overlay-start)
+                        (plist-get snapshot :overlay-end)
+                        buffer)
+        (delete-overlay overlay)))))
 
 (defun nskk--backspace-restore-snapshot (snapshot)
   "Restore pending input and buffer state from SNAPSHOT."
   (let ((inhibit-quit t)
         (inhibit-modification-hooks t))
     (with-current-buffer (plist-get snapshot :buffer)
-      (dolist (entry (plist-get snapshot :states))
-        (let ((setter (cdr (assq (car entry)
-                                 nskk--backspace-state-accessors))))
-          (when (or (nth 1 entry) (fboundp (car entry)))
-            (funcall setter (nth 2 entry)))))
-      (nskk-state-set-romaji-buffer (plist-get snapshot :romaji))
-      (let ((current-overlay (nskk-state-pending-romaji-overlay))
-            (overlay (plist-get snapshot :overlay)))
-        (when (and (overlayp current-overlay)
-                   (not (eq current-overlay overlay)))
-          (delete-overlay current-overlay))
-        (nskk-state-set-pending-romaji-overlay overlay)
-        (when (overlayp overlay)
-          (let ((properties (overlay-properties overlay)))
-            (while properties
-              (overlay-put overlay (pop properties) nil)
-              (pop properties)))
-          (let ((properties (plist-get snapshot :overlay-properties)))
-            (while properties
-              (overlay-put overlay (pop properties) (pop properties))))
-          (if-let* ((buffer (plist-get snapshot :overlay-buffer)))
-              (move-overlay overlay
-                            (plist-get snapshot :overlay-start)
-                            (plist-get snapshot :overlay-end)
-                            buffer)
-            (delete-overlay overlay))))
+      (nskk--backspace-restore-pending-state snapshot)
+      (nskk--backspace-restore-pending-overlay snapshot)
       (goto-char (plist-get snapshot :point)))))
 
 (defun nskk--backspace-retract-pending ()
@@ -777,7 +818,7 @@ and pending-romaji overlay to their entry values."
        (nskk--backspace-restore-snapshot snapshot)
        (signal (car err) (cdr err))))))
 
-(defun nskk--backspace-in-preedit ()
+(defun/done nskk--backspace-in-preedit ()
   "Delete pending romaji, AZIK deferred state, or last preedit char.
 Called when backspace is pressed in preedit state.
 Priority: DA > DV > CP > CD > romaji-buffer > buffer text.

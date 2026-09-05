@@ -33,71 +33,10 @@
 (require 'nskk-custom)
 (require 'nskk-cps-macros)
 
-;;;; Internal Macros
-
-(defmacro nskk-with-candidates (state &rest body)
-  "Execute BODY only if STATE has non-nil candidates.
-Binds `candidates' and `index' for use in BODY."
-  (declare (indent 1) (debug t))
-  (let ((s (make-symbol "state")))
-    `(let ((,s ,state))
-       (when (and (nskk-state-p ,s)
-                  (nskk-state-candidates ,s))
-         (let ((candidates (nskk-state-candidates ,s))
-               (index (nskk-state-current-index ,s)))
-           ,@body)))))
-
-(defmacro nskk-state-slot-dispatch (state key-sym value &rest slots)
-  "Generate cond dispatch for STATE struct slot setters.
-KEY-SYM is a symbol being dispatched on, VALUE is the value to set.
-SLOTS is a list of slot name symbols (unquoted).
-
-Each slot generates:
-  ((eq KEY-SYM \\='SLOT) (setf (nskk-state-SLOT STATE) VALUE) VALUE)
-Falls through to nil if no slot matches."
-  (declare (indent 3) (debug t))
-  (let ((state-sym (make-symbol "state"))
-        (val-sym   (make-symbol "val")))
-    `(let ((,state-sym ,state)
-           (,val-sym   ,value))
-       (cond
-        ,@(mapcar (lambda (slot)
-                    `((eq ,key-sym ',slot)
-                      (setf (,(intern (format "nskk-state-%s" slot)) ,state-sym)
-                            ,val-sym)
-                      ,val-sym))
-                  slots)))))
-
-(defmacro nskk-define-slot-setter (slot)
-  "Generate sync and CPS setter pair for SLOT in `nskk-state' struct.
-Creates two functions:
-  `nskk-state-set-SLOT' (state value) -- sync; returns VALUE or nil if invalid
-  `nskk-state-set-SLOT/k' (state value on-found on-not-found) -- CPS variant"
-  (declare (indent 0) (debug t))
-  (let* ((fn      (intern (format "nskk-state-set-%s"   slot)))
-         (fn/k    (intern (format "nskk-state-set-%s/k" slot)))
-         (accessor (intern (format "nskk-state-%s"       slot))))
-    `(progn
-       (defun ,fn (state value)
-         ,(format "Set %s slot in STATE to VALUE.\nReturns VALUE on success, nil when STATE is not a valid `nskk-state'." slot)
-         (when (nskk-state-p state)
-           (setf (,accessor state) value)
-           value))
-       (defun ,fn/k (state value on-found on-not-found)
-         ,(format "Set %s slot in STATE to VALUE. [CPS]\nCalls ON-FOUND with VALUE when STATE is valid; ON-NOT-FOUND otherwise." slot)
-         (if (nskk-state-p state)
-             (progn (setf (,accessor state) value)
-                    (funcall on-found value))
-           (funcall on-not-found)))
-       (put ',fn/k 'nskk--cps-continuation-pattern :found-not-found))))
-
-(declare-function nskk-debug-message "nskk-debug" (format-string &rest args))
-
-
 ;; Main state structure
 (cl-defstruct nskk-state
   "Core state structure for NSKK input."
-  mode              ;; Current mode (symbol; validated via valid-mode/1 Prolog fact)
+  mode              ;; Current mode (symbol; validated by `nskk-state-valid-mode-p')
   input-buffer      ;; Pending input buffer (string)
   converted-buffer  ;; Converted text buffer (string)
   candidates        ;; List of conversion candidates (list)
@@ -110,21 +49,6 @@ Creates two functions:
   henkan-phase      ;; Henkan phase: nil, on (▽), active (▼), list, registration
   metadata)         ;; Additional metadata (plist)
 
-(defconst nskk--state-slot-accessors
-  '((mode . nskk-state-mode)
-    (input-buffer . nskk-state-input-buffer)
-    (converted-buffer . nskk-state-converted-buffer)
-    (candidates . nskk-state-candidates)
-    (current-index . nskk-state-current-index)
-    (henkan-position . nskk-state-henkan-position)
-    (marker-position . nskk-state-marker-position)
-    (previous-mode . nskk-state-previous-mode)
-    (undo-stack . nskk-state-undo-stack)
-    (redo-stack . nskk-state-redo-stack)
-    (henkan-phase . nskk-state-henkan-phase)
-    (metadata . nskk-state-metadata))
-  "Map public state slot names to their generated accessors.")
-
 ;;;; State Validation Macros
 
 (defmacro nskk-with-state (state &rest body)
@@ -134,73 +58,29 @@ Returns nil if STATE is invalid."
   `(when (nskk-state-p ,state)
      ,@body))
 
-;;;; Generic Accessor
-
-;; NOTE on nskk-state-get CPS semantics:
-;; Many slots (henkan-position, candidates, metadata, marker-position, etc.)
-;; have nil as a legitimate value.  Using (if v (succeed v) (fail)) would
-;; incorrectly call the not-found continuation for valid nil slot values.
-;; Therefore nskk-state-get/k always calls on-found when the accessor exists,
-;; even when the slot value is nil.  It calls on-not-found only when STATE is
-;; invalid or KEY is absent from the explicit slot map.
-(defun/k nskk-state-get (state key)
-  "Return the value of KEY slot from STATE struct.
-KEY can be a slot name symbol or string.
-Sync wrapper returns the slot value, or nil when KEY is not found or
-STATE is invalid.  The /k variant calls ON-FOUND with the value, or
-ON-NOT-FOUND when STATE is not an `nskk-state' or KEY is not a valid slot."
-  (if (nskk-state-p state)
-      (let* ((key-sym (if (stringp key) (intern-soft key) key))
-             (accessor (cdr (assq key-sym nskk--state-slot-accessors))))
-        (if accessor
-            (succeed (funcall accessor state))
-          (fail)))
-    (fail)))
-
-;;;; Mode Validation — fast path via static set (no Prolog round-trip)
+;;;; Mode Validation
 ;;
 ;; `nskk--valid-modes' mirrors the mode-properties/5 fact table defined in
-;; `nskk-state-initialize-prolog'.  Both must stay in sync.  The static set
-;; gives O(1) lookup without the ~10µs Prolog overhead on every keypress.
-;; Prolog facts remain authoritative for cross-module queries; this is a
-;; read-only cache for the hot path only.
+;; `nskk-state-initialize-prolog'.  Both must stay in sync; the unit tests
+;; assert the two agree in both directions.  Prolog facts remain
+;; authoritative for cross-module queries, and this is a read-only cache
+;; that keeps mode validation off the Prolog engine.
 
 (defconst nskk--valid-modes
   '(hiragana katakana katakana-半角 abbrev ascii latin jisx0208-latin)
-  "Fast-path mirror of the valid-mode/1 Prolog fact table.
-Must stay in sync with the mode-properties/5 facts in
-`nskk-state-initialize-prolog'.  Used by `nskk-state-valid-mode-p'
-to avoid a Prolog round-trip on every mode validation call.")
+  "Mirror of the mode symbols carried by the mode-properties/5 fact table.
+Must stay in sync with the facts asserted in `nskk-state-initialize-prolog'.")
 
 (defsubst nskk-state-valid-mode-p (mode)
-  "Return non-nil if MODE is a valid NSKK input mode symbol.
-Uses a static set for O(1) lookup without Prolog overhead.
-The set mirrors the mode-properties/5 Prolog facts exactly."
+  "Return non-nil if MODE is a valid NSKK input mode symbol."
   (memq mode nskk--valid-modes))
 
-;;;; Typed Slot Setters
-
-;; `candidates' is intentionally omitted here because the existing
-;; `nskk-state-set-candidates' function performs a compound operation
-;; (sets candidates AND resets current-index to 0) that callers depend on.
-;; That compound function is defined below in the Candidate Management section.
-
-(nskk-define-slot-setter input-buffer)
-(nskk-define-slot-setter converted-buffer)
-(nskk-define-slot-setter current-index)
-(nskk-define-slot-setter henkan-position)
-(nskk-define-slot-setter marker-position)
-(nskk-define-slot-setter previous-mode)
-(nskk-define-slot-setter undo-stack)
-(nskk-define-slot-setter redo-stack)
-(nskk-define-slot-setter metadata)
-
-;;;; Mode Setter (hand-written, with Prolog validation)
+;;;; Mode Setter
 
 (defun nskk-state-set-mode (state value)
-  "Set mode slot in STATE to VALUE with Prolog validation.
-Also updates `previous-mode'.  Returns VALUE on success.
-Signals an error for invalid mode symbols."
+  "Set mode slot in STATE to VALUE, recording the outgoing mode.
+Returns VALUE on success, nil when STATE is not an `nskk-state'.
+Signals an error when VALUE is not a valid mode symbol."
   (when (nskk-state-p state)
     (unless (nskk-state-valid-mode-p value)
       (error "Invalid mode: %s" value))
@@ -208,129 +88,40 @@ Signals an error for invalid mode symbols."
           (nskk-state-mode state) value)
     value))
 
-;;;; Generic Setter
-
-(defun/k nskk-state-set (state key value)
-  "Set KEY to VALUE in STATE struct and return VALUE.
-KEY can be a slot name symbol or string.
-Routes \\='mode, \\='henkan-phase, and \\='candidates through their specialized
-setters; all other slots are set directly via `setf'.
-Sync wrapper returns VALUE, or nil when STATE is invalid or KEY is unknown.
-The /k variant calls ON-FOUND with VALUE on success, ON-NOT-FOUND otherwise."
-  (if (nskk-state-p state)
-      (let ((key-sym (if (stringp key) (intern-soft key) key)))
-        (let* ((known-key-p t)
-               (result
-                (pcase key-sym
-                 ('mode         (nskk-state-set-mode state value))
-                 ('henkan-phase (nskk-state-set-henkan-phase state value))
-                 ('input-buffer     (setf (nskk-state-input-buffer     state) value) value)
-                 ('converted-buffer (setf (nskk-state-converted-buffer state) value) value)
-                 ('candidates       (nskk-state-set-candidates/k state value #'ignore) value)
-                 ('current-index    (setf (nskk-state-current-index    state) value) value)
-                 ('henkan-position  (setf (nskk-state-henkan-position  state) value) value)
-                 ('marker-position  (setf (nskk-state-marker-position  state) value) value)
-                 ('previous-mode    (setf (nskk-state-previous-mode    state) value) value)
-                 ('undo-stack       (setf (nskk-state-undo-stack       state) value) value)
-                 ('redo-stack       (setf (nskk-state-redo-stack       state) value) value)
-                 ('metadata         (setf (nskk-state-metadata         state) value) value)
-                 (_ (setq known-key-p nil)))))
-          (if known-key-p (succeed result) (fail))))
-    (fail)))
-
-;;;; State Slot Defaults — static cache, no Prolog round-trip per create/reset
-;;
-;; `nskk--state-slot-defaults' mirrors the state-slot-default/2 Prolog facts
-;; defined in `nskk-state-initialize-prolog'.  All default values are nil or ""
-;; (immutable), so sharing them across instances is safe.  Mutable structures
-;; (lists, plists) are NOT stored here; each create call gets its own fresh nil.
-;; This eliminates 10 Prolog `nskk-prolog-query-value' round-trips (~10µs each)
-;; per `nskk-state-create' and `nskk-state-reset' call.
-
-(defconst nskk--state-slot-defaults
-  (list :input-buffer     ""
-        :converted-buffer ""
-        :candidates       nil
-        :current-index    0
-        :henkan-position  nil
-        :marker-position  nil
-        :undo-stack       nil
-        :redo-stack       nil
-        :henkan-phase     nil
-        :metadata         nil)
-  "Inline defaults for `nskk-state' struct slots.
-Must stay in sync with the state-slot-default/2 Prolog facts in
-`nskk-state-initialize-prolog'.")
-
 ;;;; State Creation
 
-(defun/k nskk-state-create (&optional initial-mode)
-  "Create a new NSKK state object with statically-cached slot defaults.
-INITIAL-MODE defaults to `nskk-state-default-mode' if not specified.
-Slot defaults are sourced from `nskk--state-slot-defaults' (constant)
-rather than Prolog queries, saving ~10 × 10µs per call.
-
-NOTE: The generated `nskk-state-create/k' variant places ON-FOUND and
-ON-NOT-FOUND after the &optional INITIAL-MODE parameter.  Callers MUST
-always pass both continuation arguments explicitly; omitting them causes
-a silent nil-continuation crash, because Emacs Lisp `&optional' applies
-to all parameters after the first."
+(defun nskk-state-create (&optional initial-mode)
+  "Create a new NSKK state object.
+INITIAL-MODE defaults to `nskk-state-default-mode', falling back to
+\\='ascii when neither names a valid mode."
   (nskk-state-initialize-prolog)
-  (let* ((mode (let ((m (or initial-mode nskk-state-default-mode 'ascii)))
-                 (if (nskk-state-valid-mode-p m) m 'ascii)))
-         (state (make-nskk-state
-                 :mode             mode
-                 :input-buffer     (plist-get nskk--state-slot-defaults :input-buffer)
-                 :converted-buffer (plist-get nskk--state-slot-defaults :converted-buffer)
-                 :candidates       (plist-get nskk--state-slot-defaults :candidates)
-                 :current-index    (plist-get nskk--state-slot-defaults :current-index)
-                 :henkan-position  (plist-get nskk--state-slot-defaults :henkan-position)
-                 :marker-position  (plist-get nskk--state-slot-defaults :marker-position)
-                 :previous-mode    mode
-                 :undo-stack       (plist-get nskk--state-slot-defaults :undo-stack)
-                 :redo-stack       (plist-get nskk--state-slot-defaults :redo-stack)
-                 :henkan-phase     (plist-get nskk--state-slot-defaults :henkan-phase)
-                 :metadata         (plist-get nskk--state-slot-defaults :metadata))))
-    (succeed state)))
+  (let ((mode (let ((m (or initial-mode nskk-state-default-mode 'ascii)))
+                (if (nskk-state-valid-mode-p m) m 'ascii))))
+    (make-nskk-state
+     :mode             mode
+     :input-buffer     ""
+     :converted-buffer ""
+     :candidates       nil
+     :current-index    0
+     :henkan-position  nil
+     :marker-position  nil
+     :previous-mode    mode
+     :undo-stack       nil
+     :redo-stack       nil
+     :henkan-phase     nil
+     :metadata         nil)))
 
-(defun nskk-state-in-henkan-mode-p (state)
-  "Return non-nil if STATE is currently in an active conversion phase.
-Queries `henkan-mode-phase/1' Prolog facts."
-  (and (nskk-state-p state)
-       (nskk-prolog-holds-p `(henkan-mode-phase ,(nskk-state-henkan-phase state)))))
-
-(defun/k nskk-state-henkan-on-p (state)
-  "Return non-nil when STATE is in the preedit (▽) henkan-on phase.
-Returns t in the sync wrapper; the /k variant calls ON-FOUND with t
-when the phase is \\='on, or ON-NOT-FOUND when it is not."
-  (if (and (nskk-state-p state)
-           (eq (nskk-state-henkan-phase state) 'on))
-      (succeed t)
-    (fail)))
-
-(defun/k nskk-state-henkan-active-p (state)
-  "Return non-nil when STATE is in the active conversion (▼) phase.
-Returns t in the sync wrapper; the /k variant calls ON-FOUND with t
-when the phase is \\='active, or ON-NOT-FOUND when it is not."
-  (if (and (nskk-state-p state)
-           (eq (nskk-state-henkan-phase state) 'active))
-      (succeed t)
-    (fail)))
-
-;;;; Henkan Phase — fast-path static sets (no Prolog round-trips on hot path)
+;;;; Henkan Phase
 ;;
-;; These sets mirror the Prolog facts defined in `nskk-state-initialize-prolog'.
-;; Prolog facts remain authoritative for cross-module queries; these are
-;; read-only caches eliminating 2 × ~10µs Prolog queries per phase transition.
+;; These sets are the sole definition of the phase machine.  Phase
+;; validation runs on every conversion keypress, so it stays in Elisp
+;; rather than going through the Prolog engine.
 
 (defconst nskk--valid-henkan-phases
   '(nil on active list registration)
-  "Fast-path mirror of valid-henkan-phase/1 Prolog facts.
-Must stay in sync with the valid-henkan-phase facts in
-`nskk-state-initialize-prolog'.")
+  "Henkan phases `nskk-state-set-henkan-phase' accepts.")
 
 (defconst nskk--valid-henkan-transitions
-  ;; Flat list of (FROM . TO) cons cells for O(1) assoc lookup.
   '((nil      . on)
     (on       . active)
     (on       . registration)
@@ -343,26 +134,23 @@ Must stay in sync with the valid-henkan-phase facts in
     (list     . registration)
     (registration . nil)
     (registration . list))
-  "Fast-path mirror of valid-henkan-transition/2 Prolog facts as (FROM . TO) pairs.
-Must stay in sync with the valid-henkan-transition facts in
-`nskk-state-initialize-prolog'.")
+  "Permitted henkan phase transitions as (FROM . TO) pairs.")
 
 (defsubst nskk--henkan-transition-valid-p (from to)
-  "Return non-nil if FROM -> TO is a valid henkan phase transition.
-Uses a static alist for O(n) lookup where n is small (12 entries)."
+  "Return non-nil if FROM -> TO is a permitted henkan phase transition.
+Duplicate FROM keys rule out `assq', so this is a linear scan over
+`nskk--valid-henkan-transitions'."
   (cl-find-if (lambda (pair) (and (eq (car pair) from) (eq (cdr pair) to)))
               nskk--valid-henkan-transitions))
 
 (defun nskk-state-set-henkan-phase (state phase)
-  "Set henkan PHASE in STATE with static-set-validated transition.
-Validates PHASE against `nskk--valid-henkan-phases' and the current phase
-against `nskk--valid-henkan-transitions'.  Same-phase transitions are no-ops.
-Signals an error for invalid phase or invalid transition.
-No Prolog round-trips on the hot path."
+  "Set henkan PHASE in STATE, validating the transition from the current phase.
+Same-phase transitions are permitted and change nothing.
+Signals an error for an invalid phase or an invalid transition."
   (unless (nskk-state-p state)
     (error "nskk-state-set-henkan-phase: STATE must be an nskk-state, got %S" state))
   (unless (memq phase nskk--valid-henkan-phases)
-    (error "Invalid henkan phase: %s (not in valid-henkan-phase/1)" phase))
+    (error "Invalid henkan phase: %s" phase))
   (let ((current (nskk-state-henkan-phase state)))
     (unless (or (eq current phase)
                 (nskk--henkan-transition-valid-p current phase))
@@ -371,87 +159,47 @@ No Prolog round-trips on the hot path."
 
 (defun/done nskk-state-force-henkan-phase (state phase)
   "Force set henkan PHASE in STATE, bypassing transition validation.
-Validates PHASE via the static `nskk--valid-henkan-phases' set.
-Use for test setup or emergency reset."
+Use for test setup or emergency reset.
+Signals an error when PHASE is not a valid henkan phase."
   (nskk-with-state state
     (unless (memq phase nskk--valid-henkan-phases)
-      (error "Invalid henkan phase: %s (not in valid-henkan-phase/1)" phase))
+      (error "Invalid henkan phase: %s" phase))
     (setf (nskk-state-henkan-phase state) phase)))
 
-;;;; State Transition
+;;;; Generic Setter
 
-(defun/k nskk-state-transition (state from-mode to-mode)
-  "Transition STATE from FROM-MODE to TO-MODE.
-Validates that TO-MODE is a valid mode via `valid-mode/1' Prolog fact.
-Calls on-found with t on success; on-not-found on failure."
-  (let ((ok (nskk-with-state state
-               (when (and (eq (nskk-state-mode state) from-mode)
-                          (nskk-state-valid-mode-p to-mode))
-                 (setf (nskk-state-previous-mode state) from-mode
-                       (nskk-state-mode state)          to-mode)
-                 t))))
-    (if ok (succeed t) (fail))))
-
-;;;; State Reset
-
-(defun/done nskk-state-reset (state)
-  "Reset STATE to initial state (preserves mode and previous-mode).
-Slot defaults are sourced from `nskk--state-slot-defaults' (constant),
-saving ~10 × 10µs Prolog round-trips compared to live `state-slot-default/2'
-queries.  The Prolog facts remain authoritative; this is a read-only cache."
-  (nskk-with-state state
-    (setf (nskk-state-input-buffer     state) ""
-          (nskk-state-converted-buffer state) ""
-          (nskk-state-candidates       state) nil
-          (nskk-state-current-index    state) 0
-          (nskk-state-henkan-position  state) nil
-          (nskk-state-marker-position  state) nil
-          (nskk-state-undo-stack       state) nil
-          (nskk-state-redo-stack       state) nil
-          (nskk-state-metadata         state) nil)
-    (nskk-state-force-henkan-phase state nil)))
-
-;;;; Buffer Management Helpers
-
-(defun/k nskk-state-append-input (state char)
-  "Append CHAR to STATE's input buffer.
-CHAR must be a valid character (integer).
-Returns the new buffer string on success, nil on failure.
-Uses `concat' with a one-character list; `concat' allocates a new result
-string.
-Defensive: coerces a non-string buffer to \"\" rather than propagating
-corrupt state.  This guards against buffer corruption from external mutation."
-  (if (and (nskk-state-p state) (characterp char))
-      (let* ((raw (nskk-state-input-buffer state))
-             (buf (if (stringp raw) raw ""))
-             (new-buf (concat buf (list char))))
-        (setf (nskk-state-input-buffer state) new-buf)
-        (succeed new-buf))
-    (fail)))
-
-(defun/k nskk-state-delete-last-char (state)
-  "Delete last character from STATE's input buffer.
-Returns the deleted character on success, nil if buffer is empty
-or state is invalid.
-Properly handles multibyte characters."
+(defun/k nskk-state-set (state key value)
+  "Set KEY to VALUE in STATE struct and return VALUE.
+KEY can be a slot name symbol or string.
+Routes \\='mode and \\='henkan-phase through their validating setters and
+\\='candidates through `nskk-state-set-candidates'; other slots are set
+directly.
+Sync wrapper returns VALUE, or nil when STATE is invalid or KEY is unknown.
+The /k variant calls ON-FOUND with VALUE, or ON-NOT-FOUND when STATE is
+invalid or KEY names no slot.  A KEY of \\='mode or \\='henkan-phase carrying
+an invalid VALUE signals an error rather than calling ON-NOT-FOUND."
   (if (nskk-state-p state)
-      (let ((buf (nskk-state-input-buffer state)))
-        (if (and (stringp buf) (not (string-empty-p buf)))
-            (let* ((new-len  (1- (length buf)))
-                   (last-char (aref buf new-len))
-                   (new-buf   (substring buf 0 new-len)))
-              (setf (nskk-state-input-buffer state) new-buf)
-              (succeed last-char))
-          (fail)))
+      (let* ((key-sym (if (stringp key) (intern-soft key) key))
+             (known-key-p t)
+             (result
+              (pcase key-sym
+                ('mode         (nskk-state-set-mode state value))
+                ('henkan-phase (nskk-state-set-henkan-phase state value))
+                ('candidates   (nskk-state-set-candidates state value) value)
+                ('input-buffer     (setf (nskk-state-input-buffer     state) value))
+                ('converted-buffer (setf (nskk-state-converted-buffer state) value))
+                ('current-index    (setf (nskk-state-current-index    state) value))
+                ('henkan-position  (setf (nskk-state-henkan-position  state) value))
+                ('marker-position  (setf (nskk-state-marker-position  state) value))
+                ('previous-mode    (setf (nskk-state-previous-mode    state) value))
+                ('undo-stack       (setf (nskk-state-undo-stack       state) value))
+                ('redo-stack       (setf (nskk-state-redo-stack       state) value))
+                ('metadata         (setf (nskk-state-metadata         state) value))
+                (_ (setq known-key-p nil)))))
+        (if known-key-p (succeed result) (fail)))
     (fail)))
 
-(defun/done nskk-state-clear-input (state)
-  "Clear STATE's input buffer.
-Returns t on success, nil if state is invalid."
-  (nskk-with-state state
-    (setf (nskk-state-input-buffer state) "")))
-
-;;;; Candidate Management Helpers
+;;;; Candidate Management
 
 (defun/done nskk-state-set-candidates (state candidates)
   "Set CANDIDATES list in STATE and reset the current index to 0."
@@ -459,53 +207,7 @@ Returns t on success, nil if state is invalid."
     (setf (nskk-state-candidates state) candidates
           (nskk-state-current-index state) 0)))
 
-(defun/k nskk--state-move-candidate (state offset)
-  "Move STATE candidate index by OFFSET, wrapping at either end."
-  (if (and (nskk-state-p state)
-           (nskk-state-candidates state))
-      (let* ((candidates (nskk-state-candidates state))
-             (index (nskk-state-current-index state)))
-        (setf (nskk-state-current-index state)
-              (mod (+ index offset) (length candidates)))
-        (succeed (nth (nskk-state-current-index state) candidates)))
-    (fail)))
-
-(defun/k nskk-state-next-candidate (state)
-  "Move to next candidate in STATE.
-Returns current candidate or nil if no candidates."
-  (<- candidate nskk--state-move-candidate state 1)
-  (succeed candidate))
-
-(defun/k nskk-state-previous-candidate (state)
-  "Move to previous candidate in STATE.
-Returns current candidate or nil if no candidates."
-  (<- candidate nskk--state-move-candidate state -1)
-  (succeed candidate))
-
-(defun/k nskk-state-current-candidate (state)
-  "Return the currently selected candidate from STATE, or nil if none."
-  (if (and (nskk-state-p state)
-           (nskk-state-candidates state))
-      (succeed (nth (nskk-state-current-index state)
-                    (nskk-state-candidates state)))
-    (fail)))
-
 ;;;; Metadata Helpers
-
-(defmacro nskk-define-metadata-setter (field &optional docstring)
-  "Define `nskk-state-set-FIELD' as a metadata setter for FIELD.
-FIELD is a symbol naming the metadata key and the suffix of the
-generated function name.
-Optional DOCSTRING overrides the default documentation string.
-Generated function signature: (nskk-state-set-FIELD state value)"
-  (declare (indent 1) (debug t))
-  (let* ((fname (intern (format "nskk-state-set-%s" field)))
-         (doc (or docstring
-                  (format "Set %s in STATE metadata to VALUE." field))))
-    `(defun ,fname (state value)
-       ,doc
-       (nskk-with-state state
-         (nskk-state-put-metadata state ',field value)))))
 
 (defun/k nskk-state-get-metadata (state key)
   "Return the value of metadata KEY from STATE's metadata plist."
@@ -519,21 +221,16 @@ Generated function signature: (nskk-state-set-FIELD state value)"
     (setf (nskk-state-metadata state)
           (plist-put (nskk-state-metadata state) key value))))
 
-;; Additional state setters for layer integration
-(nskk-define-metadata-setter remaining-romaji)
-(nskk-define-metadata-setter kana-type)
-(nskk-define-metadata-setter width-type)
-(nskk-define-metadata-setter okurigana
+(defun nskk-state-set-okurigana (state value)
   "Set okurigana in STATE metadata to VALUE.
-VALUE should be the okurigana consonant (e.g., \\='k\\=' for \\='く\\=').")
+VALUE should be the okurigana consonant (e.g. \\='k\\=' for \\='く\\=')."
+  (nskk-with-state state
+    (nskk-state-put-metadata state 'okurigana value)))
 
 (defun/k nskk-state-get-okurigana (state)
   "Return the okurigana consonant from STATE's metadata, or nil if unset."
-  (if (nskk-state-p state)
-      (progn
-        (<- val nskk-state-get-metadata state 'okurigana)
-        (succeed val))
-    (fail)))
+  (<- val nskk-state-get-metadata state 'okurigana)
+  (succeed val))
 
 ;;;; Buffer-local State Management
 
@@ -591,6 +288,12 @@ Zero-length overlay anchored at the end of the preedit text.
 Managed by dcomp-multiple display logic in nskk-henkan.el; declared here
 following the project convention that all buffer-local overlay variables
 live in nskk-state.el.")
+
+(defvar-local nskk--henkan-count 0
+  "Number of times SPC has been pressed during current conversion.")
+
+(defvar-local nskk--registration-depth 0
+  "Current nesting depth of dictionary registration.")
 
 ;;;; Display String Construction
 
@@ -651,7 +354,7 @@ still allocate a second copy of TEXT, so that case skips it."
 Anchored at point rather than at the conversion overlay, so it collides
 with the others only when point happens to sit at that same position.")
 
-;;;; Overlay and Marker Management Macros
+;;;; Overlay Management Macros
 
 (defmacro nskk-ensure-overlay (var start end &rest props)
   "Move or create an overlay for VAR covering START to END in the current buffer.
@@ -660,12 +363,12 @@ a new one otherwise.  In both cases the overlay is moved to START..END and
 any PROPS (a plist of property value pairs) are applied via `overlay-put'.
 VAR is mutated via `setq' when a new overlay is created."
   (declare (indent 2) (debug t))
-  `(progn
-     (if (overlayp ,var)
-         (move-overlay ,var ,start ,end (current-buffer))
-       (setq ,var (make-overlay ,start ,end)))
-     (cl-loop for (prop val) on (list ,@props) by #'cddr
-              do (overlay-put ,var prop val))))
+  (let ((overlay (gensym "nskk-overlay")))
+    `(let ((,overlay (if (overlayp ,var)
+                         (move-overlay ,var ,start ,end (current-buffer))
+                       (setq ,var (make-overlay ,start ,end)))))
+       (cl-loop for (prop val) on (list ,@props) by #'cddr
+                do (overlay-put ,overlay prop val)))))
 
 (defmacro nskk-delete-overlay (var)
   "Delete the overlay in VAR and clear VAR before deleting it.
@@ -678,159 +381,105 @@ VAR first ensures cleanup failures cannot leave a stale reference."
        (when (overlayp ,old-overlay)
          (delete-overlay ,old-overlay)))))
 
-(defmacro nskk-ensure-marker (var pos)
-  "Move or create a marker for VAR positioned at POS in the current buffer.
-Creates a new marker and assigns it to VAR via `setq' if VAR is not
-already a marker.  In both cases the marker is moved to POS unconditionally."
-  (declare (indent 0) (debug t))
-  `(progn
-     (unless (markerp ,var)
-       (setq ,var (make-marker)))
-     (set-marker ,var ,pos (current-buffer))))
-
-(defvar-local nskk--henkan-count 0
-  "Number of times SPC has been pressed during current conversion.")
-
-(defvar-local nskk--registration-depth 0
-  "Current nesting depth of dictionary registration.")
-
 ;;;; Shared Buffer-Local State — Accessor API
 ;;
-;; Each of the 8 buffer-local variables above (`nskk--romaji-buffer' through
-;; `nskk--registration-depth') has a getter/setter pair generated below by
-;; `nskk-define-buffer-local-accessor'.  Other modules go through these
-;; accessors rather than referencing the `nskk--*' variables directly, so
-;; state.el remains their single owner.  No nil/unset distinction is needed
-;; here (unlike `nskk-state-get'/`nskk-state-set' dispatching on an arbitrary
-;; KEY): each accessor targets one fixed, always-bound `defvar-local', so
-;; there is no "unknown slot" case to distinguish from "known slot, nil
-;; value" -- a plain getter/setter pair is the complete, correct API.
+;; Each of the 8 buffer-local variables above has a getter/setter pair
+;; generated below.  Other modules go through these accessors rather than
+;; referencing the `nskk--' variables directly, so state.el remains their
+;; single owner.  Each accessor targets one fixed, always-bound
+;; `defvar-local', so a plain getter/setter pair is the complete API --
+;; there is no unknown-slot case to distinguish from a nil value.
 
-(defmacro nskk-define-buffer-local-accessor (var)
-  "Generate a getter/setter pair for buffer-local VAR.
-VAR must already be declared via `defvar-local' with an `nskk--' prefix.
-Creates:
-  `nskk-state-VAR'     ()      -- return the current value
-  `nskk-state-set-VAR' (value) -- set VAR to VALUE and return VALUE"
+(defmacro nskk-define-buffer-local-getter (var)
+  "Generate `nskk-state-NAME' returning the value of buffer-local VAR.
+NAME is VAR with its `nskk--' prefix removed.  VAR must already be
+declared via `defvar-local'."
   (declare (indent 0) (debug t))
-  (let* ((name (string-remove-prefix "nskk--" (symbol-name var)))
-         (getter (intern (format "nskk-state-%s" name)))
-         (setter (intern (format "nskk-state-set-%s" name))))
-    `(progn
-       (defun ,getter ()
-         ,(format "Return the current value of `%s'." var)
-         ,var)
-       (defun ,setter (value)
-         ,(format "Set `%s' to VALUE and return VALUE." var)
-         (setq ,var value)))))
+  (let ((getter (intern (format "nskk-state-%s"
+                                (string-remove-prefix "nskk--" (symbol-name var))))))
+    `(defun ,getter ()
+       ,(format "Return the current value of `%s'." var)
+       ,var)))
 
-(nskk-define-buffer-local-accessor nskk--romaji-buffer)
-(nskk-define-buffer-local-accessor nskk--conversion-start-marker)
-(nskk-define-buffer-local-accessor nskk--conversion-overlay)
-(nskk-define-buffer-local-accessor nskk--pending-romaji-overlay)
-(nskk-define-buffer-local-accessor nskk--candidate-overlay)
-(nskk-define-buffer-local-accessor nskk--dcomp-multiple-overlay)
-(nskk-define-buffer-local-accessor nskk--henkan-count)
-(nskk-define-buffer-local-accessor nskk--registration-depth)
+(defmacro nskk-define-buffer-local-setter (var)
+  "Generate `nskk-state-set-NAME' assigning to buffer-local VAR.
+NAME is VAR with its `nskk--' prefix removed.  VAR must already be
+declared via `defvar-local'."
+  (declare (indent 0) (debug t))
+  (let ((setter (intern (format "nskk-state-set-%s"
+                                (string-remove-prefix "nskk--" (symbol-name var))))))
+    `(defun ,setter (value)
+       ,(format "Set `%s' to VALUE and return VALUE." var)
+       (setq ,var value))))
+
+(nskk-define-buffer-local-getter nskk--romaji-buffer)
+(nskk-define-buffer-local-setter nskk--romaji-buffer)
+(nskk-define-buffer-local-getter nskk--conversion-start-marker)
+(nskk-define-buffer-local-setter nskk--conversion-start-marker)
+(nskk-define-buffer-local-getter nskk--conversion-overlay)
+(nskk-define-buffer-local-setter nskk--conversion-overlay)
+(nskk-define-buffer-local-getter nskk--pending-romaji-overlay)
+(nskk-define-buffer-local-setter nskk--pending-romaji-overlay)
+(nskk-define-buffer-local-getter nskk--candidate-overlay)
+(nskk-define-buffer-local-setter nskk--candidate-overlay)
+(nskk-define-buffer-local-getter nskk--dcomp-multiple-overlay)
+(nskk-define-buffer-local-setter nskk--dcomp-multiple-overlay)
+(nskk-define-buffer-local-getter nskk--henkan-count)
+(nskk-define-buffer-local-setter nskk--henkan-count)
+(nskk-define-buffer-local-getter nskk--registration-depth)
+(nskk-define-buffer-local-setter nskk--registration-depth)
+
+;;;; Prolog Predicates
 
 (defvar nskk--state-prolog-initialized nil
   "Non-nil when state machine Prolog predicates have been initialized.")
 
 (nskk-prolog-<- (module-initialized-flag nskk--state-prolog-initialized))
 
+(defun/done nskk--state-init-mode-properties ()
+  "Assert the mode-properties/5 fact table.
+Faces named here are defined in nskk-modeline.el, which loads after this
+file.  Prolog stores the face symbols as data rather than evaluating them
+at assertion time, so the forward references are safe; cursor faces are
+dereferenced via `face-attribute' at runtime."
+  (nskk-prolog-define-fact-table mode-properties (:arity 5 :index :hash)
+    (hiragana "かな" nskk-modeline-hiragana-face
+              "Hiragana input mode" nskk-cursor-hiragana)
+    (katakana "カナ" nskk-modeline-katakana-face
+              "Katakana input mode" nskk-cursor-katakana)
+    (katakana-半角 "ｶﾅ" nskk-modeline-katakana-face
+                 "Half-width katakana input mode" nskk-cursor-katakana)
+    (abbrev "aA" nskk-modeline-abbrev-face
+            "Abbreviation mode" nskk-cursor-abbrev)
+    (ascii "SKK" nskk-modeline-direct-face
+           "Direct/ASCII input mode" nskk-cursor-latin)
+    (latin "SKK" nskk-modeline-direct-face
+           "Direct/ASCII input mode" nskk-cursor-latin)
+    (jisx0208-latin "全英" nskk-modeline-jisx0208-latin-face
+                    "Full-width latin input mode" nskk-cursor-jisx0208-latin)))
+
+(defun/done nskk--state-init-mode-categories ()
+  "Assert the mode-category/2 fact table and the japanese-mode/1 rule.
+Categories classify input modes orthogonally to their display properties:
+`japanese' for kana modes, `marker-mode' for modes using a conversion-start
+marker, `other' for direct input."
+  (nskk-prolog-define-fact-table mode-category (:arity 2 :index :hash)
+    (hiragana      japanese)
+    (katakana      japanese)
+    (katakana-半角  japanese)
+    (abbrev        marker-mode)
+    (ascii         other)
+    (latin         other)
+    (jisx0208-latin other))
+  (nskk-prolog-<- (japanese-mode \?m) (mode-category \?m japanese)))
+
 (defun/done nskk-state-initialize-prolog ()
   "Initialize NSKK state machine Prolog predicates (idempotent).
-Subsequent calls are no-ops guarded by `nskk--state-prolog-initialized'."
+Subsequent calls are no-ops guarded by `nskk--state-prolog-initialized'.
+The helpers this calls carry no guard of their own."
   (unless nskk--state-prolog-initialized
-    ;; Unified mode properties
-    ;; mode-properties/5: (MODE DISPLAY-STRING FACE HELP-TEXT CURSOR-FACE)
-    ;; NOTE: Faces (nskk-modeline-*-face) are defined in nskk-modeline.el, which
-    ;; is loaded after nskk-state.el.  Prolog facts store the face symbols as
-    ;; data—they are not evaluated at assertion time, so forward references are safe.
-    ;; Similarly, cursor face symbols are stored as data and dereferenced via
-    ;; `face-attribute' at runtime (see `nskk--cursor-with-color' in nskk-modeline.el).
-    (nskk-prolog-define-fact-table mode-properties (:arity 5 :index :hash)
-      (hiragana "かな" nskk-modeline-hiragana-face
-                "Hiragana input mode" nskk-cursor-hiragana)
-      (katakana "カナ" nskk-modeline-katakana-face
-                "Katakana input mode" nskk-cursor-katakana)
-      (katakana-半角 "ｶﾅ" nskk-modeline-katakana-face
-                   "Half-width katakana input mode" nskk-cursor-katakana)
-      (abbrev "aA" nskk-modeline-abbrev-face
-              "Abbreviation mode" nskk-cursor-abbrev)
-      (ascii "SKK" nskk-modeline-direct-face
-             "Direct/ASCII input mode" nskk-cursor-latin)
-      (latin "SKK" nskk-modeline-direct-face
-             "Direct/ASCII input mode" nskk-cursor-latin)
-      (jisx0208-latin "全英" nskk-modeline-jisx0208-latin-face
-                      "Full-width latin input mode" nskk-cursor-jisx0208-latin))
-
-    ;; valid-mode/1: derived rule — a symbol is a valid mode iff it has a mode-properties fact.
-    ;; Uses distinct variable names (?disp, ?face, ?help, ?cur) to avoid
-    ;; spurious unification failures that occur with repeated ?_ names.
-    (nskk-prolog-<- (valid-mode \?m)
-      (mode-properties \?m \?disp \?face \?help \?cur))
-
-    ;; Mode category: orthogonal classification of input modes.
-    ;; `japanese'     — hiragana/katakana/katakana-半角
-    ;; `marker-mode'  — modes using a conversion-start marker (abbrev)
-    ;; `other'        — direct input modes (ascii/latin/jisx0208-latin)
-    (nskk-prolog-define-fact-table mode-category (:arity 2 :index :hash)
-      (hiragana      japanese)
-      (katakana      japanese)
-      (katakana-半角  japanese)
-      (abbrev        marker-mode)
-      (ascii         other)
-      (latin         other)
-      (jisx0208-latin other))
-
-    ;; japanese-mode/1: derived from mode-category/2.
-    ;; A mode is a Japanese input mode iff its category is `japanese'.
-    (nskk-prolog-<- (japanese-mode \?m) (mode-category \?m japanese))
-
-    ;; Valid henkan phases
-    (nskk-prolog-define-fact-table valid-henkan-phase (:arity 1 :index :hash)
-      (nil)
-      (on)
-      (active)
-      (list)
-      (registration))
-
-    ;; Henkan phase transition graph
-    (nskk-prolog-define-fact-table valid-henkan-transition (:arity 2 :index :hash)
-      (nil on)
-      (on active)
-      (on registration)
-      (on nil)
-      (active on)
-      (active nil)
-      (active list)
-      (list on)
-      (list nil)
-      (list registration)
-      (registration nil)
-      (registration list))
-
-    ;; Henkan mode phase classification
-    (nskk-prolog-define-fact-table henkan-mode-phase (:arity 1 :index :hash)
-      (on)
-      (active)
-      (list)
-      (registration))
-
-    ;; State slot defaults
-    (nskk-prolog-define-fact-table state-slot-default (:arity 2 :index :hash)
-      (input-buffer "")
-      (converted-buffer "")
-      (candidates nil)
-      (current-index 0)
-      (henkan-position nil)
-      (marker-position nil)
-      (undo-stack nil)
-      (redo-stack nil)
-      (henkan-phase nil)
-      (metadata nil))
-
+    (nskk--state-init-mode-properties)
+    (nskk--state-init-mode-categories)
     (setq nskk--state-prolog-initialized t)))
 
 (provide 'nskk-state)
