@@ -635,12 +635,14 @@ including its newline.  On timeout, disconnect, or a reply exceeding
       (nskk-server-close)
       (fail)))))
 
-(defun nskk--server-send-request (proc buf key)
-  "Erase BUF, reset PROC's response state, and send command 1 for KEY."
+(defun nskk--server-prepare-request (proc buf)
+  "Erase BUF and reset PROC's response accounting before a request.
+Kept separate from the send so a caller can mark the request as started
+only once preparation has succeeded: a fault here means nothing was sent,
+and the connection must not be torn down."
   (with-current-buffer buf (erase-buffer))
   (when (processp proc)
-    (nskk--server-reset-response-state proc))
-  (process-send-string proc (concat "1" key " ")))
+    (nskk--server-reset-response-state proc)))
 
 (defun/k nskk--server-with-response (key)
   "Send skkserv command 1 for KEY and await the response.
@@ -661,8 +663,9 @@ timeout error."
                       (let ((buf (process-buffer proc))
                             (start-time (and nskk-server-report-response
                                              (float-time))))
+                        (nskk--server-prepare-request proc buf)
                         (setq request-started t)
-                        (nskk--server-send-request proc buf key)
+                        (process-send-string proc (concat "1" key " "))
                         (let ((line (nskk--server-await-response
                                      proc buf nskk-server-timeout)))
                           (setq response-complete t)
