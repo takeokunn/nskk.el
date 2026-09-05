@@ -2398,7 +2398,7 @@ Each digit is independently converted: \"12\" → \"一二\"."
   "Convert NUM-STR to full-width Arabic digits.
 Each digit is shifted to the full-width Unicode range: \"1\" → \"１\"."
   (mapconcat (lambda (c)
-               (char-to-string (+ c #xFEE0)))
+               (char-to-string (nskk-jisx0208-latin-char c)))
              num-str ""))
 
 (defun nskk--n-to-kanji-place (n)

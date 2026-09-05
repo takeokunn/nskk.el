@@ -1146,6 +1146,17 @@ Note: Prolog-backed classification costs ~200-300us per character."
     (nskk-it "passes text through unchanged when mode has no normalize entry"
       (should (equal (nskk-kana-normalize-for-lookup "test" 'ascii) "test")))))
 
+(nskk-deftest-table kana-jisx0208-latin-char
+  :columns (input expected)
+  :rows ((?\s ?　)
+         (?! ?！)
+         (?~ ?～)
+         (?_ ?＿)
+         (?0 ?０)
+         (?\t ?\t)
+         (?あ ?あ))
+  :body (should (= (nskk-jisx0208-latin-char input) expected)))
+
 (provide 'nskk-kana-test)
 
 ;;; nskk-kana-test.el ends here

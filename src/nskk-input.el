@@ -608,7 +608,7 @@ making reliable Prolog queries for that code impossible."
          (fw-char (cond
                    ;; Char 95 (underscore) bypasses Prolog: integer 95
                    ;; collides with the Prolog anonymous-var sentinel ?_.
-                   ((= char 95) (+ 95 #xFEE0))
+                   ((= char 95) (nskk-jisx0208-latin-char 95))
                    (t (or (nskk-prolog-query-value
                            `(fullwidth-char ,char \?fw) '\?fw)
                           char)))))    ; non-ASCII: pass through

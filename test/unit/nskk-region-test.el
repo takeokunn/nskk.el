@@ -348,6 +348,19 @@
       (should-error (call-interactively 'nskk-hiragana-region) :type 'user-error)
       (should (equal (buffer-string) "アイウ")))))
 
+(ert-deftest nskk-region-test/converts-with-an-inactive-mark-and-strict-mark-reading ()
+  "Convert while the mark is set but inactive and `mark-even-if-inactive' is nil.
+Saving the mark has to read it unconditionally; a reading that honours
+activation signals `mark-inactive' here and aborts the conversion."
+  (with-temp-buffer
+    (insert "アイウ")
+    (let ((transient-mark-mode t)
+          (mark-even-if-inactive nil))
+      (push-mark (point-min) t nil)
+      (setq mark-active nil)
+      (nskk-hiragana-region (point-min) (point-max))
+      (should (equal (buffer-string) "あいう")))))
+
 (ert-deftest nskk-region-test/restores-mark-deactivated-by-failing-body ()
   "Restore mark activation when the failing body itself deactivated the mark."
   (with-temp-buffer
