@@ -36,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machinery can enumerate tracked state without naming private symbols.
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
-
+- Added `nskk-trie-delete/k`, the continuation-passing entry point for trie
+  deletion, distinguishing "key was present and removed" from "key was not
+  present" without collapsing both onto the sync wrapper's `t`/nil.
 - Added `nskk-display-sanitize`, which strips every text property from
   untrusted dictionary text before applying a single display face, and
   `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
@@ -69,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- `nskk-trie-has-prefix-p` now returns `t` rather than the internal
+  `nskk-trie-node` struct it previously leaked as its truthy value. Callers
+  that only tested for non-nil are unaffected; callers that inspected the
+  returned node were relying on undocumented behavior.
 - Decomposed the two `nskk-show-mode` display functions by separating each
   one's install sequence from its fail-closed handler, and factored the
   repeated error-and-quit-swallowing cleanup into a single helper. The
@@ -150,6 +156,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation are Elisp-side and unchanged in behaviour.
   `mode-properties/5`, `mode-category/2` and `japanese-mode/1` remain, as
   other modules query them.
+- Made the debug module's hand-written CPS continuation-pattern declaration
+  visible during byte compilation, so the CPS bind forms' guard against
+  binding a `defun/done` function is no longer inert while the file compiles.
 
 ### Fixed
 
@@ -222,6 +231,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `nskk--server-prolog-state-snapshot` and
   `nskk--server-restore-prolog-state` from the skkserv client in favour of the
   Prolog engine's own per-key snapshot API.
+- Removed a dead, zero-caller private helper (`nskk--debug-format`) and the
+  unused `debug-category` Prolog facts and their hash index from the debug
+  module.
 
 ## [0.3.0] - 2026-07-26
 
