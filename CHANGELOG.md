@@ -255,6 +255,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed a dead, zero-caller private helper
   (`nskk--converter-copy-prolog-state`) from the converter module.
+- Removed the converter's batch romaji-conversion API, which had no caller
+  in `src/`: the public `nskk-convert-romaji` (with its `/k` variant and
+  `nskk-convert-romaji--internal`) and the sokuon/hatsuon engine beneath it
+  — `nskk--convert-loop`, `nskk--convert-step`, `nskk--convert-step-n`,
+  `nskk--sokuon-p` and `nskk--romaji-char-max`. Production input handling
+  applies its own sokuon and hatsuon rules in `nskk-input.el` and never
+  called these; the shipped behaviour is covered by the kana-input E2E
+  tests. The `sokuon-blocker`, `hatsuon-blocker`, `vowel-char` and
+  `uppercase-vowel-char` Prolog fact tables are retained, since
+  `nskk-input.el` queries them.
+- Removed `nskk-converter-get-rule` and its `/k` variant. The body was a
+  re-wrap of `nskk-converter-lookup` with identical return values, so
+  callers use `nskk-converter-lookup` directly.
+- Removed the macros `nskk-converter-define-rules` and
+  `nskk-converter-define-style`, which had no caller outside their own
+  tests — `nskk-azik.el` writes its initializer by hand and registers it
+  through `nskk-converter-register-style`. Also removed the unused setters
+  `nskk-converter-set-style-transaction-hash-tables` and
+  `nskk-converter-set-style-transaction-variables`; the corresponding
+  `nskk-converter-register-style-transaction-*` functions and the
+  list-returning accessors remain.
 - Removed the private per-style inline display builders
   `nskk--inline-build-horizontal` and `nskk--inline-build-vertical`,
   superseded by a single style-taking function.
