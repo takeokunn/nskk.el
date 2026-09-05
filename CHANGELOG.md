@@ -114,6 +114,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed the dictionary-registration continuation layer in the henkan
+  pipeline. `nskk--run-registration-session/k` and the CPS wrapper
+  `nskk-start-registration/k` are gone, collapsed into the ordinary
+  function `nskk-start-registration`, which returns the registered word or
+  nil. Both layers accepted a not-found continuation that could never fire
+  — each called only its found continuation, and every call site passed
+  `ignore`. The synchronous `nskk-start-registration` keeps its name,
+  argument and return value, so its callers are unaffected. The
+  `package-lint` prefix allowlist in the `Makefile` loses its now-unused
+  `nskk--run-registration-session/k` entry.
 - Removed the unused public surface of `nskk-state.el`, none of which had
   any caller in `src/`: `nskk-state-get`, `nskk-state-transition`,
   `nskk-state-reset`, `nskk-state-append-input`,

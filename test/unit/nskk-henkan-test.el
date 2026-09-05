@@ -776,10 +776,10 @@
           (nskk-with-mocks ((nskk-core-search/k
                              (lambda (_key _type _limit _on-found on-not-found)
                                (funcall on-not-found)))
-                            (nskk-start-registration/k
-                             (lambda (reading on-done _ignored)
+                            (nskk-start-registration
+                             (lambda (reading)
                                (setq registration-called reading)
-                               (funcall on-done nil))))
+                               nil)))
             (nskk-start-conversion)
             (should registration-called)))
         (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
@@ -3250,8 +3250,8 @@
                           (nskk-core-search/k
                            (lambda (_key _type _limit _on-found on-not-found)
                              (funcall on-not-found)))
-                          (nskk-start-registration/k
-                           (lambda (_reading on-done _ignored) (funcall on-done nil))))
+                          (nskk-start-registration
+                           (lambda (_reading) nil)))
           (nskk-start-conversion/k
            #'ignore
            (lambda () (setq not-found-called t))
@@ -3290,7 +3290,7 @@
         (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker))
       )))
 
-  (nskk-it "calls nskk-start-registration/k with preedit text when candidates exhausted"
+  (nskk-it "calls nskk-start-registration with preedit text when candidates exhausted"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (nskk-test-saved-conversion-start-marker (nskk-state-conversion-start-marker))
@@ -3307,10 +3307,10 @@
         (goto-char (point-max))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-state-set-candidates nskk-current-state '("漢字"))
-        (nskk-with-mocks ((nskk-start-registration/k
-                           (lambda (text on-done _ignored)
+        (nskk-with-mocks ((nskk-start-registration
+                           (lambda (text)
                              (setq registration-text text)
-                             (funcall on-done nil)))  ; registration cancelled
+                             nil))  ; registration cancelled
                           (nskk--wrap-to-first-candidate #'ignore)
                           (run-hook-with-args #'ignore))
           (nskk--exhaust-candidates/k (lambda () (setq on-done-called t))))
@@ -3340,11 +3340,11 @@
         (nskk-state-set-candidates nskk-current-state '("褒"))
         (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
         (nskk-state-put-metadata nskk-current-state 'okurigana-query "ほk")
-        (nskk-with-mocks ((nskk-start-registration/k
-                           (lambda (text on-done _ignored)
+        (nskk-with-mocks ((nskk-start-registration
+                           (lambda (text)
                              (setq registration-text text
                                    display-reading nskk--registration-display-reading)
-                             (funcall on-done nil)))  ; registration cancelled
+                             nil))  ; registration cancelled
                           (nskk--wrap-to-first-candidate #'ignore)
                           (run-hook-with-args #'ignore))
           (nskk--exhaust-candidates/k #'ignore))
@@ -4010,9 +4010,8 @@
           (nskk-with-mocks ((nskk-core-search/k
                              (lambda (_q _type _limit _on-found on-not-found)
                                (funcall on-not-found)))
-                            (nskk-start-registration/k
-                             (lambda (_reading on-done _on-fail)
-                               (funcall on-done nil)))  ; nil = cancelled
+                            (nskk-start-registration
+                             (lambda (_reading) nil))  ; nil = cancelled
                             (nskk--remove-okuri-marker #'ignore))
             (nskk-trigger-okuri-conversion/k ?k preedit-end
                                               #'ignore
@@ -4047,9 +4046,8 @@
           (nskk-with-mocks ((nskk-core-search/k
                              (lambda (_q _type _limit _on-found on-not-found)
                                (funcall on-not-found)))
-                            (nskk-start-registration/k
-                             (lambda (_reading on-done _on-fail)
-                               (funcall on-done "炎")))  ; "炎" = registered word
+                            (nskk-start-registration
+                             (lambda (_reading) "炎"))  ; "炎" = registered word
                             (nskk--remove-okuri-marker #'ignore)
                             (nskk-henkan-do-reset #'ignore))
             (nskk-trigger-okuri-conversion/k ?k preedit-end
@@ -4197,10 +4195,10 @@
                           (nskk-core-search/k
                            (lambda (_key _type _limit _on-found on-not-found)
                              (funcall on-not-found)))
-                          (nskk-start-registration/k
-                           (lambda (reading on-done _ignored)
+                          (nskk-start-registration
+                           (lambda (reading)
                              (setq registration-reading reading)
-                             (funcall on-done nil))))  ; user cancelled
+                             nil)))  ; user cancelled
           (nskk-start-conversion/k #'ignore #'ignore #'ignore))
         (should (equal registration-reading "みとうろく")))
         (nskk-state-set-conversion-start-marker nskk-test-saved-conversion-start-marker)
@@ -4521,7 +4519,7 @@
 ;;; nskk--run-registration-session Tests
 ;;;
 
-(nskk-describe "nskk--run-registration-session/k"
+(nskk-describe "nskk-start-registration"
   (nskk-it "calls on-found with nil when depth is at maximum"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
           (nskk-test-saved-registration-depth (nskk-state-registration-depth))
@@ -4530,9 +4528,7 @@
           (progn
             (nskk-state-set-registration-depth nskk-max-registration-depth)
             
-      (nskk--run-registration-session/k "てすと"
-        (lambda (r) (setq result r))
-        #'ignore)
+      (setq result (nskk-start-registration "てすと"))
       (should-not result))
         (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
       ))
@@ -4548,9 +4544,7 @@
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) ""))
                         (nskk-dict-register-word #'ignore))
-        (nskk--run-registration-session/k "てすと"
-          (lambda (r) (setq result r))
-          (lambda () (error "on-not-found must not be called"))))
+        (setq result (nskk-start-registration "てすと")))
       (should-not result))
         (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
       ))
@@ -4566,9 +4560,7 @@
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) "漢字"))
                         (nskk-dict-register-word #'ignore))
-        (nskk--run-registration-session/k "かんじ"
-          (lambda (r) (setq result r))
-          (lambda () (error "on-not-found must not be called"))))
+        (setq result (nskk-start-registration "かんじ")))
       (should (equal result "漢字")))
         (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
       ))
@@ -4585,9 +4577,7 @@
       (nskk-with-mocks ((read-from-minibuffer
                          (lambda (_p) (setq depth-during (nskk-state-registration-depth)) ""))
                         (nskk-dict-register-word #'ignore))
-        (nskk--run-registration-session/k "てすと"
-          (lambda (_r) nil)
-          (lambda () (error "on-not-found must not be called"))))
+        (nskk-start-registration "てすと"))
       (should (= depth-during 1))
       (should (= (nskk-state-registration-depth) 0)))
         (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
@@ -4604,9 +4594,7 @@
       (nskk-state-force-henkan-phase nskk-current-state 'on)
       (nskk-with-mocks ((read-from-minibuffer (lambda (_p) (signal 'quit nil)))
                         (nskk-dict-register-word #'ignore))
-        (nskk--run-registration-session/k "てすと"
-          (lambda (r) (setq result r))
-          (lambda () (error "on-not-found must not be called"))))
+        (setq result (nskk-start-registration "てすと")))
       (should (null result))
       (should (= (nskk-state-registration-depth) 0)))
         (nskk-state-set-registration-depth nskk-test-saved-registration-depth))
@@ -4692,9 +4680,8 @@
                                        'error)
                                      phase-data)))))
                 (condition-case condition
-                    (nskk--run-registration-session/k "reading"
-                      (lambda (_result) (setq callback-called t))
-                      #'ignore)
+                    (progn (nskk-start-registration "reading")
+                           (setq callback-called t))
                   ((error quit)
                    (setq caught condition))))
               (should (eq (car caught) primary-type))
@@ -4786,9 +4773,8 @@
                                      'error)
                                    later-data)))))
               (condition-case condition
-                  (nskk--run-registration-session/k "reading"
-                    (lambda (_result) (setq callback-called t))
-                    #'ignore)
+                  (progn (nskk-start-registration "reading")
+                         (setq callback-called t))
                 ((error quit)
                  (setq caught condition))))
             (should (= commit-calls 1))
@@ -4841,9 +4827,7 @@
                          (delete-overlay nskk--inline-overlay))
                        (setq nskk--inline-overlay nil)))))
           (condition-case condition
-              (nskk--run-registration-session/k "reading"
-                (lambda (result) (push result results))
-                #'ignore)
+              (push (nskk-start-registration "reading") results)
             ((error quit)
              (setq caught condition)))
           (should (eq (car caught) 'error))
@@ -4853,9 +4837,7 @@
           (should (eq (nskk-state-henkan-phase nskk-current-state) 'on))
           (should-not nskk--inline-overlay)
           (should-not (overlay-buffer inline-overlay))
-          (nskk--run-registration-session/k "reading"
-            (lambda (result) (push result results))
-            #'ignore))
+          (push (nskk-start-registration "reading") results))
         (should (= attempts 2))
         (should (= hide-calls 2))
         (should (equal results '("word")))
