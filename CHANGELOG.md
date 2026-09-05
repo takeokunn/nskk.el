@@ -328,6 +328,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had no consumer.
 - Removed the empty `nskk-kana` customization group, which defined no
   user options.
+- **Breaking:** removed the search entry points no production code path
+  reached. Conversion searches through `nskk-core-search` in
+  `nskk-henkan.el`, which calls `nskk-search-prefix` and
+  `nskk-search-partial` directly and resolves exact lookups through
+  `nskk-dict-lookup`. The generic `nskk-search` dispatcher and the
+  `nskk-search-exact`, `nskk-search-fuzzy` and `nskk-search-with-cache`
+  entry points were reachable only from tests and benchmarks, and are gone
+  with their `/k` variants.
+- **Breaking:** removed the search result cache that only
+  `nskk-search-with-cache` populated, including `nskk-search-cache-snapshots`
+  and `nskk-search-restore-cache-snapshot`. User-dictionary registration no
+  longer snapshots or restores search caches during rollback, because no
+  cache is registered any more. `nskk-cache.el` itself is unaffected and
+  still backs the program-dictionary cache.
+- **Breaking:** removed `nskk-search-jisyo-hook`. It fired only from the
+  deleted `nskk-search` dispatcher, and its documented contract was that
+  direct calls to the individual search functions do not run it, so it has
+  no remaining trigger. `nskk-save-history-hook` is unaffected.
+- **Breaking:** removed the fuzzy search implementation, both Levenshtein
+  distance functions, and the `nskk-search-fuzzy-threshold` user option that
+  configured them.
+- **Breaking:** removed the `nskk-dict-search-error`,
+  `nskk-dict-search-invalid-query` and `nskk-dict-search-invalid-index`
+  conditions. They were signalled only by the deleted dispatcher's argument
+  checks; `nskk-search-prefix` and `nskk-search-partial` never validated
+  their arguments and are unchanged.
 
 ## [0.3.0] - 2026-07-26
 

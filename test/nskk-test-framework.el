@@ -684,7 +684,7 @@ Example:
   (nskk-with-prolog-entries ((user-dict-entry \"かんじ\" (\"漢字\" \"感じ\"))
                              (user-dict-entry \"さくら\" (\"桜\")))
     (let ((idx (make-nskk-dict-index :predicate \\='user-dict-entry)))
-      (should (nskk-search idx \"かんじ\" \\='exact))))"
+      (should (nskk-search-prefix idx \"かん\" nil nil))))"
   (declare (indent 1))
   `(nskk-prolog-test-with-isolated-db
     ,@(mapcar
