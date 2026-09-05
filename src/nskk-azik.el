@@ -71,64 +71,58 @@ ignored at runtime."
        (stringp (cadr rule))
        (null (cddr rule))))
 
-;;;; Compile-time Rule Macros
+;;;; Rule Generation Helpers
 
-(defmacro nskk-azik-hatsuon (prefix a i u e o)
-  "Define AZIK hatsuon (撥音) extensions as azik-rule/2 Prolog facts.
+(defun nskk--azik-hatsuon-pairs (prefix a i u e o)
+  "Return AZIK hatsuon (撥音) extension pairs for a consonant row.
 PREFIX is the consonant key string.
 A/I/U/E/O are the base kana for each vowel position.
 Generates: prefix+z→A+ん, prefix+k→I+ん, prefix+j→U+ん,
            prefix+d→E+ん, prefix+l→O+ん."
-  (declare (indent 0) (debug t))
-  `(progn
-     (nskk-prolog-<- (azik-rule ,(concat prefix "z") ,(concat a "ん")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "k") ,(concat i "ん")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "j") ,(concat u "ん")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "d") ,(concat e "ん")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "l") ,(concat o "ん")))))
+  (list
+   (list (concat prefix "z") (concat a "ん"))
+   (list (concat prefix "k") (concat i "ん"))
+   (list (concat prefix "j") (concat u "ん"))
+   (list (concat prefix "d") (concat e "ん"))
+   (list (concat prefix "l") (concat o "ん"))))
 
-(defmacro nskk-azik-double-vowel (prefix a u e o &optional dv-p-str)
-  "Define AZIK double vowel (二重母音) extensions as azik-rule/2 Prolog facts.
+(defun nskk--azik-double-vowel-pairs (prefix a u e o &optional dv-p-str)
+  "Return AZIK double vowel (二重母音) extension pairs for a consonant row.
 PREFIX is the consonant key string.
 A/U/E/O are the base kana for each vowel position.
 Optional DV-P-STR overrides the p-suffix output string (used for foreign rows
 that use ー instead of O+う, e.g. ふぉー for f-row).
 Generates: prefix+q→A+い, prefix+h→U+う, prefix+w→E+い, prefix+p→DV-P-STR or O+う."
-  (declare (indent 0) (debug t))
-  `(progn
-     (nskk-prolog-<- (azik-rule ,(concat prefix "q") ,(concat a "い")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "h") ,(concat u "う")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "w") ,(concat e "い")))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "p") ,(or dv-p-str (concat o "う"))))))
+  (list
+   (list (concat prefix "q") (concat a "い"))
+   (list (concat prefix "h") (concat u "う"))
+   (list (concat prefix "w") (concat e "い"))
+   (list (concat prefix "p") (or dv-p-str (concat o "う")))))
 
-(defmacro nskk-azik-extensions (prefix a i u e o &optional dv-o dv-p-str)
-  "Define hatsuon + double vowel extensions for a consonant row.
+(defun nskk--azik-extension-pairs (prefix a i u e o &optional dv-o dv-p-str)
+  "Return hatsuon + double vowel extension pairs for a consonant row.
 PREFIX is the consonant key string.
 A/I/U/E/O are the base kana for each vowel position.
 DV-O overrides O for double vowel (e.g., わ行 uses うぉ instead of を).
 DV-P-STR overrides the p-suffix output (e.g., foreign rows use ー instead of う)."
-  (declare (indent 0) (debug t))
-  `(progn
-     (nskk-azik-hatsuon ,prefix ,a ,i ,u ,e ,o)
-     (nskk-azik-double-vowel ,prefix ,a ,u ,e ,(or dv-o o) ,dv-p-str)))
+  (append (nskk--azik-hatsuon-pairs prefix a i u e o)
+          (nskk--azik-double-vowel-pairs prefix a u e (or dv-o o) dv-p-str)))
 
-(defmacro nskk-azik-youon (prefix a i u e o)
-  "Define AZIK youon (拗音) row with base rules + all extensions.
+(defun nskk--azik-youon-pairs (prefix a i u e o)
+  "Return AZIK youon (拗音) base rules + all extension pairs for a row.
 PREFIX is the key combo (e.g., \"kg\" for きゃ行).
 A/I/U/E/O are the base kana.
 Base rules generated for a/u/e/o only (no i for youon).
 Hatsuon and double vowel extensions are generated for all positions."
-  (declare (indent 0) (debug t))
-  `(progn
-     (nskk-prolog-<- (azik-rule ,(concat prefix "a") ,a))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "u") ,u))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "e") ,e))
-     (nskk-prolog-<- (azik-rule ,(concat prefix "o") ,o))
-     (nskk-azik-extensions ,prefix ,a ,i ,u ,e ,o)))
+  (append
+   (list (list (concat prefix "a") a)
+         (list (concat prefix "u") u)
+         (list (concat prefix "e") e)
+         (list (concat prefix "o") o))
+   (nskk--azik-extension-pairs prefix a i u e o)))
 
 ;;;; Static Rule Data
 
-(eval-and-compile
 (defconst nskk--azik-extension-rows
   '(("k" "か" "き" "く" "け" "こ")
     ("s" "さ" "し" "す" "せ" "そ")
@@ -155,18 +149,13 @@ Each entry is (PREFIX A I U E O) or (PREFIX A I U E O DV-O) or
 rule, and DV-P-STR overrides the p-suffix output (used for foreign loanword rows
 that use ー instead of O+う, e.g., fp→ふぉー instead of ふぉう).
 
-Special rows:
-- The w-row has 8 elements: DV-O=うぉ and DV-P-STR=うぉー.
-- The f-row covers foreign-sound ふぁ/ふぃ/ふ/ふぇ/ふぉ (enabling fq→ふぁい etc.).
-- The f-row sets DV-P-STR=ふぉー, producing fp→ふぉー.
-- The j-row covers じゃ行 extensions (jq→じゃい, jj→じゅん, jh→じゅう etc.).
-- The v-row covers ゔ行 extensions (vq→ゔぁい, vd→ゔぇん etc.).
-- The v-row sets DV-P-STR=ゔぉー, producing vp→ゔぉー.
-- The x-row provides sha/shu/sho compatibility (しゃ/し/しゅ/しぇ/しょ).
-- The c-row provides cha/chu/cho compatibility (ちゃ/ち/ちゅ/ちぇ/ちょ).
-
-The x and c rows support all extension keys (z/k/j/d/l for hatsuon,
-q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
+Why some rows carry more than six elements:
+- w-row: DV-O=うぉ and DV-P-STR=うぉー, since わ行 diphthongs use うぉ, not を.
+- f-row and v-row: foreign-sound rows whose p-suffix is a long vowel
+  (fp→ふぉー, vp→ゔぉー) rather than O+う.
+- x-row and c-row: sha/shu/sho and cha/chu/cho compatibility.  They take the
+  full extension-key set (z/k/j/d/l hatsuon, q/h/w/p diphthong) so compound
+  input such as xhka→しゅうか resolves.")
 
 (defconst nskk--azik-youon-rows
   '(;; g-substitution youon (AZIK-specific: g replaces y)
@@ -192,14 +181,24 @@ q/h/w/p for diphthong) enabling compound input like xhka → しゅうか.")
     ("by" "びゃ" "びぃ" "びゅ" "びぇ" "びょ")
     ("py" "ぴゃ" "ぴぃ" "ぴゅ" "ぴぇ" "ぴょ"))
   "Youon (拗音) rows for AZIK rules.
-Each entry is (PREFIX A I U E O) passed to `nskk-azik-youon'.
+Each entry is (PREFIX A I U E O) passed to `nskk--azik-youon-pairs'.
 
 Two parallel sets of rows are provided:
 - g-substitution (AZIK-specific): ng/kg/hg/mg/rg/gg/jg/bg/pg
-  These use g as a y-substitute, the original AZIK design.
-- y-prefix youon: ny/ky/hy/my/ry/gy/jy/by/py
-  These add AZIK extension keys (hatsuon z/k/j/d/l, diphthong q/h/w/p)
-  to standard romaji y-prefix youon sequences.  e.g. ryp → りょう."))
+- y-prefix youon: ny/ky/hy/my/ry/gy/jy/by/py, adding AZIK extension keys
+  (hatsuon z/k/j/d/l, diphthong q/h/w/p) to standard y-prefix sequences.")
+
+(defconst nskk--azik-extension-rule-pairs
+  (apply #'append
+         (mapcar (lambda (row) (apply #'nskk--azik-extension-pairs row))
+                 nskk--azik-extension-rows))
+  "Flattened (ROMAJI KANA) pairs for `nskk--azik-extension-rows'.")
+
+(defconst nskk--azik-youon-rule-pairs
+  (apply #'append
+         (mapcar (lambda (row) (apply #'nskk--azik-youon-pairs row))
+                 nskk--azik-youon-rows))
+  "Flattened (ROMAJI KANA) pairs for `nskk--azik-youon-rows'.")
 
 (defconst nskk--azik-compound-rules
   '(("kak" "かく") ("kaq" "かい") ("kakz" "かかん")
@@ -218,26 +217,6 @@ finalize step to classify \"wso\" as :incomplete (non-vowel extensions).
 
 Format: each entry is (ROMAJI KANA) where ROMAJI is the full key string
 and KANA is the output string.")
-
-;;;; Meta-macros (compile-time table expansion)
-
-(defmacro nskk--azik-init-extension-rows ()
-  "Assert hatsuon + double-vowel rules for all rows at compile time.
-Iterates `nskk--azik-extension-rows' at macro-expansion time, producing
-one `nskk-azik-extensions' call per row without any runtime iteration."
-  (declare (indent 0) (debug t))
-  `(progn
-     ,@(mapcar (lambda (row) `(nskk-azik-extensions ,@row))
-               nskk--azik-extension-rows)))
-
-(defmacro nskk--azik-init-youon-rows ()
-  "Assert youon rules for all rows at compile time.
-Iterates `nskk--azik-youon-rows' at macro-expansion time, producing
-one `nskk-azik-youon' call per row without any runtime iteration."
-  (declare (indent 0) (debug t))
-  `(progn
-     ,@(mapcar (lambda (row) `(nskk-azik-youon ,@row))
-               nskk--azik-youon-rows)))
 
 ;;;; Runtime Helpers
 
@@ -381,11 +360,10 @@ Performs two passes using azik-key-extends/2 facts:
   (?ア) (?イ) (?ウ) (?エ) (?オ)
   (?ー))
 
-(progn
-  (defvar nskk--azik-toggle-key-state nil
-    "Last AZIK toggle key and its displaced binding as (KEY . BINDING).")
-  (nskk-converter-register-style-transaction-variable
-               'nskk--azik-toggle-key-state))
+(defvar nskk--azik-toggle-key-state nil
+  "Last AZIK toggle key and its displaced binding as (KEY . BINDING).")
+(nskk-converter-register-style-transaction-variable
+ 'nskk--azik-toggle-key-state)
 
 (defun nskk--setup-azik-toggle-key ()
   "Set up AZIK toggle key binding based on keyboard type.
@@ -412,132 +390,146 @@ Restores the displaced binding when the keyboard type changes."
 
 ;;;; Main Initialization
 
-(defun nskk--azik-init-core-and-compat-rules ()
-  "Assert the AZIK core, ergonomic, and ddskk-compatibility rule facts.
-Covers everything not already handled by
-`nskk--azik-init-extension-rows'/`nskk--azik-init-youon-rows': special
-keys, consonant compatibility, same-finger alternatives, word shortcuts,
-foreign-word/hatsuon/double-vowel extensions, and ddskk-compatible
-suffix/shortcut/small-kana/arrow rules.  Split out of
-`nskk--init-azik-rules' as a pure data-declaration block with no
-sequencing dependency on the rest of that function."
-  ;; Special keys: ; → っ (geminate stop), : → ー (prolonged sound).
-  (nskk-prolog-deffacts azik-rule
-    (";" "っ")
+(defconst nskk--azik-special-key-rules
+  '((";" "っ")
     (":" "ー"))
+  "Special keys: ; → っ (geminate stop), : → ー (prolonged sound).")
 
-  ;; Consonant compatibility: x-prefix = しゃ行, c-prefix = ちゃ行.
-  (nskk-prolog-deffacts azik-rule
-    ("xa" "しゃ") ("xi" "し") ("xu" "しゅ") ("xe" "しぇ") ("xo" "しょ")
+(defconst nskk--azik-consonant-compat-rules
+  '(("xa" "しゃ") ("xi" "し") ("xu" "しゅ") ("xe" "しぇ") ("xo" "しょ")
     ("ca" "ちゃ") ("ci" "ち") ("cu" "ちゅ") ("ce" "ちぇ") ("co" "ちょ"))
+  "Consonant compatibility: x-prefix = しゃ行, c-prefix = ちゃ行.")
 
-  ;; Same-finger alternatives (f suffix for ergonomic consonant alternatives).
-  ;; hf=ふ avoids the h→u same-hand sequence (h and f share the left index finger).
-  (nskk-prolog-deffacts azik-rule
-    ("kf" "き") ("hf" "ふ") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
+(defconst nskk--azik-same-finger-rules
+  '(("kf" "き") ("hf" "ふ") ("nf" "ぬ") ("mf" "む") ("gf" "ぐ")
     ("pf" "ぷ") ("rf" "る") ("yf" "ゆ"))
+  "Same-finger alternatives (f suffix for ergonomic consonant alternatives).
+hf=ふ avoids the h→u same-hand sequence (h and f share the left index
+finger); the other entries follow the same rationale.")
 
-  ;; Word shortcuts for common Japanese words and particles.
-  (nskk-prolog-deffacts azik-rule
-    ("km" "かも") ("kr" "から") ("gr" "がら") ("kt" "こと") ("gt" "ごと")
+(defconst nskk--azik-word-shortcut-rules
+  '(("km" "かも") ("kr" "から") ("gr" "がら") ("kt" "こと") ("gt" "ごと")
     ("zr" "ざる") ("st" "した") ("ss" "せい") ("sr" "する") ("tt" "たち") ("dt" "だち")
     ("tb" "たび") ("tm" "ため") ("tr" "たら") ("ds" "です") ("dm" "でも")
     ("nr" "なる") ("nt" "にち") ("nb" "ねば") ("ht" "ひと") ("bt" "びと")
     ("ms" "ます") ("mt" "また") ("mn" "もの") ("yr" "よる")
     ("rr" "られ") ("wt" "わた") ("wr" "われ"))
+  "Word shortcuts for common Japanese words and particles.")
 
-  ;; Foreign word extensions for non-native Japanese sounds.
-  (nskk-prolog-deffacts azik-rule
-    ("tgi" "てぃ") ("tgu" "てゅ") ("dci" "でぃ") ("dcu" "でゅ") ("wso" "うぉ"))
+(defconst nskk--azik-foreign-word-rules
+  '(("tgi" "てぃ") ("tgu" "てゅ") ("dci" "でぃ") ("dcu" "でゅ") ("wso" "うぉ"))
+  "Foreign word extensions for non-native Japanese sounds.")
 
-  ;; Hatsuon extensions for foreign word prefixes (+ん).
-  ;; tg/dc: k→i-variant+ん, j→u-variant+ん.  wso: k→うぉん.
-  (nskk-prolog-deffacts azik-rule
-    ("tgk" "てぃん") ("tgj" "とぅん")
+(defconst nskk--azik-foreign-hatsuon-rules
+  '(("tgk" "てぃん") ("tgj" "とぅん")
     ("dck" "でぃん") ("dcj" "どぅん")
     ("wsok" "うぉん"))
+  "Hatsuon extensions for foreign word prefixes (+ん).
+tg/dc: k→i-variant+ん, j→u-variant+ん.  wso: k→うぉん.")
 
-  ;; Double-vowel extensions for foreign word prefixes.
-  ;; q→i-variant vowel repeat, w→u-variant vowel repeat.
-  ;; tg/dc h/p use ddskk-compatible long-vowel forms.
-  ;; For wso (single o-variant), all keys produce うぉお.
-  (nskk-prolog-deffacts azik-rule
-    ("tgq" "てぃい") ("tgh" "てゅー") ("tgw" "とぅう") ("tgp" "とぅー")
+(defconst nskk--azik-foreign-double-vowel-rules
+  '(("tgq" "てぃい") ("tgh" "てゅー") ("tgw" "とぅう") ("tgp" "とぅー")
     ("dcq" "でぃい") ("dch" "でゅー") ("dcw" "どぅう") ("dcp" "どぅー")
     ("wsoq" "うぉお") ("wsoh" "うぉお") ("wsow" "うぉお") ("wsop" "うぉお"))
+  "Double-vowel extensions for foreign word prefixes.
+q→i-variant vowel repeat, w→u-variant vowel repeat.  tg/dc h/p use
+ddskk-compatible long-vowel forms.  For wso (single o-variant), all
+keys produce うぉお.")
 
-  ;; n-suffix hatsuon: Cn → A+ん (ddskk compatible).
-  ;; Complements z/k/j/d/l hatsuon suffixes generated by nskk-azik-hatsuon.
-  (nskk-prolog-deffacts azik-rule
-    ("bn" "ばん") ("cn" "ちゃん") ("dn" "だん") ("fn" "ふぁん") ("gn" "がん")
+(defconst nskk--azik-n-suffix-hatsuon-rules
+  '(("bn" "ばん") ("cn" "ちゃん") ("dn" "だん") ("fn" "ふぁん") ("gn" "がん")
     ("hn" "はん") ("jn" "じゃん") ("kn" "かん") ("pn" "ぱん") ("rn" "らん")
     ("sn" "さん") ("tn" "たん") ("vn" "ゔぁん") ("wn" "わん") ("yn" "やん")
     ("zn" "ざん"))
+  "n-suffix hatsuon: Cn → A+ん (ddskk compatible).
+Complements the z/k/j/d/l hatsuon suffixes in `nskk--azik-hatsuon-pairs'.")
 
-  ;; v-suffix same-finger alternatives (ddskk compatible).
-  (nskk-prolog-deffacts azik-rule
-    ("dv" "でん") ("jv" "じゅう") ("kv" "きん") ("mv" "むん") ("nv" "ぬん")
+(defconst nskk--azik-v-suffix-rules
+  '(("dv" "でん") ("jv" "じゅう") ("kv" "きん") ("mv" "むん") ("nv" "ぬん")
     ("pv" "ぽう") ("sv" "さい") ("yv" "ゆう") ("zv" "ざい"))
+  "v-suffix same-finger alternatives (ddskk compatible).")
 
-  ;; x-suffix same-finger alternatives: ei-vowel shortcuts (ddskk compatible).
-  (nskk-prolog-deffacts azik-rule
-    ("bx" "べい") ("cx" "ちぇい") ("zx" "ぜい"))
+(defconst nskk--azik-x-suffix-rules
+  '(("bx" "べい") ("cx" "ちぇい") ("zx" "ぜい"))
+  "x-suffix same-finger alternatives: ei-vowel shortcuts (ddskk compatible).")
 
-  ;; Additional word shortcuts and consonant alternatives (ddskk compatible).
-  ;; yi→ゐ overrides the yi→い from y-row extension (last puthash wins).
-  (nskk-prolog-deffacts azik-rule
-    ("br" "ばら") ("cc" "ちゃ") ("cf" "ちぇ") ("cv" "ちゃい") ("df" "で")
+(defconst nskk--azik-additional-shortcut-rules
+  '(("br" "ばら") ("cc" "ちゃ") ("cf" "ちぇ") ("cv" "ちゃい") ("df" "で")
     ("dg" "だが") ("dr" "である") ("dy" "でぃ") ("fm" "ふむ") ("fr" "ふる")
     ("fs" "ふぁい") ("jf" "じゅ") ("mr" "まる") ("sf" "さい") ("sm" "しも")
     ("wf" "わい") ("yi" "ゐ") ("zc" "ざ") ("zf" "ぜ"))
+  "Additional word shortcuts and consonant alternatives (ddskk compatible).")
 
-  ;; xx-prefix small kana and arrows (ddskk compatible).
-  ;; Arrows via xx-prefix restore ←↓↑→ since zh/zj/zk/zl are consumed by
-  ;; z-row hatsuon extensions.
-  (nskk-prolog-deffacts azik-rule
-    ("xxa" "ぁ") ("xxi" "ぃ") ("xxu" "ぅ") ("xxe" "ぇ") ("xxo" "ぉ")
+(defconst nskk--azik-xx-prefix-rules
+  '(("xxa" "ぁ") ("xxi" "ぃ") ("xxu" "ぅ") ("xxe" "ぇ") ("xxo" "ぉ")
     ("xxh" "←") ("xxj" "↓") ("xxk" "↑") ("xxl" "→"))
+  "xx-prefix small kana and arrows (ddskk compatible).
+Arrows via xx-prefix restore ←↓↑→ since zh/zj/zk/zl are consumed by
+z-row hatsuon extensions.")
 
-  ;; Literal semicolon escape, small katakana, youon n-extension,
-  ;; y-prefix arrow alternatives (ddskk compatible).
-  (nskk-prolog-deffacts azik-rule
-    ("x;" ";") ("kA" "ヵ") ("kE" "ヶ") ("wA" "ヮ")
+(defconst nskk--azik-misc-compat-rules
+  '(("x;" ";") ("kA" "ヵ") ("kE" "ヶ") ("wA" "ヮ")
     ("kyn" "きゃん") ("y<" "←") ("y>" "→") ("y^" "↑"))
+  "Literal semicolon escape, small katakana, youon n-extension,
+y-prefix arrow alternatives (ddskk compatible).")
 
-  ;; JP106-specific: + → っ for Shift+; key.
+(defconst nskk--azik-core-and-compat-rule-pairs
+  (append nskk--azik-special-key-rules
+          nskk--azik-consonant-compat-rules
+          nskk--azik-same-finger-rules
+          nskk--azik-word-shortcut-rules
+          nskk--azik-foreign-word-rules
+          nskk--azik-foreign-hatsuon-rules
+          nskk--azik-foreign-double-vowel-rules
+          nskk--azik-n-suffix-hatsuon-rules
+          nskk--azik-v-suffix-rules
+          nskk--azik-x-suffix-rules
+          nskk--azik-additional-shortcut-rules
+          nskk--azik-xx-prefix-rules
+          nskk--azik-misc-compat-rules)
+  "AZIK core, ergonomic, and ddskk-compatibility rule pairs.
+Covers everything not already handled by `nskk--azik-extension-rule-pairs'/
+`nskk--azik-youon-rule-pairs'.  Concatenates the per-category rule tables
+above, preserving the order they were asserted in before they were split
+apart.  These 134 keys are currently distinct, so no key's value depends on
+that order; were a duplicate ever introduced, the winner would be the one
+asserted last, because `nskk--azik-sync-to-romaji-hash' populates the
+lookup cache with one `puthash' per fact in assertion order.")
+
+(defun nskk--azik-init-core-and-compat-rules ()
+  "Assert `nskk--azik-core-and-compat-rule-pairs' as azik-rule/2 facts.
+Also asserts the JP106-specific + → っ rule.  This one stays a runtime
+conditional rather than joining the data table because it reads the
+`nskk-azik-keyboard-type' defcustom at init time, and tests rebind that
+variable dynamically to exercise both keyboard types."
+  (nskk-prolog-bulk-facts azik-rule nskk--azik-core-and-compat-rule-pairs)
   (when (and (boundp 'nskk-azik-keyboard-type)
              (eq nskk-azik-keyboard-type 'jp106))
     (nskk-prolog-<- (azik-rule "+" "っ"))))
 
-(defun/done nskk--init-azik-rules ()
-  "Initialize AZIK romaji rules.
-Sets up standard romaji as base, then asserts AZIK-specific rules
-into the azik-rule/2 Prolog predicate.  A bridge rule connects
-azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
-The hash table is populated from azik-rule/2 for hot-path lookups."
-
+(defun nskk--azik-reset-rule-database ()
+  "Reset the romaji hash table and azik-rule/2 predicate to a fresh state."
   (nskk-initialize-romaji-table)
-
   (nskk-prolog-retract-all 'azik-rule 2)
-  (nskk-prolog-set-index 'azik-rule 2 :hash)
+  (nskk-prolog-set-index 'azik-rule 2 :hash))
 
-  ;; Assert all AZIK rule categories directly as Prolog facts.
-  ;; Prolog is the single source of truth; the hash is a read cache.
-  (nskk--azik-init-extension-rows)  ; hatsuon + double vowel
-  (nskk--azik-init-youon-rows)      ; g-sub + y-prefix youon
+(defun nskk--azik-assert-rule-facts ()
+  "Assert all azik-rule/2 facts and bridge them into romaji-to-kana/2.
+Prolog is the single source of truth; `nskk--azik-sync-to-romaji-hash'
+populates the hash-table read cache from it afterward."
+  (nskk-prolog-bulk-facts azik-rule nskk--azik-extension-rule-pairs)
+  (nskk-prolog-bulk-facts azik-rule nskk--azik-youon-rule-pairs)
   (nskk--azik-init-core-and-compat-rules)
-
-  ;; Bridge rule — AZIK rules are also romaji-to-kana.
   ;; The variable first arg (?r) is NOT trie-indexed; use azik-rule/2
   ;; directly for enumeration.  Hot-path lookups use the hash cache.
   (nskk-prolog-<- (romaji-to-kana \?r \?k) (azik-rule \?r \?k))
+  (nskk--azik-sync-to-romaji-hash))
 
-  (nskk--azik-sync-to-romaji-hash)
-
-  ;;   azik-vowel-char/1   — character codes for a/i/u/e/o (integer facts).
-  ;;   azik-key-extends/2  — (PREFIX CH) for every proper prefix in the hash.
-  ;;   azik-nonvowel-ext/1 — succeeds when KEY has a non-vowel extension.
-  ;;   azik-vowel-shadow/1 — succeeds when KEY's extensions are all vowels.
+(defun nskk--azik-init-derived-facts ()
+  "Assert the Prolog facts and rules `nskk--azik-finalize-hash-table' needs.
+azik-vowel-char/1 and azik-key-extends/2 are asserted directly;
+azik-nonvowel-ext/1 and azik-vowel-shadow/1 are derived rules built on top
+of them."
   (nskk--azik-init-char-facts)
   (nskk--azik-init-key-extend-facts)
   (nskk-prolog-retract-all 'azik-nonvowel-ext 1)
@@ -548,18 +540,17 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
   (nskk-prolog-<- (azik-vowel-shadow \?k)
     (azik-rule \?k \?_kana)
     (azik-key-extends \?k \?_ext)
-    (not (azik-nonvowel-ext \?k)))
+    (not (azik-nonvowel-ext \?k))))
 
-  (nskk--azik-finalize-hash-table)
-
-  ;; Inserting after finalize ensures 2-char prefixes like "ka" remain
-  ;; complete, enabling sequences like xhkak → しゅうかく.
+(defun nskk--azik-apply-compound-rules ()
+  "Insert `nskk--azik-compound-rules' directly into the romaji hash table."
   (dolist (rule nskk--azik-compound-rules)
-    (puthash (car rule) (cadr rule) (nskk-romaji-table)))
+    (puthash (car rule) (cadr rule) (nskk-romaji-table))))
 
-  ;; Apply user overrides last so they take precedence over built-ins.
-  ;; Canonicalize user rules as azik-rule/2 facts behind the generic bridge,
-  ;; then mirror them into the conversion hash for direct lookup.
+(defun nskk--azik-apply-user-overrides ()
+  "Apply `nskk-azik-conversion-table' overrides on top of the built-ins.
+Canonicalizes user rules as azik-rule/2 facts behind the generic bridge,
+then mirrors them into the conversion hash for direct lookup."
   (dolist (rule nskk-azik-conversion-table)
     (when (nskk--azik-conversion-rule-p rule)
       (let* ((owned-rule (nskk-prolog-copy-term rule))
@@ -567,8 +558,23 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
              (kana (cadr owned-rule)))
         (while (nskk-prolog-retract `(azik-rule ,romaji \?_)))
         (nskk-prolog-assert `((azik-rule ,romaji ,kana)))
-        (puthash romaji kana (nskk-romaji-table)))))
+        (puthash romaji kana (nskk-romaji-table))))))
 
+(defun/done nskk--init-azik-rules ()
+  "Initialize AZIK romaji rules.
+Sets up standard romaji as base, then asserts AZIK-specific rules
+into the azik-rule/2 Prolog predicate.  A bridge rule connects
+azik-rule/2 to romaji-to-kana/2 for unified Prolog queries.
+The hash table is populated from azik-rule/2 for hot-path lookups."
+  (nskk--azik-reset-rule-database)
+  (nskk--azik-assert-rule-facts)
+  (nskk--azik-init-derived-facts)
+  (nskk--azik-finalize-hash-table)
+  ;; Compound rules must be inserted after finalize: finalize would
+  ;; otherwise demote their 2-char prefixes (e.g., "ka") to :incomplete,
+  ;; blocking sequences like xhkak → しゅうかく.
+  (nskk--azik-apply-compound-rules)
+  (nskk--azik-apply-user-overrides)
   (nskk--setup-azik-toggle-key))
 
 ;; Register AZIK style

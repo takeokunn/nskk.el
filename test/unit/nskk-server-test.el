@@ -749,6 +749,482 @@ NAME-VAR is a string used to name both.  Both are destroyed afterwards, and
            (nskk-server-open/k (lambda (_f n) (funcall n))))
         (should-not (nskk-server-ensure-open))))))
 
+;;;; Async connect
+
+(nskk-describe "nskk--server-make-connection"
+  (nskk-it "returns the process once the connection reaches open"
+    (let ((nskk-server-timeout 5))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'mock-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) 'open))
+           (accept-process-output (lambda (&rest _) nil)))
+        (should (eq (nskk--server-make-connection) 'mock-proc)))))
+
+  (nskk-it "returns nil and deletes the process when connect fails"
+    (let ((nskk-server-timeout 5)
+          (deleted nil))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'failed-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) 'failed))
+           (accept-process-output (lambda (&rest _) nil))
+           (delete-process (lambda (proc) (setq deleted proc))))
+        (should-not (nskk--server-make-connection))
+        (should (eq deleted 'failed-proc)))))
+
+  (nskk-it "gives up at the timeout and deletes a process stuck connecting"
+    (let ((nskk-server-timeout 0.3)
+          (deleted nil))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'stuck-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) 'connect))
+           (accept-process-output (lambda (&rest _) nil))
+           (delete-process (lambda (proc) (setq deleted proc))))
+        (should-not (nskk--server-make-connection))
+        (should (eq deleted 'stuck-proc)))))
+
+  (nskk-it "does not poll for a non-finite connection budget"
+    (dolist (budget '(0.0e+NaN 1.0e+INF -1.0e+INF))
+      (let ((nskk-server-timeout budget)
+            (polls 0)
+            (deleted nil))
+        (nskk-with-mocks
+            ((open-network-stream (lambda (&rest _) 'stuck-proc))
+             (get-buffer-create (lambda (_) nil))
+             (process-status (lambda (_) 'connect))
+             (accept-process-output (lambda (&rest _) (cl-incf polls)))
+             (delete-process (lambda (proc) (setq deleted proc))))
+          (should-not (nskk--server-make-connection))
+          (should (= polls 0))
+          (should (eq deleted 'stuck-proc))))))
+
+  (nskk-it "treats a non-numeric connection timeout as a type error and cleans up"
+    (let ((nskk-server-timeout 'invalid)
+          (polls 0)
+          (deleted nil)
+          (failure nil))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'stuck-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) 'connect))
+           (accept-process-output (lambda (&rest _) (cl-incf polls)))
+           (delete-process (lambda (proc) (setq deleted proc)))
+           (nskk-debug-message
+            (lambda (_fmt message) (setq failure message))))
+        (should-not (nskk--server-make-connection))
+        (should (= polls 0))
+        (should (eq deleted 'stuck-proc))
+        (should (string-match-p "numberp" failure)))))
+
+  (nskk-it "never polls longer than the remaining connection budget"
+    (let ((nskk-server-timeout 0.025)
+          (status 'connect)
+          (wait nil))
+      (nskk-with-mocks
+          ((open-network-stream (lambda (&rest _) 'stuck-proc))
+           (get-buffer-create (lambda (_) nil))
+           (process-status (lambda (_) status))
+           (accept-process-output
+            (lambda (_proc timeout &optional _ms _just)
+              (setq wait timeout
+                    status 'failed)))
+           (delete-process (lambda (_) nil)))
+        (should-not (nskk--server-make-connection))
+        (should (> wait 0))
+        (should (<= wait 0.025001)))))
+
+  (nskk-it "keeps the connection budget finite when the wall clock jumps"
+    (dolist (clock-values '((100.0 99.0 98.0 101.0)
+                            (100.0 101.0 102.0 103.0)))
+      (let ((nskk-server-timeout 0.25)
+            (readings (copy-sequence clock-values))
+            (clock-calls 0)
+            (waits nil)
+            (deleted nil))
+        (nskk-with-mocks
+            ((open-network-stream (lambda (&rest _) 'stuck-proc))
+             (get-buffer-create (lambda (_) nil))
+             (process-status (lambda (_) 'connect))
+             (float-time
+              (lambda (&optional _)
+                (cl-incf clock-calls)
+                (or (pop readings) 1000.0)))
+             (accept-process-output
+              (lambda (proc timeout &optional _ms _just)
+                (should (eq proc 'stuck-proc))
+                (push timeout waits)))
+             (delete-process (lambda (proc) (setq deleted proc))))
+          (should-not (nskk--server-make-connection))
+          (should (eq deleted 'stuck-proc))
+          (should (= clock-calls 0))
+          (should (= (length waits) 3))
+          (should (cl-every (lambda (w) (and (> w 0) (<= w 0.1))) waits))
+          (should (< (abs (- (apply #'+ waits) 0.25)) 0.000001))))))
+
+  (nskk-it "releases the process and owned buffer when initialisation signals"
+    (let* ((nskk--server-buffer-name " *nskk-server-init-error*")
+           (proc (make-pipe-process :name "nskk-server-init-error"
+                                    :buffer nil
+                                    :noquery t)))
+      (unwind-protect
+          (nskk-with-mocks
+              ((open-network-stream (lambda (&rest _) proc))
+               (set-process-filter
+                (lambda (&rest _) (error "filter setup failed"))))
+            (should-not (nskk--server-make-connection))
+            (should-not (process-live-p proc))
+            (should-not (get-buffer nskk--server-buffer-name)))
+        (when (process-live-p proc) (delete-process proc))
+        (when-let* ((buf (get-buffer nskk--server-buffer-name)))
+          (kill-buffer buf)))))
+
+  (nskk-it "releases the process and owned buffer when initialisation quits"
+    (let* ((nskk--server-buffer-name " *nskk-server-init-quit*")
+           (proc (make-pipe-process :name "nskk-server-init-quit"
+                                    :buffer nil
+                                    :noquery t))
+           (caught nil))
+      (unwind-protect
+          (nskk-with-mocks
+              ((open-network-stream (lambda (&rest _) proc))
+               (set-process-filter
+                (lambda (&rest _) (signal 'quit '("filter quit")))))
+            (condition-case condition
+                (nskk--server-make-connection)
+              (quit (setq caught condition)))
+            (should (eq (car caught) 'quit))
+            (should-not (process-live-p proc))
+            (should-not (get-buffer nskk--server-buffer-name)))
+        (when (process-live-p proc) (delete-process proc))
+        (when-let* ((buf (get-buffer nskk--server-buffer-name)))
+          (kill-buffer buf))))))
+
+;;;; Coding preflight under quit
+
+(nskk-describe "coding preflight quit safety"
+  (nskk-it "fails closed at every preflight stage and stops observing there"
+    (dolist (case '((live (configured live))
+                    (actual (configured live actual))
+                    (base (configured live actual base))
+                    (key (configured live actual base base key))))
+      (let ((quit-stage (car case))
+            (expected (cadr case))
+            (observed nil)
+            (nskk-server-coding-system 'utf-8))
+        (nskk-with-mocks
+            ((coding-system-p
+              (lambda (_) (push 'configured observed) t))
+             (process-live-p
+              (lambda (_)
+                (push 'live observed)
+                (if (eq quit-stage 'live) (signal 'quit nil) t)))
+             (process-coding-system
+              (lambda (_)
+                (push 'actual observed)
+                (if (eq quit-stage 'actual)
+                    (signal 'quit nil)
+                  (cons 'utf-8 'utf-8))))
+             (coding-system-base
+              (lambda (_)
+                (push 'base observed)
+                (if (eq quit-stage 'base) (signal 'quit nil) 'utf-8)))
+             (nskk--server-key-safe-for-coding-p
+              (lambda (&rest _)
+                (push 'key observed)
+                (if (eq quit-stage 'key) (signal 'quit nil) t))))
+          (should-not
+           (nskk--server-process-safe-for-coding-p 'mock-process "abc")))
+        (should (equal (nreverse observed) expected)))))
+
+  (nskk-it "leaves public lookup state untouched when the preflight quits"
+    (dolist (case '((live (configured live))
+                    (actual (configured live actual))
+                    (base (configured live actual base))
+                    (key (configured live actual base base key))))
+      (with-temp-buffer
+        (insert "sentinel")
+        (let* ((buf (current-buffer))
+               (proc (make-pipe-process
+                      :name (format "nskk-preflight-quit-%s" (car case))
+                      :buffer buf
+                      :coding '(utf-8 . utf-8)
+                      :noquery t))
+               (quit-stage (car case))
+               (expected (cadr case))
+               (observed nil)
+               (io-observed nil)
+               (result 'uninitialized)
+               (nskk-server-enable t)
+               (nskk-server-coding-system 'utf-8)
+               (nskk--server-process proc))
+          (process-put proc 'nskk-response-bytes 17)
+          (process-put proc 'nskk-response-overflow 'overflow)
+          (process-put proc 'nskk-response-complete 'complete)
+          (unwind-protect
+              (progn
+                (nskk-with-mocks
+                    ((nskk--server-lookup-guards-p/k
+                      (lambda (_key on-found _nf) (funcall on-found t)))
+                     (coding-system-p
+                      (lambda (_) (push 'configured observed) t))
+                     (process-live-p
+                      (lambda (_)
+                        (push 'live observed)
+                        (if (eq quit-stage 'live) (signal 'quit nil) t)))
+                     (process-coding-system
+                      (lambda (_)
+                        (push 'actual observed)
+                        (if (eq quit-stage 'actual)
+                            (signal 'quit nil)
+                          (cons 'utf-8 'utf-8))))
+                     (coding-system-base
+                      (lambda (_)
+                        (push 'base observed)
+                        (if (eq quit-stage 'base) (signal 'quit nil) 'utf-8)))
+                     (nskk--server-key-safe-for-coding-p
+                      (lambda (&rest _)
+                        (push 'key observed)
+                        (if (eq quit-stage 'key) (signal 'quit nil) t)))
+                     (process-buffer
+                      (lambda (&rest _)
+                        (push 'buffer io-observed)
+                        (error "buffer must not be read")))
+                     (process-put
+                      (lambda (&rest _)
+                        (push 'property-write io-observed)
+                        (error "properties must not be written")))
+                     (erase-buffer
+                      (lambda ()
+                        (push 'erase io-observed)
+                        (error "buffer must not be erased")))
+                     (process-send-string
+                      (lambda (&rest _)
+                        (push 'send io-observed)
+                        (error "request must not be sent")))
+                     (nskk-server-close
+                      (lambda ()
+                        (push 'cleanup io-observed)
+                        (error "cleanup must not run"))))
+                  (setq result (nskk-server-lookup "abc")))
+                (should-not result)
+                (should (equal (nreverse observed) expected))
+                (should-not io-observed)
+                (should (equal (buffer-string) "sentinel"))
+                (should (= (process-get proc 'nskk-response-bytes) 17))
+                (should (eq (process-get proc 'nskk-response-overflow)
+                            'overflow))
+                (should (eq (process-get proc 'nskk-response-complete)
+                            'complete)))
+            (when (process-live-p proc) (delete-process proc))))))))
+
+;;;; Configure-time rollback
+
+(nskk-describe "nskk-server-open configure rollback"
+  (nskk-it "rolls back every configure error and quit without altering the signal"
+    (let ((real-flag (symbol-function 'set-process-query-on-exit-flag))
+          (real-add-hook (symbol-function 'add-hook))
+          (real-retract (symbol-function 'nskk-prolog-retract-all))
+          (real-assert (symbol-function 'nskk-prolog-assert)))
+      (dolist (kind '(error quit))
+        (dolist (stage '(query hook retract assert debug))
+          (let* ((name (format "nskk-configure-%s-%s" stage kind))
+                 (nskk--server-buffer-name (format " *%s*" name))
+                 (buffer (get-buffer-create nskk--server-buffer-name))
+                 (proc (make-pipe-process :name name
+                                          :buffer buffer
+                                          :noquery t))
+                 (nskk-server-enable t)
+                 (nskk--server-process 'previous-process)
+                 (nskk--server-pending-cleanups nil)
+                 (nskk--server-kill-emacs-hook-registered nil)
+                 (kill-emacs-hook nil)
+                 (data (list "injected" stage kind))
+                 (caught nil)
+                 (retract-injected nil))
+            (unwind-protect
+                (cl-letf
+                    (((symbol-function 'nskk--server-make-connection)
+                      (lambda ()
+                        (process-put proc 'nskk-server-owned-buffer t)
+                        proc))
+                     ((symbol-function 'set-process-query-on-exit-flag)
+                      (lambda (&rest args)
+                        (if (eq stage 'query)
+                            (signal kind data)
+                          (apply real-flag args))))
+                     ((symbol-function 'add-hook)
+                      (lambda (&rest args)
+                        (apply real-add-hook args)
+                        (when (eq stage 'hook) (signal kind data))))
+                     ((symbol-function 'nskk-prolog-retract-all)
+                      (lambda (&rest args)
+                        (if (and (eq stage 'retract) (not retract-injected))
+                            (progn
+                              (setq retract-injected t)
+                              (signal kind data))
+                          (apply real-retract args))))
+                     ((symbol-function 'nskk-prolog-assert)
+                      (lambda (facts)
+                        (if (and (eq stage 'assert)
+                                 (equal facts '((server-state open))))
+                            (signal kind data)
+                          (funcall real-assert facts))))
+                     ((symbol-function 'nskk-debug-message)
+                      (lambda (&rest _)
+                        (when (eq stage 'debug) (signal kind data)))))
+                  (condition-case condition
+                      (nskk-server-open)
+                    ((error quit) (setq caught condition)))
+                  (should (eq (car caught) kind))
+                  (should (equal (cdr caught) data))
+                  (should (eq nskk--server-process 'previous-process))
+                  (should-not nskk--server-kill-emacs-hook-registered)
+                  (should-not (memq #'nskk-server-close kill-emacs-hook))
+                  (should-not (process-live-p proc))
+                  (should-not (buffer-live-p buffer))
+                  (should (nskk-prolog-holds-p '(server-state closed))))
+              (when (process-live-p proc) (delete-process proc))
+              (when (buffer-live-p buffer) (kill-buffer buffer))
+              (funcall real-retract 'server-state 1)
+              (funcall real-assert '((server-state closed))))))))))
+
+;;;; Open idempotence and buffer-kill hygiene
+
+(nskk-describe "repeated opens"
+  (nskk-it "reuses one process and one owned buffer across repeated opens"
+    (let ((real-configure (symbol-function 'nskk--server-configure-process))
+          (real-delete (symbol-function 'delete-process))
+          (real-add-hook (symbol-function 'add-hook))
+          (real-retract (symbol-function 'nskk-prolog-retract-all))
+          (real-assert (symbol-function 'nskk-prolog-assert))
+          (nskk-server-enable t)
+          (nskk--server-process nil)
+          (nskk--server-pending-cleanups nil)
+          (nskk--server-kill-emacs-hook-registered nil)
+          (kill-emacs-hook nil)
+          (nskk--server-buffer-name " *nskk-idempotent-open*")
+          (make-count 0)
+          (configure-count 0)
+          (delete-count 0)
+          (add-hook-count 0)
+          (created nil)
+          (owned-buffer nil))
+      (unwind-protect
+          (cl-letf
+              (((symbol-function 'nskk--server-make-connection)
+                (lambda ()
+                  (cl-incf make-count)
+                  (let* ((owned (not (get-buffer nskk--server-buffer-name)))
+                         (buffer (get-buffer-create nskk--server-buffer-name))
+                         (proc (make-pipe-process
+                                :name (format "nskk-idempotent-open-%d"
+                                              make-count)
+                                :buffer buffer
+                                :noquery t)))
+                    (process-put proc 'nskk-server-owned-buffer owned)
+                    (when owned (setq owned-buffer buffer))
+                    (push proc created)
+                    proc)))
+               ((symbol-function 'nskk--server-configure-process)
+                (lambda (proc)
+                  (cl-incf configure-count)
+                  (funcall real-configure proc)))
+               ((symbol-function 'delete-process)
+                (lambda (proc)
+                  (cl-incf delete-count)
+                  (funcall real-delete proc)))
+               ((symbol-function 'add-hook)
+                (lambda (&rest args)
+                  (cl-incf add-hook-count)
+                  (apply real-add-hook args))))
+            (let ((first (nskk-server-open))
+                  (hooks-after-first nil)
+                  (second nil))
+              (setq hooks-after-first add-hook-count)
+              (setq second (nskk-server-open))
+              (should (processp first))
+              (should (eq second first))
+              (should (eq nskk--server-process first))
+              (should (= make-count 1))
+              (should (= configure-count 1))
+              (should (= delete-count 0))
+              (should (= add-hook-count hooks-after-first))
+              (should (memq #'nskk-server-close kill-emacs-hook))
+              (should (nskk-prolog-holds-p '(server-state open)))
+              (should (= (length created) 1))
+              (should (eq (process-buffer first) owned-buffer))
+              (should (process-live-p first))
+              (nskk-server-close)
+              (should (> delete-count 0))
+              (should-not (process-live-p first))
+              (should-not nskk--server-process)
+              (should-not (buffer-live-p owned-buffer))))
+        (dolist (proc created)
+          (when (process-live-p proc) (funcall real-delete proc)))
+        (when-let* ((buf (get-buffer nskk--server-buffer-name)))
+          (kill-buffer buf))
+        (setq nskk--server-process nil)
+        (funcall real-retract 'server-state 1)
+        (funcall real-assert '((server-state closed))))))
+
+  (nskk-it "kills an owned buffer without running hooks or query functions"
+    (let* ((nskk--server-buffer-name " *nskk-server-close-owned*")
+           (buffer (get-buffer-create nskk--server-buffer-name))
+           (proc (make-pipe-process :name "nskk-server-close-owned"
+                                    :buffer buffer
+                                    :noquery nil))
+           (nskk--server-process proc)
+           (nskk--server-pending-cleanups nil)
+           (hook-called nil)
+           (query-called nil))
+      (process-put proc 'nskk-server-owned-buffer t)
+      (set-process-query-on-exit-flag proc t)
+      (with-current-buffer buffer
+        (setq-local buffer-offer-save t)
+        (set-buffer-modified-p t)
+        (add-hook 'kill-buffer-hook (lambda () (setq hook-called t)) nil t)
+        (add-hook 'kill-buffer-query-functions
+                  (lambda () (setq query-called t) nil)
+                  nil t))
+      (unwind-protect
+          (progn
+            (nskk-server-close)
+            (should-not (buffer-live-p buffer))
+            (should-not hook-called)
+            (should-not query-called)
+            (should-not (process-query-on-exit-flag proc)))
+        (when (process-live-p proc)
+          (set-process-query-on-exit-flag proc nil)
+          (delete-process proc))
+        (when (buffer-live-p buffer)
+          (with-current-buffer buffer
+            (let ((kill-buffer-hook nil)
+                  (kill-buffer-query-functions nil)
+                  (buffer-offer-save nil))
+              (set-buffer-modified-p nil)
+              (kill-buffer buffer))))
+        (nskk-server-test--set-state 'closed)))))
+
+;;;; Setup faults before the request is sent
+
+(nskk-describe "pre-send setup faults"
+  (nskk-it "does not close when preparing the request signals before any send"
+    (nskk-server-test--with-pipe "nskk-presend-fault" proc _buf
+      (let ((closed 0)
+            (sent nil))
+        (setq nskk--server-process proc)
+        (set-process-coding-system proc 'euc-jp-unix 'euc-jp-unix)
+        (let ((nskk-server-coding-system 'euc-jp))
+          (nskk-with-mocks
+              ((erase-buffer (lambda () (error "buffer must not be erased")))
+               (process-send-string (lambda (&rest _) (setq sent t)))
+               (nskk-server-close (lambda () (cl-incf closed))))
+            (should-not (nskk--server-with-response "かんじ"))))
+        (should-not sent)
+        (should (= closed 0))))))
+
 (provide 'nskk-server-test)
 
 ;;; nskk-server-test.el ends here

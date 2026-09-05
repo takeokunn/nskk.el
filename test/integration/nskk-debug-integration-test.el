@@ -9,7 +9,7 @@
 
 ;;; Commentary:
 
-;; Integration tests for nskk-debug.el: paths that cross into `nskk-custom'
+;; Integration tests for nskk-debug.el: paths that cross into its customization
 ;; or drive the whole log pipeline.  Each command's behaviour in isolation is
 ;; covered by test/unit/nskk-debug-test.el and is not repeated here.
 
@@ -17,7 +17,6 @@
 
 (require 'ert)
 (require 'subr-x)
-(require 'nskk-custom)
 (require 'nskk-debug)
 (require 'nskk-test-macros)
 
