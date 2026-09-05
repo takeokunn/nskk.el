@@ -49,7 +49,6 @@
          (nskk-max-registration-depth)
          (nskk-debug-enabled)
          (nskk-debug-max-entries)
-         (nskk-show-tooltip)
          (nskk-dcomp-multiple-activate)
          (nskk-dcomp-multiple-rows)
          (nskk-kakutei-jisyo))
@@ -94,7 +93,6 @@
 (nskk-deftest-table custom-nil-defaults
   :columns (var)
   :rows ((nskk-debug-enabled)
-         (nskk-show-tooltip)
          (nskk-dcomp-multiple-activate)
          (nskk-kakutei-jisyo))
   :description "defcustom variables that default to nil (boolean or file-or-nil type)"
@@ -191,8 +189,6 @@
          (nskk-converter-auto-start-henkan         nil)
          (nskk-use-color-cursor                    nil)
          (nskk-debug-enabled                       nil)
-         (nskk-show-tooltip                        t)
-         (nskk-show-tooltip                        nil)
          (nskk-dcomp-multiple-activate             t)
          (nskk-dcomp-multiple-activate             nil)
          (nskk-state-default-mode                  ascii)
@@ -211,7 +207,6 @@
          (nskk-henkan-show-candidates-nth     3.14)
          (nskk-dcomp-multiple-rows            "seven")
          (nskk-converter-auto-start-henkan    1)
-         (nskk-show-tooltip                   1)
          (nskk-dcomp-multiple-activate        0)
          (nskk-state-default-mode             42)
          (nskk-state-default-mode             "ascii")

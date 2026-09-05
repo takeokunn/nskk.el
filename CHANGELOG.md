@@ -159,6 +159,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Made the debug module's hand-written CPS continuation-pattern declaration
   visible during byte compilation, so the CPS bind forms' guard against
   binding a `defun/done` function is no longer inert while the file compiles.
+- Removed the `nskk-show-tooltip` user option. Its only readers were the
+  tooltip candidate-display functions deleted earlier in this cycle, so
+  setting it had no effect; its documented precedence over `nskk-show-inline`
+  was never implemented. The `nskk-candidate-window` customization group
+  remains, carrying the candidate faces.
 
 ### Fixed
 

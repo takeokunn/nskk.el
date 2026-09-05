@@ -276,15 +276,6 @@ expecting the OS input method (e.g. macSKK) to provide Japanese input."
   :prefix "nskk-candidate-"
   :group 'nskk-ui)
 
-(defcustom nskk-show-tooltip nil
-  "When non-nil, display conversion candidates using Emacs tooltip.
-Only works in GUI Emacs (not terminal).  When both `nskk-show-inline' and
-`nskk-show-tooltip' are non-nil, `nskk-show-inline' takes precedence."
-  :type 'boolean
-  :safe #'booleanp
-  :package-version '(nskk . "0.1.0")
-  :group 'nskk-candidate-window)
-
 ;;;; Dynamic Completion Multiple Display Settings
 
 (defgroup nskk-dcomp nil
