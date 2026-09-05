@@ -33,7 +33,6 @@
 (require 'nskk)
 (require 'nskk-prolog)
 (require 'nskk-state)
-(require 'nskk-trie)
 
 (declare-function nskk--set-mode "nskk-input")
 (declare-function nskk-modeline-update "nskk-modeline")
