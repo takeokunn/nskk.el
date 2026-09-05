@@ -890,9 +890,9 @@ condition.  If rollback also fails, retain its diagnostic and the snapshot."
                   (nskk-dict-system-index)))
          ;; Computed AFTER the snapshot above, deliberately: this query's
          ;; own proving/unification touches `nskk--prolog-var-counter' as a
-         ;; side effect (FR-010's `module-initialized-flag' lookup), and the
-         ;; published working graph must be a byte-for-byte-faithful copy
-         ;; of the state as it existed before this function ran anything.
+         ;; side effect (the `module-initialized-flag' query below), and the
+         ;; published working graph must be a byte-for-byte-faithful copy of
+         ;; the state as it existed before this function ran anything.
          (init-flags
           (mapcar (lambda (symbol)
                     (cons symbol (symbol-value symbol)))
