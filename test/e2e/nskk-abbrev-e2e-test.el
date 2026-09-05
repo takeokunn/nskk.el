@@ -201,7 +201,7 @@
         (nskk-e2e-assert-converting)
         (nskk-e2e-type "RET")
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-buffer "テスト")
+        (nskk-e2e-assert-buffer "テスト\n")
         (nskk-e2e-assert-mode 'hiragana))))
 
   (nskk-it "cycles to second candidate with SPC then commits with C-j"

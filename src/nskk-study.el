@@ -72,8 +72,8 @@ checked for matching associations."
 
 (defcustom nskk-study-max-distance 30
   "Maximum buffer distance for recording study associations.
-When the current conversion point exceeds this distance (in characters)
-from the previous kakutei position, no association is recorded.
+Associations require a position after the previous kakutei and strictly
+less than this distance (in characters) from it.
 Set to nil to disable the distance check."
   :type '(choice natnum (const :tag "No limit" nil))
   :safe (lambda (v)
@@ -130,8 +130,8 @@ BUFFER is the buffer where confirmation occurred."
       (null nskk--study-kakutei-ring)
       (let ((last (car nskk--study-kakutei-ring)))
         (and (eq current-buffer (plist-get last :buffer))
-             (<= (abs (- current-point (plist-get last :point)))
-                 nskk-study-max-distance)))))
+             (< 0 (- current-point (plist-get last :point))
+                nskk-study-max-distance)))))
 
 ;;;; Core API
 (defun nskk--study-record-allowed-p (word index)
@@ -203,7 +203,7 @@ promoted to the front.  Returns the (possibly reordered) candidate list."
                         (plist-get entry :word) reading candidates))
                      nskk--study-kakutei-ring)))
       (if promoted
-          (cons promoted (remove promoted candidates))
+          (cons promoted (cl-remove promoted candidates :test #'eq :count 1))
         candidates))))
 
 ;;;; Persistence

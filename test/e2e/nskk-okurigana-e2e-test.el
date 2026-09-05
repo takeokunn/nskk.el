@@ -907,49 +907,46 @@
 ;;;;
 
 (nskk-describe "SPC during partial consonant okurigana (TR-001 through TR-005)"
-  (nskk-it "TR-001: SPC during ▽か*k shows first candidate ▼書"
+  (nskk-it "TR-001: SPC during ▽か*k rejects missing okurigana"
     (let ((dict '(("かk" . ("書" "佳")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "K")
         (nskk-e2e-type "a")
         (nskk-e2e-type "K")
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "書"))))
+        (should-error (nskk-e2e-type "SPC") :type 'error)
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-assert-buffer "▽か*"))))
 
-  (nskk-it "TR-002: SPC during ▽か*k with empty dict triggers registration"
+  (nskk-it "TR-002: SPC during ▽か*k with empty dict retains preedit"
     (let ((dict '(("あ" . ("亜")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "K")
         (nskk-e2e-type "a")
         (nskk-e2e-type "K")
-        (nskk-e2e-type "SPC")
+        (should-error (nskk-e2e-type "SPC") :type 'error)
         (nskk-e2e-assert-henkan-phase 'on)
-        (should (not (string-match-p "\\*" (buffer-string)))))))
+        (nskk-e2e-assert-buffer "▽か*"))))
 
-  (nskk-it "TR-003: SPC then C-j during ▽か*k commits 書 (candidate only — no okurigana kana in SPC path)"
+  (nskk-it "TR-003: rejected SPC during ▽か*k clears pending consonant"
     (let ((dict '(("かk" . ("書")))))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "K")
         (nskk-e2e-type "a")
         (nskk-e2e-type "K")
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-type "C-j")
-        (nskk-e2e-assert-buffer "書"))))
+        (should-error (nskk-e2e-type "SPC") :type 'error)
+        (should (string-empty-p (nskk-state-romaji-buffer)))
+        (nskk-e2e-assert-buffer "▽か*"))))
 
-  (nskk-it "TR-004: second SPC after ▽か*k conversion advances to next candidate ▼佳"
+  (nskk-it "TR-004: repeated SPC still rejects absent okurigana"
     (let ((dict '(("かk" . ("書" "佳"))))
           (nskk-henkan-show-candidates-nth 4))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "K")
         (nskk-e2e-type "a")
         (nskk-e2e-type "K")
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "書")
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-overlay-shows "佳"))))
+        (should-error (nskk-e2e-type "SPC") :type 'error)
+        (should-error (nskk-e2e-type "SPC") :type 'error)
+        (nskk-e2e-assert-buffer "▽か*"))))
 
   (nskk-it "TR-005: normal SPC conversion (▽か + SPC) still works (regression guard)"
     (let ((dict '(("か" . ("花" "香")))))
@@ -988,19 +985,21 @@
                                 captured-prompt)))
             (should-not (string-match-p "書" reading-part)))))))
 
-  (nskk-it "OKU-4: SPC okurigana path calls on-found continuation"
+  (nskk-it "OKU-4: SPC without okurigana rejects conversion before continuation"
     (let ((dict '(("かk" . ("書" "掛"))))
           (on-found-called nil))
       (nskk-e2e-with-buffer 'hiragana dict
         (nskk-e2e-type "K")
         (nskk-e2e-type "a")
         (nskk-e2e-type "K")
-        (nskk-start-conversion/k
-         (lambda (&rest _args)
-           (setq on-found-called t))
-         #'ignore
-         #'ignore)
-        (should on-found-called)))))
+        (should-error
+         (nskk-start-conversion/k
+          (lambda (&rest _args)
+            (setq on-found-called t))
+          #'ignore
+          #'ignore))
+        (should-not on-found-called)
+        (nskk-e2e-assert-buffer "▽か*")))))
 
 ;;;;
 ;;;; Post-command-handler okurigana guard (point-escape regression)

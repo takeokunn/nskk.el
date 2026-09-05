@@ -93,6 +93,27 @@
                    (list (list :word "雨" :point 10 :buffer other-buf))))
               (should-not (nskk--study-distance-ok-p 15 (current-buffer))))))))))
 
+(nskk-deftest-table study-distance-ddskk-boundaries
+  :columns (distance expected)
+  :rows ((0 ("振る" "降る"))
+         (-1 ("振る" "降る"))
+         (1 ("降る" "振る"))
+         (30 ("振る" "降る"))
+         (31 ("振る" "降る")))
+  :body
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-retract-all 'study-association 3)
+    (with-temp-buffer
+      (insert (make-string 100 ?x))
+      (goto-char (+ 40 distance))
+      (let ((nskk-study-max-distance 30)
+            (nskk-study-first-candidate t)
+            (nskk--study-kakutei-ring
+             (list (list :word "雨" :point 40 :buffer (current-buffer)))))
+        (nskk-study-record "ふる" "降る" 1)
+        (should (equal (nskk-study-reorder "ふる" '("振る" "降る"))
+                       expected))))))
+
 ;;;
 ;;; Study Association Recording
 ;;;
@@ -768,6 +789,31 @@ regressing back to a silent no-op."
 (ert-deftest nskk-study-test/load-rejects-status-change-time-change-during-read ()
   "A ctime-only race must not update existing facts."
   (nskk-study-test--assert-load-rejects-time-race 6))
+
+(ert-deftest nskk-study-test/reorder-preserves-equal-candidate-identities ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-retract-all 'study-association 3)
+    (nskk-prolog-assert '((study-association "previous" "12こ" "12個")))
+    (let* ((first (copy-sequence "12個"))
+           (second (copy-sequence "12個"))
+           (candidates (list "別" first second))
+           (nskk--study-kakutei-ring '((:word "previous")))
+           (result (nskk-study-reorder "12こ" candidates)))
+      (should (= (length result) 3))
+      (should (eq (car result) first))
+      (should (eq (nth 2 result) second))
+      (should (equal candidates '("別" "12個" "12個"))))))
+
+(ert-deftest nskk-study-test/reorder-removes-only-one-occurrence ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-retract-all 'study-association 3)
+    (nskk-prolog-assert '((study-association "previous" "12こ" "12個")))
+    (let* ((candidate (copy-sequence "12個"))
+           (nskk--study-kakutei-ring '((:word "previous")))
+           (result (nskk-study-reorder "12こ" (list candidate candidate))))
+      (should (= (length result) 2))
+      (should (eq (car result) candidate))
+      (should (eq (cadr result) candidate)))))
 
 (provide 'nskk-study-test)
 

@@ -32,6 +32,7 @@
 (require 'subr-x)
 (require 'nskk-prolog)
 (require 'nskk-cps-macros)
+(require 'nskk-annotation)
 (require 'nskk-debug nil t)
 
 (declare-function nskk-debug-message "nskk-debug" (fmt &rest args))
@@ -562,32 +563,40 @@ An annotation follows a semicolon: \"word;note\" yields \"word\"."
   (let ((semi (string-search ";" candidate)))
     (if semi (substring candidate 0 semi) candidate)))
 
-(defun nskk--server-parse-candidates (body)
+(defun nskk--server-parse-candidates (body &optional key)
   "Return the candidate list parsed from skkserv response BODY.
 Candidates holding control characters are dropped, annotations stripped,
-and surrounding whitespace trimmed."
+and surrounding whitespace trimmed.
+When KEY is non-nil, register retained candidates' annotations for KEY."
   (delq nil
         (mapcar
          (lambda (candidate)
            (unless (nskk--server-control-char-p candidate)
-             (let ((stripped (nskk--server-strip-annotation
-                              (string-trim candidate))))
+             (let* ((trimmed (string-trim candidate))
+                    (stripped (nskk--server-strip-annotation trimmed)))
                (unless (string-empty-p stripped)
+                 (when key
+                   (let ((semi (string-search ";" trimmed)))
+                     (when (and semi (not (nskk-annotation-lookup key stripped)))
+                       (nskk-annotation-initialize)
+                       (nskk-annotation-load-from-candidates
+                        key (list (cons stripped (substring trimmed (1+ semi))))))))
                  stripped))))
          (split-string body "/" t))))
 
-(defun/k nskk--server-parse-response (response)
+(defun/k nskk--server-parse-response (response &optional key)
   "Parse a skkserv command-1 RESPONSE string into a candidate list.
 Dispatch on the response prefix through the Prolog server-response-type/2
 predicate; only the found prefix yields candidates.  Succeed with a
-non-empty candidate list; fail for not-found, empty, or non-string input."
+non-empty candidate list; fail for not-found, empty, or non-string input.
+When KEY is non-nil, register retained candidates' annotations for KEY."
   (if (and (stringp response)
            (not (string-empty-p response))
            (nskk-prolog-holds-p
             `(server-response-type ,(substring response 0 1) found)))
       (let ((candidates
              (nskk--server-parse-candidates
-              (string-trim-right (substring response 1) "[\r\n]+"))))
+              (string-trim-right (substring response 1) "[\r\n]+") key)))
         (if candidates (succeed candidates) (fail)))
     (fail)))
 
@@ -695,7 +704,7 @@ OKURI-ARI keys should be passed in their standard SKK format (e.g.,
 \"かんじk\" for okurigana words); the server handles them natively."
   (<- _guard nskk--server-lookup-guards-p key)
   (<- resp nskk--server-with-response key)
-  (<- result nskk--server-parse-response resp)
+  (<- result nskk--server-parse-response resp key)
   (succeed result))
 
 (provide 'nskk-server)

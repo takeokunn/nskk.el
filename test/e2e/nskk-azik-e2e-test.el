@@ -958,24 +958,29 @@
 
 (nskk-describe "AZIK okurigana: SPC during partial consonant okurigana"
 
-  (nskk-it "OkuR + SPC triggers okurigana conversion showing 送"
+  (nskk-it "OkuR + SPC reports missing okurigana and preserves preedit"
     (let ((dict '(("おくr" . ("送" "贈")))))
       (nskk-e2e-with-azik-buffer 'hiragana dict
         (nskk-e2e-type "Oku")
         (nskk-e2e-type "R")
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-converting)
-        (nskk-e2e-assert-overlay-shows "送"))))
+        (should (equal (should-error (nskk-e2e-type "SPC") :type 'error)
+                       '(error "No okurigana!")))
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-assert-buffer "▽おく*"))))
 
-  (nskk-it "OkuR + SPC SPC cycles to second candidate 贈"
+  (nskk-it "OkuR + repeated SPC reports missing okurigana after each attempt"
     (let ((dict '(("おくr" . ("送" "贈")))))
       (nskk-e2e-with-azik-buffer 'hiragana dict
         (nskk-e2e-type "Oku")
         (nskk-e2e-type "R")
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-overlay-shows "送")
-        (nskk-e2e-type "SPC")
-        (nskk-e2e-assert-overlay-shows "贈")))))
+        (should (equal (should-error (nskk-e2e-type "SPC") :type 'error)
+                       '(error "No okurigana!")))
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-assert-buffer "▽おく*")
+        (should (equal (should-error (nskk-e2e-type "SPC") :type 'error)
+                       '(error "No okurigana!")))
+        (nskk-e2e-assert-henkan-phase 'on)
+        (nskk-e2e-assert-buffer "▽おく*")))))
 
 ;;; 14.6 KaKi multi-candidate cycling regression guard
 
@@ -1077,14 +1082,17 @@
           (should-not (nskk-azik-colon-okuri-pending)))))))
 
 (nskk-describe "AZIK semicolon respects sticky shift"
-  (nskk-it "sticky-shift state survives AZIK style on semicolon"
+  (nskk-it "pending sticky shift takes precedence over newly selected AZIK style"
     (nskk-e2e-with-buffer 'hiragana nil
       (let ((nskk-converter-romaji-style 'standard))
         (nskk-e2e-type ";"))
+      (should nskk--sticky-shift-pending)
+      (nskk-e2e-assert-henkan-phase 'on)
       (let ((nskk-converter-romaji-style 'azik))
         (nskk-e2e-type ";"))
       (nskk-e2e-assert-henkan-phase nil)
-      (nskk-e2e-assert-buffer ";"))))
+      (should-not nskk--sticky-shift-pending)
+      (nskk-e2e-assert-buffer "；"))))
 
 ;;;; 
 ;;;; Section 17: JP106 + Key Immediate Sokuon Okurigana
@@ -1300,7 +1308,7 @@
       (nskk-e2e-assert-henkan-phase nil "After DEL of DA: preedit cancelled (no content left)")
       (nskk-e2e-assert-buffer "" "After DEL of DA: buffer empty")))
 
-  (nskk-it "T-02: DEL rolls back tentative すう from DV (sh in preedit)"
+  (nskk-it "T-02: DEL removes final vowel and preserves す from Sh preedit"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "S")
       (nskk-e2e-type "h")
@@ -1308,8 +1316,8 @@
       (should (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state)))
       (nskk-e2e-type "DEL")
       (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))
-      (nskk-e2e-assert-henkan-phase nil "After DEL of DV: preedit cancelled (no content left)")
-      (nskk-e2e-assert-buffer "" "After DEL of DV: buffer empty")))
+      (nskk-e2e-assert-henkan-phase 'on "After DEL of DV: preedit retains the first kana")
+      (nskk-e2e-assert-buffer "▽す" "After DEL of DV: only the final vowel is removed")))
 
   (nskk-it "T-03: DEL with DA preserves prior kana in preedit (kakk)"
     (nskk-e2e-with-azik-buffer 'hiragana nil
@@ -1324,7 +1332,7 @@
       (nskk-e2e-assert-henkan-phase 'on "After DEL of DA: preedit survives with prior kana")
       (nskk-e2e-assert-buffer "▽か" "After DEL of DA: tentative きん removed, か remains")))
 
-  (nskk-it "T-04: DEL with DV preserves prior kana in preedit (kash)"
+  (nskk-it "T-04: DEL with DV preserves かす in Kash preedit"
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (nskk-e2e-type "K")
       (nskk-e2e-type "a")
@@ -1335,7 +1343,7 @@
       (nskk-e2e-type "DEL")
       (should (not (and (fboundp 'nskk-deferred-vowel-shadow-state) (nskk-deferred-vowel-shadow-state))))
       (nskk-e2e-assert-henkan-phase 'on "After DEL of DV: preedit survives with prior kana")
-      (nskk-e2e-assert-buffer "▽か" "After DEL of DV: tentative すう removed, か remains"))))
+      (nskk-e2e-assert-buffer "▽かす" "After DEL of DV: only the final vowel is removed"))))
 
 ;;;;
 ;;;; Section 21: AZIK Custom Conversion Table — E2E Input Pipeline

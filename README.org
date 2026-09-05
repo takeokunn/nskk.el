@@ -1,5 +1,4 @@
 #+title: NSKK — Next-generation SKK for Emacs
-#+subtitle: A modern, zero-dependency Japanese input method
 #+author: takeokunn
 
 [[https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml][file:https://github.com/takeokunn/nskk.el/actions/workflows/ci.yml/badge.svg]]
@@ -7,58 +6,29 @@
 
 * Overview
 
-NSKK is a modern, zero-dependency Japanese input method for Emacs built on
-SKK (Simple Kana to Kanji) principles. It delivers:
-
-- Clean architecture — 7-layer modular design with full lexical-binding
-- DDSKK compatibility — Familiar keybindings and behavior
-- Extensible — Embedded Prolog engine for customizable conversion logic
-
-#+begin_quote
-NSKK = Next-generation SKK = 次世代 SKK
-#+end_quote
+NSKK is a Japanese input method for Emacs based on SKK (Simple Kana to Kanji).
+Type a reading in romaji, start conversion with =SPC=, and select a candidate
+from an SKK dictionary.
 * Features
 ** Zero Dependencies
 
-Only Emacs 29.1+ built-in packages:
-- cl-lib (Emacs 24.3+)
-- subr-x (Emacs 24.4+)
+Requires Emacs 29.1 or later. No external ELPA packages are required.
 
-No external ELPA packages required.
+** SKK Input
 
-** Modern Architecture
-
-| Component        | Description                             |
-|------------------+-----------------------------------------|
-| Lexical binding  | All 29 source modules use =lexical-binding: t= |
-| Prolog engine    | Conversion rules as facts/queries       |
-| Layer separation | 7 strict layers, zero circular deps     |
-| Test coverage    | 5,000+ unit/integration/E2E tests       |
-
-** DDSKK Compatibility
-
-- Same keybindings (=C-j=, =SPC=, =x=, =q=, =l=, etc.)
-- Same mode indicators (かな, カナ, SKK, 全英, aA)
-- Same dictionary format (SKK-JISYO)
-- Same conversion markers (▽ for preedit, ▼ for conversion)
+- Hiragana, katakana, half-width katakana, and Latin input
+- SKK-JISYO dictionaries, user dictionary registration, and skkserv lookup
+- Standard romaji and AZIK input
+- Conversion markers: ▽ for a reading, ▼ for candidate selection
 
 * Installation
-** MELPA
-#+begin_src elisp
-;; After nskk is available on MELPA:
-(use-package nskk
-  :ensure t)
-#+end_src
 ** From source
+
+Clone this repository and add its =src= directory to =load-path=.
+Replace the example path with your checkout's location:
+
 #+begin_src elisp
-(use-package nskk
-  :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest
-       :lisp-dir "src")
-  :custom
-  (nskk-dict-system-dictionary-files
-   '("/usr/share/skk/SKK-JISYO.L"))
-  :config
-  (nskk-global-mode 1))
+(add-to-list 'load-path "/path/to/nskk.el/src")
 #+end_src
 * Quick Start
 ** Minimal Configuration
@@ -66,30 +36,30 @@ No external ELPA packages required.
 (require 'nskk)
 (nskk-global-mode 1)
 
-;; NSKK uses Emacs's built-in ja-dic by default when available.
-;; You can still override it with `nskk-dict-system-dictionary-files'.
-
 ;; After nskk-global-mode is enabled:
 ;; C-j       → switch to hiragana input (from ascii mode)
 ;; C-x C-j   → toggle nskk-mode on/off in current buffer
 #+end_src
-** With System Dictionary
-#+begin_src elisp
-;; Debian/Ubuntu: apt install skktools
-;; macOS: brew install skk-jisyo
-;; NixOS: environment.systemPackages = [ skk-jisyo ];
 
+By default, NSKK searches system locations for SKK-JISYO files and falls back
+to Emacs's built-in =ja-dic= if none are found.
+
+** With System Dictionary
+
+To choose dictionaries explicitly, use this configuration instead of the minimal
+configuration. Replace the paths with existing dictionary files before enabling NSKK.
+
+#+begin_src elisp
+(require 'nskk)
 (setopt nskk-dict-system-dictionary-files
         '("/usr/share/skk/SKK-JISYO.L"
           "/usr/share/skk/SKK-JISYO.jinmei"
           "/usr/share/skk/SKK-JISYO.geo"))
 (nskk-global-mode 1)
 #+end_src
-** Recommended Configuration
+** Configuration Example
 #+begin_src elisp
 (use-package nskk
-  :vc (:url "https://github.com/takeokunn/nskk.el" :rev :newest
-       :lisp-dir "src")
   :custom
   ;; Start in hiragana mode (optional, default is ascii)
   (nskk-state-default-mode 'hiragana)
@@ -103,12 +73,7 @@ No external ELPA packages required.
 
   ;; Show candidate list after 2nd SPC (default: 5)
   (nskk-henkan-show-candidates-nth 2)
-
-  ;; Enable dictionary caching
-  (nskk-dict-cache-enabled t)
-
-  ;; AZIK romaji style (optional)
-  ;; (nskk-converter-romaji-style 'azik)
+  (nskk-henkan-number-to-display-candidates 7)
 
   :config
   (nskk-global-mode 1))
@@ -121,48 +86,42 @@ No external ELPA packages required.
 | Any      | =C-x C-j= | Toggle on/off | —         |
 | ascii    | =C-j=     | hiragana   | かな       |
 | hiragana | =q=       | katakana   | カナ       |
-| hiragana | =l=       | ascii      | SKK       |
+| hiragana | =l=       | latin      | SKK       |
 | hiragana | =L=       | full-width | 全英       |
 | hiragana | =/=       | abbrev     | aA        |
 
 ** Conversion Flow
-#+begin_src mermaid
-stateDiagram-v2
-    [*] --> ASCII: nskk-global-mode (default)
 
-    ASCII --> Hiragana: C-j
-    Hiragana --> ASCII: l
-    Hiragana --> Katakana: q
-    Hiragana --> FullWidth: L
-    Hiragana --> Abbrev: slash
-    Abbrev --> Conversion: SPC
-    Abbrev --> Hiragana: C-j / C-g
+In hiragana mode, type =Kanji= to enter the reading =▽かんじ=.
+The uppercase =K= starts the conversion reading.
+Press =SPC= to look up candidates and display the first one.
+While a single candidate is displayed inline, use =SPC= (next) or =x=
+(previous), then press =C-j= to commit without a newline, or =RET= to
+commit and insert a newline.
+=C-g= returns from candidate selection to the reading; another =C-g=
+cancels the reading.
 
-    Katakana --> Hiragana: q
-    Katakana --> Hiragana: C-j
-    Katakana --> ASCII: l
+Once the candidate list opens, select a visible candidate with its labeled
+key. =SPC= advances a page; =x=, =C-p=, or =DEL= returns to the previous
+page (or the previous inline candidate from the first page). =RET= and
+=C-j= leave the list open, and unrecognized keys are consumed without
+changing the reading or input mode. A configured selection key for a
+visible candidate takes precedence over these controls.
 
-    FullWidth --> Hiragana: C-j
-
-    Hiragana --> Preedit: Uppercase
-    Katakana --> Preedit: Uppercase
-    Preedit --> Conversion: SPC
-    Preedit --> Hiragana: C-g (returns to kana mode)
-
-    Conversion --> Hiragana: C-j (commit, returns to kana mode)
-    Conversion --> Conversion: SPC (next)
-    Conversion --> Conversion: x (prev)
-    Conversion --> Preedit: C-g (rollback)
-#+end_src
+If no candidate is found, or you advance past the available candidates,
+NSKK prompts for a word to register in the user dictionary. Enter the word
+in the minibuffer and press =RET=, or press =C-g= to cancel.
+To use NSKK kana input inside this prompt, set =nskk-use-kana-in-registration=
+to =t=; it is disabled by default.
 ** Key Bindings
 *** Mode Control
 
 | Key       | Command               | Description                                          |
 |-----------+-----------------------+------------------------------------------------------|
 | =C-x C-j= | =nskk-toggle-mode=    | Toggle NSKK in current buffer                        |
-| =C-j=     | =nskk-kakutei=        | Commit (hiragana) / enter hiragana (ascii) / newline |
+| =C-j=     | =nskk-kakutei=        | Commit reading or inline candidate; switch direct input to hiragana |
 | =q=       | =nskk-handle-q=       | Toggle hiragana ↔ katakana                           |
-| =l=       | =nskk-handle-l=       | Switch to ASCII mode                                 |
+| =l=       | =nskk-handle-l=       | Switch to Latin input                                |
 | =L=       | =nskk-handle-upper-l= | Switch to full-width latin (JIS X 0208)              |
 | =/=       | =nskk-handle-slash=   | Enter abbrev mode                                    |
 
@@ -173,34 +132,45 @@ stateDiagram-v2
 | =SPC=   | =nskk-handle-space=  | Start conversion / next candidate |
 | =x=     | =nskk-handle-x=      | Previous candidate                |
 | =X=     | =nskk-handle-upper-x=  | Purge candidate from user dictionary |
-| =RET=   | =nskk-handle-return= | Commit candidate + newline        |
+| =RET=   | =nskk-handle-return= | Commit inline candidate or reading and insert a newline |
 | =C-g=   | =nskk-handle-cancel= | Cancel conversion or preedit      |
-| =a=–=l= | direct select        | Select candidate in list mode     |
-| =C-n=   | =nskk-handle-ctrl-n= | Next candidate OR next line       |
-| =C-p=   | =nskk-handle-ctrl-p= | Prev candidate OR previous line   |
-| =C-/=   | =nskk-undo-kakutei=    | Undo last kakutei (revert commit)    |
+| =a s d f j k l= | direct select | Select candidate in list mode (default keys) |
+| =C-n=   | =nskk-handle-ctrl-n= | Next inline candidate; ignored in candidate list; otherwise commit any reading and move down |
+| =C-p=   | =nskk-handle-ctrl-p= | Previous candidate during selection; otherwise commit any reading and move up |
+| =C-/=   | =nskk-undo=          | Undo input or candidate selection; ordinary Emacs Undo after commit |
 
-*** Cursor Movement (in Conversion Mode)
+Ordinary Undo does not resume conversion: a restored =▼= is ordinary buffer
+text, not an active conversion marker. Continue Undo to remove that text.
+To reopen the last committed conversion at the next candidate, use
+=M-x nskk-undo-kakutei=. Moving the cursor or typing after the committed
+word does not prevent this command from reopening it. This command has no
+default key binding and cannot be repeated consecutively or during conversion.
+
+*** Cursor Movement (with an Inline Candidate)
 
 | Key        | Behavior                                 |
 |------------+------------------------------------------|
-| =↑ / C-p=  | Commit candidate + move to previous line |
-| =↓ / C-n=  | Commit candidate + move to next line     |
+| =↑ / C-p=  | Select previous candidate               |
+| =↓ / C-n=  | Select next candidate                   |
 | =← / C-b=  | Commit candidate + move backward         |
 | =→ / C-f=  | Commit candidate + move forward          |
 
 *** Line Navigation
 
+These bindings leave an open candidate list unchanged.
+
 | Key             | Behavior                                                    |
 |-----------------+-------------------------------------------------------------|
-| =C-a / <home>=  | Commit candidate (if converting) / go to beginning of line |
-| =C-e / <end>=   | Commit candidate (if converting) / go to end of line       |
+| =C-a / <home>=  | Commit any candidate or reading, then go to beginning of line |
+| =C-e / <end>=   | Commit any candidate or reading, then go to end of line       |
 
 *** Other Keys
 
 | Key   | Command                 | Description                                           |
 |-------+-------------------------+-------------------------------------------------------|
-| =DEL= | =nskk-handle-backspace= | Delete last preedit char / cancel conversion          |
+| =;=   | =nskk-handle-semicolon-key= | Sticky shift: start a reading when idle, or mark the okurigana boundary in preedit. Small っ in AZIK |
+| =#=   | =nskk-handle-hash=      | Start numeric input; dictionary keys beginning with =#= expand numeric candidates |
+| =DEL= | =nskk-handle-backspace= | Delete last preedit char / cancel inline conversion / go back in candidate list |
 | =TAB= | =nskk-handle-tab=       | Dynamic completion (preedit) / indent-for-tab-command |
 
 ** Input Modes
@@ -208,28 +178,14 @@ stateDiagram-v2
 | Mode             | Indicator | Description                       |
 |------------------+-----------+-----------------------------------|
 | =ascii=          | SKK       | Direct ASCII input (pass-through) |
+| =latin=          | SKK       | Direct input selected with =l=    |
 | =hiragana=       | かな       | Hiragana input                    |
 | =katakana=       | カナ       | Katakana input                    |
+| =katakana-半角=  | ｶﾅ        | Half-width katakana input         |
 | =jisx0208-latin= | 全英       | Full-width latin (JIS X 0208)     |
-| =abbrev=         | aA        | Abbreviation expansion            |
+| =abbrev=         | aA        | Literal dictionary key input: =/word SPC= looks up =word= |
 
 * Configuration
-** Common Options
-#+begin_src elisp
-;; Set initial input mode
-(setopt nskk-state-default-mode 'hiragana)
-
-;; System dictionary files
-(setopt nskk-dict-system-dictionary-files
-        '("/usr/share/skk/SKK-JISYO.L"))
-
-;; User dictionary location
-(setopt nskk-dict-user-dictionary-file "~/.nskk/jisyo")
-
-;; Candidate display
-(setopt nskk-henkan-show-candidates-nth 2)
-(setopt nskk-henkan-number-to-display-candidates 7)
-#+end_src
 ** SKK Server (skkserv)
 #+begin_src elisp
 ;; Connect to a running skkserv for extended dictionary lookup
@@ -237,38 +193,89 @@ stateDiagram-v2
 (setopt nskk-server-host "localhost")
 (setopt nskk-server-portnum 1178)
 #+end_src
-** Hooks
-#+begin_src elisp
-;; Run when NSKK is disabled
-(add-hook 'nskk-mode-off-hook
-          (lambda () (message "NSKK deactivated")))
-#+end_src
 ** AZIK Extended Romaji
 #+begin_src elisp
 ;; Enable AZIK for more efficient romaji input
 (setopt nskk-converter-romaji-style 'azik)
 
-;; Keyboard layout (us101 or jp106, default: us101)
+;; Keyboard layout (us101 or jp106, default: jp106)
 (setopt nskk-azik-keyboard-type 'jp106)
 #+end_src
 
-AZIK replaces standard romaji with efficiency shortcuts:
-- =f= → ん hatsuon (e.g. =kf= → かん)
-- =j= → ん hatsuon (e.g. =sj= → さん)
-- Double consonant suffixes → double vowels (e.g. =kk= → きん, =sh= → すう)
+AZIK adds shortened input sequences:
+- =kz= → かん
+- =sz= → さん
+- =kh= → くう
 
 ** Optional Features
 
-All optional features are auto-loaded when NSKK starts if their modules are present.
+These modules are included in this repository and loaded when NSKK starts.
+Use the settings below to enable their behavior.
 
 | Feature              | Module                 | Enable with                                  |
 |----------------------+------------------------+----------------------------------------------|
 | Annotation display   | =nskk-annotation=      | =(setopt nskk-show-annotation t)=            |
 | Inline mode display  | =nskk-show-mode=       | =(setopt nskk-show-mode-show t)=             |
-| Dynamic dcomp multi  | =nskk-inline=          | =(setopt nskk-dcomp-multiple-activate t)=    |
+| Inline candidate display | =nskk-inline=      | =(setopt nskk-show-inline t)=                |
 | Context auto-mode    | =nskk-context=         | =(nskk-context-global-mode 1)=               |
 | Isearch integration  | =nskk-isearch=         | =(setopt nskk-isearch-enable t)=             |
-| Region operations    | =nskk-region=          | Available as =M-x nskk-*-region= commands   |
+| Region operations    | =nskk-region=          | For example, =M-x nskk-hiragana-region= or =M-x nskk-katakana-region= |
+| Program dictionaries | =nskk-program-dictionary= | =(setopt nskk-program-dict-enable t)=     |
+
+Context auto-mode switches to Latin input outside strings and comments in
+programming modes. It does not automatically switch back to kana input.
+
+=nskk-study= ships with NSKK but is not loaded automatically. Require it
+explicitly to enable contextual learning, which reorders candidates based on
+the previously confirmed word:
+
+#+begin_src elisp
+(require 'nskk-study)
+
+;; Where associations are persisted.
+;; Default: "nskk/study.dat" under `user-emacs-directory'
+(setopt nskk-study-file (expand-file-name "nskk/study.dat" user-emacs-directory))
+#+end_src
+
+** Dynamic Completion
+#+begin_src elisp
+;; How completion is presented in preedit.
+;;   capf  -- completion-at-point-functions; works with corfu, company,
+;;            vertico or the built-in *Completions* (default)
+;;   cycle -- DDSKK-style TAB cycling, replacing preedit text directly
+(setopt nskk-dcomp-style 'capf)
+
+;; Show several completion candidates at once instead of one
+(setopt nskk-dcomp-multiple-activate t)
+#+end_src
+
+** Program Dictionaries
+
+A program dictionary answers lookups by running an external command or an
+Emacs Lisp function instead of reading an SKK-JISYO file.
+
+#+begin_src elisp
+(setopt nskk-program-dict-enable t)
+
+;; Each entry is a command template or a function. In a template the
+;; whitespace-delimited token %s becomes one argv element; without it the
+;; reading is sent on stdin. No shell interpolation is performed.
+(setopt nskk-program-dicts '("/usr/local/bin/my-dict %s"))
+
+;; Wait budget in seconds per external command (default 1.0)
+(setopt nskk-program-dict-timeout 1.0)
+#+end_src
+
+A function entry is called with the reading and must return nil or a list of
+candidate strings. Commands run through =make-process=; stdout is capped at
+1 MiB and parsed as SKK, skkserv, or one-candidate-per-line output, and a
+command that times out, exceeds the cap, or exits nonzero counts as a miss.
+
+=nskk-program-dict-enable= and =nskk-program-dicts= are marked =:risky=, so
+Emacs will not accept them from a file-local variable without confirmation.
+Entries name a command or function NSKK will execute; only add sources you
+trust. With =nskk-program-dict-enable= nil, the default, lookups fail
+immediately and =nskk-program-dicts= is never consulted.
 
 ** Customization Group
 #+begin_example
@@ -288,12 +295,6 @@ make compile
 make test
 #+end_src
 
-#+begin_quote
-The project includes =flake.nix= for a convenient Nix development environment.
-=nix develop= provides Emacs 29.1+ with the development dependencies used by
-the project.
-#+end_quote
-
 ** Commands
 
 | Command                 | Description                |
@@ -304,7 +305,13 @@ the project.
 | =make test-integration= | Run integration tests only |
 | =make test-e2e=         | Run end-to-end tests only  |
 | =make lint=             | Run checkdoc               |
+| =make package-lint=     | Run package-lint           |
+| =make bench=            | Run the benchmark suite    |
 | =make clean=            | Remove =*.elc= files       |
+
+CI gates on =make compile=, =make test=, =make lint= and =make package-lint=
+across Emacs 29.1, 29.4, 30.1 and snapshot. =make lint= is checkdoc only, so
+it does not stand in for =make package-lint=.
 
 * Changelog
 
@@ -314,28 +321,10 @@ See [[file:CHANGELOG.md][CHANGELOG.md]].
 
 See [[file:CONTRIBUTING.md][CONTRIBUTING.md]] for the full development and pull request guidelines.
 
-1. Fork and create a feature branch
-2. Add tests and ensure they pass (=make test=)
-3. Commit and create a pull request
-
-** Code Style
-
-- =nskk-= prefix for public symbols
-- =nskk--= prefix for internal symbols
-- All files must have =lexical-binding: t=
-
 * License
 
 [[file:LICENSE][GPL-3.0-or-later]]
 
-#+begin_quote
-Copyright (C) 2026 NSKK Contributors
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-#+end_quote
 * Acknowledgments
 
 - [[https://github.com/skk-dev/ddskk][DDSKK]] — A long-standing and widely used SKK implementation for Emacs

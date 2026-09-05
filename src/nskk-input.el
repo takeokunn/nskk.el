@@ -444,11 +444,11 @@ In standard mode: toggle mode (default SKK behavior)."
 (defun nskk--sticky-shift-dispatch ()
   "Execute the sticky-shift sub-dispatch for semicolon in standard mode.
 Six arms in priority order:
-  1. Already pending (any value): double-semicolon cancels sticky shift,
-     cancels preedit if ▽ was just inserted, and inserts literal \";\".
+  1. Already pending: repeat okurigana shift unchanged; otherwise cancel
+     empty preedit and insert the full-width semicolon.
   2. Converting (▼) state: fall through to self-insert.
-  3. Preedit with kana (▽ + text): arm okurigana for next char.
-  4. Preedit-pending (▽ without kana): cancel preedit, insert \";\".
+  3. Preedit with kana (▽ + text): insert * and arm okurigana.
+  4. Preedit-pending (▽ without kana): cancel preedit, insert \"；\".
   5. Japanese mode, no preedit: immediately insert ▽ marker.
   6. Non-Japanese mode: fall through to self-insert.
 Returns non-nil when the sticky-shift action was consumed,
@@ -457,10 +457,10 @@ nil when falling through to self-insert."
    ;; Arm 1: double-semicolon cancel
    (nskk--sticky-shift-pending
     (let ((was-immediate (eq nskk--sticky-shift-pending 'immediate)))
-      (setq nskk--sticky-shift-pending nil)
       (when was-immediate
-        (nskk-cancel-preedit))
-      (insert ";")
+        (setq nskk--sticky-shift-pending nil)
+        (nskk-cancel-preedit)
+        (insert "；"))
       t))
    ;; Arm 2: converting (▼) state — fall through
    ((and nskk-current-state
@@ -472,11 +472,13 @@ nil when falling through to self-insert."
    ((and (nskk-conversion-start-active-p)
          (nskk-has-preedit))
     (setq nskk--sticky-shift-pending 'okurigana)
+    (unless (eq (char-before) ?*)
+      (insert nskk-okurigana-marker))
     t)
    ;; Arm 4: preedit-pending (▽ without kana) — cancel + insert ";"
    ((nskk-conversion-start-active-p)
     (nskk-cancel-preedit)
-    (insert ";")
+    (insert "；")
     t)
    ;; Arm 5: Japanese mode, no preedit — immediate ▽
    ((and nskk-current-state
@@ -500,32 +502,35 @@ In standard mode + non-Japanese mode: self-insert (on-not-found path).
   AZIK small-tsu insertion, immediate ▽, okurigana armed, or sticky cancelled.
 `on-not-found' is called when key is not consumed (self-insert path)."
   :interactive t
-  (if nskk--sticky-shift-pending
-      (if (nskk--sticky-shift-dispatch)
-          (succeed t)
-        (nskk-self-insert 1)
-        (fail))
-    (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
-           (action (if (and nskk-current-state
-                            (nskk-prolog-holds-p
-                             `(japanese-mode ,(nskk-state-mode nskk-current-state))))
-                       (nskk-prolog-query-value
-                        `(semicolon-key-action ,style ,'\?action) '\?action)
-                     'self-insert)))
-      (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
-      (pcase action
-        ('insert-small-tsu
-         (nskk-process-japanese-input ?\; 1)
-         (succeed t))
-        ('sticky-shift
-         (if (nskk--sticky-shift-dispatch)
-             (succeed t)
+  (cond
+   ((nskk--dispatch-candidate-list) (succeed t))
+   (t
+    (if nskk--sticky-shift-pending
+        (if (nskk--sticky-shift-dispatch)
+            (succeed t)
+          (nskk-self-insert 1)
+          (fail))
+      (let* ((style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+             (action (if (and nskk-current-state
+                              (nskk-prolog-holds-p
+                               `(japanese-mode ,(nskk-state-mode nskk-current-state))))
+                         (nskk-prolog-query-value
+                          `(semicolon-key-action ,style ,'\?action) '\?action)
+                       'self-insert)))
+        (nskk-debug-log "[INPUT] semicolon-key: style=%s action=%s" style action)
+        (pcase action
+          ('insert-small-tsu
+           (nskk-process-japanese-input ?\; 1)
+           (succeed t))
+          ('sticky-shift
+           (if (nskk--sticky-shift-dispatch)
+               (succeed t)
+             (nskk-self-insert 1)
+             (fail)))
+          ('self-insert
            (nskk-self-insert 1)
-           (fail)))
-        ('self-insert
-         (nskk-self-insert 1)
-         (fail))
-        (_ (fail))))))
+           (fail))
+          (_ (fail))))))))
 
 ;;;; Input Processing
 
@@ -562,13 +567,29 @@ Abbrev mode is handled via `process-abbrev' action in the Prolog table."
                        (nskk-process-abbrev-input char))
     (_                 (nskk-process-japanese-input char n))))
 
+(defvar-local nskk--self-insert-undo-count 0
+  "Number of kana emissions and conversion steps in this undo group.")
+
+(defun nskk-cancel-input-undo-boundary ()
+  "Group consecutive kana emissions and conversion steps, up to twenty."
+  ;; Emacs adds the boundary after pre-command-hook, so cancel it in input.
+  (if (and (< nskk--self-insert-undo-count 20)
+           (memq last-command '(nskk-self-insert nskk-handle-space
+                                                 self-insert-command)))
+      (progn
+        (when (and (consp buffer-undo-list) (null (car buffer-undo-list)))
+          (setq buffer-undo-list (cdr buffer-undo-list))
+          ;; Overlay-only conversion must still receive an idle undo boundary.
+          (undo-auto--undoable-change))
+        (cl-incf nskk--self-insert-undo-count))
+    (setq nskk--self-insert-undo-count 1)))
+
 (defun/done nskk-self-insert (n)
   "Process self-insert input, routing the typed character based on current mode.
 N is the prefix repeat count from `last-command-event'.
 
 Three-stage pipeline:
-  1. Candidate selection -- `nskk--try-candidate-selection/k' short-circuits
-     when CHAR matches a candidate key; on-found = #\\='ignore (consumed).
+  1. Candidate list -- select, navigate, or consume invalid keys.
   2. Implicit kakutei -- commit before a new character.
   3. Mode routing -- `nskk--route-input' dispatches to abbrev, direct, or
      Japanese input based on `input-route/2' Prolog query."
@@ -578,13 +599,11 @@ Three-stage pipeline:
                 (aref last-command-event 0)))
         (mode (or (nskk-state-get-mode) 'ascii)))
     (nskk-debug-log "[INPUT] self-insert: char=%c mode=%s" char mode)
-    (nskk--try-candidate-selection/k char
-      #'ignore
-      (lambda ()
-        (when (nskk--implicit-kakutei-needed-p)
-          (nskk-debug-log "[INPUT] implicit-kakutei: char=%c" char)
-          (nskk-commit-current))
-        (nskk--route-input char n mode)))))
+    (unless (nskk--dispatch-candidate-list)
+      (when (nskk--implicit-kakutei-needed-p)
+        (nskk-debug-log "[INPUT] implicit-kakutei: char=%c" char)
+        (nskk-commit-current))
+      (nskk--route-input char n mode))))
 
 (defun/done nskk-insert-char (char &optional n)
   "Insert CHAR into the buffer N times without any kana conversion.
@@ -636,6 +655,20 @@ Calls on-not-found when the list is not active or CHAR did not match."
             (succeed t))
         (fail))))))
 
+(defun nskk--dispatch-candidate-list ()
+  "Consume `last-command-event' when the candidate list is active.
+Visible selection keys take precedence over navigation and cancellation.
+Return non-nil for every list event, including invalid keys."
+  (when (nskk-henkan-candidate-list-active)
+    (let ((event last-command-event))
+      (if (and (characterp event) (nskk--try-candidate-selection event))
+          t
+        (pcase event
+          (?\s (nskk-next-candidate))
+          ((or ?\177 ?\b ?x ?\C-p ?\37) (nskk-previous-candidate))
+          (?\C-g (nskk-rollback-conversion)))))
+    t))
+
 ;;;; Japanese Input Processing
 
 (defun/done nskk--setup-henkan-start-marker (char)
@@ -657,7 +690,7 @@ after inserting CONVERTED and clears the okurigana state.  Otherwise,
 inserts CONVERTED directly.  The on-done continuation is called with no
 arguments after all insertions and side effects complete."
   (let ((okuri (nskk-with-current-state
-                    (nskk-state-get-okurigana nskk-current-state))))
+                 (nskk-state-get-okurigana nskk-current-state))))
     (if okuri
         (let ((preedit-end (point)))
           (dotimes (_ n) (insert converted))
@@ -689,6 +722,7 @@ and side effects."
                       (nskk--convert-kana-for-mode kana))))
     (nskk-clear-pending-romaji)
     (when converted
+      (nskk-cancel-input-undo-boundary)
       (nskk-debug-log "[INPUT] kana-emitted: kana=%s mode=%s" converted mode)
       (nskk--emit-converted-kana converted n))
     (unless (string-empty-p (nskk-state-romaji-buffer))
@@ -800,22 +834,24 @@ Called from `nskk-process-japanese-input' for the `normal' action class."
       ;; Uppercase vowel continuation bypasses okurigana: the DV state and
       ;; okurigana cannot both be active simultaneously (DV is cleared at every
       ;; kakutei/cancel boundary that also resets okurigana state).
-      (if (and (not is-henkan-start)
-               (not normalize-vowel-p)
-               (not continue-vowel-shadow-p)
-               (nskk-process-okurigana-input char))
-          (nskk-debug-log "[INPUT] okurigana-processed: char=%c" char)
-        ;; When okurigana is pending but re-entry was blocked (e.g. second N
-        ;; in YoNN), downcase uppercase chars so the romaji converter sees
-        ;; "nn" instead of "nN".
-        (let ((eff (nskk--downcase-normal-japanese-effective-char
-                    effective-char normalize-vowel-p continue-vowel-shadow-p)))
-          ;; Clear DV state before convert so nskk--apply-vowel-shadow-correction
-          ;; does not retroactively replace the tentative kana.
-          (when continue-vowel-shadow-p
-            (setq nskk--deferred-vowel-shadow-state nil))
-          (nskk--process-kana-result
-           (or (nskk-convert-input-to-kana eff) "") n))))))
+      (if (and is-henkan-start (eq char ?Q))
+          (nskk-reset-romaji-buffer)
+        (if (and (not is-henkan-start)
+                 (not normalize-vowel-p)
+                 (not continue-vowel-shadow-p)
+                 (nskk-process-okurigana-input char))
+            (nskk-debug-log "[INPUT] okurigana-processed: char=%c" char)
+          ;; When okurigana is pending but re-entry was blocked (e.g. second N
+          ;; in YoNN), downcase uppercase chars so the romaji converter sees
+          ;; "nn" instead of "nN".
+          (let ((eff (nskk--downcase-normal-japanese-effective-char
+                      effective-char normalize-vowel-p continue-vowel-shadow-p)))
+            ;; Clear DV state before convert so nskk--apply-vowel-shadow-correction
+            ;; does not retroactively replace the tentative kana.
+            (when continue-vowel-shadow-p
+              (setq nskk--deferred-vowel-shadow-state nil))
+            (nskk--process-kana-result
+             (or (nskk-convert-input-to-kana eff) "") n)))))))
 
 (defun/done nskk-process-japanese-input (char n)
   "Process input in Japanese mode (hiragana/katakana), then call on-done.
@@ -850,32 +886,32 @@ Actions:
                  (characterp char) (<= ?a char) (<= char ?z))
         (setq char (upcase char)))))
   (let* ((char-type (cond
-                        ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
-                        ((and (eq char ?+)
-                              (bound-and-true-p nskk-azik-keyboard-type)
-                              (eq nskk-azik-keyboard-type 'jp106))          'plus-jp106)
-                        ((nskk--azik-colon-key-p char)                       'colon)
-                        (t                                                  'other)))
-           (input-context (cond
-                            (nskk--azik-colon-okuri-pending
-                             'colon-pending)
-                            ((and (eq nskk-converter-romaji-style 'azik)
-                                  (nskk-conversion-start-active-p)
-                                  (nskk-has-preedit)
-                                  (not (nskk-with-current-state
-                                         (nskk-state-get-okurigana nskk-current-state))))
-                             'azik-arm-eligible)
-                            (t 'other)))
-           (action (nskk-prolog-query-value
-                     `(japanese-input-class ,'\?action ,input-context ,char-type)
-                     '\?action)))
-      (nskk-debug-log "[INPUT] japanese-input: char=%c ctx=%s char-type=%s action=%s"
-                      char input-context char-type action)
-      (pcase action
-        ('fire        (nskk--fire-azik-colon-okuri char))
-        ('arm         (nskk--arm-azik-colon-trigger char n))
-        ('okuri-sokuon (nskk--trigger-sokuon-okurigana))
-        ('normal      (nskk--process-normal-japanese-input char n)))))
+                     ((and (characterp char) (<= ?a char) (<= char ?z)) 'alphabetic-lower)
+                     ((and (eq char ?+)
+                           (bound-and-true-p nskk-azik-keyboard-type)
+                           (eq nskk-azik-keyboard-type 'jp106))          'plus-jp106)
+                     ((nskk--azik-colon-key-p char)                       'colon)
+                     (t                                                  'other)))
+         (input-context (cond
+                         (nskk--azik-colon-okuri-pending
+                          'colon-pending)
+                         ((and (eq nskk-converter-romaji-style 'azik)
+                               (nskk-conversion-start-active-p)
+                               (nskk-has-preedit)
+                               (not (nskk-with-current-state
+                                      (nskk-state-get-okurigana nskk-current-state))))
+                          'azik-arm-eligible)
+                         (t 'other)))
+         (action (nskk-prolog-query-value
+                  `(japanese-input-class ,'\?action ,input-context ,char-type)
+                  '\?action)))
+    (nskk-debug-log "[INPUT] japanese-input: char=%c ctx=%s char-type=%s action=%s"
+                    char input-context char-type action)
+    (pcase action
+      ('fire        (nskk--fire-azik-colon-okuri char))
+      ('arm         (nskk--arm-azik-colon-trigger char n))
+      ('okuri-sokuon (nskk--trigger-sokuon-okurigana))
+      ('normal      (nskk--process-normal-japanese-input char n)))))
 
 ;;;; Abbrev Input Processing
 
@@ -1259,12 +1295,12 @@ Processing pipeline:
          (buf-len      (length (nskk-state-romaji-buffer)))
          (last-buf-char (and (> buf-len 0) (aref (nskk-state-romaji-buffer) (1- buf-len))))
          (class        (let* ((c (nskk--classify-romaji-input char last-buf-char result)))
-                          ;; Promote match → azik-vowel-deferred when in the vowel-shadow set.
-                          (if (and (eq c 'match)
-                                   (fboundp 'nskk-azik-vowel-shadow-set)
-                                   (gethash input (nskk-azik-vowel-shadow-set)))
-                              'azik-vowel-deferred
-                            c))))
+                         ;; Promote match → azik-vowel-deferred when in the vowel-shadow set.
+                         (if (and (eq c 'match)
+                                  (fboundp 'nskk-azik-vowel-shadow-set)
+                                  (gethash input (nskk-azik-vowel-shadow-set)))
+                             'azik-vowel-deferred
+                           c))))
     (pcase class
       ('nn-double
        (<- kana nskk--kana-handle-nn-double result))
@@ -1335,8 +1371,8 @@ Standard mode uses sticky-shift (virtual Shift via semicolon key)."
     (converting     commit-candidate)
     (preedit        commit-preedit)
     (romaji-pending clear-romaji)
-    (hiragana-idle  insert-newline)
-    (katakana-idle  enter-hiragana)
+    (hiragana-idle  no-action)
+    (katakana-idle  no-action)
     (direct-idle    enter-hiragana)))
 
 (defun nskk--azik-complete-match-p (char)

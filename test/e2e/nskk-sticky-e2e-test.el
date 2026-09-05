@@ -55,7 +55,7 @@
       (nskk-e2e-type ";")
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase nil)
-      (nskk-e2e-assert-buffer ";")))
+      (nskk-e2e-assert-buffer "；")))
 
   (nskk-it "semicolon followed by uppercase vowel triggers okurigana marker"
     (let ((dict '(("かa" . ("蚊")))))
@@ -93,7 +93,7 @@
 
 (nskk-deftest-table sticky-double-semicolon-cases
   :columns (input expected)
-  :rows (( ";;" ";"))
+  :rows (( ";;" "；"))
   :body
   (nskk-e2e-with-buffer 'hiragana nil
     (nskk-e2e-type input)
@@ -108,14 +108,14 @@
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type ";")
       (nskk-e2e-type ";")
-      (nskk-e2e-assert-buffer ";")
+      (nskk-e2e-assert-buffer "；")
       (nskk-e2e-assert-henkan-phase nil)))
 
   (nskk-it ";; inserts a literal semicolon in katakana mode"
     (nskk-e2e-with-buffer 'katakana nil
       (nskk-e2e-type ";")
       (nskk-e2e-type ";")
-      (nskk-e2e-assert-buffer ";")
+      (nskk-e2e-assert-buffer "；")
       (nskk-e2e-assert-henkan-phase nil)))
 
   (nskk-it ";; does not change mode after inserting semicolon in hiragana"
@@ -236,7 +236,7 @@
       (nskk-e2e-type ";")
       (nskk-e2e-type ";")
       (nskk-e2e-assert-henkan-phase nil)
-      (nskk-e2e-assert-buffer ";"))))
+      (nskk-e2e-assert-buffer "；"))))
 
 ;;;;
 ;;;; Okurigana via Sticky Key in Preedit
@@ -262,20 +262,21 @@
       (nskk-e2e-assert-henkan-phase 'on)
       (nskk-e2e-type ";")           ; arm 4: cancel + insert ";"
       (nskk-e2e-assert-henkan-phase nil)
-      (nskk-e2e-assert-buffer ";"))))
+      (nskk-e2e-assert-buffer "；"))))
 
 ;;;;
 ;;;; Double-Semicolon from Okurigana State
 ;;;;
 
 (nskk-describe "double-semicolon from okurigana state"
-  (nskk-it ";; after arming okurigana inserts ; without cancelling preedit"
+  (nskk-it ";; after arming okurigana retains the marker and pending shift"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Ka")          ; → ▽か (preedit-japanese)
       (nskk-e2e-type ";")           ; arm 3: set 'okurigana
       (nskk-e2e-type ";")           ; arm 1: cancel okurigana + insert ";"
       (nskk-e2e-assert-henkan-phase 'on)
-      (nskk-e2e-assert-buffer-matches "か;"))))
+      (nskk-e2e-assert-buffer "▽か*")
+      (should (eq nskk--sticky-shift-pending 'okurigana)))))
 
 ;;;;
 ;;;; Sticky Shift in Direct Input Mode

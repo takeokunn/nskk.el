@@ -68,6 +68,9 @@ converted candidate during the ▼ selection phase."
   "Whether annotation display is currently toggled on.
 When nil, annotations are suppressed even if `nskk-show-annotation' is t.")
 
+(defvar-local nskk--annotation-displayed nil
+  "Non-nil when an annotation owns the echo-area message.")
+
 ;;;; Prolog Infrastructure
 
 (defvar nskk--annotation-initialized nil
@@ -128,23 +131,61 @@ reports as nil."
 
 ;;;; Public API
 
-(defun/done nskk-annotation-show-for-candidate (reading candidate)
+(defun/done nskk-annotation-show-for-candidate (reading candidate &optional display-candidate)
   "Display the annotation for CANDIDATE with READING in the echo area.
 Sets `nskk--annotation-current' to the annotation found, or to nil.
 Performs no lookup when `nskk-show-annotation' is nil.
 Clears the previous annotation first, so a failing lookup cannot leave the
-prior candidate's annotation current."
-  (setq nskk--annotation-current nil)
+prior candidate's annotation current.
+DISPLAY-CANDIDATE, when non-nil, is the rendered numeric candidate."
+  (nskk-annotation-clear)
   (when nskk-show-annotation
     (setq nskk--annotation-current
           (nskk-annotation-lookup reading candidate)))
   (when-let* (((and nskk--annotation-current nskk--annotation-visible))
               (ann-str (nskk--annotation-format nskk--annotation-current)))
-    (nskk--annotation-echo "%s%s" (substring-no-properties candidate) ann-str)))
+    (nskk--annotation-echo "%s%s"
+                           (substring-no-properties (or display-candidate candidate)) ann-str)
+    (setq nskk--annotation-displayed t)))
 
 (defun nskk-annotation-clear ()
-  "Clear the current annotation state."
-  (setq nskk--annotation-current nil))
+  "Clear the current annotation and its echo-area message."
+  (setq nskk--annotation-current nil)
+  (when nskk--annotation-displayed
+    (setq nskk--annotation-displayed nil)
+    (nskk--annotation-echo nil)))
+
+(defun nskk--annotation-candidate-context (candidate)
+  "Return the dictionary reading and original identity for CANDIDATE."
+  (when nskk-current-state
+    (let* ((reading (or (nskk-state-get-metadata nskk-current-state 'annotation-reading)
+                        (nskk-state-get-metadata nskk-current-state 'henkan-reading)))
+           (raw (or (cdr (assq candidate
+                                (nskk-state-get-metadata
+                                 nskk-current-state 'annotation-candidates)))
+                    candidate)))
+      (when reading
+        (cons reading raw)))))
+
+(defun nskk--annotation-show-current-candidate (candidate)
+  "Display CANDIDATE's annotation using the current dictionary lookup key."
+  (when-let* ((context (nskk--annotation-candidate-context candidate)))
+    (nskk-annotation-show-for-candidate (car context) (cdr context) candidate)))
+
+(defun nskk--annotation-candidate-list-suffix (candidate)
+  "Return CANDIDATE's sanitized list annotation without displaying it."
+  (when-let* (((and nskk-show-annotation nskk--annotation-visible))
+              (context (nskk--annotation-candidate-context candidate))
+              (annotation (nskk-annotation-lookup (car context) (cdr context)))
+              ((not (string-empty-p annotation))))
+    (nskk-display-sanitize annotation 'nskk-annotation-face ";")))
+
+(nskk-prolog-register-presentation-action 'cleanup 'nskk-annotation-clear)
+(nskk-prolog-register-presentation-action 'finalize 'nskk-annotation-clear)
+(nskk-prolog-register-presentation-action 'rollback 'nskk-annotation-clear)
+(nskk-prolog-register-presentation-action 'show-list 'nskk-annotation-clear)
+(nskk-prolog-register-presentation-action
+ 'show-candidate 'nskk--annotation-show-current-candidate)
 
 ;;;###autoload
 (defun nskk-annotation-toggle-display ()
@@ -154,7 +195,9 @@ Clears the echo area when toggled off or when no annotation is current."
   (setq nskk--annotation-visible (not nskk--annotation-visible))
   (if (and nskk--annotation-visible nskk--annotation-current)
       (when-let* ((ann-str (nskk--annotation-format nskk--annotation-current)))
-        (nskk--annotation-echo "%s" ann-str))
+        (nskk--annotation-echo "%s" ann-str)
+        (setq nskk--annotation-displayed t))
+    (setq nskk--annotation-displayed nil)
     (message nil)))
 
 (provide 'nskk-annotation)

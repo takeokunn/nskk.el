@@ -53,7 +53,7 @@ All three readings share the prefix \"かん\" to exercise prefix-based completi
 Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cluster.")
 
 ;;;;
-;;;; Original 3 Tests (preserved exactly)
+;;;; Dynamic completion through TAB
 ;;;;
 
 (nskk-describe "dynamic completion via Tab key (動的補完)"
@@ -68,12 +68,13 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
   (nskk-it "repeated Tab cycles through all completions"
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
-        (nskk-e2e-type "Kan")
-        (nskk-e2e-type "TAB")
-        (let ((first-completion (nskk-preedit-string)))
-          (nskk-e2e-type "TAB")
-          (let ((second-completion (nskk-preedit-string)))
-            (should-not (equal first-completion second-completion)))))))
+        (save-window-excursion
+          (switch-to-buffer (current-buffer))
+          (execute-kbd-macro (kbd "K a n TAB"))
+          (let ((first-completion (nskk-preedit-string)))
+            (execute-kbd-macro (kbd "TAB"))
+            (let ((second-completion (nskk-preedit-string)))
+              (should-not (equal first-completion second-completion))))))))
 
   (nskk-it "Tab with no matching prefix does not change preedit"
     (let ((nskk-dcomp-style 'cycle))
@@ -135,22 +136,21 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (nskk-e2e-assert-henkan-phase 'on)))))
 
 ;;;;
-;;;; nskk-deftest-table: known prefix → completion is a string
+;;;; nskk-deftest-table: known prefix → matching reading
 ;;;;
 
 (nskk-deftest-table dcomp-known-prefix-cases
-  :columns (input expected)
-  :rows (("Ka" t)   ; "Ka" → かん prefix → at least one completion in dict
-         ("Sa" t)   ; "Sa" → さ prefix → さくら in extended dict
-         ("Ni" t))  ; "Ni" → に prefix → にほん in extended dict
+  :columns (input expected-readings)
+  :rows (("Ka" ("かんじ" "かんが" "かんしゃ"))
+         ("Sa" ("さくら"))
+         ("Ni" ("にほん")))
   :body
   (let ((nskk-dcomp-style 'cycle))
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict-extended
       (nskk-e2e-type input)
-      (let ((_before (nskk-preedit-string)))
-        (nskk-e2e-type "TAB")
-        (should (stringp (nskk-preedit-string)))
-        (should expected)))))
+      (nskk-e2e-type "TAB")
+      (should (member (nskk-preedit-string) expected-readings))
+      (nskk-e2e-assert-henkan-phase 'on))))
 
 ;;;;
 ;;;; dcomp SPC conversion after Tab completion
@@ -178,21 +178,10 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
         (should (not (string-empty-p (buffer-string))))))))
 
 ;;;;
-;;;; dcomp C-g after Tab cancels preedit
+;;;; dcomp C-g without Tab cancels preedit
 ;;;;
 
-(nskk-describe "dcomp C-g after Tab cancels preedit"
-  (nskk-it "C-g cancels the entire preedit after Tab completion"
-    (let ((nskk-dcomp-style 'cycle))
-      (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
-        (nskk-e2e-type "Kan")
-        (nskk-e2e-type "TAB")
-        (nskk-e2e-assert-henkan-phase 'on)
-        (should (not (string-empty-p (nskk-preedit-string))))
-        (nskk-e2e-type "C-g")
-        (nskk-e2e-assert-henkan-phase nil)
-        (nskk-e2e-assert-buffer ""))))
-
+(nskk-describe "dcomp C-g without Tab cancels preedit"
   (nskk-it "C-g without Tab also cancels partial preedit"
     (let ((nskk-dcomp-style 'cycle))
       (nskk-e2e-with-buffer 'hiragana nskk-e2e--dcomp-dict
@@ -275,6 +264,41 @@ Adds \"さくら\" and \"にほん\" to cover prefixes outside the \"かん\" cl
       (nskk-e2e-type "TAB")
       (eq (nskk-current-mode) 'hiragana)))
   30)
+
+(nskk-deftest-table dcomp-default-command-loop
+  :columns (keys expected-buffer expected-phase expected-candidate)
+  :rows (("S a TAB" "▽さくら" on nil)
+         ("S a TAB SPC" "▼さくら" active "桜")
+         ("S a TAB M-b" "さくら" nil nil))
+  :body
+  (nskk-e2e-with-buffer 'hiragana '(("さくら" . ("桜")))
+    (should (eq nskk-dcomp-style 'capf))
+    (save-window-excursion
+      (switch-to-buffer (current-buffer))
+      (execute-kbd-macro (kbd keys))
+      (nskk-e2e-assert-buffer expected-buffer)
+      (nskk-e2e-assert-henkan-phase expected-phase)
+      (when expected-candidate
+        (nskk-e2e-assert-overlay-shows expected-candidate)))))
+
+(nskk-deftest-table dcomp-cancel-command-loop
+  :columns (keys expected-buffer expected-phase)
+  :rows (("S a TAB C-g" "▽さ" on)
+         ("S a TAB C-g C-g" "" nil)
+         ("S a TAB i C-g" "" nil)
+         ("S a TAB SPC C-g" "▽さくら" on)
+         ("S a TAB TAB C-g" "▽さ" on)
+         ("N a TAB C-g" "▽な" on)
+         ("S a k u r a TAB C-g" "▽さくら" on)
+         ("S a C-g" "" nil))
+  :body
+  (dolist (nskk-dcomp-style '(capf cycle))
+    (nskk-e2e-with-buffer 'hiragana '(("さくら" . ("桜")))
+      (save-window-excursion
+        (switch-to-buffer (current-buffer))
+        (execute-kbd-macro (kbd keys))
+        (nskk-e2e-assert-buffer expected-buffer)
+        (nskk-e2e-assert-henkan-phase expected-phase)))))
 
 (provide 'nskk-dcomp-e2e-test)
 ;;; nskk-dcomp-e2e-test.el ends here

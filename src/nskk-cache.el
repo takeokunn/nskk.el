@@ -869,41 +869,6 @@ The plist contains: :type, :capacity, :size, :hits, :misses, :hit-rate."
   "Return the current number of entries in CACHE."
   (nskk-cache-dispatch cache size))
 
-(cl-defstruct (nskk-cache--snapshot
-               (:constructor nskk-cache--snapshot--create)
-               (:copier nil))
-  "Full rollback snapshot of a cache's contents.
-Captures hash-table entries verbatim.  For an LRU cache, only the head/tail
-sentinel nodes and head's `next' / tail's `prev' links are captured;
-interior node `prev'/`next' links are never captured or repaired.  For an
-LFU cache, only the top level of the frequency table \(frequency -> bucket\)
-is captured, not each bucket's own contents.
-A third limitation: overwriting an existing key does not round-trip.
-hash-entries holds \(key . node\) / \(key . entry\) pairs by reference, and
-a put on an already-present key mutates that same struct's value slot in
-place, so restoring re-inserts an object that already carries the value
-from the later put.
-Slots:
-  kind         - `lru' or `lfu'
-  cache        - the cache object this snapshot was captured from
-  capacity     - captured capacity
-  size         - captured size
-  hash-table   - the cache's hash-table object
-  hash-entries - alist of the hash-table's key/value entries at capture time
-  head         - captured LRU head node (nil for lfu)
-  tail         - captured LRU tail node (nil for lfu)
-  head-next    - captured value of head's next node (nil for lfu)
-  tail-prev    - captured value of tail's prev node (nil for lfu)
-  freq-table   - the LFU freq hash-table object (nil for lru)
-  freq-entries - alist of the freq-table's top-level entries (nil for lru)
-  min-freq     - captured min-freq (nil for lru)
-  hits         - captured hits
-  misses       - captured misses"
-  kind cache capacity size hash-table hash-entries
-  head tail head-next tail-prev
-  freq-table freq-entries min-freq
-  hits misses)
-
 (cl-defstruct (nskk-cache--metadata-snapshot
                (:constructor nskk-cache--metadata-snapshot--create)
                (:copier nil))
@@ -923,88 +888,6 @@ Slots:
   hits     - captured hits
   misses   - captured misses"
   kind cache capacity size hash head tail freq min-freq hits misses)
-
-(defun nskk-cache--snapshot-hash-table-entries (table)
-  "Return an alist of TABLE's key/value entries."
-  (let (entries)
-    (maphash (lambda (key value) (push (cons key value) entries)) table)
-    entries))
-
-(defun nskk-cache--snapshot-restore-hash-table (table entries)
-  "Reset TABLE in place to hold exactly ENTRIES."
-  (clrhash table)
-  (dolist (entry entries)
-    (puthash (car entry) (cdr entry) table)))
-
-(defun nskk-cache-capture-snapshot (cache)
-  "Capture a full rollback snapshot of CACHE's contents.
-Returns an `nskk-cache--snapshot'.  Restore with `nskk-cache-restore-snapshot'.
-
-For an LRU CACHE, only the head/tail sentinel nodes and head's `next' /
-tail's `prev' links are captured; interior node `prev'/`next' links are NOT
-captured.  For an LFU CACHE, only the top level of the frequency table
-\(frequency -> bucket\) is captured; the buckets are hash tables whose
-contents are NOT captured.  Overwriting an existing key with `put' after
-capture and then restoring does NOT recover the pre-put value: the entry
-struct behind that key is mutated in place, and the snapshot holds a
-reference to that same struct."
-  (let ((hash-table (nskk-cache--base-hash cache))
-        (capacity (nskk-cache--base-capacity cache))
-        (size (nskk-cache--base-size cache))
-        (hits (nskk-cache--base-hits cache))
-        (misses (nskk-cache--base-misses cache)))
-    (cond
-     ((nskk-cache-lru-p cache)
-      (let ((head (nskk-cache-lru-head cache))
-            (tail (nskk-cache-lru-tail cache)))
-        (nskk-cache--snapshot--create
-         :kind 'lru :cache cache
-         :capacity capacity :size size
-         :hash-table hash-table
-         :hash-entries (nskk-cache--snapshot-hash-table-entries hash-table)
-         :head head :tail tail
-         :head-next (nskk-cache-lru-node-next head)
-         :tail-prev (nskk-cache-lru-node-prev tail)
-         :hits hits :misses misses)))
-     ((nskk-cache-lfu-p cache)
-      (let ((freq-table (nskk-cache-lfu-freq cache)))
-        (nskk-cache--snapshot--create
-         :kind 'lfu :cache cache
-         :capacity capacity :size size
-         :hash-table hash-table
-         :hash-entries (nskk-cache--snapshot-hash-table-entries hash-table)
-         :freq-table freq-table
-         :freq-entries (nskk-cache--snapshot-hash-table-entries freq-table)
-         :min-freq (nskk-cache-lfu-min-freq cache)
-         :hits hits :misses misses))))))
-
-(defun nskk-cache-restore-snapshot (snapshot)
-  "Restore the cache state recorded in SNAPSHOT in place.
-See `nskk-cache-capture-snapshot' for what is captured, including its LRU
-interior-link, LFU bucket-content, and key-overwrite limitations."
-  (let ((cache (nskk-cache--snapshot-cache snapshot)))
-    (nskk-cache--snapshot-restore-hash-table
-     (nskk-cache--snapshot-hash-table snapshot)
-     (nskk-cache--snapshot-hash-entries snapshot))
-    (setf (nskk-cache--base-capacity cache) (nskk-cache--snapshot-capacity snapshot)
-          (nskk-cache--base-size cache) (nskk-cache--snapshot-size snapshot)
-          (nskk-cache--base-hash cache) (nskk-cache--snapshot-hash-table snapshot)
-          (nskk-cache--base-hits cache) (nskk-cache--snapshot-hits snapshot)
-          (nskk-cache--base-misses cache) (nskk-cache--snapshot-misses snapshot))
-    (pcase (nskk-cache--snapshot-kind snapshot)
-      ('lru
-       (let ((head (nskk-cache--snapshot-head snapshot))
-             (tail (nskk-cache--snapshot-tail snapshot)))
-         (setf (nskk-cache-lru-head cache) head
-               (nskk-cache-lru-tail cache) tail
-               (nskk-cache-lru-node-next head) (nskk-cache--snapshot-head-next snapshot)
-               (nskk-cache-lru-node-prev tail) (nskk-cache--snapshot-tail-prev snapshot))))
-      ('lfu
-       (nskk-cache--snapshot-restore-hash-table
-        (nskk-cache--snapshot-freq-table snapshot)
-        (nskk-cache--snapshot-freq-entries snapshot))
-       (setf (nskk-cache-lfu-freq cache) (nskk-cache--snapshot-freq-table snapshot)
-             (nskk-cache-lfu-min-freq cache) (nskk-cache--snapshot-min-freq snapshot))))))
 
 (defun nskk-cache-capture-metadata-snapshot (cache)
   "Capture CACHE metadata needed to undo a failed miss observation.

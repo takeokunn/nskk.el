@@ -131,20 +131,7 @@
             (delete-file tmp-file)))))))
 
 ;;;;
-;;;; Section 5: Unit tests — registration depth guard
-;;;;
-
-(nskk-describe "registration depth guard"
-  (nskk-it "permits nesting depths 0, 1, and 2 (max depth = 3)"
-    (should (< 0 nskk-max-registration-depth))
-    (should (< 1 nskk-max-registration-depth))
-    (should (< 2 nskk-max-registration-depth)))
-
-  (nskk-it "rejects depth 3 (equal to max-registration-depth)"
-    (should-not (< 3 nskk-max-registration-depth))))
-
-;;;;
-;;;; Section 6: Runtime tests — registration depth guard
+;;;; Section 5: Runtime tests — registration depth guard
 ;;;;
 
 (nskk-describe "registration depth guard (runtime)"
@@ -184,7 +171,7 @@
           (should (= (nskk-state-registration-depth) depth-before)))))))
 
 ;;;;
-;;;; Section 7: Nested/stateful registration tests
+;;;; Section 6: Nested/stateful registration tests
 ;;;;
 
 (nskk-describe "nested registration with stateful mocks"
@@ -267,7 +254,7 @@
         (error t))))
 
 ;;;;
-;;;; Section 8: C-g cancellation tests
+;;;; Section 7: C-g cancellation tests
 ;;;;
 
 (defconst nskk-e2e--reg-7cands-dict

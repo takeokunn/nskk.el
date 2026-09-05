@@ -560,6 +560,7 @@
           (insert "test")
           (nskk-state-set-candidates nskk-current-state '("a" "b" "c"))
           (nskk-state-force-henkan-phase nskk-current-state 'active)
+          (setf (nskk-state-current-index nskk-current-state) 1)
           (nskk-with-mocks ((nskk--select-candidate (lambda (dir) (setq select-called dir))))
             (nskk-previous-candidate)
             (should (eq select-called 'previous))
@@ -1322,7 +1323,9 @@
            ("#123ko" "123" "#ko")
            ("#0"     "0"   "#")
            ("#123ji" "123" "#ji")
-           ("#10ko"  "10"  "#ko"))
+           ("#10ko"  "10"  "#ko")
+           ("1ko" "1" "#ko")
+           ("12こ" "12" "#こ"))
     :body (let ((result (nskk--numeric-parse-reading input)))
             (should (consp result))
             (should (equal (car result) expected-num))
@@ -1331,7 +1334,7 @@
   (nskk-deftest-table numeric-parse-reading-invalid
     :description "Returns nil for non-numeric readings"
     :columns (input)
-    :rows (("かんじ") ("") ("ko") ("#") ("#abc") ("1ko") ("こ") ("#ko"))
+    :rows (("かんじ") ("") ("ko") ("#") ("#abc") ("こ") ("#ko"))
     :body (should (null (nskk--numeric-parse-reading input)))))
 
 (nskk-describe "nskk--numeric-to-kanji"
@@ -2708,6 +2711,7 @@
       (with-temp-buffer
         (let ((nskk-current-state (nskk-state-create 'hiragana))
               (nskk-test-saved-henkan-count (nskk-state-henkan-count))
+              (nskk-henkan-show-candidates-nth 2)
               (nskk-henkan-number-to-display-candidates 2)
               (nskk-henkan-show-candidates-keys '(?a ?s))
               (nskk--henkan-candidate-list-active t)
@@ -3897,8 +3901,7 @@
                (text-start (+ start (length nskk-henkan-on-marker)))
                (preedit-end (point-max)))
           (nskk-with-mocks ((nskk--remove-okuri-marker #'ignore)
-                            (nskk--replace-marker-at #'ignore)
-                            (nskk--update-overlay #'ignore))
+                            (nskk--replace-marker-at #'ignore))
             (nskk--apply-okuri-candidates start text-start preedit-end
                                           '("書" "欠") "かk"))
           (should (equal (nskk-state-candidates nskk-current-state) '("書" "欠")))
@@ -3975,8 +3978,7 @@
                              (lambda (_q _type _limit on-found _on-not-found)
                                (funcall on-found '("書く"))))
                             (nskk--replace-marker-at #'ignore)
-                            (nskk--remove-okuri-marker #'ignore)
-                            (nskk--update-overlay #'ignore))
+                            (nskk--remove-okuri-marker #'ignore))
             (nskk-trigger-okuri-conversion/k ?k preedit-end
                                               (lambda (candidates)
                                                 (setq on-found-candidates candidates))
@@ -5006,30 +5008,6 @@
     (should (equal (nskk--hankaku-to-hiragana "ｱｲｳ") "あいう"))))
 
 ;;;
-;;; nskk--normalize-for-lookup Tests
-;;;
-
-(nskk-describe "henkan normalize-for-lookup helper"
-  (nskk-it "is defined as a callable function (fboundp)"
-    (should (fboundp 'nskk--normalize-for-lookup)))
-
-  (nskk-it "in hiragana mode returns text as-is"
-    (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (should (equal (nskk--normalize-for-lookup "あいう") "あいう"))))
-
-  (nskk-it "in katakana mode normalizes to hiragana"
-    (let ((nskk-current-state (nskk-state-create 'katakana)))
-      (should (equal (nskk--normalize-for-lookup "アイウ") "あいう"))))
-
-  (nskk-it "in hankaku-katakana mode normalizes to hiragana"
-    (let ((nskk-current-state (nskk-state-create 'katakana-半角)))
-      (should (equal (nskk--normalize-for-lookup "ｱｲｳ") "あいう"))))
-
-  (nskk-it "falls back to identity for unknown mode with no fact"
-    (let ((nskk-current-state (nskk-state-create 'ascii)))
-      (should (equal (nskk--normalize-for-lookup "abc") "abc")))))
-
-;;;
 ;;; nskk--standalone-n-p Tests
 ;;;
 
@@ -5273,21 +5251,8 @@
                      (plist-get nskk--last-kakutei-record
                                 :candidates))))))
 
-(nskk-describe "nskk-invalidate-undo-kakutei"
-  (nskk-it "clears a non-nil record"
-    (with-temp-buffer
-      (setq nskk--last-kakutei-record '(:reading "x"))
-      (nskk-invalidate-undo-kakutei)
-      (should (null nskk--last-kakutei-record))))
-
-  (nskk-it "is a no-op when record is already nil"
-    (with-temp-buffer
-      (setq nskk--last-kakutei-record nil)
-      (nskk-invalidate-undo-kakutei)
-      (should (null nskk--last-kakutei-record)))))
-
 (nskk-describe "nskk-undo-kakutei"
-  (nskk-it "falls through to undo when no record exists"
+  (nskk-it "rejects special undo when no record exists"
     (with-temp-buffer
       (setq nskk--last-kakutei-record nil)
       (should-error (nskk-undo-kakutei) :type 'user-error)))
@@ -5307,14 +5272,18 @@
                   :registered-p nil
                   :registered-reading nil
                   :registered-word nil))
-      (nskk-undo-kakutei)
+      (cl-letf (((symbol-function 'nskk-core-search)
+                 (lambda (reading &rest _)
+                   (should (equal reading "かんじ"))
+                   '("漢字" "感じ"))))
+        (nskk-undo-kakutei))
       (should (null nskk--last-kakutei-record))
       (should (eq (nskk-state-henkan-phase nskk-current-state)
                   'active))
       (should (equal '("漢字" "感じ")
                      (nskk-state-candidates nskk-current-state)))
-      (should (= 0 (nskk-state-current-index nskk-current-state)))
-      (should (string-match-p "▼漢字"
+      (should (= 1 (nskk-state-current-index nskk-current-state)))
+      (should (string-match-p "▼感じ"
                               (buffer-substring-no-properties
                                (point-min) (point-max))))))
 
@@ -5334,8 +5303,12 @@
                   :registered-p nil
                   :registered-reading nil
                   :registered-word nil))
-      (nskk-undo-kakutei)
-      (should (equal "▼書く"
+      (cl-letf (((symbol-function 'nskk-core-search)
+                 (lambda (reading &rest _)
+                   (should (equal reading "かk"))
+                   '("書" "描"))))
+        (nskk-undo-kakutei))
+      (should (equal "▼描く"
                      (buffer-substring-no-properties
                       (point-min) (point-max))))
       (should (overlayp (nskk-state-conversion-overlay)))
@@ -5346,7 +5319,7 @@
                      (nskk-state-get-metadata nskk-current-state
                                               'okurigana-query)))))
 
-  (nskk-it "does not revert when buffer text has changed"
+  (nskk-it "does not revert when the saved range is outside the buffer"
     (with-temp-buffer
       (setq-local nskk-current-state (nskk-state-create 'hiragana))
       (insert "modified")
@@ -5356,7 +5329,7 @@
                    :index 0
                    :committed-text "漢字"
                    :buffer-start 1
-                   :buffer-end 3
+                   :buffer-end 30
                    :mode 'hiragana
                    :registered-p nil
                    :registered-reading nil
@@ -5389,7 +5362,13 @@
                       :registered-p t
                       :registered-reading "てすと"
                       :registered-word "テスト"))
-          (nskk-undo-kakutei)
+          (let (registration-reading)
+            (cl-letf (((symbol-function 'nskk-start-registration)
+                       (lambda (reading)
+                         (setq registration-reading reading)
+                         nil)))
+              (nskk-undo-kakutei))
+            (should (equal registration-reading "てすと")))
           (should (null (nskk-dict-lookup "てすと"))))))))
 
 ;;;
@@ -5573,6 +5552,8 @@
                       (nskk-state-metadata state) state-metadata)
                 (setq-local nskk-current-state state)
                 (insert "テスト")
+                (setf (plist-get record :buffer-start) (copy-marker 1 t)
+                      (plist-get record :buffer-end) (copy-marker 4))
                 (goto-char 2)
                 (progn (setq marker (copy-marker 2 t)) (nskk-state-set-conversion-start-marker marker) (setq overlay (make-overlay 2 3 nil nil t)) (nskk-state-set-conversion-overlay overlay) (setq nskk--last-kakutei-record record))
                 (let ((overlay-value (list 'owned-overlay-property)))
@@ -5681,6 +5662,8 @@
                                 (overlay-get overlay
                                              'nskk-test-object)))
                     (should (eq record nskk--last-kakutei-record))
+                    (should (= (plist-get record :buffer-start) 1))
+                    (should (= (plist-get record :buffer-end) 4))
                     (should (equal saved-dict-candidates
                                    (nskk-dict-lookup "てすと")))
                     (should (eq saved-dict-modified
@@ -5904,15 +5887,19 @@
                    (substring-no-properties candidate)))
     (should (= (plist-get record :buffer-start) (point-min)))
     (should (= (plist-get record :buffer-end) (point-max))))
-  (nskk-undo-kakutei)
+  (cl-letf (((symbol-function 'nskk-core-search)
+             (lambda (query &rest _)
+               (should (equal query reading))
+               original-candidates)))
+    (nskk-undo-kakutei))
   (should-not nskk--last-kakutei-record)
   (should (eq nskk-current-state original-state))
   (should (equal (buffer-string)
                  (concat nskk-henkan-active-marker
-                         (substring-no-properties candidate))))
-  (should (eq (nskk-state-candidates nskk-current-state)
+                         (cadr original-candidates))))
+  (should (equal (nskk-state-candidates nskk-current-state)
               original-candidates))
-  (should (= (nskk-state-current-index nskk-current-state) 0))
+  (should (= (nskk-state-current-index nskk-current-state) 1))
   (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))
   (should (equal
            (nskk-state-get-metadata

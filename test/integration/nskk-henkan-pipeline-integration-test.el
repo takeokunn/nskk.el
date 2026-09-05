@@ -63,7 +63,7 @@
                         (nskk-state-candidates nskk-current-state)))
           (should (= (nskk-state-current-index nskk-current-state) 0))))))
 
-  (nskk-it "RET after conversion commits 漢字 without inserting a newline"
+  (nskk-it "RET after conversion commits 漢字 and inserts a newline"
     (nskk-with-mock-dict nil
       (nskk-integration-with-session 'hiragana
         (nskk-given (nskk-henkan-pipeline--setup-kanji-preedit))
@@ -74,7 +74,7 @@
         (nskk-then
           (should-not (nskk-converting-p))
           (should-not (nskk-conversion-start-active-p))
-          (nskk-should-equal "漢字" (buffer-string))))))
+          (nskk-should-equal "漢字\n" (buffer-string))))))
 
   (nskk-it "pressing SPC again during conversion advances to the next candidate 感じ"
     (nskk-with-mock-dict nil
@@ -126,7 +126,7 @@
             (nskk-handle-space)))
         (nskk-then  (should (nskk-converting-p)))
         (nskk-when  (nskk-handle-return))
-        (nskk-then  (nskk-should-equal "桜" (buffer-string))))))
+        (nskk-then  (nskk-should-equal "桜\n" (buffer-string))))))
 
   (nskk-it "committing a candidate resets candidates, index, and romaji buffer"
     (nskk-with-mock-dict nil

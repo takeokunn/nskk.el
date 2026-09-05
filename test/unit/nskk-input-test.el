@@ -1200,8 +1200,8 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     :rows ((converting     commit-candidate)
            (preedit        commit-preedit)
            (romaji-pending clear-romaji)
-           (hiragana-idle  insert-newline)
-           (katakana-idle  enter-hiragana)
+           (hiragana-idle  no-action)
+           (katakana-idle  no-action)
            (direct-idle    enter-hiragana))
     :body (should (eq (nskk-prolog-query-value
                        `(kakutei-action ,state ,'\?action) '\?action)
@@ -1319,7 +1319,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (should (string-match-p
                "CPS variant.*ON-FOUND.*ON-NOT-FOUND"
                (replace-regexp-in-string "\n" " " cps-doc)))
-      (should (string-match-p (regexp-quote "\n[CPS]\n") cps-doc)))))
+      (should (string-match-p "^\\[CPS\\]$" cps-doc)))))
 
 (nskk-describe "nskk--deferred-azik-state retroactive correction"
   (nskk-it "vowel triggers retroactive っ insertion"
@@ -1784,7 +1784,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (setq nskk--sticky-shift-pending 'immediate)
         (nskk-handle-semicolon-key)
         (should (null nskk--sticky-shift-pending))
-        (should (string= (buffer-string) ";"))))))
+        (should (string= (buffer-string) "；"))))))
 
 ;;;
 ;;; nskk-input-initialize
@@ -1801,7 +1801,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (nskk-input-initialize)
       (let ((action (nskk-prolog-query-value
                      '(kakutei-action hiragana-idle \?a) '\?a)))
-        (should (eq action 'insert-newline)))))
+        (should (eq action 'no-action)))))
 
   (nskk-it "sets nskk--input-initialized to t"
     (nskk-prolog-test-with-isolated-db

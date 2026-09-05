@@ -15,6 +15,7 @@
 
 (require 'ert)
 (require 'nskk-server)
+(require 'nskk-annotation)
 (require 'nskk-henkan)
 (require 'nskk-state)
 (require 'nskk)
@@ -56,6 +57,27 @@
 ;;;; Server fallthrough with in-process mock skkserv
 
 (nskk-describe "server fallthrough with mock skkserv"
+
+  (nskk-it "preserves server annotations for candidates returned by core search"
+    (nskk-with-mock-dict nskk-server-henkan--dict-without-test-key
+      (let* ((mock (nskk--server-start-mock-server
+                    '(("てすと" . "1/テスト;注釈/試験/\n"))))
+             (server-proc (car mock))
+             (nskk-server-enable t)
+             (nskk-server-host "127.0.0.1")
+             (nskk-server-portnum (cdr mock))
+             (nskk--server-process nil)
+             (nskk--server-kill-emacs-hook-registered nil)
+             (nskk--annotation-initialized nil))
+        (unwind-protect
+            (progn
+              (should (nskk-server-open))
+              (should-not (nskk-annotation-lookup "てすと" "テスト"))
+              (should (equal (nskk-core-search "てすと") '("テスト" "試験")))
+              (should (equal (nskk-annotation-lookup "てすと" "テスト") "注釈"))
+              (should-not (nskk-annotation-lookup "てすと" "試験")))
+          (nskk-server-close)
+          (delete-process server-proc)))))
 
   (nskk-it "nskk-core-search falls through to server when dict misses"
     (nskk-with-mock-dict nskk-server-henkan--dict-without-test-key

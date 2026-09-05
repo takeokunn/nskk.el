@@ -187,7 +187,7 @@
           (nskk-then (should (nskk-converting-p)))
           (nskk-when (nskk-handle-return))
           (nskk-then (should-not (nskk-converting-p))
-                     (nskk-should-equal "亜" (buffer-string)))))))
+                     (nskk-should-equal "亜\n" (buffer-string)))))))
 
   (nskk-it "canceling conversion exits converting state"
     (nskk-integration-with-session 'hiragana

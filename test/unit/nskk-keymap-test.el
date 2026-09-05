@@ -450,7 +450,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-handle-return)
         (should (equal (buffer-string) "\n")))))
 
-  (nskk-it "commits without newline when in conversion"
+  (nskk-it "commits with newline when in conversion"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-set-conversion-start-marker (point-min))
@@ -459,7 +459,7 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-handle-return)
         (should-not (nskk-converting-p))
-        (should (equal (buffer-string) "result")))))
+        (should (equal (buffer-string) "result\n")))))
 
   (nskk-it "key-action/3 has explicit preedit row for return (kakutei-and-newline)"
     (should (eq (nskk-prolog-query-value
@@ -956,7 +956,7 @@ and configures state."
         (should-not (nskk-deferred-azik-state))
         (should (equal (buffer-string) "")))))
 
-  (nskk-it "returns non-nil and clears DV (deferred-vowel-shadow-state)"
+  (nskk-it "clears DV and deletes only its final vowel"
     (with-temp-buffer
       (let ((nskk--deferred-vowel-shadow-state
              (nskk--make-deferred-vowel-shadow "sh" "すう")))
@@ -965,7 +965,7 @@ and configures state."
         (goto-char (point-max))
         (should (nskk--backspace-retract-pending))
         (should-not (nskk-deferred-vowel-shadow-state))
-        (should (equal (buffer-string) "")))))
+        (should (equal (buffer-string) "す")))))
 
   (nskk-it "restores DA and overlay when a before-change hook errors"
     (with-temp-buffer
@@ -1309,7 +1309,7 @@ and configures state."
           (should-not (nskk-deferred-azik-state))
           (should (equal (buffer-string) "▽"))))))
 
-  (nskk-it "BS rolls back DV payload with continuation policy"
+  (nskk-it "BS removes only the final vowel of DV with continuation policy"
     (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1))
                       (nskk-cancel-preedit (lambda () nil)))
       (with-temp-buffer
@@ -1323,7 +1323,7 @@ and configures state."
           (goto-char (point-max))
           (nskk--backspace-in-preedit)
           (should-not (nskk-deferred-vowel-shadow-state))
-          (should (equal (buffer-string) "▽"))))))
+          (should (equal (buffer-string) "▽ちゅ"))))))
 
   (nskk-it "BS rolls back CP (colon-okuri-pending) deletes * marker"
     (nskk-with-mocks ((nskk-get-conversion-start (lambda () 1)))
@@ -1855,27 +1855,6 @@ and configures state."
                         (nskk-has-preedit (lambda () t))
                         (nskk-get-conversion-start (lambda () 1)))
         (should (eq (nskk-classify-state) 'converting))))))
-
-;;;
-;;; nskk--japanese-mode-active-p Tests
-;;;
-
-(nskk-describe "nskk--japanese-mode-active-p"
-  (nskk-it "returns non-nil for hiragana mode"
-    (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (should (nskk--japanese-mode-active-p))))
-
-  (nskk-it "returns non-nil for katakana mode"
-    (let ((nskk-current-state (nskk-state-create 'katakana)))
-      (should (nskk--japanese-mode-active-p))))
-
-  (nskk-it "returns nil for ascii mode"
-    (let ((nskk-current-state (nskk-state-create 'ascii)))
-      (should-not (nskk--japanese-mode-active-p))))
-
-  (nskk-it "returns nil when nskk-current-state is nil"
-    (let ((nskk-current-state nil))
-      (should-not (nskk--japanese-mode-active-p)))))
 
 ;;;
 ;;; nskk--safe-nav-command Tests

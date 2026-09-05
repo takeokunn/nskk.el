@@ -29,6 +29,7 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'nskk-server)
+(require 'nskk-annotation)
 (require 'nskk-prolog)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
@@ -334,6 +335,50 @@ NAME-VAR is a string used to name both.  Both are destroyed afterwards, and
 ;;;; E. CPS continuation invariant
 
 (nskk-describe "nskk-server-lookup/k"
+  (nskk-it "registers annotations without changing candidate strings"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil))
+        (nskk-with-mocks
+            ((nskk--server-lookup-guards-p/k (lambda (_key f _n) (funcall f t)))
+             (nskk--server-with-response/k
+              (lambda (_key f _n)
+                (funcall f "1/漢字;note;detail/感じ/幹事;/\n"))))
+          (should (equal (nskk-server-lookup "かんじ") '("漢字" "感じ" "幹事"))))
+        (should (equal (nskk-annotation-lookup "かんじ" "漢字") "note;detail"))
+        (should-not (nskk-annotation-lookup "かんじ" "感じ"))
+        (should-not (nskk-annotation-lookup "かんじ" "幹事"))
+        (should-not (nskk-annotation-lookup "べつ" "漢字")))))
+
+  (nskk-it "keeps the first annotation without accumulating repeated lookups"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil)
+            (response "1/漢字;first/\n"))
+        (nskk-with-mocks
+            ((nskk--server-lookup-guards-p/k (lambda (_key f _n) (funcall f t)))
+             (nskk--server-with-response/k
+              (lambda (_key f _n) (funcall f response))))
+          (dotimes (_ 3)
+            (should (equal (nskk-server-lookup "かんじ") '("漢字"))))
+          (setq response "1/漢字;later/\n")
+          (should (equal (nskk-server-lookup "かんじ") '("漢字"))))
+        (should (equal (nskk-annotation-lookup "かんじ" "漢字") "first"))
+        (should (equal (nskk-prolog-query-all-values
+                        '(dict-annotation "かんじ" "漢字" \?a) '\?a)
+                       '("first"))))))
+
+  (nskk-it "does not register annotations from rejected candidates"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk--annotation-initialized nil))
+        (nskk-with-mocks
+            ((nskk--server-lookup-guards-p/k (lambda (_key f _n) (funcall f t)))
+             (nskk--server-with-response/k
+              (lambda (_key f _n)
+                (funcall f (concat "1/漢字;note/感じ;bad" (string #x01) "/;orphan/\n")))))
+          (should (equal (nskk-server-lookup "かんじ") '("漢字"))))
+        (should (equal (nskk-annotation-lookup "かんじ" "漢字") "note"))
+        (should-not (nskk-annotation-lookup "かんじ" "感じ"))
+        (should-not (nskk-annotation-lookup "かんじ" "")))))
+
   ;; defun/k generates NAME/k (ARG... ON-FOUND ON-NOT-FOUND): plain arguments
   ;; come first and the two continuations last.
   (nskk-it "calls exactly one continuation when the lookup succeeds"

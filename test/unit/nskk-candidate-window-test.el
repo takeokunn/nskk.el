@@ -666,6 +666,17 @@
             (should-not nskk--candidate-list-active))
         (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
 
+(ert-deftest nskk-candidate-selection-rejects-position-outside-visible-page ()
+  (let ((nskk-henkan-number-to-display-candidates 2))
+    (dolist (start '(0 2))
+      (let (found missing)
+        (nskk-candidate-list-select-by-key/k
+         ?d '("一" "二" "三" "四" "五") start
+         (lambda (index) (setq found index))
+         (lambda () (setq missing t)))
+        (should missing)
+        (should-not found)))))
+
 (provide 'nskk-candidate-window-test)
 
 ;;; nskk-candidate-window-test.el ends here

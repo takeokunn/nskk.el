@@ -84,8 +84,8 @@
 (declare-function nskk-cancel-conversion-to-reading "nskk-henkan")
 (declare-function nskk-cancel-preedit "nskk-henkan")
 (declare-function nskk-clear-conversion-context "nskk-henkan")
-(declare-function nskk-invalidate-undo-kakutei "nskk-henkan")
 (declare-function nskk-undo-kakutei "nskk-henkan")
+(declare-function nskk-undo "nskk-henkan")
 (declare-function nskk-completion-at-point "nskk-henkan")
 (declare-function nskk-commit-by-phase "nskk-keymap")
 
@@ -166,7 +166,10 @@
   ";"       #'nskk-handle-semicolon-key
   "TAB"     #'nskk-handle-tab
   "#"       #'nskk-handle-hash
-  "C-/"     #'nskk-undo-kakutei
+  "C-/"     #'nskk-undo
+  "C-_"     #'nskk-undo
+  "<remap> <undo>" #'nskk-undo
+  "<remap> <undo-only>" #'nskk-undo
   "X"       #'nskk-handle-upper-x)
 
 ;;;###autoload
@@ -607,9 +610,9 @@ rather than replacing the activation failure the caller is waiting for."
     (nskk-mode 1)))
 
 (defvar-local nskk--bound-commands nil
-  "List of interactive commands bound in `nskk-mode-map'.
+  "NSKK-bound commands and their command-loop identities.
 Used by `nskk--post-command-handler' to distinguish NSKK-internal
-commands from unbound movement commands in the preedit (▽) guard.")
+commands from unbound movement commands in conversion and preedit guards.")
 
 (defvar-local nskk--point-before-command nil
   "Point position recorded before each command, for preedit movement detection.
@@ -618,8 +621,9 @@ Set by `nskk--pre-command-handler' and read by `nskk--post-command-handler'.")
 (defun nskk--setup-buffer ()
   "Setup buffer-local NSKK state."
   ;; Collect all commands reachable from nskk-mode-map (including sub-keymaps
-  ;; like C-x C-j) for the preedit point-escape guard.
-  (let ((cmds nil))
+  ;; like C-x C-j) for the conversion and preedit point-escape guards.
+  ;; Candidate navigation and completion-at-point rewrite `this-command'.
+  (let ((cmds '(nskk-next-candidate completion-at-point)))
     (dolist (km (accessible-keymaps nskk-mode-map))
       (map-keymap (lambda (_key binding)
                     (when (commandp binding)
@@ -667,12 +671,6 @@ commit, so the conversion is not left dangling."
              (not (memq this-command nskk--bound-commands)))
     (nskk-henkan-kakutei)))
 
-(defun nskk--post-command-invalidate-undo ()
-  "Drop the undo-kakutei record once a command other than undo has run."
-  (when (and (not (eq this-command 'nskk-undo-kakutei))
-             (nskk-last-kakutei-record))
-    (nskk-invalidate-undo-kakutei)))
-
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update.
 Guards against point escaping the active conversion or preedit area due
@@ -689,11 +687,8 @@ Handlers bound in `nskk-mode-map' call `nskk-commit-by-phase'
 explicitly before moving, so by the time this hook fires for them the
 relevant phase is already nil and both guards are no-ops."
   (when (and nskk-mode nskk-current-state)
-    ;; The three guards are siblings, not a chain: each runs whatever the
-    ;; others did, and the modeline update is unconditional and last.
     (nskk--post-command-converting-guard)
     (nskk--post-command-preedit-guard)
-    (nskk--post-command-invalidate-undo)
     (nskk-modeline-update)))
 
 ;; User commands
@@ -713,21 +708,27 @@ relevant phase is already nil and both guards are no-ops."
 Dispatches via the `kakutei-action/2' Prolog predicate based on state:
 - converting (▼): commit current candidate
 - preedit (▽): commit preedit text as-is
-- romaji-pending: flush incomplete romaji buffer
-- hiragana-idle (hiragana): insert newline
-- katakana-idle (katakana/katakana-半角): switch to hiragana
+- romaji-pending: discard incomplete romaji
+- hiragana-idle (hiragana): leave text and mode unchanged
+- katakana-idle (katakana/katakana-半角): leave text and mode unchanged
 - direct-idle (ascii/latin/jisx0208-latin/abbrev): switch to hiragana"
   (interactive)
-  (let* ((state (nskk-current-kakutei-state))
-         (action (nskk-prolog-query-value
-                  `(kakutei-action ,state ,'\?a) '\?a)))
-    (pcase action
-      ('commit-candidate (nskk-commit-current))
-      ('commit-preedit   (nskk-henkan-kakutei))
-      ('clear-romaji     (nskk-clear-pending-romaji) (nskk-state-set-romaji-buffer ""))
-      ('enter-hiragana   (nskk-set-mode-hiragana))
-      ('insert-newline   (newline))
-      (_                 nil))))
+  (unless (nskk--dispatch-candidate-list)
+    (let* ((state (nskk-current-kakutei-state))
+           (action (nskk-prolog-query-value
+                    `(kakutei-action ,state ,'\?a) '\?a)))
+      (pcase action
+        ((or 'commit-candidate 'commit-preedit)
+         ;; Preserve idle boundaries while grouping an uninterrupted C-j commit.
+         (when (or (eq undo-auto--last-boundary-cause 'command)
+                   (consp undo-auto--last-boundary-cause))
+           (nskk-cancel-input-undo-boundary))
+         (if (eq action 'commit-candidate)
+             (nskk-commit-current)
+           (nskk-henkan-kakutei)))
+        ('clear-romaji     (nskk-clear-pending-romaji) (nskk-state-set-romaji-buffer ""))
+        ('enter-hiragana   (nskk-set-mode-hiragana))
+        (_                 nil)))))
 
 (provide 'nskk)
 

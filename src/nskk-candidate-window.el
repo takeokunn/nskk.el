@@ -37,6 +37,7 @@
 ;; `nskk-henkan-show-candidates-keys' during load, so the defining module must
 ;; be loaded here -- a forward `defvar' would leave the symbol void.
 (require 'nskk-henkan)
+(require 'nskk-annotation)
 
 ;;;; Customization
 
@@ -101,7 +102,8 @@ Returns a string starting with \\n to appear below the preedit line."
                            collect (concat
                                     (propertize (format "%c:" key)
                                                 'face 'nskk-candidate-key-face)
-                                    (nskk-display-sanitize cand 'nskk-candidate-face))))
+                                    (nskk-display-sanitize cand 'nskk-candidate-face)
+                                    (nskk--annotation-candidate-list-suffix cand))))
          (body   (string-join entries " "))
          (suffix (when (> remaining 0) (format " [残り %d]" remaining))))
     (concat "\n" body suffix)))
@@ -204,7 +206,8 @@ selection key or if the resulting index is out of range."
               `(candidate-selection-key ,key ,'\?pos) '\?pos)))
     (if pos
         (let ((absolute-index (+ current-index pos)))
-          (if (< absolute-index (length candidates))
+          (if (and (< pos nskk-henkan-number-to-display-candidates)
+                   (< absolute-index (length candidates)))
               (succeed absolute-index)
             (fail)))
       (fail))))

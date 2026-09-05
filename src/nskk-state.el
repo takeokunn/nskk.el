@@ -183,6 +183,7 @@ INITIAL-MODE defaults to `nskk-state-default-mode', falling back to
     (active   . on)
     (active   . nil)
     (active   . list)
+    (list     . active)
     (list     . on)
     (list     . nil)
     (list     . registration)

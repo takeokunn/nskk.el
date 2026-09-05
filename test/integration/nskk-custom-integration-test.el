@@ -65,19 +65,6 @@
   (nskk-it "default value is t"
     (should (eq (default-value 'nskk-converter-auto-start-henkan) t)))
 
-  (nskk-it "let-binding to nil is visible inside the body"
-    (let ((nskk-converter-auto-start-henkan nil))
-      (should-not nskk-converter-auto-start-henkan)))
-
-  (nskk-it "let-binding to t is visible inside the body"
-    (let ((nskk-converter-auto-start-henkan t))
-      (should nskk-converter-auto-start-henkan)))
-
-  (nskk-it "variable is restored after let exits"
-    (let ((nskk-converter-auto-start-henkan nil))
-      (should-not nskk-converter-auto-start-henkan))
-    (should nskk-converter-auto-start-henkan))
-
   (nskk-it ":safe predicate accepts both t and nil"
     (let ((pred (get 'nskk-converter-auto-start-henkan 'safe-local-variable)))
       (should (funcall pred t))
@@ -93,19 +80,6 @@
   (nskk-it "default value is standard"
     (should (eq (default-value 'nskk-converter-romaji-style) 'standard)))
 
-  (nskk-it "let-binding to azik is visible inside the body"
-    (let ((nskk-converter-romaji-style 'azik))
-      (should (eq nskk-converter-romaji-style 'azik))))
-
-  (nskk-it "let-binding to standard is visible inside the body"
-    (let ((nskk-converter-romaji-style 'standard))
-      (should (eq nskk-converter-romaji-style 'standard))))
-
-  (nskk-it "variable is restored after let exits"
-    (let ((nskk-converter-romaji-style 'azik))
-      (should (eq nskk-converter-romaji-style 'azik)))
-    (should (eq nskk-converter-romaji-style 'standard)))
-
   (nskk-it "nskk-converter-load-style standard succeeds (style is registered)"
     (nskk-prolog-test-with-isolated-db
       (should (nskk-converter-load-style 'standard)))))
@@ -120,39 +94,23 @@
   (nskk-it "default value is frequency"
     (should (eq (default-value 'nskk-search-sort-method) 'frequency)))
 
-  (nskk-it "let-binding to none is visible inside the body"
-    (let ((nskk-search-sort-method 'none))
-      (should (eq nskk-search-sort-method 'none))))
-
-  (nskk-it "let-binding to kana is visible inside the body"
-    (let ((nskk-search-sort-method 'kana))
-      (should (eq nskk-search-sort-method 'kana))))
-
-  (nskk-it "variable is restored after let exits"
-    (let ((nskk-search-sort-method 'none))
-      (should (eq nskk-search-sort-method 'none)))
-    (should (eq nskk-search-sort-method 'frequency)))
-
-  (nskk-it "with sort-method none, nskk-search-prefix returns a list"
-    (nskk-with-mock-dict '(("あい" . ("愛" "藍" "哀")))
-      (let ((nskk-search-sort-method 'none)
-            (idx (nskk-dict-system-index)))
-        (let ((results (nskk-search-prefix idx "あい" nil nil)))
-          (should (or (null results) (listp results)))))))
-
-  (nskk-it "with sort-method kana, nskk--search-sort-results returns a list"
-    (nskk-with-mock-dict '(("こ" . ("子")) ("あ" . ("亜")) ("か" . ("下")))
+  (nskk-it "kana sorting orders all matching readings lexically"
+    (nskk-with-mock-dict '(("かさ" . ("傘")) ("かい" . ("貝")) ("かき" . ("柿")))
       (let ((nskk-search-sort-method 'kana)
             (idx (nskk-dict-system-index)))
-        (let ((results (nskk-search-prefix idx "あ" nil nil)))
-          (should (or (null results) (listp results)))))))
+        (should (equal (mapcar #'car (nskk-search-prefix idx "か" nil nil))
+                       '("かい" "かき" "かさ"))))))
 
-  (nskk-it "with sort-method frequency, nskk--search-sort-results returns a list"
-    (nskk-with-mock-dict '(("あ" . ("亜" "吾")))
+  (nskk-it "frequency sorting orders all matching readings by learned usage"
+    (nskk-with-mock-dict '(("かさ" . ("傘")) ("かい" . ("貝")) ("かき" . ("柿")))
+      (nskk-prolog-retract-all 'learning-score 3)
+      (nskk-search-learn "かさ" "傘")
+      (nskk-search-learn "かさ" "傘")
+      (nskk-search-learn "かき" "柿")
       (let ((nskk-search-sort-method 'frequency)
             (idx (nskk-dict-system-index)))
-        (let ((results (nskk-search-prefix idx "あ" nil nil)))
-          (should (or (null results) (listp results))))))))
+        (should (equal (mapcar #'car (nskk-search-prefix idx "か" nil nil))
+                       '("かさ" "かき" "かい")))))))
 
 
 ;;;;
@@ -181,11 +139,6 @@
         (let ((indicator (nskk-modeline-indicator)))
           (should (stringp indicator))
           (should-not (string-prefix-p " " indicator))))))
-
-  (nskk-it "format string is restored after let exits"
-    (let ((nskk-modeline-format "CUSTOM"))
-      (should (equal nskk-modeline-format "CUSTOM")))
-    (should (equal nskk-modeline-format " %m")))
 
   (nskk-it "indicator with nil state returns empty string regardless of format"
     (nskk-with-state nil
@@ -222,12 +175,7 @@
         (let ((nskk-use-color-cursor nil))
           (should-not (condition-case nil
                           (progn (nskk-modeline-update) nil)
-                        (error t)))))))
-
-  (nskk-it "variable is restored after let exits"
-    (let ((nskk-use-color-cursor nil))
-      (should-not nskk-use-color-cursor))
-    (should nskk-use-color-cursor)))
+                        (error t))))))))
 
 
 ;;;;
@@ -238,19 +186,6 @@
 
   (nskk-it "default value is 5"
     (should (= (default-value 'nskk-henkan-show-candidates-nth) 5)))
-
-  (nskk-it "let-binding to 0 is visible inside the body"
-    (let ((nskk-henkan-show-candidates-nth 0))
-      (should (= nskk-henkan-show-candidates-nth 0))))
-
-  (nskk-it "let-binding to 1 is visible inside the body"
-    (let ((nskk-henkan-show-candidates-nth 1))
-      (should (= nskk-henkan-show-candidates-nth 1))))
-
-  (nskk-it "variable is restored to 5 after let exits"
-    (let ((nskk-henkan-show-candidates-nth 1))
-      (should (= nskk-henkan-show-candidates-nth 1)))
-    (should (= nskk-henkan-show-candidates-nth 5)))
 
   (nskk-it ":safe predicate accepts zero (show list immediately)"
     (let ((pred (get 'nskk-henkan-show-candidates-nth 'safe-local-variable)))
@@ -265,19 +200,6 @@
 
   (nskk-it "default value is 7"
     (should (= (default-value 'nskk-henkan-number-to-display-candidates) 7)))
-
-  (nskk-it "let-binding to a smaller page size is visible inside the body"
-    (let ((nskk-henkan-number-to-display-candidates 3))
-      (should (= nskk-henkan-number-to-display-candidates 3))))
-
-  (nskk-it "let-binding to a larger page size is visible inside the body"
-    (let ((nskk-henkan-number-to-display-candidates 20))
-      (should (= nskk-henkan-number-to-display-candidates 20))))
-
-  (nskk-it "variable is restored to 7 after let exits"
-    (let ((nskk-henkan-number-to-display-candidates 4))
-      (should (= nskk-henkan-number-to-display-candidates 4)))
-    (should (= nskk-henkan-number-to-display-candidates 7)))
 
   (nskk-it "value is always a natural number"
     (should (natnump nskk-henkan-number-to-display-candidates))))
@@ -299,19 +221,6 @@
     (should (equal (default-value 'nskk-henkan-show-candidates-keys)
                    '(?a ?s ?d ?f ?j ?k ?l))))
 
-  (nskk-it "let-binding to a shorter key list is visible inside the body"
-    (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d)))
-      (should (equal nskk-henkan-show-candidates-keys '(?a ?s ?d)))))
-
-  (nskk-it "let-binding to nil (no selection keys) is visible inside the body"
-    (let ((nskk-henkan-show-candidates-keys nil))
-      (should (null nskk-henkan-show-candidates-keys))))
-
-  (nskk-it "variable is restored after let exits"
-    (let ((nskk-henkan-show-candidates-keys '(?x ?y)))
-      (should (equal nskk-henkan-show-candidates-keys '(?x ?y))))
-    (should (equal nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))))
-
   (nskk-it "each default key is a character that satisfies characterp"
     (dolist (ch nskk-henkan-show-candidates-keys)
       (should (characterp ch)))))
@@ -325,19 +234,6 @@
 
   (nskk-it "default value is 3"
     (should (= (default-value 'nskk-max-registration-depth) 3)))
-
-  (nskk-it "let-binding to 1 is visible inside the body"
-    (let ((nskk-max-registration-depth 1))
-      (should (= nskk-max-registration-depth 1))))
-
-  (nskk-it "let-binding to 0 is visible inside the body (no nesting)"
-    (let ((nskk-max-registration-depth 0))
-      (should (= nskk-max-registration-depth 0))))
-
-  (nskk-it "variable is restored to 3 after let exits"
-    (let ((nskk-max-registration-depth 1))
-      (should (= nskk-max-registration-depth 1)))
-    (should (= nskk-max-registration-depth 3)))
 
   (nskk-it "value is a natural number"
     (should (natnump nskk-max-registration-depth))))
@@ -371,11 +267,6 @@
         (should buf)
         (should (> (with-current-buffer buf (buffer-size)) 0)))))
 
-  (nskk-it "variable is restored to nil after let exits"
-    (let ((nskk-debug-enabled t))
-      (should nskk-debug-enabled))
-    (should-not nskk-debug-enabled))
-
   (nskk-it "disabling after enabling suppresses further logging"
     (let ((nskk-debug-enabled t))
       (nskk-debug-clear)
@@ -400,16 +291,7 @@
   (nskk-it "default value is 1000"
     (should (= (default-value 'nskk-debug-max-entries) 1000)))
 
-  (nskk-it "let-binding to a smaller value is visible inside the body"
-    (let ((nskk-debug-max-entries 10))
-      (should (= nskk-debug-max-entries 10))))
-
-  (nskk-it "variable is restored to 1000 after let exits"
-    (let ((nskk-debug-max-entries 50))
-      (should (= nskk-debug-max-entries 50)))
-    (should (= nskk-debug-max-entries 1000)))
-
-  (nskk-it "with max-entries 1, buffer contains at most 1 line after two writes"
+  (nskk-it "with max-entries 1, buffer retains only the latest line"
     (let ((nskk-debug-enabled t)
           (nskk-debug-max-entries 1))
       (nskk-debug-clear)
@@ -418,7 +300,9 @@
       (let ((buf (get-buffer "*NSKK Debug*")))
         (should buf)
         (with-current-buffer buf
-          (should (<= (count-lines (point-min) (point-max)) 2))))))
+          (should (= (count-lines (point-min) (point-max)) 1))
+          (should (string-match-p "\\`\\[[^]\n]+\\] line two\n\\'"
+                                  (buffer-string)))))))
 
   (nskk-it "with max-entries 0, buffer is cleared on every append"
     (let ((nskk-debug-enabled t)
@@ -426,9 +310,10 @@
       (nskk-debug-clear)
       (nskk-debug-message "zero-max probe")
       (let ((buf (get-buffer "*NSKK Debug*")))
-        (when buf
-          (with-current-buffer buf
-            (should (<= (buffer-size) 200)))))))
+        (should buf)
+        (with-current-buffer buf
+          (should (= (count-lines (point-min) (point-max)) 0))
+          (should (equal (buffer-string) ""))))))
 
   (nskk-it "value is always a natural number"
     (should (natnump nskk-debug-max-entries))))

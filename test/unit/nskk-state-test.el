@@ -861,7 +861,7 @@ intended slot alone.")
   '((nil . on)
     (on . active) (on . registration) (on . nil)
     (active . on) (active . nil) (active . list)
-    (list . on) (list . nil) (list . registration)
+    (list . active) (list . on) (list . nil) (list . registration)
     (registration . nil) (registration . list))
   "Phase transitions the henkan state machine is specified to permit.
 Hand-authored from the phase-machine specification rather than read from
@@ -1089,6 +1089,14 @@ to catch, so the duplication is deliberate.")
       (should (= (length prolog-modes) (length nskk--valid-modes))))))
 
 (nskk-describe "nskk--valid-henkan-transitions cache invariant"
+  (nskk-it "allows returning from the first candidate page to inline conversion"
+    (let ((state (nskk-state-create 'hiragana)))
+      (nskk-state-set-henkan-phase state 'on)
+      (nskk-state-set-henkan-phase state 'active)
+      (nskk-state-set-henkan-phase state 'list)
+      (nskk-state-set-henkan-phase state 'active)
+      (should (eq (nskk-state-henkan-phase state) 'active))))
+
   (nskk-it "every table entry is accepted by nskk--henkan-transition-valid-p"
     (dolist (pair nskk--valid-henkan-transitions)
       (should (nskk--henkan-transition-valid-p (car pair) (cdr pair)))))
@@ -1097,7 +1105,7 @@ to catch, so the duplication is deliberate.")
     :description "Pairs absent from nskk--valid-henkan-transitions are rejected"
     :columns (from to)
     :rows ((nil active) (nil list) (nil registration)
-           (active registration) (list active)
+           (active registration)
            (registration on) (registration active))
     :body (should-not (nskk--henkan-transition-valid-p from to))))
 

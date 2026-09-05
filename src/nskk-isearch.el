@@ -33,6 +33,10 @@
 (require 'nskk-state)
 (require 'nskk-cps-macros)
 
+(declare-function nskk-mode "nskk" (&optional arg))
+(declare-function nskk-set-mode "nskk-input" (mode))
+(declare-function nskk-reset-romaji-buffer "nskk-henkan" ())
+
 ;;;; Customization
 
 (defgroup nskk-isearch nil
@@ -80,6 +84,12 @@ searches normally but shows no indicator."
 
 (defvar nskk--isearch-orig-buffer-stack nil
   "Stack of previous originating buffers for nested isearch sessions.")
+
+(defvar nskk--isearch-input-sessions nil
+  "Stack of search input buffers and their previous overriding maps.")
+
+(defvar nskk--isearch-pending-buffers nil
+  "Input buffers whose failed disposal must be retried at teardown.")
 
 (defvar nskk--isearch-mode-hook-owned nil
   "Non-nil when NSKK installed its isearch mode hook.")
@@ -160,23 +170,24 @@ nothing keeps a permanently re-polluting callback from looping forever."
       (nskk-state-mode nskk-current-state))))
 
 (defun/k nskk--isearch-mode-string ()
-  "Return the isearch prompt indicator for the originating buffer's mode.
+	 "Return the isearch prompt indicator for the originating buffer's mode.
 Fails when no live originating buffer holds an NSKK state whose mode has
 an entry in `nskk-isearch-mode-string-alist'."
-  (let* ((buffer nskk--isearch-orig-buffer)
-         (mode (and buffer
-                    (buffer-live-p buffer)
-                    (nskk--isearch-origin-mode buffer)))
-         (indicator (and mode
-                         (cdr (assq mode nskk-isearch-mode-string-alist)))))
-    (if indicator
-        (succeed indicator)
-      (fail))))
+	 (let* ((buffer (or (caar nskk--isearch-input-sessions)
+			    nskk--isearch-orig-buffer))
+		(mode (and buffer
+			   (buffer-live-p buffer)
+			   (nskk--isearch-origin-mode buffer)))
+		(indicator (and mode
+				(cdr (assq mode nskk-isearch-mode-string-alist)))))
+	   (if indicator
+               (succeed indicator)
+	     (fail))))
 
-(defun nskk--isearch-prompt-advice (orig-fun)
+(defun nskk--isearch-prompt-advice (orig-fun &rest args)
   "Advice for `isearch-message-prefix' to add NSKK mode indicator.
-ORIG-FUN is the original `isearch-message-prefix' function."
-  (let ((orig-prompt (funcall orig-fun)))
+ORIG-FUN is the original function; ARGS are forwarded unchanged."
+  (let ((orig-prompt (apply orig-fun args)))
     (if nskk-isearch-enable
         (nskk--isearch-mode-string/k
          (lambda (indicator) (concat indicator " " orig-prompt))
@@ -185,16 +196,169 @@ ORIG-FUN is the original `isearch-message-prefix' function."
 
 ;;;; Hook Functions
 
+(defun nskk--isearch-input-pending-p ()
+  "Return non-nil when the current search input is not yet committed."
+  (or (nskk-state-henkan-phase nskk-current-state)
+      (not (string-empty-p nskk--romaji-buffer))))
+
+(defun nskk--isearch-pending-message ()
+  "Display uncommitted input without adding it to the search string."
+  (let* ((pending
+          (with-current-buffer (caar nskk--isearch-input-sessions)
+            (let ((overlay (nskk-state-conversion-overlay)))
+              (concat
+               (if (and (overlayp overlay) (overlay-buffer overlay)
+                        (stringp (overlay-get overlay 'display)))
+                   (concat (buffer-substring (point-min) (overlay-start overlay))
+                           (overlay-get overlay 'display)
+                           (buffer-substring (overlay-end overlay) (point-max)))
+                 (buffer-string))
+               nskk--romaji-buffer))))
+         (isearch-message (concat isearch-message pending)))
+    (isearch-message)))
+
+(defun nskk--isearch-input (event)
+  "Process EVENT in the isolated search input buffer."
+  (let ((text
+         (with-current-buffer (caar nskk--isearch-input-sessions)
+           (let* ((overriding-terminal-local-map nil)
+                  (overriding-local-map nil)
+                  (last-command-event event)
+                  (this-command (key-binding (vector event))))
+             (command-execute this-command))
+           (unless (nskk--isearch-input-pending-p)
+             (prog1 (buffer-string) (erase-buffer))))))
+    (if (and text (not (string-empty-p text)))
+        (isearch-process-search-string text text)
+      (isearch-update)
+      (nskk--isearch-pending-message))))
+
+(defun nskk--isearch-printing-char ()
+  "Enter a character using the search session's NSKK mode."
+  (interactive)
+  (nskk--isearch-input last-command-event))
+
+(defun nskk--isearch-delete-char ()
+  "Delete pending input, or remove the last committed search character."
+  (interactive)
+  (if (with-current-buffer (caar nskk--isearch-input-sessions)
+        (nskk-state-henkan-phase nskk-current-state))
+      (nskk--isearch-input 127)
+    (isearch-delete-char)))
+
+(defun nskk--isearch-exit ()
+  "Commit pending NSKK input before exiting the search."
+  (interactive)
+  (if (with-current-buffer (caar nskk--isearch-input-sessions)
+        (nskk-state-henkan-phase nskk-current-state))
+      (nskk--isearch-input 10)
+    (isearch-exit)))
+
+(defun nskk--isearch-newline ()
+  "Commit conversion, switch from Latin input, or search for a newline."
+  (interactive)
+  (if (with-current-buffer (caar nskk--isearch-input-sessions)
+        (or (memq (nskk-state-mode nskk-current-state)
+                  '(ascii latin jisx0208-latin))
+            (nskk-state-henkan-phase nskk-current-state)))
+      (nskk--isearch-input 10)
+    (isearch-printing-char)))
+
+(defun nskk--isearch-abort ()
+  "Cancel pending input before aborting the search."
+  (interactive)
+  (if (with-current-buffer (caar nskk--isearch-input-sessions)
+        (and (not (nskk-state-henkan-phase nskk-current-state))
+             (not (string-empty-p nskk--romaji-buffer))))
+      (progn
+        (with-current-buffer (caar nskk--isearch-input-sessions)
+          (nskk-reset-romaji-buffer))
+        (nskk--isearch-pending-message))
+    (condition-case nil
+        (nskk--isearch-input 7)
+      (quit (isearch-abort)))))
+
+(defun nskk--isearch-dispose-input (buffer)
+  "Dispose of owned input BUFFER, retaining any cleanup failure.
+Retry without hooks only for this disposable buffer.  If even that fails,
+retain ownership for a later teardown instead of losing the buffer."
+  (let (conditions)
+    (when (buffer-live-p buffer)
+      (condition-case err
+          (unless (kill-buffer buffer) (error "Input buffer disposal refused"))
+        ((error quit) (push err conditions)))
+      (when (buffer-live-p buffer)
+        (condition-case err
+            (with-current-buffer buffer
+              (let ((kill-buffer-hook nil)
+                    (kill-buffer-query-functions nil))
+                (unless (kill-buffer buffer)
+                  (error "Input buffer disposal refused"))))
+          ((error quit) (push err conditions)))))
+    (when (buffer-live-p buffer)
+      (cl-pushnew buffer nskk--isearch-pending-buffers))
+    (when conditions
+      (setq conditions (nreverse conditions))
+      (signal (caar conditions)
+              (append (cdar conditions)
+                      (when (cdr conditions)
+                        (list :cleanup-errors (cdr conditions))))))))
+
 (defun nskk--isearch-setup ()
   "Push the previous origin and record the current isearch buffer."
-  (push nskk--isearch-orig-buffer nskk--isearch-orig-buffer-stack)
-  (setq nskk--isearch-orig-buffer (current-buffer)))
+  (let ((mode (and (bound-and-true-p nskk-mode)
+                   (nskk--isearch-origin-mode (current-buffer))))
+        (previous-map overriding-terminal-local-map)
+        input-buffer input-map)
+    (push nskk--isearch-orig-buffer nskk--isearch-orig-buffer-stack)
+    (setq nskk--isearch-orig-buffer (current-buffer))
+    (condition-case err
+        (progn
+	  (when mode
+	    (setq input-buffer (generate-new-buffer " *nskk-isearch-input*"))
+	    (with-current-buffer input-buffer
+              (nskk-mode 1)
+              (nskk-set-mode (if (eq mode 'katakana-半角) 'ascii mode)))
+	    (let ((map (make-sparse-keymap)))
+              (set-keymap-parent map previous-map)
+              (dotimes (offset 95)
+		(define-key map (vector (+ 32 offset)) #'nskk--isearch-printing-char))
+              (define-key map (kbd "DEL") #'nskk--isearch-delete-char)
+              (define-key map (kbd "RET") #'nskk--isearch-exit)
+              (define-key map (kbd "C-g") #'nskk--isearch-abort)
+              (define-key map (kbd "C-j") #'nskk--isearch-newline)
+              (setq input-map map
+		    overriding-terminal-local-map map)))
+	  (push (list input-buffer input-map previous-map)
+		nskk--isearch-input-sessions))
+      ((error quit)
+       (setq overriding-terminal-local-map previous-map
+             nskk--isearch-orig-buffer
+             (pop nskk--isearch-orig-buffer-stack))
+       (let ((cleanup
+              (nskk--isearch-collect-condition
+               (list (lambda () (nskk--isearch-dispose-input input-buffer))))))
+         (signal (car err)
+                 (append (cdr err)
+                         (when cleanup (list :cleanup-errors (list cleanup))))))))))
 
 (defun nskk--isearch-teardown ()
   "Restore the previous originating buffer when isearch ends."
-  (setq nskk--isearch-orig-buffer
-        (and nskk--isearch-orig-buffer-stack
-             (pop nskk--isearch-orig-buffer-stack))))
+  (let ((session (pop nskk--isearch-input-sessions))
+        (pending nskk--isearch-pending-buffers))
+    (setq nskk--isearch-pending-buffers nil)
+    ;; `isearch-done' normally restores its map before running this hook.
+    (when (and (nth 1 session)
+               (eq overriding-terminal-local-map (nth 1 session)))
+      (setq overriding-terminal-local-map (nth 2 session)))
+    (setq nskk--isearch-orig-buffer
+          (and nskk--isearch-orig-buffer-stack
+               (pop nskk--isearch-orig-buffer-stack)))
+    (nskk--isearch-resignal
+     (nskk--isearch-collect-condition
+      (mapcar (lambda (buffer)
+                (lambda () (nskk--isearch-dispose-input buffer)))
+              (cons (car session) pending))))))
 
 ;;;; Resource And Ownership State
 
@@ -417,6 +581,9 @@ Adds hooks and advice to enable Japanese isearch."
            (append
             (nskk--isearch-release-thunks (nth 0 transaction-state)
                                           owned-before)
+            (make-list (max (length nskk--isearch-input-sessions)
+                            (if nskk--isearch-pending-buffers 1 0))
+                       #'nskk--isearch-teardown)
             (list (lambda ()
                     (nskk--isearch-reconcile-resource-state
                      desired-state)))))))

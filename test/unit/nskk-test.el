@@ -144,7 +144,8 @@
          (";"       nskk-handle-semicolon-key)
          ("TAB"     nskk-handle-tab)
          ("#"       nskk-handle-hash)
-         ("C-/"     nskk-undo-kakutei)
+         ("C-/"     nskk-undo)
+         ("C-_"     nskk-undo)
          ("X"       nskk-handle-upper-x))
   :body (should (eq expected-command (lookup-key nskk-mode-map (kbd key)))))
 
@@ -205,25 +206,25 @@
           (nskk-then  (nskk-should-mode 'hiragana))))
 
 (nskk-describe "kakutei behavior"
-  (nskk-it "inserts a newline when already in hiragana with no preedit"
+  (nskk-it "preserves text when already in hiragana with no preedit"
     (nskk-with-test-buffer 'hiragana
       (electric-indent-local-mode -1)
       (nskk-kakutei)
       (nskk-should-mode 'hiragana)
-      (nskk-should-buffer "\n")))
-
-  (nskk-it "switches fullwidth katakana to hiragana with no preedit"
-    (nskk-with-test-buffer 'katakana
-      (nskk-when  (nskk-kakutei))
-      (nskk-then  (nskk-should-mode 'hiragana))
       (nskk-should-buffer "")))
 
-  (nskk-it "switches half-width katakana to hiragana with no preedit"
+  (nskk-it "preserves fullwidth katakana with no preedit"
+    (nskk-with-test-buffer 'katakana
+      (nskk-when  (nskk-kakutei))
+      (nskk-then  (nskk-should-mode 'katakana))
+      (nskk-should-buffer "")))
+
+  (nskk-it "preserves half-width katakana with no preedit"
     (nskk-with-test-buffer nil
       (nskk-state-set-mode nskk-current-state 'katakana-半角)
       (nskk-given (nskk-should-mode 'katakana-半角))
       (nskk-when  (nskk-kakutei))
-      (nskk-then  (nskk-should-mode 'hiragana))
+      (nskk-then  (nskk-should-mode 'katakana-半角))
       (nskk-should-buffer "")))
 
   (nskk-it "clears pending romaji buffer in hiragana and stays in hiragana"

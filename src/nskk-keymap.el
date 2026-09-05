@@ -38,13 +38,14 @@
 (declare-function nskk-set-mode-abbrev "nskk-input")
 (declare-function nskk-set-mode-jisx0208-latin "nskk-input")
 (declare-function nskk-self-insert "nskk-input")
+(declare-function nskk-cancel-input-undo-boundary "nskk-input")
 (declare-function nskk-handle-q-key "nskk-input")
 (declare-function nskk--azik-complete-match-p "nskk-input")
 (declare-function nskk--romaji-has-match-p "nskk-input")
 (declare-function nskk-deferred-state-kana "nskk-input" (state))
 (declare-function nskk-process-japanese-input "nskk-input")
 (declare-function nskk-set-mode-numeric "nskk-input")
-(declare-function nskk--try-candidate-selection/k "nskk-input" (char on-found on-not-found))
+(declare-function nskk--dispatch-candidate-list "nskk-input" ())
 (defvar nskk-mode)                    ;; Forward declaration from nskk.el
 (defvar nskk-converter-romaji-style)
 ;; AZIK deferred state accessors from nskk-input.el
@@ -75,6 +76,8 @@
 (declare-function nskk-henkan-kakutei "nskk-henkan")
 (declare-function nskk-henkan-kakutei-convert-script "nskk-henkan")
 (declare-function nskk-dynamic-complete "nskk-henkan")
+(declare-function nskk--dcomp-prepare "nskk-henkan" ())
+(declare-function nskk--dcomp-cancel "nskk-henkan" ())
 (declare-function nskk-purge-from-jisyo "nskk-henkan")
 (defvar nskk-henkan-on-marker)
 (defvar nskk-dcomp-style)
@@ -314,14 +317,6 @@ falls through to a romaji-pending check, then to `kakutei-idle-state/2'."
                     '\?s))
               'direct-idle)))))
 
-(defun nskk--japanese-mode-active-p ()
-  "Return non-nil if the current NSKK mode is a Japanese input mode.
-Queries the `japanese-mode/1' Prolog predicate for the mode stored in
-`nskk-current-state'.  Returns nil when state is unset."
-  (and nskk-current-state
-       (nskk-prolog-holds-p
-        `(japanese-mode ,(nskk-state-mode nskk-current-state)))))
-
 (defun nskk--japanese-mode-class ()
   "Return mode classification for mode-switch key dispatch.
 The full set of possible return values is documented by the
@@ -399,11 +394,12 @@ dispatches masking missing rules."
     `(defun ,fn-name ()
        ,docstring
        (interactive)
-       (let* ((state (nskk--current-key-state))
-              (action (nskk-prolog-query-value
-                       (list 'key-action ',key state '\?a) '\?a)))
-         (pcase action
-           ,@clauses)))))
+       (unless (nskk--dispatch-candidate-list)
+         (let* ((state (nskk--current-key-state))
+                (action (nskk-prolog-query-value
+                         (list 'key-action ',key state '\?a) '\?a)))
+           (pcase action
+             ,@clauses))))))
 
 (defmacro nskk-define-mode-switch-handler (key docstring action)
   "Define an interactive mode-switch key handler for KEY.
@@ -419,9 +415,10 @@ Falls through to `self-insert-command' when not in a Japanese input mode."
     `(defun/done ,fn-name ()
        ,docstring
        :interactive t
-       (nskk--with-japanese-mode/k
-        (lambda (_) ,action)
-        (lambda () (self-insert-command 1))))))
+       (unless (nskk--dispatch-candidate-list)
+         (nskk--with-japanese-mode/k
+          (lambda (_) ,action)
+          (lambda () (self-insert-command 1)))))))
 
 ;;;; Q-Key Dispatch Rules
 
@@ -460,25 +457,26 @@ In ASCII mode or when NSKK state is inactive, falls through to
 
 Dispatched via `q-key-dispatch/3' Prolog table."
   :interactive t
-  (let* ((cls (nskk-classify-state))
-         (style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
-         (action (nskk-prolog-query-value
-                  `(q-key-dispatch ,cls ,style \?a) '\?a)))
-    (pcase action
-      ;; `fire-romaji' is reachable only from the two `azik' rows of
-      ;; `q-key-dispatch/3'; no standard-style row produces it.  So the
-      ;; romaji-buffer decision belongs one layer down: `nskk-handle-q-key'
-      ;; dispatches it through `q-key-action/3' in nskk-input.el, whose
-      ;; buf-state column carries exactly that distinction.
-      ('fire-romaji     (nskk-handle-q-key))
-      ('convert-script  (nskk-henkan-kakutei-convert-script))
-      ('mode-switch     (let ((saved-romaji (nskk-state-romaji-buffer)))
-                          (nskk--with-japanese-mode/k
-                           (lambda (_)
-                             (nskk-state-set-romaji-buffer saved-romaji)
-                             (nskk-handle-q-key))
-                           (lambda () (self-insert-command 1)))))
-      (_                (self-insert-command 1)))))
+  (unless (nskk--dispatch-candidate-list)
+    (let* ((cls (nskk-classify-state))
+           (style (if (eq nskk-converter-romaji-style 'azik) 'azik 'standard))
+           (action (nskk-prolog-query-value
+                    `(q-key-dispatch ,cls ,style \?a) '\?a)))
+      (pcase action
+        ;; `fire-romaji' is reachable only from the two `azik' rows of
+        ;; `q-key-dispatch/3'; no standard-style row produces it.  So the
+        ;; romaji-buffer decision belongs one layer down: `nskk-handle-q-key'
+        ;; dispatches it through `q-key-action/3' in nskk-input.el, whose
+        ;; buf-state column carries exactly that distinction.
+        ('fire-romaji     (nskk-handle-q-key))
+        ('convert-script  (nskk-henkan-kakutei-convert-script))
+        ('mode-switch     (let ((saved-romaji (nskk-state-romaji-buffer)))
+                            (nskk--with-japanese-mode/k
+                             (lambda (_)
+                               (nskk-state-set-romaji-buffer saved-romaji)
+                               (nskk-handle-q-key))
+                             (lambda () (self-insert-command 1)))))
+        (_                (self-insert-command 1))))))
 
 (defun/done nskk--handle-l-action ()
   "Helper for `nskk-handle-l' mode-switch and fire-romaji actions.
@@ -496,8 +494,8 @@ AZIK and standard styles (see `l-key-action/3' table comment)."
       ('fire-romaji (nskk-process-japanese-input ?l 1))
       ('latin-mode
        (nskk--with-japanese-mode/k
-         (lambda (_) (nskk-set-mode-latin))
-         (lambda () (self-insert-command 1))))
+        (lambda (_) (nskk-set-mode-latin))
+        (lambda () (self-insert-command 1))))
       (_ (self-insert-command 1)))))
 
 (defun/done nskk-handle-l ()
@@ -507,9 +505,8 @@ In idle Japanese mode, switches to ASCII (latin) mode or fires a romaji rule.
 In ASCII mode or when NSKK state is inactive, falls through to
 `self-insert-command'."
   :interactive t
-  (nskk--try-candidate-selection/k ?l
-    #'ignore
-    (lambda () (nskk--handle-l-action))))
+  (unless (nskk--dispatch-candidate-list)
+    (nskk--handle-l-action)))
 
 (nskk-define-mode-switch-handler upper-l
   "Handle L key: switch to full-width latin (jisx0208-latin) mode.
@@ -527,11 +524,12 @@ to romaji.
 In ASCII mode or when NSKK state is inactive, fall through to
 `self-insert-command'."
   :interactive t
-  (if (nskk--romaji-has-match-p ?/)
-      (nskk-process-japanese-input ?/ 1)
-    (nskk--with-japanese-mode/k
-     (lambda (_) (nskk-set-mode-abbrev))
-     (lambda () (self-insert-command 1)))))
+  (unless (nskk--dispatch-candidate-list)
+    (if (nskk--romaji-has-match-p ?/)
+        (nskk-process-japanese-input ?/ 1)
+      (nskk--with-japanese-mode/k
+       (lambda (_) (nskk-set-mode-abbrev))
+       (lambda () (self-insert-command 1))))))
 
 ;; X is not generated by `nskk-define-key-handler', so unlike x, SPC, RET and
 ;; the nav keys it does not consult `key-action/3'.  Its `nskk-converting-p'
@@ -547,9 +545,10 @@ In ▼ (conversion) mode, calls `nskk-purge-from-jisyo' to remove the
 current candidate after user confirmation.
 Otherwise delegates to `nskk-self-insert'."
   (interactive)
-  (if (nskk-converting-p)
-      (nskk-purge-from-jisyo)
-    (nskk-self-insert 1)))
+  (unless (nskk--dispatch-candidate-list)
+    (if (nskk-converting-p)
+        (nskk-purge-from-jisyo)
+      (nskk-self-insert 1))))
 
 (nskk-define-key-handler x
   "Handle x key: select previous candidate.
@@ -566,22 +565,31 @@ In preedit mode, initiates dictionary conversion.
 Otherwise delegates to `nskk-self-insert' so that mode-based routing
 applies: jisx0208-latin produces ideographic space (U+3000); all other
 modes insert a literal ASCII space."
-  ('next-candidate (nskk-next-candidate))
-  ('start-conversion (nskk-start-conversion))
+  ('next-candidate
+   (setq this-command 'nskk-next-candidate)
+   (nskk-next-candidate))
+  ('start-conversion
+   (nskk-cancel-input-undo-boundary)
+   (nskk-start-conversion))
   (_ (nskk-self-insert 1)))
 
 (nskk-define-key-handler return
   "Handle RET key: commit current conversion or preedit, then insert newline.
-In conversion mode, commits the selected candidate without inserting
+In conversion mode, commits the selected candidate and inserts
 a newline.  In preedit (▽) mode, commits the raw kana reading via
 `nskk-henkan-kakutei' then inserts a newline (matching DDSKK behavior).
 In normal mode, delegates to the next RET binding (skipping nskk-mode-map),
 falling back to `newline' if no other binding is found.  This matches the
 behavior of `nskk-handle-tab' and ensures compatibility with completion UIs
 such as corfu."
-  ('commit-candidate (nskk-commit-current))
+  ('commit-candidate
+   (undo-boundary)
+   (nskk-commit-current)
+   (undo-boundary)
+   (newline))
   ('kakutei-and-newline
    (nskk-henkan-kakutei)
+   (undo-boundary)
    (newline))
   (_ (let ((cmd (let ((nskk-mode nil))
                   (key-binding "\r"))))
@@ -601,7 +609,7 @@ ERROR-TYPE, if non-nil, is the error to suppress via `nskk--safe-nav-command'."
                       `(nskk--safe-nav-command ,nav-cmd ,error-type)
                     `(call-interactively ,nav-cmd))))
     `(nskk-define-key-handler ,key
-       ,docstring
+         ,docstring
        (',kakutei-action (nskk-commit-by-phase) ,nav-form)
        (',nav-action ,nav-form))))
 
@@ -657,11 +665,13 @@ In normal mode, delegates to \\[end-of-line]."
   "Handle C-g: cancel current conversion or preedit.
 In conversion mode, rolls back to preedit (▽) state so the user
 can edit the reading or re-convert.
-In preedit mode, discards preedit text and resets state entirely.
+Immediately after TAB, restores the reading before completion.
+Otherwise in preedit mode, discards preedit text and resets state entirely.
 Otherwise clears any residual AZIK deferred state and calls
 `keyboard-quit'."
   ('rollback-to-reading (nskk-rollback-conversion))
-  ('cancel-preedit (nskk-cancel-preedit))
+  ('cancel-preedit (unless (nskk--dcomp-cancel)
+                     (nskk-cancel-preedit)))
   (_ (nskk-clear-azik-pending-state) (keyboard-quit)))
 
 ;;;; Backspace Retraction and Rollback
@@ -698,9 +708,8 @@ Otherwise clears any residual AZIK deferred state and calls
   (nskk-set-deferred-azik-state nil))
 
 (defun nskk--backspace-retract-deferred-vowel-shadow-state ()
-  "Retract the pending AZIK deferred-vowel-shadow-state (DV), deleting its text."
-  (delete-char (- (length (nskk-deferred-state-kana
-                           (nskk-deferred-vowel-shadow-state)))))
+  "Clear the pending AZIK vowel shadow, deleting only its final vowel."
+  (delete-char -1)
   (nskk-set-deferred-vowel-shadow-state nil))
 
 (defun nskk--backspace-retract-azik-colon-okuri-pending ()
@@ -807,7 +816,7 @@ and pending-romaji overlay to their entry values."
   (let ((snapshot (nskk--backspace-snapshot)))
     (condition-case err
         (atomic-change-group
-         (nskk--backspace-retract-active-state))
+          (nskk--backspace-retract-active-state))
       ((error quit)
        (nskk--backspace-restore-snapshot snapshot)
        (signal (car err) (cdr err))))))
@@ -818,11 +827,17 @@ Called when backspace is pressed in preedit state.
 Priority: DA > DV > CP > CD > romaji-buffer > buffer text.
 If point drifted left of preedit boundary, clamp it instead."
   (let* ((start (nskk-get-conversion-start))
+         (deferred-azik (nskk-deferred-azik-state))
          (preedit-min (and start (+ start (length nskk-henkan-on-marker)))))
     (when preedit-min
       (cond
        ((nskk--backspace-retract-pending)
-        (when (<= (point) preedit-min) (nskk-cancel-preedit)))
+        (when (and deferred-azik (= (point) preedit-min))
+          (nskk-cancel-preedit))
+        (when (and (string-empty-p (nskk-state-romaji-buffer))
+                   (eq (char-before) ?*))
+          (delete-char -1)
+          (nskk-state-set-okurigana nskk-current-state nil)))
        ((> (point) preedit-min)
         (delete-char -1))
        ((= (point) preedit-min)
@@ -852,7 +867,8 @@ In preedit mode, behavior depends on `nskk-dcomp-style':
 In other modes, delegates to the underlying major-mode TAB binding
 \(e.g. `org-cycle' in Org mode).  Falls back to `indent-for-tab-command'
 when no major-mode binding exists."
-  ('dynamic-complete (if (eq nskk-dcomp-style 'capf)
+  ('dynamic-complete (nskk--dcomp-prepare)
+                     (if (eq nskk-dcomp-style 'capf)
                          (completion-at-point)
                        (nskk-dynamic-complete)))
   (_ (let ((cmd (let ((nskk-mode nil))
