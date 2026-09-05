@@ -48,20 +48,17 @@ Guards against duplicate assertions on file reload (e.g. `eval-buffer').")
   "Initialize Prolog facts for `candidate-selection-key'/2.
 
 Source: `nskk-henkan-show-candidates-keys'.
-Maps each selection key character to its 0-based page position.
 Also registers uppercase variants for DDSKK compatibility.
-Uses hash indexing for O(1) key dispatch during candidate selection.
 Idempotent: safe to call multiple times."
   (unless nskk--candidate-key-facts-initialized
     (nskk-prolog-retract-all 'candidate-selection-key 2)
     (nskk-prolog-set-index 'candidate-selection-key 2 :hash)
     (cl-loop for k in nskk-henkan-show-candidates-keys
              for i from 0
-             do (progn
-                  (nskk-prolog-assert `((candidate-selection-key ,k ,i)))
-                  (let ((upper (upcase k)))
-                    (unless (= upper k)
-                      (nskk-prolog-assert `((candidate-selection-key ,upper ,i)))))))
+             do (nskk-prolog-assert `((candidate-selection-key ,k ,i)))
+                (let ((upper (upcase k)))
+                  (unless (= upper k)
+                    (nskk-prolog-assert `((candidate-selection-key ,upper ,i))))))
     (setq nskk--candidate-key-facts-initialized t)))
 
 (nskk--candidate-init-key-facts)
@@ -94,8 +91,7 @@ Returns a string starting with \\n to appear below the preedit line."
                            collect (concat
                                     (propertize (format "%c:" key)
                                                 'face 'nskk-candidate-key-face)
-                                    (propertize (substring-no-properties cand)
-                                                'face 'nskk-candidate-face))))
+                                    (nskk-display-sanitize cand 'nskk-candidate-face))))
          (body   (string-join entries " "))
          (suffix (when (> remaining 0) (format " [残り %d]" remaining))))
     (concat "\n" body suffix)))
@@ -122,54 +118,62 @@ Returns a plist with:
          (remaining (- (length candidates) page-end)))
     (list :slice slice :remaining remaining)))
 
+;;;; Overlay State Transitions
+
+(defun nskk--candidate-clear-list-state ()
+  "Clear candidate overlay state even when the active flag drifted."
+  (setq nskk--candidate-list-active nil)
+  ;; Commit the cleared state before deleting, mirroring `nskk-delete-overlay's
+  ;; setq-before-delete ordering so a fault-injected `delete-overlay' cannot
+  ;; leave state pointing at an overlay that is mid-deletion.
+  (let ((ov (nskk-state-candidate-overlay)))
+    (nskk-state-set-candidate-overlay nil)
+    (when (overlayp ov)
+      (delete-overlay ov))))
+
+(defun nskk--candidate-commit-overlay (anchor after-str)
+  "Move or create the candidate overlay at ANCHOR, setting AFTER-STR.
+Reuses the live overlay if one exists, else creates one and commits it
+to state.  On error or quit, rolls back via
+`nskk--candidate-clear-list-state' and re-signals the original condition."
+  (condition-case condition
+      (let ((ov (nskk-state-candidate-overlay)))
+        ;; Commit a freshly-created overlay to state immediately, before
+        ;; `overlay-put' below, so a fault mid-`overlay-put' still finds
+        ;; the overlay in state and `nskk--candidate-clear-list-state' can
+        ;; roll it back instead of leaking it.
+        (if (overlayp ov)
+            (move-overlay ov anchor anchor (current-buffer))
+          (setq ov (make-overlay anchor anchor))
+          (nskk-state-set-candidate-overlay ov))
+        (overlay-put ov 'after-string after-str)
+        (setq nskk--candidate-list-active t))
+    ((error quit)
+     (condition-case nil
+         (nskk--candidate-clear-list-state)
+       ((error quit) nil))
+     (signal (car condition) (cdr condition)))))
+
 ;;;; Public API
 
-(progn
-  (defun nskk--candidate-clear-list-state ()
-    "Clear candidate overlay state even when the active flag drifted."
-    (setq nskk--candidate-list-active nil)
-    ;; Commit the cleared state before deleting, mirroring `nskk-delete-overlay's
-    ;; setq-before-delete ordering so a fault-injected `delete-overlay' cannot
-    ;; leave state pointing at an overlay that is mid-deletion.
-    (let ((ov (nskk-state-candidate-overlay)))
-      (nskk-state-set-candidate-overlay nil)
-      (when (overlayp ov)
-        (delete-overlay ov))))
-
-  (defun/k nskk-candidate-show-list (candidates current-index)
-    "Display CANDIDATES via overlay starting at CURRENT-INDEX.
+(defun/k nskk-candidate-show-list (candidates current-index)
+  "Display CANDIDATES via overlay starting at CURRENT-INDEX.
 
 Shows candidates with home-row selection keys and a [残り N] remaining
 count when more candidates exist beyond the current page.
 Returns the page candidates (a sublist of CANDIDATES) for key mapping.
-CURRENT-INDEX must be aligned to a page boundary (a multiple of PER-PAGE),
-as computed by the henkan pipeline."
-    (let* ((keys nskk-henkan-show-candidates-keys)
-           (per-page (min nskk-henkan-number-to-display-candidates (length keys)))
-           (page (nskk--candidate-page-slice candidates current-index per-page))
-           (page-candidates (plist-get page :slice))
-           (remaining (plist-get page :remaining))
-           (after-str (nskk--candidate-build-string page-candidates keys remaining))
-           (anchor (nskk--candidate-anchor-position)))
-      (condition-case condition
-          (progn
-            ;; Commit a freshly-created overlay to state immediately, before
-            ;; `overlay-put' below, so a fault mid-`overlay-put' still finds
-            ;; the overlay in state and `nskk--candidate-clear-list-state' can
-            ;; roll it back instead of leaking it.
-            (let ((ov (nskk-state-candidate-overlay)))
-              (if (overlayp ov)
-                  (move-overlay ov anchor anchor (current-buffer))
-                (setq ov (make-overlay anchor anchor))
-                (nskk-state-set-candidate-overlay ov))
-              (overlay-put ov 'after-string after-str))
-            (setq nskk--candidate-list-active t))
-        ((error quit)
-         (condition-case nil
-             (nskk--candidate-clear-list-state)
-           ((error quit) nil))
-         (signal (car condition) (cdr condition))))
-      (succeed page-candidates))))
+CURRENT-INDEX is the 0-based index of the first candidate to show.  The
+henkan pipeline passes page-aligned values within range.  An index equal
+to the length of CANDIDATES yields an empty page; an index past the end
+signals an error."
+  (let* ((keys nskk-henkan-show-candidates-keys)
+         (per-page (min nskk-henkan-number-to-display-candidates (length keys)))
+         (page (nskk--candidate-page-slice candidates current-index per-page))
+         (page-candidates (plist-get page :slice)))
+    (nskk--candidate-commit-overlay
+     (nskk--candidate-anchor-position)
+     (nskk--candidate-build-string page-candidates keys (plist-get page :remaining)))
+    (succeed page-candidates)))
 
 (defun/k nskk-candidate-list-active-p ()
   "Return non-nil if the candidate list overlay is currently displayed."
@@ -194,37 +198,6 @@ selection key or if the resulting index is out of range."
               (succeed absolute-index)
             (fail)))
       (fail))))
-
-;;;; Tooltip Candidate Display (FR-009)
-
-(defun nskk--candidate-build-tooltip-string (page-candidates)
-  "Build tooltip string for PAGE-CANDIDATES.
-Returns a multi-line string with one candidate per line."
-  (string-join (mapcar #'substring-no-properties page-candidates) "\n"))
-
-(defun/k nskk-candidate-show-tooltip (candidates current-index)
-  "Display CANDIDATES via tooltip starting at CURRENT-INDEX.
-Only works in GUI Emacs.  Falls back gracefully in terminal.
-Controlled by `nskk-show-tooltip' custom variable."
-  (when (and (boundp 'nskk-show-tooltip) nskk-show-tooltip
-             (display-graphic-p)
-             (fboundp 'tooltip-show))
-    (let* ((keys nskk-henkan-show-candidates-keys)
-           (per-page (min nskk-henkan-number-to-display-candidates (length keys)))
-           (page (nskk--candidate-page-slice candidates current-index per-page))
-           (page-candidates (plist-get page :slice))
-           (remaining (plist-get page :remaining))
-           (tooltip-str (nskk--candidate-build-tooltip-string page-candidates))
-           (suffix (when (> remaining 0) (format "\n[残り %d]" remaining))))
-      (tooltip-show (concat tooltip-str suffix))))
-  (succeed nil))
-
-(defun/done nskk-candidate-hide-tooltip ()
-  "Hide the tooltip candidate display."
-  (when (and (boundp 'nskk-show-tooltip) nskk-show-tooltip
-             (display-graphic-p)
-             (fboundp 'tooltip-hide))
-    (tooltip-hide)))
 
 (provide 'nskk-candidate-window)
 

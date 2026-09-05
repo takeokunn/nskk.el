@@ -28,15 +28,6 @@
 
 (nskk-describe "state-initialize-prolog predicates"
 
-  (nskk-it "valid-mode/1 holds for hiragana"
-    (should (nskk-prolog-holds-p '(valid-mode hiragana))))
-
-  (nskk-it "valid-mode/1 holds for katakana"
-    (should (nskk-prolog-holds-p '(valid-mode katakana))))
-
-  (nskk-it "valid-mode/1 holds for ascii"
-    (should (nskk-prolog-holds-p '(valid-mode ascii))))
-
   (nskk-it "mode-properties/5 display string for hiragana is かな"
     (let ((display (nskk-prolog-query-value
                     '(mode-properties hiragana \?s \?f \?h \?c) '\?s)))
@@ -132,7 +123,7 @@
       (should (string= "ア" (buffer-string)))))
 
   (nskk-it "state-init and henkan-init Prolog predicates coexist"
-    (should (nskk-prolog-holds-p '(valid-mode hiragana)))
+    (should (nskk-prolog-holds-p '(mode-category hiragana japanese)))
     (should (nskk-prolog-holds-p '(converting-phase active))))
 
   (nskk-it "kana-init and henkan-init predicates coexist"
@@ -154,9 +145,9 @@
           (nskk-input-initialize)
           (nskk-converter-initialize))
         (and
-         (nskk-prolog-holds-p '(valid-mode hiragana))
-         (nskk-prolog-holds-p '(valid-mode katakana))
-         (nskk-prolog-holds-p '(valid-mode ascii))
+         (nskk-prolog-holds-p '(mode-properties hiragana \?s \?f \?h \?c))
+         (nskk-prolog-holds-p '(mode-properties katakana \?s \?f \?h \?c))
+         (nskk-prolog-holds-p '(mode-properties ascii \?s \?f \?h \?c))
          (nskk-prolog-holds-p `(kana-hiragana ,?あ))
          (nskk-prolog-holds-p `(kana-katakana ,?ア))
          (nskk-prolog-holds-p '(converting-phase active))

@@ -31,14 +31,14 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'nskk)
+(require 'nskk-cps-macros)
 (require 'nskk-prolog)
 (require 'nskk-state)
-(require 'nskk-trie)
 
-(declare-function nskk--set-mode "nskk-input")
+(declare-function nskk-set-mode "nskk-input")
+(declare-function nskk-self-insert "nskk-input")
 (declare-function nskk-modeline-update "nskk-modeline")
 (declare-function nskk-state-mode "nskk-state")
-(declare-function nskk--dict-maybe-save "nskk-dictionary")
 
 
 ;;;;
@@ -374,13 +374,15 @@ SPCキーを繰り返し押すことで次の候補を表示できます。
     Y（大文字）→ ▽ 開始（語幹の先頭）
     o          → ▽よ
     M（大文字）→ 送り仮名開始 → 辞書検索発動
-    u          → 読む（送り仮名付加＋確定）
+    u          → ▼読む（送り仮名付加＋変換）
+    C-j        → 読む（確定）
 
   書く の場合：
     K（大文字）→ ▽ 開始
     a          → ▽か
     K（大文字）→ 送り仮名開始 → 辞書検索
-    u          → 書く
+    u          → ▼書く
+    C-j        → 書く（確定）
 
 ■ 辞書の引き方
 
@@ -403,15 +405,15 @@ SPCキーを繰り返し押すことで次の候補を表示できます。
   ・母音で始まる送り仮名の場合もその母音を大文字にする"
      :exercises
      ((:instruction "「書く」と変換してください。"
-       :hint "K a K u"
+       :hint "K a K u C-j"
        :expected "書く"
        :validator nil)
       (:instruction "「読む」と変換してください。"
-       :hint "Y o M u"
+       :hint "Y o M u C-j"
        :expected "読む"
        :validator nil)
       (:instruction "「見る」と変換してください。"
-       :hint "M i R u"
+       :hint "M i R u C-j"
        :expected "見る"
        :validator nil)))
 
@@ -817,6 +819,9 @@ Each exercise is a plist with :instruction, :hint, :expected, and :validator.")
   "Vector of completion states for exercises in the current lesson.
 Each element is t (completed) or nil (pending).")
 
+(defvar-local nskk-tutorial--lesson-complete-p nil
+  "Non-nil once the completion banner has been written for this lesson.")
+
 (defvar-local nskk-tutorial--result-markers nil
   "List of (BEG-MARKER . END-MARKER) pairs for result display areas.")
 
@@ -848,7 +853,7 @@ See `nskk-prolog-state-snapshot'.")
 (defvar-local nskk-tutorial--dict-state-saved-p nil
   "Non-nil while this buffer owns a saved dictionary state.")
 
-  (defvar-local nskk-tutorial--dict-rollback-diagnostic nil
+(defvar-local nskk-tutorial--dict-rollback-diagnostic nil
   "Details of the latest failed dictionary rollback, or nil.
 A non-nil value is a plist with :primary and :rollback conditions.")
 
@@ -859,155 +864,7 @@ A non-nil value is a plist with :primary and :rollback conditions.")
 
 (defun nskk-tutorial--copy-object-graph (object memo)
   "Copy mutable OBJECT iteratively, preserving graph identity through MEMO."
-  (let ((missing (make-symbol "missing"))
-        (pending (list object))
-        composites
-        char-tables
-        hash-tables)
-    (while pending
-      (let ((current (pop pending)))
-        (when (eq (gethash current memo missing) missing)
-          (cond
-           ((consp current)
-            (puthash current (cons nil nil) memo)
-            (push current composites)
-            (push (car current) pending)
-            (push (cdr current) pending))
-           ((hash-table-p current)
-            (puthash
-             current
-             (make-hash-table
-              :test (hash-table-test current)
-              :size (max 1 (hash-table-size current))
-              :rehash-size (hash-table-rehash-size current)
-              :rehash-threshold (hash-table-rehash-threshold current)
-              :weakness (hash-table-weakness current))
-             memo)
-            (let (entries)
-              (let ((gc-cons-threshold most-positive-fixnum))
-                (maphash
-                 (lambda (key value)
-                   (push (cons key value) entries))
-                 current))
-              (push (cons current entries) hash-tables)
-              (dolist (entry entries)
-                (push (car entry) pending)
-                (push (cdr entry) pending))))
-           ((bool-vector-p current)
-            (puthash current (copy-sequence current) memo))
-           ((stringp current)
-            (puthash current (substring-no-properties current) memo)
-            (push current composites)
-            (let ((position 0)
-                  (limit (length current)))
-              (while (< position limit)
-                (let ((properties (text-properties-at position current))
-                      (next (next-property-change position current limit)))
-                  (while properties
-                    (push (cadr properties) pending)
-                    (setq properties (cddr properties)))
-                  (setq position next)))))
-           ((char-table-p current)
-            (let* ((copy (copy-sequence current))
-                   (parent (char-table-parent current))
-                   (default (char-table-range current nil))
-                   (extra-count
-                    (let ((index 0))
-                      (condition-case nil
-                          (while t
-                            (char-table-extra-slot current index)
-                            (setq index (1+ index)))
-                        (args-out-of-range index))))
-                   (extras (make-vector extra-count nil))
-                   entries)
-              (set-char-table-parent copy nil)
-              (set-char-table-range copy nil missing)
-              (puthash current copy memo)
-              (map-char-table
-               (lambda (range value)
-                 (unless (eq value missing)
-                   (push (cons (if (consp range)
-                                   (cons (car range) (cdr range))
-                                 range)
-                               value)
-                         entries)))
-               copy)
-              (dotimes (index extra-count)
-                (let ((value (char-table-extra-slot current index)))
-                  (aset extras index value)
-                  (push value pending)))
-              (push (list current parent default extras entries) char-tables)
-              (push parent pending)
-              (push default pending)
-              (dolist (entry entries)
-                (push (cdr entry) pending))))
-           ((recordp current)
-            (puthash current (copy-sequence current) memo)
-            (push current composites)
-            (let ((index 1))
-              (while (< index (length current))
-                (push (aref current index) pending)
-                (setq index (1+ index)))))
-           ((vectorp current)
-            (puthash current (copy-sequence current) memo)
-            (push current composites)
-            (let ((index 0))
-              (while (< index (length current))
-                (push (aref current index) pending)
-                (setq index (1+ index)))))))))
-    (cl-flet ((copy-of
-               (value)
-               (let ((copy (gethash value memo missing)))
-                 (if (eq copy missing) value copy))))
-      (dolist (current composites)
-        (let ((copy (gethash current memo)))
-          (cond
-           ((consp current)
-            (setcar copy (copy-of (car current)))
-            (setcdr copy (copy-of (cdr current))))
-           ((stringp current)
-            (let ((position 0)
-                  (limit (length current)))
-              (while (< position limit)
-                (let ((properties (text-properties-at position current))
-                      (next (next-property-change position current limit))
-                      copied-properties)
-                  (while properties
-                    (push (car properties) copied-properties)
-                    (push (copy-of (cadr properties)) copied-properties)
-                    (setq properties (cddr properties)))
-                  (set-text-properties
-                   position next (nreverse copied-properties) copy)
-                  (setq position next)))))
-           ((recordp current)
-            (let ((index 1))
-              (while (< index (length current))
-                (aset copy index (copy-of (aref current index)))
-                (setq index (1+ index)))))
-           ((vectorp current)
-            (let ((index 0))
-              (while (< index (length current))
-                (aset copy index (copy-of (aref current index)))
-                (setq index (1+ index))))))))
-      (dolist (table-snapshot char-tables)
-        (let* ((current (nth 0 table-snapshot))
-               (parent (nth 1 table-snapshot))
-               (default (nth 2 table-snapshot))
-               (extras (nth 3 table-snapshot))
-               (entries (nth 4 table-snapshot))
-               (copy (gethash current memo)))
-          (set-char-table-range copy nil (copy-of default))
-          (dotimes (index (length extras))
-            (set-char-table-extra-slot
-             copy index (copy-of (aref extras index))))
-          (dolist (entry entries)
-            (set-char-table-range copy (car entry) (copy-of (cdr entry))))
-          (set-char-table-parent copy (copy-of parent))))
-      (dolist (table-snapshot hash-tables)
-        (let ((copy (gethash (car table-snapshot) memo)))
-          (dolist (entry (cdr table-snapshot))
-            (puthash (copy-of (car entry)) (copy-of (cdr entry)) copy))))
-      (copy-of object))))
+  (nskk-prolog-copy-term object memo))
 
 (defun nskk-tutorial--publish-dict-state
       (state init-flags dict-save-inhibited persistence-inhibited)
@@ -1021,7 +878,7 @@ Use DICT-SAVE-INHIBITED and PERSISTENCE-INHIBITED for transaction state."
     (setq nskk--dict-save-inhibited dict-save-inhibited
           nskk--persistence-inhibited persistence-inhibited))
 
-  (defun nskk-tutorial--save-dict-state ()
+(defun nskk-tutorial--save-dict-state ()
   "Save dictionary state and publish an isolated working graph.
 On publication failure, restore the original state and re-signal the primary
 condition.  If rollback also fails, retain its diagnostic and the snapshot."
@@ -1045,7 +902,7 @@ condition.  If rollback also fails, retain its diagnostic and the snapshot."
          (persistence-inhibited nskk--persistence-inhibited)
          (working-state
           (nskk-tutorial--copy-object-graph
-           original-state (make-hash-table :test (quote eq)))))
+           original-state (make-hash-table :test 'eq))))
     (let ((inhibit-quit t))
       (setq nskk-tutorial--saved-prolog-state (aref original-state 0)
             nskk-tutorial--saved-user-dict (aref original-state 1)
@@ -1064,27 +921,26 @@ condition.  If rollback also fails, retain its diagnostic and the snapshot."
                 dict-save-inhibited persistence-inhibited)
              ((error quit)
               (setq rollback-condition condition-data)))
-           (if rollback-condition
-               (progn
-                 (setq nskk-tutorial--dict-rollback-diagnostic
-                       (list :primary primary-condition
-                             :rollback rollback-condition))
-                 (condition-case nil
-                     (display-warning
-                      'nskk-tutorial
-                      (format
-                       "Tutorial publication failed with %S; rollback failed with %S"
-                       primary-condition rollback-condition)
-                      :error)
-                   ((error quit) nil)))
-             (setq nskk-tutorial--dict-state-saved-p nil
-                   nskk-tutorial--saved-prolog-state nil
-                   nskk-tutorial--saved-user-dict nil
-                   nskk-tutorial--saved-system-dict nil
-                   nskk-tutorial--saved-init-flags nil
-                   nskk-tutorial--saved-dict-save-inhibited nil
-                   nskk-tutorial--saved-persistence-inhibited nil
-                   nskk-tutorial--dict-rollback-diagnostic nil))
+           (if (not rollback-condition)
+               (setq nskk-tutorial--dict-state-saved-p nil
+                     nskk-tutorial--saved-prolog-state nil
+                     nskk-tutorial--saved-user-dict nil
+                     nskk-tutorial--saved-system-dict nil
+                     nskk-tutorial--saved-init-flags nil
+                     nskk-tutorial--saved-dict-save-inhibited nil
+                     nskk-tutorial--saved-persistence-inhibited nil
+                     nskk-tutorial--dict-rollback-diagnostic nil)
+             (setq nskk-tutorial--dict-rollback-diagnostic
+                   (list :primary primary-condition
+                         :rollback rollback-condition))
+             (condition-case nil
+                 (display-warning
+                  'nskk-tutorial
+                  (format
+                   "Tutorial publication failed with %S; rollback failed with %S"
+                   primary-condition rollback-condition)
+                  :error)
+               ((error quit) nil)))
            (signal (car primary-condition)
                    (cdr primary-condition))))))))
 
@@ -1110,7 +966,7 @@ Keep the snapshot intact if publication fails so callers can retry."
               nskk-tutorial--saved-persistence-inhibited nil
               nskk-tutorial--dict-rollback-diagnostic nil)))))
 
-(defun nskk-tutorial--install-mini-dict ()
+(defun/done nskk-tutorial--install-mini-dict ()
   "Install the mini dictionary for tutorial exercises.
 Asserts `dict-initialized' first to prevent real dictionary loading,
 then asserts tutorial entries as `user-dict-entry/2' facts."
@@ -1150,7 +1006,7 @@ Returns t if nskk-mode is active and the current mode is hiragana."
          (total (length nskk-tutorial--lessons)))
     (format "  NSKK チュートリアル  [レッスン %d/%d]  ─  %s" n total title)))
 
-(defun nskk-tutorial--render-lesson ()
+(defun/done nskk-tutorial--render-lesson ()
   "Render the current lesson in the tutorial buffer."
   (let* ((lesson (nth nskk-tutorial--current-lesson nskk-tutorial--lessons))
          (title (plist-get lesson :title))
@@ -1160,6 +1016,7 @@ Returns t if nskk-mode is active and the current mode is hiragana."
     (erase-buffer)
     (setq nskk-tutorial--exercise-markers nil
           nskk-tutorial--result-markers nil
+          nskk-tutorial--lesson-complete-p nil
           nskk-tutorial--exercise-states
           (make-vector (length exercises) nil))
     (let ((start (point)))
@@ -1190,11 +1047,10 @@ Returns t if nskk-mode is active and the current mode is hiragana."
           (add-text-properties start (point) '(read-only t)))
         (let ((start (point)))
           (insert "  入力欄: ")
-          (add-text-properties start (point) '(read-only t)))
+          (add-text-properties start (point) '(read-only t rear-nonsticky t)))
         (let ((input-beg (point-marker)))
           (insert "                                        ")
           (let ((input-end (point-marker)))
-            (set-marker-insertion-type input-end t)
             (add-text-properties (marker-position input-beg)
                                  (marker-position input-end)
                                  '(face nskk-tutorial-input-area-face))
@@ -1208,7 +1064,9 @@ Returns t if nskk-mode is active and the current mode is hiragana."
         (let ((result-beg (point-marker)))
           (insert "          ")
           (let ((result-end (point-marker)))
-            (set-marker-insertion-type result-end t)
+            (add-text-properties (marker-position result-beg)
+                                 (marker-position result-end)
+                                 '(read-only t))
             (push (cons result-beg result-end) nskk-tutorial--result-markers)))
         (let ((start (point)))
           (insert "\n\n")
@@ -1218,10 +1076,19 @@ Returns t if nskk-mode is active and the current mode is hiragana."
     (let ((start (point)))
       (insert "──────────────────────────────────────\n"
               "  [M-p] 前のレッスン  [M-n] 次のレッスン  "
-              "[r] リセット  [q] 終了\n")
+              "[r] リセット  [C-c C-q] 終了\n")
       (add-text-properties start (point) '(read-only t)))
-    (when nskk-tutorial--exercise-markers
-      (goto-char (marker-position (caar nskk-tutorial--exercise-markers))))))
+    ;; Markers are created with the default (nil) insertion type above so
+    ;; that later inserts at the same position (the next label, the footer)
+    ;; do not drag an earlier exercise's end marker forward with them; type
+    ;; t is applied only now, once no further rendering insert can land on
+    ;; any of these positions, so a later user edit at an area's own end
+    ;; still grows that area.
+    (dolist (markers nskk-tutorial--exercise-markers)
+      (set-marker-insertion-type (cdr markers) t))
+    (dolist (markers nskk-tutorial--result-markers)
+      (set-marker-insertion-type (cdr markers) t))
+    (goto-char (marker-position (caar nskk-tutorial--exercise-markers)))))
 
 
 ;;;;
@@ -1236,111 +1103,124 @@ Returns t if nskk-mode is active and the current mode is hiragana."
                  (marker-position (cdr markers)))))
       (string-trim text))))
 
-(defun nskk-tutorial--set-result (index text face)
-  "Set the result display for exercise INDEX to TEXT with FACE."
+(defun/done nskk-tutorial--set-result (index text face)
+  "Set the result display for exercise INDEX to TEXT with FACE.
+The region is left untouched when it already reads TEXT: this runs from
+`post-command-hook', and rewriting it would relocate point for a user
+whose point happens to sit inside the region being replaced."
   (when-let* ((markers (nth index nskk-tutorial--result-markers)))
-    (let ((inhibit-read-only t))
-      (delete-region (marker-position (car markers))
-                     (marker-position (cdr markers)))
-      (goto-char (marker-position (car markers)))
-      (insert (propertize text 'face face)))))
+    (let ((beg (marker-position (car markers)))
+          (end (marker-position (cdr markers))))
+      (unless (string= text (buffer-substring-no-properties beg end))
+        (let ((inhibit-read-only t))
+          (delete-region beg end)
+          (goto-char (marker-position (car markers)))
+          (insert (propertize text 'face face 'read-only t)))))))
 
 (defun nskk-tutorial--validate-exercises ()
   "Check all exercises in the current lesson and update results.
 Called from `post-command-hook'."
   (when (and nskk-tutorial--exercise-states
              nskk-tutorial--exercise-markers)
-    (let* ((lesson (nth nskk-tutorial--current-lesson nskk-tutorial--lessons))
-           (exercises (plist-get lesson :exercises))
-           (all-done t)
-           (save-point (point)))
-      (dotimes (i (length exercises))
-        (unless (aref nskk-tutorial--exercise-states i)
-          (let* ((ex (nth i exercises))
-                 (validator (plist-get ex :validator))
-                 (expected (plist-get ex :expected))
-                 (input (nskk-tutorial--get-input-text i))
-                 (passed (if validator
-                             (funcall validator)
-                           (and expected
-                                (not (string-empty-p input))
-                                (string= input expected)))))
-            (if passed
-                (progn
-                  (aset nskk-tutorial--exercise-states i t)
-                  (nskk-tutorial--set-result i "✓ 正解！" 'nskk-tutorial-success-face))
-              (setq all-done nil)))))
-      (when all-done
-        (nskk-tutorial--set-result
-         (1- (length exercises))
-         "✓ 正解！ すべての練習が完了しました！ [M-n] で次のレッスンへ"
-         'nskk-tutorial-success-face))
-      (goto-char save-point))))
+    (save-excursion
+      (let* ((lesson (nth nskk-tutorial--current-lesson nskk-tutorial--lessons))
+             (exercises (plist-get lesson :exercises))
+             (all-done t))
+        (dotimes (i (length exercises))
+          (unless (aref nskk-tutorial--exercise-states i)
+            (let* ((ex (nth i exercises))
+                   (validator (plist-get ex :validator))
+                   (expected (plist-get ex :expected))
+                   (input (nskk-tutorial--get-input-text i))
+                   (passed (if validator
+                               (funcall validator)
+                             (and expected
+                                  (not (string-empty-p input))
+                                  (string= input expected)))))
+              (if (not passed)
+                  (setq all-done nil)
+                (aset nskk-tutorial--exercise-states i t)
+                (nskk-tutorial--set-result i "✓ 正解！" 'nskk-tutorial-success-face)))))
+        (when (and all-done (not nskk-tutorial--lesson-complete-p))
+          (setq nskk-tutorial--lesson-complete-p t)
+          (nskk-tutorial--set-result
+           (1- (length exercises))
+           "✓ 正解！ すべての練習が完了しました！ [M-n] で次のレッスンへ"
+           'nskk-tutorial-success-face))))))
 
 
 ;;;;
 ;;;; Navigation Commands
 ;;;;
 
-(defun nskk-tutorial-next-lesson ()
+(defun/done nskk-tutorial-next-lesson ()
   "Go to the next lesson."
-  (interactive)
-  (if (< nskk-tutorial--current-lesson (1- (length nskk-tutorial--lessons)))
-      (progn
-        (cl-incf nskk-tutorial--current-lesson)
-        (nskk-tutorial--render-lesson)
-        (nskk-tutorial--reset-mode))
-    (message "最後のレッスンです。")))
+  :interactive t
+  (if (>= nskk-tutorial--current-lesson (1- (length nskk-tutorial--lessons)))
+      (message "最後のレッスンです。")
+    (cl-incf nskk-tutorial--current-lesson)
+    (nskk-tutorial--render-lesson)
+    (nskk-tutorial--reset-mode)))
 
-(defun nskk-tutorial-prev-lesson ()
+(defun/done nskk-tutorial-prev-lesson ()
   "Go to the previous lesson."
-  (interactive)
-  (if (> nskk-tutorial--current-lesson 0)
-      (progn
-        (cl-decf nskk-tutorial--current-lesson)
-        (nskk-tutorial--render-lesson)
-        (nskk-tutorial--reset-mode))
-    (message "最初のレッスンです。")))
+  :interactive t
+  (if (<= nskk-tutorial--current-lesson 0)
+      (message "最初のレッスンです。")
+    (cl-decf nskk-tutorial--current-lesson)
+    (nskk-tutorial--render-lesson)
+    (nskk-tutorial--reset-mode)))
 
-(defun nskk-tutorial-goto-lesson (n)
+(defun/done nskk-tutorial-goto-lesson (n)
   "Jump to lesson N (1-based)."
-  (interactive "nレッスン番号: ")
+  :interactive "nレッスン番号: "
   (let ((idx (1- n)))
-    (if (and (>= idx 0) (< idx (length nskk-tutorial--lessons)))
-        (progn
-          (setq nskk-tutorial--current-lesson idx)
-          (nskk-tutorial--render-lesson)
-          (nskk-tutorial--reset-mode))
-      (message "レッスン%dは存在しません。（1〜%d）" n (length nskk-tutorial--lessons)))))
+    (if (or (< idx 0) (>= idx (length nskk-tutorial--lessons)))
+        (message "レッスン%dは存在しません。（1〜%d）" n (length nskk-tutorial--lessons))
+      (setq nskk-tutorial--current-lesson idx)
+      (nskk-tutorial--render-lesson)
+      (nskk-tutorial--reset-mode))))
 
-(defun nskk-tutorial-reset-lesson ()
+(defun/done nskk-tutorial-reset-lesson ()
   "Reset the current lesson: clear all input areas and results."
-  (interactive)
+  :interactive t
   (nskk-tutorial--render-lesson)
   (nskk-tutorial--reset-mode)
   (message "レッスンをリセットしました。"))
 
-(defun nskk-tutorial-quit ()
-  "Quit the tutorial and restore Prolog state."
-  (interactive)
+(defun/done nskk-tutorial-quit ()
+  "Kill the tutorial buffer after confirmation.
+This does not restore state itself: killing the buffer runs
+`nskk-tutorial--on-kill' from `kill-buffer-hook', which restores the
+saved Prolog state, the dictionary indices and the save-inhibit flags."
+  :interactive t
   (when (yes-or-no-p "チュートリアルを終了しますか? ")
     (kill-buffer (current-buffer))))
 
-(defun nskk-tutorial--reset-mode ()
+(defun/done nskk-tutorial--reset-mode ()
   "Reset NSKK to hiragana mode in the tutorial buffer."
   (when (and nskk-mode (boundp 'nskk-current-state) nskk-current-state)
-    (nskk--set-mode 'hiragana)
+    (nskk-set-mode 'hiragana)
     (nskk-state-set-romaji-buffer "")
     (nskk-modeline-update)))
 
 (defun nskk-tutorial--maybe-navigate (direction)
-  "Navigate if point is in a read-only region, else self-insert.
-DIRECTION is `next' or `prev'."
+  "Navigate if point is in a read-only region, else insert the typed key.
+DIRECTION is `next', `prev', `goto', or `reset'.
+Insertion goes through `nskk-self-insert' while `nskk-mode' is on, and
+falls back to `self-insert-command' otherwise, so the key reaches NSKK's romaji
+converter: `nskk-mode-map' routes ordinary letters into NSKK by remapping
+`self-insert-command', and a remap fires only during key lookup, so calling
+`self-insert-command' here would insert a raw latin character instead."
   (if (get-text-property (point) 'read-only)
       (pcase direction
         ('next (nskk-tutorial-next-lesson))
-        ('prev (nskk-tutorial-prev-lesson)))
-    (self-insert-command 1)))
+        ('prev (nskk-tutorial-prev-lesson))
+        ('goto (call-interactively #'nskk-tutorial-goto-lesson))
+        ('reset (nskk-tutorial-reset-lesson)))
+    (if (bound-and-true-p nskk-mode)
+        (nskk-self-insert 1)
+      (self-insert-command 1))))
 
 (defun nskk-tutorial-n-or-self-insert ()
   "Navigate to next lesson or self-insert depending on context."
@@ -1352,6 +1232,16 @@ DIRECTION is `next' or `prev'."
   (interactive)
   (nskk-tutorial--maybe-navigate 'prev))
 
+(defun nskk-tutorial-g-or-self-insert ()
+  "Go to a lesson or self-insert depending on context."
+  (interactive)
+  (nskk-tutorial--maybe-navigate 'goto))
+
+(defun nskk-tutorial-r-or-self-insert ()
+  "Reset the current lesson or self-insert depending on context."
+  (interactive)
+  (nskk-tutorial--maybe-navigate 'reset))
+
 
 ;;;;
 ;;;; Major Mode
@@ -1359,14 +1249,23 @@ DIRECTION is `next' or `prev'."
 
 (defvar-keymap nskk-tutorial-mode-map
   :doc "Keymap for `nskk-tutorial-mode'."
-  :parent special-mode-map
+  ;; Deliberately NOT `special-mode-map'.  The tutorial buffer is typed into,
+  ;; and that map binds keys the lessons require as NSKK input: `h' and `?'
+  ;; (describe-mode), `<' `>' (buffer motion), `-' and every digit
+  ;; (numeric-argument) — lesson 13 teaches `Q3Niti', lesson 2 「にほんご」.
+  ;; An empty parent also stops `define-derived-mode' from installing
+  ;; `special-mode-map' here on our behalf.
+  :parent (make-sparse-keymap)
   "M-n" #'nskk-tutorial-next-lesson
   "M-p" #'nskk-tutorial-prev-lesson
   "n"   #'nskk-tutorial-n-or-self-insert
   "p"   #'nskk-tutorial-p-or-self-insert
-  "g"   #'nskk-tutorial-goto-lesson
-  "r"   #'nskk-tutorial-reset-lesson
-  "q"   #'nskk-tutorial-quit)
+  "g"   #'nskk-tutorial-g-or-self-insert
+  "r"   #'nskk-tutorial-r-or-self-insert
+  ;; Every plain letter is potential NSKK input — `q' is the katakana toggle
+  ;; taught in lesson 3 and `Q' starts numeric conversion in lesson 13 — so
+  ;; quitting needs a prefixed key that no lesson uses.
+  "C-c C-q" #'nskk-tutorial-quit)
 
 (define-derived-mode nskk-tutorial-mode special-mode "NSKK-Tutorial"
   "Major mode for the NSKK interactive tutorial.
@@ -1384,7 +1283,7 @@ within this buffer for practicing SKK operations.
   (add-hook 'change-major-mode-hook
             #'nskk-tutorial--on-major-mode-change nil t))
 
-(defun nskk-tutorial--acquire-ownership ()
+(defun/done nskk-tutorial--acquire-ownership ()
   "Acquire process-wide ownership for the current tutorial buffer."
   (when (and nskk-tutorial--owner
              (not (buffer-live-p nskk-tutorial--owner)))
@@ -1403,7 +1302,7 @@ within this buffer for practicing SKK operations.
   (setq nskk-tutorial--owner (current-buffer)
         nskk-tutorial--owns-transaction t))
 
-(defun nskk-tutorial--release-ownership ()
+(defun/done nskk-tutorial--release-ownership ()
   "Release tutorial ownership held by the current buffer."
   (unwind-protect
       (when (and nskk-tutorial--owns-transaction
@@ -1467,14 +1366,14 @@ is restored when the tutorial buffer is killed or startup fails."
             (nskk-tutorial--install-mini-dict)
             (nskk-mode 1)
             ;; Tutorial rollback must run before NSKK hooks that may signal.
-            (remove-hook (quote kill-buffer-hook)
-                         (function nskk-tutorial--on-kill) t)
-            (add-hook (quote kill-buffer-hook)
-                      (function nskk-tutorial--on-kill) nil t)
-            (remove-hook (quote change-major-mode-hook)
-                         (function nskk-tutorial--on-major-mode-change) t)
-            (add-hook (quote change-major-mode-hook)
-                      (function nskk-tutorial--on-major-mode-change) nil t)
+            (remove-hook 'kill-buffer-hook
+                         #'nskk-tutorial--on-kill t)
+            (add-hook 'kill-buffer-hook
+                      #'nskk-tutorial--on-kill nil t)
+            (remove-hook 'change-major-mode-hook
+                         #'nskk-tutorial--on-major-mode-change t)
+            (add-hook 'change-major-mode-hook
+                      #'nskk-tutorial--on-major-mode-change nil t)
             (nskk-tutorial--reset-mode)
             (nskk-tutorial--render-lesson))
           (pop-to-buffer buf))
@@ -1492,19 +1391,19 @@ is restored when the tutorial buffer is killed or startup fails."
                     (setq cleanup-condition condition-data))))))
            (when (buffer-live-p buf)
              (with-current-buffer buf
-               (attempt (function nskk-tutorial--rollback))
+               (attempt #'nskk-tutorial--rollback)
                (setq cleanup-complete
                      (not nskk-tutorial--dict-state-saved-p))
                (when cleanup-complete
                  (attempt
                   (lambda ()
-                    (remove-hook (quote kill-buffer-hook)
-                                 (function nskk-tutorial--on-kill) t)))
+                    (remove-hook 'kill-buffer-hook
+                                 #'nskk-tutorial--on-kill t)))
                  (attempt
                   (lambda ()
                     (remove-hook
-                     (quote change-major-mode-hook)
-                     (function nskk-tutorial--on-major-mode-change) t)))))
+                     'change-major-mode-hook
+                     #'nskk-tutorial--on-major-mode-change t)))))
              (when cleanup-complete
                (attempt
                 (lambda ()
