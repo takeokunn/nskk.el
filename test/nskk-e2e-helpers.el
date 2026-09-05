@@ -115,6 +115,18 @@ Initialization order:
   7. Teardown: disable nskk-mode, reset global state"
   (declare (indent 2) (debug t))
   `(nskk-prolog-test-with-isolated-db
+     (nskk-e2e--with-buffer-body ,initial-mode ,dict-entries ,@body)))
+
+(defmacro nskk-e2e--with-buffer-body (initial-mode dict-entries &rest body)
+  "Set up the E2E buffer and run BODY, without isolating the Prolog DB.
+INITIAL-MODE and DICT-ENTRIES are as in `nskk-e2e-with-buffer'.  Callers must
+already hold an isolated database; `nskk-e2e-with-buffer' wraps this in one.
+Split out so that a caller which has already entered
+`nskk-prolog-test-with-isolated-db' does not deep-copy the object graph a
+second time -- the outer copy is what isolates the caller, so a nested one
+costs a full graph traversal and guarantees nothing extra."
+  (declare (indent 2) (debug t))
+  `(progn
      (nskk-prolog-assert '((dict-initialized)))
      (nskk-prolog-retract-all 'user-dict-entry 2)
      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
@@ -235,7 +247,7 @@ restored exactly after normal return, error, or quit."
          (unwind-protect
              (progn
                (nskk-converter-load-style 'azik)
-               (nskk-e2e-with-buffer ,initial-mode ,dict-entries
+               (nskk-e2e--with-buffer-body ,initial-mode ,dict-entries
                  ,@body))
            (nskk-set-romaji-table nskk-e2e--romaji-table-before)
            (mapc #'nskk-e2e--restore-hash-table-variable
