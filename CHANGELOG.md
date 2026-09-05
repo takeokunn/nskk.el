@@ -36,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machinery can enumerate tracked state without naming private symbols.
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
-
+- Added `nskk-trie-delete/k`, the continuation-passing entry point for trie
+  deletion, distinguishing "key was present and removed" from "key was not
+  present" without collapsing both onto the sync wrapper's `t`/nil.
 - Added `nskk-display-sanitize`, which strips every text property from
   untrusted dictionary text before applying a single display face, and
   `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
@@ -69,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- `nskk-trie-has-prefix-p` now returns `t` rather than the internal
+  `nskk-trie-node` struct it previously leaked as its truthy value. Callers
+  that only tested for non-nil are unaffected; callers that inspected the
+  returned node were relying on undocumented behavior.
 - Decomposed the two `nskk-show-mode` display functions by separating each
   one's install sequence from its fail-closed handler, and factored the
   repeated error-and-quit-swallowing cleanup into a single helper. The
