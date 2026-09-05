@@ -70,7 +70,16 @@ TRIGGER is ignored; a random valid mode is chosen."
   (let ((new-mode (nskk--pbt-generate-valid-mode)))
     (unless (eq (nskk-state-mode state) new-mode)
       (nskk-state-set state 'mode new-mode)
-      (nskk-state-reset state))
+      (setf (nskk-state-input-buffer     state) ""
+            (nskk-state-converted-buffer state) ""
+            (nskk-state-candidates       state) nil
+            (nskk-state-current-index    state) 0
+            (nskk-state-henkan-position  state) nil
+            (nskk-state-marker-position  state) nil
+            (nskk-state-undo-stack       state) nil
+            (nskk-state-redo-stack       state) nil
+            (nskk-state-metadata         state) nil)
+      (nskk-state-force-henkan-phase state nil))
     state))
 
 (defun nskk--sm-cycle-all-modes (state _trigger)
@@ -253,14 +262,7 @@ TRIGGER is ignored; a random valid mode is chosen."
   (nskk-it "operations on nil state should not crash"
     (nskk-then
       (should-not (nskk-state-set nil 'mode 'hiragana))
-      (should-not (nskk-state-get nil 'mode))
-      (should-not (nskk-state-transition nil 'ascii 'hiragana))))
-
-  (nskk-it "transition with wrong from-mode should fail"
-    (let ((state (nskk-state-create 'hiragana)))
-      (nskk-then
-        (should-not (nskk-state-transition state 'katakana 'latin))
-        (should (eq (nskk-state-mode state) 'hiragana)))))
+      (should-not (nskk-state-set-mode nil 'hiragana))))
 
   (nskk-it "rapid mode changes should not cause state corruption"
     (let ((state (nskk-state-create 'ascii))

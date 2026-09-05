@@ -76,6 +76,64 @@
          (maphash (lambda (k v) (puthash k v (nskk-romaji-table)))
                   nskk--saved-romaji-table)))))
 
+;; Entering `nskk-with-azik-style' costs ~340ms because it reloads the whole
+;; AZIK rule set; a `nskk-converter-lookup' under it costs microseconds.  The
+;; two macros below mirror `nskk-property-test' and
+;; `nskk-property-test-exhaustive' exactly, including the generated test name
+;; and failure report, but enter the fixture once per test rather than once per
+;; iteration.  Use them only for properties whose body does not mutate the
+;; romaji table or the Prolog database, since hoisting drops the per-iteration
+;; rollback those tests would otherwise get.
+
+(defmacro nskk-azik-property-test (name generators property &optional runs)
+  "Define a property test over AZIK rules, loading AZIK style once.
+NAME, GENERATORS, PROPERTY and RUNS carry the same meaning as in
+`nskk-property-test', and the generated test is named identically."
+  (declare (indent 3))
+  (let ((runs-value (make-symbol "runs"))
+        (failures (make-symbol "failures")))
+    `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
+       (nskk-with-azik-style
+         (let ((,runs-value (or ,runs nskk-test-property-runs))
+               (,failures nil))
+           (dotimes (_ ,runs-value)
+             (let ,(mapcar (lambda (gen)
+                             `(,(car gen) (nskk-generate ',(cadr gen))))
+                           generators)
+               (condition-case err
+                   (unless ,property
+                     (push (list ,@(mapcar #'car generators)) ,failures))
+                 (error
+                  (push (list 'error ,@(mapcar #'car generators) err)
+                        ,failures)))))
+           (when ,failures
+             (ert-fail (format "Property failed for %d cases:\n%S"
+                               (length ,failures)
+                               (take 5 ,failures)))))))))
+
+(defmacro nskk-azik-exhaustive-test (name domain property)
+  "Check PROPERTY for every element of DOMAIN, loading AZIK style once.
+NAME, DOMAIN and PROPERTY carry the same meaning as in
+`nskk-property-test-exhaustive', and the generated test is named
+identically."
+  (declare (indent 2))
+  (let ((domain-value (make-symbol "domain")))
+    `(ert-deftest ,(intern (format "nskk-exhaustive-%s" name)) ()
+       ,(format "Exhaustive property test: %s" name)
+       (nskk-with-azik-style
+         (let ((failures nil)
+               (,domain-value ,domain))
+           (dolist (item ,domain-value)
+             (condition-case err
+                 (unless ,property
+                   (push item failures))
+               (error (push (list :error item err) failures))))
+           (when failures
+             (ert-fail (format "Exhaustive property failed for %d/%d items:\n%S"
+                               (length failures)
+                               (length ,domain-value)
+                               (seq-take failures 10)))))))))
+
 
 ;;;;
 ;;;; 1. Style Switching Tests
@@ -157,6 +215,18 @@
             (nskk--setup-azik-toggle-key))
           (should (eq (lookup-key nskk-mode-map "@") #'forward-char))
           (should (eq (lookup-key nskk-mode-map "[")
+                      #'nskk-toggle-japanese-mode))))))
+
+  (nskk-it "falls back to @ for a keyboard type with no azik-toggle-key fact"
+    (let ((nskk-mode-map (make-sparse-keymap))
+          (nskk--azik-toggle-key-state nil))
+      (cl-progv '(nskk-mode-map) (list nskk-mode-map)
+        (nskk-prolog-test-with-isolated-db
+          (nskk-prolog-assert '((azik-toggle-key jp106 "@")))
+          (nskk-prolog-assert '((azik-toggle-key us101 "[")))
+          (let ((nskk-azik-keyboard-type 'unregistered-keyboard))
+            (nskk--setup-azik-toggle-key))
+          (should (eq (lookup-key nskk-mode-map "@")
                       #'nskk-toggle-japanese-mode)))))))
 
 (nskk-describe "AZIK custom conversion table"
@@ -1691,8 +1761,8 @@
 (nskk-describe "nskk-test-convert-romaji AZIK contract"
   (nskk-it "should return a non-empty string for any AZIK pattern"
     (let ((failures nil))
-      (dotimes (_ 50)
-        (nskk-with-azik-style
+      (nskk-with-azik-style
+        (dotimes (_ 50)
           (let* ((input  (nskk--pbt-random-choice (nskk--pbt-get-all-azik-patterns)))
                  (result (nskk-test-convert-romaji input)))
             (unless (stringp result)
@@ -1708,27 +1778,25 @@
 ;;;; Property-Based Tests: AZIK-wide invariants
 ;;;;
 
-(nskk-property-test azik-any-rule-lookup-returns-valid-type
+(nskk-azik-property-test azik-any-rule-lookup-returns-valid-type
   ((pattern azik-rule))
-  (nskk-with-azik-style
-    (let ((result (nskk-converter-lookup pattern)))
-      (or (stringp result)
-          (eq result :incomplete)
-          (null result))))
+  (let ((result (nskk-converter-lookup pattern)))
+    (or (stringp result)
+        (eq result :incomplete)
+        (null result)))
   50)
 
-(nskk-property-test azik-hatsuon-z-suffix-produces-string-ending-in-ん
+(nskk-azik-property-test azik-hatsuon-z-suffix-produces-string-ending-in-ん
   ((row-pattern azik-rule))  ; used to drive random iteration count only
-  (nskk-with-azik-style
-    (let* ((hatsuon-categories (cl-remove-if-not
-                                (lambda (cat) (string-prefix-p "hatsuon-" (symbol-name (car cat))))
-                                nskk--pbt-azik-categories))
-           (category (nskk--pbt-random-choice hatsuon-categories))
-           (patterns (cdr category))
-           (z-pattern (car patterns))
-           (result (nskk-converter-lookup z-pattern)))
-      (and (stringp result)
-           (string-suffix-p "ん" result))))
+  (let* ((hatsuon-categories (cl-remove-if-not
+                              (lambda (cat) (string-prefix-p "hatsuon-" (symbol-name (car cat))))
+                              nskk--pbt-azik-categories))
+         (category (nskk--pbt-random-choice hatsuon-categories))
+         (patterns (cdr category))
+         (z-pattern (car patterns))
+         (result (nskk-converter-lookup z-pattern)))
+    (and (stringp result)
+         (string-suffix-p "ん" result)))
   50)
 
 
@@ -1736,14 +1804,12 @@
 ;;;; Exhaustive Property Test: entire AZIK rule set never crashes on lookup
 ;;;;
 
-(nskk-property-test-exhaustive azik-all-rules-lookup-non-crashing
-  (nskk-with-azik-style
-    (nskk--pbt-get-all-azik-patterns))
-  (nskk-with-azik-style
-    (let ((result (condition-case err
-                      (nskk-converter-lookup item)
-                    (error (cons :error err)))))
-      (not (and (consp result) (eq (car result) :error))))))
+(nskk-azik-exhaustive-test azik-all-rules-lookup-non-crashing
+  (nskk--pbt-get-all-azik-patterns)
+  (let ((result (condition-case err
+                    (nskk-converter-lookup item)
+                  (error (cons :error err)))))
+    (not (and (consp result) (eq (car result) :error)))))
 
 
 ;;;;

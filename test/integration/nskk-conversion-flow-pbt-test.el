@@ -94,6 +94,15 @@
   (nskk-state-set state 'henkan-position nil)
   (nskk-state-force-henkan-phase state nil))
 
+(defun nskk--pbt-next-candidate (state)
+  "Advance STATE to its next candidate and return it, or nil if none (test helper)."
+  (let* ((candidates (nskk-state-candidates state))
+         (total (length candidates)))
+    (when (> total 0)
+      (setf (nskk-state-current-index state)
+            (mod (1+ (nskk-state-current-index state)) total))
+      (nth (nskk-state-current-index state) candidates))))
+
 
 ;;;;
 ;;;; Property 1: Conversion Roundtrip
@@ -143,10 +152,11 @@
     (nskk-state-set-candidates state candidates)
     (let ((visited nil)
           (ok t))
-      (let ((first (nskk-state-current-candidate state)))
+      (let ((first (nth (nskk-state-current-index state)
+                        (nskk-state-candidates state))))
         (when first (push first visited)))
       (dotimes (_ (1- num-candidates))
-        (let ((next (nskk-state-next-candidate state)))
+        (let ((next (nskk--pbt-next-candidate state)))
           (when next (push next visited))))
       (dolist (c candidates)
         (unless (member c visited)
