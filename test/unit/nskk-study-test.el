@@ -815,6 +815,43 @@ regressing back to a silent no-op."
       (should (eq (car result) candidate))
       (should (eq (cadr result) candidate)))))
 
+(ert-deftest nskk-study-test/raw-identity-roundtrip-keeps-displayed-history ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-retract-all 'study-association 3)
+    (let ((nskk-study-file (make-temp-file "nskk-study-raw-"))
+          (nskk-study-first-candidate t)
+          (nskk-study-max-distance nil)
+          (nskk--study-kakutei-ring '((:word "previous"))))
+      (unwind-protect
+          (progn
+            (nskk-study-after-kakutei "12こ" '("12個" . "note") 1 "#0個")
+            (should (equal (plist-get (car nskk--study-kakutei-ring) :word) "12個"))
+            (nskk-study-save)
+            (nskk-prolog-retract-all 'study-association 3)
+            (nskk-study-load)
+            (setq nskk--study-kakutei-ring '((:word "previous")))
+            (should (equal (nskk-study-reorder "12こ" '("12個" "#0個"))
+                           '("#0個" "12個"))))
+        (delete-file nskk-study-file)))))
+
+(ert-deftest nskk-study-test/raw-identity-respects-display-no-learn ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-retract-all 'study-association 3)
+    (let ((nskk-study-first-candidate t)
+          (nskk-study-max-distance nil)
+          (nskk--study-kakutei-ring '((:word "previous"))))
+      (nskk-study-record "12こ" (propertize "12個" 'nskk-no-learn t) 1 "#0個")
+      (should-not (nskk-prolog-query '(study-association \?p \?r \?c))))))
+
+(ert-deftest nskk-study-test/reorder-signals-even-first-raw-match ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk--study-associate "previous" "12こ" "#0個")
+    (let* ((nskk--study-kakutei-ring '((:word "previous")))
+           (candidates (list "#0個" "12個"))
+           (result (nskk-study-reorder "12こ" candidates)))
+      (should (equal result candidates))
+      (should-not (eq result candidates)))))
+
 (provide 'nskk-study-test)
 
 ;;; nskk-study-test.el ends here

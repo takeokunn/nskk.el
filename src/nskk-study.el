@@ -153,28 +153,34 @@ the predicate never accumulates competing answers for one context."
   (nskk-prolog-assert (list `(study-association ,prev-word ,reading ,word))))
 
 ;;;###autoload
-(defun nskk-study-record (reading candidate &optional index)
+(defun nskk-study-record (reading candidate &optional index raw-candidate)
   "Record study associations for READING and CANDIDATE.
 Associates the most recent kakutei word with this (READING, CANDIDATE)
 pair.  INDEX is the candidate index (0-based); when
 `nskk-study-first-candidate' is nil and INDEX is 0, no association is
 recorded.
 
-Candidates with the `nskk-no-learn' text property are silently skipped."
+Candidates with the `nskk-no-learn' text property are silently skipped.
+RAW-CANDIDATE, when non-nil, is the dictionary identity to associate instead
+of the displayed word."
   (when-let* ((word (nskk--study-candidate-word candidate))
               ((nskk--study-record-allowed-p word index))
               (prev-word (plist-get (car nskk--study-kakutei-ring) :word)))
-    (nskk--study-associate prev-word reading word)))
+    (nskk--study-associate prev-word reading (or raw-candidate word))))
 
 ;;;###autoload
-(defun nskk-study-after-kakutei (reading candidate &optional index)
+(defun nskk-study-after-kakutei (reading candidate &optional index raw-candidate)
   "Entry point called after kakutei to update study state.
 Records the study association and pushes the confirmed word
 onto the kakutei history ring.
 READING is the dictionary lookup key.
 CANDIDATE is the confirmed word string.
-INDEX is the candidate index (0-based, optional)."
-  (nskk-study-record reading candidate index)
+INDEX is the candidate index (0-based, optional).
+RAW-CANDIDATE optionally supplies the dictionary identity for learning;
+the history ring still records the displayed word."
+  (if raw-candidate
+      (nskk-study-record reading candidate index raw-candidate)
+    (nskk-study-record reading candidate index))
   (when-let* ((word (nskk--study-candidate-word candidate)))
     (nskk--study-push-kakutei word (point) (current-buffer))))
 
@@ -194,7 +200,8 @@ offers must not displace one it does."
   "Reorder CANDIDATES for READING based on study associations.
 Searches the kakutei history ring, most recent entry first, for an
 association naming one of CANDIDATES.  The first such candidate is
-promoted to the front.  Returns the (possibly reordered) candidate list."
+promoted to the front.  Returns the (possibly reordered) candidate list.
+Returns the original list only when no association matches."
   (if (or (null nskk--study-kakutei-ring) (null candidates))
       candidates
     (let ((promoted

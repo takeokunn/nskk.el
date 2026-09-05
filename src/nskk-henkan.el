@@ -1607,6 +1607,9 @@ in place and will immediately follow the inserted candidate."
       (let* ((candidates    (nskk-state-candidates nskk-current-state))
              (index         (nskk-state-current-index nskk-current-state))
              (candidate     (nth index candidates))
+             (raw-candidate (cdr (assq candidate
+                                       (nskk-state-get-metadata
+                                        nskk-current-state 'annotation-candidates))))
              (start         (nskk-get-conversion-start))
              (mode          (nskk-state-mode nskk-current-state))
              (was-abbrev    (eq mode 'abbrev))
@@ -1645,7 +1648,9 @@ in place and will immediately follow the inserted candidate."
         ;; fail-fast ordering and propagates the exact original condition.
         (when (and committed-p reading)
           (when (fboundp 'nskk-study-after-kakutei)
-            (nskk-study-after-kakutei reading candidate index))
+            (if raw-candidate
+                (nskk-study-after-kakutei reading candidate index raw-candidate)
+              (nskk-study-after-kakutei reading candidate index)))
           (nskk-search-learn reading candidate))
         (succeed candidate))
     (fail)))
@@ -1963,10 +1968,15 @@ ON-FOUND is called with the final candidates list.
 
 Side effects: replaces ▽ with ▼ in the buffer, updates the conversion
 overlay, sets `nskk-state-henkan-count' to 1, and stores candidates in state."
-  (let* ((base-candidates (if (and raw-candidates numeric-info)
-                              (nskk--numeric-process-candidates raw-candidates (car numeric-info))
-                            raw-candidates))
-         (candidates (if (fboundp 'nskk-study-reorder)
+  (let* ((ordered-raw (if (and numeric-info (fboundp 'nskk-study-reorder))
+                          (nskk-study-reorder lookup-text raw-candidates)
+                        raw-candidates))
+         (base-candidates (if (and ordered-raw numeric-info)
+                              (nskk--numeric-process-candidates ordered-raw (car numeric-info))
+                            ordered-raw))
+         ;; Legacy display-only facts are usable only without a raw match.
+         (candidates (if (and (eq ordered-raw raw-candidates)
+                              (fboundp 'nskk-study-reorder))
                          (nskk-study-reorder lookup-text base-candidates)
                        base-candidates)))
     (nskk-debug-log "[HENKAN] candidates-found: key=%s count=%d" lookup-text (length candidates))
@@ -1979,7 +1989,7 @@ overlay, sets `nskk-state-henkan-count' to 1, and stores candidates in state."
       (nskk-state-put-metadata nskk-current-state 'annotation-reading (cdr numeric-info))
       (nskk-state-put-metadata nskk-current-state 'annotation-candidates
                                (and numeric-info
-                                    (cl-mapcar #'cons base-candidates raw-candidates))))
+                                    (cl-mapcar #'cons base-candidates ordered-raw))))
     (dolist (callback (nskk-prolog-presentation-actions 'show-candidate))
       (funcall callback (car candidates)))
     (funcall on-found candidates)))

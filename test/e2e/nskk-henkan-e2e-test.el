@@ -765,11 +765,11 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (should-not (nskk-henkan-candidate-list-active)))))
 
 ;;;;
-;;;; RET in List Phase (Commit Current Candidate)
+;;;; RET in List Phase (Invalid Selection Key)
 ;;;;
 
 (nskk-describe "RET in list phase"
-  (nskk-it "commits the current candidate (page-start index) with a newline"
+  (nskk-it "keeps the current page available for selection after RET"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-given
         (nskk-e2e-type "Kanji"))
@@ -783,25 +783,30 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-when
         (nskk-e2e-type "RET"))
       (nskk-then
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-henkan-phase 'list)
+        (nskk-e2e-type "a")
         (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-henkan-phase nil "After RET, phase must be nil")
-        (nskk-e2e-assert-buffer "貫地\n" "RET in list phase commits the page-start candidate"))))
+        (nskk-e2e-assert-buffer "貫地"))))
 
-  (nskk-it "ends conversion state after RET"
+  (nskk-it "preserves conversion and list state after RET"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
       (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "RET")
-      (nskk-e2e-assert-not-converting)))
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-assert-henkan-phase 'list)
+      (should (nskk-henkan-candidate-list-active))))
 
-  (nskk-it "inserts exactly one newline after the committed candidate"
+  (nskk-it "inserts no newline when RET precedes candidate selection"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
       (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "RET")
-      (nskk-e2e-assert-buffer "貫地\n"))))
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "貫地"))))
 
 ;;;;
 ;;;; Candidate List Phase Properties
@@ -827,12 +832,12 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-converting-p))))
 
 ;;;;
-;;;; DEL in List Phase (Cancel Conversion)
+;;;; DEL in List Phase (Return to Previous Inline Candidate)
 ;;;;
 
 (nskk-describe "DEL key in list phase"
 
-  (nskk-it "rolls back to preedit (▽) state"
+  (nskk-it "returns to active inline conversion from the first page"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-given
         (nskk-e2e-type "Kanji"))
@@ -846,17 +851,18 @@ Indices 0-6: 漢字 感じ 幹事 換字 貫地 刊事 肝事.")
       (nskk-when
         (nskk-e2e-type "DEL"))
       (nskk-then
-        (nskk-e2e-assert-not-converting)
-        (nskk-e2e-assert-henkan-phase 'on "DEL in list phase must return to ▽ preedit state"))))
+        (nskk-e2e-assert-converting)
+        (nskk-e2e-assert-henkan-phase 'active))))
 
-  (nskk-it "restores kana reading to preedit (▽) buffer (same as C-g)"
+  (nskk-it "restores the candidate immediately before the first list page"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
       (nskk-e2e-type "Kanji")
       (dotimes (_ 5) (nskk-e2e-type "SPC"))
       (nskk-e2e-assert-henkan-phase 'list)
       (nskk-e2e-type "DEL")
+      (nskk-e2e-type "C-j")
       (nskk-e2e-assert-not-converting)
-      (nskk-e2e-assert-buffer "▽かんじ" "DEL must return to ▽ preedit with kana reading")))
+      (nskk-e2e-assert-buffer "換字")))
 
   (nskk-it "clears nskk--henkan-candidate-list-active"
     (nskk-e2e-with-buffer 'hiragana nskk-e2e--kanji-7cands-dict
@@ -1465,6 +1471,7 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (should (equal nskk--annotation-current "raw-note"))))))
 
 (ert-deftest nskk-e2e-study-preserves-numeric-collision-annotations ()
+  "Ambiguous legacy facts prefer a matching raw candidate, as DDSKK does."
   (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "12個")))
     (let ((nskk-show-annotation t)
           (nskk-henkan-show-candidates-nth 5)
@@ -1477,11 +1484,52 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
         (switch-to-buffer (current-buffer))
         (execute-kbd-macro (kbd "Q 1 2 ko SPC"))
         (should (= (length (nskk-state-candidates nskk-current-state)) 2))
-        (should (equal nskk--annotation-current "raw-note"))
-        (execute-kbd-macro (kbd "SPC"))
         (should (equal nskk--annotation-current "literal-note"))
+        (execute-kbd-macro (kbd "SPC"))
+        (should (equal nskk--annotation-current "raw-note"))
         (execute-kbd-macro (kbd "C-j"))
         (should (equal (buffer-string) "12個"))))))
+
+(ert-deftest nskk-e2e-study-learns-selected-numeric-identity ()
+  (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "12個")))
+    (let ((nskk-show-annotation t)
+          (nskk-henkan-show-candidates-nth 5)
+          (nskk-study-first-candidate t)
+          (nskk-study-max-distance nil)
+          (nskk--study-kakutei-ring '((:word "previous"))))
+      (nskk-annotation-initialize)
+      (nskk-annotation-register "#こ" "#0個" "raw-note")
+      (nskk-annotation-register "#こ" "12個" "literal-note")
+      (save-window-excursion
+        (switch-to-buffer (current-buffer))
+        (execute-kbd-macro (kbd "Q 1 2 ko SPC SPC C-j"))
+        (should (equal (buffer-string) "12個"))
+        (let ((nskk-study-file (make-temp-file "nskk-e2e-study-raw-")))
+          (unwind-protect
+              (progn
+                (nskk-study-save)
+                (nskk-prolog-retract-all 'study-association 3)
+                (nskk-study-load))
+            (delete-file nskk-study-file)))
+        (setq nskk--study-kakutei-ring '((:word "previous")))
+        (execute-kbd-macro (kbd "Q 1 2 ko SPC"))
+        (should (= (length (nskk-state-candidates nskk-current-state)) 2))
+        (should (equal nskk--annotation-current "literal-note"))
+        (execute-kbd-macro (kbd "SPC"))
+        (should (equal nskk--annotation-current "raw-note"))))))
+
+(ert-deftest nskk-e2e-study-numeric-raw-match-precedes-legacy-display ()
+  (dolist (raw-match '(nil t))
+    (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "#3個")))
+      (let ((nskk-henkan-show-candidates-nth 5)
+            (nskk--study-kakutei-ring '((:word "recent") (:word "older"))))
+        (nskk--study-associate "recent" "12こ" "十二個")
+        (when raw-match (nskk--study-associate "older" "12こ" "#0個"))
+        (save-window-excursion
+          (switch-to-buffer (current-buffer))
+          (execute-kbd-macro (kbd "Q 1 2 ko SPC"))
+          (should (equal (nskk-state-candidates nskk-current-state)
+                         (if raw-match '("12個" "十二個") '("十二個" "12個")))))))))
 
 (provide 'nskk-henkan-e2e-test)
 

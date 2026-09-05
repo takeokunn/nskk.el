@@ -103,7 +103,8 @@ cancels the reading.
 
 Once the candidate list opens, select a visible candidate with its labeled
 key. =SPC= advances a page; =x=, =C-p=, or =DEL= returns to the previous
-page (or the previous inline candidate from the first page). =RET= and
+page. From the first page, they return to the previous inline candidate,
+or to the reading when =nskk-henkan-show-candidates-nth= is =1=. =RET= and
 =C-j= leave the list open, and unrecognized keys are consumed without
 changing the reading or input mode. A configured selection key for a
 visible candidate takes precedence over these controls.
@@ -135,7 +136,7 @@ to =t=; it is disabled by default.
 | =RET=   | =nskk-handle-return= | Commit inline candidate or reading and insert a newline |
 | =C-g=   | =nskk-handle-cancel= | Cancel conversion or preedit      |
 | =a s d f j k l= | direct select | Select candidate in list mode (default keys) |
-| =C-n=   | =nskk-handle-ctrl-n= | Next inline candidate; ignored in candidate list; otherwise commit any reading and move down |
+| =C-n=   | =nskk-handle-ctrl-n= | Next inline candidate; ignored in candidate list unless configured as a visible selection key; otherwise commit any reading and move down |
 | =C-p=   | =nskk-handle-ctrl-p= | Previous candidate during selection; otherwise commit any reading and move up |
 | =C-/=   | =nskk-undo=          | Undo input or candidate selection; ordinary Emacs Undo after commit |
 
@@ -157,7 +158,8 @@ default key binding and cannot be repeated consecutively or during conversion.
 
 *** Line Navigation
 
-These bindings leave an open candidate list unchanged.
+These bindings leave an open candidate list unchanged unless configured
+to select a visible candidate.
 
 | Key             | Behavior                                                    |
 |-----------------+-------------------------------------------------------------|
