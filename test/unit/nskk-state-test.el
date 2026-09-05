@@ -300,7 +300,26 @@ intended slot alone.")
             (dolist (other nskk-state-test--slot-accessors)
               (unless (eq other accessor)
                 (should (equal (funcall other state)
-                               (funcall other before))))))))
+                               (funcall other before)))))))
+
+  (nskk-deftest-table state-set-overwrites-an-existing-value
+    :description "a second write replaces the first rather than being dropped"
+    ;; The table above starts every row from a fresh state, where these slots
+    ;; are all nil.  An arm written as `(or (nskk-state-X state) value)' would
+    ;; therefore look correct there and silently refuse every later write, so
+    ;; drive each slot twice.
+    :columns (key accessor first second)
+    :rows ((marker-position nskk-state-marker-position 1 2)
+           (previous-mode   nskk-state-previous-mode   katakana ascii)
+           (undo-stack      nskk-state-undo-stack      ((a . 1)) ((b . 2)))
+           (redo-stack      nskk-state-redo-stack      ((c . 3)) ((d . 4)))
+           (converted-buffer nskk-state-converted-buffer "one" "two")
+           (metadata        nskk-state-metadata        (:x 1) (:y 2)))
+    :body (let ((state (nskk-state-create 'hiragana)))
+            (should (equal first (nskk-state-set state key first)))
+            (should (equal first (funcall accessor state)))
+            (should (equal second (nskk-state-set state key second)))
+            (should (equal second (funcall accessor state))))))
 
 ;;;
 ;;; Mode Validation Tests
