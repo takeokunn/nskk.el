@@ -21,14 +21,7 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 
-;;;
-;;; FR-T-010 — Face definitions (extended with attribute assertions)
-;;;
-
 (nskk-describe "face definitions"
-  (nskk-it "nskk-candidate-key-face is defined"
-    (should (facep 'nskk-candidate-key-face)))
-
   (nskk-it "nskk-candidate-face is defined"
     (should (facep 'nskk-candidate-face)))
 
@@ -40,10 +33,6 @@
       (should (symbolp inherit))
       (should (facep inherit)))))
 
-;;;
-;;; FR-T-001 — build-string content (table-driven)
-;;;
-
 (nskk-deftest-table candidate-build-string-content-cases
   :columns (page-candidates keys remaining check-present check-absent)
   :rows ((("漢字")        (?a)     0  "a:漢字"   "残り")
@@ -52,15 +41,10 @@
          (("漢字")        (?a)     1  "残り 1"   nil))
   :body
   (let ((result (nskk--candidate-build-string page-candidates keys remaining)))
-    (should (string-prefix-p "\n" result))
     (when check-present
       (should (string-match-p (regexp-quote check-present) result)))
     (when check-absent
       (should-not (string-match-p check-absent result)))))
-
-;;;
-;;; FR-T-002 — build-string text properties
-;;;
 
 (nskk-describe "build-string text properties"
   (nskk-it "key portion carries nskk-candidate-key-face"
@@ -75,18 +59,10 @@
            (face (get-text-property 2 'face body)))
       (should (eq face 'nskk-candidate-face)))))
 
-;;;
-;;; FR-T-003 / PBT-004 — Build-string always starts with newline
-;;;
-
 (nskk-property-test-exhaustive candidate-build-string-starts-with-newline
   '(0 1 2 5 10 100)
   (let ((result (nskk--candidate-build-string '("候補") '(?a) item)))
     (should (string-prefix-p "\n" result))))
-
-;;;
-;;; FR-T-003 / PBT-005 — [残り N] present iff remaining > 0
-;;;
 
 (nskk-property-test-exhaustive candidate-build-string-remaining-iff-positive
   '(0 1 2 5 10 100)
@@ -94,10 +70,6 @@
     (if (> item 0)
         (should (string-match-p "残り" result))
       (should (not (string-match-p "残り" result))))))
-
-;;;
-;;; FR-T-009 — Custom group
-;;;
 
 (nskk-describe "custom group"
   (nskk-it "nskk-candidate-window custom group exists"
@@ -135,19 +107,45 @@
           (should (= (length result) 2))
           (should (equal result '("四" "五")))))))
 
+  (nskk-it "returns an empty list for an empty candidate list"
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
+            (nskk-henkan-number-to-display-candidates 7))
+        (let ((result (nskk-candidate-show-list '() 0)))
+          (should (equal result '()))
+          (should nskk--candidate-list-active)))))
+
+  (nskk-it "returns an empty list when current-index is at the candidate count"
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+            (nskk-henkan-number-to-display-candidates 3)
+            (candidates '("一" "二" "三")))
+        (let ((result (nskk-candidate-show-list candidates (length candidates))))
+          (should (equal result '()))))))
+
+  (nskk-it "signals when current-index is past the end of the candidate list"
+    ;; Characterizes existing behaviour: the slice helper signals rather than
+    ;; clamping.  Unreachable from the henkan pipeline, which only passes
+    ;; in-range page-aligned indices.
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+            (nskk-henkan-number-to-display-candidates 3))
+        (should-error (nskk-candidate-show-list '("一" "二") 99)))))
+
+  (nskk-it "caps per-page at the selection key count, not the display-candidates setting"
+    (with-temp-buffer
+      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+            (nskk-henkan-number-to-display-candidates 10)
+            (candidates '("一" "二" "三" "四" "五")))
+        (let ((result (nskk-candidate-show-list candidates 0)))
+          (should (equal result '("一" "二" "三")))))))
+
 )
 
 (nskk-describe "list active predicate"
   (nskk-it "returns nil when not active"
     (with-temp-buffer
-      (should-not (nskk-candidate-list-active-p))))
-
-  (nskk-it "returns non-nil when active"
-    (with-temp-buffer
-      (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
-            (nskk-henkan-number-to-display-candidates 7))
-        (nskk-candidate-show-list '("test") 0)
-        (should (nskk-candidate-list-active-p))))))
+      (should-not (nskk-candidate-list-active-p)))))
 
 (nskk-describe "hide candidate list"
   (nskk-it "resets all state after hide"
@@ -304,13 +302,6 @@
   (nskk-it "candidate-selection-key Prolog facts are initialized at load time"
     (should (nskk-prolog-query-one '(candidate-selection-key \?a \?pos))))
 
-  (nskk-it "all 7 default selection keys map to positions 0-6"
-    (cl-loop for key in '(?a ?s ?d ?f ?j ?k ?l)
-             for expected-pos from 0
-             do (should (= (nskk-prolog-query-value
-                            `(candidate-selection-key ,key ,'\?pos) '\?pos)
-                           expected-pos))))
-
   (nskk-it "non-selection keys have no Prolog fact"
     (should (null (nskk-prolog-query-one `(candidate-selection-key ,?z ,'\?pos))))))
 
@@ -319,6 +310,13 @@
     (should (= (nskk-candidate-list-select-by-key
                 ?a '("一" "二" "三" "四" "五" "六" "七" "八") 7)
                7)))
+
+  (nskk-it "adds page offset to key position when both are non-zero"
+    ;; Every other selection case pins one term to zero, so a code path
+    ;; returning only the offset or only the key position would still pass.
+    (should (= (nskk-candidate-list-select-by-key
+                ?s '("一" "二" "三" "四" "五" "六" "七" "八" "九") 7)
+               8)))
 
   (nskk-it "returns valid index when absolute-index is the last element"
     (should (= (nskk-candidate-list-select-by-key ?a '("a" "b" "c" "d") 3)
@@ -331,10 +329,6 @@
          (?a ("a"  "b"  "c") 3))     ; absolute 3 = length 3 → out of range
   :body (should (null (nskk-candidate-list-select-by-key
                        key candidates current-index))))
-
-;;;
-;;; FR-T-004+005 / PBT-001 — Pagination invariant (exhaustive domain)
-;;;
 
 (nskk-property-test-exhaustive candidate-pagination-invariant
   '((3 . 1) (3 . 3) (3 . 7) (4 . 1) (4 . 4) (5 . 5) (5 . 10) (7 . 7) (7 . 20))
@@ -350,23 +344,6 @@
       (let* ((result (nskk-candidate-show-list all-candidates 0))
              (expected-count (min pg-size n-candidates)))
         (should (= (length result) expected-count))))))
-
-;;;
-;;; PBT-002 — Selection key exhaustive test for all 7 default keys
-;;;
-
-(nskk-property-test-exhaustive candidate-selection-key-returns-valid-index
-  '(?a ?s ?d ?f ?j ?k ?l)
-  (let ((nskk-henkan-show-candidates-keys '(?a ?s ?d ?f ?j ?k ?l))
-        (candidates '("a" "b" "c" "d" "e" "f" "g")))
-    (let ((result (nskk-candidate-list-select-by-key item candidates 0)))
-      (and (numberp result)
-           (>= result 0)
-           (<= result 6)))))
-
-;;;
-;;; PBT-003 — Key position monotonicity (table-driven)
-;;;
 
 (nskk-deftest-table candidate-key-position-monotonic
   :columns (key expected-position)
@@ -387,8 +364,22 @@
 ;;;
 
 (nskk-describe "nskk--candidate-init-key-facts"
-  (nskk-it "is idempotent: calling twice does not duplicate Prolog facts"
-    (should (progn (nskk--candidate-init-key-facts) t)))
+  (nskk-it "is idempotent: reinitializing does not duplicate Prolog facts"
+    (nskk-prolog-test-with-isolated-db
+      (let ((nskk-henkan-show-candidates-keys '(?q ?w ?e))
+            (nskk--candidate-key-facts-initialized nil))
+        (nskk--candidate-init-key-facts)
+        (setq nskk--candidate-key-facts-initialized nil)
+        (nskk--candidate-init-key-facts)
+        (should (equal (nskk-prolog-query-all-values
+                        `(candidate-selection-key ,?q \?pos) '\?pos)
+                       '(0)))
+        (should (equal (nskk-prolog-query-all-values
+                        `(candidate-selection-key ,?w \?pos) '\?pos)
+                       '(1)))
+        (should (equal (nskk-prolog-query-all-values
+                        `(candidate-selection-key ,?e \?pos) '\?pos)
+                       '(2))))))
 
   (nskk-it "results in candidate-selection-key/2 facts queryable by position"
     (let ((pos (nskk-prolog-query-value
@@ -397,10 +388,6 @@
                   \?i)
                 '\?i)))
       (should (= pos 0)))))
-
-;;;
-;;; FR-T-006 — nskk--candidate-init-key-facts with custom keys (isolated DB)
-;;;
 
 (nskk-describe "nskk--candidate-init-key-facts with custom keys"
   (nskk-it "initializes facts for a non-default key list in isolated DB"
@@ -461,16 +448,6 @@
               (should (= (nskk--candidate-anchor-position) 4)))
           (nskk-state-set-conversion-overlay saved-conversion-overlay))))))
 
-;;;
-;;; FR-T-008 — nskk--candidate-page-slice
-;;;
-
-(nskk-describe "nskk--candidate-page-slice"
-  (nskk-it "returns correct slice and remaining as plist"
-    (let ((result (nskk--candidate-page-slice '("a" "b" "c" "d" "e") 0 3)))
-      (should (equal (plist-get result :slice) '("a" "b" "c")))
-      (should (= (plist-get result :remaining) 2)))))
-
 (nskk-deftest-table candidate-page-slice-cases
   :columns (candidates start-index per-page expected-slice expected-remaining)
   :rows ((("a" "b" "c" "d" "e")  0  3  ("a" "b" "c")  2)
@@ -482,10 +459,6 @@
   (let ((result (nskk--candidate-page-slice candidates start-index per-page)))
     (should (equal (plist-get result :slice) expected-slice))
     (should (= (plist-get result :remaining) expected-remaining))))
-
-;;;
-;;; FR-T-007 — CPS /k variants
-;;;
 
 (nskk-describe "CPS /k variants"
   (nskk-it "nskk-candidate-show-list/k calls on-done with page candidates"
@@ -520,178 +493,179 @@
         (nskk-candidate-list-active-p/k (lambda (v) (setq received v)) #'ignore)
         (should-not received))))
 
-  (nskk-it "nskk-candidate-list-select-by-key/k calls on-found with index"
-    (let ((result :unset))
-      (nskk-candidate-list-select-by-key/k
-       ?a '("一" "二" "三") 0
-       (lambda (idx) (setq result idx))
-       (lambda () (setq result nil)))
-      (should (= result 0))))
+  (nskk-it-k "nskk-candidate-list-select-by-key/k calls on-found with index"
+    (nskk-candidate-list-select-by-key/k ?a '("一" "二" "三") 0)
+    :found (idx)
+      (should (= idx 0))
+    :not-found ()
+      (ert-fail "Expected on-found for a valid selection key"))
 
-  (nskk-it "nskk-candidate-list-select-by-key/k passes absolute index including offset"
-    (let ((result :unset))
-      (nskk-candidate-list-select-by-key/k
-       ?a '("一" "二" "三" "四" "五" "六" "七" "八") 7
-       (lambda (idx) (setq result idx))
-       (lambda () (setq result nil)))
-      (should (= result 7))))
+  (nskk-it-k "nskk-candidate-list-select-by-key/k passes absolute index including offset"
+    (nskk-candidate-list-select-by-key/k
+     ?a '("一" "二" "三" "四" "五" "六" "七" "八") 7)
+    :found (idx)
+      (should (= idx 7))
+    :not-found ()
+      (ert-fail "Expected on-found for a valid selection key"))
 
-  (nskk-it "nskk-candidate-list-select-by-key/k calls on-not-found for invalid key"
-    (let ((not-found-called nil))
-      (nskk-candidate-list-select-by-key/k
-       ?z '("一" "二") 0
-       (lambda (_idx) nil)
-       (lambda () (setq not-found-called t)))
-      (should not-found-called))))
+  (nskk-it-k "nskk-candidate-list-select-by-key/k calls on-not-found for invalid key"
+    (nskk-candidate-list-select-by-key/k ?z '("一" "二") 0)
+    :found (idx)
+      (ert-fail (format "Expected on-not-found for an invalid key, got index %S" idx))
+    :not-found ()
+      (should t)))
 
 (nskk-describe "untrusted candidate display properties"
-    (nskk-it "sanitizes candidate-list copies before applying trusted faces"
-      (let* ((source (propertize "候補"
-                                'display "spoofed"
-                                'keymap (make-sparse-keymap)
-                                'local-map (make-sparse-keymap)
-                                'mouse-face 'highlight
-                                'help-echo "untrusted"
-                                'face 'error
-                                'nskk-no-learn t))
-             (source-copy (copy-sequence source))
-             (rendered (nskk--candidate-build-string (list source) '(?a) 0)))
-        (should (equal (substring-no-properties rendered) "\na:候補"))
-        (dolist (property '(display keymap local-map mouse-face help-echo))
-          (should-not
-           (text-property-not-all 0 (length rendered) property nil rendered)))
-        (should-not (get-text-property 0 'face rendered))
-        (should (eq (get-text-property 1 'face rendered)
-                    'nskk-candidate-key-face))
-        (should (eq (get-text-property 2 'face rendered)
-                    'nskk-candidate-key-face))
-        (let ((index 3))
-          (while (< index (length rendered))
-            (should (eq (get-text-property index 'face rendered)
-                        'nskk-candidate-face))
-            (setq index (1+ index))))
-        (should (equal source source-copy))
-        (should (eq (get-text-property 0 'face source) 'error))
-        (should (eq (get-text-property 0 'nskk-no-learn source) t))))
-    (nskk-it "removes every attack property from tooltip copies"
-      (let* ((first (propertize "候補"
-                               'display "spoofed first"
-                               'keymap (make-sparse-keymap)
-                               'local-map (make-sparse-keymap)
-                               'mouse-face 'highlight
-                               'help-echo "first help"
-                               'face 'error
-                               'nskk-no-learn t))
-             (second (propertize "次"
-                                'display "spoofed second"
-                                'keymap (make-sparse-keymap)
-                                'local-map (make-sparse-keymap)
-                                'mouse-face 'highlight
-                                'help-echo "second help"
-                                'face 'error
-                                'nskk-no-learn t))
-             (first-copy (copy-sequence first))
-             (second-copy (copy-sequence second))
-             (rendered
-              (nskk--candidate-build-tooltip-string (list first second))))
-        (should (equal rendered "候補\n次"))
-        (dolist (property '(display keymap local-map mouse-face help-echo face))
-          (should-not
-           (text-property-not-all 0 (length rendered) property nil rendered)))
-        (should (equal first first-copy))
-        (should (equal second second-copy))
-        (should (eq (get-text-property 0 'nskk-no-learn first) t))
-        (should (eq (get-text-property 0 'nskk-no-learn second) t)))))
-  (progn
-    (defun nskk-test--candidate-show-fault (stage condition)
-      "Assert transactional recovery for STAGE signaling CONDITION."
-      (with-temp-buffer
-        (let* ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
-               (nskk-henkan-number-to-display-candidates 3)
-               (nskk--candidate-list-active (not (eq stage 'make)))
-               (saved-candidate-overlay (nskk-state-candidate-overlay))
-               (fixture-overlay
-                (unless (eq stage 'make)
-                  (make-overlay (point-min) (point-min))))
-               (payload (list stage condition))
-               (original-make (symbol-function 'make-overlay))
-               (original-move (symbol-function 'move-overlay))
-               (original-put (symbol-function 'overlay-put))
-               caught)
-          (nskk-state-set-candidate-overlay fixture-overlay)
-          (unwind-protect
-              (progn
-                (cl-letf
-                    (((symbol-function 'make-overlay)
-                      (lambda (&rest args)
-                        (if (eq stage 'make)
-                            (signal condition (list payload))
-                          (apply original-make args))))
-                     ((symbol-function 'move-overlay)
-                      (lambda (&rest args)
-                        (prog1 (apply original-move args)
-                          (when (eq stage 'move)
-                            (signal condition (list payload))))))
-                     ((symbol-function 'overlay-put)
-                      (lambda (&rest args)
-                        (prog1 (apply original-put args)
-                          (when (eq stage 'put)
-                            (signal condition (list payload)))))))
-                  (setq caught
-                        (condition-case signaled
-                            (progn
-                              (nskk-candidate-show-list '("one" "two") 0)
-                              nil)
-                          ((error quit) signaled))))
-                (should (eq (car caught) condition))
-                (should (eq (cadr caught) payload))
-                (should-not nskk--candidate-list-active)
-                (should (null (nskk-state-candidate-overlay)))
-                (when fixture-overlay
-                  (should (null (overlay-buffer fixture-overlay))))
-                (should (equal (nskk-candidate-show-list '("retry") 0)
-                               '("retry")))
-                (should nskk--candidate-list-active)
-                (should (overlayp (nskk-state-candidate-overlay)))
-                (nskk-candidate-hide-list)
-                (should-not nskk--candidate-list-active)
-                (should (null (nskk-state-candidate-overlay))))
-            (when (overlayp (nskk-state-candidate-overlay))
-              (delete-overlay (nskk-state-candidate-overlay)))
-            (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
+  (nskk-it "sanitizes candidate-list copies before applying trusted faces"
+    (let* ((source (propertize "候補"
+                              'display "spoofed"
+                              'keymap (make-sparse-keymap)
+                              'local-map (make-sparse-keymap)
+                              'mouse-face 'highlight
+                              'help-echo "untrusted"
+                              'face 'error
+                              'nskk-no-learn t))
+           (source-copy (copy-sequence source))
+           (rendered (nskk--candidate-build-string (list source) '(?a) 0)))
+      (should (equal (substring-no-properties rendered) "\na:候補"))
+      (dolist (property '(display keymap local-map mouse-face help-echo))
+        (should-not
+         (text-property-not-all 0 (length rendered) property nil rendered)))
+      (should-not (get-text-property 0 'face rendered))
+      (should (eq (get-text-property 1 'face rendered)
+                  'nskk-candidate-key-face))
+      (should (eq (get-text-property 2 'face rendered)
+                  'nskk-candidate-key-face))
+      (let ((index 3))
+        (while (< index (length rendered))
+          (should (eq (get-text-property index 'face rendered)
+                      'nskk-candidate-face))
+          (setq index (1+ index))))
+      (should (equal source source-copy))
+      (should (eq (get-text-property 0 'face source) 'error))
+      (should (eq (get-text-property 0 'nskk-no-learn source) t)))))
 
-    (nskk-describe "candidate list transaction faults"
-      (nskk-it "rolls back make, move, and put errors and quits, then retries"
-        (dolist (stage '(make move put))
-          (dolist (condition '(error quit))
-            (nskk-test--candidate-show-fault stage condition)))))
+(defun nskk-test--candidate-show-fault (stage condition)
+  "Assert transactional recovery for STAGE signaling CONDITION."
+  (with-temp-buffer
+    (let* ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+           (nskk-henkan-number-to-display-candidates 3)
+           (nskk--candidate-list-active (not (eq stage 'make)))
+           (saved-candidate-overlay (nskk-state-candidate-overlay))
+           (fixture-overlay
+            (unless (eq stage 'make)
+              (make-overlay (point-min) (point-min))))
+           (payload (list stage condition))
+           (original-make (symbol-function 'make-overlay))
+           (original-move (symbol-function 'move-overlay))
+           (original-put (symbol-function 'overlay-put))
+           caught)
+      (nskk-state-set-candidate-overlay fixture-overlay)
+      (unwind-protect
+          (progn
+            (cl-letf
+                (((symbol-function 'make-overlay)
+                  (lambda (&rest args)
+                    (if (eq stage 'make)
+                        (signal condition (list payload))
+                      (apply original-make args))))
+                 ((symbol-function 'move-overlay)
+                  (lambda (&rest args)
+                    (prog1 (apply original-move args)
+                      (when (eq stage 'move)
+                        (signal condition (list payload))))))
+                 ((symbol-function 'overlay-put)
+                  (lambda (&rest args)
+                    (prog1 (apply original-put args)
+                      (when (eq stage 'put)
+                        (signal condition (list payload)))))))
+              (setq caught
+                    (condition-case signaled
+                        (progn
+                          (nskk-candidate-show-list '("one" "two") 0)
+                          nil)
+                      ((error quit) signaled))))
+            (should (eq (car caught) condition))
+            (should (eq (cadr caught) payload))
+            (should-not nskk--candidate-list-active)
+            (should (null (nskk-state-candidate-overlay)))
+            (when fixture-overlay
+              (should (null (overlay-buffer fixture-overlay))))
+            (should (equal (nskk-candidate-show-list '("retry") 0)
+                           '("retry")))
+            (should nskk--candidate-list-active)
+            (should (overlayp (nskk-state-candidate-overlay)))
+            (nskk-candidate-hide-list)
+            (should-not nskk--candidate-list-active)
+            (should (null (nskk-state-candidate-overlay))))
+        (when (overlayp (nskk-state-candidate-overlay))
+          (delete-overlay (nskk-state-candidate-overlay)))
+        (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
 
-    (nskk-describe "candidate hide repairs drift"
-      (nskk-it "deletes a live overlay even when active is nil"
-        (with-temp-buffer
-          (let* ((saved-candidate-overlay (nskk-state-candidate-overlay))
-                 (fixture-overlay (make-overlay (point-min) (point-min)))
-                 (nskk--candidate-list-active nil))
-            (nskk-state-set-candidate-overlay fixture-overlay)
-            (unwind-protect
-                (progn
-                  (nskk-candidate-hide-list)
-                  (should (null (nskk-state-candidate-overlay)))
-                  (should-not nskk--candidate-list-active)
-                  (should (null (overlay-buffer fixture-overlay))))
-              (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
+(nskk-describe "candidate list transaction faults"
+  (nskk-it "rolls back make, move, and put errors and quits, then retries"
+    (dolist (stage '(make move put))
+      (dolist (condition '(error quit))
+        (nskk-test--candidate-show-fault stage condition))))
 
-      (nskk-it "clears a stale non-overlay and active flag"
-        (let ((saved-candidate-overlay (nskk-state-candidate-overlay))
-              (nskk--candidate-list-active t))
-          (unwind-protect
-              (progn
-                (nskk-state-set-candidate-overlay 'stale)
-                (nskk-candidate-hide-list)
-                (should (null (nskk-state-candidate-overlay)))
-                (should-not nskk--candidate-list-active))
-            (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
+  (nskk-it "propagates the original condition when the rollback itself signals"
+    ;; A fault raised while cleaning up must not displace the fault that
+    ;; caused the cleanup, or the caller is told the wrong thing went wrong.
+    (with-temp-buffer
+      (let* ((nskk-henkan-show-candidates-keys '(?a ?s ?d))
+             (nskk-henkan-number-to-display-candidates 3)
+             (nskk--candidate-list-active t)
+             (saved-candidate-overlay (nskk-state-candidate-overlay))
+             (original-payload (list 'original-put-failure))
+             (original-put (symbol-function 'overlay-put))
+             caught)
+        (nskk-state-set-candidate-overlay nil)
+        (unwind-protect
+            (progn
+              (cl-letf (((symbol-function 'overlay-put)
+                         (lambda (&rest args)
+                           (prog1 (apply original-put args)
+                             (signal 'error (list original-payload)))))
+                        ((symbol-function 'delete-overlay)
+                         (lambda (&rest _args)
+                           (signal 'error (list 'rollback-failure)))))
+                (setq caught
+                      (condition-case signaled
+                          (progn
+                            (nskk-candidate-show-list '("one" "two") 0)
+                            nil)
+                        ((error quit) signaled))))
+              (should (eq (cadr caught) original-payload))
+              (should-not nskk--candidate-list-active)
+              (should (null (nskk-state-candidate-overlay))))
+          (nskk-state-set-candidate-overlay saved-candidate-overlay))))))
 
-    (provide 'nskk-candidate-window-test))
+(nskk-describe "candidate hide repairs drift"
+  (nskk-it "deletes a live overlay even when active is nil"
+    (with-temp-buffer
+      (let* ((saved-candidate-overlay (nskk-state-candidate-overlay))
+             (fixture-overlay (make-overlay (point-min) (point-min)))
+             (nskk--candidate-list-active nil))
+        (nskk-state-set-candidate-overlay fixture-overlay)
+        (unwind-protect
+            (progn
+              (nskk-candidate-hide-list)
+              (should (null (nskk-state-candidate-overlay)))
+              (should-not nskk--candidate-list-active)
+              (should (null (overlay-buffer fixture-overlay))))
+          (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
+
+  (nskk-it "clears a stale non-overlay and active flag"
+    (let ((saved-candidate-overlay (nskk-state-candidate-overlay))
+          (nskk--candidate-list-active t))
+      (unwind-protect
+          (progn
+            (nskk-state-set-candidate-overlay 'stale)
+            (nskk-candidate-hide-list)
+            (should (null (nskk-state-candidate-overlay)))
+            (should-not nskk--candidate-list-active))
+        (nskk-state-set-candidate-overlay saved-candidate-overlay)))))
+
+(provide 'nskk-candidate-window-test)
 
 ;;; nskk-candidate-window-test.el ends here

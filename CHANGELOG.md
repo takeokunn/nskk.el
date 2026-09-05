@@ -69,6 +69,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- Decomposed the two `nskk-show-mode` display functions by separating each
+  one's install sequence from its fail-closed handler, and factored the
+  repeated error-and-quit-swallowing cleanup into a single helper. The
+  module keeps `defun/done` for its one public entry point and plain
+  `defun` elsewhere: the CPS transformer does not rewrite `condition-case`
+  bodies, so `succeed`/`fail` placed inside one is caught by that same
+  handler and yields a wrong value instead of an error.
+- Renamed the customization group `nskk-show-mode` to `nskk-mode-indicator`.
+  A group whose name ends in `-mode` is reserved for the group named after
+  it, which this one is not. No option was renamed, so saved customizations
+  are unaffected; only the group's position in the customize tree changes.
 - The tutorial's quit key moved from `q` to `C-c C-q`, and `g` and `r`
   now insert when point is in an exercise input area and navigate only
   from the lesson text. `q` and `Q` are left to NSKK, which needs them
@@ -156,6 +167,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
   supposed to precede.
+- Fixed `nskk-show-mode` recording a mode as displayed when nothing was
+  drawn. With `nskk-show-mode-style` set to `tooltip` on a frame without
+  tooltip support, the display attempt returned without drawing yet still
+  updated the last-shown mode, so the deduplication guard suppressed every
+  later attempt. The last-shown mode is now updated only after a style
+  reports that it displayed something.
 - Fixed the interactive tutorial, which could not be completed. Every
   exercise's input and result region shared one end marker position, so
   answers were never graded as correct and marking one exercise correct
