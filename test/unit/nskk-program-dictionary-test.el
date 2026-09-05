@@ -58,12 +58,11 @@
   (nskk-it "maps command to call-command"
     (should (nskk-prolog-holds-p '(program-dict-entry-type command call-command))))
 
-  (nskk-it "does not accept unknown kinds"
-    (nskk-deftest-table entry-type-unknown
+  (nskk-deftest-table entry-type-unknown
       :columns (kind)
       :rows    ((unknown) (elisp) (shell) (nil-kind))
       :body    (should (null (nskk-prolog-holds-p
-                              `(program-dict-entry-type ,kind \?_))))))
+                              `(program-dict-entry-type ,kind \?_)))))
 
   (nskk-it "resolves function handler via nskk-prolog-query-value"
     (should (eq (nskk-prolog-query-value
@@ -82,12 +81,11 @@
   (nskk-it "maps 1 to skkserv format with / delimiter"
     (should (nskk-prolog-holds-p '(program-dict-output-prefix "1" skkserv "/"))))
 
-  (nskk-it "does not match unknown prefix characters"
-    (nskk-deftest-table prefix-unknown
+  (nskk-deftest-table prefix-unknown
       :columns (ch)
       :rows    (("4") ("0") ("a") ("あ") (""))
       :body    (should (null (nskk-prolog-holds-p
-                              `(program-dict-output-prefix ,ch \?_ \?_))))))
+                              `(program-dict-output-prefix ,ch \?_ \?_)))))
 
   (nskk-it "resolves delimiter for / via nskk-prolog-query-value"
     (should (equal (nskk-prolog-query-value
@@ -109,26 +107,24 @@
 
 (nskk-describe "nskk--program-dict-strip-annotation"
   (nskk-context "annotated candidates"
-    (nskk-it "strips annotation from word;note pairs"
-      (nskk-deftest-table strip-annotation-cases
+    (nskk-deftest-table strip-annotation-cases
         :columns (input expected)
         :rows    (("漢字;注釈"       "漢字")
                   ("感じ;note"       "感じ")
                   ("幹事;long note"  "幹事")
                   ("abc;xyz"         "abc"))
         :body    (should (equal (nskk--program-dict-strip-annotation input)
-                                expected))))
+                                expected)))
 
     (nskk-it "strips only up to the first semicolon when multiple exist"
       (should (equal (nskk--program-dict-strip-annotation "a;b;c") "a"))))
 
   (nskk-context "plain candidates without annotation"
-    (nskk-it "returns the string unchanged when no semicolon is present"
-      (nskk-deftest-table strip-annotation-plain
+    (nskk-deftest-table strip-annotation-plain
         :columns (input)
         :rows    (("漢字") ("感じ") ("幹事") ("") ("abc"))
         :body    (should (equal (nskk--program-dict-strip-annotation input)
-                                input))))))
+                                input)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-build-call
@@ -174,12 +170,26 @@
       (should (consp (nskk--program-dict-build-call "prog %s" "k")))
       (should (consp (nskk--program-dict-build-call "prog" "k"))))
 
-    (nskk-it "program name is always a string"
-      (nskk-deftest-table build-call-program-name
+    (nskk-deftest-table build-call-program-name
         :columns (cmd)
         :rows    (("prog %s") ("prog") ("my-tool --flag %s"))
         :body
-        (should (stringp (car (nskk--program-dict-build-call cmd "key"))))))))
+        (should (stringp (car (nskk--program-dict-build-call cmd "key")))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-finite-positive-p
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-finite-positive-p"
+  (nskk-deftest-table finite-positive-accepted
+      :columns (value)
+      :rows    ((1.0) (3))
+      :body    (should (nskk--program-dict-finite-positive-p value)))
+
+  (nskk-deftest-table finite-positive-rejected
+      :columns (value)
+      :rows    ((0.0) (-1.0) (1.0e+INF) (-1.0e+INF) (0.0e+NaN) ("x") (nil))
+      :body    (should-not (nskk--program-dict-finite-positive-p value))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-parse-output: on-found cases
@@ -187,13 +197,12 @@
 
 (nskk-describe "nskk--program-dict-parse-output on-found"
   (nskk-context "SKK format (/ prefix)"
-    (nskk-it "parses one or more candidates"
-      (nskk-deftest-table parse-skk-counts
+    (nskk-deftest-table parse-skk-counts
         :columns (input expected)
-        :rows    (("/漢字/"           '("漢字"))
-                  ("/漢字/感じ/"      '("漢字" "感じ"))
-                  ("/漢字/感じ/幹事/" '("漢字" "感じ" "幹事")))
-        :body    (should (equal (nskk--program-dict-parse-output input) expected))))
+        :rows    (("/漢字/"           ("漢字"))
+                  ("/漢字/感じ/"      ("漢字" "感じ"))
+                  ("/漢字/感じ/幹事/" ("漢字" "感じ" "幹事")))
+        :body    (should (equal (nskk--program-dict-parse-output input) expected)))
 
     (nskk-it "strips trailing newline before parsing"
       (should (equal (nskk--program-dict-parse-output "/漢字/\n")
@@ -208,33 +217,30 @@
                      '("漢字" "感じ")))))
 
   (nskk-context "skkserv format (1 prefix)"
-    (nskk-it "parses one or more candidates"
-      (nskk-deftest-table parse-skkserv-counts
+    (nskk-deftest-table parse-skkserv-counts
         :columns (input expected)
-        :rows    (("1/漢字/"      '("漢字"))
-                  ("1/漢字/感じ/" '("漢字" "感じ")))
-        :body    (should (equal (nskk--program-dict-parse-output input) expected))))
+        :rows    (("1/漢字/"      ("漢字"))
+                  ("1/漢字/感じ/" ("漢字" "感じ")))
+        :body    (should (equal (nskk--program-dict-parse-output input) expected)))
 
     (nskk-it "strips trailing newline"
       (should (equal (nskk--program-dict-parse-output "1/漢字/\n")
                      '("漢字")))))
 
   (nskk-context "one-per-line fallback (unknown prefix)"
-    (nskk-it "splits on newlines for unrecognized first character"
-      (nskk-deftest-table parse-linefeed-counts
+    (nskk-deftest-table parse-linefeed-counts
         :columns (input expected)
-        :rows    (("漢字\n感じ\n幹事" '("漢字" "感じ" "幹事"))
-                  ("漢字"             '("漢字")))
-        :body    (should (equal (nskk--program-dict-parse-output input) expected)))))
+        :rows    (("漢字\n感じ\n幹事" ("漢字" "感じ" "幹事"))
+                  ("漢字"             ("漢字")))
+        :body    (should (equal (nskk--program-dict-parse-output input) expected))))
 
   (nskk-context "annotation stripping"
-    (nskk-it "strips annotations in SKK format"
-      (nskk-deftest-table parse-annotation-skk
+    (nskk-deftest-table parse-annotation-skk
         :columns (input expected)
-        :rows    (("/漢字;注釈/"              '("漢字"))
-                  ("/漢字;n1/感じ;n2/"        '("漢字" "感じ"))
-                  ("/漢字;注/感じ/幹事;別/"   '("漢字" "感じ" "幹事")))
-        :body    (should (equal (nskk--program-dict-parse-output input) expected))))
+        :rows    (("/漢字;注釈/"              ("漢字"))
+                  ("/漢字;n1/感じ;n2/"        ("漢字" "感じ"))
+                  ("/漢字;注/感じ/幹事;別/"   ("漢字" "感じ" "幹事")))
+        :body    (should (equal (nskk--program-dict-parse-output input) expected)))
 
     (nskk-it "strips annotations in one-per-line format"
       (should (equal (nskk--program-dict-parse-output "漢字;注釈\n感じ")
@@ -245,17 +251,15 @@
 ;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "nskk--program-dict-parse-output on-not-found"
-  (nskk-it "returns nil for nil, non-string, and empty string inputs"
-    (nskk-deftest-table parse-nil-inputs
+  (nskk-deftest-table parse-nil-inputs
       :columns (input)
       :rows ((nil) ("") (42) (("list")))
-      :body (should (null (nskk--program-dict-parse-output input)))))
+      :body (should (null (nskk--program-dict-parse-output input))))
 
-  (nskk-it "returns nil for whitespace-only output"
-    (nskk-deftest-table parse-whitespace
+  (nskk-deftest-table parse-whitespace
       :columns (input)
       :rows (("   ") ("\n") ("\r\n") ("\t"))
-      :body (should (null (nskk--program-dict-parse-output input)))))
+      :body (should (null (nskk--program-dict-parse-output input))))
 
   (nskk-it "returns nil for SKK with empty candidate body"
     (should (null (nskk--program-dict-parse-output "//"))))
@@ -279,6 +283,16 @@
      (null
       (nskk--program-dict-parse-output
        (concat "/candidate;bad" (string 0) "annotation/"))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-valid-function-candidate-p: accept boundaries
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-valid-function-candidate-p"
+  (nskk-deftest-table valid-function-candidate-accept-boundaries
+      :columns (codepoint)
+      :rows    ((32) (126) (160))
+      :body    (should (nskk--program-dict-valid-function-candidate-p (string codepoint)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-parse-output: CPS invariants
@@ -429,38 +443,119 @@
         (should-not signals)
         (should (eq deleted (quote mock-proc))))))
   (nskk-it
+    "deletes the process without signaling a group when process-id is nil"
+    (let (signals
+          deleted)
+      (nskk-with-mocks
+        ((processp
+            (lambda (_)
+              t))
+          (process-id
+            (lambda (_)
+              nil))
+          (process-live-p
+            (lambda (_)
+              t))
+          (signal-process
+            (lambda (pid signal)
+              (push (list pid signal) signals)))
+          (delete-process
+            (lambda (process)
+              (setq deleted process))))
+        (nskk--program-dict-stop-process-group (quote mock-proc))
+        (should-not signals)
+        (should (eq deleted (quote mock-proc))))))
+  (nskk-it
+    "does not signal or delete for a non-process argument"
+    (let (id-called
+          signal-called
+          deleted)
+      (nskk-with-mocks
+        ((process-id
+            (lambda (_)
+              (setq id-called t)
+              42))
+          (signal-process
+            (lambda (&rest _)
+              (setq signal-called t)))
+          (delete-process
+            (lambda (process)
+              (setq deleted process))))
+        (nskk--program-dict-stop-process-group (quote not-a-process)))
+      (should-not id-called)
+      (should-not signal-called)
+      (should-not deleted)))
+  (nskk-it
    "terminates descendants when a command times out"
    (let ((pid-file (make-temp-file "nskk-program-dict-child-"))
          (nskk-program-dict-timeout 0.2)
          child-pid)
      (unwind-protect (progn (nskk--program-dict-exec-command/k
-			     (or (executable-find "sh") shell-file-name)
-			     nil
-			     (list
-			      "-c"
-			      (format "sleep 30 & echo $! > %s; wait" (shell-quote-argument pid-file)))
-			     (function ignore)
-			     (function ignore)) (with-temp-buffer
-			     (insert-file-contents pid-file)
-			     (setq child-pid (string-to-number (buffer-string)))) (should (> child-pid 0)) (let ((deadline (+ (float-time) 1)))
-			     (while
-				 (and (process-attributes child-pid) (< (float-time) deadline))
-			       (sleep-for 0.01))) (should-not (process-attributes child-pid)))
+                             (or (executable-find "sh") shell-file-name)
+                             nil
+                             (list
+                              "-c"
+                              (format "sleep 30 & echo $! > %s; wait" (shell-quote-argument pid-file)))
+                             (function ignore)
+                             (function ignore)) (with-temp-buffer
+                                                 (insert-file-contents pid-file)
+                                                 (setq child-pid (string-to-number (buffer-string)))) (should (> child-pid 0)) (let ((deadline (+ (float-time) 1)))
+                                                                                                                                 (while
+                                                                                                                                     (and (process-attributes child-pid) (< (float-time) deadline))
+                                                                                                                                   (sleep-for 0.01))) (should-not (process-attributes child-pid)))
        (when (and child-pid (process-attributes child-pid))
          (ignore-errors (signal-process child-pid (quote SIGKILL))))
        (delete-file pid-file)))))
 
+  (nskk-context "timeout budget tracks elapsed wall time"
+    (nskk-it "yields candidates from a command that streams output in many small chunks"
+      (let ((nskk-program-dict-timeout 1.0)
+            chunked-found
+            single-found)
+        (nskk--program-dict-exec-command/k
+          (or (executable-find "sh") shell-file-name) nil
+          (list "-c" "for i in 1 2 3 4 5 6 7 8 9 10; do echo /a$i/; sleep 0.05; done")
+          (lambda (value) (setq chunked-found value))
+          (function ignore))
+        (nskk--program-dict-exec-command/k
+          (or (executable-find "sh") shell-file-name) nil
+          (list "-c" "sleep 0.5; echo /a1/a2/a3/")
+          (lambda (value) (setq single-found value))
+          (function ignore))
+        (should chunked-found)
+        (should single-found)
+        (should
+         (equal (nskk--program-dict-parse-output chunked-found)
+                (list "a1" "a2" "a3" "a4" "a5" "a6" "a7" "a8" "a9" "a10")))
+        (should
+         (equal (nskk--program-dict-parse-output single-found)
+                (list "a1" "a2" "a3")))))
+
+    (nskk-it "still times out a chunked command that exceeds the deadline"
+      (let ((nskk-program-dict-timeout 0.2)
+            (start (float-time))
+            found
+            miss-called)
+        (nskk--program-dict-exec-command/k
+          (or (executable-find "sh") shell-file-name) nil
+          (list "-c" "for i in 1 2 3 4 5 6 7 8 9 10; do echo /a$i/; sleep 0.2; done")
+          (lambda (value) (setq found value))
+          (lambda () (setq miss-called t)))
+        (should-not found)
+        (should miss-called)
+        (should (< (- (float-time) start) 3.0)))))
+
   (nskk-it "times out a command producing unbounded standard error"
-	   (let ((nskk-program-dict-timeout 0.05)
-		 (start (float-time))
-		 (miss-called nil))
-	     (nskk--program-dict-exec-command/k
-        (or (executable-find "sh") shell-file-name) nil
-        (list "-c" "while :; do printf 1234567890 >&2; done")
-        (function ignore)
-        (lambda () (setq miss-called t)))
-      (should miss-called)
-      (should (< (- (float-time) start) 1.0))))
+           (let ((nskk-program-dict-timeout 0.05)
+                 (start (float-time))
+                 (miss-called nil))
+             (nskk--program-dict-exec-command/k
+              (or (executable-find "sh") shell-file-name) nil
+              (list "-c" "while :; do printf 1234567890 >&2; done")
+              (function ignore)
+              (lambda () (setq miss-called t)))
+             (should miss-called)
+             (should (< (- (float-time) start) 1.0))))
 
   (nskk-it "accepts output at the byte limit"
     (let ((nskk--program-dict-max-output-size 32) found)
@@ -592,19 +687,18 @@
 
 (nskk-describe "nskk--program-dict-call-function"
   (nskk-context "on-found branch"
-    (nskk-it "calls on-found for a proper list of safe non-empty strings"
-      (nskk-deftest-table call-function-found
+    (nskk-deftest-table call-function-found
         :columns (return-val)
-        :rows    (((quote ("candidate")))
-                  ((quote ("first" "second")))
-                  ((quote ("a" "b" "c"))))
+        :rows    ((("candidate"))
+                  (("first" "second"))
+                  (("a" "b" "c")))
         :body
         (let (found)
           (nskk--program-dict-call-function/k
             (lambda (_key) return-val) "key"
             (lambda (value) (setq found value))
             (function ignore))
-          (should (equal found return-val)))))
+          (should (equal found return-val))))
 
     (nskk-it "passes the key to the function"
       (let (received-key)
@@ -616,8 +710,7 @@
         (should (equal received-key "reading")))))
 
   (nskk-context "on-not-found branch"
-    (nskk-it "rejects malformed or unsafe function results"
-      (nskk-deftest-table call-function-not-found
+    (nskk-deftest-table call-function-not-found
         :columns (return-val)
         :rows    ((nil)
                   ("string")
@@ -640,7 +733,7 @@
             (lambda (_value) (setq found-called t))
             (lambda () (setq miss-called t)))
           (should-not found-called)
-          (should miss-called))))
+          (should miss-called)))
 
     (nskk-it "rejects a circular candidate list"
       (let ((result (list "ok"))
@@ -811,6 +904,58 @@
         (should (= count 1))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-merge-candidate-lists
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-merge-candidate-lists"
+  (nskk-it "preserves order, first equal candidate, and input lists"
+    (let* ((first-shared
+            (propertize (copy-sequence "shared") 'origin 'first))
+           (second-shared
+            (propertize (copy-sequence "shared") 'origin 'second))
+           (first-candidates (list "result1" first-shared "middle"))
+           (second-candidates (list second-shared "result2"))
+           (first-before (mapcar #'copy-sequence first-candidates))
+           (second-before (mapcar #'copy-sequence second-candidates))
+           (first-tail (cdr first-candidates))
+           (second-tail (cdr second-candidates))
+           (result
+            (nskk--program-dict-merge-candidate-lists
+             (list first-candidates second-candidates))))
+      (should
+       (equal
+        (mapcar #'substring-no-properties result)
+        '("result1" "shared" "middle" "result2")))
+      (should (eq (nth 1 result) first-shared))
+      (should (eq (get-text-property 0 'origin (nth 1 result)) 'first))
+      (should (equal-including-properties first-candidates first-before))
+      (should (equal-including-properties second-candidates second-before))
+      (should (eq (cdr first-candidates) first-tail))
+      (should (eq (cdr second-candidates) second-tail))))
+
+  (nskk-it "performs one hash lookup per candidate and one insert per unique candidate"
+    (let* ((candidate-count 5000)
+           (shared-candidates (list "shared"))
+           (candidate-lists (make-list candidate-count shared-candidates))
+           (real-gethash (symbol-function 'gethash))
+           (real-puthash (symbol-function 'puthash))
+           (hash-lookups 0)
+           (hash-inserts 0)
+           result)
+      (cl-letf (((symbol-function 'gethash)
+                 (lambda (key table &optional default)
+                   (cl-incf hash-lookups)
+                   (funcall real-gethash key table default)))
+                ((symbol-function 'puthash)
+                 (lambda (key value table)
+                   (cl-incf hash-inserts)
+                   (funcall real-puthash key value table))))
+        (setq result (nskk--program-dict-merge-candidate-lists candidate-lists)))
+      (should (equal result '("shared")))
+      (should (= hash-lookups candidate-count))
+      (should (= hash-inserts 1)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-collect-all
 ;;; ─────────────────────────────────────────────────────────────────────────
 
@@ -867,34 +1012,15 @@
           (lambda () (setq not-found-called t)))
         (should not-found-called))))
 
-  (nskk-context "stable deduplication"
-    (nskk-it "preserves order, first equal candidate, and input lists"
-      (let* ((first-shared
-              (propertize (copy-sequence "shared") 'origin 'first))
-             (second-shared
-              (propertize (copy-sequence "shared") 'origin 'second))
-             (first-candidates (list "result1" first-shared "middle"))
-             (second-candidates (list second-shared "result2"))
-             (first-before (mapcar #'copy-sequence first-candidates))
-             (second-before (mapcar #'copy-sequence second-candidates))
-             (first-tail (cdr first-candidates))
-             (second-tail (cdr second-candidates))
-             (result
-              (nskk--program-dict-collect-all
-                (list
-                  (lambda (_key) first-candidates)
-                  (lambda (_key) second-candidates))
-                "key")))
-        (should
-          (equal
-            (mapcar #'substring-no-properties result)
-            '("result1" "shared" "middle" "result2")))
-        (should (eq (nth 1 result) first-shared))
-        (should (eq (get-text-property 0 'origin (nth 1 result)) 'first))
-        (should (equal-including-properties first-candidates first-before))
-        (should (equal-including-properties second-candidates second-before))
-        (should (eq (cdr first-candidates) first-tail))
-        (should (eq (cdr second-candidates) second-tail)))))
+  (nskk-context "uses the merged result"
+    (nskk-it "returns entry results merged in entry order with duplicates removed"
+      (let ((result
+             (nskk--program-dict-collect-all
+              (list
+               (lambda (_key) (list "a" "shared"))
+               (lambda (_key) (list "shared" "b")))
+              "key")))
+        (should (equal result (list "a" "shared" "b"))))))
 
   (nskk-context "empty entries list"
     (nskk-it "calls on-not-found for an empty entries list"
@@ -907,43 +1033,75 @@
 
 (nskk-describe "nskk--program-dict-collect-all scaling"
   (nskk-context "large-input scaling"
-    (nskk-it "performs one hash lookup per candidate"
+    (nskk-it "invokes each entry exactly once for a large entry list"
       (let* ((candidate-count 5000)
              (shared-candidates (list "shared"))
              (entries (make-list candidate-count shared-candidates))
-             (real-gethash (symbol-function 'gethash))
-             (real-puthash (symbol-function 'puthash))
-             (real-merge
-              (symbol-function 'nskk--program-dict-merge-candidate-lists))
              (invocations 0)
-             (hash-lookups 0)
-             (hash-inserts 0)
-             (merged-list-count 0)
              result)
         (cl-letf
             (((symbol-function 'nskk--program-dict-invoke-entry)
               (lambda (entry _key)
                 (cl-incf invocations)
-                entry))
-             ((symbol-function 'nskk--program-dict-merge-candidate-lists)
-              (lambda (candidate-lists)
-                (setq merged-list-count (length candidate-lists))
-                (cl-letf
-                    (((symbol-function 'gethash)
-                      (lambda (key table &optional default)
-                        (cl-incf hash-lookups)
-                        (funcall real-gethash key table default)))
-                     ((symbol-function 'puthash)
-                      (lambda (key value table)
-                        (cl-incf hash-inserts)
-                        (funcall real-puthash key value table))))
-                  (funcall real-merge candidate-lists)))))
+                entry)))
           (setq result (nskk--program-dict-collect-all entries "key")))
         (should (equal result '("shared")))
-        (should (= invocations candidate-count))
-        (should (= merged-list-count candidate-count))
-        (should (= hash-lookups candidate-count))
-        (should (= hash-inserts 1))))))
+        (should (= invocations candidate-count))))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-config-equal-p
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-config-equal-p"
+  (nskk-it "two independently built structurally isomorphic cyclic configs are equal and the comparison terminates"
+    (let* ((fn (function ignore))
+           (left (list fn "cmd"))
+           (right (list fn (copy-sequence "cmd"))))
+      (setcdr (cdr left) left)
+      (setcdr (cdr right) right)
+      (should (nskk--program-dict-config-equal-p left right))))
+
+  (nskk-it "a function in one config and a string at the same position in the other are unequal"
+    (should-not
+     (nskk--program-dict-config-equal-p
+      (list (function ignore))
+      (list "cmd")))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-config-valid-p
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-config-valid-p"
+  (nskk-deftest-table config-valid-rejects-non-function-non-string-element
+      :columns (bad-element)
+      :rows    ((42) (:bad))
+      :body
+      (should-not
+       (nskk--program-dict-config-valid-p (list (function ignore) bad-element)))))
+
+;;; ─────────────────────────────────────────────────────────────────────────
+;;; nskk--program-dict-sync-config: atomicity
+;;; ─────────────────────────────────────────────────────────────────────────
+
+(nskk-describe "nskk--program-dict-sync-config atomicity"
+  (nskk-it "preserves cache and snapshot when the replacement copy signals"
+    (dolist (fault (quote (error quit)))
+      (nskk--prog-dict-test-with-env t (list (function ignore))
+        (nskk--program-dict-sync-config)
+        (let* ((cache (nskk--program-dict-ensure-cache))
+               (snapshot-before nskk--program-dict-config-snapshot)
+               caught)
+          (nskk-cache-put cache "marker" (list "cached"))
+          (setq nskk-program-dicts (list (function ignore) (function ignore)))
+          (cl-letf (((symbol-function (quote nskk-prolog-copy-term))
+                     (lambda (&rest _args) (signal fault nil))))
+            (condition-case condition
+                (nskk--program-dict-sync-config)
+              ((error quit) (setq caught condition))))
+          (should (eq (car caught) fault))
+          (should (= (nskk-cache-size cache) 1))
+          (should (equal (nskk-cache-get cache "marker") (list "cached")))
+          (should (eq nskk--program-dict-config-snapshot snapshot-before)))))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk-program-dict-lookup: enable guard and empty-dict guard
@@ -1283,81 +1441,49 @@
 ;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "nskk--program-dict-today"
-  (nskk-context "return structure"
-    (nskk-it "returns a list of exactly 2 strings"
-      (let ((result (nskk--program-dict-today "today")))
+  (nskk-it "returns two consistent formatted candidates for the current date"
+    (let* ((result (nskk--program-dict-today "today"))
+           (cand1 (car result))
+           (cand2 (cadr result)))
+      (string-match "\\`\\([0-9]\\{4\\}\\)/\\([0-9]\\{2\\}\\)/\\([0-9]\\{2\\}\\)" cand1)
+      (let ((year (match-string 1 cand1))
+            (month (match-string 2 cand1))
+            (day (match-string 3 cand1)))
         (should (listp result))
         (should (= (length result) 2))
-        (should (cl-every #'stringp result))))
+        (should (cl-every #'stringp result))
+        (should (string-match-p "\\`[0-9]\\{4\\}/[0-9]\\{2\\}/[0-9]\\{2\\}(\\(?:Sun\\|Mon\\|Tue\\|Wed\\|Thu\\|Fri\\|Sat\\))\\'" cand1))
+        (should (string-match-p "\\`[0-9]\\{4\\}年[0-9]\\{2\\}月[0-9]\\{2\\}日([日月火水木金土])\\'" cand2))
+        (should (> (string-to-number year) 2000))
+        (should (<= 1 (string-to-number month) 12))
+        (should (<= 1 (string-to-number day) 31))
+        (should (string-match-p (regexp-quote (format "%s年%s月%s日" year month day)) cand2)))))
 
-    (nskk-it "ignores the key argument (today prefix triggers it)"
-      (let ((result (nskk--program-dict-today "today-extra")))
-        (should (= (length result) 2)))))
-
-  (nskk-context "format validation"
-    (nskk-it "first candidate matches YYYY/MM/DD(WeekAbbrev) pattern"
-      (let ((cand1 (car (nskk--program-dict-today "today"))))
-        (should (string-match-p "\\`[0-9]\\{4\\}/[0-9]\\{2\\}/[0-9]\\{2\\}(\\(?:Sun\\|Mon\\|Tue\\|Wed\\|Thu\\|Fri\\|Sat\\))\\'" cand1))))
-
-    (nskk-it "second candidate matches YYYY年MM月DD日(WeekKanji) pattern"
-      (let ((cand2 (cadr (nskk--program-dict-today "today"))))
-        (should (string-match-p "\\`[0-9]\\{4\\}年[0-9]\\{2\\}月[0-9]\\{2\\}日([日月火水木金土])\\'" cand2))))
-
-    (nskk-it "year in first candidate is a 4-digit number > 2000"
-      (let ((cand1 (car (nskk--program-dict-today "today"))))
-        (string-match "\\`\\([0-9]\\{4\\}\\)/" cand1)
-        (should (> (string-to-number (match-string 1 cand1)) 2000))))
-
-    (nskk-it "month in first candidate is in range 01-12"
-      (let* ((cand1  (car (nskk--program-dict-today "today")))
-             (month  (string-to-number (substring cand1 5 7))))
-        (should (<= 1 month 12))))
-
-    (nskk-it "day in first candidate is in range 01-31"
-      (let* ((cand1 (car (nskk--program-dict-today "today")))
-             (day   (string-to-number (substring cand1 8 10))))
-        (should (<= 1 day 31))))
-
-    (nskk-it "both candidates represent the same year/month/day"
-      (let* ((result (nskk--program-dict-today "today"))
-             (cand1  (car result))
-             (cand2  (cadr result)))
-        (string-match "\\`\\([0-9]\\{4\\}\\)/\\([0-9]\\{2\\}\\)/\\([0-9]\\{2\\}\\)" cand1)
-        (let ((y (match-string 1 cand1))
-              (m (match-string 2 cand1))
-              (d (match-string 3 cand1)))
-          (should (string-match-p (regexp-quote (format "%s年%s月%s日" y m d)) cand2)))))))
+  (nskk-it "ignores the key argument (today prefix triggers it)"
+    (let ((result (nskk--program-dict-today "today-extra")))
+      (should (= (length result) 2)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-now (Section 14)
 ;;; ─────────────────────────────────────────────────────────────────────────
 
 (nskk-describe "nskk--program-dict-now"
-  (nskk-context "return structure"
-    (nskk-it "returns a list of exactly 2 strings"
-      (let ((result (nskk--program-dict-now "now")))
-        (should (listp result))
-        (should (= (length result) 2))
-        (should (cl-every #'stringp result)))))
-
-  (nskk-context "format validation"
-    (nskk-it "first candidate matches HH:MM:SS pattern"
-      (let ((cand1 (car (nskk--program-dict-now "now"))))
-        (should (string-match-p "\\`[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\'" cand1))))
-
-    (nskk-it "second candidate matches HH時MM分SS秒 pattern"
-      (let ((cand2 (cadr (nskk--program-dict-now "now"))))
-        (should (string-match-p "\\`[0-9]\\{2\\}時[0-9]\\{2\\}分[0-9]\\{2\\}秒\\'" cand2))))
-
-    (nskk-it "hour in first candidate is in range 00-23"
-      (let* ((cand1 (car (nskk--program-dict-now "now")))
-             (hour  (string-to-number (substring cand1 0 2))))
-        (should (<= 0 hour 23))))
-
-    (nskk-it "minute in first candidate is in range 00-59"
-      (let* ((cand1   (car (nskk--program-dict-now "now")))
-             (minute  (string-to-number (substring cand1 3 5))))
-        (should (<= 0 minute 59))))))
+  (nskk-it "returns two consistent formatted candidates for the current time"
+    (let* ((result (nskk--program-dict-now "now"))
+           (cand1 (car result))
+           (cand2 (cadr result))
+           (hour (string-to-number (substring cand1 0 2)))
+           (minute (string-to-number (substring cand1 3 5)))
+           (second (string-to-number (substring cand1 6 8))))
+      (should (listp result))
+      (should (= (length result) 2))
+      (should (cl-every #'stringp result))
+      (should (string-match-p "\\`[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}\\'" cand1))
+      (should (string-match-p "\\`[0-9]\\{2\\}時[0-9]\\{2\\}分[0-9]\\{2\\}秒\\'" cand2))
+      (should (<= 0 hour 23))
+      (should (<= 0 minute 59))
+      (should (<= 0 second 59))
+      (should (string-match-p (format "%02d秒" second) cand2)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-calculate (Section 14)
@@ -1379,20 +1505,18 @@
       (let ((result (nskk--program-dict-calculate "=2^10")))
         (should (equal (car result) "1024"))))
 
-    (nskk-it "returns a single-element list on success"
-      (nskk-deftest-table pd-builtin-calc-single-result
+    (nskk-deftest-table pd-builtin-calc-single-result
         :columns (expr)
         :rows    (("=1+1") ("=100-50") ("=6*7"))
         :body    (let ((result (nskk--program-dict-calculate expr)))
                    (should (= (length result) 1))
-                   (should (stringp (car result)))))))
+                   (should (stringp (car result))))))
 
   (nskk-context "error handling"
     (nskk-it "returns a non-nil list for expressions calc-eval can represent symbolically"
       (let ((result (nskk--program-dict-calculate "=not-a-number")))
-        (when result
-          (should (listp result))
-          (should (stringp (car result))))))
+        (should (listp result))
+        (should (stringp (car result)))))
 
     (nskk-it "does not signal an error for any expression"
       (should-not (condition-case _
@@ -1566,17 +1690,11 @@
                 (should logged)))))))))
 
 (nskk-describe "nskk-program-dict-builtin-lookup deduplication"
-  (nskk-it "preserves order, first equal candidate, properties, and inputs"
-    (let* ((first-shared
-            (propertize (copy-sequence "shared") 'origin 'first))
-           (second-shared
-            (propertize (copy-sequence "shared") 'origin 'second))
-           (first-candidates (list "result1" first-shared "middle"))
-           (second-candidates (list second-shared "result2"))
+  (nskk-it "marks the merged result no-learn without mutating handler-owned lists"
+    (let* ((first-candidates (list "a" "shared"))
+           (second-candidates (list "shared" "b"))
            (first-before (mapcar #'copy-sequence first-candidates))
            (second-before (mapcar #'copy-sequence second-candidates))
-           (first-tail (cdr first-candidates))
-           (second-tail (cdr second-candidates))
            (nskk-program-dict-dispatch-table
             (list
               (cons "test" (lambda (_key) first-candidates))
@@ -1587,21 +1705,16 @@
       (should
         (equal
           (mapcar #'substring-no-properties result)
-          '("result1" "shared" "middle" "result2")))
-      (should (eq (get-text-property 0 'origin (nth 1 result)) 'first))
+          '("a" "shared" "b")))
       (should
         (cl-every
           (lambda (candidate)
             (get-text-property 0 'nskk-no-learn candidate))
           result))
       (should (equal-including-properties first-candidates first-before))
-      (should (equal-including-properties second-candidates second-before))
-      (should (eq (cdr first-candidates) first-tail))
-      (should (eq (cdr second-candidates) second-tail))
-      (should-not (get-text-property 0 'nskk-no-learn first-shared))
-      (should-not (get-text-property 0 'nskk-no-learn second-shared))))
+      (should (equal-including-properties second-candidates second-before))))
 
-  (nskk-it "performs one hash lookup per candidate for large dispatch tables"
+  (nskk-it "invokes each handler exactly once for a large dispatch table"
     (let* ((handler-count 5000)
            (shared-candidates (list "shared"))
            (handler-calls 0)
@@ -1611,53 +1724,12 @@
               shared-candidates))
            (nskk-program-dict-dispatch-table
             (make-list handler-count (cons "test" handler)))
-           (real-gethash (symbol-function 'gethash))
-           (real-puthash (symbol-function 'puthash))
-           (real-merge
-            (symbol-function 'nskk--program-dict-merge-candidate-lists))
-           (hash-lookups 0)
-           (hash-inserts 0)
-           (merged-list-count 0)
            result)
-      (cl-letf
-          (((symbol-function 'nskk--program-dict-merge-candidate-lists)
-            (lambda (candidate-lists)
-              (setq merged-list-count (length candidate-lists))
-              (cl-letf
-                  (((symbol-function 'gethash)
-                    (lambda (key table &optional default)
-                      (cl-incf hash-lookups)
-                      (funcall real-gethash key table default)))
-                   ((symbol-function 'puthash)
-                    (lambda (key value table)
-                      (cl-incf hash-inserts)
-                      (funcall real-puthash key value table))))
-                (funcall real-merge candidate-lists)))))
-        (nskk--pd-builtin-test-with-env t
-          (setq result (nskk-program-dict-builtin-lookup "test"))))
+      (nskk--pd-builtin-test-with-env t
+        (setq result (nskk-program-dict-builtin-lookup "test")))
       (should
         (equal (mapcar #'substring-no-properties result) '("shared")))
-      (should (= handler-calls handler-count))
-      (should (= merged-list-count handler-count))
-      (should (= hash-lookups handler-count))
-      (should (= hash-inserts 1)))))
-
-;;; ─────────────────────────────────────────────────────────────────────────
-;;; nskk--program-dict-now: second range (S-1)
-;;; ─────────────────────────────────────────────────────────────────────────
-
-(nskk-describe "nskk--program-dict-now second range"
-  (nskk-it "second in first candidate is in range 00-59"
-    (let* ((cand1  (car (nskk--program-dict-now "now")))
-           (second (string-to-number (substring cand1 6 8))))
-      (should (<= 0 second 59))))
-
-  (nskk-it "both candidates contain the same second value"
-    (let* ((result (nskk--program-dict-now "now"))
-           (cand1  (car result))
-           (cand2  (cadr result))
-           (sec1   (string-to-number (substring cand1 6 8))))
-      (should (string-match-p (format "%02d秒" sec1) cand2)))))
+      (should (= handler-calls handler-count)))))
 
 ;;; ─────────────────────────────────────────────────────────────────────────
 ;;; nskk--program-dict-calculate: floating point and custom (S-3/S-4/S-5)
@@ -1790,107 +1862,107 @@
         (should
          (equal (nskk--program-dict-run-calculation "1+1") "2"))))))
       (nskk-context "finite wait budget"
-		    (nskk-it
-		     "terminates continuous stdout near the absolute deadline"
-		     (let ((script (make-temp-file "nskk-calc-continuous-" nil ".sh"))
-			   (nskk-program-dict-timeout 0.1)
-			   (nskk--program-dict-max-calculation-size most-positive-fixnum)
-			   (clock-hz 1000000000))
-		       (unwind-protect (progn
-					 (with-temp-file
-					     script
-					   (insert
-					    "#!/bin/sh\ni=0\nwhile [ \"$i\" -lt 100 ]; do\n  printf x\n  i=$((i + 1))\n  sleep 0.01\ndone\nsleep 2\n"))
-					 (set-file-modes script #o700)
-					 (let ((invocation-directory (file-name-directory script))
-					       (invocation-name (file-name-nondirectory script))
-					       (started-at (car (time-convert nil clock-hz))))
-					   (should-not (nskk--program-dict-run-calculation "1+1"))
-					   (should
-					    (< (/ (- (car (time-convert nil clock-hz)) started-at) (float clock-hz)) 0.6))))
-			 (delete-file script))))
-		    (nskk-it "stops draining after delayed stderr becomes quiet"
-			     (let ((nskk-program-dict-timeout 1.0)
-				   (clock-hz 1000000000)
-				   (ticks 0)
-				   stdout-filter stderr-filter sentinel started stderr-delivered
-				   (drain-calls 0))
-			       (cl-letf (((symbol-function (quote time-convert))
-					  (lambda (&rest _args)
-					    (prog1 (cons ticks clock-hz)
-					      (setq ticks (+ ticks 1000000)))))
-					 ((symbol-function (quote make-pipe-process))
-					  (lambda (&rest args)
-					    (setq stderr-filter (plist-get args :filter))
-					    (quote owned-stderr)))
-					 ((symbol-function (quote make-process))
-					  (lambda (&rest args)
-					    (setq stdout-filter (plist-get args :filter)
-						  sentinel (plist-get args :sentinel))
-					    (quote owned-stdout)))
-					 ((symbol-function (quote accept-process-output))
-					  (lambda (wait-process &rest _args)
-					    (cond
-					     ((and (eq wait-process (quote owned-stdout)) (not started))
-					      (setq started t)
-					      (funcall stdout-filter wait-process "\"2\"")
-					      (funcall sentinel wait-process "finished\n"))
-					     ((eq wait-process (quote owned-stdout))
-					      (setq drain-calls (1+ drain-calls)))
-					     ((and (null wait-process) (not stderr-delivered))
-					      (setq stderr-delivered t)
-					      (funcall stderr-filter (quote owned-stderr) "late")))))
-					 ((symbol-function (quote process-status))
-					  (lambda (_process) (quote exit)))
-					 ((symbol-function (quote process-exit-status)) (lambda (_process) 0))
-					 ((symbol-function (quote processp))
-					  (lambda (process) (eq process (quote owned-stderr))))
-					 ((symbol-function (quote delete-process)) (lambda (_process)))
-					 ((symbol-function (quote nskk--program-dict-stop-process-group))
-					  (lambda (_process))))
-				 (should (equal (nskk--program-dict-run-calculation "1+1") "2"))
-				 (should stderr-delivered)
-				 (should (= drain-calls 3)))))
+                    (nskk-it
+                     "terminates continuous stdout near the absolute deadline"
+                     (let ((script (make-temp-file "nskk-calc-continuous-" nil ".sh"))
+                           (nskk-program-dict-timeout 0.1)
+                           (nskk--program-dict-max-calculation-size most-positive-fixnum)
+                           (clock-hz 1000000000))
+                       (unwind-protect (progn
+                                         (with-temp-file
+                                          script
+                                          (insert
+                                           "#!/bin/sh\ni=0\nwhile [ \"$i\" -lt 100 ]; do\n  printf x\n  i=$((i + 1))\n  sleep 0.01\ndone\nsleep 2\n"))
+                                         (set-file-modes script #o700)
+                                         (let ((invocation-directory (file-name-directory script))
+                                               (invocation-name (file-name-nondirectory script))
+                                               (started-at (car (time-convert nil clock-hz))))
+                                           (should-not (nskk--program-dict-run-calculation "1+1"))
+                                           (should
+                                            (< (/ (- (car (time-convert nil clock-hz)) started-at) (float clock-hz)) 0.6))))
+                         (delete-file script))))
+                    (nskk-it "stops draining after delayed stderr becomes quiet"
+                             (let ((nskk-program-dict-timeout 1.0)
+                                   (clock-hz 1000000000)
+                                   (ticks 0)
+                                   stdout-filter stderr-filter sentinel started stderr-delivered
+                                   (drain-calls 0))
+                               (cl-letf (((symbol-function (quote time-convert))
+                                          (lambda (&rest _args)
+                                            (prog1 (cons ticks clock-hz)
+                                              (setq ticks (+ ticks 1000000)))))
+                                         ((symbol-function (quote make-pipe-process))
+                                          (lambda (&rest args)
+                                            (setq stderr-filter (plist-get args :filter))
+                                            (quote owned-stderr)))
+                                         ((symbol-function (quote make-process))
+                                          (lambda (&rest args)
+                                            (setq stdout-filter (plist-get args :filter)
+                                                  sentinel (plist-get args :sentinel))
+                                            (quote owned-stdout)))
+                                         ((symbol-function (quote accept-process-output))
+                                          (lambda (wait-process &rest _args)
+                                            (cond
+                                             ((and (eq wait-process (quote owned-stdout)) (not started))
+                                              (setq started t)
+                                              (funcall stdout-filter wait-process "\"2\"")
+                                              (funcall sentinel wait-process "finished\n"))
+                                             ((eq wait-process (quote owned-stdout))
+                                              (setq drain-calls (1+ drain-calls)))
+                                             ((and (null wait-process) (not stderr-delivered))
+                                              (setq stderr-delivered t)
+                                              (funcall stderr-filter (quote owned-stderr) "late")))))
+                                         ((symbol-function (quote process-status))
+                                          (lambda (_process) (quote exit)))
+                                         ((symbol-function (quote process-exit-status)) (lambda (_process) 0))
+                                         ((symbol-function (quote processp))
+                                          (lambda (process) (eq process (quote owned-stderr))))
+                                         ((symbol-function (quote delete-process)) (lambda (_process)))
+                                         ((symbol-function (quote nskk--program-dict-stop-process-group))
+                                          (lambda (_process))))
+                                        (should (equal (nskk--program-dict-run-calculation "1+1") "2"))
+                                        (should stderr-delivered)
+                                        (should (= drain-calls 3)))))
 
-		    (nskk-it "disables calculation polling for invalid wait budgets"
-			     (let ((invalid-timeouts
-				    (list "invalid"
-					  0
-					  -0.5
-					  (read "0.0e+NaN")
-                       (read "1.0e+INF")
-                       (read "-1.0e+INF")))
-                wait-calls
-                deleted)
-            (dolist (timeout invalid-timeouts)
-              (let ((nskk-program-dict-timeout timeout))
-                (cl-letf (((symbol-function 'make-pipe-process)
-                           (lambda (&rest _args) 'owned-stderr))
-                          ((symbol-function 'make-process)
-                           (lambda (&rest _args) 'owned-stdout))
-                          ((symbol-function 'process-status)
-                           (lambda (_process) 'run))
-                          ((symbol-function 'processp)
-                           (lambda (process)
-                             (memq process '(owned-stdout owned-stderr))))
-                          ((symbol-function 'process-id)
-                           (lambda (_process) nil))
-                          ((symbol-function 'process-live-p)
-                           (lambda (_process) t))
-                          ((symbol-function 'delete-process)
-                           (lambda (process) (push process deleted)))
-                          ((symbol-function 'accept-process-output)
-                           (lambda (&rest args) (push args wait-calls))))
-                  (should-not (nskk--program-dict-run-calculation "1+1")))))
-            (should-not wait-calls)
-            (should
-             (= (cl-count 'owned-stdout deleted)
-                (length invalid-timeouts)))
-            (should
-             (= (cl-count 'owned-stderr deleted)
-                (length invalid-timeouts)))
-            (should-not (get-buffer " *nskk-program-dict-calc-output*"))
-            (should-not (get-buffer " *nskk-program-dict-calc-stderr*"))))))
+                    (nskk-it "disables calculation polling for invalid wait budgets"
+                             (let ((invalid-timeouts
+                                    (list "invalid"
+                                          0
+                                          -0.5
+                                          (read "0.0e+NaN")
+                                          (read "1.0e+INF")
+                                          (read "-1.0e+INF")))
+                                   wait-calls
+                                   deleted)
+                               (dolist (timeout invalid-timeouts)
+                                 (let ((nskk-program-dict-timeout timeout))
+                                   (cl-letf (((symbol-function 'make-pipe-process)
+                                              (lambda (&rest _args) 'owned-stderr))
+                                             ((symbol-function 'make-process)
+                                              (lambda (&rest _args) 'owned-stdout))
+                                             ((symbol-function 'process-status)
+                                              (lambda (_process) 'run))
+                                             ((symbol-function 'processp)
+                                              (lambda (process)
+                                                (memq process '(owned-stdout owned-stderr))))
+                                             ((symbol-function 'process-id)
+                                              (lambda (_process) nil))
+                                             ((symbol-function 'process-live-p)
+                                              (lambda (_process) t))
+                                             ((symbol-function 'delete-process)
+                                              (lambda (process) (push process deleted)))
+                                             ((symbol-function 'accept-process-output)
+                                              (lambda (&rest args) (push args wait-calls))))
+                                            (should-not (nskk--program-dict-run-calculation "1+1")))))
+                               (should-not wait-calls)
+                               (should
+                                (= (cl-count 'owned-stdout deleted)
+                                   (length invalid-timeouts)))
+                               (should
+                                (= (cl-count 'owned-stderr deleted)
+                                   (length invalid-timeouts)))
+                               (should-not (get-buffer " *nskk-program-dict-calc-output*"))
+                               (should-not (get-buffer " *nskk-program-dict-calc-stderr*"))))))
     (nskk-it "rejects stderr that exceeds the byte cap"
       (let ((script (make-temp-file "nskk-calc-stderr-" nil ".sh"))
             (nskk--program-dict-max-calculation-size 4096))
@@ -1927,7 +1999,9 @@
        (nskk--program-dict-read-calculation-result "\"ok\" \"extra\"")))
     (nskk-it "rejects unsafe string contents"
       (should-not
-       (nskk--program-dict-read-calculation-result "\"bad\\nvalue\""))))
+       (nskk--program-dict-read-calculation-result "\"bad\\nvalue\"")))
+    (nskk-it "returns nil for syntactically malformed input instead of signaling"
+      (should-not (nskk--program-dict-read-calculation-result "(unbalanced"))))
   (nskk-context "unexpected subprocess results (S-5)"
     (nskk-it "returns nil gracefully for nil"
       (nskk-with-mocks
@@ -2119,34 +2193,33 @@
         (delete-file script)
         (delete-file pid-file)))))
 
-(progn (progn
-  (defun nskk--program-dict-test-cache-snapshot (cache)
-    "Return an identity-sensitive snapshot of CACHE."
-    (if (nskk-cache-lru-p cache)
-        (let (nodes)
-          (maphash
-           (lambda (lookup-key node)
-             (push (vector lookup-key
-                           node
-                           (nskk-cache-lru-node-key node)
-                           (nskk-cache-lru-node-value node)
-                           (nskk-cache-lru-node-prev node)
-                           (nskk-cache-lru-node-next node))
-                   nodes))
-           (nskk-cache-lru-hash cache))
-          (list :kind 'lru
-                :capacity (nskk-cache-lru-capacity cache)
-                :size (nskk-cache-lru-size cache)
-                :hash (nskk-cache-lru-hash cache)
-                :head (nskk-cache-lru-head cache)
-                :tail (nskk-cache-lru-tail cache)
-                :head-next (nskk-cache-lru-node-next
-                            (nskk-cache-lru-head cache))
-                :tail-prev (nskk-cache-lru-node-prev
-                            (nskk-cache-lru-tail cache))
-                :hits (nskk-cache-lru-hits cache)
-                :misses (nskk-cache-lru-misses cache)
-                :nodes nodes))
+(defun nskk--program-dict-test-cache-snapshot (cache)
+  "Return an identity-sensitive snapshot of CACHE."
+  (if (nskk-cache-lru-p cache)
+      (let (nodes)
+        (maphash
+         (lambda (lookup-key node)
+           (push (vector lookup-key
+                         node
+                         (nskk-cache-lru-node-key node)
+                         (nskk-cache-lru-node-value node)
+                         (nskk-cache-lru-node-prev node)
+                         (nskk-cache-lru-node-next node))
+                 nodes))
+         (nskk-cache-lru-hash cache))
+        (list :kind 'lru
+              :capacity (nskk-cache-lru-capacity cache)
+              :size (nskk-cache-lru-size cache)
+              :hash (nskk-cache-lru-hash cache)
+              :head (nskk-cache-lru-head cache)
+              :tail (nskk-cache-lru-tail cache)
+              :head-next (nskk-cache-lru-node-next
+                          (nskk-cache-lru-head cache))
+              :tail-prev (nskk-cache-lru-node-prev
+                          (nskk-cache-lru-tail cache))
+              :hits (nskk-cache-lru-hits cache)
+              :misses (nskk-cache-lru-misses cache)
+              :nodes nodes))
       (let (entries buckets)
         (maphash
          (lambda (lookup-key entry)
@@ -2171,44 +2244,44 @@
               :entries entries
               :buckets buckets))))
 
-  (defun nskk--program-dict-test-should-match-cache-snapshot
-      (cache snapshot)
-    "Assert that CACHE still has every identity recorded in SNAPSHOT."
-    (if (eq (plist-get snapshot :kind) 'lru)
-        (progn
-          (should (eq (nskk-cache-lru-capacity cache)
-                      (plist-get snapshot :capacity)))
-          (should (eq (nskk-cache-lru-size cache)
-                      (plist-get snapshot :size)))
-          (should (eq (nskk-cache-lru-hash cache)
-                      (plist-get snapshot :hash)))
-          (should (eq (nskk-cache-lru-head cache)
-                      (plist-get snapshot :head)))
-          (should (eq (nskk-cache-lru-tail cache)
-                      (plist-get snapshot :tail)))
-          (should (eq (nskk-cache-lru-node-next
-                       (nskk-cache-lru-head cache))
-                      (plist-get snapshot :head-next)))
-          (should (eq (nskk-cache-lru-node-prev
-                       (nskk-cache-lru-tail cache))
-                      (plist-get snapshot :tail-prev)))
-          (should (eq (nskk-cache-lru-hits cache)
-                      (plist-get snapshot :hits)))
-          (should (eq (nskk-cache-lru-misses cache)
-                      (plist-get snapshot :misses)))
-          (dolist (record (plist-get snapshot :nodes))
-            (let ((node (aref record 1)))
-              (should (eq (gethash (aref record 0)
-                                   (nskk-cache-lru-hash cache))
-                          node))
-              (should (eq (nskk-cache-lru-node-key node)
-                          (aref record 2)))
-              (should (eq (nskk-cache-lru-node-value node)
-                          (aref record 3)))
-              (should (eq (nskk-cache-lru-node-prev node)
-                          (aref record 4)))
-              (should (eq (nskk-cache-lru-node-next node)
-                          (aref record 5))))))
+(defun nskk--program-dict-test-should-match-cache-snapshot
+    (cache snapshot)
+  "Assert that CACHE still has every identity recorded in SNAPSHOT."
+  (if (eq (plist-get snapshot :kind) 'lru)
+      (progn
+        (should (eq (nskk-cache-lru-capacity cache)
+                    (plist-get snapshot :capacity)))
+        (should (eq (nskk-cache-lru-size cache)
+                    (plist-get snapshot :size)))
+        (should (eq (nskk-cache-lru-hash cache)
+                    (plist-get snapshot :hash)))
+        (should (eq (nskk-cache-lru-head cache)
+                    (plist-get snapshot :head)))
+        (should (eq (nskk-cache-lru-tail cache)
+                    (plist-get snapshot :tail)))
+        (should (eq (nskk-cache-lru-node-next
+                     (nskk-cache-lru-head cache))
+                    (plist-get snapshot :head-next)))
+        (should (eq (nskk-cache-lru-node-prev
+                     (nskk-cache-lru-tail cache))
+                    (plist-get snapshot :tail-prev)))
+        (should (eq (nskk-cache-lru-hits cache)
+                    (plist-get snapshot :hits)))
+        (should (eq (nskk-cache-lru-misses cache)
+                    (plist-get snapshot :misses)))
+        (dolist (record (plist-get snapshot :nodes))
+          (let ((node (aref record 1)))
+            (should (eq (gethash (aref record 0)
+                                 (nskk-cache-lru-hash cache))
+                        node))
+            (should (eq (nskk-cache-lru-node-key node)
+                        (aref record 2)))
+            (should (eq (nskk-cache-lru-node-value node)
+                        (aref record 3)))
+            (should (eq (nskk-cache-lru-node-prev node)
+                        (aref record 4)))
+            (should (eq (nskk-cache-lru-node-next node)
+                        (aref record 5))))))
       (progn
         (should (eq (nskk-cache-lfu-capacity cache)
                     (plist-get snapshot :capacity)))
@@ -2240,586 +2313,650 @@
                                (nskk-cache-lfu-freq cache))
                       (aref record 1)))))))
 
-  (defun nskk--program-dict-test-install-cache (strategy capacity)
-    "Install an empty program dictionary cache using STRATEGY and CAPACITY."
-    (nskk--program-dict-sync-config)
-    (setq nskk--program-dict-cache
-          (nskk-cache-create :type strategy :capacity capacity)))
+(defun nskk--program-dict-test-install-cache (strategy capacity)
+  "Install an empty program dictionary cache using STRATEGY and CAPACITY."
+  (nskk--program-dict-sync-config)
+  (setq nskk--program-dict-cache
+        (nskk-cache-create :type strategy :capacity capacity)))
 
-  (progn
-  (nskk-describe "nskk program dictionary dedicated object graph"
-    (nskk-it "copies and marks cyclic shared cons vector hash and properties"
-      (let* ((text (copy-sequence "leaf"))
-             (shared (vector text text #'ignore 'atom))
-             (root (cons shared nil))
-             (table (make-hash-table :test 'eq))
-             (hash-key (copy-sequence "hash-key")))
-        (setcdr root table)
-        (puthash root shared table)
-        (puthash hash-key root table)
-        (add-text-properties
-         0 (length text)
-         (list 'legacy 'kept
-               'nskk-no-learn 'old
-               'backlink root
-               'shared-value shared)
-         text)
-        (let* ((copied (nskk--program-dict-copy-graph root))
-               (copied-shared (car copied))
-               (copied-table (cdr copied))
-               (copied-text (aref copied-shared 0))
-               copied-hash-key)
-          (maphash
-           (lambda (key _value)
-             (when (and (stringp key) (equal key "hash-key"))
-               (setq copied-hash-key key)))
-           copied-table)
-          (should-not (eq copied root))
-          (should-not (eq copied-shared shared))
-          (should-not (eq copied-table table))
-          (should-not (eq copied-text text))
-          (should (eq copied-text (aref copied-shared 1)))
-          (should (eq (aref copied-shared 2) #'ignore))
-          (should (eq (aref copied-shared 3) 'atom))
-          (should (eq (gethash copied copied-table) copied-shared))
-          (should copied-hash-key)
-          (should-not (eq copied-hash-key hash-key))
-          (should (eq (gethash copied-hash-key copied-table) copied))
-          (should (eq (get-text-property 0 'legacy copied-text) 'kept))
-          (should (eq (get-text-property 0 'nskk-no-learn copied-text)
-                      'old))
-          (should (eq (get-text-property 0 'backlink copied-text) copied))
-          (should (eq (get-text-property 0 'shared-value copied-text)
-                      copied-shared))
-          (should (eq (nskk--program-dict-mark-no-learn copied) copied))
-          (should (eq (get-text-property 0 'legacy copied-text) 'kept))
-          (should (eq (get-text-property 0 'nskk-no-learn copied-text) t))
-          (should (eq (get-text-property 0 'nskk-no-learn copied-hash-key)
-                      t))
-          (should-not (eq (get-text-property 0 'nskk-no-learn text) t))
-          (aset copied-text 0 ?X)
-          (should (equal text "leaf"))))
-      (let ((deep (copy-sequence "bottom")))
-        (dotimes (_index 20000)
-          (setq deep (cons deep nil)))
-        (let ((copied (nskk--program-dict-copy-graph deep)))
-          (nskk--program-dict-mark-no-learn copied)
-          (dotimes (_index 20000)
-            (setq copied (car copied)))
-          (should (equal copied "bottom"))
-          (should (eq (get-text-property 0 'nskk-no-learn copied) t))))))
+(nskk-describe "nskk program dictionary dedicated object graph"
+               (nskk-it "copies and marks cyclic shared cons vector hash and properties"
+                        (let* ((text (copy-sequence "leaf"))
+                               (shared (vector text text #'ignore 'atom))
+                               (root (cons shared nil))
+                               (table (make-hash-table :test 'eq))
+                               (hash-key (copy-sequence "hash-key")))
+                          (setcdr root table)
+                          (puthash root shared table)
+                          (puthash hash-key root table)
+                          (add-text-properties
+                           0 (length text)
+                           (list 'legacy 'kept
+                                 'nskk-no-learn 'old
+                                 'backlink root
+                                 'shared-value shared)
+                           text)
+                          (let* ((copied (nskk-prolog-copy-term root))
+                                 (copied-shared (car copied))
+                                 (copied-table (cdr copied))
+                                 (copied-text (aref copied-shared 0))
+                                 copied-hash-key)
+                            (maphash
+                             (lambda (key _value)
+                               (when (and (stringp key) (equal key "hash-key"))
+                                 (setq copied-hash-key key)))
+                             copied-table)
+                            (should-not (eq copied root))
+                            (should-not (eq copied-shared shared))
+                            (should-not (eq copied-table table))
+                            (should-not (eq copied-text text))
+                            (should (eq copied-text (aref copied-shared 1)))
+                            (should (eq (aref copied-shared 2) #'ignore))
+                            (should (eq (aref copied-shared 3) 'atom))
+                            (should (eq (gethash copied copied-table) copied-shared))
+                            (should copied-hash-key)
+                            (should-not (eq copied-hash-key hash-key))
+                            (should (eq (gethash copied-hash-key copied-table) copied))
+                            (should (eq (get-text-property 0 'legacy copied-text) 'kept))
+                            (should (eq (get-text-property 0 'nskk-no-learn copied-text)
+                                        'old))
+                            (should (eq (get-text-property 0 'backlink copied-text) copied))
+                            (should (eq (get-text-property 0 'shared-value copied-text)
+                                        copied-shared))
+                            (should (eq (nskk--program-dict-mark-no-learn copied) copied))
+                            (should (eq (get-text-property 0 'legacy copied-text) 'kept))
+                            (should (eq (get-text-property 0 'nskk-no-learn copied-text) t))
+                            (should (eq (get-text-property 0 'nskk-no-learn copied-hash-key)
+                                        t))
+                            (should-not (eq (get-text-property 0 'nskk-no-learn text) t))
+                            (aset copied-text 0 ?X)
+                            (should (equal text "leaf"))))
+                        (let ((deep (copy-sequence "bottom")))
+                          (dotimes (_index 20000)
+                            (setq deep (cons deep nil)))
+                          (let ((copied (nskk-prolog-copy-term deep)))
+                            (nskk--program-dict-mark-no-learn copied)
+                            (dotimes (_index 20000)
+                              (setq copied (car copied)))
+                            (should (equal copied "bottom"))
+                            (should (eq (get-text-property 0 'nskk-no-learn copied) t)))))
 
-  (progn
-  (nskk-describe "nskk program dictionary cache strategy graph behavior"
-    (nskk-it "supports equal detached keys hits and eviction in LRU and LFU"
-      (dolist (strategy (list (quote lru) (quote lfu)))
-        (let ((entry-count 0)
-              sources)
-          (nskk--prog-dict-test-with-env
-              t
-              (list (function ignore))
-            (nskk--program-dict-test-install-cache strategy 2)
-            (cl-letf
-                (((symbol-function
-                   (quote nskk--program-dict-collect-all/k))
-                  (lambda (_entries key on-found _on-not-found)
-                    (cl-incf entry-count)
-                    (let* ((text
-                            (copy-sequence
-                             (format "candidate-%s" (aref (car key) 1))))
-                           (shared (vector text text))
-                           (table (make-hash-table :test (quote eq)))
-                           (candidate (cons shared table)))
-                      (add-text-properties
-                       0 (length text)
-                       (list (quote legacy) (quote kept)
-                             (quote nskk-no-learn) (quote old))
-                       text)
-                      (puthash text shared table)
-                      (push candidate sources)
-                      (funcall on-found (list candidate))))))
-              (let* ((key-a (list (vector (quote key) (copy-sequence "a"))))
-                     (equal-key-a
-                      (list (vector (quote key) (copy-sequence "a"))))
-                     (key-b (list (vector (quote key) (copy-sequence "b"))))
-                     (key-c (list (vector (quote key) (copy-sequence "c"))))
-                     (public-a (nskk-program-dict-lookup key-a))
-                     (public-b (nskk-program-dict-lookup key-b))
-                     (hit-a (nskk-program-dict-lookup equal-key-a))
-                     (public-c (nskk-program-dict-lookup key-c))
-                     (cache nskk--program-dict-cache)
-                     (table
-                      (if (eq strategy (quote lru))
-                          (nskk-cache-lru-hash cache)
-                        (nskk-cache-lfu-hash cache)))
-                     (record-a (gethash key-a table))
-                     (source-a (car (last sources))))
-                (should-not (eq key-a equal-key-a))
-                (should (equal key-a equal-key-a))
-                (should (= entry-count 3))
-                (should public-a)
-                (should public-b)
-                (should public-c)
-                (should record-a)
-                (should (gethash key-c table))
-                (should-not (gethash key-b table))
-                (should (= (nskk-cache-size cache) 2))
-                (let ((canonical-a
-                       (if (eq strategy (quote lru))
-                           (nskk-cache-lru-node-value record-a)
-                         (nskk-cache-lfu-entry-value record-a))))
-                  (should-not (eq public-a canonical-a))
-                  (should-not (eq hit-a canonical-a))
-                  (should-not (eq (car hit-a) (car canonical-a)))
-                  (should-not (eq (car public-a) source-a))
-                  (should (eq (aref (car (car hit-a)) 0)
-                              (aref (car (car hit-a)) 1)))
-                  (should
-                   (eq (gethash
-                        (aref (car (car hit-a)) 0)
-                        (cdr (car hit-a)))
-                       (car (car hit-a))))
-                  (should
-                   (eq (get-text-property
-                        0 (quote legacy)
-                        (aref (car (car hit-a)) 0))
-                       (quote kept)))
-                  (should
-                   (eq (get-text-property
-                        0 (quote nskk-no-learn)
-                        (aref (car (car hit-a)) 0))
-                       t))
-                  (should
-                   (eq (get-text-property
-                        0 (quote nskk-no-learn)
-                        (aref (car source-a) 0))
-                       (quote old)))
-                  (aset (aref (car (car hit-a)) 0) 0 ?X)
-                  (should-not
-                   (eq (aref (aref (car (car canonical-a)) 0) 0) ?X)))
-                (if (eq strategy (quote lru))
-                    (progn
-                      (should (= (nskk-cache-lru-hits cache) 1))
-                      (should (= (nskk-cache-lru-misses cache) 3)))
-                  (should (= (nskk-cache-lfu-hits cache) 1))
-                  (should (= (nskk-cache-lfu-misses cache) 3))))))))))
-  (progn
-  (nskk-describe "nskk program dictionary publication transaction"
-    (nskk-it "publishes canonical public and owned-key graphs in order"
-      (nskk--prog-dict-test-with-env
-          t
-          (list (function ignore))
-        (nskk--program-dict-test-install-cache (quote lru) 4)
-        (let* ((source-text (copy-sequence "source"))
-               (source-shared (vector source-text source-text))
-               (source-table (make-hash-table :test (quote eq)))
-               (source (cons source-shared source-table))
-               (results (list source))
-               (key-text (copy-sequence "key"))
-               (key-shared (vector key-text key-text))
-               (key (list key-shared))
-               (real-copy
-                (symbol-function (quote nskk--program-dict-copy-graph)))
-               (real-mark
-                (symbol-function (quote nskk--program-dict-mark-no-learn)))
-               (real-put (symbol-function (quote nskk-cache-put)))
-               (copy-count 0)
-               events canonical marked-input public owned-key put-key put-value
-               callback-value stored-key stored-value)
-          (add-text-properties
-           0 (length source-text)
-           (list (quote legacy) (quote kept)
-                 (quote nskk-no-learn) (quote old))
-           source-text)
-          (add-text-properties
-           0 (length key-text)
-           (list (quote key-prop) (quote kept))
-           key-text)
-          (puthash source-text source-shared source-table)
-          (cl-letf
-              (((symbol-function (quote nskk--program-dict-collect-all/k))
-                (lambda (_entries _key on-found _on-not-found)
-                  (funcall on-found results)))
-               ((symbol-function (quote nskk--program-dict-copy-graph))
-                (lambda (object)
-                  (cl-incf copy-count)
-                  (push (pcase copy-count
-                          (1 (quote canonical-copy))
-                          (2 (quote public-copy))
-                          (3 (quote key-copy)))
-                        events)
-                  (let ((copied (funcall real-copy object)))
-                    (pcase copy-count
-                      (1 (setq canonical copied))
-                      (2 (setq public copied))
-                      (3 (setq owned-key copied)))
-                    copied)))
-               ((symbol-function (quote nskk--program-dict-mark-no-learn))
-                (lambda (object)
-                  (push (quote mark) events)
-                  (setq marked-input object)
-                  (funcall real-mark object)))
-               ((symbol-function (quote nskk-cache-put))
-                (lambda (cache cache-key value)
-                  (push (quote put) events)
-                  (setq put-key cache-key
-                        put-value value)
-                  (funcall real-put cache cache-key value))))
-            (nskk-program-dict-lookup/k
-             key
-             (lambda (value)
-               (push (quote callback) events)
-               (setq callback-value value))
-             (lambda () (should nil))))
-          (should
-           (equal (nreverse events)
-                  (quote
-                   (canonical-copy mark public-copy key-copy put callback))))
-          (should (eq marked-input canonical))
-          (should (eq put-key owned-key))
-          (should (eq put-value canonical))
-          (should (eq callback-value public))
-          (should-not (eq canonical results))
-          (should-not (eq public canonical))
-          (should-not (eq owned-key key))
-          (should-not (eq (car canonical) source))
-          (should-not (eq (car public) (car canonical)))
-          (should-not (eq (car owned-key) key-shared))
-          (should-not (eq (aref (car owned-key) 0) key-text))
-          (should (eq (aref (car owned-key) 0)
-                      (aref (car owned-key) 1)))
-          (let* ((canonical-candidate (car canonical))
-                 (canonical-shared (car canonical-candidate))
-                 (canonical-table (cdr canonical-candidate))
-                 (canonical-text (aref canonical-shared 0))
-                 (public-candidate (car public))
-                 (public-shared (car public-candidate))
-                 (public-table (cdr public-candidate))
-                 (public-text (aref public-shared 0)))
-            (should (eq canonical-text (aref canonical-shared 1)))
-            (should (eq (gethash canonical-text canonical-table)
-                        canonical-shared))
-            (should (eq public-text (aref public-shared 1)))
-            (should (eq (gethash public-text public-table) public-shared))
-            (should (eq (get-text-property
-                         0 (quote legacy) canonical-text)
-                        (quote kept)))
-            (should (eq (get-text-property
-                         0 (quote nskk-no-learn) canonical-text)
-                        t))
-            (should (eq (get-text-property
-                         0 (quote nskk-no-learn) public-text)
-                        t)))
-          (maphash
-           (lambda (cache-key record)
-             (setq stored-key cache-key
-                   stored-value (nskk-cache-lru-node-value record)))
-           (nskk-cache-lru-hash nskk--program-dict-cache))
-          (should-not (eq stored-key owned-key))
-          (should-not (eq (car stored-key) (car owned-key)))
-          (should (equal stored-key key))
-          (should (eq stored-value canonical))
-          (should (eq (get-text-property
-                       0 (quote nskk-no-learn) source-text)
-                      (quote old)))
-          (should (eq (get-text-property 0 (quote legacy) source-text)
-                      (quote kept)))
-          (should (eq (aref source-shared 0) source-text))
-          (should (eq (aref source-shared 1) source-text))
-          (should (eq (gethash source-text source-table) source-shared))
-          (should-not
-           (get-text-property 0 (quote nskk-no-learn) key-text))))))
+               (nskk-it "preserves hash-table rehash-size rehash-threshold and weakness"
+                        (let* ((table (make-hash-table :test (quote equal)
+                                                       :size 4
+                                                       :rehash-size 2.5
+                                                       :rehash-threshold 0.6
+                                                       :weakness (quote key)))
+                               (copied (nskk-prolog-copy-term table)))
+                          (should-not (eq copied table))
+                          (should (equal (hash-table-rehash-size copied)
+                                         (hash-table-rehash-size table)))
+                          (should (equal (hash-table-rehash-threshold copied)
+                                         (hash-table-rehash-threshold table)))
+                          (should (eq (hash-table-weakness copied) (hash-table-weakness table)))))
+               )
 
-  (nskk-describe "nskk program dictionary persistent hit fault matrix"
-    (nskk-it "restores exact LRU and LFU state for copy faults before callback"
-      (let ((hit-case-count 0))
-        (dolist (strategy (quote (lru lfu)))
-          (dolist (timing (quote (before after)))
-            (dolist (fault (quote (error quit)))
-              (progn
-                (cl-incf hit-case-count)
-                (nskk--prog-dict-test-with-env
-                  t
-                  (list (function ignore))
-                  (nskk--program-dict-test-install-cache strategy 3)
-                  (let* ((key (list (vector (quote hit) (copy-sequence "key"))))
-                         (canonical-text (copy-sequence "cached"))
-                         (canonical (list (vector canonical-text canonical-text)))
-                         (cache nskk--program-dict-cache)
-                         (real-copy (symbol-function (quote nskk--program-dict-copy-graph)))
-                         snapshot
-                         caught
-                         retry
-                         (copy-count 0)
-                         (callback-count 0))
-                    (add-text-properties
-                      0
-                      (length canonical-text)
-                      (list (quote nskk-no-learn) t (quote legacy) (quote kept))
-                      canonical-text)
-                    (nskk-cache-put cache key canonical)
-                    (setq snapshot (nskk--program-dict-test-cache-snapshot cache))
-                    (cl-letf
-                      (((symbol-function (quote nskk--program-dict-copy-graph))
-                          (lambda (object)
-                            (cl-incf copy-count)
-                            (when (eq timing (quote before))
-                              (signal fault (list (quote injected-hit) timing)))
-                            (let ((copied (funcall real-copy object)))
-                              (when (eq timing (quote after))
-                                (signal fault (list (quote injected-hit) timing)))
-                              copied))))
-                      (condition-case
-                        condition
-                        (nskk-program-dict-lookup/k
-                          key
-                          (lambda (_value)
-                            (cl-incf callback-count))
-                          (lambda ()
-                            (should nil)))
-                        ((error quit)
-                          (setq caught condition))))
-                    (should (eq (car caught) fault))
-                    (should (= copy-count 1))
-                    (should (= callback-count 0))
-                    (nskk--program-dict-test-should-match-cache-snapshot cache snapshot)
-                    (should (equal canonical-text "cached"))
-                    (should (eq (get-text-property 0 (quote legacy) canonical-text) (quote kept)))
-                    (setq retry (nskk-program-dict-lookup key))
-                    (should retry)
-                    (should-not (eq retry canonical))
-                    (if (eq strategy (quote lru)) (progn
-                        (should (= (nskk-cache-lru-hits cache) 1))
-                        (should (= (nskk-cache-lru-misses cache) 0)))
-                      (should (= (nskk-cache-lfu-hits cache) 1))
-                      (should (= (nskk-cache-lfu-misses cache) 0)))))))))
-        (should (= hit-case-count 8)))
-      ))
-
-  (nskk-describe "nskk program dictionary persistent miss fault matrix"
-    (nskk-it "rolls back every pre-publication boundary and retries"
-      (let ((miss-case-count 0)
-            (publication-copy-fault-case-count 0)
-            (publication-copy-fault-cases (make-hash-table :test (function equal)))
-            (miss-strategy-counts (make-hash-table :test (function eq)))
-            (miss-boundary-counts (make-hash-table :test (function eq)))
-            (miss-strategy-boundary-counts (make-hash-table :test (function equal))))
-        (dolist (strategy (quote (lru lfu)))
-          (dolist (boundary (quote (canonical-copy mark public-copy key-copy)))
-            (dolist (timing (quote (before after)))
-              (dolist (fault (quote (error quit)))
-                (progn
-                  (cl-incf miss-case-count)
-                  (cl-incf (gethash strategy miss-strategy-counts 0))
-                  (cl-incf (gethash boundary miss-boundary-counts 0))
-                  (cl-incf (gethash (cons strategy boundary) miss-strategy-boundary-counts 0))
-                  (let ((publication-case (list boundary timing fault)))
-                    (unless (gethash publication-case publication-copy-fault-cases)
-                      (puthash publication-case t publication-copy-fault-cases)
-                      (cl-incf publication-copy-fault-case-count)))
-                  (nskk--prog-dict-test-with-env
-                    t
-                    (list (function ignore))
-                    (nskk--program-dict-test-install-cache strategy 4)
-                    (let* ((cache nskk--program-dict-cache)
-                           (source-text (copy-sequence "candidate"))
-                           (source-shared (vector source-text source-text))
-                           (source-table (make-hash-table :test (quote eq)))
-                           (source (cons source-shared source-table))
-                           (results (list source))
-                           (key
-                          (list
-                            (vector (quote miss) (copy-sequence (format "%s-%s-%s" boundary timing fault)))))
-                           (real-copy (symbol-function (quote nskk--program-dict-copy-graph)))
-                           (real-mark (symbol-function (quote nskk--program-dict-mark-no-learn)))
-                           (target-copy
-                          (pcase
-                            boundary
-                            ((quote canonical-copy) 1)
-                            ((quote public-copy) 2)
-                            ((quote key-copy) 3)
-                            (_ nil)))
-                           snapshot
-                           caught
-                           retry
-                           (copy-count 0)
-                           (mark-count 0)
-                           (collector-count 0)
-                           (callback-count 0))
-                      (add-text-properties
-                        0
-                        (length source-text)
-                        (list (quote nskk-no-learn) (quote old) (quote legacy) (quote kept))
-                        source-text)
-                      (puthash source-text source-shared source-table)
-                      (nskk-cache-put cache (list (quote seed-a)) (list (copy-sequence "a")))
-                      (nskk-cache-put cache (list (quote seed-b)) (list (copy-sequence "b")))
-                      (setq snapshot (nskk--program-dict-test-cache-snapshot cache))
-                      (cl-letf
-                        (((symbol-function (quote nskk--program-dict-collect-all/k))
-                            (lambda (_entries _key on-found _on-not-found)
-                              (cl-incf collector-count)
-                              (funcall on-found results))))
-                        (cl-letf
-                          (((symbol-function (quote nskk--program-dict-copy-graph))
+(nskk-describe "nskk program dictionary cache strategy graph behavior"
+               (nskk-it "supports equal detached keys hits and eviction in LRU and LFU"
+                        (dolist (strategy (list (quote lru) (quote lfu)))
+                          (let ((entry-count 0)
+                                sources)
+                            (nskk--prog-dict-test-with-env
+                             t
+                             (list (function ignore))
+                             (nskk--program-dict-test-install-cache strategy 2)
+                             (cl-letf
+                              (((symbol-function
+                                 (quote nskk--program-dict-collect-all/k))
+                                (lambda (_entries key on-found _on-not-found)
+                                  (cl-incf entry-count)
+                                  (let* ((text
+                                          (copy-sequence
+                                           (format "candidate-%s" (aref (car key) 1))))
+                                         (shared (vector text text))
+                                         (table (make-hash-table :test (quote eq)))
+                                         (candidate (cons shared table)))
+                                    (add-text-properties
+                                     0 (length text)
+                                     (list (quote legacy) (quote kept)
+                                           (quote nskk-no-learn) (quote old))
+                                     text)
+                                    (puthash text shared table)
+                                    (push candidate sources)
+                                    (funcall on-found (list candidate))))))
+                              (let* ((key-a (list (vector (quote key) (copy-sequence "a"))))
+                                     (equal-key-a
+                                      (list (vector (quote key) (copy-sequence "a"))))
+                                     (key-b (list (vector (quote key) (copy-sequence "b"))))
+                                     (key-c (list (vector (quote key) (copy-sequence "c"))))
+                                     (public-a (nskk-program-dict-lookup key-a))
+                                     (public-b (nskk-program-dict-lookup key-b))
+                                     (hit-a (nskk-program-dict-lookup equal-key-a))
+                                     (public-c (nskk-program-dict-lookup key-c))
+                                     (cache nskk--program-dict-cache)
+                                     (table
+                                      (if (eq strategy (quote lru))
+                                          (nskk-cache-lru-hash cache)
+                                          (nskk-cache-lfu-hash cache)))
+                                     (record-a (gethash key-a table))
+                                     (source-a (car (last sources))))
+                                (should-not (eq key-a equal-key-a))
+                                (should (equal key-a equal-key-a))
+                                (should (= entry-count 3))
+                                (should public-a)
+                                (should public-b)
+                                (should public-c)
+                                (should record-a)
+                                (should (gethash key-c table))
+                                (should-not (gethash key-b table))
+                                (should (= (nskk-cache-size cache) 2))
+                                (let ((canonical-a
+                                       (if (eq strategy (quote lru))
+                                           (nskk-cache-lru-node-value record-a)
+                                           (nskk-cache-lfu-entry-value record-a))))
+                                  (should-not (eq public-a canonical-a))
+                                  (should-not (eq hit-a canonical-a))
+                                  (should-not (eq (car hit-a) (car canonical-a)))
+                                  (should-not (eq (car public-a) source-a))
+                                  (should (eq (aref (car (car hit-a)) 0)
+                                              (aref (car (car hit-a)) 1)))
+                                  (should
+                                   (eq (gethash
+                                        (aref (car (car hit-a)) 0)
+                                        (cdr (car hit-a)))
+                                       (car (car hit-a))))
+                                  (should
+                                   (eq (get-text-property
+                                        0 (quote legacy)
+                                        (aref (car (car hit-a)) 0))
+                                       (quote kept)))
+                                  (should
+                                   (eq (get-text-property
+                                        0 (quote nskk-no-learn)
+                                        (aref (car (car hit-a)) 0))
+                                       t))
+                                  (should
+                                   (eq (get-text-property
+                                        0 (quote nskk-no-learn)
+                                        (aref (car source-a) 0))
+                                       (quote old)))
+                                  (aset (aref (car (car hit-a)) 0) 0 ?X)
+                                  (should-not
+                                   (eq (aref (aref (car (car canonical-a)) 0) 0) ?X)))
+                                (if (eq strategy (quote lru))
+                                    (progn
+                                      (should (= (nskk-cache-lru-hits cache) 1))
+                                      (should (= (nskk-cache-lru-misses cache) 3)))
+                                    (should (= (nskk-cache-lfu-hits cache) 1))
+                                    (should (= (nskk-cache-lfu-misses cache) 3))))))))))
+(nskk-describe "nskk program dictionary publication transaction"
+               (nskk-it "publishes canonical public and owned-key graphs in order"
+                        (nskk--prog-dict-test-with-env
+                         t
+                         (list (function ignore))
+                         (nskk--program-dict-test-install-cache (quote lru) 4)
+                         (let* ((source-text (copy-sequence "source"))
+                                (source-shared (vector source-text source-text))
+                                (source-table (make-hash-table :test (quote eq)))
+                                (source (cons source-shared source-table))
+                                (results (list source))
+                                (key-text (copy-sequence "key"))
+                                (key-shared (vector key-text key-text))
+                                (key (list key-shared))
+                                (real-copy
+                                 (symbol-function (quote nskk-prolog-copy-term)))
+                                (real-mark
+                                 (symbol-function (quote nskk--program-dict-mark-no-learn)))
+                                (real-put (symbol-function (quote nskk-cache-put)))
+                                events canonical marked-input public owned-key put-key put-value
+                                callback-value stored-key stored-value)
+                           (add-text-properties
+                            0 (length source-text)
+                            (list (quote legacy) (quote kept)
+                                  (quote nskk-no-learn) (quote old))
+                            source-text)
+                           (add-text-properties
+                            0 (length key-text)
+                            (list (quote key-prop) (quote kept))
+                            key-text)
+                           (puthash source-text source-shared source-table)
+                           (cl-letf
+                            (((symbol-function (quote nskk--program-dict-collect-all/k))
+                              (lambda (_entries _key on-found _on-not-found)
+                                (funcall on-found results)))
+                             ((symbol-function (quote nskk-prolog-copy-term))
                               (lambda (object)
-                                (cl-incf copy-count)
-                                (when (and target-copy (= copy-count target-copy) (eq timing (quote before)))
-                                  (signal fault (list (quote injected-miss-copy) boundary timing)))
-                                (let ((copied (funcall real-copy object)))
-                                  (when (and target-copy (= copy-count target-copy) (eq timing (quote after)))
-                                    (signal fault (list (quote injected-miss-copy) boundary timing)))
-                                  copied)))
-                            ((symbol-function (quote nskk--program-dict-mark-no-learn))
+                                (cond
+                                 ((eq object results)
+                                  (push (quote canonical-copy) events)
+                                  (let ((copied (funcall real-copy object)))
+                                    (setq canonical copied)
+                                    copied))
+                                 ((and canonical (eq object canonical))
+                                  (push (quote public-copy) events)
+                                  (let ((copied (funcall real-copy object)))
+                                    (setq public copied)
+                                    copied))
+                                 ((eq object key)
+                                  (push (quote key-copy) events)
+                                  (let ((copied (funcall real-copy object)))
+                                    (setq owned-key copied)
+                                    copied))
+                                 (t (funcall real-copy object)))))
+                             ((symbol-function (quote nskk--program-dict-mark-no-learn))
                               (lambda (object)
-                                (cl-incf mark-count)
-                                (when (and (eq boundary (quote mark)) (eq timing (quote before)))
-                                  (signal fault (list (quote injected-miss-mark) timing)))
-                                (let ((marked (funcall real-mark object)))
-                                  (when (and (eq boundary (quote mark)) (eq timing (quote after)))
-                                    (signal fault (list (quote injected-miss-mark) timing)))
-                                  marked))))
-                          (condition-case
-                            condition
+                                (push (quote mark) events)
+                                (setq marked-input object)
+                                (funcall real-mark object)))
+                             ((symbol-function (quote nskk-cache-put))
+                              (lambda (cache cache-key value)
+                                (push (quote put) events)
+                                (setq put-key cache-key
+                                      put-value value)
+                                (funcall real-put cache cache-key value))))
                             (nskk-program-dict-lookup/k
-                              key
-                              (lambda (_value)
-                                (cl-incf callback-count))
-                              (lambda ()
-                                (should nil)))
-                            ((error quit)
-                              (setq caught condition))))
-                        (should (eq (car caught) fault))
-                        (should (= callback-count 0))
-                        (should
-                          (=
-                            copy-count
-                            (pcase
-                              boundary
-                              ((quote canonical-copy) 1)
-                              ((quote mark) 1)
-                              ((quote public-copy) 2)
-                              ((quote key-copy) 3))))
-                        (should
-                          (=
-                            mark-count
-                            (if (eq boundary (quote canonical-copy)) 0
-                              1)))
-                        (nskk--program-dict-test-should-match-cache-snapshot cache snapshot)
-                        (should (eq (aref source-shared 0) source-text))
-                        (should (eq (aref source-shared 1) source-text))
-                        (should (eq (gethash source-text source-table) source-shared))
-                        (should
-                          (eq (get-text-property 0 (quote nskk-no-learn) source-text) (quote old)))
-                        (should (eq (get-text-property 0 (quote legacy) source-text) (quote kept)))
-                        (setq retry (nskk-program-dict-lookup key)))
-                      (should (= collector-count 2))
-                      (should (= (nskk-cache-size cache) 3))
-                      (should retry)
-                      (let* ((candidate (car retry))
-                             (shared (car candidate))
-                             (table (cdr candidate))
-                             (text (aref shared 0)))
-                        (should (eq text (aref shared 1)))
-                        (should (eq (gethash text table) shared))
-                        (should (eq (get-text-property 0 (quote nskk-no-learn) text) t))
-                        (should (eq (get-text-property 0 (quote legacy) text) (quote kept))))
-                      (if (eq strategy (quote lru)) (progn
-                          (should (= (nskk-cache-lru-hits cache) 0))
-                          (should (= (nskk-cache-lru-misses cache) 1)))
-                        (should (= (nskk-cache-lfu-hits cache) 0))
-                        (should (= (nskk-cache-lfu-misses cache) 1))))))))))
-        (should (= miss-case-count 32))
-        (should (= publication-copy-fault-case-count 16))
-        (should (= (hash-table-count publication-copy-fault-cases) 16))
-        (dolist (strategy (quote (lru lfu)))
-          (should (= (gethash strategy miss-strategy-counts 0) 16)))
-        (dolist (boundary (quote (canonical-copy mark public-copy key-copy)))
-          (should (= (gethash boundary miss-boundary-counts 0) 8)))
-        (dolist (strategy (quote (lru lfu)))
-          (dolist (boundary (quote (canonical-copy mark public-copy key-copy)))
-            (should
-              (= (gethash (cons strategy boundary) miss-strategy-boundary-counts 0) 4)))))
-      ))
+                             key
+                             (lambda (value)
+                               (push (quote callback) events)
+                               (setq callback-value value))
+                             (lambda () (should nil))))
+                           (should
+                            (equal (nreverse events)
+                                   (quote
+                                    (canonical-copy mark public-copy key-copy put callback))))
+                           (should (eq marked-input canonical))
+                           (should (eq put-key owned-key))
+                           (should (eq put-value canonical))
+                           (should (eq callback-value public))
+                           (should-not (eq canonical results))
+                           (should-not (eq public canonical))
+                           (should-not (eq owned-key key))
+                           (should-not (eq (car canonical) source))
+                           (should-not (eq (car public) (car canonical)))
+                           (should-not (eq (car owned-key) key-shared))
+                           (should-not (eq (aref (car owned-key) 0) key-text))
+                           (should (eq (aref (car owned-key) 0)
+                                       (aref (car owned-key) 1)))
+                           (let* ((canonical-candidate (car canonical))
+                                  (canonical-shared (car canonical-candidate))
+                                  (canonical-table (cdr canonical-candidate))
+                                  (canonical-text (aref canonical-shared 0))
+                                  (public-candidate (car public))
+                                  (public-shared (car public-candidate))
+                                  (public-table (cdr public-candidate))
+                                  (public-text (aref public-shared 0)))
+                             (should (eq canonical-text (aref canonical-shared 1)))
+                             (should (eq (gethash canonical-text canonical-table)
+                                         canonical-shared))
+                             (should (eq public-text (aref public-shared 1)))
+                             (should (eq (gethash public-text public-table) public-shared))
+                             (should (eq (get-text-property
+                                          0 (quote legacy) canonical-text)
+                                         (quote kept)))
+                             (should (eq (get-text-property
+                                          0 (quote nskk-no-learn) canonical-text)
+                                         t))
+                             (should (eq (get-text-property
+                                          0 (quote nskk-no-learn) public-text)
+                                         t)))
+                           (maphash
+                            (lambda (cache-key record)
+                              (setq stored-key cache-key
+                                    stored-value (nskk-cache-lru-node-value record)))
+                            (nskk-cache-lru-hash nskk--program-dict-cache))
+                           (should-not (eq stored-key owned-key))
+                           (should-not (eq (car stored-key) (car owned-key)))
+                           (should (equal stored-key key))
+                           (should (eq stored-value canonical))
+                           (should (eq (get-text-property
+                                        0 (quote nskk-no-learn) source-text)
+                                       (quote old)))
+                           (should (eq (get-text-property 0 (quote legacy) source-text)
+                                       (quote kept)))
+                           (should (eq (aref source-shared 0) source-text))
+                           (should (eq (aref source-shared 1) source-text))
+                           (should (eq (gethash source-text source-table) source-shared))
+                           (should-not
+                            (get-text-property 0 (quote nskk-no-learn) key-text))))))
 
-  (nskk-describe "nskk program dictionary persistent callback commit"
-    (nskk-it "keeps committed cache state when callback errors or quits"
-      (let ((callback-fault-case-count 0))
-        (dolist (strategy (quote (lru lfu)))
-          (dolist (fault (quote (error quit)))
-            (progn
-              (cl-incf callback-fault-case-count)
-              (nskk--prog-dict-test-with-env
-                t
-                (list (function ignore))
-                (nskk--program-dict-test-install-cache strategy 2)
-                (let* ((cache nskk--program-dict-cache)
-                       (source-text (copy-sequence "committed"))
-                       (source (list source-text))
-                       (key (list (vector (quote callback) (copy-sequence (symbol-name fault)))))
-                       (collector-count 0)
-                       (callback-count 0)
-                       caught
-                       record
-                       canonical
-                       retry)
-                  (add-text-properties
-                    0
-                    (length source-text)
-                    (list (quote nskk-no-learn) (quote old) (quote legacy) (quote kept))
-                    source-text)
-                  (cl-letf
-                    (((symbol-function (quote nskk--program-dict-collect-all/k))
-                        (lambda (_entries _key on-found _on-not-found)
-                          (cl-incf collector-count)
-                          (funcall on-found (list source)))))
-                    (condition-case
-                      condition
-                      (nskk-program-dict-lookup/k
-                        key
-                        (lambda (_value)
-                          (cl-incf callback-count)
-                          (signal fault (list (quote injected-callback))))
-                        (lambda ()
-                          (should nil)))
-                      ((error quit)
-                        (setq caught condition)))
-                    (should (eq (car caught) fault))
-                    (should (= callback-count 1))
-                    (should (= collector-count 1))
-                    (should (= (nskk-cache-size cache) 1))
-                    (setq record (gethash
-                        key
-                        (if (eq strategy (quote lru)) (nskk-cache-lru-hash cache)
-                          (nskk-cache-lfu-hash cache))))
-                    (should record)
-                    (setq canonical (if (eq strategy (quote lru)) (nskk-cache-lru-node-value record)
-                        (nskk-cache-lfu-entry-value record)))
-                    (should
-                      (eq (get-text-property 0 (quote nskk-no-learn) (car (car canonical))) t))
-                    (should
-                      (eq (get-text-property 0 (quote legacy) (car (car canonical))) (quote kept)))
-                    (should
-                      (eq (get-text-property 0 (quote nskk-no-learn) source-text) (quote old)))
+(nskk-describe "nskk program dictionary persistent hit fault matrix"
+               (nskk-it "restores exact LRU and LFU state for copy faults before callback"
+                        (let ((hit-case-count 0))
+                          (dolist (strategy (quote (lru lfu)))
+                            (dolist (timing (quote (before after)))
+                              (dolist (fault (quote (error quit)))
+                                (progn
+                                  (cl-incf hit-case-count)
+                                  (nskk--prog-dict-test-with-env
+                                   t
+                                   (list (function ignore))
+                                   (nskk--program-dict-test-install-cache strategy 3)
+                                   (let* ((key (list (vector (quote hit) (copy-sequence "key"))))
+                                          (canonical-text (copy-sequence "cached"))
+                                          (canonical (list (vector canonical-text canonical-text)))
+                                          (cache nskk--program-dict-cache)
+                                          (real-copy (symbol-function (quote nskk-prolog-copy-term)))
+                                          snapshot
+                                          caught
+                                          retry
+                                          (copy-count 0)
+                                          (callback-count 0))
+                                     (add-text-properties
+                                      0
+                                      (length canonical-text)
+                                      (list (quote nskk-no-learn) t (quote legacy) (quote kept))
+                                      canonical-text)
+                                     (nskk-cache-put cache key canonical)
+                                     (setq snapshot (nskk--program-dict-test-cache-snapshot cache))
+                                     (cl-letf
+                                      (((symbol-function (quote nskk-prolog-copy-term))
+                                        (lambda (object)
+                                          (cl-incf copy-count)
+                                          (when (eq timing (quote before))
+                                            (signal fault (list (quote injected-hit) timing)))
+                                          (let ((copied (funcall real-copy object)))
+                                            (when (eq timing (quote after))
+                                              (signal fault (list (quote injected-hit) timing)))
+                                            copied))))
+                                      (condition-case
+                                          condition
+                                          (nskk-program-dict-lookup/k
+                                           key
+                                           (lambda (_value)
+                                             (cl-incf callback-count))
+                                           (lambda ()
+                                             (should nil)))
+                                        ((error quit)
+                                         (setq caught condition))))
+                                     (should (eq (car caught) fault))
+                                     (should (= copy-count 1))
+                                     (should (= callback-count 0))
+                                     (nskk--program-dict-test-should-match-cache-snapshot cache snapshot)
+                                     (should (equal canonical-text "cached"))
+                                     (should (eq (get-text-property 0 (quote legacy) canonical-text) (quote kept)))
+                                     (setq retry (nskk-program-dict-lookup key))
+                                     (should retry)
+                                     (should-not (eq retry canonical))
+                                     (if (eq strategy (quote lru)) (progn
+                                                                     (should (= (nskk-cache-lru-hits cache) 1))
+                                                                     (should (= (nskk-cache-lru-misses cache) 0)))
+                                         (should (= (nskk-cache-lfu-hits cache) 1))
+                                         (should (= (nskk-cache-lfu-misses cache) 0)))))))))
+                          (should (= hit-case-count 8)))
+                        ))
+
+(nskk-describe "nskk program dictionary persistent miss fault matrix"
+               (nskk-it "rolls back every pre-publication boundary and retries"
+                        (let ((miss-case-count 0)
+                              (publication-copy-fault-case-count 0)
+                              (publication-copy-fault-cases (make-hash-table :test (function equal)))
+                              (miss-strategy-counts (make-hash-table :test (function eq)))
+                              (miss-boundary-counts (make-hash-table :test (function eq)))
+                              (miss-strategy-boundary-counts (make-hash-table :test (function equal))))
+                          (dolist (strategy (quote (lru lfu)))
+                            (dolist (boundary (quote (canonical-copy mark public-copy key-copy)))
+                              (dolist (timing (quote (before after)))
+                                (dolist (fault (quote (error quit)))
+                                  (progn
+                                    (cl-incf miss-case-count)
+                                    (cl-incf (gethash strategy miss-strategy-counts 0))
+                                    (cl-incf (gethash boundary miss-boundary-counts 0))
+                                    (cl-incf (gethash (cons strategy boundary) miss-strategy-boundary-counts 0))
+                                    (let ((publication-case (list boundary timing fault)))
+                                      (unless (gethash publication-case publication-copy-fault-cases)
+                                        (puthash publication-case t publication-copy-fault-cases)
+                                        (cl-incf publication-copy-fault-case-count)))
+                                    (nskk--prog-dict-test-with-env
+                                     t
+                                     (list (function ignore))
+                                     (nskk--program-dict-test-install-cache strategy 4)
+                                     (let* ((cache nskk--program-dict-cache)
+                                            (source-text (copy-sequence "candidate"))
+                                            (source-shared (vector source-text source-text))
+                                            (source-table (make-hash-table :test (quote eq)))
+                                            (source (cons source-shared source-table))
+                                            (results (list source))
+                                            (key
+                                             (list
+                                              (vector (quote miss) (copy-sequence (format "%s-%s-%s" boundary timing fault)))))
+                                            (real-copy (symbol-function (quote nskk-prolog-copy-term)))
+                                            (real-mark (symbol-function (quote nskk--program-dict-mark-no-learn)))
+                                            (target-copy
+                                             (pcase
+                                              boundary
+                                              ((quote canonical-copy) 1)
+                                              ((quote public-copy) 2)
+                                              ((quote key-copy) 3)
+                                              (_ nil)))
+                                            snapshot
+                                            caught
+                                            retry
+                                            (copy-count 0)
+                                            (mark-count 0)
+                                            (collector-count 0)
+                                            (callback-count 0))
+                                       (add-text-properties
+                                        0
+                                        (length source-text)
+                                        (list (quote nskk-no-learn) (quote old) (quote legacy) (quote kept))
+                                        source-text)
+                                       (puthash source-text source-shared source-table)
+                                       (nskk-cache-put cache (list (quote seed-a)) (list (copy-sequence "a")))
+                                       (nskk-cache-put cache (list (quote seed-b)) (list (copy-sequence "b")))
+                                       (setq snapshot (nskk--program-dict-test-cache-snapshot cache))
+                                       (cl-letf
+                                        (((symbol-function (quote nskk--program-dict-collect-all/k))
+                                          (lambda (_entries _key on-found _on-not-found)
+                                            (cl-incf collector-count)
+                                            (funcall on-found results))))
+                                        (cl-letf
+                                         (((symbol-function (quote nskk-prolog-copy-term))
+                                           (lambda (object)
+                                             (cl-incf copy-count)
+                                             (when (and target-copy (= copy-count target-copy) (eq timing (quote before)))
+                                               (signal fault (list (quote injected-miss-copy) boundary timing)))
+                                             (let ((copied (funcall real-copy object)))
+                                               (when (and target-copy (= copy-count target-copy) (eq timing (quote after)))
+                                                 (signal fault (list (quote injected-miss-copy) boundary timing)))
+                                               copied)))
+                                          ((symbol-function (quote nskk--program-dict-mark-no-learn))
+                                           (lambda (object)
+                                             (cl-incf mark-count)
+                                             (when (and (eq boundary (quote mark)) (eq timing (quote before)))
+                                               (signal fault (list (quote injected-miss-mark) timing)))
+                                             (let ((marked (funcall real-mark object)))
+                                               (when (and (eq boundary (quote mark)) (eq timing (quote after)))
+                                                 (signal fault (list (quote injected-miss-mark) timing)))
+                                               marked))))
+                                         (condition-case
+                                             condition
+                                             (nskk-program-dict-lookup/k
+                                              key
+                                              (lambda (_value)
+                                                (cl-incf callback-count))
+                                              (lambda ()
+                                                (should nil)))
+                                           ((error quit)
+                                            (setq caught condition))))
+                                        (should (eq (car caught) fault))
+                                        (should (= callback-count 0))
+                                        (should
+                                         (=
+                                          copy-count
+                                          (pcase
+                                           boundary
+                                           ((quote canonical-copy) 1)
+                                           ((quote mark) 1)
+                                           ((quote public-copy) 2)
+                                           ((quote key-copy) 3))))
+                                        (should
+                                         (=
+                                          mark-count
+                                          (if (eq boundary (quote canonical-copy)) 0
+                                              1)))
+                                        (nskk--program-dict-test-should-match-cache-snapshot cache snapshot)
+                                        (should (eq (aref source-shared 0) source-text))
+                                        (should (eq (aref source-shared 1) source-text))
+                                        (should (eq (gethash source-text source-table) source-shared))
+                                        (should
+                                         (eq (get-text-property 0 (quote nskk-no-learn) source-text) (quote old)))
+                                        (should (eq (get-text-property 0 (quote legacy) source-text) (quote kept)))
+                                        (setq retry (nskk-program-dict-lookup key)))
+                                       (should (= collector-count 2))
+                                       (should (= (nskk-cache-size cache) 3))
+                                       (should retry)
+                                       (let* ((candidate (car retry))
+                                              (shared (car candidate))
+                                              (table (cdr candidate))
+                                              (text (aref shared 0)))
+                                         (should (eq text (aref shared 1)))
+                                         (should (eq (gethash text table) shared))
+                                         (should (eq (get-text-property 0 (quote nskk-no-learn) text) t))
+                                         (should (eq (get-text-property 0 (quote legacy) text) (quote kept))))
+                                       (if (eq strategy (quote lru)) (progn
+                                                                       (should (= (nskk-cache-lru-hits cache) 0))
+                                                                       (should (= (nskk-cache-lru-misses cache) 1)))
+                                           (should (= (nskk-cache-lfu-hits cache) 0))
+                                           (should (= (nskk-cache-lfu-misses cache) 1))))))))))
+                          (should (= miss-case-count 32))
+                          (should (= publication-copy-fault-case-count 16))
+                          (should (= (hash-table-count publication-copy-fault-cases) 16))
+                          (dolist (strategy (quote (lru lfu)))
+                            (should (= (gethash strategy miss-strategy-counts 0) 16)))
+                          (dolist (boundary (quote (canonical-copy mark public-copy key-copy)))
+                            (should (= (gethash boundary miss-boundary-counts 0) 8)))
+                          (dolist (strategy (quote (lru lfu)))
+                            (dolist (boundary (quote (canonical-copy mark public-copy key-copy)))
+                              (should
+                               (= (gethash (cons strategy boundary) miss-strategy-boundary-counts 0) 4)))))
+                        ))
+
+(nskk-describe "nskk program dictionary persistent callback commit"
+               (nskk-it "keeps committed cache state when callback errors or quits"
+                        (let ((callback-fault-case-count 0))
+                          (dolist (strategy (quote (lru lfu)))
+                            (dolist (fault (quote (error quit)))
+                              (progn
+                                (cl-incf callback-fault-case-count)
+                                (nskk--prog-dict-test-with-env
+                                 t
+                                 (list (function ignore))
+                                 (nskk--program-dict-test-install-cache strategy 2)
+                                 (let* ((cache nskk--program-dict-cache)
+                                        (source-text (copy-sequence "committed"))
+                                        (source (list source-text))
+                                        (key (list (vector (quote callback) (copy-sequence (symbol-name fault)))))
+                                        (collector-count 0)
+                                        (callback-count 0)
+                                        caught
+                                        record
+                                        canonical
+                                        retry)
+                                   (add-text-properties
+                                    0
+                                    (length source-text)
+                                    (list (quote nskk-no-learn) (quote old) (quote legacy) (quote kept))
+                                    source-text)
+                                   (cl-letf
+                                    (((symbol-function (quote nskk--program-dict-collect-all/k))
+                                      (lambda (_entries _key on-found _on-not-found)
+                                        (cl-incf collector-count)
+                                        (funcall on-found (list source)))))
+                                    (condition-case
+                                        condition
+                                        (nskk-program-dict-lookup/k
+                                         key
+                                         (lambda (_value)
+                                           (cl-incf callback-count)
+                                           (signal fault (list (quote injected-callback))))
+                                         (lambda ()
+                                           (should nil)))
+                                      ((error quit)
+                                       (setq caught condition)))
+                                    (should (eq (car caught) fault))
+                                    (should (= callback-count 1))
+                                    (should (= collector-count 1))
+                                    (should (= (nskk-cache-size cache) 1))
+                                    (setq record (gethash
+                                                  key
+                                                  (if (eq strategy (quote lru)) (nskk-cache-lru-hash cache)
+                                                      (nskk-cache-lfu-hash cache))))
+                                    (should record)
+                                    (setq canonical (if (eq strategy (quote lru)) (nskk-cache-lru-node-value record)
+                                                        (nskk-cache-lfu-entry-value record)))
+                                    (should
+                                     (eq (get-text-property 0 (quote nskk-no-learn) (car (car canonical))) t))
+                                    (should
+                                     (eq (get-text-property 0 (quote legacy) (car (car canonical))) (quote kept)))
+                                    (should
+                                     (eq (get-text-property 0 (quote nskk-no-learn) source-text) (quote old)))
+                                    (nskk-program-dict-lookup/k
+                                     key
+                                     (lambda (value)
+                                       (cl-incf callback-count)
+                                       (setq retry value))
+                                     (lambda ()
+                                       (should nil))))
+                                   (should (= collector-count 1))
+                                   (should (= callback-count 2))
+                                   (should retry)
+                                   (should-not (eq retry canonical))
+                                   (if (eq strategy (quote lru)) (progn
+                                                                   (should (= (nskk-cache-lru-hits cache) 1))
+                                                                   (should (= (nskk-cache-lru-misses cache) 1)))
+                                       (should (= (nskk-cache-lfu-hits cache) 1))
+                                       (should (= (nskk-cache-lfu-misses cache) 1))))))))
+                          (should (= callback-fault-case-count 4)))
+                        ))
+
+(nskk-describe "nskk program dictionary lookup quit-safety"
+  (nskk-it "binds inhibit-quit around the cache metadata restore on both rollback paths"
+    (let (recorded)
+      (cl-letf*
+          ((real-restore
+            (symbol-function (quote nskk-cache-restore-metadata-snapshot)))
+           ((symbol-function (quote nskk-cache-restore-metadata-snapshot))
+            (lambda (snapshot)
+              (push inhibit-quit recorded)
+              (funcall real-restore snapshot))))
+        (dolist (fault (quote (error quit)))
+          ;; The inner handler's re-signal escapes synchronously through
+          ;; this stub's call frame and is caught a second time by the
+          ;; outer handler, so one inner-path fault yields two restore
+          ;; calls below (one per handler).
+          (nskk--prog-dict-test-with-env
+              t (list (function ignore))
+            (nskk--program-dict-test-install-cache (quote lru) 4)
+            (cl-letf
+                (((symbol-function (quote nskk--program-dict-collect-all/k))
+                  (lambda (_dicts _key on-found _on-not-found)
+                    (funcall on-found (list (vector (quote seed) "seed"))))))
+              (cl-letf
+                  (((symbol-function (quote nskk-prolog-copy-term))
+                    (lambda (_object) (signal fault (list (quote injected-inner))))))
+                (condition-case nil
                     (nskk-program-dict-lookup/k
-                      key
-                      (lambda (value)
-                        (cl-incf callback-count)
-                        (setq retry value))
-                      (lambda ()
-                        (should nil))))
-                  (should (= collector-count 1))
-                  (should (= callback-count 2))
-                  (should retry)
-                  (should-not (eq retry canonical))
-                  (if (eq strategy (quote lru)) (progn
-                      (should (= (nskk-cache-lru-hits cache) 1))
-                      (should (= (nskk-cache-lru-misses cache) 1)))
-                    (should (= (nskk-cache-lfu-hits cache) 1))
-                    (should (= (nskk-cache-lfu-misses cache) 1))))))))
-        (should (= callback-fault-case-count 4)))
-      ))
+                     (list (quote inner) fault)
+                     #'ignore
+                     (lambda () (should nil)))
+                  ((error quit) nil)))))
+          (nskk--prog-dict-test-with-env
+              t (list (function ignore))
+            (nskk--program-dict-test-install-cache (quote lru) 4)
+            (cl-letf
+                (((symbol-function (quote nskk--program-dict-collect-all/k))
+                  (lambda (_dicts _key _on-found _on-not-found)
+                    (signal fault (list (quote injected-outer))))))
+              (condition-case nil
+                  (nskk-program-dict-lookup/k
+                   (list (quote outer) fault)
+                   #'ignore
+                   (lambda () (should nil)))
+                ((error quit) nil))))))
+      (should (= (length recorded) 6))
+      (dolist (value recorded)
+        (should value)))))
 
-  (provide (quote nskk-program-dictionary-test)))))))
+(provide (quote nskk-program-dictionary-test))
 
 ;;; nskk-program-dictionary-test.el ends here

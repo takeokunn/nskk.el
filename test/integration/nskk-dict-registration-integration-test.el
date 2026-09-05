@@ -290,7 +290,7 @@
                 (nskk-state-set-romaji-buffer "")))
             (nskk-when
               (with-current-buffer buf-a
-                (nskk-state-append-input nskk-current-state ?か)
+                (nskk-state-set nskk-current-state 'input-buffer "か")
                 (nskk-state-set-romaji-buffer "k")))
             (nskk-then
               (with-current-buffer buf-b

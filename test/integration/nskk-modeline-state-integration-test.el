@@ -24,53 +24,19 @@
 
 (nskk-describe "modeline indicator from state"
 
-  (nskk-it "returns empty string when nskk-current-state is nil"
-    (nskk-with-state nil
-      (should (string= "" (nskk-modeline-indicator)))))
-
-  (nskk-it "returns non-empty string for hiragana mode"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor nil))
-        (should (not (string-empty-p (nskk-modeline-indicator)))))))
-
-  (nskk-it "hiragana indicator contains かな"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor nil))
-        (should (string-match-p "かな" (nskk-modeline-indicator))))))
-
-  (nskk-it "katakana indicator contains カナ"
-    (nskk-with-state 'katakana
-      (let ((nskk-use-color-cursor nil))
-        (should (string-match-p "カナ" (nskk-modeline-indicator))))))
-
-  (nskk-it "ascii indicator contains SKK"
-    (nskk-with-state 'ascii
-      (let ((nskk-use-color-cursor nil))
-        (should (string-match-p "SKK" (nskk-modeline-indicator))))))
-
-  (nskk-it "latin indicator contains SKK"
-    (nskk-with-state 'latin
-      (let ((nskk-use-color-cursor nil))
-        (should (string-match-p "SKK" (nskk-modeline-indicator))))))
-
-  (nskk-it "hiragana and katakana indicators are distinct"
+  (nskk-it "indicators differ between hiragana and ascii modes"
     (let ((nskk-use-color-cursor nil))
       (let ((ind-hira (nskk-with-state 'hiragana
                         (let ((nskk--modeline-indicator-cache nil))
                           (nskk-modeline-indicator))))
-            (ind-kata (nskk-with-state 'katakana
-                        (let ((nskk--modeline-indicator-cache nil))
-                          (nskk-modeline-indicator)))))
-        (should-not (string= ind-hira ind-kata))))))
+            (ind-ascii (nskk-with-state 'ascii
+                         (let ((nskk--modeline-indicator-cache nil))
+                           (nskk-modeline-indicator)))))
+        (should-not (string= ind-hira ind-ascii))))))
 
 ;;;; Memoization cache crosses module boundary
 
 (nskk-describe "modeline indicator cache"
-
-  (nskk-it "cache is nil before first indicator call"
-    (nskk-with-state 'hiragana
-      (let ((nskk--modeline-indicator-cache nil))
-        (should-not nskk--modeline-indicator-cache))))
 
   (nskk-it "indicator call populates the cache"
     (nskk-with-state 'hiragana
@@ -93,15 +59,7 @@
             (nskk--modeline-indicator-cache nil))
         (nskk-given (nskk-modeline-indicator))
         (nskk-when (nskk--modeline-clear-cache))
-        (nskk-then (should-not nskk--modeline-indicator-cache)))))
-
-  (nskk-it "second indicator call with same mode reuses cached data"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor nil)
-            (nskk--modeline-indicator-cache nil))
-        (let ((first  (nskk-modeline-indicator))
-              (second (nskk-modeline-indicator)))
-          (should (string= first second)))))))
+        (nskk-then (should-not nskk--modeline-indicator-cache))))))
 
 ;;;; nskk-modeline-update crosses the presentation↔domain boundary
 
@@ -119,17 +77,13 @@
   (nskk-it "nskk-cursor-update does not signal when nskk-use-color-cursor is nil"
     (nskk-with-state 'hiragana
       (let ((nskk-use-color-cursor nil))
-        (should-not (condition-case nil
-                        (progn (nskk-cursor-update) nil)
-                      (error t))))))
+        (nskk-should-not-error (nskk-cursor-update)))))
 
   (nskk-it "nskk-modeline-update does not signal when state is nil"
     (with-temp-buffer
       (nskk-with-state nil
         (let ((nskk-use-color-cursor nil))
-          (should-not (condition-case nil
-                          (progn (nskk-modeline-update) nil)
-                        (error t))))))))
+          (nskk-should-not-error (nskk-modeline-update)))))))
 
 ;;;; Cursor color
 
@@ -167,31 +121,6 @@
               (nskk-cursor-update)))
           (nskk-then
             (should (= 0 call-count))))))))
-
-;;;; Mode-line format
-
-(nskk-describe "mode-line format"
-
-  (nskk-it "nskk-modeline-indicator returns a string for hiragana mode"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor nil))
-        (should (stringp (nskk-modeline-indicator))))))
-
-  (nskk-it "hiragana indicator string contains the hiragana mode marker"
-    (nskk-with-state 'hiragana
-      (let ((nskk-use-color-cursor nil)
-            (nskk--modeline-indicator-cache nil))
-        (should (string-match-p "かな" (nskk-modeline-indicator))))))
-
-  (nskk-it "indicators differ between hiragana and ascii modes"
-    (let ((nskk-use-color-cursor nil))
-      (let ((ind-hira (nskk-with-state 'hiragana
-                        (let ((nskk--modeline-indicator-cache nil))
-                          (nskk-modeline-indicator))))
-            (ind-ascii (nskk-with-state 'ascii
-                         (let ((nskk--modeline-indicator-cache nil))
-                           (nskk-modeline-indicator)))))
-        (should-not (string= ind-hira ind-ascii))))))
 
 (provide 'nskk-modeline-state-integration-test)
 

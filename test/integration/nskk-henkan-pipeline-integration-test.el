@@ -59,7 +59,8 @@
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
         (nskk-then
-          (nskk-should-equal "漢字" (nskk-state-current-candidate nskk-current-state))
+          (nskk-should-equal "漢字" (nth (nskk-state-current-index nskk-current-state)
+                        (nskk-state-candidates nskk-current-state)))
           (should (= (nskk-state-current-index nskk-current-state) 0))))))
 
   (nskk-it "RET after conversion commits 漢字 without inserting a newline"
@@ -84,7 +85,8 @@
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
         (nskk-then
-          (nskk-should-equal "感じ" (nskk-state-current-candidate nskk-current-state))))))
+          (nskk-should-equal "感じ" (nth (nskk-state-current-index nskk-current-state)
+                        (nskk-state-candidates nskk-current-state)))))))
 
   (nskk-it "pressing x during conversion moves back to the previous candidate 漢字"
     (nskk-with-mock-dict nil
@@ -94,10 +96,12 @@
                       (nskk-handle-space)))
         (nskk-when  (let ((last-command-event ? ))
                       (nskk-handle-space)))
-        (nskk-then  (nskk-should-equal "感じ" (nskk-state-current-candidate nskk-current-state)))
+        (nskk-then  (nskk-should-equal "感じ" (nth (nskk-state-current-index nskk-current-state)
+                        (nskk-state-candidates nskk-current-state))))
         (nskk-when  (let ((last-command-event ?x))
                       (nskk-handle-x)))
-        (nskk-then  (nskk-should-equal "漢字" (nskk-state-current-candidate nskk-current-state))))))
+        (nskk-then  (nskk-should-equal "漢字" (nth (nskk-state-current-index nskk-current-state)
+                        (nskk-state-candidates nskk-current-state)))))))
 
   (nskk-it "C-g during conversion rolls back to preedit (▽) state (DDSKK-compatible)"
     (nskk-with-mock-dict nil

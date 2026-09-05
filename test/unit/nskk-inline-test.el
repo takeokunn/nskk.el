@@ -17,64 +17,44 @@
 (require 'cl-lib)
 (require 'nskk-inline)
 (require 'nskk-state)
+(require 'nskk-prolog)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
-
-;;;; Function Existence
-
-(nskk-describe "nskk-inline function existence"
-  (nskk-it "nskk-inline-show-candidate is defined"
-    (should (fboundp 'nskk-inline-show-candidate)))
-  (nskk-it "nskk-inline-hide is defined"
-    (should (fboundp 'nskk-inline-hide)))
-  (nskk-it "nskk-inline-show-registration-badge is defined"
-    (should (fboundp 'nskk-inline-show-registration-badge)))
-  (nskk-it "nskk--inline-anchor is defined"
-    (should (fboundp 'nskk--inline-anchor)))
-  (nskk-it "nskk--inline-build-horizontal is defined"
-    (should (fboundp 'nskk--inline-build-horizontal)))
-  (nskk-it "nskk--inline-build-vertical is defined"
-    (should (fboundp 'nskk--inline-build-vertical))))
 
 ;;;; Customization Variables
 
 (nskk-describe "nskk-inline customization variables"
-  (nskk-it "nskk-show-inline is defined"
-    (should (boundp 'nskk-show-inline)))
   (nskk-it "nskk-show-inline defaults to nil"
     (should (null nskk-show-inline))))
 
-;;;; Face Definitions
+;;;; Rendered After-String Content
 
-(nskk-describe "nskk-inline faces"
-  (nskk-it "nskk-inline-face is defined"
-    (should (facep 'nskk-inline-face)))
-  (nskk-it "nskk-jisyo-registration-badge-face is defined"
-    (should (facep 'nskk-jisyo-registration-badge-face))))
-
-;;;; Build Helpers
-
-(nskk-describe "nskk--inline-build-horizontal"
-  (nskk-it "returns a string"
-    (should (stringp (nskk--inline-build-horizontal "候補"))))
-  (nskk-it "contains the candidate text"
-    (should (string-match-p "候補" (nskk--inline-build-horizontal "候補"))))
-  (nskk-it "starts with a space separator"
-    (should (string-prefix-p " " (nskk--inline-build-horizontal "候補"))))
-  (nskk-it "applies nskk-inline-face"
-    (let ((result (nskk--inline-build-horizontal "test")))
-      (should (eq (get-text-property 0 'face result) 'nskk-inline-face)))))
-
-(nskk-describe "nskk--inline-build-vertical"
-  (nskk-it "returns a string"
-    (should (stringp (nskk--inline-build-vertical "候補"))))
-  (nskk-it "contains the candidate text"
-    (should (string-match-p "候補" (nskk--inline-build-vertical "候補"))))
-  (nskk-it "starts with a newline"
-    (should (string-prefix-p "\n" (nskk--inline-build-vertical "候補"))))
-  (nskk-it "applies nskk-inline-face"
-    (let ((result (nskk--inline-build-vertical "test")))
-      (should (eq (get-text-property 0 'face result) 'nskk-inline-face)))))
+(nskk-deftest-table
+  inline-show-candidate-after-string
+  :columns
+  (style expected-after)
+  :rows
+  ((t " 亜")
+   (horizontal " 亜")
+   (vertical "\n亜"))
+  :description
+  "nskk-inline-show-candidate installs the exact rendered after-string,
+fully faced with nskk-inline-face"
+  :body
+  (with-temp-buffer
+    (insert "あ")
+    (let ((nskk-show-inline style)
+          (nskk--inline-overlay nil))
+      (nskk-state-set-conversion-overlay nil)
+      (unwind-protect
+          (progn
+            (nskk-inline-show-candidate "亜")
+            (let ((after (overlay-get nskk--inline-overlay 'after-string)))
+              (should (equal after expected-after))
+              (dotimes (index (length after))
+                (should (eq (get-text-property index 'face after)
+                            'nskk-inline-face)))))
+        (nskk-delete-overlay nskk--inline-overlay)))))
 
 ;;;; Anchor
 
@@ -84,7 +64,20 @@
       (insert "abc")
       (goto-char 2)
       (nskk-state-set-conversion-overlay nil)
-      (should (= (nskk--inline-anchor) (point))))))
+      (should (= (nskk--inline-anchor) (point)))))
+
+  (nskk-it "returns the conversion overlay's end when it exists"
+    (with-temp-buffer
+      (insert "abcdef")
+      (goto-char 6)
+      (let ((conversion-overlay (make-overlay 2 4)))
+        (unwind-protect
+            (progn
+              (nskk-state-set-conversion-overlay conversion-overlay)
+              (should (= (nskk--inline-anchor) 4))
+              (should (/= (nskk--inline-anchor) (point))))
+          (delete-overlay conversion-overlay)
+          (nskk-state-set-conversion-overlay nil))))))
 
 ;;;; Show Candidate Guards
 
@@ -130,6 +123,35 @@
         (nskk-inline-show-candidate "亜")
         (unwind-protect
             (should (overlayp nskk--inline-overlay))
+          (nskk-delete-overlay nskk--inline-overlay)))))
+
+  (nskk-it "reuses the existing overlay object across calls"
+    (with-temp-buffer
+      (insert "あ")
+      (let ((nskk-show-inline t)
+            (nskk--inline-overlay nil))
+        (nskk-state-set-conversion-overlay nil)
+        (unwind-protect
+            (progn
+              (nskk-inline-show-candidate "亜")
+              (let ((first-overlay nskk--inline-overlay))
+                (should (overlayp first-overlay))
+                (nskk-inline-show-candidate "唖")
+                (should (eq nskk--inline-overlay first-overlay))
+                (should (equal (overlay-get nskk--inline-overlay 'after-string)
+                               " 唖"))))
+          (nskk-delete-overlay nskk--inline-overlay)))))
+
+  (nskk-it "sets the overlay priority to nskk-overlay-priority-inline"
+    (with-temp-buffer
+      (insert "あ")
+      (let ((nskk-show-inline t)
+            (nskk--inline-overlay nil))
+        (nskk-state-set-conversion-overlay nil)
+        (nskk-inline-show-candidate "亜")
+        (unwind-protect
+            (should (= (overlay-get nskk--inline-overlay 'priority)
+                       nskk-overlay-priority-inline))
           (nskk-delete-overlay nskk--inline-overlay))))))
 
 ;;;; Hide
@@ -138,9 +160,7 @@
   (nskk-it "is safe to call when overlay is nil"
     (with-temp-buffer
       (let ((nskk--inline-overlay nil))
-        (should-not (condition-case err
-                        (progn (nskk-inline-hide) nil)
-                      (error err))))))
+        (nskk-should-not-error (nskk-inline-hide)))))
 
   (nskk-it "deletes existing overlay"
     (with-temp-buffer
@@ -168,13 +188,59 @@
         (nskk-inline-show-registration-badge)
         (unwind-protect
             (should (overlayp nskk--inline-overlay))
+          (nskk-delete-overlay nskk--inline-overlay)))))
+
+  (nskk-it "sets after-string to an unfaced newline followed by the faced badge"
+    (with-temp-buffer
+      (insert "あ")
+      (let ((nskk-show-inline t)
+            (nskk--inline-overlay nil))
+        (nskk-state-set-conversion-overlay nil)
+        (nskk-inline-show-registration-badge)
+        (unwind-protect
+            (let ((after (overlay-get nskk--inline-overlay 'after-string)))
+              (should (equal after (concat "\n" "↓辞書登録中↓")))
+              (should (null (get-text-property 0 'face after)))
+              (cl-loop for index from 1 below (length after)
+                       do (should (eq (get-text-property index 'face after)
+                                      'nskk-jisyo-registration-badge-face))))
           (nskk-delete-overlay nskk--inline-overlay))))))
 
+;;;; Presentation Action Registration
+
+(nskk-describe "nskk-inline presentation action registration"
+  (nskk-it "registers this module's callback for cleanup"
+    (should (memq 'nskk-inline-hide (nskk-prolog-presentation-actions 'cleanup))))
+
+  (nskk-it "registers this module's callback for finalize"
+    (should (memq 'nskk--inline-finalize
+                  (nskk-prolog-presentation-actions 'finalize))))
+
+  (nskk-it "registers this module's callback for show-candidate"
+    (should (memq 'nskk-inline-show-candidate
+                  (nskk-prolog-presentation-actions 'show-candidate))))
+
+  (nskk-it "registers this module's callback for show-registration-badge"
+    (should (memq 'nskk-inline-show-registration-badge
+                  (nskk-prolog-presentation-actions 'show-registration-badge))))
+
+  ;; `nskk-inline-hide' and `nskk--inline-finalize' have identical bodies, so a
+  ;; dedup would naturally register the former for both phases.  That silently
+  ;; removes the second sweep: `nskk--run-presentation-actions' swallows a
+  ;; signalling cleanup callback, and only a separately-named finalize callback
+  ;; still deletes the overlay.
+  (nskk-it "keeps finalize on a callback the cleanup phase does not share"
+    (let ((finalize (nskk-prolog-presentation-actions 'finalize)))
+      (should (memq 'nskk--inline-finalize finalize))
+      (should-not (memq 'nskk-inline-hide finalize)))))
+
+;;;; Sanitization
+
 (nskk-describe "untrusted inline display properties"
-    (nskk-it "sanitizes horizontal and vertical copies before applying inline face"
-      (dolist (spec '((nskk--inline-build-horizontal " 候補")
-                      (nskk--inline-build-vertical "\n候補")))
-        (let* ((source (propertize "候補"
+  (nskk-it "sanitizes candidates before applying inline face"
+    (dolist (spec '((t " 候補")
+                    (vertical "\n候補")))
+      (let* ((source (propertize "候補"
                                   'display "spoofed"
                                   'keymap (make-sparse-keymap)
                                   'local-map (make-sparse-keymap)
@@ -182,18 +248,19 @@
                                   'help-echo "untrusted"
                                   'face 'error
                                   'nskk-no-learn t))
-               (source-copy (copy-sequence source))
-               (rendered (funcall (car spec) source)))
-          (should (equal (substring-no-properties rendered) (cadr spec)))
-          (dolist (property '(display keymap local-map mouse-face help-echo))
-            (should-not
-             (text-property-not-all 0 (length rendered) property nil rendered)))
-          (dotimes (index (length rendered))
-            (should (eq (get-text-property index 'face rendered)
-                        'nskk-inline-face)))
-          (should (equal source source-copy))
-          (should (eq (get-text-property 0 'face source) 'error))
-          (should (eq (get-text-property 0 'nskk-no-learn source) t))))))
-  (provide 'nskk-inline-test)
+             (source-copy (copy-sequence source))
+             (rendered (nskk--inline-render source (car spec))))
+        (should (equal (substring-no-properties rendered) (cadr spec)))
+        (dolist (property '(display keymap local-map mouse-face help-echo))
+          (should-not
+           (text-property-not-all 0 (length rendered) property nil rendered)))
+        (dotimes (index (length rendered))
+          (should (eq (get-text-property index 'face rendered)
+                      'nskk-inline-face)))
+        (should (equal source source-copy))
+        (should (eq (get-text-property 0 'face source) 'error))
+        (should (eq (get-text-property 0 'nskk-no-learn source) t))))))
+
+(provide 'nskk-inline-test)
 
 ;;; nskk-inline-test.el ends here
