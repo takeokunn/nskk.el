@@ -715,6 +715,32 @@ NAME-VAR is a string used to name both.  Both are destroyed afterwards, and
          ("1/漢字;かんじ/\n"     ("漢字")))
   :body (should (equal (nskk--server-parse-response response) expected)))
 
+(nskk-deftest-table server-parse-okuri-blocks
+  :columns (key response expected)
+  :rows (("かk" "1/書/描/[く/書/]/[け/描/]/\n" ("書" "描"))
+         ("おくr" "1/送/[る/贈/]/後/\n" ("送"))
+         ("かk" "1/書/描/\n" ("書" "描"))
+         ("かk" "1/[く/書/]/\n" nil)
+         ("かk" "1/書/[く/描/\n" ("書"))
+         ("かk" "1/字[角]/]/[く/書/]/\n" ("字[角]" "]"))
+         ("かっこ" "1/[角]/]/\n" ("[角]" "]"))
+         ("bookmark" "1/[角]/]/\n" ("[角]" "]"))
+         ("k" "1/[角]/]/\n" ("[角]" "]"))
+         ("" "1/[角]/]/\n" ("[角]" "]"))
+         (nil "1/[角]/]/\n" ("[角]" "]"))
+         ("かK" "1/[角]/]/\n" ("[角]" "]")))
+  :body (should (equal (nskk--server-parse-response response key) expected)))
+
+(ert-deftest nskk-server-okuri-block-annotations ()
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk--annotation-initialized nil))
+      (should (equal (nskk--server-parse-response
+                      "1/書;common/[く/描;hidden/]/後;trailing/\n" "かk")
+                     '("書")))
+      (should (equal (nskk-annotation-lookup "かk" "書") "common"))
+      (should-not (nskk-annotation-lookup "かk" "描"))
+      (should-not (nskk-annotation-lookup "かk" "後")))))
+
 (nskk-deftest-table server-strip-annotation
   :columns (input expected)
   :rows (("漢字;注釈"      "漢字")

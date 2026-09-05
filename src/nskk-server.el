@@ -563,6 +563,19 @@ An annotation follows a semicolon: \"word;note\" yields \"word\"."
   (let ((semi (string-search ";" candidate)))
     (if semi (substring candidate 0 semi) candidate)))
 
+(defun nskk--server-common-candidates (body key)
+  "Return a list of candidates in BODY before KEY's okuri blocks.
+As in DDSKK's `skk-compute-henkan-lists', the common list for an okuri-ari
+KEY ends at the first block opener;
+closing a block does not resume that list.  Other keys retain literal brackets."
+  (let* ((len (length key))
+         (okuri (and (>= len 2)
+                     (<= ?a (aref key (1- len)) ?z)
+                     (>= (aref key (- len 2)) 128))))
+    (cl-loop for candidate in (split-string body "/" t)
+             until (and okuri (string-prefix-p "[" candidate))
+             collect candidate)))
+
 (defun nskk--server-parse-candidates (body &optional key)
   "Return the candidate list parsed from skkserv response BODY.
 Candidates holding control characters are dropped, annotations stripped,
@@ -582,7 +595,7 @@ When KEY is non-nil, register retained candidates' annotations for KEY."
                        (nskk-annotation-load-from-candidates
                         key (list (cons stripped (substring trimmed (1+ semi))))))))
                  stripped))))
-         (split-string body "/" t))))
+         (nskk--server-common-candidates body key))))
 
 (defun/k nskk--server-parse-response (response &optional key)
   "Parse a skkserv command-1 RESPONSE string into a candidate list.
