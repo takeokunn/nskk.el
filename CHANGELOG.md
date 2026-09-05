@@ -36,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machinery can enumerate tracked state without naming private symbols.
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
-
+- Added `nskk-trie-delete/k`, the continuation-passing entry point for trie
+  deletion, distinguishing "key was present and removed" from "key was not
+  present" without collapsing both onto the sync wrapper's `t`/nil.
 - Added `nskk-display-sanitize`, which strips every text property from
   untrusted dictionary text before applying a single display face, and
   `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
@@ -69,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables into a dedicated function; other long functions were reviewed and
   left intact where splitting would relocate, not reduce, shared
   transactional or CPS-macro-sensitive state.
+- `nskk-trie-has-prefix-p` now returns `t` rather than the internal
+  `nskk-trie-node` struct it previously leaked as its truthy value. Callers
+  that only tested for non-nil are unaffected; callers that inspected the
+  returned node were relying on undocumented behavior.
 - Decomposed the two `nskk-show-mode` display functions by separating each
   one's install sequence from its fail-closed handler, and factored the
   repeated error-and-quit-swallowing cleanup into a single helper. The
@@ -105,6 +111,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordinary function returning the converted kana. It never signalled
   absence, so its not-found continuation was unreachable; the generated
   `nskk-convert-input-to-kana-final/k` is gone.
+- Replaced six `fboundp` existence checks in the region command tests with
+  coverage for paths they left untested: conversion of a partial region
+  with surrounding text left intact, point placement after a successful
+  conversion, an interior region resolved through the interactive bounds
+  spec, rejection of a mark left active while `transient-mark-mode` is
+  off, mark reactivation when the failing body itself deactivated the
+  mark, a dakuten combination that shortens the converted span, and the
+  0x7E/U+FF5E boundary of the ASCII/full-width range.
 - Reworked the skkserv client. Connection setup, teardown and rollback are
   split into named helpers; the duplicated poll-budget normalisation is now a
   single function; and Prolog rollback uses the engine's own
@@ -150,9 +164,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation are Elisp-side and unchanged in behaviour.
   `mode-properties/5`, `mode-category/2` and `japanese-mode/1` remain, as
   other modules query them.
+- Made the debug module's hand-written CPS continuation-pattern declaration
+  visible during byte compilation, so the CPS bind forms' guard against
+  binding a `defun/done` function is no longer inert while the file compiles.
 
 ### Fixed
 
+- Corrected the README's region-command pattern, which read
+  `M-x nskk-region-*` and matched none of the six commands; every one is
+  named `nskk-*-region`.
 - Fixed a state-snapshot ordering bug in the tutorial dictionary-state
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
@@ -215,6 +235,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   production code queried: `search-backend`, `search-result-action` and
   `should-update-overlay`. The cross-module tables `converting-phase`,
   `preedit-phase` and `disable-cleanup` are unchanged.
+- Removed an unreachable nil-result guard and an unused `nskk-cps-macros`
+  require from the region module. Every converter the region commands pass
+  to `nskk--region-convert` receives `buffer-substring-no-properties`
+  output, which is always a string, so the guard's nil branch could not be
+  entered; the module referenced no CPS macro.
 - Removed the `nskk-cache-field` macro, its backing `cache-field-fn/3`
   Prolog fact table, and the CPS-style `nskk-cache-p/k` predicate from
   `nskk-cache.el`. None had callers outside `nskk-cache.el` and its test
@@ -222,6 +247,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `nskk--server-prolog-state-snapshot` and
   `nskk--server-restore-prolog-state` from the skkserv client in favour of the
   Prolog engine's own per-key snapshot API.
+- Removed a dead, zero-caller private helper (`nskk--debug-format`) and the
+  unused `debug-category` Prolog facts and their hash index from the debug
+  module.
 
 ## [0.3.0] - 2026-07-26
 

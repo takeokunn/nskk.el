@@ -17,7 +17,7 @@
 (require 'nskk-server)
 (require 'nskk-henkan)
 (require 'nskk-state)
-(require 'nskk-custom)
+(require 'nskk)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 

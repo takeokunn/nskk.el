@@ -1,4 +1,4 @@
-;;; nskk-custom-integration-test.el --- Integration tests for nskk-custom  -*- lexical-binding: t; -*-
+;;; nskk-custom-integration-test.el --- Integration tests for NSKK options  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 NSKK Authors
 
@@ -9,12 +9,12 @@
 
 ;;; Commentary:
 
-;; Integration tests for nskk-custom.
+;; Integration tests for the NSKK customization surface.
 
 ;;; Code:
 
 (require 'ert)
-(require 'nskk-custom)
+(require 'nskk)
 (require 'nskk-state)
 (require 'nskk-modeline)
 (require 'nskk-search)

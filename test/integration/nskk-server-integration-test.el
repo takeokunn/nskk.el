@@ -16,7 +16,7 @@
 (require 'ert)
 (require 'nskk-test-macros)
 (require 'nskk-server)
-(require 'nskk-custom)
+(require 'nskk)
 
 ;;;; Test utilities
 

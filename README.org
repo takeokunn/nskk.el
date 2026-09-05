@@ -268,7 +268,7 @@ All optional features are auto-loaded when NSKK starts if their modules are pres
 | Dynamic dcomp multi  | =nskk-inline=          | =(setopt nskk-dcomp-multiple-activate t)=    |
 | Context auto-mode    | =nskk-context=         | =(nskk-context-global-mode 1)=               |
 | Isearch integration  | =nskk-isearch=         | =(setopt nskk-isearch-enable t)=             |
-| Region operations    | =nskk-region=          | Available as =M-x nskk-region-*= commands   |
+| Region operations    | =nskk-region=          | Available as =M-x nskk-*-region= commands   |
 
 ** Customization Group
 #+begin_example

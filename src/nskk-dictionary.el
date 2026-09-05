@@ -18,7 +18,8 @@
 ;;; Commentary:
 ;; Dictionary loading and lookup for NSKK (Layer 1: Core Engine).
 ;;
-;; Layer position: L1 (Core Engine) -- depends on nskk-prolog and nskk-cps-macros.
+;; Layer position: L1 (Core Engine) -- depends on nskk-prolog,
+;;   nskk-dict-transaction, and nskk-cps-macros.
 ;;
 ;; Provides loading, lookup, registration, and persistence of SKK dictionaries.
 ;; Supports both user dictionaries (read/write) and system dictionaries
@@ -70,6 +71,14 @@
 (declare-function nskk-search-restore-cache-snapshot "nskk-search" (snapshot))
 
 (declare-function nskk-prolog-trie-bulk-assert "nskk-prolog")
+
+(defconst nskk--dict-storage-missing
+  (make-symbol "nskk--dict-storage-missing")
+  "Sentinel used to distinguish absent Prolog storage entries.
+Only ever passed as a `gethash' default and collapsed to a boolean before
+it is stored, so any object unique to this file will do; it deliberately
+does not reuse nskk-dict-transaction's sentinel, whose identity is private
+to the snapshot vectors that carry it.")
 
 ;; Optional: annotation support
 (declare-function nskk-annotation-initialize "nskk-annotation")
@@ -126,6 +135,30 @@ Possible values:
   :type '(choice file (const nil))
   :package-version '(nskk . "0.1.0")
   :group 'nskk-dictionary)
+
+(defgroup
+  nskk-kakutei-jisyo
+  nil
+  "Confirmed dictionary settings for NSKK."
+  :prefix
+  "nskk-kakutei-"
+  :group
+  'nskk)
+
+(defcustom
+  nskk-kakutei-jisyo
+  nil
+  "Path to the confirmed (kakutei) dictionary file, or nil to disable.
+The confirmed dictionary contains entries that are committed immediately
+without showing a candidate selection menu.  When a reading matches an
+entry in this dictionary, the single candidate is inserted directly.
+The file format is the same as the standard SKK dictionary format."
+  :type
+  '(choice file (const nil))
+  :package-version
+  '(nskk . "0.1.0")
+  :group
+  'nskk-kakutei-jisyo)
 
 (defvar nskk-jisyo-update-hook nil
   "Hook run while a dictionary update crosses its publication boundary.
@@ -620,7 +653,7 @@ Database and warm index-bucket appends run in O(length ENTRIES).  A bucket
 created outside this function pays a one-time tail discovery cost.  A fresh
 predicate receives a trie index; existing index strategy is retained."
   (let* ((key (nskk-prolog-clause-key predicate 2))
-         (missing nskk-dict-transaction--storage-missing)
+         (missing nskk--dict-storage-missing)
          (previous (nskk-dict-transaction-predicate-snapshot key))
          (old-database-head (gethash key (nskk-prolog-database)))
          (old-database-tail (gethash key (nskk-prolog-database-tails)))

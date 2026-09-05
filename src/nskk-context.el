@@ -30,8 +30,14 @@
 
 (require 'cl-lib)
 (require 'nskk-state)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
+
+;; `nskk-context-global-mode' is autoloaded, so this file can run in a session
+;; where `nskk.el' and `nskk-input.el' were never loaded.  `nskk-mode' is read
+;; through `bound-and-true-p' for that reason.  `nskk-set-mode-latin' needs no
+;; runtime guard: every call site is dominated by that `nskk-mode' test, and a
+;; non-nil `nskk-mode' implies `nskk.el' already required `nskk-input'.
+(declare-function nskk-set-mode-latin "nskk-input")
 
 ;;;; Customization
 
@@ -58,9 +64,9 @@ When t, all `prog-mode' derived modes trigger auto-switching."
   :group 'nskk-context)
 
 (defcustom nskk-context-check-interval 0
-  "Minimum number of commands between context checks.
-Zero means check on every command (most responsive but slight overhead).
-Higher values reduce overhead but may lag in mode switching."
+  "Run a context check once every this many commands.
+The values 0 and 1 both check on every command.  Larger values leave
+`post-command-hook' cheaper at the cost of switching later."
   :type 'natnum
   :safe #'natnump
   :package-version '(nskk . "0.1.0")
@@ -68,12 +74,8 @@ Higher values reduce overhead but may lag in mode switching."
 
 ;;;; Internal State
 
-(defvar-local nskk--context-was-ascii nil
-  "Non-nil if we explicitly switched to ASCII mode via context-skk.
-Used to avoid redundant mode switches when already in ASCII.")
-
 (defvar-local nskk--context-command-count 0
-  "Counter for throttling context checks.")
+  "Commands seen since the last context check.")
 
 ;;;; Internal Helpers
 
@@ -86,48 +88,31 @@ Checks `nskk-context-programming-mode' against the current major mode."
     (_ nil)))
 
 (defun nskk--context-in-japanese-context-p ()
-  "Return non-nil if point is in a context where Japanese input is appropriate.
-Returns t when inside a string literal, comment, or doc string.
-Uses `syntax-ppss' for O(log n) context detection."
+  "Return non-nil if point is inside a string literal or a comment."
   (let ((ppss (syntax-ppss)))
-    (or (nth 3 ppss)    ; inside string
-        (nth 4 ppss)))) ; inside comment
+    (or (nth 3 ppss)
+        (nth 4 ppss))))
 
-(defun nskk--context-get-current-mode ()
-  "Return the current NSKK input mode symbol, or nil if NSKK is not active."
-  (when (and (boundp 'nskk-current-state) nskk-current-state)
-    (nskk-state-mode nskk-current-state)))
-
-(defun nskk--context-switch-to-ascii ()
-  "Switch NSKK to ASCII mode due to context auto-detection.
-Displays `nskk-context-mode-off-message' in the echo area."
-  (when (fboundp 'nskk-set-mode-latin)
-    (nskk-set-mode-latin)
-    (setq nskk--context-was-ascii t)
-    (let ((message-log-max nil))
-      (message "%s" nskk-context-mode-off-message))))
+(defun/done nskk--context-switch-to-ascii ()
+  "Switch NSKK to ASCII mode and echo `nskk-context-mode-off-message'."
+  (nskk-set-mode-latin)
+  (let ((message-log-max nil))
+    (message "%s" nskk-context-mode-off-message)))
 
 ;;;; Post-Command Handler
 
-(defun nskk--context-post-command ()
-  "Post-command hook for context-aware NSKK mode switching.
-Checks if point is outside a string/comment context in a programming mode,
-and switches to ASCII mode automatically if so."
+(defun/done nskk--context-post-command ()
+  "Switch NSKK to ASCII mode when point sits in code rather than prose.
+Runs from `post-command-hook', throttled by `nskk-context-check-interval'."
   (when (>= (cl-incf nskk--context-command-count) nskk-context-check-interval)
     (setq nskk--context-command-count 0)
-    (when (and (boundp 'nskk-mode) nskk-mode
-               (boundp 'nskk-current-state) nskk-current-state
-               (nskk--context-programming-mode-p))
-      (let ((current-mode (nskk--context-get-current-mode)))
-        (cond
-         ((and current-mode
-               (not (memq current-mode '(ascii latin)))
-               (not (nskk--context-in-japanese-context-p)))
-          (nskk--context-switch-to-ascii))
-         ((and nskk--context-was-ascii
-               (nskk--context-in-japanese-context-p))
-          ;; ddskk requires the user to switch back to Japanese explicitly.
-          (setq nskk--context-was-ascii nil)))))))
+    (let ((mode (and (bound-and-true-p nskk-mode)
+                     (nskk--context-programming-mode-p)
+                     (nskk-state-get-mode))))
+      (when (and mode
+                 (not (memq mode '(ascii latin)))
+                 (not (nskk--context-in-japanese-context-p)))
+        (nskk--context-switch-to-ascii)))))
 
 ;;;; Minor Mode
 
@@ -138,25 +123,24 @@ When enabled in programming modes, automatically switches NSKK to ASCII
 mode when editing code outside string literals and comments.  This prevents
 accidental Japanese input when writing code.
 
-The mode indicator \";\u25bd\" is shown in the mode-line when enabled."
+The mode indicator \" ;▽\" is shown in the mode-line when enabled."
   :lighter " ;▽"
   :group 'nskk-context
   (if nskk-context-mode
       (add-hook 'post-command-hook #'nskk--context-post-command nil t)
     (remove-hook 'post-command-hook #'nskk--context-post-command t)
-    (setq nskk--context-was-ascii nil
-          nskk--context-command-count 0)))
+    (setq nskk--context-command-count 0)))
+
+(defun nskk--context-maybe-enable ()
+  "Enable `nskk-context-mode' in programming buffers."
+  (when (nskk--context-programming-mode-p)
+    (nskk-context-mode 1)))
 
 ;;;###autoload
 (define-globalized-minor-mode nskk-context-global-mode
   nskk-context-mode
   nskk--context-maybe-enable
   :group 'nskk-context)
-
-(defun nskk--context-maybe-enable ()
-  "Enable `nskk-context-mode' in programming buffers."
-  (when (nskk--context-programming-mode-p)
-    (nskk-context-mode 1)))
 
 (provide 'nskk-context)
 

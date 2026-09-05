@@ -19,22 +19,6 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 
-;;;; Function Existence
-
-(nskk-describe "nskk-region function existence"
-  (nskk-it "nskk-hiragana-region is defined"
-    (should (fboundp 'nskk-hiragana-region)))
-  (nskk-it "nskk-katakana-region is defined"
-    (should (fboundp 'nskk-katakana-region)))
-  (nskk-it "nskk-hankaku-katakana-region is defined"
-    (should (fboundp 'nskk-hankaku-katakana-region)))
-  (nskk-it "nskk-zenkaku-katakana-region is defined"
-    (should (fboundp 'nskk-zenkaku-katakana-region)))
-  (nskk-it "nskk-jisx0208-latin-region is defined"
-    (should (fboundp 'nskk-jisx0208-latin-region)))
-  (nskk-it "nskk-latin-region is defined"
-    (should (fboundp 'nskk-latin-region))))
-
 ;;;; ASCII ↔ Full-Width Single Character Conversion
 
 (nskk-deftest-table ascii-to-zenkaku-chars
@@ -46,6 +30,7 @@
          (?0 "０")
          (?9 "９")
          (?! "！")
+         (?~ "～")
          (?  "\u3000"))
   :body
   (should (equal (nskk--ascii-char-to-zenkaku char) expected)))
@@ -59,6 +44,7 @@
          (?０ "0")
          (?９ "9")
          (?！ "!")
+         (?～ "~")
          (?\u3000 " "))
   :body
   (should (equal (nskk--zenkaku-char-to-ascii char) expected)))
@@ -321,6 +307,64 @@
           (should (= (mark) before-mark))
           (should (eq mark-active before-mark-active)))))))
 
-(provide (quote nskk-region-test))
+;;;; Partial Region
+
+(nskk-deftest-table partial-region-conversion
+  :columns (command input expected)
+  :rows ((nskk-hiragana-region "アイウ" "あいう")
+         (nskk-katakana-region "あいう" "アイウ")
+         (nskk-hankaku-katakana-region "アイウ" "ｱｲｳ")
+         (nskk-zenkaku-katakana-region "ｱｲｳ" "アイウ")
+         (nskk-jisx0208-latin-region "abc" "ａｂｃ")
+         (nskk-latin-region "ａｂｃ" "abc")
+         (nskk-zenkaku-katakana-region "ｶﾞ" "ガ"))
+  :body
+  (with-temp-buffer
+    (insert "前" input "後")
+    (let ((beg (1+ (point-min))))
+      (funcall command beg (+ beg (length input)))
+      (should (equal (buffer-string) (concat "前" expected "後")))
+      (should (= (point) (+ beg (length expected)))))))
+
+(ert-deftest nskk-region-test/interactive-bounds-locate-an-interior-region ()
+  "Convert only the selected span when the region is interior to the buffer."
+  (with-temp-buffer
+    (insert "前アイウ後")
+    (let ((transient-mark-mode t))
+      (push-mark 2 t t)
+      (goto-char 5)
+      (should (use-region-p))
+      (call-interactively 'nskk-hiragana-region)
+      (should (equal (buffer-string) "前あいう後")))))
+
+(ert-deftest nskk-region-test/stale-mark-without-transient-mark-mode-signals ()
+  "Reject a mark left active while `transient-mark-mode' is off."
+  (with-temp-buffer
+    (insert "アイウ")
+    (goto-char (point-max))
+    (push-mark (point-min) t t)
+    (let ((transient-mark-mode nil)
+          (mark-active t))
+      (should-error (call-interactively 'nskk-hiragana-region) :type 'user-error)
+      (should (equal (buffer-string) "アイウ")))))
+
+(ert-deftest nskk-region-test/restores-mark-deactivated-by-failing-body ()
+  "Restore mark activation when the failing body itself deactivated the mark."
+  (with-temp-buffer
+    (insert "あいう")
+    (goto-char (point-max))
+    (push-mark (point-min) t t)
+    (setq mark-active t)
+    (let ((before-change-functions
+           (list (lambda (&rest _)
+                   (setq mark-active nil)
+                   (signal 'error '(injected-region-conversion))))))
+      (let ((caught (condition-case data
+                        (nskk-katakana-region (point-min) (point-max))
+                      (error data))))
+        (should (equal caught '(error injected-region-conversion)))
+        (should (eq mark-active t))))))
+
+(provide 'nskk-region-test)
 
 ;;; nskk-region-test.el ends here

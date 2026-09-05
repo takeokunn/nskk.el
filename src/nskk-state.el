@@ -30,8 +30,62 @@
 
 (require 'cl-lib)
 (require 'nskk-prolog)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
+
+;;;; Customization
+
+(defgroup nskk-state nil
+  "State management settings."
+  :prefix "nskk-state-"
+  :group 'nskk)
+
+(defcustom nskk-state-default-mode 'ascii
+  "Default input mode when NSKK is activated."
+  :type '(choice (const :tag "ASCII" ascii)
+                 (const :tag "Hiragana" hiragana)
+                 (const :tag "Katakana" katakana)
+                 (const :tag "Full-width Latin" jisx0208-latin))
+  :safe (lambda (v) (memq v '(ascii hiragana katakana jisx0208-latin)))
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-state)
+
+(defface nskk-cursor-hiragana
+  '((((background dark)) (:background "coral4"))
+    (t (:background "pink")))
+  "Cursor color face for hiragana mode.
+The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-ui)
+
+(defface nskk-cursor-katakana
+  '((((background dark)) (:background "forestgreen"))
+    (t (:background "green")))
+  "Cursor color face for katakana mode.
+The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-ui)
+
+(defface nskk-cursor-latin
+  '((((background dark)) (:background "ivory4"))
+    (t (:background "gray")))
+  "Cursor color face for ASCII/latin mode.
+The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-ui)
+
+(defface nskk-cursor-jisx0208-latin
+  '((t (:background "gold")))
+  "Cursor color face for full-width latin mode.
+The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-ui)
+
+(defface nskk-cursor-abbrev
+  '((t (:background "royalblue")))
+  "Cursor color face for abbrev mode.
+The :background attribute is used as the cursor color via `face-attribute'."
+  :package-version '(nskk . "0.1.0")
+  :group 'nskk-ui)
 
 ;; Main state structure
 (cl-defstruct nskk-state
