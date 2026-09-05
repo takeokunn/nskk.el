@@ -641,7 +641,7 @@ shadow-demoted key patterns), then sends C-g.  After C-g, both
 `nskk--deferred-azik-state' and `nskk--deferred-vowel-shadow-state'
 must be nil.
 
-This directly exercises the FR-001 fix: `nskk-clear-azik-pending-state'
+This directly exercises the fix: `nskk-clear-azik-pending-state'
 now includes these two variables in its dolist, so the cancel-preedit
 and rollback-conversion paths clear them just like the three pre-existing
 colon-okurigana and sokuon-okurigana flags."

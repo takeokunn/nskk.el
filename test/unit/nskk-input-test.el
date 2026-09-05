@@ -1551,7 +1551,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (+ item #xFEE0))))
 
 ;;;
-;;; q-key-action Prolog Rule Tests (FR-T-005)
+;;; q-key-action Prolog Rule Tests
 ;;;
 
 (nskk-describe "q-key-action Prolog rules"
@@ -1999,7 +1999,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
     (should (fboundp 'nskk--init-kakutei-rules))))
 
 ;;;
-;;; romaji-classify Prolog rule tests (FR-T-006)
+;;; romaji-classify Prolog rule tests
 ;;;
 
 (nskk-describe "romaji-classify Prolog rules"
@@ -2028,7 +2028,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
                 'n-consonant))))
 
 ;;;
-;;; nskk--init-romaji-classify-rules (FR-T-007)
+;;; nskk--init-romaji-classify-rules
 ;;;
 
 (nskk-describe "nskk--init-romaji-classify-rules"
@@ -2249,14 +2249,14 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
         (should (= call-count 1))))))
 
 ;;;
-;;; FR-002: AZIK hatsuon rules fire in both preedit and idle
+;;; AZIK hatsuon rules fire in both preedit and idle
 ;;;
 ;;; Rationale: AZIK two-char rules like nz→なん, nk→にん, nj→ぬん are
 ;;; complete syllable patterns, not n-before-consonant shortcuts.  They
 ;;; must fire in preedit (▽) too.  To type ん+consonant in a reading,
 ;;; users type nn first (e.g. KAnnki = かんき, not KAnki which gives かにんi).
 
-(nskk-describe "FR-002: hatsuon-blocker classification (nskk-input layer)"
+(nskk-describe "hatsuon-blocker classification (nskk-input layer)"
 
   (nskk-it "vowels a i u e o are hatsuon-blockers (n stays pending before vowel)"
     (nskk-prolog-test-with-isolated-db
@@ -2286,7 +2286,7 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
       (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?s)))
       (should-not (nskk-prolog-holds-p `(hatsuon-blocker ,?t))))))
 
-(nskk-describe "FR-002: AZIK hatsuon fires in preedit (▽) mode"
+(nskk-describe "AZIK hatsuon fires in preedit (▽) mode"
 
   (nskk-it "nj in preedit (▽): AZIK hatsuon match fires (emits ぬん)"
     (nskk-prolog-test-with-isolated-db

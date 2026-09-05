@@ -5,9 +5,116 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - Unreleased
+
+### Added
+
+- Added a public accessor API (getter/setter function pairs) for
+  previously private cross-module state in the Prolog engine, buffer-local
+  editing state, converter/AZIK rule state, dictionary indices, search
+  caches, show-mode overlays, and the henkan/input/keymap subsystem,
+  replacing direct cross-module access to private `nskk--*` symbols
+  throughout the source tree.
+- Added `nskk-trie-delete/k`, the continuation-passing entry point for trie
+  deletion, distinguishing "key was present and removed" from "key was not
+  present" without collapsing both onto the sync wrapper's `t`/nil.
+- Added `nskk-display-sanitize`, which strips every text property from
+  untrusted dictionary text before applying a single display face, and
+  `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
+  and `nskk-overlay-priority-mode-indicator`, which name the overlay
+  priority values the display sites previously carried as bare integers.
+  The numeric values are unchanged.
 
 ### Changed
+
+- `nskk-show-inline` now offers `horizontal` in its customize `:type`. The
+  symbol was already documented in the option's docstring and accepted by
+  its `:safe` predicate, but could not be chosen through customize.
+- The tutorial's quit key moved from `q` to `C-c C-q`, and `g` and `r`
+  now insert when point is in an exercise input area and navigate only
+  from the lesson text. `q` and `Q` are left to NSKK, which needs them
+  for the katakana toggle and the numeric conversion the lessons teach.
+- Changed skkserv resource cleanup to one attempt per call. A process or
+  buffer whose teardown faults stays registered and is reclaimed by the next
+  close or open, rather than being retried immediately within the same call.
+
+### Removed
+
+- Removed the `nskk-show-tooltip` user option. Its only readers were the
+  tooltip candidate-display functions deleted earlier in this cycle, so
+  setting it had no effect; its documented precedence over `nskk-show-inline`
+  was never implemented. The `nskk-candidate-window` customization group
+  remains, carrying the candidate faces.
+- **Breaking:** removed the search entry points no production code path
+  reached. Conversion searches through `nskk-core-search` in
+  `nskk-henkan.el`, which calls `nskk-search-prefix` and
+  `nskk-search-partial` directly and resolves exact lookups through
+  `nskk-dict-lookup`. The generic `nskk-search` dispatcher and the
+  `nskk-search-exact`, `nskk-search-fuzzy` and `nskk-search-with-cache`
+  entry points were reachable only from tests and benchmarks, and are gone
+  with their `/k` variants.
+- **Breaking:** removed the search result cache that only
+  `nskk-search-with-cache` populated, including `nskk-search-cache-snapshots`
+  and `nskk-search-restore-cache-snapshot`. User-dictionary registration no
+  longer snapshots or restores search caches during rollback, because no
+  cache is registered any more. `nskk-cache.el` itself is unaffected and
+  still backs the program-dictionary cache.
+- **Breaking:** removed `nskk-search-jisyo-hook`. It fired only from the
+  deleted `nskk-search` dispatcher, and its documented contract was that
+  direct calls to the individual search functions do not run it, so it has
+  no remaining trigger. `nskk-save-history-hook` is unaffected.
+- **Breaking:** removed the fuzzy search implementation, both Levenshtein
+  distance functions, and the `nskk-search-fuzzy-threshold` user option that
+  configured them.
+- **Breaking:** removed the `nskk-dict-search-error`,
+  `nskk-dict-search-invalid-query` and `nskk-dict-search-invalid-index`
+  conditions. They were signalled only by the deleted dispatcher's argument
+  checks; `nskk-search-prefix` and `nskk-search-partial` never validated
+  their arguments and are unchanged.
+
+### Fixed
+
+- Fixed the isearch prompt showing no input-mode indicator in half-width
+  katakana mode. `nskk-isearch-mode-string-alist` covered six of the seven
+  symbols in `nskk--valid-modes`, omitting `katakana-半角`.
+- Fixed a state-snapshot ordering bug in the tutorial dictionary-state
+  guard where a Prolog fact query's side effect on the internal Prolog
+  variable counter could be captured as part of the snapshot it was
+  supposed to precede.
+- Fixed `nskk-show-mode` recording a mode as displayed when nothing was
+  drawn. With `nskk-show-mode-style` set to `tooltip` on a frame without
+  tooltip support, the display attempt returned without drawing yet still
+  updated the last-shown mode, so the deduplication guard suppressed every
+  later attempt. The last-shown mode is now updated only after a style
+  reports that it displayed something.
+- Fixed the skkserv client dropping a working connection when preparing a
+  request failed before anything was sent. Erasing the I/O buffer and
+  resetting the response counters had been folded into the same helper as
+  the send, and the request was marked as started before that helper ran,
+  so a fault while erasing or resetting ran the post-send teardown. The
+  request is now marked as started only after preparation succeeds.
+- Fixed the interactive tutorial, which could not be completed. Every
+  exercise's input and result region shared one end marker position, so
+  answers were never graded as correct and marking one exercise correct
+  erased the rest of the lesson; the cursor was placed where typing
+  raised `text-read-only`; the mode inherited `special-mode-map`, whose
+  bindings for `h`, `?`, `<`, `>`, `-` and the digits shadowed keys the
+  lessons require as input; `g` and `r` could not be typed at all; and
+  `nskk-tutorial--reset-mode` called a function removed in an earlier
+  release.
+- Fixed the program dictionary command timeout, which charged a full poll
+  slice per `accept-process-output` call rather than measuring elapsed
+  time. Because that call returns as soon as any output arrives, a command
+  that emitted its output in several chunks exhausted the budget in far
+  less than `nskk-program-dict-timeout` seconds and was reported as a
+  miss. Both the command and calculation paths now share one wall-clock
+  deadline.
+- Fixed the program dictionary cache rollback so it runs with quit
+  inhibited, matching the cache module's own rollback macro. A quit
+  arriving between the rollback's field assignments could previously
+  leave the cache in a partially restored state.
+
+### Internal
 
 - Extracted the ASCII-to-full-width offset that the region, input and
   henkan modules each wrote out into `nskk-jisx0208-latin-char`. All three
@@ -30,37 +137,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split `nskk-prolog-copy-term`, `nskk-prolog-set-index`, `nskk-prolog-assert`,
   `nskk-prolog-retract` and `nskk-prolog-retract-all` into named helpers, and
   dropped the `progn` wrappers the surrounding syntax did not require.
-
-## [0.4.0] - Unreleased
-
-### Added
-
-- Added a public accessor API (getter/setter function pairs) for
-  previously private cross-module state in the Prolog engine, buffer-local
-  editing state, converter/AZIK rule state, dictionary indices, search
-  caches, show-mode overlays, and the henkan/input/keymap subsystem,
-  replacing direct cross-module access to private `nskk--*` symbols
-  throughout the source tree.
 - Added `nskk-prolog-state-variables`, `nskk-dict-index-variables`, and
   matching reflection constants so generic snapshot/restore and test
   machinery can enumerate tracked state without naming private symbols.
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
-- Added `nskk-trie-delete/k`, the continuation-passing entry point for trie
-  deletion, distinguishing "key was present and removed" from "key was not
-  present" without collapsing both onto the sync wrapper's `t`/nil.
-- Added `nskk-display-sanitize`, which strips every text property from
-  untrusted dictionary text before applying a single display face, and
-  `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
-  and `nskk-overlay-priority-mode-indicator`, which name the overlay
-  priority values the display sites previously carried as bare integers.
-  The numeric values are unchanged.
-
-### Changed
-
-- `nskk-show-inline` now offers `horizontal` in its customize `:type`. The
-  symbol was already documented in the option's docstring and accepted by
-  its `:safe` predicate, but could not be chosen through customize.
 - Merged the inline module's two per-style display builders into one
   style-taking function and routed it, the candidate list and the
   annotation display through `nskk-display-sanitize`. Output is identical
@@ -70,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a Prolog-fact registration protocol (module-initialized flags,
   clearable-input variables) plus a presentation-action registry, in place
   of hardcoded cross-module knowledge. That change renamed and removed
-  nothing; for removals see the Removed section below.
+  nothing; for removals see the Removed section above.
 - `nskk-state-create` is now a plain function. It previously used the CPS
   definer, but its failure continuation was unreachable, so the generated
   `nskk-state-create/k` has been removed along with it.
@@ -92,10 +173,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A group whose name ends in `-mode` is reserved for the group named after
   it, which this one is not. No option was renamed, so saved customizations
   are unaffected; only the group's position in the customize tree changes.
-- The tutorial's quit key moved from `q` to `C-c C-q`, and `g` and `r`
-  now insert when point is in an exercise input area and navigate only
-  from the lesson text. `q` and `Q` are left to NSKK, which needs them
-  for the katakana toggle and the numeric conversion the lessons teach.
 - Folded the tutorial's private deep-copy routine into
   `nskk-prolog-copy-term`, which gained an optional caller-supplied memo
   table, removing a second implementation of the same graph copy.
@@ -142,9 +219,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the hand-rolled version left untouched. `nskk-server-live-p` and the private
   annotation stripper are plain functions instead of CPS definitions, so the
   generated `nskk-server-live-p/k` wrapper no longer exists.
-- Changed skkserv resource cleanup to one attempt per call. A process or
-  buffer whose teardown faults stays registered and is reclaimed by the next
-  close or open, rather than being retried immediately within the same call.
 - Replaced the skkserv unit suite. Its six `nskk-deftest-table` blocks sat
   inside `nskk-it` bodies, so their rows registered as zero runnable tests;
   the rewritten suite registers 37 table rows and covers the poll budget,
@@ -160,9 +234,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fault stages crossed with error and quit, reuse of one process and one
   owned buffer across repeated opens, and killing an owned buffer without
   running `kill-buffer-hook` or the query functions.
-
-### Removed
-
 - Removed the dictionary-registration continuation layer in the henkan
   pipeline. `nskk--run-registration-session/k` and the CPS wrapper
   `nskk-start-registration/k` are gone, collapsed into the ordinary
@@ -210,51 +281,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   success and failure continuations rather than a nil sentinel. The
   `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
   rollback is unchanged.
-- Removed the `nskk-show-tooltip` user option. Its only readers were the
-  tooltip candidate-display functions deleted earlier in this cycle, so
-  setting it had no effect; its documented precedence over `nskk-show-inline`
-  was never implemented. The `nskk-candidate-window` customization group
-  remains, carrying the candidate faces.
-
 - Reduced the kana module to continuation-passing style only where a
   conversion can actually fail, returning the character predicates and the
   total zenkaku/hankaku converters to plain functions. Public function names
   and their behavior are unchanged; only the generated `/k` variants of the
   always-succeeding functions are gone.
-
-### Fixed
-
 - Corrected the README's region-command pattern, which read
   `M-x nskk-region-*` and matched none of the six commands; every one is
   named `nskk-*-region`.
-- Fixed the isearch prompt showing no input-mode indicator in half-width
-  katakana mode. `nskk-isearch-mode-string-alist` covered six of the seven
-  symbols in `nskk--valid-modes`, omitting `katakana-半角`.
-- Fixed a state-snapshot ordering bug in the tutorial dictionary-state
-  guard where a Prolog fact query's side effect on the internal Prolog
-  variable counter could be captured as part of the snapshot it was
-  supposed to precede.
-- Fixed `nskk-show-mode` recording a mode as displayed when nothing was
-  drawn. With `nskk-show-mode-style` set to `tooltip` on a frame without
-  tooltip support, the display attempt returned without drawing yet still
-  updated the last-shown mode, so the deduplication guard suppressed every
-  later attempt. The last-shown mode is now updated only after a style
-  reports that it displayed something.
-- Fixed the skkserv client dropping a working connection when preparing a
-  request failed before anything was sent. Erasing the I/O buffer and
-  resetting the response counters had been folded into the same helper as
-  the send, and the request was marked as started before that helper ran,
-  so a fault while erasing or resetting ran the post-send teardown. The
-  request is now marked as started only after preparation succeeds.
-- Fixed the interactive tutorial, which could not be completed. Every
-  exercise's input and result region shared one end marker position, so
-  answers were never graded as correct and marking one exercise correct
-  erased the rest of the lesson; the cursor was placed where typing
-  raised `text-read-only`; the mode inherited `special-mode-map`, whose
-  bindings for `h`, `?`, `<`, `>`, `-` and the digits shadowed keys the
-  lessons require as input; `g` and `r` could not be typed at all; and
-  `nskk-tutorial--reset-mode` called a function removed in an earlier
-  release.
 - Fixed `nskk-commit-current` calling neither of its continuations when
   invoked outside an active conversion, which broke the
   exactly-one-continuation contract every other CPS function in the module
@@ -265,17 +299,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registered as a side effect after ERT had already fixed its selection
   list and never ran. Also moved `provide` and four fault-injection test
   matrices out of a `progn` they had been nested inside.
-- Fixed the program dictionary command timeout, which charged a full poll
-  slice per `accept-process-output` call rather than measuring elapsed
-  time. Because that call returns as soon as any output arrives, a command
-  that emitted its output in several chunks exhausted the budget in far
-  less than `nskk-program-dict-timeout` seconds and was reported as a
-  miss. Both the command and calculation paths now share one wall-clock
-  deadline.
-- Fixed the program dictionary cache rollback so it runs with quit
-  inhibited, matching the cache module's own rollback macro. A quit
-  arriving between the rollback's field assignments could previously
-  leave the cache in a partially restored state.
 - Fixed `nskk-kana` declaring its module-initialized flag twice, which made
   `module-initialized-flag` report the kana flag as two separate solutions.
 - Fixed the kana zenkaku/hankaku round-trip property test drawing from a
@@ -283,9 +306,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reach the two-character lookahead it appeared to cover. Replaced with a
   generator over hankaku units and a composition property that fails when
   that lookahead is disabled.
-
-### Removed
-
 - Removed a dead, zero-caller private helper
   (`nskk--converter-copy-prolog-state`) from the converter module.
 - Removed the converter's batch romaji-conversion API, which had no caller
@@ -353,38 +373,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had no consumer.
 - Removed the empty `nskk-kana` customization group, which defined no
   user options.
-- **Breaking:** removed the search entry points no production code path
-  reached. Conversion searches through `nskk-core-search` in
-  `nskk-henkan.el`, which calls `nskk-search-prefix` and
-  `nskk-search-partial` directly and resolves exact lookups through
-  `nskk-dict-lookup`. The generic `nskk-search` dispatcher and the
-  `nskk-search-exact`, `nskk-search-fuzzy` and `nskk-search-with-cache`
-  entry points were reachable only from tests and benchmarks, and are gone
-  with their `/k` variants.
-- **Breaking:** removed the search result cache that only
-  `nskk-search-with-cache` populated, including `nskk-search-cache-snapshots`
-  and `nskk-search-restore-cache-snapshot`. User-dictionary registration no
-  longer snapshots or restores search caches during rollback, because no
-  cache is registered any more. `nskk-cache.el` itself is unaffected and
-  still backs the program-dictionary cache.
-- **Breaking:** removed `nskk-search-jisyo-hook`. It fired only from the
-  deleted `nskk-search` dispatcher, and its documented contract was that
-  direct calls to the individual search functions do not run it, so it has
-  no remaining trigger. `nskk-save-history-hook` is unaffected.
-- **Breaking:** removed the fuzzy search implementation, both Levenshtein
-  distance functions, and the `nskk-search-fuzzy-threshold` user option that
-  configured them.
-- **Breaking:** removed the `nskk-dict-search-error`,
-  `nskk-dict-search-invalid-query` and `nskk-dict-search-invalid-index`
-  conditions. They were signalled only by the deleted dispatcher's argument
-  checks; `nskk-search-prefix` and `nskk-search-partial` never validated
-  their arguments and are unchanged.
 
 ## [0.3.0] - 2026-07-26
 
 ### Added
 
-- Added shared E2E helpers and comprehensive regression coverage for dictionary
+- Added shared E2E helpers and regression coverage for dictionary
   parsing and registration, conversion, search and caching, skkserv, the
   embedded Prolog engine, input modes, state transitions, and tutorial flows.
 - Added benchmark coverage for representative input-dispatch and end-to-end
@@ -421,8 +415,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 
 - Memoized the finite Prolog-backed romaji doubled-context and classification
-  dispatch. Source benchmarks measured 60.0-92.6% lower classification time
-  and 33.0-52.5% lower end-to-end conversion time in the tested scenarios.
+  dispatch. Measured with the project's benchmark suite
+  (`test/bench/nskk-bench.el`, run via `make bench`): 60.0-92.6% lower
+  classification time and 33.0-52.5% lower end-to-end conversion time.
+  Hardware and commit are not recorded, so treat the figures as
+  measured-at-release rather than independently reproducible.
 
 ## [0.2.2] - 2026-07-04
 
@@ -505,8 +502,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`nskk-converter.el:333` string-empty-p**: Replaced `(zerop (length remaining))` with
   `(string-empty-p remaining)` — source file consistency.
 
-
-
 - **`string-match-p` for pure boolean matches**: Replaced `(should
   (string-match ...))` with `(should (string-match-p ...))` in 7 test
   locations across `nskk-program-dictionary-test.el`, `nskk-henkan-test.el`,
@@ -553,7 +548,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`:package-version` completeness**: All `defcustom`/`defface` entries carry
   `:package-version '(nskk . "0.1.0")`.
 
-[Unreleased]: https://github.com/takeokunn/nskk.el/compare/v0.3.0...HEAD
+[0.4.0]: https://github.com/takeokunn/nskk.el/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/takeokunn/nskk.el/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/takeokunn/nskk.el/releases/tag/v0.2.2
 Earlier published artifacts and release notes are available from
