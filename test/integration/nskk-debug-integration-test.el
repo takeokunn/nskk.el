@@ -17,7 +17,7 @@
 
 (require 'ert)
 (require 'subr-x)
-(require 'nskk-custom)
+(require 'nskk)
 (require 'nskk-debug)
 (require 'nskk-test-macros)
 
