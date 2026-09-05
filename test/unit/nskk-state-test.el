@@ -95,6 +95,25 @@ candidates, current-index, and metadata."
   '(ascii hiragana katakana katakana-半角 abbrev latin jisx0208-latin)
   "Valid NSKK modes for testing.")
 
+(defconst nskk-state-test--slot-accessors
+  '(nskk-state-mode
+    nskk-state-input-buffer
+    nskk-state-converted-buffer
+    nskk-state-candidates
+    nskk-state-current-index
+    nskk-state-henkan-position
+    nskk-state-marker-position
+    nskk-state-previous-mode
+    nskk-state-undo-stack
+    nskk-state-redo-stack
+    nskk-state-henkan-phase
+    nskk-state-metadata)
+  "Every `nskk-state' slot accessor, for whole-struct comparison.
+Used to assert that a `nskk-state-set' dispatch writes the slot it names
+and no other.  Each dispatcher arm is a one-line `setf', so a copy-paste
+typo naming the wrong slot is invisible to a set-then-read of the
+intended slot alone.")
+
 ;;;
 ;;; State Creation Tests
 ;;;
@@ -251,7 +270,56 @@ candidates, current-index, and metadata."
 
       (nskk-state-set state 'mode 'hiragana)
       (should-error (nskk-state-set state 'mode 'not-a-mode))
-      (should (eq (nskk-state-mode state) 'hiragana)))))
+      (should (eq (nskk-state-mode state) 'hiragana))))
+
+  (nskk-it "slot-accessor list covers every nskk-state slot"
+    ;; `nskk-state-test--slot-accessors' is hand-maintained.  A slot added to
+    ;; the struct without a matching entry would silently narrow the
+    ;; no-other-slot-moved check below instead of failing, so pin the two
+    ;; together against the struct's own slot list.
+    (let ((slots (mapcar #'car (cdr (cl-struct-slot-info 'nskk-state)))))
+      (nskk-then
+        (should (= (length slots) (length nskk-state-test--slot-accessors)))
+        (dolist (slot slots)
+          (should (memq (intern (format "nskk-state-%s" slot))
+                        nskk-state-test--slot-accessors))))))
+
+  (nskk-deftest-table state-set-writes-only-the-named-slot
+    :description "each directly-set slot is written, and no other slot moves"
+    :columns (key accessor value)
+    :rows ((marker-position nskk-state-marker-position 42)
+           (previous-mode   nskk-state-previous-mode   katakana)
+           (undo-stack      nskk-state-undo-stack      ((ins . 1)))
+           (redo-stack      nskk-state-redo-stack      ((del . 2)))
+           (converted-buffer nskk-state-converted-buffer "kanji")
+           (metadata        nskk-state-metadata        (:k 1)))
+    :body (let* ((state (nskk-state-create 'hiragana))
+                 (before (copy-nskk-state state)))
+            (should (equal value (nskk-state-set state key value)))
+            (should (equal value (funcall accessor state)))
+            (dolist (other nskk-state-test--slot-accessors)
+              (unless (eq other accessor)
+                (should (equal (funcall other state)
+                               (funcall other before)))))))
+
+  (nskk-deftest-table state-set-overwrites-an-existing-value
+    :description "a second write replaces the first rather than being dropped"
+    ;; The table above starts every row from a fresh state, where these slots
+    ;; are all nil.  An arm written as `(or (nskk-state-X state) value)' would
+    ;; therefore look correct there and silently refuse every later write, so
+    ;; drive each slot twice.
+    :columns (key accessor first second)
+    :rows ((marker-position nskk-state-marker-position 1 2)
+           (previous-mode   nskk-state-previous-mode   katakana ascii)
+           (undo-stack      nskk-state-undo-stack      ((a . 1)) ((b . 2)))
+           (redo-stack      nskk-state-redo-stack      ((c . 3)) ((d . 4)))
+           (converted-buffer nskk-state-converted-buffer "one" "two")
+           (metadata        nskk-state-metadata        (:x 1) (:y 2)))
+    :body (let ((state (nskk-state-create 'hiragana)))
+            (should (equal first (nskk-state-set state key first)))
+            (should (equal first (funcall accessor state)))
+            (should (equal second (nskk-state-set state key second)))
+            (should (equal second (funcall accessor state))))))
 
 ;;;
 ;;; Mode Validation Tests
