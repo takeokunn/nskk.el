@@ -37,12 +37,7 @@
 (cl-defstruct (nskk-trie-node
                (:constructor nskk-trie-node--create)
                (:copier nil))
-  "Trie node for NSKK.
-Slots:
-  children - hash-table of child nodes (char -> node)
-  value    - value stored at this node (terminal nodes only)
-  is-end   - non-nil if this node terminates a key
-  count    - number of keys passing through this node"
+  "Trie node for NSKK."
   (children nil :type (or null hash-table))
   (value nil)
   (is-end nil :type boolean)
@@ -51,10 +46,7 @@ Slots:
 (cl-defstruct (nskk-trie
                (:constructor nskk-trie--create-internal)
                (:copier nil))
-  "Trie structure for NSKK.
-Slots:
-  root  - root node
-  size  - total number of stored keys"
+  "Trie structure for NSKK."
   (root nil :type nskk-trie-node)
   (size 0 :type integer))
 
@@ -72,17 +64,11 @@ Slots:
        (or (null (nskk-trie-node-children node))
            (zerop (hash-table-count (nskk-trie-node-children node))))))
 
-(defconst nskk--trie-initial-children-size 50
-  "Initial hash-table capacity for trie node children.
-Romaji trie nodes typically branch over the ASCII letter set (26-52
-entries); 50 avoids early rehash for most nodes while keeping memory
-modest for leaf-heavy subtrees.")
-
 (defun nskk--trie-get-or-create-child (node char)
   "Return the child of NODE for CHAR, creating it if absent."
   (unless (nskk-trie-node-children node)
     (setf (nskk-trie-node-children node)
-          (make-hash-table :test 'eq :size nskk--trie-initial-children-size)))
+          (make-hash-table :test 'eq)))
   (let ((child (gethash char (nskk-trie-node-children node))))
     (unless child
       (setq child (nskk-trie-node--create))
@@ -154,8 +140,8 @@ CHILD-TABLES contains the parent child table for each key character."
           (setq pruning nil)))
       (cl-decf index))))
 
-(defun nskk--trie-delete-path (trie key terminal)
-  "Return validated path vectors for deleting KEY from TRIE at TERMINAL."
+(defun nskk--trie-delete-path (trie key)
+  "Return validated path vectors for deleting KEY from TRIE."
   (let* ((key-length (length key))
          (nodes (make-vector (1+ key-length) nil))
          (child-tables (make-vector key-length nil))
@@ -171,7 +157,6 @@ CHILD-TABLES contains the parent child table for each key character."
              (child (and (hash-table-p children)
                          (gethash char children))))
         (unless (and (nskk-trie-node-p child)
-                     (integerp (nskk-trie-node-count child))
                      (> (nskk-trie-node-count child) 0))
           (error "Invalid trie path before deleting key: %s" key))
         (when (gethash child seen)
@@ -180,11 +165,6 @@ CHILD-TABLES contains the parent child table for each key character."
         (aset child-tables index children)
         (aset nodes (1+ index) child)
         (setq current child)))
-    (unless (and (eq current terminal)
-                 (nskk-trie-node-is-end terminal)
-                 (or (null (nskk-trie-node-children terminal))
-                     (hash-table-p (nskk-trie-node-children terminal))))
-      (error "Trie path changed before deleting key: %s" key))
     (cons nodes child-tables)))
 
 (defun nskk--trie-apply-delete (trie key terminal nodes child-tables)
@@ -197,20 +177,22 @@ CHILD-TABLES contains the parent child table for each key character."
       (cl-decf (nskk-trie-node-count (aref nodes (1+ index)))))
     (nskk--trie-cleanup-path key nodes child-tables)))
 
-(defun nskk-trie-delete (trie key)
+(defun/k nskk-trie-delete (trie key)
   "Delete KEY from TRIE.
-Returns t if deleted, nil if not present."
+Sync wrapper returns t if deleted, nil if not present."
   (unless (stringp key)
     (error "Key must be a string: %s" key))
   (let ((terminal (nskk--trie-find-node trie key)))
-    (when (and terminal (nskk-trie-node-is-end terminal))
+    (cond
+     ((and terminal (nskk-trie-node-is-end terminal))
       (unless (and (integerp (nskk-trie-size trie))
                    (> (nskk-trie-size trie) 0))
         (error "Invalid trie size before deleting key: %s" key))
-      (pcase-let ((`(,nodes . ,child-tables)
-                   (nskk--trie-delete-path trie key terminal)))
-                 (nskk--trie-apply-delete trie key terminal nodes child-tables)
-                 t))))
+      (pcase-let* ((`(,nodes . ,child-tables)
+                    (nskk--trie-delete-path trie key)))
+        (nskk--trie-apply-delete trie key terminal nodes child-tables)
+        (succeed t)))
+     (t (fail)))))
 
 (defun nskk--trie-collect-all (node prefix limit)
   "Collect all (key . value) pairs reachable from NODE with PREFIX.
@@ -267,14 +249,13 @@ O(k) where k = length of INPUT."
       (fail))))
 
 (defun nskk-trie-has-prefix-p (trie prefix)
-  "Return non-nil if PREFIX leads to a node in TRIE (has children or is-end).
-This means PREFIX is either a complete key or a proper prefix of some key.
+  "Return t if PREFIX is a complete key or a proper prefix of some key in TRIE.
 O(k) where k = length of PREFIX."
   (unless (stringp prefix)
     (error "Prefix must be a string: %s" prefix))
-  (if (string-empty-p prefix)
-      (nskk-trie-root trie)
-    (nskk--trie-find-node trie prefix)))
+  (and (or (string-empty-p prefix)
+           (nskk--trie-find-node trie prefix))
+       t))
 
 (provide 'nskk-trie)
 

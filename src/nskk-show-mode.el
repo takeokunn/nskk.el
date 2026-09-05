@@ -19,7 +19,7 @@
 ;; Inline mode indicator display for NSKK (Layer 5: Presentation).
 ;;
 ;; Layer position: L5 (Presentation) -- depends on nskk-state, nskk-prolog,
-;;   nskk-custom, and nskk-cps-macros.
+;;   and nskk-cps-macros.
 ;;
 ;; When `nskk-show-mode-show' is non-nil, displays a brief mode indicator
 ;; near the cursor when the input mode changes.  The indicator wraps the
@@ -34,7 +34,6 @@
 
 (require 'nskk-state)
 (require 'nskk-prolog)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
 
 ;;;; Customization
