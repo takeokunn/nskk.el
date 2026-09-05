@@ -210,6 +210,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   success and failure continuations rather than a nil sentinel. The
   `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
   rollback is unchanged.
+- Removed the `nskk-show-tooltip` user option. Its only readers were the
+  tooltip candidate-display functions deleted earlier in this cycle, so
+  setting it had no effect; its documented precedence over `nskk-show-inline`
+  was never implemented. The `nskk-candidate-window` customization group
+  remains, carrying the candidate faces.
 
 - Reduced the kana module to continuation-passing style only where a
   conversion can actually fail, returning the character predicates and the
