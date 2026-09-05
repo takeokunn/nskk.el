@@ -146,7 +146,6 @@ package-lint:
 	        (regexp-opt '(\"defun/k\" \"defun/done\" \"defun/3k\" \"read-eval\" \
 	          \"nskk--cps-transform-call/cc\" \"nskk-prolog-unify/k\" \
 	          \"nskk--debug-format/k\" \
-	          \"nskk--run-registration-session/k\" \
 	          \"nskk-program-dict-lookup/k\" \"nskk-dict-transaction-read-entries\" \"nskk-dict-transaction-predicate-snapshot\" \"nskk-dict-transaction-apply-predicate-snapshot\" \"nskk-dict-transaction-ensure-rollback-complete\" \"nskk-dict-transaction-clear-pending-rollback\" \"nskk-dict-transaction-rollback-and-resignal\" \"nskk-dict-transaction-insert-file-contents-pinned\" \"nskk-dict-transaction-pending-rollback\" \"nskk-dict-transaction-retry-pending-rollback\") 'symbols) \
 	        \"\\\\'\\\\)\")))" \
 	  -f package-lint-batch-and-exit $(SRC)

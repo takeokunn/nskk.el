@@ -1885,12 +1885,10 @@ candidates are found."
                    (nskk--build-okuri-registration-reading
                     text-start preedit-end query)))
               (nskk--remove-okuri-marker (or text-start start) preedit-end)
-              (nskk-start-registration/k query
-                (lambda (registered)
-                  (if registered
-                      (nskk--insert-registered-and-reset registered start on-register query)
-                    (funcall on-not-found)))
-                #'ignore)))))
+              (let ((registered (nskk-start-registration query)))
+                (if registered
+                    (nskk--insert-registered-and-reset registered start on-register query)
+                  (funcall on-not-found)))))))
       on-not-found)))
 
 (defun nskk-trigger-okuri-conversion (okuri-char preedit-end)
@@ -1936,12 +1934,10 @@ delimit the preedit region in the buffer.
 ON-NOT-FOUND is called (no args) when registration is cancelled or skipped.
 ON-REGISTER is called (no args) after a word is successfully registered."
   (nskk-debug-log "[HENKAN] no-candidates: key=%s" text)
-  (nskk-start-registration/k text
-    (lambda (registered)
-      (if registered
-          (nskk--insert-registered-and-reset registered start on-register text)
-        (funcall on-not-found)))
-    #'ignore))
+  (let ((registered (nskk-start-registration text)))
+    (if registered
+        (nskk--insert-registered-and-reset registered start on-register text)
+      (funcall on-not-found))))
 
 (defun nskk--insert-registered-and-reset (registered start on-done &optional reading)
   "Insert REGISTERED word at START, reset henkan state, and call ON-DONE.
@@ -2107,17 +2103,20 @@ Returns the entered word string, or nil if the user cancelled."
       (nskk--commit-registration-word reading entry))
     entry))
 
-(defun nskk--run-registration-session/k (reading on-found _on-not-found)
-  "Open the minibuffer for registering READING.
-Calls ON-FOUND with the registered word string on success, or nil if the
-user cancels.  _ON-NOT-FOUND is unused.
+(defun nskk-start-registration (reading)
+  "Register a word for READING through a minibuffer prompt, and return it.
+Returns the registered word as a string, or nil when the user cancels or
+when `nskk-max-registration-depth' has already been reached.  Recursive
+registration is supported up to that depth: depth 1 prompts with
+\[辞書登録], depth 2 with [[辞書登録]], and so on.
 
 Manages `nskk-state-registration-depth' and the henkan-phase transactionally:
 every cleanup step runs under `inhibit-quit', the first body or cleanup
 condition is re-signaled unchanged, and terminal state is re-asserted even
 when a cleanup callback mutates state before signaling.  Delegates input to
 `nskk--read-registration-entry' and commit to
-`nskk--commit-registration-word'.  [CPS]"
+`nskk--commit-registration-word'."
+  (nskk-debug-log "[HENKAN] start-registration: reading=%s" reading)
   (if (< (nskk-state-registration-depth) nskk-max-registration-depth)
       (let ((state nskk-current-state)
             (prev-phase (nskk-state-henkan-phase nskk-current-state))
@@ -2158,20 +2157,8 @@ when a cleanup callback mutates state before signaling.  Delegates input to
                (setf (nskk-state-henkan-phase state) prev-phase)))))
         (when first-condition
           (signal (car first-condition) (cdr first-condition)))
-        (funcall on-found result))
-    (funcall on-found nil)))
-
-(put 'nskk--run-registration-session/k 'nskk--cps-continuation-pattern :found-not-found)
-
-(defun/k nskk-start-registration (reading)
-  "Start dictionary registration for READING.
-Opens a minibuffer prompt for the user to enter the desired text.
-READING is the headword that could not be converted.
-Supports recursive registration up to `nskk-max-registration-depth' levels:
-depth 1 shows [辞書登録], depth 2 shows [[辞書登録]], etc."
-  (nskk-debug-log "[HENKAN] start-registration: reading=%s" reading)
-  (<- result nskk--run-registration-session reading)
-  (succeed result))
+        result)
+    nil))
 
 (defun nskk--wrap-to-first-candidate ()
   "Reset candidate display to the first page.
@@ -2213,16 +2200,14 @@ If the user cancels, wrap around to the first candidate in list display."
                                      (overlay-end (nskk-state-conversion-overlay)) (point)))
                         (stem (substring query 0 (- (length query) 1))))
                     (concat stem nskk-okurigana-marker okuri-kana)))))
-          (nskk-start-registration/k reading
-            (lambda (registered)
-              (cond
-               (registered
-                (let ((old (nskk-state-conversion-overlay)))
-                  (nskk-state-set-conversion-overlay nil)
-                  (when (overlayp old) (delete-overlay old)))
-                (nskk--insert-registered-and-reset registered start #'ignore reading))
-               (t (nskk--wrap-to-first-candidate))))
-            #'ignore))
+          (let ((registered (nskk-start-registration reading)))
+            (cond
+             (registered
+              (let ((old (nskk-state-conversion-overlay)))
+                (nskk-state-set-conversion-overlay nil)
+                (when (overlayp old) (delete-overlay old)))
+              (nskk--insert-registered-and-reset registered start #'ignore reading))
+             (t (nskk--wrap-to-first-candidate)))))
       (nskk--wrap-to-first-candidate))))
 
 ;;;; Dynamic Completion (動的補完)
