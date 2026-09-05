@@ -98,20 +98,26 @@ integer environment variable NSKK_BENCH_SAMPLES."
 
 (defun nskk-bench-run-l0 ()
   "Benchmark L0: Prolog engine hot paths."
-  (nskk-bench "L0" "prolog-holds-p hash-hit (valid-mode hiragana)" 50000
-    (nskk-prolog-holds-p '(valid-mode hiragana)))
+  ;; Predicates named here must exist in the fact base, or the hash-hit case
+  ;; silently degrades into a second miss and the hit/miss contrast this block
+  ;; exists to show is lost — `nskk-prolog-holds-p' returns nil for an
+  ;; unregistered predicate rather than signalling, so `make bench' still
+  ;; exits 0 while reporting meaningless numbers.
+  (nskk-bench "L0" "prolog-holds-p hash-hit (mode-category hiragana japanese)" 50000
+    (nskk-prolog-holds-p '(mode-category hiragana japanese)))
 
-  (nskk-bench "L0" "prolog-holds-p hash-miss (valid-mode bogus)" 50000
-    (nskk-prolog-holds-p '(valid-mode nonexistent-mode)))
+  (nskk-bench "L0" "prolog-holds-p hash-miss (mode-category bogus)" 50000
+    (nskk-prolog-holds-p '(mode-category nonexistent-mode japanese)))
 
   (nskk-bench "L0" "prolog-query-value (input-route hiragana)" 50000
     (nskk-prolog-query-value '(input-route hiragana \?action) '\?action))
 
-  (nskk-bench "L0" "prolog-holds-p (valid-henkan-phase on)" 50000
-    (nskk-prolog-holds-p '(valid-henkan-phase on)))
+  (nskk-bench "L0" "prolog-query-value (mode-properties hiragana)" 50000
+    (nskk-prolog-query-value
+     '(mode-properties hiragana \?d \?f \?h \?c) '\?d))
 
-  (nskk-bench "L0" "prolog-holds-p (henkan-mode-phase on)" 50000
-    (nskk-prolog-holds-p '(henkan-mode-phase on))))
+  (nskk-bench "L0" "prolog-holds-p derived rule (japanese-mode hiragana)" 50000
+    (nskk-prolog-holds-p '(japanese-mode hiragana))))
 
 ;;;; ── L1: Romaji Converter ─────────────────────────────────────────────────────
 
@@ -152,12 +158,6 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "L2a" "state-p (nil input)" 100000
       (nskk-state-p nil))
 
-    (nskk-bench "L2a" "state-get (mode)" 50000
-      (nskk-state-get state 'mode))
-
-    (nskk-bench "L2a" "state-get (input-buffer)" 50000
-      (nskk-state-get state 'input-buffer))
-
     (nskk-bench "L2a" "state-set (input-buffer)" 50000
       (nskk-state-set state 'input-buffer ""))
 
@@ -167,47 +167,6 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "L2a" "state-valid-mode-p (miss: bogus)" 50000
       (nskk-state-valid-mode-p 'bogus-mode))
 
-    (nskk-bench "L2a" "state-append-input (buf-len=0)" 50000
-      (let ((s (nskk-state-create)))
-        (nskk-state-append-input s ?a)))
-
-    (nskk-bench "L2a" "state-append-input (buf-len=5)" 50000
-      (let ((s (nskk-state-create)))
-        (setf (nskk-state-input-buffer s) "hello")
-        (nskk-state-append-input s ?a)))
-
-    (nskk-bench "L2a" "state-append-input (buf-len=20)" 50000
-      (let ((s (nskk-state-create)))
-        (setf (nskk-state-input-buffer s) (make-string 20 ?a))
-        (nskk-state-append-input s ?a)))
-
-    (nskk-bench "L2a" "state-append-input (buf-len=50)" 20000
-      (let ((s (nskk-state-create)))
-        (setf (nskk-state-input-buffer s) (make-string 50 ?a))
-        (nskk-state-append-input s ?a)))
-
-    (nskk-bench "L2a" "state-delete-last-char (buf=ka)" 50000
-      (let ((s (nskk-state-create)))
-        (setf (nskk-state-input-buffer s) "ka")
-        (nskk-state-delete-last-char s)))
-
-    (nskk-bench "L2a" "state-delete-last-char (empty buf)" 50000
-      (let ((s (nskk-state-create)))
-        (nskk-state-delete-last-char s)))
-
-    (nskk-bench "L2a" "state-henkan-on-p (nil phase)" 50000
-      (nskk-state-henkan-on-p state))
-
-    (nskk-bench "L2a" "state-henkan-active-p (nil phase)" 50000
-      (nskk-state-henkan-active-p state))
-
-    (let ((on-state (nskk-state-create)))
-      (nskk-state-force-henkan-phase on-state 'on)
-      (nskk-bench "L2a" "state-henkan-on-p (on phase)" 50000
-        (nskk-state-henkan-on-p on-state))
-      (nskk-bench "L2a" "state-in-henkan-mode-p (on phase)" 50000
-        (nskk-state-in-henkan-mode-p on-state)))
-
     (nskk-bench "L2a" "state-set-henkan-phase (nil→on)" 10000
       (let ((s (nskk-state-create)))
         (nskk-state-set-henkan-phase s 'on)))
@@ -215,23 +174,6 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "L2a" "state-force-henkan-phase (bypass validation)" 20000
       (let ((s (nskk-state-create)))
         (nskk-state-force-henkan-phase s 'on)))
-
-    (nskk-bench "L2a" "state-transition (hiragana→katakana)" 10000
-      (let ((s (nskk-state-create 'hiragana)))
-        (nskk-state-transition s 'hiragana 'katakana)))
-
-    (nskk-bench "L2a" "state-reset (10 slot defaults via Prolog)" 5000
-      (let ((s (nskk-state-create 'hiragana)))
-        (nskk-state-reset s)))
-
-    (let ((cs (nskk-state-create)))
-      (nskk-state-set-candidates cs '("漢字" "感じ" "幹事" "漢字A" "漢字B"))
-      (nskk-bench "L2a" "state-next-candidate (5 candidates)" 50000
-        (nskk-state-next-candidate cs))
-      (nskk-bench "L2a" "state-previous-candidate (5 candidates)" 50000
-        (nskk-state-previous-candidate cs))
-      (nskk-bench "L2a" "state-current-candidate (5 candidates)" 50000
-        (nskk-state-current-candidate cs)))
 
     (nskk-bench "L2a" "state-get-metadata (okurigana, unset)" 50000
       (nskk-state-get-metadata state 'okurigana))
@@ -276,8 +218,27 @@ integer environment variable NSKK_BENCH_SAMPLES."
     (nskk-bench "L2c" "cache-lru-put (new key)" 20000
       (nskk-cache-lru-put (nskk-cache-lru-create 64) "test" '("テスト")))
 
+    (let* ((varying (nskk-cache-lru-create 1000))
+           (nkeys 500)
+           (keys (make-vector nkeys nil))
+           (cursor 0))
+      (dotimes (index nkeys)
+        (aset keys index (format "vkey%d" index))
+        (nskk-cache-lru-put varying (aref keys index) index))
+      (nskk-bench "L2c" "cache-lru-get (hit, 500 distinct keys, splices every call)" 50000
+        (setq cursor (mod (1+ cursor) nkeys))
+        (nskk-cache-lru-get varying (aref keys cursor))))
+
     (nskk-bench "L2c" "cache-lru-put (overwrite existing)" 20000
-      (nskk-cache-lru-put lru "かんじ" '("漢字" "感じ" "幹事"))))
+      (nskk-cache-lru-put lru "かんじ" '("漢字" "感じ" "幹事")))
+
+    (let ((full (nskk-cache-lru-create 64))
+          (counter 0))
+      (dotimes (index 64)
+        (nskk-cache-lru-put full (format "key%d" index) index))
+      (nskk-bench "L2c" "cache-lru-put (new key, evicts tail)" 20000
+        (setq counter (1+ counter))
+        (nskk-cache-lru-put full (format "evict-%d" counter) counter))))
 
   (let* ((lfu (nskk-cache-lfu-create 64)))
     (nskk-cache-lfu-put lfu "かんじ" '("漢字" "感じ"))
@@ -290,7 +251,18 @@ integer environment variable NSKK_BENCH_SAMPLES."
       (nskk-cache-lfu-get lfu "MISSING-KEY"))
 
     (nskk-bench "L2c" "cache-lfu-put (new key)" 20000
-      (nskk-cache-lfu-put (nskk-cache-lfu-create 64) "test" '("テスト"))))
+      (nskk-cache-lfu-put (nskk-cache-lfu-create 64) "test" '("テスト")))
+
+    (nskk-bench "L2c" "cache-lfu-put (overwrite existing)" 20000
+      (nskk-cache-lfu-put lfu "かんじ" '("漢字" "感じ" "幹事")))
+
+    (let ((full (nskk-cache-lfu-create 64))
+          (counter 0))
+      (dotimes (index 64)
+        (nskk-cache-lfu-put full (format "key%d" index) index))
+      (nskk-bench "L2c" "cache-lfu-put (new key, evicts min-freq)" 20000
+        (setq counter (1+ counter))
+        (nskk-cache-lfu-put full (format "evict-%d" counter) counter))))
 
   (let* ((cache (nskk-cache-create :type 'lru :capacity 64)))
     (nskk-cache-put cache "かんじ" '("漢字" "感じ"))
@@ -299,7 +271,10 @@ integer environment variable NSKK_BENCH_SAMPLES."
       (nskk-cache-get cache "かんじ"))
 
     (nskk-bench "L2c" "cache-get unified LRU (miss)" 20000
-      (nskk-cache-get cache "MISSING"))))
+      (nskk-cache-get cache "MISSING"))
+
+    (nskk-bench "L2c" "cache-put unified LRU (overwrite existing)" 20000
+      (nskk-cache-put cache "かんじ" '("漢字" "感じ" "幹事")))))
 
 ;;;; ── L3: Dictionary Search ────────────────────────────────────────────────────
 
