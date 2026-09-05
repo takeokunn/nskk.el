@@ -13,6 +13,7 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'ert)
 (require 'nskk-kana)
 (require 'nskk-prolog)
@@ -384,191 +385,6 @@
          (lambda () (setq failed t)))
         (should failed)))))
 
-(nskk-describe "CPS zenkaku-to-hankaku/k"
-  (nskk-context "string input"
-    (nskk-it "calls on-found with hankaku string"
-      (let ((result nil))
-        (nskk-kana-zenkaku-to-hankaku/k
-         "アイウ"
-         (lambda (s) (setq result s))
-         #'ignore)
-        (nskk-assert-strings-equal result "ｱｲｳ"))))
-
-  (nskk-context "character input"
-    (nskk-it "calls on-found with hankaku string for single char"
-      (let ((result nil))
-        (nskk-kana-zenkaku-to-hankaku/k
-         ?ア
-         (lambda (s) (setq result s))
-         #'ignore)
-        (nskk-assert-strings-equal result "ｱ"))))
-
-  (nskk-context "unrecognized input passthrough"
-    (nskk-it "passes through unrecognized strings unchanged"
-      (let ((result nil))
-        (nskk-kana-zenkaku-to-hankaku/k
-         "abc"
-         (lambda (s) (setq result s))
-         #'ignore)
-        (nskk-assert-strings-equal result "abc")))))
-
-(nskk-describe "CPS hankaku-to-zenkaku/k"
-  (nskk-context "string input"
-    (nskk-it "calls on-found with zenkaku string"
-      (let ((result nil))
-        (nskk-kana-hankaku-to-zenkaku/k
-         "ｱｲｳ"
-         (lambda (s) (setq result s))
-         #'ignore)
-        (nskk-assert-strings-equal result "アイウ"))))
-
-  (nskk-context "character input"
-    (nskk-it "calls on-found with zenkaku string for single hankaku char"
-      (let ((result nil))
-        (nskk-kana-hankaku-to-zenkaku/k
-         ?ｱ
-         (lambda (s) (setq result s))
-         #'ignore)
-        (nskk-assert-strings-equal result "ア")))))
-
-(nskk-describe "CPS hiragana-to-katakana/k"
-  (nskk-context "always-succeeding conversion"
-    (nskk-it "calls on-done with katakana character for hiragana input"
-      (let ((result nil))
-        (nskk-kana-hiragana-to-katakana/k
-         ?あ
-         (lambda (c) (setq result c))
-         #'ignore)
-        (should (= result ?ア))))
-
-    (nskk-it "calls on-done with unchanged character for non-hiragana input"
-      (let ((result nil))
-        (nskk-kana-hiragana-to-katakana/k
-         ?a
-         (lambda (c) (setq result c))
-         #'ignore)
-        (should (= result ?a))))
-
-    (nskk-it "never invokes on-not-found"
-      (let ((not-found-called nil))
-        (nskk-kana-hiragana-to-katakana/k
-         ?あ
-         #'ignore
-         (lambda () (setq not-found-called t)))
-        (should (null not-found-called))))))
-
-(nskk-describe "CPS katakana-to-hiragana/k"
-  (nskk-context "always-succeeding conversion"
-    (nskk-it "calls on-done with hiragana character for katakana input"
-      (let ((result nil))
-        (nskk-kana-katakana-to-hiragana/k
-         ?ア
-         (lambda (c) (setq result c))
-         #'ignore)
-        (should (= result ?あ))))
-
-    (nskk-it "calls on-done with unchanged character for non-katakana input"
-      (let ((result nil))
-        (nskk-kana-katakana-to-hiragana/k
-         ?a
-         (lambda (c) (setq result c))
-         #'ignore)
-        (should (= result ?a))))
-
-    (nskk-it "never invokes on-not-found"
-      (let ((not-found-called nil))
-        (nskk-kana-katakana-to-hiragana/k
-         ?ア
-         #'ignore
-         (lambda () (setq not-found-called t)))
-        (should (null not-found-called))))))
-
-(nskk-describe "CPS han-p/k"
-  (nskk-context "success path"
-    (nskk-it "calls on-found with t for kanji characters"
-      (let ((result nil))
-        (nskk-kana-han-p/k
-         ?漢
-         (lambda (v) (setq result v))
-         (lambda () (setq result 'fail)))
-        (should (eq result t))))
-
-    (nskk-it "calls on-found with t for Extension A characters"
-      (let ((result nil))
-        (nskk-kana-han-p/k
-         #x3400
-         (lambda (v) (setq result v))
-         (lambda () (setq result 'fail)))
-        (should (eq result t)))))
-
-  (nskk-context "failure path"
-    (nskk-it "calls on-not-found for hiragana characters"
-      (let ((failed nil))
-        (nskk-kana-han-p/k
-         ?あ
-         (lambda (_) nil)
-         (lambda () (setq failed t)))
-        (should failed)))
-
-    (nskk-it "calls on-not-found for ascii characters"
-      (let ((failed nil))
-        (nskk-kana-han-p/k
-         ?a
-         (lambda (_) nil)
-         (lambda () (setq failed t)))
-        (should failed)))))
-
-(nskk-describe "CPS japanese-p/k"
-  (nskk-context "success path"
-    (nskk-it "calls on-found with t for hiragana"
-      (let ((result nil))
-        (nskk-kana-japanese-p/k
-         ?あ
-         (lambda (v) (setq result v))
-         (lambda () (setq result 'fail)))
-        (should (eq result t))))
-
-    (nskk-it "calls on-found with t for katakana"
-      (let ((result nil))
-        (nskk-kana-japanese-p/k
-         ?ア
-         (lambda (v) (setq result v))
-         (lambda () (setq result 'fail)))
-        (should (eq result t))))
-
-    (nskk-it "calls on-found with t for kanji"
-      (let ((result nil))
-        (nskk-kana-japanese-p/k
-         ?漢
-         (lambda (v) (setq result v))
-         (lambda () (setq result 'fail)))
-        (should (eq result t))))
-
-    (nskk-it "calls on-found with t for hankaku katakana"
-      (let ((result nil))
-        (nskk-kana-japanese-p/k
-         ?ｱ
-         (lambda (v) (setq result v))
-         (lambda () (setq result 'fail)))
-        (should (eq result t)))))
-
-  (nskk-context "failure path"
-    (nskk-it "calls on-not-found for ascii letters"
-      (let ((failed nil))
-        (nskk-kana-japanese-p/k
-         ?a
-         (lambda (_) nil)
-         (lambda () (setq failed t)))
-        (should failed)))
-
-    (nskk-it "calls on-not-found for nil"
-      (let ((failed nil))
-        (nskk-kana-japanese-p/k
-         nil
-         (lambda (_) nil)
-         (lambda () (setq failed t)))
-        (should failed)))))
-
 ;;;
 ;;; Hankaku/Zenkaku Conversion Tests
 ;;;
@@ -783,17 +599,6 @@ Note: Prolog-backed classification costs ~200-300us per character."
 ;;;
 ;;;
 
-(nskk-property-test kana-pbt-string-conversion-returns-string
-  ((input hiragana-string))
-  (stringp (nskk-kana-string-hiragana-to-katakana input))
-  100)
-
-(nskk-property-test kana-pbt-string-length-preserved
-  ((input hiragana-string))
-  (let ((result (nskk-kana-string-hiragana-to-katakana input)))
-    (= (length input) (length result)))
-  100)
-
 (nskk-property-test kana-pbt-hiragana-katakana-roundtrip
   ((input hiragana-string))
   (equal input
@@ -801,21 +606,60 @@ Note: Prolog-backed classification costs ~200-300us per character."
           (nskk-kana-string-hiragana-to-katakana input)))
   100)
 
-(nskk-property-test kana-pbt-katakana-hiragana-roundtrip
-  ((hiragana hiragana-string))
-  (let* ((katakana (nskk-kana-string-hiragana-to-katakana hiragana))
-         (roundtripped (nskk-kana-string-hiragana-to-katakana
-                        (nskk-kana-string-katakana-to-hiragana katakana))))
-    (equal katakana roundtripped))
+;; `hiragana-string' draws from あ行-な行 only, so it cannot produce a dakuten,
+;; handakuten, ヴ, ん or を.  A round-trip property fed from it therefore never
+;; reaches the two-character lookahead in `nskk--kana-hankaku-lookup-at' — the
+;; branch most worth exercising here.  These atoms are the hankaku units
+;; themselves, single- and two-character alike.
+(defconst nskk-kana-test--hankaku-atoms
+  '("ｱ" "ｲ" "ｳ" "ｵ" "ｶ" "ﾀ" "ﾅ" "ﾊ" "ﾏ" "ﾔ" "ﾗ" "ﾜ" "ｦ" "ﾝ"
+    "ｶﾞ" "ｷﾞ" "ｸﾞ" "ｻﾞ" "ｼﾞ" "ﾀﾞ" "ﾊﾞ" "ﾋﾞ" "ｳﾞ"
+    "ﾊﾟ" "ﾋﾟ" "ﾌﾟ" "ﾍﾟ" "ﾎﾟ"
+    "ｧ" "ｨ" "ｩ" "ｪ" "ｫ" "ｯ" "ｬ" "ｭ" "ｮ"
+    "｡" "､" "･" "ｰ")
+  "Hankaku katakana units spanning single chars and dakuten/handakuten pairs.")
+
+(nskk-register-generator 'kana-hankaku-rich-string
+  (lambda (&optional length)
+    (let ((len (or length (+ 1 (random 6)))))
+      (string-join
+       (cl-loop repeat len
+                collect (nth (random (length nskk-kana-test--hankaku-atoms))
+                             nskk-kana-test--hankaku-atoms))
+       ""))))
+
+;; Stated hankaku-first because that is the direction that actually holds.
+;; zenkaku->hankaku->zenkaku is NOT an identity: see the ヮ case below.
+;;
+;; A round trip alone is NOT sufficient evidence here: if the two-character
+;; lookahead is disabled, "ｶﾞ" decomposes to "カ゛" and converting back
+;; re-joins it to "ｶﾞ", so the round trip succeeds on a broken conversion.
+;; The composition property below is what actually pins the lookahead —
+;; a correct conversion never leaves a standalone combining mark behind,
+;; because every ﾞ/ﾟ in the input is attached to a convertible base.
+(nskk-property-test kana-pbt-hankaku-zenkaku-roundtrip
+  ((hankaku kana-hankaku-rich-string))
+  (equal hankaku
+         (nskk-kana-zenkaku-to-hankaku
+          (nskk-kana-hankaku-to-zenkaku hankaku)))
   100)
 
-(nskk-property-test kana-pbt-zenkaku-hankaku-roundtrip
-  ((hiragana hiragana-string))
-  (let* ((zenkaku (nskk-kana-string-hiragana-to-katakana hiragana))
-         (hankaku (nskk-kana-zenkaku-to-hankaku zenkaku))
-         (roundtripped (nskk-kana-hankaku-to-zenkaku hankaku)))
-    (equal zenkaku roundtripped))
+(nskk-property-test kana-pbt-hankaku-zenkaku-composes-dakuten
+  ((hankaku kana-hankaku-rich-string))
+  (let ((zenkaku (nskk-kana-hankaku-to-zenkaku hankaku)))
+    (not (or (string-match-p "゛" zenkaku)
+             (string-match-p "゜" zenkaku))))
   100)
+
+(nskk-describe "zenkaku to hankaku is not injective"
+  ;; JIS X 0201 has no half-width small wa, so ヮ and ワ share the hankaku
+  ;; form ﾜ and the round trip cannot recover which one it started from.
+  (nskk-it "maps both ヮ and ワ to ﾜ, and ﾜ back to ワ only"
+    (nskk-assert-strings-equal (nskk-kana-zenkaku-to-hankaku "ヮ") "ﾜ")
+    (nskk-assert-strings-equal (nskk-kana-zenkaku-to-hankaku "ワ") "ﾜ")
+    (nskk-assert-strings-equal
+     (nskk-kana-hankaku-to-zenkaku (nskk-kana-zenkaku-to-hankaku "ヮ"))
+     "ワ")))
 
 ;;;
 ;;; Prolog Database Integration Tests
@@ -842,30 +686,22 @@ Note: Prolog-backed classification costs ~200-300us per character."
       (should (= (nskk-kana-hiragana-to-katakana ?う) ?ウ))
       (should (= (nskk-kana-katakana-to-hiragana ?ア) ?あ))
       (should (= (nskk-kana-katakana-to-hiragana ?イ) ?い))
-      (should (= (nskk-kana-katakana-to-hiragana ?ウ) ?う))))
-
-  (nskk-context "zenkaku/hankaku Prolog facts"
-    (nskk-it "zenkaku-to-hankaku and hankaku-to-zenkaku Prolog facts are asserted"
-      (should (nskk-prolog-query (list 'zenkaku-to-hankaku "ア" '\?h)))
-      (should (nskk-prolog-query (list 'hankaku-to-zenkaku "ｱ" '\?z))))))
+      (should (= (nskk-kana-katakana-to-hiragana ?ウ) ?う)))))
 
 ;;;
-;;; nskk--kana-define-range-predicate
+;;; Range predicates and their Prolog counterparts
 ;;;
 
-(nskk-describe "nskk--kana-define-range-predicate"
-  (nskk-it "is a macro (not a plain function)"
-    (should (macrop 'nskk--kana-define-range-predicate)))
-
-  (nskk-it "generated ELisp predicate returns non-nil for chars in range"
+(nskk-describe "range predicates"
+  (nskk-it "returns non-nil for chars in range"
     (should (nskk-kana-hiragana-p ?あ))
     (should (nskk-kana-hiragana-p ?ん)))
 
-  (nskk-it "generated ELisp predicate returns nil for chars outside range"
+  (nskk-it "returns nil for chars outside range"
     (should (null (nskk-kana-hiragana-p ?ア)))   ; katakana
     (should (null (nskk-kana-hiragana-p ?A))))    ; ASCII
 
-  (nskk-it "also asserts a Prolog range rule queryable via holds-p with char codes"
+  (nskk-it "has a matching Prolog range rule queryable via holds-p with char codes"
     (should (nskk-prolog-holds-p `(kana-hiragana ,?あ)))
     (should (nskk-prolog-holds-p `(kana-katakana ,?ア)))
     (should (null (nskk-prolog-holds-p `(kana-hiragana ,?A))))))
@@ -875,27 +711,25 @@ Note: Prolog-backed classification costs ~200-300us per character."
 ;;;
 
 (nskk-describe "nskk-kana-initialize"
-  (nskk-it "is idempotent: calling multiple times does not re-assert facts or error"
-    (let ((was-initialized nskk--kana-initialized))
-      (unwind-protect
-          (progn
-            (setq nskk--kana-initialized nil)
-            (nskk-kana-initialize)   ; first call: populates facts
-            (nskk-kana-initialize)   ; second call: no-op (idempotency guard)
-            (should nskk--kana-initialized))
-        (setq nskk--kana-initialized was-initialized))))
+  (nskk-it "sets the initialized flag"
+    (nskk-kana-initialize)
+    (should nskk--kana-initialized))
 
-  (nskk-it "populates zenkaku-to-hankaku Prolog facts so conversions work"
-    (let ((result (nskk-prolog-query-value
-                   '(zenkaku-to-hankaku "ア" \?h) '\?h)))
-      (should (stringp result))
-      (should (string= result "ｱ"))))
+  (nskk-it "populates kana-conversion/3 so mode lookup resolves a function"
+    (nskk-kana-initialize)
+    (should (eq (nskk-prolog-query-value
+                 '(kana-conversion katakana insert \?fn) '\?fn)
+                'nskk-kana-string-hiragana-to-katakana)))
 
-  (nskk-it "populates hankaku-to-zenkaku Prolog facts so conversions work"
-    (let ((result (nskk-prolog-query-value
-                   '(hankaku-to-zenkaku "ｱ" \?z) '\?z)))
-      (should (stringp result))
-      (should (string= result "ア")))))
+  ;; The flag is declared once at load time.  Re-declaring it inside
+  ;; `nskk-kana-initialize' made `module-initialized-flag' yield the symbol
+  ;; twice, because `nskk-prolog-assert' does not deduplicate clauses.
+  (nskk-it "contributes exactly one module-initialized-flag solution"
+    (nskk-kana-initialize)
+    (nskk-kana-initialize)
+    (should (= 1 (cl-count 'nskk--kana-initialized
+                           (nskk-prolog-query-all-values
+                            '(module-initialized-flag \?f) '\?f))))))
 
 ;;;
 ;;; nskk--kana-map-string-chars/k Tests
@@ -938,37 +772,15 @@ Note: Prolog-backed classification costs ~200-300us per character."
       (should (equal result-val "")))))
 
 ;;;
-;;; nskk--kana-zenkaku-string-to-hankaku/k
+;;; nskk--kana-zenkaku-string-to-hankaku
 ;;;
 
-(nskk-describe "nskk--kana-zenkaku-string-to-hankaku/k"
-  (nskk-it "calls on-result with hankaku string for a zenkaku katakana string"
-    (let (result-val)
-      (nskk--kana-zenkaku-string-to-hankaku/k "ア"
-        (lambda (s) (setq result-val s))
-        #'ignore)
-      (should (equal result-val "ｱ"))))
+(nskk-describe "nskk--kana-zenkaku-string-to-hankaku"
+  (nskk-it "converts a zenkaku katakana string to hankaku"
+    (should (equal (nskk--kana-zenkaku-string-to-hankaku "ア") "ｱ")))
 
   (nskk-it "passes through characters not in the zenkaku table unchanged"
-    (let (result-val)
-      (nskk--kana-zenkaku-string-to-hankaku/k "あ"
-        (lambda (s) (setq result-val s))
-        #'ignore)
-      (should (equal result-val "あ"))))
-
-  (nskk-it "calls on-fail when input is not a string"
-    (let (fail-called)
-      (nskk--kana-zenkaku-string-to-hankaku/k 42
-        #'ignore
-        (lambda () (setq fail-called t)))
-      (should fail-called)))
-
-  (nskk-it "calls on-fail when input is nil"
-    (let (fail-called)
-      (nskk--kana-zenkaku-string-to-hankaku/k nil
-        #'ignore
-        (lambda () (setq fail-called t)))
-      (should fail-called))))
+    (should (equal (nskk--kana-zenkaku-string-to-hankaku "あ") "あ"))))
 
 ;;;
 ;;; nskk--kana-hankaku-lookup-at
@@ -1008,37 +820,15 @@ Note: Prolog-backed classification costs ~200-300us per character."
         (should (= (cdr result) 1))))))
 
 ;;;
-;;; nskk--kana-hankaku-string-to-zenkaku/k
+;;; nskk--kana-hankaku-string-to-zenkaku
 ;;;
 
-(nskk-describe "nskk--kana-hankaku-string-to-zenkaku/k"
-  (nskk-it "calls on-result with zenkaku string for a hankaku katakana string"
-    (let (result-val)
-      (nskk--kana-hankaku-string-to-zenkaku/k "ｱ"
-        (lambda (s) (setq result-val s))
-        #'ignore)
-      (should (equal result-val "ア"))))
+(nskk-describe "nskk--kana-hankaku-string-to-zenkaku"
+  (nskk-it "converts a hankaku katakana string to zenkaku"
+    (should (equal (nskk--kana-hankaku-string-to-zenkaku "ｱ") "ア")))
 
   (nskk-it "handles two-character dakuten combinations"
-    (let (result-val)
-      (nskk--kana-hankaku-string-to-zenkaku/k "ｶﾞ"
-        (lambda (s) (setq result-val s))
-        #'ignore)
-      (should (equal result-val "ガ"))))
-
-  (nskk-it "calls on-fail when input is not a string"
-    (let (fail-called)
-      (nskk--kana-hankaku-string-to-zenkaku/k 42
-        #'ignore
-        (lambda () (setq fail-called t)))
-      (should fail-called)))
-
-  (nskk-it "calls on-fail when input is nil"
-    (let (fail-called)
-      (nskk--kana-hankaku-string-to-zenkaku/k nil
-        #'ignore
-        (lambda () (setq fail-called t)))
-      (should fail-called))))
+    (should (equal (nskk--kana-hankaku-string-to-zenkaku "ｶﾞ") "ガ"))))
 
 ;;;
 ;;; nskk--kana-fill-hash-table

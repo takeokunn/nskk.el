@@ -318,11 +318,12 @@
 (defmacro nskk-e2e--simulate-unbound-command (command)
   (declare (indent 1))
   "Simulate running COMMAND as if from the interactive command loop.
-Saves point in `nskk--point-before-command', runs COMMAND via
-`call-interactively', then fires `nskk--post-command-handler'."
+Runs `nskk--pre-command-handler' to record point (as Emacs would via
+`pre-command-hook'), runs COMMAND via `call-interactively', then fires
+`nskk--post-command-handler'."
   (let ((cmd (gensym "cmd")))
-    `(let ((,cmd ,command)
-           (nskk--point-before-command (point)))
+    `(let ((,cmd ,command))
+       (nskk--pre-command-handler)
        (condition-case nil
            (call-interactively ,cmd)
          (error nil))

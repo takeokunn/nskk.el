@@ -283,12 +283,6 @@ integer environment variable NSKK_BENCH_SAMPLES."
   (nskk-with-mock-dict nil
     (let ((idx (nskk-dict-system-index)))
 
-      (nskk-bench "L3" "search-exact (hit: かんじ)" 5000
-        (nskk-search-exact idx "かんじ" nil))
-
-      (nskk-bench "L3" "search-exact (miss: xxxxxxx)" 5000
-        (nskk-search-exact idx "xxxxxxx" nil))
-
       (nskk-bench "L3" "search-prefix (に, limit=5)" 5000
         (nskk-search-prefix idx "に" nil 5))
 
@@ -297,12 +291,6 @@ integer environment variable NSKK_BENCH_SAMPLES."
 
       (nskk-bench "L3" "search-partial (か, limit=5)" 2000
         (nskk-search-partial idx "か" nil 5))
-
-      (nskk-bench "L3" "search-fuzzy (かんし, limit=3)" 500
-        (nskk-search-fuzzy idx "かんし" 3))
-
-      (nskk-bench "L3" "search dispatcher (exact, かんじ)" 3000
-        (nskk-search idx "かんじ"))
 
       (progn
         (let ((results '(("かんじ" "漢字" nil)
@@ -318,44 +306,17 @@ integer environment variable NSKK_BENCH_SAMPLES."
           (nskk-bench "L3" "search post-process top-k (10000, limit=10)" 100
             (nskk--search-post-process-results large-results nil 10))))
 
-      (nskk-bench "L3" "levenshtein-distance (かんじ vs かんし)" 10000
-        (nskk--search-levenshtein-distance "かんじ" "かんし"))
-
-      (let ((long-source (make-string 256 ?a))
-            (short-source (make-string 32 ?a))
-            (near-source (concat (make-string 255 ?a) "b")))
-        (nskk-bench "L3" "levenshtein-distance (longer strings)" 3000
-          (nskk--search-levenshtein-distance
-           "にほんごにゅうりょく" "にほんご"))
-        (nskk-bench "L3" "levenshtein bounded length-reject (large mismatch)" 3000
-          (nskk--search-levenshtein-distance-bounded
-           long-source short-source 2))
-        (nskk-bench "L3" "levenshtein exact (large mismatch baseline)" 3000
-          (nskk--search-levenshtein-distance long-source short-source))
-        (nskk-bench "L3" "levenshtein bounded near-match (same length)" 3000
-          (nskk--search-levenshtein-distance-bounded
-           long-source near-source 2))
-        (nskk-bench "L3" "levenshtein exact near-match baseline" 3000
-          (nskk--search-levenshtein-distance long-source near-source)))
-
-      (let ((cache (nskk-cache-create :type 'lru :capacity 128)))
-        (nskk-bench "L3" "search-with-cache (cold miss, fresh cache)" 1000
-          (nskk-search-with-cache
-           (nskk-cache-create :type 'lru :capacity 128) idx "かんじ"))
-        (nskk-search-with-cache cache idx "かんじ")
-        (nskk-bench "L3" "search-with-cache (warm hit)" 5000
-          (nskk-search-with-cache cache idx "かんじ"))
-        (nskk-prolog-test-with-isolated-db
-          (nskk-prolog-retract-all 'learning-score 3)
-          (nskk-prolog-set-index 'learning-score 3 :hash)
-          (dotimes (index 10000)
-            (nskk-prolog-assert
-             (list (list 'learning-score
-                         (format "query-%05d" index)
-                         "candidate"
-                         1))))
-          (nskk-bench "L3" "search-learn transaction (10000 facts)" 10
-            (nskk-search-learn "query-05000" "candidate")))))))
+      (nskk-prolog-test-with-isolated-db
+        (nskk-prolog-retract-all 'learning-score 3)
+        (nskk-prolog-set-index 'learning-score 3 :hash)
+        (dotimes (index 10000)
+          (nskk-prolog-assert
+           (list (list 'learning-score
+                       (format "query-%05d" index)
+                       "candidate"
+                       1))))
+        (nskk-bench "L3" "search-learn transaction (10000 facts)" 10
+          (nskk-search-learn "query-05000" "candidate"))))))
 
 ;;;; ── L4a: Input Processing ────────────────────────────────────────────────────
 

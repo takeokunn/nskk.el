@@ -86,7 +86,6 @@
 (declare-function nskk-clear-conversion-context "nskk-henkan")
 (declare-function nskk-invalidate-undo-kakutei "nskk-henkan")
 (declare-function nskk-undo-kakutei "nskk-henkan")
-(declare-function nskk-purge-from-jisyo "nskk-henkan")
 (declare-function nskk-completion-at-point "nskk-henkan")
 (declare-function nskk-commit-by-phase "nskk-keymap")
 
@@ -211,117 +210,113 @@ This provides global bindings that work even when nskk-mode is not yet active."
 ;; Internal implementation functions
 
 (defvar nskk--learning-loaded nil
-    "Non-nil once learning data has been loaded in this Emacs session.
+  "Non-nil once learning data has been loaded in this Emacs session.
 Guards `nskk--enable' so that learning data is loaded only once, not on
 every buffer activation.")
 
-  (defun nskk-learning-loaded ()
-    "Return non-nil if learning data has been loaded this session."
-    nskk--learning-loaded)
+(defun nskk-learning-loaded ()
+  "Return non-nil if learning data has been loaded this session."
+  nskk--learning-loaded)
 
-  (defun nskk-set-learning-loaded (value)
-    "Set the learning-data-loaded flag to VALUE and return VALUE."
-    (setq nskk--learning-loaded value))
+(defun nskk-set-learning-loaded (value)
+  "Set the learning-data-loaded flag to VALUE and return VALUE."
+  (setq nskk--learning-loaded value))
 
-  (defvar nskk--active-buffers nil
-    "Live buffers that currently own an NSKK activation.")
+(defvar nskk--active-buffers nil
+  "Live buffers that currently own an NSKK activation.")
 
-  (defun nskk-active-buffers ()
-    "Return the list of live buffers that currently own an NSKK activation."
-    nskk--active-buffers)
+(defun nskk-active-buffers ()
+  "Return the list of live buffers that currently own an NSKK activation."
+  nskk--active-buffers)
 
-  (defun nskk-set-active-buffers (value)
-    "Set the list of live NSKK-activation-owning buffers to VALUE."
-    (setq nskk--active-buffers value))
+(defvar nskk-activation-lock-owner nil
+  "Live buffer that exclusively owns process-global NSKK state.")
 
-  (defvar nskk-activation-lock-owner nil
-    "Live buffer that exclusively owns process-global NSKK state.")
+(defun nskk--activation-allowed-p ()
+  "Return non-nil when current buffer may activate NSKK."
+  (when (and nskk-activation-lock-owner
+             (not (buffer-live-p nskk-activation-lock-owner)))
+    (setq nskk-activation-lock-owner nil))
+  (or (null nskk-activation-lock-owner)
+      (eq nskk-activation-lock-owner (current-buffer))))
 
-  (defun nskk--activation-allowed-p ()
-    "Return non-nil when current buffer may activate NSKK."
-    (when (and nskk-activation-lock-owner
-               (not (buffer-live-p nskk-activation-lock-owner)))
-      (setq nskk-activation-lock-owner nil))
-    (or (null nskk-activation-lock-owner)
-        (eq nskk-activation-lock-owner (current-buffer))))
+(defvar nskk--candidate-show-hook-owned nil
+  "Non-nil when NSKK installed its global candidate show hook.")
 
-  (defvar nskk--candidate-show-hook-owned nil
-    "Non-nil when NSKK installed its global candidate show hook.")
+(defvar nskk--candidate-hide-hook-owned nil
+  "Non-nil when NSKK installed its global candidate hide hook.")
 
-  (defvar nskk--candidate-hide-hook-owned nil
-    "Non-nil when NSKK installed its global candidate hide hook.")
+(defvar nskk--candidate-select-function-owned nil
+  "Non-nil when NSKK replaced the global candidate select function.")
 
-  (defvar nskk--candidate-select-function-owned nil
-    "Non-nil when NSKK replaced the global candidate select function.")
+(defvar nskk--saved-candidate-select-function nil
+  "Candidate select function that preceded the first NSKK activation.")
 
-  (defvar nskk--saved-candidate-select-function nil
-    "Candidate select function that preceded the first NSKK activation.")
-
-  (defun nskk--acquire-candidate-resources ()
-    "Acquire process-global candidate resources for the current buffer.
+(defun nskk--acquire-candidate-resources ()
+  "Acquire process-global candidate resources for the current buffer.
 Return non-nil when this call registered the buffer for the first time."
-    (setq nskk--active-buffers
-          (cl-delete-if-not #'buffer-live-p nskk--active-buffers))
-    (let ((new-activation (not (memq (current-buffer) nskk--active-buffers))))
-      (when (and new-activation (null nskk--active-buffers))
-        (setq nskk--candidate-show-hook-owned
-              (not (memq #'nskk-candidate-show-list
-                         nskk-henkan-show-candidates-functions))
-              nskk--candidate-hide-hook-owned
-              (not (memq #'nskk-candidate-hide-list
-                         nskk-henkan-hide-candidates-functions))
-              nskk--saved-candidate-select-function
-              nskk-henkan-select-candidate-by-key-function
-              nskk--candidate-select-function-owned
-              (not (eq nskk-henkan-select-candidate-by-key-function
-                       #'nskk-candidate-list-select-by-key)))
-        (when nskk--candidate-show-hook-owned
-          (add-hook 'nskk-henkan-show-candidates-functions
-                    #'nskk-candidate-show-list))
-        (when nskk--candidate-hide-hook-owned
-          (add-hook 'nskk-henkan-hide-candidates-functions
-                    #'nskk-candidate-hide-list))
-        (when nskk--candidate-select-function-owned
-          (setq nskk-henkan-select-candidate-by-key-function
-                #'nskk-candidate-list-select-by-key)))
-      (when new-activation
-        (push (current-buffer) nskk--active-buffers))
-      new-activation))
-
-  (defun nskk--release-candidate-resources ()
-    "Release candidate resources owned by the current buffer."
-    (setq nskk--active-buffers
-          (cl-delete-if-not
-           (lambda (buffer)
-             (and (buffer-live-p buffer)
-                  (not (eq buffer (current-buffer)))))
-           nskk--active-buffers))
-    (when (null nskk--active-buffers)
+  (setq nskk--active-buffers
+        (cl-delete-if-not #'buffer-live-p nskk--active-buffers))
+  (let ((new-activation (not (memq (current-buffer) nskk--active-buffers))))
+    (when (and new-activation (null nskk--active-buffers))
+      (setq nskk--candidate-show-hook-owned
+            (not (memq #'nskk-candidate-show-list
+                       nskk-henkan-show-candidates-functions))
+            nskk--candidate-hide-hook-owned
+            (not (memq #'nskk-candidate-hide-list
+                       nskk-henkan-hide-candidates-functions))
+            nskk--saved-candidate-select-function
+            nskk-henkan-select-candidate-by-key-function
+            nskk--candidate-select-function-owned
+            (not (eq nskk-henkan-select-candidate-by-key-function
+                     #'nskk-candidate-list-select-by-key)))
       (when nskk--candidate-show-hook-owned
-        (remove-hook 'nskk-henkan-show-candidates-functions
-                     #'nskk-candidate-show-list))
+        (add-hook 'nskk-henkan-show-candidates-functions
+                  #'nskk-candidate-show-list))
       (when nskk--candidate-hide-hook-owned
-        (remove-hook 'nskk-henkan-hide-candidates-functions
-                     #'nskk-candidate-hide-list))
-      (when (and nskk--candidate-select-function-owned
-                 (eq nskk-henkan-select-candidate-by-key-function
-                     #'nskk-candidate-list-select-by-key))
+        (add-hook 'nskk-henkan-hide-candidates-functions
+                  #'nskk-candidate-hide-list))
+      (when nskk--candidate-select-function-owned
         (setq nskk-henkan-select-candidate-by-key-function
-              nskk--saved-candidate-select-function))
-      (setq nskk--candidate-show-hook-owned nil
-            nskk--candidate-hide-hook-owned nil
-            nskk--candidate-select-function-owned nil
-            nskk--saved-candidate-select-function nil)))
+              #'nskk-candidate-list-select-by-key)))
+    (when new-activation
+      (push (current-buffer) nskk--active-buffers))
+    new-activation))
 
-  (defun nskk--restore-buffer-snapshot (snapshot)
-    "Restore buffer-local variables recorded in SNAPSHOT."
-    (dolist (entry snapshot)
-      (pcase-let ((`(,symbol ,local-p ,value) entry))
-        (if local-p
-            (set (make-local-variable symbol) value)
-          (kill-local-variable symbol)))))
+(defun nskk--release-candidate-resources ()
+  "Release candidate resources owned by the current buffer."
+  (setq nskk--active-buffers
+        (cl-delete-if-not
+         (lambda (buffer)
+           (and (buffer-live-p buffer)
+                (not (eq buffer (current-buffer)))))
+         nskk--active-buffers))
+  (when (null nskk--active-buffers)
+    (when nskk--candidate-show-hook-owned
+      (remove-hook 'nskk-henkan-show-candidates-functions
+                   #'nskk-candidate-show-list))
+    (when nskk--candidate-hide-hook-owned
+      (remove-hook 'nskk-henkan-hide-candidates-functions
+                   #'nskk-candidate-hide-list))
+    (when (and nskk--candidate-select-function-owned
+               (eq nskk-henkan-select-candidate-by-key-function
+                   #'nskk-candidate-list-select-by-key))
+      (setq nskk-henkan-select-candidate-by-key-function
+            nskk--saved-candidate-select-function))
+    (setq nskk--candidate-show-hook-owned nil
+          nskk--candidate-hide-hook-owned nil
+          nskk--candidate-select-function-owned nil
+          nskk--saved-candidate-select-function nil)))
 
-  (defvar-local nskk--teardown-in-progress nil
+(defun nskk--restore-buffer-snapshot (snapshot)
+  "Restore buffer-local variables recorded in SNAPSHOT."
+  (dolist (entry snapshot)
+    (pcase-let ((`(,symbol ,local-p ,value) entry))
+      (if local-p
+          (set (make-local-variable symbol) value)
+        (kill-local-variable symbol)))))
+
+(defvar-local nskk--teardown-in-progress nil
   "Non-nil while the current buffer is releasing NSKK resources.")
 
 (defun nskk--teardown-step (function condition-data)
@@ -332,6 +327,32 @@ Return non-nil when this call registered the buffer for the first time."
         condition-data)
     ((error quit) (or condition-data new-condition))))
 
+(defun nskk--teardown-phase-cleanup (attempt)
+  "Cancel the conversion or preedit owned by the current henkan phase.
+The phase-to-action mapping is the `disable-cleanup/2' Prolog predicate.
+ATTEMPT is called with the cleanup thunk."
+  (when (and (boundp 'nskk-current-state)
+             (nskk-state-p nskk-current-state))
+    (funcall attempt
+             (lambda ()
+               (let* ((phase (nskk-state-henkan-phase nskk-current-state))
+                      (action (when phase
+                                (nskk-prolog-query-value
+                                 `(disable-cleanup ,phase \?a) '\?a))))
+                 (pcase action
+                   ('cancel-conversion (nskk-cancel-conversion-to-reading))
+                   ('cancel-preedit (nskk-cancel-preedit))))))))
+
+(defun nskk--teardown-run-off-hook (attempt)
+  "Run every function in `nskk-mode-off-hook' by calling ATTEMPT for each.
+Each hook function is attempted separately so one that signals cannot stop
+the rest from running."
+  (run-hook-wrapped
+   'nskk-mode-off-hook
+   (lambda (function)
+     (funcall attempt function)
+     nil)))
+
 (defun nskk--teardown (&optional run-off-hook)
   "Release all NSKK resources owned by the current buffer.
 When RUN-OFF-HOOK is non-nil, run every function in
@@ -340,28 +361,16 @@ signals; the first signal is rethrown only after mandatory cleanup finishes."
   (unless nskk--teardown-in-progress
     (let ((nskk--teardown-in-progress t)
           (condition-data nil))
+      ;; The first-signal-wins accumulation lives here, not inside the
+      ;; extracted steps: they only run their own work through ATTEMPT.
       (cl-labels ((attempt (function)
                     (setq condition-data
                           (nskk--teardown-step function condition-data))))
-        (when (and (boundp 'nskk-current-state)
-                   (nskk-state-p nskk-current-state))
-          (attempt
-           (lambda ()
-             (let* ((phase (nskk-state-henkan-phase nskk-current-state))
-                    (action (when phase
-                              (nskk-prolog-query-value
-                               `(disable-cleanup ,phase \?a) '\?a))))
-               (pcase action
-                 ('cancel-conversion (nskk-cancel-conversion-to-reading))
-                 ('cancel-preedit (nskk-cancel-preedit)))))))
+        (nskk--teardown-phase-cleanup #'attempt)
         (attempt #'nskk-clear-conversion-context)
         (attempt (lambda () (nskk-cursor-color-restore nil t)))
         (when run-off-hook
-          (run-hook-wrapped
-           'nskk-mode-off-hook
-           (lambda (function)
-             (attempt function)
-             nil)))
+          (nskk--teardown-run-off-hook #'attempt))
         (attempt #'nskk--cleanup-buffer)
         (when (fboundp 'nskk-show-mode-hide)
           (attempt #'nskk-show-mode-hide))
@@ -430,27 +439,50 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
                 nskk-isearch-enable)
        (nskk--isearch-transaction-state)))))
 
-(defun nskk--initialize-activation ()
-  "Initialize resources required by the current NSKK activation."
-  (nskk-debug-message "NSKK is enabled in buffer: %s" (buffer-name))
+(defun nskk--initialize-subsystems ()
+  "Initialize the conversion subsystems an NSKK activation depends on.
+Call order is preserved from the single call site; no initializer here has
+been shown to be independent of the ones before it."
   (nskk-state-initialize-prolog)
   (nskk-kana-initialize)
   (nskk-converter-initialize)
   (unless (nskk-prolog-holds-p '(dict-initialized))
     (nskk-dict-initialize))
   (nskk-henkan-initialize)
-  (nskk-input-initialize)
+  (nskk-input-initialize))
+
+(defun nskk--install-activation-hooks ()
+  "Install the buffer-local hooks an active NSKK buffer owns.
+`nskk--cleanup-buffer' and `nskk--teardown' remove these again."
+  (add-hook 'kill-buffer-hook #'nskk--handle-buffer-kill nil t)
+  (add-hook 'change-major-mode-hook #'nskk--handle-major-mode-change nil t)
+  (when (eq nskk-dcomp-style 'capf)
+    (add-hook 'completion-at-point-functions
+              #'nskk-completion-at-point nil t)))
+
+(defun nskk--load-learning-data-once ()
+  "Load learning data on the first NSKK activation of this Emacs session.
+`nskk--learning-loaded' is process-global rather than buffer-local, so
+later activations only register the save hook."
+  (when nskk-search-auto-save-learning
+    (unless nskk--learning-loaded
+      (setq nskk--learning-loaded t)
+      (nskk-search-load-learning-data)
+      (when (featurep 'nskk-study)
+        (nskk-study-load)))
+    (add-hook 'kill-emacs-hook #'nskk--save-learning-data)))
+
+(defun nskk--initialize-activation ()
+  "Initialize resources required by the current NSKK activation."
+  (nskk-debug-message "NSKK is enabled in buffer: %s" (buffer-name))
+  (nskk--initialize-subsystems)
   (unless nskk-current-state
     (setq nskk-current-state
           (nskk-state-create nskk-state-default-mode))
     (nskk-debug-message "Created initial state: mode=%s"
                         nskk-state-default-mode))
   (nskk--acquire-candidate-resources)
-  (add-hook 'kill-buffer-hook #'nskk--handle-buffer-kill nil t)
-  (add-hook 'change-major-mode-hook #'nskk--handle-major-mode-change nil t)
-  (when (eq nskk-dcomp-style 'capf)
-    (add-hook 'completion-at-point-functions
-              #'nskk-completion-at-point nil t))
+  (nskk--install-activation-hooks)
   (when (fboundp 'nskk-annotation-initialize)
     (nskk-annotation-initialize))
   (when (and (fboundp 'nskk-isearch-setup)
@@ -459,13 +491,7 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
     (nskk-isearch-setup))
   (nskk-maybe-load-azik-style)
   (add-hook 'kill-emacs-hook #'nskk--dict-maybe-save)
-  (when nskk-search-auto-save-learning
-    (unless nskk--learning-loaded
-      (setq nskk--learning-loaded t)
-      (nskk-search-load-learning-data)
-      (when (featurep 'nskk-study)
-        (nskk-study-load)))
-    (add-hook 'kill-emacs-hook #'nskk--save-learning-data)))
+  (nskk--load-learning-data-once))
 
 (defun nskk--restore-isearch-activation (snapshot attempt)
   "Restore isearch state from SNAPSHOT by calling ATTEMPT for each step."
@@ -476,59 +502,80 @@ Registered on `kill-emacs-hook' by `nskk--enable' when
                (lambda ()
                  (nskk--isearch-restore-transaction-state
                   isearch-transaction)))
+      ;; Restoring isearch resources is not idempotent: a callback fired by
+      ;; the first restore can re-pollute state that restore had just
+      ;; repaired.  `nskk--isearch-reconcile-resource-state' handles the
+      ;; open-ended case with a bounded fixpoint loop; an aborted activation
+      ;; can only re-pollute once, so one extra pass suffices here.
       (unless (equal (nskk--isearch-transaction-state) isearch-transaction)
         (funcall attempt
                  (lambda ()
                    (nskk--isearch-restore-transaction-state
                     isearch-transaction)))))))
 
+(defun nskk--rollback-restore-show-mode (snapshot attempt)
+  "Restore show-mode overlay and timer from SNAPSHOT by calling ATTEMPT."
+  (when (fboundp 'nskk-show-mode-hide)
+    (funcall attempt #'nskk-show-mode-hide))
+  (when (fboundp 'nskk-show-mode-set-overlay)
+    (funcall attempt
+             (lambda ()
+               (nskk-show-mode-set-overlay
+                (plist-get snapshot :show-mode-overlay)))))
+  (when (fboundp 'nskk-show-mode-set-timer)
+    (funcall attempt
+             (lambda ()
+               (nskk-show-mode-set-timer
+                (plist-get snapshot :show-mode-timer))))))
+
+(defun nskk--rollback-restore-globals (snapshot attempt)
+  "Restore process-global state recorded in SNAPSHOT by calling ATTEMPT."
+  (funcall attempt
+           (lambda ()
+             (setq kill-emacs-hook
+                   (plist-get snapshot :kill-emacs-hook)
+                   nskk--learning-loaded
+                   (plist-get snapshot :learning-loaded))))
+  (funcall attempt
+           (lambda ()
+             (setq nskk--active-buffers (plist-get snapshot :active-buffers)
+                   nskk-henkan-show-candidates-functions
+                   (plist-get snapshot :show-functions)
+                   nskk-henkan-hide-candidates-functions
+                   (plist-get snapshot :hide-functions)
+                   nskk-henkan-select-candidate-by-key-function
+                   (plist-get snapshot :select-function)
+                   nskk--candidate-show-hook-owned
+                   (plist-get snapshot :show-owned)
+                   nskk--candidate-hide-hook-owned
+                   (plist-get snapshot :hide-owned)
+                   nskk--candidate-select-function-owned
+                   (plist-get snapshot :select-owned)
+                   nskk--saved-candidate-select-function
+                   (plist-get snapshot :saved-select)))))
+
 (defun nskk--rollback-activation (snapshot cursor-save-started condition-data)
   "Restore SNAPSHOT after activation failed with CONDITION-DATA.
-When CURSOR-SAVE-STARTED is non-nil, restore cursor state as well."
-  (let ((original-condition condition-data))
-    (cl-labels ((attempt (function)
-                         (setq condition-data
-                               (nskk--teardown-step function condition-data))))
-               (when (fboundp 'nskk-show-mode-hide)
-                 (attempt #'nskk-show-mode-hide))
-               (when (fboundp 'nskk-show-mode-set-overlay)
-                 (attempt
-                  (lambda ()
-                    (nskk-show-mode-set-overlay
-                     (plist-get snapshot :show-mode-overlay)))))
-               (when (fboundp 'nskk-show-mode-set-timer)
-                 (attempt
-                  (lambda ()
-                    (nskk-show-mode-set-timer
-                     (plist-get snapshot :show-mode-timer)))))
-               (when cursor-save-started
-                 (attempt #'nskk-cursor-color-restore))
-               (attempt
-                (lambda ()
-                  (setq kill-emacs-hook (plist-get snapshot :kill-emacs-hook)
-                        nskk--learning-loaded (plist-get snapshot :learning-loaded))))
-               (attempt
-                (lambda ()
-                  (setq nskk--active-buffers (plist-get snapshot :active-buffers)
-                        nskk-henkan-show-candidates-functions
-                        (plist-get snapshot :show-functions)
-                        nskk-henkan-hide-candidates-functions
-                        (plist-get snapshot :hide-functions)
-                        nskk-henkan-select-candidate-by-key-function
-                        (plist-get snapshot :select-function)
-                        nskk--candidate-show-hook-owned
-                        (plist-get snapshot :show-owned)
-                        nskk--candidate-hide-hook-owned
-                        (plist-get snapshot :hide-owned)
-                        nskk--candidate-select-function-owned
-                        (plist-get snapshot :select-owned)
-                        nskk--saved-candidate-select-function
-                        (plist-get snapshot :saved-select))))
-               (nskk--restore-isearch-activation snapshot #'attempt)
-               (attempt
-                (lambda ()
-                  (nskk--restore-buffer-snapshot (plist-get snapshot :buffer))))
-               (signal (car original-condition) (cdr original-condition)))))
+When CURSOR-SAVE-STARTED is non-nil, restore cursor state as well.
+
+Restore steps run in a fixed order and each one runs even when an earlier
+one signals.  CONDITION-DATA is always the condition rethrown: because
+`nskk--teardown-step' keeps the first condition and CONDITION-DATA is
+already non-nil here, a failure raised by a restore step is swallowed
+rather than replacing the activation failure the caller is waiting for."
+  (cl-labels ((attempt (function)
+                (nskk--teardown-step function condition-data)))
+    (nskk--rollback-restore-show-mode snapshot #'attempt)
+    (when cursor-save-started
+      (attempt #'nskk-cursor-color-restore))
+    (nskk--rollback-restore-globals snapshot #'attempt)
+    (nskk--restore-isearch-activation snapshot #'attempt)
+    ;; Buffer-locals restore last: the isearch and candidate-resource steps
+    ;; above read activation-era buffer-local state.
+    (attempt
+     (lambda ()
+       (nskk--restore-buffer-snapshot (plist-get snapshot :buffer))))
+    (signal (car condition-data) (cdr condition-data))))
 
 (defun nskk--enable ()
   "Enable NSKK in current buffer transactionally."
@@ -593,6 +640,39 @@ Used by `nskk--post-command-handler' to detect point changes caused by
 unbound cursor-movement commands while in preedit (▽) state."
   (setq nskk--point-before-command (point)))
 
+(defun nskk--post-command-converting-guard ()
+  "Commit the active conversion when point left the conversion overlay.
+Skipped while okurigana is in progress and `this-command' is NSKK-bound:
+point is then legitimately past `overlay-end' because the okurigana kana
+sits after the overlay.  Unbound commands (M-b, a mouse click) still
+commit, so the conversion is not left dangling."
+  (when (and (nskk-converting-p)
+             (or (not (nskk-state-get-metadata nskk-current-state
+                                               'okurigana-in-progress))
+                 (not (memq this-command nskk--bound-commands))))
+    (let* ((conv-start (nskk-get-conversion-start))
+           (overlay-end (when (overlayp (nskk-state-conversion-overlay))
+                          (overlay-end (nskk-state-conversion-overlay)))))
+      (when (and conv-start overlay-end
+                 (/= (point) overlay-end))
+        (nskk-commit-current)))))
+
+(defun nskk--post-command-preedit-guard ()
+  "Commit the preedit reading when an unbound command moved point out of it."
+  (when (and (nskk-prolog-holds-p
+              `(preedit-phase ,(nskk-state-henkan-phase nskk-current-state)))
+             (nskk-get-conversion-start)
+             nskk--point-before-command
+             (/= (point) nskk--point-before-command)
+             (not (memq this-command nskk--bound-commands)))
+    (nskk-henkan-kakutei)))
+
+(defun nskk--post-command-invalidate-undo ()
+  "Drop the undo-kakutei record once a command other than undo has run."
+  (when (and (not (eq this-command 'nskk-undo-kakutei))
+             (nskk-last-kakutei-record))
+    (nskk-invalidate-undo-kakutei)))
+
 (defun nskk--post-command-handler ()
   "Handle post-command hook for NSKK state update.
 Guards against point escaping the active conversion or preedit area due
@@ -609,31 +689,11 @@ Handlers bound in `nskk-mode-map' call `nskk-commit-by-phase'
 explicitly before moving, so by the time this hook fires for them the
 relevant phase is already nil and both guards are no-ops."
   (when (and nskk-mode nskk-current-state)
-    ;; Skip when okurigana is in progress AND this-command is an
-    ;; NSKK-bound command: point is legitimately past overlay-end
-    ;; because the okurigana kana sits after the overlay.
-    ;; For unbound commands (M-b, mouse click, etc.) proceed with the
-    ;; guard even during okurigana so the conversion is committed.
-    (when (and (nskk-converting-p)
-              (or (not (nskk-state-get-metadata nskk-current-state
-                                                'okurigana-in-progress))
-                  (not (memq this-command nskk--bound-commands))))
-      (let* ((conv-start (nskk-get-conversion-start))
-             (overlay-end (when (overlayp (nskk-state-conversion-overlay))
-                            (overlay-end (nskk-state-conversion-overlay)))))
-        (when (and conv-start overlay-end
-                   (/= (point) overlay-end))
-          (nskk-commit-current))))
-    (when (and (nskk-prolog-holds-p
-                `(preedit-phase ,(nskk-state-henkan-phase nskk-current-state)))
-               (nskk-get-conversion-start)
-               nskk--point-before-command
-               (/= (point) nskk--point-before-command)
-               (not (memq this-command nskk--bound-commands)))
-      (nskk-henkan-kakutei))
-    (when (and (not (eq this-command 'nskk-undo-kakutei))
-               (nskk-last-kakutei-record))
-      (nskk-invalidate-undo-kakutei))
+    ;; The three guards are siblings, not a chain: each runs whatever the
+    ;; others did, and the modeline update is unconditional and last.
+    (nskk--post-command-converting-guard)
+    (nskk--post-command-preedit-guard)
+    (nskk--post-command-invalidate-undo)
     (nskk-modeline-update)))
 
 ;; User commands

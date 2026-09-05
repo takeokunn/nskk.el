@@ -32,13 +32,6 @@
 (require 'nskk-prolog)
 (require 'nskk-cps-macros)
 
-;;;; Customization
-
-(defgroup nskk-kana nil
-  "Kana character classification and conversion settings."
-  :prefix "nskk-kana-"
-  :group 'nskk)
-
 ;;;; Unicode Code Point Constants
 ;;
 ;; Based on Unicode Standard 15.0.
@@ -90,44 +83,38 @@ Returns TABLE."
                  `(puthash ,(car entry) ,(cadr entry) ,table))
                entries)))
 
-(defmacro nskk--kana-define-range-predicate (name prolog-name start end docstring)
-  "Define a character range predicate NAME backed by a Prolog rule.
-PROLOG-NAME is the Prolog predicate symbol.
-START and END are defconst symbols for the Unicode range boundaries.
-DOCSTRING documents the generated ELisp predicate.
-
-Generates:
-  - A Prolog rule: (PROLOG-NAME ?c) with arithmetic range check
-  - An ELisp predicate (defsubst): (NAME char) => boolean, inlined as
-    arithmetic range check under byte-compilation for hot-path performance"
-  (declare (indent 1) (debug t))
-  `(progn
-     (nskk-prolog-<- (,prolog-name \?c)
-       (>= \?c ,start)
-       (<= \?c ,end))
-     (defsubst ,name (char)
-       ,docstring
-       (and (integerp char)
-            (>= char ,start)
-            (<= char ,end)))))
-
 ;;;; Character Classification Predicates
 
-(nskk--kana-define-range-predicate
- nskk-kana-hiragana-p kana-hiragana
- nskk--kana-hiragana-start nskk--kana-hiragana-end
- "Return non-nil if CHAR is a hiragana character (U+3040-U+309F).")
+(nskk-prolog-<- (kana-hiragana \?c)
+  (>= \?c nskk--kana-hiragana-start)
+  (<= \?c nskk--kana-hiragana-end))
 
-(nskk--kana-define-range-predicate
- nskk-kana-katakana-p kana-katakana
- nskk--kana-katakana-start nskk--kana-katakana-end
- "Return non-nil if CHAR is a katakana character (U+30A0-U+30FF).")
+(defsubst nskk-kana-hiragana-p (char)
+  "Return non-nil if CHAR is a hiragana character (U+3040-U+309F)."
+  (and (integerp char)
+       (>= char nskk--kana-hiragana-start)
+       (<= char nskk--kana-hiragana-end)))
 
-(nskk--kana-define-range-predicate
- nskk-kana-hankaku-katakana-p kana-hankaku-katakana
- nskk--kana-hankaku-katakana-start nskk--kana-hankaku-katakana-end
- "Return non-nil if CHAR is a half-width katakana character (U+FF65-U+FF9F).
-Half-width katakana are part of the Half-width and Full-width Forms block.")
+(nskk-prolog-<- (kana-katakana \?c)
+  (>= \?c nskk--kana-katakana-start)
+  (<= \?c nskk--kana-katakana-end))
+
+(defsubst nskk-kana-katakana-p (char)
+  "Return non-nil if CHAR is a katakana character (U+30A0-U+30FF)."
+  (and (integerp char)
+       (>= char nskk--kana-katakana-start)
+       (<= char nskk--kana-katakana-end)))
+
+(nskk-prolog-<- (kana-hankaku-katakana \?c)
+  (>= \?c nskk--kana-hankaku-katakana-start)
+  (<= \?c nskk--kana-hankaku-katakana-end))
+
+(defsubst nskk-kana-hankaku-katakana-p (char)
+  "Return non-nil if CHAR is a half-width katakana character (U+FF65-U+FF9F).
+Half-width katakana are part of the Half-width and Full-width Forms block."
+  (and (integerp char)
+       (>= char nskk--kana-hankaku-katakana-start)
+       (<= char nskk--kana-hankaku-katakana-end)))
 
 (nskk-prolog-<- (kana-han \?c)
   (>= \?c nskk--kana-han-start)
@@ -136,21 +123,20 @@ Half-width katakana are part of the Half-width and Full-width Forms block.")
   (>= \?c nskk--kana-han-extension-a-start)
   (<= \?c nskk--kana-han-extension-a-end))
 
-(defun/k nskk-kana-han-p (char)
+(defun nskk-kana-han-p (char)
   "Return non-nil if CHAR is a han (kanji) character.
 Recognizes both CJK Unified Ideographs (U+4E00-U+9FFF) and
 CJK Unified Ideographs Extension A (U+3400-U+4DBF)."
-  (if (and (integerp char)
-           (nskk-prolog-holds-p (list 'kana-han char)))
-      (succeed t)
-    (fail)))
+  (and (integerp char)
+       (nskk-prolog-holds-p (list 'kana-han char))
+       t))
 
 (nskk-prolog-<- (kana-japanese \?c) (kana-hiragana \?c))
 (nskk-prolog-<- (kana-japanese \?c) (kana-katakana \?c))
 (nskk-prolog-<- (kana-japanese \?c) (kana-han \?c))
 (nskk-prolog-<- (kana-japanese \?c) (kana-hankaku-katakana \?c))
 
-(defun/k nskk-kana-japanese-p (char)
+(defun nskk-kana-japanese-p (char)
   "Return non-nil if CHAR is a Japanese character.
 Recognizes the following Unicode ranges:
 - Hiragana (U+3040-U+309F)
@@ -158,10 +144,9 @@ Recognizes the following Unicode ranges:
 - CJK Unified Ideographs (U+4E00-U+9FFF)
 - CJK Unified Ideographs Extension A (U+3400-U+4DBF)
 - Half-width Katakana (U+FF65-U+FF9F)"
-  (if (and (integerp char)
-           (nskk-prolog-holds-p (list 'kana-japanese char)))
-      (succeed t)
-    (fail)))
+  (and (integerp char)
+       (nskk-prolog-holds-p (list 'kana-japanese char))
+       t))
 
 ;;;; Zenkaku/Hankaku Conversion Tables
 
@@ -230,19 +215,19 @@ Includes two-character dakuten/handakuten sequences (e.g., \"ｶﾞ\" -> \"ガ\"
 
 ;;;; Character Conversion Functions
 
-(defun/k nskk-kana-hiragana-to-katakana (char)
+(defun nskk-kana-hiragana-to-katakana (char)
   "Convert hiragana CHAR to katakana.
 Returns the converted character code, or CHAR unchanged if not hiragana."
-  (succeed (if (nskk-kana-hiragana-p char)
-               (+ char nskk--kana-kana-offset)
-             char)))
+  (if (nskk-kana-hiragana-p char)
+      (+ char nskk--kana-kana-offset)
+    char))
 
-(defun/k nskk-kana-katakana-to-hiragana (char)
+(defun nskk-kana-katakana-to-hiragana (char)
   "Convert katakana CHAR to hiragana.
 Returns the converted character code, or CHAR unchanged if not katakana."
-  (succeed (if (nskk-kana-katakana-p char)
-               (- char nskk--kana-kana-offset)
-             char)))
+  (if (nskk-kana-katakana-p char)
+      (- char nskk--kana-kana-offset)
+    char))
 
 (defun/k nskk--kana-map-string-chars (string converter)
   "Apply CONVERTER to each character in STRING.
@@ -268,42 +253,35 @@ Fails if STRING is not a string."
 
 ;;;; Zenkaku/Hankaku Conversion Functions
 
-(defun/k nskk--kana-zenkaku-string-to-hankaku (string)
-  "Convert zenkaku katakana in STRING to hankaku.
-Uses direct hash table lookup for O(1) per character instead of Prolog
-round-trip (~10µs per query).  Prolog facts remain authoritative for
-cross-module queries; the hash table is the hot-path cache.
-Succeeds with the converted string if STRING is a string.
-Fails if STRING is not a string."
-  (if (stringp string)
-      (succeed (cl-loop for char across string
-                        for str = (char-to-string char)
-                        concat (or (gethash str nskk--kana-zenkaku-to-hankaku-table)
-                                   str)))
-    (fail)))
+(defun nskk--kana-zenkaku-string-to-hankaku (string)
+  "Convert each zenkaku katakana character in STRING to its hankaku form.
+Characters with no hankaku equivalent are passed through unchanged.
+STRING must be a string; callers own the type dispatch."
+  (cl-loop for char across string
+           for str = (char-to-string char)
+           concat (or (gethash str nskk--kana-zenkaku-to-hankaku-table)
+                      str)))
 
-(defun/k nskk-kana-zenkaku-to-hankaku (string-or-char)
+(defun nskk-kana-zenkaku-to-hankaku (string-or-char)
   "Convert zenkaku katakana STRING-OR-CHAR to hankaku.
 For a string, converts each recognized zenkaku character; unrecognized
 characters are passed through unchanged.  For a character (integer), returns
 the hankaku string equivalent, or a one-character string if unrecognized.
 For any other type, returns STRING-OR-CHAR unchanged.
-Uses direct hash lookup instead of Prolog round-trip for hot-path speed.
-Always succeeds."
+
+Not injective: ヮ and ワ both map to ﾜ because JIS X 0201 has no half-width
+small wa, so `nskk-kana-hankaku-to-zenkaku' cannot recover ヮ."
   (pcase string-or-char
-    ((pred stringp)
-     (<- result nskk--kana-zenkaku-string-to-hankaku string-or-char)
-     (succeed result))
+    ((pred stringp) (nskk--kana-zenkaku-string-to-hankaku string-or-char))
     ((pred integerp)
      (let ((str (char-to-string string-or-char)))
-       (succeed (or (gethash str nskk--kana-zenkaku-to-hankaku-table) str))))
-    (_ (succeed string-or-char))))
+       (or (gethash str nskk--kana-zenkaku-to-hankaku-table) str)))
+    (_ string-or-char)))
 
 (defun nskk--kana-hankaku-lookup-at (string i len)
   "Look up hankaku->zenkaku conversion at position I in STRING (length LEN).
-Tries the two-character sequence at I and I+1 first (dakuten combinations),
-then falls back to the single character at I.  Uses direct hash table lookup
-instead of Prolog round-trip for O(1) per character.
+Tries the two-character sequence at I and I+1 first, so that a base character
+followed by a combining dakuten mark converts as one unit rather than two.
 Returns a cons (ZENKAKU . ADVANCE) where ADVANCE is 2 (two-char match) or 1."
   (let* ((c1  (char-to-string (aref string i)))
          (two (and (< (1+ i) len)
@@ -314,36 +292,27 @@ Returns a cons (ZENKAKU . ADVANCE) where ADVANCE is 2 (two-char match) or 1."
       (cons (or (gethash c1 nskk--kana-hankaku-to-zenkaku-table) c1)
             1))))
 
-(defun/k nskk--kana-hankaku-string-to-zenkaku (string)
+(defun nskk--kana-hankaku-string-to-zenkaku (string)
   "Convert hankaku katakana in STRING to zenkaku.
-Tries two-character sequences first to handle dakuten combinations.
-Uses direct hash table lookup instead of Prolog round-trip.
-Succeeds with the converted string if STRING is a string.
-Fails if STRING is not a string."
-  (if (stringp string)
-      (let ((parts nil) (i 0) (len (length string)))
-        (while (< i len)
-          (let ((pair (nskk--kana-hankaku-lookup-at string i len)))
-            (push (car pair) parts)
-            (setq i (+ i (cdr pair)))))
-        (succeed (apply #'concat (nreverse parts))))
-    (fail)))
+STRING must be a string; callers own the type dispatch."
+  (let ((parts nil) (i 0) (len (length string)))
+    (while (< i len)
+      (let ((pair (nskk--kana-hankaku-lookup-at string i len)))
+        (push (car pair) parts)
+        (setq i (+ i (cdr pair)))))
+    (apply #'concat (nreverse parts))))
 
-(defun/k nskk-kana-hankaku-to-zenkaku (string-or-char)
+(defun nskk-kana-hankaku-to-zenkaku (string-or-char)
   "Convert hankaku katakana STRING-OR-CHAR to zenkaku.
 Handles combined dakuten/handakuten marks (e.g., \"ｶﾞ\" -> \"ガ\").
 Unrecognized characters are passed through unchanged.
-Uses direct hash table lookup instead of Prolog round-trip.
-For any other type, returns STRING-OR-CHAR unchanged.
-Always succeeds."
+For any other type, returns STRING-OR-CHAR unchanged."
   (pcase string-or-char
-    ((pred stringp)
-     (<- result nskk--kana-hankaku-string-to-zenkaku string-or-char)
-     (succeed result))
+    ((pred stringp) (nskk--kana-hankaku-string-to-zenkaku string-or-char))
     ((pred integerp)
      (let ((str (char-to-string string-or-char)))
-       (succeed (or (gethash str nskk--kana-hankaku-to-zenkaku-table) str))))
-    (_ (succeed string-or-char))))
+       (or (gethash str nskk--kana-hankaku-to-zenkaku-table) str)))
+    (_ string-or-char)))
 
 ;;;; Prolog Facts Initialization
 
@@ -353,30 +322,25 @@ Classification predicates and Prolog range rules are asserted at load time.")
 
 (nskk-prolog-<- (module-initialized-flag nskk--kana-initialized))
 
+(defconst nskk--kana-conversion-rules
+  '((hiragana      insert     identity)
+    (katakana      insert     nskk-kana-string-hiragana-to-katakana)
+    (katakana-半角  insert     nskk--hiragana-to-hankaku)
+    (hiragana      normalize  identity)
+    (katakana      normalize  nskk-kana-string-katakana-to-hiragana)
+    (katakana-半角  normalize  nskk--hankaku-to-hiragana))
+  "Rows of `kana-conversion/3': (MODE DIRECTION FUNCTION).
+Queried by `nskk-kana-convert-for-mode' and `nskk-kana-normalize-for-lookup',
+and by `nskk-input.el' and `nskk-henkan.el' across module boundaries.")
+
 (defun/done nskk-kana-initialize ()
-  "Populate Prolog facts from the zenkaku/hankaku hash tables.
+  "Populate the `kana-conversion/3' Prolog fact table.
 Classification predicates and Prolog range rules are installed at module
-load time; this function only populates the conversion fact tables.
+load time; this function only populates the conversion table.
 Idempotent: subsequent calls are no-ops."
   (unless nskk--kana-initialized
-    (nskk-prolog-set-index 'zenkaku-to-hankaku 2 :hash)
-    (nskk-prolog-set-index 'hankaku-to-zenkaku 2 :hash)
-    (maphash (lambda (k v)
-               (nskk-prolog-assert (list (list 'zenkaku-to-hankaku k v))))
-             nskk--kana-zenkaku-to-hankaku-table)
-    (maphash (lambda (k v)
-               (nskk-prolog-assert (list (list 'hankaku-to-zenkaku k v))))
-             nskk--kana-hankaku-to-zenkaku-table)
-    (nskk-prolog-define-fact-table kana-conversion (:arity 3 :index :hash)
-      (hiragana      insert      identity)
-      (katakana      insert      nskk-kana-string-hiragana-to-katakana)
-      (katakana-半角  insert      nskk--hiragana-to-hankaku)
-      (hiragana      normalize   identity)
-      (katakana      normalize   nskk-kana-string-katakana-to-hiragana)
-      (katakana-半角  normalize   nskk--hankaku-to-hiragana))
-
-    (nskk-prolog-<- (module-initialized-flag nskk--kana-initialized))
-
+    (nskk-prolog-set-index 'kana-conversion 3 :hash)
+    (nskk-prolog-bulk-facts kana-conversion nskk--kana-conversion-rules)
     (setq nskk--kana-initialized t)))
 
 ;;;; Cross-Script Conversion Helpers
