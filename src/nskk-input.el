@@ -1020,10 +1020,13 @@ emitting ん and leaving the consonant pending.  Also clears
     ;; no-match: fallback
     (no-match       \?doubled      no-result)))
 
-(defun nskk--romaji-classify-cached-query (key query variable fallback)
-  "Return the cached Prolog QUERY result for KEY, or FALLBACK."
+(defun nskk--romaji-classify-cached-query (key variable fallback)
+  "Return the cached Prolog result for KEY, or FALLBACK.
+KEY contains the predicate followed by its input arguments.
+VARIABLE is the query output argument, inserted after the predicate."
   (or (gethash key nskk--romaji-classify-cache)
-      (let ((value (or (nskk-prolog-query-value query variable) fallback)))
+      (let* ((query (cons (car key) (cons variable (cdr key))))
+             (value (or (nskk-prolog-query-value query variable) fallback)))
         (puthash key value nskk--romaji-classify-cache)
         value)))
 (defun nskk--romaji-doubled-context (char last-buf-char result-type)
@@ -1039,12 +1042,14 @@ emitting ん and leaving the consonant pending.  Also clears
                     (not (nskk-prolog-holds-p `(hatsuon-blocker ,char)))
                     (not (eq (nskk-converter-lookup (string ?n char))
                              :incomplete))))
-         (values (mapcar #'nskk--bool-sym
-                         (list last-is-n char-is-n same-ok n-ok)))
-         (key (cons 'doubled-context (append values (list result-type)))))
+         (key (list 'doubled-context
+                    (nskk--bool-sym last-is-n)
+                    (nskk--bool-sym char-is-n)
+                    (nskk--bool-sym same-ok)
+                    (nskk--bool-sym n-ok)
+                    result-type)))
     (nskk--romaji-classify-cached-query
      key
-     `(doubled-context ,'\?de ,@values ,result-type)
      '\?de
      'not-eligible)))
 (defun nskk--classify-romaji-input (char last-buf-char result)
@@ -1068,7 +1073,6 @@ The cache is cleared whenever the classification rules are reasserted."
          (key (list 'romaji-classify doubled-eligible result-type)))
     (nskk--romaji-classify-cached-query
      key
-     `(romaji-classify ,'\?class ,doubled-eligible ,result-type)
      '\?class
      'no-match)))
 

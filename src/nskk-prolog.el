@@ -1013,9 +1013,10 @@ an independently owned copy must pass nil, which every caller but
             (push (cdr current) pending))
            ((stringp current)
             (puthash current (substring-no-properties current) copies)
-            (push current composites)
-            (setq pending
-                  (nconc (nskk--prolog-string-property-values current) pending)))
+            (let ((property-values (nskk--prolog-string-property-values current)))
+              (when property-values
+                (push current composites)
+                (setq pending (nconc property-values pending)))))
            ((hash-table-p current)
             (let ((entries (nskk--prolog-hash-table-entries current)))
               (puthash current

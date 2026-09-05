@@ -979,6 +979,14 @@ This helper is shared by both `nskk-server-integration-test' and
 ;;;;
 ;;;; Integration Session Helpers
 ;;;;
+(defun nskk-test-ensure-standard-romaji ()
+  "Restore standard romaji entries without duplicating existing facts."
+  (dolist (rule nskk--standard-romaji-rules)
+    (puthash (car rule) (cadr rule) nskk--romaji-table)
+    (let ((clause (list (cons 'romaji-to-kana rule))))
+      (unless (member clause (nskk-prolog-get-clauses 'romaji-to-kana rule nil))
+        (nskk-prolog-assert clause)))))
+
 (defmacro nskk-integration-with-session (mode &rest body)
   "Execute BODY in a full NSKK session initialized to MODE.
 Sets up a temporary buffer with a fresh state struct, empty romaji buffer,
@@ -990,7 +998,7 @@ the full input pipeline without enabling `nskk-mode'."
           (nskk-converter-auto-start-henkan t))
       (nskk-state-set-conversion-overlay nil)
       (nskk-state-set-romaji-buffer "")
-      (nskk-initialize-romaji-table)
+      (nskk-test-ensure-standard-romaji)
       ,@body)))
 
 (defun nskk--integration-type-char (char)
