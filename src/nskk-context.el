@@ -30,7 +30,6 @@
 
 (require 'cl-lib)
 (require 'nskk-state)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
 
 ;; `nskk-context-global-mode' is autoloaded, so this file can run in a session

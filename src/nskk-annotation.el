@@ -30,7 +30,6 @@
 
 (require 'subr-x)
 (require 'nskk-prolog)
-(require 'nskk-custom)
 (require 'nskk-cps-macros)
 (require 'nskk-state)
 
