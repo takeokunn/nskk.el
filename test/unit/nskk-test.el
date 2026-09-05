@@ -80,11 +80,11 @@
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
 (nskk-describe "nskk-mode-map keymap"
-  ;; keymapp existence check removed.  The `lookup-key' calls in this block do
-  ;; NOT cover it: `(lookup-key nil (kbd "C-x C-j"))' returns 1 — a truthy
-  ;; partial-match code — rather than signalling, so they pass against a nil
-  ;; keymap.  What covers it is `main-keymap-bindings' below, whose `eq' against
-  ;; the expected command fails on every row once the map stops being one.
+  ;; These two do NOT establish that `nskk-mode-map' is a keymap:
+  ;; `(lookup-key nil (kbd "C-x C-j"))' returns 1 — a truthy partial-match code
+  ;; — rather than signalling, so both pass against a nil map.  That property is
+  ;; covered by "nskk-mode-map structural invariants" below and by
+  ;; `main-keymap-bindings', whose `eq' fails on every row without a real map.
   (nskk-it "has C-x C-j binding"
     (should (lookup-key nskk-mode-map (kbd "C-x C-j"))))
 
