@@ -36,7 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machinery can enumerate tracked state without naming private symbols.
 - Added `nskk-dict-transaction.el`, extracting the dictionary's
   transactional load/save/rollback machinery into its own module.
-
+- Added `nskk-trie-delete/k`, the continuation-passing entry point for trie
+  deletion, distinguishing "key was present and removed" from "key was not
+  present" without collapsing both onto the sync wrapper's `t`/nil.
 - Added `nskk-display-sanitize`, which strips every text property from
   untrusted dictionary text before applying a single display face, and
   `nskk-overlay-priority-inline`, `nskk-overlay-priority-dcomp-multiple`
@@ -65,10 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nskk-state-set` documents that an invalid value for the `mode` or
   `henkan-phase` key signals an error rather than invoking the not-found
   continuation. The behaviour is unchanged; the docstring was wrong.
-- Decomposed `nskk--init-azik-rules` by extracting its flat AZIK rule-data
-  tables into a dedicated function; other long functions were reviewed and
-  left intact where splitting would relocate, not reduce, shared
-  transactional or CPS-macro-sensitive state.
+- `nskk-trie-has-prefix-p` now returns `t` rather than the internal
+  `nskk-trie-node` struct it previously leaked as its truthy value. Callers
+  that only tested for non-nil are unaffected; callers that inspected the
+  returned node were relying on undocumented behavior.
 - Decomposed the two `nskk-show-mode` display functions by separating each
   one's install sequence from its fail-closed handler, and factored the
   repeated error-and-quit-swallowing cleanup into a single helper. The
@@ -87,6 +89,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folded the tutorial's private deep-copy routine into
   `nskk-prolog-copy-term`, which gained an optional caller-supplied memo
   table, removing a second implementation of the same graph copy.
+- Rebuilt the AZIK rule tables as data. The compile-time rule-generation
+  macros were replaced by pure functions that expand one consonant row into
+  `(ROMAJI KANA)` pairs, collected into `defconst` tables and asserted
+  through `nskk-prolog-bulk-facts`, which is the one fact-assertion form
+  that expands without a `progn`. `nskk--init-azik-rules` and
+  `nskk--azik-init-core-and-compat-rules` are decomposed into named phase
+  functions, and the core and compatibility rules become 13 per-category
+  constants, appended in the order they were previously asserted in. The
+  generated rule set is unchanged.
 - Reshaped the mode-line module: cursor-color resolution now uses the
   project's CPS found/not-found pair, the mode-line indicator consumes that
   pair's continuations directly instead of a nil test, and the all-frames
@@ -105,6 +116,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ordinary function returning the converted kana. It never signalled
   absence, so its not-found continuation was unreachable; the generated
   `nskk-convert-input-to-kana-final/k` is gone.
+- Replaced six `fboundp` existence checks in the region command tests with
+  coverage for paths they left untested: conversion of a partial region
+  with surrounding text left intact, point placement after a successful
+  conversion, an interior region resolved through the interactive bounds
+  spec, rejection of a mark left active while `transient-mark-mode` is
+  off, mark reactivation when the failing body itself deactivated the
+  mark, a dakuten combination that shortens the converted span, and the
+  0x7E/U+FF5E boundary of the ASCII/full-width range.
 - Reworked the skkserv client. Connection setup, teardown and rollback are
   split into named helpers; the duplicated poll-budget normalisation is now a
   single function; and Prolog rollback uses the engine's own
@@ -122,6 +141,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   response byte cap, fail-closed coding preflight, candidate sanitisation,
   the exactly-one-continuation invariant, resource ownership, rollback and
   post-send teardown.
+- Restored skkserv test coverage that the suite replacement had dropped:
+  the async-connect path (timeout give-up, non-finite and non-numeric
+  connect budgets, per-poll budget accounting, wall-clock-jump immunity,
+  and resource release when initialisation signals or quits), fail-closed
+  behaviour and zero-mutation of public state when the coding preflight
+  quits at each of its four stages, configure-time rollback across five
+  fault stages crossed with error and quit, reuse of one process and one
+  owned buffer across repeated opens, and killing an owned buffer without
+  running `kill-buffer-hook` or the query functions.
 
 ### Removed
 
@@ -150,9 +178,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation are Elisp-side and unchanged in behaviour.
   `mode-properties/5`, `mode-category/2` and `japanese-mode/1` remain, as
   other modules query them.
+- Made the debug module's hand-written CPS continuation-pattern declaration
+  visible during byte compilation, so the CPS bind forms' guard against
+  binding a `defun/done` function is no longer inert while the file compiles.
+- Restructured the resource lifecycle in `nskk-isearch.el`: the two
+  near-identical reconciliation loops and the three copies of the
+  cleanup-collection helper are now shared condition-plumbing functions, and
+  the retry bound is derived from the number of resources being converged
+  instead of written as a literal. The mode-indicator lookup moved to the
+  project's CPS macros, so the prompt advice consumes it through explicit
+  success and failure continuations rather than a nil sentinel. The
+  `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
+  rollback is unchanged.
 
 ### Fixed
 
+- Corrected the README's region-command pattern, which read
+  `M-x nskk-region-*` and matched none of the six commands; every one is
+  named `nskk-*-region`.
+- Fixed the isearch prompt showing no input-mode indicator in half-width
+  katakana mode. `nskk-isearch-mode-string-alist` covered six of the seven
+  symbols in `nskk--valid-modes`, omitting `katakana-半角`.
 - Fixed a state-snapshot ordering bug in the tutorial dictionary-state
   guard where a Prolog fact query's side effect on the internal Prolog
   variable counter could be captured as part of the snapshot it was
@@ -163,6 +209,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updated the last-shown mode, so the deduplication guard suppressed every
   later attempt. The last-shown mode is now updated only after a style
   reports that it displayed something.
+- Fixed the skkserv client dropping a working connection when preparing a
+  request failed before anything was sent. Erasing the I/O buffer and
+  resetting the response counters had been folded into the same helper as
+  the send, and the request was marked as started before that helper ran,
+  so a fault while erasing or resetting ran the post-send teardown. The
+  request is now marked as started only after preparation succeeds.
 - Fixed the interactive tutorial, which could not be completed. Every
   exercise's input and result region shared one end marker position, so
   answers were never graded as correct and marking one exercise correct
@@ -198,6 +250,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed a dead, zero-caller private helper
   (`nskk--converter-copy-prolog-state`) from the converter module.
+- Removed the converter's batch romaji-conversion API, which had no caller
+  in `src/`: the public `nskk-convert-romaji` (with its `/k` variant and
+  `nskk-convert-romaji--internal`) and the sokuon/hatsuon engine beneath it
+  — `nskk--convert-loop`, `nskk--convert-step`, `nskk--convert-step-n`,
+  `nskk--sokuon-p` and `nskk--romaji-char-max`. Production input handling
+  applies its own sokuon and hatsuon rules in `nskk-input.el` and never
+  called these; the shipped behaviour is covered by the kana-input E2E
+  tests. The `sokuon-blocker`, `hatsuon-blocker`, `vowel-char` and
+  `uppercase-vowel-char` Prolog fact tables are retained, since
+  `nskk-input.el` queries them.
+- Removed `nskk-converter-get-rule` and its `/k` variant. The body was a
+  re-wrap of `nskk-converter-lookup` with identical return values, so
+  callers use `nskk-converter-lookup` directly.
+- Removed the macros `nskk-converter-define-rules` and
+  `nskk-converter-define-style`, which had no caller outside their own
+  tests — `nskk-azik.el` writes its initializer by hand and registers it
+  through `nskk-converter-register-style`. Also removed the unused setters
+  `nskk-converter-set-style-transaction-hash-tables` and
+  `nskk-converter-set-style-transaction-variables`; the corresponding
+  `nskk-converter-register-style-transaction-*` functions and the
+  list-returning accessors remain.
 - Removed the private per-style inline display builders
   `nskk--inline-build-horizontal` and `nskk--inline-build-vertical`,
   superseded by a single style-taking function.
@@ -215,6 +288,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   production code queried: `search-backend`, `search-result-action` and
   `should-update-overlay`. The cross-module tables `converting-phase`,
   `preedit-phase` and `disable-cleanup` are unchanged.
+- Removed an unreachable nil-result guard and an unused `nskk-cps-macros`
+  require from the region module. Every converter the region commands pass
+  to `nskk--region-convert` receives `buffer-substring-no-properties`
+  output, which is always a string, so the guard's nil branch could not be
+  entered; the module referenced no CPS macro.
 - Removed the `nskk-cache-field` macro, its backing `cache-field-fn/3`
   Prolog fact table, and the CPS-style `nskk-cache-p/k` predicate from
   `nskk-cache.el`. None had callers outside `nskk-cache.el` and its test
@@ -222,6 +300,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `nskk--server-prolog-state-snapshot` and
   `nskk--server-restore-prolog-state` from the skkserv client in favour of the
   Prolog engine's own per-key snapshot API.
+- Removed a dead, zero-caller private helper (`nskk--debug-format`) and the
+  unused `debug-category` Prolog facts and their hash index from the debug
+  module.
+- Removed the AZIK rule-generation macros `nskk-azik-hatsuon`,
+  `nskk-azik-double-vowel`, `nskk-azik-extensions`, and `nskk-azik-youon`.
+  They carried a public prefix but existed only to splice generated forms
+  during module initialization. The rules they produced are unchanged and
+  are now built from data. Code extending AZIK through these macros should
+  add `(ROMAJI KANA)` pairs to `nskk-azik-conversion-table` instead.
 
 ## [0.3.0] - 2026-07-26
 
