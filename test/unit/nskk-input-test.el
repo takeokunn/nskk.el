@@ -48,19 +48,74 @@ Also resets `nskk-state-conversion-overlay' to nil for test isolation."
 (defmacro nskk-input-test-with-romaji (&rest body)
   "Execute BODY with a fresh romaji buffer and standard romaji and classify tables.
 Ensures both the romaji conversion table and the romaji-classify/3 Prolog
-facts are loaded regardless of prior test state.  The retract-before-assert
-pattern prevents duplicate facts when multiple tests use this macro.
+facts are loaded regardless of prior test state.  Standard conversion facts
+are added only when missing, preserving custom entries; classify rules are
+replaced before each body.
 Also populates :incomplete markers for all romaji prefixes so that
 incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
 `incomplete' rather than `no-match'."
   (declare (indent 0))
   `(progn
-     (nskk-initialize-romaji-table)
+     (nskk-test-ensure-standard-romaji)
      (nskk--converter-populate-incomplete-markers)
      (nskk-prolog-retract-all 'romaji-classify 3)
      (nskk--init-romaji-classify-rules)
      (cl-letf (((nskk-state-romaji-buffer) ""))
        ,@body)))
+
+(ert-deftest nskk-input-test-romaji-fixtures-do-not-accumulate-facts ()
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk--romaji-table (make-hash-table :test 'equal))
+          (custom '((romaji-to-kana "test-custom" "custom"))))
+      (nskk-prolog-retract-all 'romaji-to-kana 2)
+      (puthash "test-custom" "custom" nskk--romaji-table)
+      (nskk-prolog-assert custom)
+      (nskk-prolog-assert custom)
+      (nskk-input-test-with-romaji nil)
+      (let ((clauses (copy-tree
+                      (nskk-prolog-get-clauses 'romaji-to-kana '(\?romaji \?kana) nil))))
+        (should (= (length clauses)
+                   (+ 2 (length (cl-remove-duplicates
+                                 nskk--standard-romaji-rules :test #'equal)))))
+        (dotimes (_ 3)
+          (nskk-input-test-with-romaji nil)
+          (nskk-integration-with-session 'hiragana nil))
+        (should (equal clauses
+                       (nskk-prolog-get-clauses 'romaji-to-kana '(\?romaji \?kana) nil)))
+        (should (equal (gethash "test-custom" nskk--romaji-table) "custom"))
+        (dolist (rule nskk--standard-romaji-rules)
+          (should (member (list (cons 'romaji-to-kana rule)) clauses)))))))
+
+(ert-deftest nskk-input-test-standard-romaji-restores-exact-missing-entries ()
+  (nskk-prolog-test-with-isolated-db
+    (dolist (index '(:list :hash :trie))
+      (let ((nskk--romaji-table (make-hash-table :test 'equal))
+            (nskk--standard-romaji-rules
+             '(("aa" "first") ("aa" "second") ("bb" "third")))
+            (rule-clause '((romaji-to-kana "aa" "first") (true)))
+            (existing-fact '((romaji-to-kana "bb" "third"))))
+        (nskk-prolog-retract-all 'romaji-to-kana 2)
+        (nskk-prolog-set-index 'romaji-to-kana 2 index)
+        (nskk-prolog-assert rule-clause)
+        (nskk-prolog-assert existing-fact)
+        (nskk-test-ensure-standard-romaji)
+        (should (equal (gethash "aa" nskk--romaji-table) "second"))
+        (should (equal (gethash "bb" nskk--romaji-table) "third"))
+        (should (equal
+                 (nskk-prolog-get-clauses 'romaji-to-kana '(\?romaji \?kana) nil)
+                 (list rule-clause existing-fact
+                       '((romaji-to-kana "aa" "first"))
+                       '((romaji-to-kana "aa" "second")))))
+        (remhash "aa" nskk--romaji-table)
+        (nskk-prolog-retract '(romaji-to-kana "bb" "third"))
+        (nskk-test-ensure-standard-romaji)
+        (should (equal (gethash "aa" nskk--romaji-table) "second"))
+        (dolist (rule nskk--standard-romaji-rules)
+          (should (member
+                   (list (cons 'romaji-to-kana rule))
+                   (nskk-prolog-get-clauses 'romaji-to-kana rule nil))))
+        (should (= 4 (length (nskk-prolog-get-clauses
+                              'romaji-to-kana '(\?romaji \?kana) nil))))))))
 
 ;;;
 ;;; Character Insertion Tests (Latin Mode)
@@ -1096,6 +1151,30 @@ incomplete consonant sequences (e.g. \"k\", \"x\") are classified as
             (should (= context-calls 1))
             (should (= class-calls 1)))
       (clrhash nskk--romaji-classify-cache))))
+
+  (nskk-it "queries both cached predicates with the output argument first"
+    (let ((nskk--romaji-classify-cache (make-hash-table :test #'equal)))
+      (dolist (case '(((doubled-context no no yes no match) eligible-match)
+                      ((romaji-classify eligible-match match) azik-deferred)))
+        (let* ((key (copy-tree (car case)))
+               (expected (cadr case)))
+          (should (eq (nskk--romaji-classify-cached-query key '\?result 'fallback)
+                      expected))
+          (should (equal key (car case)))
+          (should (eq (gethash (car case) nskk--romaji-classify-cache)
+                      expected))))))
+
+  (nskk-it "memoizes the fallback when a classification query has no solution"
+    (let ((nskk--romaji-classify-cache (make-hash-table :test #'equal))
+          (key '(romaji-classify not-eligible unsupported)))
+      (should-not (nskk-prolog-query-value
+                   '(romaji-classify \?result not-eligible unsupported)
+                   '\?result))
+      (should (eq (nskk--romaji-classify-cached-query key '\?result 'no-match)
+                  'no-match))
+      (should (eq (gethash key nskk--romaji-classify-cache) 'no-match))
+      (should (eq (nskk--romaji-classify-cached-query key '\?result 'other-fallback)
+                  'no-match))))
 
   (nskk-it "invalidates memoized dispatches when either rule table is reinitialized"
     (dolist (initializer '(nskk--init-romaji-classify-rules
