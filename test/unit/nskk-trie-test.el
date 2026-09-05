@@ -93,6 +93,33 @@
         (nskk-trie-insert trie "key" "second")
         (should (= (nskk-trie-size trie) 1)))))
 
+  (nskk-context "count correctness on re-insert"
+    (nskk-it "re-inserting a key without a shared prefix leaves every path count at 1"
+      (let* ((trie (nskk-trie-create))
+             (root (nskk-trie-root trie)))
+        (nskk-trie-insert trie "abc" "first")
+        (nskk-trie-insert trie "abc" "second")
+        (let* ((a-node (gethash ?a (nskk-trie-node-children root)))
+               (b-node (gethash ?b (nskk-trie-node-children a-node)))
+               (c-node (gethash ?c (nskk-trie-node-children b-node))))
+          (should (= (nskk-trie-node-count a-node) 1))
+          (should (= (nskk-trie-node-count b-node) 1))
+          (should (= (nskk-trie-node-count c-node) 1)))))
+
+    (nskk-it "re-inserting a key with a shared prefix leaves both keys' counts correct"
+      (let* ((trie (nskk-trie-create))
+             (root (nskk-trie-root trie)))
+        (nskk-trie-insert trie "ka" :short)
+        (nskk-trie-insert trie "kan" :long)
+        (nskk-trie-insert trie "kan" :long2)
+        (let* ((k-node (gethash ?k (nskk-trie-node-children root)))
+               (a-node (gethash ?a (nskk-trie-node-children k-node)))
+               (n-node (gethash ?n (nskk-trie-node-children a-node))))
+          (should (= (nskk-trie-node-count k-node) 2))
+          (should (= (nskk-trie-node-count a-node) 2))
+          (should (= (nskk-trie-node-count n-node) 1))
+          (should (equal (nskk-trie-lookup trie "kan") :long2))))))
+
   (nskk-context "multiple distinct keys"
     (nskk-it "all inserted keys are independently retrievable"
       (let ((trie (nskk-trie-create)))
@@ -113,17 +140,6 @@
         (should (equal (nskk-trie-lookup trie "kanji") "long")))))
 
   (nskk-context "falsy stored values"
-    (nskk-it "stores nil — /k calls on-found (not on-not-found)"
-      (let* ((trie (nskk-trie-create))
-             (found nil)
-             (not-found nil))
-        (nskk-trie-insert trie "nilkey" nil)
-        (nskk-trie-lookup/k trie "nilkey"
-                            (lambda (v) (setq found (cons v t)))
-                            (lambda () (setq not-found t)))
-        (should found)
-        (should-not not-found)))
-
     (nskk-it "stores 0 as a value and returns 0"
       (let ((trie (nskk-trie-create)))
         (nskk-trie-insert trie "zero" 0)
@@ -209,6 +225,42 @@
        (should (eq (nskk-trie-node-value node) :node-kept))
        (should (eq (gethash ?a node-children) root))
        (should (eq (nskk-trie-lookup trie "aa") :root-kept)))))
+
+  (nskk-context "invalid path guard"
+    (nskk-it "nskk--trie-delete-path signals when a child hash entry is not a node"
+      (let* ((trie (nskk-trie-create))
+             (root (nskk-trie-root trie))
+             (root-children (make-hash-table :test #'eql)))
+        (puthash ?a :not-a-node root-children)
+        (setf (nskk-trie-node-children root) root-children)
+        (let ((err (should-error (nskk--trie-delete-path trie "a") :type 'error)))
+          (should (equal (cadr err) "Invalid trie path before deleting key: a")))
+        (should (eq (nskk-trie-root trie) root))
+        (should (eq (nskk-trie-node-children root) root-children))
+        (should (eq (gethash ?a root-children) :not-a-node))
+        (should (= (nskk-trie-size trie) 0))))
+
+    (nskk-it "rejects a present child node with a zero count, leaving the trie unchanged"
+      (let* ((trie (nskk-trie-create))
+             (root (nskk-trie-root trie))
+             (root-children (make-hash-table :test #'eql))
+             (node-a (nskk-trie-node--create
+                      :value :val
+                      :is-end t
+                      :count 0)))
+        (puthash ?a node-a root-children)
+        (setf (nskk-trie-node-children root) root-children
+              (nskk-trie-size trie) 1)
+        (let ((err (should-error (nskk-trie-delete trie "a") :type 'error)))
+          (should (equal (cadr err) "Invalid trie path before deleting key: a")))
+        (should (= (nskk-trie-size trie) 1))
+        (should (eq (nskk-trie-root trie) root))
+        (should (eq (nskk-trie-node-children root) root-children))
+        (should (eq (gethash ?a root-children) node-a))
+        (should (nskk-trie-node-is-end node-a))
+        (should (eq (nskk-trie-node-value node-a) :val))
+        (should (= (nskk-trie-node-count node-a) 0)))))
+
   (nskk-context "deleting a present key"
     (nskk-it "returns t when the key exists"
       (let ((trie (nskk-trie-create)))
@@ -381,6 +433,47 @@
             (should-not (gethash ?a (nskk-trie-node-children root)))))))))
 
 ;;;;
+;;;; nskk--trie-node-leaf-p
+;;;;
+
+(nskk-describe "nskk--trie-node-leaf-p"
+  (nskk-it "returns non-nil for a childless non-terminal node"
+    (should (nskk--trie-node-leaf-p (nskk-trie-node--create))))
+
+  (nskk-it "returns nil for a terminal node even with no children"
+    (should-not (nskk--trie-node-leaf-p (nskk-trie-node--create :is-end t))))
+
+  (nskk-it "returns nil for a non-terminal node with children"
+    (let ((children (make-hash-table :test #'eql)))
+      (puthash ?x (nskk-trie-node--create) children)
+      (should-not (nskk--trie-node-leaf-p (nskk-trie-node--create :children children)))))
+
+  (nskk-it "returns non-nil for a non-terminal node with an empty children table"
+    (should (nskk--trie-node-leaf-p
+             (nskk-trie-node--create :children (make-hash-table :test #'eql))))))
+
+;;;;
+;;;; nskk--trie-cleanup-path
+;;;;
+
+(nskk-describe "nskk--trie-cleanup-path"
+  (nskk-it "does not prune a zero-count node that still has children"
+    (let* ((root (nskk-trie-node--create))
+           (root-children (make-hash-table :test #'eql))
+           (grandchild-children (make-hash-table :test #'eql))
+           (grandchild (nskk-trie-node--create))
+           (node-a (nskk-trie-node--create
+                    :count 0
+                    :children grandchild-children)))
+      (puthash ?b grandchild grandchild-children)
+      (puthash ?a node-a root-children)
+      (nskk--trie-cleanup-path "a" (vector root node-a) (vector root-children))
+      (should (eq (gethash ?a root-children) node-a))
+      (should (= (nskk-trie-node-count node-a) 0))
+      (should (eq (nskk-trie-node-children node-a) grandchild-children))
+      (should (eq (gethash ?b grandchild-children) grandchild)))))
+
+;;;;
 ;;;; 4. prefix-search
 ;;;;
 
@@ -437,6 +530,18 @@
         (nskk-trie-insert trie "alpha" "v1")
         (nskk-trie-insert trie "beta"  "v2")
         (should (null (nskk-trie-prefix-search trie "gamma"))))))
+
+  (nskk-context "result set contract"
+    (nskk-it "results form a set: sorting by key is independent of traversal order"
+      (let ((trie (nskk-trie-create)))
+        (nskk-trie-insert trie "aa" 1)
+        (nskk-trie-insert trie "ab" 2)
+        (nskk-trie-insert trie "ac" 3)
+        (nskk-trie-insert trie "ad" 4)
+        (let* ((results (nskk-trie-prefix-search trie "a"))
+               (sorted (sort (copy-sequence results)
+                             (lambda (x y) (string< (car x) (car y))))))
+          (should (equal sorted '(("aa" . 1) ("ab" . 2) ("ac" . 3) ("ad" . 4))))))))
 
   (nskk-context "limit parameter"
     (nskk-it "limit caps the number of returned results"
@@ -505,29 +610,42 @@
 
 (nskk-describe "nskk-trie error cases"
   (nskk-context "non-string key"
-    (nskk-it "signals an error when inserting with an integer key"
-      (let ((trie (nskk-trie-create)))
-        (should-error (nskk-trie-insert trie 42 "val"))))
+    (nskk-it "signals the stringp guard's own error when inserting with an integer key"
+      (let* ((trie (nskk-trie-create))
+             (err (should-error (nskk-trie-insert trie 42 "val"))))
+        (should (equal (cadr err) "Key must be a string: 42"))))
 
-    (nskk-it "signals an error when inserting with a symbol key"
-      (let ((trie (nskk-trie-create)))
-        (should-error (nskk-trie-insert trie 'sym "val"))))
+    (nskk-it "signals the stringp guard's own error when inserting with a symbol key"
+      (let* ((trie (nskk-trie-create))
+             (err (should-error (nskk-trie-insert trie 'sym "val"))))
+        (should (equal (cadr err) "Key must be a string: sym"))))
 
-    (nskk-it "signals an error when inserting with a list key"
-      (let ((trie (nskk-trie-create)))
-        (should-error (nskk-trie-insert trie '("a" "b") "val"))))
+    (nskk-it "signals the stringp guard's own error when inserting with a list key"
+      (let* ((trie (nskk-trie-create))
+             (err (should-error (nskk-trie-insert trie '("a" "b") "val"))))
+        (should (equal (cadr err) "Key must be a string: (a b)"))))
 
-    (nskk-it "signals an error when inserting with nil as key"
-      (let ((trie (nskk-trie-create)))
-        (should-error (nskk-trie-insert trie nil "val")))))
+    (nskk-it "signals the stringp guard's own error when inserting with nil as key"
+      (let* ((trie (nskk-trie-create))
+             (err (should-error (nskk-trie-insert trie nil "val"))))
+        (should (equal (cadr err) "Key must be a string: nil")))))
 
   (nskk-deftest-table trie-non-string-input-signals-error
-    :description "Each trie operation signals an error when given a non-string argument"
-    :columns (operation)
-    :rows ((nskk-trie-lookup) (nskk-trie-delete) (nskk-trie-prefix-search)
-           (nskk-trie-longest-match) (nskk-trie-has-prefix-p))
-    :body (let ((trie (nskk-trie-create)))
-            (should-error (funcall operation trie 42))))
+    :description "Each trie operation signals its own stringp guard's error, not a generic wrong-type-argument"
+    :columns (operation guard-word arg)
+    :rows ((nskk-trie-lookup        "Key"    42)
+           (nskk-trie-lookup        "Key"    nil)
+           (nskk-trie-delete        "Key"    42)
+           (nskk-trie-delete        "Key"    nil)
+           (nskk-trie-prefix-search "Prefix" 42)
+           (nskk-trie-prefix-search "Prefix" nil)
+           (nskk-trie-longest-match "Input"  42)
+           (nskk-trie-longest-match "Input"  nil)
+           (nskk-trie-has-prefix-p  "Prefix" 42)
+           (nskk-trie-has-prefix-p  "Prefix" nil))
+    :body (let* ((trie (nskk-trie-create))
+                 (err (should-error (funcall operation trie arg))))
+            (should (equal (cadr err) (format "%s must be a string: %s" guard-word arg)))))
 
   (nskk-context "empty string key"
     (nskk-it "signals an error when inserting with an empty string key"
@@ -570,7 +688,15 @@
     (let ((trie (nskk-trie-create)))
       (nskk-trie-insert trie "か" "ka")
       (nskk-trie-insert trie "かん" "kan")
-      (should (equal (nskk-trie-longest-match trie "かんじ") '("kan" . 2))))))
+      (should (equal (nskk-trie-longest-match trie "かんじ") '("kan" . 2)))))
+
+  (nskk-it "returns a truthy cons for a stored nil value at the matched node"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "a" nil)
+      (let ((result (nskk-trie-longest-match trie "ab")))
+        (should (consp result))
+        (should (null (car result)))
+        (should (= (cdr result) 1))))))
 
 ;;;;
 ;;;; 8. has-prefix-p
@@ -595,7 +721,22 @@
   (nskk-it "returns non-nil for empty prefix (root always exists)"
     (let ((trie (nskk-trie-create)))
       (nskk-trie-insert trie "abc" "val")
-      (should (nskk-trie-has-prefix-p trie "")))))
+      (should (nskk-trie-has-prefix-p trie ""))))
+
+  (nskk-it "returns nil for a prefix whose supporting nodes were pruned by delete"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "ab" "val")
+      (nskk-trie-delete trie "ab")
+      (should-not (nskk-trie-has-prefix-p trie "ab"))
+      (should-not (nskk-trie-has-prefix-p trie "a"))))
+
+  (nskk-it "still returns non-nil for a prefix kept alive by a sibling key after delete"
+    (let ((trie (nskk-trie-create)))
+      (nskk-trie-insert trie "ka" :short)
+      (nskk-trie-insert trie "kan" :long)
+      (nskk-trie-delete trie "kan")
+      (should (nskk-trie-has-prefix-p trie "ka"))
+      (should-not (nskk-trie-has-prefix-p trie "kan")))))
 
 ;;;;
 ;;;; 9. lookup/k CPS behavior
@@ -651,6 +792,40 @@
       (nskk-trie-longest-match/k trie "abc"
                                  #'ignore
                                  (lambda () (setq not-found t)))
+      (should not-found)))
+
+  (nskk-it "calls on-found for a stored nil value at the matched node"
+    (let* ((trie (nskk-trie-create))
+           (found nil)
+           (not-found nil))
+      (nskk-trie-insert trie "a" nil)
+      (nskk-trie-longest-match/k trie "ab"
+                                 (lambda (v) (setq found (cons v t)))
+                                 (lambda () (setq not-found t)))
+      (should found)
+      (should-not not-found)
+      (should (equal (car found) (cons nil 1))))))
+
+;;;;
+;;;; 11. delete/k CPS behavior
+;;;;
+
+(nskk-describe "nskk-trie-delete/k"
+  (nskk-it "calls on-found with t when key exists"
+    (let* ((trie (nskk-trie-create))
+           (result nil))
+      (nskk-trie-insert trie "key" "val")
+      (nskk-trie-delete/k trie "key"
+                          (lambda (v) (setq result v))
+                          #'ignore)
+      (should (eq result t))))
+
+  (nskk-it "calls on-not-found when key is absent"
+    (let* ((trie (nskk-trie-create))
+           (not-found nil))
+      (nskk-trie-delete/k trie "missing"
+                          #'ignore
+                          (lambda () (setq not-found t)))
       (should not-found))))
 
 ;;;;

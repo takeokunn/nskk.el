@@ -264,4 +264,38 @@ a test that accepts any error passes even when the recheck is gone."
                   '(nskk-serialize-test \?x \?y \?z) '(\?z \?y \?x))
                  '(("c" "b" "a")))))
 
+(ert-deftest nskk-dict-transaction-input-end-tracks-reader-whitespace ()
+  "Trailing bytes `read' skips must not fail a dictionary load.
+The reader skips every character up to and including space, plus
+NO_BREAK_SPACE, so a predicate narrower than that rejects files the reader
+accepts.  A trailing NBSP is the reachable case: `decode-coding-region'
+turns UTF-8 C2 A0 into one."
+  (dolist (trailing (list "" " " "\t" "\n" "\r" "\f"
+                          (string 0) (string 11) (string 27) (string 160)
+                          " ; trailing comment\n"))
+    (with-temp-buffer
+      (set-buffer-multibyte t)
+      (insert "(1 2)" trailing)
+      (goto-char (point-min))
+      (read (current-buffer))
+      (should (equal (cons trailing t)
+                     (cons trailing
+                           (and (nskk-dict-transaction--at-input-end-p) t)))))))
+
+(ert-deftest nskk-dict-transaction-input-end-rejects-trailing-forms ()
+  "Anything the reader would parse as a further form must be rejected.
+The incomplete forms matter most: a second `read' signals `end-of-file' on
+them, which a handler that treats `end-of-file' as a clean end mistakes for
+success."
+  (dolist (trailing (list "(3 4)" "(" "\"unterminated" "'" "`" "," "?" "["
+                          "\\" "x" "#@10"))
+    (with-temp-buffer
+      (set-buffer-multibyte t)
+      (insert "(1 2) " trailing)
+      (goto-char (point-min))
+      (read (current-buffer))
+      (should (equal (cons trailing nil)
+                     (cons trailing
+                           (and (nskk-dict-transaction--at-input-end-p) t)))))))
+
 (provide 'nskk-dict-transaction-test)
