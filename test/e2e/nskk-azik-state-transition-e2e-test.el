@@ -348,13 +348,13 @@
       (nskk-e2e-assert-mode 'hiragana))))
 
 ;;;
-;;; Group 11: FR-002 — AZIK hatsuon fires in preedit (▽) for n+consonant matches
+;;; Group 11: AZIK hatsuon fires in preedit (▽) for n+consonant matches
 ;;;
 ;;; With `match > n-consonant' priority in romaji-classify, AZIK hatsuon rules
 ;;; (nj → ぬん, nz → なん, etc.) fire in preedit (▽) via the match path.
 ;;; To type かんじ in preedit, use double-n: Ka+n+n+ji (Kannji → ▽かんじ).
 
-(nskk-describe "FR-002: AZIK hatsuon fires in preedit for n+consonant match"
+(nskk-describe "AZIK hatsuon fires in preedit for n+consonant match"
 
   (nskk-it "Ka+nj in ▽ fires AZIK hatsuon → ▽かぬん (match > n-consonant)"
     (nskk-e2e-with-azik-buffer 'hiragana nil

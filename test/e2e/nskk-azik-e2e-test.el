@@ -1225,7 +1225,7 @@
           (nskk-e2e-assert-buffer "行ってもらいたい"))))))
 
 ;;;;
-;;;; Section 18: DA/DV state cleared by cancel/rollback paths (FR-001 regression)
+;;;; Section 18: DA/DV state cleared by cancel/rollback paths (regression)
 ;;;;
 
 (nskk-describe "§18: nskk--deferred-azik/vowel-shadow-state cleared by cancel-preedit and rollback"
