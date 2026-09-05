@@ -519,6 +519,30 @@ test/e2e/nskk-kana-input-e2e-test.el)."
         (should (= (hash-table-count nskk--romaji-table)
                    (length nskk--standard-romaji-rules)))))))
 
+(nskk-describe "nskk--standard-romaji-rules integrity"
+  (nskk-it "maps each romaji key exactly once"
+    ;; A duplicate key silently loses one mapping: the table is built by
+    ;; `puthash' in list order, so the later row wins and the earlier one
+    ;; never reaches the trie.  The count assertion above cannot see this,
+    ;; because a duplicate shrinks the table and the rule list together.
+    (let ((keys (mapcar #'car nskk--standard-romaji-rules)))
+      (should (= (length keys) (length (delete-dups (copy-sequence keys)))))))
+
+  (nskk-it "holds only two-element string pairs"
+    (dolist (rule nskk--standard-romaji-rules)
+      (should (proper-list-p rule))
+      (should (= (length rule) 2))
+      (should (stringp (car rule)))
+      (should (stringp (cadr rule)))))
+
+  (nskk-it "keys on ASCII romaji and maps to non-ASCII kana"
+    ;; A non-ASCII key is unreachable from keyboard input, and an ASCII-only
+    ;; value means the rule emits romaji rather than kana.  Either is a typo
+    ;; in the table rather than a deliberate entry.
+    (dolist (rule nskk--standard-romaji-rules)
+      (should (seq-every-p (lambda (char) (< char 128)) (car rule)))
+      (should (seq-some (lambda (char) (> char 127)) (cadr rule))))))
+
 (nskk-describe "style-transaction registration API"
   (nskk-it "nskk-converter-register-style-transaction-hash-table registers a symbol exactly once"
     (let ((nskk--converter-style-transaction-hash-tables nil))
@@ -550,7 +574,13 @@ test/e2e/nskk-kana-input-e2e-test.el)."
             (lambda ()
               (puthash 'k 'v (symbol-value extension-symbol))))
           (nskk-converter-load-style 'registration-api-style)
-          (should (eq (gethash 'k (symbol-value extension-symbol)) 'v)))))))
+          (should (eq (gethash 'k (symbol-value extension-symbol)) 'v))
+          ;; The two assertions below are what make this test able to fail.
+          ;; If registration were a no-op the symbol would never be rebound to
+          ;; a staged copy, the initializer's puthash would land in
+          ;; EXTENSION-TABLE itself, and the assertion above would still pass.
+          (should-not (eq (symbol-value extension-symbol) extension-table))
+          (should-not (gethash 'k extension-table)))))))
 
 ;;;
 ;;; Seeded Property-Based Tests
