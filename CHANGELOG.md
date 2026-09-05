@@ -122,6 +122,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   response byte cap, fail-closed coding preflight, candidate sanitisation,
   the exactly-one-continuation invariant, resource ownership, rollback and
   post-send teardown.
+- Restored skkserv test coverage that the suite replacement had dropped:
+  the async-connect path (timeout give-up, non-finite and non-numeric
+  connect budgets, per-poll budget accounting, wall-clock-jump immunity,
+  and resource release when initialisation signals or quits), fail-closed
+  behaviour and zero-mutation of public state when the coding preflight
+  quits at each of its four stages, configure-time rollback across five
+  fault stages crossed with error and quit, reuse of one process and one
+  owned buffer across repeated opens, and killing an owned buffer without
+  running `kill-buffer-hook` or the query functions.
 
 ### Removed
 
@@ -163,6 +172,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   updated the last-shown mode, so the deduplication guard suppressed every
   later attempt. The last-shown mode is now updated only after a style
   reports that it displayed something.
+- Fixed the skkserv client dropping a working connection when preparing a
+  request failed before anything was sent. Erasing the I/O buffer and
+  resetting the response counters had been folded into the same helper as
+  the send, and the request was marked as started before that helper ran,
+  so a fault while erasing or resetting ran the post-send teardown. The
+  request is now marked as started only after preparation succeeds.
 - Fixed the interactive tutorial, which could not be completed. Every
   exercise's input and result region shared one end marker position, so
   answers were never graded as correct and marking one exercise correct
