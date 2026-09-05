@@ -41,7 +41,9 @@ INTEGRATION_SRC = test/integration/nskk-integration-test.el \
                   test/integration/nskk-state-machine-mode-test.el \
                   test/integration/nskk-multi-buffer-pbt-test.el \
                   test/integration/nskk-error-recovery-pbt-test.el \
-                  test/integration/nskk-custom-integration-test.el
+                  test/integration/nskk-custom-integration-test.el \
+                  test/integration/nskk-context-pbt-test.el \
+                  test/integration/nskk-context-integration-test.el
 
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
 E2E_SRC = test/e2e/nskk-abbrev-e2e-test.el \
