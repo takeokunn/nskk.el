@@ -29,17 +29,13 @@
 ;;; Code:
 
 (require 'cl-lib)
-(eval-when-compile (require 'nskk-cps-macros))
+(require 'nskk-cps-macros)
 (require 'nskk-trie)
 
-(defvar nskk--presentation-action-table-initialized nil
-  "Non-nil when the `presentation-action/2' table is initialized.")
-
-(defvar nskk--presentation-actions nil
-  "Registered presentation actions retained across database resets.")
-
 (defvar nskk--presentation-action-cache nil
-  "Cached presentation actions grouped by action in registration order.")
+  "Presentation actions grouped by action, each in registration order.
+Retained across Prolog database resets: registration happens at module
+load time, so clearing it would strand every already-loaded consumer.")
 
 ;;;; Variable Representation
 
@@ -85,7 +81,7 @@ Distinguished from nil, which is a valid empty substitution.")
 
 (defsubst nskk--prolog-fail-p (x)
   "Return non-nil if X represents unification failure."
-  (eq x :fail))
+  (eq x nskk--prolog-fail))
 
 ;; Explicit pair: sync wrapper preserves :fail sentinel for callers that
 ;; check (nskk--prolog-fail-p result).  Standard defun/k would return nil.
@@ -110,14 +106,18 @@ ON-NOT-FOUND is called with no arguments on failure."
          (nskk-prolog-unify/k (cdr t1) (cdr t2) s on-found on-not-found))
        on-not-found))
      (t (funcall on-not-found)))))
-(put 'nskk-prolog-unify/k 'nskk--cps-continuation-pattern :found-not-found)
+;; The bind forms read this property at macro-expansion time, so a bare
+;; top-level `put' would still be nil during byte-compile-file.
+(eval-and-compile
+  (put 'nskk-prolog-unify/k 'nskk--cps-continuation-pattern :found-not-found))
 
 (defun nskk-prolog-unify (term1 term2 subst)
   "Unify TERM1 and TERM2 under substitution SUBST.
 Returns the extended substitution on success, or `:fail' on failure.
 An empty substitution nil is success, not failure.
 Does not perform occurs check (not needed for nskk terms)."
-  (nskk-prolog-unify/k term1 term2 subst #'identity (lambda () :fail)))
+  (nskk-prolog-unify/k term1 term2 subst #'identity
+                       (lambda () nskk--prolog-fail)))
 
 ;;;; Clause Database
 
@@ -193,12 +193,13 @@ rather than the opaque snapshot object.  Most callers should prefer
   "Evaluate BODY with Prolog state temporarily replaced by SNAPSHOT.
 The original state is restored even when BODY signals an error."
   (declare (indent 1) (debug (form body)))
-  `(let ((nskk-prolog--saved-state (nskk-prolog-state-snapshot)))
-     (unwind-protect
-         (progn
-           (nskk-prolog-state-restore ,snapshot)
-           ,@body)
-       (nskk-prolog-state-restore nskk-prolog--saved-state))))
+  (let ((saved (make-symbol "nskk-prolog-saved-state")))
+    `(let ((,saved (nskk-prolog-state-snapshot)))
+       (unwind-protect
+           (progn
+             (nskk-prolog-state-restore ,snapshot)
+             ,@body)
+         (nskk-prolog-state-restore ,saved)))))
 
 (defun nskk-prolog-database ()
   "Return the current Prolog clause database hash table."
@@ -305,10 +306,7 @@ FIRST-ARG identifies the indexed bucket when CAPTURE-INDEX-P is non-nil."
           (gethash key nskk--prolog-index-bucket-tail-cache missing))
          (cache-buckets
           (and (not (eq cache-entry missing))
-               (vectorp cache-entry)
-               (= (length cache-entry) 3)
-               (hash-table-p (aref cache-entry 2))
-               (aref cache-entry 2)))
+               (nskk--prolog-cache-entry-buckets cache-entry)))
          (cache-bucket
           (if cache-buckets
               (gethash first-arg cache-buckets missing)
@@ -396,25 +394,31 @@ Key: \"pred/arity\", Value: nskk-trie storing clause lists.")
     (:trie (gethash key nskk--prolog-trie-indices))
     (:list nil)))
 
+(defun nskk--prolog-cache-entry-buckets (entry)
+  "Return ENTRY's bucket table, or nil when ENTRY is not a well-formed entry."
+  (and (vectorp entry)
+       (= (length entry) 3)
+       (hash-table-p (aref entry 2))
+       (aref entry 2)))
+
 (defun nskk--prolog-index-cache-entry (key type index)
   "Return a valid canonical cache entry for KEY, TYPE, and INDEX.
 TYPE and INDEX must still be the current predicate configuration and object."
   (unless (and (eq type (gethash key nskk--prolog-index-config))
                (eq index (nskk--prolog-current-index-object key type)))
     (error "Stale Prolog index for %s" key))
-  (if (eq type :list)
-      (progn
-        (remhash key nskk--prolog-index-bucket-tail-cache)
-        nil)
+  (cond
+   ((eq type :list)
+    (remhash key nskk--prolog-index-bucket-tail-cache)
+    nil)
+   (t
     (let ((entry (gethash key nskk--prolog-index-bucket-tail-cache)))
-      (unless (and (vectorp entry)
-                   (= (length entry) 3)
+      (unless (and (nskk--prolog-cache-entry-buckets entry)
                    (eq (aref entry 0) type)
-                   (eq (aref entry 1) index)
-                   (hash-table-p (aref entry 2)))
+                   (eq (aref entry 1) index))
         (setq entry (vector type index (make-hash-table :test 'equal)))
         (puthash key entry nskk--prolog-index-bucket-tail-cache))
-      entry)))
+      entry))))
 
 (defun nskk-prolog-index-bucket-tail (key type index first-arg bucket)
   "Return BUCKET's tail after validating KEY, TYPE, INDEX, and FIRST-ARG.
@@ -454,6 +458,77 @@ is unsupported and is not detected by the hot-path cache validation."
   "Return the database key string for clause HEAD."
   (nskk-prolog-clause-key (car head) (1- (length head))))
 
+(cl-defstruct (nskk--prolog-staged-index
+               (:constructor nskk--prolog-make-staged-index))
+  hash-indices
+  trie-indices
+  cache-entry)
+
+(defun nskk--prolog-index-object-valid-p (type index)
+  "Return non-nil when INDEX is a usable index object for TYPE."
+  (pcase type
+    (:hash (hash-table-p index))
+    (:trie (nskk-trie-p index))
+    (:list t)))
+
+(defun nskk--prolog-stage-index (key type clauses)
+  "Build KEY's TYPE index over CLAUSES in staging tables, publishing nothing."
+  (let ((staged-config (make-hash-table :test 'equal))
+        (staged-hash-indices (make-hash-table :test 'equal))
+        (staged-trie-indices (make-hash-table :test 'equal))
+        (staged-cache (make-hash-table :test 'equal)))
+    (puthash key type staged-config)
+    (pcase type
+      (:hash (puthash key (make-hash-table :test 'equal) staged-hash-indices))
+      (:trie (puthash key (nskk-trie-create) staged-trie-indices)))
+    (nskk-prolog-with-database-fields
+        ((index-config staged-config)
+         (hash-indices staged-hash-indices)
+         (trie-indices staged-trie-indices)
+         (index-bucket-tail-cache staged-cache))
+      (dolist (clause clauses)
+        (nskk-prolog-index-add key clause)))
+    (nskk--prolog-make-staged-index
+     :hash-indices staged-hash-indices
+     :trie-indices staged-trie-indices
+     :cache-entry (gethash key staged-cache nskk--prolog-cache-missing))))
+
+(defun nskk--prolog-index-table-snapshot (key)
+  "Return KEY's current (TABLE . VALUE) entry in each index-owning table."
+  (mapcar (lambda (table)
+            (cons table (gethash key table nskk--prolog-cache-missing)))
+          (list nskk--prolog-index-config
+                nskk--prolog-hash-indices
+                nskk--prolog-trie-indices
+                nskk--prolog-index-bucket-tail-cache)))
+
+(defun nskk--prolog-restore-index-tables (key snapshot)
+  "Restore KEY's mapping in every (TABLE . VALUE) pair of SNAPSHOT."
+  (dolist (entry snapshot)
+    (if (eq (cdr entry) nskk--prolog-cache-missing)
+        (remhash key (car entry))
+      (puthash key (cdr entry) (car entry)))))
+
+(defun nskk--prolog-publish-index (key type staged)
+  "Publish STAGED as KEY's TYPE index, replacing any previous index."
+  (puthash key type nskk--prolog-index-config)
+  (pcase type
+    (:hash
+     (puthash key (gethash key (nskk--prolog-staged-index-hash-indices staged))
+              nskk--prolog-hash-indices)
+     (remhash key nskk--prolog-trie-indices))
+    (:trie
+     (puthash key (gethash key (nskk--prolog-staged-index-trie-indices staged))
+              nskk--prolog-trie-indices)
+     (remhash key nskk--prolog-hash-indices))
+    (:list
+     (remhash key nskk--prolog-hash-indices)
+     (remhash key nskk--prolog-trie-indices)))
+  (let ((entry (nskk--prolog-staged-index-cache-entry staged)))
+    (if (eq entry nskk--prolog-cache-missing)
+        (remhash key nskk--prolog-index-bucket-tail-cache)
+      (puthash key entry nskk--prolog-index-bucket-tail-cache))))
+
 (defun nskk-prolog-set-index (predicate arity type)
   "Configure index strategy for PREDICATE with ARITY.
 TYPE must be one of :hash, :trie, or :list.
@@ -461,82 +536,23 @@ TYPE must be one of :hash, :trie, or :list.
 Switching strategy rebuilds the index from existing clauses in insertion order."
   (unless (memq type '(:hash :trie :list))
     (error "Unsupported Prolog index type: %S" type))
-  (let* ((key (nskk-prolog-clause-key predicate arity))
-         (current-type (progn
-  (nskk--prolog-ensure-mutation-allowed key)
-  (gethash key nskk--prolog-index-config)))
-         (current-index (nskk--prolog-current-index-object key current-type))
-         (valid-current
-          (and (eq type current-type)
-               (pcase type
-                 (:hash (hash-table-p current-index))
-                 (:trie (nskk-trie-p current-index))
-                 (:list t)))))
-    (unless valid-current
-      (let* ((clauses (gethash key nskk--prolog-database))
-             (staged-config (make-hash-table :test 'equal))
-             (staged-hash-indices (make-hash-table :test 'equal))
-             (staged-trie-indices (make-hash-table :test 'equal))
-             (staged-cache (make-hash-table :test 'equal))
-             (missing nskk--prolog-cache-missing)
-             staged-cache-entry)
-        (puthash key type staged-config)
-        (pcase type
-          (:hash
-           (puthash key (make-hash-table :test 'equal)
-                    staged-hash-indices))
-          (:trie
-           (puthash key (nskk-trie-create)
-                    staged-trie-indices)))
-        (let ((nskk--prolog-index-config staged-config)
-              (nskk--prolog-hash-indices staged-hash-indices)
-              (nskk--prolog-trie-indices staged-trie-indices)
-              (nskk--prolog-index-bucket-tail-cache staged-cache))
-          (dolist (clause clauses)
-            (nskk-prolog-index-add key clause))
-          (setq staged-cache-entry
-                (gethash key staged-cache missing)))
-        (let ((old-config
-               (gethash key nskk--prolog-index-config missing))
-              (old-hash
-               (gethash key nskk--prolog-hash-indices missing))
-              (old-trie
-               (gethash key nskk--prolog-trie-indices missing))
-              (old-cache
-               (gethash key nskk--prolog-index-bucket-tail-cache missing)))
+  (let ((key (nskk-prolog-clause-key predicate arity)))
+    (nskk--prolog-ensure-mutation-allowed key)
+    (let ((current-type (gethash key nskk--prolog-index-config)))
+      (unless (and (eq type current-type)
+                   (nskk--prolog-index-object-valid-p
+                    type (nskk--prolog-current-index-object key current-type)))
+        (let ((staged (nskk--prolog-stage-index
+                       key type (gethash key nskk--prolog-database)))
+              (snapshot (nskk--prolog-index-table-snapshot key)))
           (condition-case condition
               (let ((inhibit-quit t))
-                (puthash key type nskk--prolog-index-config)
-                (pcase type
-                  (:hash
-                   (puthash key (gethash key staged-hash-indices)
-                            nskk--prolog-hash-indices)
-                   (remhash key nskk--prolog-trie-indices))
-                  (:trie
-                   (puthash key (gethash key staged-trie-indices)
-                            nskk--prolog-trie-indices)
-                   (remhash key nskk--prolog-hash-indices))
-                  (:list
-                   (remhash key nskk--prolog-hash-indices)
-                   (remhash key nskk--prolog-trie-indices)))
-                (if (eq staged-cache-entry missing)
-                    (remhash key nskk--prolog-index-bucket-tail-cache)
-                  (puthash key staged-cache-entry
-                           nskk--prolog-index-bucket-tail-cache))
+                (nskk--prolog-publish-index key type staged)
                 (when quit-flag
                   (signal 'quit nil)))
             ((error quit)
              (let ((inhibit-quit t))
-               (dolist
-                   (entry
-                    (list
-                     (cons nskk--prolog-index-config old-config)
-                     (cons nskk--prolog-hash-indices old-hash)
-                     (cons nskk--prolog-trie-indices old-trie)
-                     (cons nskk--prolog-index-bucket-tail-cache old-cache)))
-                 (if (eq (cdr entry) missing)
-                     (remhash key (car entry))
-                   (puthash key (cdr entry) (car entry)))))
+               (nskk--prolog-restore-index-tables key snapshot))
              (signal (car condition) (cdr condition)))))))))
 
 (defun nskk-prolog-index-add (key clause)
@@ -829,19 +845,149 @@ ON-SOLUTION is passed to the selected handler as the success callback."
 
 ;;;; Prove Engine
 
+(defun nskk--prolog-string-property-values (string)
+  "Return every text-property value carried by STRING, in span order."
+  (let ((position 0)
+        (limit (length string))
+        values)
+    (while (< position limit)
+      (let ((properties (text-properties-at position string)))
+        (while properties
+          (push (cadr properties) values)
+          (setq properties (cddr properties))))
+      (setq position (or (next-property-change position string limit) limit)))
+    values))
+
+(defun nskk--prolog-hash-table-entries (table)
+  "Return TABLE's entries as a list of (KEY . VALUE) pairs."
+  (let (entries)
+    ;; An automatic GC during this maphash can reclaim entries of a weak
+    ;; table while it is being iterated.
+    (let ((gc-cons-threshold most-positive-fixnum))
+      (maphash (lambda (key value) (push (cons key value) entries)) table))
+    entries))
+
+(defun nskk--prolog-empty-hash-table-like (table)
+  "Return an empty hash table carrying every construction parameter of TABLE."
+  (make-hash-table
+   :test (hash-table-test table)
+   :size (hash-table-size table)
+   :rehash-size (hash-table-rehash-size table)
+   :rehash-threshold (hash-table-rehash-threshold table)
+   :weakness (hash-table-weakness table)))
+
+(defun nskk--prolog-char-table-extra-slot-count (table)
+  "Return the number of extra slots TABLE carries.
+Emacs exposes no accessor for the count, so it is probed until
+`char-table-extra-slot' rejects the index."
+  (let ((index 0))
+    (condition-case nil
+        (while t
+          (char-table-extra-slot table index)
+          (setq index (1+ index)))
+      (args-out-of-range index))))
+
+(defun nskk--prolog-char-table-snapshot (table copy missing)
+  "Return (TABLE PARENT DEFAULT EXTRAS ENTRIES) describing TABLE.
+COPY is TABLE's freshly allocated duplicate, neutralized with MISSING so that
+`map-char-table' reports only explicitly set ranges."
+  (let* ((parent (char-table-parent table))
+         (default (char-table-range table nil))
+         (extra-count (nskk--prolog-char-table-extra-slot-count table))
+         (extras (make-vector extra-count nil))
+         entries)
+    (set-char-table-parent copy nil)
+    (set-char-table-range copy nil missing)
+    (map-char-table
+     (lambda (range value)
+       (unless (eq value missing)
+         (push (cons (if (consp range) (cons (car range) (cdr range)) range)
+                     value)
+               entries)))
+     copy)
+    (dotimes (index extra-count)
+      (aset extras index (char-table-extra-slot table index)))
+    (list table parent default extras entries)))
+
+(defsubst nskk--prolog-copy-of (value copies)
+  "Return VALUE's allocated copy from COPIES, or VALUE when it has none."
+  (gethash value copies value))
+
+(defun nskk--prolog-copy-fixup-string (original copy copies)
+  "Reattach ORIGINAL's text properties to COPY, mapping values through COPIES."
+  (let ((position 0)
+        (limit (length original)))
+    (while (< position limit)
+      (let ((next (or (next-property-change position original limit) limit))
+            (properties (text-properties-at position original))
+            copied)
+        (while properties
+          (push (car properties) copied)
+          (push (nskk--prolog-copy-of (cadr properties) copies) copied)
+          (setq properties (cddr properties)))
+        (when copied
+          (add-text-properties position next (nreverse copied) copy))
+        (setq position next)))))
+
+(defun nskk--prolog-copy-fixup-slots (original copy copies start)
+  "Write ORIGINAL's slots from START into COPY, mapping each through COPIES."
+  (let ((index start)
+        (limit (length original)))
+    (while (< index limit)
+      (aset copy index (nskk--prolog-copy-of (aref original index) copies))
+      (setq index (1+ index)))))
+
+(defun nskk--prolog-copy-fixup-composite (original copies)
+  "Point ORIGINAL's copy at the copies of everything ORIGINAL references."
+  (let ((copy (nskk--prolog-copy-of original copies)))
+    (cond
+     ((consp original)
+      (setcar copy (nskk--prolog-copy-of (car original) copies))
+      (setcdr copy (nskk--prolog-copy-of (cdr original) copies)))
+     ((stringp original)
+      (nskk--prolog-copy-fixup-string original copy copies))
+     ((recordp original)
+      (nskk--prolog-copy-fixup-slots original copy copies 1))
+     ((vectorp original)
+      (nskk--prolog-copy-fixup-slots original copy copies 0)))))
+
+(defun nskk--prolog-copy-fixup-char-table (snapshot copies)
+  "Populate the char-table copy described by SNAPSHOT, mapping through COPIES.
+The parent is restored last so no range write is resolved against it."
+  (let* ((original (nth 0 snapshot))
+         (extras (nth 3 snapshot))
+         (copy (nskk--prolog-copy-of original copies)))
+    (set-char-table-range copy nil
+                          (nskk--prolog-copy-of (nth 2 snapshot) copies))
+    (dotimes (index (length extras))
+      (set-char-table-extra-slot
+       copy index (nskk--prolog-copy-of (aref extras index) copies)))
+    (dolist (entry (nth 4 snapshot))
+      (set-char-table-range copy (car entry)
+                            (nskk--prolog-copy-of (cdr entry) copies)))
+    (set-char-table-parent copy
+                           (nskk--prolog-copy-of (nth 1 snapshot) copies))))
+
+(defun nskk--prolog-copy-fixup-hash-table (snapshot copies)
+  "Populate the hash-table copy described by SNAPSHOT, mapping through COPIES.
+Entries land only after every copied key has reached its final shape."
+  (let ((copy (nskk--prolog-copy-of (car snapshot) copies)))
+    (dolist (entry (cdr snapshot))
+      (puthash (nskk--prolog-copy-of (car entry) copies)
+               (nskk--prolog-copy-of (cdr entry) copies)
+               copy))))
+
 (defun nskk-prolog-copy-term (object &optional memo)
   "Return a detached copy of OBJECT while preserving graph topology.
-Conses, vectors, records, strings, char tables,
-and hash tables are copied with an
-iterative worklist and an eq memo table, so cycles and shared references
-remain cycles and shared references in the result.  String text properties
-and hash-table keys and values are copied as part of the same graph.  Hash
-tables retain their test, size, rehash parameters, and weakness; their entries
-are populated only after copied keys have reached their final non-hash shape.
-Char tables retain their subtype, default, parent, extra slots, and raw ranges.
-Functions, including closures and byte-code objects, are treated as atoms
-before cons/vector dispatch and retain identity.  Symbols, numbers, and
-unsupported object types likewise retain identity.
+Conses, vectors, records, strings, char tables and hash tables are copied
+through an iterative worklist and an eq memo table, so cycles and shared
+references remain cycles and shared references in the result.  String text
+properties and hash-table keys and values are copied as part of the same
+graph.  Functions retain identity, as do symbols, numbers, and object types
+this function does not decompose.
+
+Hash tables keep their test, size, rehash parameters and weakness.  Char
+tables keep their subtype, default, parent, extra slots and raw ranges.
 
 When MEMO is non-nil it is used as the eq memo table instead of a fresh
 one.  Sharing one table across several calls keeps an object that was
@@ -868,34 +1014,13 @@ an independently owned copy must pass nil, which every caller but
            ((stringp current)
             (puthash current (substring-no-properties current) copies)
             (push current composites)
-            (let ((position 0)
-                  (limit (length current)))
-              (while (< position limit)
-                (let ((properties (text-properties-at position current)))
-                  (while properties
-                    (push (cadr properties) pending)
-                    (setq properties (cddr properties))))
-                (setq position
-                      (or (next-property-change position current limit)
-                          limit)))))
+            (setq pending
+                  (nconc (nskk--prolog-string-property-values current) pending)))
            ((hash-table-p current)
-            (let (entries)
-              ;; An automatic GC during this maphash can reclaim entries of a
-              ;; weak table while it is being iterated.
-              (let ((gc-cons-threshold most-positive-fixnum))
-                (maphash
-                 (lambda (key value)
-                   (push (cons key value) entries))
-                 current))
-              (puthash
-               current
-               (make-hash-table
-                :test (hash-table-test current)
-                :size (hash-table-size current)
-                :rehash-size (hash-table-rehash-size current)
-                :rehash-threshold (hash-table-rehash-threshold current)
-                :weakness (hash-table-weakness current))
-               copies)
+            (let ((entries (nskk--prolog-hash-table-entries current)))
+              (puthash current
+                       (nskk--prolog-empty-hash-table-like current)
+                       copies)
               (push (cons current entries) hash-snapshots)
               (dolist (entry entries)
                 (push (car entry) pending)
@@ -903,40 +1028,19 @@ an independently owned copy must pass nil, which every caller but
            ((bool-vector-p current)
             (puthash current (copy-sequence current) copies))
            ((char-table-p current)
-            (let* ((copy (copy-sequence current))
-                   (parent (char-table-parent current))
-                   (default (char-table-range current nil))
-                   (extra-count
-                    (let ((index 0))
-                      (condition-case nil
-                          (while t
-                            (char-table-extra-slot current index)
-                            (setq index (1+ index)))
-                        (args-out-of-range index))))
-                   (extras (make-vector extra-count nil))
-                   entries)
-              (set-char-table-parent copy nil)
-              (set-char-table-range copy nil missing)
+            (let ((copy (copy-sequence current)))
               (puthash current copy copies)
-              (map-char-table
-               (lambda (range value)
-                 (unless (eq value missing)
-                   (push (cons (if (consp range)
-                                   (cons (car range) (cdr range))
-                                 range)
-                               value)
-                         entries)))
-               copy)
-              (dotimes (index extra-count)
-                (let ((value (char-table-extra-slot current index)))
-                  (aset extras index value)
-                  (push value pending)))
-              (push (list current parent default extras entries)
-                    char-table-snapshots)
-              (push parent pending)
-              (push default pending)
-              (dolist (entry entries)
-                (push (cdr entry) pending))))
+              (let* ((snapshot
+                      (nskk--prolog-char-table-snapshot current copy missing))
+                     (extras (nth 3 snapshot))
+                     (entries (nth 4 snapshot)))
+                (push snapshot char-table-snapshots)
+                (push (nth 1 snapshot) pending)
+                (push (nth 2 snapshot) pending)
+                (dotimes (index (length extras))
+                  (push (aref extras index) pending))
+                (dolist (entry entries)
+                  (push (cdr entry) pending)))))
            ((recordp current)
             (puthash current (copy-sequence current) copies)
             (push current composites)
@@ -953,63 +1057,13 @@ an independently owned copy must pass nil, which every caller but
                 (setq index (1+ index)))))
            (t
             (puthash current current copies))))))
-    (cl-labels ((copy-of (value)
-                  (gethash value copies value)))
-      (dolist (current composites)
-        (let ((copy (copy-of current)))
-          (cond
-           ((consp current)
-            (setcar copy (copy-of (car current)))
-            (setcdr copy (copy-of (cdr current))))
-           ((stringp current)
-            (let ((position 0)
-                  (limit (length current)))
-              (while (< position limit)
-                (let ((next (or (next-property-change position current limit)
-                                limit))
-                      (properties (text-properties-at position current))
-                      copied-properties)
-                  (while properties
-                    (push (car properties) copied-properties)
-                    (push (copy-of (cadr properties)) copied-properties)
-                    (setq properties (cddr properties)))
-                  (when copied-properties
-                    (add-text-properties
-                     position next (nreverse copied-properties) copy))
-                  (setq position next)))))
-           ((recordp current)
-            (let ((index 1))
-              (while (< index (length current))
-                (aset copy index (copy-of (aref current index)))
-                (setq index (1+ index)))))
-           ((vectorp current)
-            (let ((index 0))
-              (while (< index (length current))
-                (aset copy index (copy-of (aref current index)))
-                (setq index (1+ index))))))))
-      (dolist (table-snapshot char-table-snapshots)
-        (let* ((current (nth 0 table-snapshot))
-               (parent (nth 1 table-snapshot))
-               (default (nth 2 table-snapshot))
-               (extras (nth 3 table-snapshot))
-               (entries (nth 4 table-snapshot))
-               (copy (copy-of current)))
-          (set-char-table-range copy nil (copy-of default))
-          (dotimes (index (length extras))
-            (set-char-table-extra-slot
-             copy index (copy-of (aref extras index))))
-          (dolist (entry entries)
-            (set-char-table-range
-             copy (car entry) (copy-of (cdr entry))))
-          (set-char-table-parent copy (copy-of parent))))
-      (dolist (snapshot hash-snapshots)
-        (let ((copy (copy-of (car snapshot))))
-          (dolist (entry (cdr snapshot))
-            (puthash
-             (copy-of (car entry))
-             (copy-of (cdr entry))
-             copy))))
-      (copy-of object))))
+    (dolist (current composites)
+      (nskk--prolog-copy-fixup-composite current copies))
+    (dolist (snapshot char-table-snapshots)
+      (nskk--prolog-copy-fixup-char-table snapshot copies))
+    (dolist (snapshot hash-snapshots)
+      (nskk--prolog-copy-fixup-hash-table snapshot copies))
+    (nskk--prolog-copy-of object copies)))
 
 (defun nskk--prolog-prove-all-raw (goals subst)
   "Return all GOALS solutions under SUBST without detaching their value graph."
@@ -1053,22 +1107,69 @@ that throws instead of accumulating, so backtracking stops at the first match."
   (nskk--prolog-prove-internal goals subst
     (lambda (s) (throw 'nskk-prolog-first-solution s))))
 
-(defun nskk--prolog-prove-one-raw (goals subst)
-  "Return the first GOALS solution under SUBST without detaching its value graph."
+(defun/k nskk--prolog-prove-one-raw (goals subst)
+  "Return the first GOALS solution under SUBST without detaching its graph.
+Succeeds with the raw substitution, or with t for a ground solution; fails
+when GOALS has no solution at all.  The `catch' sits in a binding rather
+than tail position, so the CPS transformer still rewrites the tail `if'."
   (let* ((missing (make-symbol "nskk-prolog-no-solution"))
          (result
           (catch 'nskk-prolog-first-solution
             (nskk--prolog-prove-first goals subst)
             missing)))
-    (unless (eq result missing)
-      (or result t))))
+    (if (eq result missing)
+        (fail)
+      (succeed (or result t)))))
 
-(defun nskk-prolog-prove-one (goals subst)
+(defun/k nskk-prolog-prove-one (goals subst)
   "Prove GOALS under SUBST and return the first detached solution.
-Return t for a successful ground query and nil when no solution exists."
-  (nskk-prolog-copy-term (nskk--prolog-prove-one-raw goals subst)))
+Succeeds with t for a ground query; fails when no solution exists, so the
+synchronous wrapper returns nil there."
+  (<- solution nskk--prolog-prove-one-raw goals subst)
+  (succeed (nskk-prolog-copy-term solution)))
 
 ;;;; Assert / Retract
+
+(defun nskk--prolog-append-clause-cell (key cell tail)
+  "Link CELL as KEY's last clause cell, extending TAIL when KEY already has one.
+TAIL is mutated in place, so KEY's existing cons cells keep their identity."
+  (cond
+   (tail
+    (setcdr tail cell)
+    (puthash key cell nskk--prolog-database-tails))
+   (t
+    (puthash key cell nskk--prolog-database)
+    (puthash key cell nskk--prolog-database-tails))))
+
+(defun nskk--prolog-publish-asserted-clause (key state clause cell tail)
+  "Publish CLAUSE, held in CELL, into KEY's database and index.
+STATE supplies the rollback record whose index tail is resolved first, and
+TAIL is KEY's current last cell."
+  (nskk-prolog-prepare-key-state-index-tail state)
+  (nskk--prolog-append-clause-cell key cell tail)
+  (nskk-prolog-index-add key clause))
+
+(defun nskk--prolog-head-matches-p (head-pattern head)
+  "Return non-nil if HEAD-PATTERN unifies with HEAD under the empty substitution."
+  (not (nskk--prolog-fail-p (nskk-prolog-unify head-pattern head nil))))
+
+(defun nskk--prolog-relink-clause-list (key clauses tail)
+  "Store CLAUSES as KEY's clause list with TAIL as its last cell.
+An empty CLAUSES drops KEY from the database instead."
+  (cond
+   (clauses
+    (puthash key clauses nskk--prolog-database)
+    (puthash key tail nskk--prolog-database-tails))
+   (t
+    (remhash key nskk--prolog-database)
+    (remhash key nskk--prolog-database-tails))))
+
+(defun nskk--prolog-publish-retracted-clause (key clause clauses tail)
+  "Publish CLAUSE's removal, leaving CLAUSES (ending at TAIL) under KEY.
+Returns non-nil, which is `nskk-prolog-retract''s success value."
+  (nskk--prolog-relink-clause-list key clauses tail)
+  (nskk--prolog-index-remove key clause)
+  t)
 
 (defun nskk-prolog-assert (clause)
   "Copy CLAUSE, then publish the canonical copy atomically.
@@ -1083,15 +1184,8 @@ Errors and quits before or during publication leave the prior state intact."
            (new-cell (list canonical-clause))
            (tail (nskk--prolog-key-state-database-tail state)))
       (condition-case condition
-          (progn
-            (nskk-prolog-prepare-key-state-index-tail state)
-            (if tail
-                (progn
-                  (setcdr tail new-cell)
-                  (puthash key new-cell nskk--prolog-database-tails))
-              (puthash key new-cell nskk--prolog-database)
-              (puthash key new-cell nskk--prolog-database-tails))
-            (nskk-prolog-index-add key canonical-clause))
+          (nskk--prolog-publish-asserted-clause
+           key state canonical-clause new-cell tail)
         ((error quit)
          (nskk-prolog-restore-key-state state)
          (signal (car condition) (cdr condition)))))))
@@ -1100,20 +1194,13 @@ Errors and quits before or during publication leave the prior state intact."
   "Remove atomically the first clause whose head unifies with HEAD-PATTERN.
 Returns non-nil if a clause was removed.  Publication faults restore the exact
 per-key database, index, and cache mappings."
-  (let* ((key (nskk--prolog-head-key head-pattern)))
+  (let ((key (nskk--prolog-head-key head-pattern)))
     (nskk--prolog-ensure-mutation-allowed key)
     (let* ((clauses (gethash key nskk--prolog-database))
-           (found
-            (cl-find-if
-             (lambda (clause)
-               (catch 'nskk--unify-ok
-                 (nskk-prolog-unify/k
-                  head-pattern (car clause) nil
-                  (lambda (_)
-                    (throw 'nskk--unify-ok t))
-                  #'ignore)
-                 nil))
-             clauses)))
+           (found (cl-find-if
+                   (lambda (clause)
+                     (nskk--prolog-head-matches-p head-pattern (car clause)))
+                   clauses)))
       (when found
         (let* ((first-arg (cadr (car found)))
                (state (nskk-prolog-capture-key-state key first-arg t))
@@ -1121,15 +1208,8 @@ per-key database, index, and cache mappings."
                 (cl-remove found clauses :test #'equal :count 1))
                (new-tail (and new-list (last new-list))))
           (condition-case condition
-              (progn
-                (if new-list
-                    (progn
-                      (puthash key new-list nskk--prolog-database)
-                      (puthash key new-tail nskk--prolog-database-tails))
-                  (remhash key nskk--prolog-database)
-                  (remhash key nskk--prolog-database-tails))
-                (nskk--prolog-index-remove key found)
-                t)
+              (nskk--prolog-publish-retracted-clause
+               key found new-list new-tail)
             ((error quit)
              (nskk-prolog-restore-key-state state)
              (signal (car condition) (cdr condition)))))))))
@@ -1157,36 +1237,31 @@ per-key database, index, and cache mappings."
               cache-bucket
               active)
 
-(defun nskk--prolog-find-matching-cell (head-pattern clauses)
-  "Return (PREDECESSOR CELL) in CLAUSES that matches HEAD-PATTERN."
-  (let (predecessor)
-    (catch 'found
-      (while clauses
-        (unless (eq (nskk-prolog-unify head-pattern
-                                       (car (car clauses))
-                                       nil)
-                    :fail)
-          (throw 'found (list predecessor clauses)))
+(defun nskk--prolog-find-cell (clauses predicate)
+  "Return (PREDECESSOR CELL) for the first CLAUSES cell satisfying PREDICATE.
+PREDICATE receives the clause held in the cell.  Both returned values are the
+live cons cells, so callers may relink them with `setcdr'."
+  (let (predecessor result)
+    (while (and clauses (not result))
+      (if (funcall predicate (car clauses))
+          (setq result (list predecessor clauses))
         (setq predecessor clauses
-              clauses (cdr clauses)))
-      nil)))
+              clauses (cdr clauses))))
+    result))
+
+(defun nskk--prolog-find-matching-cell (head-pattern clauses)
+  "Return (PREDECESSOR CELL) in CLAUSES whose head unifies with HEAD-PATTERN."
+  (nskk--prolog-find-cell
+   clauses
+   (lambda (clause) (nskk--prolog-head-matches-p head-pattern (car clause)))))
 
 (defun nskk--prolog-find-eq-cell (clause clauses)
   "Return (PREDECESSOR CELL) in CLAUSES for CLAUSE by object identity."
-  (let (predecessor)
-    (catch 'found
-      (while clauses
-        (when (eq clause (car clauses))
-          (throw 'found (list predecessor clauses)))
-        (setq predecessor clauses
-              clauses (cdr clauses)))
-      nil)))
+  (nskk--prolog-find-cell clauses (lambda (candidate) (eq clause candidate))))
 
 (defun nskk-prolog-transaction-index (key type)
   "Return the index object for KEY and TYPE."
-  (pcase type
-    (:hash (gethash key nskk--prolog-hash-indices))
-    (:trie (gethash key nskk--prolog-trie-indices))))
+  (nskk--prolog-current-index-object key type))
 
 (defun nskk-prolog-transaction-index-bucket
     (type index first-arg)
@@ -1281,6 +1356,24 @@ per-key database, index, and cache mappings."
   (setf (nskk--prolog-journal-active journal) nil)
   nil)
 
+(defun nskk--prolog-validate-replacement
+    (key old-head-pattern old-clause new-clause first-arg
+         mutation-p indexed-p index index-cell)
+  "Signal unless a clause replacement under KEY is admissible.
+OLD-HEAD-PATTERN must name KEY's predicate, NEW-CLAUSE must keep OLD-CLAUSE's
+FIRST-ARG, and when MUTATION-P and INDEXED-P hold, INDEX must exist and
+OLD-CLAUSE must sit in its bucket as INDEX-CELL."
+  (when (and old-head-pattern
+             (not (equal key (nskk--prolog-head-key old-head-pattern))))
+    (error "Replacement predicate differs from old predicate"))
+  (when (and new-clause old-clause
+             (not (equal first-arg (cadr (car old-clause)))))
+    (error "Replacement first argument differs from old clause"))
+  (when (and mutation-p indexed-p (not index))
+    (error "Configured Prolog index is missing for %s" key))
+  (when (and old-clause indexed-p (not index-cell))
+    (error "Indexed clause is missing from its first-argument bucket")))
+
 (defun nskk-prolog-replace-clause-transaction
     (old-head-pattern new-clause &optional callback)
   "Replace or delete one matching clause and commit atomically.
@@ -1322,16 +1415,9 @@ publication or CALLBACK restores the original object graph."
                (nskk--prolog-find-eq-cell old-clause index-bucket)))
          (index-predecessor (car index-match))
          (index-cell (cadr index-match)))
-    (when (and old-head-pattern
-               (not (equal key (nskk--prolog-head-key old-head-pattern))))
-      (error "Replacement predicate differs from old predicate"))
-    (when (and new-clause old-clause
-               (not (equal first-arg (cadr (car old-clause)))))
-      (error "Replacement first argument differs from old clause"))
-    (when (and mutation-p indexed-p (not index))
-      (error "Configured Prolog index is missing for %s" key))
-    (when (and old-clause indexed-p (not index-cell))
-      (error "Indexed clause is missing from its first-argument bucket"))
+    (nskk--prolog-validate-replacement
+     key old-head-pattern old-clause new-clause first-arg
+     mutation-p indexed-p index index-cell)
     (let* ((cache-entry
             (gethash key nskk--prolog-index-bucket-tail-cache
                      nskk--prolog-cache-missing))
@@ -1339,10 +1425,7 @@ publication or CALLBACK restores the original object graph."
             (not (eq cache-entry nskk--prolog-cache-missing)))
            (cache-buckets
             (and cache-entry-present-p
-                 (vectorp cache-entry)
-                 (= (length cache-entry) 3)
-                 (hash-table-p (aref cache-entry 2))
-                 (aref cache-entry 2)))
+                 (nskk--prolog-cache-entry-buckets cache-entry)))
            (cache-bucket
             (if cache-buckets
                 (gethash first-arg cache-buckets
@@ -1441,6 +1524,16 @@ publication or CALLBACK restores the original object graph."
          (nskk--prolog-rollback-clause-transaction journal)
          (signal (car condition) (cdr condition)))))))
 
+(defun nskk--prolog-publish-empty-predicate (key type staged-index)
+  "Drop every KEY clause, installing STAGED-INDEX as the empty TYPE index."
+  (remhash key nskk--prolog-database)
+  (remhash key nskk--prolog-database-tails)
+  (remhash key nskk--prolog-index-bucket-tail-cache)
+  (pcase type
+    (:hash (puthash key staged-index nskk--prolog-hash-indices))
+    (:trie (puthash key staged-index nskk--prolog-trie-indices)))
+  nil)
+
 (defun nskk-prolog-retract-all (predicate arity)
   "Remove every PREDICATE/ARITY clause as one publication transaction.
 The configured index strategy is preserved.  On error or quit, exact per-key
@@ -1454,14 +1547,7 @@ mappings are restored; the replacement index is staged before publication."
               (:trie (nskk-trie-create))))
            (state (nskk-prolog-capture-key-state key)))
       (condition-case condition
-          (progn
-            (remhash key nskk--prolog-database)
-            (remhash key nskk--prolog-database-tails)
-            (remhash key nskk--prolog-index-bucket-tail-cache)
-            (pcase type
-              (:hash (puthash key staged-index nskk--prolog-hash-indices))
-              (:trie (puthash key staged-index nskk--prolog-trie-indices)))
-            nil)
+          (nskk--prolog-publish-empty-predicate key type staged-index)
         ((error quit)
          (nskk-prolog-restore-key-state state)
          (signal (car condition) (cdr condition)))))))
@@ -1475,7 +1561,6 @@ mappings are restored; the replacement index is staged before publication."
   (clrhash nskk--prolog-hash-indices)
   (clrhash nskk--prolog-trie-indices)
   (clrhash nskk--prolog-index-bucket-tail-cache)
-  (setq nskk--presentation-action-table-initialized nil)
   (setq nskk--prolog-var-counter 0))
 
 ;;;; Query API
@@ -1485,18 +1570,22 @@ mappings are restored; the replacement index is staged before publication."
   (nskk-prolog-copy-term
    (nskk--prolog-prove-all-raw (list goal) nil)))
 
-(defun nskk-prolog-query-one (goal)
+(defun/k nskk-prolog-query-one (goal)
   "Query GOAL and return the first detached solution.
-Return t for ground success and nil when no solution exists."
-  (nskk-prolog-copy-term
-   (nskk--prolog-prove-one-raw (list goal) nil)))
+Succeeds with t for ground success and fails when no solution exists, which
+distinguishes the two cases the synchronous wrapper collapses onto nil."
+  (<- solution nskk--prolog-prove-one-raw (list goal) nil)
+  (succeed (nskk-prolog-copy-term solution)))
 
-(defun nskk-prolog-query-value (goal var)
-  "Query GOAL and return a detached first binding of VAR."
-  (let ((solution (nskk--prolog-prove-one-raw (list goal) nil)))
-    (nskk-prolog-copy-term
-     (when (and solution (listp solution))
-       (nskk-prolog-walk var solution)))))
+(defun/k nskk-prolog-query-value (goal var)
+  "Query GOAL and return a detached first binding of VAR.
+Fails both when GOAL has no solution and when the solution is ground.  Only
+a caller of the CPS form tells those apart from a VAR bound to nil; the
+synchronous wrapper returns nil for all three."
+  (<- solution nskk--prolog-prove-one-raw (list goal) nil)
+  (if (listp solution)
+      (succeed (nskk-prolog-copy-term (nskk-prolog-walk var solution)))
+    (fail)))
 
 (defun nskk-prolog-query-all-values (goal var)
   "Query GOAL and return detached bindings of VAR across all solutions."
@@ -1506,15 +1595,15 @@ Return t for ground success and nil when no solution exists."
       (nskk-prolog-walk var solution))
     (nskk--prolog-prove-all-raw (list goal) nil))))
 
-(defun nskk-prolog-query-values (goal vars)
-  "Query GOAL and return detached first-solution bindings for VARS."
-  (let ((solution (nskk--prolog-prove-one-raw (list goal) nil)))
-    (nskk-prolog-copy-term
-     (when (and solution (listp solution))
-       (mapcar
-        (lambda (var)
-          (nskk-prolog-walk var solution))
-        vars)))))
+(defun/k nskk-prolog-query-values (goal vars)
+  "Query GOAL and return detached first-solution bindings for VARS.
+Fails when GOAL has no solution and when the solution is ground."
+  (<- solution nskk--prolog-prove-one-raw (list goal) nil)
+  (if (listp solution)
+      (succeed (nskk-prolog-copy-term
+                (mapcar (lambda (var) (nskk-prolog-walk var solution))
+                        vars)))
+    (fail)))
 
 (defun nskk-prolog-query-bindings (goal variables)
   "Query GOAL and return detached VARIABLES bindings for all solutions."
@@ -1592,37 +1681,38 @@ database (so that variable-first-arg queries fall back correctly).  Use
 
 Requires the predicate to have a :trie index configured via
 `nskk-prolog-set-index' before calling this function."
-
-  (let* ((dbkey (nskk-prolog-clause-key predicate arity))
-         (trie
-          (progn
-            (nskk--prolog-ensure-mutation-allowed dbkey)
-            (gethash dbkey nskk--prolog-trie-indices))))
-    (unless trie
+  (let ((dbkey (nskk-prolog-clause-key predicate arity)))
+    (nskk--prolog-ensure-mutation-allowed dbkey)
+    (unless (gethash dbkey nskk--prolog-trie-indices)
       (error "No trie index for %s/%d; call (nskk-prolog-set-index '%s %d :trie) first"
              predicate arity predicate arity))
+    ;; Explicit car/cdr rather than pcase destructuring: a malformed pair must
+    ;; still signal here, and `pcase' would bind nil and skip it silently.
     (dolist (pair kana-candidates-pairs)
-      (let* ((kana (car pair))
-             (candidates (cdr pair))
-             (clause (list (list predicate kana candidates))))
+      (let ((kana (car pair)))
         (when (stringp kana)
           ;; nskk-prolog-assert writes to both the flat clause database (for
           ;; variable-first-arg fallback) and the trie index (via
           ;; nskk-prolog-index-add), so no separate trie-insert is needed.
-          (nskk-prolog-assert clause))))))
+          (nskk-prolog-assert
+           (list (list predicate kana (cdr pair)))))))))
 
 (defun nskk-prolog-holds-p (goal)
   "Return non-nil if GOAL succeeds in the Prolog database.
 GOAL is a Prolog term (predicate arg1 arg2 ...).
 Returns t if GOAL has at least one solution, nil otherwise.
 
-Uses the raw first-solution path because no solution graph escapes.
+Uses the raw first-solution path because no solution graph escapes, and
+calls it through its continuation interface rather than its synchronous
+wrapper: this is the most-called entry point in the module, and the wrapper
+would add a call layer and two constant closures per query for a value that
+is discarded anyway.
 
 Example:
   (nskk-prolog-holds-p (quote (dict-initialized)))
   ;; => t   (when the fact is asserted)
   ;; => nil (when the fact is absent)"
-  (and (nskk--prolog-prove-one-raw (list goal) nil) t))
+  (nskk--prolog-prove-one-raw/k (list goal) nil (lambda (_) t) #'ignore))
 
 ;;;; DSL Macros
 
@@ -1740,44 +1830,24 @@ ambiguity: ground queries return (nil) on success vs nil on failure."
   `(when (nskk-prolog-query ,query)
      ,@body))
 
-(defun nskk--prolog-ensure-presentation-actions ()
-  "Populate the presentation-action clause database on first use."
-  (unless nskk--presentation-action-table-initialized
-    (nskk-prolog-set-index 'presentation-action 2 :list)
-    (dolist (registration nskk--presentation-actions)
-      (nskk-prolog-assert
-       (list (list 'presentation-action
-                    (car registration)
-                    (cdr registration)))))
-    (setq nskk--presentation-action-table-initialized t)))
-
 ;;;; Presentation Action API
-
-(defun nskk--prolog-presentation-action-cache-add (action callback)
-  "Add CALLBACK to the cached callbacks for ACTION."
-  (let ((entry (assq action nskk--presentation-action-cache)))
-    (if entry
-        (setcdr entry (append (cdr entry) (list callback)))
-      (setq nskk--presentation-action-cache
-            (append nskk--presentation-action-cache
-                    (list (cons action (list callback))))))))
 
 (defun nskk-prolog-register-presentation-action (action callback)
   "Register CALLBACK for presentation ACTION.
-ACTION and CALLBACK are symbols stored as a `presentation-action/2' fact."
-  (unless (member (cons action callback) nskk--presentation-actions)
-    (setq nskk--presentation-actions
-          (append nskk--presentation-actions (list (cons action callback))))
-    (nskk--prolog-presentation-action-cache-add action callback)
-    (if nskk--presentation-action-table-initialized
-        (nskk-prolog-assert
-         (list (list 'presentation-action action callback)))
-      (nskk--prolog-ensure-presentation-actions))))
+Registrations accumulate in call order, and re-registering an existing
+ACTION/CALLBACK pair is a no-op, so the order stays stable."
+  (let ((entry (assq action nskk--presentation-action-cache)))
+    (cond
+     ((null entry)
+      (setq nskk--presentation-action-cache
+            (append nskk--presentation-action-cache
+                    (list (list action callback)))))
+     ((not (memq callback (cdr entry)))
+      (setcdr entry (append (cdr entry) (list callback)))))))
 
 (defun nskk-prolog-presentation-actions (action)
   "Return callbacks registered for presentation ACTION in registration order.
 Duplicate registrations are collapsed so each callback is returned once."
-  (nskk--prolog-ensure-presentation-actions)
   (copy-sequence (cdr (assq action nskk--presentation-action-cache))))
 
 (provide 'nskk-prolog)

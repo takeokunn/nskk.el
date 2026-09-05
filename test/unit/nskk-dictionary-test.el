@@ -549,33 +549,33 @@
           (should (null result)))))))
 
 (nskk-describe "nskk-dict-parse-line"
-  (nskk-it "parses basic SKK dictionary lines"
-    (nskk-deftest-table parse-line-basic
-      :columns (input expected-key expected-candidates)
-      :rows    (("あ /ア/"              "あ"     ("ア"))
-                ("かんじ /漢字/感じ/"   "かんじ" ("漢字" "感じ"))
-                ("うごk /動く/蠢く/"    "うごk"  ("動く" "蠢く")))
-      :body
-      (let* ((result (nskk-dict-parse-line input))
-             (key (car result))
-             (candidates (cdr result)))
-        (should (consp result))
-        (should (equal key expected-key))
-        (should (equal candidates expected-candidates)))))
+  (nskk-deftest-table parse-line-basic
+    :description "parses basic SKK dictionary lines"
+    :columns (input expected-key expected-candidates)
+    :rows    (("あ /ア/"              "あ"     ("ア"))
+              ("かんじ /漢字/感じ/"   "かんじ" ("漢字" "感じ"))
+              ("うごk /動く/蠢く/"    "うごk"  ("動く" "蠢く")))
+    :body
+    (let* ((result (nskk-dict-parse-line input))
+           (key (car result))
+           (candidates (cdr result)))
+      (should (consp result))
+      (should (equal key expected-key))
+      (should (equal candidates expected-candidates))))
 
-  (nskk-it "returns nil for comment lines"
-    (nskk-deftest-table parse-line-comments
-      :columns (input)
-      :rows    ((";;") (";; comment") (";; -*- mode: fundamental -*-"))
-      :body
-      (should (null (nskk-dict-parse-line input)))))
+  (nskk-deftest-table parse-line-comments
+    :description "returns nil for comment lines"
+    :columns (input)
+    :rows    ((";;") (";; comment") (";; -*- mode: fundamental -*-"))
+    :body
+    (should (null (nskk-dict-parse-line input))))
 
-  (nskk-it "returns nil for invalid lines"
-    (nskk-deftest-table parse-line-invalid
-      :columns (input)
-      :rows    (("no-slash-at-all") ("missing-space/"))
-      :body
-      (should (null (nskk-dict-parse-line input)))))
+  (nskk-deftest-table parse-line-invalid
+    :description "returns nil for invalid lines"
+    :columns (input)
+    :rows    (("no-slash-at-all") ("missing-space/"))
+    :body
+    (should (null (nskk-dict-parse-line input))))
 
   (nskk-it "strips annotations (semicolon suffix) from candidates"
     (let* ((result (nskk-dict-parse-line "かんじ /漢字;訓読み/感じ;okurigana/"))
@@ -589,21 +589,21 @@
     (should (null (nskk-dict-parse-line "")))))
 
 (nskk-describe "nskk--dict-parse-candidates"
-  (nskk-it "parses candidate strings correctly"
-    (nskk-deftest-table parse-candidates-valid
-      :columns (input expected)
-      :rows    (("/ア/"        ("ア"))
-                ("/漢字/感じ/" ("漢字" "感じ"))
-                ("/a/b/c/"     ("a" "b" "c")))
-      :body
-      (should (equal (nskk--dict-parse-candidates input) expected))))
+  (nskk-deftest-table parse-candidates-valid
+    :description "parses candidate strings correctly"
+    :columns (input expected)
+    :rows    (("/ア/"        ("ア"))
+              ("/漢字/感じ/" ("漢字" "感じ"))
+              ("/a/b/c/"     ("a" "b" "c")))
+    :body
+    (should (equal (nskk--dict-parse-candidates input) expected)))
 
-  (nskk-it "returns nil for invalid inputs"
-    (nskk-deftest-table parse-candidates-nil
-      :columns (input)
-      :rows    ((nil) ("") ("no-slash") ("漢字"))
-      :body
-      (should (null (nskk--dict-parse-candidates input))))))
+  (nskk-deftest-table parse-candidates-nil
+    :description "returns nil for invalid inputs"
+    :columns (input)
+    :rows    ((nil) ("") ("no-slash") ("漢字"))
+    :body
+    (should (null (nskk--dict-parse-candidates input)))))
 
 (nskk-describe "nskk-dict-lookup"
   (nskk-it "returns candidates for a known reading"
@@ -1352,6 +1352,34 @@
      (nskk-dict-register-word/k "かんじ" "漢字" "not-a-function" #'ignore)
      :type 'invalid-function)))
 
+(nskk-describe "nskk--dict-valid-field-p"
+  (nskk-it "rejects an empty string"
+    (should (null (nskk--dict-valid-field-p "" nil))))
+
+  (nskk-it "rejects non-string input"
+    (should (null (nskk--dict-valid-field-p 42 nil))))
+
+  (nskk-it "accepts an ordinary field with no forbidden characters"
+    (should (nskk--dict-valid-field-p "かんじ" nil)))
+
+  (nskk-deftest-table dict-valid-field-p-rejects-forbidden-symbols
+    :description "rejects each documented forbidden symbol"
+    :columns (char)
+    :rows ((?/) (?\;) (?▽) (?▼))
+    :body (should (null (nskk--dict-valid-field-p (string char) nil))))
+
+  (nskk-deftest-table dict-valid-field-p-rejects-control-codes
+    :description "rejects ASCII controls U+0000-U+001F and U+007F"
+    :columns (code)
+    :rows ((#x00) (#x01) (#x1F) (#x7F))
+    :body (should (null (nskk--dict-valid-field-p (string code) nil))))
+
+  (nskk-it "rejects an ordinary space when ALLOW-SPACE is nil"
+    (should (null (nskk--dict-valid-field-p "a b" nil))))
+
+  (nskk-it "accepts an ordinary space when ALLOW-SPACE is non-nil"
+    (should (nskk--dict-valid-field-p "a b" t))))
+
 (nskk-describe "nskk--dict-cache-valid-p"
   (nskk-it "returns nil when dict-files is nil"
     (should (null (nskk--dict-cache-valid-p nil))))
@@ -1439,55 +1467,6 @@
            (past-time (time-subtract file-mtime 100)))
       (unwind-protect
           (should-not (nskk--dict-file-older-than tmpfile past-time))
-        (delete-file tmpfile)))))
-
-(nskk-describe "nskk--dict-parse-file-to-entries"
-  (nskk-it "returns nil for a non-existent file"
-    (should-not (nskk--dict-parse-file-to-entries "/no/such/file.el")))
-
-  (nskk-it "returns nil for a non-string argument"
-    (should-not (nskk--dict-parse-file-to-entries nil))
-    (should-not (nskk--dict-parse-file-to-entries 42)))
-
-  (nskk-it "parses a minimal SKK dictionary file into entries"
-    (let ((tmpfile (make-temp-file "nskk-dictionary-test-" nil ".skk")))
-      (unwind-protect
-          (progn
-            (with-temp-file tmpfile
-              (insert ";; SKK-JISYO.S -*- coding: utf-8 -*-\n")
-              (insert ";; okuri-ari entries\n")
-              (insert ";; okuri-nasi entries\n")
-              (insert "かんじ /漢字/感じ/幹事/\n")
-              (insert "さくら /桜/\n")
-              (insert ";; another comment\n")
-              (insert "にほん /日本/二本/\n"))
-            (let ((entries (nskk--dict-parse-file-to-entries tmpfile)))
-              (should (listp entries))
-              (should (= (length entries) 3))
-              (should (assoc "かんじ" entries))
-              (should (assoc "さくら" entries))
-              (should (assoc "にほん" entries))
-              (should (equal (cdr (assoc "さくら" entries)) '("桜")))))
-        (delete-file tmpfile))))
-
-  (nskk-it "skips comment lines and blank lines"
-    (let ((tmpfile (make-temp-file "nskk-dictionary-test-" nil ".skk")))
-      (unwind-protect
-          (progn
-            (with-temp-file tmpfile
-              (insert ";; comment\n")
-              (insert "\n")
-              (insert "てすと /テスト/\n")
-              (insert ";; another comment\n"))
-            (let ((entries (nskk--dict-parse-file-to-entries tmpfile)))
-              (should (= (length entries) 1))
-              (should (assoc "てすと" entries))))
-        (delete-file tmpfile))))
-
-  (nskk-it "returns nil for an empty file"
-    (let ((tmpfile (make-temp-file "nskk-dictionary-test-" nil ".skk")))
-      (unwind-protect
-          (should-not (nskk--dict-parse-file-to-entries tmpfile))
         (delete-file tmpfile)))))
 
 (nskk-describe "nskk--dict-save-system-dict-cache and nskk--dict-load-system-dict-from-cache"
@@ -1643,13 +1622,44 @@
                  (lambda (_solutions) (list first "plain")))
                 ((symbol-function 'nskk--dict-lookup-okuri-ari)
                  (lambda (_key) (list duplicate "okuri"))))
-        (setq result (nskk--dict-do-lookup "よみ")))
+        (setq result (nskk-dict-lookup "よみ")))
       (should
        (equal (mapcar #'substring-no-properties result)
               '("same" "plain" "okuri")))
       (should (eq (car result) first))
       (should
        (eq (get-text-property 0 'source (car result)) 'okuri-nasi)))))
+
+(nskk-describe "nskk--dict-ja-dic-flatten-node"
+  (nskk-it "returns one entry for a leaf node holding candidates"
+    (let (decoded-paths)
+      (cl-letf (((symbol-function 'nskk--dict-ja-dic-decode-key)
+                 (lambda (path) (push path decoded-paths) "K")))
+        (let ((result (nskk--dict-ja-dic-flatten-node (list 7 '("候補")) nil)))
+          (should (equal result '(("K" . ("候補")))))
+          (should (equal decoded-paths '((7))))))))
+
+  (nskk-it "recurses into children and produces one entry per leaf"
+    (cl-letf (((symbol-function 'nskk--dict-ja-dic-decode-key)
+               (lambda (path) (mapconcat #'number-to-string path "-"))))
+      (let ((result (nskk--dict-ja-dic-flatten-node
+                     (list 3 (list 1 '("あ")) (list 2 '("い")))
+                     nil)))
+        (should (equal result '(("3-1" . ("あ")) ("3-2" . ("い"))))))))
+
+  (nskk-it "extends PREFIX with each ancestor's code along the recursion path"
+    (let (decoded-paths)
+      (cl-letf (((symbol-function 'nskk--dict-ja-dic-decode-key)
+                 (lambda (path) (push path decoded-paths) "K")))
+        (nskk--dict-ja-dic-flatten-node (list 9 (list 4 '("う"))) '(1 2))
+        (should (equal decoded-paths '((1 2 9 4)))))))
+
+  (nskk-it "stores the candidates list object as-is without copying"
+    (cl-letf (((symbol-function 'nskk--dict-ja-dic-decode-key)
+               (lambda (_path) "K")))
+      (let* ((candidates (list "元" "の"))
+             (result (nskk--dict-ja-dic-flatten-node (list 1 candidates) nil)))
+        (should (eq (cdar result) candidates))))))
 
 (nskk-describe "linear ja-dic flattening"
   (nskk-it "visits 5000 wide child leaves once in source order"
@@ -1882,6 +1892,37 @@
     (should (equal (nskk--dict-parse-candidates "/漢字/感じ;note/幹事/")
                    '("漢字" "感じ" "幹事")))))
 
+(nskk-describe "nskk--dict-split-candidate-annotation"
+  (nskk-it "splits candidate and annotation at the first semicolon"
+    (should (equal (nskk--dict-split-candidate-annotation "漢字;a kanji")
+                   '("漢字" . "a kanji"))))
+
+  (nskk-it "returns the whole string as candidate with nil annotation when there is no semicolon"
+    (should (equal (nskk--dict-split-candidate-annotation "感じ")
+                   '("感じ" . nil))))
+
+  (nskk-it "returns an empty candidate when the semicolon is the first character"
+    (should (equal (nskk--dict-split-candidate-annotation ";note")
+                   '("" . "note"))))
+
+  (nskk-it "returns an empty annotation when the semicolon is the last character"
+    (should (equal (nskk--dict-split-candidate-annotation "候補;")
+                   '("候補" . "")))))
+
+(nskk-describe "nskk--dict-parse-candidates-with-annotations"
+  (nskk-it "parses the docstring example into candidate-annotation pairs"
+    (should (equal (nskk--dict-parse-candidates-with-annotations "/漢字;a kanji/感じ/")
+                   '(("漢字" . "a kanji") ("感じ" . nil)))))
+
+  (nskk-it "returns nil for non-string input"
+    (should (null (nskk--dict-parse-candidates-with-annotations 42))))
+
+  (nskk-it "returns nil for a string of length 1 or less"
+    (should (null (nskk--dict-parse-candidates-with-annotations "/"))))
+
+  (nskk-it "returns nil when the string does not start with a slash"
+    (should (null (nskk--dict-parse-candidates-with-annotations "no-leading-slash/")))))
+
 (nskk-deftest-table dict-parse-line-table
   :description "dict-parse-line-table: key extraction from SKK dictionary lines"
   :columns (input expected)
@@ -1920,10 +1961,11 @@
     t)
   30)
 
-(nskk-property-test dict-parse-line-result-is-cons-or-nil
-  ((s search-query))
-  (let ((result (nskk-dict-parse-line s)))
-    (or (null result) (consp result)))
+(nskk-property-test dict-parse-line-well-formed-line-round-trips
+  ((key search-query) (candidate-1 search-query) (candidate-2 search-query))
+  (let* ((line (format "%s /%s/%s/" key candidate-1 candidate-2))
+         (result (nskk-dict-parse-line line)))
+    (equal result (cons key (list candidate-1 candidate-2))))
   30)
 
 (nskk-deftest-table dict-register-word-dedup
@@ -2740,7 +2782,27 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               (nskk-with-mocks
                   ((nskk--dict-cache-file-path (lambda () file)))
                 (should-not (nskk--dict-load-system-dict-from-cache))))
-          (delete-file file)))))
+          (delete-file file))))
+
+    (nskk-it "accepts a valid cache form followed by trailing real whitespace"
+      (dolist (trailing (list "\n" "\t" "\r\n"))
+        (let ((file (make-temp-file "nskk-cache-trailing-ws-" nil ".eld"))
+              (nskk-dict-system-dictionary-files (quote ("/dict"))))
+          (unwind-protect
+              (progn
+                (with-temp-file file
+                  (prin1
+                   (list :version 1
+                         :source-files (quote ("/dict"))
+                         :entries (quote (("あ" . ("亜")))))
+                   (current-buffer))
+                  (insert trailing))
+                (nskk-with-mocks
+                    ((nskk--dict-cache-file-path (lambda () file)))
+                  (let ((loaded (nskk--dict-load-system-dict-from-cache)))
+                    (should loaded)
+                    (should (equal (cdr (assoc "あ" loaded)) '("亜"))))))
+            (delete-file file))))))
   (nskk-describe "dictionary initialization hooks"
   (nskk-it "runs the initialization hook after loading completes"
     (nskk-prolog-test-with-isolated-db
@@ -3797,6 +3859,23 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
                     type index "new")))
               (should-not
                (gethash key (nskk-prolog-index-config)))))))))))
+(nskk-describe "incremental append missing tail invariant"
+  (nskk-it "signals an error and leaves the database untouched when an existing head has no tail"
+    (nskk-prolog-test-with-isolated-db
+      (let* ((predicate 'append-missing-tail)
+             (key (nskk-prolog-clause-key predicate 2))
+             (existing-clause (list (list predicate "old" '("value"))))
+             (existing-head (list existing-clause))
+             (caught nil))
+        (puthash key existing-head (nskk-prolog-database))
+        (remhash key (nskk-prolog-database-tails))
+        (condition-case condition
+            (nskk--dict-append-predicate-entries predicate '(("new" "candidate")))
+          (error (setq caught condition)))
+        (should (equal caught (list 'error (format "Missing database tail for %s" key))))
+        (should (eq (gethash key (nskk-prolog-database)) existing-head))
+        (should (null (cdr existing-head)))
+        (should (null (gethash key (nskk-prolog-database-tails))))))))
 (nskk-describe "dictionary predicate publication rollback boundaries"
     (nskk-it "restores exact facts after bulk cache and publish errors and quits"
       (dolist (kind '(error quit))

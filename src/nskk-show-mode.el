@@ -289,7 +289,7 @@ original condition."
               'after-string
               indicator-str
               'priority
-              100))
+              nskk-overlay-priority-mode-indicator))
           (let ((generation nskk--show-mode-inline-generation))
             (setq nskk--show-mode-timer
                   (run-with-timer

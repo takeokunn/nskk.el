@@ -87,18 +87,12 @@
 
 (declare-function nskk-debug-message "nskk-debug" (fmt &rest args))
 
-(defgroup
-  nskk-program-dict
-  nil
+(defgroup nskk-program-dict nil
   "Program dictionary (プログラム辞書) settings for NSKK."
-  :prefix
-  "nskk-program-dict-"
-  :group
-  'nskk)
+  :prefix "nskk-program-dict-"
+  :group 'nskk)
 
-(defcustom
-  nskk-program-dict-enable
-  nil
+(defcustom nskk-program-dict-enable nil
   "When non-nil, enable program dictionaries as a dictionary fallback.
 When nil (default), `nskk-program-dict-lookup' fails immediately with zero
 overhead regardless of the value of `nskk-program-dicts'.
@@ -108,16 +102,11 @@ To enable program dictionary lookup:
   (setq nskk-program-dicts
     (list (lambda (r) (my-lookup r))
           \"/usr/local/bin/my-dict %s\"))"
-  :type
-  'boolean
-  :risky
-  t
-  :group
-  'nskk-program-dict)
+  :type 'boolean
+  :risky t
+  :group 'nskk-program-dict)
 
-(defcustom
-  nskk-program-dicts
-  nil
+(defcustom nskk-program-dicts nil
   "List of program dictionary entries for NSKK.
 Each entry is either a function or a command-template string.  Functions are
 called with the reading and must return nil or a proper list of non-empty safe
@@ -129,35 +118,23 @@ Command stdout is limited to 1 MiB and parsed as SKK, skkserv, or one-candidate-
 per-line output.  stderr is discarded separately and never parsed.  A command
 that times out, exceeds the output limit, or exits nonzero is treated as a miss.
 All entries are tried in order and their results are deduplicated."
-  :type
-  '(repeat (choice function string))
-  :risky
-  t
-  :group
-  'nskk-program-dict)
+  :type '(repeat (choice function string))
+  :risky t
+  :group 'nskk-program-dict)
 
-(defcustom
-  nskk-program-dict-timeout
-  1.0
+(defcustom nskk-program-dict-timeout 1.0
   "Finite wait budget in seconds for external commands and isolated calculations.
 Owned stdout and stderr polls consume this budget in slices of at most 0.1
 seconds.  Non-positive, non-numeric, and non-finite values disable polling."
-  :type
-  'number
-  :safe
-  #'numberp
-  :group
-  'nskk-program-dict)
+  :type 'number
+  :safe #'numberp
+  :group 'nskk-program-dict)
 
-(nskk-prolog-define-fact-table
-  program-dict-entry-type
-  (:arity 2 :index :hash)
+(nskk-prolog-define-fact-table program-dict-entry-type (:arity 2 :index :hash)
   #'call-function
   (command call-command))
 
-(nskk-prolog-define-fact-table
-  program-dict-output-prefix
-  (:arity 3 :index :hash)
+(nskk-prolog-define-fact-table program-dict-output-prefix (:arity 3 :index :hash)
   ("/" skk "/")
   ("1" skkserv "/"))
 
@@ -166,8 +143,7 @@ seconds.  Non-positive, non-numeric, and non-finite values disable polling."
 Initialized lazily on first call to `nskk-program-dict-lookup'.
 Keyed by reading string; values are canonical candidate graphs.")
 
-(defconst
-  nskk--program-dict-no-config-snapshot
+(defconst nskk--program-dict-no-config-snapshot
   (make-symbol "nskk-program-dict-no-config-snapshot")
   "Sentinel denoting that no program dictionary config was snapshotted yet.")
 
@@ -181,8 +157,7 @@ semantics, while function objects retain identity semantics."
   (let ((pending (list (cons left right)))
         (seen (make-hash-table :test #'eq)))
     (catch 'different
-      (while
-        pending
+      (while pending
         (let* ((pair (pop pending))
                (left-value (car pair))
                (right-value (cdr pair)))
@@ -209,16 +184,14 @@ semantics, while function objects retain identity semantics."
   (let ((cursor config)
         (seen (make-hash-table :test #'eq)))
     (catch 'invalid
-      (while
-        (consp cursor)
+      (while (consp cursor)
         (when (gethash cursor seen)
           (throw 'invalid nil))
         (puthash cursor t seen)
         (unless (or (functionp (car cursor)) (stringp (car cursor)))
           (throw 'invalid nil))
         (setq cursor (cdr cursor)))
-      (if (null cursor) t
-        nil))))
+      (null cursor))))
 
 (defun nskk--program-dict-sync-config ()
   "Invalidate the cache when `nskk-program-dicts' changed by value.
@@ -227,27 +200,19 @@ state is modified, so copy errors and quits preserve the old state."
   (unless (and
       (not
         (eq nskk--program-dict-config-snapshot nskk--program-dict-no-config-snapshot))
-      (nskk--program-dict-config-equal-p
-        nskk-program-dicts
-        nskk--program-dict-config-snapshot))
+      (nskk--program-dict-config-equal-p nskk-program-dicts nskk--program-dict-config-snapshot))
     (let ((snapshot (nskk-prolog-copy-term nskk-program-dicts)))
       (when nskk--program-dict-cache
         (nskk-cache-clear nskk--program-dict-cache))
       (setq nskk--program-dict-config-snapshot snapshot))))
 
-(defconst
-  nskk--program-dict-cache-capacity
-  256
+(defconst nskk--program-dict-cache-capacity 256
   "Maximum number of entries kept in nskk--program-dict-cache.")
 
-(defconst
-  nskk--program-dict-max-output-size
-  (* 1024 1024)
+(defconst nskk--program-dict-max-output-size (* 1024 1024)
   "Maximum number of output bytes accepted from a program dictionary.")
 
-(defconst
-  nskk--program-dict-max-calculation-size
-  4096
+(defconst nskk--program-dict-max-calculation-size 4096
   "Maximum bytes accepted for a calculation expression or output stream.")
 
 (defun nskk--program-dict-ensure-cache ()
@@ -304,17 +269,64 @@ back to deleting only the direct process."
       (when (process-live-p process)
         (ignore-errors (delete-process process))))))
 
-(defun/k
-  nskk--program-dict-exec-command
-  (program stdin-key args)
-  "Execute PROGRAM asynchronously with ARGS and optional STDIN-KEY.
+(defun nskk--program-dict-finite-positive-p (value)
+  "Return non-nil when VALUE is a finite, strictly positive wait budget.
+`isnan' cannot substitute for the finiteness check here: it is also nil
+for both infinities, which would let an infinite timeout poll forever."
+  (and (numberp value) (> value 0) (= (- value value) 0)))
 
-STDIN-KEY, when non-nil, is sent followed by a newline.  Standard input is
-then closed so commands waiting for EOF can terminate.  Execution is limited
-by `nskk-program-dict-timeout', and stdout and stderr are each limited to
-`nskk--program-dict-max-output-size' bytes.  Standard error is discarded.
-Calls on-found with stdout only when PROGRAM exits successfully; otherwise
-calls on-not-found."
+(defun nskk--program-dict-cleanup-process (process stderr-process output-buffer stderr-buffer)
+  "Stop PROCESS and STDERR-PROCESS and release OUTPUT-BUFFER and STDERR-BUFFER.
+Each step is independently guarded so an earlier failure never skips a
+later one."
+  (condition-case nil
+      (nskk--program-dict-stop-process-group process)
+    ((error quit) nil))
+  (condition-case nil
+      (when (processp stderr-process)
+        (delete-process stderr-process))
+    ((error quit) nil))
+  (condition-case nil
+      (when (buffer-live-p output-buffer)
+        (kill-buffer output-buffer))
+    ((error quit) nil))
+  (condition-case nil
+      (when (buffer-live-p stderr-buffer)
+        (kill-buffer stderr-buffer))
+    ((error quit) nil)))
+
+(defun nskk--program-dict-drain-quiet-rounds (process remaining-time-fn overflow-p-fn counts-fn)
+  "Drain PROCESS after it exited, stopping after two silent 0.1s polls.
+REMAINING-TIME-FN, OVERFLOW-P-FN, and COUNTS-FN read the caller's live
+deadline, overflow flag, and byte counts, so a late overflow or an
+exhausted deadline still stop the drain."
+  (let ((previous-counts (funcall counts-fn))
+        (quiet-rounds 0))
+    (while (and (not (funcall overflow-p-fn))
+                (> (funcall remaining-time-fn) 0)
+                (< quiet-rounds 2))
+      (accept-process-output process (min 0.1 (funcall remaining-time-fn)) nil t)
+      (accept-process-output nil 0)
+      (let ((counts (funcall counts-fn)))
+        (setq quiet-rounds (if (equal counts previous-counts) (1+ quiet-rounds) 0)
+              previous-counts counts)))))
+
+(defun nskk--program-dict-run-process (name-prefix command byte-cap &optional stdin)
+  "Run COMMAND as an async process with a discarded stderr pipe.
+Collects stdout within `nskk-program-dict-timeout' seconds, anchored to an
+absolute deadline so the budget reflects elapsed wall time rather than the
+number of `accept-process-output' calls.
+
+NAME-PREFIX names the spawned process and its output/stderr buffers.
+COMMAND is the full argv list, program first.  Both stdout and stderr are
+capped at BYTE-CAP bytes; overflow on either stream stops the process
+group.  STDIN, when non-nil, is sent to the process followed by a newline
+and EOF.
+
+Returns (STATUS . VALUE): STATUS is one of `output', `timeout',
+`overflow', `nonzero-exit', or `error'.  VALUE is the collected stdout
+string when STATUS is `output', the caught error object when STATUS is
+`error', and nil otherwise."
   (let ((output-buffer nil)
         (stderr-buffer nil)
         (stderr-process nil)
@@ -323,142 +335,128 @@ calls on-not-found."
         (stderr-bytes 0)
         (overflow nil)
         (finished nil)
-        (timed-out nil)
-        (output nil))
-    (unwind-protect (condition-case
-        err
-        (progn
-          (setq output-buffer (generate-new-buffer " *nskk-program-dict-output*")
-                stderr-buffer (generate-new-buffer " *nskk-program-dict-stderr*"))
-          (let ((remaining-wait nskk-program-dict-timeout))
-            (setq stderr-process (make-pipe-process
-                :name
-                "nskk-program-dict-stderr"
-                :buffer
-                stderr-buffer
-                :coding
-                'utf-8-unix
-                :noquery
-                t
-                :filter
-                (lambda (_stderr chunk)
-                  (setq stderr-bytes (+ stderr-bytes (string-bytes chunk)))
-                  (when (> stderr-bytes nskk--program-dict-max-output-size)
-                    (setq overflow t)
-                    (nskk--program-dict-stop-process-group process)))
-                :sentinel
-                #'ignore))
-            (setq process (make-process
-                :name
-                "nskk-program-dict"
-                :buffer
-                output-buffer
-                :stderr
-                stderr-process
-                :command
-                (cons program args)
-                :connection-type
-                'pipe
-                :coding
-                'utf-8-unix
-                :noquery
-                t
-                :sentinel
-                (lambda (_process _event)
-                  (setq finished t))
-                :filter
-                (lambda (_process chunk)
-                  (setq output-bytes (+ output-bytes (string-bytes chunk)))
-                  (if (> output-bytes nskk--program-dict-max-output-size) (progn
-                      (setq overflow t)
-                      (nskk--program-dict-stop-process-group process))
-                    (when (buffer-live-p output-buffer)
-                      (with-current-buffer output-buffer (insert chunk)))))))
-            (when (process-live-p process)
-              (when stdin-key
-                (process-send-string process (concat stdin-key "\n")))
-              (process-send-eof process))
-            (while
-              (and
-                (numberp remaining-wait)
-                (> remaining-wait 0)
-                (= (- remaining-wait remaining-wait) 0)
-                (not finished)
-                (not (memq (process-status process) '(exit signal closed failed)))
-                (not overflow))
-              (dolist (wait-process (list process stderr-process))
-                (when (and (> remaining-wait 0) (not finished) (not overflow))
-                  (let ((slice (min 0.1 remaining-wait)))
-                    (setq remaining-wait (max 0 (- remaining-wait slice)))
-                    (accept-process-output wait-process slice nil t)))))
-            (when (memq (process-status process) '(exit signal closed failed))
-              (setq finished t))
-            (when (and
-                finished
-                (not overflow)
-                (numberp remaining-wait)
-                (> remaining-wait 0)
-                (= (- remaining-wait remaining-wait) 0))
-              (let ((previous-output-bytes output-bytes)
-                    (previous-stderr-bytes stderr-bytes)
-                    (quiet-rounds 0))
+        (outcome (cons 'timeout nil)))
+    (unwind-protect
+        (condition-case err
+            (progn
+              (setq output-buffer (generate-new-buffer (format " *%s-output*" name-prefix))
+                    stderr-buffer (generate-new-buffer (format " *%s-stderr*" name-prefix)))
+              (let* ((clock-hz 1000000000)
+                     (valid-timeout (nskk--program-dict-finite-positive-p nskk-program-dict-timeout))
+                     (deadline
+                    (and valid-timeout
+                      (+ (car (time-convert nil clock-hz))
+                         (truncate (* nskk-program-dict-timeout clock-hz)))))
+                     (remaining-time
+                    (lambda ()
+                      (max 0 (/ (- deadline (car (time-convert nil clock-hz))) (float clock-hz))))))
+                (setq stderr-process (make-pipe-process
+                    :name
+                    (concat name-prefix "-stderr")
+                    :buffer
+                    stderr-buffer
+                    :coding
+                    'utf-8-unix
+                    :noquery
+                    t
+                    :sentinel
+                    #'ignore
+                    :filter
+                    (lambda (_stderr chunk)
+                      (setq stderr-bytes (+ stderr-bytes (string-bytes chunk)))
+                      (when (> stderr-bytes byte-cap)
+                        (setq overflow t)
+                        (nskk--program-dict-stop-process-group process)))))
+                (setq process (make-process
+                    :name
+                    name-prefix
+                    :buffer
+                    output-buffer
+                    :stderr
+                    stderr-process
+                    :command
+                    command
+                    :connection-type
+                    'pipe
+                    :coding
+                    'utf-8-unix
+                    :noquery
+                    t
+                    :sentinel
+                    (lambda (_process _event)
+                      (setq finished t))
+                    :filter
+                    (lambda (_process chunk)
+                      (setq output-bytes (+ output-bytes (string-bytes chunk)))
+                      (if (> output-bytes byte-cap) (progn
+                          (setq overflow t)
+                          (nskk--program-dict-stop-process-group process))
+                        (when (buffer-live-p output-buffer)
+                          (with-current-buffer output-buffer (insert chunk)))))))
+                (when (process-live-p process)
+                  (when stdin
+                    (process-send-string process (concat stdin "\n")))
+                  (process-send-eof process))
                 (while
-                  (and (not overflow) (> remaining-wait 0) (< quiet-rounds 2))
-                  (let ((slice (min 0.1 remaining-wait)))
-                    (setq remaining-wait (max 0 (- remaining-wait slice)))
-                    (accept-process-output process slice nil t)
-                    (accept-process-output nil 0)
-                    (if (and
-                        (= previous-output-bytes output-bytes)
-                        (= previous-stderr-bytes stderr-bytes)) (setq quiet-rounds (1+ quiet-rounds))
-                      (setq quiet-rounds 0))
-                    (setq previous-output-bytes output-bytes
-                          previous-stderr-bytes stderr-bytes)))))
-            (setq timed-out (and (not finished) (not overflow)))
-            (cond
-              (overflow
-                (nskk-debug-message
-                  "nskk-program-dict: command %s exceeded output limit"
-                  program))
-              (timed-out
-                (nskk-debug-message "nskk-program-dict: command %s timed out" program))
-              ((not
-                  (and (eq (process-status process) 'exit) (zerop (process-exit-status process))))
-                (nskk-debug-message
-                  "nskk-program-dict: command %s exited unsuccessfully"
-                  program))
-              (t
-                (setq output (with-current-buffer output-buffer (buffer-string)))))))
-        (error
-          (nskk-debug-message
-            "nskk-program-dict: command %s error: %s"
-            program
-            (error-message-string err))))
-      (condition-case
-        nil
-        (nskk--program-dict-stop-process-group process)
-        ((error quit) nil))
-      (condition-case
-        nil
-        (when (processp stderr-process)
-          (delete-process stderr-process))
-        ((error quit) nil))
-      (condition-case
-        nil
-        (when (buffer-live-p output-buffer)
-          (kill-buffer output-buffer))
-        ((error quit) nil))
-      (condition-case
-        nil
-        (when (buffer-live-p stderr-buffer)
-          (kill-buffer stderr-buffer))
-        ((error quit) nil)))
-    (if output (succeed output)
+                  (and valid-timeout
+                    (> (funcall remaining-time) 0)
+                    (not finished)
+                    (not overflow))
+                  (dolist (wait-process (list process stderr-process))
+                    (when (and (> (funcall remaining-time) 0) (not finished) (not overflow))
+                      (accept-process-output wait-process (min 0.1 (funcall remaining-time)) nil t))))
+                (when (memq (process-status process) '(exit signal closed failed))
+                  (setq finished t))
+                (when (and finished (not overflow) valid-timeout (> (funcall remaining-time) 0))
+                  (nskk--program-dict-drain-quiet-rounds
+                   process remaining-time
+                   (lambda () overflow)
+                   (lambda () (cons output-bytes stderr-bytes))))
+                (setq outcome
+                  (cond
+                    (overflow (cons 'overflow nil))
+                    ((not finished) (cons 'timeout nil))
+                    ((not
+                        (and (eq (process-status process) 'exit) (zerop (process-exit-status process))))
+                      (cons 'nonzero-exit nil))
+                    (t
+                      (cons 'output (with-current-buffer output-buffer (buffer-string))))))))
+          (error (setq outcome (cons 'error err))))
+      (nskk--program-dict-cleanup-process process stderr-process output-buffer stderr-buffer))
+    outcome))
+
+(defun nskk--program-dict-log-command-outcome (program status detail)
+  "Log PROGRAM's command outcome STATUS via `nskk-debug-message'.
+DETAIL is the caught error object when STATUS is `error'; ignored
+otherwise.  Nothing is logged for `output'."
+  (pcase status
+    ('overflow
+      (nskk-debug-message "nskk-program-dict: command %s exceeded output limit" program))
+    ('timeout
+      (nskk-debug-message "nskk-program-dict: command %s timed out" program))
+    ('nonzero-exit
+      (nskk-debug-message "nskk-program-dict: command %s exited unsuccessfully" program))
+    ('error
+      (nskk-debug-message "nskk-program-dict: command %s error: %s" program (error-message-string detail)))))
+
+(defun/k nskk--program-dict-exec-command (program stdin-key args)
+  "Execute PROGRAM asynchronously with ARGS and optional STDIN-KEY.
+
+STDIN-KEY, when non-nil, is sent followed by a newline.  Standard input is
+then closed so commands waiting for EOF can terminate.  Execution is limited
+by `nskk-program-dict-timeout', and stdout and stderr are each limited to
+`nskk--program-dict-max-output-size' bytes.  Standard error is discarded.
+Calls on-found with stdout only when PROGRAM exits successfully; otherwise
+calls on-not-found."
+  (pcase-let*
+    ((`(,status . ,value)
+      (nskk--program-dict-run-process
+        "nskk-program-dict" (cons program args) nskk--program-dict-max-output-size stdin-key)))
+    (nskk--program-dict-log-command-outcome program status value)
+    (if (eq status 'output) (succeed value)
       (fail))))
 
-(defun/k
-  nskk--program-dict-parse-output
-  (output)
+(defun/k nskk--program-dict-parse-output (output)
   "Parse stdout OUTPUT from a program dictionary into a candidate list.
 
 Queries `program-dict-output-prefix/3` (Prolog) with the first character
@@ -506,9 +504,7 @@ OUTPUT is nil, empty, or yields no valid candidates."
         (or (and (>= char 32) (< char 127)) (> char 159)))
       candidate)))
 
-(defun/k
-  nskk--program-dict-call-function
-  (fn key)
+(defun/k nskk--program-dict-call-function (fn key)
   "Call Emacs Lisp function FN with KEY as the reading argument.
 FN must return a proper, non-empty list of non-empty candidate strings.
 Candidates containing control characters are rejected.  Any error signalled
@@ -516,8 +512,7 @@ by FN is caught, logged via `nskk-debug-message', and treated as a miss.
 
 Calls on-found with a validated candidate list; otherwise calls on-not-found."
   (let ((result
-        (condition-case
-          err
+        (condition-case err
           (funcall fn key)
           (error
             (nskk-debug-message
@@ -530,9 +525,7 @@ Calls on-found with a validated candidate list; otherwise calls on-not-found."
         (cl-every #'nskk--program-dict-valid-function-candidate-p result)) (succeed result)
       (fail))))
 
-(defun/k
-  nskk--program-dict-call-command
-  (cmd key)
+(defun/k nskk--program-dict-call-command (cmd key)
   "Execute shell command CMD looking up reading KEY.
 Parses CMD via `nskk--program-dict-build-call', runs the command via
 `nskk--program-dict-exec-command/k', then passes stdout to
@@ -543,19 +536,11 @@ the command produces no parseable candidates."
   (pcase-let*
     ((`(,program ,stdin-p . ,args) (nskk--program-dict-build-call cmd key)))
     (nskk-debug-message "nskk-program-dict: cmd=%s key=%s stdin=%s" cmd key stdin-p)
-    (<-
-      output
-      nskk--program-dict-exec-command
-      program
-      (when stdin-p
-        key)
-      args)
+    (<- output nskk--program-dict-exec-command program (when stdin-p key) args)
     (<- cands nskk--program-dict-parse-output output)
     (succeed cands)))
 
-(defun/k
-  nskk--program-dict-invoke-entry
-  (entry key)
+(defun/k nskk--program-dict-invoke-entry (entry key)
   "Dispatch a single program dictionary ENTRY for reading KEY.
 Classifies ENTRY as \\='function (via `functionp') or \\='command (string),
 queries the `program-dict-entry-type/2' Prolog table for the handler atom,
@@ -586,9 +571,7 @@ list has a fresh spine; CANDIDATE-LISTS and its member lists are not modified."
           (puthash candidate t seen)
           (push candidate unique))))))
 
-(defun/k
-  nskk--program-dict-collect-all
-  (entries key)
+(defun/k nskk--program-dict-collect-all (entries key)
   "Collect and merge candidates from all ENTRIES for reading KEY.
 Iterates ENTRIES in list order using the sync wrapper of
 `nskk--program-dict-invoke-entry/k'.  Entries that miss are skipped.  Results
@@ -604,261 +587,98 @@ entries return no candidates."
     (if candidate-lists (succeed (nskk--program-dict-merge-candidate-lists (nreverse candidate-lists)))
       (fail))))
 
-(progn
-  (defun nskk--program-dict-copy-graph (object)
-    "Return a detached copy of OBJECT suitable for program dictionary caches.
-Conses, vectors, hash-table keys and values, strings, and string text-property
-values are copied recursively.  Cycles and shared subgraphs are preserved.
-Functions and other atoms are retained as leaves."
-    (let ((missing (make-symbol "nskk-program-dict-copy-missing"))
-          (memo (make-hash-table :test #'eq))
-          (pending (list object))
-          non-hash
-          hashes)
-      (while
-        pending
-        (let ((current (pop pending)))
-          (when (eq (gethash current memo missing) missing)
-            (cond
-              ((functionp current))
-              ((consp current)
-                (puthash current (cons nil nil) memo)
-                (push current non-hash)
-                (push (car current) pending)
-                (push (cdr current) pending))
-              ((hash-table-p current)
-                (puthash
-                  current
-                  (make-hash-table
-                    :test
-                    (hash-table-test current)
-                    :size
-                    (max 1 (hash-table-size current))
-                    :rehash-size
-                    (hash-table-rehash-size current)
-                    :rehash-threshold
-                    (hash-table-rehash-threshold current)
-                    :weakness
-                    (hash-table-weakness current))
-                  memo)
-                (push current hashes)
-                (maphash
-                  (lambda (key value)
-                    (push key pending)
-                    (push value pending))
-                  current))
-              ((stringp current)
-                (puthash current (substring-no-properties current) memo)
-                (push current non-hash)
-                (let ((position 0)
-                      (limit (length current)))
-                  (while
-                    (< position limit)
-                    (let ((properties (text-properties-at position current)))
-                      (while properties (pop properties) (push (pop properties) pending)))
-                    (setq position (next-property-change position current limit)))))
-              ((vectorp current)
-                (puthash current (make-vector (length current) nil) memo)
-                (push current non-hash)
-                (dotimes (index (length current))
-                  (push (aref current index) pending)))))))
-      (let ((copy-of
-            (lambda (value)
-              (gethash value memo value))))
-        (dolist (current non-hash)
-          (let ((copy (gethash current memo)))
-            (cond
-              ((consp current)
-                (setcar copy (funcall copy-of (car current)))
-                (setcdr copy (funcall copy-of (cdr current))))
-              ((stringp current)
-                (let ((position 0)
-                      (limit (length current)))
-                  (while
-                    (< position limit)
-                    (let ((next (next-property-change position current limit))
-                          (properties (text-properties-at position current))
-                          copied-properties)
-                      (while
-                        properties
-                        (let ((property (pop properties))
-                              (value (pop properties)))
-                          (setq copied-properties (nconc copied-properties (list property (funcall copy-of value))))))
-                      (add-text-properties position next copied-properties copy)
-                      (setq position next)))))
-              ((vectorp current)
-                (dotimes (index (length current))
-                  (aset copy index (funcall copy-of (aref current index))))))))
-        (dolist (current hashes)
-          (let ((copy (gethash current memo)))
-            (maphash
-              (lambda (key value)
-                (puthash (funcall copy-of key) (funcall copy-of value) copy))
-              current)))
-        (funcall copy-of object))))
-  (defun nskk--program-dict-mark-no-learn (candidates)
-    "Mark all strings reachable from CANDIDATES as non-persistable.
+(defun nskk--program-dict-mark-no-learn (candidates)
+  "Mark all strings reachable from CANDIDATES as non-persistable.
 Conses, vectors, hash-table keys and values, and string text-property values
 are traversed without looping on cyclic or shared graphs.  Existing text
 properties are retained and `nskk-no-learn' is overwritten with exactly t."
-    (let ((seen (make-hash-table :test #'eq))
-          (pending (list candidates)))
-      (while
-        pending
-        (let ((current (pop pending)))
-          (unless (or (functionp current) (gethash current seen))
-            (cond
-              ((stringp current)
-                (puthash current t seen)
-                (add-text-properties 0 (length current) (list 'nskk-no-learn t) current)
-                (let ((position 0)
-                      (limit (length current)))
-                  (while
-                    (< position limit)
-                    (let ((properties (text-properties-at position current)))
-                      (while properties (pop properties) (push (pop properties) pending)))
-                    (setq position (next-property-change position current limit)))))
-              ((consp current)
-                (puthash current t seen)
-                (push (car current) pending)
-                (push (cdr current) pending))
-              ((hash-table-p current)
-                (puthash current t seen)
-                (maphash
-                  (lambda (key value)
-                    (push key pending)
-                    (push value pending))
-                  current))
-              ((vectorp current)
-                (puthash current t seen)
-                (dotimes (index (length current))
-                  (push (aref current index) pending)))))))
-      candidates)))
+  (let ((seen (make-hash-table :test #'eq))
+        (pending (list candidates)))
+    (while pending
+      (let ((current (pop pending)))
+        (unless (or (functionp current) (gethash current seen))
+          (cond
+           ((stringp current)
+            (puthash current t seen)
+            (add-text-properties 0 (length current) (list 'nskk-no-learn t) current)
+            (let ((position 0)
+                  (limit (length current)))
+              (while (< position limit)
+                (let ((properties (text-properties-at position current)))
+                  (while properties (pop properties) (push (pop properties) pending)))
+                (setq position (next-property-change position current limit)))))
+           ((consp current)
+            (puthash current t seen)
+            (push (car current) pending)
+            (push (cdr current) pending))
+           ((hash-table-p current)
+            (puthash current t seen)
+            (maphash
+             (lambda (key value)
+               (push key pending)
+               (push value pending))
+             current))
+           ((vectorp current)
+            (puthash current t seen)
+            (dotimes (index (length current))
+              (push (aref current index) pending)))))))
+    candidates))
 
-(progn
-  (defun nskk--program-dict-cache-observation-state (cache)
-    "Return CACHE metadata needed to undo a failed miss observation."
-    (cond
-      ((nskk-cache-lru-p cache)
-        (vector
-          'lru
-          (nskk-cache-lru-capacity cache)
-          (nskk-cache-lru-size cache)
-          (nskk-cache-lru-hash cache)
-          (nskk-cache-lru-head cache)
-          (nskk-cache-lru-tail cache)
-          (nskk-cache-lru-hits cache)
-          (nskk-cache-lru-misses cache)))
-      ((nskk-cache-lfu-p cache)
-        (vector
-          'lfu
-          (nskk-cache-lfu-capacity cache)
-          (nskk-cache-lfu-size cache)
-          (nskk-cache-lfu-hash cache)
-          (nskk-cache-lfu-freq cache)
-          (nskk-cache-lfu-min-freq cache)
-          (nskk-cache-lfu-hits cache)
-          (nskk-cache-lfu-misses cache)))))
-  (defun nskk--program-dict-restore-cache-observation-state (cache state)
-    "Restore CACHE metadata from observation STATE."
-    (pcase
-      (aref state 0)
-      ('lru
-        (setf (nskk-cache-lru-capacity cache) (aref state 1)
-              (nskk-cache-lru-size cache) (aref state 2)
-              (nskk-cache-lru-hash cache) (aref state 3)
-              (nskk-cache-lru-head cache) (aref state 4)
-              (nskk-cache-lru-tail cache) (aref state 5)
-              (nskk-cache-lru-hits cache) (aref state 6)
-              (nskk-cache-lru-misses cache) (aref state 7)))
-      ('lfu
-        (setf (nskk-cache-lfu-capacity cache) (aref state 1)
-              (nskk-cache-lfu-size cache) (aref state 2)
-              (nskk-cache-lfu-hash cache) (aref state 3)
-              (nskk-cache-lfu-freq cache) (aref state 4)
-              (nskk-cache-lfu-min-freq cache) (aref state 5)
-              (nskk-cache-lfu-hits cache) (aref state 6)
-              (nskk-cache-lfu-misses cache) (aref state 7)))))
-  (progn
-    (defun nskk-program-dict-lookup/k (key on-found on-not-found)
-      "Look up KEY across configured program dictionaries in CPS style.
+(defun nskk-program-dict-lookup/k (key on-found on-not-found)
+  "Look up KEY across configured program dictionaries in CPS style.
 Cache hits return detached public graphs.  Cache misses build a detached
 canonical graph, mark it, prepare detached public and key graphs, publish
 atomically, and only then invoke ON-FOUND.  Errors and quits before publication
 restore the exact pre-observation cache state."
-      (nskk--program-dict-sync-config)
-      (if (and
-          nskk-program-dict-enable
-          nskk-program-dicts
-          (nskk--program-dict-config-valid-p nskk-program-dicts)) (let* ((cache (nskk--program-dict-ensure-cache))
-               (observation-state (nskk--program-dict-cache-observation-state cache)))
-          (nskk-cache-get-prepared/k
-            cache
-            key
-            #'nskk--program-dict-copy-graph
-            (lambda (public)
-              (funcall on-found public))
-            (lambda ()
-              (let ((committed nil))
-                (condition-case
-                  condition
-                  (nskk--program-dict-collect-all/k
-                    nskk-program-dicts
-                    key
-                    (lambda (results)
-                      (condition-case
-                        condition
+  (nskk--program-dict-sync-config)
+  (if (and
+       nskk-program-dict-enable
+       nskk-program-dicts
+       (nskk--program-dict-config-valid-p nskk-program-dicts))
+      (let* ((cache (nskk--program-dict-ensure-cache))
+             (observation-state (nskk-cache-capture-metadata-snapshot cache)))
+        (nskk-cache-get-prepared/k
+         cache
+         key
+         #'nskk-prolog-copy-term
+         (lambda (public)
+           (funcall on-found public))
+         (lambda ()
+           (let ((committed nil))
+             (condition-case condition
+                 (nskk--program-dict-collect-all/k
+                  nskk-program-dicts
+                  key
+                  (lambda (results)
+                    (condition-case condition
                         (let* ((canonical
-                              (nskk--program-dict-mark-no-learn (nskk--program-dict-copy-graph results)))
-                               (public (nskk--program-dict-copy-graph canonical))
-                               (owned-key (nskk--program-dict-copy-graph key)))
+                                (nskk--program-dict-mark-no-learn (nskk-prolog-copy-term results)))
+                               (public (nskk-prolog-copy-term canonical))
+                               (owned-key (nskk-prolog-copy-term key)))
                           (nskk-cache-put cache owned-key canonical)
                           (setq committed t)
                           (funcall on-found public))
-                        ((error quit)
-                          (unless committed
-                            (nskk--program-dict-restore-cache-observation-state cache observation-state))
-                          (signal (car condition) (cdr condition)))))
-                    on-not-found)
-                  ((error quit)
-                    (unless committed
-                      (nskk--program-dict-restore-cache-observation-state cache observation-state))
-                    (signal (car condition) (cdr condition))))))))
-        (funcall on-not-found)))
-    (defun nskk-program-dict-lookup (key)
-      "Synchronously look up KEY across configured program dictionaries."
-      (nskk-program-dict-lookup/k key #'identity #'ignore))
-    (put
-      'nskk-program-dict-lookup/k
-      'nskk--cps-continuation-pattern
-      :found-not-found)))
+                      ((error quit)
+                       ;; A second quit landing between the restore's sequential
+                       ;; field assignments would leave the cache struct torn,
+                       ;; worse than either the pre- or post-mutation state.
+                       (let ((inhibit-quit t))
+                         (unless committed
+                           (nskk-cache-restore-metadata-snapshot observation-state)))
+                       (signal (car condition) (cdr condition)))))
+                  on-not-found)
+               ((error quit)
+                (let ((inhibit-quit t))
+                  (unless committed
+                    (nskk-cache-restore-metadata-snapshot observation-state)))
+                (signal (car condition) (cdr condition))))))))
+    (funcall on-not-found)))
 
-(defcustom
-  nskk-program-dict-dispatch-table
-  (list
-    (cons "today" #'nskk--program-dict-today)
-    (cons "now" #'nskk--program-dict-now)
-    (cons "=" #'nskk--program-dict-calculate))
-  "Built-in program dictionary dispatch table (AquaSKK DispatchTable equivalent).
-Each entry is (PREFIX . HANDLER-FUNCTION) where PREFIX is matched against
-the reading with `string-prefix-p' and HANDLER-FUNCTION receives the full
-reading string and returns a list of candidate strings, or nil.
-
-Users may prepend custom entries:
-  (push (cons \"prefix\" #\\='my-handler) nskk-program-dict-dispatch-table)
-
-Built-in entries:
-  \"today\" -- current date in two formats (AquaSKK today handler equivalent)
-  \"now\"   -- current time in two formats (AquaSKK now handler equivalent)
-  \"=\"     -- arithmetic via `calc-eval' (AquaSKK calculate handler equivalent)
-
-This table is consulted only when `nskk-program-dict-enable' is non-nil.
-Candidates produced by built-in handlers are marked with the `nskk-no-learn'
-text property so they are never persisted to the personal dictionary."
-  :type
-  '(repeat (cons (string :tag "Prefix") (function :tag "Handler")))
-  :group
-  'nskk-program-dict)
+(defun nskk-program-dict-lookup (key)
+  "Synchronously look up KEY across configured program dictionaries."
+  (nskk-program-dict-lookup/k key #'identity #'ignore))
+(eval-and-compile
+  (put 'nskk-program-dict-lookup/k 'nskk--cps-continuation-pattern :found-not-found))
 
 (defun nskk--program-dict-today (_key)
   "Return current date as a candidate list.
@@ -909,168 +729,41 @@ Return nil unless OUTPUT contains exactly one non-empty candidate string."
 (defun nskk--program-dict-run-calculation (expr)
   "Evaluate EXPR in an isolated Emacs process and return one safe string.
 Polling and post-exit draining share one absolute deadline.  Each stream is
-capped at `nskk--program-dict-max-calculation-size' bytes."
-  (let ((stdout-buffer nil)
-        (stderr-buffer nil)
-        (stderr-process nil)
-        (process nil)
-        (stdout-bytes 0)
-        (stderr-bytes 0)
-        (overflow nil)
-        (finished nil)
-        (timed-out nil)
-        (output nil)
-        (form nil))
-    (unwind-protect (condition-case
-        err
-        (progn
-          (setq stdout-buffer (generate-new-buffer " *nskk-program-dict-calc-output*")
-                stderr-buffer (generate-new-buffer " *nskk-program-dict-calc-stderr*")
-                form (prin1-to-string
-              `(condition-case
-                err
-                (let* ((raw (calc-eval ,expr))
-                       (result
-                      (cond
-                        ((stringp raw) raw)
-                        ((and (consp raw) (stringp (cadr raw))) (cadr raw))
-                        (t nil))))
-                  (if result (prin1 result)
-                    (kill-emacs 2)))
-                (error (prin1 (error-message-string err))))))
-          (let* ((clock-hz 1000000000)
-                 (valid-timeout
-                (and
-                  (numberp nskk-program-dict-timeout)
-                  (> nskk-program-dict-timeout 0)
-                  (= (- nskk-program-dict-timeout nskk-program-dict-timeout) 0)))
-                 (deadline
-                (and
-                  valid-timeout
-                  (+
-                    (car (time-convert nil clock-hz))
-                    (truncate (* nskk-program-dict-timeout clock-hz)))))
-                 (remaining-time
-                (lambda ()
-                  (max 0 (/ (- deadline (car (time-convert nil clock-hz))) (float clock-hz)))))
-                 (remaining-wait (and valid-timeout (funcall remaining-time))))
-            (setq stderr-process (make-pipe-process
-                :name
-                "nskk-program-dict-calc-stderr"
-                :buffer
-                stderr-buffer
-                :coding
-                'utf-8-unix
-                :noquery
-                t
-                :sentinel
-                #'ignore
-                :filter
-                (lambda (_stderr chunk)
-                  (setq stderr-bytes (+ stderr-bytes (string-bytes chunk)))
-                  (when (> stderr-bytes nskk--program-dict-max-calculation-size)
-                    (setq overflow t)
-                    (nskk--program-dict-stop-process-group process)))))
-            (setq process (make-process
-                :name
-                "nskk-program-dict-calc"
-                :buffer
-                stdout-buffer
-                :stderr
-                stderr-process
-                :command
-                (list
-                  (expand-file-name invocation-name invocation-directory)
-                  "--quick"
-                  "--batch"
-                  "--eval"
-                  form)
-                :connection-type
-                'pipe
-                :coding
-                'utf-8-unix
-                :noquery
-                t
-                :sentinel
-                (lambda (_process _event)
-                  (setq finished t))
-                :filter
-                (lambda (_process chunk)
-                  (setq stdout-bytes (+ stdout-bytes (string-bytes chunk)))
-                  (if (> stdout-bytes nskk--program-dict-max-calculation-size) (progn
-                      (setq overflow t)
-                      (nskk--program-dict-stop-process-group process))
-                    (when (buffer-live-p stdout-buffer)
-                      (with-current-buffer stdout-buffer (insert chunk)))))))
-            (while
-              (and
-                valid-timeout
-                (setq remaining-wait (funcall remaining-time))
-                (> remaining-wait 0)
-                (not finished)
-                (not overflow))
-              (dolist (wait-process (list process stderr-process))
-                (when (and
-                    (setq remaining-wait (funcall remaining-time))
-                    (> remaining-wait 0)
-                    (not finished)
-                    (not overflow))
-                  (accept-process-output wait-process (min 0.1 remaining-wait) nil t))))
-            (when (and
-                finished
-                (not overflow)
-                valid-timeout
-                (setq remaining-wait (funcall remaining-time))
-                (> remaining-wait 0))
-              (let ((previous-stdout-bytes stdout-bytes)
-                    (previous-stderr-bytes stderr-bytes)
-                    (quiet-rounds 0))
-                (while
-                  (and
-                    (not overflow)
-                    (setq remaining-wait (funcall remaining-time))
-                    (> remaining-wait 0)
-                    (< quiet-rounds 2))
-                  (accept-process-output process (min 0.1 remaining-wait) nil t)
-                  (accept-process-output nil 0)
-                  (if (and
-                      (= previous-stdout-bytes stdout-bytes)
-                      (= previous-stderr-bytes stderr-bytes)) (setq quiet-rounds (1+ quiet-rounds))
-                    (setq quiet-rounds 0))
-                  (setq previous-stdout-bytes stdout-bytes
-                        previous-stderr-bytes stderr-bytes))))
-            (setq timed-out (and (not finished) (not overflow)))
-            (when (and
-                (not overflow)
-                (not timed-out)
-                (eq (process-status process) 'exit)
-                (zerop (process-exit-status process)))
-              (setq output (with-current-buffer stdout-buffer (buffer-string))))))
-        (error
-          (nskk-debug-message
-            "nskk-program-dict: calculation process error: %s"
-            (error-message-string err))))
-      (condition-case
-        nil
-        (nskk--program-dict-stop-process-group process)
-        ((error quit) nil))
-      (condition-case
-        nil
-        (when (processp stderr-process)
-          (delete-process stderr-process))
-        ((error quit) nil))
-      (condition-case
-        nil
-        (when (buffer-live-p stdout-buffer)
-          (kill-buffer stdout-buffer))
-        ((error quit) nil))
-      (condition-case
-        nil
-        (when (buffer-live-p stderr-buffer)
-          (kill-buffer stderr-buffer))
-        ((error quit) nil)))
-    (when output
-      (nskk--program-dict-read-calculation-result output))))
+capped at `nskk--program-dict-max-calculation-size' bytes.  Returns nil
+unless the process exits cleanly with parseable output; the caller
+`nskk--program-dict-calculate' is synchronous."
+  (condition-case err
+      (let* ((form (prin1-to-string
+                  `(condition-case
+                    err
+                    (let* ((raw (calc-eval ,expr))
+                           (result
+                          (cond
+                            ((stringp raw) raw)
+                            ((and (consp raw) (stringp (cadr raw))) (cadr raw))
+                            (t nil))))
+                      (if result (prin1 result)
+                        (kill-emacs 2)))
+                    (error (prin1 (error-message-string err))))))
+             (command
+            (list
+              (expand-file-name invocation-name invocation-directory)
+              "--quick"
+              "--batch"
+              "--eval"
+              form))
+             (outcome
+            (nskk--program-dict-run-process
+              "nskk-program-dict-calc" command nskk--program-dict-max-calculation-size)))
+        (pcase outcome
+          (`(error . ,inner-err)
+            (nskk-debug-message "nskk-program-dict: calculation process error: %s" (error-message-string inner-err))
+            nil)
+          (`(output . ,output)
+            (nskk--program-dict-read-calculation-result output))))
+    (error
+      (nskk-debug-message "nskk-program-dict: calculation process error: %s" (error-message-string err))
+      nil)))
 
 (defun nskk--program-dict-calculate (key)
   "Evaluate arithmetic expression in KEY (prefixed with `=') via calc.
@@ -1082,9 +775,58 @@ Return nil when the isolated calculation process fails."
         (when (stringp result)
           (list result))))))
 
-(defun/k
-  nskk-program-dict-builtin-lookup
-  (key)
+(defcustom nskk-program-dict-dispatch-table
+  (list
+    (cons "today" #'nskk--program-dict-today)
+    (cons "now" #'nskk--program-dict-now)
+    (cons "=" #'nskk--program-dict-calculate))
+  "Built-in program dictionary dispatch table (AquaSKK DispatchTable equivalent).
+Each entry is (PREFIX . HANDLER-FUNCTION) where PREFIX is matched against
+the reading with `string-prefix-p' and HANDLER-FUNCTION receives the full
+reading string and returns a list of candidate strings, or nil.
+
+Users may prepend custom entries:
+  (push (cons \"prefix\" #\\='my-handler) nskk-program-dict-dispatch-table)
+
+Built-in entries:
+  \"today\" -- current date in two formats (AquaSKK today handler equivalent)
+  \"now\"   -- current time in two formats (AquaSKK now handler equivalent)
+  \"=\"     -- arithmetic via `calc-eval' (AquaSKK calculate handler equivalent)
+
+This table is consulted only when `nskk-program-dict-enable' is non-nil.
+Candidates produced by built-in handlers are marked with the `nskk-no-learn'
+text property so they are never persisted to the personal dictionary."
+  :type '(repeat (cons (string :tag "Prefix") (function :tag "Handler")))
+  :group 'nskk-program-dict)
+
+(defun nskk--program-dict-builtin-invoke-pair (pair key)
+  "Invoke builtin dispatch PAIR's handler for KEY when its prefix matches.
+Returns a validated candidate list, or nil when the prefix does not match
+KEY, the handler signals, or its return value is malformed.  Handler
+errors and malformed returns are logged via `nskk-debug-message'."
+  (when (string-prefix-p (car pair) key)
+    (let ((cands
+          (condition-case err
+            (funcall (cdr pair) key)
+            (error
+              (nskk-debug-message
+                "nskk-program-dict: builtin handler [%s] error: %s"
+                (car pair)
+                (error-message-string err))
+              nil))))
+      (cond
+        ((and
+            (consp cands)
+            (proper-list-p cands)
+            (cl-every #'nskk--program-dict-valid-function-candidate-p cands))
+          cands)
+        (cands
+          (nskk-debug-message
+            "nskk-program-dict: builtin handler [%s] returned invalid candidates"
+            (car pair))
+          nil)))))
+
+(defun/k nskk-program-dict-builtin-lookup (key)
   "Look up KEY using built-in prefix handlers.
 
 Only active when `nskk-program-dict-enable' is non-nil and KEY is a string.
@@ -1095,27 +837,9 @@ stably deduplicated by `equal', and returned with the text property
 returns are logged and skipped."
   (if (and (stringp key) nskk-program-dict-enable) (let (candidate-lists)
       (dolist (pair nskk-program-dict-dispatch-table)
-        (when (string-prefix-p (car pair) key)
-          (let ((cands
-                (condition-case
-                  err
-                  (funcall (cdr pair) key)
-                  (error
-                    (nskk-debug-message
-                      "nskk-program-dict: builtin handler [%s] error: %s"
-                      (car pair)
-                      (error-message-string err))
-                    nil))))
-            (cond
-              ((and
-                  (consp cands)
-                  (proper-list-p cands)
-                  (cl-every #'nskk--program-dict-valid-function-candidate-p cands))
-                (push cands candidate-lists))
-              (cands
-                (nskk-debug-message
-                  "nskk-program-dict: builtin handler [%s] returned invalid candidates"
-                  (car pair)))))))
+        (let ((cands (nskk--program-dict-builtin-invoke-pair pair key)))
+          (when cands
+            (push cands candidate-lists))))
       (if candidate-lists (succeed
           (mapcar
             (lambda (candidate)
