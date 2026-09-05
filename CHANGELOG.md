@@ -67,10 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nskk-state-set` documents that an invalid value for the `mode` or
   `henkan-phase` key signals an error rather than invoking the not-found
   continuation. The behaviour is unchanged; the docstring was wrong.
-- Decomposed `nskk--init-azik-rules` by extracting its flat AZIK rule-data
-  tables into a dedicated function; other long functions were reviewed and
-  left intact where splitting would relocate, not reduce, shared
-  transactional or CPS-macro-sensitive state.
 - `nskk-trie-has-prefix-p` now returns `t` rather than the internal
   `nskk-trie-node` struct it previously leaked as its truthy value. Callers
   that only tested for non-nil are unaffected; callers that inspected the
@@ -93,6 +89,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Folded the tutorial's private deep-copy routine into
   `nskk-prolog-copy-term`, which gained an optional caller-supplied memo
   table, removing a second implementation of the same graph copy.
+- Rebuilt the AZIK rule tables as data. The compile-time rule-generation
+  macros were replaced by pure functions that expand one consonant row into
+  `(ROMAJI KANA)` pairs, collected into `defconst` tables and asserted
+  through `nskk-prolog-bulk-facts`, which is the one fact-assertion form
+  that expands without a `progn`. `nskk--init-azik-rules` and
+  `nskk--azik-init-core-and-compat-rules` are decomposed into named phase
+  functions, and the core and compatibility rules become 13 per-category
+  constants, appended in the order they were previously asserted in. The
+  generated rule set is unchanged.
 - Reshaped the mode-line module: cursor-color resolution now uses the
   project's CPS found/not-found pair, the mode-line indicator consumes that
   pair's continuations directly instead of a nil test, and the all-frames
@@ -277,6 +282,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed a dead, zero-caller private helper (`nskk--debug-format`) and the
   unused `debug-category` Prolog facts and their hash index from the debug
   module.
+- Removed the AZIK rule-generation macros `nskk-azik-hatsuon`,
+  `nskk-azik-double-vowel`, `nskk-azik-extensions`, and `nskk-azik-youon`.
+  They carried a public prefix but existed only to splice generated forms
+  during module initialization. The rules they produced are unchanged and
+  are now built from data. Code extending AZIK through these macros should
+  add `(ROMAJI KANA)` pairs to `nskk-azik-conversion-table` instead.
 
 ## [0.3.0] - 2026-07-26
 
