@@ -24,7 +24,23 @@
 
 ;;; Commentary:
 
-;; Inline candidate display for NSKK.
+;; Inline candidate display for NSKK: a zero-length overlay carrying an
+;; `after-string' at the end of the conversion overlay, so the current
+;; candidate is shown without inserting buffer text.
+;;
+;; nskk-henkan.el never calls into this module by name.  Everything is driven
+;; through the presentation-action table in nskk-prolog.el, and the four phases
+;; registered at the bottom of this file are the whole interface:
+;;
+;;   show-candidate           -- draw the current candidate
+;;   show-registration-badge  -- draw the nested-registration notice
+;;   cleanup                  -- remove the overlay
+;;   finalize                 -- remove it again; see `nskk--inline-finalize'
+;;
+;; Candidates come from dictionaries and are untrusted, so each one passes
+;; through `nskk-display-sanitize' before it reaches an overlay.  The overlay
+;; priority comes from `nskk-overlay-priority-inline' in nskk-state.el, which
+;; also records why that number guarantees less than it appears to.
 
 ;;; Code:
 
@@ -48,6 +64,7 @@ Possible values:
   \\='vertical        -- Show candidate below preedit (vertical, one per line)"
   :type '(choice (const :tag "Echo area only" nil)
                  (const :tag "Inline horizontal" t)
+                 (const :tag "Inline horizontal (explicit symbol)" horizontal)
                  (const :tag "Inline vertical" vertical))
   :safe (lambda (v) (memq v '(nil t vertical horizontal)))
   :package-version '(nskk . "0.1.0")
@@ -72,9 +89,11 @@ Possible values:
 (defvar-local nskk--inline-overlay nil
   "Overlay for displaying inline candidate text.
 Zero-length overlay anchored at the end of the conversion overlay.
-Declared in nskk-inline.el since this overlay is managed entirely here.")
+Departs from the nskk-state.el convention that buffer-local overlay
+variables are declared there: no code outside this file creates, moves or
+deletes it, so there is no cross-module owner for state.el to arbitrate.")
 
-;;;; Internal Helpers
+;;;; Internal
 
 (defun nskk--inline-anchor ()
   "Return the buffer position to anchor the inline display overlay.
@@ -84,39 +103,39 @@ falling back to point."
            (overlay-end (nskk-state-conversion-overlay)))
       (point)))
 
-(defun nskk--inline-build-horizontal (candidate)
-  "Build inline display string for CANDIDATE (horizontal style).
-Shows candidate as a grayed-out suffix after the preedit text."
-  (propertize (concat " " (substring-no-properties candidate))
-              'face 'nskk-inline-face))
+(defun nskk--inline-render (candidate style)
+  "Return the overlay after-string showing CANDIDATE under STYLE.
+STYLE is an `nskk-show-inline' value: `vertical' puts CANDIDATE on the
+line below the preedit, any other non-nil value appends it to the preedit
+line.  CANDIDATE is untrusted dictionary text and is sanitized here; the
+separator carries the face along with the candidate."
+  (nskk-display-sanitize candidate 'nskk-inline-face
+                         (if (eq style 'vertical) "\n" " ")))
 
-(defun nskk--inline-build-vertical (candidate)
-  "Build inline display string for CANDIDATE (vertical style).
-Shows candidate on the next line below the preedit text."
-  (propertize (concat "\n" (substring-no-properties candidate))
-              'face 'nskk-inline-face))
-
-;;;; Internal
-
-(defun nskk--inline-finalize ()
-  "Unconditionally remove the inline overlay during terminal cleanup."
+(defun/done nskk--inline-finalize ()
+  "Remove the inline overlay again, in the `finalize' cleanup phase.
+Duplicating `nskk-inline-hide' is deliberate.
+`nskk--run-presentation-actions' in nskk-henkan.el runs every callback
+through a `condition-case' that swallows `error' and `quit', so a
+`cleanup'-phase callback that signals leaves the overlay behind and
+`finalize' is the sweep that still removes it.  Registering
+`nskk-inline-hide' for both phases would not do: the fault-injection test
+in test/unit/nskk-henkan-test.el stubs `nskk-inline-hide' to always
+signal and then asserts the overlay is gone, which only a second,
+separately-named callback can satisfy."
   (nskk-delete-overlay nskk--inline-overlay))
 
 ;;;; Public API
 
 (defun/done nskk-inline-show-candidate (candidate)
   "Display CANDIDATE inline if `nskk-show-inline' is non-nil.
-The display style (horizontal/vertical) is controlled by `nskk-show-inline'.
-No-op when `nskk-show-inline' is nil."
+`nskk-show-inline' also selects the layout; see `nskk--inline-render'.
+No-op when `nskk-show-inline' is nil or CANDIDATE is nil or empty."
   (when (and nskk-show-inline candidate (not (string-empty-p candidate)))
-    (let* ((style nskk-show-inline)
-           (display-str (pcase style
-                          ('vertical (nskk--inline-build-vertical candidate))
-                          (_ (nskk--inline-build-horizontal candidate))))
-           (anchor (nskk--inline-anchor)))
+    (let ((anchor (nskk--inline-anchor)))
       (nskk-ensure-overlay nskk--inline-overlay anchor anchor
-        'after-string display-str
-        'priority 98))))
+        'after-string (nskk--inline-render candidate nskk-show-inline)
+        'priority nskk-overlay-priority-inline))))
 
 (defun/done nskk-inline-hide ()
   "Hide the inline candidate display overlay."
@@ -125,15 +144,21 @@ No-op when `nskk-show-inline' is nil."
 (defun/done nskk-inline-show-registration-badge ()
   "Display the dictionary registration badge inline.
 Shows \"↓辞書登録中↓\" at the conversion point when `nskk-show-inline'
-is non-nil.  This badge indicates that the user is in dictionary
-registration mode."
+is non-nil, telling the user that typing now feeds a nested dictionary
+registration rather than the buffer.
+
+The badge takes its own line whatever style `nskk-show-inline' selects.
+It is a panel rather than a candidate, the same shape as the
+multi-candidate completion panel in nskk-henkan.el.  The newline stays
+outside the `propertize' so it carries no face, unlike the separator in
+`nskk--inline-render'."
   (when nskk-show-inline
-    (let* ((badge (propertize "↓辞書登録中↓"
-                              'face 'nskk-jisyo-registration-badge-face))
-           (anchor (nskk--inline-anchor)))
+    (let ((anchor (nskk--inline-anchor)))
       (nskk-ensure-overlay nskk--inline-overlay anchor anchor
-        'after-string (concat "\n" badge)
-        'priority 98))))
+        'after-string (concat "\n" (propertize
+                                    "↓辞書登録中↓"
+                                    'face 'nskk-jisyo-registration-badge-face))
+        'priority nskk-overlay-priority-inline))))
 
 (nskk-prolog-register-presentation-action 'cleanup 'nskk-inline-hide)
 (nskk-prolog-register-presentation-action 'finalize 'nskk--inline-finalize)

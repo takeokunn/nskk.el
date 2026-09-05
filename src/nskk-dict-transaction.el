@@ -31,6 +31,88 @@ PARSER is called for each entry in the single serialized data form."
              (error "Expected proper list, got %s" (type-of data)))
            (mapcar parser data)))))))
 
+(defun nskk-dict-transaction-load-entries
+    (file max-size parser &optional on-oversize)
+  "Validate FILE, then read and parse it with PARSER.
+Return a cons whose cdr holds the parsed entries, or nil when FILE is
+absent or unreadable.  Wrapping the entries lets a caller tell a valid
+empty file from one that was skipped.
+
+FILE is rejected when it is a symbolic link or not a regular file, and
+again when either property changes between the metadata read and the
+pinned read -- the window an attacker would have to swap the path.
+
+A FILE larger than MAX-SIZE is passed to ON-OVERSIZE, which receives the
+observed size and whose return value is discarded; the load is then
+skipped.  Without ON-OVERSIZE the excess is signaled instead."
+  (cond
+   ((file-symlink-p file)
+    (error "Refusing symbolic-link file: %s" file))
+   ((not (file-exists-p file)) nil)
+   ((not (file-regular-p file))
+    (error "Refusing non-regular file: %s" file))
+   ((not (file-readable-p file)) nil)
+   (t
+    (let* ((attributes (file-attributes file 'integer))
+           (size (and attributes (file-attribute-size attributes))))
+      (unless attributes
+        (error "File disappeared before it could be read: %s" file))
+      (unless (integerp size)
+        (error "Invalid size for %s: %S" file size))
+      (when (file-symlink-p file)
+        (error "File changed to a symbolic link before read: %s" file))
+      (unless (file-regular-p file)
+        (error "File changed to a non-regular file before read: %s" file))
+      (cond
+       ((<= size max-size)
+        (cons t
+              (nskk-dict-transaction-read-entries
+               file (file-truename file) attributes max-size parser)))
+       (on-oversize
+        (funcall on-oversize size)
+        nil)
+       (t
+        (error "File exceeds %d-byte limit: %s" max-size file)))))))
+
+(defun nskk-dict-transaction--commit-facts
+    (owner predicate arity facts on-commit)
+  "Replace PREDICATE/ARITY clauses with FACTS, then settle OWNER's rollback.
+ON-COMMIT, when non-nil, runs after the facts are asserted and before the
+retained rollback state is discarded."
+  (nskk-prolog-retract-all predicate arity)
+  (dolist (fact facts)
+    (nskk-prolog-assert (list fact)))
+  (when on-commit
+    (funcall on-commit))
+  (nskk-dict-transaction-clear-pending-rollback owner))
+
+(defun nskk-dict-transaction-publish-facts
+    (owner predicate arity facts &optional on-commit rollback-actions)
+  "Publish FACTS as the whole of PREDICATE/ARITY for OWNER, transactionally.
+Snapshot the current clauses first, so an error or a quit anywhere in the
+replacement restores them before the original condition is resignaled.
+
+ON-COMMIT runs after the facts land, for state a caller must update in the
+same transaction.  ROLLBACK-ACTIONS is an alist of (KEY . RESTORER) for
+state outside the clause store; each RESTORER is called during rollback
+alongside the clause restore.  The key `predicate' is reserved for the
+clause restore this function contributes -- reusing it costs nothing but a
+duplicated label in the incomplete-rollback diagnostic."
+  (let* ((key (nskk-prolog-clause-key predicate arity))
+         (previous (nskk-dict-transaction-predicate-snapshot key)))
+    (condition-case condition
+        (nskk-dict-transaction--commit-facts
+         owner predicate arity facts on-commit)
+      ((error quit)
+       (nskk-dict-transaction-rollback-and-resignal
+        owner
+        condition
+        (cons (cons 'predicate
+                    (lambda ()
+                      (nskk-dict-transaction-apply-predicate-snapshot
+                       previous)))
+              rollback-actions))))))
+
 (defvar nskk-dict-transaction--pending-rollbacks (make-hash-table :test #'equal)
   "Rollback state retained until every failed storage region is restored.")
 

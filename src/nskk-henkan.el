@@ -262,25 +262,19 @@ subsequent non-undo command is executed.")
   "Return the current value of `nskk--last-kakutei-record'."
   nskk--last-kakutei-record)
 
-(defun nskk-set-last-kakutei-record (value)
-  "Set `nskk--last-kakutei-record' to VALUE and return VALUE."
-  (setq nskk--last-kakutei-record value))
-
 ;;;; Conversion State Macros
 
-(defmacro nskk-reset-henkan-state ()
+(defun nskk-reset-henkan-state ()
   "Reset conversion state for `nskk-current-state'.
 Clears the candidate list, resets the candidate index to 0 (via
 `nskk-state-set-candidates'), clears okurigana, and transitions
 henkan-phase to nil.
-Requires `nskk-current-state' to be bound (use inside `nskk-with-current-state'
-or `nskk-with-conversion-context')."
-  (declare (indent 0) (debug t))
-  `(progn
-     (nskk-state-set-candidates nskk-current-state nil)
-     (nskk-state-set-okurigana nskk-current-state nil)
-     (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil)
-     (nskk-state-set-henkan-phase nskk-current-state nil)))
+Requires `nskk-current-state' to be bound (use inside
+`nskk-with-current-state')."
+  (nskk-state-set-candidates nskk-current-state nil)
+  (nskk-state-set-okurigana nskk-current-state nil)
+  (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress nil)
+  (nskk-state-set-henkan-phase nskk-current-state nil))
 
 (defun nskk--reset-current-conversion-state ()
   "Reset conversion fields when `nskk-current-state' is valid."
@@ -316,16 +310,20 @@ Unlike `run-hooks', one failing hook does not prevent subsequent cleanup hooks."
        nil))
     first-condition))
 
+(defun/done nskk--run-candidate-show-hooks-once (candidates index)
+  "Run the show-candidates hooks once and mark the candidate list active.
+CANDIDATES and INDEX are passed to each hook."
+  (run-hook-with-args
+   'nskk-henkan-show-candidates-functions candidates index)
+  (setq nskk--henkan-candidate-list-active t))
+
 (defun nskk--run-candidate-show-transaction
     (candidates index previous-index previous-phase previous-count)
   "Run candidate show hooks and roll state back if one signals.
 CANDIDATES and INDEX are passed to each show hook.  PREVIOUS-INDEX,
 PREVIOUS-PHASE, and PREVIOUS-COUNT are restored after an `error' or `quit'."
   (condition-case condition
-      (progn
-        (run-hook-with-args
-         'nskk-henkan-show-candidates-functions candidates index)
-        (setq nskk--henkan-candidate-list-active t))
+      (nskk--run-candidate-show-hooks-once candidates index)
     ((error quit)
      (setf (nskk-state-current-index nskk-current-state) previous-index
            (nskk-state-henkan-phase nskk-current-state) previous-phase)
@@ -353,19 +351,33 @@ active candidate list display: cancel, rollback, commit, exhaustion."
     (when condition
       (signal (car condition) (cdr condition)))))
 
+(defmacro nskk--with-cleanup-runner (run-cleanup-name first-condition-name &rest body)
+  "Bind RUN-CLEANUP-NAME to a cleanup-thunk runner within BODY.
+Each call (RUN-CLEANUP-NAME THUNK) funcalls THUNK; an `error' or `quit'
+THUNK signals is caught and stored in FIRST-CONDITION-NAME -- which the
+caller must already have bound, e.g. via `let' -- unless a condition is
+already stored there, so every subsequent RUN-CLEANUP-NAME call still
+runs.  Does not check or re-signal FIRST-CONDITION-NAME, and does not
+bind `inhibit-quit'; the caller does both once BODY completes, which is
+also where a call site that needs cleanup to run uninterruptibly binds
+`inhibit-quit'."
+  (declare (indent 2) (debug (symbolp symbolp body)))
+  `(cl-labels ((,run-cleanup-name
+                (thunk)
+                (condition-case condition
+                    (funcall thunk)
+                  ((error quit)
+                   (unless ,first-condition-name
+                     (setq ,first-condition-name condition))))))
+     ,@body))
+
 (defun/done nskk-henkan-do-reset ()
   "Reset all henkan conversion state after a commit or registration.
 Cleanup is exhaustive: every reset step runs even when an earlier step
 signals.  The first `error' or `quit' is re-signaled after canonical state
 has been restored."
   (let (first-condition)
-    (cl-labels ((run-cleanup
-                 (thunk)
-                 (condition-case condition
-                     (funcall thunk)
-                   ((error quit)
-                    (unless first-condition
-                      (setq first-condition condition))))))
+    (nskk--with-cleanup-runner run-cleanup first-condition
       ;; Hide hooks run before state is cleared so every backend can tear down
       ;; its own UI.  Later cleanup must not be skipped when a hook fails.
       (run-cleanup #'nskk--dismiss-candidate-list)
@@ -405,21 +417,19 @@ has been restored."
          (nskk-state-set-henkan-count 0)
          (setq nskk--henkan-candidate-list-active nil)
          (nskk-clear-azik-pending-state)))
-      (run-cleanup #'nskk--reset-current-conversion-state)
-      (when first-condition
-        (signal (car first-condition) (cdr first-condition))))))
+      (run-cleanup #'nskk--reset-current-conversion-state))
+    (when first-condition
+      (signal (car first-condition) (cdr first-condition)))))
 
-(defmacro nskk-set-active-candidates (candidates)
+(defun nskk-set-active-candidates (candidates)
   "Set CANDIDATES as active in `nskk-current-state' and enter conversion phase.
 Sets candidates, resets index to 0 (via `nskk-state-set-candidates'), and
 sets henkan-phase to `active'.
 CANDIDATES should be a non-nil list of candidate strings.
 Requires `nskk-current-state' to be bound (use inside
 `nskk-with-current-state')."
-  (declare (indent 0) (debug t))
-  `(progn
-     (nskk-state-set-candidates nskk-current-state ,candidates)
-     (nskk-state-set-henkan-phase nskk-current-state 'active)))
+  (nskk-state-set-candidates nskk-current-state candidates)
+  (nskk-state-set-henkan-phase nskk-current-state 'active))
 
 ;;;; Buffer Modification Guard
 
@@ -449,21 +459,6 @@ the marker position plus the \u25bd marker length.  Does nothing if no preedit."
        (when (and ,start-sym
                   (>= (point) (+ ,start-sym (length nskk-henkan-on-marker))))
          (let ((,start-var ,start-sym))
-           ,@body)))))
-
-(defmacro nskk-with-conversion-context (vars &rest body)
-  "Execute BODY when actively converting, with VARS bound to state data.
-VARS must be a two-element list: (CANDIDATES-VAR INDEX-VAR).
-Guards on `nskk-converting-p' and valid `nskk-current-state'.
-CANDIDATES-VAR is bound to the current candidate list.
-INDEX-VAR is bound to the current candidate index."
-  (declare (indent 1) (debug t))
-  (let ((ctx-sym (make-symbol "ctx")))
-    `(when (nskk-converting-p)
-       (nskk-with-current-state
-         (let* ((,ctx-sym nskk-current-state)
-                (,(car vars) (nskk-state-candidates ,ctx-sym))
-                (,(cadr vars) (nskk-state-current-index ,ctx-sym)))
            ,@body)))))
 
 ;;;; Candidate Display Hooks
@@ -724,7 +719,9 @@ Safe to call even when no overlay is active (idempotent)."
 
 (defun/k nskk-converting-p ()
   "Return non-nil if currently converting (▼ or list display phase).
-Converting phases are the fixed set declared by `nskk-henkan-initialize'."
+Converting phases are `active', `list', and `registration', checked here
+as a literal rather than a Prolog query since this runs on every command;
+`converting-phase/1' carries the same set for cross-module consumers."
   (if (and (boundp 'nskk-current-state)
            nskk-current-state
            (nskk-state-p nskk-current-state)
@@ -802,18 +799,6 @@ Creates a new marker if one does not already exist."
        (marker-position (nskk-state-conversion-start-marker))))
 
 ;;;; Clear Conversion Context
-
-(defmacro nskk-when-bound (var &rest body)
-  "Execute BODY if VAR is bound (but possibly nil or empty)."
-  (declare (indent 1) (debug t))
-  `(when (boundp ',var)
-     ,@body))
-
-(defmacro nskk-when-bound-and (var pred &rest body)
-  "Execute BODY if VAR is bound and satisfies PRED."
-  (declare (indent 2) (debug t))
-  `(when (and (boundp ',var) (,pred ,var))
-     ,@body))
 
 (defun/done nskk-clear-azik-pending-state ()
   "Clear available AZIK and sticky-shift pending state.
@@ -900,15 +885,9 @@ Cleanup is exhaustive: every step runs under `inhibit-quit', terminal state
 is re-asserted after callbacks, and the first `error' or `quit' is re-signaled
 unchanged.  Does not reset the input mode."
   (let ((inhibit-quit t)
-        first-condition
-        clearable-input-vars)
-    (cl-labels ((run-cleanup
-                 (thunk)
-                 (condition-case condition
-                     (funcall thunk)
-                   ((error quit)
-                    (unless first-condition
-                      (setq first-condition condition))))))
+        clearable-input-vars
+        first-condition)
+    (nskk--with-cleanup-runner run-cleanup first-condition
       (run-cleanup
        (lambda ()
          (nskk--clear-state-overlay #'nskk-state-conversion-overlay
@@ -937,9 +916,9 @@ unchanged.  Does not reset the input mode."
       ;; Cleanup callbacks can mutate conversion state before signaling.
       ;; Re-assert terminal invariants without invoking callbacks again.
       (nskk--reassert-conversion-terminal-state clearable-input-vars
-                                                #'run-cleanup)
-      (when first-condition
-        (signal (car first-condition) (cdr first-condition))))))
+                                                #'run-cleanup))
+    (when first-condition
+      (signal (car first-condition) (cdr first-condition)))))
 
 ;;;; Kakutei (Commit Preedit As-Is)
 
@@ -1002,6 +981,136 @@ Used by `nskk-handle-q' / `nskk-toggle-japanese-mode' in ▽ preedit."
 
 ;;;; Undo-Kakutei
 
+(defun/done nskk--undo-kakutei-restore
+    (record saved-marker saved-overlay working-state saved-state-object)
+  "Apply RECORD's undo to the buffer and state, then clear the undo record.
+Called from `nskk-undo-kakutei' after the buffer-unchanged guard passes.
+SAVED-MARKER and SAVED-OVERLAY are the pre-undo conversion marker and
+overlay, detached so restoring them does not inherit position changes
+from the temporary buffer edits performed here.  WORKING-STATE is a
+scratch copy of the current `nskk-state' object, mutated in place and
+then merged back into SAVED-STATE-OBJECT (the object `nskk-current-state'
+pointed to before undo)."
+  (let* ((reading      (plist-get record :reading))
+         (candidates   (plist-get record :candidates))
+         (index        (plist-get record :index))
+         (okuri-kana   (plist-get record :okuri-kana))
+         (buf-start    (plist-get record :buffer-start))
+         (buf-end      (plist-get record :buffer-end))
+         (registered-p (plist-get record :registered-p))
+         (reg-reading  (plist-get record :registered-reading))
+         (reg-word     (plist-get record :registered-word)))
+    ;; Work against disposable ownership objects.  The detached marker and
+    ;; overlay can be restored without inheriting position changes from the
+    ;; temporary buffer edits.
+    (when (markerp saved-marker)
+      (set-marker saved-marker nil))
+    (when (overlayp saved-overlay)
+      (delete-overlay saved-overlay))
+    (setq nskk-current-state working-state)
+    (nskk-state-set-conversion-start-marker nil)
+    (nskk-state-set-conversion-overlay nil)
+    (atomic-change-group
+      (delete-region buf-start buf-end)
+      (goto-char buf-start)
+      (insert nskk-henkan-active-marker)
+      (let ((candidate (nth index candidates)))
+        (when candidate
+          (insert (substring-no-properties candidate))))
+      (let ((ov-start (+ buf-start
+                         (length nskk-henkan-active-marker)))
+            (ov-end   (point)))
+        (when okuri-kana
+          (insert okuri-kana))
+        (when (and registered-p reg-reading reg-word)
+          (nskk-dict-unregister-word reg-reading reg-word))
+        (nskk-set-conversion-start-marker buf-start)
+        (nskk--update-overlay
+         ov-start ov-end (nth index candidates)))
+      ;; nil -> active is intentionally restored without the
+      ;; normal transition graph.
+      (nskk-with-current-state
+       (nskk-state-set-candidates
+        nskk-current-state candidates)
+       (setf (nskk-state-current-index
+              nskk-current-state) index)
+       (nskk-state-force-henkan-phase
+        nskk-current-state 'active)
+       (nskk-state-put-metadata
+        nskk-current-state 'henkan-reading reading)
+       (when okuri-kana
+         (nskk-state-put-metadata
+          nskk-current-state 'okurigana-in-progress t)
+         (nskk-state-put-metadata
+          nskk-current-state 'okurigana-query reading))))
+    (when working-state
+      (when-let* ((record-mode (plist-get record :mode)))
+        (setf (nskk-state-mode working-state) record-mode))
+      (cl-replace saved-state-object working-state)
+      (setq nskk-current-state saved-state-object))
+    (when (and (markerp saved-marker)
+               (not (eq saved-marker
+                        (nskk-state-conversion-start-marker))))
+      (set-marker saved-marker nil))
+    (when (and (overlayp saved-overlay)
+               (not (eq saved-overlay
+                        (nskk-state-conversion-overlay))))
+      (delete-overlay saved-overlay))
+    (setq nskk--last-kakutei-record nil)))
+
+(defun/done nskk--undo-kakutei-unwind
+    (record saved-dict-snapshot marker-snapshot overlay-snapshot
+            saved-state-object saved-point)
+  "Roll back a failed undo attempt to its pre-undo state.
+RECORD supplies :registered-p, :registered-reading, and :registered-word
+so a dictionary unregister that observably took effect can be compensated.
+SAVED-DICT-SNAPSHOT is (MODIFIED-FLAG . LOOKUP-RESULT) captured before the
+undo attempt; a pre-mutation signal must not duplicate the word.
+MARKER-SNAPSHOT and OVERLAY-SNAPSHOT are plists (:marker/:overlay,
+:position/:start, :buffer, :insertion-type/:end) capturing the pre-undo
+marker and overlay so both can be restored to their original position.
+Repositions point to SAVED-POINT.  Does not itself re-signal; the caller
+re-signals the original condition after calling this."
+  (let ((registered-p (plist-get record :registered-p))
+        (reg-reading   (plist-get record :registered-reading))
+        (reg-word      (plist-get record :registered-word))
+        (saved-marker (plist-get marker-snapshot :marker))
+        (saved-marker-position (plist-get marker-snapshot :position))
+        (saved-marker-buffer (plist-get marker-snapshot :buffer))
+        (saved-marker-insertion-type (plist-get marker-snapshot :insertion-type))
+        (saved-overlay (plist-get overlay-snapshot :overlay))
+        (saved-overlay-buffer (plist-get overlay-snapshot :buffer))
+        (saved-overlay-start (plist-get overlay-snapshot :start))
+        (saved-overlay-end (plist-get overlay-snapshot :end)))
+    ;; Only compensate an unregister that observably changed the
+    ;; dictionary.  A pre-mutation signal must not duplicate WORD.
+    (when (and registered-p reg-reading reg-word
+               (not (equal (cdr saved-dict-snapshot)
+                           (nskk-dict-lookup reg-reading))))
+      (condition-case nil
+          (nskk-dict-register-word reg-reading reg-word)
+        ((error quit) nil)))
+    (when saved-dict-snapshot
+      (setq nskk-dict-modified (car saved-dict-snapshot)))
+    (unless (eq (nskk-state-conversion-start-marker) saved-marker)
+      (when (markerp (nskk-state-conversion-start-marker))
+        (set-marker (nskk-state-conversion-start-marker) nil)))
+    (nskk-state-set-conversion-start-marker saved-marker)
+    (when (markerp saved-marker)
+      (set-marker saved-marker saved-marker-position
+                  saved-marker-buffer)
+      (set-marker-insertion-type
+       saved-marker saved-marker-insertion-type))
+    (unless (eq (nskk-state-conversion-overlay) saved-overlay)
+      (when (overlayp (nskk-state-conversion-overlay))
+        (delete-overlay (nskk-state-conversion-overlay))))
+    (nskk-state-set-conversion-overlay saved-overlay)
+    (when (and (overlayp saved-overlay) saved-overlay-buffer)
+      (move-overlay saved-overlay saved-overlay-start
+                    saved-overlay-end saved-overlay-buffer))
+    (setq nskk-current-state saved-state-object)
+    (goto-char saved-point)))
+
 ;;;###autoload
 (defun nskk-undo-kakutei ()
   "Undo the most recent kakutei (確定) operation.
@@ -1015,11 +1124,7 @@ through to `undo'."
   (let ((record nskk--last-kakutei-record))
     (if (null record)
         (undo)
-      (let* ((reading        (plist-get record :reading))
-             (candidates     (plist-get record :candidates))
-             (index          (plist-get record :index))
-             (committed-text (plist-get record :committed-text))
-             (okuri-kana     (plist-get record :okuri-kana))
+      (let* ((committed-text (plist-get record :committed-text))
              (buf-start      (plist-get record :buffer-start))
              (buf-end        (plist-get record :buffer-end))
              (registered-p   (plist-get record :registered-p))
@@ -1047,9 +1152,9 @@ through to `undo'."
              (saved-overlay-end
               (and saved-overlay-buffer (overlay-end saved-overlay)))
              (saved-dict-snapshot
-	      (and registered-p reg-reading reg-word
-		   (cons nskk-dict-modified
-			 (copy-tree (nskk-dict-lookup reg-reading))))))
+              (and registered-p reg-reading reg-word
+                   (cons nskk-dict-modified
+                         (copy-tree (nskk-dict-lookup reg-reading))))))
         (when working-state
           ;; `plist-put' may mutate an existing plist, so isolate the only
           ;; mutable state graph touched by this operation.
@@ -1061,94 +1166,17 @@ through to `undo'."
                           (buffer-substring-no-properties
                            buf-start buf-end)))
             (condition-case err
-                (progn
-                  ;; Work against disposable ownership objects.  The detached
-                  ;; marker and overlay can be restored without inheriting
-                  ;; position changes from the temporary buffer edits.
-                  (when (markerp saved-marker)
-                    (set-marker saved-marker nil))
-                  (when (overlayp saved-overlay)
-                    (delete-overlay saved-overlay))
-                  (setq nskk-current-state working-state)
-                  (nskk-state-set-conversion-start-marker nil)
-                  (nskk-state-set-conversion-overlay nil)
-                  (atomic-change-group
-                    (delete-region buf-start buf-end)
-                    (goto-char buf-start)
-                    (insert nskk-henkan-active-marker)
-                    (let ((candidate (nth index candidates)))
-                      (when candidate
-                        (insert (substring-no-properties candidate))))
-                    (let ((ov-start (+ buf-start
-                                       (length nskk-henkan-active-marker)))
-                          (ov-end   (point)))
-                      (when okuri-kana
-                        (insert okuri-kana))
-                      (when (and registered-p reg-reading reg-word)
-                        (nskk-dict-unregister-word reg-reading reg-word))
-                      (nskk-set-conversion-start-marker buf-start)
-                      (nskk--update-overlay
-                       ov-start ov-end (nth index candidates)))
-                    ;; nil -> active is intentionally restored without the
-                    ;; normal transition graph.
-                    (nskk-with-current-state
-                     (nskk-state-set-candidates
-                      nskk-current-state candidates)
-                     (setf (nskk-state-current-index
-                            nskk-current-state) index)
-                     (nskk-state-force-henkan-phase
-                      nskk-current-state 'active)
-                     (nskk-state-put-metadata
-                      nskk-current-state 'henkan-reading reading)
-                     (when okuri-kana
-                       (nskk-state-put-metadata
-                        nskk-current-state 'okurigana-in-progress t)
-                       (nskk-state-put-metadata
-                        nskk-current-state 'okurigana-query reading))))
-                  (when working-state
-                    (when-let* ((record-mode (plist-get record :mode)))
-                      (setf (nskk-state-mode working-state) record-mode))
-                    (cl-replace saved-state-object working-state)
-                    (setq nskk-current-state saved-state-object))
-                  (when (and (markerp saved-marker)
-                             (not (eq saved-marker
-                                      (nskk-state-conversion-start-marker))))
-                    (set-marker saved-marker nil))
-                  (when (and (overlayp saved-overlay)
-                             (not (eq saved-overlay
-                                      (nskk-state-conversion-overlay))))
-                    (delete-overlay saved-overlay))
-                  (setq nskk--last-kakutei-record nil))
+                (nskk--undo-kakutei-restore
+                 record saved-marker saved-overlay working-state saved-state-object)
               ((error quit)
-               ;; Only compensate an unregister that observably changed the
-               ;; dictionary.  A pre-mutation signal must not duplicate WORD.
-               (progn
-		 (when (and registered-p reg-reading reg-word
-			    (not (equal (cdr saved-dict-snapshot)
-					(nskk-dict-lookup reg-reading))))
-		   (condition-case nil
-		       (nskk-dict-register-word reg-reading reg-word)
-		     ((error quit) nil)))
-		 (when saved-dict-snapshot
-		   (setq nskk-dict-modified (car saved-dict-snapshot))))
-               (unless (eq (nskk-state-conversion-start-marker) saved-marker)
-                 (when (markerp (nskk-state-conversion-start-marker))
-                   (set-marker (nskk-state-conversion-start-marker) nil)))
-               (nskk-state-set-conversion-start-marker saved-marker)
-               (when (markerp saved-marker)
-                 (set-marker saved-marker saved-marker-position
-                             saved-marker-buffer)
-                 (set-marker-insertion-type
-                  saved-marker saved-marker-insertion-type))
-               (unless (eq (nskk-state-conversion-overlay) saved-overlay)
-                 (when (overlayp (nskk-state-conversion-overlay))
-                   (delete-overlay (nskk-state-conversion-overlay))))
-               (nskk-state-set-conversion-overlay saved-overlay)
-               (when (and (overlayp saved-overlay) saved-overlay-buffer)
-                 (move-overlay saved-overlay saved-overlay-start
-                               saved-overlay-end saved-overlay-buffer))
-               (setq nskk-current-state saved-state-object)
-               (goto-char saved-point)
+               (nskk--undo-kakutei-unwind
+                record saved-dict-snapshot
+                (list :marker saved-marker :position saved-marker-position
+                      :buffer saved-marker-buffer
+                      :insertion-type saved-marker-insertion-type)
+                (list :overlay saved-overlay :buffer saved-overlay-buffer
+                      :start saved-overlay-start :end saved-overlay-end)
+                saved-state-object saved-point)
                (signal (car err) (cdr err))))
           (message "NSKK: Cannot undo kakutei -- buffer has changed"))))))
 
@@ -1316,6 +1344,45 @@ Japanese input mode via `nskk--restore-abbrev-mode'."
     (nskk-clear-azik-pending-state)
     (nskk--restore-abbrev-mode was-abbrev)))
 
+(defun/done nskk--rollback-conversion-edit-buffer (start preedit-end saved-point)
+  "Replace the ▼ marker at START with ▽, dropping okurigana past PREEDIT-END.
+The okurigana suffix removal and marker replacement are one buffer
+transaction; either both become visible or neither does.  On a signal,
+point is restored to SAVED-POINT before re-signaling."
+  (condition-case err
+      (atomic-change-group
+        (when (and preedit-end
+                   (nskk-with-current-state
+                     (nskk-state-get-metadata
+                      nskk-current-state 'okurigana-in-progress))
+                   (> (point) preedit-end))
+          (delete-region preedit-end (point)))
+        (when start
+          (nskk--replace-marker-at
+           start nskk-henkan-active-marker-regexp
+           nskk-henkan-on-marker)))
+    ((error quit)
+     (goto-char saved-point)
+     (signal (car err) (cdr err)))))
+
+(defun/done nskk--rollback-conversion-reset-state ()
+  "Clear non-buffer conversion state and enter preedit (▽) phase.
+Must be called only after `nskk--rollback-conversion-edit-buffer' succeeds."
+  (let ((old (nskk-state-conversion-overlay)))
+    (nskk-state-set-conversion-overlay nil)
+    (when (overlayp old) (delete-overlay old)))
+  (nskk-reset-romaji-buffer)
+  (nskk-state-set-henkan-count 0)
+  (nskk--dismiss-candidate-list)
+  ;; Restore to preedit (on) phase -- C-g/DEL from ▼ returns to ▽.
+  (nskk-with-current-state
+    (nskk-state-set-henkan-phase nskk-current-state 'on)
+    (nskk-state-put-metadata
+     nskk-current-state 'okurigana-in-progress nil)
+    (nskk-state-put-metadata
+     nskk-current-state 'okurigana-query nil))
+  (nskk-clear-azik-pending-state))
+
 (defun/done nskk-rollback-conversion ()
   "Rollback to pre-conversion state.
 Replaces the ▼ marker with ▽ and returns to preedit phase.
@@ -1333,38 +1400,8 @@ of the preedit reading text so that `nskk-has-preedit' returns t."
       (let ((preedit-end (when (overlayp (nskk-state-conversion-overlay))
                            (overlay-end (nskk-state-conversion-overlay))))
             (saved-point (point)))
-        ;; The okurigana suffix removal and marker replacement are one buffer
-        ;; transaction; either both become visible or neither does.
-        (condition-case err
-            (atomic-change-group
-              (when (and preedit-end
-                         (nskk-with-current-state
-                           (nskk-state-get-metadata
-                            nskk-current-state 'okurigana-in-progress))
-                         (> (point) preedit-end))
-                (delete-region preedit-end (point)))
-              (when start
-                (nskk--replace-marker-at
-                 start nskk-henkan-active-marker-regexp
-                 nskk-henkan-on-marker)))
-          ((error quit)
-           (goto-char saved-point)
-           (signal (car err) (cdr err))))
-        ;; Clear non-buffer conversion state only after buffer success.
-        (let ((old (nskk-state-conversion-overlay)))
-          (nskk-state-set-conversion-overlay nil)
-          (when (overlayp old) (delete-overlay old)))
-        (nskk-reset-romaji-buffer)
-        (nskk-state-set-henkan-count 0)
-        (nskk--dismiss-candidate-list)
-        ;; Restore to preedit (on) phase -- C-g/DEL from ▼ returns to ▽.
-        (nskk-with-current-state
-          (nskk-state-set-henkan-phase nskk-current-state 'on)
-          (nskk-state-put-metadata
-           nskk-current-state 'okurigana-in-progress nil)
-          (nskk-state-put-metadata
-           nskk-current-state 'okurigana-query nil))
-        (nskk-clear-azik-pending-state)
+        (nskk--rollback-conversion-edit-buffer start preedit-end saved-point)
+        (nskk--rollback-conversion-reset-state)
         ;; Reposition point to end of reading kana if it drifted outside the
         ;; conversion region.  This ensures nskk-has-preedit returns t.
         (when (and preedit-end start
@@ -1383,25 +1420,25 @@ switch to overlay candidate list display below the conversion region.
 Uses Prolog `candidate-nav-next-action/3' to dispatch the navigation mode."
   :interactive t
   (nskk-debug-log "[HENKAN] next-candidate: direction=next")
-  (if (nskk-converting-p)
-      (progn
-        (nskk-state-set-henkan-count (1+ (nskk-state-henkan-count)))
-        (let ((action (nskk-prolog-query-value
-                       `(candidate-nav-next-action ,(nskk-state-henkan-count)
-                                                   ,nskk-henkan-show-candidates-nth
-                                                   ,'\?a)
-                       '\?a)))
-          (pcase action
-            ('select-next
-             (nskk--select-candidate 'next)
-             (let* ((candidates (nskk-state-candidates nskk-current-state))
-                    (index (nskk-state-current-index nskk-current-state))
-                    (candidate (nth index candidates)))
-               (succeed candidate)))
-            ('show-list-next
-             (nskk--show-candidate-list-next)
-             (fail)))))
-    (fail)))
+  (cond
+   ((nskk-converting-p)
+    (nskk-state-set-henkan-count (1+ (nskk-state-henkan-count)))
+    (let ((action (nskk-prolog-query-value
+                   `(candidate-nav-next-action ,(nskk-state-henkan-count)
+                                               ,nskk-henkan-show-candidates-nth
+                                               ,'\?a)
+                   '\?a)))
+      (pcase action
+        ('select-next
+         (nskk--select-candidate 'next)
+         (let* ((candidates (nskk-state-candidates nskk-current-state))
+                (index (nskk-state-current-index nskk-current-state))
+                (candidate (nth index candidates)))
+           (succeed candidate)))
+        ('show-list-next
+         (nskk--show-candidate-list-next)
+         (fail)))))
+   (t (fail))))
 
 (defun/k nskk-previous-candidate ()
   "Select previous conversion candidate.
@@ -1434,6 +1471,80 @@ Uses Prolog `candidate-nav-prev-action/2' to dispatch the navigation mode."
              (succeed candidate)))))
     (fail)))
 
+(defun nskk--commit-current-write-buffer
+    (start end candidate okuri-kana reading candidates index mode)
+  "Replace the preedit region START..END with CANDIDATE and OKURI-KANA.
+Records the kakutei undo entry (READING, CANDIDATES, INDEX, MODE) so
+`nskk-undo-kakutei' can revert it.  Returns non-nil when the replacement
+was made; does nothing and returns nil when START or CANDIDATE is nil."
+  (when (and start candidate)
+    (let ((committed (substring-no-properties candidate))
+          (committed-with-okuri
+           (concat (substring-no-properties candidate) (or okuri-kana ""))))
+      ;; Publish the buffer replacement and undo record exactly once before
+      ;; any cleanup callback or learning backend can fail.
+      (atomic-change-group
+        (delete-region start end)
+        (goto-char start)
+        (insert committed)
+        (when okuri-kana
+          (insert okuri-kana)))
+      (setq nskk--last-kakutei-record
+            (list :reading reading
+                  :candidates candidates
+                  :index index
+                  :committed-text committed-with-okuri
+                  :okuri-kana okuri-kana
+                  :buffer-start start
+                  :buffer-end (point)
+                  :mode mode
+                  :registered-p nil
+                  :registered-reading nil
+                  :registered-word nil))
+      t)))
+
+(defun/done nskk--commit-current-cleanup (was-abbrev abbrev-restore-mode)
+  "Reset conversion state after a commit and restore the input mode.
+WAS-ABBREV is non-nil when the committed mode was `abbrev'; when so and
+ABBREV-RESTORE-MODE is a non-abbrev mode, the mode is restored to it."
+  (let (first-condition)
+    (nskk--with-cleanup-runner run-cleanup first-condition
+      ;; Reset first so a hide-hook failure remains the primary condition.
+      ;; Abbrev restoration still runs, and neither failure reaches learning.
+      (run-cleanup #'nskk-henkan-do-reset)
+      (run-cleanup (lambda ()
+                     (nskk--restore-abbrev-mode was-abbrev)))
+
+      ;; The abbrev callback can dirty state before signaling.  Re-assert
+      ;; both conversion and mode invariants without invoking hooks again.
+      (run-cleanup
+       (lambda ()
+         (when (overlayp (nskk-state-conversion-overlay))
+           (unwind-protect
+               (delete-overlay (nskk-state-conversion-overlay))
+             (nskk-state-set-conversion-overlay nil)))
+         (when (overlayp (nskk-state-pending-romaji-overlay))
+           (unwind-protect
+               (delete-overlay (nskk-state-pending-romaji-overlay))
+             (nskk-state-set-pending-romaji-overlay nil)))
+         (when (markerp (nskk-state-conversion-start-marker))
+           (set-marker (nskk-state-conversion-start-marker) nil))
+         (nskk-state-set-romaji-buffer "")
+         (nskk-state-set-henkan-count 0)
+         (setq nskk--henkan-candidate-list-active nil)
+         (nskk-clear-azik-pending-state)
+         (nskk--reset-current-conversion-state)
+         (when was-abbrev
+           (when (fboundp 'nskk-set-numeric-mode)
+             (nskk-set-numeric-mode nil))
+           (when (and abbrev-restore-mode
+                      (not (eq abbrev-restore-mode 'abbrev))
+                      (nskk-state-p nskk-current-state))
+             (setf (nskk-state-mode nskk-current-state)
+                   abbrev-restore-mode))))))
+    (when first-condition
+      (signal (car first-condition) (cdr first-condition)))))
+
 (defun/k nskk-commit-current ()
   "Commit current conversion candidate.
 Replaces preedit text (including ▼ marker) with the selected candidate,
@@ -1448,128 +1559,64 @@ the buffer.  For okurigana conversions the kana suffix (e.g. \"く\" in
 in place and will immediately follow the inserted candidate."
   :interactive t
   (nskk-debug-log "[HENKAN] commit-current")
-  ;; Use nskk-with-conversion-context + nskk-with-current-state so the
-  ;; defun/k CPS transformer can see and transform (succeed) directly.
-  ;; Project macros are not reliably visible to macroexpand in the CPS
-  ;; transformer during byte-compilation.
-  (when (and (nskk-converting-p)
-             (boundp 'nskk-current-state)
-             (nskk-state-p nskk-current-state))
-    (let* ((candidates    (nskk-state-candidates nskk-current-state))
-           (index         (nskk-state-current-index nskk-current-state))
-           (candidate     (nth index candidates))
-           (start         (nskk-get-conversion-start))
-           (mode          (nskk-state-mode nskk-current-state))
-           (was-abbrev    (eq mode 'abbrev))
-           (abbrev-restore-mode
-            (when was-abbrev
-              (nskk-state-previous-mode nskk-current-state)))
-           (reading       (nskk-state-get-metadata
-                           nskk-current-state 'henkan-reading))
-           (committed-p   nil)
-           ;; NOTE: (overlayp obj) returns t even after delete-overlay — the
-           ;; Lisp object persists but overlay-end returns nil for a deleted
-           ;; overlay.  Always check overlay-end result, not just overlayp.
-           (overlay-end-pos (when (and (overlayp (nskk-state-conversion-overlay))
-                                       (overlay-end (nskk-state-conversion-overlay)))
-                              (overlay-end (nskk-state-conversion-overlay))))
-           ;; When an unbound command (M-b, mouse click, etc.) moves point
-           ;; backward into the conversion area, (point) is less than
-           ;; overlay-end.  Use overlay-end as the authoritative deletion
-           ;; boundary so that the entire conversion text is removed.
-           ;; When point >= overlay-end (normal case, or okurigana where
-           ;; kana sits after the overlay), use (point) to also cover
-           ;; the okurigana suffix.
-           (end           (if (and overlay-end-pos (> overlay-end-pos (point)))
-                              overlay-end-pos
-                            (point)))
-           ;; Okurigana kana (e.g. "く" in "書く") sits between overlay-end
-           ;; and point.  Capture it before deletion so it can be re-inserted
-           ;; after the candidate, placing point after the okurigana kana.
-           (okuri-kana    (when (and overlay-end-pos (< overlay-end-pos end))
-                            (buffer-substring-no-properties overlay-end-pos end))))
-      (when (and start candidate)
-        (let ((committed (substring-no-properties candidate))
-              (committed-with-okuri
-               (concat (substring-no-properties candidate) (or okuri-kana ""))))
-          ;; Publish the buffer replacement and undo record exactly once before
-          ;; any cleanup callback or learning backend can fail.
-          (atomic-change-group
-            (delete-region start end)
-            (goto-char start)
-            (insert committed)
-            (when okuri-kana
-              (insert okuri-kana)))
-          (setq nskk--last-kakutei-record
-                (list :reading reading
-                      :candidates candidates
-                      :index index
-                      :committed-text committed-with-okuri
-                      :okuri-kana okuri-kana
-                      :buffer-start start
-                      :buffer-end (point)
-                      :mode mode
-                      :registered-p nil
-                      :registered-reading nil
-                      :registered-word nil)
-                committed-p t)))
+  ;; succeed/fail must sit inside forms the CPS transformer literally
+  ;; recognizes, and it does not expand macros -- hence a plain `if' guard
+  ;; rather than a macro wrapper, so the not-converting branch below
+  ;; reaches `fail' instead of silently returning neither.
+  (if (and (nskk-converting-p)
+           (boundp 'nskk-current-state)
+           (nskk-state-p nskk-current-state))
+      (let* ((candidates    (nskk-state-candidates nskk-current-state))
+             (index         (nskk-state-current-index nskk-current-state))
+             (candidate     (nth index candidates))
+             (start         (nskk-get-conversion-start))
+             (mode          (nskk-state-mode nskk-current-state))
+             (was-abbrev    (eq mode 'abbrev))
+             (abbrev-restore-mode
+              (when was-abbrev
+                (nskk-state-previous-mode nskk-current-state)))
+             (reading       (nskk-state-get-metadata
+                             nskk-current-state 'henkan-reading))
+             ;; NOTE: (overlayp obj) returns t even after delete-overlay — the
+             ;; Lisp object persists but overlay-end returns nil for a deleted
+             ;; overlay.  Always check overlay-end result, not just overlayp.
+             (overlay-end-pos (when (and (overlayp (nskk-state-conversion-overlay))
+                                         (overlay-end (nskk-state-conversion-overlay)))
+                                (overlay-end (nskk-state-conversion-overlay))))
+             ;; When an unbound command (M-b, mouse click, etc.) moves point
+             ;; backward into the conversion area, (point) is less than
+             ;; overlay-end.  Use overlay-end as the authoritative deletion
+             ;; boundary so that the entire conversion text is removed.
+             ;; When point >= overlay-end (normal case, or okurigana where
+             ;; kana sits after the overlay), use (point) to also cover
+             ;; the okurigana suffix.
+             (end           (if (and overlay-end-pos (> overlay-end-pos (point)))
+                                overlay-end-pos
+                              (point)))
+             ;; Okurigana kana (e.g. "く" in "書く") sits between overlay-end
+             ;; and point.  Capture it before deletion so it can be re-inserted
+             ;; after the candidate, placing point after the okurigana kana.
+             (okuri-kana    (when (and overlay-end-pos (< overlay-end-pos end))
+                              (buffer-substring-no-properties overlay-end-pos end)))
+             (committed-p   (nskk--commit-current-write-buffer
+                             start end candidate okuri-kana reading
+                             candidates index mode)))
+        (nskk--commit-current-cleanup was-abbrev abbrev-restore-mode)
 
-      (let (first-condition)
-        (cl-labels ((run-cleanup
-                     (thunk)
-                     (condition-case condition
-                         (funcall thunk)
-                       ((error quit)
-                        (unless first-condition
-                          (setq first-condition condition))))))
-          ;; Reset first so a hide-hook failure remains the primary condition.
-          ;; Abbrev restoration still runs, and neither failure reaches learning.
-          (run-cleanup #'nskk-henkan-do-reset)
-          (run-cleanup (lambda ()
-                         (nskk--restore-abbrev-mode was-abbrev)))
-
-          ;; The abbrev callback can dirty state before signaling.  Re-assert
-          ;; both conversion and mode invariants without invoking hooks again.
-          (run-cleanup
-           (lambda ()
-             (when (overlayp (nskk-state-conversion-overlay))
-               (unwind-protect
-                   (delete-overlay (nskk-state-conversion-overlay))
-                 (nskk-state-set-conversion-overlay nil)))
-             (when (overlayp (nskk-state-pending-romaji-overlay))
-               (unwind-protect
-                   (delete-overlay (nskk-state-pending-romaji-overlay))
-                 (nskk-state-set-pending-romaji-overlay nil)))
-             (when (markerp (nskk-state-conversion-start-marker))
-               (set-marker (nskk-state-conversion-start-marker) nil))
-             (nskk-state-set-romaji-buffer "")
-             (nskk-state-set-henkan-count 0)
-             (setq nskk--henkan-candidate-list-active nil)
-             (nskk-clear-azik-pending-state)
-             (nskk--reset-current-conversion-state)
-             (when was-abbrev
-               (when (fboundp 'nskk-set-numeric-mode)
-                 (nskk-set-numeric-mode nil))
-               (when (and abbrev-restore-mode
-                          (not (eq abbrev-restore-mode 'abbrev))
-                          (nskk-state-p nskk-current-state))
-                 (setf (nskk-state-mode nskk-current-state)
-                       abbrev-restore-mode)))))
-          (when first-condition
-            (signal (car first-condition) (cdr first-condition)))))
-
-      ;; Learning is deliberately last.  Each backend retains its normal
-      ;; fail-fast ordering and propagates the exact original condition.
-      (when (and committed-p reading)
-        (when (fboundp 'nskk-study-after-kakutei)
-          (nskk-study-after-kakutei reading candidate index))
-        (nskk-search-learn reading candidate))
-      (succeed candidate))))
+        ;; Learning is deliberately last.  Each backend retains its normal
+        ;; fail-fast ordering and propagates the exact original condition.
+        (when (and committed-p reading)
+          (when (fboundp 'nskk-study-after-kakutei)
+            (nskk-study-after-kakutei reading candidate index))
+          (nskk-search-learn reading candidate))
+        (succeed candidate))
+    (fail)))
 
 (defun nskk--select-candidate (direction)
   "Select candidate in DIRECTION (next or previous).
-This function must be called from within a `nskk-with-conversion-context' body
-where `nskk-current-state' is guaranteed valid."
+Called from the `nskk-converting-p' branch of
+`nskk-next-candidate'/`nskk-previous-candidate', which has already
+confirmed `nskk-converting-p' so `nskk-current-state' is guaranteed valid."
   (let* ((candidates (nskk-state-candidates nskk-current-state))
          (total      (length candidates)))
     (when (> total 0)
@@ -1597,8 +1644,9 @@ where `nskk-current-state' is guaranteed valid."
 (defun nskk--show-candidate-list-next ()
   "Show next page of candidates in overlay list below the conversion region.
 When all candidates are exhausted, trigger dictionary registration.
-This function must be called from within a `nskk-with-conversion-context' body
-where `nskk-current-state' is guaranteed valid."
+Called from the `nskk-converting-p' branch of `nskk-next-candidate',
+which has already confirmed `nskk-converting-p' so `nskk-current-state'
+is guaranteed valid."
   (let* ((candidates (nskk-state-candidates nskk-current-state))
          (current (nskk-state-current-index nskk-current-state))
          (previous-phase (nskk-state-henkan-phase nskk-current-state))
@@ -1617,8 +1665,9 @@ where `nskk-current-state' is guaranteed valid."
 
 (defun nskk--show-candidate-list-prev ()
   "Show previous page of candidates in overlay list below the conversion region.
-This function must be called from within a `nskk-with-conversion-context' body
-where `nskk-current-state' is guaranteed valid."
+Called from the `nskk-converting-p' branch of `nskk-previous-candidate',
+which has already confirmed `nskk-converting-p' so `nskk-current-state'
+is guaranteed valid."
   (let* ((candidates (nskk-state-candidates nskk-current-state))
          (current (nskk-state-current-index nskk-current-state))
          (previous-phase (nskk-state-henkan-phase nskk-current-state))
@@ -1671,15 +1720,13 @@ triggered at once, preventing a spurious second okurigana boundary.
 Must be called inside `nskk-with-current-state'."
   (let ((preedit-end (point)))
     (nskk-state-set-romaji-buffer (char-to-string okuri-char))
-    (nskk-convert-input-to-kana-final/k
-      (lambda (kana)
-        (let ((converted (if (eq (nskk-state-mode nskk-current-state) 'katakana)
-                             (nskk-kana-string-hiragana-to-katakana kana)
-                           kana)))
-          (insert converted)
-          (nskk-trigger-okuri-conversion okuri-char preedit-end)
-          (nskk-state-set-okurigana nskk-current-state nil)))
-      #'ignore)))
+    (let* ((kana (nskk-convert-input-to-kana-final))
+           (converted (if (eq (nskk-state-mode nskk-current-state) 'katakana)
+                         (nskk-kana-string-hiragana-to-katakana kana)
+                       kana)))
+      (insert converted)
+      (nskk-trigger-okuri-conversion okuri-char preedit-end)
+      (nskk-state-set-okurigana nskk-current-state nil))))
 
 (defun nskk--handle-consonant-okuri (okuri-char on-consumed)
   "Handle consonant okurigana OKURI-CHAR, then call ON-CONSUMED.
@@ -1724,29 +1771,30 @@ the caller downcases and routes through kana conversion instead."
               (nskk--handle-consonant-okuri okuri-char (lambda () (funcall K t)))))))
       (fail))))
 
-(defun/k nskk-convert-input-to-kana-final ()
-  "Convert remaining romaji buffer to kana and call on-found with the result.
-Handles trailing standalone `n' as \u3093 (hatsuon at end of input),
+(defun nskk-convert-input-to-kana-final ()
+  "Convert remaining romaji buffer to kana and return the result.
+Handles trailing standalone `n' as \u3093 (hatsuon at end of input).
 A standalone `n' at word boundary emits \u3093.
-Always calls on-found: with \"\" when buffer is empty, with \u3093 for
-standalone n, or with the converted kana (falling back to raw buffer)."
+Returns \"\" when the buffer is empty, \u3093 for standalone n, or the
+converted kana (falling back to the raw buffer)."
   (cond
    ((string-empty-p (nskk-state-romaji-buffer))
     (nskk-reset-romaji-buffer)
-    (succeed ""))
+    "")
    ;; Standalone 'n' — the incremental converter returns :incomplete for
    ;; "n" (awaiting "na"/"nn"/etc.), but at conversion time it means \u3093.
    ((nskk--standalone-n-p (nskk-state-romaji-buffer))
     (nskk-reset-romaji-buffer)
-    (succeed "\u3093"))
+    "\u3093")
    (t
-    (call/cc (lambda (K)
-      (let ((buf (nskk-state-romaji-buffer)))
-        (nskk-reset-romaji-buffer)
-        (nskk-converter-convert/k buf
-          (lambda (kana _remaining) (funcall K kana))
-          (lambda (_romaji) (funcall K buf))
-          (lambda () (funcall K buf)))))))))
+    (let (result
+          (buf (nskk-state-romaji-buffer)))
+      (nskk-reset-romaji-buffer)
+      (nskk-converter-convert/k buf
+        (lambda (kana _remaining) (setq result kana))
+        (lambda (_romaji) (setq result buf))
+        (lambda () (setq result buf)))
+      result))))
 
 (defun nskk--remove-okuri-marker (search-start preedit-end)
   "Remove the okurigana boundary marker (*) from the buffer.
@@ -1932,11 +1980,10 @@ START is the conversion start position.  Flushes pending romaji,
 extracts preedit text, handles katakana-半角 and numeric mode,
 then searches the dictionary.
 ON-FOUND, ON-NOT-FOUND, ON-REGISTER are the three continuations."
-  (let* ((end         (progn
-                        (let ((pending (nskk-convert-input-to-kana-final)))
-                          (when (and (stringp pending) (not (string-empty-p pending)))
-                            (insert pending)))
-                        (point)))
+  (let ((pending (nskk-convert-input-to-kana-final)))
+    (when (and (stringp pending) (not (string-empty-p pending)))
+      (insert pending)))
+  (let* ((end         (point))
          (text-start  (nskk--skip-marker-pos start nskk-henkan-on-marker-regexp))
          (text        (when (> end text-start)
                         (buffer-substring-no-properties text-start end)))
@@ -2050,6 +2097,16 @@ Uses `nskk-use-kana-in-registration' to choose the input method."
     (nskk-study-after-kakutei reading entry))
   (nskk-search-learn reading entry))
 
+(defun nskk--prompt-and-commit-registration (reading)
+  "Prompt for a registration entry for READING and commit it if given.
+Returns the entered word string, or nil if the user cancelled."
+  (dolist (callback (nskk-prolog-presentation-actions 'show-registration-badge))
+    (when (fboundp callback) (funcall callback)))
+  (let ((entry (nskk--read-registration-entry reading)))
+    (when entry
+      (nskk--commit-registration-word reading entry))
+    entry))
+
 (defun nskk--run-registration-session/k (reading on-found _on-not-found)
   "Open the minibuffer for registering READING.
 Calls ON-FOUND with the registered word string on success, or nil if the
@@ -2071,24 +2128,11 @@ when a cleanup callback mutates state before signaling.  Delegates input to
           (nskk-state-force-henkan-phase state 'registration))
         (nskk-state-set-registration-depth (1+ (nskk-state-registration-depth)))
         (condition-case condition
-            (progn
-              (dolist (callback (nskk-prolog-presentation-actions
-                                 'show-registration-badge))
-                (when (fboundp callback) (funcall callback)))
-              (let ((entry (nskk--read-registration-entry reading)))
-                (when entry
-                  (setq result entry)
-                  (nskk--commit-registration-word reading entry))))
+            (setq result (nskk--prompt-and-commit-registration reading))
           ((error quit)
            (setq first-condition condition)))
         (let ((inhibit-quit t))
-          (cl-labels ((run-cleanup
-                       (thunk)
-                       (condition-case condition
-                           (funcall thunk)
-                         ((error quit)
-                          (unless first-condition
-                            (setq first-condition condition))))))
+          (nskk--with-cleanup-runner run-cleanup first-condition
             (run-cleanup (lambda ()
                            (nskk-state-set-registration-depth
                             (1- (nskk-state-registration-depth)))))
@@ -2109,9 +2153,9 @@ when a cleanup callback mutates state before signaling.  Delegates input to
             ;; Re-assert the session invariants without invoking them again.
             (run-cleanup (lambda ()
                            (nskk-state-set-registration-depth prev-depth)))
-             (run-cleanup
-              (lambda ()
-                (setf (nskk-state-henkan-phase state) prev-phase)))))
+            (run-cleanup
+             (lambda ()
+               (setf (nskk-state-henkan-phase state) prev-phase)))))
         (when first-condition
           (signal (car first-condition) (cdr first-condition)))
         (funcall on-found result))
@@ -2171,13 +2215,13 @@ If the user cancels, wrap around to the first candidate in list display."
                     (concat stem nskk-okurigana-marker okuri-kana)))))
           (nskk-start-registration/k reading
             (lambda (registered)
-              (if registered
-                  (progn
-                    (let ((old (nskk-state-conversion-overlay)))
-                      (nskk-state-set-conversion-overlay nil)
-                      (when (overlayp old) (delete-overlay old)))
-                    (nskk--insert-registered-and-reset registered start #'ignore reading))
-                (nskk--wrap-to-first-candidate)))
+              (cond
+               (registered
+                (let ((old (nskk-state-conversion-overlay)))
+                  (nskk-state-set-conversion-overlay nil)
+                  (when (overlayp old) (delete-overlay old)))
+                (nskk--insert-registered-and-reset registered start #'ignore reading))
+               (t (nskk--wrap-to-first-candidate))))
             #'ignore))
       (nskk--wrap-to-first-candidate))))
 
@@ -2273,7 +2317,7 @@ is the original preedit prefix for display styling."
           (setq ov (make-overlay anchor anchor))
           (nskk-state-set-dcomp-multiple-overlay ov))
         (cl-loop for (prop val) on (list 'after-string (concat "\n" after-str)
-                                          'priority 99)
+                                          'priority nskk-overlay-priority-dcomp-multiple)
                  by #'cddr
                  do (overlay-put ov prop val))))))
 
@@ -2441,11 +2485,6 @@ Idempotent: subsequent calls are no-ops."
       (:prefix  prefix-search)
       (:partial partial-search))
 
-    (nskk-prolog-define-fact-table search-backend (:arity 2 :index :hash)
-      (1 dict-lookup)
-      (2 skkserv-lookup)
-      (3 program-dict-lookup))
-
     (nskk-prolog-define-fact-table converting-phase (:arity 1 :index :hash)
       (active) (list) (registration))
 
@@ -2470,10 +2509,6 @@ Idempotent: subsequent calls are no-ops."
       (list-active show-list-prev)
       (not-active  select-prev))
 
-    (nskk-prolog-define-fact-table search-result-action (:arity 2 :index :hash)
-      (has-candidates show-overlay)
-      (no-candidates  start-registration))
-
     (nskk-prolog-define-fact-table convert-or-commit-action (:arity 2 :index :hash)
       (converting     commit-current)
       (not-converting start-conversion))
@@ -2488,10 +2523,6 @@ Idempotent: subsequent calls are no-ops."
     (nskk-prolog-define-fact-table script-converter (:arity 2 :index :hash)
       (katakana nskk-kana-string-hiragana-to-katakana/k)
       (hiragana nskk-kana-string-katakana-to-hiragana/k))
-
-    (nskk-prolog-define-fact-table should-update-overlay (:arity 1 :index :hash)
-      (active)
-      (list))
 
     ;; clearable-input-var/1 is defined in nskk-input-initialize (nskk-input.el)
     ;; because the listed symbols are all nskk-input internal variables.

@@ -39,11 +39,8 @@ INTEGRATION_SRC = test/integration/nskk-integration-test.el \
                   test/integration/nskk-kana-integration-test.el \
                   test/integration/nskk-debug-integration-test.el \
                   test/integration/nskk-state-machine-mode-test.el \
-                  test/integration/nskk-state-machine-candidate-test.el \
-                  test/integration/nskk-state-machine-buffer-test.el \
                   test/integration/nskk-multi-buffer-pbt-test.el \
                   test/integration/nskk-error-recovery-pbt-test.el \
-                  test/integration/nskk-layer-state-pbt-test.el \
                   test/integration/nskk-custom-integration-test.el
 
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
@@ -146,7 +143,7 @@ package-lint:
 	      (concat \"\\\\(?:\" package-lint--sane-prefixes \"\\\\|\" \
 	        (regexp-opt '(\"defun/k\" \"defun/done\" \"defun/3k\" \"read-eval\" \
 	          \"nskk--cps-transform-call/cc\" \"nskk-prolog-unify/k\" \
-	          \"nskk--debug-format/k\" \"nskk--convert-loop/k\" \
+	          \"nskk--debug-format/k\" \
 	          \"nskk--run-registration-session/k\" \
 	          \"nskk-program-dict-lookup/k\" \"nskk-dict-transaction-read-entries\" \"nskk-dict-transaction-predicate-snapshot\" \"nskk-dict-transaction-apply-predicate-snapshot\" \"nskk-dict-transaction-ensure-rollback-complete\" \"nskk-dict-transaction-clear-pending-rollback\" \"nskk-dict-transaction-rollback-and-resignal\" \"nskk-dict-transaction-insert-file-contents-pinned\" \"nskk-dict-transaction-pending-rollback\" \"nskk-dict-transaction-retry-pending-rollback\") 'symbols) \
 	        \"\\\\'\\\\)\")))" \

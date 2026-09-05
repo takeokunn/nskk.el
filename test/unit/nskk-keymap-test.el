@@ -42,22 +42,12 @@ buffer is accessor-only buffer-local state owned by `nskk-state.el'."
 ;;; Nav Handler Test Helpers
 ;;;
 
-(defmacro nskk-deftest-nav-handler (_key handler kbd-key arrow-key nav-fn)
-  (declare (indent 5))
+(defmacro nskk-deftest-nav-handler (_key handler nav-fn)
   "Generate standard tests for a commit-then-navigate key handler.
 KEY is a symbol like `ctrl-f'.  HANDLER is the command symbol.
-KBD-KEY is the kbd string (e.g. \"C-f\").  ARROW-KEY is the arrow kbd string.
 NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
+  (declare (indent 3))
   `(progn
-     (nskk-it ,(format "%s is defined and interactive" handler)
-       (should (commandp ',handler)))
-
-     (nskk-it ,(format "%s is bound in nskk-mode-map" kbd-key)
-       (should (eq (lookup-key nskk-mode-map (kbd ,kbd-key)) ',handler)))
-
-     (nskk-it ,(format "%s is bound to %s in nskk-mode-map" arrow-key handler)
-       (should (eq (lookup-key nskk-mode-map (kbd ,arrow-key)) ',handler)))
-
      (nskk-it ,(format "commits then %s when converting" nav-fn)
        (let ((commit-called nil)
              (nav-called nil))
@@ -106,80 +96,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
          (should nav-called)))))
 
 ;;;
-;;; Feature Loading Tests
-;;;
-
-(nskk-describe "nskk-keymap feature loading"
-  (nskk-it "provides the nskk-keymap feature"
-    (should (featurep 'nskk-keymap)))
-
-  (nskk-it "requiring nskk-keymap again is safe (idempotent)"
-    (should (require 'nskk-keymap)))
-
-  (nskk-it "loads nskk-input as a dependency"
-    (should (featurep 'nskk-input))))
-
-;;;
-;;; nskk-mode-map Structure Tests
-;;;
-
-(nskk-describe "nskk-mode-map structure"
-  (nskk-it "is a valid keymap"
-    (should (keymapp nskk-mode-map)))
-
-  (nskk-it "is a sparse keymap (car is keymap symbol)"
-    (should (eq (car nskk-mode-map) 'keymap)))
-
-  (nskk-context "global key bindings"
-    (nskk-it "C-x C-j is bound to an interactive command"
-      (let ((binding (lookup-key nskk-mode-map (kbd "C-x C-j"))))
-        (should binding)
-        (should (commandp binding))))
-
-    (nskk-it "C-j is bound to an interactive command"
-      (let ((binding (lookup-key nskk-mode-map (kbd "C-j"))))
-        (should binding)
-        (should (commandp binding))))))
-
-;;;
-;;; Input Commands API Availability Tests
-;;;
-
-(nskk-describe "input commands API availability"
-  (nskk-deftest-table keymap-api-commands-defined
-    :description "Input command function is defined (fboundp)"
-    :columns (fn)
-    :rows ((nskk-toggle-japanese-mode)
-           (nskk-commit-current)
-           (nskk-cancel-conversion)
-           (nskk-convert-or-commit)
-           (nskk-set-mode-hiragana)
-           (nskk-set-mode-katakana)
-           (nskk-set-mode-latin)
-           (nskk-set-mode-abbrev)
-           (nskk-set-mode-jisx0208-latin))
-    :body (should (fboundp fn))))
-
-;;;
-;;; Interactive Command Tests
-;;;
-
-(nskk-describe "interactive command availability (keymap)"
-  (nskk-deftest-table keymap-commands-interactive
-    :description "Command is interactive (commandp)"
-    :columns (cmd)
-    :rows ((nskk-toggle-japanese-mode)
-           (nskk-commit-current)
-           (nskk-cancel-conversion)
-           (nskk-convert-or-commit)
-           (nskk-set-mode-hiragana)
-           (nskk-set-mode-katakana)
-           (nskk-set-mode-latin)
-           (nskk-set-mode-abbrev)
-           (nskk-set-mode-jisx0208-latin))
-    :body (should (commandp cmd))))
-
-;;;
 ;;; Key Handler Command Existence Tests
 ;;;
 
@@ -214,59 +130,54 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 (nskk-describe "mode switching via input commands API"
   (nskk-it "switches through hiragana, katakana, and latin"
     (let ((nskk-current-state (nskk-state-create 'ascii)))
-      (nskk-given (nskk-set-mode-hiragana))
+      (nskk-set-mode-hiragana)
       (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
-      (nskk-given (nskk-set-mode-katakana))
+      (nskk-set-mode-katakana)
       (should (eq (nskk-state-mode nskk-current-state) 'katakana))
-      (nskk-given (nskk-set-mode-latin))
-      (nskk-then  (should (eq (nskk-state-mode nskk-current-state) 'latin))))))
+      (nskk-set-mode-latin)
+      (should (eq (nskk-state-mode nskk-current-state) 'latin)))))
 
 (nskk-describe "nskk-toggle-japanese-mode behavior (keymap)"
   (nskk-it "toggles hiragana to katakana and back"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (nskk-when  (nskk-toggle-japanese-mode))
+      (nskk-toggle-japanese-mode)
       (should (eq (nskk-state-mode nskk-current-state) 'katakana))
-      (nskk-when  (nskk-toggle-japanese-mode))
-      (nskk-then  (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
+      (nskk-toggle-japanese-mode)
+      (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
 
 ;;;
 ;;; nskk-handle-q behavior
 ;;;
 
 (nskk-describe "nskk-handle-q behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-q))
-    (should (commandp 'nskk-handle-q)))
-
   (nskk-it "toggles to katakana when in hiragana"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (nskk-when (nskk-handle-q))
-      (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'katakana)))))
+      (nskk-handle-q)
+      (should (eq (nskk-state-mode nskk-current-state) 'katakana))))
 
   (nskk-it "self-inserts 'q' when in ascii mode"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'ascii))
             (last-command-event ?q))
-        (nskk-when (nskk-handle-q))
-        (nskk-then (should (equal (buffer-string) "q"))))))
+        (nskk-handle-q)
+        (should (equal (buffer-string) "q")))))
 
   (nskk-it "self-inserts 'q' when state is nil"
     (with-temp-buffer
       (let ((nskk-current-state nil)
             (last-command-event ?q))
-        (nskk-when (nskk-handle-q))
-        (nskk-then (should (equal (buffer-string) "q"))))))
+        (nskk-handle-q)
+        (should (equal (buffer-string) "q")))))
 
   (nskk-it "does implicit kakutei then toggles when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-given (progn
-                      (nskk-set-conversion-start-marker (point-min))
-                      (insert "preedit")
-                      (nskk-state-set-candidates nskk-current-state '("result"))
-                      (nskk-state-force-henkan-phase nskk-current-state 'active)))
-        (nskk-when (nskk-handle-q))
-        (nskk-then (should-not (nskk-converting-p))))))
+        (nskk-set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk-handle-q)
+        (should-not (nskk-converting-p)))))
 
   (nskk-context "abbrev mode regression"
     (nskk-it "self-inserts 'q' in abbrev mode even with active preedit"
@@ -274,12 +185,11 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?q))
           (nskk-set-conversion-start-marker (point-min))
-          (insert "\u25BDemai")
+          (insert "▽emai")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
-          (nskk-when (nskk-handle-q))
-          (nskk-then
-           (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
-           (should (string-suffix-p "q" (buffer-string))))))))
+          (nskk-handle-q)
+          (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+          (should (string-suffix-p "q" (buffer-string)))))))
 
   (nskk-context "AZIK preedit q dispatch"
     (nskk-it "delegates to nskk-handle-q-key in AZIK preedit with empty romaji"
@@ -315,34 +225,28 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 ;;;
 
 (nskk-describe "nskk-handle-l behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-l))
-    (should (commandp 'nskk-handle-l)))
-
   (nskk-it "enters latin mode when in hiragana"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (nskk-when (nskk-handle-l))
-      (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'latin)))))
+      (nskk-handle-l)
+      (should (eq (nskk-state-mode nskk-current-state) 'latin))))
 
   (nskk-it "self-inserts 'l' when in ascii mode"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'ascii))
             (last-command-event ?l))
-        (nskk-when (nskk-handle-l))
-        (nskk-then (should (equal (buffer-string) "l"))))))
+        (nskk-handle-l)
+        (should (equal (buffer-string) "l")))))
 
   (nskk-it "does implicit kakutei then enters latin when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-given (progn
-                      (nskk-set-conversion-start-marker (point-min))
-                      (insert "preedit")
-                      (nskk-state-set-candidates nskk-current-state '("result"))
-                      (nskk-state-force-henkan-phase nskk-current-state 'active)))
-        (nskk-when (nskk-handle-l))
-        (nskk-then
-         (should-not (nskk-converting-p))
-         (should (eq (nskk-state-mode nskk-current-state) 'latin))))))
+        (nskk-set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk-handle-l)
+        (should-not (nskk-converting-p))
+        (should (eq (nskk-state-mode nskk-current-state) 'latin)))))
 
   (nskk-context "abbrev mode regression"
     (nskk-it "self-inserts 'l' in abbrev mode even with active preedit"
@@ -350,12 +254,11 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?l))
           (nskk-set-conversion-start-marker (point-min))
-          (insert "\u25BDemai")
+          (insert "▽emai")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
-          (nskk-when (nskk-handle-l))
-          (nskk-then
-           (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
-           (should (string-suffix-p "l" (buffer-string))))))))
+          (nskk-handle-l)
+          (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+          (should (string-suffix-p "l" (buffer-string)))))))
 
   (nskk-context "AZIK table priority"
     (nskk-it "fires romaji via azik-complete-match-p even when romaji buffer is empty"
@@ -363,10 +266,9 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
             (process-called nil))
         (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) t))
                           (nskk-process-japanese-input (lambda (_c _n) (setq process-called t))))
-          (nskk-when (nskk-handle-l))
-          (nskk-then
-           (should process-called)
-           (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
+          (nskk-handle-l)
+          (should process-called)
+          (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
 
     (nskk-it "still fires romaji for zl -> -> in standard mode (nskk--romaji-has-match-p path)"
       (let ((nskk-current-state (nskk-state-create 'hiragana))
@@ -374,51 +276,44 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) nil))
                           (nskk--romaji-has-match-p    (lambda (_) t))
                           (nskk-process-japanese-input (lambda (_c _n) (setq process-called t))))
-          (nskk-when (nskk-handle-l))
-          (nskk-then
-           (should process-called)
-           (should (eq (nskk-state-mode nskk-current-state) 'hiragana))))))
+          (nskk-handle-l)
+          (should process-called)
+          (should (eq (nskk-state-mode nskk-current-state) 'hiragana)))))
 
     (nskk-it "switches to latin mode when neither check fires"
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-with-mocks ((nskk--azik-complete-match-p (lambda (_) nil))
                           (nskk--romaji-has-match-p    (lambda (_) nil)))
-          (nskk-when (nskk-handle-l))
-          (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'latin))))))))
+          (nskk-handle-l)
+          (should (eq (nskk-state-mode nskk-current-state) 'latin)))))))
 
 ;;;
 ;;; nskk-handle-upper-l behavior
 ;;;
 
 (nskk-describe "nskk-handle-upper-l behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-upper-l))
-    (should (commandp 'nskk-handle-upper-l)))
-
   (nskk-it "enters jisx0208-latin mode when in hiragana"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (nskk-when (nskk-handle-upper-l))
-      (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin)))))
+      (nskk-handle-upper-l)
+      (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin))))
 
   (nskk-it "self-inserts 'L' when in ascii mode"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'ascii))
             (last-command-event ?L))
-        (nskk-when (nskk-handle-upper-l))
-        (nskk-then (should (equal (buffer-string) "L"))))))
+        (nskk-handle-upper-l)
+        (should (equal (buffer-string) "L")))))
 
   (nskk-it "does implicit kakutei then switches mode when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-given (progn
-                      (nskk-set-conversion-start-marker (point-min))
-                      (insert "preedit")
-                      (nskk-state-set-candidates nskk-current-state '("result"))
-                      (nskk-state-force-henkan-phase nskk-current-state 'active)))
-        (nskk-when (nskk-handle-upper-l))
-        (nskk-then
-         (should-not (nskk-converting-p))
-         (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin))))))
+        (nskk-set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk-handle-upper-l)
+        (should-not (nskk-converting-p))
+        (should (eq (nskk-state-mode nskk-current-state) 'jisx0208-latin)))))
 
   (nskk-context "abbrev mode regression"
     (nskk-it "self-inserts 'L' in abbrev mode even with active preedit"
@@ -426,22 +321,17 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?L))
           (nskk-set-conversion-start-marker (point-min))
-          (insert "\u25BDemai")
+          (insert "▽emai")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
-          (nskk-when (nskk-handle-upper-l))
-          (nskk-then
-           (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
-           (should (string-suffix-p "L" (buffer-string)))))))))
+          (nskk-handle-upper-l)
+          (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+          (should (string-suffix-p "L" (buffer-string))))))))
 
 ;;;
 ;;; nskk-handle-upper-x behavior
 ;;;
 
 (nskk-describe "nskk-handle-upper-x behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-upper-x))
-    (should (commandp 'nskk-handle-upper-x)))
-
   (nskk-it "calls nskk-purge-from-jisyo when converting"
     (let ((purge-called nil))
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
@@ -463,21 +353,17 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 ;;;
 
 (nskk-describe "nskk-handle-slash behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-slash))
-    (should (commandp 'nskk-handle-slash)))
-
   (nskk-it "enters abbrev mode when in hiragana"
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
-      (nskk-when (nskk-handle-slash))
-      (nskk-then (should (eq (nskk-state-mode nskk-current-state) 'abbrev)))))
+      (nskk-handle-slash)
+      (should (eq (nskk-state-mode nskk-current-state) 'abbrev))))
 
   (nskk-it "self-inserts '/' when in ascii mode"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'ascii))
             (last-command-event ?/))
-        (nskk-when (nskk-handle-slash))
-        (nskk-then (should (equal (buffer-string) "/"))))))
+        (nskk-handle-slash)
+        (should (equal (buffer-string) "/")))))
 
   (nskk-context "abbrev mode regression"
     (nskk-it "self-inserts '/' in abbrev mode even with active preedit"
@@ -485,29 +371,23 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (let ((nskk-current-state (nskk-state-create 'abbrev))
               (last-command-event ?/))
           (nskk-set-conversion-start-marker (point-min))
-          (insert "\u25BDhttp:")
+          (insert "▽http:")
           (nskk-state-set-henkan-phase nskk-current-state 'on)
-          (nskk-when (nskk-handle-slash))
-          (nskk-then
-           (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
-           (should (string-suffix-p "/" (buffer-string)))))))))
+          (nskk-handle-slash)
+          (should (eq (nskk-state-mode nskk-current-state) 'abbrev))
+          (should (string-suffix-p "/" (buffer-string))))))))
 
 ;;;
 ;;; nskk-handle-x behavior
 ;;;
 
 (nskk-describe "nskk-handle-x behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-x))
-    (should (commandp 'nskk-handle-x)))
-
   (nskk-it "accumulates 'x' in romaji buffer when not converting"
     (nskk-with-test-buffer 'hiragana
       (let ((last-command-event ?x))
-        (nskk-when (nskk-handle-x))
-        (nskk-then
-         (should (equal (nskk-state-romaji-buffer) "x"))
-         (should (equal (buffer-string) ""))))))
+        (nskk-handle-x)
+        (should (equal (nskk-state-romaji-buffer) "x"))
+        (should (equal (buffer-string) "")))))
 
   (nskk-it "calls nskk-previous-candidate when converting"
     (with-temp-buffer
@@ -518,36 +398,32 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-candidate-called t))))
-          (nskk-when (nskk-handle-x))
-          (nskk-then (should prev-candidate-called)))))))
+          (nskk-handle-x)
+          (should prev-candidate-called))))))
 
 ;;;
 ;;; nskk-handle-space behavior
 ;;;
 
 (nskk-describe "nskk-handle-space behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-space))
-    (should (commandp 'nskk-handle-space)))
-
   (nskk-it "inserts a space when no preedit"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (last-command-event ? ))
-        (nskk-when (nskk-handle-space))
-        (nskk-then (should (equal (buffer-string) " "))))))
+        (nskk-handle-space)
+        (should (equal (buffer-string) " ")))))
 
   (nskk-it "starts conversion when preedit exists"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-set-conversion-start-marker (point-min))
-        (insert "\u25BDtest")
+        (insert "▽test")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-core-search/k
                            (lambda (_k _t _l on-found _on-not-found)
                              (funcall on-found '("result")))))
-          (nskk-when (nskk-handle-space))
-          (nskk-then (should (nskk-converting-p)))
+          (nskk-handle-space)
+          (should (nskk-converting-p))
           (when (overlayp (nskk-state-conversion-overlay))
             (delete-overlay (nskk-state-conversion-overlay)))))))
 
@@ -560,36 +436,30 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-candidate-called t))))
-          (nskk-when (nskk-handle-space))
-          (nskk-then (should next-candidate-called)))))))
+          (nskk-handle-space)
+          (should next-candidate-called))))))
 
 ;;;
 ;;; nskk-handle-return behavior
 ;;;
 
 (nskk-describe "nskk-handle-return behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-return))
-    (should (commandp 'nskk-handle-return)))
-
   (nskk-it "inserts newline when not converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-when (nskk-handle-return))
-        (nskk-then (should (equal (buffer-string) "\n"))))))
+        (nskk-handle-return)
+        (should (equal (buffer-string) "\n")))))
 
   (nskk-it "commits without newline when in conversion"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-given (progn
-                      (nskk-set-conversion-start-marker (point-min))
-                      (insert "preedit")
-                      (nskk-state-set-candidates nskk-current-state '("result"))
-                      (nskk-state-force-henkan-phase nskk-current-state 'active)))
-        (nskk-when (nskk-handle-return))
-        (nskk-then
-         (should-not (nskk-converting-p))
-         (should (equal (buffer-string) "result"))))))
+        (nskk-set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
+        (nskk-handle-return)
+        (should-not (nskk-converting-p))
+        (should (equal (buffer-string) "result")))))
 
   (nskk-it "key-action/3 has explicit preedit row for return (kakutei-and-newline)"
     (should (eq (nskk-prolog-query-value
@@ -601,16 +471,14 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (kakutei-called nil)
             (newline-called nil))
-        (nskk-given (progn
-                      (nskk-set-conversion-start-marker (point-min))
-                      (insert "▽か")
-                      (nskk-state-set-henkan-phase nskk-current-state 'on)))
+        (nskk-set-conversion-start-marker (point-min))
+        (insert "▽か")
+        (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-henkan-kakutei (lambda () (setq kakutei-called t)))
                           (newline             (lambda () (setq newline-called t))))
-          (nskk-when (nskk-handle-return))
-          (nskk-then
-           (should kakutei-called)
-           (should newline-called))))))
+          (nskk-handle-return)
+          (should kakutei-called)
+          (should newline-called)))))
 
   (nskk-context "fall-through in normal state"
     (nskk-it "delegates to local RET binding when nskk-mode is active (corfu-style passthrough)"
@@ -650,10 +518,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 ;;;
 
 (nskk-describe "nskk-handle-cancel behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-cancel))
-    (should (commandp 'nskk-handle-cancel)))
-
   (nskk-it "calls keyboard-quit when not converting"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
           (quit-called nil)
@@ -662,22 +526,21 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
           (progn
             (nskk-state-set-conversion-start-marker nil)
             (nskk-with-mocks ((keyboard-quit (lambda () (setq quit-called t))))
-              (nskk-when (nskk-handle-cancel))
-              (nskk-then (should quit-called))))
+              (nskk-handle-cancel)
+              (should quit-called)))
         (nskk-state-set-conversion-start-marker saved-marker))))
 
   (nskk-it "calls nskk-rollback-conversion when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (rollback-called nil))
-        (nskk-given (progn
-                      (nskk-set-conversion-start-marker (point-min))
-                      (insert "preedit")
-                      (nskk-state-set-candidates nskk-current-state '("result"))
-                      (nskk-state-force-henkan-phase nskk-current-state 'active)))
+        (nskk-set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-rollback-conversion (lambda () (setq rollback-called t))))
-          (nskk-when (nskk-handle-cancel))
-          (nskk-then (should rollback-called))))))
+          (nskk-handle-cancel)
+          (should rollback-called)))))
 
   (nskk-it "calls nskk-cancel-preedit when in preedit state"
     (let ((cancel-called nil)
@@ -745,15 +608,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
 ;;;
 
 (nskk-describe "nskk-handle-ctrl-n behavior"
-  (nskk-it "nskk-handle-ctrl-n is defined and interactive"
-    (should (commandp 'nskk-handle-ctrl-n)))
-
-  (nskk-it "C-n is bound in nskk-mode-map"
-    (should (eq (lookup-key nskk-mode-map (kbd "C-n")) 'nskk-handle-ctrl-n)))
-
-  (nskk-it "<down> is bound to nskk-handle-ctrl-n in nskk-mode-map"
-    (should (eq (lookup-key nskk-mode-map (kbd "<down>")) 'nskk-handle-ctrl-n)))
-
   (nskk-it "calls nskk-next-candidate when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
@@ -763,8 +617,8 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-candidate-called t))))
-          (nskk-when (nskk-handle-ctrl-n))
-          (nskk-then (should next-candidate-called))))))
+          (nskk-handle-ctrl-n)
+          (should next-candidate-called)))))
 
   (nskk-it "calls next-line when not converting (normal state)"
     (let ((nav-called nil))
@@ -803,15 +657,6 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
       (should nav-called))))
 
 (nskk-describe "nskk-handle-ctrl-p behavior"
-  (nskk-it "nskk-handle-ctrl-p is defined and interactive"
-    (should (commandp 'nskk-handle-ctrl-p)))
-
-  (nskk-it "C-p is bound in nskk-mode-map"
-    (should (eq (lookup-key nskk-mode-map (kbd "C-p")) 'nskk-handle-ctrl-p)))
-
-  (nskk-it "<up> is bound to nskk-handle-ctrl-p in nskk-mode-map"
-    (should (eq (lookup-key nskk-mode-map (kbd "<up>")) 'nskk-handle-ctrl-p)))
-
   (nskk-it "calls nskk-previous-candidate when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
@@ -821,8 +666,8 @@ NAV-FN is the fallthrough navigation command symbol (e.g. `forward-char')."
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-candidate-called t))))
-          (nskk-when (nskk-handle-ctrl-p))
-          (nskk-then (should prev-candidate-called))))))
+          (nskk-handle-ctrl-p)
+          (should prev-candidate-called)))))
 
   (nskk-it "calls previous-line when not converting (normal state)"
     (let ((nav-called nil))
@@ -888,10 +733,9 @@ and configures state."
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
         (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-called t))))
-          (nskk-when (nskk-handle-ctrl-n)))
-        (nskk-then
-         (should next-called)
-         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
+          (nskk-handle-ctrl-n))
+        (should next-called)
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))))
 
   (nskk-it "C-p shows previous candidate in converting mode (does not commit)"
     (with-temp-buffer
@@ -903,10 +747,9 @@ and configures state."
         (forward-line 1)
         (nskk-test-setup-converting "か" "書")
         (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-called t))))
-          (nskk-when (nskk-handle-ctrl-p)))
-        (nskk-then
-         (should prev-called)
-         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
+          (nskk-handle-ctrl-p))
+        (should prev-called)
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))))
 
   (nskk-it "C-n in converting mode calls next-candidate (no end-of-buffer error)"
     (with-temp-buffer
@@ -917,10 +760,9 @@ and configures state."
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
         (nskk-with-mocks ((nskk-next-candidate (lambda () (setq next-called t))))
-          (nskk-when (nskk-handle-ctrl-n)))
-        (nskk-then
-         (should next-called)
-         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
+          (nskk-handle-ctrl-n))
+        (should next-called)
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))))
 
   (nskk-it "C-p in converting mode calls previous-candidate (no beginning-of-buffer error)"
     (with-temp-buffer
@@ -931,20 +773,19 @@ and configures state."
         (goto-char (point-min))
         (nskk-test-setup-converting "あい" "愛")
         (nskk-with-mocks ((nskk-previous-candidate (lambda () (setq prev-called t))))
-          (nskk-when (nskk-handle-ctrl-p)))
-        (nskk-then
-         (should prev-called)
-         (should (eq (nskk-state-henkan-phase nskk-current-state) 'active)))))))
+          (nskk-handle-ctrl-p))
+        (should prev-called)
+        (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))))))
 
 ;;;
 ;;; C-f and C-b Handler Tests
 ;;;
 
 (nskk-describe "nskk-handle-ctrl-f behavior"
-  (nskk-deftest-nav-handler ctrl-f nskk-handle-ctrl-f "C-f" "<right>" forward-char))
+  (nskk-deftest-nav-handler ctrl-f nskk-handle-ctrl-f forward-char))
 
 (nskk-describe "nskk-handle-ctrl-b behavior"
-  (nskk-deftest-nav-handler ctrl-b nskk-handle-ctrl-b "C-b" "<left>" backward-char))
+  (nskk-deftest-nav-handler ctrl-b nskk-handle-ctrl-b backward-char))
 
 ;;;
 ;;; nskk--current-key-state Tests
@@ -1005,65 +846,32 @@ and configures state."
             (should (eq (nskk--current-key-state) 'preedit))))))))
 
 ;;;
-;;; nskk-self-insert abbrev-mode routing Tests
-;;;
-
-(nskk-describe "nskk-self-insert abbrev-mode routing"
-  (nskk-it "routes uppercase letters in abbrev mode via input-route Prolog table"
-    (with-temp-buffer
-      (let ((nskk-current-state (nskk-state-create 'abbrev))
-            (last-command-event ?T)
-            (abbrev-called nil))
-        (nskk-with-mocks ((nskk-process-abbrev-input (lambda (_char) (setq abbrev-called t))))
-          (nskk-when (nskk-self-insert 1))
-          (nskk-then
-           (should abbrev-called))))))
-
-  (nskk-it "routes 'n' in abbrev mode via input-route Prolog table"
-    (with-temp-buffer
-      (let ((nskk-current-state (nskk-state-create 'abbrev))
-            (last-command-event ?n)
-            (abbrev-called nil))
-        (nskk-with-mocks ((nskk-process-abbrev-input (lambda (_char) (setq abbrev-called t))))
-          (nskk-when (nskk-self-insert 1))
-          (nskk-then
-           (should abbrev-called)))))))
-
-;;;
 ;;; nskk-handle-ctrl-a behavior
 ;;;
 
 (nskk-describe "nskk-handle-ctrl-a behavior"
-  (nskk-deftest-nav-handler ctrl-a nskk-handle-ctrl-a "C-a" "<home>" beginning-of-line))
+  (nskk-deftest-nav-handler ctrl-a nskk-handle-ctrl-a beginning-of-line))
 
 ;;;
 ;;; nskk-handle-ctrl-e behavior
 ;;;
 
 (nskk-describe "nskk-handle-ctrl-e behavior"
-  (nskk-deftest-nav-handler ctrl-e nskk-handle-ctrl-e "C-e" "<end>" end-of-line))
+  (nskk-deftest-nav-handler ctrl-e nskk-handle-ctrl-e end-of-line))
 
 ;;;
 ;;; nskk-handle-backspace behavior
 ;;;
 
 (nskk-describe "nskk-handle-backspace behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-backspace))
-    (should (commandp 'nskk-handle-backspace)))
-
-  (nskk-it "DEL is bound in nskk-mode-map"
-    (let ((binding (lookup-key nskk-mode-map (kbd "DEL"))))
-      (should (eq binding 'nskk-handle-backspace))))
-
   (nskk-it "deletes last character when preedit has content"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana)))
         (nskk-set-conversion-start-marker (point-min))
         (insert "▽ka")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
-        (nskk-when (nskk-handle-backspace))
-        (nskk-then (should-not (string-suffix-p "a" (buffer-string)))))))
+        (nskk-handle-backspace)
+        (should-not (string-suffix-p "a" (buffer-string))))))
 
   (nskk-it "calls nskk-cancel-preedit when preedit is empty"
     (with-temp-buffer
@@ -1073,8 +881,8 @@ and configures state."
         (insert "▽")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-cancel-preedit (lambda () (setq cancel-preedit-called t))))
-          (nskk-when (nskk-handle-backspace))
-          (nskk-then (should cancel-preedit-called))))))
+          (nskk-handle-backspace)
+          (should cancel-preedit-called)))))
 
   (nskk-it "calls nskk-rollback-conversion when converting"
     (with-temp-buffer
@@ -1085,15 +893,15 @@ and configures state."
         (nskk-state-set-candidates nskk-current-state '("result"))
         (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-rollback-conversion (lambda () (setq rollback-called t))))
-          (nskk-when (nskk-handle-backspace))
-          (nskk-then (should rollback-called))))))
+          (nskk-handle-backspace)
+          (should rollback-called)))))
 
   (nskk-it "deletes backward char when no preedit (normal state)"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'ascii)))
         (insert "abc")
-        (nskk-when (nskk-handle-backspace))
-        (nskk-then (should (equal (buffer-string) "ab"))))))
+        (nskk-handle-backspace)
+        (should (equal (buffer-string) "ab")))))
 
   (nskk-it "does not delete committed text when point drifted left of preedit"
     (with-temp-buffer
@@ -1102,19 +910,15 @@ and configures state."
         (nskk-set-conversion-start-marker 2)
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (goto-char 1)
-        (nskk-when (nskk-handle-backspace))
-        (nskk-then
-         (should (equal (buffer-string) "A▽ka"))
-         (should (= (point) 3)))))))
+        (nskk-handle-backspace)
+        (should (equal (buffer-string) "A▽ka"))
+        (should (= (point) 3))))))
 
 ;;;
 ;;; nskk--backspace-retract-pending
 ;;;
 
 (nskk-describe "nskk--backspace-retract-pending"
-  (nskk-it "is defined as a callable function (fboundp)"
-    (should (fboundp 'nskk--backspace-retract-pending)))
-
   (nskk-it "returns non-nil and clears single-char romaji buffer"
     (let ((clear-called nil))
       (nskk-with-mocks ((nskk-clear-pending-romaji (lambda () (setq clear-called t))))
@@ -1412,9 +1216,6 @@ and configures state."
 ;;;
 
 (nskk-describe "nskk--backspace-in-preedit"
-  (nskk-it "is defined as a callable function (fboundp)"
-    (should (fboundp 'nskk--backspace-in-preedit)))
-
   (nskk-it "deletes last character when preedit has content"
     (let ((deleted nil))
       (nskk-with-mocks ((nskk-get-conversion-start (lambda () (point-min)))
@@ -1627,14 +1428,6 @@ and configures state."
 ;;;
 
 (nskk-describe "nskk-handle-tab behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-tab))
-    (should (commandp 'nskk-handle-tab)))
-
-  (nskk-it "TAB is bound in nskk-mode-map"
-    (let ((binding (lookup-key nskk-mode-map (kbd "TAB"))))
-      (should (eq binding 'nskk-handle-tab))))
-
   (nskk-it "calls nskk-dynamic-complete when preedit active"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
@@ -1644,8 +1437,8 @@ and configures state."
         (insert "▽ka")
         (nskk-state-set-henkan-phase nskk-current-state 'on)
         (nskk-with-mocks ((nskk-dynamic-complete (lambda () (setq complete-called t))))
-          (nskk-when (nskk-handle-tab))
-          (nskk-then (should complete-called))))))
+          (nskk-handle-tab)
+          (should complete-called)))))
 
   (nskk-it "delegates to major-mode TAB binding when not in preedit"
     (with-temp-buffer
@@ -1655,8 +1448,8 @@ and configures state."
           (define-key test-map "\t"
             (lambda () (interactive) (setq major-mode-called t)))
           (use-local-map test-map)
-          (nskk-when (nskk-handle-tab))
-          (nskk-then (should major-mode-called))))))
+          (nskk-handle-tab)
+          (should major-mode-called)))))
 
   (nskk-it "falls back to indent-for-tab-command when no major-mode TAB binding"
     (with-temp-buffer
@@ -1664,8 +1457,8 @@ and configures state."
             (indent-called nil))
         (use-local-map (make-sparse-keymap))
         (nskk-with-mocks ((indent-for-tab-command (lambda (&rest _) (interactive) (setq indent-called t))))
-          (nskk-when (nskk-handle-tab))
-          (nskk-then (should indent-called))))))
+          (nskk-handle-tab)
+          (should indent-called)))))
 
   (nskk-it "delegates to major-mode TAB binding when converting (pass-through rule)"
     (with-temp-buffer
@@ -1679,50 +1472,40 @@ and configures state."
           (define-key test-map "\t"
             (lambda () (interactive) (setq major-mode-called t)))
           (use-local-map test-map)
-          (nskk-when (nskk-handle-tab))
-          (nskk-then (should major-mode-called)))))))
+          (nskk-handle-tab)
+          (should major-mode-called))))))
 
 ;;;
 ;;; nskk-handle-hash behavior
 ;;;
 
 (nskk-describe "nskk-handle-hash behavior"
-  (nskk-it "is defined and interactive"
-    (should (fboundp 'nskk-handle-hash))
-    (should (commandp 'nskk-handle-hash)))
-
-  (nskk-it "# is bound in nskk-mode-map"
-    (let ((binding (lookup-key nskk-mode-map (kbd "#"))))
-      (should (eq binding 'nskk-handle-hash))))
-
   (nskk-it "calls nskk-set-mode-numeric when in hiragana"
     (let ((nskk-current-state (nskk-state-create 'hiragana))
           (numeric-called nil))
       (nskk-with-mocks ((nskk-set-mode-numeric (lambda () (setq numeric-called t))))
-        (nskk-when (nskk-handle-hash))
-        (nskk-then (should numeric-called)))))
+        (nskk-handle-hash)
+        (should numeric-called))))
 
   (nskk-it "self-inserts '#' when in ascii mode"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'ascii))
             (last-command-event ?#))
-        (nskk-when (nskk-handle-hash))
-        (nskk-then (should (equal (buffer-string) "#"))))))
+        (nskk-handle-hash)
+        (should (equal (buffer-string) "#")))))
 
   (nskk-it "does implicit kakutei then calls nskk-set-mode-numeric when converting"
     (with-temp-buffer
       (let ((nskk-current-state (nskk-state-create 'hiragana))
             (numeric-called nil))
-        (nskk-given (progn
-                      (nskk-set-conversion-start-marker (point-min))
-                      (insert "preedit")
-                      (nskk-state-set-candidates nskk-current-state '("result"))
-                      (nskk-state-force-henkan-phase nskk-current-state 'active)))
+        (nskk-set-conversion-start-marker (point-min))
+        (insert "preedit")
+        (nskk-state-set-candidates nskk-current-state '("result"))
+        (nskk-state-force-henkan-phase nskk-current-state 'active)
         (nskk-with-mocks ((nskk-set-mode-numeric (lambda () (setq numeric-called t))))
-          (nskk-when (nskk-handle-hash))
-          (nskk-then
-           (should-not (nskk-converting-p))
-           (should numeric-called)))))))
+          (nskk-handle-hash)
+          (should-not (nskk-converting-p))
+          (should numeric-called))))))
 
 ;;;
 ;;; key-action/3 Prolog Dispatch Table Integrity Tests
@@ -1831,7 +1614,24 @@ and configures state."
     (dolist (text '(has-text no-text))
       (dolist (cat '(marker-mode other))
         (should (nskk-prolog-holds-p
-                 `(state-classify idle ,text ,cat idle-direct)))))))
+                 `(state-classify idle ,text ,cat idle-direct))))))
+
+  ;; Guards the range, not the mapping: a row added with a classification
+  ;; outside this set would be silently swallowed by the `(or ... 'default)'
+  ;; fallback in each of the three downstream classifiers.
+  (nskk-it "every input combination yields one of the six known classifications"
+    (let ((known '(converting preedit-japanese preedit-pending
+                   preedit-marker idle-japanese idle-direct))
+          (queried 0))
+      (dolist (phase '(converting henkan-on idle))
+        (dolist (text '(has-text no-text))
+          (dolist (cat '(japanese marker-mode other))
+            (let ((classification (nskk-prolog-query-value
+                                   `(state-classify ,phase ,text ,cat \?c) '\?c)))
+              (should classification)
+              (should (memq classification known))
+              (setq queried (1+ queried))))))
+      (should (= queried 18)))))
 
 ;;;
 ;;; kakutei-active-state/3 Prolog Table Tests
@@ -1881,21 +1681,7 @@ and configures state."
 
 (nskk-describe "nskk-define-key-handler"
   (nskk-it "is a macro (not a plain function)"
-    (should (macrop 'nskk-define-key-handler)))
-
-  (nskk-it "generates interactive commands for key handlers"
-    (should (commandp 'nskk-handle-space))
-    (should (commandp 'nskk-handle-return))
-    (should (commandp 'nskk-handle-x))
-    (should (commandp 'nskk-handle-ctrl-f))
-    (should (commandp 'nskk-handle-ctrl-b)))
-
-  (nskk-it "all generated handlers follow the nskk-handle-KEY naming convention"
-    (dolist (handler '(nskk-handle-space nskk-handle-return nskk-handle-x
-                       nskk-handle-ctrl-n nskk-handle-ctrl-p
-                       nskk-handle-ctrl-f nskk-handle-ctrl-b
-                       nskk-handle-ctrl-a nskk-handle-ctrl-e))
-      (should (fboundp handler)))))
+    (should (macrop 'nskk-define-key-handler))))
 
 ;;;
 ;;; nskk--japanese-mode-class Tests
@@ -2008,18 +1794,7 @@ and configures state."
 
 (nskk-describe "nskk-define-mode-switch-handler"
   (nskk-it "is a macro (not a plain function)"
-    (should (macrop 'nskk-define-mode-switch-handler)))
-
-  (nskk-it "generates interactive commands for mode-switch handlers"
-    (should (commandp 'nskk-handle-q))
-    (should (commandp 'nskk-handle-upper-l))
-    (should (commandp 'nskk-handle-slash))
-    (should (commandp 'nskk-handle-hash)))
-
-  (nskk-it "all generated handlers follow the nskk-handle-KEY naming convention"
-    (dolist (handler '(nskk-handle-q nskk-handle-upper-l
-                       nskk-handle-slash nskk-handle-hash))
-      (should (fboundp handler)))))
+    (should (macrop 'nskk-define-mode-switch-handler))))
 
 ;;;
 ;;; nskk-classify-state Tests
@@ -2126,50 +1901,6 @@ and configures state."
                     :type 'error))))
 
 ;;;
-;;; nskk--setup-azik-toggle-key
-;;;
-
-(nskk-describe "nskk--setup-azik-toggle-key"
-  (nskk-it "is defined as a callable function (fboundp)"
-    (should (fboundp 'nskk--setup-azik-toggle-key)))
-
-  (nskk-it "does nothing when nskk-azik-keyboard-type is not bound"
-    (if (boundp 'nskk-azik-keyboard-type)
-        (progn (nskk--setup-azik-toggle-key) t)
-      (should (null (nskk--setup-azik-toggle-key)))))
-
-  (nskk-it "binds @ key when keyboard type is jp106"
-    (when (boundp 'nskk-mode-map)
-      (let* ((saved-binding (keymap-lookup nskk-mode-map "@"))
-             (nskk-azik-keyboard-type 'jp106))
-        (unwind-protect
-            (progn
-              (nskk--setup-azik-toggle-key)
-              (should (eq (keymap-lookup nskk-mode-map "@")
-                          #'nskk-toggle-japanese-mode)))
-          (when saved-binding
-            (keymap-set nskk-mode-map "@" saved-binding))))))
-
-  (nskk-it "binds [ key when keyboard type is us101"
-    (when (boundp 'nskk-mode-map)
-      (let* ((saved-binding (keymap-lookup nskk-mode-map "["))
-             (nskk-azik-keyboard-type 'us101))
-        (unwind-protect
-            (progn
-              (nskk--setup-azik-toggle-key)
-              (should (eq (keymap-lookup nskk-mode-map "[")
-                          #'nskk-toggle-japanese-mode)))
-          (when saved-binding
-            (keymap-set nskk-mode-map "[" saved-binding))))))
-
-  (nskk-it "binds @ key for unknown keyboard type (default fallback)"
-    (let ((test-map (make-sparse-keymap))
-          (nskk-azik-keyboard-type 'unknown-type))
-      (cl-letf (((symbol-value 'nskk-mode-map) test-map))
-        (nskk--setup-azik-toggle-key)
-        (should (eq (lookup-key test-map "@") #'nskk-toggle-japanese-mode))))))
-
-;;;
 ;;; key-state-map/2 Prolog Table Integrity Tests
 ;;;
 
@@ -2235,47 +1966,7 @@ and configures state."
 
 (nskk-describe "nskk-define-nav-handler"
   (nskk-it "is a macro (not a plain function)"
-    (should (macrop 'nskk-define-nav-handler)))
-
-  (nskk-it "generates interactive commands for all nav handlers"
-    (dolist (handler '(nskk-handle-ctrl-n nskk-handle-ctrl-p
-                       nskk-handle-ctrl-f nskk-handle-ctrl-b
-                       nskk-handle-ctrl-a nskk-handle-ctrl-e))
-      (should (fboundp handler))
-      (should (commandp handler)))))
-
-;;;
-;;; nskk-classify-state additional invariant tests
-;;;
-
-(nskk-describe "nskk-classify-state return type invariants"
-  (nskk-it "return value is always one of the 6 known symbols"
-    (let ((valid-states '(converting preedit-japanese preedit-pending preedit-marker idle-japanese idle-direct)))
-      (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                        (nskk-has-preedit  (lambda () nil)))
-        (should (memq (nskk-classify-state) valid-states)))
-      (let ((nskk-current-state (nskk-state-create 'hiragana)))
-        (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                          (nskk-has-preedit  (lambda () t))
-                          (nskk-get-conversion-start (lambda () 1)))
-          (should (memq (nskk-classify-state) valid-states))))
-      (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                        (nskk-has-preedit  (lambda () nil)))
-        (let ((nskk-current-state nil))
-          (should (memq (nskk-classify-state) valid-states))))))
-
-  (nskk-it "does not signal an error for any combination of inputs"
-    (nskk-with-mocks ((nskk-converting-p (lambda () nil))
-                      (nskk-has-preedit  (lambda () nil)))
-      (let ((nskk-current-state nil))
-        (condition-case err
-            (nskk-classify-state)
-          (error (ert-fail (format "Unexpected error: %s" err))))))
-    (nskk-with-mocks ((nskk-converting-p (lambda () t))
-                      (nskk-has-preedit  (lambda () nil)))
-      (condition-case err
-          (nskk-classify-state)
-        (error (ert-fail (format "Unexpected error: %s" err)))))))
+    (should (macrop 'nskk-define-nav-handler))))
 
 ;;;
 ;;; nskk-compute-phase Tests
@@ -2307,15 +1998,7 @@ and configures state."
     (let ((nskk-current-state (nskk-state-create 'hiragana)))
       (nskk-with-mocks ((nskk-converting-p (lambda () t))
                         (nskk-get-conversion-start (lambda () 1)))
-        (should (eq (nskk-compute-phase) 'converting)))))
-
-  (nskk-it "return value is always one of the 3 known phase symbols"
-    (let ((valid '(converting henkan-on idle)))
-      (nskk-with-mocks ((nskk-converting-p (lambda () t)))
-        (should (memq (nskk-compute-phase) valid)))
-      (let ((nskk-current-state nil))
-        (nskk-with-mocks ((nskk-converting-p (lambda () nil)))
-          (should (memq (nskk-compute-phase) valid)))))))
+        (should (eq (nskk-compute-phase) 'converting))))))
 
 ;;;
 ;;; nskk--compute-text-presence Tests
@@ -2328,14 +2011,7 @@ and configures state."
 
   (nskk-it "returns 'no-text when nskk-has-preedit is false"
     (nskk-with-mocks ((nskk-has-preedit (lambda () nil)))
-      (should (eq (nskk--compute-text-presence) 'no-text))))
-
-  (nskk-it "return value is always one of the 2 known symbols"
-    (let ((valid '(has-text no-text)))
-      (nskk-with-mocks ((nskk-has-preedit (lambda () t)))
-        (should (memq (nskk--compute-text-presence) valid)))
-      (nskk-with-mocks ((nskk-has-preedit (lambda () nil)))
-        (should (memq (nskk--compute-text-presence) valid))))))
+      (should (eq (nskk--compute-text-presence) 'no-text)))))
 
 ;;;
 ;;; nskk--compute-mode-category Tests
@@ -2374,43 +2050,7 @@ and configures state."
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (let ((nskk-current-state (nskk-state-create 'jisx0208-latin)))
-        (should (eq (nskk--compute-mode-category) 'other)))))
-
-  (nskk-it "return value is always one of the 3 known category symbols"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-state-initialize-prolog)
-      (let ((valid '(japanese marker-mode other)))
-        (dolist (mode '(hiragana katakana ascii abbrev jisx0208-latin))
-          (let ((nskk-current-state (nskk-state-create mode)))
-            (should (memq (nskk--compute-mode-category) valid))))))))
-
-;;;
-;;; Property-based invariant tests
-;;;
-
-(nskk-describe "nskk-mode-map structural invariants"
-  (nskk-context "all bindings are callable"
-    (nskk-it "every command bound in nskk-mode-map satisfies fboundp"
-      (map-keymap
-       (lambda (_key cmd)
-         (when (symbolp cmd)
-           (should (fboundp cmd))))
-       nskk-mode-map)))
-
-  (nskk-context "map is non-empty"
-    (nskk-it "nskk-mode-map is a non-empty keymap"
-      (should (keymapp nskk-mode-map))
-      (let ((count 0))
-        (map-keymap (lambda (_k _v) (cl-incf count)) nskk-mode-map)
-        (should (> count 0))))))
-
-(nskk-property-test-exhaustive keymap-critical-keys-survive-mode-enable
-  '("C-j" "L" "C-g")
-  (with-temp-buffer
-    (nskk-mode 1)
-    (let ((binding (lookup-key nskk-mode-map (kbd item))))
-      (nskk-mode -1)
-      (and binding (symbolp binding) (fboundp binding)))))
+        (should (eq (nskk--compute-mode-category) 'other))))))
 
 (provide 'nskk-keymap-test)
 

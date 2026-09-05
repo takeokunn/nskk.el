@@ -145,8 +145,10 @@
          (nskk-cursor-latin)
          (nskk-cursor-jisx0208-latin)
          (nskk-cursor-abbrev))
-  :description "All NSKK cursor faces specify a :background attribute"
-  :body (should (face-attribute face :background nil t)))
+  :description "All NSKK cursor faces specify a concrete :background color"
+  :body (let ((color (face-attribute face :background nil t)))
+          (should (stringp color))
+          (should (not (memq color '(nil unspecified))))))
 
 (nskk-deftest-table dcomp-face-existence
   :columns (face)

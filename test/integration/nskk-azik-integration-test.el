@@ -167,7 +167,7 @@
           (dolist (pattern all-patterns)
             (erase-buffer)
             (nskk-state-set-romaji-buffer "")
-            (nskk-state-clear-input nskk-current-state)
+            (nskk-state-set nskk-current-state 'input-buffer "")
             (condition-case err
                 (progn
                   (cl-loop for ch across pattern

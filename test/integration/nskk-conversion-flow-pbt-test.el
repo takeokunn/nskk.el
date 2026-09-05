@@ -94,6 +94,15 @@
   (nskk-state-set state 'henkan-position nil)
   (nskk-state-force-henkan-phase state nil))
 
+(defun nskk--pbt-next-candidate (state)
+  "Advance STATE to its next candidate and return it, or nil if none (test helper)."
+  (let* ((candidates (nskk-state-candidates state))
+         (total (length candidates)))
+    (when (> total 0)
+      (setf (nskk-state-current-index state)
+            (mod (1+ (nskk-state-current-index state)) total))
+      (nth (nskk-state-current-index state) candidates))))
+
 
 ;;;;
 ;;;; Property 1: Conversion Roundtrip
@@ -143,10 +152,11 @@
     (nskk-state-set-candidates state candidates)
     (let ((visited nil)
           (ok t))
-      (let ((first (nskk-state-current-candidate state)))
+      (let ((first (nth (nskk-state-current-index state)
+                        (nskk-state-candidates state))))
         (when first (push first visited)))
       (dotimes (_ (1- num-candidates))
-        (let ((next (nskk-state-next-candidate state)))
+        (let ((next (nskk--pbt-next-candidate state)))
           (when next (push next visited))))
       (dolist (c candidates)
         (unless (member c visited)
@@ -336,45 +346,6 @@
       (when failures
         (ert-fail (format "on-match received non-string for %d cases:\n%S"
                           (length failures) failures))))))
-
-;;;;
-;;;; CPS Tests: nskk-convert-romaji/k result type
-;;;;
-
-(nskk-property-test-with-shrinking nskk-property-cps-convert-romaji-matches-sync
-  ((pattern romaji-basic))
-  (let ((cps-result nil)
-        (branch nil))
-    (nskk-convert-romaji/k
-     pattern
-     (lambda (result) (setq cps-result result branch 'found))
-     (lambda () (setq branch 'not-found)))
-    (and (eq branch 'found)
-         (equal cps-result (nskk-convert-romaji pattern))))
-  50)
-
-(nskk-describe "CPS: nskk-convert-romaji/k result contract"
-
-  (nskk-it "sync and CPS paths return the documented kana"
-    (dolist (case '(("ka" . "か")
-                    ("ki" . "き")
-                    ("a" . "あ")
-                    ("i" . "い")
-                    ("u" . "う")
-                    ("sha" . "しゃ")
-                    ("chi" . "ち")
-                    ("tsu" . "つ")))
-      (let ((romaji (car case))
-            (expected (cdr case))
-            (cps-result nil)
-            (branch nil))
-        (should (equal (nskk-convert-romaji romaji) expected))
-        (nskk-convert-romaji/k
-         romaji
-         (lambda (result) (setq cps-result result branch 'found))
-         (lambda () (setq branch 'not-found)))
-        (should (eq branch 'found))
-        (should (equal cps-result expected))))))
 
 ;;;;
 ;;;; CPS Tests: nskk-dict-lookup/k mutual exclusion
