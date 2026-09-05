@@ -861,7 +861,10 @@ ON-SOLUTION is passed to the selected handler as the success callback."
 (defun nskk--prolog-hash-table-entries (table)
   "Return TABLE's entries as a list of (KEY . VALUE) pairs."
   (let (entries)
-    (maphash (lambda (key value) (push (cons key value) entries)) table)
+    ;; An automatic GC during this maphash can reclaim entries of a weak
+    ;; table while it is being iterated.
+    (let ((gc-cons-threshold most-positive-fixnum))
+      (maphash (lambda (key value) (push (cons key value) entries)) table))
     entries))
 
 (defun nskk--prolog-empty-hash-table-like (table)
@@ -974,7 +977,7 @@ Entries land only after every copied key has reached its final shape."
                (nskk--prolog-copy-of (cdr entry) copies)
                copy))))
 
-(defun nskk-prolog-copy-term (object)
+(defun nskk-prolog-copy-term (object &optional memo)
   "Return a detached copy of OBJECT while preserving graph topology.
 Conses, vectors, records, strings, char tables and hash tables are copied
 through an iterative worklist and an eq memo table, so cycles and shared
@@ -984,8 +987,14 @@ graph.  Functions retain identity, as do symbols, numbers, and object types
 this function does not decompose.
 
 Hash tables keep their test, size, rehash parameters and weakness.  Char
-tables keep their subtype, default, parent, extra slots and raw ranges."
-  (let ((copies (make-hash-table :test #'eq))
+tables keep their subtype, default, parent, extra slots and raw ranges.
+
+When MEMO is non-nil it is used as the eq memo table instead of a fresh
+one.  Sharing one table across several calls keeps an object that was
+shared between the inputs shared between the outputs; callers that need
+an independently owned copy must pass nil, which every caller but
+`nskk-tutorial--copy-object-graph' does."
+  (let ((copies (or memo (make-hash-table :test #'eq)))
         (missing (make-symbol "nskk-prolog-copy-missing"))
         (pending (list object))
         composites
