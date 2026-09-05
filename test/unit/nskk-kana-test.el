@@ -95,7 +95,8 @@
       (should (not (nskk-kana-hankaku-katakana-p ?ア)))
       (should (not (nskk-kana-hankaku-katakana-p ?あ)))
       (should (not (nskk-kana-hankaku-katakana-p ?a)))
-      (should (not (nskk-kana-hankaku-katakana-p nil))))))
+      (should (not (nskk-kana-hankaku-katakana-p nil)))
+      (should (not (nskk-kana-hankaku-katakana-p "ｱ"))))))
 
 (nskk-describe "han (kanji) character classification"
   (nskk-deftest-table kana-han-basic-chars
@@ -120,7 +121,8 @@
       (should (not (nskk-kana-han-p ?あ)))
       (should (not (nskk-kana-han-p ?ア)))
       (should (not (nskk-kana-han-p ?a)))
-      (should (not (nskk-kana-han-p nil))))))
+      (should (not (nskk-kana-han-p nil)))
+      (should (not (nskk-kana-han-p "漢"))))))
 
 (nskk-describe "japanese character classification"
   (nskk-context "all japanese script types"
@@ -135,7 +137,8 @@
       (should (not (nskk-kana-japanese-p ?a)))
       (should (not (nskk-kana-japanese-p ?A)))
       (should (not (nskk-kana-japanese-p ?1)))
-      (should (not (nskk-kana-japanese-p nil))))))
+      (should (not (nskk-kana-japanese-p nil)))
+      (should (not (nskk-kana-japanese-p "あ"))))))
 
 ;;;
 ;;; Hiragana/Katakana Conversion Tests
@@ -660,6 +663,20 @@ Note: Prolog-backed classification costs ~200-300us per character."
     (nskk-assert-strings-equal
      (nskk-kana-hankaku-to-zenkaku (nskk-kana-zenkaku-to-hankaku "ヮ"))
      "ワ")))
+
+;;;
+;;; Passthrough for inputs that are neither string nor character
+;;;
+
+;; Both converters dispatch on `pcase' with a catch-all arm that returns the
+;; argument untouched.  `nskk-region.el' feeds them `buffer-substring'
+;; output, so nothing in-tree exercises that arm; without these tests a
+;; regression there would convert the value instead of returning it.
+(nskk-describe "conversion passthrough for unsupported types"
+  (nskk-it "returns non-string non-character input unchanged, preserving identity"
+    (dolist (value (list nil 'a-symbol '(1 2) [1 2] 3.5))
+      (should (eq (nskk-kana-zenkaku-to-hankaku value) value))
+      (should (eq (nskk-kana-hankaku-to-zenkaku value) value)))))
 
 ;;;
 ;;; Prolog Database Integration Tests
