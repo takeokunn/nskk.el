@@ -365,9 +365,14 @@ Only TEXT is stripped.  PREFIX and SUFFIX must be trusted literals: `concat'
 carries each argument's own text properties into the result, and the
 `propertize' here only adds FACE, so a property on PREFIX or SUFFIX reaches
 the caller intact.  Measured -- passing a PREFIX carrying `display' leaves
-that `display' on the result."
-  (propertize (concat prefix (substring-no-properties text) suffix)
-              'face face))
+that `display' on the result.
+
+With neither PREFIX nor SUFFIX there is nothing to join, and `concat' would
+still allocate a second copy of TEXT, so that case skips it."
+  (if (and (null prefix) (null suffix))
+      (propertize (substring-no-properties text) 'face face)
+    (propertize (concat prefix (substring-no-properties text) suffix)
+                'face face)))
 
 ;;;; Overlay Display Priorities
 ;;

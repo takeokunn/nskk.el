@@ -42,117 +42,6 @@
                                    'standard-value)))
                    (expand-file-name "~/.nskk/jisyo")))))
 
-(nskk-describe "error condition chains"
-  (nskk-it "nskk-dict-search-error has correct error conditions"
-    (let ((conditions (get 'nskk-dict-search-error 'error-conditions)))
-      (should (listp conditions))
-      (should (memq 'nskk-dict-search-error conditions))))
-
-  (nskk-it "nskk-dict-search-invalid-query has correct error conditions"
-    (let ((conditions (get 'nskk-dict-search-invalid-query 'error-conditions)))
-      (should (listp conditions))
-      (should (memq 'nskk-dict-search-invalid-query conditions))
-      (should (memq 'nskk-dict-search-error conditions))))
-
-  (nskk-it "nskk-dict-search-invalid-index has correct error conditions"
-    (let ((conditions (get 'nskk-dict-search-invalid-index 'error-conditions)))
-      (should (listp conditions))
-      (should (memq 'nskk-dict-search-invalid-index conditions))
-      (should (memq 'nskk-dict-search-error conditions)))))
-
-(nskk-describe "error signaling"
-  (nskk-it "signals nskk-dict-search-error"
-    (let ((caught nil))
-      (condition-case _err
-          (signal 'nskk-dict-search-error '("test error"))
-        (nskk-dict-search-error (setq caught t)))
-      (should caught)))
-
-  (nskk-it "signals nskk-dict-search-invalid-query"
-    (let ((caught nil))
-      (condition-case _err
-          (signal 'nskk-dict-search-invalid-query '("bad query"))
-        (nskk-dict-search-invalid-query (setq caught t)))
-      (should caught)))
-
-  (nskk-it "signals nskk-dict-search-invalid-index"
-    (let ((caught nil))
-      (condition-case _err
-          (signal 'nskk-dict-search-invalid-index '("bad index"))
-        (nskk-dict-search-invalid-index (setq caught t)))
-      (should caught)))
-
-  (nskk-it "nskk-dict-search-invalid-query is caught by nskk-dict-search-error handler"
-    (let ((caught nil))
-      (condition-case _err
-          (signal 'nskk-dict-search-invalid-query '("bad query"))
-        (nskk-dict-search-error (setq caught t)))
-      (should caught)))
-
-  (nskk-it "nskk-dict-search-invalid-index is caught by nskk-dict-search-error handler"
-    (let ((caught nil))
-      (condition-case _err
-          (signal 'nskk-dict-search-invalid-index '("bad index"))
-        (nskk-dict-search-error (setq caught t)))
-      (should caught))))
-
-(nskk-describe "error data preservation"
-  (nskk-it "preserves error data when signaling search errors"
-    (condition-case err
-        (signal 'nskk-dict-search-invalid-query '("test data"))
-      (nskk-dict-search-invalid-query
-       (should (equal (cadr err) "test data")))))
-
-  (nskk-it "preserves error data list"
-    (condition-case err
-        (signal 'nskk-dict-search-error '("msg" extra-data))
-      (nskk-dict-search-error
-       (should (equal (cadr err) "msg"))
-       (should (eq (caddr err) 'extra-data)))))
-
-  (nskk-it "catches search errors with condition-case"
-    (let ((caught nil))
-      (condition-case _err
-          (signal 'nskk-dict-search-error '("test"))
-        (nskk-dict-search-error (setq caught t)))
-      (should caught))))
-
-(nskk-describe "error messages"
-  (nskk-it "search error message contains 'search'"
-    (let ((msg (get 'nskk-dict-search-error 'error-message)))
-      (should (stringp msg))
-      (should (string-match-p "search" (downcase msg)))))
-
-  (nskk-it "invalid query error message contains 'query'"
-    (let ((msg (get 'nskk-dict-search-invalid-query 'error-message)))
-      (should (stringp msg))
-      (should (string-match-p "query" (downcase msg)))))
-
-  (nskk-it "invalid index error message contains 'index'"
-    (let ((msg (get 'nskk-dict-search-invalid-index 'error-message)))
-      (should (stringp msg))
-      (should (string-match-p "index" (downcase msg))))))
-
-(nskk-describe "error type differentiation"
-  (nskk-it "distinguishes query errors from index errors"
-    (let ((query-caught nil)
-          (index-caught nil))
-      (condition-case _err
-          (signal 'nskk-dict-search-invalid-query '("test"))
-        (nskk-dict-search-invalid-query (setq query-caught t))
-        (nskk-dict-search-invalid-index (setq index-caught t)))
-      (should query-caught)
-      (should (not index-caught))
-
-      (setq query-caught nil)
-      (setq index-caught nil)
-      (condition-case _err
-          (signal 'nskk-dict-search-invalid-index '("test"))
-        (nskk-dict-search-invalid-query (setq query-caught t))
-        (nskk-dict-search-invalid-index (setq index-caught t)))
-      (should (not query-caught))
-      (should index-caught))))
-
 (nskk-describe "dict-entry creation"
   (nskk-it "creates entry with default values"
     (let ((entry (make-nskk-dict-entry)))
@@ -682,13 +571,9 @@
 
   (nskk-it "rejects unrepresentable words before observable mutation"
   (nskk-prolog-test-with-isolated-db
-    (let* ((nskk--search-registered-caches
-            (make-hash-table :test 'eq :weakness 'key))
-           (cache (nskk-cache-create :type 'lru :capacity 4))
-           (hook-calls 0)
+    (let* ((hook-calls 0)
            (nskk-jisyo-update-hook
-            (list (lambda () (cl-incf hook-calls))
-                  #'nskk--search-flush-caches))
+            (list (lambda () (cl-incf hook-calls))))
            (nskk--user-dict-index 'user)
            (nskk-dict-modified 'preserved)
            (dictionary-file
@@ -703,8 +588,6 @@
             (nskk-prolog-set-index 'user-dict-entry 2 :trie)
             (nskk-prolog-assert
              '((user-dict-entry "てすと" ("既存"))))
-            (nskk-cache-put cache "cached" "value")
-            (nskk--search-register-cache cache)
             (with-temp-file dictionary-file
               (insert "unchanged" (string 0 127) "\n"))
             (setq before
@@ -753,8 +636,6 @@
               '(user-dict-entry "てすと" ("既存"))))
             (should (eq nskk-dict-modified 'preserved))
             (should (= hook-calls 0))
-            (should (= (nskk-cache-size cache) 1))
-            (should (equal (nskk-cache-get cache "cached") "value"))
             (should
              (equal before-file
                     (with-temp-buffer
@@ -816,18 +697,14 @@
       (dolist (kind '(error quit))
         (ert-info ((format "%s at %s boundary" kind stage))
           (nskk-prolog-test-with-isolated-db
-            (let* ((nskk--search-registered-caches
-                    (make-hash-table :test 'eq :weakness 'key))
-                   (cache (nskk-cache-create :type 'lru :capacity 4))
-                   (events nil)
+            (let* ((events nil)
                    (later-hooks 0)
                    (message-calls 0)
                    (fault-data (list "registration publication fault" stage kind))
                    (nskk-jisyo-update-hook
                     (list
                      (lambda ()
-                       (push 'external-effect events)
-                       (nskk-cache-clear cache))
+                       (push 'external-effect events))
                      (lambda ()
                        (push 'fault-boundary events)
                        (when (eq stage 'hook)
@@ -843,17 +720,12 @@
                    (clause-key
                     (nskk-prolog-clause-key 'user-dict-entry 2))
                    before
-                   before-file
-                   cache-hash
-                   cache-head
-                   cache-tail)
+                   before-file)
               (unwind-protect
                   (progn
                     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
                     (nskk-prolog-assert
                      '((user-dict-entry "既存" ("候補"))))
-                    (nskk-cache-put cache "cached" "value")
-                    (nskk--search-register-cache cache)
                     (with-temp-file dictionary-file
                       (insert "unchanged" (string 0 127) "\n"))
                     (setq before
@@ -861,10 +733,7 @@
                           before-file
                           (with-temp-buffer
                             (insert-file-contents-literally dictionary-file)
-                            (buffer-string))
-                          cache-hash (nskk-cache-lru-hash cache)
-                          cache-head (nskk-cache-lru-head cache)
-                          cache-tail (nskk-cache-lru-tail cache))
+                            (buffer-string)))
                     (let ((condition
                            (cl-letf
                                (((symbol-function 'message)
@@ -892,11 +761,6 @@
                       '(user-dict-entry "再試験" ("成功"))))
                     (should (eq nskk--user-dict-index 'user))
                     (should (eq nskk-dict-modified 'preserved))
-                    (should (eq (nskk-cache-lru-hash cache) cache-hash))
-                    (should (eq (nskk-cache-lru-head cache) cache-head))
-                    (should (eq (nskk-cache-lru-tail cache) cache-tail))
-                    (should (= (nskk-cache-size cache) 1))
-                    (should (equal (nskk-cache-get cache "cached") "value"))
                     (should
                      (equal before-file
                             (with-temp-buffer
@@ -924,13 +788,9 @@
 
   (nskk-it "rejects unrepresentable readings before observable mutation"
   (nskk-prolog-test-with-isolated-db
-    (let* ((nskk--search-registered-caches
-            (make-hash-table :test 'eq :weakness 'key))
-           (cache (nskk-cache-create :type 'lru :capacity 4))
-           (hook-calls 0)
+    (let* ((hook-calls 0)
            (nskk-jisyo-update-hook
-            (list (lambda () (cl-incf hook-calls))
-                  #'nskk--search-flush-caches))
+            (list (lambda () (cl-incf hook-calls))))
            (nskk--user-dict-index 'user)
            (nskk-dict-modified 'preserved)
            (dictionary-file
@@ -945,8 +805,6 @@
             (nskk-prolog-set-index 'user-dict-entry 2 :trie)
             (nskk-prolog-assert
              '((user-dict-entry "てすと" ("既存"))))
-            (nskk-cache-put cache "cached" "value")
-            (nskk--search-register-cache cache)
             (with-temp-file dictionary-file
               (insert "unchanged" (string 0 127) "\n"))
             (setq before
@@ -996,8 +854,6 @@
               '(user-dict-entry "てすと" ("既存"))))
             (should (eq nskk-dict-modified 'preserved))
             (should (= hook-calls 0))
-            (should (= (nskk-cache-size cache) 1))
-            (should (equal (nskk-cache-get cache "cached") "value"))
             (should
              (equal before-file
                     (with-temp-buffer
@@ -1012,10 +868,7 @@
       (dolist (kind '(error quit))
         (ert-info ((format "%s fault after %s" kind stage))
           (nskk-prolog-test-with-isolated-db
-            (let* ((nskk--search-registered-caches
-                    (make-hash-table :test 'eq :weakness 'key))
-                   (cache (nskk-cache-create :type 'lru :capacity 4))
-                   (hook-calls 0)
+            (let* ((hook-calls 0)
                    (fault-calls 0)
                    (nskk-jisyo-update-hook
                     (list (lambda () (cl-incf hook-calls))))
@@ -1031,17 +884,12 @@
                    (real-assert (symbol-function 'nskk-prolog-assert))
                    (real-query (symbol-function 'nskk-prolog-holds-p))
                    before
-                   before-file
-                   cache-hash
-                   cache-head
-                   cache-tail)
+                   before-file)
               (unwind-protect
                   (progn
                     (nskk-prolog-set-index 'user-dict-entry 2 :trie)
                     (nskk-prolog-assert
                      '((user-dict-entry "再試験" ("既存候補"))))
-                    (nskk-cache-put cache "cached" "value")
-                    (nskk--search-register-cache cache)
                     (with-temp-file dictionary-file
                       (insert "unchanged" (string 0 127) "\n"))
                     (setq before
@@ -1049,10 +897,7 @@
                           before-file
                           (with-temp-buffer
                             (insert-file-contents-literally dictionary-file)
-                            (buffer-string))
-                          cache-hash (nskk-cache-lru-hash cache)
-                          cache-head (nskk-cache-lru-head cache)
-                          cache-tail (nskk-cache-lru-tail cache))
+                            (buffer-string)))
                     (cl-labels
                         ((fault ()
                            (cl-incf fault-calls)
@@ -1108,10 +953,6 @@
                         (should (eq nskk--user-dict-index 'user))
                         (should (eq nskk-dict-modified 'preserved))
                         (should (= hook-calls 0))
-                        (should (eq (nskk-cache-lru-hash cache) cache-hash))
-                        (should (eq (nskk-cache-lru-head cache) cache-head))
-                        (should (eq (nskk-cache-lru-tail cache) cache-tail))
-                        (should (= (nskk-cache-size cache) 1))
                         (should
                          (equal before-file
                                 (with-temp-buffer
@@ -1131,10 +972,7 @@
       (dolist (kind '(error quit))
         (ert-info ((format "%s fault after %s" kind stage))
           (nskk-prolog-test-with-isolated-db
-            (let* ((nskk--search-registered-caches
-                    (make-hash-table :test 'eq :weakness 'key))
-                   (cache (nskk-cache-create :type 'lru :capacity 4))
-                   (hook-calls 0)
+            (let* ((hook-calls 0)
                    (fault-calls 0)
                    (nskk-jisyo-update-hook
                     (list (lambda () (cl-incf hook-calls))))
@@ -1152,25 +990,17 @@
                    (real-index (symbol-function 'nskk-prolog-set-index))
                    (real-query (symbol-function 'nskk-prolog-holds-p))
                    before
-                   before-file
-                   cache-hash
-                   cache-head
-                   cache-tail)
+                   before-file)
               (unwind-protect
                   (progn
                     (with-temp-file dictionary-file
                       (insert ";; okuri-nasi entries.\nよみ /既存/\n"))
-                    (nskk-cache-put cache "cached" "value")
-                    (nskk--search-register-cache cache)
                     (setq before
                           (nskk-dict-transaction-predicate-snapshot clause-key)
                           before-file
                           (with-temp-buffer
                             (insert-file-contents-literally dictionary-file)
-                            (buffer-string))
-                          cache-hash (nskk-cache-lru-hash cache)
-                          cache-head (nskk-cache-lru-head cache)
-                          cache-tail (nskk-cache-lru-tail cache))
+                            (buffer-string)))
                     (let ((condition
                            (condition-case error
                                (progn
@@ -1212,10 +1042,6 @@
                     (should (eq nskk--user-dict-index nil))
                     (should (eq nskk-dict-modified 'preserved))
                     (should (= hook-calls 0))
-                    (should (eq (nskk-cache-lru-hash cache) cache-hash))
-                    (should (eq (nskk-cache-lru-head cache) cache-head))
-                    (should (eq (nskk-cache-lru-tail cache) cache-tail))
-                    (should (= (nskk-cache-size cache) 1))
                     (should
                      (equal before-file
                             (with-temp-buffer
@@ -2830,9 +2656,9 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
              (nskk-dict-user-dictionary-file nil)
              (nskk--system-dict-index nil)
              (nskk--user-dict-index nil)
-             (nskk-dict-initialize-hook (list #'nskk--search-flush-caches))
-             (messages nil)
-             (flushes 0))
+             (nskk-dict-initialize-hook
+              (list (lambda () (push 'global-observer events))))
+             (messages nil))
         (with-temp-buffer
           (setq-local nskk-dict-initialize-hook
                       (list
@@ -2845,10 +2671,6 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               ((nskk--dict-detect-system-dictionaries (lambda () nil))
                (nskk-dict-load-user-dictionary (lambda () nil))
                (nskk-dict-load-kakutei-dictionary (lambda () nil))
-               (nskk--search-flush-caches
-                (lambda ()
-                  (push 'global-cache-invalidation events)
-                  (cl-incf flushes)))
                (message
                 (lambda (fmt &rest args)
                   (push (apply #'format fmt args) messages))))
@@ -2856,8 +2678,7 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
         (should (nskk-prolog-holds-p '(dict-initialized)))
         (should
          (equal (nreverse events)
-                '(local-failure local-observer global-cache-invalidation)))
-        (should (= 1 flushes))
+                '(local-failure local-observer global-observer)))
         (should
          (cl-some
           (lambda (text)

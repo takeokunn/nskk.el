@@ -153,6 +153,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Removed the dictionary-registration continuation layer in the henkan
+  pipeline. `nskk--run-registration-session/k` and the CPS wrapper
+  `nskk-start-registration/k` are gone, collapsed into the ordinary
+  function `nskk-start-registration`, which returns the registered word or
+  nil. Both layers accepted a not-found continuation that could never fire
+  — each called only its found continuation, and every call site passed
+  `ignore`. The synchronous `nskk-start-registration` keeps its name,
+  argument and return value, so its callers are unaffected. The
+  `package-lint` prefix allowlist in the `Makefile` loses its now-unused
+  `nskk--run-registration-session/k` entry.
 - Removed the unused public surface of `nskk-state.el`, none of which had
   any caller in `src/`: `nskk-state-get`, `nskk-state-transition`,
   `nskk-state-reset`, `nskk-state-append-input`,
@@ -190,6 +200,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   success and failure continuations rather than a nil sentinel. The
   `(PHYSICAL OWNERSHIP)` snapshot shape that `nskk.el` reads for activation
   rollback is unchanged.
+
+- Reduced the kana module to continuation-passing style only where a
+  conversion can actually fail, returning the character predicates and the
+  total zenkaku/hankaku converters to plain functions. Public function names
+  and their behavior are unchanged; only the generated `/k` variants of the
+  always-succeeding functions are gone.
 
 ### Fixed
 
@@ -245,6 +261,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inhibited, matching the cache module's own rollback macro. A quit
   arriving between the rollback's field assignments could previously
   leave the cache in a partially restored state.
+- Fixed `nskk-kana` declaring its module-initialized flag twice, which made
+  `module-initialized-flag` report the kana flag as two separate solutions.
+- Fixed the kana zenkaku/hankaku round-trip property test drawing from a
+  generator that emits no dakuten, handakuten, ヴ, ん or を, so it could not
+  reach the two-character lookahead it appeared to cover. Replaced with a
+  generator over hankaku units and a composition property that fails when
+  that lookahead is disabled.
 
 ### Removed
 
@@ -309,6 +332,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   during module initialization. The rules they produced are unchanged and
   are now built from data. Code extending AZIK through these macros should
   add `(ROMAJI KANA)` pairs to `nskk-azik-conversion-table` instead.
+- Removed the `zenkaku-to-hankaku/2` and `hankaku-to-zenkaku/2` Prolog fact
+  tables from `nskk-kana-initialize`. Every conversion path used the hash
+  tables directly, so the roughly 200 facts asserted on each initialization
+  had no consumer.
+- Removed the empty `nskk-kana` customization group, which defined no
+  user options.
+- **Breaking:** removed the search entry points no production code path
+  reached. Conversion searches through `nskk-core-search` in
+  `nskk-henkan.el`, which calls `nskk-search-prefix` and
+  `nskk-search-partial` directly and resolves exact lookups through
+  `nskk-dict-lookup`. The generic `nskk-search` dispatcher and the
+  `nskk-search-exact`, `nskk-search-fuzzy` and `nskk-search-with-cache`
+  entry points were reachable only from tests and benchmarks, and are gone
+  with their `/k` variants.
+- **Breaking:** removed the search result cache that only
+  `nskk-search-with-cache` populated, including `nskk-search-cache-snapshots`
+  and `nskk-search-restore-cache-snapshot`. User-dictionary registration no
+  longer snapshots or restores search caches during rollback, because no
+  cache is registered any more. `nskk-cache.el` itself is unaffected and
+  still backs the program-dictionary cache.
+- **Breaking:** removed `nskk-search-jisyo-hook`. It fired only from the
+  deleted `nskk-search` dispatcher, and its documented contract was that
+  direct calls to the individual search functions do not run it, so it has
+  no remaining trigger. `nskk-save-history-hook` is unaffected.
+- **Breaking:** removed the fuzzy search implementation, both Levenshtein
+  distance functions, and the `nskk-search-fuzzy-threshold` user option that
+  configured them.
+- **Breaking:** removed the `nskk-dict-search-error`,
+  `nskk-dict-search-invalid-query` and `nskk-dict-search-invalid-index`
+  conditions. They were signalled only by the deleted dispatcher's argument
+  checks; `nskk-search-prefix` and `nskk-search-partial` never validated
+  their arguments and are unchanged.
 
 ## [0.3.0] - 2026-07-26
 
