@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `defun` elsewhere: the CPS transformer does not rewrite `condition-case`
   bodies, so `succeed`/`fail` placed inside one is caught by that same
   handler and yields a wrong value instead of an error.
+- Renamed the customization group `nskk-show-mode` to `nskk-mode-indicator`.
+  A group whose name ends in `-mode` is reserved for the group named after
+  it, which this one is not. No option was renamed, so saved customizations
+  are unaffected; only the group's position in the customize tree changes.
 - Decomposed the henkan pipeline's large cleanup and commit functions into
   named helpers, and replaced the four hand-rolled `cl-labels` cleanup
   ladders with a shared `nskk--with-cleanup-runner` macro. Each call site

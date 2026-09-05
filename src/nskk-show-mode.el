@@ -39,7 +39,7 @@
 
 ;;;; Customization
 
-(defgroup nskk-show-mode nil
+(defgroup nskk-mode-indicator nil
   "Inline mode indicator settings for NSKK."
   :prefix "nskk-show-mode-"
   :group 'nskk-ui)
@@ -51,7 +51,7 @@ for a short duration then disappears automatically."
   :type 'boolean
   :safe #'booleanp
   :package-version '(nskk . "0.1.0")
-  :group 'nskk-show-mode)
+  :group 'nskk-mode-indicator)
 
 (defcustom nskk-show-mode-style 'inline
   "Display style for the mode indicator.
@@ -63,14 +63,14 @@ Any other value is treated as \\='inline."
                  (const :tag "Tooltip" tooltip))
   :safe #'symbolp
   :package-version '(nskk . "0.1.0")
-  :group 'nskk-show-mode)
+  :group 'nskk-mode-indicator)
 
 (defcustom nskk-show-mode-duration 1.0
   "Duration in seconds to display the inline mode indicator."
   :type 'number
   :safe #'numberp
   :package-version '(nskk . "0.1.0")
-  :group 'nskk-show-mode)
+  :group 'nskk-mode-indicator)
 
 ;;;; Faces
 
@@ -78,7 +78,7 @@ Any other value is treated as \\='inline."
   '((t (:inherit font-lock-keyword-face :weight bold)))
   "Face for the inline mode indicator text."
   :package-version '(nskk . "0.1.0")
-  :group 'nskk-show-mode)
+  :group 'nskk-mode-indicator)
 
 ;;;; Buffer-Local State
 
