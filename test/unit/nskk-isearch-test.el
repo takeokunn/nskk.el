@@ -21,34 +21,40 @@
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 
-;;;; Function Existence
-
-(nskk-describe "nskk-isearch function existence"
-  (nskk-it "nskk-isearch-setup is defined"
-    (should (fboundp 'nskk-isearch-setup)))
-  (nskk-it "nskk-isearch-teardown is defined"
-    (should (fboundp 'nskk-isearch-teardown)))
-  (nskk-it "nskk--isearch-mode-string is defined"
-    (should (fboundp 'nskk--isearch-mode-string)))
-  (nskk-it "nskk--isearch-prompt-advice is defined"
-    (should (fboundp 'nskk--isearch-prompt-advice))))
-
 ;;;; Customization
 
 (nskk-describe "nskk-isearch-mode-string-alist"
-  (nskk-it "is an alist"
-    (should (listp nskk-isearch-mode-string-alist)))
-  (nskk-it "has entry for hiragana"
-    (should (assq 'hiragana nskk-isearch-mode-string-alist)))
-  (nskk-it "has entry for katakana"
-    (should (assq 'katakana nskk-isearch-mode-string-alist)))
-  (nskk-it "has entry for ascii"
-    (should (assq 'ascii nskk-isearch-mode-string-alist)))
-  (nskk-it "has entry for jisx0208-latin"
-    (should (assq 'jisx0208-latin nskk-isearch-mode-string-alist)))
-  (nskk-it "all entries have string values"
+  (nskk-it "maps every valid NSKK mode to an indicator string"
+    (dolist (mode nskk--valid-modes)
+      (should (stringp (cdr (assq mode nskk-isearch-mode-string-alist))))))
+  (nskk-it "maps no key that is not a valid NSKK mode"
     (dolist (entry nskk-isearch-mode-string-alist)
-      (should (stringp (cdr entry))))))
+      (should (memq (car entry) nskk--valid-modes)))))
+
+(nskk-describe "nskk-isearch-mode-string-alist safety predicate"
+  (nskk-it "accepts the default value"
+    (should (funcall (get 'nskk-isearch-mode-string-alist 'safe-local-variable)
+                     nskk-isearch-mode-string-alist)))
+  (nskk-it "rejects an indicator that is not a string"
+    (should-not
+     (funcall (get 'nskk-isearch-mode-string-alist 'safe-local-variable)
+              '((hiragana . 12)))))
+  (nskk-it "rejects a key that is not a symbol"
+    (should-not
+     (funcall (get 'nskk-isearch-mode-string-alist 'safe-local-variable)
+              '(("hiragana" . "[か]")))))
+  (nskk-it "rejects an entry that is not a cons"
+    (should-not
+     (funcall (get 'nskk-isearch-mode-string-alist 'safe-local-variable)
+              '(hiragana)))))
+
+(nskk-describe "nskk-isearch-enable safety predicate"
+  (nskk-it "accepts a boolean"
+    (should (funcall (get 'nskk-isearch-enable 'safe-local-variable) t))
+    (should (funcall (get 'nskk-isearch-enable 'safe-local-variable) nil)))
+  (nskk-it "rejects a non-boolean"
+    (should-not
+     (funcall (get 'nskk-isearch-enable 'safe-local-variable) "yes"))))
 
 ;;;; Mode String Lookup
 
@@ -72,51 +78,49 @@
               (nskk--isearch-orig-buffer (current-buffer)))
           (should (null (nskk--isearch-mode-string)))))))
 
-  (nskk-it "returns hiragana indicator string for hiragana mode"
+  (nskk-it "returns nil when the buffer's mode has no alist entry"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-state-initialize-prolog)
+      (with-temp-buffer
+        (setq nskk-current-state (nskk-state-create 'hiragana))
+        (let ((nskk--isearch-orig-buffer (current-buffer))
+              (nskk-isearch-mode-string-alist nil))
+          (should (null (nskk--isearch-mode-string))))))))
+
+(nskk-deftest-table isearch-mode-string
+  :columns (mode expected)
+  :rows ((hiragana       "[か]")
+         (katakana       "[ア]")
+         (katakana-半角   "[ｱ]")
+         (jisx0208-latin "[英]")
+         (ascii          "[aa]")
+         (latin          "[aa]")
+         (abbrev         "[aあ]"))
+  :description "nskk--isearch-mode-string returns this mode's indicator"
+  :body (nskk-prolog-test-with-isolated-db
+          (nskk-state-initialize-prolog)
+          (with-temp-buffer
+            (setq nskk-current-state (nskk-state-create mode))
+            (let ((nskk--isearch-orig-buffer (current-buffer)))
+              (should (equal (nskk--isearch-mode-string) expected))))))
+
+(nskk-describe "nskk--isearch-mode-string/k"
+  (nskk-it "calls the success continuation with the indicator"
     (nskk-prolog-test-with-isolated-db
       (nskk-state-initialize-prolog)
       (with-temp-buffer
         (setq nskk-current-state (nskk-state-create 'hiragana))
         (let ((nskk--isearch-orig-buffer (current-buffer)))
-          (let ((result (nskk--isearch-mode-string)))
-            (should (stringp result))
-            (should (equal result (cdr (assq 'hiragana nskk-isearch-mode-string-alist)))))))))
-
-  (nskk-it "returns katakana indicator for katakana mode"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-state-initialize-prolog)
-      (with-temp-buffer
-        (setq nskk-current-state (nskk-state-create 'katakana))
-        (let ((nskk--isearch-orig-buffer (current-buffer)))
-          (let ((result (nskk--isearch-mode-string)))
-            (should (equal result (cdr (assq 'katakana nskk-isearch-mode-string-alist)))))))))
-
-  (nskk-it "returns ascii indicator for ascii mode"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-state-initialize-prolog)
-      (with-temp-buffer
-        (setq nskk-current-state (nskk-state-create 'ascii))
-        (let ((nskk--isearch-orig-buffer (current-buffer)))
-          (let ((result (nskk--isearch-mode-string)))
-            (should (equal result (cdr (assq 'ascii nskk-isearch-mode-string-alist)))))))))
-
-  (nskk-it "returns jisx0208-latin indicator for jisx0208-latin mode"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-state-initialize-prolog)
-      (with-temp-buffer
-        (setq nskk-current-state (nskk-state-create 'jisx0208-latin))
-        (let ((nskk--isearch-orig-buffer (current-buffer)))
-          (let ((result (nskk--isearch-mode-string)))
-            (should (equal result (cdr (assq 'jisx0208-latin nskk-isearch-mode-string-alist)))))))))
-
-  (nskk-it "returns abbrev indicator for abbrev mode"
-    (nskk-prolog-test-with-isolated-db
-      (nskk-state-initialize-prolog)
-      (with-temp-buffer
-        (setq nskk-current-state (nskk-state-create 'abbrev))
-        (let ((nskk--isearch-orig-buffer (current-buffer)))
-          (let ((result (nskk--isearch-mode-string)))
-            (should (equal result (cdr (assq 'abbrev nskk-isearch-mode-string-alist))))))))))
+          (should (equal (nskk--isearch-mode-string/k
+                          (lambda (indicator) (list :found indicator))
+                          (lambda () :missing))
+                         '(:found "[か]")))))))
+  (nskk-it "calls the failure continuation when no origin buffer is recorded"
+    (let ((nskk--isearch-orig-buffer nil))
+      (should (eq (nskk--isearch-mode-string/k
+                   (lambda (indicator) indicator)
+                   (lambda () :missing))
+                  :missing)))))
 
 ;;;; Prompt Advice
 
@@ -393,393 +397,267 @@
            (should (= setup-count 0))
            (should (= teardown-count 0))))))))
 
-(progn
-  (progn
-  (defun nskk-isearch-test--all-resource-states ()
-    "Return every physical or ownership state for the three resources."
-    '((nil nil nil)
-      (nil nil t)
-      (nil t nil)
-      (nil t t)
-      (t nil nil)
-      (t nil t)
-      (t t nil)
-      (t t t)))
+(defun nskk-isearch-test--all-resource-states ()
+  "Return every physical or ownership state for the three resources."
+  '((nil nil nil)
+    (nil nil t)
+    (nil t nil)
+    (nil t t)
+    (t nil nil)
+    (t nil t)
+    (t t nil)
+    (t t t)))
 
-  (defun nskk-isearch-test--stage-state (stage)
-    "Return a resource state with only STAGE present."
-    (pcase stage
-      ('mode-hook '(t nil nil))
-      ('mode-end-hook '(nil t nil))
-      ('advice '(nil nil t))
-      (_ '(nil nil nil))))
+(defun nskk-isearch-test--stage-state (stage)
+  "Return a resource state with only STAGE present."
+  (pcase stage
+    ('mode-hook '(t nil nil))
+    ('mode-end-hook '(nil t nil))
+    ('advice '(nil nil t))
+    (_ '(nil nil nil))))
 
-  (defun nskk-isearch-test--mutate-with-fault
-      (target timing condition condition-data mutation)
-    "Run MUTATION, signaling CONDITION at TIMING when TARGET is non-nil."
-    (if (not target)
-        (funcall mutation)
-      (when (eq timing 'before)
-        (signal condition condition-data))
-      (prog1 (funcall mutation)
-        (signal condition condition-data))))
+(defun nskk-isearch-test--mutate-with-fault
+    (target timing condition condition-data mutation)
+  "Run MUTATION, signaling CONDITION at TIMING when TARGET is non-nil."
+  (if (not target)
+      (funcall mutation)
+    (when (eq timing 'before)
+      (signal condition condition-data))
+    (prog1 (funcall mutation)
+      (signal condition condition-data))))
 
-  (defun nskk-isearch-test--call-with-removal-fault
-      (stage timing condition condition-data function)
-    "Call FUNCTION while faulting removal of STAGE at TIMING."
-    (let ((original-remove-hook (symbol-function 'remove-hook))
-          (original-advice-remove (symbol-function 'advice-remove))
-          (original-remove-watcher
-           (symbol-function 'remove-variable-watcher)))
-      (cl-letf
-          (((symbol-function 'remove-hook)
-            (lambda (hook callback &optional local)
-              (nskk-isearch-test--mutate-with-fault
-               (or (and (eq stage 'mode-hook)
-                        (eq hook 'isearch-mode-hook)
-                        (eq callback #'nskk--isearch-setup))
-                   (and (eq stage 'mode-end-hook)
-                        (eq hook 'isearch-mode-end-hook)
-                        (eq callback #'nskk--isearch-teardown)))
-               timing condition condition-data
-               (lambda ()
-                 (funcall original-remove-hook hook callback local)))))
-           ((symbol-function 'advice-remove)
-            (lambda (symbol callback)
-              (nskk-isearch-test--mutate-with-fault
-               (and (eq stage 'advice)
-                    (eq symbol 'isearch-message-prefix)
-                    (eq callback #'nskk--isearch-prompt-advice))
-               timing condition condition-data
-               (lambda ()
-                 (funcall original-advice-remove symbol callback)))))
-           ((symbol-function 'remove-variable-watcher)
-            (lambda (symbol callback)
-              (nskk-isearch-test--mutate-with-fault
-               (and (eq stage 'watcher)
-                    (eq symbol 'nskk-isearch-enable)
-                    (eq callback #'nskk--isearch-enable-watcher))
-               timing condition condition-data
-               (lambda ()
-                 (funcall original-remove-watcher symbol callback))))))
-        (funcall function))))
+(defun nskk-isearch-test--call-with-removal-fault
+    (stage timing condition condition-data function)
+  "Call FUNCTION while faulting removal of STAGE at TIMING."
+  (let ((original-remove-hook (symbol-function 'remove-hook))
+        (original-advice-remove (symbol-function 'advice-remove))
+        (original-remove-watcher
+         (symbol-function 'remove-variable-watcher)))
+    (cl-letf
+        (((symbol-function 'remove-hook)
+          (lambda (hook callback &optional local)
+            (nskk-isearch-test--mutate-with-fault
+             (or (and (eq stage 'mode-hook)
+                      (eq hook 'isearch-mode-hook)
+                      (eq callback #'nskk--isearch-setup))
+                 (and (eq stage 'mode-end-hook)
+                      (eq hook 'isearch-mode-end-hook)
+                      (eq callback #'nskk--isearch-teardown)))
+             timing condition condition-data
+             (lambda ()
+               (funcall original-remove-hook hook callback local)))))
+         ((symbol-function 'advice-remove)
+          (lambda (symbol callback)
+            (nskk-isearch-test--mutate-with-fault
+             (and (eq stage 'advice)
+                  (eq symbol 'isearch-message-prefix)
+                  (eq callback #'nskk--isearch-prompt-advice))
+             timing condition condition-data
+             (lambda ()
+               (funcall original-advice-remove symbol callback)))))
+         ((symbol-function 'remove-variable-watcher)
+          (lambda (symbol callback)
+            (nskk-isearch-test--mutate-with-fault
+             (and (eq stage 'watcher)
+                  (eq symbol 'nskk-isearch-enable)
+                  (eq callback #'nskk--isearch-enable-watcher))
+             timing condition condition-data
+             (lambda ()
+               (funcall original-remove-watcher symbol callback))))))
+      (funcall function))))
 
-  (progn
-  (nskk-describe "nskk-isearch ownership matrices"
-    (nskk-it "round-trips setup and teardown for all eight initial states"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (dolist (initial-state (nskk-isearch-test--all-resource-states))
+(nskk-describe "nskk-isearch ownership matrices"
+  (nskk-it "round-trips setup and teardown for all eight initial states"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (dolist (initial-state (nskk-isearch-test--all-resource-states))
+         (nskk--isearch-restore-resource-state '(nil nil nil))
+         (nskk--isearch-set-ownership-state '(nil nil nil))
+         (nskk--isearch-restore-resource-state initial-state)
+         (nskk-isearch-setup)
+         (nskk-isearch-setup)
+         (should (equal (nskk-isearch-resource-state) '(t t t)))
+         (should
+          (equal (nskk--isearch-ownership-state)
+                 (mapcar #'not initial-state)))
+         (setq nskk--isearch-orig-buffer (current-buffer))
+         (nskk-isearch-teardown)
+         (nskk-isearch-teardown)
+         (should (equal (nskk-isearch-resource-state) initial-state))
+         (should (equal (nskk--isearch-ownership-state)
+                        '(nil nil nil)))
+         (should-not nskk--isearch-orig-buffer)))))
+
+  (nskk-it "tears down all 64 physical and ownership combinations"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (dolist (physical-state (nskk-isearch-test--all-resource-states))
+         (dolist (ownership-state
+                  (nskk-isearch-test--all-resource-states))
            (nskk--isearch-restore-resource-state '(nil nil nil))
            (nskk--isearch-set-ownership-state '(nil nil nil))
-           (nskk--isearch-restore-resource-state initial-state)
-           (nskk-isearch-setup)
-           (nskk-isearch-setup)
-           (should (equal (nskk-isearch-resource-state) '(t t t)))
-           (should
-            (equal (nskk--isearch-ownership-state)
-                   (mapcar #'not initial-state)))
+           (nskk--isearch-restore-resource-state physical-state)
+           (nskk--isearch-set-ownership-state ownership-state)
            (setq nskk--isearch-orig-buffer (current-buffer))
-           (nskk-isearch-teardown)
-           (nskk-isearch-teardown)
-           (should (equal (nskk-isearch-resource-state) initial-state))
-           (should (equal (nskk--isearch-ownership-state)
-                          '(nil nil nil)))
-           (should-not nskk--isearch-orig-buffer)))))
+           (let ((expected
+                  (cl-mapcar (lambda (present owned)
+                               (and present (not owned)))
+                             physical-state ownership-state)))
+             (nskk-isearch-teardown)
+             (nskk-isearch-teardown)
+             (should (equal (nskk-isearch-resource-state) expected))
+             (should (equal (nskk--isearch-ownership-state)
+                            '(nil nil nil)))
+             (should-not nskk--isearch-orig-buffer)))))))
 
-    (nskk-it "tears down all 64 physical and ownership combinations"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (dolist (physical-state (nskk-isearch-test--all-resource-states))
-           (dolist (ownership-state
-                    (nskk-isearch-test--all-resource-states))
-             (nskk--isearch-restore-resource-state '(nil nil nil))
-             (nskk--isearch-set-ownership-state '(nil nil nil))
-             (nskk--isearch-restore-resource-state physical-state)
-             (nskk--isearch-set-ownership-state ownership-state)
-             (setq nskk--isearch-orig-buffer (current-buffer))
-             (let ((expected
-                    (cl-mapcar (lambda (present owned)
-                                 (and present (not owned)))
-                               physical-state ownership-state)))
-               (nskk-isearch-teardown)
-               (nskk-isearch-teardown)
-               (should (equal (nskk-isearch-resource-state) expected))
-               (should (equal (nskk--isearch-ownership-state)
-                              '(nil nil nil)))
-               (should-not nskk--isearch-orig-buffer)))))))
+  (nskk-it "preserves preexisting nonowned watcher and resources on unload"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (nskk--isearch-restore-resource-state '(t t t))
+       (nskk--isearch-set-ownership-state '(nil nil nil))
+       (nskk--isearch-restore-watcher-presence nil)
+       (setq nskk--isearch-enable-watcher-owned nil)
+       (add-variable-watcher 'nskk-isearch-enable
+                             #'nskk--isearch-enable-watcher)
+       (nskk--isearch-register-enable-watcher)
+       (nskk--isearch-register-enable-watcher)
+       (should-not nskk--isearch-enable-watcher-owned)
+       (should (= 1
+                  (cl-count #'nskk--isearch-enable-watcher
+                            (get-variable-watchers 'nskk-isearch-enable)
+                            :test #'eq)))
+       (should-not (nskk-isearch-unload-function))
+       (should (equal (nskk-isearch-resource-state) '(t t t)))
+       (should (nskk--isearch-watcher-present-p))
+       (should-not nskk--isearch-enable-watcher-owned)
+       (should (= 1
+                  (cl-count #'nskk--isearch-enable-watcher
+                            (get-variable-watchers 'nskk-isearch-enable)
+                            :test #'eq)))))))
 
-    (nskk-it "preserves preexisting nonowned watcher and resources on unload"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (nskk--isearch-restore-resource-state '(t t t))
-         (nskk--isearch-set-ownership-state '(nil nil nil))
-         (nskk--isearch-restore-watcher-presence nil)
-         (setq nskk--isearch-enable-watcher-owned nil)
-         (add-variable-watcher 'nskk-isearch-enable
-                               #'nskk--isearch-enable-watcher)
-         (nskk--isearch-register-enable-watcher)
-         (nskk--isearch-register-enable-watcher)
-         (should-not nskk--isearch-enable-watcher-owned)
-         (should (= 1
-                    (cl-count #'nskk--isearch-enable-watcher
-                              (get-variable-watchers 'nskk-isearch-enable)
-                              :test #'eq)))
-         (should-not (nskk-isearch-unload-function))
-         (should (equal (nskk-isearch-resource-state) '(t t t)))
-         (should (nskk--isearch-watcher-present-p))
-         (should-not nskk--isearch-enable-watcher-owned)
-         (should (= 1
-                    (cl-count #'nskk--isearch-enable-watcher
-                              (get-variable-watchers 'nskk-isearch-enable)
-                              :test #'eq)))))))
-
-  (progn
-  (nskk-describe "nskk-isearch adversarial cleanup"
-    (nskk-it "continues teardown after every before or after removal fault"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (dolist (stage '(mode-hook mode-end-hook advice))
-           (dolist (timing '(before after))
-             (dolist (condition '(error quit))
-               (nskk--isearch-restore-resource-state '(nil nil nil))
-               (nskk--isearch-set-ownership-state '(nil nil nil))
-               (nskk-isearch-setup)
-               (setq nskk--isearch-orig-buffer (current-buffer))
-               (let* ((payload (list stage timing condition))
-                      (data (list payload))
-                      (caught
-                       (nskk-isearch-test--call-with-removal-fault
-                        stage timing condition data
-                        (lambda ()
-                          (condition-case condition-data
-                              (progn (nskk-isearch-teardown) nil)
-                            ((error quit) condition-data))))))
-                 (should (eq (car caught) condition))
-                 (should (eq (cdr caught) data))
-                 (should (eq (car (cdr caught)) payload))
-                 (should-not nskk--isearch-orig-buffer)
-                 (let ((expected
-                        (if (eq timing 'before)
-                            (nskk-isearch-test--stage-state stage)
-                          '(nil nil nil))))
-                   (should (equal (nskk-isearch-resource-state) expected))
-                   (should (equal (nskk--isearch-ownership-state)
-                                  expected)))
-                 (nskk-isearch-teardown)
-                 (nskk-isearch-teardown)
-                 (should (equal (nskk-isearch-resource-state)
-                                '(nil nil nil)))
-                 (should (equal (nskk--isearch-ownership-state)
-                                '(nil nil nil))))))))))
-
-    (nskk-it "continues unload after every before or after removal fault"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (dolist (stage '(mode-hook mode-end-hook advice watcher))
-           (dolist (timing '(before after))
-             (dolist (condition '(error quit))
-               (nskk--isearch-restore-resource-state '(nil nil nil))
-               (nskk--isearch-set-ownership-state '(nil nil nil))
-               (nskk--isearch-restore-watcher-presence nil)
-               (setq nskk--isearch-enable-watcher-owned nil)
-               (nskk-isearch-setup)
-               (nskk--isearch-register-enable-watcher)
-               (setq nskk--isearch-orig-buffer (current-buffer))
-               (let* ((payload (list stage timing condition))
-                      (data (list payload))
-                      (caught
-                       (nskk-isearch-test--call-with-removal-fault
-                        stage timing condition data
-                        (lambda ()
-                          (condition-case condition-data
-                              (progn (nskk-isearch-unload-function) nil)
-                            ((error quit) condition-data))))))
-                 (should (eq (car caught) condition))
-                 (should (eq (cdr caught) data))
-                 (should (eq (car (cdr caught)) payload))
-                 (should-not nskk--isearch-orig-buffer)
-                 (let ((expected
-                        (if (and (eq timing 'before)
-                                 (not (eq stage 'watcher)))
-                            (nskk-isearch-test--stage-state stage)
-                          '(nil nil nil))))
-                   (should (equal (nskk-isearch-resource-state) expected))
-                   (should (equal (nskk--isearch-ownership-state)
-                                  expected)))
-                 (should (eq (nskk--isearch-watcher-present-p)
-                             (and (eq timing 'before)
-                                  (eq stage 'watcher))))
-                 (should (eq nskk--isearch-enable-watcher-owned
-                             (and (eq timing 'before)
-                                  (eq stage 'watcher))))
-                 (nskk-isearch-unload-function)
-                 (nskk-isearch-unload-function)
-                 (should (equal (nskk-isearch-resource-state)
-                                '(nil nil nil)))
-                 (should (equal (nskk--isearch-ownership-state)
-                                '(nil nil nil)))
-                 (should-not (nskk--isearch-watcher-present-p))
-                 (should-not nskk--isearch-enable-watcher-owned)))))))))
-
-  (progn
-  (nskk-describe "nskk-isearch cleanup convergence"
-    (nskk-it "rolls back watcher registration faults with condition identity"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
+(nskk-describe "nskk-isearch adversarial cleanup"
+  (nskk-it "continues teardown after every before or after removal fault"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (dolist (stage '(mode-hook mode-end-hook advice))
          (dolist (timing '(before after))
            (dolist (condition '(error quit))
-             (nskk--isearch-restore-watcher-presence nil)
-             (setq nskk--isearch-enable-watcher-owned nil)
-             (let* ((payload (list 'register timing condition))
+             (nskk--isearch-restore-resource-state '(nil nil nil))
+             (nskk--isearch-set-ownership-state '(nil nil nil))
+             (nskk-isearch-setup)
+             (setq nskk--isearch-orig-buffer (current-buffer))
+             (let* ((payload (list stage timing condition))
                     (data (list payload))
-                    (original-add
-                     (symbol-function 'add-variable-watcher))
-                    caught)
-               (cl-letf (((symbol-function 'add-variable-watcher)
-                          (lambda (symbol function)
-                            (if (and (eq symbol 'nskk-isearch-enable)
-                                     (eq function
-                                         #'nskk--isearch-enable-watcher))
-                                (nskk-isearch-test--mutate-with-fault
-                                 'watcher timing condition data
-                                 (lambda ()
-                                   (funcall original-add symbol function)))
-                              (funcall original-add symbol function)))))
-                 (setq caught
-                       (condition-case condition-data
-                           (progn
-                             (nskk--isearch-register-enable-watcher)
-                             nil)
-                         ((error quit) condition-data))))
+                    (caught
+                     (nskk-isearch-test--call-with-removal-fault
+                      stage timing condition data
+                      (lambda ()
+                        (condition-case condition-data
+                            (progn (nskk-isearch-teardown) nil)
+                          ((error quit) condition-data))))))
                (should (eq (car caught) condition))
                (should (eq (cdr caught) data))
                (should (eq (car (cdr caught)) payload))
+               (should-not nskk--isearch-orig-buffer)
+               (let ((expected
+                      (if (eq timing 'before)
+                          (nskk-isearch-test--stage-state stage)
+                        '(nil nil nil))))
+                 (should (equal (nskk-isearch-resource-state) expected))
+                 (should (equal (nskk--isearch-ownership-state)
+                                expected)))
+               (nskk-isearch-teardown)
+               (nskk-isearch-teardown)
+               (should (equal (nskk-isearch-resource-state)
+                              '(nil nil nil)))
+               (should (equal (nskk--isearch-ownership-state)
+                              '(nil nil nil))))))))))
+
+  (nskk-it "continues unload after every before or after removal fault"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (dolist (stage '(mode-hook mode-end-hook advice watcher))
+         (dolist (timing '(before after))
+           (dolist (condition '(error quit))
+             (nskk--isearch-restore-resource-state '(nil nil nil))
+             (nskk--isearch-set-ownership-state '(nil nil nil))
+             (nskk--isearch-restore-watcher-presence nil)
+             (setq nskk--isearch-enable-watcher-owned nil)
+             (nskk-isearch-setup)
+             (nskk--isearch-register-enable-watcher)
+             (setq nskk--isearch-orig-buffer (current-buffer))
+             (let* ((payload (list stage timing condition))
+                    (data (list payload))
+                    (caught
+                     (nskk-isearch-test--call-with-removal-fault
+                      stage timing condition data
+                      (lambda ()
+                        (condition-case condition-data
+                            (progn (nskk-isearch-unload-function) nil)
+                          ((error quit) condition-data))))))
+               (should (eq (car caught) condition))
+               (should (eq (cdr caught) data))
+               (should (eq (car (cdr caught)) payload))
+               (should-not nskk--isearch-orig-buffer)
+               (let ((expected
+                      (if (and (eq timing 'before)
+                               (not (eq stage 'watcher)))
+                          (nskk-isearch-test--stage-state stage)
+                        '(nil nil nil))))
+                 (should (equal (nskk-isearch-resource-state) expected))
+                 (should (equal (nskk--isearch-ownership-state)
+                                expected)))
+               (should (eq (nskk--isearch-watcher-present-p)
+                           (and (eq timing 'before)
+                                (eq stage 'watcher))))
+               (should (eq nskk--isearch-enable-watcher-owned
+                           (and (eq timing 'before)
+                                (eq stage 'watcher))))
+               (nskk-isearch-unload-function)
+               (nskk-isearch-unload-function)
+               (should (equal (nskk-isearch-resource-state)
+                              '(nil nil nil)))
+               (should (equal (nskk--isearch-ownership-state)
+                              '(nil nil nil)))
                (should-not (nskk--isearch-watcher-present-p))
-               (should-not nskk--isearch-enable-watcher-owned))
-             (nskk--isearch-register-enable-watcher)
-             (nskk--isearch-register-enable-watcher)
-             (should (nskk--isearch-watcher-present-p))
-             (should nskk--isearch-enable-watcher-owned)
-             (should (= (cl-count #'nskk--isearch-enable-watcher
-                                  (get-variable-watchers
-                                   'nskk-isearch-enable))
-                        1)))))))
+               (should-not nskk--isearch-enable-watcher-owned)))))))))
 
-    (nskk-it "keeps the first cleanup condition while attempting later cleanup"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (nskk--isearch-restore-transaction-state '((t t t) (t t t)))
-         (setq nskk--isearch-orig-buffer (current-buffer))
-         (let* ((first-payload (list 'first-removal))
-                (first-data (list first-payload))
-                (later-payload (list 'later-removal))
-                (later-data (list later-payload))
-                (later-called nil)
-                (original-remove-hook
-                 (symbol-function 'remove-hook))
-                caught)
-           (cl-letf (((symbol-function 'remove-hook)
-                      (lambda (hook function &optional local)
-                        (cond
-                         ((and (eq hook 'isearch-mode-hook)
-                               (eq function #'nskk--isearch-setup))
-                          (signal 'error first-data))
-                         ((and (eq hook 'isearch-mode-end-hook)
-                               (eq function #'nskk--isearch-teardown))
-                          (setq later-called t)
-                          (signal 'quit later-data))
-                         (t
-                          (funcall original-remove-hook
-                                   hook function local))))))
-             (setq caught
-                   (condition-case condition-data
-                       (progn (nskk-isearch-teardown) nil)
-                     ((error quit) condition-data))))
-           (should later-called)
-           (should (eq (car caught) 'error))
-           (should (eq (cdr caught) first-data))
-           (should (eq (car (cdr caught)) first-payload))
-           (should-not nskk--isearch-orig-buffer)
-           (nskk-isearch-teardown)
-           (should (equal (nskk-isearch-resource-state)
-                          '(nil nil nil)))
-           (should (equal (nskk--isearch-ownership-state)
-                          '(nil nil nil)))))))
-
-    (nskk-it "removes teardown recontamination in final reconciliation"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (nskk--isearch-restore-transaction-state '((t t t) (t t t)))
-         (let ((original-remove-hook
-                (symbol-function 'remove-hook))
-               (recontaminated nil))
-           (cl-letf (((symbol-function 'remove-hook)
-                      (lambda (hook function &optional local)
-                        (funcall original-remove-hook hook function local)
-                        (when (and (not recontaminated)
-                                   (eq hook 'isearch-mode-end-hook)
-                                   (eq function
-                                       #'nskk--isearch-teardown))
-                          (setq recontaminated t)
-                          (add-hook 'isearch-mode-hook
-                                    #'nskk--isearch-setup)))))
-             (nskk-isearch-teardown))
-           (should recontaminated)
-           (should (equal (nskk-isearch-resource-state)
-                          '(nil nil nil)))
-           (should (equal (nskk--isearch-ownership-state)
-                          '(nil nil nil)))))))
-
-    (nskk-it "removes unload recontamination after watcher cleanup"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (nskk-isearch-setup)
-         (nskk--isearch-register-enable-watcher)
-         (let ((original-remove-watcher
-                (symbol-function 'remove-variable-watcher))
-               (recontaminated nil))
-           (cl-letf (((symbol-function 'remove-variable-watcher)
-                      (lambda (symbol function)
-                        (funcall original-remove-watcher symbol function)
-                        (when (and (not recontaminated)
-                                   (eq symbol 'nskk-isearch-enable)
+(nskk-describe "nskk-isearch cleanup convergence"
+  (nskk-it "rolls back watcher registration faults with condition identity"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (dolist (timing '(before after))
+         (dolist (condition '(error quit))
+           (nskk--isearch-restore-watcher-presence nil)
+           (setq nskk--isearch-enable-watcher-owned nil)
+           (let* ((payload (list 'register timing condition))
+                  (data (list payload))
+                  (original-add
+                   (symbol-function 'add-variable-watcher))
+                  caught)
+             (cl-letf (((symbol-function 'add-variable-watcher)
+                        (lambda (symbol function)
+                          (if (and (eq symbol 'nskk-isearch-enable)
                                    (eq function
                                        #'nskk--isearch-enable-watcher))
-                          (setq recontaminated t)
-                          (advice-add 'isearch-message-prefix
-                                      :around
-                                      #'nskk--isearch-prompt-advice)))))
-             (nskk-isearch-unload-function))
-           (should recontaminated)
-           (should (equal (nskk-isearch-resource-state)
-                          '(nil nil nil)))
-           (should (equal (nskk--isearch-ownership-state)
-                          '(nil nil nil)))
-           (should-not (nskk--isearch-watcher-present-p))
-           (should-not nskk--isearch-enable-watcher-owned)))))
-
-    (nskk-it "converges watcher registration after adversarial removal"
-      (nskk-isearch-test--call-with-isolated-lifecycle
-       (lambda ()
-         (nskk--isearch-restore-watcher-presence nil)
-         (setq nskk--isearch-enable-watcher-owned nil)
-         (let ((original-add
-                (symbol-function 'add-variable-watcher))
-               (original-remove
-                (symbol-function 'remove-variable-watcher))
-               (add-count 0))
-           (cl-letf (((symbol-function 'add-variable-watcher)
-                      (lambda (symbol function)
-                        (funcall original-add symbol function)
-                        (when (and (= add-count 0)
-                                   (eq symbol 'nskk-isearch-enable)
-                                   (eq function
-                                       #'nskk--isearch-enable-watcher))
-                          (funcall original-remove symbol function))
-                        (setq add-count (1+ add-count)))))
-             (nskk--isearch-register-enable-watcher))
-           (should (= add-count 2))
+                              (nskk-isearch-test--mutate-with-fault
+                               'watcher timing condition data
+                               (lambda ()
+                                 (funcall original-add symbol function)))
+                            (funcall original-add symbol function)))))
+               (setq caught
+                     (condition-case condition-data
+                         (progn
+                           (nskk--isearch-register-enable-watcher)
+                           nil)
+                       ((error quit) condition-data))))
+             (should (eq (car caught) condition))
+             (should (eq (cdr caught) data))
+             (should (eq (car (cdr caught)) payload))
+             (should-not (nskk--isearch-watcher-present-p))
+             (should-not nskk--isearch-enable-watcher-owned))
+           (nskk--isearch-register-enable-watcher)
+           (nskk--isearch-register-enable-watcher)
            (should (nskk--isearch-watcher-present-p))
            (should nskk--isearch-enable-watcher-owned)
            (should (= (cl-count #'nskk--isearch-enable-watcher
@@ -787,62 +665,182 @@
                                  'nskk-isearch-enable))
                       1)))))))
 
-  (progn
-  (nskk-describe "nskk isearch nested origins"
-    (nskk-it "restores nested origins in LIFO order without lifecycle drift"
-      (let ((outer (generate-new-buffer " *nskk-isearch-outer*"))
-            (inner (generate-new-buffer " *nskk-isearch-inner*"))
-            (nskk--isearch-orig-buffer nil)
-            (nskk--isearch-orig-buffer-stack nil)
-            (setup-function (symbol-function 'nskk--isearch-setup))
-            (teardown-function (symbol-function 'nskk--isearch-teardown))
-            (resource-state (nskk-isearch-resource-state))
-            (watcher-state (nskk--isearch-watcher-state)))
-        (unwind-protect
-            (progn
-              (with-current-buffer outer
-                (nskk--isearch-setup))
-              (should (eq nskk--isearch-orig-buffer outer))
-              (with-current-buffer inner
-                (nskk--isearch-setup))
-              (should (eq nskk--isearch-orig-buffer inner))
-              (should (equal nskk--isearch-orig-buffer-stack
-                             (list outer nil)))
-              (kill-buffer inner)
-              (nskk--isearch-teardown)
-              (should (eq nskk--isearch-orig-buffer outer))
-              (should (equal nskk--isearch-orig-buffer-stack '(nil)))
-              (nskk--isearch-teardown)
-              (should-not nskk--isearch-orig-buffer)
-              (should-not nskk--isearch-orig-buffer-stack)
-              (nskk--isearch-teardown)
-              (should-not nskk--isearch-orig-buffer)
-              (should-not nskk--isearch-orig-buffer-stack)
-              (should (eq setup-function
-                          (symbol-function 'nskk--isearch-setup)))
-              (should (eq teardown-function
-                          (symbol-function 'nskk--isearch-teardown)))
-              (should (equal resource-state
-                             (nskk-isearch-resource-state)))
-              (should (equal watcher-state
-                             (nskk--isearch-watcher-state))))
-          (when (buffer-live-p inner)
-            (kill-buffer inner))
-          (when (buffer-live-p outer)
-            (kill-buffer outer)))))
+  (nskk-it "keeps the first cleanup condition while attempting later cleanup"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (nskk--isearch-restore-transaction-state '((t t t) (t t t)))
+       (setq nskk--isearch-orig-buffer (current-buffer))
+       (let* ((first-payload (list 'first-removal))
+              (first-data (list first-payload))
+              (later-payload (list 'later-removal))
+              (later-data (list later-payload))
+              (later-called nil)
+              (original-remove-hook
+               (symbol-function 'remove-hook))
+              caught)
+         (cl-letf (((symbol-function 'remove-hook)
+                    (lambda (hook function &optional local)
+                      (cond
+                       ((and (eq hook 'isearch-mode-hook)
+                             (eq function #'nskk--isearch-setup))
+                        (signal 'error first-data))
+                       ((and (eq hook 'isearch-mode-end-hook)
+                             (eq function #'nskk--isearch-teardown))
+                        (setq later-called t)
+                        (signal 'quit later-data))
+                       (t
+                        (funcall original-remove-hook
+                                 hook function local))))))
+           (setq caught
+                 (condition-case condition-data
+                     (progn (nskk-isearch-teardown) nil)
+                   ((error quit) condition-data))))
+         (should later-called)
+         (should (eq (car caught) 'error))
+         (should (eq (cdr caught) first-data))
+         (should (eq (car (cdr caught)) first-payload))
+         (should-not nskk--isearch-orig-buffer)
+         (nskk-isearch-teardown)
+         (should (equal (nskk-isearch-resource-state)
+                        '(nil nil nil)))
+         (should (equal (nskk--isearch-ownership-state)
+                        '(nil nil nil)))))))
 
-    (nskk-it "clears all origin frames on public teardown and unload"
-      (dolist (cleanup '(nskk-isearch-teardown
-                         nskk-isearch-unload-function))
-        (nskk-isearch-test--call-with-isolated-lifecycle
-         (lambda ()
-           (setq nskk--isearch-orig-buffer (current-buffer)
-                 nskk--isearch-orig-buffer-stack
-                 (list (current-buffer) nil))
-           (funcall cleanup)
-           (should-not nskk--isearch-orig-buffer)
-           (should-not nskk--isearch-orig-buffer-stack))))))
+  (nskk-it "removes teardown recontamination in final reconciliation"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (nskk--isearch-restore-transaction-state '((t t t) (t t t)))
+       (let ((original-remove-hook
+              (symbol-function 'remove-hook))
+             (recontaminated nil))
+         (cl-letf (((symbol-function 'remove-hook)
+                    (lambda (hook function &optional local)
+                      (funcall original-remove-hook hook function local)
+                      (when (and (not recontaminated)
+                                 (eq hook 'isearch-mode-end-hook)
+                                 (eq function
+                                     #'nskk--isearch-teardown))
+                        (setq recontaminated t)
+                        (add-hook 'isearch-mode-hook
+                                  #'nskk--isearch-setup)))))
+           (nskk-isearch-teardown))
+         (should recontaminated)
+         (should (equal (nskk-isearch-resource-state)
+                        '(nil nil nil)))
+         (should (equal (nskk--isearch-ownership-state)
+                        '(nil nil nil)))))))
 
-  (provide 'nskk-isearch-test)))))))
+  (nskk-it "removes unload recontamination after watcher cleanup"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (nskk-isearch-setup)
+       (nskk--isearch-register-enable-watcher)
+       (let ((original-remove-watcher
+              (symbol-function 'remove-variable-watcher))
+             (recontaminated nil))
+         (cl-letf (((symbol-function 'remove-variable-watcher)
+                    (lambda (symbol function)
+                      (funcall original-remove-watcher symbol function)
+                      (when (and (not recontaminated)
+                                 (eq symbol 'nskk-isearch-enable)
+                                 (eq function
+                                     #'nskk--isearch-enable-watcher))
+                        (setq recontaminated t)
+                        (advice-add 'isearch-message-prefix
+                                    :around
+                                    #'nskk--isearch-prompt-advice)))))
+           (nskk-isearch-unload-function))
+         (should recontaminated)
+         (should (equal (nskk-isearch-resource-state)
+                        '(nil nil nil)))
+         (should (equal (nskk--isearch-ownership-state)
+                        '(nil nil nil)))
+         (should-not (nskk--isearch-watcher-present-p))
+         (should-not nskk--isearch-enable-watcher-owned)))))
+
+  (nskk-it "converges watcher registration after adversarial removal"
+    (nskk-isearch-test--call-with-isolated-lifecycle
+     (lambda ()
+       (nskk--isearch-restore-watcher-presence nil)
+       (setq nskk--isearch-enable-watcher-owned nil)
+       (let ((original-add
+              (symbol-function 'add-variable-watcher))
+             (original-remove
+              (symbol-function 'remove-variable-watcher))
+             (add-count 0))
+         (cl-letf (((symbol-function 'add-variable-watcher)
+                    (lambda (symbol function)
+                      (funcall original-add symbol function)
+                      (when (and (= add-count 0)
+                                 (eq symbol 'nskk-isearch-enable)
+                                 (eq function
+                                     #'nskk--isearch-enable-watcher))
+                        (funcall original-remove symbol function))
+                      (setq add-count (1+ add-count)))))
+           (nskk--isearch-register-enable-watcher))
+         (should (= add-count 2))
+         (should (nskk--isearch-watcher-present-p))
+         (should nskk--isearch-enable-watcher-owned)
+         (should (= (cl-count #'nskk--isearch-enable-watcher
+                              (get-variable-watchers
+                               'nskk-isearch-enable))
+                    1)))))))
+
+(nskk-describe "nskk isearch nested origins"
+  (nskk-it "restores nested origins in LIFO order without lifecycle drift"
+    (let ((outer (generate-new-buffer " *nskk-isearch-outer*"))
+          (inner (generate-new-buffer " *nskk-isearch-inner*"))
+          (nskk--isearch-orig-buffer nil)
+          (nskk--isearch-orig-buffer-stack nil)
+          (setup-function (symbol-function 'nskk--isearch-setup))
+          (teardown-function (symbol-function 'nskk--isearch-teardown))
+          (resource-state (nskk-isearch-resource-state))
+          (watcher-state (nskk--isearch-watcher-state)))
+      (unwind-protect
+          (progn
+            (with-current-buffer outer
+              (nskk--isearch-setup))
+            (should (eq nskk--isearch-orig-buffer outer))
+            (with-current-buffer inner
+              (nskk--isearch-setup))
+            (should (eq nskk--isearch-orig-buffer inner))
+            (should (equal nskk--isearch-orig-buffer-stack
+                           (list outer nil)))
+            (kill-buffer inner)
+            (nskk--isearch-teardown)
+            (should (eq nskk--isearch-orig-buffer outer))
+            (should (equal nskk--isearch-orig-buffer-stack '(nil)))
+            (nskk--isearch-teardown)
+            (should-not nskk--isearch-orig-buffer)
+            (should-not nskk--isearch-orig-buffer-stack)
+            (nskk--isearch-teardown)
+            (should-not nskk--isearch-orig-buffer)
+            (should-not nskk--isearch-orig-buffer-stack)
+            (should (eq setup-function
+                        (symbol-function 'nskk--isearch-setup)))
+            (should (eq teardown-function
+                        (symbol-function 'nskk--isearch-teardown)))
+            (should (equal resource-state
+                           (nskk-isearch-resource-state)))
+            (should (equal watcher-state
+                           (nskk--isearch-watcher-state))))
+        (when (buffer-live-p inner)
+          (kill-buffer inner))
+        (when (buffer-live-p outer)
+          (kill-buffer outer)))))
+
+  (nskk-it "clears all origin frames on public teardown and unload"
+    (dolist (cleanup '(nskk-isearch-teardown
+                       nskk-isearch-unload-function))
+      (nskk-isearch-test--call-with-isolated-lifecycle
+       (lambda ()
+         (setq nskk--isearch-orig-buffer (current-buffer)
+               nskk--isearch-orig-buffer-stack
+               (list (current-buffer) nil))
+         (funcall cleanup)
+         (should-not nskk--isearch-orig-buffer)
+         (should-not nskk--isearch-orig-buffer-stack))))))
+
+(provide 'nskk-isearch-test)
 
 ;;; nskk-isearch-test.el ends here

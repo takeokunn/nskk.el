@@ -111,6 +111,144 @@
       (nskk-e2e-assert-buffer "日本"))))
 
 ;;;;
+;;;; Point position after C-j commit
+;;;;
+
+(nskk-describe "point position after C-j commit"
+  (nskk-it "point is at point-max after C-j commit from converting state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "漢字")
+      (should (= (point) (point-max)))))
+
+  (nskk-it "point is at point-max after C-j commit with pre-existing buffer text"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "あ")
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-buffer "あ漢字")
+      (should (= (point) (point-max)))))
+
+  (nskk-it "point is strictly after where it was before commit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (let ((start (point)))
+        (nskk-e2e-type "Kanji")
+        (nskk-e2e-type "SPC")
+        (nskk-e2e-type "C-j")
+        (nskk-e2e-assert-not-converting)
+        (should (> (point) start)))))
+
+  (nskk-it "point is at point-max after C-j kakutei on preedit (no conversion)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-henkan-phase nil)
+      (should (= (point) (point-max))))))
+
+;;;;
+;;;; Point position after C-g cancel
+;;;;
+
+(nskk-describe "point position after C-g cancel"
+  (nskk-it "point is within valid bounds after C-g from converting state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-henkan-phase 'on)
+      (should (<= (point-min) (point)))
+      (should (<= (point) (point-max)))))
+
+  (nskk-it "point is at point-min after C-g from preedit state (empty buffer)"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-henkan-phase nil)
+      (nskk-e2e-assert-buffer "")
+      (should (= (point) (point-min)))))
+
+  (nskk-it "point is at point-max after C-g from converting state reverts to preedit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-not-converting)
+      (nskk-e2e-assert-henkan-phase 'on)
+      (nskk-e2e-assert-buffer "▽かんじ")
+      (should (= (point) (point-max)))))
+
+  (nskk-it "point remains within valid bounds after C-g from converting with pre-existing text"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "あ")
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-type "C-g")
+      (nskk-e2e-assert-not-converting)
+      (should (<= (point-min) (point)))
+      (should (<= (point) (point-max))))))
+
+;;;;
+;;;; No buffer artifacts during conversion
+;;;;
+
+(nskk-describe "buffer does not contain conversion overlay text"
+  (nskk-it "buffer-string during ▼ state contains the ▼ marker"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (should (string-match-p "▼" (buffer-string)))))
+
+  (nskk-it "buffer-string during ▼ state does not contain the committed candidate text"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (should (not (string-match-p "漢字" (buffer-string))))))
+
+  (nskk-it "candidate text appears in buffer only after commit"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (should (not (string-match-p "漢字" (buffer-string))))
+      (nskk-e2e-type "C-j")
+      (nskk-e2e-assert-not-converting)
+      (should (string-match-p "漢字" (buffer-string)))
+      (should (= (point) (point-max)))))
+
+  (nskk-it "overlay shows candidate during ▼ state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (nskk-e2e-assert-overlay-shows "漢字")
+      (should (not (string-match-p "漢字" (buffer-string))))))
+
+  (nskk-it "point is within valid range throughout ▼ state"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-type "SPC")
+      (nskk-e2e-assert-converting)
+      (should (<= (point-min) (point)))
+      (should (>= (point-max) (point))))))
+
+;;;;
 ;;;; Conversion Roundtrip Cases
 ;;;;
 
@@ -171,6 +309,43 @@
       (nskk-e2e-assert-mode 'jisx0208-latin)
       (nskk-e2e-type "C-j")
       (nskk-e2e-assert-mode 'hiragana))))
+
+;;;;
+;;;; Point position during preedit (▽ state)
+;;;;
+
+(nskk-describe "point position during preedit (▽ state)"
+  (nskk-it "point is at point-max after entering preedit mode"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "K")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (should (= (point) (point-max)))))
+
+  (nskk-it "point is at point-max after typing multiple preedit chars"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Ka")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (should (= (point) (point-max)))
+      (nskk-e2e-type "n")
+      (should (= (point) (point-max)))
+      (nskk-e2e-type "j")
+      (should (= (point) (point-max)))))
+
+  (nskk-it "point stays at point-max after typing full preedit sequence Kanji"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "Kanji")
+      (nskk-e2e-assert-henkan-phase 'on)
+      (should (= (point) (point-max)))))
+
+  (nskk-it "point is at point-max when preedit follows pre-existing kana"
+    (nskk-e2e-with-buffer 'hiragana nil
+      (nskk-e2e-type "a")
+      (nskk-e2e-assert-buffer "あ")
+      (let ((point-after-a (point)))
+        (nskk-e2e-type "Kanji")
+        (nskk-e2e-assert-henkan-phase 'on)
+        (should (> (point) point-after-a))
+        (should (= (point) (point-max)))))))
 
 ;;;;
 ;;;; SPC Key in Various Modes

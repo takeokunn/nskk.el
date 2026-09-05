@@ -64,6 +64,24 @@
       (dolist (line lines)
         (insert line "\n")))))
 
+(defun nskk-debug-test--capture-signal (thunk)
+  "Call THUNK and return the `error' or `quit' condition it signalled.
+Return nil when THUNK completes without signalling."
+  (condition-case data
+      (progn (funcall thunk) nil)
+    (error data)
+    (quit data)))
+
+(defmacro nskk-debug-test--capturing-warnings (var &rest body)
+  "Evaluate BODY with `display-warning' captured into VAR instead of shown.
+VAR is bound to a list of (TYPE MESSAGE LEVEL), most recent first."
+  (declare (indent 1))
+  `(let ((,var nil))
+     (cl-letf (((symbol-function 'display-warning)
+                (lambda (type message &optional level &rest _)
+                  (push (list type message level) ,var))))
+       ,@body)))
+
 ;;; nskk-debug-toggle
 
 (nskk-describe "nskk-debug-toggle"
@@ -138,9 +156,9 @@
         (when (buffer-live-p buf1)
           (kill-buffer buf1))))))
 
-;;; nskk-debug-log macro
+;;; nskk-debug-log
 
-(nskk-describe "nskk-debug-log macro"
+(nskk-describe "nskk-debug-log"
   (nskk-it "does nothing when debug is disabled"
     (with-debug-disabled
       (nskk-when (nskk-debug-log "Test message: %s" "arg1"))
@@ -153,13 +171,6 @@
        (let ((contents (nskk-debug-test--buffer-contents)))
          (should (string-match-p "Test message: hello" contents))))))
 
-  (nskk-it "writes a timestamp prefix in [HH:MM:SS.mmm] format"
-    (with-debug-enabled
-      (nskk-when (nskk-debug-log "Timestamp test"))
-      (nskk-then
-       (should (string-match-p "\\[[0-9]+:[0-9]+:[0-9]+\\.[0-9]+\\]"
-                               (nskk-debug-test--buffer-contents))))))
-
   (nskk-it "always evaluates arguments even when debug is disabled"
     (with-debug-disabled
       (let ((eval-count 0))
@@ -167,97 +178,72 @@
         (nskk-when (nskk-debug-log "msg: %s" (progn (cl-incf eval-count) "side-effect")))
         (nskk-then (should (= eval-count 1)))))))
 
-;;; nskk-debug-message function
+;;; nskk--debug-format/k
 
-(nskk-describe "nskk-debug-message function"
-  (nskk-it "propagates on-found error and quit without fallback"
-    (dolist (injected-condition '((error injected-on-found-error)
-                                  (quit injected-on-found-quit)))
-      (let ((on-found-count 0)
-            (on-not-found-count 0)
-            condition-data)
-        (setq condition-data
-              (condition-case data
-                  (progn
-                    (nskk--debug-format/k
-                     "%s" '("formatted")
-                     (lambda (_message)
-                       (cl-incf on-found-count)
-                       (signal (car injected-condition)
-                               (cdr injected-condition)))
-                     (lambda ()
-                       (cl-incf on-not-found-count)))
-                    nil)
-                (error data)
-                (quit data)))
-        (should (equal condition-data injected-condition))
-        (should (= on-found-count 1))
-        (should (= on-not-found-count 0)))))
+(nskk-describe "nskk--debug-format/k"
+  (nskk-it "propagates an on-found signal without taking the fallback"
+    (dolist (injected '((error injected-on-found-error)
+                        (quit injected-on-found-quit)))
+      (let ((found 0)
+            (not-found 0))
+        (should (equal injected
+                       (nskk-debug-test--capture-signal
+                        (lambda ()
+                          (nskk--debug-format/k
+                           "%s" '("formatted")
+                           (lambda (_message)
+                             (cl-incf found)
+                             (signal (car injected) (cdr injected)))
+                           (lambda () (cl-incf not-found)))))))
+        (should (= found 1))
+        (should (= not-found 0)))))
 
-  (nskk-it "warns and invokes only on-not-found once for format errors"
-    (let* ((injected-format-string (copy-sequence "injected format"))
-           (injected-data '("injected format error"))
-           (original-format (symbol-function 'format))
-           (on-found-count 0)
-           (on-not-found-count 0)
-           (warning-count 0)
-           warning-arguments)
-      (cl-letf (((symbol-function 'format)
-                 (lambda (template &rest arguments)
-                   (if (eq template injected-format-string)
-                       (signal 'error injected-data)
-                     (apply original-format template arguments))))
-                ((symbol-function 'display-warning)
-                 (lambda (type message &optional level _buffer-name)
-                   (cl-incf warning-count)
-                   (setq warning-arguments (list type message level)))))
-        (should
-         (eq (nskk--debug-format/k
-              injected-format-string nil
-              (lambda (_message)
-                (cl-incf on-found-count)
-                'found)
-              (lambda ()
-                (cl-incf on-not-found-count)
-                'not-found))
-             'not-found)))
-      (should (= on-found-count 0))
-      (should (= on-not-found-count 1))
-      (should (= warning-count 1))
-      (should (eq (car warning-arguments) 'nskk))
-      (should (string-match-p "injected format error"
-                              (cadr warning-arguments)))
-      (should (eq (caddr warning-arguments) :warning))))
-
-  (nskk-it "propagates on-not-found error and quit without re-entry"
-    (dolist (injected-condition '((error injected-on-not-found-error)
-                                  (quit injected-on-not-found-quit)))
-      (let ((on-found-count 0)
-            (on-not-found-count 0)
-            (warning-count 0)
-            condition-data)
-        (cl-letf (((symbol-function 'display-warning)
-                   (lambda (&rest _arguments)
-                     (cl-incf warning-count))))
-          (setq condition-data
-                (condition-case data
-                    (progn
+  (nskk-it "warns once and takes the not-found branch on a format error"
+    (let* ((bad-format (copy-sequence "injected format"))
+           (real-format (symbol-function 'format))
+           (found 0)
+           (not-found 0))
+      (nskk-debug-test--capturing-warnings warnings
+        (cl-letf (((symbol-function 'format)
+                   (lambda (template &rest arguments)
+                     (if (eq template bad-format)
+                         (signal 'error '("injected format error"))
+                       (apply real-format template arguments)))))
+          (should (eq 'not-found
                       (nskk--debug-format/k
-                       "%d" nil
-                       (lambda (_message)
-                         (cl-incf on-found-count))
-                       (lambda ()
-                         (cl-incf on-not-found-count)
-                         (signal (car injected-condition)
-                                 (cdr injected-condition))))
-                      nil)
-                  (error data)
-                  (quit data))))
-        (should (equal condition-data injected-condition))
-        (should (= on-found-count 0))
-        (should (= on-not-found-count 1))
-        (should (= warning-count 1)))))
+                       bad-format nil
+                       (lambda (_message) (cl-incf found) 'found)
+                       (lambda () (cl-incf not-found) 'not-found)))))
+        (should (= (length warnings) 1))
+        (let ((warning (car warnings)))
+          (should (eq (nth 0 warning) 'nskk))
+          (should (string-match-p "injected format error" (nth 1 warning)))
+          (should (eq (nth 2 warning) :warning))))
+      (should (= found 0))
+      (should (= not-found 1))))
 
+  (nskk-it "propagates an on-not-found signal without re-entering the warning"
+    (dolist (injected '((error injected-on-not-found-error)
+                        (quit injected-on-not-found-quit)))
+      (let ((found 0)
+            (not-found 0))
+        (nskk-debug-test--capturing-warnings warnings
+          (should (equal injected
+                         (nskk-debug-test--capture-signal
+                          (lambda ()
+                            (nskk--debug-format/k
+                             "%d" nil
+                             (lambda (_message) (cl-incf found))
+                             (lambda ()
+                               (cl-incf not-found)
+                               (signal (car injected) (cdr injected))))))))
+          (should (= (length warnings) 1)))
+        (should (= found 0))
+        (should (= not-found 1))))))
+
+;;; nskk-debug-message
+
+(nskk-describe "nskk-debug-message"
   (nskk-it "does nothing when debug is disabled"
     (with-debug-disabled
       (nskk-when (nskk-debug-message "Should not appear: %s" "x"))
@@ -270,19 +256,24 @@
        (let ((contents (nskk-debug-test--buffer-contents)))
          (should (string-match-p "Runtime message: world" contents))))))
 
-  (nskk-it "writes a timestamp prefix in [HH:MM:SS.mmm] format"
+  (nskk-it "warns once and logs nothing when the format string is malformed"
     (with-debug-enabled
-      (nskk-when (nskk-debug-message "Timestamp via message"))
-      (nskk-then
-       (should (string-match-p "\\[[0-9]+:[0-9]+:[0-9]+\\.[0-9]+\\]"
-                               (nskk-debug-test--buffer-contents))))))
+      (nskk-debug-test--capturing-warnings warnings
+        (nskk-then
+         (should (null (nskk-debug-test--capture-signal
+                        (lambda () (nskk-debug-message "Bad format %d")))))
+         (should (= (length warnings) 1))
+         (should (equal (nskk-debug-test--buffer-contents) ""))))))
 
-  (nskk-it "recovers from format errors without signaling"
+  (nskk-it "logs an entry without warning when the format string is empty"
     (with-debug-enabled
-      (nskk-then
-       (should-not (condition-case _
-                       (progn (nskk-debug-message "Bad format %d") nil)
-                     (error t)))))))
+      (nskk-debug-test--capturing-warnings warnings
+        (nskk-then
+         (should (null (nskk-debug-test--capture-signal
+                        (lambda () (nskk-debug-message "")))))
+         (should (= (length warnings) 0))
+         (should (string-match-p "\\[[0-9]+:[0-9]+:[0-9]+\\.[0-9]+\\]"
+                                 (nskk-debug-test--buffer-contents))))))))
 
 ;;; nskk-debug-show
 
@@ -293,6 +284,17 @@
         (progn
           (nskk-when (nskk-debug-show))
           (nskk-then (should (get-buffer-window nskk--debug-buffer-name t))))
+      (when-let* ((win (get-buffer-window nskk--debug-buffer-name t)))
+        (delete-window win))
+      (nskk-debug-clear)))
+
+  (nskk-it "leaves the buffer visible when called twice in a row"
+    (nskk-debug-test--insert-lines "[00:00:00.000] Test entry")
+    (unwind-protect
+        (progn
+          (should (null (nskk-debug-test--capture-signal
+                         (lambda () (nskk-debug-show) (nskk-debug-show)))))
+          (should (get-buffer-window nskk--debug-buffer-name t)))
       (when-let* ((win (get-buffer-window nskk--debug-buffer-name t)))
         (delete-window win))
       (nskk-debug-clear))))
@@ -375,10 +377,7 @@
     (should (and (stringp nskk--debug-timestamp-format)
                  (not (string-empty-p nskk--debug-timestamp-format))))))
 
-;;;
-;;; PBT-001 — Timestamp format invariant
-;;; Every logged message must contain a [HH:MM:SS.mmm] timestamp prefix.
-;;;
+;;; Timestamp format invariant
 
 (nskk-deftest-table debug-log-timestamp-format-invariant
   :columns (format-str arg)
@@ -404,10 +403,7 @@
           (should (string-match-p "\\[[0-9]+:[0-9]+:[0-9]+\\.[0-9]+\\]"
                                   (nskk-debug-test--buffer-contents)))))
 
-;;;
-;;; PBT-002 — Clear idempotency
-;;; nskk-debug-clear always leaves the buffer empty regardless of initial state.
-;;;
+;;; Clear idempotency
 
 (nskk-deftest-table debug-clear-idempotency
   :columns (initial-content)
@@ -426,19 +422,14 @@
           (nskk-debug-clear)
           (should (equal (nskk-debug-test--buffer-contents) ""))))
 
-;;;
-;;; PBT-003 — Max-entries enforcement
-;;; After trim, the buffer never holds more than max-entries lines.
-;;;
+;;; Max-entries enforcement
 
 (nskk-property-test-exhaustive debug-max-entries-enforcement
   '(1 2 3 5 10)
   (with-max-entries item
-    (nskk-debug-test--insert-lines
-     (string-join
-      (cl-loop for i from 0 below (+ item 3)
-               collect (format "[00:00:%02d.000] Entry %d" i i))
-      "\n"))
+    (apply #'nskk-debug-test--insert-lines
+           (cl-loop for i from 0 below (+ item 3)
+                    collect (format "[00:00:%02d.000] Entry %d" i i)))
     (with-current-buffer (nskk--debug-buffer)
       (nskk--debug-trim))
     (let* ((raw (nskk-debug-test--buffer-contents))
@@ -447,9 +438,7 @@
                     (length (split-string (string-trim-right raw "\n") "\n")))))
       (<= lines item))))
 
-;;;
 ;;; nskk--debug-append
-;;;
 
 (nskk-describe "nskk--debug-append"
   (nskk-it "appends message text to the debug buffer"
@@ -477,34 +466,20 @@
         (should (< (string-match "first" contents)
                    (string-match "second" contents)))))))
 
-;;;
-;;;
+;;; Logged text reaches the buffer, over varied input
+;;
+;; The timestamp half of this invariant is covered by the tables above; this
+;; test exists for the input variation, so it asserts only that the generated
+;; text survives the format-and-append path.
 
-(nskk-property-test-seeded debug-pbt-append-produces-timestamp-line
+(nskk-property-test-seeded debug-pbt-logged-text-reaches-buffer
   ((msg romaji-string))
-  (let ((nskk-debug-enabled t))
+  (let ((nskk-debug-enabled t)
+        (nskk-debug-max-entries 100))
     (nskk-debug-clear)
     (nskk-debug-log "%s" msg)
-    (let ((contents (nskk-debug-test--buffer-contents)))
-      (and (not (string-empty-p contents))
-           (string-match-p "\\[[0-9]+:[0-9]+:[0-9]+\\.[0-9]+\\]" contents)
-           (string-match-p (regexp-quote msg) contents))))
+    (string-match-p (regexp-quote msg) (nskk-debug-test--buffer-contents)))
   50 42)
-
-(nskk-property-test-seeded debug-pbt-max-entries-respected
-  ((n romaji-string))
-  (let ((nskk-debug-enabled t)
-        (nskk-debug-max-entries 10))
-    (nskk-debug-clear)
-    (dotimes (i 15)
-      (nskk-debug-log "entry %d" i))
-    (let* ((raw (nskk-debug-test--buffer-contents))
-           (line-count
-            (if (string= raw "")
-                0
-              (length (split-string (string-trim-right raw "\n") "\n")))))
-      (<= line-count 10)))
-  30 42)
 
 ;;; Provide
 

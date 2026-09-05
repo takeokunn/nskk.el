@@ -102,22 +102,28 @@
                 (let ((runs 50)
                       (failures nil))
                   (dotimes (_ runs)
-                    (let ((op (nskk--pbt-random-int 0 9)))
+                    (let ((op (nskk--pbt-random-int 0 7)))
                       (condition-case err
                           (pcase op
-                            (0 (should-not (nskk-state-get nil 'mode)))
-                            (1
+                            (0
                              (should-not (nskk-state-set nil 'mode 'hiragana)))
-                            (2 (should-not (nskk-state-reset nil)))
-                            (3 (should-not (nskk-state-append-input nil ?a)))
-                            (4 (should-not (nskk-state-delete-last-char nil)))
-                            (5 (should-not (nskk-state-clear-input nil)))
-                            (6 (should-not (nskk-state-next-candidate nil)))
-                            (7 (should-not (nskk-state-previous-candidate nil)))
-                            (8 (should-not (nskk-state-current-candidate nil)))
-                            (9
+                            (1 (should-not (nskk-state-set-mode nil 'hiragana)))
+                            (2
                              (should-not
-                              (nskk-state-transition nil 'ascii 'hiragana))))
+                              (nskk-state-force-henkan-phase nil 'on)))
+                            (3
+                             (should-not
+                              (nskk-state-set-candidates nil '("a"))))
+                            (4
+                             (should-not
+                              (nskk-state-get-metadata nil 'okurigana)))
+                            (5
+                             (should-not
+                              (nskk-state-put-metadata nil 'okurigana "x")))
+                            (6 (should-not (nskk-state-get-okurigana nil)))
+                            (7
+                             (should-not
+                              (nskk-state-set-okurigana nil "x"))))
                         (error (push (list :op op :error err) failures)))))
                   (when failures
                     (ert-fail
@@ -174,49 +180,6 @@
                               (take 5 failures)))))))
 
 ;;;;
-;;;; Additional Property: Error Recovery After Reset
-;;;;
-(nskk-describe "error recovery: reset after error"
-               (nskk-it
-                "should produce a clean state after resetting following an error"
-                (let ((runs 50)
-                      (failures nil))
-                  (dotimes (_ runs)
-                    (let* ((state (nskk-state-create 'hiragana)))
-                      (nskk-state-set state 'input-buffer "complex-input")
-                      (nskk-state-set state 'converted-buffer "some-conversion")
-                      (nskk-state-set state 'candidates '("a" "b" "c"))
-                      (nskk-state-set state 'current-index 1)
-                      (nskk-state-set state 'henkan-position 3)
-                      (condition-case _err
-                          (nskk-state-set state 'mode 'invalid-mode-xyz)
-                        (error nil))
-                      (nskk-state-reset state)
-                      (unless
-                          (and (nskk-state-p state)
-                               (string= (nskk-state-input-buffer state) "")
-                               (string= (nskk-state-converted-buffer state) "")
-                               (null (nskk-state-candidates state))
-                               (= (nskk-state-current-index state) 0)
-                               (null (nskk-state-henkan-position state))
-                               (nskk-state-valid-mode-p (nskk-state-mode state)))
-                        (push
-                         (list :input
-                               (nskk-state-input-buffer state)
-                               :converted
-                               (nskk-state-converted-buffer state)
-                               :candidates
-                               (nskk-state-candidates state)
-                               :mode
-                               (nskk-state-mode state))
-                         failures))))
-                  (when failures
-                    (ert-fail
-                     (format "Reset after error failed for %d cases:\n%S"
-                             (length failures)
-                             (take 5 failures)))))))
-
-;;;;
 ;;;; Additional Property: Mixed Valid/Invalid Operations
 ;;;;
 (nskk-describe "error recovery: mixed valid/invalid operations"
@@ -230,7 +193,7 @@
                            (expected-input "")
                            (ops (nskk--pbt-random-int 5 15)))
                       (dotimes (_ ops)
-                        (let ((op (nskk--pbt-random-int 0 5)))
+                        (let ((op (nskk--pbt-random-int 0 4)))
                           (pcase op
                             (0
                              (let ((new-mode (nskk--pbt-generate-valid-mode)))
@@ -245,43 +208,43 @@
                                                 (nskk--pbt-random-choice
                                                  nskk--pbt-invalid-modes)))
                                (should (equal state before))))
+                            ;; Ops 2-4 drive the slot through `nskk-state-set'
+                            ;; rather than `setf', so they exercise the generic
+                            ;; dispatcher's `input-buffer' arm and its documented
+                            ;; return-the-value contract.  Writing the slot
+                            ;; directly here would only compare two identical
+                            ;; local computations and could never fail.
                             (2
-                             (let ((char
-                                    (nskk--pbt-random-choice
-                                     (string-to-list "abcdeあ"))))
-                               (nskk-state-append-input state char)
-                               (setq expected-input (concat expected-input
-                                                            (list char)))))
+                             (let* ((char
+                                     (nskk--pbt-random-choice
+                                      (string-to-list "abcdeあ")))
+                                    (next (concat expected-input (list char))))
+                               (should (equal next
+                                              (nskk-state-set state
+                                                              'input-buffer
+                                                              next)))
+                               (setq expected-input next)))
                             (3
-                              (nskk-state-delete-last-char state)
-                              (unless (string-empty-p expected-input)
-                                (setq expected-input (substring expected-input
-                                                                0
-                                                                -1))))
+                             (let ((next (if (string-empty-p expected-input)
+                                             expected-input
+                                           (substring expected-input 0 -1))))
+                               (should (equal next
+                                              (nskk-state-set state
+                                                              'input-buffer
+                                                              next)))
+                               (setq expected-input next)))
                             (4
-                              (nskk-state-clear-input state)
-                              (setq expected-input ""))
-                            (5
-                              (nskk-state-reset state)
-                              (setq expected-input "")))
+                             (should (equal "" (nskk-state-set state
+                                                               'input-buffer
+                                                               "")))
+                             (setq expected-input "")))
                           (should (eq (nskk-state-mode state) expected-mode))
                           (should
                            (eq (nskk-state-previous-mode state)
                                expected-previous-mode))
                           (should
                            (equal (nskk-state-input-buffer state)
-                                  expected-input))
-                          (when (= op 5)
-                            (should
-                             (equal (nskk-state-converted-buffer state) ""))
-                            (should-not (nskk-state-candidates state))
-                            (should (= (nskk-state-current-index state) 0))
-                            (should-not (nskk-state-henkan-position state))
-                            (should-not (nskk-state-marker-position state))
-                            (should-not (nskk-state-undo-stack state))
-                            (should-not (nskk-state-redo-stack state))
-                            (should-not (nskk-state-metadata state))
-                            (should-not (nskk-state-henkan-phase state))))))))))
+                                  expected-input)))))))))
 
 ;;;; Enhanced PBT Coverage
 ;;;;

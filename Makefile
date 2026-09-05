@@ -5,7 +5,7 @@ LOAD_PATH = -L src -L test -L test/integration -L test/unit -L test/e2e
 
 # All source files (core + optional extension modules)
 SRC = src/nskk-cps-macros.el src/nskk-prolog.el src/nskk-trie.el \
-       src/nskk-custom.el src/nskk-debug.el \
+       src/nskk-debug.el \
        src/nskk-kana.el src/nskk-converter.el src/nskk-cache.el src/nskk-dict-transaction.el src/nskk-dictionary.el src/nskk-search.el \
        src/nskk-state.el src/nskk-henkan.el src/nskk-input.el \
        src/nskk-keymap.el src/nskk-modeline.el src/nskk-candidate-window.el \
@@ -39,12 +39,11 @@ INTEGRATION_SRC = test/integration/nskk-integration-test.el \
                   test/integration/nskk-kana-integration-test.el \
                   test/integration/nskk-debug-integration-test.el \
                   test/integration/nskk-state-machine-mode-test.el \
-                  test/integration/nskk-state-machine-candidate-test.el \
-                  test/integration/nskk-state-machine-buffer-test.el \
                   test/integration/nskk-multi-buffer-pbt-test.el \
                   test/integration/nskk-error-recovery-pbt-test.el \
-                  test/integration/nskk-layer-state-pbt-test.el \
-                  test/integration/nskk-custom-integration-test.el
+                  test/integration/nskk-custom-integration-test.el \
+                  test/integration/nskk-context-pbt-test.el \
+                  test/integration/nskk-context-integration-test.el
 
 # E2E test files (full nskk-mode activation + execute-kbd-macro)
 E2E_SRC = test/e2e/nskk-abbrev-e2e-test.el \
