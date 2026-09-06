@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'nskk-test-macros)
 (require 'cl-lib)
 (require 'nskk-e2e-helpers)
 (require 'nskk-azik-chaos-helpers)
@@ -229,23 +230,22 @@ Invariants always checked:
 Runs 200 scenarios, each 10-30 steps.  At every step:
   1. Observe the current abstract state.
   2. Pick a random event valid for that state (from `nskk--mbt-events-by-state').
-  3. Dispatch the event, absorbing errors and quit signals per-step.
-  4. Check all five invariants (I1-I5) and record any violations.
+  3. Dispatch the event, recording errors and absorbing keyboard-quit.
+  4. Check all invariants and record any violations.
 
 Events are chosen from state-specific pools so the walk explores
-meaningful transitions.  Per-event errors are swallowed to prevent a
-single bad key from terminating the session; invariant violations ARE
-reported.
+meaningful transitions.  Unexpected errors and invariant violations are
+reported with the event context.
 
 Failure output includes: seed, run index, step index, abstract state
 at the failing step, dispatched event, and violated invariants, so the
-failing scenario can be reproduced with (random SEED)."
+failing scenario can be reproduced with (setq nskk-test-random-seed SEED)."
   (let* ((runs    200)
          (min-len  10)
          (max-len  30)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let* ((nsteps (+ min-len (random (- max-len min-len -1))))
@@ -254,9 +254,13 @@ failing scenario can be reproduced with (random SEED)."
             (let* ((abs-state (nskk--mbt-observe-state))
                    (event     (nskk--mbt-pick-event abs-state)))
               (push (list abs-state event) state-trace)
-              (condition-case nil
+              (condition-case err
                   (nskk--azik-chaos--dispatch-keys event)
-                (error nil) (quit nil))
+                (error
+                 (push (list :run run :seed seed :step step
+                             :state abs-state :event event :error err)
+                       failures))
+                (quit nil))
               (let ((viols (nskk--mbt-check-invariants event)))
                 (when viols
                   (push (list :run       run
@@ -272,8 +276,8 @@ failing scenario can be reproduced with (random SEED)."
     (when failures
       (ert-fail
        (format
-        "MBT random walk: %d/%d scenarios had invariant violations (seed: %d)\n\
-Reproduce: (random %d) then re-run.\nFirst %d failures:\n%S"
+        "MBT random walk: %d/%d scenarios had errors or invariant violations (seed: %d)\n\
+Reproduce: (setq nskk-test-random-seed %d) then re-run.\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -297,8 +301,8 @@ regardless of the AZIK deferred state overlays."
          (min-len   5)
          (max-len  15)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let* ((nsteps (+ min-len (random (- max-len min-len -1))))
@@ -315,10 +319,6 @@ regardless of the AZIK deferred state overlays."
           (condition-case nil
               (nskk-e2e--dispatch-event 7)  ; second C-g
             (error nil) (quit nil))
-          (when (fboundp 'nskk-deferred-azik-state)
-            (nskk-set-deferred-azik-state nil))
-          (when (fboundp 'nskk-deferred-vowel-shadow-state)
-            (nskk-set-deferred-vowel-shadow-state nil))
           (let* ((phase (and (bound-and-true-p nskk-current-state)
                              (nskk-state-henkan-phase nskk-current-state)))
                  (abs-state (nskk--mbt-observe-state)))
@@ -334,7 +334,7 @@ regardless of the AZIK deferred state overlays."
       (ert-fail
        (format
         "MBT idle-reachable: C-g C-g did not reach idle in %d/%d runs (seed: %d)\n\
-Reproduce: (random %d) then re-run.\nFirst %d failures:\n%S"
+Reproduce: (setq nskk-test-random-seed %d) then re-run.\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -356,8 +356,8 @@ This verifies that repeated C-g presses in idle do not corrupt any
 internal state — the operation is idempotent on the state machine."
   (let* ((runs    50)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (nskk--azik-chaos--reset-to-idle)
@@ -405,7 +405,7 @@ internal state — the operation is idempotent on the state machine."
       (ert-fail
        (format
         "MBT idle-cancel-idempotent: C-g in idle mutated state in %d/%d runs \
-\(seed: %d)\nReproduce: (random %d) then re-run.\nFirst %d failures:\n%S"
+\(seed: %d)\nReproduce: (setq nskk-test-random-seed %d) then re-run.\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -429,8 +429,8 @@ state-arms might fire in the same handler call."
          (min-len  10)
          (max-len  30)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let* ((nsteps (+ min-len (random (- max-len min-len -1))))
@@ -485,7 +485,7 @@ state-arms might fire in the same handler call."
       (ert-fail
        (format
         "MBT deferred-exclusivity: I2 violated in %d/%d scenarios (seed: %d)\n\
-Reproduce: (random %d) then re-run.\nFirst %d violations:\n%S"
+Reproduce: (setq nskk-test-random-seed %d) then re-run.\nFirst %d violations:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))

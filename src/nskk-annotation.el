@@ -94,10 +94,10 @@ are never returned."
 (defun/k nskk-annotation-lookup (reading candidate)
   "Return the annotation registered for CANDIDATE with READING.
 Fails when none is registered, which the synchronous wrapper reports as nil."
+  (nskk-annotation-initialize)
   (let ((annotation
-         (and nskk--annotation-initialized
-              (nskk-prolog-query-value
-               `(dict-annotation ,reading ,candidate \?a) '\?a))))
+         (nskk-prolog-query-value
+          `(dict-annotation ,reading ,candidate \?a) '\?a)))
     (if annotation
         (succeed annotation)
       (fail))))
@@ -141,7 +141,8 @@ DISPLAY-CANDIDATE, when non-nil, is the rendered numeric candidate."
   (nskk-annotation-clear)
   (when nskk-show-annotation
     (setq nskk--annotation-current
-          (nskk-annotation-lookup reading candidate)))
+          (nskk--annotation-candidate-note reading candidate
+                                            (or display-candidate candidate))))
   (when-let* (((and nskk--annotation-current nskk--annotation-visible))
               (ann-str (nskk--annotation-format nskk--annotation-current)))
     (nskk--annotation-echo "%s%s"
@@ -154,6 +155,17 @@ DISPLAY-CANDIDATE, when non-nil, is the rendered numeric candidate."
   (when nskk--annotation-displayed
     (setq nskk--annotation-displayed nil)
     (nskk--annotation-echo nil)))
+
+(defun nskk--annotation-candidate-note (reading original candidate)
+  "Return CANDIDATE's expanded annotation, or look up ORIGINAL at READING."
+  (let ((entry (and nskk-current-state
+                    (assq candidate (nskk-state-get-metadata
+                                     nskk-current-state 'numeric-raw-candidates)))))
+    (if entry
+        (let ((raw (cdr entry)))
+          (when (string-match ";" raw)
+            (substring raw (1+ (match-beginning 0)))))
+      (nskk-annotation-lookup reading original))))
 
 (defun nskk--annotation-candidate-context (candidate)
   "Return the dictionary reading and original identity for CANDIDATE."
@@ -176,7 +188,8 @@ DISPLAY-CANDIDATE, when non-nil, is the rendered numeric candidate."
   "Return CANDIDATE's sanitized list annotation without displaying it."
   (when-let* (((and nskk-show-annotation nskk--annotation-visible))
               (context (nskk--annotation-candidate-context candidate))
-              (annotation (nskk-annotation-lookup (car context) (cdr context)))
+              (annotation (nskk--annotation-candidate-note
+                           (car context) (cdr context) candidate))
               ((not (string-empty-p annotation))))
     (nskk-display-sanitize annotation 'nskk-annotation-face ";")))
 

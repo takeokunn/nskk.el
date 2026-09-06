@@ -720,6 +720,63 @@ what proves `--maybe-navigate' routes ordinary letters into
         (nskk-tutorial-test--type-string romaji)
         (should (string= (nskk-tutorial--get-input-text index) want))))))
 
+(ert-deftest nskk-tutorial-test/lesson14-azik-through-command-loop ()
+  "AZIK exercises use extensions rather than standard romaji alone."
+  (let ((original-style nskk-converter-romaji-style))
+    (unwind-protect
+        (let ((nskk-converter-romaji-style 'azik))
+          (nskk-tutorial-test--with-live-tutorial
+	   (nskk-tutorial-goto-lesson 14)
+	   (dolist (case '(("k z" "かん" 0)
+			   ("k h" "くう" 1)
+			   ("x a" "しゃ" 2)))
+             (let ((index (nth 2 case)))
+               (goto-char (marker-position
+			   (car (nth index nskk-tutorial--exercise-markers))))
+               (execute-kbd-macro (kbd (car case)))
+               (should (equal (nskk-tutorial--get-input-text index) (cadr case)))
+               (should (equal (plist-get (nth index (plist-get
+						     (nth 13 nskk-tutorial--lessons)
+						     :exercises))
+					 :expected)
+                              (cadr case)))
+               (should (string-empty-p nskk--romaji-buffer))))))
+      (nskk-converter-load-style original-style))))
+
+(ert-deftest nskk-tutorial-test/navigation-letters-preserve-preedit-through-command-loop ()
+  "Editable navigation letters remain NSKK input after post-command hooks."
+  (nskk-tutorial-test--with-live-tutorial
+    (dolist (case '(("H e n k a n n SPC C-j" "変換")
+                    ("N i h o n g o SPC C-j" "日本語")
+                    ("K a p a C-j" "かぱ")
+                    ("K a r a C-j" "から")))
+      (nskk-tutorial-goto-lesson 4)
+      (execute-kbd-macro (kbd (car case)))
+      (should (equal (nskk-tutorial--get-input-text 0) (cadr case)))
+      (should (= nskk-tutorial--current-lesson 3)))))
+
+(ert-deftest nskk-tutorial-test/navigation-letters-through-command-loop ()
+  "Read-only navigation still changes and resets lessons through real keys."
+  (nskk-tutorial-test--with-live-tutorial
+    (nskk-tutorial-goto-lesson 4)
+    (goto-char (point-min))
+    (execute-kbd-macro (kbd "n"))
+    (should (= nskk-tutorial--current-lesson 4))
+    (goto-char (point-min))
+    (execute-kbd-macro (kbd "p"))
+    (should (= nskk-tutorial--current-lesson 3))
+    (goto-char (point-min))
+    (execute-kbd-macro (kbd "g 2 RET"))
+    (should (= nskk-tutorial--current-lesson 1))
+    (execute-kbd-macro (kbd "s a k u r a"))
+    (should (equal (nskk-tutorial--get-input-text 0) "さくら"))
+    (should (aref nskk-tutorial--exercise-states 0))
+    (goto-char (point-min))
+    (execute-kbd-macro (kbd "r"))
+    (should (= nskk-tutorial--current-lesson 1))
+    (should (equal (nskk-tutorial--get-input-text 0) ""))
+    (should-not (aref nskk-tutorial--exercise-states 0))))
+
 (ert-deftest nskk-tutorial-test/maybe-navigate-context-sensitive ()
   "`--maybe-navigate' dispatches to the matching command from a
 read-only region, and inserts through NSKK from an input area."

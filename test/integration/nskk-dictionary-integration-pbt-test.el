@@ -223,6 +223,84 @@
                     (nskk-with-mock-dict nil (null (nskk-dict-lookup key)))
                     20)
 
+(ert-deftest nskk-dictionary-cache-fresh-process-annotation-and-order ()
+  (let* ((root (make-temp-file "nskk-cache-process-" t))
+         (source (symbol-file 'nskk-dict-parse-line 'defun))
+         (driver (expand-file-name "child.el" root))
+         (a (expand-file-name "a" root))
+         (b (expand-file-name "b" root))
+         (program (expand-file-name invocation-name invocation-directory)))
+    (unwind-protect
+        (progn
+          (with-temp-file a (insert "か /甲;A/共;first/\n"))
+          (with-temp-file b (insert "か /乙;B/共;second/\n"))
+          (with-temp-file driver
+            (insert ";;; -*- lexical-binding: t; -*-\n")
+            (prin1
+             `(progn
+                (setq user-emacs-directory ,(file-name-as-directory root)
+                      temporary-file-directory ,(file-name-as-directory root)
+                      nskk-dict-user-dictionary-file ,(expand-file-name "user" root)
+                      nskk-study-file ,(expand-file-name "study" root)
+                      nskk-search-learning-file ,(expand-file-name "learning" root)
+                      nskk-dict-use-ja-dic nil nskk-dict-cache-enabled t
+                      nskk-show-annotation nil
+                      nskk-dict-system-dictionary-files
+                      (if (equal (getenv "NSKK_CACHE_CASE") "reverse")
+                          ',(list b a) ',(list a b)))
+                (add-to-list 'load-path ,(file-name-directory source))
+                (require 'nskk-dictionary)
+                (unless (file-equal-p (symbol-file 'nskk-dict-parse-line 'defun)
+                                      ,source)
+                  (error "Dictionary artifact differs from parent"))
+                (when (equal (getenv "NSKK_CACHE_CASE") "warm")
+                  (fset 'nskk--dict-parse-file-to-entries-strict
+                        (lambda (&rest _) (error "Warm parser invoked")))
+                  (unless (condition-case nil
+                              (progn (nskk--dict-parse-file-to-entries-strict "control") nil)
+                            (error t))
+                    (error "Missing parser control")))
+                (unless (eq (nskk-dict-load-system-dictionaries) 'system)
+                  (error "Wrong source entry count"))
+                (require 'nskk-annotation)
+                (let ((expected (if (equal (getenv "NSKK_CACHE_CASE") "reverse")
+                                    '("乙" "共" "甲") '("甲" "共" "乙"))))
+                  (unless (equal (nskk-dict-lookup "か") expected)
+                    (error "Candidate precedence: %S" (nskk-dict-lookup "か"))))
+                (unless (equal (nskk-annotation-lookup "か" "共")
+                               (if (equal (getenv "NSKK_CACHE_CASE") "reverse")
+                                   "second" "first"))
+                  (error "Annotation precedence"))
+                (unless (equal (nskk-annotation-lookup "か" "甲") "A")
+                  (error "Hidden source annotation missing"))
+                (nskk-annotation-register "session" "note" "not-source")
+                (let ((data (nskk--dict-read-system-cache)))
+                  (unless (and (= (plist-get data :version) 3)
+                               (equal (plist-get data :annotations)
+                                      (if (equal (getenv "NSKK_CACHE_CASE") "reverse")
+                                          '(("か" "乙" "B") ("か" "共" "second")
+                                            ("か" "甲" "A") ("か" "共" "first"))
+                                        '(("か" "甲" "A") ("か" "共" "first")
+                                          ("か" "乙" "B") ("か" "共" "second"))))
+                               (not (member '("session" "note" "not-source")
+                                            (plist-get data :annotations))))
+                    (error "Cache source isolation"))
+                  (message "CACHE-PAYLOAD=%S" data))
+                (message "CACHE-CHILD-PASS %s source=%s"
+                         (getenv "NSKK_CACHE_CASE")
+                         (symbol-file 'nskk-dict-parse-line 'defun)))
+             (current-buffer)))
+          (dolist (scenario '("cold" "warm" "reverse"))
+            (let ((process-environment (copy-sequence process-environment)))
+              (setenv "NSKK_CACHE_CASE" scenario)
+              (with-temp-buffer
+                (let ((status (process-file program nil t nil "-Q" "--batch" "-l" driver)))
+                  (message "CACHE-CHILD command=%S status=%S output=%s"
+                           (list program "-Q" "--batch" "-l" driver) status (buffer-string))
+                  (should (equal status 0))
+                  (should (string-match-p "CACHE-CHILD-PASS" (buffer-string))))))))
+      (delete-directory root t))))
+
 (provide 'nskk-dictionary-integration-pbt-test)
 
 ;;; nskk-dictionary-integration-pbt-test.el ends here

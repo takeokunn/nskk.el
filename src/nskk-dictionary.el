@@ -345,11 +345,14 @@ An existing directory keeps whatever modes it already has."
   (retract (user-dict-entry \?reading \?existing))
   (assertz (user-dict-entry \?reading (\?word . \?existing))))
 
-;; Clause 2: word already exists in entry, no-op success
+;; Clause 2: an existing candidate becomes the first candidate, as in DDSKK.
 (nskk-prolog-<-
   (dict-register \?reading \?word)
   (user-dict-entry \?reading \?existing)
-  (member \?word \?existing))
+  (member \?word \?existing)
+  (retract (user-dict-entry \?reading \?existing))
+  (remove-element \?word \?existing \?rest)
+  (assertz (user-dict-entry \?reading (\?word . \?rest))))
 
 ;; Clause 3: no entry exists yet, create new one
 (nskk-prolog-<-
@@ -417,11 +420,8 @@ Returns candidates in solution order, retaining the first equal object."
 
 (defun nskk--dict-cache-source-valid-p (stored-files)
   "Return non-nil if STORED-FILES match current system dictionary configuration.
-Compares sorted STORED-FILES against sorted `nskk-dict-system-dictionary-files'
-so that reordering of dictionary paths does not invalidate the cache."
-  (equal
-    (sort (copy-sequence stored-files) #'string<)
-    (sort (copy-sequence nskk-dict-system-dictionary-files) #'string<)))
+Source order determines candidate and annotation precedence."
+  (equal stored-files nskk-dict-system-dictionary-files))
 
 (defun nskk--dict-run-notification-hook (hook label)
   "Run notification HOOK, reporting each ordinary error with LABEL.
@@ -686,29 +686,59 @@ predicate receives a trie index; existing index strategy is retained."
 (defun nskk--dict-load-from-cache ()
   "Replace system dictionary facts from a fully validated on-disk cache.
 Returns entry count on success, or 0 if cache is unavailable or invalid."
-  (let ((entries (nskk--dict-load-system-dict-from-cache)))
+  (let* ((data (nskk--dict-read-system-cache))
+         (entries (plist-get data :entries)))
     (cond
      (entries
-      (nskk--dict-replace-predicate-entries 'system-dict-entry entries)
+      (nskk--dict-publish-system-data entries (plist-get data :annotations))
       (message "NSKK: Loaded %d entries from cache" (length entries))
       (length entries))
      (t 0))))
+
+(defun nskk--dict-publish-system-data (entries annotations &optional prepare)
+  "Publish ENTRIES and source ANNOTATIONS together after PREPARE.
+Existing annotations retain first-registration precedence."
+  (let* ((key (nskk-prolog-clause-key 'dict-annotation 3))
+         (previous (nskk-dict-transaction-predicate-snapshot key))
+         (clauses (gethash key (nskk-prolog-database)))
+         (notes
+          (nskk-prolog-with-database-fields
+              ((database (make-hash-table :test #'equal))
+               (database-tails (make-hash-table :test #'equal))
+               (index-config (make-hash-table :test #'equal))
+               (hash-indices (make-hash-table :test #'equal))
+               (trie-indices (make-hash-table :test #'equal))
+               (index-bucket-tail-cache (make-hash-table :test #'equal)))
+            (nskk-prolog-set-index 'dict-annotation 3 :hash)
+            (dolist (clause clauses) (nskk-prolog-assert clause))
+            (dolist (note annotations)
+              (nskk-prolog-assert (list (cons 'dict-annotation note))))
+            (nskk-dict-transaction-predicate-snapshot key))))
+    (nskk--dict-commit-staged-predicate
+     (nskk--dict-stage-predicate-entries 'system-dict-entry entries)
+     prepare
+     (list (cons 'annotations
+                 (lambda ()
+                   (nskk-dict-transaction-apply-predicate-snapshot previous))))
+     (lambda () (nskk--dict-publish-staged-predicate notes)))))
 
 (defun nskk--dict-load-from-files (dict-files)
   "Transactionally replace system facts from DICT-FILES.
 Return the entry count, or 0 without changing facts when any read, staging,
 cache publication, or predicate publication step fails."
   (condition-case err
-      (let ((all-entries
+      (let* ((annotations nil)
+             (all-entries
              (cl-loop for file in dict-files
-                      append (nskk--dict-parse-file-to-entries-strict file))))
+                      append (nskk--dict-parse-file-to-entries-strict
+                              file nil (lambda (note) (push note annotations))))))
+        (setq annotations (nreverse annotations))
         (when all-entries
-          (let ((staged (nskk--dict-stage-predicate-entries 'system-dict-entry all-entries)))
-            (nskk--dict-commit-staged-predicate
-             staged
+            (nskk--dict-publish-system-data
+             all-entries annotations
              (when nskk-dict-cache-enabled
                (lambda ()
-                 (nskk--dict-save-system-dict-cache all-entries dict-files))))))
+                 (nskk--dict-save-system-dict-cache all-entries dict-files annotations)))))
         (length all-entries))
     (error
      (message "NSKK: Dictionary load failed (%s)" (error-message-string err))
@@ -798,11 +828,13 @@ Returns `system' when entries were loaded successfully, or nil otherwise."
      nil)))
 
 ;;; Dictionary Parsing
-(defun nskk-dict-parse-line (line)
+(defun nskk-dict-parse-line (line &optional annotation-collector)
   "Parse a single SKK dictionary LINE.
 Returns (key . candidates-list) or nil for comments/invalid lines.
 When `nskk-show-annotation' is non-nil and nskk-annotation is loaded,
-also registers any candidate annotations found in the line."
+also registers any candidate annotations found in the line.
+When ANNOTATION-COLLECTOR is supplied, call it with each source annotation
+triple instead, independently of display settings or loaded modules."
   (when (and (stringp line)
              (not (string-empty-p line))
              (not (string-prefix-p ";;" line)))
@@ -812,25 +844,35 @@ also registers any candidate annotations found in the line."
                 ((= (aref line (1+ space-pos)) ?/)))
       (let* ((key            (substring line 0 space-pos))
              (candidates-str (substring line (1+ space-pos)))
-             (candidates     (nskk--dict-parse-candidates candidates-str)))
-        (when (and candidates
+             (candidates     (nskk--dict-parse-candidates candidates-str key)))
+        (when (and candidates annotation-collector)
+          (dolist (pair (nskk--dict-parse-candidates-with-annotations candidates-str key))
+            (when (and (cdr pair) (not (string-empty-p (cdr pair))))
+              (funcall annotation-collector (list key (car pair) (cdr pair))))))
+        (when (and candidates (not annotation-collector)
                    (boundp 'nskk-show-annotation)
                    nskk-show-annotation
                    (fboundp 'nskk-annotation-load-from-candidates))
           (let ((with-annots (nskk--dict-parse-candidates-with-annotations
-                              candidates-str)))
+                              candidates-str key)))
             (nskk-annotation-load-from-candidates key with-annots)))
         (when candidates
           (cons key candidates))))))
 
-(defun nskk--dict-parse-candidates (str)
+(defun nskk--dict-parse-candidates (str &optional key)
   "Parse candidates from STR like \"/candidate1/candidate2/...\"."
+  (mapcar (lambda (candidate)
+            (car (nskk--dict-split-candidate-annotation candidate)))
+          (car (nskk--dict-parse-candidate-record str key))))
+
+(defun nskk--dict-parse-candidate-record (str &optional key)
+  "Return raw common candidates and opaque okuri blocks from STR.
+The result is (COMMON . BLOCKS), where BLOCKS retains its slash delimiters."
   (when (and (stringp str) (> (length str) 1) (= (aref str 0) ?/))
-    (let ((parts (split-string (substring str 1) "/" t)))
-      (mapcar (lambda (c)
-                (let ((semi (string-search ";" c)))
-                  (if semi (substring c 0 semi) c)))
-              parts))))
+    (let ((boundary (and key (nskk--dict-okuri-key-p key)
+                         (string-match "/\\[" str))))
+      (cons (split-string (substring str 1 (and boundary (1+ boundary))) "/" t)
+            (and boundary (substring str (1+ boundary)))))))
 
 (defun nskk--dict-split-candidate-annotation (candidate-str)
   "Split CANDIDATE-STR into (candidate . annotation) cons cell.
@@ -840,14 +882,13 @@ Otherwise returns (CANDIDATE-STR . nil)."
     (if semi (cons (substring candidate-str 0 semi) (substring candidate-str (1+ semi)))
       (cons candidate-str nil))))
 
-(defun nskk--dict-parse-candidates-with-annotations (str)
+(defun nskk--dict-parse-candidates-with-annotations (str &optional key)
   "Parse candidates from STR, preserving annotations.
 Returns a list of (candidate . annotation-or-nil) cons cells.
 For \"/漢字;a kanji/感じ/\", returns:
   ((\"漢字\" . \"a kanji\") (\"感じ\" . nil))"
-  (when (and (stringp str) (> (length str) 1) (= (aref str 0) ?/))
-    (let ((parts (split-string (substring str 1) "/" t)))
-      (mapcar #'nskk--dict-split-candidate-annotation parts))))
+  (mapcar #'nskk--dict-split-candidate-annotation
+          (car (nskk--dict-parse-candidate-record str key))))
 
 ;;; Dictionary Loading
 (defconst nskk--dict-cache-max-bytes (* 128 1024 1024)
@@ -870,9 +911,10 @@ replacement cannot redirect the read to a FIFO or another file."
        (point-max)
        (or coding-system 'undecided))))
 
-(defun nskk--dict-parse-file-to-entries-strict (file &optional coding-system)
+(defun nskk--dict-parse-file-to-entries-strict (file &optional coding-system annotation-collector)
   "Parse FILE to entries using CODING-SYSTEM.
-Signal any validation or I/O error."
+Signal any validation or I/O error.
+Pass ANNOTATION-COLLECTOR through to `nskk-dict-parse-line'."
   (unless (and (stringp file) (file-readable-p file))
     (error "NSKK: Dictionary file is not readable"))
   (let ((entries nil))
@@ -883,7 +925,8 @@ Signal any validation or I/O error."
         (not (eobp))
         (let ((parsed
               (nskk-dict-parse-line
-                (buffer-substring-no-properties (line-beginning-position) (line-end-position)))))
+                (buffer-substring-no-properties (line-beginning-position) (line-end-position))
+                annotation-collector)))
           (when parsed
             (push parsed entries)))
         (forward-line 1)))
@@ -910,8 +953,11 @@ Existing system facts are preserved when neither source yields entries.
 Calls ON-FOUND with the symbol system if entries loaded; ON-NOT-FOUND otherwise."
   (let* ((dict-files nskk-dict-system-dictionary-files)
          (loaded
-        (if (and nskk-dict-cache-enabled (nskk--dict-cache-valid-p dict-files)) (nskk--dict-load-from-cache)
-          (nskk--dict-load-from-files dict-files))))
+          (let ((cached (and nskk-dict-cache-enabled
+                             (nskk--dict-cache-valid-p dict-files)
+                             (nskk--dict-load-from-cache))))
+            (if (and cached (> cached 0)) cached
+              (nskk--dict-load-from-files dict-files)))))
     (cond
      ((> loaded 0)
       (message "NSKK: Dictionary initialization is complete (%d entries)" loaded)
@@ -921,10 +967,11 @@ Calls ON-FOUND with the symbol system if entries loaded; ON-NOT-FOUND otherwise.
       (fail)))))
 
 ;;; User dictionary parsing and loading
-(defun nskk--dict-parse-user-file-to-entries (file)
+(defun nskk--dict-parse-user-file-to-entries (file &optional raw)
   "Parse and validate all user dictionary lines in FILE.
 Return entries only when FILE contains at least one valid entry and no
-invalid data lines.  Comments and blank lines are ignored."
+invalid data lines.  Comments and blank lines are ignored.
+When RAW is non-nil, return candidate records instead of display candidates."
   (when (and (stringp file) (file-readable-p file))
     (condition-case nil
         (with-temp-buffer
@@ -938,7 +985,13 @@ invalid data lines.  Comments and blank lines are ignored."
                     (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
                (unless (or (string-empty-p (string-trim line)) (string-prefix-p ";;" line))
                  (let ((entry (nskk-dict-parse-line line)))
-                   (if entry (push entry entries)
+                   (if entry (push (if raw
+                                       (cons (car entry)
+                                             (nskk--dict-parse-candidate-record
+                                              (substring line (1+ (string-search " " line)))
+                                              (car entry)))
+                                     entry)
+                                   entries)
                        (setq valid nil)))))
              (forward-line 1))
            (when (and valid entries)
@@ -954,10 +1007,31 @@ validates and contains at least one entry."
       nskk-dict-user-dictionary-file
       (file-readable-p nskk-dict-user-dictionary-file))
     (message "NSKK: Loading user dictionary from %s" nskk-dict-user-dictionary-file)
-    (let ((entries (nskk--dict-parse-user-file-to-entries nskk-dict-user-dictionary-file)))
+    (let ((entries (nskk--dict-parse-user-file-to-entries nskk-dict-user-dictionary-file t)))
       (when entries
-        (nskk--dict-replace-predicate-entries 'user-dict-entry entries)
+        (nskk--dict-publish-user-entries entries)
         'user))))
+
+(defun nskk--dict-publish-user-entries (entries)
+  "Atomically publish raw user ENTRIES and their display candidates."
+  (let* ((metadata-key (nskk-prolog-clause-key 'user-dict-source-entry 2))
+         (previous (nskk-dict-transaction-predicate-snapshot metadata-key))
+         (metadata (nskk--dict-stage-predicate-entries 'user-dict-source-entry entries))
+         (display (nskk--dict-stage-predicate-entries
+                   'user-dict-entry
+                   (mapcar (lambda (entry)
+                             (cons (car entry)
+                                   (mapcar (lambda (raw)
+                                             (car (nskk--dict-split-candidate-annotation raw)))
+                                           (cadr entry))))
+                           (seq-uniq entries
+                                     (lambda (left right)
+                                       (equal (car left) (car right))))))))
+    (nskk--dict-commit-staged-predicate
+     display nil
+     (list (cons 'metadata
+                 (lambda () (nskk-dict-transaction-apply-predicate-snapshot previous))))
+     (lambda () (nskk--dict-publish-staged-predicate metadata)))))
 
 ;;; On-disk cache for system dictionaries
 (defun nskk--dict-cache-file-path ()
@@ -986,16 +1060,17 @@ symlink) and when FILE is newer than or equal to CACHE-MTIME."
                 (nskk--dict-file-older-than f cache-mtime))
               dict-files)))))))
 
-(defun nskk--dict-save-system-dict-cache (entries dict-files)
+(defun nskk--dict-save-system-dict-cache (entries dict-files &optional annotations)
   "Serialize ENTRIES to the on-disk cache.
 ENTRIES is a list of (kana . candidates-list) pairs.
-DICT-FILES is the list of source files used to build the cache."
+DICT-FILES is the ordered list of source files used to build the cache.
+ANNOTATIONS contains only triples collected from those sources."
   (let ((cache-path (nskk--dict-cache-file-path)))
     (make-directory (file-name-directory cache-path) t)
     (nskk-dict-with-atomic-file
       cache-path
       (prin1
-        (list :version 1 :source-files dict-files :entries entries)
+        (list :version 3 :source-files dict-files :entries entries :annotations annotations)
         (current-buffer)))
     (message "NSKK: Cached %d entries to %s" (length entries) cache-path)))
 
@@ -1012,33 +1087,46 @@ DICT-FILES is the list of source files used to build the cache."
         (and (stringp candidate) (not (string-empty-p candidate))))
       (cdr entry))))
 
-(defun nskk--dict-cache-data-entries (data)
-  "Return validated entries from cache DATA, or nil."
-  (when (and (proper-list-p data) (= (length data) 6))
+(defun nskk--dict-cache-data (data)
+  "Return DATA when it is a complete version 3 source cache, or nil."
+  (when (and (proper-list-p data) (= (length data) 8))
     (let ((keys (cl-loop for (key _value) on data by (function cddr) collect key))
           (version (plist-get data :version))
           (stored (plist-get data :source-files))
-          (entries (plist-get data :entries)))
+          (entries (plist-get data :entries))
+          (annotations (plist-get data :annotations)))
       (when (and
-          (= (length (delete-dups (copy-sequence keys))) 3)
+          (= (length (delete-dups (copy-sequence keys))) 4)
           (cl-every
             (lambda (key)
-              (memq key (quote (:version :source-files :entries))))
+              (memq key (quote (:version :source-files :entries :annotations))))
             keys)
-          (eql version 1)
+          (eql version 3)
           (proper-list-p stored)
           (consp stored)
-          (cl-every (function stringp) stored)
+          (cl-every (lambda (path) (and (stringp path) (not (string-empty-p path)))) stored)
           (proper-list-p entries)
           (consp entries)
           (cl-every (function nskk--dict-cache-entry-p) entries)
-          (nskk--dict-cache-source-valid-p stored))
-        entries))))
+          (nskk--dict-cache-source-valid-p stored)
+          (proper-list-p annotations)
+          (let ((pairs (make-hash-table :test #'equal)))
+            (dolist (entry entries)
+              (dolist (candidate (cdr entry))
+                (puthash (cons (car entry) candidate) t pairs)))
+            (cl-every
+             (lambda (note)
+               (and (proper-list-p note) (= (length note) 3)
+                    (cl-every (lambda (value)
+                                (and (stringp value) (not (string-empty-p value))))
+                              note)
+                    (gethash (cons (car note) (cadr note)) pairs)))
+             annotations)))
+        data))))
 
-(defun nskk--dict-load-system-dict-from-cache ()
-  "Load and fully validate system dictionary entries from disk cache.
-Returns a list of entry pairs, or nil on any size, syntax, schema, or
-source configuration failure."
+(defun nskk--dict-read-system-cache ()
+  "Return the validated version 3 cache payload, or nil.
+Return nil on read, size, syntax, schema, or source configuration failure."
   (let ((cache-path (nskk--dict-cache-file-path)))
     (condition-case err
         (let* ((attributes (file-attributes cache-path))
@@ -1051,7 +1139,7 @@ source configuration failure."
                (let ((data (read (current-buffer))))
                  (skip-chars-forward " \t\r\n")
                  (when (eobp)
-                   (nskk--dict-cache-data-entries data)))))))
+                   (nskk--dict-cache-data data)))))))
       (error
        (message
         "NSKK: Cache read failed (%s), reloading from source"
@@ -1218,7 +1306,69 @@ consonants appended to KEY.  Results from both searches are combined."
 (defvar nskk-dict-modified nil
   "Non-nil when the user dictionary has unsaved modifications.")
 
-(defun nskk--dict-register-transaction (previous-key-state reading word)
+(defun nskk--dict-update-okuri-block (tail kana word raw-word purge)
+  "Update KANA's first block in TAIL for WORD, using RAW-WORD on insertion.
+PURGE removes the candidate.  Other blocks retain their original bytes."
+  (let ((position 0) pieces found)
+    (while (< position (length tail))
+      (unless (and (string-match "\\[\\([^/]+\\)/\\(.*?\\)\\]/" tail position)
+                   (= (match-beginning 0) position))
+        (signal 'nskk-dict-error (list "Malformed okuri block")))
+      (let ((end (match-end 0))
+            (block (match-string 0 tail))
+            (suffix (match-string 1 tail))
+            (candidates (split-string (match-string 2 tail) "/" t)))
+        (if (and (not found) (equal suffix kana))
+            (progn
+              (setq found t
+                    candidates
+                    (seq-remove (lambda (raw)
+                                  (equal raw (or raw-word word)))
+                                candidates))
+              (unless purge (push raw-word candidates))
+              (when candidates
+                (push (concat "[" kana "/" (string-join candidates "/") "/]/") pieces)))
+          (push block pieces))
+        (setq position end)))
+    (unless (or found purge)
+      (push (concat "[" kana "/" raw-word "/]/") pieces))
+    (let ((result (apply #'concat (nreverse pieces))))
+      (unless (string-empty-p result) result))))
+
+(defun nskk--dict-register-metadata (reading word kana &optional raw-word)
+  "Publish READING's active raw record after registering WORD with KANA."
+  (when (or kana raw-word)
+    (let ((entries (nskk-prolog-query-bindings
+                    '(user-dict-source-entry \?k \?r) '(\?k \?r)))
+          found)
+      (setq entries
+            (mapcar
+             (lambda (entry)
+               (let ((key (car entry)) (record (cadr entry)))
+                 (if (and (equal key reading) (not found))
+                     (let ((raw (or (seq-find
+                                     (lambda (candidate)
+                                       (equal word (car (nskk--dict-split-candidate-annotation candidate))))
+                                     (car record)) word)))
+                       (setq found t)
+                       (cons key (cons (if raw-word
+                                           (cons raw-word (remove raw-word (car record)))
+                                         (car record))
+                                       (if kana
+                                           (nskk--dict-update-okuri-block
+                                            (cdr record) kana word raw nil)
+                                         (cdr record)))))
+                   (cons key record))))
+             entries))
+      (unless found
+        (setq entries (append entries
+                              (list (cons reading
+                                          (cons (list (or raw-word word))
+                                                (when kana
+                                                  (nskk--dict-update-okuri-block nil kana word word nil))))))))
+      (nskk--dict-replace-predicate-entries 'user-dict-source-entry entries))))
+
+(defun nskk--dict-register-transaction (previous-key-state reading word &optional kana raw-word)
   "Run the register-impl transaction body for READING and WORD.
 Prepares PREVIOUS-KEY-STATE's index tail, lazily loads the user dictionary
 when not yet loaded, and runs the Prolog dict-register/2 query.  Returns t
@@ -1235,6 +1385,9 @@ on a successful query, nil when the valid query has no solution."
       (setq nskk--user-dict-index 'user)))
   (when (nskk-prolog-holds-p
          `(dict-register ,reading ,word))
+    (if raw-word
+        (nskk--dict-register-metadata reading word kana raw-word)
+      (nskk--dict-register-metadata reading word kana))
     (setq nskk-dict-modified t)
     ;; Registration hooks are the publication boundary.  Unlike
     ;; best-effort notifications, the first failure aborts the
@@ -1245,7 +1398,24 @@ on a successful query, nil when the valid query has no solution."
              (substring-no-properties word))
     t))
 
-(defun nskk--dict-register-impl (reading word)
+(defun nskk--dict-capture-registration-state (reading)
+  "Capture dictionary state for a reversible registration undo at READING."
+  (list (nskk-prolog-prepare-key-state-index-tail
+         (nskk-prolog-capture-key-state
+          (nskk-prolog-clause-key 'user-dict-entry 2) reading t))
+        (nskk-dict-transaction-predicate-snapshot
+         (nskk-prolog-clause-key 'user-dict-source-entry 2))
+        nskk--user-dict-index nskk-dict-modified))
+
+(defun nskk--dict-restore-registration-state (snapshot)
+  "Restore an exact registration undo SNAPSHOT, including raw source rows."
+  (let ((inhibit-quit t))
+    (nskk-prolog-restore-key-state (nth 0 snapshot))
+    (nskk-dict-transaction-apply-predicate-snapshot (nth 1 snapshot))
+    (setq nskk--user-dict-index (nth 2 snapshot)
+          nskk-dict-modified (nth 3 snapshot))))
+
+(defun nskk--dict-register-impl (reading word &optional kana raw-word)
   "Attempt to register WORD for READING as one atomic publication.
 Returns t when Prolog dict-register/2, every update hook, and the success
 message complete.  Returns nil only when the valid Prolog query has no
@@ -1256,16 +1426,24 @@ dirty flag before propagating the condition."
          (owner (list 'nskk--dict-register-impl key)))
     (nskk-dict-transaction-ensure-rollback-complete owner)
     (let* ((previous-key-state (nskk-prolog-capture-key-state key reading t))
+           (previous-metadata
+            (nskk-dict-transaction-predicate-snapshot
+             (nskk-prolog-clause-key 'user-dict-source-entry 2)))
            (previous-user-index nskk--user-dict-index)
            (previous-modified nskk-dict-modified))
       (condition-case condition
           (prog1
-              (nskk--dict-register-transaction previous-key-state reading word)
+              (if raw-word
+                  (nskk--dict-register-transaction previous-key-state reading word kana raw-word)
+                (nskk--dict-register-transaction previous-key-state reading word kana))
             (nskk-dict-transaction-clear-pending-rollback owner))
         ((error quit)
          (nskk-dict-transaction-rollback-and-resignal
           owner condition
           (list
+           (cons 'user-dict-metadata
+                 (lambda ()
+                   (nskk-dict-transaction-apply-predicate-snapshot previous-metadata)))
            (cons 'user-dict-predicate
                  (lambda ()
                    (nskk-prolog-restore-key-state previous-key-state)))
@@ -1301,26 +1479,132 @@ Candidates may contain ordinary spaces but not slash, semicolon, preedit
 markers, ASCII controls U+0000 through U+001F, or U+007F."
   (nskk--dict-valid-field-p word t))
 
-(defun/k nskk-dict-register-word (reading word)
+(defun nskk--dict-raw-candidate (reading word)
+  "Return WORD's source spelling, including its annotation, at READING."
+  (let* ((record (nskk-prolog-query-value
+                  `(user-dict-source-entry ,reading \?record) '\?record))
+         (raw (cl-find word (car record) :test #'equal
+                       :key (lambda (value)
+                              (car (nskk--dict-split-candidate-annotation value)))))
+         (user (nskk-prolog-query-value
+                `(user-dict-entry ,reading \?words) '\?words)))
+    (or raw
+        (and (member word user) word)
+        (let ((annotation (nskk-prolog-query-value
+                           `(dict-annotation ,reading ,word \?annotation)
+                           '\?annotation)))
+          (if annotation (concat word ";" annotation) word)))))
+
+(defun nskk--dict-user-annotation (reading word)
+  "Return the preserved user annotation for WORD at READING."
+  (let ((record (nskk-prolog-query-value
+                 `(user-dict-source-entry ,reading \?record) '\?record)))
+    (cl-loop for raw in (car record)
+             for pair = (nskk--dict-split-candidate-annotation raw)
+             when (equal word (car pair)) return (cdr pair))))
+
+(defun nskk--dict-register-raw-word (reading word raw-word)
+  "Atomically register WORD and its annotated RAW-WORD for READING."
+  (unless (and (nskk--dict-valid-key-p reading)
+               (nskk--dict-valid-word-p word)
+               (stringp raw-word)
+               (equal word (car (nskk--dict-split-candidate-annotation raw-word)))
+               (cl-loop for character across raw-word
+                        always (and (> character 31) (/= character 127)
+                                    (/= character ?/))))
+    (signal 'nskk-dict-error (list nskk--dict-invalid-entry-message)))
+  (nskk--dict-register-impl reading word nil raw-word))
+
+(defun/k nskk-dict-register-word (reading word &rest okuri)
   "Register WORD as a conversion candidate for READING in user dictionary.
 Signals `nskk-dict-error` with a fixed safe message before any dictionary
 state is observed or changed when READING or WORD cannot be serialized.
 Otherwise uses the Prolog dict-register rule and returns non-nil on success;
-calls on-not-found only when the valid registration query has no solution."
+calls on-not-found only when the valid registration query has no solution.
+OKURI supplies an optional full kana suffix.  In the CPS API it follows
+the two continuations, preserving existing four-argument calls."
   (unless (and (nskk--dict-valid-key-p reading)
-               (nskk--dict-valid-word-p word))
+               (nskk--dict-valid-word-p word)
+               (<= (length okuri) 1)
+               (or (null (car okuri))
+                   (and (nskk--dict-okuri-key-p reading)
+                        (nskk--dict-valid-key-p (car okuri)))))
     (signal (quote nskk-dict-error)
             (list nskk--dict-invalid-entry-message)))
-  (if (nskk--dict-register-impl reading word)
+  (if (if okuri
+          (nskk--dict-register-impl reading word (car okuri))
+        (nskk--dict-register-impl reading word))
       (succeed t)
     (fail)))
 
-(defun nskk--dict-unregister-impl (reading word)
+(defun nskk--dict-unregister-impl (reading word &optional kana)
   "Attempt to unregister WORD for READING from the Prolog user dictionary.
 Returns t on success (Prolog dict-unregister/2 succeeded), nil on failure."
+  (let* ((key (nskk-prolog-clause-key 'user-dict-entry 2))
+         (owner (list 'nskk--dict-unregister-impl key)))
+    (nskk-dict-transaction-ensure-rollback-complete owner)
+    (let ((previous (nskk-prolog-capture-key-state key reading t))
+          (metadata (nskk-dict-transaction-predicate-snapshot
+                     (nskk-prolog-clause-key 'user-dict-source-entry 2)))
+          (modified nskk-dict-modified))
+      (condition-case condition
+          (prog1
+              (progn
+                (nskk-prolog-prepare-key-state-index-tail previous)
+                (nskk--dict-unregister-transaction reading word kana))
+            (nskk-dict-transaction-clear-pending-rollback owner))
+        ((error quit)
+         (nskk-dict-transaction-rollback-and-resignal
+          owner condition
+          (list (cons 'predicate (lambda () (nskk-prolog-restore-key-state previous)))
+                (cons 'metadata (lambda () (nskk-dict-transaction-apply-predicate-snapshot metadata)))
+                (cons 'modified (lambda () (setq nskk-dict-modified modified))))))))))
+
+(defun nskk--dict-unregister-transaction (reading word &optional kana)
+  "Remove WORD from READING, retaining unrelated okuri blocks."
   (when (and
       nskk--user-dict-index
       (nskk-prolog-holds-p `(dict-unregister ,reading ,word)))
+    (let ((entries (nskk-prolog-query-bindings
+                    '(user-dict-source-entry \?k \?r) '(\?k \?r)))
+          (remaining (nskk-prolog-query-value `(user-dict-entry ,reading \?c) '\?c))
+          found)
+      (when entries
+        (nskk--dict-replace-predicate-entries
+         'user-dict-source-entry
+         (delq nil
+               (mapcar
+                (lambda (entry)
+                  (let ((key (car entry)) (record (cadr entry)))
+                    (if (and (equal key reading) (not found))
+                        (progn
+                          (setq found t)
+                          (when remaining
+                            (cons key
+                                  (cons (seq-remove
+                                         (lambda (raw)
+                                           (equal word (car (nskk--dict-split-candidate-annotation raw))))
+                                         (car record))
+                                        (if kana
+                                            (nskk--dict-update-okuri-block
+                                             (cdr record) kana word
+                                             (seq-find
+                                              (lambda (raw)
+                                                (equal word (car (nskk--dict-split-candidate-annotation raw))))
+                                              (car record)) t)
+                                          (cdr record))))))
+                      (cons key record))))
+                entries))))
+      (unless remaining
+        (let ((next (nskk-prolog-query-value
+                     `(user-dict-source-entry ,reading \?r) '\?r)))
+          (when next
+            (nskk-prolog-assert
+             `((user-dict-entry
+                ,reading
+                ,(mapcar (lambda (raw)
+                           (car (nskk--dict-split-candidate-annotation raw)))
+                         (car next)))))))))
     (setq nskk-dict-modified t)
     (nskk--dict-run-update-hook)
     (message "NSKK: Unregistered %s -> %s"
@@ -1328,18 +1612,25 @@ Returns t on success (Prolog dict-unregister/2 succeeded), nil on failure."
              (substring-no-properties word))
     t))
 
-(defun/k nskk-dict-unregister-word (reading word)
+(defun/k nskk-dict-unregister-word (reading word &rest okuri)
   "Unregister WORD as a conversion candidate for READING from user dictionary.
 Uses the Prolog dict-unregister rule which removes the word from an
 existing entry (or retracts the entire entry if it was the sole candidate).
 Returns non-nil (t) on success; calls on-not-found when READING or WORD
-are empty/invalid or when the Prolog unregistration query fails."
+are empty/invalid or when the Prolog unregistration query fails.
+OKURI supplies an optional full kana suffix after the CPS continuations."
   (if (and
       (stringp reading)
       (not (string-empty-p reading))
       (stringp word)
       (not (string-empty-p word))
-      (nskk--dict-unregister-impl reading word)) (succeed t)
+      (<= (length okuri) 1)
+      (or (null (car okuri))
+          (and (nskk--dict-okuri-key-p reading)
+               (nskk--dict-valid-key-p (car okuri))))
+      (if okuri
+          (nskk--dict-unregister-impl reading word (car okuri))
+        (nskk--dict-unregister-impl reading word))) (succeed t)
     (fail)))
 
 ;;; User Dictionary Save
@@ -1375,6 +1666,50 @@ and CANDIDATES a non-empty proper list of valid candidate words."
         (signal (quote nskk-dict-error)
                 (list nskk--dict-invalid-entry-message))))))
 
+(defun nskk--dict-user-entry-text (binding)
+  "Serialize live BINDING followed by its unchanged shadow source rows."
+  (let* ((key (car binding))
+         (records (nskk-prolog-query-bindings
+                   `(user-dict-source-entry ,key \?r) '(\?r))))
+    (concat
+     (nskk--dict-user-record-text binding (caar records))
+     (mapconcat (lambda (row)
+                  (nskk--dict-user-record-text (list key) (car row) t))
+                (cdr records) ""))))
+
+(defun nskk--dict-user-record-text (binding record &optional shadow)
+  "Serialize BINDING using RECORD, retaining raw candidates for SHADOW rows."
+  (let* ((key (car binding))
+         (raw (car record))
+         (blocks (cdr record)))
+    (unless (and (proper-list-p raw)
+                 (seq-every-p (lambda (item)
+                                (and (stringp item)
+                                     (not (string-match-p "[/\n\r]" item)))) raw)
+                 (or (null blocks)
+                     (and (stringp blocks)
+                          (not (string-match-p "[\n\r]" blocks))
+                          (string-prefix-p "[" blocks)
+                          (string-suffix-p "]/" blocks))))
+      (signal 'nskk-dict-error (list nskk--dict-invalid-entry-message)))
+    (format "%s /%s/%s\n" key
+            (string-join
+             (if shadow raw
+               (mapcar (lambda (word)
+                       (or (seq-find
+                            (lambda (item)
+                              (equal word (car (nskk--dict-split-candidate-annotation item)))) raw)
+                           word))
+                       (cadr binding))) "/")
+            (or blocks ""))))
+
+(defun nskk--dict-okuri-key-p (key)
+  "Return non-nil when KEY has a non-ASCII stem and lowercase okuri suffix."
+  (let ((length (length key)))
+    (and (> length 1)
+         (>= (aref key (- length 2)) 128)
+         (<= ?a (aref key (1- length)) ?z))))
+
 (defun nskk--dict-save-user-dictionary-1 ()
   "Write the current user-dictionary facts to disk unconditionally.
 The complete snapshot is validated before any directory, temporary file, or
@@ -1386,6 +1721,9 @@ fixed safe message while preserving the dirty state and stored snapshot."
             (quote (user-dict-entry \?k \?c)) (quote (\?k \?c)))))
       ;; Validate the complete snapshot before creating a directory or file.
       (nskk--dict-validate-user-dictionary-snapshot bindings)
+      (setq bindings (mapcar (lambda (binding)
+                              (cons (nskk--dict-okuri-key-p (car binding))
+                                    (nskk--dict-user-entry-text binding))) bindings))
       ;; The personal dictionary records what the user types; keep newly
       ;; created files and directories private (existing modes are kept).
       (let ((dir (file-name-directory nskk-dict-user-dictionary-file)))
@@ -1397,13 +1735,11 @@ fixed safe message while preserving the dirty state and stored snapshot."
        (lambda ()
          (insert ";; -*- mode: fundamental; coding: utf-8 -*-\n")
          (insert ";; NSKK user dictionary\n")
-         (insert ";; okuri-nasi entries.\n")
-         (dolist (binding bindings)
-           (let ((key (car binding))
-                 (candidates (cadr binding)))
-             (insert (format "%s /%s/\n"
-                             key
-                             (string-join candidates "/"))))))
+         (dolist (section '(t nil))
+           (insert (if section ";; okuri-ari entries.\n" ";; okuri-nasi entries.\n"))
+           (dolist (binding bindings)
+             (when (eq (car binding) section)
+               (insert (cdr binding))))))
        (lambda ()
          (setq nskk-dict-modified nil)))
       (message "NSKK: User dictionary saved to %s"

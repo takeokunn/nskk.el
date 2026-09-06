@@ -31,6 +31,7 @@
 (require 'nskk-e2e-helpers)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
+(require 'nskk-study)
 (eval-when-compile (require 'cl-lib))
 
 ;;;;
@@ -1353,6 +1354,27 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
     (should (= (point) (point-max)))
     (should (eq (nskk-state-henkan-phase nskk-current-state) phase))))
 
+(defun nskk-e2e--load-annotated-user-dictionary (contents)
+  "Load SKK dictionary CONTENTS through the public user dictionary API."
+  (let ((nskk-dict-user-dictionary-file (make-temp-file "nskk-e2e-annotations-")))
+    (unwind-protect
+        (progn
+          (with-temp-file nskk-dict-user-dictionary-file
+            (insert contents))
+          (should (eq (nskk-dict-load-user-dictionary) 'user)))
+      (delete-file nskk-dict-user-dictionary-file))))
+
+(ert-deftest nskk-e2e-plain-user-suppresses-global-annotation ()
+  (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個")))
+    (let ((nskk-show-annotation t))
+      (nskk-annotation-initialize)
+      (nskk-annotation-register "#こ" "#0個" "global-note")
+      (save-window-excursion
+        (switch-to-buffer (current-buffer))
+        (execute-kbd-macro (kbd "Q 1 2 ko SPC")))
+      (should (equal (car (nskk-state-candidates nskk-current-state)) "12個"))
+      (should-not nskk--annotation-current))))
+
 (nskk-deftest-table annotation-command-loop
   :columns (keys enabled expected)
   :rows (("Kanji SPC" t "note-one")
@@ -1375,10 +1397,8 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
           (original-echo (symbol-function 'nskk--annotation-echo))
           echoed)
       (nskk-annotation-initialize)
-      (nskk-annotation-register "かんじ" "漢字" "note-one")
-      (nskk-annotation-register "かんじ" "感じ" "note-two")
-      (nskk-annotation-register "かk" "書" "note-okuri")
-      (nskk-annotation-register "#こ" "#0個" "note-number")
+      (nskk-e2e--load-annotated-user-dictionary
+       ";; okuri-ari entries.\nかk /書;note-okuri/描/\n;; okuri-nasi entries.\nかんじ /漢字;note-one/感じ;note-two/幹事/\n#こ /#0個;note-number/#2個/\n")
       (cl-letf (((symbol-function 'nskk--annotation-echo)
                  (lambda (format-string &rest args)
                    (setq echoed (and format-string (apply #'format format-string args)))
@@ -1434,10 +1454,8 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
           (original-build (symbol-function 'nskk--candidate-build-string))
           pages)
       (nskk-annotation-initialize)
-      (dolist (entry '(("かんじ" "感じ" "note-two") ("かんじ" "監事" "note-four")
-                       ("たぶ" "次" "tab\tinside") ("かk" "描" "okuri-note")
-                       ("#こ" "#0個" "raw-note") ("#こ" "12個" "literal-note")))
-        (apply #'nskk-annotation-register entry))
+      (nskk-e2e--load-annotated-user-dictionary
+       ";; okuri-ari entries.\nかk /書/描;okuri-note/欠/\n;; okuri-nasi entries.\nかんじ /漢字/感じ;note-two/幹事/監事;note-four/完治/莞爾/\nたぶ /初/次;tab\tinside/後/\n#こ /先頭/#0個;raw-note/12個;literal-note/#0コ/\n")
       (cl-letf (((symbol-function 'nskk-candidate-show-list) original-show-list)
                 ((symbol-function 'nskk--candidate-build-string)
                  (lambda (&rest args)
@@ -1454,13 +1472,33 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
           (should (string-match-p (regexp-quote fragment) rendered)))
         (when absent (should-not (string-match-p absent rendered))))))))
 
+(ert-deftest nskk-e2e-annotation-numeric-concrete-reading-first ()
+  "Concrete and template candidates retain their own annotations."
+  (nskk-e2e-with-buffer 'hiragana '(("34こ" . ("固定"))
+                                  ("#こ" . ("#0個")))
+    (let ((nskk-show-annotation t)
+          (nskk-henkan-show-candidates-nth 5))
+      (nskk-annotation-initialize)
+      (nskk-e2e--load-annotated-user-dictionary
+       ";; okuri-nasi entries.\n#こ /#0個;template-note/\n34こ /固定;concrete-note/\n")
+      (save-window-excursion
+        (switch-to-buffer (current-buffer))
+        (execute-kbd-macro (kbd "Q 3 4 ko SPC"))
+        (should (equal (nskk-state-candidates nskk-current-state)
+                       '("固定" "34個")))
+        (should (equal nskk--annotation-current "concrete-note"))
+        (execute-kbd-macro (kbd "SPC"))
+        (should (equal nskk--annotation-current "template-note"))
+        (execute-kbd-macro (kbd "x C-j"))
+        (should (equal (buffer-string) "固定"))))))
+
 (ert-deftest nskk-e2e-annotation-numeric-collision-inline ()
   (nskk-e2e-with-buffer 'hiragana '(("#こ" . ("#0個" "12個")))
     (let ((nskk-show-annotation t)
           (nskk-henkan-show-candidates-nth 5))
       (nskk-annotation-initialize)
-      (nskk-annotation-register "#こ" "#0個" "raw-note")
-      (nskk-annotation-register "#こ" "12個" "literal-note")
+      (nskk-e2e--load-annotated-user-dictionary
+       ";; okuri-nasi entries.\n#こ /#0個;raw-note/12個;literal-note/\n")
       (save-window-excursion
         (switch-to-buffer (current-buffer))
         (execute-kbd-macro (kbd "Q 1 2 ko SPC"))
@@ -1478,8 +1516,8 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
           (nskk--study-kakutei-ring '((:word "previous"))))
       (nskk--study-associate "previous" "12こ" "12個")
       (nskk-annotation-initialize)
-      (nskk-annotation-register "#こ" "#0個" "raw-note")
-      (nskk-annotation-register "#こ" "12個" "literal-note")
+      (nskk-e2e--load-annotated-user-dictionary
+       ";; okuri-nasi entries.\n#こ /#0個;raw-note/12個;literal-note/\n")
       (save-window-excursion
         (switch-to-buffer (current-buffer))
         (execute-kbd-macro (kbd "Q 1 2 ko SPC"))
@@ -1498,8 +1536,8 @@ Indices 0-10: 漢字 感じ 幹事 換字 貫地 刊事 肝事 感事 看事 官
           (nskk-study-max-distance nil)
           (nskk--study-kakutei-ring '((:word "previous"))))
       (nskk-annotation-initialize)
-      (nskk-annotation-register "#こ" "#0個" "raw-note")
-      (nskk-annotation-register "#こ" "12個" "literal-note")
+      (nskk-e2e--load-annotated-user-dictionary
+       ";; okuri-nasi entries.\n#こ /#0個;raw-note/12個;literal-note/\n")
       (save-window-excursion
         (switch-to-buffer (current-buffer))
         (execute-kbd-macro (kbd "Q 1 2 ko SPC SPC C-j"))

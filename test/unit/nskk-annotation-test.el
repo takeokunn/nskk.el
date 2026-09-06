@@ -489,6 +489,36 @@
       (let ((nskk-show-annotation t) (nskk--annotation-visible nil))
         (should-not (nskk--annotation-candidate-list-suffix "蚊"))))))
 
+(ert-deftest nskk-annotation-lookup-initializes-preloaded-source-facts ()
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk--annotation-initialized nil)
+          (nskk-show-annotation nil))
+      (nskk-prolog-assert '((dict-annotation "か" "蚊" "source")))
+      (should (equal (nskk-annotation-lookup "か" "蚊") "source"))
+      (should nskk--annotation-initialized))))
+
+(ert-deftest nskk-annotation-expanded-raw-eq-identity ()
+  (nskk-prolog-test-with-isolated-db
+    (let* ((nskk-current-state (nskk-state-create))
+           (nskk-show-annotation t)
+           (nskk--annotation-visible t)
+           (numeric (copy-sequence "卅四個"))
+           (literal (copy-sequence "卅四個")))
+      (nskk-state-put-metadata nskk-current-state 'henkan-reading "34こ")
+      (nskk-state-put-metadata nskk-current-state 'annotation-reading "#こ")
+      (nskk-state-put-metadata nskk-current-state 'annotation-candidates
+                               (list (cons numeric "#4個") (cons literal "卅四個")))
+      (nskk-state-put-metadata nskk-current-state 'numeric-raw-candidates
+                               (list (cons numeric "卅四個;inner個;outer")
+                                     (cons literal "卅四個")))
+      (nskk-prolog-assert '((dict-annotation "#こ" "卅四個" "wrong")))
+      (should (equal (substring-no-properties
+                      (nskk--annotation-candidate-list-suffix numeric))
+                     ";inner個;outer"))
+      (should-not (nskk--annotation-candidate-list-suffix literal))
+      (nskk-annotation-show-for-candidate "#こ" "#4個" numeric)
+      (should (equal nskk--annotation-current "inner個;outer")))))
+
 (provide 'nskk-annotation-test)
 
 ;;; nskk-annotation-test.el ends here

@@ -33,6 +33,7 @@
 (require 'nskk-pbt-generators)
 (require 'nskk-state)
 (require 'nskk-input)
+(require 'nskk-e2e-helpers)
 
 (eval-when-compile (require 'cl-lib))
 
@@ -40,36 +41,6 @@
 ;;;;
 ;;;; Helper Functions for Sequence Testing
 ;;;;
-
-(defun nskk-sequence-test--process-key (state key)
-  "Process a single KEY press on STATE, returning updated state.
-KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
-  (when (nskk-state-p state)
-    (cond
-     ((string= key "C-j")
-      (nskk-state-set state 'mode 'hiragana)
-      state)
-     ((string= key "q")
-      (let ((current-mode (nskk-state-mode state)))
-        (cond
-         ((eq current-mode 'hiragana)
-          (nskk-state-set state 'mode 'katakana))
-         ((eq current-mode 'katakana)
-          (nskk-state-set state 'mode 'hiragana))
-         (t state))
-        state))
-     ((string= key "l")
-      (nskk-state-set state 'mode 'latin)
-      state)
-     ((string= key ";")
-      (nskk-state-set state 'mode 'abbrev)
-      state)
-     ((and (stringp key) (= (length key) 1))
-      (let* ((_char (aref key 0))
-             (current-buffer (nskk-state-input-buffer state)))
-        (nskk-state-set state 'input-buffer (concat current-buffer key))
-        state))
-     (t state))))
 
 (defun nskk-sequence-test--valid-state-p (state)
   "Check if STATE has valid structure and values."
@@ -84,74 +55,81 @@ KEY is a string representing the key (e.g., \"a\", \"C-j\", \"q\")."
        (listp (nskk-state-undo-stack state))
        (listp (nskk-state-redo-stack state))))
 
-(defun nskk-sequence-test--buffer-bounds-p (state)
-  "Check if STATE buffer lengths are within reasonable bounds."
-  (and (nskk-state-p state)
-       (let ((input-len (length (nskk-state-input-buffer state)))
-             (converted-len (length (nskk-state-converted-buffer state))))
-         (and (>= input-len 0)
-              (>= converted-len 0)
-              (<= input-len 1000)
-              (<= converted-len 1000)))))
+(defun nskk-sequence-test--corpus (seed)
+  "Generate the complete typing corpus with isolated random SEED."
+  (let ((nskk--pbt-current-seed nil)
+        (nskk--pbt-seed-state nil))
+    (nskk-pbt-set-seed seed)
+    (cl-loop repeat nskk-test-sequence-runs
+             collect (nskk-generate 'typing-key-sequence))))
 
-(defun nskk-sequence-test--romaji-buffer-consistent-p (state)
-  "Check if romaji buffer in STATE contains only valid characters."
-  (let ((romaji (nskk-state-input-buffer state)))
-    (and (stringp romaji)
-         (or (string-empty-p romaji)
-             (string-match-p "^[a-zA-Z]*$" romaji)))))
+(defun nskk-sequence-test--run (mode corpus observer)
+  "Enter CORPUS through MODE's key bindings, calling OBSERVER after each key."
+  (let ((nskk-converter-romaji-style 'standard))
+    (cl-loop for keys in corpus for trial from 0 do
+             (nskk-e2e-with-buffer mode nil
+               (cl-loop for key in keys for index from 0 do
+                        (ert-info ((format "seed=%S trial=%d event=%d keys=%S buffer=%S"
+                                           nskk-test-random-seed trial index keys
+                                           (buffer-string)))
+                          (let* ((events (kbd key))
+                                 (command (key-binding events))
+                                 (last-command-event (aref events 0)))
+                            (should (= (length events) 1))
+                            (should (commandp command))
+                            (let ((this-command command))
+                              (call-interactively command)))
+                          (funcall observer index keys)))))))
 
-(defun nskk-sequence-test--mode-valid-p (state)
-  "Check if mode in STATE is one of the valid NSKK modes."
-  (nskk-state-valid-mode-p (nskk-state-mode state)))
+(ert-deftest nskk-sequence-state-never-corrupt ()
+  (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
+         (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
+    (nskk-sequence-test--run
+     'hiragana '(("a"))
+     (lambda (_index _keys) (should (equal (buffer-string) "あ"))))
+    (nskk-sequence-test--run
+     'hiragana corpus
+     (lambda (_index _keys)
+       (should (nskk-sequence-test--valid-state-p nskk-current-state))))))
 
+(ert-deftest nskk-sequence-buffer-bounds-valid ()
+  (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
+         (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
+    (nskk-sequence-test--run
+     'ascii corpus
+     (lambda (index keys)
+       (should (equal (buffer-string)
+                      (mapconcat #'identity (cl-subseq keys 0 (1+ index)) "")))
+       (should (= (point) (point-max)))
+       (should (= (point-min) 1))))))
 
-;;;;
-;;;; Property 1: State Never Corrupt
-;;;;
+(ert-deftest nskk-sequence-mode-always-valid ()
+  (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
+         (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
+    (nskk-sequence-test--run
+     'hiragana '(("a" "q" "a" "l" "a" "C-j" "a"))
+     (lambda (index _keys)
+       (should (eq (nskk-state-mode nskk-current-state)
+                   (nth index '(hiragana katakana katakana latin latin hiragana hiragana))))
+       (should (equal (buffer-string)
+                      (nth index '("あ" "あ" "あア" "あア" "あアa" "あアa" "あアaあ"))))))
+    (nskk-sequence-test--run
+     'hiragana corpus
+     (lambda (_index _keys)
+       (should (nskk-state-valid-mode-p (nskk-state-mode nskk-current-state)))))))
 
-(nskk-sequence-test state-never-corrupt
-  key-sequence
-  (nskk-state-create 'hiragana)
-  (lambda (final-state)
-    (nskk-sequence-test--valid-state-p final-state))
-  75)
-
-
-;;;;
-;;;; Property 2: Buffer Bounds
-;;;;
-
-(nskk-sequence-test buffer-bounds-valid
-  key-sequence
-  (nskk-state-create 'ascii)
-  (lambda (final-state)
-    (nskk-sequence-test--buffer-bounds-p final-state))
-  75)
-
-
-;;;;
-;;;; Property 3: Mode Always Valid
-;;;;
-
-(nskk-sequence-test mode-always-valid
-  key-sequence
-  (nskk-state-create 'hiragana)
-  (lambda (final-state)
-    (nskk-sequence-test--mode-valid-p final-state))
-  75)
-
-
-;;;;
-;;;; Property 4: Romaji Buffer Consistent
-;;;;
-
-(nskk-sequence-test romaji-buffer-consistent
-  lowercase-key-sequence
-  (nskk-state-create 'hiragana)
-  (lambda (final-state)
-    (nskk-sequence-test--romaji-buffer-consistent-p final-state))
-  75)
+(ert-deftest nskk-sequence-romaji-buffer-consistent ()
+  (let* ((nskk-test-random-seed (or nskk-test-random-seed 459))
+         (corpus (nskk-sequence-test--corpus nskk-test-random-seed)))
+    (nskk-sequence-test--run
+     'hiragana '(("k" "a"))
+     (lambda (index _keys)
+       (should (equal (nskk-state-romaji-buffer) (nth index '("k" ""))))
+       (should (equal (buffer-string) (nth index '("" "か"))))))
+    (nskk-sequence-test--run
+     'hiragana corpus
+     (lambda (_index _keys)
+       (should (string-match-p "\\`[a-z]*\\'" (nskk-state-romaji-buffer)))))))
 
 
 (provide 'nskk-sequence-test)

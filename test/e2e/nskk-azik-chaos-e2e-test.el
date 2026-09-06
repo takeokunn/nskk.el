@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'nskk-test-macros)
 (require 'cl-lib)
 (require 'nskk-e2e-helpers)
 (require 'nskk-state)
@@ -79,8 +80,8 @@ invariant, so any failure is fully reproducible."
          (min-len 5)
          (max-len 20)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
@@ -101,7 +102,7 @@ invariant, so any failure is fully reproducible."
       (ert-fail
        (format
         "Chaos test: %d/%d scenarios violated invariants (seed: %d)\n\
-Reproduce by calling (random %d) before re-running.\n\
+Reproduce: (setq nskk-test-random-seed %d), then re-run.\n\
 First %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
@@ -123,11 +124,11 @@ This catches 'stuck preedit' or 'stuck conversion' bugs that could
 arise from AZIK colon-okurigana, vowel-shadow, or hatsuon edge cases."
   (let* ((runs 100)
          (failures nil)
-         (seed (abs (random)))
+         (seed (or nskk-test-random-seed (abs (random))))
          (kana-pool (cl-remove-if
                      (lambda (ev) (member ev '("SPC" "C-g" "RET" "DEL" "C-j")))
                      nskk--azik-chaos--event-pool)))
-    (random seed)
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let* ((pre-len (+ 1 (random 8)))
@@ -182,13 +183,13 @@ immediately, which would cause the next keypress to produce unexpected
 output."
   (let* ((runs 100)
          (failures nil)
-         (seed (abs (random)))
+         (seed (or nskk-test-random-seed (abs (random))))
          (simple-kana '("ka" "ki" "ku" "ke" "ko"
                         "sa" "su" "se" "so"
                         "ta" "te" "to"
                         "na" "ni" "no"
                         "a"  "i"  "u"  "e"  "o")))
-    (random seed)
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let* ((pre-len (random 4))        ; 0–3 kana before special key
@@ -197,12 +198,16 @@ output."
                                                simple-kana)))
                (special-key (if (zerop (random 2)) ";" ":")))
           (dolist (ev pre-seq)
-            (condition-case nil
+            (condition-case err
                 (nskk--azik-chaos--dispatch-keys ev)
-              (error nil) (quit nil)))
-          (condition-case nil
+              (error
+               (push (list :run run :seed seed :event ev :error err) failures))
+              (quit nil)))
+          (condition-case err
               (nskk--azik-chaos--dispatch-keys special-key)
-            (error nil) (quit nil))
+            (error
+             (push (list :run run :seed seed :event special-key :error err) failures))
+            (quit nil))
           (when (not (string-empty-p (nskk-state-romaji-buffer)))
             (push (list :run run
                         :seed seed
@@ -214,7 +219,7 @@ output."
     (when failures
       (ert-fail
        (format
-        "AZIK special key left non-empty romaji buffer in %d/%d runs \
+        "AZIK special key had errors or non-empty romaji buffer in %d/%d runs \
 \(seed: %d)\n%S"
         (length failures) runs seed
         (seq-take failures 3))))))
@@ -227,20 +232,20 @@ output."
   "Chaos test: deferred states are always cleared after a full event sequence.
 
 Runs 100 random scenarios inside one AZIK session.  Each scenario types
-5-20 random events then resets to idle.  After the reset, all four
+5-20 random events then sends C-g twice.  Before fixture cleanup, all four
 deferred-state variables must be nil: `nskk--deferred-azik-state',
 `nskk--deferred-vowel-shadow-state', `nskk--azik-colon-okuri-pending',
 and `nskk--azik-colon-okuri-deferred'.
 
 A stuck deferred state would mean a pending correction (っ insertion,
 vowel-shadow rewrite, or colon-okurigana retroactive fix) persists
-across buffer resets, corrupting the next independent input sequence."
+after cancellation, corrupting the next independent input sequence."
   (let* ((runs 100)
          (min-len 5)
          (max-len 20)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
@@ -249,7 +254,12 @@ across buffer resets, corrupting the next independent input sequence."
             (condition-case nil
                 (nskk--azik-chaos--dispatch-keys event)
               (error nil) (quit nil)))
-          (nskk--azik-chaos--reset-to-idle)
+          (dotimes (_ 2)
+            (condition-case err
+                (nskk-e2e--dispatch-event 7)
+              (error
+               (push (list :run run :seed seed :event "C-g" :error err) failures))
+              (quit nil)))
           (let ((stuck nil))
             (when (and (fboundp 'nskk-deferred-azik-state)
                        (nskk-deferred-azik-state))
@@ -274,12 +284,13 @@ across buffer resets, corrupting the next independent input sequence."
                           :seed seed
                           :sequence seq
                           :stuck-vars stuck)
-                    failures))))))
+                    failures)))
+          (nskk--azik-chaos--reset-to-idle))))
     (when failures
       (ert-fail
        (format
-        "Chaos test P1: %d/%d scenarios had stuck deferred state after reset \
-\(seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
+        "Chaos test P1: %d/%d scenarios had errors or stuck deferred state after cancel \
+\(seed: %d)\nReproduce: (setq nskk-test-random-seed %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -302,8 +313,8 @@ or wrong kana output once resolution finally occurs."
          (min-len 5)
          (max-len 20)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
@@ -324,7 +335,7 @@ or wrong kana output once resolution finally occurs."
       (ert-fail
        (format
         "Chaos test P2: romaji buffer exceeded 4 chars in %d events \
-\(seed: %d)\nReproduce: (random %d)\nFirst %d violations:\n%S"
+\(seed: %d)\nReproduce: (setq nskk-test-random-seed %d)\nFirst %d violations:\n%S"
         (length failures) seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -347,13 +358,13 @@ input until the user manually corrects the mode."
          (min-len 5)
          (max-len 20)
          (failures nil)
-         (seed (abs (random)))
+         (seed (or nskk-test-random-seed (abs (random))))
          (kana-only-pool
           (cl-remove-if
            (lambda (ev)
              (member ev '("C-j" "C-g" "RET" "DEL" "SPC" "q")))
            nskk--azik-chaos--event-pool)))
-    (random seed)
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let ((seq (cl-loop repeat (+ min-len (random (- max-len min-len -1)))
@@ -376,7 +387,7 @@ input until the user manually corrects the mode."
       (ert-fail
        (format
         "Chaos test P3: mode changed without mode-switch key in %d/%d runs \
-\(seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
+\(seed: %d)\nReproduce: (setq nskk-test-random-seed %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -391,16 +402,14 @@ input until the user manually corrects the mode."
 Runs 100 random scenarios.  Each scenario types 1-8 random events, then
 sends C-g.  After C-g, checks:
   1. henkan-phase is nil or \\='on (not active/list/registration)
-  2. Colon-okurigana flags (CP, CD) are nil — asserted directly
-     DA/DV are cleared via belt-and-suspenders setq (see inline comment)
-  3. romaji buffer is empty (for idle) or at most 1 char (for preedit-on)
+  2. All deferred flags (DA, DV, CP, CD) are nil before fixture cleanup
 
 This is stricter than `azik-chaos-cancel-always-recovers': it also verifies
 that deferred AZIK corrections are not left pending after a cancel."
   (let* ((runs 100)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let* ((pre-len (+ 1 (random 8)))
@@ -417,10 +426,13 @@ that deferred AZIK corrections are not left pending after a cancel."
                               (nskk-state-henkan-phase nskk-current-state))))
               (when (memq phase '(active list registration))
                 (push (list 'henkan-phase-not-cleared phase) violations)))
-            (when (fboundp 'nskk-deferred-azik-state)
-              (nskk-set-deferred-azik-state nil))
-            (when (fboundp 'nskk-deferred-vowel-shadow-state)
-              (nskk-set-deferred-vowel-shadow-state nil))
+            (when (nskk-deferred-azik-state)
+              (push (list 'deferred-azik-state (nskk-deferred-azik-state))
+                    violations))
+            (when (nskk-deferred-vowel-shadow-state)
+              (push (list 'deferred-vowel-shadow-state
+                          (nskk-deferred-vowel-shadow-state))
+                    violations))
             (when (and (fboundp 'nskk-azik-colon-okuri-pending)
                        (nskk-azik-colon-okuri-pending))
               (push (list 'azik-colon-okuri-pending
@@ -442,7 +454,7 @@ that deferred AZIK corrections are not left pending after a cancel."
       (ert-fail
        (format
         "Chaos test P4: C-g left unclean state in %d/%d runs (seed: %d)\n\
-Reproduce: (random %d)\nFirst %d failures:\n%S"
+Reproduce: (setq nskk-test-random-seed %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -466,8 +478,8 @@ considers the buffer idle."
          (min-len 5)
          (max-len 20)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
@@ -494,7 +506,7 @@ considers the buffer idle."
       (ert-fail
        (format
         "Chaos test P5: phantom display overlay after idle reset in %d/%d \
-runs (seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
+runs (seed: %d)\nReproduce: (setq nskk-test-random-seed %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -524,8 +536,8 @@ provided, producing garbage output."
          (min-len 2)
          (max-len 10)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
@@ -574,7 +586,7 @@ provided, producing garbage output."
       (ert-fail
        (format
         "Chaos test P6: RET did not clean up all state in %d/%d runs \
-\(seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
+\(seed: %d)\nReproduce: (setq nskk-test-random-seed %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -597,8 +609,8 @@ crashes the candidate-cycling logic or silently picks a nil candidate."
          (min-len 5)
          (max-len 20)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let ((seq (nskk--azik-chaos--generate-sequence
@@ -623,7 +635,7 @@ crashes the candidate-cycling logic or silently picks a nil candidate."
       (ert-fail
        (format
         "Chaos test P7: active henkan-phase with empty candidates in %d/%d \
-runs (seed: %d)\nReproduce: (random %d)\nFirst %d failures:\n%S"
+runs (seed: %d)\nReproduce: (setq nskk-test-random-seed %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))
@@ -647,8 +659,8 @@ and rollback-conversion paths clear them just like the three pre-existing
 colon-okurigana and sokuon-okurigana flags."
   (let* ((runs 100)
          (failures nil)
-         (seed (abs (random))))
-    (random seed)
+         (seed (or nskk-test-random-seed (abs (random)))))
+    (random (number-to-string seed))
     (nskk-e2e-with-azik-buffer 'hiragana nil
       (dotimes (run runs)
         (let* ((pre-len (+ 1 (random 8)))
@@ -681,7 +693,7 @@ colon-okurigana and sokuon-okurigana flags."
       (ert-fail
        (format
         "Chaos test P8: C-g left DA/DV non-nil in %d/%d runs (seed: %d)\n\
-Reproduce: (random %d)\nFirst %d failures:\n%S"
+Reproduce: (setq nskk-test-random-seed %d)\nFirst %d failures:\n%S"
         (length failures) runs seed seed
         (min 3 (length failures))
         (seq-take failures 3))))))

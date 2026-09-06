@@ -25,6 +25,230 @@
 (defvar skkdic-okuri-ari nil)
 (defvar skkdic-okuri-nasi nil)
 
+(ert-deftest nskk-dictionary-raw-record-key-context ()
+  (should (equal (nskk-dict-parse-line "かk /書;write/描;draw/[く/書;write/]/[け/描;draw/]/")
+                 '("かk" "書" "描")))
+  (dolist (key '("かな" "ascii" "[literal]"))
+    (should (equal (nskk-dict-parse-line (concat key " /[括弧];first;second/通常/"))
+                   (list key "[括弧]" "通常"))))
+  (should (equal (nskk--dict-parse-candidate-record
+                  "/書;write/描;draw/[く/書;write/]/[け/描;draw/]/" "かk")
+                 '(("書;write" "描;draw") . "[く/書;write/]/[け/描;draw/]/"))))
+
+(ert-deftest nskk-dictionary-raw-record-registration-lifecycle ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+    (nskk-prolog-assert '((user-dict-entry "かk" ("書" "描"))))
+    (nskk-prolog-assert
+     '((user-dict-source-entry "かk"
+        (("書;write" "描;draw") . "[く/書;write/]/[け/描;draw/]/"))))
+    (let ((nskk--user-dict-index 'user)
+          (nskk-dict-modified nil)
+          (nskk-jisyo-update-hook nil))
+      (should (nskk-dict-register-word "かk" "掻"))
+      (should (equal (nskk--dict-user-entry-text '("かk" ("掻" "書" "描")))
+                     "かk /掻/書;write/描;draw/[く/書;write/]/[け/描;draw/]/\n"))
+      (should (nskk-dict-register-word "かk" "描"))
+      (should (equal (nskk-prolog-query-value '(user-dict-entry "かk" \?c) '\?c)
+                     '("描" "掻" "書")))
+      (should (nskk-dict-unregister-word "かk" "書"))
+      (should (nskk-dict-register-word "かk" "書"))
+      (should (equal (nskk--dict-user-entry-text
+                      (car (nskk-prolog-query-bindings
+                            '(user-dict-entry \?k \?c) '(\?k \?c))))
+                     "かk /書/描;draw/掻/[く/書;write/]/[け/描;draw/]/\n"))
+      (dolist (word '("書" "掻" "描"))
+        (should (nskk-dict-unregister-word "かk" word)))
+      (should-not (nskk-prolog-query-value '(user-dict-source-entry "かk" \?r) '\?r)))))
+
+(ert-deftest nskk-dictionary-okuri-registration-and-purge ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk--dict-publish-user-entries
+     '(("かk" ("書;note" "描") . "[け/書;note/描/]/[く/描/書;note/]/")
+       ("かk" ("影;shadow") . "[く/影;shadow/]/")))
+    (let ((nskk--user-dict-index 'user) (nskk-jisyo-update-hook nil))
+      (cl-flet ((saved () (nskk--dict-user-entry-text
+                          (car (nskk-prolog-query-bindings
+                                '(user-dict-entry \?k \?c) '(\?k \?c))))))
+        (should (nskk-dict-register-word "かk" "書" "く"))
+        (should (equal (saved)
+                       "かk /書;note/描/[け/書;note/描/]/[く/書;note/描/]/\nかk /影;shadow/[く/影;shadow/]/\n"))
+        (should (nskk-dict-unregister-word "かk" "書" "く"))
+        (should (equal (saved)
+                       "かk /描/[け/書;note/描/]/[く/描/]/\nかk /影;shadow/[く/影;shadow/]/\n"))
+        (should (nskk-dict-register-word "かk" "書" "く"))
+        (should (equal (saved)
+                       "かk /書/描/[け/書;note/描/]/[く/書/描/]/\nかk /影;shadow/[く/影;shadow/]/\n"))
+        (should (nskk-dict-unregister-word "かk" "書" "く"))
+        (should (nskk-dict-unregister-word "かk" "描" "く"))
+        (should (equal (saved) "かk /影;shadow/[く/影;shadow/]/\n"))))))
+
+(ert-deftest nskk-dictionary-okuri-block-boundaries ()
+  (should (equal (nskk--dict-update-okuri-block "[く/書;other/書;note/]/" "く" "書" "書;note" nil)
+                 "[く/書;note/書;other/]/"))
+  (should (equal (nskk--dict-update-okuri-block "[く/書;other/書;note/]/" "く" "書" "書;note" t)
+                 "[く/書;other/]/"))
+  (should (equal (nskk--dict-update-okuri-block nil "いて" "書" "書" nil)
+                 "[いて/書/]/"))
+  (should (equal (nskk--dict-update-okuri-block "[く/書/]/[け/描/]/" "く" "書" nil t)
+                 "[け/描/]/"))
+  (should (equal (nskk--dict-update-okuri-block "[く/書/]/" "け" "書" nil t)
+                 "[く/書/]/"))
+  (should-not (nskk--dict-update-okuri-block "[く/書/]/" "く" "書" nil t)))
+
+(ert-deftest nskk-dictionary-okuri-cps-backward-compatible ()
+  (cl-letf (((symbol-function 'nskk--dict-register-impl) (lambda (_reading _word) t))
+            ((symbol-function 'nskk--dict-unregister-impl) (lambda (_reading _word) t)))
+    (should (nskk-dict-register-word "かな" "仮名"))
+    (should (nskk-dict-unregister-word "かな" "仮名"))
+    (should-error (nskk-dict-register-word "かな" "仮名" "く") :type 'nskk-dict-error)
+    (should-not (nskk-dict-unregister-word "かな" "仮名" "く")))
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk--user-dict-index 'user) (nskk-jisyo-update-hook nil) calls)
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-dict-register-word/k "かk" "書" (lambda (value) (push value calls)) #'ert-fail)
+      (nskk-dict-register-word/k "かk" "描" (lambda (value) (push value calls)) #'ert-fail "いて")
+      (should (equal calls '(t t)))
+      (should (equal (nskk--dict-user-entry-text '("かk" ("描" "書")))
+                     "かk /描/書/[いて/描/]/\n"))
+      (nskk-dict-unregister-word/k "かk" "描" (lambda (value) (push value calls)) #'ert-fail "いて")
+      (nskk-dict-unregister-word/k "かk" "書" (lambda (value) (push value calls)) #'ert-fail)
+      (should (equal calls '(t t t t))))))
+
+(ert-deftest nskk-dictionary-okuri-mutation-rollback ()
+  (dolist (operation '(nskk-dict-register-word nskk-dict-unregister-word))
+    (dolist (failure '(error quit))
+      (nskk-prolog-test-with-isolated-db
+        (nskk--dict-publish-user-entries
+         '(("かk" ("書;note" "描") . "[く/描/書;note/]/")
+           ("かk" ("影") . "[け/影/]/")))
+        (let* ((nskk--user-dict-index 'user) (nskk-dict-modified nil)
+               (nskk-jisyo-update-hook nil)
+               (before (nskk--dict-user-entry-text '("かk" ("書" "描"))))
+               caught)
+          (cl-letf (((symbol-function 'message)
+                     (lambda (&rest _) (signal failure '("after mutation")))))
+            (condition-case condition
+                (funcall operation "かk" "書" "く")
+              ((error quit) (setq caught (car condition)))))
+          (should (eq failure caught))
+          (should-not nskk-dict-modified)
+          (should (equal (nskk-prolog-query-value '(user-dict-entry "かk" \?c) '\?c)
+                         '("書" "描")))
+          (should (equal before (nskk--dict-user-entry-text '("かk" ("書" "描"))))))))))
+
+(ert-deftest nskk-dictionary-raw-record-publication-rollback ()
+  (dolist (failure '(error quit))
+    (nskk-prolog-test-with-isolated-db
+      (nskk--dict-publish-user-entries '(("かk" ("書;write") . "[く/書;write/]/")))
+      (let* ((keys (mapcar (lambda (predicate) (nskk-prolog-clause-key predicate 2))
+                          '(user-dict-entry user-dict-source-entry)))
+             (before (mapcar #'nskk-dict-transaction-predicate-snapshot keys))
+             (publish (symbol-function 'nskk--dict-publish-staged-predicate))
+             (calls 0)
+             caught)
+        (cl-letf (((symbol-function 'nskk--dict-publish-staged-predicate)
+                   (lambda (staged)
+                     (funcall publish staged)
+                     (when (= (cl-incf calls) 2)
+                       (signal failure '("injected after metadata publication"))))))
+          (condition-case condition
+              (nskk--dict-publish-user-entries '(("なk" ("亡;dead") . "[き/亡;dead/]/")))
+            ((error quit) (setq caught (car condition)))))
+        (should (eq caught failure))
+        (should (= calls 2))
+        (cl-mapc (lambda (old key)
+                   (let ((now (nskk-dict-transaction-predicate-snapshot key)))
+                     (cl-loop for slot from 2 to 7
+                              do (should (eq (aref old slot) (aref now slot))))))
+                 before keys)
+        (nskk--dict-publish-user-entries '(("なk" ("亡;dead") . "[き/亡;dead/]/")))
+        (should (equal (nskk-prolog-query-value '(user-dict-entry "なk" \?c) '\?c)
+                       '("亡")))
+        (should (equal (nskk-prolog-query-value '(user-dict-source-entry "なk" \?r) '\?r)
+                       '(("亡;dead") . "[き/亡;dead/]/")))))))
+
+(ert-deftest nskk-dictionary-raw-record-rejects-old-cache ()
+  (let ((nskk-dict-system-dictionary-files '("unused"))
+        (entries '(("かk" "書"))))
+    (should (equal (nskk--dict-cache-data
+                    (list :version 3 :source-files '("unused") :entries entries
+                          :annotations nil))
+                   (list :version 3 :source-files '("unused") :entries entries
+                         :annotations nil)))
+    (should-not (nskk--dict-cache-data
+                 (list :version 1 :source-files '("unused") :entries entries)))))
+
+(ert-deftest nskk-dictionary-cache-independent-schema-guards ()
+  (let* ((nskk-dict-system-dictionary-files '("/dict"))
+         (valid '(:version 3 :source-files ("/dict")
+                  :entries (("あ" "亜")) :annotations nil)))
+    (should (equal (nskk--dict-cache-data valid) valid))
+    (dolist (change '((:version . 2) (:source-files . ("/other"))
+                      (:entries . (("あ" 42)))))
+      (let ((invalid (copy-tree valid)))
+        (plist-put invalid (car change) (cdr change))
+        (should-not (nskk--dict-cache-data invalid))))))
+
+(ert-deftest nskk-dictionary-raw-record-duplicate-lifecycle ()
+  (dolist (shadow '("描;draw" "書;shadow"))
+    (nskk-prolog-test-with-isolated-db
+      (let* ((shadow-word (car (nskk--dict-split-candidate-annotation shadow)))
+             (shadow-block (concat "[け/" shadow "/]/"))
+             (shadow-line (concat "かk /" shadow "/" shadow-block "\n"))
+             (nskk--user-dict-index 'user)
+             (nskk-jisyo-update-hook nil)
+             (nskk-dict-modified nil))
+        (nskk--dict-publish-user-entries
+         `(("かk" ("書;write") . "[く/書;write/]/")
+           ("かk" (,shadow) . ,shadow-block)))
+        (cl-flet ((display () (nskk-prolog-query-bindings
+                              '(user-dict-entry \?k \?c) '(\?k \?c))))
+          (should (equal (display) '(("かk" ("書")))))
+          (should (equal (nskk--dict-user-entry-text (car (display)))
+                         (concat "かk /書;write/[く/書;write/]/\n" shadow-line)))
+          (should (nskk-dict-register-word "かk" "掻"))
+          (should (equal (display) '(("かk" ("掻" "書")))))
+          (should (nskk-dict-register-word "かk" "書"))
+          (should (equal (display) '(("かk" ("書" "掻")))))
+          (should (equal (nskk--dict-user-entry-text (car (display)))
+                         (concat "かk /書;write/掻/[く/書;write/]/\n" shadow-line)))
+          (should (nskk-dict-unregister-word "かk" "書"))
+          (should (equal (nskk--dict-user-entry-text (car (display)))
+                         (concat "かk /掻/[く/書;write/]/\n" shadow-line)))
+          (should (nskk-dict-unregister-word "かk" "掻"))
+          (should (equal (display) (list (list "かk" (list shadow-word)))))
+          (should (equal (nskk--dict-user-entry-text (car (display))) shadow-line))
+          (should (= 1 (length (nskk-prolog-query-bindings
+                               '(user-dict-source-entry \?k \?r) '(\?k \?r))))))))))
+
+(ert-deftest nskk-dictionary-raw-record-shadow-promotion-rollback ()
+  (dolist (failure '(error quit))
+    (nskk-prolog-test-with-isolated-db
+      (nskk--dict-publish-user-entries
+       '(("かk" ("書;write") . "[く/書;write/]/")
+         ("かk" ("描;draw") . "[け/描;draw/]/")))
+      (let* ((nskk--user-dict-index 'user)
+             (nskk-dict-modified nil)
+             (keys (mapcar (lambda (predicate) (nskk-prolog-clause-key predicate 2))
+                           '(user-dict-entry user-dict-source-entry)))
+             (before (mapcar #'nskk-dict-transaction-predicate-snapshot keys))
+             caught)
+        (cl-letf (((symbol-function 'nskk--dict-run-update-hook)
+                   (lambda () (signal failure '("after shadow promotion")))))
+          (condition-case condition
+              (nskk--dict-unregister-impl "かk" "書")
+            ((error quit) (setq caught (car condition)))))
+        (should (eq caught failure))
+        (should-not nskk-dict-modified)
+        (cl-mapc (lambda (old key)
+                   (let ((now (nskk-dict-transaction-predicate-snapshot key)))
+                     (cl-loop for slot from 2 to 7
+                              do (should (eq (aref old slot) (aref now slot))))))
+                 before keys)
+        (should (equal (nskk-prolog-query-value '(user-dict-entry "かk" \?c) '\?c)
+                       '("書")))))))
+
 (nskk-describe "module loading"
   (nskk-it "provides nskk-dictionary feature"
     (should (featurep 'nskk-dictionary)))
@@ -1225,14 +1449,28 @@
                         (file-readable-p (lambda (_f) t)))
         (should (nskk--dict-cache-valid-p '("/some/dict.el")))))))
 
-(nskk-describe "nskk--dict-load-system-dict-from-cache"
+(nskk-describe "nskk--dict-read-system-cache"
   (nskk-it "returns nil when cache file is unreadable"
-    (nskk-with-mocks ((insert-file-contents (lambda (_f) (error "File not found"))))
-      (should (null (nskk--dict-load-system-dict-from-cache)))))
+    (let ((file (make-temp-file "nskk-cache-read-error-"))
+          (hits 0))
+      (unwind-protect
+          (cl-letf (((symbol-function 'nskk--dict-cache-file-path) (lambda () file))
+                    ((symbol-function 'nskk--dict-insert-file-contents-bounded)
+                     (lambda (&rest _args)
+                       (cl-incf hits)
+                       (error "Cache read fault"))))
+            (should-not (nskk--dict-read-system-cache))
+            (should (= hits 1)))
+        (delete-file file))))
 
   (nskk-it "returns nil when cache data is not a list (type guard)"
-    (nskk-with-mocks ((insert-file-contents (lambda (_f) (insert "42"))))
-      (should (null (nskk--dict-load-system-dict-from-cache))))))
+    (let ((file (make-temp-file "nskk-cache-type-")))
+      (unwind-protect
+          (progn
+            (with-temp-file file (insert "42"))
+            (cl-letf (((symbol-function 'nskk--dict-cache-file-path) (lambda () file)))
+              (should-not (nskk--dict-read-system-cache))))
+        (delete-file file)))))
 
 (nskk-deftest-table dict-register-lookup-invariant
   :description "register-then-lookup invariant: registered word is always retrievable"
@@ -1295,7 +1533,7 @@
           (should-not (nskk--dict-file-older-than tmpfile past-time))
         (delete-file tmpfile)))))
 
-(nskk-describe "nskk--dict-save-system-dict-cache and nskk--dict-load-system-dict-from-cache"
+(nskk-describe "nskk--dict-save-system-dict-cache and nskk--dict-read-system-cache"
   (nskk-it "roundtrip: saved entries can be loaded back"
     (let* ((tmpfile (make-temp-file "nskk-cache-test-" nil ".eld"))
            (entries '(("かんじ" . ("漢字" "感じ"))
@@ -1306,11 +1544,10 @@
           (nskk-with-mocks ((nskk--dict-cache-file-path (lambda () tmpfile)))
             (nskk--dict-save-system-dict-cache entries dict-files)
             (nskk-prolog-test-with-isolated-db
-              (let ((loaded (nskk--dict-load-system-dict-from-cache)))
-                (should (listp loaded))
-                (should (= (length loaded) 2))
-                (should (assoc "かんじ" loaded))
-                (should (equal (cdr (assoc "さくら" loaded)) '("桜"))))))
+              (let ((loaded (nskk--dict-read-system-cache)))
+                (should (equal loaded
+                               (list :version 3 :source-files dict-files
+                                     :entries entries :annotations nil))))))
         (when (file-exists-p tmpfile)
           (delete-file tmpfile)))))
 
@@ -1328,12 +1565,13 @@
       (unwind-protect
           (progn
             (with-temp-file temp-file
-              (prin1 (list :version 99 :source-files nil :entries nil)
+              (prin1 (list :version 99 :source-files '("/dict")
+                           :entries '(("あ" "亜")) :annotations nil)
                      (current-buffer)))
-            (let ((nskk-dict-system-dictionary-files nil))
+            (let ((nskk-dict-system-dictionary-files '("/dict")))
               (nskk-with-mocks ((nskk--dict-cache-file-path
                                  (lambda () temp-file)))
-                (should (null (nskk--dict-load-system-dict-from-cache))))))
+                (should (null (nskk--dict-read-system-cache))))))
         (when (file-exists-p temp-file)
           (delete-file temp-file)))))
 
@@ -1343,14 +1581,14 @@
         (unwind-protect
             (progn
               (with-temp-file temp-file
-                (prin1 (list :version 1
+                (prin1 (list :version 3
                              :source-files '("/some/old/path")
-                             :entries '(("あ" . ("亜"))))
+                             :entries '(("あ" . ("亜"))) :annotations nil)
                        (current-buffer)))
               (let ((nskk-dict-system-dictionary-files '("/different/path")))
                 (nskk-with-mocks ((nskk--dict-cache-file-path
                                    (lambda () temp-file)))
-                  (should (null (nskk--dict-load-system-dict-from-cache))))))
+                  (should (null (nskk--dict-read-system-cache))))))
           (when (file-exists-p temp-file)
             (delete-file temp-file)))))))
 
@@ -1767,9 +2005,9 @@
     (let ((nskk-dict-system-dictionary-files (quote ("/a/dict" "/b/dict"))))
       (should (nskk--dict-cache-source-valid-p (quote ("/a/dict" "/b/dict"))))))
 
-  (nskk-it "returns t when order differs (sorted comparison)"
+  (nskk-it "rejects a different source precedence"
     (let ((nskk-dict-system-dictionary-files (quote ("/a/dict" "/b/dict"))))
-      (should (nskk--dict-cache-source-valid-p (quote ("/b/dict" "/a/dict"))))))
+      (should-not (nskk--dict-cache-source-valid-p (quote ("/b/dict" "/a/dict"))))))
 
   (nskk-it "returns nil when stored files differ"
     (let ((nskk-dict-system-dictionary-files (quote ("/a/dict"))))
@@ -2414,9 +2652,9 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
 			     "(a . b)"
 			     "#1=(#1#)"
 			     "nil nil"
-			     "(:version 1 :source-files (/dict) :entries ((a 1)))")))
+			     "(:version 2 :source-files (/dict) :entries ((a 1)))")))
 	      (with-temp-file temp-file (insert content))
-	      (should-not (nskk--dict-load-system-dict-from-cache))))
+	      (should-not (nskk--dict-read-system-cache))))
 	(delete-file temp-file))))
 
   (nskk-it "rejects oversized cache without changing system facts"
@@ -2600,14 +2838,14 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
             (progn
               (with-temp-file file
                 (prin1
-                 (list :version 1
+                 (list :version 3
                        :source-files (quote ("/dict"))
-                       :entries nil)
+                       :entries '(("あ" "亜")) :annotations nil)
                  (current-buffer))
                 (insert " trailing-garbage"))
               (nskk-with-mocks
                   ((nskk--dict-cache-file-path (lambda () file)))
-                (should-not (nskk--dict-load-system-dict-from-cache))))
+                (should-not (nskk--dict-read-system-cache))))
           (delete-file file))))
 
     (nskk-it "accepts a valid cache form followed by trailing real whitespace"
@@ -2618,16 +2856,18 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
               (progn
                 (with-temp-file file
                   (prin1
-                   (list :version 1
+                   (list :version 3
                          :source-files (quote ("/dict"))
-                         :entries (quote (("あ" . ("亜")))))
+                         :entries (quote (("あ" . ("亜"))))
+                         :annotations nil)
                    (current-buffer))
                   (insert trailing))
                 (nskk-with-mocks
                     ((nskk--dict-cache-file-path (lambda () file)))
-                  (let ((loaded (nskk--dict-load-system-dict-from-cache)))
-                    (should loaded)
-                    (should (equal (cdr (assoc "あ" loaded)) '("亜"))))))
+                  (let ((loaded (nskk--dict-read-system-cache)))
+                    (should (equal loaded
+                                   '(:version 3 :source-files ("/dict")
+                                     :entries (("あ" "亜")) :annotations nil))))))
             (delete-file file))))))
   (nskk-describe "dictionary initialization hooks"
   (nskk-it "runs the initialization hook after loading completes"
@@ -4294,8 +4534,9 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
 			   (set-file-modes output #o640)
 			   (setq caught (cl-letf
 					 (((symbol-function 'nskk-prolog-query-bindings)
-					   (lambda (&rest _arguments)
-					     '(("reading" ("candidate")))))
+					   (lambda (query &rest _arguments)
+                                             (when (eq (car query) 'user-dict-entry)
+					       '(("reading" ("candidate"))))))
 					  ((symbol-function 'message)
 					   (lambda (format-string &rest arguments)
 					     (if (equal format-string "NSKK: User dictionary saved to %s") (progn
@@ -4364,6 +4605,110 @@ The file is written in SKK-JISYO format, loaded, and cleaned up after BODY."
 			     '("user.skk"))))
            (when (file-directory-p temp-dir)
              (delete-directory temp-dir t)))))))))
+
+(ert-deftest nskk-dictionary-raw-registration-preserves-annotation-and-shadow ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+    (nskk-prolog-assert '((user-dict-entry "34" ("三十四" "卅四"))))
+    (nskk-prolog-assert
+     '((user-dict-source-entry "34" (("三十四;old" "卅四;old") . nil))))
+    (nskk-prolog-assert
+     '((user-dict-source-entry "34" (("影;shadow") . nil))))
+    (let ((nskk--user-dict-index 'user)
+          (nskk-dict-modified nil)
+          (nskk-jisyo-update-hook nil))
+      (nskk--dict-register-raw-word "34" "卅四" "卅四;expanded")
+      (should (equal (nskk--dict-user-entry-text '("34" ("卅四" "三十四")))
+                     "34 /卅四;expanded/三十四;old/\n34 /影;shadow/\n"))
+      (should (equal (nskk--dict-user-annotation "34" "卅四") "expanded"))
+      (should (nskk-prolog-query
+               '(user-dict-source-entry "34" (("影;shadow") . nil))))
+      (should nskk-dict-modified))))
+
+(ert-deftest nskk-dictionary-raw-registration-rolls-back-error-and-quit ()
+  (dolist (kind '(error quit))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-prolog-assert '((user-dict-entry "34" ("三十四" "卅四"))))
+      (nskk-prolog-assert
+       '((user-dict-source-entry "34" (("三十四;old" "卅四;old") . nil))))
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil)
+            (nskk-jisyo-update-hook
+             (list (lambda (&rest _) (signal kind '("raw publish failure")))))
+            caught)
+        (condition-case condition
+            (nskk--dict-register-raw-word "34" "卅四" "卅四;expanded")
+          ((error quit) (setq caught (car condition))))
+        (should (eq caught kind))
+        (should (equal (nskk-prolog-query-value
+                        '(user-dict-entry "34" \?words) '\?words)
+                       '("三十四" "卅四")))
+        (should (equal (nskk--dict-user-annotation "34" "卅四") "old"))
+        (should-not nskk-dict-modified)))))
+
+(ert-deftest nskk-dictionary-raw-registration-rejects-mismatched-or-unsafe-raw ()
+  (dolist (raw '("違う;annotation" "卅四/unsafe" "卅四;bad\nline" "卅四;bad\0byte"))
+    (should-error (nskk--dict-register-raw-word "34" "卅四" raw)
+                  :type 'nskk-dict-error)))
+
+(ert-deftest nskk-dictionary-cache-v3-rejects-unrelated-annotations ()
+  (let* ((nskk-dict-system-dictionary-files '("a" "b"))
+         (data '(:version 3 :source-files ("a" "b")
+                 :entries (("か" "蚊")) :annotations (("か" "蚊" "note")))))
+    (should (equal (nskk--dict-cache-data data) data))
+    (dolist (notes '((("か" "他" "note")) (("か" "蚊" ""))
+                     (("か" "蚊" "note" "extra")) (broken)))
+      (should-not (nskk--dict-cache-data
+                   (plist-put (copy-sequence data) :annotations notes))))
+    (should-not (nskk--dict-cache-data
+                 (plist-put (copy-sequence data) :version 2)))))
+
+(ert-deftest nskk-dictionary-cache-collector-is-source-only ()
+  (nskk-prolog-test-with-isolated-db
+    (let ((nskk-show-annotation nil) notes)
+      (should (equal (nskk-dict-parse-line
+                      "か /蚊;source/科/" (lambda (note) (push note notes)))
+                     '("か" "蚊" "科")))
+      (should (equal notes '(("か" "蚊" "source"))))
+      (should-not (nskk-prolog-query-one '(dict-annotation "か" "蚊" \?note))))))
+
+(ert-deftest nskk-dictionary-cache-publication-restores-both-predicates ()
+  (dolist (condition '(error quit))
+    (nskk-prolog-test-with-isolated-db
+      (nskk--dict-publish-system-data '(("か" "旧")) '(("か" "旧" "old")))
+      (let* ((keys (list (nskk-prolog-clause-key 'system-dict-entry 2)
+                         (nskk-prolog-clause-key 'dict-annotation 3)))
+             (before (mapcar #'nskk-dict-transaction-predicate-snapshot keys))
+             (publish (symbol-function 'nskk--dict-publish-staged-predicate))
+             (calls 0)
+             caught)
+        (cl-letf (((symbol-function 'nskk--dict-publish-staged-predicate)
+                   (lambda (snapshot)
+                     (funcall publish snapshot)
+                     (when (= (cl-incf calls) 2)
+                       (signal condition '(original-cache-condition))))))
+          (condition-case err
+              (nskk--dict-publish-system-data '(("か" "新")) '(("か" "新" "new")))
+            ((error quit) (setq caught err))))
+        (should (= calls 2))
+        (should (equal caught (list condition 'original-cache-condition)))
+        (cl-mapc
+         (lambda (old key)
+           (let ((now (nskk-dict-transaction-predicate-snapshot key)))
+             (cl-loop for slot from 2 to 7
+                      do (should (eq (aref old slot) (aref now slot))))))
+         before keys)))))
+
+(ert-deftest nskk-dictionary-raw-candidate-source-precedence ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-assert '((dict-annotation "34" "卅四" "system;tail")))
+    (should (equal (nskk--dict-raw-candidate "34" "卅四") "卅四;system;tail"))
+    (nskk-prolog-assert '((user-dict-entry "34" ("卅四"))))
+    (should (equal (nskk--dict-raw-candidate "34" "卅四") "卅四"))
+    (nskk-prolog-assert '((user-dict-source-entry "34" (("卅四;")))))
+    (should (equal (nskk--dict-raw-candidate "34" "卅四") "卅四;"))
+    (should (equal (nskk--dict-raw-candidate "34" "三十四") "三十四"))))
 
 (provide 'nskk-dictionary-test)
 

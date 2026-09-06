@@ -31,280 +31,9 @@
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
 (require 'nskk-pbt-shrink)
-(require 'nskk-state)
 (require 'nskk-converter)
+(require 'nskk-dictionary)
 (require 'nskk-henkan)
-
-
-;;;;
-;;;; Helper Functions
-;;;;
-
-(defconst nskk--pbt-mock-candidates-pool
-  '(("漢字" "感じ" "幹事")
-    ("日本" "二本")
-    ("日本語")
-    ("入力")
-    ("変換")
-    ("テスト")
-    ("桜")
-    ("山")
-    ("川" "河"))
-  "Pool of candidate lists for random selection.")
-
-(defconst nskk--pbt-mock-hiragana-inputs
-  '("かんじ" "にほん" "にほんご" "にゅうりょく" "へんかん"
-    "てすと" "さくら" "やま" "かわ")
-  "Pool of hiragana input strings for random selection.")
-
-(defun nskk--pbt-random-candidates ()
-  "Generate a random non-empty list of candidates."
-  (nskk--pbt-random-choice nskk--pbt-mock-candidates-pool))
-
-(defun nskk--pbt-random-hiragana-input ()
-  "Generate a random hiragana input string."
-  (nskk--pbt-random-choice nskk--pbt-mock-hiragana-inputs))
-
-(defun nskk--pbt-make-conversion-state ()
-  "Create a state with random hiragana input, ready for conversion."
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer (nskk--pbt-random-hiragana-input))
-    state))
-
-
-(defun nskk--pbt-start-conversion (state candidates)
-  "Set STATE into active conversion with CANDIDATES (test helper)."
-  (nskk-state-set-candidates state candidates)
-  (nskk-state-set state 'henkan-position 0)
-  (nskk-state-force-henkan-phase state 'active))
-
-(defun nskk--pbt-commit-conversion (state)
-  "Commit STATE conversion by taking first candidate (test helper)."
-  (let ((first-candidate (car (nskk-state-candidates state))))
-    (when first-candidate
-      (nskk-state-set state 'converted-buffer first-candidate))
-    (nskk-state-set-candidates state nil)
-    (nskk-state-set state 'henkan-position nil)
-    (nskk-state-force-henkan-phase state nil)))
-
-(defun nskk--pbt-cancel-conversion (state original-input)
-  "Cancel conversion in STATE, restoring ORIGINAL-INPUT (test helper)."
-  (nskk-state-set state 'input-buffer original-input)
-  (nskk-state-set-candidates state nil)
-  (nskk-state-set state 'henkan-position nil)
-  (nskk-state-force-henkan-phase state nil))
-
-(defun nskk--pbt-next-candidate (state)
-  "Advance STATE to its next candidate and return it, or nil if none (test helper)."
-  (let* ((candidates (nskk-state-candidates state))
-         (total (length candidates)))
-    (when (> total 0)
-      (setf (nskk-state-current-index state)
-            (mod (1+ (nskk-state-current-index state)) total))
-      (nth (nskk-state-current-index state) candidates))))
-
-
-;;;;
-;;;; Property 1: Conversion Roundtrip
-;;;;
-
-(nskk-property-test nskk-state-machine-conversion-roundtrip
-  ((candidates candidate-list))
-  (let* ((state (nskk--pbt-make-conversion-state))
-         (_input-before (nskk-state-input-buffer state)))
-    (nskk--pbt-start-conversion state candidates)
-    (nskk--pbt-commit-conversion state)
-    (let ((converted (nskk-state-converted-buffer state)))
-      (and (stringp converted)
-           (not (string-empty-p converted))
-           (member (car candidates) (list converted)))))
-  50)
-
-
-;;;;
-;;;; Property 2: Conversion Cancel Restores State
-;;;;
-
-(nskk-property-test nskk-state-machine-conversion-cancel-restores
-  ((candidates candidate-list))
-  (let* ((state (nskk--pbt-make-conversion-state))
-         (original-input (nskk-state-input-buffer state)))
-    (nskk--pbt-start-conversion state candidates)
-    (nskk--pbt-cancel-conversion state original-input)
-    (let ((input-after (nskk-state-input-buffer state))
-          (henkan-pos (nskk-state-henkan-position state))
-          (cands-after (nskk-state-candidates state)))
-      (and (string= input-after original-input)
-           (null henkan-pos)
-           (null cands-after))))
-  50)
-
-
-;;;;
-;;;; Property 3: Conversion Candidates Navigable
-;;;;
-
-(nskk-property-test nskk-state-machine-conversion-candidates-navigable
-  ((candidates candidate-list))
-  (let* ((state (nskk--pbt-make-conversion-state))
-         (num-candidates (length candidates)))
-    (nskk--pbt-start-conversion state candidates)
-    (nskk-state-set-candidates state candidates)
-    (let ((visited nil)
-          (ok t))
-      (let ((first (nth (nskk-state-current-index state)
-                        (nskk-state-candidates state))))
-        (when first (push first visited)))
-      (dotimes (_ (1- num-candidates))
-        (let ((next (nskk--pbt-next-candidate state)))
-          (when next (push next visited))))
-      (dolist (c candidates)
-        (unless (member c visited)
-          (setq ok nil)))
-      ok))
-  50)
-
-
-;;;;
-;;;; Property 4: Conversion Idempotent Commit
-;;;;
-
-(nskk-property-test nskk-state-machine-conversion-idempotent-commit
-  ((candidates candidate-list))
-  (let* ((state (nskk--pbt-make-conversion-state)))
-    (nskk--pbt-start-conversion state candidates)
-    (nskk--pbt-commit-conversion state)
-    (let ((converted-1 (nskk-state-converted-buffer state))
-          (input-1 (nskk-state-input-buffer state))
-          (henkan-1 (nskk-state-henkan-position state))
-          (cands-1 (nskk-state-candidates state))
-          (idx-1 (nskk-state-current-index state)))
-      (nskk--pbt-commit-conversion state)
-      (let ((converted-2 (nskk-state-converted-buffer state))
-            (input-2 (nskk-state-input-buffer state))
-            (henkan-2 (nskk-state-henkan-position state))
-            (cands-2 (nskk-state-candidates state))
-            (idx-2 (nskk-state-current-index state)))
-        (and (string= converted-1 converted-2)
-             (string= input-1 input-2)
-             (equal henkan-1 henkan-2)
-             (equal cands-1 cands-2)
-             (= idx-1 idx-2)))))
-  50)
-
-
-;;;;
-;;;; Property 5: Conversion State Consistency
-;;;;
-
-(nskk-property-test nskk-state-machine-conversion-state-consistency
-  ((candidates candidate-list))
-  (let* ((state (nskk--pbt-make-conversion-state))
-         (original-input (nskk-state-input-buffer state))
-         (ops (nskk--pbt-random-int 3 8)))
-    (dotimes (_ ops)
-      (let ((op (nskk--pbt-random-int 0 2)))
-        (pcase op
-          (0 ;; Start conversion
-           (when (not (string-empty-p (nskk-state-input-buffer state)))
-             (nskk--pbt-start-conversion state candidates)))
-          (1 ;; Cancel conversion
-           (nskk--pbt-cancel-conversion state original-input))
-          (2 ;; Commit conversion
-           (nskk--pbt-commit-conversion state)))))
-    (let ((henkan-pos (nskk-state-henkan-position state))
-          (cands (nskk-state-candidates state))
-          (idx (nskk-state-current-index state))
-          (input (nskk-state-input-buffer state))
-          (converted (nskk-state-converted-buffer state)))
-      (ignore henkan-pos)
-      (let ((consistent t))
-        (when cands
-          (unless (and (integerp idx) (>= idx 0) (< idx (length cands)))
-            (setq consistent nil)))
-        (unless (and (stringp input) (stringp converted))
-          (setq consistent nil))
-        (unless (nskk-state-p state)
-          (setq consistent nil))
-        consistent)))
-  50)
-
-
-;;;; Enhanced PBT Coverage
-;;;;
-
-;;;
-;;; Shrinking Property 1: Conversion roundtrip with shrinking
-;;;
-
-(nskk-property-test-with-shrinking conversion-roundtrip-shrinking
-  ((scenario conversion-scenario))
-  (let* ((state (nskk-state-create (plist-get scenario :mode)))
-         (candidates (nskk--pbt-random-candidates))
-         (hiragana-input (nskk--pbt-random-hiragana-input)))
-    (nskk-state-set state 'input-buffer hiragana-input)
-    (nskk--pbt-start-conversion state candidates)
-    (nskk--pbt-commit-conversion state)
-    (and (equal (nskk-state-converted-buffer state) (car candidates))
-         (null (nskk-state-candidates state))
-         (null (nskk-state-henkan-position state))
-         (null (nskk-state-henkan-phase state))))
-  50)
-
-;;;
-;;; Shrinking Property 2: Cancel restores original input with shrinking
-;;;
-
-(nskk-property-test-with-shrinking conversion-cancel-restores-shrinking
-  ((scenario conversion-scenario))
-  (let* ((state (nskk-state-create (plist-get scenario :mode)))
-         (candidates (nskk--pbt-random-candidates))
-         (hiragana-input (nskk--pbt-random-hiragana-input)))
-    (nskk-state-set state 'input-buffer hiragana-input)
-    (nskk--pbt-start-conversion state candidates)
-    (nskk--pbt-cancel-conversion state hiragana-input)
-    (and (string= (nskk-state-input-buffer state) hiragana-input)
-         (null (nskk-state-henkan-position state))
-         (null (nskk-state-candidates state))
-         (nskk-state-p state)))
-  50)
-
-;;;
-;;; Scenario DSL: Kanji conversion lifecycle
-;;;
-
-(nskk-describe "Kanji conversion lifecycle"
-
-  (nskk-it "cancelling conversion restores pre-conversion state"
-    (nskk-given
-      (let* ((state (nskk-state-create 'hiragana))
-             (candidates '("漢字" "感じ" "幹事"))
-             (original-input "かんじ"))
-        (nskk-state-set state 'input-buffer original-input)
-        (nskk-when
-          (progn
-            (nskk--pbt-start-conversion state candidates)
-            (nskk--pbt-cancel-conversion state original-input)))
-        (nskk-then
-          (should (string= (nskk-state-input-buffer state) original-input))
-          (should (null (nskk-state-henkan-position state)))
-          (should (null (nskk-state-candidates state)))
-          (should (nskk-state-p state))))))
-
-  (nskk-it "committing first candidate updates converted-buffer"
-    (nskk-given
-      (let* ((state (nskk-state-create 'hiragana))
-             (candidates '("漢字" "感じ" "幹事")))
-        (nskk-state-set state 'input-buffer "かんじ")
-        (nskk-when
-          (progn
-            (nskk--pbt-start-conversion state candidates)
-            (nskk--pbt-commit-conversion state)))
-        (nskk-then
-          (let ((converted (nskk-state-converted-buffer state)))
-            (should (stringp converted))
-            (should (not (string-empty-p converted)))
-            (should (nskk-state-p state))))))))
 
 
 ;;;;
@@ -328,24 +57,27 @@
 
 (nskk-describe "CPS: nskk-converter-convert/k dispatch invariants"
 
-  (nskk-it "on-match continuation receives a non-empty string as first arg"
-    (let ((failures nil))
-      (dolist (romaji '("ka" "ki" "a" "i" "u" "sha" "chi" "tsu"))
+  (nskk-it "on-match continuation receives the expected kana and remaining input exactly once"
+    (dolist (case '(("ka" "か" "") ("ki" "き" "")
+                    ("a" "あ" "") ("i" "い" "") ("u" "う" "")
+                    ("sha" "しゃ" "") ("chi" "ち" "") ("tsu" "つ" "")
+                    ("kaki" "か" "ki")))
+      (ert-info ((format "romaji=%S" (car case)))
         (let ((result-value nil)
+              (remaining-value nil)
+              (call-count 0)
               (branch-called nil))
           (nskk-converter-convert/k
-           romaji
-           (lambda (kana _remaining)
-             (setq branch-called 'match result-value kana) kana)
-           (lambda (p) (setq branch-called 'incomplete) p)
-           (lambda () (setq branch-called 'fail)))
-          (when (eq branch-called 'match)
-            (unless (and (stringp result-value)
-                         (not (string-empty-p result-value)))
-              (push (list :romaji romaji :result result-value) failures)))))
-      (when failures
-        (ert-fail (format "on-match received non-string for %d cases:\n%S"
-                          (length failures) failures))))))
+           (car case)
+           (lambda (kana remaining)
+             (cl-incf call-count)
+             (setq branch-called 'match result-value kana remaining-value remaining))
+           (lambda (_prefix) (cl-incf call-count) (setq branch-called 'incomplete))
+           (lambda () (cl-incf call-count) (setq branch-called 'fail)))
+          (should (= call-count 1))
+          (should (eq branch-called 'match))
+          (should (equal result-value (cadr case)))
+          (should (equal remaining-value (caddr case))))))))
 
 ;;;;
 ;;;; CPS Tests: nskk-dict-lookup/k mutual exclusion
@@ -354,35 +86,108 @@
 (nskk-property-test-with-shrinking nskk-property-cps-dict-lookup-exactly-one-branch
   ((key search-query))
   (nskk-with-mock-dict nil
-    (let ((found-called nil)
-          (not-found-called nil))
+    (let ((found-count 0)
+          (not-found-count 0))
       (nskk-dict-lookup/k
        key
-       (lambda (_entry) (setq found-called t))
-       (lambda () (setq not-found-called t)))
-      (and (or found-called not-found-called)
-           (not (and found-called not-found-called)))))
+       (lambda (_entry) (cl-incf found-count))
+       (lambda () (cl-incf not-found-count)))
+      (= (+ found-count not-found-count) 1)))
   50)
 
 (nskk-describe "CPS: nskk-dict-lookup/k mutual exclusion"
 
   (nskk-it "calls exactly one of on-found or on-not-found"
     (nskk-with-mock-dict nil
-      (let ((failures nil))
-        (dolist (key '("かんじ" "にほん" "nonexistent-xyz" "さくら" "does-not-exist"))
-          (let ((found-called nil)
-                (not-found-called nil))
+      (dolist (case '(("かんじ" "漢字" "感じ" "幹事")
+                      ("にほん" "日本" "二本")
+                      ("nonexistent-xyz") ("さくら" "桜") ("does-not-exist")))
+        (ert-info ((format "key=%S" (car case)))
+          (let ((found-count 0)
+                (not-found-count 0)
+                (result-value nil))
             (nskk-dict-lookup/k
-             key
-             (lambda (entry) (setq found-called t) entry)
-             (lambda () (setq not-found-called t)))
-            (when (and found-called not-found-called)
-              (push (list :key key :both-called t) failures))
-            (when (and (not found-called) (not not-found-called))
-              (push (list :key key :neither-called t) failures))))
-        (when failures
-          (ert-fail (format "dict-lookup/k branch exclusion failed:\n%S" failures)))))))
+             (car case)
+             (lambda (entry) (cl-incf found-count) (setq result-value entry))
+             (lambda () (cl-incf not-found-count)))
+            (should (= found-count (if (cdr case) 1 0)))
+            (should (= not-found-count (if (cdr case) 0 1)))
+            (should (equal result-value (cdr case)))))))))
 
+
+(ert-deftest nskk-henkan-numeric-annotation-optional-module-fresh-process ()
+  "Preserve raw user annotations with and without the optional module."
+  (let* ((source-directory
+          (file-name-directory (symbol-file 'nskk-commit-current 'defun)))
+         (directory (make-temp-file "nskk-annotation-module-" t))
+         (probe (expand-file-name "probe.el" directory))
+         (emacs (expand-file-name invocation-name invocation-directory)))
+    (unwind-protect
+        (dolist (loaded '(nil t))
+          (with-temp-file probe
+            (prin1
+             `(progn
+                (setq user-emacs-directory ,(file-name-as-directory directory)
+                      temporary-file-directory user-emacs-directory
+                      nskk-dict-user-dictionary-file
+                      ,(expand-file-name "user" directory)
+                      nskk-study-file ,(expand-file-name "study" directory)
+                      nskk-search-learning-file
+                      ,(expand-file-name "learning" directory)
+                      nskk-dict-system-dictionary-files nil
+                      nskk-dict-use-ja-dic nil)
+                (add-to-list 'load-path ,source-directory)
+                (require 'ert)
+                (require 'nskk-henkan)
+                ,@(when loaded '((require 'nskk-annotation)))
+                (should (eq (featurep 'nskk-annotation) ,loaded))
+                (should (eq (and (fboundp 'nskk-annotation-lookup) t) ,loaded))
+                (should (file-in-directory-p
+                         (symbol-file 'nskk-commit-current 'defun)
+                         ,source-directory))
+                (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+                (nskk-prolog-assert
+                 '((user-dict-entry "34" ("三十四" "卅四"))))
+                (nskk-prolog-assert
+                 '((user-dict-source-entry "#こ" (("#4;expanded") . nil))))
+                (should (equal (nskk--dict-user-annotation "#こ" "#4")
+                               "expanded"))
+                (with-temp-buffer
+                  (let* ((state (nskk-state-create 'hiragana))
+                         (nskk-current-state state)
+                         (candidate (copy-sequence "卅四"))
+                         (nskk--user-dict-index 'user)
+                         (nskk-jisyo-update-hook nil))
+                    (insert nskk-henkan-active-marker candidate)
+                    (nskk-state-set-conversion-start-marker
+                     (copy-marker (point-min)))
+                    (nskk-state-set-conversion-overlay
+                     (make-overlay
+                      (+ (point-min) (length nskk-henkan-active-marker))
+                      (point-max)))
+                    (nskk-state-set-candidates state (list candidate))
+                    (setf (nskk-state-current-index state) 0)
+                    (nskk-state-force-henkan-phase state 'active)
+                    (nskk-state-put-metadata state 'henkan-reading "34こ")
+                    (nskk-state-put-metadata
+                     state 'annotation-candidates (list (cons candidate "#4")))
+                    (nskk-state-put-metadata
+                     state 'numeric-raw-candidates
+                     (list (cons candidate "卅四;expanded")))
+                    (nskk-commit-current)
+                    (should (equal (buffer-string) "卅四"))
+                    (should (equal (nskk--dict-user-annotation "34" "卅四")
+                                   "expanded"))))
+                (princ "ANNOTATION-CHECKS=6 PASS\n"))
+             (current-buffer)))
+          (with-temp-buffer
+            (let ((exit (call-process emacs nil t nil "-Q" "--batch" "-l" probe)))
+              (ert-info ((format "module=%S exit=%S output=%s"
+                                 loaded exit (buffer-string)))
+                (should (equal exit 0))
+                (should (string-match-p "^ANNOTATION-CHECKS=6 PASS$"
+                                        (buffer-string)))))))
+      (delete-directory directory t))))
 
 (provide 'nskk-conversion-flow-pbt-test)
 
