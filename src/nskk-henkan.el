@@ -39,6 +39,8 @@
 (require 'nskk-converter)
 (require 'nskk-debug nil t)
 
+(declare-function nskk-annotation-lookup "nskk-annotation")
+
 ;;;; Customization
 
 (defgroup nskk-henkan nil
@@ -174,6 +176,8 @@ completion candidates appear in the inline list below the preedit."
 (declare-function nskk-dict-register-word/k "nskk-dictionary")
 (declare-function nskk-dict-unregister-word "nskk-dictionary")
 (declare-function nskk-dict-unregister-word/k "nskk-dictionary")
+(declare-function nskk--dict-capture-registration-state "nskk-dictionary")
+(declare-function nskk--dict-restore-registration-state "nskk-dictionary")
 (declare-function nskk-dict-lookup "nskk-dictionary")
 (declare-function nskk-dict-lookup/k "nskk-dictionary")
 (declare-function nskk-search-prefix/k "nskk-search")
@@ -628,6 +632,41 @@ always pass both continuation arguments explicitly."
           (_ (signal 'nskk-henkan-unknown-search-type (list search-type)))))
     (fail)))
 
+(defun nskk--numeric-search-backend (backend reading normalized)
+  "Search BACKEND for READING followed by NORMALIZED, preserving origins."
+  (let ((concrete (funcall backend reading))
+        (templates (funcall backend normalized))
+        (seen (make-hash-table :test #'equal))
+        result)
+    (dolist (entry (list (cons reading concrete) (cons normalized templates)))
+      (dolist (candidate (cdr entry))
+        (let ((raw (nskk--dict-raw-candidate (car entry) candidate)))
+          (unless (gethash raw seen)
+            (puthash raw t seen)
+            (let ((copy (copy-sequence candidate)))
+              (when (and (equal (car entry) reading) (> (length copy) 0))
+                (put-text-property 0 (length copy)
+                                   'nskk-numeric-concrete-reading reading copy))
+              (push copy result))))))
+    (nreverse result)))
+
+(defun nskk--numeric-search (reading normalized)
+  "Search concrete READING and NORMALIZED within each numeric backend."
+  (or (nskk--numeric-search-backend #'nskk--optional-kakutei-lookup
+                                   reading normalized)
+      (if nskk-search-merge-user-dict-with-server
+          (nskk--merge-candidates-user-first
+           (nskk--numeric-search-backend #'nskk-dict-lookup reading normalized)
+           (nskk--numeric-search-backend #'nskk--optional-server-lookup
+                                        reading normalized))
+        (or (nskk--numeric-search-backend #'nskk--optional-server-lookup
+                                         reading normalized)
+            (nskk--numeric-search-backend #'nskk-dict-lookup reading normalized)))
+      (nskk--numeric-search-backend #'nskk--optional-program-dict-builtin-lookup
+                                   reading normalized)
+      (nskk--numeric-search-backend #'nskk--optional-program-dict-lookup
+                                   reading normalized)))
+
 ;;;; Henkan Marker Constants
 
 (defconst nskk-henkan-on-marker "\u25bd"
@@ -644,6 +683,17 @@ always pass both continuation arguments explicitly."
 
 (defconst nskk-henkan-active-marker-regexp (regexp-quote nskk-henkan-active-marker)
   "Pre-computed regexp for henkan-active marker.")
+
+(defvar nskk--registration-okuri-kana nil
+  "Full kana suffix for the current registration, or nil.")
+
+(defun nskk--active-okuri-kana ()
+  "Return the full suffix following the active conversion overlay."
+  (let ((overlay (nskk-state-conversion-overlay)))
+    (when (and (nskk-state-get-metadata nskk-current-state 'okurigana-in-progress)
+               (overlayp overlay) (overlay-buffer overlay)
+               (<= (overlay-end overlay) (point)))
+      (buffer-substring-no-properties (overlay-end overlay) (point)))))
 
 (defvar nskk--registration-display-reading nil
   "Display-format reading shown in the registration prompt, or nil.
@@ -998,9 +1048,27 @@ pointed to before undo)."
   (let* ((reading      (plist-get record :reading))
          (committed (nth (plist-get record :index)
                          (plist-get record :candidates)))
-         (candidates (cons committed
+         (numeric-info (and (plist-get record :annotation-reading)
+                            (nskk--numeric-parse-reading reading)))
+         (numeric-records
+          (when numeric-info
+            (let* ((raw (nskk--numeric-search reading (cdr numeric-info)))
+                   (ordered (if (fboundp 'nskk-study-reorder)
+                                (nskk-study-reorder reading raw) raw)))
+              (nskk--numeric-candidate-records ordered (car numeric-info)
+                                               (cdr numeric-info)
+                                               (list (plist-get record :numeric-outer-raw-candidate)
+                                                     (plist-get record :numeric-raw-candidate))))))
+         (restored-records
+          (when numeric-info
+            (cons (list committed (plist-get record :raw-candidate)
+                        (plist-get record :numeric-raw-candidate)
+                        (plist-get record :numeric-outer-raw-candidate))
+                  numeric-records)))
+         (candidates (if numeric-info (mapcar #'car restored-records)
+                       (cons committed
                            (delete committed
-                                   (copy-sequence (nskk-core-search reading :exact)))))
+                                   (copy-sequence (nskk-core-search reading :exact))))))
          (index (if (cdr candidates) 1 0))
          (okuri-kana   (plist-get record :okuri-kana))
          (buf-start    (+ 0 (plist-get record :buffer-start)))
@@ -1031,7 +1099,9 @@ pointed to before undo)."
         (when okuri-kana
           (insert okuri-kana))
         (when (and registered-p reg-reading reg-word)
-          (nskk-dict-unregister-word reg-reading reg-word))
+          (if okuri-kana
+              (nskk-dict-unregister-word reg-reading reg-word okuri-kana)
+            (nskk-dict-unregister-word reg-reading reg-word)))
         (nskk-set-conversion-start-marker buf-start)
         (nskk--update-overlay
          ov-start ov-end (nth index candidates)))
@@ -1046,6 +1116,17 @@ pointed to before undo)."
         nskk-current-state 'active)
        (nskk-state-put-metadata
         nskk-current-state 'henkan-reading reading)
+       (nskk-state-put-metadata nskk-current-state 'annotation-reading
+                                (cdr numeric-info))
+       (nskk-state-put-metadata nskk-current-state 'annotation-candidates
+                                (mapcar (lambda (item) (cons (car item) (cadr item)))
+                                        restored-records))
+       (nskk-state-put-metadata nskk-current-state 'numeric-raw-candidates
+                                (mapcar (lambda (item) (cons (car item) (caddr item)))
+                                        restored-records))
+       (nskk-state-put-metadata nskk-current-state 'numeric-outer-raw-candidates
+                                (mapcar (lambda (item) (cons (car item) (nth 3 item)))
+                                        restored-records))
        (when okuri-kana
          (nskk-state-put-metadata
           nskk-current-state 'okurigana-in-progress t)
@@ -1072,19 +1153,15 @@ pointed to before undo)."
     (record saved-dict-snapshot marker-snapshot overlay-snapshot
             saved-state-object saved-point)
   "Roll back a failed undo attempt to its pre-undo state.
-RECORD supplies :registered-p, :registered-reading, and :registered-word
-so a dictionary unregister that observably took effect can be compensated.
-SAVED-DICT-SNAPSHOT is (MODIFIED-FLAG . LOOKUP-RESULT) captured before the
-undo attempt; a pre-mutation signal must not duplicate the word.
+SAVED-DICT-SNAPSHOT captures the exact dictionary storage before undo.
+Re-registering a word cannot restore annotations, ordering or shadow rows.
 MARKER-SNAPSHOT and OVERLAY-SNAPSHOT are plists (:marker/:overlay,
 :position/:start, :buffer, :insertion-type/:end) capturing the pre-undo
 marker and overlay so both can be restored to their original position.
 Repositions point to SAVED-POINT.  Does not itself re-signal; the caller
 re-signals the original condition after calling this."
-  (let ((registered-p (plist-get record :registered-p))
-        (reg-reading   (plist-get record :registered-reading))
-        (reg-word      (plist-get record :registered-word))
-        (saved-marker (plist-get marker-snapshot :marker))
+  (ignore record)
+  (let ((saved-marker (plist-get marker-snapshot :marker))
         (saved-marker-position (plist-get marker-snapshot :position))
         (saved-marker-buffer (plist-get marker-snapshot :buffer))
         (saved-marker-insertion-type (plist-get marker-snapshot :insertion-type))
@@ -1092,16 +1169,8 @@ re-signals the original condition after calling this."
         (saved-overlay-buffer (plist-get overlay-snapshot :buffer))
         (saved-overlay-start (plist-get overlay-snapshot :start))
         (saved-overlay-end (plist-get overlay-snapshot :end)))
-    ;; Only compensate an unregister that observably changed the
-    ;; dictionary.  A pre-mutation signal must not duplicate WORD.
-    (when (and registered-p reg-reading reg-word
-               (not (equal (cdr saved-dict-snapshot)
-                           (nskk-dict-lookup reg-reading))))
-      (condition-case nil
-          (nskk-dict-register-word reg-reading reg-word)
-        ((error quit) nil)))
     (when saved-dict-snapshot
-      (setq nskk-dict-modified (car saved-dict-snapshot)))
+      (nskk--dict-restore-registration-state saved-dict-snapshot))
     (unless (eq (nskk-state-conversion-start-marker) saved-marker)
       (when (markerp (nskk-state-conversion-start-marker))
         (set-marker (nskk-state-conversion-start-marker) nil)))
@@ -1187,8 +1256,7 @@ an absent record signals a user error."
               (and saved-overlay-buffer (overlay-end saved-overlay)))
              (saved-dict-snapshot
               (and registered-p reg-reading reg-word
-                   (cons nskk-dict-modified
-                         (copy-tree (nskk-dict-lookup reg-reading))))))
+                   (nskk--dict-capture-registration-state reg-reading))))
         (when working-state
           ;; `plist-put' may mutate an existing plist, so isolate the only
           ;; mutable state graph touched by this operation.
@@ -1235,7 +1303,10 @@ back to ▽ (preedit) mode."
                   (format "Really purge \"%s\" (%s)? "
                           (substring-no-properties candidate)
                           (substring-no-properties reading))))
-        (nskk-dict-unregister-word reading candidate)
+        (let ((kana (nskk--active-okuri-kana)))
+          (if kana
+              (nskk-dict-unregister-word reading candidate kana)
+            (nskk-dict-unregister-word reading candidate)))
         (let ((remaining (cl-remove candidate candidates
                                     :test #'equal :count 1)))
           (if remaining
@@ -1529,6 +1600,15 @@ was made; does nothing and returns nil when START or CANDIDATE is nil."
          (signal (car err) (cdr err))))
       (setq nskk--last-kakutei-record
             (list :reading reading
+                  :annotation-reading (nskk-state-get-metadata
+                                       nskk-current-state 'annotation-reading)
+                  :raw-candidate (cdr (assq candidate (nskk-state-get-metadata
+                                                      nskk-current-state 'annotation-candidates)))
+                  :numeric-raw-candidate (cdr (assq candidate (nskk-state-get-metadata
+                                                              nskk-current-state 'numeric-raw-candidates)))
+                  :numeric-outer-raw-candidate
+                  (cdr (assq candidate (nskk-state-get-metadata
+                                       nskk-current-state 'numeric-outer-raw-candidates)))
                   :candidates candidates
                   :index index
                   :committed-text committed-with-okuri
@@ -1618,6 +1698,25 @@ in place and will immediately follow the inserted candidate."
                 (nskk-state-previous-mode nskk-current-state)))
              (reading       (nskk-state-get-metadata
                              nskk-current-state 'henkan-reading))
+             (numeric-registration
+              (when (and reading raw-candidate
+                         (not (get-text-property 0 'nskk-no-learn candidate)))
+                (save-match-data
+                  (when-let* ((numeric (nskk--numeric-parse-reading reading)))
+                    (let ((template (and (not (get-text-property
+                                               0 'nskk-numeric-concrete-reading
+                                               raw-candidate))
+                                         (string-match "#\\([0-9]+\\)" raw-candidate)))
+                          (expanded-raw
+                           (cdr (assq candidate
+                                      (nskk-state-get-metadata
+                                       nskk-current-state 'numeric-raw-candidates)))))
+                      (cond
+                       ((and template
+                             (= (string-to-number (match-string 1 raw-candidate)) 4))
+                        (list (car numeric) candidate (or expanded-raw candidate)))
+                       ((and (not template) expanded-raw)
+                        (list reading candidate expanded-raw))))))))
              ;; NOTE: (overlayp obj) returns t even after delete-overlay — the
              ;; Lisp object persists but overlay-end returns nil for a deleted
              ;; overlay.  Always check overlay-end result, not just overlayp.
@@ -1647,6 +1746,8 @@ in place and will immediately follow the inserted candidate."
         ;; Learning is deliberately last.  Each backend retains its normal
         ;; fail-fast ordering and propagates the exact original condition.
         (when (and committed-p reading)
+          (when numeric-registration
+            (apply #'nskk--dict-register-raw-word numeric-registration))
           (when (fboundp 'nskk-study-after-kakutei)
             (if raw-candidate
                 (nskk-study-after-kakutei reading candidate index raw-candidate)
@@ -1897,6 +1998,8 @@ QUERY is the dict lookup key stored in okurigana-query metadata."
       (nskk-state-put-metadata nskk-current-state 'okurigana-query query)
       (nskk-state-put-metadata nskk-current-state 'annotation-reading nil)
       (nskk-state-put-metadata nskk-current-state 'annotation-candidates nil)
+      (nskk-state-put-metadata nskk-current-state 'numeric-raw-candidates nil)
+      (nskk-state-put-metadata nskk-current-state 'numeric-outer-raw-candidates nil)
       (nskk-state-put-metadata nskk-current-state 'henkan-reading query))
     (nskk-state-set-henkan-count 1)
     (dolist (callback (nskk-prolog-presentation-actions 'show-candidate))
@@ -1937,7 +2040,9 @@ candidates are found."
           (lambda ()
             ;; Register under the dictionary key QUERY (e.g. "ほk"), the
             ;; same key lookup uses; the "stem*kana" form is display-only.
-            (let ((nskk--registration-display-reading
+            (let ((nskk--registration-okuri-kana
+                   (buffer-substring-no-properties preedit-end (point)))
+                  (nskk--registration-display-reading
                    (nskk--build-okuri-registration-reading
                     text-start preedit-end query)))
               (nskk--remove-okuri-marker (or text-start start) preedit-end)
@@ -1956,7 +2061,7 @@ See `nskk-trigger-okuri-conversion/k' for the full conversion logic."
 
 ;;;; Conversion Pipeline
 
-(defun nskk--start-conv-apply-found (start end lookup-text raw-candidates numeric-info on-found)
+(defun nskk--start-conv-apply-found (start end lookup-text raw-candidates numeric-info on-found &optional on-not-found)
   "Apply a successful dict search: display candidate, store state, call ON-FOUND.
 START is the conversion start position (▽ marker start).  END is the preedit
 end position captured before the search; used as the overlay end.
@@ -1964,15 +2069,21 @@ LOOKUP-TEXT is the dict lookup key (used for debug logging only).
 RAW-CANDIDATES is the search result list.
 NUMERIC-INFO is non-nil in numeric mode (cons of num-str and base-key);
 when set, candidates are post-processed by `nskk--numeric-process-candidates'.
-ON-FOUND is called with the final candidates list.
+ON-FOUND is called with the final candidates list.  ON-NOT-FOUND is called
+without arguments if numeric conversion excludes the first candidate.
 
 Side effects: replaces ▽ with ▼ in the buffer, updates the conversion
 overlay, sets `nskk-state-henkan-count' to 1, and stores candidates in state."
   (let* ((ordered-raw (if (and numeric-info (fboundp 'nskk-study-reorder))
                           (nskk-study-reorder lookup-text raw-candidates)
                         raw-candidates))
-         (base-candidates (if (and ordered-raw numeric-info)
-                              (nskk--numeric-process-candidates ordered-raw (car numeric-info))
+         (numeric-records (when numeric-info
+                            (nskk--numeric-candidate-records
+                             ordered-raw (car numeric-info) (cdr numeric-info))))
+         (numeric-pairs (mapcar (lambda (record) (cons (car record) (cadr record)))
+                                numeric-records))
+         (base-candidates (if numeric-info
+                              (mapcar #'car numeric-pairs)
                             ordered-raw))
          ;; Legacy display-only facts are usable only without a raw match.
          (candidates (if (and (eq ordered-raw raw-candidates)
@@ -1980,19 +2091,30 @@ overlay, sets `nskk-state-henkan-count' to 1, and stores candidates in state."
                          (nskk-study-reorder lookup-text base-candidates)
                        base-candidates)))
     (nskk-debug-log "[HENKAN] candidates-found: key=%s count=%d" lookup-text (length candidates))
-    (nskk-state-set-henkan-count 1)
-    (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
-    (nskk--update-overlay (+ start (length nskk-henkan-active-marker)) end (car candidates))
-    (nskk-with-current-state
-      (nskk-set-active-candidates candidates)
-      (nskk-state-put-metadata nskk-current-state 'henkan-reading lookup-text)
-      (nskk-state-put-metadata nskk-current-state 'annotation-reading (cdr numeric-info))
-      (nskk-state-put-metadata nskk-current-state 'annotation-candidates
-                               (and numeric-info
-                                    (cl-mapcar #'cons base-candidates ordered-raw))))
-    (dolist (callback (nskk-prolog-presentation-actions 'show-candidate))
-      (funcall callback (car candidates)))
-    (funcall on-found candidates)))
+    (if (or (null candidates)
+            (and numeric-info
+                 (not (equal (cdar numeric-pairs) (car ordered-raw)))))
+        (when on-not-found (funcall on-not-found))
+      (nskk-state-set-henkan-count 1)
+      (nskk--replace-marker-at start nskk-henkan-on-marker-regexp nskk-henkan-active-marker)
+      (nskk--update-overlay (+ start (length nskk-henkan-active-marker)) end (car candidates))
+      (nskk-with-current-state
+       (nskk-set-active-candidates candidates)
+       (nskk-state-put-metadata nskk-current-state 'henkan-reading lookup-text)
+       (nskk-state-put-metadata nskk-current-state 'annotation-reading (cdr numeric-info))
+       (nskk-state-put-metadata nskk-current-state 'numeric-raw-candidates
+                                (mapcar (lambda (record)
+                                          (cons (car record) (caddr record)))
+                                        numeric-records))
+       (nskk-state-put-metadata nskk-current-state 'numeric-outer-raw-candidates
+                                (mapcar (lambda (record)
+                                          (cons (car record) (nth 3 record)))
+                                        numeric-records))
+       (nskk-state-put-metadata nskk-current-state 'annotation-candidates
+				numeric-pairs))
+      (dolist (callback (nskk-prolog-presentation-actions 'show-candidate))
+	(funcall callback (car candidates)))
+      (funcall on-found candidates))))
 
 (defun nskk--start-conv-register (text start _end on-not-found on-register)
   "Handle no-candidates in start-conversion: open dict registration.
@@ -2019,14 +2141,15 @@ via `nskk--restore-abbrev-mode'."
     (atomic-change-group
       (delete-region start (point))
       (goto-char start)
-      (insert registered))
+      (insert registered (or nskk--registration-okuri-kana "")))
     (when reading
       (let ((mode (nskk-with-current-state (nskk-state-mode nskk-current-state))))
         (setq nskk--last-kakutei-record
               (list :reading reading
                     :candidates (list registered)
                     :index 0
-                    :committed-text registered
+                    :committed-text (concat registered nskk--registration-okuri-kana)
+                    :okuri-kana nskk--registration-okuri-kana
                     :buffer-start (copy-marker start t)
                     :buffer-end (copy-marker (point))
                     :mode (or mode 'hiragana)
@@ -2060,9 +2183,15 @@ ON-FOUND, ON-NOT-FOUND, ON-REGISTER are the three continuations."
          (search-key  (when lookup-text
                         (if numeric-info (cdr numeric-info) lookup-text))))
     (when (and text search-key)
-      (nskk-<-or (raw-candidates) (nskk-core-search/k search-key nil nil)
-                 (nskk--start-conv-register text start end on-not-found on-register)
-        (nskk--start-conv-apply-found start end lookup-text raw-candidates numeric-info on-found)))))
+      (if numeric-info
+          (let ((raw-candidates (nskk--numeric-search lookup-text search-key)))
+            (if raw-candidates
+                (nskk--start-conv-apply-found start end lookup-text raw-candidates
+                                              numeric-info on-found on-not-found)
+              (nskk--start-conv-register text start end on-not-found on-register)))
+        (nskk-<-or (raw-candidates) (nskk-core-search/k search-key nil nil)
+                   (nskk--start-conv-register text start end on-not-found on-register)
+          (nskk--start-conv-apply-found start end lookup-text raw-candidates numeric-info on-found on-not-found))))))
 
 (defun/3k nskk-start-conversion ()
     (on-found on-not-found on-register)
@@ -2121,7 +2250,8 @@ Sets up a dedicated keymap so \\`RET' and \\`C-j' commit the current
 conversion instead of exiting with a raw newline, and so \\`C-g' aborts
 the registration via `abort-recursive-edit' instead of cascading to the
 preedit-clear handler in `nskk-mode-map'."
-  (let* ((exit-fn (lambda ()
+  (let* ((registration-depth (nskk-state-registration-depth))
+         (exit-fn (lambda ()
                     (interactive)
                     (let ((phase (nskk-compute-phase)))
                       (cond
@@ -2136,6 +2266,7 @@ preedit-clear handler in `nskk-mode-map'."
     (minibuffer-with-setup-hook
      (lambda ()
        (nskk-mode 1)
+       (nskk-state-set-registration-depth registration-depth)
        (nskk-set-mode 'hiragana)
        (setq-local minor-mode-overriding-map-alist
                    (list (cons 'nskk-mode reg-map))))
@@ -2147,7 +2278,8 @@ Returns the entered non-empty string, or nil if the user cancels
 \(empty input or \\`C-g').
 Uses `nskk-use-kana-in-registration' to choose the input method."
   (condition-case nil
-      (let* ((shown (or nskk--registration-display-reading reading))
+      (let* ((enable-recursive-minibuffers t)
+             (shown (or nskk--registration-display-reading reading))
              (entry (if nskk-use-kana-in-registration
                         (nskk--read-registration-entry-with-kana
                          (nskk--registration-prompt (nskk-state-registration-depth) shown))
@@ -2158,7 +2290,9 @@ Uses `nskk-use-kana-in-registration' to choose the input method."
 
 (defun nskk--commit-registration-word (reading entry)
   "Register ENTRY for READING in the dictionary and update learning state."
-  (nskk-dict-register-word reading entry)
+  (if nskk--registration-okuri-kana
+      (nskk-dict-register-word reading entry nskk--registration-okuri-kana)
+    (nskk-dict-register-word reading entry))
   (when (fboundp 'nskk-study-after-kakutei)
     (nskk-study-after-kakutei reading entry))
   (nskk-search-learn reading entry))
@@ -2168,7 +2302,8 @@ Uses `nskk-use-kana-in-registration' to choose the input method."
 Returns the entered word string, or nil if the user cancelled."
   (dolist (callback (nskk-prolog-presentation-actions 'show-registration-badge))
     (when (fboundp callback) (funcall callback)))
-  (let ((entry (nskk--read-registration-entry reading)))
+  (let ((entry (let ((nskk--registration-okuri-kana nil))
+                 (nskk--read-registration-entry reading))))
     (when entry
       (nskk--commit-registration-word reading entry))
     entry))
@@ -2267,6 +2402,7 @@ If the user cancels, wrap around to the first candidate in list display."
                             (nskk-state-get-metadata
                              nskk-current-state 'henkan-reading)
                             text))
+               (nskk--registration-okuri-kana (and query (nskk--active-okuri-kana)))
                (nskk--registration-display-reading
                 (when (stringp query)
                   (let ((okuri-kana (buffer-substring-no-properties
@@ -2287,23 +2423,19 @@ If the user cancels, wrap around to the first candidate in list display."
 
 (defun nskk--dcomp-search-prefix (prefix)
   "Search for dictionary keys with PREFIX for dynamic completion.
-Returns strict prefix matches with user entries before system entries.
+Returns strict prefix matches in dictionary order, user before system.
 Keys present in both dictionaries are retained only once."
   (let ((keys nil)
         (seen (make-hash-table :test (quote equal))))
-    (dolist (pair (nskk-prolog-trie-prefix-search (quote user-dict-entry) 2 prefix))
-      (let ((key (car pair)))
-        (when (and key (not (equal key prefix)) (not (gethash key seen)))
+    ;; Trie depth-first traversal does not preserve dictionary row order.
+    (dolist (predicate '(user-dict-entry system-dict-entry))
+      (dolist (key (nskk-prolog-query-all-values
+                    (list predicate '\?key '\?candidates) '\?key))
+        (when (and (stringp key) (string-prefix-p prefix key)
+                   (not (equal key prefix)) (not (gethash key seen)))
           (puthash key t seen)
           (push key keys))))
-    (setq keys (nreverse keys))
-    (let ((sys-keys nil))
-      (dolist (pair (nskk-prolog-trie-prefix-search (quote system-dict-entry) 2 prefix))
-        (let ((key (car pair)))
-          (when (and key (not (equal key prefix)) (not (gethash key seen)))
-            (puthash key t seen)
-            (push key sys-keys))))
-      (nconc keys (nreverse sys-keys)))))
+    (nreverse keys)))
 
 (defun nskk--dcomp-replace-preedit (new-text)
   "Replace the current preedit text with NEW-TEXT for dynamic completion."
@@ -2327,7 +2459,10 @@ Returns a multi-line string starting with \\n."
                              nskk-dcomp-multiple-rows)
                         7)
                     (length candidates)))
-         (display-candidates (cl-subseq candidates 0 rows))
+         (page-start (if (> rows 0) (* (/ selected-index rows) rows) 0))
+         (display-candidates
+          (cl-subseq candidates page-start
+                     (min (+ page-start rows) (length candidates))))
          (prefix-len (length prefix)))
     (mapconcat
      (lambda (pair)
@@ -2352,7 +2487,7 @@ Returns a multi-line string starting with \\n."
                                                'nskk-dcomp-multiple-selected-face
                                              'nskk-dcomp-multiple-trailing-face)))))
          (concat "  " cand-str)))
-     (cl-loop for i from 0
+     (cl-loop for i from page-start
               for c in display-candidates
               collect (cons i c))
      "\n")))
@@ -2387,6 +2522,8 @@ is the original preedit prefix for display styling."
   "Remember the reading before a new sequence of TAB completions."
   (unless (and (nskk--dcomp-command-p last-command) nskk--dcomp-prefix)
     (nskk--reset-dcomp-context)
+    (nskk-with-current-state
+      (nskk-flush-romaji-before-okuri))
     (setq nskk--dcomp-prefix (nskk-preedit-string))))
 
 (defun nskk--dcomp-cancel ()
@@ -2403,8 +2540,8 @@ Return non-nil when completion was canceled."
   "Complete the preedit reading from dictionary prefix matches.
 Called when Tab is pressed in preedit (▽) phase.  Searches
 for dict keys that start with the current reading and replaces
-the preedit with the first match.  Subsequent calls cycle through
-all matches.
+the preedit with the first match.  Subsequent calls advance through
+all matches and stop at the last match, as DDSKK does by default.
 When `nskk-dcomp-multiple-activate' is non-nil, also displays all
 matching candidates below the preedit text."
   (let ((preedit (nskk-preedit-string)))
@@ -2414,8 +2551,8 @@ matching candidates below the preedit text."
              (or (equal preedit nskk--dcomp-prefix)
                  (member preedit nskk--dcomp-candidates)))
         (setq nskk--dcomp-index
-              (mod (1+ nskk--dcomp-index)
-                   (length nskk--dcomp-candidates)))
+              (min (1+ nskk--dcomp-index)
+                   (1- (length nskk--dcomp-candidates))))
         (nskk--dcomp-replace-preedit
          (nth nskk--dcomp-index nskk--dcomp-candidates))
         (nskk-reset-romaji-buffer)
@@ -2509,6 +2646,30 @@ Examples: \"10\" → \"十\", \"100\" → \"百\", \"1024\" → \"千二十四\"
     (if (= n 0) "〇"
       (nskk--n-to-kanji-place n))))
 
+(defun nskk--numeric-to-daiji (num-str)
+  "Convert NUM-STR to SKK formal kanji, retaining decimal group positions."
+  (when (> (length num-str) 20)
+    (error "Numeric value exceeds the supported kanji units"))
+  (if (> (length num-str) 4)
+      (let ((digits num-str) (unit 0) groups)
+        (while (> (length digits) 0)
+          (let* ((start (max 0 (- (length digits) 4)))
+                 (group (nskk--numeric-to-daiji (substring digits start))))
+            (push (concat (if (equal group "零") "" group)
+                          (aref ["" "萬" "億" "兆" "京"] unit)) groups)
+            (setq digits (substring digits 0 start)
+                  unit (1+ unit))))
+        (apply #'concat groups))
+    (let ((result "") (index 0))
+      (while (< index (length num-str))
+        (let ((digit (- (aref num-str index) ?0)))
+          (unless (= digit 0)
+            (setq result
+                  (concat result (aref ["零" "壱" "弐" "参" "四" "伍" "六" "七" "八" "九"] digit)
+                          (aref ["" "拾" "百" "阡"] (- (length num-str) index 1))))))
+        (setq index (1+ index)))
+      (if (equal result "") "零" result))))
+
 (defun nskk--numeric-convert (num-str type)
   "Convert numeric string NUM-STR according to SKK numeric type code TYPE.
 TYPE is an integer:
@@ -2516,30 +2677,83 @@ TYPE is an integer:
   1 = full-width Arabic (全角数字)
   2 = kanji digit-by-digit (漢数字)
   3 = kanji with place values (漢数字位取り)
-  4 = positional (序数)
-  8 = comma-grouped decimal"
+  4 = dictionary lookup (a string or list of strings)
+  5 = formal kanji
+  8 = comma-grouped decimal
+  9 = two-digit shogi notation (nil for other lengths)"
   (pcase type
     (0 num-str)                                    ; literal
     (1 (nskk--numeric-to-fullwidth num-str))       ; full-width
-    ((or 2 4) (nskk--numeric-to-kanji num-str))   ; kanji digit-by-digit
+    (2 (nskk--numeric-to-kanji num-str))          ; kanji digit-by-digit
     (3 (nskk--numeric-to-place-values num-str))    ; kanji with place values
+    (4 (let ((candidates (nskk-core-search num-str)))
+         (cond ((null candidates) num-str)
+               ((null (cdr candidates)) (car candidates))
+               (t candidates))))
+    (5 (nskk--numeric-to-daiji num-str))
+    (8 (let ((digits (number-to-string (string-to-number num-str)))
+             groups)
+         (while (> (length digits) 3)
+           (push (substring digits -3) groups)
+           (setq digits (substring digits 0 -3)))
+         (mapconcat #'identity (cons digits groups) ",")))
+    (9 (when (= (length num-str) 2)
+         (concat (nskk--numeric-to-fullwidth (substring num-str 0 1))
+                 (nskk--numeric-to-kanji (substring num-str 1)))))
     (_ num-str)))
 
-(defun nskk--numeric-process-candidate (candidate num-str)
-  "Process CANDIDATE by replacing #N patterns with converted NUM-STR.
-Each #N in CANDIDATE is replaced with `nskk--numeric-convert' applied
-to NUM-STR with conversion type N."
-  (let ((result candidate))
-    (while (string-match "#\\([0-9]\\)" result)
-      (let* ((type (string-to-number (match-string 1 result)))
+(defun nskk--numeric-process-candidate (candidate num-str &optional raw)
+  "Replace the first numeric placeholder in CANDIDATE using NUM-STR.
+Return a string, a list for dictionary expansion, or nil for invalid input.
+One input number consumes one placeholder; later placeholders remain literal.
+When RAW is non-nil, preserve dictionary annotations until expansion finishes."
+  (save-match-data
+    (if (not (string-match "#\\([0-9]+\\)" candidate))
+        candidate
+      (let* ((type (string-to-number (match-string 1 candidate)))
+             (prefix (substring candidate 0 (match-beginning 0)))
+             (suffix (substring candidate (match-end 0)))
              (converted (nskk--numeric-convert num-str type)))
-        (setq result (replace-match converted t t result))))
-    result))
+        (when (and raw (= type 4))
+          (setq converted
+                (if (listp converted)
+                    (mapcar (lambda (value) (nskk--dict-raw-candidate num-str value))
+                            converted)
+                  (nskk--dict-raw-candidate num-str converted))))
+        (if (listp converted)
+            (mapcar (lambda (value) (concat prefix value suffix)) converted)
+          (concat prefix converted suffix))))))
+
+(defun nskk--numeric-candidate-records (candidates num-str &optional reading excluded-raw)
+  "Return (DISPLAY ORIGINAL RAW OUTER-RAW) records for numeric CANDIDATES.
+READING identifies the outer dictionary entry.  RAW is fully expanded before
+its first semicolon separates the display from the annotation.
+EXCLUDED-RAW removes annotation-inclusive outer entries before expansion."
+  (let (records)
+    (dolist (candidate candidates (nreverse records))
+      (let* ((concrete (get-text-property 0 'nskk-numeric-concrete-reading candidate))
+             (outer-raw (if (or concrete reading)
+                            (nskk--dict-raw-candidate (or concrete reading) candidate)
+                          candidate))
+             (converted (unless (member outer-raw excluded-raw)
+                          (if concrete outer-raw
+                            (nskk--numeric-process-candidate outer-raw num-str t)))))
+        (dolist (raw (if (listp converted) converted (list converted)))
+          (let ((display (copy-sequence
+                          (car (nskk--dict-split-candidate-annotation raw)))))
+            (when (and (> (length display) 0)
+                       (get-text-property 0 'nskk-no-learn candidate))
+              (put-text-property 0 (length display) 'nskk-no-learn t display))
+            (push (list display candidate raw outer-raw) records)))))))
+
+(defun nskk--numeric-candidate-pairs (candidates num-str)
+  "Return rendered-to-raw pairs for CANDIDATES converted with NUM-STR."
+  (mapcar (lambda (record) (cons (car record) (cadr record)))
+          (nskk--numeric-candidate-records candidates num-str)))
 
 (defun nskk--numeric-process-candidates (candidates num-str)
   "Process CANDIDATES by replacing #N patterns with converted NUM-STR."
-  (mapcar (lambda (c) (nskk--numeric-process-candidate c num-str))
-          candidates))
+  (mapcar #'car (nskk--numeric-candidate-pairs candidates num-str)))
 
 (defvar nskk--henkan-initialized nil
   "Non-nil when henkan Prolog predicates have been initialized.")

@@ -38,6 +38,11 @@
 ;;;; Customization Variables for Property Tests
 ;;;;
 
+(defvar nskk-test-random-seed nil
+  "Override the generated seed in tests using Emacs `random'.
+Bind or set this to the integer reported by a failing test, then rerun
+that test.  Set it back to nil to generate fresh seeds.  This does not
+seed the separate LCG controlled by `nskk-pbt-set-seed'.")
 
 (defcustom nskk-test-state-machine-runs 50
   "Default number of runs for state machine tests."
@@ -134,10 +139,10 @@ SEED: Random seed for reproducibility (default: random)"
         (runs-value (make-symbol "runs"))
         (failures (make-symbol "failures")))
     `(ert-deftest ,(intern (format "nskk-property-%s" name)) ()
-       (let ((,test-seed (or ,seed (abs (random))))
+       (let ((,test-seed (or ,seed nskk-test-random-seed (abs (random))))
              (,runs-value (or ,runs nskk-test-property-runs))
              (,failures nil))
-       (random ,test-seed)
+       (random (number-to-string ,test-seed))
        (message "Property test '%s' seed: %d" ',name ,test-seed)
        (dotimes (_ ,runs-value)
          (let ,(mapcar (lambda (gen)
@@ -169,11 +174,11 @@ SEED: Random seed for reproducibility (default: random)"
         (failure-case (make-symbol "failure-case"))
         (minimal-case (make-symbol "minimal-case")))
     `(ert-deftest ,(intern (format "nskk-property-shrinking-%s" name)) ()
-       (let ((,test-seed (or ,seed (abs (random))))
+       (let ((,test-seed (or ,seed nskk-test-random-seed (abs (random))))
              (,runs-value (or ,runs nskk-test-property-runs))
              (,failure-case nil)
              (,minimal-case nil))
-       (random ,test-seed)
+       (random (number-to-string ,test-seed))
        (message "Property test (with shrinking) '%s' seed: %d" ',name ,test-seed)
        (dotimes (_ ,runs-value)
          (unless ,failure-case
@@ -240,8 +245,8 @@ the PROPERTY invariant holds after each transition."
      (let ((,property-fn ,property)
            (runs (or ,runs nskk-test-state-machine-runs))
            (failures nil)
-           (test-seed (abs (random))))
-       (random test-seed)
+           (test-seed (or nskk-test-random-seed (abs (random)))))
+       (random (number-to-string test-seed))
        (message "State machine test '%s' seed: %d" ',name test-seed)
        (dotimes (run runs)
          (let ((state ,initial-state)
@@ -289,94 +294,6 @@ the PROPERTY invariant holds after each transition."
          (ert-fail (format "State machine invariant failed for %d cases (seed: %d):\n%S"
                            (length failures) test-seed
                            (take 3 failures))))))))
-
-
-;;;;
-;;;; Sequence Test Macro
-;;;;
-
-(defmacro nskk-sequence-test (name key-sequence-generator setup property &optional runs)
-  "Define a sequence-based property test.
-NAME: Test name
-KEY-SEQUENCE-GENERATOR: Generator name for key sequences
-SETUP: Setup expression before each test
-PROPERTY: Invariant that should hold after sequence execution
-RUNS: Number of sequences to test (default: nskk-test-sequence-runs)
-
-The test generates random key sequences, executes them, and verifies
-that the PROPERTY invariant holds."
-  (declare (indent 3))
-  `(ert-deftest ,(intern (format "nskk-sequence-%s" name)) ()
-     (let ((runs (or ,runs nskk-test-sequence-runs))
-           (failures nil)
-           (test-seed (abs (random))))
-       (random test-seed)
-       (message "Sequence test '%s' seed: %d" ',name test-seed)
-       (dotimes (run runs)
-         (let* ((key-sequence (nskk-generate ',key-sequence-generator))
-                (execution-context (progn ,setup)))
-           (condition-case err
-               (progn
-                 (dolist (key key-sequence)
-                   (setq execution-context
-                         (nskk--simulate-key execution-context key)))
-                 (unless (funcall ,property execution-context)
-                   (push (list :seed test-seed
-                               :run run
-                               :key-sequence key-sequence
-                               :final-context execution-context)
-                         failures)))
-             (error
-              (push (list :seed test-seed
-                          :run run
-                          :error err
-                          :key-sequence key-sequence)
-                    failures)))))
-       (when failures
-         (ert-fail (format "Sequence property failed for %d cases (seed: %d):\n%S"
-                           (length failures) test-seed
-                           (take 3 failures)))))))
-
-(defun nskk--simulate-key (context key)
-  "Simulate KEY press in CONTEXT.
-Returns updated context after processing the key.
-Handles nskk-state objects, plists, and other context types."
-  (cond
-   ((and (fboundp 'nskk-state-p) (nskk-state-p context))
-    (nskk--simulate-key-for-state context key))
-   ((listp context)
-    (plist-put context :last-key key))
-   (t
-    (list :last-key key :input (if (stringp key) key "")))))
-
-(defun nskk--simulate-key-for-state (state key)
-  "Process KEY press on nskk-state STATE.
-Returns updated state."
-  (when (nskk-state-p state)
-    (cond
-     ((string= key "C-j")
-      (nskk-state-set state 'mode 'hiragana)
-      state)
-     ((string= key "q")
-      (let ((current-mode (nskk-state-mode state)))
-        (cond
-         ((eq current-mode 'hiragana)
-          (nskk-state-set state 'mode 'katakana))
-         ((eq current-mode 'katakana)
-          (nskk-state-set state 'mode 'hiragana))
-         (t state))
-        state))
-     ((string= key "l")
-      (nskk-state-set state 'mode 'latin)
-      state)
-     ((string= key ";")
-      (nskk-state-set state 'mode 'abbrev)
-      state)
-     ((and (stringp key) (= (length key) 1))
-      (let ((current-buffer (nskk-state-input-buffer state)))
-        (nskk-state-set state 'input-buffer (concat current-buffer key))
-        state))
-     (t state))))
 
 
 ;;;;
@@ -834,9 +751,9 @@ Example:
     `(ert-deftest ,test-name ()
        ,(format "Contract test: verifies %s honors its pre/postconditions." fn)
        (let ((failures nil)
-             (test-seed (abs (random)))
+             (test-seed (or nskk-test-random-seed (abs (random))))
              (runs ,runs))
-         (random test-seed)
+         (random (number-to-string test-seed))
          (message "Contract test `%s' seed: %d" ',fn test-seed)
          (dotimes (_ runs)
            (condition-case err

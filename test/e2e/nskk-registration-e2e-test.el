@@ -52,9 +52,25 @@
   (nskk-it "cancels registration on empty RET and preserves preedit"
     (nskk-e2e-with-buffer 'hiragana nil
       (nskk-e2e-type "Shinki")
-      (nskk-e2e-type "SPC")
-      (nskk-e2e-assert-buffer "▽しんき" "Preedit should be preserved after cancel")
-      (nskk-e2e-assert-henkan-phase 'on "Phase should be restored to 'on after cancel"))))
+      (let ((state-before nskk-current-state)
+            (depth-before (nskk-state-registration-depth))
+            (modified-before nskk-dict-modified)
+            (read-count 0))
+        (should-not (nskk-prolog-query-one '(user-dict-entry "しんき" \?_)))
+        (cl-letf (((symbol-function 'read-from-minibuffer)
+                   (lambda (&rest _)
+                     (cl-incf read-count)
+                     "")))
+          (nskk-e2e-type "SPC"))
+        (should (= read-count 1))
+        (nskk-e2e-assert-buffer "▽しんき" "Preedit should be preserved after cancel")
+        (nskk-e2e-assert-henkan-phase 'on "Phase should be restored to 'on after cancel")
+        (nskk-e2e-assert-mode 'hiragana)
+        (nskk-e2e-assert-not-converting)
+        (should (eq nskk-current-state state-before))
+        (should (= (nskk-state-registration-depth) depth-before))
+        (should (eq nskk-dict-modified modified-before))
+        (should-not (nskk-prolog-query-one '(user-dict-entry "しんき" \?_)))))))
 
 ;;;;
 ;;;; Section 2: E2E test — registered word is immediately usable
@@ -242,17 +258,6 @@
       (nskk-e2e-type "SPC")
       (nskk-e2e-assert-buffer expected))))
 
-(nskk-property-test registration-empty-ret-does-not-crash
-  ((mode valid-mode))
-  (or (not (eq mode 'hiragana))
-      (condition-case _err
-          (progn
-            (nskk-e2e-with-buffer 'hiragana nil
-              (nskk-e2e-type "Shinki")
-              (nskk-e2e-type "SPC"))
-            t)
-        (error t))))
-
 ;;;;
 ;;;; Section 7: C-g cancellation tests
 ;;;;
@@ -427,6 +432,51 @@
           (cl-incf case-count)))
       (should (= case-count (length cases)))))
 )
+
+(ert-deftest nskk-registration-recursive-reader-inherits-depth-and-restores-parent ()
+  (dolist (outcome '(success quit error))
+    (nskk-e2e-with-buffer 'hiragana nil
+      (let ((enable-recursive-minibuffers nil)
+            (nskk-use-kana-in-registration t)
+            (nskk-max-registration-depth 2)
+            (reads 0)
+            (prompts nil))
+        (cl-letf (((symbol-function 'read-from-minibuffer)
+                   (lambda (prompt &rest _)
+                     (cl-incf reads)
+                     (push prompt prompts)
+                     (should enable-recursive-minibuffers)
+                     (with-temp-buffer
+                       (run-hooks 'minibuffer-setup-hook)
+                       (should (= (nskk-state-registration-depth) reads))
+                       (if (= reads 1)
+                           (progn
+                             (pcase outcome
+                               ('success
+                                (should (equal (nskk-start-registration "ない") "内")))
+                               ('quit
+                                (should-not (nskk-start-registration "ない")))
+                               ('error
+                                (should-error (nskk-start-registration "ない")
+                                              :type 'error)))
+                             (should (= (nskk-state-registration-depth) 1))
+                             (should-not (nskk-state-henkan-phase nskk-current-state))
+                             "外")
+                         (should-not (nskk-start-registration "上限"))
+                         (pcase outcome
+                           ('success "内")
+                           ('quit (signal 'quit nil))
+                           ('error (error "Inner reader failure"))))))))
+          (should (equal (nskk-start-registration "そと") "外")))
+        (should (= reads 2))
+        (should (equal (reverse prompts)
+                       '("[辞書登録] そと: " "[[辞書登録]] ない: ")))
+        (should-not enable-recursive-minibuffers)
+        (should (= (nskk-state-registration-depth) 0))
+        (should (equal (nskk-dict-lookup "そと") '("外")))
+        (should (equal (nskk-dict-lookup "ない")
+                       (and (eq outcome 'success) '("内"))))
+        (should-not (nskk-dict-lookup "上限"))))))
 
 (provide 'nskk-registration-e2e-test)
 

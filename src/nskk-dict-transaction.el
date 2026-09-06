@@ -356,11 +356,38 @@ tables owns its own sentinel, as `nskk--prolog-cache-missing' does.")
                        (find-file-name-handler path operation))
                      nskk-dict-transaction--file-handler-operations))))
 
+(defconst nskk-dict-transaction--darwin-deny-acl-regexp
+  (let ((flag (regexp-opt '("inherited" "file_inherit" "directory_inherit"
+                            "limit_inherit" "only_inherit")))
+        (permission (regexp-opt '("read" "write" "execute" "delete" "append"
+                                  "delete_child" "readattr" "writeattr"
+                                  "readextattr" "writeextattr" "readsecurity"
+                                  "writesecurity" "chown" "synchronize"))))
+    (concat "\\`!#acl 1\n\\(?:"
+            "\\(?:user\\|group\\):"
+            "[[:xdigit:]]\\{8\\}-[[:xdigit:]]\\{4\\}-"
+            "[[:xdigit:]]\\{4\\}-[[:xdigit:]]\\{4\\}-[[:xdigit:]]\\{12\\}:"
+            "\\(?:[^[:cntrl:]:]+:[0-9]+\\|:\\):deny"
+            "\\(?:," flag "\\)*"
+            "\\(?::" permission "\\(?:," permission "\\)*\\)?\n"
+            "\\)+\\'"))
+  "Complete Darwin ACL text containing only known deny entries.")
+
+(defun nskk-dict-transaction--non-granting-acl-p (acl)
+  "Return non-nil for no ACL or a known deny-only Darwin ACL text ACL."
+  ;; Trust the native ACL-to-text API, not a claim that it exposes unknown ACEs.
+  ;; Known deny entries cannot add access beyond the separately checked modes.
+  (or (null acl)
+      (and (eq system-type 'darwin)
+           (stringp acl)
+           (let ((case-fold-search nil))
+             (string-match-p nskk-dict-transaction--darwin-deny-acl-regexp acl)))))
+
 (defun nskk-dict-transaction--directory-satisfies-p (directory predicate)
   "Call PREDICATE with DIRECTORY's attributes and mode bits, or return nil.
-PREDICATE is reached only for a local, unhandled, ACL-free directory, which
-`file-directory-p' resolves, so a symbolic link to one qualifies here and any
-caller that must reject links tests for that itself.
+PREDICATE is reached only for a local, unhandled directory with a
+non-granting ACL.  `file-directory-p' resolves symbolic links, so
+callers that must reject links test for that themselves.
 Those three are prerequisites shared by every caller rather than part of any
 one threat model: a handled name routes the later stat and read through
 different code, and an ACL can grant write access the mode bits do not show,
@@ -375,7 +402,7 @@ question could not be answered, which fails closed."
         (and attributes
              (integerp modes)
              (file-directory-p directory)
-             (null acl)
+             (nskk-dict-transaction--non-granting-acl-p acl)
              (funcall predicate attributes modes)))
     (file-error nil)))
 

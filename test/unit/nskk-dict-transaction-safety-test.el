@@ -9,6 +9,15 @@
 (require 'cl-lib)
 (require 'nskk-dict-transaction)
 
+(defun nskk-dict-transaction-safety--known-environment-acl-p (acl)
+  "Recognize no ACL or the native inherited home-directory delete denial.
+Keep this environment oracle independent of the production ACL parser."
+  (or (null acl)
+      (and (eq system-type 'darwin)
+           (member acl
+                   '("!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny:delete\n"
+                     "!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny,inherited:delete\n")))))
+
 (defun nskk-dict-transaction-safety--ancestor-directories (directory)
   "Return every ancestor of DIRECTORY, root first."
   (let ((current (directory-file-name (expand-file-name directory)))
@@ -31,7 +40,7 @@ predicate cannot turn the tests guarded by it into skips."
     (and attributes
          (integerp modes)
          (file-directory-p directory)
-         (null (file-acl directory))
+         (nskk-dict-transaction-safety--known-environment-acl-p (file-acl directory))
          (memq (file-attribute-user-id attributes) (list 0 (user-uid)))
          (or (zerop (logand modes #o022))
              (not (zerop (logand modes #o1000)))))))
@@ -53,8 +62,8 @@ predicate cannot turn the tests guarded by it into skips."
     (unless (nskk-dict-transaction-safety--controlled-ancestor-p directory)
       (ert-skip (format "ancestor %s is not owner/mode-controlled, so the ancestry clause rejects everything under %s"
                         directory root))))
-  (when (file-acl root)
-    (ert-skip (format "%s carries an ACL, so the (null acl) clause rejects it" root)))
+  (unless (nskk-dict-transaction-safety--known-environment-acl-p (file-acl root))
+    (ert-skip (format "%s carries an ACL outside the independent environment oracle" root)))
   (set-file-modes root #o750)
   (unless (equal (file-modes root) #o750)
     (ert-skip (format "%s does not preserve modes: set #o750, read back %S"
@@ -106,14 +115,6 @@ predicate cannot turn the tests guarded by it into skips."
     (with-temp-file file)
     (set-file-modes file #o600)
     file))
-
-(defun nskk-dict-transaction-safety--refusing-handler (operation &rest arguments)
-  "Report locality for OPERATION but fail on any real file access.
-ARGUMENTS are only reported, never acted on."
-  (if (eq operation 'file-remote-p)
-      nil
-    (ert-fail (format "a predicate performed %S on a handled path"
-                      (cons operation arguments)))))
 
 (defun nskk-dict-transaction-safety--transparent-handler (operation &rest arguments)
   "Run OPERATION on ARGUMENTS exactly as if no handler were installed.
@@ -330,6 +331,74 @@ that can reject the path is the check itself."
       (should-not (nskk-dict-transaction--safe-snapshot-base-p missing))
       (should-not (nskk-dict-transaction--safe-source-snapshot-parent-p missing source))
       (should-not (nskk-dict-transaction--private-snapshot-directory-p missing)))))
+
+(ert-deftest nskk-dict-transaction-safety-acl-known-denials ()
+  (let ((system-type 'darwin)
+        (principal "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:"))
+    (dolist (entry '("deny:delete" "deny,inherited:delete"
+                     "deny,file_inherit,directory_inherit,limit_inherit,only_inherit:read,write,execute,delete,append,delete_child,readattr,writeattr,readextattr,writeextattr,readsecurity,writesecurity,chown,synchronize"
+                     "deny"))
+      (should (nskk-dict-transaction--non-granting-acl-p
+               (concat "!#acl 1\n" principal entry "\n"))))
+    (should (nskk-dict-transaction--non-granting-acl-p
+             (concat "!#acl 1\n" principal "deny:delete\n"
+                     "user:00000000-0000-0000-0000-000000000001:::deny:write\n")))))
+
+(ert-deftest nskk-dict-transaction-safety-acl-rejects-unrecognized-text ()
+  (let* ((system-type 'darwin)
+         (principal "group:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:")
+         (known (concat "!#acl 1\n" principal "deny:delete\n")))
+    (should (nskk-dict-transaction--non-granting-acl-p known))
+    (dolist (acl (append
+                 '("" "!#acl 1\n" "!#acl 2\n" "user::rwx\ngroup::r-x\nother::---\n")
+                 (mapcar (lambda (entry) (concat "!#acl 1\n" principal entry "\n"))
+                         '("allow:write" "deny,unknown:delete" "deny:unknown"
+                           "deny:delete," "deny,:delete" "deny:delete:extra"
+                           "Deny:delete" "deny:"))
+                 (list (concat known principal "allow:write\n")
+                       (concat known "garbage") (concat known "\n")
+                       (substring known 0 -1) (concat "prefix" known)
+                       (replace-regexp-in-string "!#acl 1" "!#acl 1 no_inherit" known)
+                       (replace-regexp-in-string "ABCDEFAB" "INVALID!" known))))
+      (should-not (nskk-dict-transaction--non-granting-acl-p acl)))))
+
+(ert-deftest nskk-dict-transaction-safety-acl-platform-boundary ()
+  (dolist (system-type '(darwin gnu/linux windows-nt berkeley-unix))
+    (should (nskk-dict-transaction--non-granting-acl-p nil))
+    (unless (eq system-type 'darwin)
+      (should-not
+       (nskk-dict-transaction--non-granting-acl-p
+        "!#acl 1\ngroup:ABCDEFAB-CDEF-ABCD-EFAB-CDEF0000000C:everyone:12:deny:delete\n")))))
+
+(ert-deftest nskk-dict-transaction-safety-acl-native-controls ()
+  (unless (eq system-type 'darwin) (ert-skip "Darwin native ACL test"))
+  (nskk-dict-transaction-safety--with-root root
+    (let ((plain (nskk-dict-transaction-safety--subdirectory root "plain" #o700))
+          (deny (nskk-dict-transaction-safety--subdirectory root "deny" #o700))
+          (allow (nskk-dict-transaction-safety--subdirectory root "allow" #o700))
+          (mixed (nskk-dict-transaction-safety--subdirectory root "mixed" #o700)))
+      (should (null (file-acl plain)))
+      (dolist (directory (list deny mixed))
+        (should (zerop (call-process "chmod" nil nil nil "+a" "everyone deny delete" directory))))
+      (dolist (directory (list allow mixed))
+        (should (zerop (call-process "chmod" nil nil nil "+a" "everyone allow add_file,delete_child" directory))))
+      (should (string-match-p ":deny:delete" (file-acl deny)))
+      (should (string-match-p ":allow:" (file-acl allow)))
+      (should (string-match-p ":deny:" (file-acl mixed)))
+      (should (string-match-p ":allow:" (file-acl mixed)))
+      (dolist (directory (list plain deny))
+        (should (nskk-dict-transaction--private-snapshot-directory-p directory)))
+      (dolist (directory (list allow mixed))
+        (should-not (nskk-dict-transaction--safe-directory-controller-p directory)))
+      (let ((child (nskk-dict-transaction-safety--subdirectory allow "child" #o700)))
+        (should (nskk-dict-transaction--safe-directory-controller-p child))
+        (should-not (nskk-dict-transaction--safe-snapshot-base-p child)))
+      (let ((file (expand-file-name "entries" deny)))
+        (with-temp-file file (insert "((entry))"))
+        (should (equal (cdr (nskk-dict-transaction-load-entries file 4096 #'identity))
+                       '((entry))))))
+    (set-file-modes root #o775)
+    (should-not (nskk-dict-transaction--safe-directory-controller-p root))))
 
 (provide 'nskk-dict-transaction-safety-test)
 ;;; nskk-dict-transaction-safety-test.el ends here

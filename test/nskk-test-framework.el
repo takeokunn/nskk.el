@@ -312,14 +312,6 @@
 ;;;;
 ;;;; Prolog Test Isolation
 ;;;;
-(defun nskk-prolog-test--copy-trie-node (node copies)
-  "Return a graph copy of trie NODE using identity map COPIES."
-  (nskk-prolog-test--copy-object node copies))
-
-(defun nskk-prolog-test--copy-trie (trie copies)
-  "Return a graph copy of TRIE using identity map COPIES."
-  (nskk-prolog-test--copy-object trie copies))
-
 (defun nskk-prolog-test--copy-object (object copies)
   "Return a nonrecursive graph copy of OBJECT using identity map COPIES.
 Conses, records, vectors, strings and hash tables are allocated before their
@@ -429,10 +421,6 @@ and hash entries are strongly snapshotted before the destination is allocated."
                      (copy-of (cdr entry))
                      new))))
       (copy-of object))))
-
-  (defun nskk-prolog-test--copy-hash-table (table copies)
-    "Return a graph copy of hash TABLE using identity map COPIES."
-    (nskk-prolog-test--copy-object table copies))
 
   (defun nskk-prolog-test--restore-state (saved-stores saved-flags)
     "Restore SAVED-STORES and SAVED-FLAGS after attempting every target."

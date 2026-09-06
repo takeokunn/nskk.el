@@ -830,7 +830,9 @@
         (nskk-e2e-type "O")
         (nskk-e2e-type "K")
         (nskk-e2e-type "E"))
-      (nskk-e2e-assert-buffer "穂毛" "Registered word should be inserted")
+      (nskk-e2e-assert-buffer "穂毛け" "Registered stem and okurigana should be inserted")
+      (should (equal (nskk-dict-lookup "ほk") '("穂毛")))
+      (should (nskk-state-p nskk-current-state))
       (nskk-e2e-assert-henkan-phase nil "Phase should be nil after successful registration"))))
 
 ;;;;

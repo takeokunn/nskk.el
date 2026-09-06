@@ -1373,14 +1373,35 @@
            ("42" 1 "４２")
            ("42" 2 "四二")
            ("42" 3 "四十二")
-           ("42" 4 "四二")
+           ("42" 4 "42")
+           ("0" 5 "零")
+           ("1" 5 "壱")
+           ("10" 5 "壱拾")
+           ("34" 5 "参拾四")
+           ("1024" 5 "壱阡弐拾四")
+           ("00034" 5 "萬参拾四")
            ("42" 8 "42")
-           ("42" 9 "42"))
+           ("0" 8 "0")
+           ("999" 8 "999")
+           ("1000" 8 "1,000")
+           ("1024" 8 "1,024")
+           ("10000" 8 "10,000")
+           ("1000000" 8 "1,000,000")
+           ("0000" 8 "0")
+           ("0001024" 8 "1,024")
+           ("42" 9 "４二")
+           ("00" 9 "０〇")
+           ("99" 9 "９九")
+           ("0" 9 nil)
+           ("100" 9 nil))
     :body (should (equal (nskk--numeric-convert input type) expected)))
 
-  (nskk-it "type 2 and type 4 produce identical output"
-    (should (equal (nskk--numeric-convert "1024" 2)
-                   (nskk--numeric-convert "1024" 4))))
+  (nskk-it "type 4 relooks up digits and preserves multiple results"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((dict-initialized)))
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-prolog-assert '((user-dict-entry "34" ("三十四" "卅四"))))
+      (should (equal (nskk--numeric-convert "34" 4) '("三十四" "卅四")))))
 
   ;;;
   ;;; PBT: numeric conversion completeness
@@ -1398,8 +1419,8 @@
            ("#1時"    "3"  "３時")
            ("#2個"    "12" "一二個")
            ("#3個"    "10" "十個")
-           ("#0-#1"   "7"  "7-７")
-           ("#1と#2"  "5"  "５と五")
+           ("#0-#1"   "7"  "7-#1")
+           ("#1と#2"  "5"  "５と#2")
            ("漢字"    "5"  "漢字")
            ("そのまま" "42" "そのまま")
            ("第#0号"  "3"  "第3号")
@@ -1409,6 +1430,30 @@
     :body (should (equal (nskk--numeric-process-candidate template num-str) expected))))
 
 (nskk-describe "nskk--numeric-process-candidates"
+  (nskk-it "does not start numeric conversion when the first candidate is invalid"
+    (let ((found 0) (missing 0))
+      (nskk--start-conv-apply-found
+       1 1 "100こ" '("#9個" "#0個") '("100" . "#こ")
+       (lambda (_candidates) (cl-incf found))
+       (lambda () (cl-incf missing)))
+      (should (= found 0))
+      (should (= missing 1))))
+
+  (nskk-it "filters invalid shogi candidates without losing valid successors"
+    (should (equal (nskk--numeric-process-candidates '("#9個" "#0個" "固定") "100")
+                   '("100個" "固定")))
+    (should-not (nskk--numeric-process-candidates '("#9個") "100")))
+
+  (nskk-it "preserves raw identity across expansion and display collisions"
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-assert '((dict-initialized)))
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-prolog-assert '((user-dict-entry "34" ("三十四" "卅四"))))
+      (let ((pairs (nskk--numeric-candidate-pairs '("#4個" "三十四個" "#9個") "34")))
+        (should (equal pairs '(("三十四個" . "#4個") ("卅四個" . "#4個")
+                               ("三十四個" . "三十四個") ("３四個" . "#9個"))))
+        (should-not (eq (caar pairs) (car (nth 2 pairs)))))))
+
   (nskk-it "processes all candidates in a list"
     (should (equal (nskk--numeric-process-candidates '("#0個" "#2個") "5")
                    '("5個" "五個"))))
@@ -1612,7 +1657,7 @@
         (nskk-dynamic-complete)
         (should (= nskk--dcomp-index 2)))))
 
-  (nskk-it "wraps around to index 0 after last candidate"
+  (nskk-it "stays at the last candidate as DDSKK does by default"
     (nskk-prolog-test-with-isolated-db
       (with-temp-buffer
         (nskk-mode 1)
@@ -1624,7 +1669,8 @@
               nskk--dcomp-candidates '("かんじ" "かんたん")
               nskk--dcomp-index 1)
         (nskk-dynamic-complete)
-        (should (= nskk--dcomp-index 0)))))
+        (should (= nskk--dcomp-index 1))
+        (should (equal (buffer-string) "▽かんたん")))))
 
   (nskk-it "does nothing when preedit is empty"
     (nskk-prolog-test-with-isolated-db
@@ -6192,6 +6238,286 @@
                     fixture-candidate fixture-mode fixture-reading fixture-state
                     fixture-candidates fixture-overlay
                     fixture-pending-overlay)))))))
+
+(ert-deftest nskk-henkan-okuri-registration-undo-atomic ()
+  (dolist (failure '(nil error quit))
+    (nskk-prolog-test-with-isolated-db
+      (nskk--dict-publish-user-entries
+       '(("かk" ("描;draw") . "[け/描;draw/]/")
+         ("かk" ("影;shadow") . "[く/影;shadow/]/")))
+      (let ((nskk--user-dict-index 'user)
+            (nskk-jisyo-update-hook nil)
+            (nskk--registration-okuri-kana "いて"))
+        (with-temp-buffer
+          (setq-local nskk-current-state (nskk-state-create 'hiragana))
+          (nskk-dict-register-word "かk" "書" "いて")
+          (insert "か*いて")
+          (nskk--insert-registered-and-reset "書" 1 #'ignore "かk")
+          (should (equal (buffer-string) "書いて"))
+          (should (equal (plist-get nskk--last-kakutei-record :okuri-kana) "いて"))
+          (let ((record nskk--last-kakutei-record)
+                (before (nskk--dict-user-entry-text '("かk" ("書" "描"))))
+                (real-overlay (symbol-function 'nskk--update-overlay))
+                (nskk-dict-modified nil)
+                caught)
+            (cl-letf (((symbol-function 'nskk--update-overlay)
+                       (lambda (&rest args)
+                         (apply real-overlay args)
+                         (when failure (signal failure nil)))))
+              (condition-case err (nskk-undo-kakutei)
+                ((error quit) (setq caught (car err)))))
+            (if failure
+                (progn
+                  (should (eq caught failure))
+                  (should (equal (buffer-string) "書いて"))
+                  (should (eq nskk--last-kakutei-record record))
+                  (should-not nskk-dict-modified)
+                  (should (equal (nskk-prolog-query-value
+                                  '(user-dict-entry "かk" \?c) '\?c)
+                                 '("書" "描")))
+                  (should (equal (nskk--dict-user-entry-text '("かk" ("書" "描"))) before)))
+              (should-not caught)
+              (should (string-suffix-p "いて" (buffer-string)))
+              (should-not nskk--last-kakutei-record)
+              (should (equal (nskk--dict-user-entry-text '("かk" ("描")))
+                             "かk /描;draw/[け/描;draw/]/\nかk /影;shadow/[く/影;shadow/]/\n")))))))))
+
+(ert-deftest nskk-henkan-okuri-recursive-registration-context ()
+  (let ((nskk--registration-okuri-kana "いて") observed committed)
+    (cl-letf (((symbol-function 'nskk--read-registration-entry)
+               (lambda (_reading)
+                 (setq observed nskk--registration-okuri-kana)
+                 "書"))
+              ((symbol-function 'nskk--commit-registration-word)
+               (lambda (&rest _args)
+                 (setq committed nskk--registration-okuri-kana))))
+      (should (equal (nskk--prompt-and-commit-registration "かk") "書"))
+      (should-not observed)
+      (should (equal committed "いて")))))
+
+(ert-deftest nskk-henkan-okuri-register-and-public-purge-context ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk--dict-publish-user-entries
+     '(("かk" ("書" "描") . "[いて/書/描/]/[け/書/]/")))
+    (let ((nskk--user-dict-index 'user)
+          (nskk-jisyo-update-hook nil)
+          (nskk--registration-okuri-kana "いて"))
+      (cl-letf (((symbol-function 'nskk-study-after-kakutei) #'ignore)
+                ((symbol-function 'nskk-search-learn) #'ignore)
+                ((symbol-function 'yes-or-no-p) (lambda (&rest _) t)))
+        (nskk--commit-registration-word "かk" "掻")
+        (should (equal (nskk--dict-user-entry-text '("かk" ("掻" "書" "描")))
+                       "かk /掻/書/描/[いて/掻/書/描/]/[け/書/]/\n"))
+        (with-temp-buffer
+          (setq-local nskk-current-state (nskk-state-create 'hiragana))
+          (insert "▼掻いて")
+          (nskk-state-set-conversion-start-marker (copy-marker 1))
+          (nskk-state-set-conversion-overlay (make-overlay 2 3))
+          (nskk-state-force-henkan-phase nskk-current-state 'active)
+          (nskk-state-set-candidates nskk-current-state '("掻" "書" "描"))
+          (nskk-state-put-metadata nskk-current-state 'okurigana-in-progress t)
+          (nskk-state-put-metadata nskk-current-state 'henkan-reading "かk")
+          (nskk-purge-from-jisyo)
+          (should (equal (overlay-get (nskk-state-conversion-overlay) 'display) "書"))
+          (should (equal (nskk--active-okuri-kana) "いて"))
+          (should (equal (nskk--dict-user-entry-text '("かk" ("書" "描")))
+                         "かk /書/描/[いて/書/描/]/[け/書/]/\n")))))))
+
+(ert-deftest nskk-henkan-tab-dictionary-row-order ()
+  (nskk-prolog-test-with-isolated-db
+    (dolist (predicate '(user-dict-entry system-dict-entry))
+      (nskk-prolog-retract-all predicate 2)
+      (nskk-prolog-set-index predicate 2 :trie))
+    (dolist (key '("かんきょう" "かんじ" "かんきん" "かん"))
+      (nskk-prolog-assert `((user-dict-entry ,key ("候補")))))
+    (dolist (key '("かんきん" "かんり" "かんけい"))
+      (nskk-prolog-assert `((system-dict-entry ,key ("候補")))))
+    (should (equal (nskk--dcomp-search-prefix "かん")
+                   '("かんきょう" "かんじ" "かんきん" "かんり" "かんけい")))))
+
+(ert-deftest nskk-henkan-tab-public-key-pending-n-cancel ()
+  (nskk-prolog-test-with-isolated-db
+    (save-window-excursion
+      (with-temp-buffer
+        (switch-to-buffer (current-buffer))
+        (nskk-mode 1)
+        (let ((nskk-dcomp-style 'cycle))
+          (execute-kbd-macro (kbd "C-j K a n TAB C-g"))
+          (should (equal (buffer-string) "▽かん"))
+          (should (equal (nskk-state-romaji-buffer) ""))
+          (should (eq (nskk-state-henkan-phase nskk-current-state) 'on)))))))
+
+(ert-deftest nskk-henkan-dcomp-multiple-page-boundaries ()
+  (let ((nskk-dcomp-multiple-rows 7)
+        (candidates '("かんあ" "かんい" "かんう" "かんえ" "かんお"
+                      "かんか" "かんき" "かんく" "かんけ" "かんこ")))
+    (dolist (index '(0 6 7 8 9 0))
+      (let* ((rendered (nskk--dcomp-multiple-build-string
+                        candidates index "かん"))
+             (page (if (< index 7)
+                       (cl-subseq candidates 0 7)
+                     (cl-subseq candidates 7)))
+             (selected ""))
+        (should (equal (substring-no-properties rendered)
+                       (mapconcat (lambda (candidate) (concat "  " candidate))
+                                  page "\n")))
+        (dotimes (position (length rendered))
+          (when (eq (get-text-property position 'face rendered)
+                    'nskk-dcomp-multiple-selected-face)
+            (setq selected (concat selected
+                                   (substring-no-properties rendered position
+                                                            (1+ position))))))
+        (should (equal selected (nth index candidates)))))))
+
+(ert-deftest nskk-henkan-dcomp-multiple-single-row-page ()
+  (let ((nskk-dcomp-multiple-rows 1))
+    (should (equal (substring-no-properties
+                    (nskk--dcomp-multiple-build-string '("かんあ" "かんい")
+                                                      1 "かん"))
+                   "  かんい"))))
+
+(ert-deftest nskk-henkan-dcomp-multiple-empty-page ()
+  (let ((nskk-dcomp-multiple-rows 7))
+    (should (equal (nskk--dcomp-multiple-build-string nil -1 "かん") "")))
+  (let ((nskk-dcomp-multiple-rows 0))
+    (should (equal (nskk--dcomp-multiple-build-string '("かんあ") 0 "かん") ""))))
+
+(ert-deftest nskk-henkan-numeric-four-commit-persists-selected-raw-identity ()
+  (dolist (variant '(expanded literal template no-learn literal-no-learn))
+    (nskk-prolog-test-with-isolated-db
+      (nskk-prolog-set-index 'user-dict-entry 2 :trie)
+      (nskk-prolog-assert '((user-dict-entry "34" ("三十四" "卅四"))))
+      (nskk-prolog-assert
+       '((user-dict-source-entry "#こ" (("#4;expanded") . nil))))
+      (let ((nskk--user-dict-index 'user)
+            (nskk-dict-modified nil)
+            (nskk-jisyo-update-hook nil)
+            (candidate (copy-sequence "卅四")))
+        (when (memq variant '(no-learn literal-no-learn))
+          (put-text-property 0 (length candidate) 'nskk-no-learn t candidate))
+        (nskk-test--call-with-failure-safe-commit-fixture
+         'hiragana nil candidate "34こ"
+         (lambda (_candidate _mode _reading state &rest _)
+           (nskk-state-put-metadata
+            state 'annotation-candidates
+            (list (cons (copy-sequence candidate) "#4")
+                  (cons candidate (cond ((memq variant '(literal literal-no-learn)) "卅四")
+                                        ((eq variant 'template) "#3")
+                                        (t "#4")))))
+           (nskk-state-put-metadata
+            nskk-current-state 'numeric-raw-candidates
+            (list (cons candidate "卅四;expanded")))
+           (nskk-state-put-metadata
+            state 'numeric-outer-raw-candidates
+            (list (cons (copy-sequence candidate) "#4;decoy")
+                  (cons candidate "#4;expanded")))
+           (nskk-commit-current)
+           (should (equal (plist-get nskk--last-kakutei-record
+                                     :numeric-outer-raw-candidate)
+                          "#4;expanded"))
+           (should (equal (nskk-prolog-query-value
+                           '(user-dict-entry "34" \?words) '\?words)
+                          (if (eq variant 'expanded)
+                              '("卅四" "三十四") '("三十四" "卅四"))))
+           (should (equal (nskk--dict-user-annotation "34" "卅四")
+                          (and (eq variant 'expanded) "expanded")))
+           (should (equal (nskk-prolog-query-value
+                           '(user-dict-entry "34こ" \?words) '\?words)
+                          (and (eq variant 'literal) '("卅四"))))
+           (should (equal (nskk--dict-user-annotation "34こ" "卅四")
+                          (and (eq variant 'literal) "expanded")))))))))
+
+(ert-deftest nskk-henkan-numeric-raw-expansion-first-semicolon ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-assert '((user-dict-entry "34" ("卅四個"))))
+    (dolist (fixture '(("卅四個;inner" "#4個;outer" "卅四個" "卅四個;inner個;outer")
+                       ("卅四個" "#4個;outer" "卅四個個" "卅四個個;outer")
+                       ("卅四個;" "#4個" "卅四個" "卅四個;個")
+                       ("卅四個" "#4個" "卅四個個" "卅四個個")))
+      (nskk-prolog-retract-all 'user-dict-source-entry 2)
+      (nskk-prolog-assert `((user-dict-source-entry "34" ((,(car fixture))))))
+      (nskk-prolog-assert `((user-dict-source-entry "#こ" ((,(cadr fixture))))))
+      (let* ((outer (copy-sequence "#4個"))
+             (record (car (nskk--numeric-candidate-records (list outer) "34" "#こ"))))
+        (should (equal (car record) (nth 2 fixture)))
+        (should (eq (cadr record) outer))
+        (should (equal (caddr record) (nth 3 fixture)))
+        (should (equal (nth 3 record) (cadr fixture)))))))
+
+(ert-deftest nskk-henkan-numeric-undo-preserves-raw-before-expansion ()
+  (nskk-prolog-test-with-isolated-db
+    (nskk-prolog-assert '((user-dict-entry "34" ("卅四個"))))
+    (nskk-prolog-assert
+     '((user-dict-source-entry "34" (("卅四個;expanded")))))
+    (dolist (outer '("#4個;expanded" "#4個;other"))
+      (nskk-prolog-retract-all 'user-dict-source-entry 2)
+      (nskk-prolog-assert
+       '((user-dict-source-entry "34" (("卅四個;expanded")))))
+      (nskk-prolog-assert `((user-dict-source-entry "#こ" ((,outer)))))
+      (with-temp-buffer
+        (setq-local nskk-current-state (nskk-state-create 'hiragana))
+        (let ((selected (copy-sequence "卅四個"))
+              (expanded (copy-sequence "卅四個;expanded"))
+              (saved-outer (copy-sequence "#4個;expanded")))
+          (insert selected)
+          (setq nskk--last-kakutei-record
+                (list :reading "34こ" :annotation-reading "#こ"
+                      :raw-candidate "#4個" :numeric-raw-candidate expanded
+                      :numeric-outer-raw-candidate saved-outer
+                      :candidates (list selected) :index 0
+                      :committed-text selected :buffer-start 1 :buffer-end (point)
+                      :mode 'hiragana))
+          (cl-letf (((symbol-function 'nskk--numeric-search)
+                     (lambda (reading normalized)
+                       (should (equal reading "34こ"))
+                       (should (equal normalized "#こ"))
+                       '("#4個" "卅四個;expanded" "卅四個;other" "固定;normal")))
+                    ((symbol-function 'nskk-core-search)
+                     (lambda (reading &rest _)
+                       (pcase reading
+                         ("34" '("卅四個"))
+                         (_ (ert-fail (list 'unexpected-reading reading)))))))
+            (nskk-undo-kakutei))
+          (let* ((candidates (nskk-state-candidates nskk-current-state))
+                 (raw (nskk-state-get-metadata nskk-current-state
+                                               'numeric-raw-candidates))
+                 (outer-map (nskk-state-get-metadata nskk-current-state
+                                                     'numeric-outer-raw-candidates)))
+            (should (eq (car candidates) selected))
+            (should (eq (cdr (assq selected raw)) expanded))
+            (should (eq (cdr (assq selected outer-map)) saved-outer))
+            (should (equal (mapcar #'cdr raw)
+                           (if (equal outer "#4個;expanded")
+                               '("卅四個;expanded" "卅四個;other" "固定;normal")
+                             '("卅四個;expanded" "卅四個;expanded個;other"
+                               "卅四個;other" "固定;normal"))))
+            (should (= (nskk-state-current-index nskk-current-state) 1))
+            (should (equal (buffer-substring-no-properties (point-min) (point-max))
+                           "▼卅四個"))
+            (should-not nskk--last-kakutei-record)))))))
+
+(ert-deftest nskk-henkan-numeric-backend-concrete-origin ()
+  "Concrete candidates retain identity without expanding literal numeric codes."
+  (nskk-prolog-test-with-isolated-db
+    (let* ((literal (propertize "#4" 'nskk-no-learn t))
+           (template (copy-sequence "#0個"))
+           calls
+           (candidates
+            (nskk--numeric-search-backend
+             (lambda (reading)
+               (push reading calls)
+               (if (equal reading "34こ") (list literal) (list template)))
+             "34こ" "#こ")))
+      (should (equal (nreverse calls) '("34こ" "#こ")))
+      (should (equal candidates '("#4" "#0個")))
+      (should-not (eq (car candidates) literal))
+      (should-not (get-text-property 0 'nskk-numeric-concrete-reading literal))
+      (should (equal (get-text-property 0 'nskk-numeric-concrete-reading
+                                        (car candidates)) "34こ"))
+      (let ((records (nskk--numeric-candidate-records candidates "34" "#こ")))
+        (should (equal (mapcar #'car records) '("#4" "34個")))
+        (should (eq (cadar records) (car candidates)))
+        (should (get-text-property 0 'nskk-no-learn (caar records)))))))
 
 (provide 'nskk-henkan-test)
 

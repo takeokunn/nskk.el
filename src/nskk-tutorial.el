@@ -690,29 +690,46 @@ Stickyシフト使用時：
     ;; Lesson 14: AZIK extended romaji
     (:title "AZIK拡張ローマ字"
      :explanation
-     "AZIK（エイズィック）は、ローマ字入力のキーストローク数を
-削減する拡張ローマ字方式です。標準SKKローマ字と互換性を
-保ちつつ、頻出パターンを少ないキーで入力できます。
+     "AZIK（エイズィック）は、頻出パターンを少ないキーで入力する拡張ローマ字方式です。
+標準ローマ字とは一部の入力が異なります。
+たとえば xa は、レッスン2の標準設定では「ぁ」、AZIKでは「しゃ」になります。
 
-有効化：
+■ このレッスンの準備
+
+nskk-azik-keyboard-type の既定値は 'jp106（日本語配列）です。
+US配列を使う場合は、手順2で配列も指定します。
+練習キー kz、kh、xa は両配列で共通です。
+
+1. C-c C-q でチュートリアルを終了し、確認に yes と答えます。
+2. M-: で次の式を入力し、RET で評価します。
   (setq nskk-converter-romaji-style 'azik)
+   US配列の場合は、M-: で次の式も評価します。
+  (setq nskk-azik-keyboard-type 'us101)
+3. M-x nskk-tutorial で開き直します。
+4. M-x nskk-tutorial-goto-lesson RET 14 RET で戻ります。
 
-■ 撥音（ん）拡張 ── 子音の後に特定キーで「ん」を付加
+この設定はチュートリアルを終了しても、現在の Emacs で継続します。
+次回の起動でも使う場合は、必要な設定式を Emacs の初期化ファイルに記述します。
+
+■ 撥音（ん）拡張
 
   標準: k a n n → かん（4打鍵）
-  AZIK: k a z   → かん（3打鍵）
+  AZIK: k z     → かん（2打鍵）
 
   サフィックスキーとその効果：
-    z → ん       例: kaz → かん、taz → たん
-    k → んk      例: kak → かんか（「ん」+次のカ行子音）
-    j → んj      例: kaj → かんじゃ
-    d → んd      例: kad → かんだ
-    l → んl      例: kal → かんら
+    z → ア段＋ん  例: kz → かん、tz → たん
+    k → イ段＋ん  例: kk → きん
+    j → ウ段＋ん  例: kj → くん
+    d → エ段＋ん  例: kd → けん
+    l → オ段＋ん  例: kl → こん
 
-■ 二重母音拡張 ── 母音の連続を1キーで
+■ 二重母音拡張
 
-  h → 母音直後で「う」付加
-    kah → かう    toh → とう    suh → すう
+  子音の後に h → ウ段＋う
+    kh → くう    th → つう    sh → すう
+
+■ 促音
+
   ; → っ（促音）
     ka; → かっ
 
@@ -724,26 +741,27 @@ Stickyシフト使用時：
   x 系:  xa→しゃ  xi→し  xu→しゅ  xe→しぇ  xo→しょ
   c 系:  ca→ちゃ  ci→ち  cu→ちゅ  ce→ちぇ  co→ちょ
 
-■ JP106キーボード固有
+■ 練習後に標準ローマ字へ戻す
 
-  + キー（Shift+;）→ っ＋送り仮名トリガー
-  @ キー         → AZIKモード切替
+1. C-c C-q で終了し、確認に yes と答えます。
+2. M-: で次の式を入力し、RET で評価します。
+  (setq nskk-converter-romaji-style 'standard)
+3. M-x nskk-tutorial で開き直します。xa は再び「ぁ」になります。
+4. M-x nskk-tutorial-goto-lesson RET 15 RET で次の総合練習へ進みます。
 
-■ キーボードタイプ
-
-  nskk-azik-keyboard-type で jp106/us101 を選択できます。
-  キーボードによって一部のキー割り当てが変わります。
-
-AZIKは慣れが必要ですが、マスターすると日本語入力の
-打鍵数を約20%削減できると言われています。"
+初期化ファイルにも AZIK を設定した場合は、そちらも標準設定へ変更します。"
      :exercises
-     ((:instruction "「漢字」と変換して確定してください。"
-       :hint "K a n z i SPC C-j"
-       :expected "漢字"
+     ((:instruction "AZIKの撥音拡張で「かん」と入力してください。"
+       :hint "k z"
+       :expected "かん"
        :validator nil)
-      (:instruction "「日本語」と変換して確定してください。"
-       :hint "N i h o n g o SPC C-j"
-       :expected "日本語"
+      (:instruction "AZIKの二重母音拡張で「くう」と入力してください。"
+       :hint "k h"
+       :expected "くう"
+       :validator nil)
+      (:instruction "AZIKの拗音省略で「しゃ」と入力してください。"
+       :hint "x a"
+       :expected "しゃ"
        :validator nil)))
 
     ;; Lesson 15: Comprehensive practice and tips
@@ -781,7 +799,6 @@ AZIKは慣れが必要ですが、マスターすると日本語入力の
 ■ 関連パッケージとの連携
 
   corfu / company     → dcomp の capf スタイルで連携
-  ddskk-posframe     → 候補表示をposframeで表示
   orderless          → 補完スタイルの拡張
 
 おめでとうございます！NSKKの基本から応用までを一通り
@@ -972,6 +989,7 @@ Asserts `dict-initialized' first to prevent real dictionary loading,
 then asserts tutorial entries as `user-dict-entry/2' facts."
   (nskk-prolog-assert '((dict-initialized)))
   (nskk-prolog-retract-all 'user-dict-entry 2)
+  (nskk-prolog-retract-all 'user-dict-source-entry 2)
   (nskk-prolog-set-index 'user-dict-entry 2 :trie)
   (pcase-dolist (`(,reading . ,candidates) nskk-tutorial--mini-dict)
     (nskk-prolog-assert
@@ -1219,7 +1237,10 @@ converter: `nskk-mode-map' routes ordinary letters into NSKK by remapping
         ('goto (call-interactively #'nskk-tutorial-goto-lesson))
         ('reset (nskk-tutorial-reset-lesson)))
     (if (bound-and-true-p nskk-mode)
-        (nskk-self-insert 1)
+        (progn
+          ;; The post-command preedit guard must see the delegated input command.
+          (setq this-command 'nskk-self-insert)
+          (nskk-self-insert 1))
       (self-insert-command 1))))
 
 (defun nskk-tutorial-n-or-self-insert ()

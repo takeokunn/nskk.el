@@ -227,6 +227,88 @@
           (nskk-then
             (should (equal (buffer-string) before))))))))
 
+(ert-deftest nskk-henkan-numeric-literal-public-save-fresh-load ()
+  "Persist literal identity at the actual reading, including after undo."
+  (let* ((source (file-name-directory (symbol-file 'nskk-commit-current 'defun)))
+         (directory (make-temp-file "nskk-literal-save-" t))
+         (probe (expand-file-name "probe.el" directory))
+         (program (expand-file-name invocation-name invocation-directory)))
+    (unwind-protect
+        (dolist (variant '(direct undo-exact undo-distinct))
+          (let* ((distinct (eq variant 'undo-distinct))
+                 (word (if distinct "卅四個" "固定"))
+                 (raw (if distinct "卅四個;other" "固定;normal"))
+                 (dictionary (expand-file-name (symbol-name variant) directory)))
+            (with-temp-file dictionary
+              (insert ";; okuri-ari entries.\n;; okuri-nasi entries.\n"
+                      "#こ /#4個;expanded/卅四個;"
+                      (if distinct "other" "expanded")
+                      "/固定;normal/\n34 /三十四/卅四/\n"))
+            (dolist (stage '(save fresh))
+              (with-temp-file probe
+                (prin1
+                 `(progn
+                    (setq user-emacs-directory ,(file-name-as-directory directory)
+                          temporary-file-directory user-emacs-directory
+                          nskk-dict-user-dictionary-file ,dictionary
+                          nskk-dict-system-dictionary-files nil
+                          nskk-dict-use-ja-dic nil
+                          nskk-study-file ,(expand-file-name "study" directory)
+                          nskk-search-learning-file ,(expand-file-name "learning" directory)
+                          nskk-search-auto-save-learning nil)
+                    (add-to-list 'load-path ,source)
+                    (require 'ert)
+                    (require 'nskk)
+                    (should (file-in-directory-p
+                             (symbol-file 'nskk-commit-current 'defun) ,source))
+                    (with-temp-buffer
+                      (switch-to-buffer (current-buffer))
+                      (buffer-enable-undo)
+                      (nskk-mode 1)
+                      (nskk-set-mode 'hiragana)
+                      ,@(when (eq stage 'save)
+                          `((execute-kbd-macro "Q34ko ")
+                            ,(if (eq variant 'direct)
+                                 `(let ((remaining 8))
+                                    (while (and (> remaining 0)
+                                                (not (equal (nth (nskk-state-current-index nskk-current-state)
+                                                                  (nskk-state-candidates nskk-current-state)) ,word)))
+                                      (execute-kbd-macro " ")
+                                      (setq remaining (1- remaining))))
+                               '(progn
+                                  (execute-kbd-macro " ")
+                                  (execute-kbd-macro (kbd "C-j"))
+                                  (should (equal (buffer-string) "卅四個"))
+                                  (execute-kbd-macro (kbd "M-x nskk-undo-kakutei RET"))))
+                            (let ((selected (nth (nskk-state-current-index nskk-current-state)
+                                                 (nskk-state-candidates nskk-current-state))))
+                              (should (equal selected ,word))
+                              (should (equal (cdr (assq selected
+                                                       (nskk-state-get-metadata
+                                                        nskk-current-state 'numeric-raw-candidates))) ,raw)))
+                            (execute-kbd-macro (kbd "C-j"))
+                            (should (equal (buffer-string) ,word))
+                            (call-interactively #'nskk-dict-save-user-dictionary)))
+                      (should (equal (nskk--dict-raw-candidate "34こ" ,word) ,raw))
+                      (should (equal (nskk-prolog-query-value
+                                      '(user-dict-entry "34こ" \?words) '\?words)
+                                     '(,word)))
+                      (with-temp-buffer
+                        (insert-file-contents ,dictionary)
+                        (goto-char (point-min))
+                        (should (re-search-forward
+                                 ,(concat "^" (regexp-quote (concat "34こ /" raw "/")) "$") nil t))))
+                    (princ ,(format "LITERAL-PERSISTENCE %s %s PASS\n" variant stage)))
+                 (current-buffer)))
+              (with-temp-buffer
+                (let ((exit (call-process program nil t nil "-Q" "--batch" "-l" probe)))
+                  (ert-info ((format "%s/%s exit=%S output=%s" variant stage exit (buffer-string)))
+                    (should (equal exit 0))
+                    (should (string-match-p
+                             (regexp-quote (format "LITERAL-PERSISTENCE %s %s PASS" variant stage))
+                             (buffer-string)))))))))
+      (delete-directory directory t))))
+
 (provide 'nskk-henkan-pipeline-integration-test)
 
 ;;; nskk-henkan-pipeline-integration-test.el ends here

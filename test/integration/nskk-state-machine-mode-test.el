@@ -27,6 +27,7 @@
 ;;; Code:
 
 (require 'ert)
+(require 'nskk)
 (require 'nskk-test-framework)
 (require 'nskk-test-macros)
 (require 'nskk-pbt-generators)
@@ -63,23 +64,6 @@ TRIGGER is ignored; a random valid mode is chosen."
     (while (eq new-mode old-mode)
       (setq new-mode (nskk--pbt-generate-valid-mode)))
     (nskk-state-set state 'mode new-mode)
-    state))
-
-(defun nskk--sm-mode-switch-with-reset (state _trigger)
-  "Switch mode and reset context in STATE."
-  (let ((new-mode (nskk--pbt-generate-valid-mode)))
-    (unless (eq (nskk-state-mode state) new-mode)
-      (nskk-state-set state 'mode new-mode)
-      (setf (nskk-state-input-buffer     state) ""
-            (nskk-state-converted-buffer state) ""
-            (nskk-state-candidates       state) nil
-            (nskk-state-current-index    state) 0
-            (nskk-state-henkan-position  state) nil
-            (nskk-state-marker-position  state) nil
-            (nskk-state-undo-stack       state) nil
-            (nskk-state-redo-stack       state) nil
-            (nskk-state-metadata         state) nil)
-      (nskk-state-force-henkan-phase state nil))
     state))
 
 (defun nskk--sm-cycle-all-modes (state _trigger)
@@ -135,19 +119,36 @@ TRIGGER is ignored; a random valid mode is chosen."
 ;;;; Property 3: Mode Transition Clears Context
 ;;;;
 
-(nskk-state-machine-test mode-transition-clears-context
-  (let ((state (nskk-state-create 'hiragana)))
-    (nskk-state-set state 'input-buffer "test")
-    (nskk-state-set state 'candidates '("a" "b" "c"))
-    (nskk-state-set state 'henkan-position 0)
-    state)
-  ((switch nskk--sm-mode-switch-with-reset)
-   (switch nskk--sm-mode-switch-with-reset)
-   (switch nskk--sm-mode-switch-with-reset))
-  (lambda (state)
-    (and (nskk-state-p state)
-         (nskk-state-valid-mode-p (nskk-state-mode state))))
-  50)
+(ert-deftest nskk-state-machine-mode-transition-clears-context ()
+  (let ((nskk-converter-romaji-style 'standard))
+    (nskk-with-prolog-entries ((user-dict-entry "かな" ("仮名" "加奈")))
+      (nskk-prolog-assert '((dict-initialized)))
+      (dolist (keys '(("k") ("K" "a" "n" "a" "SPC")))
+        (nskk-with-test-buffer 'hiragana
+          (cl-flet ((press (key)
+                      (let* ((events (kbd key))
+                             (command (key-binding events))
+                             (last-command-event (aref events 0))
+                             (this-command command))
+                        (should (commandp command))
+                        (call-interactively command))))
+            (dolist (key keys) (press key))
+            (should (eq (nskk-state-mode nskk-current-state) 'hiragana))
+            (if (= (length keys) 1)
+                (progn
+                  (should (equal (nskk-state-romaji-buffer) "k"))
+                  (should (equal (buffer-string) "")))
+              (should (eq (nskk-state-henkan-phase nskk-current-state) 'active))
+              (should (equal (nskk-state-candidates nskk-current-state)
+                             '("仮名" "加奈"))))
+            (press "l")
+            (should (eq (nskk-state-mode nskk-current-state) 'latin))
+            (should (equal (nskk-state-romaji-buffer) ""))
+            (should-not (nskk-state-henkan-phase nskk-current-state))
+            (should-not (nskk-state-candidates nskk-current-state))
+            (should (equal (buffer-string) (if (= (length keys) 1) "" "仮名")))
+            (press "a")
+            (should (equal (buffer-string) (if (= (length keys) 1) "a" "仮名a")))))))))
 
 
 ;;;;
