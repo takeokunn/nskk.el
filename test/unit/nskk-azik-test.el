@@ -2060,6 +2060,7 @@ identically."
   `(let ((nskk--romaji-table (make-hash-table :test 'equal))
          (nskk--azik-vowel-shadow-set (make-hash-table :test 'equal))
          (nskk--style-registry (copy-tree nskk--style-registry))
+         (nskk--converter-published-style nil)
          (nskk--converter-style-transaction-hash-tables
           (copy-sequence nskk--converter-style-transaction-hash-tables))
          (nskk--converter-style-transaction-variables
@@ -2181,11 +2182,15 @@ identically."
       (let ((references (nskk-test--azik-transaction-references))
             (mode-map nskk-mode-map))
         (should (eq (nskk-converter-load-style 'azik) 'azik))
+        ;; Replaced: romaji table (first) and vowel-shadow set (last).
+        ;; Retained: the six Prolog store tables, merged key by key.
+        (should-not (eq (car references) (nskk-romaji-table)))
+        (should-not (eq (car (last references)) nskk--azik-vowel-shadow-set))
         (cl-mapc
           (lambda (before after)
-            (should-not (eq before after)))
-          references
-          (nskk-test--azik-transaction-references))
+            (should (eq before after)))
+          (butlast (cdr references))
+          (butlast (cdr (nskk-test--azik-transaction-references))))
         (should (eq mode-map nskk-mode-map))
         (should-not (nskk-converter-lookup "old"))
         (should (equal (nskk-converter-lookup "kz") "かん"))
@@ -2193,7 +2198,37 @@ identically."
         (should (gethash "sh" nskk--azik-vowel-shadow-set))
         (should (eq (lookup-key nskk-mode-map (kbd "C-c o")) 'ignore))
         (should (eq (lookup-key nskk-mode-map (kbd "[")) 'nskk-toggle-japanese-mode))
-        (should (nskk-prolog-holds-p '(transaction-sentinel intact)))))))
+        (should (nskk-prolog-holds-p '(transaction-sentinel intact))))))
+  (nskk-it
+    "skips the AZIK initializer while inputs are unchanged and rebuilds on change"
+    (nskk-test-with-azik-transaction-state
+      (let ((init-calls 0)
+            (sentinel-before
+             (gethash (nskk-prolog-clause-key 'transaction-sentinel 1)
+                      (nskk-prolog-database))))
+        (cl-letf* ((real-init (symbol-function 'nskk--init-azik-rules))
+                   ((symbol-function 'nskk--init-azik-rules)
+                    (lambda ()
+                      (setq init-calls (1+ init-calls))
+                      (funcall real-init))))
+          (should (eq (nskk-converter-load-style 'azik) 'azik))
+          (should (= init-calls 1))
+          (should (eq (lookup-key nskk-mode-map (kbd "[")) 'nskk-toggle-japanese-mode))
+          (should (eq (nskk-converter-load-style 'azik) 'azik))
+          (should (= init-calls 1))
+          (let ((nskk-azik-keyboard-type 'jp106))
+            (should (eq (nskk-converter-load-style 'azik) 'azik))
+            (should (= init-calls 2))
+            (should (eq (lookup-key nskk-mode-map (kbd "@")) 'nskk-toggle-japanese-mode))
+            (should (equal (nskk-converter-lookup "+") "っ")))
+          (let ((nskk-azik-conversion-table '(("ka" "カスタム"))))
+            (should (eq (nskk-converter-load-style 'azik) 'azik))
+            (should (= init-calls 3))
+            (should (equal (nskk-converter-lookup "ka") "カスタム")))
+          (should (eq (gethash (nskk-prolog-clause-key 'transaction-sentinel 1)
+                               (nskk-prolog-database))
+                      sentinel-before))
+          (should (nskk-prolog-holds-p '(transaction-sentinel intact))))))))
 
 (provide 'nskk-azik-test)
 

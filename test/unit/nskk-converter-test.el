@@ -807,6 +807,8 @@ test/e2e/nskk-kana-input-e2e-test.el)."
            (debug t))
   `(let ((nskk--romaji-table (make-hash-table :test 'equal))
          (nskk--style-registry (copy-tree nskk--style-registry))
+         (nskk--style-inputs-registry (copy-tree nskk--style-inputs-registry))
+         (nskk--converter-published-style nil)
          (nskk--converter-style-transaction-hash-tables nil)
          (nskk--converter-style-transaction-variables nil))
      (nskk-prolog-with-database-fields
@@ -913,11 +915,14 @@ test/e2e/nskk-kana-input-e2e-test.el)."
           (eq
             (nskk-converter-load-style 'transaction-success)
             'transaction-success))
+        ;; The romaji table is replaced; the Prolog store tables keep their
+        ;; identity because owned predicates are merged into them.
+        (should-not (eq (car references) (nskk-romaji-table)))
         (cl-mapc
           (lambda (before after)
-            (should-not (eq before after)))
-          references
-          (nskk-test--converter-style-state-references))
+            (should (eq before after)))
+          (cdr references)
+          (cdr (nskk-test--converter-style-state-references)))
         (should-not (nskk-converter-lookup "old"))
         (should (equal (nskk-converter-lookup "new") "新"))
         (should (nskk-prolog-holds-p '(transaction-sentinel intact)))
@@ -1800,6 +1805,139 @@ test/e2e/nskk-kana-input-e2e-test.el)."
               (should (gethash "new" (symbol-value extension-a)))
               (should
                (gethash "new" (symbol-value extension-b)))))))))
+
+(defun nskk-test--sentinel-clauses ()
+  "Return the live clause list object of transaction-sentinel/1."
+  (gethash (nskk-prolog-clause-key 'transaction-sentinel 1)
+           (nskk-prolog-database)))
+
+(defun nskk-test--romaji-table-alist ()
+  "Return the live romaji table as a sorted alist."
+  (let (entries)
+    (maphash (lambda (key value) (push (cons key value) entries))
+             (nskk-romaji-table))
+    (sort entries (lambda (a b) (string< (car a) (car b))))))
+
+(nskk-describe
+  "style load idempotency and store sharing"
+  (nskk-it
+    "does not rerun the initializer for the published style"
+    (nskk-test-with-style-transaction-state
+      (let ((calls 0))
+        (nskk-converter-register-style
+          'counted-style
+          (lambda ()
+            (setq calls (1+ calls))
+            (nskk-converter-add-rule "new" "新")))
+        (should (eq (nskk-converter-load-style 'counted-style) 'counted-style))
+        (let ((table-before (nskk-test--romaji-table-alist)))
+          (should (eq (nskk-converter-load-style 'counted-style) 'counted-style))
+          (should (= calls 1))
+          (should (equal (nskk-test--romaji-table-alist) table-before))
+          (should (eq (nskk-converter-reload-style 'counted-style) 'counted-style))
+          (should (= calls 2))
+          (should (equal (nskk-test--romaji-table-alist) table-before))))))
+  (nskk-it
+    "rebuilds when a different style or changed inputs are requested"
+    (nskk-test-with-style-transaction-state
+      (let ((calls 0)
+            (flavour 'plain))
+        (nskk-converter-register-style
+          'input-style
+          (lambda ()
+            (setq calls (1+ calls))
+            (nskk-converter-add-rule "new" (if (eq flavour 'plain) "新" "改"))))
+        (nskk-converter-register-style-inputs 'input-style (lambda () flavour))
+        (nskk-converter-register-style 'other-style
+          (lambda () (nskk-converter-add-rule "other" "他")))
+        (nskk-converter-load-style 'input-style)
+        (should (= calls 1))
+        (should (equal (nskk-converter-lookup "new") "新"))
+        (setq flavour 'changed)
+        (nskk-converter-load-style 'input-style)
+        (should (= calls 2))
+        (should (equal (nskk-converter-lookup "new") "改"))
+        (nskk-converter-load-style 'other-style)
+        (should-not (nskk-converter-lookup "new"))
+        (nskk-converter-load-style 'input-style)
+        (should (= calls 3))
+        (should (equal (nskk-converter-lookup "new") "改")))))
+  (nskk-it
+    "shares non-owned predicates by identity across a forced reload"
+    (nskk-test-with-style-transaction-state
+      (let ((sentinel-before (nskk-test--sentinel-clauses))
+            (sentinel-index-before
+             (gethash (nskk-prolog-clause-key 'transaction-sentinel 1)
+                      (nskk-prolog-hash-indices))))
+        (should sentinel-before)
+        (nskk-converter-register-style 'sharing-style
+          (lambda () (nskk-converter-add-rule "new" "新")))
+        (should (eq (nskk-converter-reload-style 'sharing-style) 'sharing-style))
+        (should (eq (nskk-test--sentinel-clauses) sentinel-before))
+        (should (eq (gethash (nskk-prolog-clause-key 'transaction-sentinel 1)
+                             (nskk-prolog-hash-indices))
+                    sentinel-index-before))
+        (should (equal sentinel-before '(((transaction-sentinel intact)))))
+        (should (nskk-prolog-holds-p '(transaction-sentinel intact)))
+        (should (equal (nskk-converter-lookup "new") "新")))))
+  (nskk-it
+    "leaves every live store untouched when the initializer signals"
+    (dolist (condition '(error quit))
+      (nskk-test-with-style-transaction-state
+        (let ((references (nskk-test--converter-style-state-references))
+              (sentinel-before (nskk-test--sentinel-clauses))
+              (azik-rule-before
+               (progn
+                 (nskk-prolog-set-index 'azik-rule 2 :hash)
+                 (nskk-prolog-assert '((azik-rule "kz" "かん")))
+                 (gethash (nskk-prolog-clause-key 'azik-rule 2)
+                          (nskk-prolog-database)))))
+          (nskk-converter-register-style 'signalling-style
+            (lambda ()
+              (nskk-converter-add-rule "new" "新")
+              (nskk-prolog-retract-all 'azik-rule 2)
+              (nskk-prolog-assert '((azik-rule "kz" "変")))
+              (signal condition nil)))
+          (should (eq (nskk-test--load-style-condition 'signalling-style)
+                      condition))
+          (nskk-test--should-retain-converter-style-state references)
+          (should (eq (nskk-test--sentinel-clauses) sentinel-before))
+          (should (eq (gethash (nskk-prolog-clause-key 'azik-rule 2)
+                               (nskk-prolog-database))
+                      azik-rule-before))
+          (should (nskk-prolog-holds-p '(azik-rule "kz" "かん")))
+          (should-not (nskk-prolog-holds-p '(azik-rule "kz" "変")))
+          (should (equal (nskk-converter-lookup "old") "旧"))
+          (should-not (nskk-converter-lookup "new"))
+          (should-not nskk--converter-published-style)))))
+  (nskk-it
+    "rejects an initializer that mutates a non-owned predicate"
+    (dolist (mutation
+             (list (lambda () (nskk-prolog-assert '((transaction-sentinel mutated))))
+                   (lambda () (nskk-prolog-retract '(transaction-sentinel intact)))
+                   (lambda () (nskk-prolog-retract-all 'transaction-sentinel 1))
+                   (lambda () (nskk-prolog-set-index 'transaction-sentinel 1 :list))
+                   (lambda ()
+                     (nskk-prolog-replace-clause-transaction
+                      '(transaction-sentinel intact)
+                      '((transaction-sentinel replaced))))))
+      (nskk-test-with-style-transaction-state
+        (let ((references (nskk-test--converter-style-state-references))
+              (sentinel-before (nskk-test--sentinel-clauses)))
+          (nskk-converter-register-style 'trespassing-style
+            (lambda ()
+              (nskk-converter-add-rule "new" "新")
+              (funcall mutation)))
+          (should (eq (nskk-test--load-style-condition 'trespassing-style)
+                      'error))
+          (nskk-test--should-retain-converter-style-state references)
+          (should (eq (nskk-test--sentinel-clauses) sentinel-before))
+          (should (equal sentinel-before '(((transaction-sentinel intact)))))
+          (should (nskk-prolog-holds-p '(transaction-sentinel intact)))
+          (should-not (nskk-prolog-holds-p '(transaction-sentinel mutated)))
+          (should-not (nskk-prolog-holds-p '(transaction-sentinel replaced)))
+          (should (equal (nskk-converter-lookup "old") "旧"))
+          (should-not (nskk-converter-lookup "new")))))))
 
 (provide 'nskk-converter-test)
 

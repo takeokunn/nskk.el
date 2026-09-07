@@ -1386,6 +1386,7 @@ publication or CALLBACK restores the original object graph."
          (key (if target-head
                   (nskk--prolog-head-key target-head)
                 (error "Replacement requires a clause or old pattern")))
+         (_ (nskk--prolog-ensure-mutation-allowed key))
          (database-head (gethash key nskk--prolog-database))
          (database-tail (gethash key nskk--prolog-database-tails))
          (database-match

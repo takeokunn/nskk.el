@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added `nskk-converter-reload-style`, `nskk-converter-register-style-inputs`
+  and `nskk-converter-register-style-predicate`. A style now declares the
+  variables its initializer reads and the Prolog predicates it rewrites;
+  `nskk-converter-load-style` returns without staging or publishing when the
+  requested style is already live with unchanged inputs, and
+  `nskk-converter-reload-style` forces the rebuild.
+
+### Changed
+
+- Style transactions no longer deep-copy the whole Prolog store. Staging
+  builds overlay tables that share every live entry except the style-owned
+  predicates, which are copied as one graph; an initializer that mutates a
+  non-owned predicate signals an error before anything is published, and
+  publication merges the owned keys into the live tables instead of
+  replacing them. In batch Emacs with a 100k-entry dictionary in the store,
+  loading `azik` went from about 1.2 s to under 20 ms, and a repeat
+  `nskk-mode` activation no longer rebuilds the style at all.
+- A rule added with `nskk-converter-add-rule` after a style is published now
+  survives later `nskk-mode` activations instead of being wiped by the
+  unconditional reload.
+
 ## [0.4.0]
 
 ### Added
