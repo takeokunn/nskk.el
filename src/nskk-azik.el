@@ -579,6 +579,15 @@ The hash table is populated from azik-rule/2 for hot-path lookups."
 
 ;; Register AZIK style
 (nskk-converter-register-style 'azik 'nskk--init-azik-rules)
+(nskk-converter-register-style-inputs
+ 'azik
+ (lambda () (list nskk-azik-keyboard-type nskk-azik-conversion-table)))
+(dolist (predicate '((azik-rule . 2)
+                     (azik-key-extends . 2)
+                     (azik-vowel-char . 1)
+                     (azik-nonvowel-ext . 1)
+                     (azik-vowel-shadow . 1)))
+  (nskk-converter-register-style-predicate (car predicate) (cdr predicate)))
 
 (provide 'nskk-azik)
 

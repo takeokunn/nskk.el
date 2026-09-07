@@ -318,6 +318,54 @@ INIT-FN is called with no arguments and should populate the romaji table
 via `nskk-converter-add-rule'.  Called for side effects."
   (setf (alist-get style nskk--style-registry) init-fn))
 
+(defvar nskk--style-inputs-registry nil
+  "Alist mapping a style symbol to a zero-argument function.
+The function returns the values the style's initializer reads; a
+published style is rebuilt only when that value changes under `equal'.")
+
+(defun nskk-converter-register-style-inputs (style inputs-fn)
+  "Register INPUTS-FN as the function describing STYLE's initializer inputs."
+  (setf (alist-get style nskk--style-inputs-registry) inputs-fn))
+
+(defvar nskk--converter-style-owned-keys
+  (list (nskk-prolog-clause-key 'romaji-to-kana 2))
+  "Prolog predicate keys a style initializer may rewrite.
+Every other key in the store is shared with the live database during a style
+transaction and protected from mutation, so staging cost depends on the
+owned predicates rather than on the dictionary size.")
+
+(defun nskk-converter-register-style-predicate (predicate arity)
+  "Declare PREDICATE with ARITY as rewritable by style initializers."
+  (cl-pushnew (nskk-prolog-clause-key predicate arity)
+              nskk--converter-style-owned-keys
+              :test #'equal))
+
+(defvar nskk--converter-published-style nil
+  "Record of the last published style as (STYLE INPUTS ROMAJI-TABLE DATABASE).
+ROMAJI-TABLE and DATABASE are the live objects at publication time, so a
+rebinding of either store (tests, isolated databases) invalidates the record.")
+
+(defun nskk--converter-style-inputs (style)
+  "Return a detached copy of STYLE's registered initializer inputs, or nil."
+  (let ((inputs-fn (alist-get style nskk--style-inputs-registry)))
+    (and inputs-fn (nskk-prolog-copy-term (funcall inputs-fn)))))
+
+(defun nskk--converter-style-published-p (style)
+  "Return non-nil when STYLE is the live published style with unchanged inputs."
+  (let ((record nskk--converter-published-style))
+    (and record
+         (eq (nth 0 record) style)
+         (eq (nth 2 record) nskk--romaji-table)
+         (eq (nth 3 record) (nskk-prolog-database))
+         (gethash (nskk-prolog-clause-key 'romaji-to-kana 2)
+                  (nskk-prolog-database))
+         (equal (nth 1 record) (nskk--converter-style-inputs style)))))
+
+(defun nskk--converter-record-published-style (style inputs)
+  "Record STYLE with INPUTS as the published style of the live stores."
+  (setq nskk--converter-published-style
+        (list style inputs nskk--romaji-table (nskk-prolog-database))))
+
 (defvar nskk--converter-style-transaction-hash-tables nil
   "Additional hash-table variables included in style transactions.")
 
@@ -363,24 +411,86 @@ pre-transaction value."
     (clrhash copy)
     copy))
 
+(defun nskk--converter-prolog-store-tables ()
+  "Return the six live Prolog store tables in snapshot field order."
+  (list (nskk-prolog-database)
+        (nskk-prolog-database-tails)
+        (nskk-prolog-index-config)
+        (nskk-prolog-hash-indices)
+        (nskk-prolog-trie-indices)
+        (nskk-prolog-index-bucket-tail-cache)))
+
+(defun nskk--converter-prolog-key-values (key tables)
+  "Return KEY's value in each of TABLES, `nskk--converter-missing' where absent."
+  (mapcar (lambda (table) (gethash key table nskk--converter-missing)) tables))
+
+(defun nskk--converter-prolog-store-keys (tables)
+  "Return every predicate key present in any of TABLES."
+  (let ((keys nil))
+    (dolist (table tables)
+      (maphash (lambda (key _value) (cl-pushnew key keys :test #'equal))
+               table))
+    keys))
+
+(defun nskk--converter-prolog-owned-state (keys tables)
+  "Return an alist of KEY to its values across TABLES for every key in KEYS."
+  (mapcar (lambda (key)
+            (cons key (nskk--converter-prolog-key-values key tables)))
+          keys))
+
+(defun nskk--converter-stage-prolog-store ()
+  "Return (OVERLAYS . PROTECTED-KEYS) for a style transaction.
+OVERLAYS are fresh store tables sharing every live entry except the
+style-owned keys, which receive detached copies made in one graph so a
+copied clause list, its tail cell, its index and its cache entry stay
+consistent with each other.  PROTECTED-KEYS are the shared keys."
+  (let* ((live (nskk--converter-prolog-store-tables))
+         (overlays (mapcar #'copy-hash-table live))
+         (protected (cl-set-difference (nskk--converter-prolog-store-keys live)
+                                       nskk--converter-style-owned-keys
+                                       :test #'equal)))
+    (dolist (key nskk--converter-style-owned-keys)
+      (cl-mapc (lambda (overlay value)
+                 (unless (eq value nskk--converter-missing)
+                   (puthash key value overlay)))
+               overlays
+               (nskk-prolog-copy-term
+                (nskk--converter-prolog-key-values key live))))
+    (cons overlays protected)))
+
+(defun nskk--converter-publish-prolog-owned-state (owned-state)
+  "Write OWNED-STATE, an alist from `nskk--converter-prolog-owned-state', live."
+  (let ((tables (nskk--converter-prolog-store-tables)))
+    (dolist (entry owned-state)
+      (cl-mapc (lambda (table value)
+                 (if (eq value nskk--converter-missing)
+                     (remhash (car entry) table)
+                   (puthash (car entry) value table)))
+               tables
+               (cdr entry)))))
+
+(defun nskk--converter-valid-prolog-owned-state-p (owned-state)
+  "Return non-nil when OWNED-STATE has the shape publication expects."
+  (and (proper-list-p owned-state)
+       (cl-every (lambda (entry)
+                   (and (consp entry)
+                        (stringp (car entry))
+                        (proper-list-p (cdr entry))
+                        (= (length (cdr entry)) 6)))
+                 owned-state)))
+
 (defun nskk--converter-build-style-transaction-plan ()
   "Build the isolated dynamic-binding plan for staging style transaction state.
-Reads the live romaji table, Prolog store, and registered extension and
-transaction variables, validates them, and detaches a copy of everything
-that will be dynamically rebound.  Returns a plist with
-:copied-prolog-store-values, :extension-symbols, :transaction-symbols,
-:transaction-boundness, :mode-map-bound-p, :symbols, and :values, consumed by
-`nskk--converter-stage-style-state' to enter the detached `cl-progv' scope."
+Reads the live romaji table and registered extension and transaction
+variables, validates them, and detaches a copy of everything that will be
+dynamically rebound.  Returns a plist with :extension-symbols,
+:transaction-symbols, :transaction-boundness, :mode-map-bound-p, :symbols,
+and :values, consumed by `nskk--converter-stage-style-state' to enter the
+detached `cl-progv' scope.  The Prolog store is staged separately by
+`nskk--converter-stage-prolog-store'."
   (let* ((store-values
           (list (nskk--converter-empty-hash-table-copy nskk--romaji-table)))
          (root-symbols '(nskk--romaji-table))
-         (prolog-store-values
-          (list (nskk-prolog-database)
-                (nskk-prolog-database-tails)
-                (nskk-prolog-index-config)
-                (nskk-prolog-hash-indices)
-                (nskk-prolog-trie-indices)
-                (nskk-prolog-index-bucket-tail-cache)))
          (extension-registry
           (delete-dups
            (copy-sequence nskk--converter-style-transaction-hash-tables))))
@@ -428,17 +538,15 @@ that will be dynamically rebound.  Returns a plist with
                   value)))
              (copied-state
               (nskk-prolog-copy-term
-               (list store-values prolog-store-values extension-values
+               (list store-values extension-values
                      (when mode-map-bound-p mode-map-value))))
              (copied-store-values (nth 0 copied-state))
-             (copied-prolog-store-values (nth 1 copied-state))
-             (copied-extension-values (nth 2 copied-state))
+             (copied-extension-values (nth 1 copied-state))
              (copied-mode-map
               (when mode-map-bound-p
-                (nth 3 copied-state)))
+                (nth 2 copied-state)))
              (unbound-mode-map-sentinel (make-symbol "nskk-mode-map-unbound")))
         (list
-         :copied-prolog-store-values copied-prolog-store-values
          :extension-symbols extension-symbols
          :transaction-symbols transaction-symbols
          :transaction-boundness transaction-boundness
@@ -458,8 +566,9 @@ that will be dynamically rebound.  Returns a plist with
 (defun nskk--converter-stage-style-state (init-fn)
   "Run INIT-FN against isolated converter state and return that state."
   (let* ((plan (nskk--converter-build-style-transaction-plan))
-         (copied-prolog-store-values
-          (plist-get plan :copied-prolog-store-values))
+         (prolog-stage (nskk--converter-stage-prolog-store))
+         (overlays (car prolog-stage))
+         (protected-keys (cdr prolog-stage))
          (extension-symbols (plist-get plan :extension-symbols))
          (transaction-symbols (plist-get plan :transaction-symbols))
          (transaction-boundness (plist-get plan :transaction-boundness))
@@ -467,12 +576,12 @@ that will be dynamically rebound.  Returns a plist with
          (symbols (plist-get plan :symbols))
          (values (plist-get plan :values)))
     (nskk-prolog-with-database-fields
-        ((database (nth 0 copied-prolog-store-values))
-         (database-tails (nth 1 copied-prolog-store-values))
-         (index-config (nth 2 copied-prolog-store-values))
-         (hash-indices (nth 3 copied-prolog-store-values))
-         (trie-indices (nth 4 copied-prolog-store-values))
-         (index-bucket-tail-cache (nth 5 copied-prolog-store-values)))
+        ((database (nth 0 overlays))
+         (database-tails (nth 1 overlays))
+         (index-config (nth 2 overlays))
+         (hash-indices (nth 3 overlays))
+         (trie-indices (nth 4 overlays))
+         (index-bucket-tail-cache (nth 5 overlays)))
       (cl-progv symbols values
         (cl-mapc
          (lambda (symbol bound-p)
@@ -482,26 +591,30 @@ that will be dynamically rebound.  Returns a plist with
          transaction-boundness)
         (unless mode-map-bound-p
           (makunbound 'nskk-mode-map))
-        (nskk-prolog-retract-all 'romaji-to-kana 2)
-        (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
-        (funcall init-fn)
-        (nskk--converter-populate-incomplete-markers)
+        ;; Shared (non-owned) entries are the live objects, so a mutation of
+        ;; one during staging would leak past a rollback; reject it up front.
+        (let ((nskk--prolog-active-mutation-keys
+               (append protected-keys nskk--prolog-active-mutation-keys)))
+          (nskk-prolog-retract-all 'romaji-to-kana 2)
+          (nskk-prolog-set-index 'romaji-to-kana 2 :trie)
+          (funcall init-fn)
+          (nskk--converter-populate-incomplete-markers))
         (let ((staged-mode-map-bound-p (boundp 'nskk-mode-map))
-              (staged-prolog-state (nskk-prolog-state-snapshot)))
+              (publish-keys
+               (cl-union nskk--converter-style-owned-keys
+                         (cl-set-difference
+                          (nskk--converter-prolog-store-keys overlays)
+                          protected-keys
+                          :test #'equal)
+                         :test #'equal)))
           (when staged-mode-map-bound-p
             (let ((value (symbol-value 'nskk-mode-map)))
               (unless (or (null value) (keymapp value))
                 (error "Nskk-mode-map is not a keymap: %S" value))))
           (list
            :romaji-table nskk--romaji-table
-           :prolog-database (nskk-prolog-database)
-           :prolog-database-tails (nskk-prolog-database-tails)
-           :prolog-index-config (nskk-prolog-index-config)
-           :prolog-hash-indices (nskk-prolog-hash-indices)
-           :prolog-trie-indices (nskk-prolog-trie-indices)
-           :prolog-index-bucket-tail-cache
-           (nskk-prolog-index-bucket-tail-cache)
-           :prolog-state staged-prolog-state
+           :prolog-owned-state
+           (nskk--converter-prolog-owned-state publish-keys overlays)
            :extension-hash-tables
            (mapcar
             (lambda (symbol)
@@ -548,10 +661,10 @@ Return non-nil once OPERATION completes without signaling."
 (defun nskk--converter-validate-and-prepare-publish-state (state)
   "Validate STATE and return a detached, re-validated copy ready to publish.
 Returns a plist with :root-symbols, :mode-map-symbol, :mode-map-bound-p,
-:tables, :prolog-state, :extensions, :variables, and :new-mode-map."
+:tables, :prolog-owned-state, :extensions, :variables, and :new-mode-map."
   (let* ((root-symbols (list 'nskk--romaji-table))
          (staged-tables (list (plist-get state :romaji-table)))
-         (staged-prolog-state (plist-get state :prolog-state))
+         (staged-prolog-owned-state (plist-get state :prolog-owned-state))
          (staged-extensions (plist-get state :extension-hash-tables))
          (staged-variables (plist-get state :transaction-variables))
          (mode-map-bound-p (plist-get state :mode-map-bound-p))
@@ -559,8 +672,8 @@ Returns a plist with :root-symbols, :mode-map-symbol, :mode-map-bound-p,
          (mode-map-symbol 'nskk-mode-map))
     (unless (cl-every #'hash-table-p staged-tables)
       (error "Cannot publish invalid converter table state"))
-    (unless (and (vectorp staged-prolog-state)
-                 (= (length staged-prolog-state) 8))
+    (unless (nskk--converter-valid-prolog-owned-state-p
+             staged-prolog-owned-state)
       (error "Cannot publish invalid Prolog state"))
     (dolist (entry staged-extensions)
       (unless (and (consp entry)
@@ -586,10 +699,10 @@ Returns a plist with :root-symbols, :mode-map-symbol, :mode-map-bound-p,
       (error "Cannot publish invalid mode map state"))
     (let* ((prepared-state
             (nskk-prolog-copy-term
-             (list staged-tables staged-prolog-state staged-extensions
+             (list staged-tables staged-prolog-owned-state staged-extensions
                    (when mode-map-bound-p staged-mode-map))))
            (tables (nth 0 prepared-state))
-           (prolog-state (nth 1 prepared-state))
+           (prolog-owned-state (nth 1 prepared-state))
            (extensions (nth 2 prepared-state))
            (variables (mapcar #'copy-sequence staged-variables))
            (new-mode-map
@@ -597,7 +710,7 @@ Returns a plist with :root-symbols, :mode-map-symbol, :mode-map-bound-p,
               (nth 3 prepared-state))))
       (unless (cl-every #'hash-table-p tables)
         (error "Cannot publish invalid copied converter table state"))
-      (unless (and (vectorp prolog-state) (= (length prolog-state) 8))
+      (unless (nskk--converter-valid-prolog-owned-state-p prolog-owned-state)
         (error "Cannot publish invalid copied Prolog state"))
       (dolist (entry extensions)
         (unless (and (consp entry)
@@ -612,24 +725,28 @@ Returns a plist with :root-symbols, :mode-map-symbol, :mode-map-bound-p,
             :mode-map-symbol mode-map-symbol
             :mode-map-bound-p mode-map-bound-p
             :tables tables
-            :prolog-state prolog-state
+            :prolog-owned-state prolog-owned-state
             :extensions extensions
             :variables variables
             :new-mode-map new-mode-map))))
 
 (defun nskk--converter-capture-publish-rollback-baseline
-    (root-symbols extensions variables mode-map-symbol)
+    (root-symbols prolog-owned-state extensions variables mode-map-symbol)
   "Capture the pre-publish baseline needed to roll back a failed publish.
 ROOT-SYMBOLS and EXTENSIONS name the live variables about to be overwritten;
-VARIABLES supplies the symbols whose current binding must be snapshotted;
+PROLOG-OWNED-STATE names the Prolog keys about to be merged; VARIABLES
+supplies the symbols whose current binding must be snapshotted;
 MODE-MAP-SYMBOL is the live keymap variable.  Captured eagerly, before any
 field's commit begins, so a fault partway through publication always has a
 complete baseline to restore.
-Returns a plist with :old-tables, :old-prolog-state, :old-extensions,
+Returns a plist with :old-tables, :old-prolog-owned-state, :old-extensions,
 :old-variables, :old-mode-map-bound-p, :old-mode-map, :old-mode-map-car, and
 :old-mode-map-cdr."
   (let* ((old-tables (mapcar #'symbol-value root-symbols))
-         (old-prolog-state (nskk-prolog-state-snapshot))
+         (old-prolog-owned-state
+          (nskk--converter-prolog-owned-state
+           (mapcar #'car prolog-owned-state)
+           (nskk--converter-prolog-store-tables)))
          (old-extensions
           (mapcar
            (lambda (entry)
@@ -652,7 +769,7 @@ Returns a plist with :old-tables, :old-prolog-state, :old-extensions,
                         (keymapp old-mode-map))))
       (error "Cannot replace invalid public mode map state"))
     (list :old-tables old-tables
-          :old-prolog-state old-prolog-state
+          :old-prolog-owned-state old-prolog-owned-state
           :old-extensions old-extensions
           :old-variables old-variables
           :old-mode-map-bound-p old-mode-map-bound-p
@@ -661,24 +778,27 @@ Returns a plist with :old-tables, :old-prolog-state, :old-extensions,
           :old-mode-map-cdr (when (consp old-mode-map) (cdr old-mode-map)))))
 
 (defun nskk--converter-publish-commit-state
-    (root-symbols tables prolog-state extensions variables)
-  "Publish TABLES, PROLOG-STATE, EXTENSIONS and VARIABLES into live state.
-ROOT-SYMBOLS names the live variables receiving TABLES.
+    (root-symbols tables prolog-owned-state extensions variables)
+  "Publish TABLES, PROLOG-OWNED-STATE, EXTENSIONS and VARIABLES into live state.
+ROOT-SYMBOLS names the live variables receiving TABLES.  PROLOG-OWNED-STATE
+is merged into the live store tables key by key rather than replacing them:
+predicates the style does not own may have changed since staging (a
+dictionary load, a learning update) and must survive publication.
 Caller must already hold `inhibit-quit'; this function neither binds nor
 clears it, so a signal here still reaches the caller's rollback handler.
 
 Publishing the keymap is deliberately not part of this function -- see
 `nskk--converter-publish-style-state'."
   (cl-mapc (lambda (symbol value) (set symbol value)) root-symbols tables)
-  (nskk-prolog-state-restore prolog-state)
+  (nskk--converter-publish-prolog-owned-state prolog-owned-state)
   (dolist (entry extensions)
     (set (car entry) (cdr entry)))
   (dolist (entry variables)
     (nskk--converter-publish-variable entry)))
 
 (defun nskk--converter-publish-rollback
-    (root-symbols old-tables old-prolog-state old-extensions old-variables
-     mode-map-contents-replaced-p old-mode-map old-mode-map-car
+    (root-symbols old-tables old-prolog-owned-state old-extensions
+     old-variables mode-map-contents-replaced-p old-mode-map old-mode-map-car
      old-mode-map-cdr old-mode-map-bound-p mode-map-symbol)
   "Restore live converter state to its pre-publish baseline after a failed
 commit.  Caller must already hold `inhibit-quit'; mirrors
@@ -688,8 +808,9 @@ commit.  Caller must already hold `inhibit-quit'; mirrors
      (nskk--converter-restore-with-retry (lambda () (set symbol value))))
    root-symbols
    old-tables)
-  (nskk--converter-restore-with-retry
-   (lambda () (nskk-prolog-state-restore old-prolog-state)))
+  (dolist (entry old-prolog-owned-state)
+    (nskk--converter-restore-with-retry
+     (lambda () (nskk--converter-publish-prolog-owned-state (list entry)))))
   (dolist (entry old-extensions)
     (nskk--converter-restore-with-retry
      (lambda () (set (car entry) (cdr entry)))))
@@ -713,14 +834,15 @@ commit.  Caller must already hold `inhibit-quit'; mirrors
          (mode-map-symbol (plist-get prepared :mode-map-symbol))
          (mode-map-bound-p (plist-get prepared :mode-map-bound-p))
          (tables (plist-get prepared :tables))
-         (prolog-state (plist-get prepared :prolog-state))
+         (prolog-owned-state (plist-get prepared :prolog-owned-state))
          (extensions (plist-get prepared :extensions))
          (variables (plist-get prepared :variables))
          (new-mode-map (plist-get prepared :new-mode-map))
          (baseline (nskk--converter-capture-publish-rollback-baseline
-                    root-symbols extensions variables mode-map-symbol))
+                    root-symbols prolog-owned-state extensions variables
+                    mode-map-symbol))
          (old-tables (plist-get baseline :old-tables))
-         (old-prolog-state (plist-get baseline :old-prolog-state))
+         (old-prolog-owned-state (plist-get baseline :old-prolog-owned-state))
          (old-extensions (plist-get baseline :old-extensions))
          (old-variables (plist-get baseline :old-variables))
          (old-mode-map-bound-p (plist-get baseline :old-mode-map-bound-p))
@@ -731,7 +853,7 @@ commit.  Caller must already hold `inhibit-quit'; mirrors
     (condition-case condition
         (let ((inhibit-quit t))
           (nskk--converter-publish-commit-state
-           root-symbols tables prolog-state extensions variables)
+           root-symbols tables prolog-owned-state extensions variables)
           (cond
            ((not mode-map-bound-p)
             (makunbound mode-map-symbol))
@@ -747,7 +869,7 @@ commit.  Caller must already hold `inhibit-quit'; mirrors
       ((error quit)
        (let ((inhibit-quit t))
          (nskk--converter-publish-rollback
-          root-symbols old-tables old-prolog-state old-extensions
+          root-symbols old-tables old-prolog-owned-state old-extensions
           old-variables mode-map-contents-replaced-p old-mode-map
           old-mode-map-car old-mode-map-cdr old-mode-map-bound-p
           mode-map-symbol))
@@ -762,12 +884,33 @@ Prolog, extension, and keymap state.  Nothing is published if either step
 signals an error or quit.  On success the staged state is published while
 retaining the identity of `nskk-mode-map'.
 
+When STYLE is already the published style of the live stores and its
+registered inputs are unchanged, nothing is staged or published; use
+`nskk-converter-reload-style' to force a rebuild.
+
 Returns succeed(STYLE) on success, or fail() if STYLE is not registered."
+  (if (nskk--converter-load-style-1 style nil)
+      (succeed style)
+    (fail)))
+
+(defun nskk-converter-reload-style (style)
+  "Rebuild and publish STYLE even when it is already the published style.
+Returns STYLE on success, or nil if STYLE is not registered."
+  (nskk--converter-load-style-1 style t))
+
+(defun nskk--converter-load-style-1 (style force)
+  "Publish STYLE unless it is already live, or unconditionally when FORCE.
+Returns STYLE on success, or nil if STYLE is not registered."
   (let ((init-fn (alist-get style nskk--style-registry)))
-    (if init-fn (let ((state (nskk--converter-stage-style-state init-fn)))
-        (nskk--converter-publish-style-state state)
-        (succeed style))
-      (fail))))
+    (cond
+     ((null init-fn) nil)
+     ((and (not force) (nskk--converter-style-published-p style)) style)
+     (t
+      (let ((inputs (nskk--converter-style-inputs style)))
+        (nskk--converter-publish-style-state
+         (nskk--converter-stage-style-state init-fn))
+        (nskk--converter-record-published-style style inputs)
+        style)))))
 
 (defvar nskk--converter-initialized nil
   "Non-nil when the romaji-to-kana conversion table has been initialized.")
